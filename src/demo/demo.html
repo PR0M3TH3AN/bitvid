@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebTorrent Video Demo</title>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+    <h1>WebTorrent Video Demo</h1>
+    
+    <!-- Video player -->
+    <video id="video" controls></video>
+    
+    <!-- Info Container -->
+    <div class="info-container">
+        <div class="status" id="status">Initializing...</div>
+        <div class="progress-bar">
+            <div class="progress-bar-fill" id="progress"></div>
+        </div>
+        <div class="stats">
+            <div class="peers">
+                <span id="peers">Peers: 0</span>
+                <span class="speed" id="speed">0 KB/s</span>
+            </div>
+            <span id="downloaded">0 MB / 0 MB</span>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
