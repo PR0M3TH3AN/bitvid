@@ -149,140 +149,169 @@ class NostrClient {
         if (!pubkey) {
             throw new Error('User is not logged in.');
         }
-
+    
         // Debugging Log: Check videoData
         if (isDevMode) {
             console.log('Publishing video with data:', videoData);
         }
-
+    
+        // Generate a unique "d" tag for this event to prevent overwriting
+        const uniqueD = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+    
+        // Construct the event object
         const event = {
             kind: 30078,
             pubkey,
             created_at: Math.floor(Date.now() / 1000),
-            tags: [['t', 'video']], // Include the 't=video' tag
-            content: JSON.stringify(videoData)  // videoData should include description
+            // Keep your original 't=video' tag
+            // Add a new 'd' tag using a unique value
+            tags: [
+                ['t', 'video'],
+                ['d', uniqueD]
+            ],
+            // Include the JSON content (title, magnet, description, etc.)
+            content: JSON.stringify(videoData)
         };
-
+    
         // Debugging Log: Check stringified content
         if (isDevMode) {
             console.log('Event content after stringify:', event.content);
+            console.log('Using d tag:', uniqueD);
         }
-
+    
         try {
+            // Sign the event with Nostr extension (or other method)
             const signedEvent = await window.nostr.signEvent(event);
+    
             // Debugging Log: Check signed event
             if (isDevMode) {
                 console.log('Signed event:', signedEvent);
             }
-            
+    
+            // Publish signed event to all configured relays
             await Promise.all(this.relays.map(async url => {
                 try {
                     await this.pool.publish([url], signedEvent);
-                    if (isDevMode) console.log(`Event published to ${url}`);
+                    if (isDevMode) {
+                        console.log(`Event published to ${url}`);
+                    }
                 } catch (err) {
-                    if (isDevMode) console.error(`Failed to publish to ${url}:`, err.message);
+                    if (isDevMode) {
+                        console.error(`Failed to publish to ${url}:`, err.message);
+                    }
                 }
             }));
+    
+            // Return the signed event for any further handling
             return signedEvent;
+    
         } catch (error) {
-            if (isDevMode) console.error('Failed to sign event:', error.message);
+            if (isDevMode) {
+                console.error('Failed to sign event:', error.message);
+            }
             throw new Error('Failed to sign event.');
         }
     }
-
+       
     /**
      * Fetches videos from all configured relays.
-     */       
+     */
     async fetchVideos() {
-        // Filter for all videos tagged with 't=video'
         const filter = {
-            kinds: [30078],
-            '#t': ['video'],
-            limit: 500
+            kinds: [30078],    // The kind you use for video notes
+            '#t': ['video'],   // Tag "t" must include "video"
+            limit: 1000,       // Large limit to capture many events
+            since: 0           // Fetch from the earliest possible event
         };
+      
+        // Use a Map so duplicates (same event ID) across multiple relays don't overwrite each other
+        const videoEvents = new Map();
 
-        console.log('Fetching videos with filter:', filter);
-        const videos = new Map();
+        // Optional: Only log if in dev mode (to avoid flooding console in production).
+        if (isDevMode) {
+            console.log('[fetchVideos] Starting fetch from all relays...');
+            console.log('[fetchVideos] Filter:', filter);
+        }
 
         try {
+            // Fetch from each relay in parallel
             await Promise.all(
-                this.relays.map(async url => {
-                    console.log(`Querying ${url}...`);
+                this.relays.map(async (url) => {
+                    // Log relay being queried
+                    if (isDevMode) console.log(`[fetchVideos] Querying relay: ${url}`);
+                    
                     try {
-                        const sub = this.pool.sub([url], [filter]);
-                        await new Promise((resolve) => {
-                            const timeout = setTimeout(() => {
-                                sub.unsub();
-                                console.warn(`Timeout querying ${url}`);
-                                resolve();
-                            }, 10000); // 10 seconds timeout
+                        const events = await this.pool.list([url], [filter]);
+                        
+                        // How many events came back from this relay?
+                        if (isDevMode) {
+                            console.log(`Events from ${url}:`, events.length);
+                        }
+                        
+                        // For deeper insight, you can log each event
+                        if (isDevMode && events.length > 0) {
+                            events.forEach((evt, idx) => {
+                                console.log(
+                                    `[fetchVideos] [${url}] Event[${idx}] ID: ${evt.id} | pubkey: ${evt.pubkey} | created_at: ${evt.created_at}`
+                                );
+                            });
+                        }
+                        
+                        // Process each event
+                        events.forEach(event => {
+                            try {
+                                const content = JSON.parse(event.content);
 
-                            sub.on('event', event => {
-                                console.log(`Received event from ${url}:`, {
-                                    id: event.id,
-                                    created_at: new Date(event.created_at * 1000).toISOString(),
-                                    pubkey: event.pubkey,
-                                    content: event.content.substring(0, 100) + '...' // Log first 100 chars
-                                });
-
-                                try {
-                                    const content = JSON.parse(event.content);
-                                    
-                                    // Save all mode videos (dev and live)
-                                    if (content.mode) {
-                                        // Check if video already exists to prevent duplicates
-                                        if (!videos.has(event.id)) {
-                                            videos.set(event.id, {
-                                                id: event.id,
-                                                title: content.title,
-                                                magnet: content.magnet,
-                                                thumbnail: content.thumbnail || '',
-                                                description: content.description || '',
-                                                mode: content.mode,
-                                                pubkey: event.pubkey,
-                                                created_at: event.created_at
-                                            });
-                                            console.log(`Added video: ${content.title} (Mode: ${content.mode})`);
-                                        } else {
-                                            console.log(`Duplicate video skipped: ${content.title}`);
-                                        }
-                                    } else {
-                                        console.log(`Skipped video (missing mode): ${content.title}`);
-                                    }
-                                } catch (error) {
-                                    console.error(`Failed to parse event ${event.id}:`, error);
+                                // Only add if we haven't seen this event.id before
+                                if (!videoEvents.has(event.id)) {
+                                    videoEvents.set(event.id, {
+                                        id: event.id,
+                                        title: content.title || '',
+                                        magnet: content.magnet || '',
+                                        thumbnail: content.thumbnail || '',
+                                        description: content.description || '',
+                                        mode: content.mode || 'live',
+                                        pubkey: event.pubkey,
+                                        created_at: event.created_at
+                                    });
                                 }
-                            });
-
-                            sub.on('eose', () => {
-                                clearTimeout(timeout);
-                                console.log(`Finished querying ${url}`);
-                                sub.unsub();
-                                resolve();
-                            });
+                            } catch (parseError) {
+                                if (isDevMode) {
+                                    console.error('[fetchVideos] Event parsing error:', parseError);
+                                }
+                            }
                         });
-                    } catch (error) {
-                        console.error(`Error with relay ${url}:`, error);
+                    } catch (relayError) {
+                        if (isDevMode) {
+                            console.error(`[fetchVideos] Error fetching from ${url}:`, relayError);
+                        }
                     }
                 })
             );
 
-            // Convert to array and sort by creation date (newest first)
-            const videoArray = Array.from(videos.values())
+            // Convert Map to array and sort by creation time (descending)
+            const videos = Array.from(videoEvents.values())
                 .sort((a, b) => b.created_at - a.created_at);
 
-            console.log('Found videos:', videoArray.map(v => ({
-                id: v.id,
-                title: v.title,
-                created_at: new Date(v.created_at * 1000).toISOString(),
-                mode: v.mode
-            })));
+            if (isDevMode) {
+                console.log('[fetchVideos] All relays have responded.');
+                console.log(`[fetchVideos] Total unique video events: ${videoEvents.size}`);
+                console.log(
+                    '[fetchVideos] Final videos array (sorted):',
+                    videos.map(v => ({
+                        title: v.title,
+                        pubkey: v.pubkey,
+                        created_at: new Date(v.created_at * 1000).toISOString()
+                    }))
+                );
+            }
 
-            return videoArray;
-
+            return videos;
         } catch (error) {
-            console.error('Error fetching videos:', error);
-            throw error;
+            if (isDevMode) {
+                console.error('FETCH VIDEOS ERROR:', error);
+            }
+            return [];
         }
     }
 

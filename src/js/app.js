@@ -358,25 +358,35 @@ class NosTubeApp {
         }
     }
 
-    /**
-     * Renders the video list in the UI.
-     */
     async renderVideoList(videos) {
         try {
-            this.log('Starting renderVideoList with videos:', JSON.stringify(videos));
-            
-            if (!videos || videos.length === 0) {
-                this.log('No videos to render');
-                this.videoList.innerHTML = '<p class="text-center text-gray-500">No videos available yet. Be the first to upload one!</p>';
+            console.log('RENDER VIDEO LIST - Start', { 
+                videosReceived: videos, 
+                videosCount: videos ? videos.length : 'N/A',
+                videosType: typeof videos 
+            });
+    
+            if (!videos) {
+                console.error('NO VIDEOS RECEIVED');
+                this.videoList.innerHTML = '<p class="text-center text-gray-500">No videos found.</p>';
+                return;
+            }
+    
+            // Ensure videos is an array
+            const videoArray = Array.isArray(videos) ? videos : [videos];
+    
+            if (videoArray.length === 0) {
+                console.error('VIDEO ARRAY IS EMPTY');
+                this.videoList.innerHTML = '<p class="text-center text-gray-500">No videos available.</p>';
                 return;
             }
     
             // Sort videos by creation date (newest first)
-            videos.sort((a, b) => b.created_at - a.created_at);
+            videoArray.sort((a, b) => b.created_at - a.created_at);
             
             // Fetch usernames and profile pictures for all pubkeys
             const userProfiles = new Map();
-            const uniquePubkeys = [...new Set(videos.map(v => v.pubkey))];
+            const uniquePubkeys = [...new Set(videoArray.map(v => v.pubkey))];
             
             for (const pubkey of uniquePubkeys) {
                 try {
@@ -393,15 +403,13 @@ class NosTubeApp {
                             picture: profile.picture || `https://robohash.org/${pubkey}`
                         });
                     } else {
-                        // Fallback if no profile found
                         userProfiles.set(pubkey, {
                             name: 'Unknown',
                             picture: `https://robohash.org/${pubkey}`
                         });
                     }
                 } catch (error) {
-                    this.log(`Error fetching profile for ${pubkey}:`, error);
-                    // Fallback in case of error
+                    console.error(`Profile fetch error for ${pubkey}:`, error);
                     userProfiles.set(pubkey, {
                         name: 'Unknown',
                         picture: `https://robohash.org/${pubkey}`
@@ -409,24 +417,17 @@ class NosTubeApp {
                 }
             }
     
-            // Convert hex pubkeys to npubs
-            const getNpub = (pubkey) => {
-                try {
-                    return window.NostrTools.nip19.npubEncode(pubkey);
-                } catch {
-                    return pubkey;
-                }
-            };
-    
-            const renderedVideos = videos.map((video, index) => {
+            const renderedVideos = videoArray.map((video, index) => {
                 try {
                     if (!this.validateVideo(video, index)) {
+                        console.error(`Invalid video: ${video.title}`);
                         return '';
                     }
                     
-                    const profile = userProfiles.get(video.pubkey) || { name: 'Unknown', picture: `https://robohash.org/${video.pubkey}` };
-                    const npub = getNpub(video.pubkey);
-                    const displayName = profile.name || `${npub.slice(0, 8)}...${npub.slice(-4)}`;
+                    const profile = userProfiles.get(video.pubkey) || { 
+                        name: 'Unknown', 
+                        picture: `https://robohash.org/${video.pubkey}` 
+                    };
                     const timeAgo = this.formatTimeAgo(video.created_at);
                     
                     return `
@@ -447,26 +448,22 @@ class NosTubeApp {
                                 <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-300"></div>
                             </div>
                             <div class="p-4">
-                                <div class="flex space-x-3">
+                                <h3 class="text-lg font-bold text-white mb-3 line-clamp-2 hover:text-blue-400 cursor-pointer"
+                                    onclick="app.playVideo('${encodeURIComponent(video.magnet)}')">
+                                    ${this.escapeHTML(video.title)}
+                                </h3>
+                                <div class="flex space-x-3 items-center">
                                     <div class="flex-shrink-0">
-                                        <div class="w-10 h-10 rounded-full bg-gray-700 overflow-hidden">
-                                            <img src="${this.escapeHTML(profile.picture)}" alt="${displayName}" class="w-full h-full object-cover">
+                                        <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
+                                            <img src="${this.escapeHTML(profile.picture)}" alt="${profile.name}" class="w-full h-full object-cover">
                                         </div>
                                     </div>
                                     <div class="flex-1 min-w-0">
-                                        <h3 class="text-base font-medium text-white mb-1 line-clamp-2 hover:text-blue-400 cursor-pointer"
-                                            onclick="app.playVideo('${encodeURIComponent(video.magnet)}')">
-                                            ${this.escapeHTML(video.title)}
-                                        </h3>
                                         <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
-                                            ${this.escapeHTML(displayName)}
+                                            ${this.escapeHTML(profile.name)}
                                         </p>
-                                        <div class="flex items-center text-xs text-gray-400 mt-1">
+                                        <div class="flex items-center text-xs text-gray-500 mt-1">
                                             <span>${timeAgo}</span>
-                                            <span class="mx-1">•</span>
-                                            <span class="${video.mode === 'dev' ? 'text-red-400' : 'text-green-400'}">
-                                                ${video.mode.toUpperCase()}
-                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -474,55 +471,49 @@ class NosTubeApp {
                         </div>
                     `;
                 } catch (error) {
-                    this.log(`Error processing video ${index}:`, error);
+                    console.error(`Error processing video ${index}:`, error);
                     return '';
                 }
             }).filter(html => html.length > 0);
-            
+    
+            console.log('Rendered videos:', renderedVideos.length);
+    
             if (renderedVideos.length === 0) {
-                this.videoList.innerHTML = '<p class="text-center text-gray-500">No valid videos available.</p>';
+                this.videoList.innerHTML = '<p class="text-center text-gray-500">No valid videos to display.</p>';
                 return;
             }
     
             this.videoList.innerHTML = renderedVideos.join('');
-            this.log('Rendered video list successfully');
+            console.log('Videos rendered successfully');
+    
         } catch (error) {
-            this.log('Error in renderVideoList:', error);
-            this.showError('Failed to render video list. Please try again later.');
-            this.videoList.innerHTML = '<p class="text-center text-gray-500">Error loading videos. Please try again later.</p>';
-        }
-    }
-
-    /**
-     * Formats a Nostr public key into a shortened npub format
-     */
-    formatNpub(pubkey) {
-        if (!pubkey) return 'Unknown';
-        try {
-            // Format the pubkey to show only first 6 and last 4 characters
-            return `${pubkey.slice(0, 6)}...${pubkey.slice(-4)}`;
-        } catch (error) {
-            return 'Unknown';
+            console.error('Rendering error:', error);
+            this.videoList.innerHTML = '<p class="text-center text-gray-500">Error loading videos.</p>';
         }
     }
 
     /**
      * Validates a video object
+     * Updated to include event ID validation
      */
     validateVideo(video, index) {
         const validationResults = {
+            hasId: Boolean(video?.id),
+            isValidId: typeof video?.id === 'string' && video.id.trim().length > 0,
             hasVideo: Boolean(video),
             hasTitle: Boolean(video?.title),
             hasMagnet: Boolean(video?.magnet),
             hasMode: Boolean(video?.mode),
             hasPubkey: Boolean(video?.pubkey),
             isValidTitle: typeof video?.title === 'string' && video.title.length > 0,
-            isValidMagnet: typeof video?.magnet === 'string' && video.magnet.length > 0
+            isValidMagnet: typeof video?.magnet === 'string' && video.magnet.length > 0,
+            isValidMode: typeof video?.mode === 'string' && ['dev', 'live'].includes(video.mode)
         };
         
-        this.log(`Video ${index} validation results:`, validationResults);
+        const passed = Object.values(validationResults).every(Boolean);
+        console.log(`Video ${video?.title} validation results:`, validationResults, passed ? 'PASSED' : 'FAILED');
         
-        return Object.values(validationResults).every(Boolean);
+        return passed;
     }
 
     /**
@@ -719,8 +710,9 @@ class NosTubeApp {
     }
 }
 
+export const app = new NosTubeApp();
+
 // Initialize app
-const app = new NosTubeApp();
 app.init();
 
 // Make playVideo accessible globally for the onclick handlers
