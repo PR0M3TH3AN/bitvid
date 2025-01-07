@@ -279,7 +279,7 @@ class NosTubeApp {
             magnet: document.getElementById('magnet') ? document.getElementById('magnet').value.trim() : '',
             thumbnail: document.getElementById('thumbnail') ? document.getElementById('thumbnail').value.trim() : '',
             description: descriptionElement ? descriptionElement.value.trim() : '',
-            mode: isDevMode ? 'dev' : 'live',
+            mode: isDevMode ? 'dev' : 'live'
         };
 
         // Debugging Log: Check formData
@@ -430,6 +430,16 @@ class NosTubeApp {
                     };
                     const timeAgo = this.formatTimeAgo(video.created_at);
                     
+                    // Only show "Edit" button if this user owns the video (video.pubkey === this.pubkey)
+                    const canEdit = (video.pubkey === this.pubkey);
+                    const editButton = canEdit
+                      ? `<button
+                           class="mt-2 text-sm text-blue-400 hover:text-blue-300"
+                           onclick="app.handleEditVideo(${index})">
+                           Edit
+                         </button>`
+                      : '';
+
                     return `
                         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300">
                             <div class="aspect-w-16 aspect-h-9 bg-gray-800 cursor-pointer relative group" 
@@ -448,11 +458,11 @@ class NosTubeApp {
                                 <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-300"></div>
                             </div>
                             <div class="p-4">
-                                <h3 class="text-lg font-bold text-white mb-3 line-clamp-2 hover:text-blue-400 cursor-pointer"
+                                <h3 class="text-lg font-bold text-white mb-2 line-clamp-2 hover:text-blue-400 cursor-pointer"
                                     onclick="app.playVideo('${encodeURIComponent(video.magnet)}')">
                                     ${this.escapeHTML(video.title)}
                                 </h3>
-                                <div class="flex space-x-3 items-center">
+                                <div class="flex space-x-3 items-center mb-2">
                                     <div class="flex-shrink-0">
                                         <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
                                             <img src="${this.escapeHTML(profile.picture)}" alt="${profile.name}" class="w-full h-full object-cover">
@@ -467,6 +477,7 @@ class NosTubeApp {
                                         </div>
                                     </div>
                                 </div>
+                                ${editButton}
                             </div>
                         </div>
                     `;
@@ -708,6 +719,75 @@ class NosTubeApp {
             setTimeout(() => this.updateTorrentStatus(torrent), 1000);
         }
     }
+
+    /**
+     * Allows the user to edit a video note (only if they are the owner).
+     * We reuse the note's existing d tag via nostrClient.editVideo.
+     * @param {number} index - The index of the video in the rendered list
+     */
+    async handleEditVideo(index) {
+        try {
+            const videos = await nostrClient.fetchVideos();
+            const video = videos[index];
+    
+            if (!this.pubkey) {
+                this.showError('Please login to edit videos.');
+                return;
+            }
+            if (video.pubkey !== this.pubkey) {
+                this.showError('You do not own this video.');
+                return;
+            }
+    
+            // Prompt for new fields, but leave old value if user cancels or leaves blank.
+            const newTitle = prompt('New Title? (Leave blank to keep existing)', video.title);
+            const newMagnet = prompt('New Magnet Link? (Leave blank to keep existing)', video.magnet);
+            const newThumbnail = prompt('New Thumbnail URL? (Leave blank to keep existing)', video.thumbnail);
+            const newDescription = prompt('New Description? (Leave blank to keep existing)', video.description);
+    
+            // If user cancels ANY prompt, it returns `null`.
+            // If user typed nothing and clicked OK, it’s an empty string ''.
+            // So we do checks to keep the old value if needed:
+            const title = (newTitle === null || newTitle.trim() === '') 
+                ? video.title 
+                : newTitle.trim();
+    
+            const magnet = (newMagnet === null || newMagnet.trim() === '') 
+                ? video.magnet 
+                : newMagnet.trim();
+    
+            const thumbnail = (newThumbnail === null || newThumbnail.trim() === '') 
+                ? video.thumbnail 
+                : newThumbnail.trim();
+    
+            const description = (newDescription === null || newDescription.trim() === '') 
+                ? video.description 
+                : newDescription.trim();
+    
+            // Build updated data
+            const updatedData = {
+                title,
+                magnet,
+                thumbnail,
+                description,
+                mode: isDevMode ? 'dev' : 'live'
+            };
+    
+            const originalEvent = {
+                id: video.id,
+                pubkey: video.pubkey,
+                tags: video.tags // Must include ["d","someValue"] to reuse the same note
+            };
+    
+            await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
+            this.showSuccess('Video updated successfully!');
+            await this.loadVideos();
+        } catch (err) {
+            this.log('Failed to edit video:', err.message);
+            this.showError('Failed to edit video. Please try again later.');
+        }
+    }
+    
 }
 
 export const app = new NosTubeApp();

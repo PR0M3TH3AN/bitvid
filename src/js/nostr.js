@@ -143,7 +143,7 @@ class NostrClient {
     }
 
     /**
-     * Publishes a new video event to all relays.
+     * Publishes a new video event to all relays (creates a new note).
      */
     async publishVideo(videoData, pubkey) {
         if (!pubkey) {
@@ -212,6 +212,81 @@ class NostrClient {
             throw new Error('Failed to sign event.');
         }
     }
+
+    /**
+     * Edits an existing video event by reusing its "d" tag.
+     * @param {Object} originalEvent - The entire event object you're editing.
+     * @param {Object} updatedVideoData - The updated fields (title, magnet, etc.).
+     * @param {string} pubkey - The user's pubkey (must match originalEvent.pubkey).
+     */
+    async editVideo(originalEvent, updatedVideoData, pubkey) {
+        if (!pubkey) {
+            throw new Error('User is not logged in.');
+        }
+        if (originalEvent.pubkey !== pubkey) {
+            throw new Error('You do not own this event (different pubkey).');
+        }
+
+        // Debugging log
+        if (isDevMode) {
+            console.log('Editing video event:', originalEvent);
+            console.log('New video data:', updatedVideoData);
+        }
+
+        // Grab the d tag from the original event
+        const dTag = originalEvent.tags.find(tag => tag[0] === 'd');
+        if (!dTag) {
+            throw new Error('This event has no "d" tag, cannot edit as addressable kind=30078.');
+        }
+        const existingD = dTag[1];
+
+        // Build the updated event with the same (kind, pubkey, d) so relays see it as an update
+        const event = {
+            kind: 30078,
+            pubkey,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [
+                ['t', 'video'],
+                ['d', existingD]
+            ],
+            content: JSON.stringify(updatedVideoData)
+        };
+
+        if (isDevMode) {
+            console.log('Reusing d tag:', existingD);
+            console.log('Updated event content:', event.content);
+        }
+
+        try {
+            // Sign the new updated event
+            const signedEvent = await window.nostr.signEvent(event);
+
+            if (isDevMode) {
+                console.log('Signed edited event:', signedEvent);
+            }
+
+            // Publish the edited event to all relays
+            await Promise.all(this.relays.map(async url => {
+                try {
+                    await this.pool.publish([url], signedEvent);
+                    if (isDevMode) {
+                        console.log(`Edited event published to ${url} (d="${existingD}")`);
+                    }
+                } catch (err) {
+                    if (isDevMode) {
+                        console.error(`Failed to publish edited event to ${url}:`, err.message);
+                    }
+                }
+            }));
+
+            return signedEvent;
+        } catch (error) {
+            if (isDevMode) {
+                console.error('Failed to sign edited event:', error.message);
+            }
+            throw new Error('Failed to sign edited event.');
+        }
+    }
        
     /**
      * Fetches videos from all configured relays.
@@ -227,7 +302,6 @@ class NostrClient {
         // Use a Map so duplicates (same event ID) across multiple relays don't overwrite each other
         const videoEvents = new Map();
 
-        // Optional: Only log if in dev mode (to avoid flooding console in production).
         if (isDevMode) {
             console.log('[fetchVideos] Starting fetch from all relays...');
             console.log('[fetchVideos] Filter:', filter);
@@ -237,24 +311,20 @@ class NostrClient {
             // Fetch from each relay in parallel
             await Promise.all(
                 this.relays.map(async (url) => {
-                    // Log relay being queried
                     if (isDevMode) console.log(`[fetchVideos] Querying relay: ${url}`);
                     
                     try {
                         const events = await this.pool.list([url], [filter]);
                         
-                        // How many events came back from this relay?
                         if (isDevMode) {
                             console.log(`Events from ${url}:`, events.length);
-                        }
-                        
-                        // For deeper insight, you can log each event
-                        if (isDevMode && events.length > 0) {
-                            events.forEach((evt, idx) => {
-                                console.log(
-                                    `[fetchVideos] [${url}] Event[${idx}] ID: ${evt.id} | pubkey: ${evt.pubkey} | created_at: ${evt.created_at}`
-                                );
-                            });
+                            if (events.length > 0) {
+                                events.forEach((evt, idx) => {
+                                    console.log(
+                                        `[fetchVideos] [${url}] Event[${idx}] ID: ${evt.id} | pubkey: ${evt.pubkey} | created_at: ${evt.created_at}`
+                                    );
+                                });
+                            }
                         }
                         
                         // Process each event
@@ -272,7 +342,9 @@ class NostrClient {
                                         description: content.description || '',
                                         mode: content.mode || 'live',
                                         pubkey: event.pubkey,
-                                        created_at: event.created_at
+                                        created_at: event.created_at,
+                                        // Keep the original tags array in case we need them later (e.g. for editing)
+                                        tags: event.tags
                                     });
                                 }
                             } catch (parseError) {
@@ -330,7 +402,7 @@ class NostrClient {
                 typeof content.mode === 'string' &&
                 ['dev', 'live'].includes(content.mode) &&
                 (typeof content.thumbnail === 'string' || typeof content.thumbnail === 'undefined') &&
-                (typeof content.description === 'string' || typeof content.description === 'undefined') // Ensure description is optional
+                (typeof content.description === 'string' || typeof content.description === 'undefined')
             );
 
             if (isDevMode && !isValid) {
