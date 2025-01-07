@@ -4,7 +4,7 @@ import { nostrClient } from './nostr.js';
 import { torrentClient } from './webtorrent.js';
 import { isDevMode } from './config.js';
 
-class NosTubeApp {
+class bitvidApp {
     constructor() {
         // Authentication Elements
         this.loginButton = document.getElementById('loginButton');
@@ -898,6 +898,6 @@ class NosTubeApp {
     }
 }
 
-export const app = new NosTubeApp();
+export const app = new bitvidApp();
 app.init();
 window.app = app;
