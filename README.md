@@ -1,4 +1,4 @@
-# **NosTube: Building a Nostr + WebTorrent Video Streaming Client**
+# **BitVid: Building a Nostr + WebTorrent Video Streaming Client**
 
 This project plan outlines the steps to build a decentralized video streaming client using **Nostr** for metadata and **WebTorrent** for video distribution. It includes technical specifications, a framework outline, and a phased approach for development.
 
