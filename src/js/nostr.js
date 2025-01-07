@@ -26,9 +26,20 @@ function logErrorOnce(message, eventContent = null) {
     }
 }
 
+/**
+ * A very naive "encryption" function that just reverses the string.
+ * In a real app, use a proper crypto library (AES-GCM, ECDH, etc.).
+ */
+function fakeEncrypt(magnet) {
+    return magnet.split('').reverse().join('');
+}
+function fakeDecrypt(encrypted) {
+    return encrypted.split('').reverse().join('');
+}
+
 class NostrClient {
     constructor() {
-        this.pool = null;  // Initialize to null, we'll create it in init()
+        this.pool = null; 
         this.pubkey = null;
         this.relays = RELAY_URLS;
     }
@@ -40,17 +51,14 @@ class NostrClient {
         try {
             if (isDevMode) console.log('Connecting to relays...');
             
-            // Initialize the pool
             this.pool = new window.NostrTools.SimplePool();
 
-            // Test relay connections
-            const testFilter = { kinds: [0], limit: 1 }; // Dummy filter for testing
+            const testFilter = { kinds: [0], limit: 1 }; 
             const connections = this.relays.map(async url => {
                 try {
                     return new Promise((resolve) => {
                         const sub = this.pool.sub([url], [testFilter]);
                         
-                        // Set a timeout for connection attempts
                         let timeout = setTimeout(() => {
                             sub.unsub();
                             if (isDevMode) console.log(`Connection timeout for ${url}`);
@@ -84,7 +92,9 @@ class NostrClient {
                 throw new Error('No relays could be connected.');
             }
 
-            if (isDevMode) console.log(`Connected to ${successfulRelays.length} relay(s):`, successfulRelays);
+            if (isDevMode) {
+                console.log(`Connected to ${successfulRelays.length} relay(s):`, successfulRelays);
+            }
         } catch (err) {
             console.error('Failed to initialize Nostr client:', err.message);
             throw err;
@@ -143,52 +153,62 @@ class NostrClient {
     }
 
     /**
-     * Publishes a new video event to all relays (creates a new note).
+     * Publishes a new video event to all relays (creates a brand-new note).
      */
     async publishVideo(videoData, pubkey) {
         if (!pubkey) {
             throw new Error('User is not logged in.');
         }
     
-        // Debugging Log: Check videoData
         if (isDevMode) {
             console.log('Publishing video with data:', videoData);
         }
-    
-        // Generate a unique "d" tag for this event to prevent overwriting
+
+        // If user sets "isPrivate = true", encrypt the magnet
+        let finalMagnet = videoData.magnet;
+        if (videoData.isPrivate === true) {
+            finalMagnet = fakeEncrypt(finalMagnet);
+        }
+
+        // Default version is 1 if not specified
+        const version = videoData.version ?? 1;
+
         const uniqueD = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
-    
-        // Construct the event object
+
+        // Always mark "deleted" false for new posts
+        const contentObject = {
+            version,
+            deleted: false,
+            isPrivate: videoData.isPrivate || false,
+            title: videoData.title,
+            magnet: finalMagnet,
+            thumbnail: videoData.thumbnail,
+            description: videoData.description,
+            mode: videoData.mode
+        };
+
         const event = {
             kind: 30078,
             pubkey,
             created_at: Math.floor(Date.now() / 1000),
-            // Keep your original 't=video' tag
-            // Add a new 'd' tag using a unique value
             tags: [
                 ['t', 'video'],
                 ['d', uniqueD]
             ],
-            // Include the JSON content (title, magnet, description, etc.)
-            content: JSON.stringify(videoData)
+            content: JSON.stringify(contentObject)
         };
-    
-        // Debugging Log: Check stringified content
+
         if (isDevMode) {
             console.log('Event content after stringify:', event.content);
             console.log('Using d tag:', uniqueD);
         }
-    
+
         try {
-            // Sign the event with Nostr extension (or other method)
             const signedEvent = await window.nostr.signEvent(event);
-    
-            // Debugging Log: Check signed event
             if (isDevMode) {
                 console.log('Signed event:', signedEvent);
             }
-    
-            // Publish signed event to all configured relays
+
             await Promise.all(this.relays.map(async url => {
                 try {
                     await this.pool.publish([url], signedEvent);
@@ -201,10 +221,8 @@ class NostrClient {
                     }
                 }
             }));
-    
-            // Return the signed event for any further handling
+
             return signedEvent;
-    
         } catch (error) {
             if (isDevMode) {
                 console.error('Failed to sign event:', error.message);
@@ -214,11 +232,10 @@ class NostrClient {
     }
 
     /**
-     * Edits an existing video event by reusing its "d" tag.
-     * @param {Object} originalEvent - The entire event object you're editing.
-     * @param {Object} updatedVideoData - The updated fields (title, magnet, etc.).
-     * @param {string} pubkey - The user's pubkey (must match originalEvent.pubkey).
+     * Edits an existing video event by reusing the same "d" tag.
+     * Allows toggling isPrivate on/off and re-encrypting or decrypting the magnet.
      */
+    // Minimal fix: ensures we only ever encrypt once per edit operation
     async editVideo(originalEvent, updatedVideoData, pubkey) {
         if (!pubkey) {
             throw new Error('User is not logged in.');
@@ -226,21 +243,70 @@ class NostrClient {
         if (originalEvent.pubkey !== pubkey) {
             throw new Error('You do not own this event (different pubkey).');
         }
-
-        // Debugging log
+    
         if (isDevMode) {
             console.log('Editing video event:', originalEvent);
             console.log('New video data:', updatedVideoData);
         }
-
+    
         // Grab the d tag from the original event
         const dTag = originalEvent.tags.find(tag => tag[0] === 'd');
         if (!dTag) {
             throw new Error('This event has no "d" tag, cannot edit as addressable kind=30078.');
         }
         const existingD = dTag[1];
-
-        // Build the updated event with the same (kind, pubkey, d) so relays see it as an update
+    
+        // Parse old content
+        const oldContent = JSON.parse(originalEvent.content || '{}');
+        if (isDevMode) {
+            console.log('Old content:', oldContent);
+        }
+    
+        // Keep old version & deleted status
+        const oldVersion = oldContent.version ?? 1;
+        const oldDeleted = (oldContent.deleted === true);
+        const newVersion = updatedVideoData.version ?? oldVersion;
+        
+        const oldWasPrivate = (oldContent.isPrivate === true);
+    
+        // 1) If old was private, decrypt the old magnet once => oldPlainMagnet
+        let oldPlainMagnet = oldContent.magnet || '';
+        if (oldWasPrivate && oldPlainMagnet) {
+            oldPlainMagnet = fakeDecrypt(oldPlainMagnet);
+        }
+    
+        // 2) If updatedVideoData.isPrivate is explicitly set, use that; else keep the old isPrivate
+        const newIsPrivate = 
+            typeof updatedVideoData.isPrivate === 'boolean'
+            ? updatedVideoData.isPrivate
+            : (oldContent.isPrivate ?? false);
+    
+        // 3) The user might type a new magnet or keep oldPlainMagnet
+        const userTypedMagnet = (updatedVideoData.magnet || '').trim();
+        const finalPlainMagnet = userTypedMagnet || oldPlainMagnet;
+    
+        // 4) If new is private => encrypt finalPlainMagnet once; otherwise store plaintext
+        let finalMagnet = finalPlainMagnet;
+        if (newIsPrivate) {
+            finalMagnet = fakeEncrypt(finalPlainMagnet);
+        }
+    
+        // Build updated content
+        const contentObject = {
+            version: newVersion,
+            deleted: oldDeleted,
+            isPrivate: newIsPrivate,
+            title: updatedVideoData.title,
+            magnet: finalMagnet,
+            thumbnail: updatedVideoData.thumbnail,
+            description: updatedVideoData.description,
+            mode: updatedVideoData.mode
+        };
+    
+        if (isDevMode) {
+            console.log('Building updated content object:', contentObject);
+        }
+    
         const event = {
             kind: 30078,
             pubkey,
@@ -249,23 +315,21 @@ class NostrClient {
                 ['t', 'video'],
                 ['d', existingD]
             ],
-            content: JSON.stringify(updatedVideoData)
+            content: JSON.stringify(contentObject)
         };
-
+    
         if (isDevMode) {
             console.log('Reusing d tag:', existingD);
             console.log('Updated event content:', event.content);
         }
-
+    
         try {
-            // Sign the new updated event
             const signedEvent = await window.nostr.signEvent(event);
-
             if (isDevMode) {
                 console.log('Signed edited event:', signedEvent);
             }
-
-            // Publish the edited event to all relays
+    
+            // Publish to all relays
             await Promise.all(this.relays.map(async url => {
                 try {
                     await this.pool.publish([url], signedEvent);
@@ -278,7 +342,7 @@ class NostrClient {
                     }
                 }
             }));
-
+    
             return signedEvent;
         } catch (error) {
             if (isDevMode) {
@@ -286,20 +350,99 @@ class NostrClient {
             }
             throw new Error('Failed to sign edited event.');
         }
+    }    
+
+    /**
+     * Soft-delete or hide an existing video by marking content as "deleted: true"
+     * and republishing with same (kind=30078, pubkey, d) address.
+     */
+    async deleteVideo(originalEvent, pubkey) {
+        if (!pubkey) {
+            throw new Error('User is not logged in.');
+        }
+        if (originalEvent.pubkey !== pubkey) {
+            throw new Error('You do not own this event (different pubkey).');
+        }
+
+        if (isDevMode) {
+            console.log('Deleting video event:', originalEvent);
+        }
+
+        const dTag = originalEvent.tags.find(tag => tag[0] === 'd');
+        if (!dTag) {
+            throw new Error('This event has no "d" tag, cannot delete as addressable kind=30078.');
+        }
+        const existingD = dTag[1];
+
+        const oldContent = JSON.parse(originalEvent.content || '{}');
+        const oldVersion = oldContent.version ?? 1;
+
+        const contentObject = {
+            version: oldVersion,
+            deleted: true, 
+            title: oldContent.title || '',
+            magnet: '',
+            thumbnail: '',
+            description: 'This video has been deleted.',
+            mode: oldContent.mode || 'live',
+            isPrivate: oldContent.isPrivate || false
+        };
+
+        const event = {
+            kind: 30078,
+            pubkey,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [
+                ['t', 'video'],
+                ['d', existingD]
+            ],
+            content: JSON.stringify(contentObject)
+        };
+
+        if (isDevMode) {
+            console.log('Reusing d tag for delete:', existingD);
+            console.log('Deleted event content:', event.content);
+        }
+
+        try {
+            const signedEvent = await window.nostr.signEvent(event);
+            if (isDevMode) {
+                console.log('Signed deleted event:', signedEvent);
+            }
+
+            await Promise.all(this.relays.map(async url => {
+                try {
+                    await this.pool.publish([url], signedEvent);
+                    if (isDevMode) {
+                        console.log(`Deleted event published to ${url} (d="${existingD}")`);
+                    }
+                } catch (err) {
+                    if (isDevMode) {
+                        console.error(`Failed to publish deleted event to ${url}:`, err.message);
+                    }
+                }
+            }));
+
+            return signedEvent;
+        } catch (error) {
+            if (isDevMode) {
+                console.error('Failed to sign deleted event:', error.message);
+            }
+            throw new Error('Failed to sign deleted event.');
+        }
     }
-       
+
     /**
      * Fetches videos from all configured relays.
      */
     async fetchVideos() {
         const filter = {
-            kinds: [30078],    // The kind you use for video notes
-            '#t': ['video'],   // Tag "t" must include "video"
-            limit: 1000,       // Large limit to capture many events
-            since: 0           // Fetch from the earliest possible event
+            kinds: [30078],
+            '#t': ['video'],
+            limit: 1000,
+            since: 0
         };
       
-        // Use a Map so duplicates (same event ID) across multiple relays don't overwrite each other
         const videoEvents = new Map();
 
         if (isDevMode) {
@@ -308,7 +451,6 @@ class NostrClient {
         }
 
         try {
-            // Fetch from each relay in parallel
             await Promise.all(
                 this.relays.map(async (url) => {
                     if (isDevMode) console.log(`[fetchVideos] Querying relay: ${url}`);
@@ -327,15 +469,22 @@ class NostrClient {
                             }
                         }
                         
-                        // Process each event
                         events.forEach(event => {
                             try {
                                 const content = JSON.parse(event.content);
 
-                                // Only add if we haven't seen this event.id before
+                                // If deleted == true, it overrides older notes
+                                if (content.deleted === true) {
+                                    videoEvents.delete(event.id);
+                                    return;
+                                }
+
+                                // If we haven't seen this event.id before, store it
                                 if (!videoEvents.has(event.id)) {
                                     videoEvents.set(event.id, {
                                         id: event.id,
+                                        version: content.version ?? 1,
+                                        isPrivate: content.isPrivate ?? false,
                                         title: content.title || '',
                                         magnet: content.magnet || '',
                                         thumbnail: content.thumbnail || '',
@@ -343,7 +492,6 @@ class NostrClient {
                                         mode: content.mode || 'live',
                                         pubkey: event.pubkey,
                                         created_at: event.created_at,
-                                        // Keep the original tags array in case we need them later (e.g. for editing)
                                         tags: event.tags
                                     });
                                 }
@@ -361,21 +509,12 @@ class NostrClient {
                 })
             );
 
-            // Convert Map to array and sort by creation time (descending)
             const videos = Array.from(videoEvents.values())
                 .sort((a, b) => b.created_at - a.created_at);
 
             if (isDevMode) {
                 console.log('[fetchVideos] All relays have responded.');
                 console.log(`[fetchVideos] Total unique video events: ${videoEvents.size}`);
-                console.log(
-                    '[fetchVideos] Final videos array (sorted):',
-                    videos.map(v => ({
-                        title: v.title,
-                        pubkey: v.pubkey,
-                        created_at: new Date(v.created_at * 1000).toISOString()
-                    }))
-                );
             }
 
             return videos;

@@ -54,6 +54,10 @@ class NosTubeApp {
 
         this.pubkey = null;
         this.currentMagnetUri = null;
+
+        // ADDED FOR VERSIONING/PRIVATE/DELETE:
+        // If you created an <input type="checkbox" id="isPrivate" /> in your HTML form:
+        this.isPrivateCheckbox = document.getElementById('isPrivate');
     }
 
     /**
@@ -162,7 +166,6 @@ class NosTubeApp {
 
         // Detailed Modal Video Event Listeners
         if (this.modalVideo) {
-            // Add detailed video error logging
             this.modalVideo.addEventListener('error', (e) => {
                 const error = e.target.error;
                 this.log('Modal video error:', error);
@@ -263,7 +266,7 @@ class NosTubeApp {
     }
 
     /**
-     * Handles video submission.
+     * Handles video submission (with version, private listing).
      */
     async handleSubmit(e) {
         e.preventDefault();
@@ -274,15 +277,23 @@ class NosTubeApp {
         }
 
         const descriptionElement = document.getElementById('description');
+
+        // ADDED FOR VERSIONING/PRIVATE/DELETE:
+        // If you have a checkbox with id="isPrivate" in HTML
+        const isPrivate = this.isPrivateCheckbox
+            ? this.isPrivateCheckbox.checked
+            : false;
+
         const formData = {
-            title: document.getElementById('title') ? document.getElementById('title').value.trim() : '',
-            magnet: document.getElementById('magnet') ? document.getElementById('magnet').value.trim() : '',
-            thumbnail: document.getElementById('thumbnail') ? document.getElementById('thumbnail').value.trim() : '',
-            description: descriptionElement ? descriptionElement.value.trim() : '',
-            mode: isDevMode ? 'dev' : 'live'
+            version: 2, // We set the version to 2 for new posts
+            title: document.getElementById('title')?.value.trim() || '',
+            magnet: document.getElementById('magnet')?.value.trim() || '',
+            thumbnail: document.getElementById('thumbnail')?.value.trim() || '',
+            description: descriptionElement?.value.trim() || '',
+            mode: isDevMode ? 'dev' : 'live',
+            isPrivate // new field to handle private listings
         };
 
-        // Debugging Log: Check formData
         this.log('Form Data Collected:', formData);
 
         if (!formData.title || !formData.magnet) {
@@ -293,6 +304,12 @@ class NosTubeApp {
         try {
             await nostrClient.publishVideo(formData, this.pubkey);
             this.submitForm.reset();
+
+            // If the private checkbox was checked, reset it
+            if (this.isPrivateCheckbox) {
+                this.isPrivateCheckbox.checked = false;
+            }
+
             await this.loadVideos();
             this.showSuccess('Video shared successfully!');
         } catch (error) {
@@ -308,56 +325,66 @@ class NosTubeApp {
         try {
             const videos = await nostrClient.fetchVideos();
             this.log('Fetched videos (raw):', videos);
-            
-            // Log detailed type info
-            this.log('Videos type:', typeof videos);
-            this.log('Is Array:', Array.isArray(videos), 'Length:', videos?.length);
-            
+
             if (!videos) {
                 this.log('No videos received');
                 throw new Error('No videos received from relays');
             }
 
-            // Convert to array if it isn't one
+            // Convert to array if not already
             const videosArray = Array.isArray(videos) ? videos : [videos];
-            
-            this.log('Processing videos array:', JSON.stringify(videosArray, null, 2));
 
-            if (videosArray.length === 0) {
-                this.log('No valid videos found.');
-                this.videoList.innerHTML = '<p class="text-center text-gray-500">No videos available yet. Be the first to upload one!</p>';
+            // **Filter** so we only show:
+            //   - isPrivate === false (public videos)
+            //   - or isPrivate === true but pubkey === this.pubkey
+            const displayedVideos = videosArray.filter(video => {
+                if (!video.isPrivate) {
+                    // Public video => show it
+                    return true;
+                }
+                // Else it's private; only show if it's owned by the logged-in user
+                return (this.pubkey && video.pubkey === this.pubkey);
+            });
+
+            if (displayedVideos.length === 0) {
+                this.log('No valid videos found after filtering.');
+                this.videoList.innerHTML = `
+                    <p class="text-center text-gray-500">
+                      No public videos available yet. Be the first to upload one!
+                    </p>`;
                 return;
             }
 
-            // Log each video object before rendering
-            videosArray.forEach((video, index) => {
+            this.log('Processing filtered videos:', displayedVideos);
+
+            displayedVideos.forEach((video, index) => {
                 this.log(`Video ${index} details:`, {
                     id: video.id,
                     title: video.title,
                     magnet: video.magnet,
-                    mode: video.mode,
+                    isPrivate: video.isPrivate,
                     pubkey: video.pubkey,
-                    created_at: video.created_at,
-                    hasTitle: Boolean(video.title),
-                    hasMagnet: Boolean(video.magnet),
-                    hasMode: Boolean(video.mode)
+                    created_at: video.created_at
                 });
             });
 
-            this.renderVideoList(videosArray);
-            this.log(`Rendered ${videosArray.length} videos successfully`);
+            // Now render only the displayedVideos
+            this.renderVideoList(displayedVideos);
+            this.log(`Rendered ${displayedVideos.length} videos successfully`);
         } catch (error) {
             this.log('Failed to fetch videos:', error);
-            this.log('Error details:', {
-                name: error.name,
-                message: error.message,
-                stack: error.stack
-            });
             this.showError('An error occurred while loading videos. Please try again later.');
-            this.videoList.innerHTML = '<p class="text-center text-gray-500">No videos available at the moment. Please try again later.</p>';
+            this.videoList.innerHTML = `
+                <p class="text-center text-gray-500">
+                    No videos available at the moment. Please try again later.
+                </p>`;
         }
     }
 
+    /**
+     * Renders the given list of videos. If a video is private and belongs to the user,
+     * highlight with a special border (e.g. border-yellow-500).
+     */
     async renderVideoList(videos) {
         try {
             console.log('RENDER VIDEO LIST - Start', { 
@@ -368,26 +395,25 @@ class NosTubeApp {
     
             if (!videos) {
                 console.error('NO VIDEOS RECEIVED');
-                this.videoList.innerHTML = '<p class="text-center text-gray-500">No videos found.</p>';
+                this.videoList.innerHTML = `<p class="text-center text-gray-500">No videos found.</p>`;
                 return;
             }
     
-            // Ensure videos is an array
             const videoArray = Array.isArray(videos) ? videos : [videos];
     
             if (videoArray.length === 0) {
                 console.error('VIDEO ARRAY IS EMPTY');
-                this.videoList.innerHTML = '<p class="text-center text-gray-500">No videos available.</p>';
+                this.videoList.innerHTML = `<p class="text-center text-gray-500">No videos available.</p>`;
                 return;
             }
     
-            // Sort videos by creation date (newest first)
+            // Sort by creation date
             videoArray.sort((a, b) => b.created_at - a.created_at);
-            
-            // Fetch usernames and profile pictures for all pubkeys
+    
+            // Prepare to fetch user profiles
             const userProfiles = new Map();
             const uniquePubkeys = [...new Set(videoArray.map(v => v.pubkey))];
-            
+    
             for (const pubkey of uniquePubkeys) {
                 try {
                     const userEvents = await nostrClient.pool.list(nostrClient.relays, [{
@@ -395,7 +421,7 @@ class NosTubeApp {
                         authors: [pubkey],
                         limit: 1
                     }]);
-                    
+    
                     if (userEvents[0]?.content) {
                         const profile = JSON.parse(userEvents[0].content);
                         userProfiles.set(pubkey, {
@@ -417,6 +443,7 @@ class NosTubeApp {
                 }
             }
     
+            // Build HTML for each video
             const renderedVideos = videoArray.map((video, index) => {
                 try {
                     if (!this.validateVideo(video, index)) {
@@ -429,55 +456,114 @@ class NosTubeApp {
                         picture: `https://robohash.org/${video.pubkey}` 
                     };
                     const timeAgo = this.formatTimeAgo(video.created_at);
-                    
-                    // Only show "Edit" button if this user owns the video (video.pubkey === this.pubkey)
+    
+                    // If user is the owner
                     const canEdit = (video.pubkey === this.pubkey);
-                    const editButton = canEdit
-                      ? `<button
-                           class="mt-2 text-sm text-blue-400 hover:text-blue-300"
-                           onclick="app.handleEditVideo(${index})">
-                           Edit
-                         </button>`
-                      : '';
 
-                    return `
-                        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300">
-                            <div class="aspect-w-16 aspect-h-9 bg-gray-800 cursor-pointer relative group" 
-                                 onclick="app.playVideo('${encodeURIComponent(video.magnet)}')">
-                                ${video.thumbnail ? 
-                                    `<img src="${this.escapeHTML(video.thumbnail)}" 
-                                         alt="${this.escapeHTML(video.title)}" 
-                                         class="w-full h-full object-cover">` :
-                                    `<div class="flex items-center justify-center h-full bg-gray-800">
-                                        <svg class="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                    </div>`
-                                }
-                                <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-300"></div>
+                    // If it's private + user owns it => highlight with a special border
+                    const highlightClass = (video.isPrivate && canEdit)
+                        ? 'border-2 border-yellow-500'
+                        : 'border-none';  // normal case
+
+                    // Gear menu (unchanged)
+                    const gearMenu = canEdit
+                        ? `
+                          <div class="relative inline-block ml-3 overflow-visible">
+                            <button
+                              type="button"
+                              class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              onclick="document.getElementById('settingsDropdown-${index}').classList.toggle('hidden')"
+                            >
+                              <img 
+                                src="assets/svg/video-settings-gear.svg" 
+                                alt="Settings"
+                                class="w-5 h-5"
+                              />
+                            </button>
+                            <!-- The dropdown appears above the gear (bottom-full) -->
+                            <div 
+                              id="settingsDropdown-${index}"
+                              class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+                            >
+                              <div class="py-1">
+                                <button
+                                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                                  onclick="app.handleEditVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                                  onclick="app.handleDeleteVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             </div>
+                          </div>
+                        `
+                        : '';
+    
+                    return `
+                        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
+                            
+                            <!-- VIDEO THUMBNAIL -->
+                            <div 
+                              class="aspect-w-16 aspect-h-9 bg-gray-800 cursor-pointer relative group"
+                              onclick="app.playVideo('${encodeURIComponent(video.magnet)}')"
+                            >
+                              ${
+                                video.thumbnail
+                                ? `<img
+                                    src="${this.escapeHTML(video.thumbnail)}"
+                                    alt="${this.escapeHTML(video.title)}"
+                                    class="w-full h-full object-cover"
+                                  >`
+                                : `<div class="flex items-center justify-center h-full bg-gray-800">
+                                     <svg class="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                             d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                             d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                     </svg>
+                                   </div>`
+                              }
+                              <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-300"></div>
+                            </div>
+        
+                            <!-- CARD INFO -->
                             <div class="p-4">
-                                <h3 class="text-lg font-bold text-white mb-2 line-clamp-2 hover:text-blue-400 cursor-pointer"
-                                    onclick="app.playVideo('${encodeURIComponent(video.magnet)}')">
-                                    ${this.escapeHTML(video.title)}
+                                <!-- TITLE -->
+                                <h3
+                                  class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
+                                  onclick="app.playVideo('${encodeURIComponent(video.magnet)}')"
+                                >
+                                  ${this.escapeHTML(video.title)}
                                 </h3>
-                                <div class="flex space-x-3 items-center mb-2">
-                                    <div class="flex-shrink-0">
+        
+                                <!-- CREATOR info + gear icon -->
+                                <div class="flex items-center justify-between">
+                                    <!-- Left: Avatar & user/time -->
+                                    <div class="flex items-center space-x-3">
                                         <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
-                                            <img src="${this.escapeHTML(profile.picture)}" alt="${profile.name}" class="w-full h-full object-cover">
+                                            <img
+                                              src="${this.escapeHTML(profile.picture)}"
+                                              alt="${profile.name}"
+                                              class="w-full h-full object-cover"
+                                            >
+                                        </div>
+                                        <div class="min-w-0">
+                                            <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
+                                                ${this.escapeHTML(profile.name)}
+                                            </p>
+                                            <div class="flex items-center text-xs text-gray-500 mt-1">
+                                                <span>${timeAgo}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
-                                            ${this.escapeHTML(profile.name)}
-                                        </p>
-                                        <div class="flex items-center text-xs text-gray-500 mt-1">
-                                            <span>${timeAgo}</span>
-                                        </div>
-                                    </div>
+                                    <!-- Right: gearMenu if user owns the video -->
+                                    ${gearMenu}
                                 </div>
-                                ${editButton}
                             </div>
                         </div>
                     `;
@@ -490,7 +576,7 @@ class NosTubeApp {
             console.log('Rendered videos:', renderedVideos.length);
     
             if (renderedVideos.length === 0) {
-                this.videoList.innerHTML = '<p class="text-center text-gray-500">No valid videos to display.</p>';
+                this.videoList.innerHTML = `<p class="text-center text-gray-500">No valid videos to display.</p>`;
                 return;
             }
     
@@ -499,13 +585,12 @@ class NosTubeApp {
     
         } catch (error) {
             console.error('Rendering error:', error);
-            this.videoList.innerHTML = '<p class="text-center text-gray-500">Error loading videos.</p>';
+            this.videoList.innerHTML = `<p class="text-center text-gray-500">Error loading videos.</p>`;
         }
-    }
+    }                
 
     /**
      * Validates a video object
-     * Updated to include event ID validation
      */
     validateVideo(video, index) {
         const validationResults = {
@@ -604,32 +689,37 @@ class NosTubeApp {
                 return;
             }
     
-            // Decode the magnet URI
             const decodedMagnet = decodeURIComponent(magnetURI);
-            
-            // Don't restart if it's the same video
+    
             if (this.currentMagnetUri === decodedMagnet) {
                 this.log('Same video requested - already playing');
                 return;
             }
-    
-            // Store current magnet URI
             this.currentMagnetUri = decodedMagnet;
     
-            // Show the modal first
             this.playerModal.style.display = 'flex';
             this.playerModal.classList.remove('hidden');
     
-            // Find the video data
+            // Re-fetch the latest from relays
             const videos = await nostrClient.fetchVideos();
             const video = videos.find(v => v.magnet === decodedMagnet);
-            
+    
             if (!video) {
                 this.showError('Video data not found.');
                 return;
             }
     
-            // Fetch creator profile
+            // Decrypt only once if user owns it
+            if (video.isPrivate && video.pubkey === this.pubkey && !video.alreadyDecrypted) {
+                this.log('User owns a private video => decrypting magnet link...');
+                video.magnet = fakeDecrypt(video.magnet);
+                // Mark it so we don't do it again
+                video.alreadyDecrypted = true;
+            }
+    
+            const finalMagnet = video.magnet;
+    
+            // Profile fetch
             let creatorProfile = { name: 'Unknown', picture: `https://robohash.org/${video.pubkey}` };
             try {
                 const userEvents = await nostrClient.pool.list(nostrClient.relays, [{
@@ -637,8 +727,9 @@ class NosTubeApp {
                     authors: [video.pubkey],
                     limit: 1
                 }]);
-                
-                if (userEvents[0]?.content) {
+    
+                // Ensure userEvents isn't empty before accessing [0]
+                if (userEvents.length > 0 && userEvents[0]?.content) {
                     const profile = JSON.parse(userEvents[0].content);
                     creatorProfile = {
                         name: profile.name || profile.display_name || 'Unknown',
@@ -649,7 +740,6 @@ class NosTubeApp {
                 this.log('Error fetching creator profile:', error);
             }
     
-            // Convert pubkey to npub
             let creatorNpub = 'Unknown';
             try {
                 creatorNpub = window.NostrTools.nip19.npubEncode(video.pubkey);
@@ -658,24 +748,19 @@ class NosTubeApp {
                 creatorNpub = video.pubkey;
             }
     
-            // Update video info
             this.videoTitle.textContent = video.title || 'Untitled';
             this.videoDescription.textContent = video.description || 'No description available.';
             this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
     
-            // Update creator info
             this.creatorName.textContent = creatorProfile.name;
             this.creatorNpub.textContent = `${creatorNpub.slice(0, 8)}...${creatorNpub.slice(-4)}`;
             this.creatorAvatar.src = creatorProfile.picture;
             this.creatorAvatar.alt = creatorProfile.name;
     
-            // Start streaming
-            this.log('Starting video stream:', decodedMagnet);
-            await torrentClient.streamVideo(decodedMagnet, this.modalVideo);
+            this.log('Starting video stream with:', finalMagnet);
+            await torrentClient.streamVideo(finalMagnet, this.modalVideo);
     
-            // Update UI elements based on existing DOM elements that webtorrent.js updates
             const updateInterval = setInterval(() => {
-                // Check if modal is still visible
                 if (!document.body.contains(this.modalVideo)) {
                     clearInterval(updateInterval);
                     return;
@@ -687,10 +772,10 @@ class NosTubeApp {
                 const speed = document.getElementById('speed');
                 const downloaded = document.getElementById('downloaded');
     
-                if (status) this.modalStatus.textContent = status.textContent;
+                if (status)   this.modalStatus.textContent = status.textContent;
                 if (progress) this.modalProgress.style.width = progress.style.width;
-                if (peers) this.modalPeers.textContent = peers.textContent;
-                if (speed) this.modalSpeed.textContent = speed.textContent;
+                if (peers)    this.modalPeers.textContent = peers.textContent;
+                if (speed)    this.modalSpeed.textContent = speed.textContent;
                 if (downloaded) this.modalDownloaded.textContent = downloaded.textContent;
             }, 1000);
     
@@ -698,11 +783,8 @@ class NosTubeApp {
             this.log('Error in playVideo:', error);
             this.showError(`Playback error: ${error.message}`);
         }
-    }
+    }    
 
-    /**
-     * Updates the UI with the current torrent status.
-     */
     updateTorrentStatus(torrent) {
         if (!torrent) return;
 
@@ -712,7 +794,6 @@ class NosTubeApp {
         this.modalSpeed.textContent = `${(torrent.downloadSpeed / 1024).toFixed(2)} KB/s`;
         this.modalDownloaded.textContent = `${(torrent.downloaded / (1024 * 1024)).toFixed(2)} MB / ${(torrent.length / (1024 * 1024)).toFixed(2)} MB`;
 
-        // Update periodically
         if (torrent.ready) {
             this.modalStatus.textContent = 'Ready to play';
         } else {
@@ -723,7 +804,6 @@ class NosTubeApp {
     /**
      * Allows the user to edit a video note (only if they are the owner).
      * We reuse the note's existing d tag via nostrClient.editVideo.
-     * @param {number} index - The index of the video in the rendered list
      */
     async handleEditVideo(index) {
         try {
@@ -739,33 +819,25 @@ class NosTubeApp {
                 return;
             }
     
-            // Prompt for new fields, but leave old value if user cancels or leaves blank.
+            // Prompt for new fields or keep old
             const newTitle = prompt('New Title? (Leave blank to keep existing)', video.title);
-            const newMagnet = prompt('New Magnet Link? (Leave blank to keep existing)', video.magnet);
-            const newThumbnail = prompt('New Thumbnail URL? (Leave blank to keep existing)', video.thumbnail);
+            const newMagnet = prompt('New Magnet? (Leave blank to keep existing)', video.magnet);
+            const newThumbnail = prompt('New Thumbnail? (Leave blank to keep existing)', video.thumbnail);
             const newDescription = prompt('New Description? (Leave blank to keep existing)', video.description);
+            
+            // Ask user if they want the note private or public
+            const wantPrivate = confirm('Make this video private? OK=Yes, Cancel=No');
     
-            // If user cancels ANY prompt, it returns `null`.
-            // If user typed nothing and clicked OK, it’s an empty string ''.
-            // So we do checks to keep the old value if needed:
-            const title = (newTitle === null || newTitle.trim() === '') 
-                ? video.title 
-                : newTitle.trim();
+            // Fallback to old if user typed nothing
+            const title = (newTitle === null || newTitle.trim() === '') ? video.title : newTitle.trim();
+            const magnet = (newMagnet === null || newMagnet.trim() === '') ? video.magnet : newMagnet.trim();
+            const thumbnail = (newThumbnail === null || newThumbnail.trim() === '') ? video.thumbnail : newThumbnail.trim();
+            const description = (newDescription === null || newDescription.trim() === '') ? video.description : newDescription.trim();
     
-            const magnet = (newMagnet === null || newMagnet.trim() === '') 
-                ? video.magnet 
-                : newMagnet.trim();
-    
-            const thumbnail = (newThumbnail === null || newThumbnail.trim() === '') 
-                ? video.thumbnail 
-                : newThumbnail.trim();
-    
-            const description = (newDescription === null || newDescription.trim() === '') 
-                ? video.description 
-                : newDescription.trim();
-    
-            // Build updated data
+            // Build final updated data
             const updatedData = {
+                version: video.version || 2,  // keep old version or set 2
+                isPrivate: wantPrivate,
                 title,
                 magnet,
                 thumbnail,
@@ -773,12 +845,12 @@ class NosTubeApp {
                 mode: isDevMode ? 'dev' : 'live'
             };
     
+            // Edit
             const originalEvent = {
                 id: video.id,
                 pubkey: video.pubkey,
-                tags: video.tags // Must include ["d","someValue"] to reuse the same note
+                tags: video.tags
             };
-    
             await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
             this.showSuccess('Video updated successfully!');
             await this.loadVideos();
@@ -786,14 +858,46 @@ class NosTubeApp {
             this.log('Failed to edit video:', err.message);
             this.showError('Failed to edit video. Please try again later.');
         }
+    }    
+
+    /**
+     * ADDED FOR VERSIONING/PRIVATE/DELETE:
+     * Allows the user to delete (soft-delete) a video by marking it as deleted.
+     */
+    async handleDeleteVideo(index) {
+        try {
+            const videos = await nostrClient.fetchVideos();
+            const video = videos[index];
+
+            if (!this.pubkey) {
+                this.showError('Please login to delete videos.');
+                return;
+            }
+            if (video.pubkey !== this.pubkey) {
+                this.showError('You do not own this video.');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete "${video.title}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            const originalEvent = {
+                id: video.id,
+                pubkey: video.pubkey,
+                tags: video.tags
+            };
+
+            await nostrClient.deleteVideo(originalEvent, this.pubkey);
+            this.showSuccess('Video deleted (hidden) successfully!');
+            await this.loadVideos();
+        } catch (err) {
+            this.log('Failed to delete video:', err.message);
+            this.showError('Failed to delete video. Please try again later.');
+        }
     }
-    
 }
 
 export const app = new NosTubeApp();
-
-// Initialize app
 app.init();
-
-// Make playVideo accessible globally for the onclick handlers
 window.app = app;
