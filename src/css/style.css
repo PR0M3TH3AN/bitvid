@@ -216,4 +216,18 @@ button:focus {
     padding: 0.75rem;
   }
 }
+
+footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 4rem;
+  padding-top: 2rem;
+}
+
+footer a {
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
 ```

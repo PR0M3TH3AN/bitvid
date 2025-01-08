@@ -1,5 +1,7 @@
 # **bitvid: Building a Nostr + WebTorrent Video Streaming Client**
 
+##### _IPNS: k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1_
+
 This project plan outlines the steps to build a decentralized video streaming client using **Nostr** for metadata and **WebTorrent** for video distribution. It includes technical specifications, a framework outline, and a phased approach for development.
 
 ---
@@ -7,6 +9,7 @@ This project plan outlines the steps to build a decentralized video streaming cl
 ## **1. Overview**
 
 ### **1.1 Objectives**
+
 1. Enable users to upload videos by posting a magnet link along with metadata (title, description, tags, thumbnail).
 2. Allow users to edit video metadata (e.g., description, thumbnail URL) without duplicating content.
 3. Fetch video content via WebTorrent and display published videos on a decentralized platform.
@@ -18,9 +21,11 @@ This project plan outlines the steps to build a decentralized video streaming cl
 ## **2. Specifications**
 
 ### **2.1 Nostr Note Specification**
+
 We will use **Kind `30078`** for arbitrary custom app data. The note will store all video metadata, enabling discovery and categorization. Editing is supported using the `d` tag in **Replaceable Events**.
 
 #### **Nostr Event Schema**
+
 ```json
 {
   "kind": 30078,
@@ -47,6 +52,7 @@ We will use **Kind `30078`** for arbitrary custom app data. The note will store 
 ```
 
 #### **Fields Description**
+
 - **kind**: `30078` (custom app data for video metadata).
 - **tags**:
   - `"d"`: Unique identifier (e.g., hash of the magnet link or custom ID) for replaceable events.
@@ -66,6 +72,7 @@ We will use **Kind `30078`** for arbitrary custom app data. The note will store 
 ## **3. Framework Outline**
 
 ### **3.1 Technologies**
+
 - **Frontend**: React (or Vanilla JavaScript for smaller scale).
 - **Decentralized Protocols**:
   - **Nostr** for metadata storage, retrieval, and updates.
@@ -75,9 +82,11 @@ We will use **Kind `30078`** for arbitrary custom app data. The note will store 
 ---
 
 ### **3.2 Application Structure**
+
 Organize the project into reusable components and modules to manage complexity and scalability.
 
 #### **3.2.1 Directory Structure**
+
 ```
 src/
 ├── components/            # Reusable UI components
@@ -105,6 +114,7 @@ src/
 ### **3.3 Phases**
 
 #### **Phase 1: Core Functionality**
+
 1. **Input and Parse Magnet Links**:
    - Create `MagnetInput` to accept user input for a magnet link.
    - Validate the link format.
@@ -119,6 +129,7 @@ src/
 ---
 
 #### **Phase 2: Editing and Replaceable Events**
+
 1. **Enable Editing**:
    - Fetch the latest metadata using the unique `d` tag.
    - Prepopulate an editable form (`EditVideoForm`) with current metadata.
@@ -130,6 +141,7 @@ src/
 ---
 
 #### **Phase 3: UI Enhancements**
+
 1. **Reusable Layouts**:
    - Add `Header` and `Footer` for navigation and consistent structure.
    - Use `Layout` to wrap all pages.
@@ -141,6 +153,7 @@ src/
 ---
 
 #### **Phase 4: Performance Optimization**
+
 1. **Caching**:
    - Use `IndexedDB` or `LocalStorage` to cache fetched metadata for offline usage.
 2. **Pagination or Lazy Loading**:
@@ -151,6 +164,7 @@ src/
 ---
 
 #### **Phase 5: Advanced Features**
+
 1. **Video Previews**:
    - Stream videos directly in the browser using WebTorrent and HTML5 `<video>`.
 2. **Search and Filters**:
@@ -163,6 +177,7 @@ src/
 ## **4. Development Milestones**
 
 ### **Milestone 1: Basic Upload and Display**
+
 - Implement `MagnetInput` and `VideoForm`.
 - Fetch and publish metadata to Nostr.
 - Build `VideoList` to display published videos.
@@ -172,6 +187,7 @@ src/
 ---
 
 ### **Milestone 2: Editing Support**
+
 - Implement `EditVideoForm` for editing metadata.
 - Add `d` tags to video events for replaceable updates.
 - Fetch and update metadata seamlessly.
@@ -181,6 +197,7 @@ src/
 ---
 
 ### **Milestone 3: Complete UI**
+
 - Add `Header`, `Footer`, and `Layout` for consistent design.
 - Implement routing for `Home`, `Upload`, and `About`.
 
@@ -189,6 +206,7 @@ src/
 ---
 
 ### **Milestone 4: Optimized Performance**
+
 - Implement caching and pagination for `VideoList`.
 - Optimize network calls for fetching Nostr events.
 
@@ -197,6 +215,7 @@ src/
 ---
 
 ### **Milestone 5: Advanced Features**
+
 - Add direct video streaming using WebTorrent.
 - Implement search and filtering for videos.
 - Enable user reactions and comments.
@@ -208,6 +227,7 @@ src/
 ## **5. Hosting and Deployment**
 
 1. **Static Hosting Options**:
+
    - **GitHub Pages**: Free and integrates with Git repositories.
    - **Netlify**: Free plan with continuous deployment and custom domains.
    - **Vercel**: Optimized for React and other frontend frameworks.
@@ -230,35 +250,36 @@ src/
 
 ## **6. Tools and Libraries**
 
-| **Category**         | **Tool/Library**         | **Description**                              |
-|-----------------------|--------------------------|----------------------------------------------|
-| Frontend Framework    | React                   | Component-based UI development.              |
-| Decentralized Metadata| Nostr + nostr-tools     | Protocol and tools for metadata storage.     |
-| Video Distribution    | WebTorrent              | Decentralized video streaming.               |
-| State Management      | React Hooks             | Local state for managing application data.   |
-| Styling               | Tailwind CSS (optional) | Utility-first styling framework.             |
-| Hosting               | Netlify, Vercel, GitHub Pages | Static hosting options.                |
+| **Category**           | **Tool/Library**              | **Description**                            |
+| ---------------------- | ----------------------------- | ------------------------------------------ |
+| Frontend Framework     | React                         | Component-based UI development.            |
+| Decentralized Metadata | Nostr + nostr-tools           | Protocol and tools for metadata storage.   |
+| Video Distribution     | WebTorrent                    | Decentralized video streaming.             |
+| State Management       | React Hooks                   | Local state for managing application data. |
+| Styling                | Tailwind CSS (optional)       | Utility-first styling framework.           |
+| Hosting                | Netlify, Vercel, GitHub Pages | Static hosting options.                    |
 
 ---
 
 ## **7. Timeline**
 
-| **Week** | **Task**                                   |
-|----------|-------------------------------------------|
-| Week 1   | Setup project, create `MagnetInput`.       |
-| Week 2   | Implement WebTorrent integration.          |
-| Week 3   | Build `VideoForm` and Nostr publishing.    |
-| Week 4   | Create `VideoList` to display videos.      |
-| Week 5   | Implement `EditVideoForm` with updates.    |
-| Week 6   | Add `Header`, `Footer`, and `Layout`.      |
-| Week 7   | Optimize performance (caching, lazy load). |
-| Week 8   | Add advanced features (streaming, comments).|
+| **Week** | **Task**                                     |
+| -------- | -------------------------------------------- |
+| Week 1   | Setup project, create `MagnetInput`.         |
+| Week 2   | Implement WebTorrent integration.            |
+| Week 3   | Build `VideoForm` and Nostr publishing.      |
+| Week 4   | Create `VideoList` to display videos.        |
+| Week 5   | Implement `EditVideoForm` with updates.      |
+| Week 6   | Add `Header`, `Footer`, and `Layout`.        |
+| Week 7   | Optimize performance (caching, lazy load).   |
+| Week 8   | Add advanced features (streaming, comments). |
 
 ---
 
 ## **8. Risks and Mitigation**
 
 ### **8.1 Key Risks**
+
 1. **Relay Downtime**:
    - **Mitigation**: Use multiple relays and implement fallback mechanisms.
 2. **Private Key Management**:
@@ -267,6 +288,7 @@ src/
    - **Mitigation**: Optimize performance early (pagination, caching).
 
 ### **8.2 Potential Challenges**
+
 - **Decentralized Thumbnails**:
   - Since we rely on user-provided URLs, broken links might occur.
   - Educate users to host thumbnails on reliable services.
