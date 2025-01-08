@@ -48,57 +48,42 @@ class NostrClient {
      * Initializes the Nostr client by connecting to relays.
      */
     async init() {
+        if (isDevMode) console.log('Connecting to relays...');
+        
         try {
-            if (isDevMode) console.log('Connecting to relays...');
-            
             this.pool = new window.NostrTools.SimplePool();
-
-            const testFilter = { kinds: [0], limit: 1 }; 
-            const connections = this.relays.map(async url => {
-                try {
-                    return new Promise((resolve) => {
-                        const sub = this.pool.sub([url], [testFilter]);
-                        
-                        let timeout = setTimeout(() => {
-                            sub.unsub();
-                            if (isDevMode) console.log(`Connection timeout for ${url}`);
-                            resolve({ url, success: false });
-                        }, 5000);
-
-                        sub.on('event', () => {
-                            clearTimeout(timeout);
-                            sub.unsub();
-                            if (isDevMode) console.log(`Received event from ${url}`);
-                            resolve({ url, success: true });
-                        });
-
-                        sub.on('eose', () => {
-                            clearTimeout(timeout);
-                            sub.unsub();
-                            if (isDevMode) console.log(`EOSE from ${url}`);
-                            resolve({ url, success: true });
-                        });
-                    });
-                } catch (err) {
-                    if (isDevMode) console.error(`Failed to connect to relay: ${url}`, err.message);
-                    return { url, success: false };
-                }
-            });
-
-            const results = await Promise.all(connections);
+            const results = await this.connectToRelays();
             const successfulRelays = results.filter(r => r.success).map(r => r.url);
             
-            if (successfulRelays.length === 0) {
-                throw new Error('No relays could be connected.');
-            }
-
-            if (isDevMode) {
-                console.log(`Connected to ${successfulRelays.length} relay(s):`, successfulRelays);
-            }
+            if (successfulRelays.length === 0) throw new Error('No relays connected');
+            
+            if (isDevMode) console.log(`Connected to ${successfulRelays.length} relay(s)`);
         } catch (err) {
-            console.error('Failed to initialize Nostr client:', err.message);
+            console.error('Nostr init failed:', err);
             throw err;
         }
+    }
+
+    // Helper method to handle relay connections
+    async connectToRelays() {
+        return Promise.all(this.relays.map(url => 
+            new Promise(resolve => {
+                const sub = this.pool.sub([url], [{ kinds: [0], limit: 1 }]);
+                const timeout = setTimeout(() => {
+                    sub.unsub();
+                    resolve({ url, success: false });
+                }, 5000);
+
+                const succeed = () => {
+                    clearTimeout(timeout);
+                    sub.unsub();
+                    resolve({ url, success: true });
+                };
+
+                sub.on('event', succeed);
+                sub.on('eose', succeed);
+            })
+        ));
     }
 
     /**

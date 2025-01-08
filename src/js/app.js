@@ -63,32 +63,26 @@ class bitvidApp {
     /**
      * Initializes the application by setting up the Nostr client and loading videos.
      */
+    // app.js
     async init() {
         try {
-            // Hide the video player sections initially
-            this.playerSection.classList.add('hidden');
-            this.playerModal.classList.add('hidden');
-
-            // Initialize Nostr client
+            // Hide and reset player states
+            this.playerSection.style.display = 'none';
+            this.playerModal.style.display = 'none';
+            this.currentMagnetUri = null;
+            
+            // Initialize Nostr and check login
             await nostrClient.init();
-            this.log('Nostr client initialized.');
-
-            // Check if user is already logged in
             const savedPubKey = localStorage.getItem('userPubKey');
             if (savedPubKey) {
                 this.login(savedPubKey, false);
             }
 
-            // Setup event listeners
             this.setupEventListeners();
-            this.log('Event listeners set up.');
-
-            // Load videos
             await this.loadVideos();
-            this.log('Videos loaded.');
         } catch (error) {
-            this.log('Failed to initialize app:', error);
-            this.showError('Failed to connect to Nostr relay. Please try again later.');
+            console.error('Init failed:', error);
+            this.showError('Failed to connect to Nostr relay');
         }
     }
 
