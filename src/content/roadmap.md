@@ -3,7 +3,8 @@
 ## UI Enhancements
 
 - Add a copy Magnet button labeled "Seed".
-- Add a warning disclaimer pop-up.
+- add community guidline page
+- add links to pop-up modal
 - Convert "Logged in as" from public key to profile image and username (use npub as fallback).
 - Add a sidebar for improved UI flexibility.
 - Customize home screen content via algorithms for better feeds. (trending, new, for you etc.)
@@ -20,7 +21,6 @@
 
 ## Feature Additions
 
-- Add an `npub` whitelist for login access.
 - Allow users to set custom relay settings, stored in local cache.
 - Add a "Publish" step in the video editing process.
 - Add comments to the video modal.
