@@ -3,7 +3,7 @@
 ## UI Enhancements
 
 - Add a copy Magnet button labeled "Seed".
-- add community guidline page
+- add community guidelines page
 - add links to pop-up modal
 - Convert "Logged in as" from public key to profile image and username (use npub as fallback).
 - Add a sidebar for improved UI flexibility.
