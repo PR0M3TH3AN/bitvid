@@ -1,11 +1,5 @@
 ![](https://bitvid.netlify.app/assets/jpg/bitvid.jpg)
 
-BTC DNS: [bitvid.btc.us](https://bitvid.btc.us)
-
-ETH DNS: [bitvid.eth.limo](https://bitvid.eth.limo)
-
-**_IPNS: k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1_**
-
 # About bitvid
 
 Welcome to bitvid, a new kind of video platform that puts you in control. Unlike traditional video sites that keep your content on their servers, bitvid lets videos flow directly between creators and viewers. Think of it like a digital potluck where everyone brings and shares content directly with each other!
