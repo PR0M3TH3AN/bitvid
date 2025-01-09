@@ -67,8 +67,6 @@ To run **bitvid** locally:
 
 - **`config.js`**:
   - Toggle `isDevMode` for development (`true`) or production (`false`).
-- **`site.webmanifest`**:
-  - Customize PWA settings such as theme color, icons, and start URL.
 
 ### Adding Features
 
@@ -121,5 +119,3 @@ To run **bitvid** locally:
 - **Website**: [bitvid.btc.us](https://bitvid.btc.us)
 - **GitHub**: [PR0M3TH3AN](https://github.com/PR0M3TH3AN)
 - **Nostr**: [npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe](https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe)
-
----

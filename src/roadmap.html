@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>bitvid | About</title>
+    <title>bitvid | Roadmap</title>
 
     <!-- Open Graph Meta Tags -->
     <meta property="og:title" content="BitVid - Markdown Viewer" />
@@ -144,7 +144,7 @@
 
     <script>
       async function loadMarkdown() {
-        const response = await fetch("content/about.md");
+        const response = await fetch("content/roadmap.md");
         if (response.ok) {
           const markdown = await response.text();
           const container = document.getElementById("markdown-container");

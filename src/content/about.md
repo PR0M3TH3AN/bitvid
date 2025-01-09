@@ -1,50 +1,30 @@
 ![](https://bitvid.netlify.app/assets/jpg/bitvid.jpg)
 
-# About bitvid: Decentralized Video Sharing
+BTC DNS: [bitvid.btc.us](https://bitvid.btc.us)
 
-Welcome to **bitvid**, a platform where video sharing meets the power of decentralization. **bitvid** is more than just a video-sharing site—it's a groundbreaking way to share, discover, and enjoy content, leveraging the latest in blockchain, peer-to-peer, and privacy-centric technologies.
+ETH DNS: [bitvid.eth.limo](https://bitvid.eth.limo)
 
----
+**_IPNS: k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1_**
 
-## **How Does It Work?**
+# About bitvid
 
-At its core, **bitvid** combines two powerful technologies:
+Welcome to bitvid, a new kind of video platform that puts you in control. Unlike traditional video sites that keep your content on their servers, bitvid lets videos flow directly between creators and viewers. Think of it like a digital potluck where everyone brings and shares content directly with each other!
 
-1. **WebTorrent**: This enables seamless streaming directly from peers using magnet links. Videos aren't hosted on centralized servers but are distributed across a network of peers. This ensures scalability, faster downloads, and freedom from server outages.
-2. **Nostr Integration**: **bitvid** uses the Nostr protocol to manage video metadata, user authentication, and secure publishing. This means your account and content are not tied to a single platform or server. Your public key is your identity.
+## What Makes bitvid Different?
 
-Together, these technologies create a decentralized and censorship-resistant platform.
+- **You're in Control**: Your videos stay yours. No company owns or controls your content – you share it directly with your viewers.
+- **Always Available**: Because videos are shared between viewers, popular content actually loads faster instead of slower. No more buffering during peak times!
+- **Privacy First**: No need for email or password – you log in with a secure key that only you control.
+- **Support Creators Directly**: Send tips to creators you love without a platform taking a big cut.
+- **Free and Open**: bitvid's code is open source, meaning anyone can check how it works or help make it better.
 
----
+## How Does It Work?
 
-## **Why is bitvid Different?**
+bitvid uses two main technologies to make this all possible:
 
-1. **No Centralized Servers**: Traditional platforms store videos on centralized servers, giving them control over content availability. **bitvid** flips the script by allowing users to host and share videos directly with one another.
+1. **WebTorrent**: This lets viewers stream videos directly from other viewers, like a relay race passing the content from person to person.
+2. **Nostr**: This handles your login and video details, like a digital ID card that works across many sites.
 
-2. **Ownership and Privacy**:
+## Join the Revolution
 
-   - With Nostr, you retain full control of your identity and data. No email addresses or passwords are required—your cryptographic key is your gateway.
-   - Share public videos with the world or private ones encrypted for specific viewers.
-
-3. **Open and Transparent**: **bitvid** runs on open-source code, ensuring transparency and inviting collaboration from the global community.
-
-4. **Freedom of Speech**: Decentralization makes censorship nearly impossible. Your content belongs to you and can't be removed by external forces.
-
-5. **Efficient and Scalable**: **bitvid**'s peer-to-peer streaming ensures that popular content becomes faster to access, not slower. The more people watch, the more efficient the network becomes.
-
----
-
-## **What Can You Do on **bitvid**?**
-
-- **Share Videos**: Upload your video using a magnet link and provide additional details like title, thumbnail, and description.
-- **Stream Effortlessly**: Play videos directly in your browser without the need for bulky downloads or external players.
-- **Support Creators**: Use zaps or donations to directly support your favorite creators, without intermediaries taking a cut.
-- **Own Your Experience**: Customize your privacy settings, edit or delete content anytime, and maintain control over your videos.
-
----
-
-## **Why Choose **bitvid**?**
-
-**bitvid** represents a shift from traditional, centralized platforms to a decentralized, user-first model. By using blockchain principles and peer-to-peer technology, it offers a free, open, and secure environment for sharing and consuming videos. Whether you're a creator looking for a censorship-resistant platform or a viewer who values privacy and speed, **bitvid** is here for you.
-
-**Join the revolution. Decentralize your videos.**
+Whether you're tired of traditional platforms controlling your content, care about privacy, or just want a better way to share videos, bitvid offers a fresh alternative. Come be part of the future of video sharing!
