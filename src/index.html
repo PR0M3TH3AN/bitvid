@@ -227,22 +227,15 @@
       </div>
 
       <!-- Improved Video Player Modal -->
-      <div
-        id="playerModal"
-        class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
-      >
-        <div
-          class="bg-gray-900 rounded-lg max-w-4xl w-full relative overflow-hidden"
-        >
-          <!-- Video container -->
-          <div class="aspect-w-16 aspect-h-9">
-            <video id="modalVideo" controls class="w-full rounded-t-lg"></video>
+      <div id="playerModal" class="hidden">
+        <div class="modal-content">
+          <div class="video-container">
+            <video id="modalVideo" controls></video>
           </div>
 
-          <!-- Video info section -->
-          <div class="p-6 text-white">
+          <div class="video-info">
             <!-- Video Title -->
-            <h2 id="videoTitle" class="text-2xl font-bold mb-2"></h2>
+            <h2 id="videoTitle" class="text-2xl font-bold mb-2 text-white"></h2>
 
             <!-- Video Timestamp -->
             <div
@@ -263,7 +256,7 @@
                 <img src="" alt="Creator" class="w-full h-full object-cover" />
               </div>
               <div class="ml-4">
-                <h3 id="creatorName" class="font-medium text-lg">
+                <h3 id="creatorName" class="font-medium text-lg text-white">
                   Creator Name
                 </h3>
                 <p id="creatorNpub" class="text-sm text-gray-400">npub...</p>

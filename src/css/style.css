@@ -88,26 +88,97 @@ header img {
 }
 
 /* Modal Player */
+/* Base Modal Styles */
 #playerModal {
   position: fixed;
   inset: 0;
-  background-color: rgb(0 0 0 / 0.8);
-  backdrop-filter: blur(8px);
+  background-color: rgb(0 0 0 / 0.9);
   z-index: 50;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
+/* Modal Content Container */
 .modal-content {
-  background-color: var(--color-card);
-  border-radius: 1rem;
   width: 100%;
-  max-width: 64rem;
-  max-height: 90vh;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #0f172a;
+}
+
+/* Video Container */
+.video-container {
+  width: 100%;
+  background-color: black;
+  position: sticky;
+  top: 0;
+  z-index: 51;
+}
+
+/* Modal Video */
+#modalVideo {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background-color: black;
+}
+
+/* Video Info Section */
+.video-info {
+  padding: 1rem;
+  flex: 1;
   overflow-y: auto;
-  box-shadow: var(--shadow-lg);
+}
+
+/* Responsive Adjustments */
+@media (min-width: 768px) {
+  #playerModal {
+    padding: 2rem;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-content {
+    max-width: 64rem;
+    max-height: calc(100vh - 4rem); /* Account for padding */
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+
+  .video-container {
+    position: relative;
+  }
+}
+
+/* Mobile-specific styles */
+@media (max-width: 767px) {
+  #playerModal {
+    padding: 0;
+  }
+
+  .modal-content {
+    border-radius: 0;
+  }
+}
+
+/* Custom Scrollbar */
+.video-info::-webkit-scrollbar {
+  width: 8px;
+}
+
+.video-info::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.video-info::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.video-info::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
 }
 
 /* Progress Bars */
