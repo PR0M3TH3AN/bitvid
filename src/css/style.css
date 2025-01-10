@@ -88,7 +88,6 @@ header img {
 }
 
 /* Modal Player */
-/* Base Modal Styles */
 #playerModal {
   position: fixed;
   inset: 0;
@@ -303,4 +302,92 @@ footer a {
 
 footer a:hover {
   text-decoration: underline;
+}
+
+/* Disclaimer Modal Styles */
+#disclaimerModal {
+  position: fixed;
+  inset: 0;
+  background-color: rgb(0 0 0 / 0.9);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#disclaimerModal .modal-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg);
+}
+
+#disclaimerModal .modal-scroll {
+  padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Disclaimer Modal Scrollbar */
+#disclaimerModal .modal-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+#disclaimerModal .modal-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#disclaimerModal .modal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+#disclaimerModal .modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* Disclaimer Modal Button Container */
+#disclaimerModal .button-container {
+  padding: 1rem 1.5rem;
+  background-color: #1a2234;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive Adjustments for Disclaimer Modal */
+@media (min-width: 768px) {
+  #disclaimerModal {
+    padding: 2rem;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #disclaimerModal .modal-content {
+    width: 100%;
+    height: auto;
+    max-width: 42rem;
+    max-height: 90vh;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    margin: auto;
+  }
+
+  #disclaimerModal .modal-scroll {
+    max-height: calc(
+      90vh - 5rem
+    ); /* Account for button container and padding */
+  }
+}
+
+/* Mobile-specific styles for Disclaimer Modal */
+@media (max-width: 767px) {
+  #disclaimerModal {
+    padding: 0;
+  }
+
+  #disclaimerModal .modal-content {
+    min-height: 100vh;
+    border-radius: 0;
+  }
 }
