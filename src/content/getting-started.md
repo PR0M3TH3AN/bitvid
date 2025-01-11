@@ -4,7 +4,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ## Watching Videos
 
-1. Just visit bitvid.btc.us or bitvid.eth.limo
+1. Just visit [bitvid.network](https://bitvid.network) or one of our alternate sites like [bitvid.btc.us](https://bitvid.btc.us) and [bitvid.eth.limo](https://bitvid.eth.limo). We also have other instances via [IPNS](ipns.html) gateways you can try.
 2. Browse the videos on the homepage
 3. Click any video to start watching
    That's it! No account needed to watch.
@@ -13,13 +13,13 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ### Step 1: Set Up Your Account
 
-1. Install a Nostr extension (like Alby or Nos2x) in your browser
+1. Install a [Nostr extension](https://nostrapps.com/#signers#all) (like Alby or Nos2x) in your browser
 2. The extension creates your secure login key automatically
 3. Click "Login" on bitvid to connect
 
 ### Step 2: Prepare Your Video
 
-1. Download WebTorrent Desktop from webtorrent.io/desktop
+1. Download WebTorrent Desktop app from [webtorrent.io/desktop](https://webtorrent.io/desktop/)
 2. Open your video file in WebTorrent Desktop
 3. It will create a special "magnet link" for your video
 4. Keep WebTorrent Desktop running to share your video
@@ -40,8 +40,8 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ## Need Help?
 
-- Visit our GitHub page for technical support
-- Join our community to connect with other users
+- Visit our [GitHub](https://github.com/PR0M3TH3AN/bitvid) page for technical support
+- Join our [community](https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe) to connect with other users
 - Report bugs to help us improve
 
 Welcome to bitvid – let's start sharing!
