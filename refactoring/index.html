@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>bitvid | Decentralized Video Sharing</title>
+
+      <!-- Open Graph Meta Tags -->
+      <meta
+        property="og:title"
+        content="BitVid - Decentralized Video Sharing"
+      />
+      <meta
+        property="og:description"
+        content="Share videos and follow creators freely, in a truly decentralized way."
+      />
+      <meta
+        property="og:image"
+        content="https://bitvid.netlify.app/assets/jpg/bitvid.jpg"
+      />
+      <meta property="og:url" content="https://bitvid.network" />
+      <meta property="og:type" content="website" />
+      <meta property="og:locale" content="en_US" />
+
+      <!-- App Icons -->
+      <link rel="icon" href="/favicon.ico" sizes="any" />
+      <link
+        rel="apple-touch-icon"
+        sizes="180x180"
+        href="/apple-touch-icon.png"
+      />
+      <link
+        rel="icon"
+        type="image/png"
+        sizes="32x32"
+        href="/favicon-32x32.png"
+      />
+      <link
+        rel="icon"
+        type="image/png"
+        sizes="16x16"
+        href="/favicon-16x16.png"
+      />
+      <link rel="manifest" href="/site.webmanifest" />
+      <meta name="theme-color" content="#0f172a" />
+
+      <!-- Styles -->
+      <link
+        href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+        rel="stylesheet"
+      />
+      <link href="css/style.css" rel="stylesheet" />
+    </head>
+    <body>
+      <!-- Rest of your page content -->
+    </body>
+  </html>
+
+  <body class="bg-gray-100">
+    <div
+      id="app"
+      class="container mx-auto px-4 py-8 min-h-screen flex flex-col"
+    >
+      <!-- Header -->
+      <header class="mb-8">
+        <div class="flex items-start">
+          <img
+            src="assets/svg/bitvid-logo-light-mode.svg"
+            alt="BitVid Logo"
+            class="h-16"
+          />
+        </div>
+      </header>
+
+      <!-- Login Section -->
+      <div id="loginSection" class="mb-8 flex items-center justify-between">
+        <div>
+          <button
+            id="loginButton"
+            class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            Login with Nostr
+          </button>
+          <p id="userStatus" class="mt-4 text-gray-500 hidden">
+            Logged in as: <span id="userPubKey"></span>
+          </p>
+        </div>
+        <div>
+          <button
+            id="logoutButton"
+            class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 hidden"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+
+      <!-- Error Container -->
+      <div
+        id="errorContainer"
+        class="hidden bg-red-100 text-red-800 p-4 rounded-md mb-4"
+      >
+        <!-- Error messages will appear here -->
+      </div>
+
+      <!-- Success Container -->
+      <div
+        id="successContainer"
+        class="hidden bg-green-100 text-green-800 p-4 rounded-md mb-4"
+      >
+        <!-- Success messages will appear here -->
+      </div>
+
+      <!-- Video Submission Form -->
+      <div
+        class="bg-white p-6 rounded-lg shadow-md mb-8 hidden"
+        id="videoFormContainer"
+      >
+        <h2 class="text-xl font-semibold mb-4">Share a Video</h2>
+        <form id="submitForm" class="space-y-4">
+          <div>
+            <label for="title" class="block text-sm font-medium text-gray-700"
+              >Title</label
+            >
+            <input
+              type="text"
+              id="title"
+              required
+              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label for="magnet" class="block text-sm font-medium text-gray-700"
+              >Magnet Link</label
+            >
+            <input
+              type="text"
+              id="magnet"
+              required
+              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label
+              for="thumbnail"
+              class="block text-sm font-medium text-gray-700"
+              >Thumbnail URL (optional)</label
+            >
+            <input
+              type="url"
+              id="thumbnail"
+              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+
+          <!-- Description Field -->
+          <div>
+            <label
+              for="description"
+              class="block text-sm font-medium text-gray-700"
+              >Description (optional)</label
+            >
+            <textarea
+              id="description"
+              rows="3"
+              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            ></textarea>
+          </div>
+
+          <!-- ADDED FOR PRIVATE LISTINGS -->
+          <div class="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="isPrivate"
+              class="form-checkbox h-5 w-5"
+            />
+            <span class="text-sm font-medium text-gray-700"
+              >Private Listing (Encrypt Magnet)</span
+            >
+          </div>
+          <!-- END ADDED FOR PRIVATE LISTINGS -->
+
+          <button
+            type="submit"
+            class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            Share Video
+          </button>
+        </form>
+      </div>
+
+      <!-- Video Player Section -->
+      <div id="playerSection" class="mb-8 hidden">
+        <video id="video" controls class="w-full rounded-lg shadow-md"></video>
+        <!-- Status and Stats -->
+        <div class="mt-4">
+          <div id="status" class="text-gray-700 mb-2">
+            Initializing... Just give it a sec.
+          </div>
+          <div class="w-full bg-gray-300 rounded-full h-2 mb-2">
+            <div
+              class="bg-blue-500 h-2 rounded-full"
+              id="progress"
+              style="width: 0%"
+            ></div>
+          </div>
+          <div class="flex justify-between text-sm text-gray-600">
+            <span id="peers">Peers: 0</span>
+            <span id="speed">0 KB/s</span>
+            <span id="downloaded">0 MB / 0 MB</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Video List -->
+      <div class="mb-8">
+        <div
+          id="videoList"
+          class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8"
+        >
+          <!-- Videos will be dynamically inserted here -->
+        </div>
+      </div>
+
+      <!-- Imported Video Player Modal -->
+      <div id="modalContainer"></div>
+
+      <div class="text-center mb-8">
+        <h2 class="text-2xl font-bold text-gray-500 tracking-wide">
+          seed. zap. subscribe.
+        </h2>
+      </div>
+
+      <!-- Disclaimer Modal -->
+      <div id="disclaimerModal" class="hidden">
+        <div class="modal-content">
+          <div class="modal-scroll">
+            <!-- Logo -->
+            <div class="flex justify-center mb-8">
+              <img
+                src="assets/svg/bitvid-logo-dark-mode.svg"
+                alt="BitVid Logo"
+                class="h-16"
+              />
+            </div>
+
+            <h2 class="text-2xl font-bold mb-4 text-center text-white">
+              Welcome to bitvid
+            </h2>
+
+            <!-- Warning Alert -->
+            <div
+              class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 mb-6 flex items-start"
+            >
+              <svg
+                class="h-5 w-5 text-yellow-500 mt-0.5 mr-3 flex-shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <p class="text-yellow-200">
+                This platform is still in development. You may encounter bugs or
+                missing features.
+              </p>
+            </div>
+
+            <!-- Main Content -->
+            <div class="space-y-6 text-gray-300">
+              <p>
+                bitvid is a decentralized video platform where content is shared
+                directly between users. We want you to understand a few
+                important points before you continue:
+              </p>
+
+              <div class="space-y-4">
+                <div class="bg-gray-800 rounded-lg p-4">
+                  <h3 class="text-white font-semibold mb-2">
+                    Early Access Status
+                  </h3>
+                  <p class="text-gray-400">
+                    Currently, video posting is invite-only as we carefully
+                    scale our platform. While anyone can watch videos, content
+                    creation is limited to approved creators. This helps us
+                    maintain quality content during our early stages.
+                  </p>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-4">
+                  <h3 class="text-white font-semibold mb-2">
+                    Content Responsibility & Moderation
+                  </h3>
+                  <p class="text-gray-400">
+                    While we don't host videos directly, we maintain community
+                    standards through access control. Users who violate our
+                    guidelines may be blocked from accessing the platform. All
+                    content must follow local laws and platform guidelines.
+                  </p>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-4">
+                  <h3 class="text-white font-semibold mb-2">Platform Status</h3>
+                  <p class="text-gray-400">
+                    bitvid is a work in progress. Features may change or break,
+                    and security improvements are ongoing. Your feedback and
+                    patience help us build a better platform.
+                  </p>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-4">
+                  <h3 class="text-white font-semibold mb-2">Get Involved</h3>
+                  <p class="text-gray-400">
+                    Are you a developer? We'd love your help! Visit our GitHub
+                    repository to contribute to building the future of
+                    decentralized video sharing.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Button in fixed container -->
+          <div class="button-container">
+            <button
+              id="acceptDisclaimer"
+              class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors duration-200"
+            >
+              I Understand
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="mt-auto pb-8 text-center px-4">
+        <a
+          href="http://bitvid.network/"
+          class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          bitvid.network
+        </a>
+        |
+        <a
+          href="https://bitvid.btc.us"
+          class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          bitvid.btc.us
+        </a>
+        |
+        <a
+          href="https://bitvid.eth.limo"
+          class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          bitvid.eth.limo
+        </a>
+        |
+        <div class="mt-2 space-x-4">
+          <a
+            href="https://github.com/PR0M3TH3AN/bitvid"
+            class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            GitHub
+          </a>
+          <a
+            href="https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
+            class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Nostr
+          </a>
+          <a
+            href="https://habla.news/p/nprofile1qyv8wumn8ghj7un9d3shjtnndehhyapwwdhkx6tpdsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7qgdwaehxw309ahx7uewd3hkcqgswaehxw309ahx7um5wgh8w6twv5q3yamnwvaz7tm0venxx6rpd9hzuur4vgqzpzf6x8a95eyp99dmwm4zmkx4a3cxgrnwdtfe3ej504m3aqjk4ugldyww3a"
+            class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Blog
+          </a>
+          <a
+            href="getting-started.html"
+            class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
+            target="_self"
+            rel="noopener noreferrer"
+          >
+            Getting Started
+          </a>
+          <a
+            href="about.html"
+            class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
+            target="_self"
+            rel="noopener noreferrer"
+          >
+            About
+          </a>
+          <a
+            href="roadmap.html"
+            class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
+            target="_self"
+            rel="noopener noreferrer"
+          >
+            Roadmap
+          </a>
+        </div>
+        <p
+          class="mt-2 text-xs text-gray-600 font-mono break-all max-w-full overflow-hidden"
+        >
+          IPNS:
+          <a href="ipns.html" class="text-blue-600 underline">
+            k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1
+          </a>
+        </p>
+      </footer>
+
+      <!-- Scripts -->
+      <!-- Load WebTorrent via CDN -->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/webtorrent/1.9.7/webtorrent.min.js"></script>
+      <!-- Load Nostr library -->
+      <script src="js/libs/nostr.bundle.js"></script>
+      <!-- Load JavaScript Modules -->
+      <script src="js/libs/nostr.bundle.js"></script>
+      <script type="module" src="js/config.js"></script>
+      <script type="module" src="js/lists.js"></script>
+      <script type="module" src="js/accessControl.js"></script>
+      <script type="module" src="js/webtorrent.js"></script>
+      <script type="module" src="js/nostr.js"></script>
+      <script type="module" src="js/app.js"></script>
+    </div>
+  </body>
+</html>
