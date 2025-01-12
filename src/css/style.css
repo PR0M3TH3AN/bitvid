@@ -391,3 +391,33 @@ footer a:hover {
     border-radius: 0;
   }
 }
+
+/* Override default button styles for back button */
+.back-button {
+  background: rgba(0, 0, 0, 0.5) !important;
+  padding: 0 !important;
+  color: rgb(209 213 219) !important;
+  transform: none !important;
+}
+
+.back-button:hover {
+  background: rgba(0, 0, 0, 0.7) !important;
+  color: white !important;
+}
+
+/* Modal Container */
+.modal-container {
+  padding: 0;
+}
+
+@media (min-width: 768px) {
+  .modal-container {
+    padding: 2rem;
+  }
+}
+
+/* Video info cards */
+.video-info .bg-gray-800\/50 {
+  background-color: rgb(31 41 55 / 0.5);
+  backdrop-filter: blur(4px);
+}

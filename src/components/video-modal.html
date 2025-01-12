@@ -1,92 +1,97 @@
 <!-- components/video-modal.html -->
-<div id="playerModal" class="hidden">
-  <!-- Navigation bar -->
+<div id="playerModal" class="fixed inset-0 bg-black/90 z-50 hidden">
   <div
-    class="sticky top-0 z-60 bg-gray-900/95 backdrop-blur transition-transform duration-300"
-    id="modalNav"
+    class="modal-container h-full w-full flex items-start justify-center overflow-y-auto"
   >
     <div
-      class="max-w-full w-full px-4 h-14 border-b border-gray-800 flex items-center"
+      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
     >
-      <button
-        id="closeModal"
-        class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors px-3 py-2 rounded-md hover:bg-gray-800/50"
+      <!-- Navigation bar - sliding at top -->
+      <div
+        id="modalNav"
+        class="sticky top-0 z-60 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-300"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          class="w-5 h-5"
+        <div class="flex items-center px-6 py-4">
+          <button
+            id="closeModal"
+            class="back-button flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="w-6 h-6 text-gray-300"
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="video-container w-full bg-black">
+        <video id="modalVideo" class="w-full aspect-video" controls></video>
+      </div>
+
+      <div class="video-info p-6">
+        <!-- Rest of the content stays the same -->
+        <!-- Video Title -->
+        <h2 id="videoTitle" class="text-2xl font-bold mb-2 text-white"></h2>
+
+        <!-- Video Timestamp -->
+        <div
+          class="flex items-center justify-between text-sm text-gray-400 mb-4"
         >
-          <path d="m12 19-7-7 7-7" />
-          <path d="M19 12H5" />
-        </svg>
-        <span class="font-medium">Back</span>
-      </button>
-    </div>
-  </div>
-
-  <div class="modal-content">
-    <div class="video-container">
-      <video id="modalVideo" controls></video>
-    </div>
-
-    <div class="video-info">
-      <!-- Video Title -->
-      <h2 id="videoTitle" class="text-2xl font-bold mb-2 text-white"></h2>
-
-      <!-- Video Timestamp -->
-      <div class="flex items-center justify-between text-sm text-gray-400 mb-4">
-        <span id="videoTimestamp">just now</span>
-        <div id="modalStatus" class="text-gray-300">
-          Initializing... Just give it a sec.
+          <span id="videoTimestamp">just now</span>
+          <div id="modalStatus" class="text-gray-300">
+            Initializing... Just give it a sec.
+          </div>
         </div>
-      </div>
 
-      <!-- Creator info -->
-      <div class="flex items-center mb-4 p-4 bg-gray-800 rounded-lg">
-        <div class="w-12 h-12 rounded-full bg-gray-700 overflow-hidden">
-          <img
-            id="creatorAvatar"
-            src=""
-            alt="Creator"
-            class="w-full h-full object-cover"
-          />
+        <!-- Creator info -->
+        <div class="flex items-center mb-4 p-4 bg-gray-800/50 rounded-lg">
+          <div class="w-12 h-12 rounded-full bg-gray-700 overflow-hidden">
+            <img
+              id="creatorAvatar"
+              src=""
+              alt="Creator"
+              class="w-full h-full object-cover"
+            />
+          </div>
+          <div class="ml-4">
+            <h3 id="creatorName" class="font-medium text-lg text-white">
+              Creator Name
+            </h3>
+            <p id="creatorNpub" class="text-sm text-gray-400">npub...</p>
+          </div>
         </div>
-        <div class="ml-4">
-          <h3 id="creatorName" class="font-medium text-lg text-white">
-            Creator Name
-          </h3>
-          <p id="creatorNpub" class="text-sm text-gray-400">npub...</p>
-        </div>
-      </div>
 
-      <!-- Video Description -->
-      <div class="bg-gray-800 rounded-lg p-4 mb-4">
-        <p id="videoDescription" class="text-gray-300 whitespace-pre-wrap">
-          No description available.
-        </p>
-      </div>
-
-      <!-- Torrent stats -->
-      <div class="bg-gray-800 rounded-lg p-4">
-        <div class="w-full bg-gray-700 rounded-full h-2 mb-2">
-          <div
-            class="bg-blue-500 h-2 rounded-full"
-            id="modalProgress"
-            style="width: 0%"
-          ></div>
+        <!-- Video Description -->
+        <div class="bg-gray-800/50 rounded-lg p-4 mb-4">
+          <p id="videoDescription" class="text-gray-300 whitespace-pre-wrap">
+            No description available.
+          </p>
         </div>
-        <div class="flex justify-between text-sm text-gray-400">
-          <span id="modalPeers">Peers: 0</span>
-          <span id="modalSpeed">Speed: 0 KB/s</span>
-          <span id="modalDownloaded">Downloaded: 0 MB / 0 MB</span>
+
+        <!-- Torrent stats -->
+        <div class="bg-gray-800/50 rounded-lg p-4">
+          <div class="w-full bg-gray-700 rounded-full h-2 mb-2">
+            <div
+              class="bg-blue-500 h-2 rounded-full"
+              id="modalProgress"
+              style="width: 0%"
+            ></div>
+          </div>
+          <div class="flex justify-between text-sm text-gray-400">
+            <span id="modalPeers">Peers: 0</span>
+            <span id="modalSpeed">Speed: 0 KB/s</span>
+            <span id="modalDownloaded">Downloaded: 0 MB / 0 MB</span>
+          </div>
         </div>
       </div>
     </div>

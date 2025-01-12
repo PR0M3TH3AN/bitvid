@@ -164,6 +164,22 @@ class bitvidApp {
     this.creatorAvatar = document.getElementById("creatorAvatar");
     this.creatorName = document.getElementById("creatorName");
     this.creatorNpub = document.getElementById("creatorNpub");
+
+    // Add scroll behavior for nav
+    let lastScrollY = 0;
+    const modalNav = document.getElementById("modalNav");
+
+    if (this.playerModal && modalNav) {
+      this.playerModal.addEventListener("scroll", (e) => {
+        const currentScrollY = e.target.scrollTop;
+        const shouldShowNav =
+          currentScrollY <= lastScrollY || currentScrollY < 50;
+        modalNav.style.transform = shouldShowNav
+          ? "translateY(0)"
+          : "translateY(-100%)";
+        lastScrollY = currentScrollY;
+      });
+    }
   }
 
   /**
