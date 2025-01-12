@@ -226,71 +226,9 @@
         </div>
       </div>
 
-      <!-- Improved Video Player Modal -->
-      <div id="playerModal" class="hidden">
-        <div class="modal-content">
-          <div class="video-container">
-            <video id="modalVideo" controls></video>
-          </div>
+      <!-- Imported Video Player Modal -->
+      <div id="modalContainer"></div>
 
-          <div class="video-info">
-            <!-- Video Title -->
-            <h2 id="videoTitle" class="text-2xl font-bold mb-2 text-white"></h2>
-
-            <!-- Video Timestamp -->
-            <div
-              class="flex items-center justify-between text-sm text-gray-400 mb-4"
-            >
-              <span id="videoTimestamp">just now</span>
-              <div id="modalStatus" class="text-gray-300">
-                Initializing... Just give it a sec.
-              </div>
-            </div>
-
-            <!-- Creator info -->
-            <div class="flex items-center mb-4 p-4 bg-gray-800 rounded-lg">
-              <div
-                id="creatorAvatar"
-                class="w-12 h-12 rounded-full bg-gray-700 overflow-hidden"
-              >
-                <img src="" alt="Creator" class="w-full h-full object-cover" />
-              </div>
-              <div class="ml-4">
-                <h3 id="creatorName" class="font-medium text-lg text-white">
-                  Creator Name
-                </h3>
-                <p id="creatorNpub" class="text-sm text-gray-400">npub...</p>
-              </div>
-            </div>
-
-            <!-- Video Description -->
-            <div class="bg-gray-800 rounded-lg p-4 mb-4">
-              <p
-                id="videoDescription"
-                class="text-gray-300 whitespace-pre-wrap"
-              >
-                No description available.
-              </p>
-            </div>
-
-            <!-- Torrent stats -->
-            <div class="bg-gray-800 rounded-lg p-4">
-              <div class="w-full bg-gray-700 rounded-full h-2 mb-2">
-                <div
-                  class="bg-blue-500 h-2 rounded-full"
-                  id="modalProgress"
-                  style="width: 0%"
-                ></div>
-              </div>
-              <div class="flex justify-between text-sm text-gray-400">
-                <span id="modalPeers">Peers: 0</span>
-                <span id="modalSpeed">Speed: 0 KB/s</span>
-                <span id="modalDownloaded">Downloaded: 0 MB / 0 MB</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
       <div class="text-center mb-8">
         <h2 class="text-2xl font-bold text-gray-500 tracking-wide">
           seed. zap. subscribe.

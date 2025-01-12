@@ -29,27 +29,21 @@ class bitvidApp {
     this.speed = document.getElementById("speed");
     this.downloaded = document.getElementById("downloaded");
 
-    // Modal Elements
-    this.playerModal = document.getElementById("playerModal");
-    this.modalVideo = document.getElementById("modalVideo");
-    this.modalStatus = document.getElementById("modalStatus");
-    this.modalProgress = document.getElementById("modalProgress");
-    this.modalPeers = document.getElementById("modalPeers");
-    this.modalSpeed = document.getElementById("modalSpeed");
-    this.modalDownloaded = document.getElementById("modalDownloaded");
-    this.closePlayerBtn = document.getElementById("closePlayer");
-
-    // Video Info Elements
-    this.videoTitle = document.getElementById("videoTitle");
-    this.videoDescription = document.getElementById("videoDescription");
-    this.videoTimestamp = document.getElementById("videoTimestamp");
-
-    // Creator Info Elements
-    this.creatorAvatar = document
-      .getElementById("creatorAvatar")
-      .querySelector("img");
-    this.creatorName = document.getElementById("creatorName");
-    this.creatorNpub = document.getElementById("creatorNpub");
+    // Initialize these as null - they'll be set after modal loads
+    this.playerModal = null;
+    this.modalVideo = null;
+    this.modalStatus = null;
+    this.modalProgress = null;
+    this.modalPeers = null;
+    this.modalSpeed = null;
+    this.modalDownloaded = null;
+    this.closePlayerBtn = null;
+    this.videoTitle = null;
+    this.videoDescription = null;
+    this.videoTimestamp = null;
+    this.creatorAvatar = null;
+    this.creatorName = null;
+    this.creatorNpub = null;
 
     // Notification Containers
     this.errorContainer = document.getElementById("errorContainer");
@@ -58,21 +52,22 @@ class bitvidApp {
     this.pubkey = null;
     this.currentMagnetUri = null;
 
-    // ADDED FOR VERSIONING/PRIVATE/DELETE:
-    // If you created an <input type="checkbox" id="isPrivate" /> in your HTML form:
+    // Private Video Checkbox
     this.isPrivateCheckbox = document.getElementById("isPrivate");
   }
 
-  /**
-   * Initializes the application by setting up the Nostr client and loading videos.
-   */
-  // app.js
   async init() {
     try {
       // Hide and reset player states
-      this.playerSection.style.display = "none";
-      this.playerModal.style.display = "none";
-      this.currentMagnetUri = null;
+      if (this.playerSection) {
+        this.playerSection.style.display = "none";
+      }
+
+      // Initialize modal first
+      await this.initModal();
+
+      // Then update modal element references
+      this.updateModalElements();
 
       // Initialize Nostr and check login
       await nostrClient.init();
@@ -82,12 +77,93 @@ class bitvidApp {
       }
 
       this.setupEventListeners();
-      disclaimerModal.show(); // Add this line here
+      disclaimerModal.show();
       await this.loadVideos();
     } catch (error) {
       console.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
     }
+  }
+
+  async initModal() {
+    try {
+      console.log("Starting modal initialization...");
+      const response = await fetch("components/video-modal.html");
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const html = await response.text();
+      console.log("Modal HTML loaded successfully");
+
+      const modalContainer = document.getElementById("modalContainer");
+      if (!modalContainer) {
+        throw new Error("Modal container element not found!");
+      }
+
+      modalContainer.innerHTML = html;
+      console.log("Modal HTML inserted into DOM");
+
+      // Set up modal close handler
+      const closeButton = document.getElementById("closeModal");
+      if (!closeButton) {
+        throw new Error("Close button element not found!");
+      }
+
+      closeButton.addEventListener("click", () => {
+        this.hideModal();
+      });
+
+      // Set up scroll handler for nav show/hide
+      let lastScrollY = 0;
+      const modalNav = document.getElementById("modalNav");
+      const playerModal = document.getElementById("playerModal");
+
+      if (!modalNav || !playerModal) {
+        throw new Error("Modal navigation elements not found!");
+      }
+
+      playerModal.addEventListener("scroll", (e) => {
+        const currentScrollY = e.target.scrollTop;
+        const shouldShowNav =
+          currentScrollY <= lastScrollY || currentScrollY < 50;
+        modalNav.style.transform = shouldShowNav
+          ? "translateY(0)"
+          : "translateY(-100%)";
+        lastScrollY = currentScrollY;
+      });
+
+      console.log("Modal initialization completed successfully");
+      return true;
+    } catch (error) {
+      console.error("Modal initialization failed:", error);
+      // You might want to show this error to the user
+      this.showError(`Failed to initialize video player: ${error.message}`);
+      return false;
+    }
+  }
+
+  updateModalElements() {
+    // Update Modal Elements
+    this.playerModal = document.getElementById("playerModal");
+    this.modalVideo = document.getElementById("modalVideo");
+    this.modalStatus = document.getElementById("modalStatus");
+    this.modalProgress = document.getElementById("modalProgress");
+    this.modalPeers = document.getElementById("modalPeers");
+    this.modalSpeed = document.getElementById("modalSpeed");
+    this.modalDownloaded = document.getElementById("modalDownloaded");
+    this.closePlayerBtn = document.getElementById("closeModal");
+
+    // Update Video Info Elements
+    this.videoTitle = document.getElementById("videoTitle");
+    this.videoDescription = document.getElementById("videoDescription");
+    this.videoTimestamp = document.getElementById("videoTimestamp");
+
+    // Update Creator Info Elements
+    this.creatorAvatar = document.getElementById("creatorAvatar");
+    this.creatorName = document.getElementById("creatorName");
+    this.creatorNpub = document.getElementById("creatorNpub");
   }
 
   /**
@@ -324,9 +400,10 @@ class bitvidApp {
    * Loads and displays videos from Nostr.
    */
   async loadVideos() {
+    console.log("Starting loadVideos...");
     try {
       const videos = await nostrClient.fetchVideos();
-      this.log("Fetched videos (raw):", videos);
+      console.log("Raw videos from nostrClient:", videos);
 
       if (!videos) {
         this.log("No videos received");
@@ -351,9 +428,9 @@ class bitvidApp {
       if (displayedVideos.length === 0) {
         this.log("No valid videos found after filtering.");
         this.videoList.innerHTML = `
-                    <p class="text-center text-gray-500">
-                      No public videos available yet. Be the first to upload one!
-                    </p>`;
+        <p class="text-center text-gray-500">
+          No public videos available yet. Be the first to upload one!
+        </p>`;
         return;
       }
 
@@ -371,7 +448,7 @@ class bitvidApp {
       });
 
       // Now render only the displayedVideos
-      this.renderVideoList(displayedVideos);
+      await this.renderVideoList(displayedVideos);
       this.log(`Rendered ${displayedVideos.length} videos successfully`);
     } catch (error) {
       this.log("Failed to fetch videos:", error);
@@ -379,9 +456,9 @@ class bitvidApp {
         "An error occurred while loading videos. Please try again later."
       );
       this.videoList.innerHTML = `
-                <p class="text-center text-gray-500">
-                    No videos available at the moment. Please try again later.
-                </p>`;
+      <p class="text-center text-gray-500">
+        No videos available at the moment. Please try again later.
+      </p>`;
     }
   }
 
