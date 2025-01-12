@@ -5,6 +5,8 @@ import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
 import { disclaimerModal } from "./disclaimer.js";
 import { videoPlayer } from "./components/VideoPlayer.js";
+import { videoList } from "./components/VideoList.js";
+import { formatTimeAgo } from "./utils/timeUtils.js";
 
 class bitvidApp {
   constructor() {
@@ -17,9 +19,6 @@ class bitvidApp {
     // Form Elements
     this.submitForm = document.getElementById("submitForm");
     this.videoFormContainer = document.getElementById("videoFormContainer");
-
-    // Video List Element
-    this.videoList = document.getElementById("videoList");
 
     // Video Player Elements
     this.playerSection = document.getElementById("playerSection");
@@ -64,10 +63,26 @@ class bitvidApp {
         this.playerSection.style.display = "none";
       }
 
-      // Initialize modal first
+      // Initialize Nostr client first
+      await nostrClient.init();
+
+      // Handle saved pubkey
+      const savedPubKey = localStorage.getItem("userPubKey");
+      if (savedPubKey) {
+        this.login(savedPubKey, false);
+      }
+
+      // Initialize modal
       await videoPlayer.initModal();
 
-      // Rest of your initialization code...
+      // Initialize video list
+      await videoList.loadVideos();
+
+      // Initialize and show disclaimer modal
+      disclaimerModal.show();
+
+      // Set up event listeners after all initializations
+      this.setupEventListeners();
     } catch (error) {
       console.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
@@ -172,30 +187,6 @@ class bitvidApp {
   }
 
   /**
-   * Formats a timestamp into a "time ago" format.
-   */
-  formatTimeAgo(timestamp) {
-    const seconds = Math.floor(Date.now() / 1000 - timestamp);
-    const intervals = {
-      year: 31536000,
-      month: 2592000,
-      week: 604800,
-      day: 86400,
-      hour: 3600,
-      minute: 60,
-    };
-
-    for (const [unit, secondsInUnit] of Object.entries(intervals)) {
-      const interval = Math.floor(seconds / secondsInUnit);
-      if (interval >= 1) {
-        return `${interval} ${unit}${interval === 1 ? "" : "s"} ago`;
-      }
-    }
-
-    return "just now";
-  }
-
-  /**
    * Sets up event listeners for various UI interactions.
    */
   setupEventListeners() {
@@ -289,6 +280,9 @@ class bitvidApp {
     this.userPubKey.textContent = pubkey;
     this.videoFormContainer.classList.remove("hidden");
     this.log(`User logged in as: ${pubkey}`);
+
+    // ADD: Update videoList pubkey
+    videoList.setPubkey(pubkey);
 
     if (saveToStorage) {
       localStorage.setItem("userPubKey", pubkey);
@@ -393,325 +387,13 @@ class bitvidApp {
         this.isPrivateCheckbox.checked = false;
       }
 
-      await this.loadVideos();
+      // CHANGE: Use videoList component to refresh
+      await videoList.loadVideos(); // <-- Change this line
       this.showSuccess("Video shared successfully!");
     } catch (error) {
       this.log("Failed to publish video:", error.message);
       this.showError("Failed to share video. Please try again later.");
     }
-  }
-
-  /**
-   * Loads and displays videos from Nostr.
-   */
-  async loadVideos() {
-    console.log("Starting loadVideos...");
-    try {
-      const videos = await nostrClient.fetchVideos();
-      console.log("Raw videos from nostrClient:", videos);
-
-      if (!videos) {
-        this.log("No videos received");
-        throw new Error("No videos received from relays");
-      }
-
-      // Convert to array if not already
-      const videosArray = Array.isArray(videos) ? videos : [videos];
-
-      // **Filter** so we only show:
-      //   - isPrivate === false (public videos)
-      //   - or isPrivate === true but pubkey === this.pubkey
-      const displayedVideos = videosArray.filter((video) => {
-        if (!video.isPrivate) {
-          // Public video => show it
-          return true;
-        }
-        // Else it's private; only show if it's owned by the logged-in user
-        return this.pubkey && video.pubkey === this.pubkey;
-      });
-
-      if (displayedVideos.length === 0) {
-        this.log("No valid videos found after filtering.");
-        this.videoList.innerHTML = `
-        <p class="text-center text-gray-500">
-          No public videos available yet. Be the first to upload one!
-        </p>`;
-        return;
-      }
-
-      this.log("Processing filtered videos:", displayedVideos);
-
-      displayedVideos.forEach((video, index) => {
-        this.log(`Video ${index} details:`, {
-          id: video.id,
-          title: video.title,
-          magnet: video.magnet,
-          isPrivate: video.isPrivate,
-          pubkey: video.pubkey,
-          created_at: video.created_at,
-        });
-      });
-
-      // Now render only the displayedVideos
-      await this.renderVideoList(displayedVideos);
-      this.log(`Rendered ${displayedVideos.length} videos successfully`);
-    } catch (error) {
-      this.log("Failed to fetch videos:", error);
-      this.showError(
-        "An error occurred while loading videos. Please try again later."
-      );
-      this.videoList.innerHTML = `
-      <p class="text-center text-gray-500">
-        No videos available at the moment. Please try again later.
-      </p>`;
-    }
-  }
-
-  /**
-   * Renders the given list of videos. If a video is private and belongs to the user,
-   * highlight with a special border (e.g. border-yellow-500).
-   */
-  async renderVideoList(videos) {
-    try {
-      console.log("RENDER VIDEO LIST - Start", {
-        videosReceived: videos,
-        videosCount: videos ? videos.length : "N/A",
-        videosType: typeof videos,
-      });
-
-      if (!videos) {
-        console.error("NO VIDEOS RECEIVED");
-        this.videoList.innerHTML = `<p class="text-center text-gray-500">No videos found.</p>`;
-        return;
-      }
-
-      const videoArray = Array.isArray(videos) ? videos : [videos];
-
-      if (videoArray.length === 0) {
-        console.error("VIDEO ARRAY IS EMPTY");
-        this.videoList.innerHTML = `<p class="text-center text-gray-500">No videos available.</p>`;
-        return;
-      }
-
-      // Sort by creation date
-      videoArray.sort((a, b) => b.created_at - a.created_at);
-
-      // Prepare to fetch user profiles
-      const userProfiles = new Map();
-      const uniquePubkeys = [...new Set(videoArray.map((v) => v.pubkey))];
-
-      for (const pubkey of uniquePubkeys) {
-        try {
-          const userEvents = await nostrClient.pool.list(nostrClient.relays, [
-            {
-              kinds: [0],
-              authors: [pubkey],
-              limit: 1,
-            },
-          ]);
-
-          if (userEvents[0]?.content) {
-            const profile = JSON.parse(userEvents[0].content);
-            userProfiles.set(pubkey, {
-              name: profile.name || profile.display_name || "Unknown",
-              picture: profile.picture || `https://robohash.org/${pubkey}`,
-            });
-          } else {
-            userProfiles.set(pubkey, {
-              name: "Unknown",
-              picture: `https://robohash.org/${pubkey}`,
-            });
-          }
-        } catch (error) {
-          console.error(`Profile fetch error for ${pubkey}:`, error);
-          userProfiles.set(pubkey, {
-            name: "Unknown",
-            picture: `https://robohash.org/${pubkey}`,
-          });
-        }
-      }
-
-      // Build HTML for each video
-      const renderedVideos = videoArray
-        .map((video, index) => {
-          try {
-            if (!this.validateVideo(video, index)) {
-              console.error(`Invalid video: ${video.title}`);
-              return "";
-            }
-
-            const profile = userProfiles.get(video.pubkey) || {
-              name: "Unknown",
-              picture: `https://robohash.org/${video.pubkey}`,
-            };
-            const timeAgo = this.formatTimeAgo(video.created_at);
-
-            // If user is the owner
-            const canEdit = video.pubkey === this.pubkey;
-
-            // If it's private + user owns it => highlight with a special border
-            const highlightClass =
-              video.isPrivate && canEdit
-                ? "border-2 border-yellow-500"
-                : "border-none"; // normal case
-
-            // Gear menu (unchanged)
-            const gearMenu = canEdit
-              ? `
-                          <div class="relative inline-block ml-3 overflow-visible">
-                            <button
-                              type="button"
-                              class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              onclick="document.getElementById('settingsDropdown-${index}').classList.toggle('hidden')"
-                            >
-                              <img 
-                                src="assets/svg/video-settings-gear.svg" 
-                                alt="Settings"
-                                class="w-5 h-5"
-                              />
-                            </button>
-                            <!-- The dropdown appears above the gear (bottom-full) -->
-                            <div 
-                              id="settingsDropdown-${index}"
-                              class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-                            >
-                              <div class="py-1">
-                                <button
-                                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                                  onclick="app.handleEditVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                                  onclick="app.handleDeleteVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        `
-              : "";
-
-            return `
-                        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
-                            
-                            <!-- VIDEO THUMBNAIL -->
-                            <div 
-                              class="aspect-w-16 aspect-h-9 bg-gray-800 cursor-pointer relative group"
-                              onclick="app.playVideo('${encodeURIComponent(
-                                video.magnet
-                              )}')"
-                            >
-                              ${
-                                video.thumbnail
-                                  ? `<img
-                                    src="${this.escapeHTML(video.thumbnail)}"
-                                    alt="${this.escapeHTML(video.title)}"
-                                    class="w-full h-full object-cover"
-                                  >`
-                                  : `<div class="flex items-center justify-center h-full bg-gray-800">
-                                     <svg class="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                             d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                             d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                     </svg>
-                                   </div>`
-                              }
-                              <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-300"></div>
-                            </div>
-        
-                            <!-- CARD INFO -->
-                            <div class="p-4">
-                                <!-- TITLE -->
-                                <h3
-                                  class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-                                  onclick="app.playVideo('${encodeURIComponent(
-                                    video.magnet
-                                  )}')"
-                                >
-                                  ${this.escapeHTML(video.title)}
-                                </h3>
-        
-                                <!-- CREATOR info + gear icon -->
-                                <div class="flex items-center justify-between">
-                                    <!-- Left: Avatar & user/time -->
-                                    <div class="flex items-center space-x-3">
-                                        <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
-                                            <img
-                                              src="${this.escapeHTML(
-                                                profile.picture
-                                              )}"
-                                              alt="${profile.name}"
-                                              class="w-full h-full object-cover"
-                                            >
-                                        </div>
-                                        <div class="min-w-0">
-                                            <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
-                                                ${this.escapeHTML(profile.name)}
-                                            </p>
-                                            <div class="flex items-center text-xs text-gray-500 mt-1">
-                                                <span>${timeAgo}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <!-- Right: gearMenu if user owns the video -->
-                                    ${gearMenu}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-          } catch (error) {
-            console.error(`Error processing video ${index}:`, error);
-            return "";
-          }
-        })
-        .filter((html) => html.length > 0);
-
-      console.log("Rendered videos:", renderedVideos.length);
-
-      if (renderedVideos.length === 0) {
-        this.videoList.innerHTML = `<p class="text-center text-gray-500">No valid videos to display.</p>`;
-        return;
-      }
-
-      this.videoList.innerHTML = renderedVideos.join("");
-      console.log("Videos rendered successfully");
-    } catch (error) {
-      console.error("Rendering error:", error);
-      this.videoList.innerHTML = `<p class="text-center text-gray-500">Error loading videos.</p>`;
-    }
-  }
-
-  /**
-   * Validates a video object
-   */
-  validateVideo(video, index) {
-    const validationResults = {
-      hasId: Boolean(video?.id),
-      isValidId: typeof video?.id === "string" && video.id.trim().length > 0,
-      hasVideo: Boolean(video),
-      hasTitle: Boolean(video?.title),
-      hasMagnet: Boolean(video?.magnet),
-      hasMode: Boolean(video?.mode),
-      hasPubkey: Boolean(video?.pubkey),
-      isValidTitle: typeof video?.title === "string" && video.title.length > 0,
-      isValidMagnet:
-        typeof video?.magnet === "string" && video.magnet.length > 0,
-      isValidMode:
-        typeof video?.mode === "string" && ["dev", "live"].includes(video.mode),
-    };
-
-    const passed = Object.values(validationResults).every(Boolean);
-    console.log(
-      `Video ${video?.title} validation results:`,
-      validationResults,
-      passed ? "PASSED" : "FAILED"
-    );
-
-    return passed;
   }
 
   /**
@@ -759,18 +441,6 @@ class bitvidApp {
     } else {
       alert(message);
     }
-  }
-
-  /**
-   * Escapes HTML to prevent XSS.
-   */
-  escapeHTML(unsafe) {
-    return unsafe
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
   }
 
   /**
@@ -862,7 +532,7 @@ class bitvidApp {
       this.videoTitle.textContent = video.title || "Untitled";
       this.videoDescription.textContent =
         video.description || "No description available.";
-      this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
+      this.videoTimestamp.textContent = formatTimeAgo(video.created_at);
 
       this.creatorName.textContent = creatorProfile.name;
       this.creatorNpub.textContent = `${creatorNpub.slice(
@@ -927,6 +597,7 @@ class bitvidApp {
    */
   async handleEditVideo(index) {
     try {
+      // CHANGE: Get videos through videoList component
       const videos = await nostrClient.fetchVideos();
       const video = videos[index];
 
@@ -997,7 +668,7 @@ class bitvidApp {
       };
       await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
       this.showSuccess("Video updated successfully!");
-      await this.loadVideos();
+      await videoList.loadVideos();
     } catch (err) {
       this.log("Failed to edit video:", err.message);
       this.showError("Failed to edit video. Please try again later.");
@@ -1010,6 +681,7 @@ class bitvidApp {
    */
   async handleDeleteVideo(index) {
     try {
+      // CHANGE: Get videos through videoList component
       const videos = await nostrClient.fetchVideos();
       const video = videos[index];
 
@@ -1038,7 +710,8 @@ class bitvidApp {
 
       await nostrClient.deleteVideo(originalEvent, this.pubkey);
       this.showSuccess("Video deleted (hidden) successfully!");
-      await this.loadVideos();
+      // CHANGE: Use videoList component to refresh
+      await videoList.loadVideos();
     } catch (err) {
       this.log("Failed to delete video:", err.message);
       this.showError("Failed to delete video. Please try again later.");

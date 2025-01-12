@@ -578,6 +578,59 @@ class NostrClient {
   }
 
   /**
+   * Fetches a user profile given a pubkey.
+   * Returns an object with 'name' and 'picture' properties.
+   */
+  async fetchUserProfile(pubkey) {
+    if (!pubkey) {
+      throw new Error("Invalid pubkey provided.");
+    }
+
+    if (isDevMode) {
+      console.log(`Fetching profile for pubkey: ${pubkey}`);
+    }
+
+    const filter = {
+      kinds: [0], // Profile events
+      authors: [pubkey],
+      limit: 1,
+    };
+
+    try {
+      const events = await this.pool.list(this.relays, [filter]);
+
+      if (events.length === 0) {
+        if (isDevMode) {
+          console.log(`No profile found for pubkey: ${pubkey}`);
+        }
+        return {
+          name: "Unknown",
+          picture: `https://robohash.org/${pubkey}`,
+        };
+      }
+
+      const profileContent = JSON.parse(events[0].content || "{}");
+
+      const profile = {
+        name:
+          profileContent.name ||
+          profileContent.display_name ||
+          `User ${pubkey.slice(0, 8)}...`,
+        picture: profileContent.picture || `https://robohash.org/${pubkey}`,
+      };
+
+      if (isDevMode) {
+        console.log(`Fetched profile for ${pubkey}:`, profile);
+      }
+
+      return profile;
+    } catch (error) {
+      logErrorOnce(`Error fetching profile for ${pubkey}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Validates video content structure.
    */
   isValidVideo(content) {
