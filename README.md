@@ -2,7 +2,7 @@
 
 # bitvid - Decentralized Video Sharing
 
-##### _IPNS: k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1_
+##### _IPNS: [k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1_](https://k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1.ipns.dweb.link/)
 
 **bitvid** is a decentralized platform where users can share videos and follow creators with privacy and freedom. Built with a static site architecture, it’s lightweight, efficient, and fully decentralized, making it ideal for hosting or local deployment.
 
@@ -23,7 +23,7 @@
 
 ### Getting Started
 
-1. **Visit the Site**: Navigate to the live instance of **bitvid** (e.g., `https://bitvid.btc.us`).
+1. **Visit the Site**: Navigate to the live instance of **bitvid** (e.g., `[https://bitvid.network](https://bitvid.network)`).
 2. **Login with Nostr**:
    - Use a compatible Nostr browser extension or manually input your public key.
 3. **Upload Videos**:
@@ -116,6 +116,6 @@ To run **bitvid** locally:
 
 ## Contact & Support
 
-- **Website**: [bitvid.btc.us](https://bitvid.btc.us)
+- **Website**: [bitvid.network](https://bitvid.network)
 - **GitHub**: [PR0M3TH3AN](https://github.com/PR0M3TH3AN)
 - **Nostr**: [npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe](https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe)
