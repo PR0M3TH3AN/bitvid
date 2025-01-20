@@ -1,6 +1,6 @@
 // js/webtorrent.js
 
-import WebTorrent from 'https://esm.sh/webtorrent'
+import WebTorrent from './webtorrent.min.js'
 
 export class TorrentClient {
     constructor() {
