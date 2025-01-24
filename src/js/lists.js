@@ -8,6 +8,7 @@ const npubs = [
   "npub1qny3tkh0acurzla8x3zy4nhrjz5zd8l9sy9jys09umwng00manysew95gx", // ODELL
   "npub1qxduthz4p8v5zsux524df569pt7lj0d36dyqadnta2val64dtnhsr50h64", // NosToons
   "npub19ma2w9dmk3kat0nt0k5dwuqzvmg3va9ezwup0zkakhpwv0vcwvcsg8axkl", // vinney
+  "npub1rcr8h76csgzhdhea4a7tq5w5gydcpg9clgf0cffu6z45rnc6yp5sj7cfuz", // djmeistro
 ];
 
 console.log("DEBUG: lists.js loaded, npubs:", npubs);
