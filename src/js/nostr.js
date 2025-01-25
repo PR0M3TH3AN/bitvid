@@ -8,6 +8,7 @@ const RELAY_URLS = [
   "wss://nos.lol",
   "wss://relay.snort.social",
   "wss://nostr.wine",
+  "wss://relay.nostr.band",
 ];
 
 // Rate limiting for error logs

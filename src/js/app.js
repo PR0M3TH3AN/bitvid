@@ -58,6 +58,9 @@ class bitvidApp {
 
     // Private Video Checkbox
     this.isPrivateCheckbox = document.getElementById("isPrivate");
+
+    // NEW: Store the currently loaded/playing video object
+    this.currentVideo = null;
   }
 
   async init() {
@@ -83,6 +86,9 @@ class bitvidApp {
       this.setupEventListeners();
       disclaimerModal.show();
       await this.loadVideos();
+
+      // NEW: Parse ?v=nevent after videos are loaded
+      this.checkUrlParams();
     } catch (error) {
       console.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
@@ -142,7 +148,6 @@ class bitvidApp {
       return true;
     } catch (error) {
       console.error("Modal initialization failed:", error);
-      // You might want to show this error to the user
       this.showError(`Failed to initialize video player: ${error.message}`);
       return false;
     }
@@ -190,9 +195,6 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Formats a timestamp into a "time ago" format.
-   */
   formatTimeAgo(timestamp) {
     const seconds = Math.floor(Date.now() / 1000 - timestamp);
     const intervals = {
@@ -214,9 +216,6 @@ class bitvidApp {
     return "just now";
   }
 
-  /**
-   * Sets up event listeners for various UI interactions.
-   */
   setupEventListeners() {
     // Login Button
     this.loginButton.addEventListener("click", async () => {
@@ -303,10 +302,31 @@ class bitvidApp {
       });
     }
 
-    // Share button (no action for now)
+    // SHARE BUTTON
     if (this.shareBtn) {
       this.shareBtn.addEventListener("click", () => {
-        this.log("Share button clicked (not implemented).");
+        if (!this.currentVideo) {
+          this.showError("No video is loaded to share.");
+          return;
+        }
+
+        try {
+          // Encode the raw hex event ID into 'nevent'
+          const nevent = window.NostrTools.nip19.neventEncode({
+            id: this.currentVideo.id,
+          });
+
+          // Build a URL that includes ?v=<nevent>
+          const shareUrl = `${window.location.origin}${window.location.pathname}?v=${nevent}`;
+
+          navigator.clipboard
+            .writeText(shareUrl)
+            .then(() => this.showSuccess("Video link copied to clipboard!"))
+            .catch(() => this.showError("Failed to copy the link."));
+        } catch (err) {
+          console.error("Error generating share link:", err);
+          this.showError("Could not generate link.");
+        }
       });
     }
 
@@ -316,9 +336,6 @@ class bitvidApp {
     });
   }
 
-  /**
-   * Handles user login.
-   */
   login(pubkey, saveToStorage = true) {
     this.pubkey = pubkey;
     this.loginButton.classList.add("hidden");
@@ -333,9 +350,6 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Handles user logout.
-   */
   logout() {
     nostrClient.logout();
     this.pubkey = null;
@@ -348,9 +362,6 @@ class bitvidApp {
     this.log("User logged out.");
   }
 
-  /**
-   * Cleans up video player and torrents.
-   */
   async cleanup() {
     try {
       if (this.videoElement) {
@@ -369,26 +380,24 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Hides the video player section.
-   */
   async hideVideoPlayer() {
     await this.cleanup();
     this.playerSection.classList.add("hidden");
   }
 
   /**
-   * Hides the video modal.
+   * OPTIONAL: Reset the URL after hiding the modal so that ?v=nevent
+   * disappears. Remove this if you’d prefer the URL to remain set.
    */
   async hideModal() {
     await this.cleanup();
     this.playerModal.style.display = "none";
     this.playerModal.classList.add("hidden");
+
+    // Reset back to original path (no query param)
+    window.history.replaceState({}, "", window.location.pathname);
   }
 
-  /**
-   * Handles video submission (with version, private listing).
-   */
   async handleSubmit(e) {
     e.preventDefault();
 
@@ -399,7 +408,6 @@ class bitvidApp {
 
     const descriptionElement = document.getElementById("description");
 
-    // ADDED FOR VERSIONING/PRIVATE/DELETE:
     // If you have a checkbox with id="isPrivate" in HTML
     const isPrivate = this.isPrivateCheckbox
       ? this.isPrivateCheckbox.checked
@@ -439,9 +447,6 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Loads and displays videos from Nostr.
-   */
   async loadVideos() {
     console.log("Starting loadVideos...");
     try {
@@ -453,18 +458,16 @@ class bitvidApp {
         throw new Error("No videos received from relays");
       }
 
-      // Convert to array if not already
       const videosArray = Array.isArray(videos) ? videos : [videos];
 
-      // **Filter** so we only show:
-      //   - isPrivate === false (public videos)
-      //   - or isPrivate === true but pubkey === this.pubkey
+      // Filter so we only show:
+      // - isPrivate === false (public videos)
+      // - or isPrivate === true but pubkey === this.pubkey
       const displayedVideos = videosArray.filter((video) => {
         if (!video.isPrivate) {
-          // Public video => show it
-          return true;
+          return true; // public
         }
-        // Else it's private; only show if it's owned by the logged-in user
+        // It's private; only show if user is the owner
         return this.pubkey && video.pubkey === this.pubkey;
       });
 
@@ -490,7 +493,6 @@ class bitvidApp {
         });
       });
 
-      // Now render only the displayedVideos
       await this.renderVideoList(displayedVideos);
       this.log(`Rendered ${displayedVideos.length} videos successfully`);
     } catch (error) {
@@ -505,10 +507,6 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Renders the given list of videos. If a video is private and belongs to the user,
-   * highlight with a special border (e.g. border-yellow-500).
-   */
   async renderVideoList(videos) {
     try {
       console.log("RENDER VIDEO LIST - Start", {
@@ -578,6 +576,14 @@ class bitvidApp {
               return "";
             }
 
+            // First, create a ?v=... link for middle-click / ctrl+click
+            const nevent = window.NostrTools.nip19.neventEncode({
+              id: video.id,
+            });
+            const shareUrl = `${
+              window.location.pathname
+            }?v=${encodeURIComponent(nevent)}`;
+
             const profile = userProfiles.get(video.pubkey) || {
               name: "Unknown",
               picture: `https://robohash.org/${video.pubkey}`,
@@ -593,114 +599,120 @@ class bitvidApp {
                 ? "border-2 border-yellow-500"
                 : "border-none"; // normal case
 
-            // Gear menu (unchanged)
+            // Gear menu if canEdit
             const gearMenu = canEdit
               ? `
-                          <div class="relative inline-block ml-3 overflow-visible">
-                            <button
-                              type="button"
-                              class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              onclick="document.getElementById('settingsDropdown-${index}').classList.toggle('hidden')"
-                            >
-                              <img 
-                                src="assets/svg/video-settings-gear.svg" 
-                                alt="Settings"
-                                class="w-5 h-5"
-                              />
-                            </button>
-                            <!-- The dropdown appears above the gear (bottom-full) -->
-                            <div 
-                              id="settingsDropdown-${index}"
-                              class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-                            >
-                              <div class="py-1">
-                                <button
-                                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                                  onclick="app.handleEditVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                                  onclick="app.handleDeleteVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        `
+                <div class="relative inline-block ml-3 overflow-visible">
+                  <button
+                    type="button"
+                    class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onclick="document.getElementById('settingsDropdown-${index}').classList.toggle('hidden')"
+                  >
+                    <img 
+                      src="assets/svg/video-settings-gear.svg" 
+                      alt="Settings"
+                      class="w-5 h-5"
+                    />
+                  </button>
+                  <!-- The dropdown appears above the gear (bottom-full) -->
+                  <div 
+                    id="settingsDropdown-${index}"
+                    class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+                  >
+                    <div class="py-1">
+                      <button
+                        class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                        onclick="app.handleEditVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                        onclick="app.handleDeleteVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              `
               : "";
 
+            // Instead of a <div onclick="..."> for the thumbnail, we use <a>
+            // This allows middle-click or ctrl+click to open shareUrl in a new tab,
+            // while left-click is prevented => opens modal
             return `
-                        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
-                            
-                            <!-- VIDEO THUMBNAIL -->
-                            <div 
-                              class="aspect-w-16 aspect-h-9 bg-gray-800 cursor-pointer relative group"
-                              onclick="app.playVideo('${encodeURIComponent(
-                                video.magnet
-                              )}')"
-                            >
-                              ${
-                                video.thumbnail
-                                  ? `<img
-                                    src="${this.escapeHTML(video.thumbnail)}"
-                                    alt="${this.escapeHTML(video.title)}"
+              <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
+                  
+                  <!-- VIDEO THUMBNAIL via <a> -->
+                  <a
+                    href="${shareUrl}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="aspect-w-16 aspect-h-9 bg-gray-800 cursor-pointer relative group block"
+                    style="display: block;"
+                    onclick="if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
+                      event.preventDefault();
+                      app.playVideo('${encodeURIComponent(video.magnet)}');
+                    }"
+                  >
+                    ${
+                      video.thumbnail
+                        ? `<img
+                            src="${this.escapeHTML(video.thumbnail)}"
+                            alt="${this.escapeHTML(video.title)}"
+                            class="w-full h-full object-cover"
+                          >`
+                        : `<div class="flex items-center justify-center h-full bg-gray-800">
+                             <svg class="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                     d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                     d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                             </svg>
+                           </div>`
+                    }
+                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-300"></div>
+                  </a>
+  
+                  <!-- CARD INFO -->
+                  <div class="p-4">
+                      <!-- TITLE -->
+                      <h3
+                        class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
+                        onclick="app.playVideo('${encodeURIComponent(
+                          video.magnet
+                        )}')"
+                      >
+                        ${this.escapeHTML(video.title)}
+                      </h3>
+  
+                      <!-- CREATOR info + gear icon -->
+                      <div class="flex items-center justify-between">
+                          <!-- Left: Avatar & user/time -->
+                          <div class="flex items-center space-x-3">
+                              <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
+                                  <img
+                                    src="${this.escapeHTML(profile.picture)}"
+                                    alt="${profile.name}"
                                     class="w-full h-full object-cover"
-                                  >`
-                                  : `<div class="flex items-center justify-center h-full bg-gray-800">
-                                     <svg class="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                             d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                             d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                     </svg>
-                                   </div>`
-                              }
-                              <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-300"></div>
-                            </div>
-        
-                            <!-- CARD INFO -->
-                            <div class="p-4">
-                                <!-- TITLE -->
-                                <h3
-                                  class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-                                  onclick="app.playVideo('${encodeURIComponent(
-                                    video.magnet
-                                  )}')"
-                                >
-                                  ${this.escapeHTML(video.title)}
-                                </h3>
-        
-                                <!-- CREATOR info + gear icon -->
-                                <div class="flex items-center justify-between">
-                                    <!-- Left: Avatar & user/time -->
-                                    <div class="flex items-center space-x-3">
-                                        <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
-                                            <img
-                                              src="${this.escapeHTML(
-                                                profile.picture
-                                              )}"
-                                              alt="${profile.name}"
-                                              class="w-full h-full object-cover"
-                                            >
-                                        </div>
-                                        <div class="min-w-0">
-                                            <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
-                                                ${this.escapeHTML(profile.name)}
-                                            </p>
-                                            <div class="flex items-center text-xs text-gray-500 mt-1">
-                                                <span>${timeAgo}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <!-- Right: gearMenu if user owns the video -->
-                                    ${gearMenu}
-                                </div>
-                            </div>
-                        </div>
-                    `;
+                                  >
+                              </div>
+                              <div class="min-w-0">
+                                  <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
+                                      ${this.escapeHTML(profile.name)}
+                                  </p>
+                                  <div class="flex items-center text-xs text-gray-500 mt-1">
+                                      <span>${timeAgo}</span>
+                                  </div>
+                              </div>
+                          </div>
+                          <!-- Right: gearMenu if user owns the video -->
+                          ${gearMenu}
+                      </div>
+                  </div>
+              </div>
+            `;
           } catch (error) {
             console.error(`Error processing video ${index}:`, error);
             return "";
@@ -723,9 +735,6 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Validates a video object
-   */
   validateVideo(video, index) {
     const validationResults = {
       hasId: Boolean(video?.id),
@@ -752,9 +761,6 @@ class bitvidApp {
     return passed;
   }
 
-  /**
-   * Gets a user-friendly error message.
-   */
   getErrorMessage(error) {
     if (error.message.includes("404")) {
       return "Service worker not found. Please check server configuration.";
@@ -767,9 +773,6 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Shows an error message to the user.
-   */
   showError(message) {
     if (this.errorContainer) {
       this.errorContainer.textContent = message;
@@ -783,9 +786,6 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Shows a success message to the user.
-   */
   showSuccess(message) {
     if (this.successContainer) {
       this.successContainer.textContent = message;
@@ -799,9 +799,6 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Escapes HTML to prevent XSS.
-   */
   escapeHTML(unsafe) {
     return unsafe
       .replace(/&/g, "&amp;")
@@ -811,9 +808,6 @@ class bitvidApp {
       .replace(/'/g, "&#039;");
   }
 
-  /**
-   * Logs messages to console.
-   */
   log(message) {
     console.log(message);
   }
@@ -844,11 +838,13 @@ class bitvidApp {
       // Re-fetch the latest from relays
       const videos = await nostrClient.fetchVideos();
       const video = videos.find((v) => v.magnet === decodedMagnet);
-
       if (!video) {
         this.showError("Video data not found.");
         return;
       }
+
+      // store the full video object so we can reference it in share
+      this.currentVideo = video;
 
       // Decrypt only once if user owns it
       if (
@@ -862,6 +858,18 @@ class bitvidApp {
       }
 
       const finalMagnet = video.magnet;
+
+      // Generate the nevent from video.id
+      // - We keep the same PATH (window.location.pathname),
+      //   just adding ?v=... so the service worker scope is consistent
+      try {
+        const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
+        const newUrl =
+          window.location.pathname + `?v=${encodeURIComponent(nevent)}`;
+        window.history.pushState({}, "", newUrl);
+      } catch (err) {
+        console.error("Error pushing new URL state:", err);
+      }
 
       let creatorProfile = {
         name: "Unknown",
@@ -958,7 +966,6 @@ class bitvidApp {
 
   /**
    * Allows the user to edit a video note (only if they are the owner).
-   * We reuse the note's existing d tag via nostrClient.editVideo.
    */
   async handleEditVideo(index) {
     try {
@@ -974,7 +981,6 @@ class bitvidApp {
         return;
       }
 
-      // Prompt for new fields or keep old
       const newTitle = prompt(
         "New Title? (Leave blank to keep existing)",
         video.title
@@ -992,10 +998,8 @@ class bitvidApp {
         video.description
       );
 
-      // Ask user if they want the note private or public
       const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
 
-      // Fallback to old if user typed nothing
       const title =
         newTitle === null || newTitle.trim() === ""
           ? video.title
@@ -1013,9 +1017,8 @@ class bitvidApp {
           ? video.description
           : newDescription.trim();
 
-      // Build final updated data
       const updatedData = {
-        version: video.version || 2, // keep old version or set 2
+        version: video.version || 2,
         isPrivate: wantPrivate,
         title,
         magnet,
@@ -1024,7 +1027,6 @@ class bitvidApp {
         mode: isDevMode ? "dev" : "live",
       };
 
-      // Edit
       const originalEvent = {
         id: video.id,
         pubkey: video.pubkey,
@@ -1040,7 +1042,6 @@ class bitvidApp {
   }
 
   /**
-   * ADDED FOR VERSIONING/PRIVATE/DELETE:
    * Allows the user to delete (soft-delete) a video by marking it as deleted.
    */
   async handleDeleteVideo(index) {
@@ -1077,6 +1078,152 @@ class bitvidApp {
     } catch (err) {
       this.log("Failed to delete video:", err.message);
       this.showError("Failed to delete video. Please try again later.");
+    }
+  }
+
+  // NEW: Parse ?v=nevent after videos are loaded
+  checkUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const maybeNevent = urlParams.get("v");
+
+    if (maybeNevent) {
+      try {
+        const decoded = window.NostrTools.nip19.decode(maybeNevent);
+        if (decoded.type === "nevent" && decoded.data.id) {
+          const eventId = decoded.data.id;
+
+          // Fetch videos again (or rely on in-memory) and find a match
+          nostrClient
+            .fetchVideos()
+            .then((allVideos) => {
+              const matched = allVideos.find((v) => v.id === eventId);
+              if (matched) {
+                // We could directly call this.playVideo(matched.magnet),
+                // but that can fail if magnet changed or is encrypted.
+                // Instead, let's do a dedicated method:
+                this.playVideoByEventId(eventId);
+              } else {
+                this.showError("No matching video found for that link.");
+              }
+            })
+            .catch((err) => {
+              console.error("Error re-fetching videos:", err);
+              this.showError("Could not load videos for the share link.");
+            });
+        }
+      } catch (err) {
+        console.error("Error decoding nevent:", err);
+        this.showError("Invalid share link.");
+      }
+    }
+  }
+
+  // NEW: A helper to play by event ID so we don't rely on magnet string
+  async playVideoByEventId(eventId) {
+    try {
+      const videos = await nostrClient.fetchVideos();
+      const video = videos.find((v) => v.id === eventId);
+      if (!video) {
+        this.showError("Video not found.");
+        return;
+      }
+
+      // Store as current video for sharing, etc.
+      this.currentVideo = video;
+
+      // If private + user owns it => decrypt once
+      if (
+        video.isPrivate &&
+        video.pubkey === this.pubkey &&
+        !video.alreadyDecrypted
+      ) {
+        this.log("User owns a private video => decrypting magnet link...");
+        video.magnet = fakeDecrypt(video.magnet);
+        video.alreadyDecrypted = true;
+      }
+
+      const finalMagnet = video.magnet;
+      this.currentMagnetUri = finalMagnet;
+
+      this.playerModal.style.display = "flex";
+      this.playerModal.classList.remove("hidden");
+
+      // Update the browser URL to keep the same path, just add ?v=...
+      const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
+      const newUrl =
+        window.location.pathname + `?v=${encodeURIComponent(nevent)}`;
+      window.history.pushState({}, "", newUrl);
+
+      // Fetch creator profile
+      let creatorProfile = {
+        name: "Unknown",
+        picture: `https://robohash.org/${video.pubkey}`,
+      };
+      try {
+        const userEvents = await nostrClient.pool.list(nostrClient.relays, [
+          {
+            kinds: [0],
+            authors: [video.pubkey],
+            limit: 1,
+          },
+        ]);
+        if (userEvents.length > 0 && userEvents[0]?.content) {
+          const profile = JSON.parse(userEvents[0].content);
+          creatorProfile = {
+            name: profile.name || profile.display_name || "Unknown",
+            picture: profile.picture || `https://robohash.org/${video.pubkey}`,
+          };
+        }
+      } catch (error) {
+        this.log("Error fetching creator profile:", error);
+      }
+
+      let creatorNpub = "Unknown";
+      try {
+        creatorNpub = window.NostrTools.nip19.npubEncode(video.pubkey);
+      } catch (error) {
+        this.log("Error converting pubkey to npub:", error);
+        creatorNpub = video.pubkey;
+      }
+
+      this.videoTitle.textContent = video.title || "Untitled";
+      this.videoDescription.textContent =
+        video.description || "No description available.";
+      this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
+
+      this.creatorName.textContent = creatorProfile.name;
+      this.creatorNpub.textContent = `${creatorNpub.slice(
+        0,
+        8
+      )}...${creatorNpub.slice(-4)}`;
+      this.creatorAvatar.src = creatorProfile.picture;
+      this.creatorAvatar.alt = creatorProfile.name;
+
+      this.log("Starting video stream with:", finalMagnet);
+      await torrentClient.streamVideo(finalMagnet, this.modalVideo);
+
+      const updateInterval = setInterval(() => {
+        if (!document.body.contains(this.modalVideo)) {
+          clearInterval(updateInterval);
+          return;
+        }
+
+        const status = document.getElementById("status");
+        const progress = document.getElementById("progress");
+        const peers = document.getElementById("peers");
+        const speed = document.getElementById("speed");
+        const downloaded = document.getElementById("downloaded");
+
+        if (status) this.modalStatus.textContent = status.textContent;
+        if (progress) this.modalProgress.style.width = progress.style.width;
+        if (peers) this.modalPeers.textContent = peers.textContent;
+        if (speed) this.modalSpeed.textContent = speed.textContent;
+        if (downloaded)
+          this.modalDownloaded.textContent = downloaded.textContent;
+      }, 1000);
+    } catch (error) {
+      this.log("Error in playVideoByEventId:", error);
+      this.showError(`Playback error: ${error.message}`);
     }
   }
 }
