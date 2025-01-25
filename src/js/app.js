@@ -45,6 +45,10 @@ class bitvidApp {
     this.creatorName = null;
     this.creatorNpub = null;
 
+    // New buttons for magnet copy and share
+    this.copyMagnetBtn = null;
+    this.shareBtn = null;
+
     // Notification Containers
     this.errorContainer = document.getElementById("errorContainer");
     this.successContainer = document.getElementById("successContainer");
@@ -165,6 +169,10 @@ class bitvidApp {
     this.creatorName = document.getElementById("creatorName");
     this.creatorNpub = document.getElementById("creatorNpub");
 
+    // New icons for magnet copy and share
+    this.copyMagnetBtn = document.getElementById("copyMagnetBtn");
+    this.shareBtn = document.getElementById("shareBtn");
+
     // Add scroll behavior for nav
     let lastScrollY = 0;
     const modalNav = document.getElementById("modalNav");
@@ -280,6 +288,25 @@ class bitvidApp {
 
       this.modalVideo.addEventListener("canplay", () => {
         this.log("Video canplay event fired");
+      });
+    }
+
+    // Copy magnet link
+    if (this.copyMagnetBtn) {
+      this.copyMagnetBtn.addEventListener("click", () => {
+        if (this.currentMagnetUri) {
+          navigator.clipboard
+            .writeText(this.currentMagnetUri)
+            .then(() => this.showSuccess("Magnet link copied to clipboard!"))
+            .catch(() => this.showError("Failed to copy magnet link."));
+        }
+      });
+    }
+
+    // Share button (no action for now)
+    if (this.shareBtn) {
+      this.shareBtn.addEventListener("click", () => {
+        this.log("Share button clicked (not implemented).");
       });
     }
 
@@ -804,6 +831,7 @@ class bitvidApp {
 
       const decodedMagnet = decodeURIComponent(magnetURI);
 
+      // Prevent re-invoking the same video
       if (this.currentMagnetUri === decodedMagnet) {
         this.log("Same video requested - already playing");
         return;
@@ -830,13 +858,11 @@ class bitvidApp {
       ) {
         this.log("User owns a private video => decrypting magnet link...");
         video.magnet = fakeDecrypt(video.magnet);
-        // Mark it so we don't do it again
         video.alreadyDecrypted = true;
       }
 
       const finalMagnet = video.magnet;
 
-      // Profile fetch
       let creatorProfile = {
         name: "Unknown",
         picture: `https://robohash.org/${video.pubkey}`,
@@ -849,8 +875,6 @@ class bitvidApp {
             limit: 1,
           },
         ]);
-
-        // Ensure userEvents isn't empty before accessing [0]
         if (userEvents.length > 0 && userEvents[0]?.content) {
           const profile = JSON.parse(userEvents[0].content);
           creatorProfile = {

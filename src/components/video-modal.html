@@ -14,7 +14,7 @@
         <div class="flex items-center px-6 py-4">
           <button
             id="closeModal"
-            class="back-button flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur"
+            class="back-button flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -39,9 +39,28 @@
       </div>
 
       <div class="video-info p-6">
-        <!-- Rest of the content stays the same -->
-        <!-- Video Title -->
-        <h2 id="videoTitle" class="text-2xl font-bold mb-2 text-white"></h2>
+        <!-- Title and icons row -->
+        <div class="flex items-center justify-between mb-2">
+          <h2 id="videoTitle" class="text-2xl font-bold text-white"></h2>
+          <div class="flex items-center space-x-2">
+            <!-- Copy Magnet Button (circular) -->
+            <button id="copyMagnetBtn" class="icon-button">
+              <img
+                src="assets/svg/copy-magnet.svg"
+                alt="Copy Magnet"
+                class="icon-image"
+              />
+            </button>
+            <!-- Share Button (circular) -->
+            <button id="shareBtn" class="icon-button">
+              <img
+                src="assets/svg/share-video.svg"
+                alt="Share Video"
+                class="icon-image"
+              />
+            </button>
+          </div>
+        </div>
 
         <!-- Video Timestamp -->
         <div

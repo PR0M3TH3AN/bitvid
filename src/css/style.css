@@ -1,5 +1,3 @@
-/* css/style.css */
-
 :root {
   --color-bg: #0f172a;
   --color-card: #1e293b;
@@ -93,10 +91,15 @@ header img {
   inset: 0;
   background-color: rgb(0 0 0 / 0.9);
   z-index: 50;
-  display: flex;
+  display: none; /* Hidden by default */
   flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* If you ever want to show it, add ".flex" class dynamically */
+#playerModal.flex {
+  display: flex;
 }
 
 /* Modal Content Container */
@@ -106,6 +109,18 @@ header img {
   display: flex;
   flex-direction: column;
   background-color: #0f172a;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Video Container */
@@ -214,8 +229,8 @@ textarea:focus {
   ring: 2px var(--color-primary);
 }
 
-/* Buttons */
-button {
+/* Global button styles -- only apply to normal (non-icon) buttons */
+button:not(.icon-button) {
   padding: 0.75rem 1.5rem;
   background-color: var(--color-primary);
   color: white;
@@ -224,12 +239,12 @@ button {
   transition: all 0.2s;
 }
 
-button:hover {
+button:not(.icon-button):hover {
   background-color: var(--color-secondary);
   transform: translateY(-1px);
 }
 
-button:focus {
+button:not(.icon-button):focus {
   outline: none;
   ring: 2px var(--color-primary);
 }
@@ -268,16 +283,6 @@ button:focus {
   border: 1px solid rgb(34 197 94 / 0.2);
 }
 
-/* Modal Display */
-#playerSection,
-#playerModal {
-  display: none;
-}
-
-#playerModal.flex {
-  display: flex;
-}
-
 /* Responsive Design */
 @media (max-width: 640px) {
   #videoList {
@@ -310,7 +315,7 @@ footer a:hover {
   inset: 0;
   background-color: rgb(0 0 0 / 0.9);
   z-index: 50;
-  display: flex;
+  display: none; /* hidden by default */
   flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -374,9 +379,7 @@ footer a:hover {
   }
 
   #disclaimerModal .modal-scroll {
-    max-height: calc(
-      90vh - 5rem
-    ); /* Account for button container and padding */
+    max-height: calc(90vh - 5rem);
   }
 }
 
@@ -420,4 +423,52 @@ footer a:hover {
 .video-info .bg-gray-800\/50 {
   background-color: rgb(31 41 55 / 0.5);
   backdrop-filter: blur(4px);
+}
+
+/* --- New Classes for Icon Buttons & Images --- */
+
+/* Circular icon buttons */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  /* Fixed width/height for a perfect circle */
+  width: 2.5rem; /* 40px */
+  height: 2.5rem; /* 40px */
+
+  line-height: 0;
+  background-color: #3f3f46; /* Gray 700 */
+  color: #fff;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+/* Hover state: slightly lighter gray */
+.icon-button:hover {
+  background-color: #52525b; /* Gray 600 */
+}
+
+/* Focus/active states: red ring */
+.icon-button:focus,
+.icon-button:active {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.6); /* Red ring #dc2626 */
+}
+
+/* Icon images (force white if originally black) */
+.icon-image {
+  width: 1.25rem; /* 20px */
+  height: 1.25rem; /* 20px */
+
+  /*
+     If your icon is black and you want to invert it to white, use this:
+     filter: brightness(0) invert(1);
+
+     If your icon is already white, keep it commented out or remove it.
+  */
+
+  pointer-events: none;
 }
