@@ -1,5 +1,11 @@
 // js/app.js
 
+// <ai_context>
+// DO NOT REMOVE OR EDIT. This context is for internal build tooling.
+// File: js/app.js
+// Project: bitvid
+// </ai_context>
+
 import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
@@ -535,38 +541,34 @@ class bitvidApp {
         videosCount: videos ? videos.length : "N/A",
         videosType: typeof videos,
       });
-
+  
       if (!videos) {
         console.error("NO VIDEOS RECEIVED");
         this.videoList.innerHTML = `<p class="text-center text-gray-500">No videos found.</p>`;
         return;
       }
-
+  
       const videoArray = Array.isArray(videos) ? videos : [videos];
-
+  
       if (videoArray.length === 0) {
         console.error("VIDEO ARRAY IS EMPTY");
         this.videoList.innerHTML = `<p class="text-center text-gray-500">No videos available.</p>`;
         return;
       }
-
+  
       // Sort by creation date
       videoArray.sort((a, b) => b.created_at - a.created_at);
-
-      // Prepare to fetch user profiles
+  
       const userProfiles = new Map();
       const uniquePubkeys = [...new Set(videoArray.map((v) => v.pubkey))];
-
+  
+      // Fetch user profiles
       for (const pubkey of uniquePubkeys) {
         try {
           const userEvents = await nostrClient.pool.list(nostrClient.relays, [
-            {
-              kinds: [0],
-              authors: [pubkey],
-              limit: 1,
-            },
+            { kinds: [0], authors: [pubkey], limit: 1 },
           ]);
-
+  
           if (userEvents[0]?.content) {
             const profile = JSON.parse(userEvents[0].content);
             userProfiles.set(pubkey, {
@@ -587,8 +589,8 @@ class bitvidApp {
           });
         }
       }
-
-      // Build HTML for each video
+  
+      // Build video cards
       const renderedVideos = videoArray
         .map((video, index) => {
           try {
@@ -596,31 +598,25 @@ class bitvidApp {
               console.error(`Invalid video: ${video.title}`);
               return "";
             }
-
-            // First, create a ?v=... link for middle-click / ctrl+click
-            const nevent = window.NostrTools.nip19.neventEncode({
-              id: video.id,
-            });
-            const shareUrl = `${
-              window.location.pathname
-            }?v=${encodeURIComponent(nevent)}`;
-
+  
+            // Create share URL
+            const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
+            const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(nevent)}`;
+  
+            // Get profile info
             const profile = userProfiles.get(video.pubkey) || {
               name: "Unknown",
               picture: `https://robohash.org/${video.pubkey}`,
             };
             const timeAgo = this.formatTimeAgo(video.created_at);
-
-            // If user is the owner
+  
+            // Determine edit capability
             const canEdit = video.pubkey === this.pubkey;
-
-            // If it's private + user owns it => highlight with a special border
-            const highlightClass =
-              video.isPrivate && canEdit
-                ? "border-2 border-yellow-500"
-                : "border-none"; // normal case
-
-            // Gear menu if canEdit
+            const highlightClass = video.isPrivate && canEdit
+              ? "border-2 border-yellow-500"
+              : "border-none";
+  
+            // If user can edit, show gear menu
             const gearMenu = canEdit
               ? `
                 <div class="relative inline-block ml-3 overflow-visible">
@@ -629,14 +625,13 @@ class bitvidApp {
                     class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     onclick="document.getElementById('settingsDropdown-${index}').classList.toggle('hidden')"
                   >
-                    <img 
-                      src="assets/svg/video-settings-gear.svg" 
+                    <img
+                      src="assets/svg/video-settings-gear.svg"
                       alt="Settings"
                       class="w-5 h-5"
                     />
                   </button>
-                  <!-- The dropdown appears above the gear (bottom-full) -->
-                  <div 
+                  <div
                     id="settingsDropdown-${index}"
                     class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
                   >
@@ -658,14 +653,11 @@ class bitvidApp {
                 </div>
               `
               : "";
-
-            // Instead of a <div onclick="..."> for the thumbnail, we use <a>
-            // This allows middle-click or ctrl+click to open shareUrl in a new tab,
-            // while left-click is prevented => opens modal
+  
+            // Main video card
             return `
               <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
                   
-                  <!-- VIDEO THUMBNAIL via <a> -->
                   <a
                     href="${shareUrl}"
                     target="_blank"
@@ -677,60 +669,51 @@ class bitvidApp {
                       app.playVideo('${encodeURIComponent(video.magnet)}');
                     }"
                   >
-                    ${
-                      video.thumbnail
-                        ? `<img
-                            src="${this.escapeHTML(video.thumbnail)}"
-                            alt="${this.escapeHTML(video.title)}"
-                            class="w-full h-full object-cover"
-                          >`
-                        : `<div class="flex items-center justify-center h-full bg-gray-800">
-                             <svg class="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                     d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                     d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                             </svg>
-                           </div>`
-                    }
+                    <img
+                      src="assets/jpg/video-thumbnail-fallback.jpg"
+                      data-real-src="${this.escapeHTML(video.thumbnail)}"
+                      alt="${this.escapeHTML(video.title)}"
+                      class="w-full h-full object-cover"
+                      onload="
+                        const realSrc = this.getAttribute('data-real-src');
+                        if (realSrc) {
+                          const testImg = new Image();
+                          testImg.onload = () => { this.src = realSrc; };
+                          testImg.src = realSrc;
+                        }
+                      "
+                    />
                     <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-300"></div>
                   </a>
   
-                  <!-- CARD INFO -->
                   <div class="p-4">
-                      <!-- TITLE -->
-                      <h3
-                        class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-                        onclick="app.playVideo('${encodeURIComponent(
-                          video.magnet
-                        )}')"
-                      >
-                        ${this.escapeHTML(video.title)}
-                      </h3>
+                    <h3
+                      class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
+                      onclick="app.playVideo('${encodeURIComponent(video.magnet)}')"
+                    >
+                      ${this.escapeHTML(video.title)}
+                    </h3>
   
-                      <!-- CREATOR info + gear icon -->
-                      <div class="flex items-center justify-between">
-                          <!-- Left: Avatar & user/time -->
-                          <div class="flex items-center space-x-3">
-                              <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
-                                  <img
-                                    src="${this.escapeHTML(profile.picture)}"
-                                    alt="${profile.name}"
-                                    class="w-full h-full object-cover"
-                                  >
-                              </div>
-                              <div class="min-w-0">
-                                  <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
-                                      ${this.escapeHTML(profile.name)}
-                                  </p>
-                                  <div class="flex items-center text-xs text-gray-500 mt-1">
-                                      <span>${timeAgo}</span>
-                                  </div>
-                              </div>
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
+                          <img
+                            src="${this.escapeHTML(profile.picture)}"
+                            alt="${profile.name}"
+                            class="w-full h-full object-cover"
+                          >
+                        </div>
+                        <div class="min-w-0">
+                          <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
+                            ${this.escapeHTML(profile.name)}
+                          </p>
+                          <div class="flex items-center text-xs text-gray-500 mt-1">
+                            <span>${timeAgo}</span>
                           </div>
-                          <!-- Right: gearMenu if user owns the video -->
-                          ${gearMenu}
+                        </div>
                       </div>
+                      ${gearMenu}
+                    </div>
                   </div>
               </div>
             `;
@@ -740,14 +723,14 @@ class bitvidApp {
           }
         })
         .filter((html) => html.length > 0);
-
+  
       console.log("Rendered videos:", renderedVideos.length);
-
+  
       if (renderedVideos.length === 0) {
         this.videoList.innerHTML = `<p class="text-center text-gray-500">No valid videos to display.</p>`;
         return;
       }
-
+  
       this.videoList.innerHTML = renderedVideos.join("");
       console.log("Videos rendered successfully");
     } catch (error) {
