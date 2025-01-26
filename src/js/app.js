@@ -848,13 +848,14 @@ class bitvidApp {
       const decodedMagnet = decodeURIComponent(magnetURI);
 
       // Prevent re-invoking the exact same magnet link if it's already in use
-      // (Note: We set this.currentMagnetUri = null in hideModal() and popstate logic,
-      // so that returning here won't block re-loading the same magnet after a back button press.)
       if (this.currentMagnetUri === decodedMagnet) {
         this.log("Same video requested - already playing");
         return;
       }
       this.currentMagnetUri = decodedMagnet;
+
+      // Set a looping "please stand by" GIF as a temporary placeholder
+      this.modalVideo.poster = "assets/gif/please-stand-by.gif";
 
       // Show the modal
       this.playerModal.style.display = "flex";
@@ -940,6 +941,11 @@ class bitvidApp {
       // Start streaming
       this.log("Starting video stream with:", finalMagnet);
       await torrentClient.streamVideo(finalMagnet, this.modalVideo);
+
+      // Remove the loading GIF once the video can play
+      this.modalVideo.addEventListener("canplay", () => {
+        this.modalVideo.removeAttribute("poster");
+      });
 
       // Periodically mirror main player stats into the modal
       const updateInterval = setInterval(() => {
