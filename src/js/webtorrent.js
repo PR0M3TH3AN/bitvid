@@ -266,7 +266,7 @@ export class TorrentClient {
       }
       if (status) {
         status.textContent =
-          "Error playing video. Try disabling Brave Shields.";
+          "Error playing video. Try refreshing the page.";
       }
     });
 
@@ -392,7 +392,7 @@ export class TorrentClient {
       }
       if (status) {
         status.textContent =
-          "Error playing video. Try disabling Brave Shields.";
+          "Error playing video. Try refreshing the page.";
       }
     });
 
