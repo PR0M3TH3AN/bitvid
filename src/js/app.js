@@ -334,6 +334,12 @@ class bitvidApp {
     window.addEventListener("beforeunload", async () => {
       await this.cleanup();
     });
+
+    // Popstate event for back/forward navigation
+    window.addEventListener("popstate", async (event) => {
+      console.log("[popstate] Back or forward button detected. Cleaning up...");
+      await this.hideModal();
+    });
   }
 
   login(pubkey, saveToStorage = true) {
@@ -377,6 +383,12 @@ class bitvidApp {
       await torrentClient.cleanup();
     } catch (error) {
       this.log("Cleanup error:", error);
+    } finally {
+      try {
+        await fetch("./webtorrent/cancel/");
+      } catch (err) {
+        console.error("Failed to cancel old WebTorrent request:", err);
+      }
     }
   }
 
@@ -393,9 +405,18 @@ class bitvidApp {
     await this.cleanup();
     this.playerModal.style.display = "none";
     this.playerModal.classList.add("hidden");
+    // Clear out the old magnet so "same video requested" doesn't block re-loading
+    this.currentMagnetUri = null;
 
-    // Reset back to original path (no query param)
+    // Optionally revert the URL if you want to remove ?v=...
     window.history.replaceState({}, "", window.location.pathname);
+
+    // Cancel any lingering torrent requests again
+    try {
+      await fetch("./webtorrent/cancel/");
+    } catch (err) {
+      console.error("Failed to cancel old WebTorrent request:", err);
+    }
   }
 
   async handleSubmit(e) {
@@ -823,19 +844,23 @@ class bitvidApp {
         return;
       }
 
+      // Decode in case the magnet was URI-encoded
       const decodedMagnet = decodeURIComponent(magnetURI);
 
-      // Prevent re-invoking the same video
+      // Prevent re-invoking the exact same magnet link if it's already in use
+      // (Note: We set this.currentMagnetUri = null in hideModal() and popstate logic,
+      // so that returning here won't block re-loading the same magnet after a back button press.)
       if (this.currentMagnetUri === decodedMagnet) {
         this.log("Same video requested - already playing");
         return;
       }
       this.currentMagnetUri = decodedMagnet;
 
+      // Show the modal
       this.playerModal.style.display = "flex";
       this.playerModal.classList.remove("hidden");
 
-      // Re-fetch the latest from relays
+      // Fetch (or re-fetch) videos from relays
       const videos = await nostrClient.fetchVideos();
       const video = videos.find((v) => v.magnet === decodedMagnet);
       if (!video) {
@@ -843,10 +868,10 @@ class bitvidApp {
         return;
       }
 
-      // store the full video object so we can reference it in share
+      // Keep a reference to the current video
       this.currentVideo = video;
 
-      // Decrypt only once if user owns it
+      // If the user owns a private video, decrypt it just once
       if (
         video.isPrivate &&
         video.pubkey === this.pubkey &&
@@ -859,9 +884,7 @@ class bitvidApp {
 
       const finalMagnet = video.magnet;
 
-      // Generate the nevent from video.id
-      // - We keep the same PATH (window.location.pathname),
-      //   just adding ?v=... so the service worker scope is consistent
+      // Update the URL so the service worker has a consistent scope
       try {
         const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
         const newUrl =
@@ -871,17 +894,14 @@ class bitvidApp {
         console.error("Error pushing new URL state:", err);
       }
 
+      // Fetch creator profile
       let creatorProfile = {
         name: "Unknown",
         picture: `https://robohash.org/${video.pubkey}`,
       };
       try {
         const userEvents = await nostrClient.pool.list(nostrClient.relays, [
-          {
-            kinds: [0],
-            authors: [video.pubkey],
-            limit: 1,
-          },
+          { kinds: [0], authors: [video.pubkey], limit: 1 },
         ]);
         if (userEvents.length > 0 && userEvents[0]?.content) {
           const profile = JSON.parse(userEvents[0].content);
@@ -894,6 +914,7 @@ class bitvidApp {
         this.log("Error fetching creator profile:", error);
       }
 
+      // Derive a short display of the pubkey
       let creatorNpub = "Unknown";
       try {
         creatorNpub = window.NostrTools.nip19.npubEncode(video.pubkey);
@@ -902,6 +923,7 @@ class bitvidApp {
         creatorNpub = video.pubkey;
       }
 
+      // Populate modal fields
       this.videoTitle.textContent = video.title || "Untitled";
       this.videoDescription.textContent =
         video.description || "No description available.";
@@ -915,9 +937,11 @@ class bitvidApp {
       this.creatorAvatar.src = creatorProfile.picture;
       this.creatorAvatar.alt = creatorProfile.name;
 
+      // Start streaming
       this.log("Starting video stream with:", finalMagnet);
       await torrentClient.streamVideo(finalMagnet, this.modalVideo);
 
+      // Periodically mirror main player stats into the modal
       const updateInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
           clearInterval(updateInterval);
@@ -934,8 +958,9 @@ class bitvidApp {
         if (progress) this.modalProgress.style.width = progress.style.width;
         if (peers) this.modalPeers.textContent = peers.textContent;
         if (speed) this.modalSpeed.textContent = speed.textContent;
-        if (downloaded)
+        if (downloaded) {
           this.modalDownloaded.textContent = downloaded.textContent;
+        }
       }, 1000);
     } catch (error) {
       this.log("Error in playVideo:", error);
