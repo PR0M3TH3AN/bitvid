@@ -549,26 +549,23 @@ class bitvidApp {
       }
   
       const videoArray = Array.isArray(videos) ? videos : [videos];
-  
       if (videoArray.length === 0) {
         console.error("VIDEO ARRAY IS EMPTY");
         this.videoList.innerHTML = `<p class="text-center text-gray-500">No videos available.</p>`;
         return;
       }
   
-      // Sort by creation date
+      // Sort newest first
       videoArray.sort((a, b) => b.created_at - a.created_at);
   
+      // Fetch user profiles
       const userProfiles = new Map();
       const uniquePubkeys = [...new Set(videoArray.map((v) => v.pubkey))];
-  
-      // Fetch user profiles
       for (const pubkey of uniquePubkeys) {
         try {
           const userEvents = await nostrClient.pool.list(nostrClient.relays, [
             { kinds: [0], authors: [pubkey], limit: 1 },
           ]);
-  
           if (userEvents[0]?.content) {
             const profile = JSON.parse(userEvents[0].content);
             userProfiles.set(pubkey, {
@@ -590,7 +587,7 @@ class bitvidApp {
         }
       }
   
-      // Build video cards
+      // Build each video card
       const renderedVideos = videoArray
         .map((video, index) => {
           try {
@@ -599,24 +596,24 @@ class bitvidApp {
               return "";
             }
   
-            // Create share URL
+            // Create a share URL
             const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
             const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(nevent)}`;
   
-            // Get profile info
+            // Gather profile info
             const profile = userProfiles.get(video.pubkey) || {
               name: "Unknown",
               picture: `https://robohash.org/${video.pubkey}`,
             };
             const timeAgo = this.formatTimeAgo(video.created_at);
   
-            // Determine edit capability
+            // Check if user can edit
             const canEdit = video.pubkey === this.pubkey;
             const highlightClass = video.isPrivate && canEdit
               ? "border-2 border-yellow-500"
               : "border-none";
   
-            // If user can edit, show gear menu
+            // Gear menu if canEdit
             const gearMenu = canEdit
               ? `
                 <div class="relative inline-block ml-3 overflow-visible">
@@ -654,77 +651,77 @@ class bitvidApp {
               `
               : "";
   
-            // Main video card
+            // Build the card HTML
             return `
               <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
-                  
-                  <a
-                    href="${shareUrl}"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="aspect-w-16 aspect-h-9 bg-gray-800 cursor-pointer relative group block"
-                    style="display: block;"
-                    onclick="if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
-                      event.preventDefault();
-                      app.playVideo('${encodeURIComponent(video.magnet)}');
-                    }"
-                  >
+                
+                <a
+                  href="${shareUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="block cursor-pointer relative group"
+                  onclick="if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
+                    event.preventDefault();
+                    app.playVideo('${encodeURIComponent(video.magnet)}');
+                  }"
+                >
+                  <!-- Force 16:9 ratio with custom CSS -->
+                  <div class="ratio-16-9">
                     <img
                       src="assets/jpg/video-thumbnail-fallback.jpg"
                       data-real-src="${this.escapeHTML(video.thumbnail)}"
                       alt="${this.escapeHTML(video.title)}"
-                      class="w-full h-full object-cover"
                       onload="
                         const realSrc = this.getAttribute('data-real-src');
                         if (realSrc) {
+                          const that = this;
                           const testImg = new Image();
-                          testImg.onload = () => { this.src = realSrc; };
+                          testImg.onload = function() {
+                            that.src = realSrc;
+                          };
                           testImg.src = realSrc;
                         }
                       "
                     />
-                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-300"></div>
-                  </a>
+                  </div>
+                </a>
   
-                  <div class="p-4">
-                    <h3
-                      class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-                      onclick="app.playVideo('${encodeURIComponent(video.magnet)}')"
-                    >
-                      ${this.escapeHTML(video.title)}
-                    </h3>
-  
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center space-x-3">
-                        <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
-                          <img
-                            src="${this.escapeHTML(profile.picture)}"
-                            alt="${profile.name}"
-                            class="w-full h-full object-cover"
-                          >
-                        </div>
-                        <div class="min-w-0">
-                          <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
-                            ${this.escapeHTML(profile.name)}
-                          </p>
-                          <div class="flex items-center text-xs text-gray-500 mt-1">
-                            <span>${timeAgo}</span>
-                          </div>
+                <div class="p-4">
+                  <h3
+                    class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
+                    onclick="app.playVideo('${encodeURIComponent(video.magnet)}')"
+                  >
+                    ${this.escapeHTML(video.title)}
+                  </h3>
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden">
+                        <img
+                          src="${this.escapeHTML(profile.picture)}"
+                          alt="${profile.name}"
+                          class="w-full h-full object-cover"
+                        >
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-gray-400 hover:text-gray-300 cursor-pointer">
+                          ${this.escapeHTML(profile.name)}
+                        </p>
+                        <div class="flex items-center text-xs text-gray-500 mt-1">
+                          <span>${timeAgo}</span>
                         </div>
                       </div>
-                      ${gearMenu}
                     </div>
+                    ${gearMenu}
                   </div>
+                </div>
               </div>
             `;
-          } catch (error) {
-            console.error(`Error processing video ${index}:`, error);
+          } catch (err) {
+            console.error(`Error processing video ${index}:`, err);
             return "";
           }
         })
         .filter((html) => html.length > 0);
-  
-      console.log("Rendered videos:", renderedVideos.length);
   
       if (renderedVideos.length === 0) {
         this.videoList.innerHTML = `<p class="text-center text-gray-500">No valid videos to display.</p>`;
