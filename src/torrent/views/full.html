@@ -82,7 +82,7 @@
       <ul>
         <li>
           <a ng-href="#{{$root.selectedTorrent.infoHash}}" target="_blank"
-            >βTorrent</a
+            >bitvid</a
           >
         </li>
         <li>
@@ -98,9 +98,7 @@
             >.torrent</a
           >
         </li>
-        <li>
-          <strong>Hash: </strong>{{$root.selectedTorrent.infoHash}}
-        </li>
+        <li><strong>Hash: </strong>{{$root.selectedTorrent.infoHash}}</li>
       </ul>
     </div>
 
@@ -150,10 +148,9 @@
 
   <div class="center">
     <strong>
-      Client Stats:
-      ↓ {{$root.client.downloadSpeed | pbytes}}/s ·
-      ↑ {{$root.client.uploadSpeed | pbytes}}/s ·
-      Ratio: {{$root.client.ratio | number:2}}
+      Client Stats: ↓ {{$root.client.downloadSpeed | pbytes}}/s · ↑
+      {{$root.client.uploadSpeed | pbytes}}/s · Ratio: {{$root.client.ratio |
+      number:2}}
     </strong>
   </div>
 </div>
