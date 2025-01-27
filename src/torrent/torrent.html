@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html ng-app="BTorrent" lang="en">
+  <head>
+    <base href="./" />
+    <meta charset="UTF-8" />
+    <title>bitvid | Browser WebTorrent Client</title>
+    <meta
+      name="description"
+      content="bitvid uses βTorrent. βTorrent is a fully-featured Browser WebTorrent Client"
+    />
+    <meta
+      name="keywords"
+      content="bitvid, client, webtorrent, browser, torrent, stream, bittorrent, torrenting, sharing, filesharing"
+    />
+    <meta name="author" content="Diego Rodríguez Baquero - DiegoRBaquero" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Scripts: webtorrent, angular, etc. -->
+    <script src="https://cdn.jsdelivr.net/combine/npm/webtorrent/webtorrent.min.js,npm/moment@2,npm/angular@1.5/angular.min.js,npm/angular-route@1.5/angular-route.min.js,npm/angular-sanitize@1.5/angular-sanitize.min.js,npm/angular-ui-grid@3/ui-grid.min.js,gh/matowens/ng-notify/dist/ng-notify.min.js,npm/ng-file-upload@12.2.13/dist/ng-file-upload.min.js"></script>
+
+    <!-- External styles -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/g/normalize@3,skeleton@2,angular.ng-notify@0.8(ng-notify.min.css)"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/fontawesome/4/css/font-awesome.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/angular.ui-grid/3/ui-grid.min.css"
+    />
+
+    <!-- Local CSS -->
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body ng-controller="BTorrentCtrl" ng-cloak="">
+    <!-- Header -->
+    <header class="header-torrent">
+      <div class="logo-container">
+        <img
+          src="../assets/svg/bitvid-logo-light-mode.svg"
+          alt="bitvid Logo"
+          class="bitvid-logo"
+        />
+      </div>
+      <!-- Only show links if there's no active torrent -->
+      <div class="views" ng-show="$root.client.torrents.length == 0">
+        <a ng-href="#/" class="view-link">Full</a>
+        <a ng-href="#/download" class="view-link">Single Download</a>
+        <a ng-href="#/view" class="view-link">Stream / View</a>
+      </div>
+    </header>
+
+    <!-- Where the 'view.html', 'download.html', or 'full.html' content will appear -->
+    <div id="viewer" ng-style="$root.viewerStyle"></div>
+    <div id="view" ng-view></div>
+
+    <!-- Footer -->
+    <footer class="footer-torrent">
+      <a
+        href="http://bitvid.network/"
+        class="footer-link"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        bitvid.network
+      </a>
+      |
+      <a
+        href="https://bitvid.btc.us"
+        class="footer-link"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        bitvid.btc.us
+      </a>
+      |
+      <a
+        href="https://bitvid.eth.limo"
+        class="footer-link"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        bitvid.eth.limo
+      </a>
+      |
+      <div class="footer-inline-links">
+        <a
+          href="https://github.com/PR0M3TH3AN/bitvid"
+          class="footer-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          GitHub
+        </a>
+        <a
+          href="https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
+          class="footer-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Nostr
+        </a>
+        <a
+          href="https://habla.news/p/nprofile1qyv8wumn8ghj7un9d3shjtnndehhyapwwdhkx6tpdsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7qgdwaehxw309ahx7uewd3hkcqgswaehxw309ahx7um5wgh8w6twv5q3yamnwvaz7tm0venxx6rpd9hzuur4vgqzpzf6x8a95eyp99dmwm4zmkx4a3cxgrnwdtfe3ej504m3aqjk4ugldyww3a"
+          class="footer-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Blog
+        </a>
+        <a
+          href="../getting-started.html"
+          class="footer-link"
+          target="_self"
+          rel="noopener noreferrer"
+        >
+          Getting Started
+        </a>
+        <a
+          href="../about.html"
+          class="footer-link"
+          target="_self"
+          rel="noopener noreferrer"
+        >
+          About
+        </a>
+        <a
+          href="../roadmap.html"
+          class="footer-link"
+          target="_self"
+          rel="noopener noreferrer"
+        >
+          Roadmap
+        </a>
+        <a
+          href="torrent.html"
+          class="footer-link"
+          target="_self"
+          rel="noopener noreferrer"
+        >
+          Torrent
+        </a>
+      </div>
+      <p class="ipns-text">
+        IPNS:
+        <a href="../ipns.html" class="ipns-link">
+          k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1
+        </a>
+      </p>
+    </footer>
+
+    <!-- Processing Spinner -->
+    <div class="spinner" ng-show="client.processing">
+      <i class="fa fa-spinner fa-spin spinner-icon"></i>
+    </div>
+
+    <!-- Our local Angular code -->
+    <script src="app.js"></script>
+  </body>
+</html>
