@@ -1,4 +1,6 @@
+<!-- MAIN CONTENT AREA -->
 <div class="container">
+  <!-- Input row for adding or opening torrents -->
   <div class="row">
     <div class="four columns">
       <input
@@ -11,7 +13,7 @@
     </div>
 
     <div class="two columns download-button">
-      <!-- Download button in red -->
+      <!-- "Download" button for adding a magnet/torrent -->
       <button
         ng-click="addMagnet()"
         ng-disabled="!torrentInput.length || $root.disabled"
@@ -22,7 +24,7 @@
     </div>
 
     <div class="three columns">
-      <!-- Open torrent file button in red -->
+      <!-- "Open torrent file" button -->
       <button
         type="file"
         ngf-select="$root.openTorrentFile($file)"
@@ -34,11 +36,11 @@
     </div>
 
     <div class="three columns u-pull-right">
-      <!-- Seed files button in red -->
+      <!-- "Seed files" button -->
       <button
         class="button button-danger u-pull-right"
         ngf-select="$root.seedFiles($files)"
-        multiple=""
+        multiple="true"
         ng-disabled="$root.disabled"
       >
         <i class="fa fa-upload"></i> Seed files
@@ -46,6 +48,7 @@
     </div>
   </div>
 
+  <!-- ui-grid for active torrents (Name, Progress, Speeds, Peers, Ratio) -->
   <div
     class="row grid"
     ui-grid="gridOptions"
@@ -53,52 +56,65 @@
     ui-grid-selection="ui-grid-selection"
   ></div>
 
+  <!-- Selected torrent details: Pause/Resume, Download, Remove -->
   <div class="row" ng-if="selectedTorrent">
     <div class="six columns" style="overflow: auto">
       <h5>
-        {{$root.selectedTorrent.name}}
-        <!-- Pause/Resume -->
+        {{ selectedTorrent.name }}
+
+        <!-- Pause/Resume buttons -->
         <button
-          ng-if="!$root.selectedTorrent.paused"
-          ng-click="$root.selectedTorrent.pause()"
+          ng-if="!selectedTorrent.paused"
+          ng-click="selectedTorrent.pause()"
         >
           <i class="fa fa-pause"></i> Pause
         </button>
         <button
-          ng-if="$root.selectedTorrent.paused"
-          ng-click="$root.selectedTorrent.resume()"
+          ng-if="selectedTorrent.paused"
+          ng-click="selectedTorrent.resume()"
         >
           <i class="fa fa-play"></i> Resume
         </button>
-        <!-- Remove torrent button in red -->
+
+        <!-- Download ALL files (only if progress == 1) -->
         <button
           class="button button-danger"
-          ng-click="$root.selectedTorrent.destroy($root.destroyedTorrent)"
+          ng-click="$root.downloadAll(selectedTorrent)"
+          ng-disabled="selectedTorrent.progress < 1"
+        >
+          <i class="fa fa-download"></i> Download
+        </button>
+
+        <!-- Remove button -->
+        <button
+          class="button button-danger"
+          ng-click="selectedTorrent.destroy($root.destroyedTorrent)"
         >
           <i class="fa fa-times"></i> Remove
         </button>
       </h5>
+
       <h6>Share</h6>
       <ul>
         <li>
-          <a ng-href="#{{$root.selectedTorrent.infoHash}}" target="_blank"
-            >bitvid</a
+          <!-- Copy magnet button -->
+          <button
+            class="button button-small"
+            ng-click="$root.copyMagnetURI(selectedTorrent)"
           >
+            Copy Magnet
+          </button>
         </li>
         <li>
-          <a ng-href="{{$root.selectedTorrent.magnetURI}}" target="_blank"
-            >Magnet URI</a
+          <!-- Download .torrent file button -->
+          <button
+            class="button button-small"
+            ng-click="$root.saveTorrentFile(selectedTorrent)"
           >
+            Download .torrent
+          </button>
         </li>
-        <li>
-          <a
-            ng-href="{{$root.selectedTorrent.safeTorrentFileURL}}"
-            target="_self"
-            download="{{$root.selectedTorrent.fileName}}"
-            >.torrent</a
-          >
-        </li>
-        <li><strong>Hash: </strong>{{$root.selectedTorrent.infoHash}}</li>
+        <li><strong>Hash:</strong> {{ selectedTorrent.infoHash }}</li>
       </ul>
     </div>
 
@@ -113,24 +129,20 @@
           </tr>
         </thead>
         <tbody>
-          <tr class="files" ng-repeat="file in $root.selectedTorrent.files">
-            <!-- If file not finished, just show the name -->
-            <td ng-hide="file.done">{{file.name}}</td>
-            <!-- If file is done, show link to download -->
+          <tr class="files" ng-repeat="file in selectedTorrent.files">
+            <!-- If file isn't finished, just show the name. -->
+            <td ng-hide="file.done">{{ file.name }}</td>
+            <!-- If file is done, show direct link to download it. -->
             <td ng-show="file.done">
-              <a
-                ng-href="{{file.url}}"
-                download="{{file.name}}"
-                target="_self"
-                ng-show="file.done"
-                >{{file.name}}</a
-              >
+              <a ng-href="{{ file.url }}" download="{{ file.name }}">
+                {{ file.name }}
+              </a>
             </td>
-            <td>{{file.length | pbytes}}</td>
+            <td>{{ file.length | pbytes }}</td>
             <td>
               <select
                 class="no-margin"
-                name="{{file.name}}Priority"
+                name="{{ file.name }}Priority"
                 ng-model="file.priority"
                 ng-init="file.priority = '0'"
                 ng-change="$root.changePriority(file)"
@@ -148,9 +160,13 @@
 
   <div class="center">
     <strong>
-      Client Stats: ↓ {{$root.client.downloadSpeed | pbytes}}/s · ↑
-      {{$root.client.uploadSpeed | pbytes}}/s · Ratio: {{$root.client.ratio |
-      number:2}}
+      Client Stats: ↓ {{ client.downloadSpeed | pbytes }}/s · ↑ {{
+      client.uploadSpeed | pbytes }}/s · Ratio: {{ client.ratio | number:2 }}
     </strong>
   </div>
+</div>
+
+<!-- Processing Spinner -->
+<div class="spinner" ng-show="client.processing">
+  <i class="fa fa-spinner fa-spin spinner-icon"></i>
 </div>

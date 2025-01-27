@@ -1,403 +1,415 @@
-/* global WebTorrent, angular, moment, prompt */
+/* global WebTorrent, angular, moment */
 
-const VERSION = '1.1'
-const trackers = ['wss://tracker.btorrent.xyz', 'wss://tracker.openwebtorrent.com']
-const rtcConfig = {
-  'iceServers': [
-    {
-      'urls': ['stun:stun.l.google.com:19305', 'stun:stun1.l.google.com:19305']
-    }
-  ]
+const VERSION = "1.1";
+
+// A smaller set of WebSocket trackers for reliability.
+const trackers = [
+  "wss://tracker.btorrent.xyz",
+  "wss://tracker.openwebtorrent.com",
+];
+
+// Basic torrent options.
+const torrentOpts = { announce: trackers };
+const trackerOpts = { announce: trackers };
+
+// Simple debug logger.
+function dbg(msg) {
+  console.log("[DEBUG]", msg);
 }
 
-const torrentOpts = {
-  announce: trackers
-}
+// Create a WebTorrent client.
+const client = new WebTorrent({ tracker: trackerOpts });
 
-const trackerOpts = {
-  announce: trackers,
-  rtcConfig: rtcConfig
-}
+// Angular app definition.
+const app = angular.module("BTorrent", [
+  "ngRoute",
+  "ui.grid",
+  "ui.grid.resizeColumns",
+  "ui.grid.selection",
+  "ngFileUpload",
+  "ngNotify",
+]);
 
-const debug = window.localStorage.getItem('debug') !== null
-
-function dbg (message, item, color = '#333333') {
-  if (debug) {
-    if (item && item.name) {
-      console.debug(
-        `%cβTorrent:${item.infoHash ? 'torrent ' : 'torrent ' + item._torrent.name + ':file '}${item.name}${item.infoHash ? ' (' + item.infoHash + ')' : ''} %c${message}`,
-        'color: #33C3F0',
-        `color: ${color}`
-      )
-    } else {
-      console.debug(`%cβTorrent:client %c${message}`, 'color: #33C3F0', `color: ${color}`)
-    }
+/**
+ * Optional: inline CSS for row lines in the grid.
+ */
+const styleEl = document.createElement("style");
+styleEl.textContent = `
+  .ui-grid-row {
+    border-bottom: 1px solid #ccc;
   }
-}
+`;
+document.head.appendChild(styleEl);
 
-function er (err, item) {
-  dbg(err, item, '#FF0000')
-}
-
-dbg(`Starting v${VERSION}. WebTorrent ${WebTorrent.VERSION}`)
-
-// Create WebTorrent client
-const client = new WebTorrent({ tracker: trackerOpts })
-
-// Angular app
-const app = angular.module('BTorrent', [
-  'ngRoute',
-  'ui.grid',
-  'ui.grid.resizeColumns',
-  'ui.grid.selection',
-  'ngFileUpload',
-  'ngNotify'
-], [
-  '$compileProvider',
-  '$locationProvider',
-  '$routeProvider',
+// Configure Angular routes.
+app.config([
+  "$compileProvider",
+  "$locationProvider",
+  "$routeProvider",
   function ($compileProvider, $locationProvider, $routeProvider) {
-    // Allow magnet: and blob: links
-    $compileProvider.aHrefSanitizationWhitelist(/^\s*(https?|magnet|blob|javascript):/)
+    // Allow magnet, blob, etc. in Angular URLs.
+    $compileProvider.aHrefSanitizationWhitelist(
+      /^\s*(https?|magnet|blob|javascript):/
+    );
+    $locationProvider.html5Mode(false).hashPrefix("");
 
-    // Disable HTML5 mode, only use # routing so no rewrites are needed
-    $locationProvider.html5Mode(false).hashPrefix('')
-
-    // Define routes
+    // Define basic routes.
     $routeProvider
-      .when('/view', {
-        templateUrl: 'views/view.html',
-        controller: 'ViewCtrl'
+      .when("/view", {
+        templateUrl: "views/view.html",
+        controller: "ViewCtrl",
       })
-      .when('/download', {
-        templateUrl: 'views/download.html',
-        controller: 'DownloadCtrl'
+      .when("/download", {
+        templateUrl: "views/download.html",
+        controller: "DownloadCtrl",
       })
       .otherwise({
-        templateUrl: 'views/full.html',
-        controller: 'FullCtrl'
-      })
-  }
-])
+        templateUrl: "views/full.html",
+        controller: "FullCtrl",
+      });
+  },
+]);
 
-app.controller('BTorrentCtrl', [
-  '$scope',
-  '$rootScope',
-  '$http',
-  '$log',
-  '$location',
-  'ngNotify',
-  function ($scope, $rootScope, $http, $log, $location, ngNotify) {
-    $rootScope.version = VERSION
-    $rootScope.webtorrentVersion = WebTorrent.VERSION
+// Warn user before they unload if torrents are still active.
+app.run([
+  "$rootScope",
+  function ($rootScope) {
+    window.addEventListener("beforeunload", (e) => {
+      if ($rootScope.client && $rootScope.client.torrents.length > 0) {
+        e.preventDefault();
+        e.returnValue =
+          "Transfers are in progress. Are you sure you want to leave or refresh?";
+        return e.returnValue;
+      }
+    });
+  },
+]);
 
-    ngNotify.config({
-      duration: 5000,
-      html: true
-    })
+// Main BTorrent controller.
+app.controller("BTorrentCtrl", [
+  "$scope",
+  "$rootScope",
+  "$http",
+  "$log",
+  "ngNotify",
+  function ($scope, $rootScope, $http, $log, ngNotify) {
+    dbg("Starting app.js version " + VERSION);
 
     if (!WebTorrent.WEBRTC_SUPPORT) {
-      $rootScope.disabled = true
-      ngNotify.set('Please use a WebRTC compatible browser', {
-        type: 'error',
-        sticky: true,
-        button: false
-      })
+      ngNotify.set("Please use a browser with WebRTC support.", "error");
     }
 
-    $rootScope.client = client
+    $rootScope.client = client;
+    $rootScope.selectedTorrent = null;
+    $rootScope.processing = false;
 
-    function updateAll () {
-      if (!$rootScope.client.processing) {
-        $rootScope.$applyAsync()
-      }
-    }
+    // Global error handler.
+    client.on("error", (err) => {
+      dbg("Torrent client error: " + err);
+      ngNotify.set(err.message || err, "error");
+      $rootScope.processing = false;
+    });
 
-    setInterval(updateAll, 500)
-
-    $rootScope.seedFiles = function (files) {
-      if (files && files.length > 0) {
-        dbg(`Seeding ${files.length} file(s)`)
-        $rootScope.client.processing = true
-        $rootScope.client.seed(files, torrentOpts, $rootScope.onSeed)
-      }
-    }
-
-    $rootScope.openTorrentFile = function (file) {
-      if (file) {
-        dbg(`Adding torrent file ${file.name}`)
-        $rootScope.client.processing = true
-        $rootScope.client.add(file, torrentOpts, $rootScope.onTorrent)
-      }
-    }
-
-    $rootScope.client.on('error', function (err, torrent) {
-      $rootScope.client.processing = false
-      ngNotify.set(err, 'error')
-      er(err, torrent)
-    })
-
-    $rootScope.addMagnet = function (magnet, onTorrent) {
-      if (magnet && magnet.length > 0) {
-        dbg(`Adding magnet/hash ${magnet}`)
-        $rootScope.client.processing = true
-        $rootScope.client.add(magnet, torrentOpts, onTorrent || $rootScope.onTorrent)
-      }
-    }
-
-    $rootScope.destroyedTorrent = function (err) {
-      if (err) throw err
-      dbg('Destroyed torrent', $rootScope.selectedTorrent)
-      $rootScope.selectedTorrent = null
-      $rootScope.client.processing = false
-    }
-
-    $rootScope.changePriority = function (file) {
-      if (file.priority === '-1') {
-        dbg('Deselected', file)
-        file.deselect()
-      } else {
-        dbg(`Selected with priority ${file.priority}`, file)
-        file.select(file.priority)
-      }
-    }
-
+    /**
+     * Called whenever a new torrent is added or we seed files.
+     */
     $rootScope.onTorrent = function (torrent, isSeed) {
-      dbg(torrent.magnetURI)
-      torrent.safeTorrentFileURL = torrent.torrentFileBlobURL
-      torrent.fileName = `${torrent.name}.torrent`
+      dbg("Torrent added: " + torrent.magnetURI);
+      $rootScope.processing = false;
+
       if (!isSeed) {
-        dbg('Received metadata', torrent)
-        ngNotify.set(`Received ${torrent.name} metadata`)
-        if (!$rootScope.selectedTorrent) {
-          $rootScope.selectedTorrent = torrent
-        }
-        $rootScope.client.processing = false
+        ngNotify.set(`Received ${torrent.name} metadata`);
       }
-      torrent.files.forEach(function (file) {
-        file.getBlobURL(function (err, url) {
-          if (err) throw err
-          file.url = url
-          if (isSeed) {
-            dbg('Started seeding', torrent)
-            if (!$rootScope.selectedTorrent) {
-              $rootScope.selectedTorrent = torrent
-            }
-            $rootScope.client.processing = false
-          } else {
-            dbg('Done ', file)
-            ngNotify.set(`<b>${file.name}</b> ready for download`, 'success')
+      if (!$rootScope.selectedTorrent) {
+        $rootScope.selectedTorrent = torrent;
+      }
+
+      // Generate file.blobURL for direct downloading in the file table.
+      torrent.files.forEach((file) => {
+        file.getBlobURL((err, url) => {
+          if (!err) {
+            file.url = url;
           }
-        })
-      })
-      torrent.on('done', function () {
-        if (!isSeed) {
-          dbg('Done', torrent)
-          ngNotify.set(`<b>${torrent.name}</b> has finished downloading`, 'success')
+        });
+      });
+    };
+
+    /**
+     * Add a magnet link or .torrent URL.
+     */
+    $rootScope.addMagnet = function (magnet) {
+      if (!magnet) return;
+      $rootScope.processing = true;
+      dbg("Adding magnet: " + magnet);
+      client.add(magnet, torrentOpts, (torrent) => {
+        $rootScope.onTorrent(torrent, false);
+        $scope.$applyAsync();
+      });
+    };
+
+    /**
+     * Seed local files.
+     */
+    $rootScope.seedFiles = function (files) {
+      if (!files || !files.length) return;
+      $rootScope.processing = true;
+      dbg(`Seeding ${files.length} file(s)`);
+      client.seed(files, torrentOpts, (torrent) => {
+        $rootScope.onTorrent(torrent, true);
+        $scope.$applyAsync();
+      });
+    };
+
+    /**
+     * Remove/destroy a selected torrent.
+     */
+    $rootScope.destroyedTorrent = function (err) {
+      if (err) {
+        console.error("Failed to destroy torrent:", err);
+      }
+      dbg("Destroyed torrent", $rootScope.selectedTorrent);
+      $rootScope.selectedTorrent = null;
+      $rootScope.processing = false;
+    };
+
+    /**
+     * Change the priority of an individual file (high, low, or don't download).
+     */
+    $rootScope.changePriority = function (file) {
+      if (file.priority === "-1") {
+        file.deselect();
+        dbg("Deselected file", file);
+      } else {
+        file.select(file.priority);
+        dbg(`Selected with priority ${file.priority}`, file);
+      }
+    };
+
+    /**
+     * Download all files in the selected torrent if it's 100% done.
+     * Creates a blob for each file, triggers a native download with <a>.
+     */
+    $rootScope.downloadAll = function (torrent) {
+      if (!torrent) return;
+      if (torrent.progress < 1) {
+        alert("Torrent is not finished downloading yet.");
+        return;
+      }
+      torrent.files.forEach((file) => {
+        file.getBlob((err, blob) => {
+          if (err) {
+            console.error("Failed to get blob for file:", file.name, err);
+            return;
+          }
+          // Create an anchor to trigger the download.
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.style.display = "none";
+          a.href = blobUrl;
+          a.download = file.name;
+          // Append, click, remove, revoke.
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+        });
+      });
+    };
+
+    /**
+     * Copy the magnet URI of a torrent to the clipboard.
+     */
+    $rootScope.copyMagnetURI = function (torrent) {
+      if (!torrent || !torrent.magnetURI) return;
+      const magnetURI = torrent.magnetURI;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard
+          .writeText(magnetURI)
+          .then(() =>
+            ngNotify.set("Magnet URI copied to clipboard!", "success")
+          )
+          .catch((err) => {
+            console.error("Clipboard error:", err);
+            ngNotify.set("Failed to copy magnet URI", "error");
+          });
+      } else {
+        try {
+          const textarea = document.createElement("textarea");
+          textarea.value = magnetURI;
+          textarea.style.position = "fixed";
+          textarea.style.left = "-9999px";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textarea);
+          ngNotify.set("Magnet URI copied (fallback)!", "success");
+        } catch (err) {
+          console.error("Clipboard fallback error:", err);
+          ngNotify.set("Failed to copy magnet URI", "error");
         }
-      })
-      torrent.on('wire', function (wire, addr) {
-        dbg(`Wire ${addr}`, torrent)
-      })
-      torrent.on('error', er)
-    }
+      }
+    };
 
-    $rootScope.onSeed = function (torrent) {
-      $rootScope.onTorrent(torrent, true)
-    }
+    /**
+     * Save the .torrent file itself (via torrent.torrentFileBlobURL).
+     */
+    $rootScope.saveTorrentFile = function (torrent) {
+      if (!torrent || !torrent.torrentFileBlobURL) return;
+      const fileName = torrent.fileName || `${torrent.name}.torrent`;
+      // Create a hidden <a> to force download of the .torrent file.
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = torrent.torrentFileBlobURL;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+  },
+]);
 
-    dbg('Angular ready')
-  }
-])
-
-// Full View Controller
-app.controller('FullCtrl', [
-  '$scope',
-  '$rootScope',
-  '$http',
-  '$log',
-  '$location',
-  'ngNotify',
-  function ($scope, $rootScope, $http, $log, $location, ngNotify) {
-    ngNotify.config({
-      duration: 5000,
-      html: true
-    })
+// FullCtrl: sets up the ui-grid and magnet input for /full route.
+app.controller("FullCtrl", [
+  "$scope",
+  "$rootScope",
+  "$location",
+  "ngNotify",
+  function ($scope, $rootScope, $location, ngNotify) {
+    // Handle magnet input
     $scope.addMagnet = function () {
-      $rootScope.addMagnet($scope.torrentInput)
-      $scope.torrentInput = ''
+      $rootScope.addMagnet($scope.torrentInput);
+      $scope.torrentInput = "";
+    };
+
+    // If we have a #magnet in the URL, add it automatically
+    if ($location.hash()) {
+      $rootScope.addMagnet($location.hash());
     }
 
+    // Define columns for ui-grid.
     $scope.columns = [
-      { field: 'name', cellTooltip: true, minWidth: 200 },
-      { field: 'length', name: 'Size', cellFilter: 'pbytes', width: 80 },
-      { field: 'received', displayName: 'Downloaded', cellFilter: 'pbytes', width: 135 },
-      { field: 'downloadSpeed', displayName: '↓ Speed', cellFilter: 'pbytes:1', width: 100 },
-      { field: 'progress', displayName: 'Progress', cellFilter: 'progress', width: 100 },
-      { field: 'timeRemaining', displayName: 'ETA', cellFilter: 'humanTime', width: 140 },
-      { field: 'uploaded', displayName: 'Uploaded', cellFilter: 'pbytes', width: 125 },
-      { field: 'uploadSpeed', displayName: '↑ Speed', cellFilter: 'pbytes:1', width: 100 },
-      { field: 'numPeers', displayName: 'Peers', width: 80 },
-      { field: 'ratio', cellFilter: 'number:2', width: 80 }
-    ]
+      { field: "name", displayName: "Name", minWidth: 200 },
+      {
+        field: "progress",
+        displayName: "Progress",
+        cellFilter: "progress",
+        width: 100,
+      },
+      {
+        field: "downloadSpeed",
+        displayName: "↓ Speed",
+        cellFilter: "pbytes:1",
+        width: 100,
+      },
+      {
+        field: "uploadSpeed",
+        displayName: "↑ Speed",
+        cellFilter: "pbytes:1",
+        width: 100,
+      },
+      { field: "numPeers", displayName: "Peers", width: 80 },
+      {
+        field: "ratio",
+        displayName: "Ratio",
+        cellFilter: "number:2",
+        width: 80,
+      },
+    ];
 
+    // Create gridOptions and update each second.
     $scope.gridOptions = {
       columnDefs: $scope.columns,
-      data: $rootScope.client.torrents,
       enableColumnResizing: true,
       enableColumnMenus: false,
       enableRowSelection: true,
       enableRowHeaderSelection: false,
-      multiSelect: false
-    }
+      multiSelect: false,
+      data: [],
+    };
 
+    setInterval(() => {
+      $scope.gridOptions.data =
+        ($rootScope.client && $rootScope.client.torrents) || [];
+      $scope.$applyAsync();
+    }, 1000);
+
+    // On row selection, set the selectedTorrent
     $scope.gridOptions.onRegisterApi = function (gridApi) {
-      $scope.gridApi = gridApi
+      $scope.gridApi = gridApi;
       gridApi.selection.on.rowSelectionChanged($scope, function (row) {
-        if (!row.isSelected && $rootScope.selectedTorrent && $rootScope.selectedTorrent.infoHash === row.entity.infoHash) {
-          $rootScope.selectedTorrent = null
+        if (row.isSelected) {
+          $rootScope.selectedTorrent = row.entity;
         } else {
-          $rootScope.selectedTorrent = row.entity
+          $rootScope.selectedTorrent = null;
         }
-      })
-    }
+      });
+    };
+  },
+]);
 
-    // If there's a magnet in the URL (ex: torrent.html#/magnet-link)
-    if ($location.hash() !== '') {
-      $rootScope.client.processing = true
-      setTimeout(function () {
-        dbg(`Adding ${$location.hash()}`)
-        $rootScope.addMagnet($location.hash())
-      }, 0)
-    }
-  }
-])
-
-// Download View Controller
-app.controller('DownloadCtrl', [
-  '$scope',
-  '$rootScope',
-  '$http',
-  '$log',
-  '$location',
-  'ngNotify',
-  function ($scope, $rootScope, $http, $log, $location, ngNotify) {
-    ngNotify.config({
-      duration: 5000,
-      html: true
-    })
-
+// DownloadCtrl / ViewCtrl are minimal in this example.
+app.controller("DownloadCtrl", [
+  "$scope",
+  "$rootScope",
+  "$location",
+  function ($scope, $rootScope, $location) {
     $scope.addMagnet = function () {
-      $rootScope.addMagnet($scope.torrentInput)
-      $scope.torrentInput = ''
+      $rootScope.addMagnet($scope.torrentInput);
+      $scope.torrentInput = "";
+    };
+    if ($location.hash()) {
+      $rootScope.addMagnet($location.hash());
     }
+  },
+]);
 
-    if ($location.hash() !== '') {
-      $rootScope.client.processing = true
-      setTimeout(function () {
-        dbg(`Adding ${$location.hash()}`)
-        $rootScope.addMagnet($location.hash())
-      }, 0)
-    }
-  }
-])
-
-// Stream/View Controller
-app.controller('ViewCtrl', [
-  '$scope',
-  '$rootScope',
-  '$http',
-  '$log',
-  '$location',
-  'ngNotify',
-  function ($scope, $rootScope, $http, $log, $location, ngNotify) {
-    ngNotify.config({
-      duration: 2000,
-      html: true
-    })
-
-    function onTorrent (torrent) {
-      // Adjust viewer styling
-      $rootScope.viewerStyle = {
-        'margin-top': '-20px',
-        'text-align': 'center'
-      }
-      dbg(torrent.magnetURI)
-      torrent.safeTorrentFileURL = torrent.torrentFileBlobURL
-      torrent.fileName = `${torrent.name}.torrent`
-      $rootScope.selectedTorrent = torrent
-      $rootScope.client.processing = false
-      dbg('Received metadata', torrent)
-      ngNotify.set(`Received ${torrent.name} metadata`)
-
-      // Append each file to #viewer
-      torrent.files.forEach(function (file) {
-        file.appendTo('#viewer')
-        file.getBlobURL(function (err, url) {
-          if (err) throw err
-          file.url = url
-          dbg('Done ', file)
-        })
-      })
-
-      torrent.on('done', function () {
-        dbg('Done', torrent)
-      })
-      torrent.on('wire', function (wire, addr) {
-        dbg(`Wire ${addr}`, torrent)
-      })
-      torrent.on('error', er)
-    }
-
+app.controller("ViewCtrl", [
+  "$scope",
+  "$rootScope",
+  "$location",
+  function ($scope, $rootScope, $location) {
     $scope.addMagnet = function () {
-      $rootScope.addMagnet($scope.torrentInput, onTorrent)
-      $scope.torrentInput = ''
+      $rootScope.addMagnet($scope.torrentInput);
+      $scope.torrentInput = "";
+    };
+    if ($location.hash()) {
+      $rootScope.addMagnet($location.hash());
     }
+  },
+]);
 
-    // If there's a magnet in the URL
-    if ($location.hash() !== '') {
-      $rootScope.client.processing = true
-      setTimeout(function () {
-        dbg(`Adding ${$location.hash()}`)
-        $rootScope.addMagnet($location.hash(), onTorrent)
-      }, 0)
-    }
-  }
-])
+// Angular filters for size, progress, etc.
+app.filter("pbytes", function () {
+  return function (num, speed) {
+    if (isNaN(num)) return "";
+    if (num < 1) return speed ? "" : "0 B";
+    const units = ["B", "kB", "MB", "GB", "TB"];
+    const exponent = Math.min(Math.floor(Math.log(num) / Math.log(1000)), 4);
+    const val = (num / Math.pow(1000, exponent)).toFixed(1) * 1;
+    return `${val} ${units[exponent]}${speed ? "/s" : ""}`;
+  };
+});
 
-// Custom Angular filters
-app.filter('html', [
-  '$sce',
+app.filter("progress", function () {
+  return function (val) {
+    if (typeof val !== "number") return "";
+    return (val * 100).toFixed(1) + "%";
+  };
+});
+
+app.filter("html", [
+  "$sce",
   function ($sce) {
     return function (input) {
-      return $sce.trustAsHtml(input)
-    }
-  }
-])
+      return $sce.trustAsHtml(input);
+    };
+  },
+]);
 
-app.filter('pbytes', function () {
-  return function (num, speed) {
-    if (isNaN(num)) return ''
-    if (num < 1) return speed ? '' : '0 B'
-
-    const units = ['B', 'kB', 'MB', 'GB', 'TB']
-    const exponent = Math.min(Math.floor(Math.log(num) / 6.907755278982137), 8)
-    const val = (num / Math.pow(1000, exponent)).toFixed(1) * 1
-    const unit = units[exponent]
-    return `${val} ${unit}${speed ? '/s' : ''}`
-  }
-})
-
-app.filter('humanTime', function () {
+app.filter("humanTime", function () {
   return function (millis) {
-    if (millis < 1000) return ''
-    const remaining = moment.duration(millis).humanize()
-    return remaining.charAt(0).toUpperCase() + remaining.slice(1)
-  }
-})
-
-app.filter('progress', function () {
-  return function (num) {
-    return `${(100 * num).toFixed(1)}%`
-  }
-})
+    if (millis < 1000) return "";
+    const duration = moment.duration(millis).humanize();
+    return duration.charAt(0).toUpperCase() + duration.slice(1);
+  };
+});

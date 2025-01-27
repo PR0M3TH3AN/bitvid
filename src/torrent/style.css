@@ -40,10 +40,11 @@ body {
 }
 
 .bitvid-logo {
-  height: 4rem;
+  height: 6rem;
   width: auto;
   /* Adjust spacing around the logo if needed */
   margin-bottom: 0.5rem;
+  margin-top: 4rem;
 }
 
 /* Footer styling */
