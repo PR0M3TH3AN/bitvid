@@ -1,8 +1,8 @@
 :root {
   --color-bg: #0f172a;
   --color-card: #1e293b;
-  --color-primary: #8b5cf6;
-  --color-secondary: #f43f5e;
+  --color-primary: #f43f5e;
+  --color-secondary: #ff93a5;
   --color-text: #f8fafc;
   --color-muted: #94a3b8;
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -490,4 +490,3 @@ footer a:hover {
   height: 100%;
   object-fit: cover;
 }
-
