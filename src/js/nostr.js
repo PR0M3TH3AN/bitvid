@@ -46,6 +46,9 @@ class NostrClient {
     this.pool = null;
     this.pubkey = null;
     this.relays = RELAY_URLS;
+
+    // We keep a Map of subscribed videos for quick lookups by event.id
+    this.subscribedVideos = new Map();
   }
 
   /**
@@ -207,7 +210,7 @@ class NostrClient {
     const event = {
       kind: 30078,
       pubkey,
-      created_at: Math.floor(Date.now() / 1000),
+      created_at: Math.floor(Date.now() / 100),
       tags: [
         ["t", "video"],
         ["d", uniqueD],
@@ -254,7 +257,6 @@ class NostrClient {
    * Edits an existing video event by reusing the same "d" tag.
    * Allows toggling isPrivate on/off and re-encrypting or decrypting the magnet.
    */
-  // Minimal fix: ensures we only ever encrypt once per edit operation
   async editVideo(originalEvent, updatedVideoData, pubkey) {
     if (!pubkey) {
       throw new Error("User is not logged in.");
@@ -382,7 +384,7 @@ class NostrClient {
 
   /**
    * Soft-delete or hide an existing video by marking content as "deleted: true"
-   * and republishing with same (kind=30078, pubkey, d) address.
+   * and republishing with the same (kind=30078, pubkey, d) address.
    */
   async deleteVideo(originalEvent, pubkey) {
     if (!pubkey) {
@@ -407,6 +409,7 @@ class NostrClient {
     const oldContent = JSON.parse(originalEvent.content || "{}");
     const oldVersion = oldContent.version ?? 1;
 
+    // Mark it "deleted" and clear out magnet, thumbnail, etc.
     const contentObject = {
       version: oldVersion,
       deleted: true,
@@ -418,6 +421,7 @@ class NostrClient {
       isPrivate: oldContent.isPrivate || false,
     };
 
+    // Reuse the same d-tag for an addressable edit
     const event = {
       kind: 30078,
       pubkey,
@@ -451,10 +455,7 @@ class NostrClient {
             }
           } catch (err) {
             if (isDevMode) {
-              console.error(
-                `Failed to publish deleted event to ${url}:`,
-                err.message
-              );
+              console.error(`Failed to publish deleted event to ${url}:`, err);
             }
           }
         })
@@ -463,117 +464,141 @@ class NostrClient {
       return signedEvent;
     } catch (error) {
       if (isDevMode) {
-        console.error("Failed to sign deleted event:", error.message);
+        console.error("Failed to sign deleted event:", error);
       }
       throw new Error("Failed to sign deleted event.");
     }
   }
 
   /**
-   * Fetches videos from all configured relays.
+   * Subscribes to video events from all configured relays, storing them in a Map.
+   *
+   * @param {Function} onVideo - Callback fired for each new/updated video
+   */
+  subscribeVideos(onVideo) {
+    const filter = {
+      kinds: [30078],
+      "#t": ["video"],
+      limit: 500, // Adjust as needed
+      since: 0,
+    };
+
+    if (isDevMode) {
+      console.log("[subscribeVideos] Subscribing with filter:", filter);
+    }
+
+    // Create subscription across all relays
+    const sub = this.pool.sub(this.relays, [filter]);
+
+    sub.on("event", (event) => {
+      try {
+        const content = JSON.parse(event.content);
+
+        // If marked deleted
+        if (content.deleted === true) {
+          // Remove it from our Map if we had it
+          if (this.subscribedVideos.has(event.id)) {
+            this.subscribedVideos.delete(event.id);
+            // Optionally notify the callback so UI can remove it
+            // onVideo(null, { deletedId: event.id });
+          }
+          return;
+        }
+
+        // Construct a video object
+        const video = {
+          id: event.id,
+          version: content.version ?? 1,
+          isPrivate: content.isPrivate ?? false,
+          title: content.title || "",
+          magnet: content.magnet || "",
+          thumbnail: content.thumbnail || "",
+          description: content.description || "",
+          mode: content.mode || "live",
+          pubkey: event.pubkey,
+          created_at: event.created_at,
+          tags: event.tags,
+        };
+
+        // Check if we already have it in our Map
+        if (!this.subscribedVideos.has(event.id)) {
+          // It's new, so store it
+          this.subscribedVideos.set(event.id, video);
+          // Then notify the callback that a new video arrived
+          onVideo(video);
+        } else {
+          // Optional: if you want to detect edits, compare the new vs. old and update
+          // this.subscribedVideos.set(event.id, video);
+          // onVideo(video) to re-render, etc.
+        }
+      } catch (err) {
+        if (isDevMode) {
+          console.error("[subscribeVideos] Error parsing event:", err);
+        }
+      }
+    });
+
+    sub.on("eose", () => {
+      if (isDevMode) {
+        console.log("[subscribeVideos] Reached EOSE for all relays");
+      }
+      // Optionally: onVideo(null, { eose: true }) to signal initial load done
+    });
+
+    return sub; // so you can unsub later if needed
+  }
+
+  /**
+   * A one-time, bulk fetch of videos from all configured relays.
+   * (Limit has been reduced to 300 for better performance.)
    */
   async fetchVideos() {
     const filter = {
       kinds: [30078],
       "#t": ["video"],
-      limit: 1000,
+      limit: 300, // Reduced from 1000 for quicker fetches
       since: 0,
     };
-
     const videoEvents = new Map();
 
-    if (isDevMode) {
-      console.log("[fetchVideos] Starting fetch from all relays...");
-      console.log("[fetchVideos] Filter:", filter);
-    }
-
     try {
+      // Query each relay in parallel
       await Promise.all(
         this.relays.map(async (url) => {
-          if (isDevMode) console.log(`[fetchVideos] Querying relay: ${url}`);
-
-          try {
-            const events = await this.pool.list([url], [filter]);
-
-            if (isDevMode) {
-              console.log(`Events from ${url}:`, events.length);
-              if (events.length > 0) {
-                events.forEach((evt, idx) => {
-                  console.log(
-                    `[fetchVideos] [${url}] Event[${idx}] ID: ${evt.id} | pubkey: ${evt.pubkey} | created_at: ${evt.created_at}`
-                  );
+          const events = await this.pool.list([url], [filter]);
+          for (const evt of events) {
+            try {
+              const content = JSON.parse(evt.content);
+              if (content.deleted) {
+                videoEvents.delete(evt.id);
+              } else {
+                videoEvents.set(evt.id, {
+                  id: evt.id,
+                  pubkey: evt.pubkey,
+                  created_at: evt.created_at,
+                  title: content.title || "",
+                  magnet: content.magnet || "",
+                  thumbnail: content.thumbnail || "",
+                  description: content.description || "",
+                  mode: content.mode || "live",
+                  isPrivate: content.isPrivate || false,
+                  tags: evt.tags,
                 });
               }
-            }
-
-            events.forEach((event) => {
-              try {
-                const content = JSON.parse(event.content);
-
-                // If deleted == true, it overrides older notes
-                if (content.deleted === true) {
-                  videoEvents.delete(event.id);
-                  return;
-                }
-
-                // If we haven't seen this event.id before, store it
-                if (!videoEvents.has(event.id)) {
-                  videoEvents.set(event.id, {
-                    id: event.id,
-                    version: content.version ?? 1,
-                    isPrivate: content.isPrivate ?? false,
-                    title: content.title || "",
-                    magnet: content.magnet || "",
-                    thumbnail: content.thumbnail || "",
-                    description: content.description || "",
-                    mode: content.mode || "live",
-                    pubkey: event.pubkey,
-                    created_at: event.created_at,
-                    tags: event.tags,
-                  });
-                }
-              } catch (parseError) {
-                if (isDevMode) {
-                  console.error(
-                    "[fetchVideos] Event parsing error:",
-                    parseError
-                  );
-                }
-              }
-            });
-          } catch (relayError) {
-            if (isDevMode) {
-              console.error(
-                `[fetchVideos] Error fetching from ${url}:`,
-                relayError
-              );
+            } catch (e) {
+              console.error("Error parsing event content:", e);
             }
           }
         })
       );
 
-      const videos = Array.from(videoEvents.values()).sort(
+      // Turn the Map into a sorted array
+      const allVideos = Array.from(videoEvents.values()).sort(
         (a, b) => b.created_at - a.created_at
       );
-
-      // Apply access control filtering
-      const filteredVideos = accessControl.filterVideos(videos);
-
-      if (isDevMode) {
-        console.log("[fetchVideos] All relays have responded.");
-        console.log(
-          `[fetchVideos] Total unique video events: ${videoEvents.size}`
-        );
-        console.log(
-          `[fetchVideos] Videos after filtering: ${filteredVideos.length}`
-        );
-      }
-
-      return filteredVideos;
-    } catch (error) {
-      if (isDevMode) {
-        console.error("FETCH VIDEOS ERROR:", error);
-      }
+      return allVideos;
+    } catch (err) {
+      console.error("fetchVideos error:", err);
       return [];
     }
   }
