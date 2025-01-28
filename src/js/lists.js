@@ -9,6 +9,7 @@ const npubs = [
   "npub1qxduthz4p8v5zsux524df569pt7lj0d36dyqadnta2val64dtnhsr50h64", // NosToons
   "npub19ma2w9dmk3kat0nt0k5dwuqzvmg3va9ezwup0zkakhpwv0vcwvcsg8axkl", // vinney
   "npub1rcr8h76csgzhdhea4a7tq5w5gydcpg9clgf0cffu6z45rnc6yp5sj7cfuz", // djmeistro
+  "npub1m5s9w4t03znyetxswhgq0ud7fq8ef8y3l4kscn2e8wkvmv42hh3qujgjl3", // mister_monster
 ];
 
 console.log("DEBUG: lists.js loaded, npubs:", npubs);
