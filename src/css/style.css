@@ -229,7 +229,11 @@ textarea:focus {
   ring: 2px var(--color-primary);
 }
 
-/* Global button styles -- only apply to normal (non-icon) buttons */
+/* -------------------------------------------
+   COMMENTED OUT the 'button:not(.icon-button)' 
+   global rule that overrides your circles
+--------------------------------------------
+
 button:not(.icon-button) {
   padding: 0.75rem 1.5rem;
   background-color: var(--color-primary);
@@ -248,6 +252,7 @@ button:not(.icon-button):focus {
   outline: none;
   ring: 2px var(--color-primary);
 }
+*/
 
 /* Utility Classes */
 .line-clamp-2 {
@@ -425,18 +430,13 @@ footer a:hover {
   backdrop-filter: blur(4px);
 }
 
-/* --- New Classes for Icon Buttons & Images --- */
-
-/* Circular icon buttons */
+/* Circular Icon Buttons */
 .icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
-  /* Fixed width/height for a perfect circle */
   width: 2.5rem; /* 40px */
   height: 2.5rem; /* 40px */
-
   line-height: 0;
   background-color: #3f3f46; /* Gray 700 */
   color: #fff;
@@ -446,40 +446,28 @@ footer a:hover {
   transition: background-color 0.2s, box-shadow 0.2s;
 }
 
-/* Hover state: slightly lighter gray */
 .icon-button:hover {
   background-color: #52525b; /* Gray 600 */
 }
 
-/* Focus/active states: red ring */
 .icon-button:focus,
 .icon-button:active {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.6); /* Red ring #dc2626 */
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.6);
 }
 
-/* Icon images (force white if originally black) */
 .icon-image {
   width: 1.25rem; /* 20px */
   height: 1.25rem; /* 20px */
-
-  /*
-     If your icon is black and you want to invert it to white, use this:
-     filter: brightness(0) invert(1);
-
-     If your icon is already white, keep it commented out or remove it.
-  */
-
   pointer-events: none;
 }
 
-/* Create a container that preserves a 16:9 aspect ratio via padding-top. */
-/* Force 16:9 ratio using padding-top technique */
+/* Ratio 16:9 Container */
 .ratio-16-9 {
   position: relative;
   width: 100%;
-  padding-top: 56.25%; /* 16:9 => 9/16 = 0.5625 => 56.25% */
-  background-color: #1e293b; /* fallback background if image doesn't load */
+  padding-top: 56.25%;
+  background-color: #1e293b;
 }
 
 .ratio-16-9 > img {

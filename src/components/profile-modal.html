@@ -1,0 +1,64 @@
+<!-- components/profile-modal.html -->
+<div id="profileModal" class="fixed inset-0 bg-black/90 z-50 hidden">
+  <div
+    class="modal-container h-full w-full flex items-start justify-center overflow-y-auto"
+  >
+    <div
+      class="modal-content bg-gray-900 w-full max-w-sm my-8 rounded-lg overflow-hidden relative flex flex-col"
+    >
+      <!-- Modal Header -->
+      <div
+        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
+      >
+        <h2 class="text-xl font-bold text-white">Profile</h2>
+        <button
+          id="closeProfileModal"
+          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-6 h-6 text-gray-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 flex-1 text-gray-200 space-y-4">
+        <div class="flex items-center space-x-4">
+          <img
+            id="profileModalAvatar"
+            src="assets/jpg/default-profile.jpg"
+            alt="Profile"
+            class="w-16 h-16 object-cover rounded-full"
+          />
+          <p id="profileModalName" class="text-lg font-semibold truncate">
+            Loading...
+          </p>
+        </div>
+        <p class="text-sm text-gray-400">
+          Some future profile details or settings could go here.
+        </p>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-4 border-t border-gray-700 flex items-center justify-end">
+        <button
+          id="profileLogoutBtn"
+          class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+        >
+          Logout
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,16 +1,14 @@
-// <!-- keep this <ai_context> section if it already exists at the top of your file -->
-
 // js/webtorrent.js
 
 import WebTorrent from "./webtorrent.min.js";
 
 export class TorrentClient {
   constructor() {
-    // Create WebTorrent client
     this.client = new WebTorrent();
     this.currentTorrent = null;
     this.TIMEOUT_DURATION = 60000; // 60 seconds
-    this.statsInterval = null;
+    // We remove the “statsInterval” since we’re not using it here anymore
+    // this.statsInterval = null;
   }
 
   log(msg) {
@@ -62,9 +60,6 @@ export class TorrentClient {
     });
   }
 
-  /**
-   * Registers the service worker, waiting until it's fully active before proceeding.
-   */
   async setupServiceWorker() {
     try {
       const isBraveBrowser = await this.isBrave();
@@ -72,21 +67,18 @@ export class TorrentClient {
       if (!window.isSecureContext) {
         throw new Error("HTTPS or localhost required");
       }
-
       if (!("serviceWorker" in navigator) || !navigator.serviceWorker) {
         throw new Error("Service Worker not supported or disabled");
       }
 
-      // If Brave, we optionally clear all service workers so we can re-register cleanly
+      // Optional Brave config
       if (isBraveBrowser) {
         this.log("Checking Brave configuration...");
-
         if (!navigator.serviceWorker) {
           throw new Error(
             "Please enable Service Workers in Brave Shield settings"
           );
         }
-
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           throw new Error("Please enable WebRTC in Brave Shield settings");
         }
@@ -134,11 +126,9 @@ export class TorrentClient {
         });
       }
 
-      // Wait for service worker to become active
       await this.waitForServiceWorkerActivation(registration);
       this.log("Service worker activated");
 
-      // Make sure it’s truly active
       const readyRegistration = await Promise.race([
         navigator.serviceWorker.ready,
         new Promise((_, reject) =>
@@ -170,7 +160,8 @@ export class TorrentClient {
   }
 
   /**
-   * Streams the given magnet URI to the specified <video> element.
+   * Streams the magnet to the <video> element.
+   * No stats intervals here—just returns the torrent object.
    */
   async streamVideo(magnetURI, videoElement) {
     try {
@@ -180,314 +171,127 @@ export class TorrentClient {
         throw new Error("Service worker setup failed");
       }
 
-      // 2) Create WebTorrent server AFTER service worker is ready
+      // 2) Create WebTorrent server
       this.client.createServer({ controller: registration });
       this.log("WebTorrent server created");
 
       const isFirefoxBrowser = this.isFirefox();
 
-      if (isFirefoxBrowser) {
-        // ----------------------
-        // FIREFOX CODE PATH
-        // (sequential, concurrency limit, smaller chunk)
-        // ----------------------
-        return new Promise((resolve, reject) => {
+      return new Promise((resolve, reject) => {
+        if (isFirefoxBrowser) {
           this.log("Starting torrent download (Firefox path)");
           this.client.add(
             magnetURI,
-            {
-              strategy: "sequential",
-              maxWebConns: 4, // reduce concurrency
-            },
+            { strategy: "sequential", maxWebConns: 4 },
             (torrent) => {
+              this.log("Torrent added (Firefox path):", torrent.name);
               this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
             }
           );
-        });
-      } else {
-        // ----------------------
-        // CHROME / OTHER BROWSERS CODE PATH
-        // (your original "faster" approach)
-        // ----------------------
-        return new Promise((resolve, reject) => {
+        } else {
           this.log("Starting torrent download (Chrome path)");
           this.client.add(magnetURI, (torrent) => {
+            this.log("Torrent added (Chrome path):", torrent.name);
             this.handleChromeTorrent(torrent, videoElement, resolve, reject);
           });
-        });
-      }
+        }
+      });
     } catch (error) {
       this.log("Failed to setup video streaming:", error);
       throw error;
     }
   }
 
-  /**
-   * The "faster" original approach for Chrome/other browsers.
-   */
+  // Minimal handleChromeTorrent — no internal setInterval
   handleChromeTorrent(torrent, videoElement, resolve, reject) {
-    this.log("Torrent added (Chrome path): " + torrent.name);
-
-    const status = document.getElementById("status");
-    const progress = document.getElementById("progress");
-    const peers = document.getElementById("peers");
-    const speed = document.getElementById("speed");
-    const downloaded = document.getElementById("downloaded");
-
-    if (status) {
-      status.textContent = `Loading ${torrent.name}...`;
-    }
-
-    // Find playable file (same as old code)
-    const file = torrent.files.find(
-      (f) =>
-        f.name.endsWith(".mp4") ||
-        f.name.endsWith(".webm") ||
-        f.name.endsWith(".mkv")
+    const file = torrent.files.find((f) =>
+      /\.(mp4|webm|mkv)$/.test(f.name.toLowerCase())
     );
     if (!file) {
-      const error = new Error("No compatible video file found in torrent");
-      this.log(error.message);
-      if (status) status.textContent = "Error: No video file found";
-      return reject(error);
+      return reject(new Error("No compatible video file found in torrent"));
     }
 
-    // Mute for autoplay
+    // Mute & crossOrigin
     videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
-    // Error handling same as old code
+    // Catch video errors
     videoElement.addEventListener("error", (e) => {
-      const errObj = e.target.error;
-      this.log("Video error:", errObj);
-      if (errObj) {
-        this.log("Error code:", errObj.code);
-        this.log("Error message:", errObj.message);
-      }
-      if (status) {
-        status.textContent =
-          "Error playing video. Try refreshing the page.";
-      }
+      this.log("Video error:", e.target.error);
     });
 
     // Attempt autoplay
     videoElement.addEventListener("canplay", () => {
-      const playPromise = videoElement.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => this.log("Autoplay started (Chrome path)"))
-          .catch((err) => {
-            this.log("Autoplay failed:", err);
-            if (status) status.textContent = "Click to play video";
-            videoElement.addEventListener(
-              "click",
-              () => {
-                videoElement
-                  .play()
-                  .catch((err2) => this.log("Play failed:", err2));
-              },
-              { once: true }
-            );
-          });
-      }
+      videoElement.play().catch((err) => {
+        this.log("Autoplay failed:", err);
+      });
     });
 
-    videoElement.addEventListener("loadedmetadata", () => {
-      this.log("Video metadata loaded (Chrome path)");
-      if (videoElement.duration === Infinity || isNaN(videoElement.duration)) {
-        this.log("Invalid duration, attempting to fix...");
-        videoElement.currentTime = 1e101;
-        videoElement.currentTime = 0;
-      }
-    });
-
-    // Now stream to the video element
+    // Actually stream
     try {
-      file.streamTo(videoElement); // no chunk constraints
-      this.log("Streaming started (Chrome path)");
-
-      // Update stats
-      this.statsInterval = setInterval(() => {
-        if (!document.body.contains(videoElement)) {
-          clearInterval(this.statsInterval);
-          return;
-        }
-
-        const percentage = torrent.progress * 100;
-        if (progress) progress.style.width = `${percentage}%`;
-        if (peers) peers.textContent = `Peers: ${torrent.numPeers}`;
-        if (speed) {
-          speed.textContent = `${this.formatBytes(torrent.downloadSpeed)}/s`;
-        }
-        if (downloaded) {
-          downloaded.textContent = `${this.formatBytes(
-            torrent.downloaded
-          )} / ${this.formatBytes(torrent.length)}`;
-        }
-
-        if (status) {
-          status.textContent =
-            torrent.progress === 1
-              ? `${torrent.name}`
-              : `Loading ${torrent.name}...`;
-        }
-      }, 1000);
-
+      file.streamTo(videoElement);
       this.currentTorrent = torrent;
-      resolve();
+      resolve(torrent);
     } catch (err) {
       this.log("Streaming error (Chrome path):", err);
-      if (status) status.textContent = "Error starting video stream";
       reject(err);
     }
 
-    // Torrent error event
+    // Also handle torrent error events
     torrent.on("error", (err) => {
       this.log("Torrent error (Chrome path):", err);
-      if (status) status.textContent = "Error loading video";
-      clearInterval(this.statsInterval);
       reject(err);
     });
   }
 
-  /**
-   * The new approach for Firefox: sequential, concurrency limit, smaller chunk size.
-   */
+  // Minimal handleFirefoxTorrent
   handleFirefoxTorrent(torrent, videoElement, resolve, reject) {
-    this.log("Torrent added (Firefox path): " + torrent.name);
-
-    const status = document.getElementById("status");
-    const progress = document.getElementById("progress");
-    const peers = document.getElementById("peers");
-    const speed = document.getElementById("speed");
-    const downloaded = document.getElementById("downloaded");
-
-    if (status) {
-      status.textContent = `Loading ${torrent.name}...`;
-    }
-
-    // Find playable file
-    const file = torrent.files.find(
-      (f) =>
-        f.name.endsWith(".mp4") ||
-        f.name.endsWith(".webm") ||
-        f.name.endsWith(".mkv")
+    const file = torrent.files.find((f) =>
+      /\.(mp4|webm|mkv)$/.test(f.name.toLowerCase())
     );
     if (!file) {
-      const error = new Error("No compatible video file found in torrent");
-      this.log(error.message);
-      if (status) status.textContent = "Error: No video file found";
-      return reject(error);
+      return reject(new Error("No compatible video file found in torrent"));
     }
 
     videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
     videoElement.addEventListener("error", (e) => {
-      const errObj = e.target.error;
-      this.log("Video error (Firefox path):", errObj);
-      if (errObj) {
-        this.log("Error code:", errObj.code);
-        this.log("Error message:", errObj.message);
-      }
-      if (status) {
-        status.textContent =
-          "Error playing video. Try refreshing the page.";
-      }
+      this.log("Video error (Firefox path):", e.target.error);
     });
 
     videoElement.addEventListener("canplay", () => {
-      const playPromise = videoElement.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => this.log("Autoplay started (Firefox path)"))
-          .catch((err) => {
-            this.log("Autoplay failed:", err);
-            if (status) status.textContent = "Click to play video";
-            videoElement.addEventListener(
-              "click",
-              () => {
-                videoElement
-                  .play()
-                  .catch((err2) => this.log("Play failed:", err2));
-              },
-              { once: true }
-            );
-          });
-      }
+      videoElement.play().catch((err) => {
+        this.log("Autoplay failed:", err);
+      });
     });
 
-    videoElement.addEventListener("loadedmetadata", () => {
-      this.log("Video metadata loaded (Firefox path)");
-      if (videoElement.duration === Infinity || isNaN(videoElement.duration)) {
-        this.log("Invalid duration, attempting to fix...");
-        videoElement.currentTime = 1e101;
-        videoElement.currentTime = 0;
-      }
-    });
-
-    // We set a smaller chunk size for Firefox
     try {
-      file.streamTo(videoElement, { highWaterMark: 32 * 1024 }); // 32 KB chunk
-      this.log("Streaming started (Firefox path)");
-
-      this.statsInterval = setInterval(() => {
-        if (!document.body.contains(videoElement)) {
-          clearInterval(this.statsInterval);
-          return;
-        }
-
-        const percentage = torrent.progress * 100;
-        if (progress) progress.style.width = `${percentage}%`;
-        if (peers) peers.textContent = `Peers: ${torrent.numPeers}`;
-        if (speed) {
-          speed.textContent = `${this.formatBytes(torrent.downloadSpeed)}/s`;
-        }
-        if (downloaded) {
-          downloaded.textContent = `${this.formatBytes(
-            torrent.downloaded
-          )} / ${this.formatBytes(torrent.length)}`;
-        }
-
-        if (status) {
-          status.textContent =
-            torrent.progress === 1
-              ? `${torrent.name}`
-              : `Loading ${torrent.name}...`;
-        }
-      }, 1000);
-
+      file.streamTo(videoElement, { highWaterMark: 32 * 1024 });
       this.currentTorrent = torrent;
-      resolve();
+      resolve(torrent);
     } catch (err) {
       this.log("Streaming error (Firefox path):", err);
-      if (status) status.textContent = "Error starting video stream";
       reject(err);
     }
 
-    // Listen for torrent errors
     torrent.on("error", (err) => {
       this.log("Torrent error (Firefox path):", err);
-      if (status) status.textContent = "Error loading video";
-      clearInterval(this.statsInterval);
       reject(err);
     });
   }
 
   /**
-   * Clean up after playback or page unload.
+   * Clean up
    */
   async cleanup() {
     try {
-      if (this.statsInterval) {
-        clearInterval(this.statsInterval);
-      }
+      // No local interval to clear here
       if (this.currentTorrent) {
         this.currentTorrent.destroy();
       }
       if (this.client) {
         await this.client.destroy();
-        // Recreate fresh client for next time
         this.client = new WebTorrent();
       }
     } catch (error) {

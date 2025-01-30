@@ -608,55 +608,37 @@ class bitvidApp {
   /**
    * Subscribe to new videos & render them.
    */
-  // js/app.js
-
   async loadVideos() {
     console.log("Starting loadVideos (subscription approach)...");
 
-    // If you had an existing subscription, unsubscribe first:
     if (this.videoSubscription) {
       this.videoSubscription.unsub();
       this.videoSubscription = null;
     }
 
-    // Optionally show "loading videos..." message
+    // Clear the listing (if #videoList is present)
     if (this.videoList) {
       this.videoList.innerHTML = `
-      <p class="text-center text-gray-500">
-        Loading videos...
-      </p>`;
+        <p class="text-center text-gray-500">
+          Loading videos...
+        </p>`;
     }
 
-    // Clear your local map
     this.videosMap.clear();
 
     try {
-      // Subscribe to new events from nostrClient
+      // Subscribe to new video events
       this.videoSubscription = nostrClient.subscribeVideos((video) => {
-        // If the video is marked deleted, remove it from your local collection
-        if (video.deleted) {
-          if (this.videosMap.has(video.id)) {
-            this.videosMap.delete(video.id);
-            // Now rebuild the list
-            const allVideos = Array.from(this.videosMap.values());
-            const newestPerRoot = dedupeToNewestByRoot(allVideos);
-            this.renderVideoList(newestPerRoot);
-          }
-          return;
-        }
-
-        // Skip private videos if they do not belong to the current user
+        // Skip private if not the owner
         if (video.isPrivate && video.pubkey !== this.pubkey) {
           return;
         }
-
-        // Only add if it's not in the map
+        // Only render if new
         if (!this.videosMap.has(video.id)) {
           this.videosMap.set(video.id, video);
-          // Re-run the dedupe logic
-          const allVideos = Array.from(this.videosMap.values());
-          const newestPerRoot = dedupeToNewestByRoot(allVideos);
-          this.renderVideoList(newestPerRoot);
+          // Convert map to array, re-render
+          const all = Array.from(this.videosMap.values());
+          this.renderVideoList(all);
         }
       });
     } catch (err) {
@@ -664,9 +646,9 @@ class bitvidApp {
       this.showError("Could not load videos via subscription.");
       if (this.videoList) {
         this.videoList.innerHTML = `
-        <p class="text-center text-gray-500">
-          No videos available at this time.
-        </p>`;
+          <p class="text-center text-gray-500">
+            No videos available at this time.
+          </p>`;
       }
     }
   }
@@ -995,8 +977,6 @@ class bitvidApp {
         this.showError("You do not own this video.");
         return;
       }
-
-      // Prompt for updated fields
       const newTitle = prompt("New Title? (blank=keep existing)", video.title);
       const newMagnet = prompt(
         "New Magnet? (blank=keep existing)",
@@ -1010,9 +990,8 @@ class bitvidApp {
         "New Description? (blank=keep existing)",
         video.description
       );
-      const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
 
-      // Build updated data, falling back to old values
+      const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
       const title =
         !newTitle || !newTitle.trim() ? video.title : newTitle.trim();
       const magnet =
@@ -1031,13 +1010,12 @@ class bitvidApp {
         description,
         mode: isDevMode ? "dev" : "live",
       };
-
-      // IMPORTANT: we only pass id and pubkey to avoid reusing the old d-tag
-      // (Do NOT pass video.tags!)
-      const originalEvent = video;
-
+      const originalEvent = {
+        id: video.id,
+        pubkey: video.pubkey,
+        tags: video.tags,
+      };
       await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
-
       this.showSuccess("Video updated successfully!");
       await this.loadVideos();
     } catch (err) {
@@ -1064,15 +1042,12 @@ class bitvidApp {
       if (!confirm(`Delete "${video.title}"? This can't be undone.`)) {
         return;
       }
-
-      // Only id and pubkey (omit old tags), so that delete doesn't overshadow the old d-tag
       const originalEvent = {
         id: video.id,
         pubkey: video.pubkey,
+        tags: video.tags,
       };
-
       await nostrClient.deleteVideo(originalEvent, this.pubkey);
-
       this.showSuccess("Video deleted successfully!");
       await this.loadVideos();
     } catch (err) {
@@ -1273,34 +1248,28 @@ class bitvidApp {
    * this.videosMap or from a bulk fetch. Uses nostrClient.getEventById.
    */
   async getOldEventById(eventId) {
-    // 1) Already in our local videosMap?
+    // Already in our map?
     let video = this.videosMap.get(eventId);
     if (video) {
       return video;
     }
 
-    // 2) Bulk fetch from relays
+    // Try the bulk fetch (fetchVideos) to see if it’s there
     const allFromBulk = await nostrClient.fetchVideos();
-
-    // 2a) Deduplicate so we only keep newest version per root
-    const newestPerRoot = dedupeToNewestByRoot(allFromBulk);
-
-    // 2b) Find the requested ID within the deduplicated set
-    video = newestPerRoot.find((v) => v.id === eventId);
+    video = allFromBulk.find((v) => v.id === eventId);
     if (video) {
-      // Store it in our local map, so we can open it instantly next time
+      // Store it so we can open it instantly next time
       this.videosMap.set(video.id, video);
       return video;
     }
 
-    // 3) Final fallback: direct single-event fetch
+    // Final fallback: direct single-event fetch
     const single = await nostrClient.getEventById(eventId);
     if (single && !single.deleted) {
       this.videosMap.set(single.id, single);
       return single;
     }
 
-    // Not found or was deleted
     return null;
   }
 
@@ -1383,28 +1352,6 @@ class bitvidApp {
       this.showError("Could not copy magnet link. Please copy it manually.");
     }
   }
-}
-
-/**
- * Given an array of video objects,
- * return only the newest (by created_at) for each videoRootId.
- * If no videoRootId is present, treat the video’s own ID as its root.
- */
-function dedupeToNewestByRoot(videos) {
-  const map = new Map(); // key = rootId, value = newest video for that root
-
-  for (const vid of videos) {
-    // If there's no videoRootId, fall back to vid.id (treat it as its own "root")
-    const rootId = vid.videoRootId || vid.id;
-
-    const existing = map.get(rootId);
-    if (!existing || vid.created_at > existing.created_at) {
-      map.set(rootId, vid);
-    }
-  }
-
-  // Return just the newest from each group
-  return Array.from(map.values());
 }
 
 export const app = new bitvidApp();

@@ -277,37 +277,34 @@ class NostrClient {
       throw new Error("You do not own this video (different pubkey).");
     }
 
-    // Use the videoRootId directly from the converted video
+    // Use the videoRootId from the originalVideo directly
     const rootId = originalVideo.videoRootId || null;
 
-    // Decrypt the old magnet if it was private
+    // Determine if the original magnet was encrypted and decrypt if necessary
     let oldPlainMagnet = originalVideo.magnet || "";
     if (originalVideo.isPrivate && oldPlainMagnet) {
       oldPlainMagnet = fakeDecrypt(oldPlainMagnet);
     }
 
-    // Determine new privacy setting
+    // Determine new privacy setting and magnet
     const wantPrivate =
       updatedData.isPrivate ?? originalVideo.isPrivate ?? false;
-
-    // Fallback to old magnet if none provided
     let finalPlainMagnet = (updatedData.magnet || "").trim();
     if (!finalPlainMagnet) {
-      finalPlainMagnet = oldPlainMagnet;
+      finalPlainMagnet = oldPlainMagnet; // Fallback to original if not provided
     }
 
-    // Re-encrypt if user wants private
     let finalMagnet = finalPlainMagnet;
     if (wantPrivate) {
       finalMagnet = fakeEncrypt(finalPlainMagnet);
     }
 
-    // If there's no root yet (legacy), generate it
+    // Use existing rootId or generate a new one (if original lacked it)
     const newRootId =
       rootId || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const newD = `${Date.now()}-edit-${Math.random().toString(36).slice(2)}`;
 
-    // Build updated content
+    // Construct the new content object using originalVideo's properties where applicable
     const contentObject = {
       videoRootId: newRootId,
       version: updatedData.version ?? originalVideo.version ?? 1,
@@ -326,7 +323,7 @@ class NostrClient {
       created_at: Math.floor(Date.now() / 1000),
       tags: [
         ["t", "video"],
-        ["d", newD], // new share link
+        ["d", newD], // New dTag for the edit
       ],
       content: JSON.stringify(contentObject),
     };
@@ -343,9 +340,7 @@ class NostrClient {
           try {
             await this.pool.publish([url], signedEvent);
           } catch (err) {
-            if (isDevMode) {
-              console.error(`Publish failed to ${url}`, err);
-            }
+            if (isDevMode) console.error(`Publish failed to ${url}`, err);
           }
         })
       );
@@ -400,27 +395,12 @@ class NostrClient {
     }
     const existingD = dTag[1];
 
-    // After you've parsed oldContent:
+    // Parse out the old content so we can preserve version, isPrivate, etc.
     const oldContent = JSON.parse(baseEvent.content || "{}");
     const oldVersion = oldContent.version ?? 1;
 
-    // ADD this block to handle the old root or fallback:
-    let finalRootId = oldContent.videoRootId || null;
-    if (!finalRootId) {
-      // If it’s a legacy video (no root), we can fallback to your
-      // existing logic used by getActiveKey. For instance, if it had a 'd' tag:
-      if (dTag) {
-        // Some devs store it as 'LEGACY:pubkey:dTagValue'
-        // or you could just store the same as the old approach:
-        finalRootId = `LEGACY:${baseEvent.pubkey}:${dTag[1]}`;
-      } else {
-        finalRootId = `LEGACY:${baseEvent.id}`;
-      }
-    }
-
-    // Now build the content object, including videoRootId:
+    // Mark it "deleted" and clear out magnet, thumbnail, etc.
     const contentObject = {
-      videoRootId: finalRootId, // <-- CRUCIAL so the delete event shares the same root key
       version: oldVersion,
       deleted: true,
       isPrivate: oldContent.isPrivate ?? false,
@@ -500,15 +480,12 @@ class NostrClient {
         this.allEvents.set(event.id, video);
 
         // If it’s marked deleted, remove from active map if it’s the active version
-        // NEW CODE
         if (video.deleted) {
           const activeKey = getActiveKey(video);
-          // Don't compare IDs—just remove that key from the active map
-          this.activeMap.delete(activeKey);
-
-          // (Optional) If you want a debug log:
-          // console.log(`[DELETE] Removed activeKey=${activeKey}`);
-
+          const existing = this.activeMap.get(activeKey);
+          if (existing && existing.id === video.id) {
+            this.activeMap.delete(activeKey);
+          }
           return;
         }
 
@@ -555,7 +532,6 @@ class NostrClient {
 
     const localAll = new Map();
     try {
-      // 1) Fetch all events from each relay
       await Promise.all(
         this.relays.map(async (url) => {
           const events = await this.pool.list([url], [filter]);
@@ -566,27 +542,23 @@ class NostrClient {
         })
       );
 
-      // 2) Merge into this.allEvents
+      // Merge into this.allEvents
       for (const [id, vid] of localAll.entries()) {
         this.allEvents.set(id, vid);
       }
 
-      // 3) Rebuild activeMap
+      // Rebuild activeMap
       this.activeMap.clear();
       for (const [id, video] of this.allEvents.entries()) {
-        // Skip if the video is marked deleted
         if (video.deleted) continue;
-
         const activeKey = getActiveKey(video);
         const existing = this.activeMap.get(activeKey);
-
-        // If there's no existing entry or this is newer, set/replace
         if (!existing || video.created_at > existing.created_at) {
           this.activeMap.set(activeKey, video);
         }
       }
 
-      // 4) Return newest version for each root in descending order
+      // Return an array of newest for each root
       const activeVideos = Array.from(this.activeMap.values()).sort(
         (a, b) => b.created_at - a.created_at
       );

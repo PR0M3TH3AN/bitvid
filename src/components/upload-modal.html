@@ -1,0 +1,114 @@
+<!-- components/upload-modal.html -->
+<div id="uploadModal" class="fixed inset-0 bg-black/90 z-50 hidden">
+  <div
+    class="modal-container h-full w-full flex items-start justify-center overflow-y-auto"
+  >
+    <div
+      class="modal-content bg-gray-900 w-full max-w-lg my-8 rounded-lg overflow-hidden relative"
+    >
+      <!-- Top Bar (similar to video-modal) -->
+      <div
+        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-300 p-4 flex items-center justify-between"
+      >
+        <h2 class="text-xl font-bold text-white">Share a Video</h2>
+        <button
+          id="closeUploadModal"
+          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
+        >
+          <!-- X or arrow icon -->
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-6 h-6 text-gray-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Form Content -->
+      <div class="p-6 space-y-4">
+        <form id="uploadForm" class="space-y-4">
+          <div>
+            <label
+              for="uploadTitle"
+              class="block text-sm font-medium text-gray-200"
+              >Title</label
+            >
+            <input
+              type="text"
+              id="uploadTitle"
+              required
+              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label
+              for="uploadMagnet"
+              class="block text-sm font-medium text-gray-200"
+              >Magnet Link</label
+            >
+            <input
+              type="text"
+              id="uploadMagnet"
+              required
+              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label
+              for="uploadThumbnail"
+              class="block text-sm font-medium text-gray-200"
+              >Thumbnail URL (optional)</label
+            >
+            <input
+              type="url"
+              id="uploadThumbnail"
+              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label
+              for="uploadDescription"
+              class="block text-sm font-medium text-gray-200"
+              >Description (optional)</label
+            >
+            <textarea
+              id="uploadDescription"
+              rows="3"
+              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+            ></textarea>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="uploadIsPrivate"
+              class="form-checkbox h-5 w-5 text-blue-500"
+            />
+            <span class="text-sm font-medium text-gray-200"
+              >Private Listing (Encrypt Magnet)</span
+            >
+          </div>
+
+          <button
+            type="submit"
+            class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            Publish
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
