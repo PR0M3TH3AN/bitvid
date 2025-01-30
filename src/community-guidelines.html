@@ -6,7 +6,7 @@
     <title>bitvid | About</title>
 
     <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content="bitvid | IPNS" />
+    <meta property="og:title" content="bitvid | Community Guidelines" />
     <meta
       property="og:description"
       content="View and render markdown content dynamically."
@@ -191,7 +191,7 @@
 
     <script>
       async function loadMarkdown() {
-        const response = await fetch("content/ipns.md");
+        const response = await fetch("content/community-guidelines.md");
         if (response.ok) {
           const markdown = await response.text();
           const container = document.getElementById("markdown-container");
