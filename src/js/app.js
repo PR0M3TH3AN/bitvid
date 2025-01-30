@@ -1336,31 +1336,38 @@ class bitvidApp {
   }
 
   showError(msg) {
-    console.error(msg);
-    if (this.errorContainer) {
-      this.errorContainer.textContent = msg;
-      this.errorContainer.classList.remove("hidden");
-      setTimeout(() => {
-        this.errorContainer.classList.add("hidden");
-        this.errorContainer.textContent = "";
-      }, 5000);
-    } else {
-      alert(msg);
+    if (!msg) {
+      // Remove any content, then hide
+      this.errorContainer.textContent = "";
+      this.errorContainer.classList.add("hidden");
+      return;
     }
+
+    // If there's a message, show it
+    this.errorContainer.textContent = msg;
+    this.errorContainer.classList.remove("hidden");
+
+    // Optional auto-hide after 5 seconds
+    setTimeout(() => {
+      this.errorContainer.textContent = "";
+      this.errorContainer.classList.add("hidden");
+    }, 5000);
   }
 
   showSuccess(msg) {
-    console.log(msg);
-    if (this.successContainer) {
-      this.successContainer.textContent = msg;
-      this.successContainer.classList.remove("hidden");
-      setTimeout(() => {
-        this.successContainer.classList.add("hidden");
-        this.successContainer.textContent = "";
-      }, 5000);
-    } else {
-      alert(msg);
+    if (!msg) {
+      this.successContainer.textContent = "";
+      this.successContainer.classList.add("hidden");
+      return;
     }
+
+    this.successContainer.textContent = msg;
+    this.successContainer.classList.remove("hidden");
+
+    setTimeout(() => {
+      this.successContainer.textContent = "";
+      this.successContainer.classList.add("hidden");
+    }, 5000);
   }
 
   log(msg) {
