@@ -45,65 +45,53 @@
       class="container mx-auto px-4 py-8 min-h-screen flex flex-col"
     >
       <!-- Header -->
-      <header class="mb-8">
-        <div class="flex items-start">
-          <img
-            src="assets/svg/bitvid-logo-light-mode.svg"
-            alt="BitVid Logo"
-            class="h-16"
-          />
-        </div>
-      </header>
+      <header class="mb-8 flex items-center">
+        <!-- Logo on the left -->
+        <img
+          src="assets/svg/bitvid-logo-light-mode.svg"
+          alt="BitVid Logo"
+          class="h-16"
+        />
 
-      <!-- Login Section -->
-      <div id="loginSection" class="mb-8 flex items-center justify-between">
-        <div class="flex items-center space-x-4">
+        <!-- Buttons on the far right -->
+        <div class="ml-auto flex items-center space-x-4">
           <!-- Login Button -->
           <button
             id="loginButton"
-            class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-500 text-white text-sm font-bold leading-none whitespace-nowrap appearance-none hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            style="background-color: #fe0032"
+            class="inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-sm font-bold leading-none whitespace-nowrap appearance-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
           >
             login
           </button>
 
-          <!-- (Old) Logout Button is REMOVED or commented out -->
-          <!-- <button
-               id="logoutButton"
-               ...
-               >logout</button>
-          -->
-
-          <!-- Upload Button (hidden by default) -->
+          <!-- Upload (Add Video) Button -->
           <button
             id="uploadButton"
-            class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-500 text-white text-xl font-bold leading-none whitespace-nowrap appearance-none hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 hidden"
+            style="background-color: #fe0032"
+            class="inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-xl font-bold leading-none whitespace-nowrap appearance-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 hidden"
           >
             +
           </button>
 
-          <!-- NEW: Profile Button (hidden by default) -->
+          <!-- Profile Button -->
           <button
             id="profileButton"
-            class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-600 text-white text-sm leading-none hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 hidden"
+            class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-black text-white text-sm leading-none hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black hidden"
           >
-            <!-- We'll dynamically load the user's avatar into this <img> once logged in -->
-            <img
-              id="profileAvatar"
-              src="assets/jpg/default-profile.jpg"
-              alt="Profile"
-              class="object-cover rounded-full w-full h-full"
-            />
+            <!-- Ensures a border around the smaller avatar -->
+            <div class="w-10 h-10 rounded-full overflow-hidden">
+              <img
+                id="profileAvatar"
+                src="assets/jpg/default-profile.jpg"
+                alt="Profile"
+                class="w-full h-full object-cover"
+              />
+            </div>
           </button>
         </div>
+      </header>
 
-        <!-- (Optional) user status is hidden or removed -->
-        <div>
-          <!-- We can comment out or hide this in CSS if you do not want to show the hex key: -->
-          <!-- <p id="userStatus" class="mt-4 text-gray-500 hidden">
-               Logged in as: <span id="userPubKey"></span>
-          </p> -->
-        </div>
-      </div>
+      <!-- (Removed old loginSection) -->
 
       <!-- Error Container -->
       <div
@@ -121,9 +109,9 @@
         <!-- Success messages will appear here -->
       </div>
 
-      <!-- The main container for dynamic views -->
+      <!-- Main container for dynamic views -->
       <main id="viewContainer" class="flex-grow mb-8">
-        <!-- We'll load our "most-recent-videos.html" or other views here -->
+        <!-- We'll load "most-recent-videos.html" or other views here -->
       </main>
 
       <!-- Imported Video Player Modal (goes into modalContainer) -->
@@ -140,7 +128,6 @@
       <div id="disclaimerModal" class="hidden">
         <div class="modal-content">
           <div class="modal-scroll">
-            <!-- Logo -->
             <div class="flex justify-center mb-8">
               <img
                 src="assets/svg/bitvid-logo-dark-mode.svg"
@@ -179,7 +166,6 @@
               </p>
             </div>
 
-            <!-- Main Content -->
             <div class="space-y-6 text-gray-300">
               <p>
                 bitvid is a decentralized video platform where content is shared
@@ -233,7 +219,6 @@
             </div>
           </div>
 
-          <!-- Action Button in fixed container -->
           <div class="button-container">
             <button
               id="acceptDisclaimer"
