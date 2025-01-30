@@ -1,64 +1,86 @@
 <!DOCTYPE html>
-<html ng-app="BTorrent" lang="en">
+<html lang="en">
   <head>
-    <base href="./" />
     <meta charset="UTF-8" />
-    <title>bitvid βeacon | A Browser Based WebTorrent Client</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>bitvid | About</title>
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="bitvid | Community Guidelines" />
     <meta
-      name="description"
-      content="bitvid βeacon uses code from βTorrent. βTorrent is a fully-featured Browser WebTorrent Client"
+      property="og:description"
+      content="View and render markdown content dynamically."
     />
     <meta
-      name="keywords"
-      content="bitvid, client, webtorrent, browser, torrent, stream, bittorrent, torrenting, sharing, filesharing"
+      property="og:image"
+      content="https://bitvid.netlify.app/assets/jpg/bitvid.jpg"
     />
+    <meta property="og:url" content="https://bitvid.btc.us" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="favicon.ico" />
-
-    <!-- Scripts: webtorrent, angular, etc. -->
-    <script src="bundle.min.js"></script>
-    <!--<script src="https://cdn.jsdelivr.net/combine/npm/webtorrent/webtorrent.min.js,npm/moment@2,npm/angular@1.5/angular.min.js,npm/angular-route@1.5/angular-route.min.js,npm/angular-sanitize@1.5/angular-sanitize.min.js,npm/angular-ui-grid@3/ui-grid.min.js,gh/matowens/ng-notify/dist/ng-notify.min.js,npm/ng-file-upload@12.2.13/dist/ng-file-upload.min.js"></script>-->
-
-    <!-- External styles -->
+    <!-- App Icons -->
+    <link rel="icon" href=.ico" sizes="any" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/g/normalize@3,skeleton@2,angular.ng-notify@0.8(ng-notify.min.css)"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/fontawesome/4/css/font-awesome.min.css"
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="assets/png/favicon-32x32.png"
     />
     <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="assets/png/favicon-16x16.png"
+    />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#0f172a" />
+
+    <!-- Tailwind CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
       rel="stylesheet"
-      href="https://cdn.jsdelivr.net/angular.ui-grid/3/ui-grid.min.css"
     />
 
-    <!-- Local CSS -->
-    <link rel="stylesheet" href="style.css" />
+    <!-- Main Layout Styles -->
+    <link href="css/style.css" rel="stylesheet" />
+
+    <!-- Markdown-Specific Styles -->
+    <link href="css/markdown.css" rel="stylesheet" />
   </head>
-
-  <body ng-controller="BTorrentCtrl" ng-cloak="">
-    <!-- Header with container -->
-    <header class="header-torrent">
-      <div class="container">
-        <div class="logo-container">
-          <img
-            src="../assets/svg/bitvid-logo-light-mode.svg"
-            alt="bitvid Logo"
-            class="bitvid-logo"
-          />
+  <body class="bg-gray-100">
+    <div
+      id="app"
+      class="container mx-auto px-4 py-8 min-h-screen flex flex-col"
+    >
+      <!-- Header -->
+      <header class="mb-8">
+        <div class="flex items-start">
+          <!-- Logo links back to index.html (or "/") -->
+          <a href="index.html">
+            <img
+              src="assets/svg/bitvid-logo-light-mode.svg"
+              alt="BitVid Logo"
+              class="h-16"
+            />
+          </a>
         </div>
-      </div>
-    </header>
+      </header>
 
-    <!-- Main content -->
-    <div id="viewer" ng-style="$root.viewerStyle"></div>
-    <div id="view" ng-view></div>
+      <!-- Markdown Content Section -->
+      <main>
+        <!-- 
+          We give this section a white background and a shadow 
+          just like you originally had for other cards.
+        -->
+        <div id="markdown-container" class="bg-white p-6 rounded-lg shadow-md">
+          <h2 class="text-2xl font-bold mb-4">Loading Content...</h2>
+        </div>
+      </main>
 
-    <!-- Footer with container -->
-    <footer class="footer-torrent">
-      <div class="container">
+      <!-- Footer -->
+      <footer class="mt-auto pb-8 text-center px-4">
         <a
           href="http://bitvid.network/"
           class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
@@ -151,9 +173,9 @@
             Beta
           </a>
           <a
-            href="beacon.html"
+            href="torrent/beacon.html"
             class="text-gray-500 hover:text-gray-400 transition-colors duration-200"
-            target="_blank"
+            target="_self"
             rel="noopener noreferrer"
           >
             βeacon
@@ -167,15 +189,38 @@
             k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1
           </a>
         </p>
-      </div>
-    </footer>
-
-    <!-- Processing Spinner -->
-    <div class="spinner" ng-show="client.processing">
-      <i class="fa fa-spinner fa-spin spinner-icon"></i>
+      </footer>
     </div>
 
-    <!-- Local Angular code -->
-    <script src="app.js"></script>
+    <!-- Marked.js (for converting markdown to HTML) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Highlight.js (optional for code block highlighting) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+
+    <script>
+      async function loadMarkdown() {
+        const response = await fetch("content/community-guidelines.md");
+        if (response.ok) {
+          const markdown = await response.text();
+          const container = document.getElementById("markdown-container");
+
+          // Convert markdown to HTML
+          const html = marked.parse(markdown);
+
+          // Insert the HTML into the container
+          container.innerHTML = html;
+
+          // (Optional) Highlight code blocks
+          document.querySelectorAll("pre code").forEach((block) => {
+            hljs.highlightBlock(block);
+          });
+        } else {
+          document.getElementById("markdown-container").innerHTML =
+            '<p class="text-red-500">Error loading content. Please try again later.</p>';
+        }
+      }
+
+      loadMarkdown();
+    </script>
   </body>
 </html>
