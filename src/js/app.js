@@ -1,12 +1,13 @@
 // js/app.js
 
+import { loadView } from "./viewManager.js";
 import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
 import { disclaimerModal } from "./disclaimer.js";
 
 /**
- * Dummy "decryption" for private videos
+ * Simple "decryption" placeholder for private videos.
  */
 function fakeDecrypt(str) {
   return str.split("").reverse().join("");
@@ -14,27 +15,38 @@ function fakeDecrypt(str) {
 
 class bitvidApp {
   constructor() {
-    // Basic elements
-    this.loginButton = document.getElementById("loginButton");
-    this.logoutButton = document.getElementById("logoutButton");
-    this.userStatus = document.getElementById("userStatus");
-    this.userPubKey = document.getElementById("userPubKey");
+    // Basic auth/display elements
+    this.loginButton = document.getElementById("loginButton") || null;
+    this.logoutButton = document.getElementById("logoutButton") || null;
+    this.userStatus = document.getElementById("userStatus") || null;
+    this.userPubKey = document.getElementById("userPubKey") || null;
 
-    // Form elements
-    this.submitForm = document.getElementById("submitForm");
-    this.videoFormContainer = document.getElementById("videoFormContainer");
+    // Optional: a "profile" button or avatar (if used)
+    this.profileButton = document.getElementById("profileButton") || null;
+    this.profileAvatar = document.getElementById("profileAvatar") || null;
 
-    // Listing + small player
-    this.videoList = document.getElementById("videoList");
-    this.playerSection = document.getElementById("playerSection");
-    this.videoElement = document.getElementById("video");
-    this.status = document.getElementById("status");
-    this.progressBar = document.getElementById("progress");
-    this.peers = document.getElementById("peers");
-    this.speed = document.getElementById("speed");
-    this.downloaded = document.getElementById("downloaded");
+    // Profile modal references (if used in profile-modal.html)
+    this.profileModal = null;
+    this.closeProfileModal = null;
+    this.profileLogoutBtn = null;
+    this.profileModalAvatar = null;
+    this.profileModalName = null;
 
-    // Modal references (populated after initModal)
+    // Upload modal elements
+    this.uploadButton = document.getElementById("uploadButton") || null;
+    this.uploadModal = document.getElementById("uploadModal") || null;
+    this.closeUploadModalBtn =
+      document.getElementById("closeUploadModal") || null;
+    this.uploadForm = document.getElementById("uploadForm") || null;
+
+    // Optional small inline player stats
+    this.status = document.getElementById("status") || null;
+    this.progressBar = document.getElementById("progress") || null;
+    this.peers = document.getElementById("peers") || null;
+    this.speed = document.getElementById("speed") || null;
+    this.downloaded = document.getElementById("downloaded") || null;
+
+    // Video player modal references (loaded via video-modal.html)
     this.playerModal = null;
     this.modalVideo = null;
     this.modalStatus = null;
@@ -49,106 +61,105 @@ class bitvidApp {
     this.creatorAvatar = null;
     this.creatorName = null;
     this.creatorNpub = null;
-
-    // Buttons for magnet copy/share in modal
     this.copyMagnetBtn = null;
     this.shareBtn = null;
 
     // Notification containers
-    this.errorContainer = document.getElementById("errorContainer");
-    this.successContainer = document.getElementById("successContainer");
+    this.errorContainer = document.getElementById("errorContainer") || null;
+    this.successContainer = document.getElementById("successContainer") || null;
 
     // Auth state
     this.pubkey = null;
     // Currently playing magnet
     this.currentMagnetUri = null;
-
-    // Private checkbox
-    this.isPrivateCheckbox = document.getElementById("isPrivate");
-
     // The active video object
     this.currentVideo = null;
-
-    // Subscription reference
+    // Subscription reference (for unsubscribing)
     this.videoSubscription = null;
 
-    /**
-     * Replaces the old `this.videos = []` with a Map,
-     * keyed by `video.id` for O(1) lookups.
-     */
+    // Videos stored as a Map (key=event.id)
     this.videosMap = new Map();
-
-    // A simple cache for user profiles
+    // Simple cache for user profiles
     this.profileCache = new Map();
   }
 
   async init() {
     try {
-      // Hide any small player at first
-      if (this.playerSection) {
-        this.playerSection.style.display = "none";
-      }
-
-      // Initialize the modal
+      // 1. Initialize the video modal (components/video-modal.html)
       await this.initModal();
       this.updateModalElements();
 
-      // Connect to Nostr
+      // 2. Initialize the upload modal (components/upload-modal.html)
+      await this.initUploadModal();
+
+      // 3. (Optional) Initialize the profile modal (components/profile-modal.html)
+      await this.initProfileModal();
+
+      // 4. Connect to Nostr
       await nostrClient.init();
       const savedPubKey = localStorage.getItem("userPubKey");
       if (savedPubKey) {
+        // Auto-login if a pubkey was saved
         this.login(savedPubKey, false);
       }
 
-      // Setup event listeners, disclaimers
+      // 5. Setup general event listeners, show disclaimers
       this.setupEventListeners();
       disclaimerModal.show();
 
-      // Subscribe for videos
+      // 6. Load the default view
+      await loadView("views/most-recent-videos.html");
+
+      // 7. Once loaded, get a reference to #videoList
+      this.videoList = document.getElementById("videoList");
+
+      // 8. Subscribe or fetch videos
       await this.loadVideos();
 
-      // If there's a ?v= param, handle it
+      // 9. Check URL ?v= param
       this.checkUrlParams();
+
+      // (Recommended) Keep an array of active interval IDs
+      // so we can clear them when the modal closes:
+      this.activeIntervals = [];
     } catch (error) {
       console.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
     }
   }
 
+  /**
+   * Initialize the main video modal (video-modal.html).
+   */
   async initModal() {
     try {
-      console.log("Starting modal initialization...");
       const resp = await fetch("components/video-modal.html");
       if (!resp.ok) {
         throw new Error(`HTTP error! status: ${resp.status}`);
       }
       const html = await resp.text();
-      console.log("Modal HTML loaded successfully");
 
       const modalContainer = document.getElementById("modalContainer");
       if (!modalContainer) {
         throw new Error("Modal container element not found!");
       }
-
       modalContainer.innerHTML = html;
-      console.log("Modal HTML inserted into DOM");
 
-      // Navigation
+      // Confirm we have a close button, etc.
       const closeButton = document.getElementById("closeModal");
       if (!closeButton) {
-        throw new Error("Close button not found!");
+        throw new Error("Close button not found in video-modal!");
       }
       closeButton.addEventListener("click", () => {
         this.hideModal();
       });
 
-      // Scroll-based nav hide
+      // Setup scroll-based nav hide
       const modalNav = document.getElementById("modalNav");
       const playerModal = document.getElementById("playerModal");
       if (!modalNav || !playerModal) {
-        throw new Error("Modal nav elements not found!");
+        throw new Error("Modal nav (#modalNav) or #playerModal not found!");
       }
-
       let lastScrollY = 0;
       playerModal.addEventListener("scroll", (e) => {
         const currentScrollY = e.target.scrollTop;
@@ -160,119 +171,45 @@ class bitvidApp {
         lastScrollY = currentScrollY;
       });
 
-      console.log("Modal initialization completed successfully");
+      console.log("Video modal initialization successful");
       return true;
     } catch (error) {
-      console.error("Modal initialization failed:", error);
-      this.showError(`Failed to initialize video player: ${error.message}`);
+      console.error("initModal failed:", error);
+      this.showError(`Failed to initialize video modal: ${error.message}`);
       return false;
     }
   }
 
+  /**
+   * After we load the video modal, store references in `this.*`.
+   */
   updateModalElements() {
-    this.playerModal = document.getElementById("playerModal");
-    this.modalVideo = document.getElementById("modalVideo");
-    this.modalStatus = document.getElementById("modalStatus");
-    this.modalProgress = document.getElementById("modalProgress");
-    this.modalPeers = document.getElementById("modalPeers");
-    this.modalSpeed = document.getElementById("modalSpeed");
-    this.modalDownloaded = document.getElementById("modalDownloaded");
-    this.closePlayerBtn = document.getElementById("closeModal");
+    this.playerModal = document.getElementById("playerModal") || null;
+    this.modalVideo = document.getElementById("modalVideo") || null;
+    this.modalStatus = document.getElementById("modalStatus") || null;
+    this.modalProgress = document.getElementById("modalProgress") || null;
+    this.modalPeers = document.getElementById("modalPeers") || null;
+    this.modalSpeed = document.getElementById("modalSpeed") || null;
+    this.modalDownloaded = document.getElementById("modalDownloaded") || null;
+    this.closePlayerBtn = document.getElementById("closeModal") || null;
 
-    this.videoTitle = document.getElementById("videoTitle");
-    this.videoDescription = document.getElementById("videoDescription");
-    this.videoTimestamp = document.getElementById("videoTimestamp");
+    this.videoTitle = document.getElementById("videoTitle") || null;
+    this.videoDescription = document.getElementById("videoDescription") || null;
+    this.videoTimestamp = document.getElementById("videoTimestamp") || null;
+    this.creatorAvatar = document.getElementById("creatorAvatar") || null;
+    this.creatorName = document.getElementById("creatorName") || null;
+    this.creatorNpub = document.getElementById("creatorNpub") || null;
+    this.copyMagnetBtn = document.getElementById("copyMagnetBtn") || null;
+    this.shareBtn = document.getElementById("shareBtn") || null;
 
-    this.creatorAvatar = document.getElementById("creatorAvatar");
-    this.creatorName = document.getElementById("creatorName");
-    this.creatorNpub = document.getElementById("creatorNpub");
-
-    this.copyMagnetBtn = document.getElementById("copyMagnetBtn");
-    this.shareBtn = document.getElementById("shareBtn");
-  }
-
-  setupEventListeners() {
-    // Login
-    this.loginButton.addEventListener("click", async () => {
-      try {
-        const pubkey = await nostrClient.login();
-        this.login(pubkey, true);
-      } catch (err) {
-        this.log("Login failed:", err);
-        this.showError("Failed to login. Please try again.");
-      }
-    });
-
-    // Logout
-    this.logoutButton.addEventListener("click", () => {
-      this.logout();
-    });
-
-    // Submit new video form
-    this.submitForm.addEventListener("submit", (e) => this.handleSubmit(e));
-
-    // Close modal by X
-    if (this.closePlayerBtn) {
-      this.closePlayerBtn.addEventListener("click", async () => {
-        await this.hideModal();
-      });
-    }
-
-    // Close modal by clicking outside container
-    if (this.playerModal) {
-      this.playerModal.addEventListener("click", async (e) => {
-        if (e.target === this.playerModal) {
-          await this.hideModal();
-        }
-      });
-    }
-
-    // Error handling for the small inline player (if used)
-    if (this.videoElement) {
-      this.videoElement.addEventListener("error", (e) => {
-        const error = e.target.error;
-        if (error) {
-          this.showError(
-            `Video playback error: ${error.message || "Unknown error"}`
-          );
-        }
-      });
-    }
-
-    // Modal video error
-    if (this.modalVideo) {
-      this.modalVideo.addEventListener("error", (e) => {
-        const error = e.target.error;
-        if (error) {
-          this.showError(
-            `Video playback error: ${error.message || "Unknown error"}`
-          );
-        }
-      });
-      this.modalVideo.addEventListener("loadstart", () => {
-        this.log("Video loadstart event fired");
-      });
-      this.modalVideo.addEventListener("loadedmetadata", () => {
-        this.log("Video loadedmetadata event fired");
-      });
-      this.modalVideo.addEventListener("canplay", () => {
-        this.log("Video canplay event fired");
-      });
-    }
-
-    // Copy magnet
+    // Attach the event listeners for the copy/share buttons
     if (this.copyMagnetBtn) {
       this.copyMagnetBtn.addEventListener("click", () => {
-        if (this.currentMagnetUri) {
-          navigator.clipboard
-            .writeText(this.currentMagnetUri)
-            .then(() => this.showSuccess("Magnet link copied!"))
-            .catch(() => this.showError("Failed to copy magnet link."));
-        }
+        this.handleCopyMagnet();
       });
     }
 
-    // Share button
+    // UPDATED: This share button just copies the ?v= URL to the clipboard:
     if (this.shareBtn) {
       this.shareBtn.addEventListener("click", () => {
         if (!this.currentVideo) {
@@ -294,102 +231,236 @@ class bitvidApp {
         }
       });
     }
+  }
+
+  /**
+   * Show the modal and set the "Please stand by" poster on the video.
+   */
+  showModalWithPoster() {
+    if (this.playerModal) {
+      this.playerModal.style.display = "flex";
+      this.playerModal.classList.remove("hidden");
+    }
+    if (this.modalVideo) {
+      this.modalVideo.poster = "assets/gif/please-stand-by.gif";
+    }
+  }
+
+  /**
+   * Initialize the upload modal (upload-modal.html).
+   */
+  async initUploadModal() {
+    try {
+      const resp = await fetch("components/upload-modal.html");
+      if (!resp.ok) {
+        throw new Error(`HTTP error! status: ${resp.status}`);
+      }
+      const html = await resp.text();
+
+      const modalContainer = document.getElementById("modalContainer");
+      if (!modalContainer) {
+        throw new Error("Modal container element not found!");
+      }
+      // Append the upload modal markup
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = html;
+      modalContainer.appendChild(wrapper);
+
+      // Grab references
+      this.uploadModal = document.getElementById("uploadModal") || null;
+      this.closeUploadModalBtn =
+        document.getElementById("closeUploadModal") || null;
+      this.uploadForm = document.getElementById("uploadForm") || null;
+
+      // Optional: if close button found, wire up
+      if (this.closeUploadModalBtn) {
+        this.closeUploadModalBtn.addEventListener("click", () => {
+          if (this.uploadModal) {
+            this.uploadModal.classList.add("hidden");
+          }
+        });
+      }
+      // If the form is found, wire up
+      if (this.uploadForm) {
+        this.uploadForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          this.handleUploadSubmit();
+        });
+      }
+
+      console.log("Upload modal initialization successful");
+      return true;
+    } catch (error) {
+      console.error("initUploadModal failed:", error);
+      this.showError(`Failed to initialize upload modal: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * (Optional) Initialize a separate profile modal (profile-modal.html).
+   */
+  async initProfileModal() {
+    try {
+      console.log("Starting profile modal initialization...");
+      const resp = await fetch("components/profile-modal.html");
+      if (!resp.ok) {
+        // If you don't have a profile modal, comment this entire method out.
+        throw new Error(`HTTP error! status: ${resp.status}`);
+      }
+      const html = await resp.text();
+
+      const modalContainer = document.getElementById("modalContainer");
+      if (!modalContainer) {
+        throw new Error("Modal container element not found!");
+      }
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = html;
+      modalContainer.appendChild(wrapper);
+
+      // Now references
+      this.profileModal = document.getElementById("profileModal") || null;
+      this.closeProfileModal =
+        document.getElementById("closeProfileModal") || null;
+      this.profileLogoutBtn =
+        document.getElementById("profileLogoutBtn") || null;
+      this.profileModalAvatar =
+        document.getElementById("profileModalAvatar") || null;
+      this.profileModalName =
+        document.getElementById("profileModalName") || null;
+
+      // Wire up
+      if (this.closeProfileModal) {
+        this.closeProfileModal.addEventListener("click", () => {
+          this.profileModal.classList.add("hidden");
+        });
+      }
+      if (this.profileLogoutBtn) {
+        this.profileLogoutBtn.addEventListener("click", () => {
+          // On "Logout" inside the profile modal
+          this.logout();
+          this.profileModal.classList.add("hidden");
+        });
+      }
+
+      console.log("Profile modal initialization successful");
+      return true;
+    } catch (error) {
+      console.error("initProfileModal failed:", error);
+      // Not critical if missing
+      return false;
+    }
+  }
+
+  /**
+   * Setup general event listeners for login, logout, modals, etc.
+   */
+  setupEventListeners() {
+    // Login
+    if (this.loginButton) {
+      this.loginButton.addEventListener("click", async () => {
+        try {
+          const pubkey = await nostrClient.login();
+          this.login(pubkey, true);
+        } catch (err) {
+          this.showError("Failed to login. Please try again.");
+        }
+      });
+    }
+
+    // Logout
+    if (this.logoutButton) {
+      this.logoutButton.addEventListener("click", () => {
+        this.logout();
+      });
+    }
+
+    // Profile button (if used)
+    if (this.profileButton) {
+      this.profileButton.addEventListener("click", () => {
+        if (this.profileModal) {
+          this.profileModal.classList.remove("hidden");
+        }
+      });
+    }
+
+    // Upload button => show upload modal
+    if (this.uploadButton) {
+      this.uploadButton.addEventListener("click", () => {
+        if (this.uploadModal) {
+          this.uploadModal.classList.remove("hidden");
+        }
+      });
+    }
 
     // Cleanup on page unload
     window.addEventListener("beforeunload", async () => {
       await this.cleanup();
     });
 
-    // Back/forward navigation
+    // Handle back/forward navigation => hide video modal
     window.addEventListener("popstate", async () => {
       console.log("[popstate] user navigated back/forward; cleaning modal...");
       await this.hideModal();
     });
   }
 
-  login(pubkey, saveToStorage = true) {
-    this.pubkey = pubkey;
-    this.loginButton.classList.add("hidden");
-    this.logoutButton.classList.remove("hidden");
-    this.userStatus.classList.remove("hidden");
-    this.userPubKey.textContent = pubkey;
-    this.videoFormContainer.classList.remove("hidden");
-
-    if (saveToStorage) {
-      localStorage.setItem("userPubKey", pubkey);
-    }
-  }
-
-  logout() {
-    nostrClient.logout();
-    this.pubkey = null;
-    this.loginButton.classList.remove("hidden");
-    this.logoutButton.classList.add("hidden");
-    this.userStatus.classList.add("hidden");
-    this.userPubKey.textContent = "";
-    this.videoFormContainer.classList.add("hidden");
-    localStorage.removeItem("userPubKey");
-  }
-
-  async cleanup() {
+  /**
+   * Attempt to load the user's own profile from Nostr (kind:0).
+   */
+  async loadOwnProfile(pubkey) {
     try {
-      // Stop playing any small player or modal video
-      if (this.videoElement) {
-        this.videoElement.pause();
-        this.videoElement.src = "";
-        this.videoElement.load();
+      const events = await nostrClient.pool.list(nostrClient.relays, [
+        { kinds: [0], authors: [pubkey], limit: 1 },
+      ]);
+      let displayName = "User";
+      let picture = "assets/jpg/default-profile.jpg";
+
+      if (events.length && events[0].content) {
+        const data = JSON.parse(events[0].content);
+        displayName = data.name || data.display_name || "User";
+        picture = data.picture || "assets/jpg/default-profile.jpg";
       }
-      if (this.modalVideo) {
-        this.modalVideo.pause();
-        this.modalVideo.src = "";
-        this.modalVideo.load();
+
+      // If you have a top-bar avatar (profileAvatar)
+      if (this.profileAvatar) {
+        this.profileAvatar.src = picture;
       }
-      // Cleanup torrent client
-      await torrentClient.cleanup();
-    } catch (err) {
-      console.error("Cleanup error:", err);
+      // If you want to show name somewhere
+      if (this.profileModalName) {
+        this.profileModalName.textContent = displayName;
+      }
+      if (this.profileModalAvatar) {
+        this.profileModalAvatar.src = picture;
+      }
+    } catch (error) {
+      console.error("loadOwnProfile error:", error);
     }
   }
 
-  async hideVideoPlayer() {
-    await this.cleanup();
-    if (this.playerSection) {
-      this.playerSection.classList.add("hidden");
-    }
-  }
-
-  async hideModal() {
-    await this.cleanup();
-    if (this.playerModal) {
-      this.playerModal.style.display = "none";
-      this.playerModal.classList.add("hidden");
-    }
-    this.currentMagnetUri = null;
-
-    // Optionally revert ?v=... from the URL
-    window.history.replaceState({}, "", window.location.pathname);
-  }
-
-  async handleSubmit(e) {
-    e.preventDefault();
+  /**
+   * Actually handle the upload form submission.
+   */
+  async handleUploadSubmit() {
     if (!this.pubkey) {
       this.showError("Please login to post a video.");
       return;
     }
 
-    const descEl = document.getElementById("description");
-    const isPrivate = this.isPrivateCheckbox
-      ? this.isPrivateCheckbox.checked
-      : false;
+    const titleEl = document.getElementById("uploadTitle");
+    const magnetEl = document.getElementById("uploadMagnet");
+    const thumbEl = document.getElementById("uploadThumbnail");
+    const descEl = document.getElementById("uploadDescription");
+    const privEl = document.getElementById("uploadIsPrivate");
 
     const formData = {
       version: 2,
-      title: document.getElementById("title")?.value.trim() || "",
-      magnet: document.getElementById("magnet")?.value.trim() || "",
-      thumbnail: document.getElementById("thumbnail")?.value.trim() || "",
+      title: titleEl?.value.trim() || "",
+      magnet: magnetEl?.value.trim() || "",
+      thumbnail: thumbEl?.value.trim() || "",
       description: descEl?.value.trim() || "",
       mode: isDevMode ? "dev" : "live",
-      isPrivate,
+      isPrivate: privEl?.checked || false,
     };
 
     if (!formData.title || !formData.magnet) {
@@ -399,10 +470,20 @@ class bitvidApp {
 
     try {
       await nostrClient.publishVideo(formData, this.pubkey);
-      this.submitForm.reset();
-      if (this.isPrivateCheckbox) {
-        this.isPrivateCheckbox.checked = false;
+
+      // Clear fields
+      if (titleEl) titleEl.value = "";
+      if (magnetEl) magnetEl.value = "";
+      if (thumbEl) thumbEl.value = "";
+      if (descEl) descEl.value = "";
+      if (privEl) privEl.checked = false;
+
+      // Hide the modal
+      if (this.uploadModal) {
+        this.uploadModal.classList.add("hidden");
       }
+
+      // Refresh the video list
       await this.loadVideos();
       this.showSuccess("Video shared successfully!");
     } catch (err) {
@@ -412,61 +493,189 @@ class bitvidApp {
   }
 
   /**
-   * Subscribe to new videos & re-render the list.
-   * Now we store them in `this.videosMap`, keyed by `video.id`.
+   * Called upon successful login.
    */
+  login(pubkey, saveToStorage = true) {
+    this.pubkey = pubkey;
+
+    // Hide login button if present
+    if (this.loginButton) {
+      this.loginButton.classList.add("hidden");
+    }
+    // We can hide logout or userStatus if we want (or they might not exist)
+    if (this.logoutButton) {
+      this.logoutButton.classList.add("hidden");
+    }
+    if (this.userStatus) {
+      this.userStatus.classList.add("hidden");
+    }
+
+    // Show the upload button, profile button, etc.
+    if (this.uploadButton) {
+      this.uploadButton.classList.remove("hidden");
+    }
+    if (this.profileButton) {
+      this.profileButton.classList.remove("hidden");
+    }
+
+    // If you want to fetch your own profile to update UI
+    this.loadOwnProfile(pubkey);
+
+    if (saveToStorage) {
+      localStorage.setItem("userPubKey", pubkey);
+    }
+  }
+
+  /**
+   * Logout logic
+   */
+  logout() {
+    nostrClient.logout();
+    this.pubkey = null;
+    // Show login again (if it exists)
+    if (this.loginButton) {
+      this.loginButton.classList.remove("hidden");
+    }
+    // Hide logout or userStatus
+    if (this.logoutButton) {
+      this.logoutButton.classList.add("hidden");
+    }
+    if (this.userStatus) {
+      this.userStatus.classList.add("hidden");
+    }
+    if (this.userPubKey) {
+      this.userPubKey.textContent = "";
+    }
+    // Hide upload & profile
+    if (this.uploadButton) {
+      this.uploadButton.classList.add("hidden");
+    }
+    if (this.profileButton) {
+      this.profileButton.classList.add("hidden");
+    }
+    // Clear localStorage
+    localStorage.removeItem("userPubKey");
+  }
+
+  /**
+   * Cleanup resources on unload or modal close.
+   */
+  async cleanup() {
+    try {
+      // If there's a small inline player
+      if (this.videoElement) {
+        this.videoElement.pause();
+        this.videoElement.src = "";
+        this.videoElement.load();
+      }
+      // If there's a modal video
+      if (this.modalVideo) {
+        this.modalVideo.pause();
+        this.modalVideo.src = "";
+        this.modalVideo.load();
+      }
+      // Tell webtorrent to cleanup
+      await torrentClient.cleanup();
+    } catch (err) {
+      console.error("Cleanup error:", err);
+    }
+  }
+
+  /**
+   * Hide the video modal.
+   */
+  async hideModal() {
+    // 1) Clear intervals
+    if (this.activeIntervals && this.activeIntervals.length) {
+      this.activeIntervals.forEach((id) => clearInterval(id));
+      this.activeIntervals = [];
+    }
+
+    // 2) Cleanup resources (this stops the torrent, etc.)
+    await this.cleanup();
+
+    // 3) Hide the modal
+    if (this.playerModal) {
+      this.playerModal.style.display = "none";
+      this.playerModal.classList.add("hidden");
+    }
+    this.currentMagnetUri = null;
+
+    // 4) Revert ?v= param in the URL
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+
+  /**
+   * Subscribe to new videos & render them.
+   */
+  // js/app.js
+
   async loadVideos() {
     console.log("Starting loadVideos (subscription approach)...");
 
+    // If you had an existing subscription, unsubscribe first:
     if (this.videoSubscription) {
-      // unsub old sub if present
       this.videoSubscription.unsub();
       this.videoSubscription = null;
     }
 
-    // Clear the listing
-    this.videoList.innerHTML = `
+    // Optionally show "loading videos..." message
+    if (this.videoList) {
+      this.videoList.innerHTML = `
       <p class="text-center text-gray-500">
         Loading videos...
       </p>`;
+    }
 
-    // Clear the Map so we start fresh
+    // Clear your local map
     this.videosMap.clear();
 
     try {
-      // Subscribe to new events
+      // Subscribe to new events from nostrClient
       this.videoSubscription = nostrClient.subscribeVideos((video) => {
-        // Skip private videos not owned
+        // If the video is marked deleted, remove it from your local collection
+        if (video.deleted) {
+          if (this.videosMap.has(video.id)) {
+            this.videosMap.delete(video.id);
+            // Now rebuild the list
+            const allVideos = Array.from(this.videosMap.values());
+            const newestPerRoot = dedupeToNewestByRoot(allVideos);
+            this.renderVideoList(newestPerRoot);
+          }
+          return;
+        }
+
+        // Skip private videos if they do not belong to the current user
         if (video.isPrivate && video.pubkey !== this.pubkey) {
           return;
         }
 
-        // Only store if we haven’t seen this event ID yet
+        // Only add if it's not in the map
         if (!this.videosMap.has(video.id)) {
           this.videosMap.set(video.id, video);
-          // Then re-render from the map
+          // Re-run the dedupe logic
           const allVideos = Array.from(this.videosMap.values());
-          this.renderVideoList(allVideos);
+          const newestPerRoot = dedupeToNewestByRoot(allVideos);
+          this.renderVideoList(newestPerRoot);
         }
       });
     } catch (err) {
       console.error("Subscription error:", err);
       this.showError("Could not load videos via subscription.");
-      this.videoList.innerHTML = `
+      if (this.videoList) {
+        this.videoList.innerHTML = `
         <p class="text-center text-gray-500">
           No videos available at this time.
         </p>`;
+      }
     }
   }
 
   /**
-   * Convert the values of our videosMap to an array & render them.
+   * Build the DOM for the video list.
    */
   async renderVideoList(videos) {
-    console.log("RENDER VIDEO LIST - Start", {
-      videosReceived: videos,
-      videosCount: videos.length,
-    });
+    if (!this.videoList) return;
 
     if (!videos || videos.length === 0) {
       this.videoList.innerHTML = `
@@ -489,7 +698,6 @@ class bitvidApp {
       const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(
         nevent
       )}`;
-
       const canEdit = video.pubkey === this.pubkey;
       const highlightClass =
         video.isPrivate && canEdit
@@ -497,7 +705,7 @@ class bitvidApp {
           : "border-none";
       const timeAgo = this.formatTimeAgo(video.created_at);
 
-      // Gear menu
+      // Gear menu if canEdit
       const gearMenu = canEdit
         ? `
           <div class="relative inline-block ml-3 overflow-visible">
@@ -535,7 +743,7 @@ class bitvidApp {
         `
         : "";
 
-      // Build the card
+      // Build card
       const cardHtml = `
       <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
         <a
@@ -602,7 +810,7 @@ class bitvidApp {
       </div>
       `;
 
-      // Kick off background fetch for profile
+      // Kick off a background fetch for the profile
       this.fetchAndRenderProfile(video.pubkey);
 
       return cardHtml;
@@ -618,9 +826,11 @@ class bitvidApp {
     }
 
     this.videoList.innerHTML = valid.join("");
-    console.log("Videos rendered successfully (subscription approach).");
   }
 
+  /**
+   * Retrieve the profile for a given pubkey (kind:0) and update the DOM.
+   */
   async fetchAndRenderProfile(pubkey) {
     if (this.profileCache.has(pubkey)) {
       this.updateProfileInDOM(pubkey, this.profileCache.get(pubkey));
@@ -634,7 +844,7 @@ class bitvidApp {
         const data = JSON.parse(userEvents[0].content);
         const profile = {
           name: data.name || data.display_name || "Unknown",
-          picture: data.picture || "assets/png/default-avatar.png",
+          picture: data.picture || "assets/jpg/default-profile.jpg",
         };
         this.profileCache.set(pubkey, profile);
         this.updateProfileInDOM(pubkey, profile);
@@ -644,24 +854,29 @@ class bitvidApp {
     }
   }
 
+  /**
+   * Update all DOM elements that match this pubkey, e.g. .author-pic[data-pubkey=...]
+   */
   updateProfileInDOM(pubkey, profile) {
     const picEls = document.querySelectorAll(
       `.author-pic[data-pubkey="${pubkey}"]`
     );
-    for (const el of picEls) {
+    picEls.forEach((el) => {
       el.src = profile.picture;
-    }
+    });
     const nameEls = document.querySelectorAll(
       `.author-name[data-pubkey="${pubkey}"]`
     );
-    for (const el of nameEls) {
+    nameEls.forEach((el) => {
       el.textContent = profile.name;
-    }
+    });
   }
 
   /**
-   * Actually plays a video, using magnet lookups.
-   * We search our Map’s values by magnet. If not found, fallback fetch.
+   * Plays a video given its magnet URI.
+   * We simply look up which event has this magnet
+   * and then delegate to playVideoByEventId for
+   * consistent modal and metadata handling.
    */
   async playVideo(magnetURI) {
     try {
@@ -669,155 +884,107 @@ class bitvidApp {
         this.showError("Invalid Magnet URI.");
         return;
       }
+
       const decodedMagnet = decodeURIComponent(magnetURI);
+
+      // If we are already playing this exact magnet, do nothing.
       if (this.currentMagnetUri === decodedMagnet) {
         this.log("Same video requested - already playing");
         return;
       }
-      this.currentMagnetUri = decodedMagnet;
 
-      // "Please stand by" poster
-      this.modalVideo.poster = "assets/gif/please-stand-by.gif";
-      // Show modal
-      this.playerModal.style.display = "flex";
-      this.playerModal.classList.remove("hidden");
-
-      // 1) Convert the map’s values to an array and find by magnet
-      let video = Array.from(this.videosMap.values()).find(
+      // Look up the video in our subscription map
+      let matchedVideo = Array.from(this.videosMap.values()).find(
         (v) => v.magnet === decodedMagnet
       );
 
-      // 2) Fallback fetch if not found
-      if (!video) {
+      // If not found in the map, do a fallback fetch
+      if (!matchedVideo) {
         const allVideos = await nostrClient.fetchVideos();
-        video = allVideos.find((v) => v.magnet === decodedMagnet);
+        matchedVideo = allVideos.find((v) => v.magnet === decodedMagnet);
       }
 
-      if (!video) {
-        this.showError("Video data not found.");
+      if (!matchedVideo) {
+        this.showError("No matching video found.");
         return;
       }
 
-      this.currentVideo = video;
+      // Update our tracking
+      this.currentMagnetUri = decodedMagnet;
 
-      if (
-        video.isPrivate &&
-        video.pubkey === this.pubkey &&
-        !video.alreadyDecrypted
-      ) {
-        this.log("Decrypting private magnet link...");
-        video.magnet = fakeDecrypt(video.magnet);
-        video.alreadyDecrypted = true;
-      }
-      const finalMagnet = video.magnet;
-
-      // Update URL
-      try {
-        const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
-        const newUrl =
-          window.location.pathname + `?v=${encodeURIComponent(nevent)}`;
-        window.history.pushState({}, "", newUrl);
-      } catch (err) {
-        console.error("Error pushing new URL state:", err);
-      }
-
-      // optional: fetch a single author profile
-      let creatorProfile = {
-        name: "Unknown",
-        picture: `https://robohash.org/${video.pubkey}`,
-      };
-      try {
-        const userEvents = await nostrClient.pool.list(nostrClient.relays, [
-          { kinds: [0], authors: [video.pubkey], limit: 1 },
-        ]);
-        if (userEvents.length > 0 && userEvents[0]?.content) {
-          const data = JSON.parse(userEvents[0].content);
-          creatorProfile = {
-            name: data.name || data.display_name || "Unknown",
-            picture: data.picture || `https://robohash.org/${video.pubkey}`,
-          };
-        }
-      } catch (error) {
-        this.log("Error fetching creator profile:", error);
-      }
-
-      let creatorNpub = "Unknown";
-      try {
-        creatorNpub = window.NostrTools.nip19.npubEncode(video.pubkey);
-      } catch (error) {
-        this.log("Error converting pubkey to npub:", error);
-        creatorNpub = video.pubkey;
-      }
-
-      // Fill modal
-      this.videoTitle.textContent = video.title || "Untitled";
-      this.videoDescription.textContent =
-        video.description || "No description available.";
-      this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
-
-      this.creatorName.textContent = creatorProfile.name;
-      this.creatorNpub.textContent = `${creatorNpub.slice(
-        0,
-        8
-      )}...${creatorNpub.slice(-4)}`;
-      this.creatorAvatar.src = creatorProfile.picture;
-      this.creatorAvatar.alt = creatorProfile.name;
-
-      this.log("Starting video stream with:", finalMagnet);
-      await torrentClient.streamVideo(finalMagnet, this.modalVideo);
-
-      this.modalVideo.addEventListener("canplay", () => {
-        this.modalVideo.removeAttribute("poster");
-      });
-
-      // Mirror stats from the small player
-      const updateInterval = setInterval(() => {
-        if (!document.body.contains(this.modalVideo)) {
-          clearInterval(updateInterval);
-          return;
-        }
-        const status = document.getElementById("status");
-        const progress = document.getElementById("progress");
-        const peers = document.getElementById("peers");
-        const speed = document.getElementById("speed");
-        const downloaded = document.getElementById("downloaded");
-
-        if (status) this.modalStatus.textContent = status.textContent;
-        if (progress) this.modalProgress.style.width = progress.style.width;
-        if (peers) this.modalPeers.textContent = peers.textContent;
-        if (speed) this.modalSpeed.textContent = speed.textContent;
-        if (downloaded) {
-          this.modalDownloaded.textContent = downloaded.textContent;
-        }
-      }, 1000);
+      // Hand off to the method that already sets modal fields and streams
+      await this.playVideoByEventId(matchedVideo.id);
     } catch (error) {
-      this.log("Error in playVideo:", error);
+      console.error("Error in playVideo:", error);
       this.showError(`Playback error: ${error.message}`);
     }
   }
 
+  /**
+   * Updates the modal to reflect current torrent stats.
+   * We remove the unused torrent.status references,
+   * and do not re-trigger recursion here (no setTimeout).
+   */
   updateTorrentStatus(torrent) {
-    if (!torrent) return;
-    this.modalStatus.textContent = torrent.status;
-    this.modalProgress.style.width = `${(torrent.progress * 100).toFixed(2)}%`;
-    this.modalPeers.textContent = `Peers: ${torrent.numPeers}`;
-    this.modalSpeed.textContent = `${(torrent.downloadSpeed / 1024).toFixed(
-      2
-    )} KB/s`;
-    this.modalDownloaded.textContent = `${(
-      torrent.downloaded /
-      (1024 * 1024)
-    ).toFixed(2)} MB / ${(torrent.length / (1024 * 1024)).toFixed(2)} MB`;
-    if (torrent.ready) {
+    console.log("[DEBUG] updateTorrentStatus called with torrent:", torrent);
+
+    if (!torrent) {
+      console.log("[DEBUG] torrent is null/undefined!");
+      return;
+    }
+
+    // Log only fields that actually exist on the torrent:
+    console.log("[DEBUG] torrent.progress =", torrent.progress);
+    console.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
+    console.log("[DEBUG] torrent.downloadSpeed =", torrent.downloadSpeed);
+    console.log("[DEBUG] torrent.downloaded =", torrent.downloaded);
+    console.log("[DEBUG] torrent.length =", torrent.length);
+    console.log("[DEBUG] torrent.ready =", torrent.ready);
+
+    // Use "Complete" vs. "Downloading" as the textual status.
+    if (this.modalStatus) {
+      const fullyDownloaded = torrent.progress >= 1;
+      this.modalStatus.textContent = fullyDownloaded
+        ? "Complete"
+        : "Downloading";
+    }
+
+    // Update the progress bar
+    if (this.modalProgress) {
+      const percent = (torrent.progress * 100).toFixed(2);
+      this.modalProgress.style.width = `${percent}%`;
+    }
+
+    // Update peers count
+    if (this.modalPeers) {
+      this.modalPeers.textContent = `Peers: ${torrent.numPeers}`;
+    }
+
+    // Update speed in KB/s
+    if (this.modalSpeed) {
+      const kb = (torrent.downloadSpeed / 1024).toFixed(2);
+      this.modalSpeed.textContent = `${kb} KB/s`;
+    }
+
+    // Update downloaded / total
+    if (this.modalDownloaded) {
+      const downloadedMb = (torrent.downloaded / (1024 * 1024)).toFixed(2);
+      const lengthMb = (torrent.length / (1024 * 1024)).toFixed(2);
+      this.modalDownloaded.textContent = `${downloadedMb} MB / ${lengthMb} MB`;
+    }
+
+    // If you want to show a different text at 100% or if "ready"
+    // you can do it here:
+    if (torrent.ready && this.modalStatus) {
       this.modalStatus.textContent = "Ready to play";
-    } else {
-      setTimeout(() => this.updateTorrentStatus(torrent), 1000);
     }
   }
 
+  /**
+   * Handle "Edit Video" from gear menu.
+   */
   async handleEditVideo(index) {
     try {
-      // We do a fallback fetch to get a list of videos by index
       const all = await nostrClient.fetchVideos();
       const video = all[index];
       if (!this.pubkey) {
@@ -829,6 +996,7 @@ class bitvidApp {
         return;
       }
 
+      // Prompt for updated fields
       const newTitle = prompt("New Title? (blank=keep existing)", video.title);
       const newMagnet = prompt(
         "New Magnet? (blank=keep existing)",
@@ -842,8 +1010,9 @@ class bitvidApp {
         "New Description? (blank=keep existing)",
         video.description
       );
-
       const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
+
+      // Build updated data, falling back to old values
       const title =
         !newTitle || !newTitle.trim() ? video.title : newTitle.trim();
       const magnet =
@@ -863,20 +1032,23 @@ class bitvidApp {
         mode: isDevMode ? "dev" : "live",
       };
 
-      const originalEvent = {
-        id: video.id,
-        pubkey: video.pubkey,
-        tags: video.tags,
-      };
+      // IMPORTANT: we only pass id and pubkey to avoid reusing the old d-tag
+      // (Do NOT pass video.tags!)
+      const originalEvent = video;
+
       await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
+
       this.showSuccess("Video updated successfully!");
-      await this.loadVideos(); // re-subscribe and re-render
+      await this.loadVideos();
     } catch (err) {
       this.log("Failed to edit video:", err.message);
       this.showError("Failed to edit video. Please try again.");
     }
   }
 
+  /**
+   * Handle "Delete Video" from gear menu.
+   */
   async handleDeleteVideo(index) {
     try {
       const all = await nostrClient.fetchVideos();
@@ -893,12 +1065,14 @@ class bitvidApp {
         return;
       }
 
+      // Only id and pubkey (omit old tags), so that delete doesn't overshadow the old d-tag
       const originalEvent = {
         id: video.id,
         pubkey: video.pubkey,
-        tags: video.tags,
       };
+
       await nostrClient.deleteVideo(originalEvent, this.pubkey);
+
       this.showSuccess("Video deleted successfully!");
       await this.loadVideos();
     } catch (err) {
@@ -908,66 +1082,63 @@ class bitvidApp {
   }
 
   /**
-   * Checks URL params for ?v=... and tries to open the video by ID.
+   * If there's a ?v= param in the URL, auto-open that video.
    */
   checkUrlParams() {
     const urlParams = new URLSearchParams(window.location.search);
     const maybeNevent = urlParams.get("v");
-    if (maybeNevent) {
-      try {
-        const decoded = window.NostrTools.nip19.decode(maybeNevent);
-        if (decoded.type === "nevent" && decoded.data.id) {
-          const eventId = decoded.data.id;
+    if (!maybeNevent) return; // no link param
 
-          // 1) Check local Map first
-          let localMatch = this.videosMap.get(eventId);
-          if (localMatch) {
-            this.playVideoByEventId(eventId);
-          } else {
-            // 2) fallback fetch
-            nostrClient
-              .fetchVideos()
-              .then((all) => {
-                const matched = all.find((v) => v.id === eventId);
-                if (matched) {
-                  this.playVideoByEventId(eventId);
-                } else {
-                  this.showError("No matching video found for that link.");
-                }
-              })
-              .catch((err) => {
-                console.error("Error re-fetching videos:", err);
-                this.showError("Could not load videos for the share link.");
-              });
-          }
+    try {
+      const decoded = window.NostrTools.nip19.decode(maybeNevent);
+      if (decoded.type === "nevent" && decoded.data.id) {
+        const eventId = decoded.data.id;
+        // 1) check local map
+        let localMatch = this.videosMap.get(eventId);
+        if (localMatch) {
+          this.playVideoByEventId(eventId);
+        } else {
+          // 2) fallback => getOldEventById
+          this.getOldEventById(eventId)
+            .then((video) => {
+              if (video) {
+                this.playVideoByEventId(eventId);
+              } else {
+                this.showError("No matching video found for that link.");
+              }
+            })
+            .catch((err) => {
+              console.error("Error fetching older event by ID:", err);
+              this.showError("Could not load videos for the share link.");
+            });
         }
-      } catch (err) {
-        console.error("Error decoding nevent:", err);
-        this.showError("Invalid share link.");
       }
+    } catch (err) {
+      console.error("Error decoding nevent:", err);
+      this.showError("Invalid share link.");
     }
   }
 
   /**
-   * Plays a video given an event ID. Looks up in the Map if possible, else fallback.
+   * Helper to open a video by event ID (like ?v=...).
    */
   async playVideoByEventId(eventId) {
     try {
-      // 1) Check local subscription map first
+      // 1) Check local subscription map
       let video = this.videosMap.get(eventId);
 
-      // 2) Fallback fetch if not found
+      // 2) If not in local map, attempt fallback fetch from getOldEventById
       if (!video) {
-        const all = await nostrClient.fetchVideos();
-        video = all.find((v) => v.id === eventId);
+        video = await this.getOldEventById(eventId);
       }
 
+      // 3) If still no luck, show error and return
       if (!video) {
         this.showError("Video not found.");
         return;
       }
-      this.currentVideo = video;
 
+      // 4) Decrypt magnet if private & owned
       if (
         video.isPrivate &&
         video.pubkey === this.pubkey &&
@@ -978,18 +1149,18 @@ class bitvidApp {
         video.alreadyDecrypted = true;
       }
 
-      const finalMagnet = video.magnet;
-      this.currentMagnetUri = finalMagnet;
+      // 5) Show the modal
+      this.currentVideo = video;
+      this.currentMagnetUri = video.magnet;
+      this.showModalWithPoster();
 
-      this.playerModal.style.display = "flex";
-      this.playerModal.classList.remove("hidden");
-
+      // 6) Update ?v= param in the URL
       const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
       const newUrl =
         window.location.pathname + `?v=${encodeURIComponent(nevent)}`;
       window.history.pushState({}, "", newUrl);
 
-      // optional: fetch single author profile
+      // 7) Optionally fetch the author profile
       let creatorProfile = {
         name: "Unknown",
         picture: `https://robohash.org/${video.pubkey}`,
@@ -1009,33 +1180,52 @@ class bitvidApp {
         this.log("Error fetching creator profile:", error);
       }
 
-      let creatorNpub = "Unknown";
-      try {
-        creatorNpub = window.NostrTools.nip19.npubEncode(video.pubkey);
-      } catch (error) {
-        this.log("Error converting pubkey to npub:", error);
-        creatorNpub = video.pubkey;
+      // 8) Render video details in modal
+      const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+      if (this.videoTitle)
+        this.videoTitle.textContent = video.title || "Untitled";
+      if (this.videoDescription) {
+        this.videoDescription.textContent =
+          video.description || "No description available.";
+      }
+      if (this.videoTimestamp) {
+        this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
+      }
+      if (this.creatorName) {
+        this.creatorName.textContent = creatorProfile.name;
+      }
+      if (this.creatorNpub) {
+        this.creatorNpub.textContent = `${creatorNpub.slice(
+          0,
+          8
+        )}...${creatorNpub.slice(-4)}`;
+      }
+      if (this.creatorAvatar) {
+        this.creatorAvatar.src = creatorProfile.picture;
+        this.creatorAvatar.alt = creatorProfile.name;
       }
 
-      this.videoTitle.textContent = video.title || "Untitled";
-      this.videoDescription.textContent =
-        video.description || "No description available.";
-      this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
+      // 9) Stream torrent
+      this.log("Starting video stream with:", video.magnet);
+      const realTorrent = await torrentClient.streamVideo(
+        video.magnet,
+        this.modalVideo
+      );
 
-      this.creatorName.textContent = creatorProfile.name;
-      this.creatorNpub.textContent = `${creatorNpub.slice(
-        0,
-        8
-      )}...${creatorNpub.slice(-4)}`;
-      this.creatorAvatar.src = creatorProfile.picture;
-      this.creatorAvatar.alt = creatorProfile.name;
-
-      this.log("Starting video stream with:", finalMagnet);
-      await torrentClient.streamVideo(finalMagnet, this.modalVideo);
-
+      // 10) Start intervals to update stats
       const updateInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
           clearInterval(updateInterval);
+          return;
+        }
+        this.updateTorrentStatus(realTorrent);
+      }, 1000);
+      this.activeIntervals.push(updateInterval);
+
+      // (Optional) Mirror small inline stats into the modal
+      const mirrorInterval = setInterval(() => {
+        if (!document.body.contains(this.modalVideo)) {
+          clearInterval(mirrorInterval);
           return;
         }
         const status = document.getElementById("status");
@@ -1044,21 +1234,79 @@ class bitvidApp {
         const speed = document.getElementById("speed");
         const downloaded = document.getElementById("downloaded");
 
-        if (status) this.modalStatus.textContent = status.textContent;
-        if (progress) this.modalProgress.style.width = progress.style.width;
-        if (peers) this.modalPeers.textContent = peers.textContent;
-        if (speed) this.modalSpeed.textContent = speed.textContent;
-        if (downloaded) {
+        if (status && this.modalStatus) {
+          this.modalStatus.textContent = status.textContent;
+        }
+        if (progress && this.modalProgress) {
+          this.modalProgress.style.width = progress.style.width;
+        }
+        if (peers && this.modalPeers) {
+          this.modalPeers.textContent = peers.textContent;
+        }
+        if (speed && this.modalSpeed) {
+          this.modalSpeed.textContent = speed.textContent;
+        }
+        if (downloaded && this.modalDownloaded) {
           this.modalDownloaded.textContent = downloaded.textContent;
         }
       }, 1000);
+      this.activeIntervals.push(mirrorInterval);
     } catch (error) {
       this.log("Error in playVideoByEventId:", error);
       this.showError(`Playback error: ${error.message}`);
     }
   }
 
-  // Utility helpers
+  /**
+   * Simple helper to safely encode an npub.
+   */
+  safeEncodeNpub(pubkey) {
+    try {
+      return window.NostrTools.nip19.npubEncode(pubkey);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /**
+   * Attempts to fetch an older event by its ID if we can't find it in
+   * this.videosMap or from a bulk fetch. Uses nostrClient.getEventById.
+   */
+  async getOldEventById(eventId) {
+    // 1) Already in our local videosMap?
+    let video = this.videosMap.get(eventId);
+    if (video) {
+      return video;
+    }
+
+    // 2) Bulk fetch from relays
+    const allFromBulk = await nostrClient.fetchVideos();
+
+    // 2a) Deduplicate so we only keep newest version per root
+    const newestPerRoot = dedupeToNewestByRoot(allFromBulk);
+
+    // 2b) Find the requested ID within the deduplicated set
+    video = newestPerRoot.find((v) => v.id === eventId);
+    if (video) {
+      // Store it in our local map, so we can open it instantly next time
+      this.videosMap.set(video.id, video);
+      return video;
+    }
+
+    // 3) Final fallback: direct single-event fetch
+    const single = await nostrClient.getEventById(eventId);
+    if (single && !single.deleted) {
+      this.videosMap.set(single.id, single);
+      return single;
+    }
+
+    // Not found or was deleted
+    return null;
+  }
+
+  /**
+   * Format "time ago" for a given timestamp (in seconds).
+   */
   formatTimeAgo(timestamp) {
     const seconds = Math.floor(Date.now() / 1000 - timestamp);
     const intervals = {
@@ -1072,7 +1320,7 @@ class bitvidApp {
     for (const [unit, secInUnit] of Object.entries(intervals)) {
       const int = Math.floor(seconds / secInUnit);
       if (int >= 1) {
-        return `${int} ${unit}${int === 1 ? "" : "s"} ago`;
+        return `${int} ${unit}${int > 1 ? "s" : ""} ago`;
       }
     }
     return "just now";
@@ -1088,36 +1336,82 @@ class bitvidApp {
   }
 
   showError(msg) {
-    console.error(msg);
-    if (this.errorContainer) {
-      this.errorContainer.textContent = msg;
-      this.errorContainer.classList.remove("hidden");
-      setTimeout(() => {
-        this.errorContainer.classList.add("hidden");
-        this.errorContainer.textContent = "";
-      }, 5000);
-    } else {
-      alert(msg);
+    if (!msg) {
+      // Remove any content, then hide
+      this.errorContainer.textContent = "";
+      this.errorContainer.classList.add("hidden");
+      return;
     }
+
+    // If there's a message, show it
+    this.errorContainer.textContent = msg;
+    this.errorContainer.classList.remove("hidden");
+
+    // Optional auto-hide after 5 seconds
+    setTimeout(() => {
+      this.errorContainer.textContent = "";
+      this.errorContainer.classList.add("hidden");
+    }, 5000);
   }
 
   showSuccess(msg) {
-    console.log(msg);
-    if (this.successContainer) {
-      this.successContainer.textContent = msg;
-      this.successContainer.classList.remove("hidden");
-      setTimeout(() => {
-        this.successContainer.classList.add("hidden");
-        this.successContainer.textContent = "";
-      }, 5000);
-    } else {
-      alert(msg);
+    if (!msg) {
+      this.successContainer.textContent = "";
+      this.successContainer.classList.add("hidden");
+      return;
     }
+
+    this.successContainer.textContent = msg;
+    this.successContainer.classList.remove("hidden");
+
+    setTimeout(() => {
+      this.successContainer.textContent = "";
+      this.successContainer.classList.add("hidden");
+    }, 5000);
   }
 
   log(msg) {
     console.log(msg);
   }
+
+  /**
+   * Copies the current video's magnet link to the clipboard.
+   */
+  handleCopyMagnet() {
+    if (!this.currentVideo || !this.currentVideo.magnet) {
+      this.showError("No magnet link to copy.");
+      return;
+    }
+    try {
+      navigator.clipboard.writeText(this.currentVideo.magnet);
+      this.showSuccess("Magnet link copied to clipboard!");
+    } catch (err) {
+      console.error("Failed to copy magnet link:", err);
+      this.showError("Could not copy magnet link. Please copy it manually.");
+    }
+  }
+}
+
+/**
+ * Given an array of video objects,
+ * return only the newest (by created_at) for each videoRootId.
+ * If no videoRootId is present, treat the video’s own ID as its root.
+ */
+function dedupeToNewestByRoot(videos) {
+  const map = new Map(); // key = rootId, value = newest video for that root
+
+  for (const vid of videos) {
+    // If there's no videoRootId, fall back to vid.id (treat it as its own "root")
+    const rootId = vid.videoRootId || vid.id;
+
+    const existing = map.get(rootId);
+    if (!existing || vid.created_at > existing.created_at) {
+      map.set(rootId, vid);
+    }
+  }
+
+  // Return just the newest from each group
+  return Array.from(map.values());
 }
 
 export const app = new bitvidApp();
