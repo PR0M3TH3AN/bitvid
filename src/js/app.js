@@ -70,17 +70,18 @@ class bitvidApp {
 
     // Auth state
     this.pubkey = null;
-    // Currently playing magnet
     this.currentMagnetUri = null;
-    // The active video object
     this.currentVideo = null;
-    // Subscription reference (for unsubscribing)
     this.videoSubscription = null;
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = new Map();
     // Simple cache for user profiles
     this.profileCache = new Map();
+
+    // NEW: reference to the login modal's close button
+    this.closeLoginModalBtn =
+      document.getElementById("closeLoginModal") || null;
   }
 
   async init() {
@@ -107,7 +108,7 @@ class bitvidApp {
       this.setupEventListeners();
       disclaimerModal.show();
 
-      // 6. Load the default view
+      // 6. Load the default view (most-recent-videos.html)
       await loadView("views/most-recent-videos.html");
 
       // 7. Once loaded, get a reference to #videoList
@@ -119,8 +120,7 @@ class bitvidApp {
       // 9. Check URL ?v= param
       this.checkUrlParams();
 
-      // (Recommended) Keep an array of active interval IDs
-      // so we can clear them when the modal closes:
+      // Keep an array of active interval IDs so we can clear them on modal close
       this.activeIntervals = [];
     } catch (error) {
       console.error("Init failed:", error);
@@ -143,9 +143,13 @@ class bitvidApp {
       if (!modalContainer) {
         throw new Error("Modal container element not found!");
       }
-      modalContainer.innerHTML = html;
 
-      // Confirm we have a close button, etc.
+      // Instead of overwriting, we append a new DIV with the fetched HTML
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = html; // set the markup
+      modalContainer.appendChild(wrapper); // append the markup
+
+      // Now we can safely find elements inside:
       const closeButton = document.getElementById("closeModal");
       if (!closeButton) {
         throw new Error("Close button not found in video-modal!");
@@ -353,29 +357,17 @@ class bitvidApp {
   }
 
   /**
-   * Setup general event listeners for login, logout, modals, etc.
+   * Setup general event listeners for logout, modals, etc.
    */
   setupEventListeners() {
-    // Login
-    if (this.loginButton) {
-      this.loginButton.addEventListener("click", async () => {
-        try {
-          const pubkey = await nostrClient.login();
-          this.login(pubkey, true);
-        } catch (err) {
-          this.showError("Failed to login. Please try again.");
-        }
-      });
-    }
-
-    // Logout
+    // 1) Logout button
     if (this.logoutButton) {
       this.logoutButton.addEventListener("click", () => {
         this.logout();
       });
     }
 
-    // Profile button (if used)
+    // 2) Profile button
     if (this.profileButton) {
       this.profileButton.addEventListener("click", () => {
         if (this.profileModal) {
@@ -384,7 +376,7 @@ class bitvidApp {
       });
     }
 
-    // Upload button => show upload modal
+    // 3) Upload button => show upload modal
     if (this.uploadButton) {
       this.uploadButton.addEventListener("click", () => {
         if (this.uploadModal) {
@@ -393,12 +385,58 @@ class bitvidApp {
       });
     }
 
-    // Cleanup on page unload
+    // 4) Login button => show the login modal
+    if (this.loginButton) {
+      this.loginButton.addEventListener("click", () => {
+        console.log("Login button clicked!");
+        const loginModal = document.getElementById("loginModal");
+        if (loginModal) {
+          loginModal.classList.remove("hidden");
+        }
+      });
+    }
+
+    // 5) Close login modal button => hide modal
+    if (this.closeLoginModalBtn) {
+      this.closeLoginModalBtn.addEventListener("click", () => {
+        console.log("[app.js] closeLoginModal button clicked!");
+        const loginModal = document.getElementById("loginModal");
+        if (loginModal) {
+          loginModal.classList.add("hidden");
+        }
+      });
+    }
+
+    // 6) NIP-07 button inside the login modal => call the extension & login
+    const nip07Button = document.getElementById("loginNIP07");
+    if (nip07Button) {
+      nip07Button.addEventListener("click", async () => {
+        console.log(
+          "[app.js] loginNIP07 clicked! Attempting extension login..."
+        );
+        try {
+          const pubkey = await nostrClient.login(); // call the extension
+          console.log("[NIP-07] login returned pubkey:", pubkey);
+          this.login(pubkey, true);
+
+          // Hide the login modal
+          const loginModal = document.getElementById("loginModal");
+          if (loginModal) {
+            loginModal.classList.add("hidden");
+          }
+        } catch (err) {
+          console.error("[NIP-07 login error]", err);
+          this.showError("Failed to login with NIP-07. Please try again.");
+        }
+      });
+    }
+
+    // 7) Cleanup on page unload
     window.addEventListener("beforeunload", async () => {
       await this.cleanup();
     });
 
-    // Handle back/forward navigation => hide video modal
+    // 8) Handle back/forward nav => hide video modal
     window.addEventListener("popstate", async () => {
       console.log("[popstate] user navigated back/forward; cleaning modal...");
       await this.hideModal();
@@ -496,13 +534,16 @@ class bitvidApp {
    * Called upon successful login.
    */
   login(pubkey, saveToStorage = true) {
+    console.log("[app.js] login() called with pubkey =", pubkey);
+
     this.pubkey = pubkey;
 
-    // Hide login button if present
+    // Hide the login button if present
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
     }
-    // We can hide logout or userStatus if we want (or they might not exist)
+
+    // Hide logout / userStatus if you’re not using them
     if (this.logoutButton) {
       this.logoutButton.classList.add("hidden");
     }
@@ -510,7 +551,7 @@ class bitvidApp {
       this.userStatus.classList.add("hidden");
     }
 
-    // Show the upload button, profile button, etc.
+    // IMPORTANT: Unhide the Upload & Profile buttons
     if (this.uploadButton) {
       this.uploadButton.classList.remove("hidden");
     }
@@ -518,9 +559,10 @@ class bitvidApp {
       this.profileButton.classList.remove("hidden");
     }
 
-    // If you want to fetch your own profile to update UI
+    // Optionally load the user's own profile
     this.loadOwnProfile(pubkey);
 
+    // Save pubkey in localStorage (if desired)
     if (saveToStorage) {
       localStorage.setItem("userPubKey", pubkey);
     }

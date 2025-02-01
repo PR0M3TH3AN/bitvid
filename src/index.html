@@ -38,7 +38,6 @@
     <link href="css/tailwind.min.css" rel="stylesheet" />
     <link href="css/style.css" rel="stylesheet" />
   </head>
-
   <body class="bg-gray-100">
     <div
       id="app"
@@ -59,26 +58,26 @@
           <button
             id="loginButton"
             style="background-color: #fe0032"
-            class="inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-sm font-bold leading-none whitespace-nowrap appearance-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+            class="inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-sm font-bold leading-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
           >
-            NIP-07
+            login
           </button>
 
-          <!-- Upload (Add Video) Button -->
+          <!-- Upload Button (hidden by default) -->
           <button
             id="uploadButton"
             style="background-color: #fe0032"
-            class="inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-xl font-bold leading-none whitespace-nowrap appearance-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 hidden"
+            class="hidden inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-xl font-bold leading-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
           >
             +
           </button>
 
-          <!-- Profile Button -->
+          <!-- Profile Button (hidden by default) -->
           <button
             id="profileButton"
-            class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-black text-white text-sm leading-none hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black hidden"
+            class="hidden inline-flex items-center justify-center w-12 h-12 rounded-full bg-black text-white text-sm leading-none hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
           >
-            <!-- Ensures a border around the smaller avatar -->
+            <!-- This inner DIV is just an avatar container, if you like -->
             <div class="w-10 h-10 rounded-full overflow-hidden">
               <img
                 id="profileAvatar"
@@ -95,24 +94,17 @@
       <div
         id="errorContainer"
         class="hidden bg-red-100 text-red-900 p-4 rounded-md mb-4"
-      >
-        <!-- Error messages will appear here -->
-      </div>
-
+      ></div>
       <!-- Success Container -->
       <div
         id="successContainer"
         class="hidden bg-green-100 text-green-900 p-4 rounded-md mb-4"
-      >
-        <!-- Success messages will appear here -->
-      </div>
+      ></div>
 
-      <!-- Main container for dynamic views -->
-      <main id="viewContainer" class="flex-grow mb-8">
-        <!-- We'll load "most-recent-videos.html" or other views here -->
-      </main>
+      <!-- Main container for dynamic views (most-recent-videos.html, etc.) -->
+      <main id="viewContainer" class="flex-grow mb-8"></main>
 
-      <!-- Imported Video Player Modal (goes into modalContainer) -->
+      <!-- Modal Container (external modals will be injected here) -->
       <div id="modalContainer"></div>
 
       <!-- Tagline / Slogan -->
@@ -122,7 +114,7 @@
         </h2>
       </div>
 
-      <!-- Disclaimer Modal -->
+      <!-- Disclaimer Modal (inline markup; adjust as needed) -->
       <div id="disclaimerModal" class="hidden">
         <div class="modal-content">
           <div class="modal-scroll">
@@ -133,11 +125,9 @@
                 class="h-16"
               />
             </div>
-
             <h2 class="text-2xl font-bold mb-4 text-center text-white">
               Welcome to bitvid
             </h2>
-
             <!-- Warning Alert -->
             <div
               class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 mb-6 flex items-start"
@@ -163,14 +153,12 @@
                 load initially.
               </p>
             </div>
-
             <div class="space-y-6 text-gray-300">
               <p>
                 bitvid is a decentralized video platform where content is shared
                 directly between users. We want you to understand a few
                 important points before you continue:
               </p>
-
               <div class="space-y-4">
                 <div class="bg-gray-800 rounded-lg p-4">
                   <h3 class="text-white font-semibold mb-2">
@@ -183,7 +171,6 @@
                     maintain quality content during our early stages.
                   </p>
                 </div>
-
                 <div class="bg-gray-800 rounded-lg p-4">
                   <h3 class="text-white font-semibold mb-2">
                     Content Responsibility & Moderation
@@ -195,7 +182,6 @@
                     content must follow local laws and platform guidelines.
                   </p>
                 </div>
-
                 <div class="bg-gray-800 rounded-lg p-4">
                   <h3 class="text-white font-semibold mb-2">Platform Status</h3>
                   <p class="text-gray-400">
@@ -204,7 +190,6 @@
                     patience help us build a better platform.
                   </p>
                 </div>
-
                 <div class="bg-gray-800 rounded-lg p-4">
                   <h3 class="text-white font-semibold mb-2">Get Involved</h3>
                   <p class="text-gray-400">
@@ -216,7 +201,6 @@
               </div>
             </div>
           </div>
-
           <div class="button-container">
             <button
               id="acceptDisclaimer"
@@ -339,20 +323,45 @@
           </a>
         </p>
       </footer>
-
-      <!-- Scripts -->
-      <script src="js/libs/nostr.bundle.js"></script>
-      <script type="module" src="js/config.js"></script>
-      <script type="module" src="js/lists.js"></script>
-      <script type="module" src="js/accessControl.js"></script>
-      <script type="module" src="js/webtorrent.js"></script>
-      <script type="module" src="js/nostr.js"></script>
-
-      <!-- Optional: a separate manager for view loading -->
-      <script type="module" src="js/viewManager.js"></script>
-
-      <!-- Main app script -->
-      <script type="module" src="js/app.js"></script>
     </div>
+
+    <!-- Load external modal components -->
+    <script>
+      async function loadModal(url) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error("Failed to load " + url);
+          }
+          const html = await response.text();
+          document
+            .getElementById("modalContainer")
+            .insertAdjacentHTML("beforeend", html);
+          console.log(url, "loaded");
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      // Just load the login modal (or any others), without adding event listeners here.
+      // The logic to open/close the modal is all in app.js now.
+      Promise.all([
+        loadModal("components/login-modal.html"),
+        // e.g. loadModal("components/upload-modal.html"),
+        // loadModal("components/profile-modal.html"),
+      ]).then(() => {
+        console.log("Modals loaded (login-modal.html, etc.)");
+      });
+    </script>
+
+    <!-- Scripts -->
+    <script src="js/libs/nostr.bundle.js"></script>
+    <script type="module" src="js/config.js"></script>
+    <script type="module" src="js/lists.js"></script>
+    <script type="module" src="js/accessControl.js"></script>
+    <script type="module" src="js/webtorrent.js"></script>
+    <script type="module" src="js/nostr.js"></script>
+    <script type="module" src="js/viewManager.js"></script>
+    <script type="module" src="js/app.js"></script>
   </body>
 </html>

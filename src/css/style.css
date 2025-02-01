@@ -89,12 +89,21 @@ header img {
 #playerModal {
   position: fixed;
   inset: 0;
-  background-color: rgb(0 0 0 / 0.9);
+  background-color: rgb(0 0 0 / 0.9); /* You can adjust opacity if needed */
   z-index: 50;
   display: none; /* Hidden by default */
   flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); /* For Safari support */
+}
+
+#nostrFormModal,
+#profileModal,
+#uploadModal {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); /* For Safari */
 }
 
 /* If you ever want to show it, add ".flex" class dynamically */
