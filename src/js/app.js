@@ -70,17 +70,31 @@ class bitvidApp {
 
     // Auth state
     this.pubkey = null;
-    // Currently playing magnet
     this.currentMagnetUri = null;
-    // The active video object
     this.currentVideo = null;
-    // Subscription reference (for unsubscribing)
     this.videoSubscription = null;
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = new Map();
     // Simple cache for user profiles
     this.profileCache = new Map();
+
+    // NEW: reference to the login modal's close button
+    this.closeLoginModalBtn =
+      document.getElementById("closeLoginModal") || null;
+  }
+
+  forceRefreshAllProfiles() {
+    // 1) Grab the newest set of videos from nostrClient
+    const activeVideos = nostrClient.getActiveVideos();
+
+    // 2) Build a unique set of pubkeys
+    const uniqueAuthors = new Set(activeVideos.map((v) => v.pubkey));
+
+    // 3) For each author, fetchAndRenderProfile with forceRefresh = true
+    for (const authorPubkey of uniqueAuthors) {
+      this.fetchAndRenderProfile(authorPubkey, true);
+    }
   }
 
   async init() {
@@ -107,7 +121,7 @@ class bitvidApp {
       this.setupEventListeners();
       disclaimerModal.show();
 
-      // 6. Load the default view
+      // 6. Load the default view (most-recent-videos.html)
       await loadView("views/most-recent-videos.html");
 
       // 7. Once loaded, get a reference to #videoList
@@ -119,8 +133,7 @@ class bitvidApp {
       // 9. Check URL ?v= param
       this.checkUrlParams();
 
-      // (Recommended) Keep an array of active interval IDs
-      // so we can clear them when the modal closes:
+      // Keep an array of active interval IDs so we can clear them on modal close
       this.activeIntervals = [];
     } catch (error) {
       console.error("Init failed:", error);
@@ -143,9 +156,13 @@ class bitvidApp {
       if (!modalContainer) {
         throw new Error("Modal container element not found!");
       }
-      modalContainer.innerHTML = html;
 
-      // Confirm we have a close button, etc.
+      // Instead of overwriting, we append a new DIV with the fetched HTML
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = html; // set the markup
+      modalContainer.appendChild(wrapper); // append the markup
+
+      // Now we can safely find elements inside:
       const closeButton = document.getElementById("closeModal");
       if (!closeButton) {
         throw new Error("Close button not found in video-modal!");
@@ -353,29 +370,17 @@ class bitvidApp {
   }
 
   /**
-   * Setup general event listeners for login, logout, modals, etc.
+   * Setup general event listeners for logout, modals, etc.
    */
   setupEventListeners() {
-    // Login
-    if (this.loginButton) {
-      this.loginButton.addEventListener("click", async () => {
-        try {
-          const pubkey = await nostrClient.login();
-          this.login(pubkey, true);
-        } catch (err) {
-          this.showError("Failed to login. Please try again.");
-        }
-      });
-    }
-
-    // Logout
+    // 1) Logout button
     if (this.logoutButton) {
       this.logoutButton.addEventListener("click", () => {
         this.logout();
       });
     }
 
-    // Profile button (if used)
+    // 2) Profile button
     if (this.profileButton) {
       this.profileButton.addEventListener("click", () => {
         if (this.profileModal) {
@@ -384,7 +389,7 @@ class bitvidApp {
       });
     }
 
-    // Upload button => show upload modal
+    // 3) Upload button => show upload modal
     if (this.uploadButton) {
       this.uploadButton.addEventListener("click", () => {
         if (this.uploadModal) {
@@ -393,12 +398,58 @@ class bitvidApp {
       });
     }
 
-    // Cleanup on page unload
+    // 4) Login button => show the login modal
+    if (this.loginButton) {
+      this.loginButton.addEventListener("click", () => {
+        console.log("Login button clicked!");
+        const loginModal = document.getElementById("loginModal");
+        if (loginModal) {
+          loginModal.classList.remove("hidden");
+        }
+      });
+    }
+
+    // 5) Close login modal button => hide modal
+    if (this.closeLoginModalBtn) {
+      this.closeLoginModalBtn.addEventListener("click", () => {
+        console.log("[app.js] closeLoginModal button clicked!");
+        const loginModal = document.getElementById("loginModal");
+        if (loginModal) {
+          loginModal.classList.add("hidden");
+        }
+      });
+    }
+
+    // 6) NIP-07 button inside the login modal => call the extension & login
+    const nip07Button = document.getElementById("loginNIP07");
+    if (nip07Button) {
+      nip07Button.addEventListener("click", async () => {
+        console.log(
+          "[app.js] loginNIP07 clicked! Attempting extension login..."
+        );
+        try {
+          const pubkey = await nostrClient.login(); // call the extension
+          console.log("[NIP-07] login returned pubkey:", pubkey);
+          this.login(pubkey, true);
+
+          // Hide the login modal
+          const loginModal = document.getElementById("loginModal");
+          if (loginModal) {
+            loginModal.classList.add("hidden");
+          }
+        } catch (err) {
+          console.error("[NIP-07 login error]", err);
+          this.showError("Failed to login with NIP-07. Please try again.");
+        }
+      });
+    }
+
+    // 7) Cleanup on page unload
     window.addEventListener("beforeunload", async () => {
       await this.cleanup();
     });
 
-    // Handle back/forward navigation => hide video modal
+    // 8) Handle back/forward nav => hide video modal
     window.addEventListener("popstate", async () => {
       console.log("[popstate] user navigated back/forward; cleaning modal...");
       await this.hideModal();
@@ -483,7 +534,7 @@ class bitvidApp {
         this.uploadModal.classList.add("hidden");
       }
 
-      // Refresh the video list
+      // *** Refresh to show the newly uploaded video in the grid ***
       await this.loadVideos();
       this.showSuccess("Video shared successfully!");
     } catch (err) {
@@ -495,14 +546,16 @@ class bitvidApp {
   /**
    * Called upon successful login.
    */
-  login(pubkey, saveToStorage = true) {
+  async login(pubkey, saveToStorage = true) {
+    console.log("[app.js] login() called with pubkey =", pubkey);
+
     this.pubkey = pubkey;
 
     // Hide login button if present
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
     }
-    // We can hide logout or userStatus if we want (or they might not exist)
+    // Optionally hide logout or userStatus
     if (this.logoutButton) {
       this.logoutButton.classList.add("hidden");
     }
@@ -518,24 +571,33 @@ class bitvidApp {
       this.profileButton.classList.remove("hidden");
     }
 
-    // If you want to fetch your own profile to update UI
+    // (Optional) load the user's own Nostr profile
     this.loadOwnProfile(pubkey);
 
+    // Save pubkey locally if requested
     if (saveToStorage) {
       localStorage.setItem("userPubKey", pubkey);
     }
+
+    // Refresh the video list so the user sees any private videos, etc.
+    await this.loadVideos();
+
+    // Force a fresh fetch of all profile pictures/names
+    this.forceRefreshAllProfiles();
   }
 
   /**
    * Logout logic
    */
-  logout() {
+  async logout() {
     nostrClient.logout();
     this.pubkey = null;
-    // Show login again (if it exists)
+
+    // Show the login button again
     if (this.loginButton) {
       this.loginButton.classList.remove("hidden");
     }
+
     // Hide logout or userStatus
     if (this.logoutButton) {
       this.logoutButton.classList.add("hidden");
@@ -546,6 +608,7 @@ class bitvidApp {
     if (this.userPubKey) {
       this.userPubKey.textContent = "";
     }
+
     // Hide upload & profile
     if (this.uploadButton) {
       this.uploadButton.classList.add("hidden");
@@ -553,8 +616,15 @@ class bitvidApp {
     if (this.profileButton) {
       this.profileButton.classList.add("hidden");
     }
+
     // Clear localStorage
     localStorage.removeItem("userPubKey");
+
+    // Refresh the video list so user sees only public videos again
+    await this.loadVideos();
+
+    // Force a fresh fetch of all profile pictures/names (public ones in this case)
+    this.forceRefreshAllProfiles();
   }
 
   /**
@@ -611,15 +681,15 @@ class bitvidApp {
   // js/app.js
 
   async loadVideos() {
-    console.log("Starting loadVideos (subscription approach)...");
+    console.log("Starting loadVideos...");
 
-    // If you had an existing subscription, unsubscribe first:
+    // 1) If there's an existing subscription, unsubscribe it
     if (this.videoSubscription) {
       this.videoSubscription.unsub();
       this.videoSubscription = null;
     }
 
-    // Optionally show "loading videos..." message
+    // 2) Show "Loading..." message
     if (this.videoList) {
       this.videoList.innerHTML = `
       <p class="text-center text-gray-500">
@@ -627,41 +697,24 @@ class bitvidApp {
       </p>`;
     }
 
-    // Clear your local map
-    this.videosMap.clear();
-
     try {
-      // Subscribe to new events from nostrClient
+      // 3) Force a bulk fetch
+      await nostrClient.fetchVideos();
+
+      // 4) Instead of reusing the entire fetched array,
+      //    use getActiveVideos() for the final display:
+      const newestActive = nostrClient.getActiveVideos();
+      this.renderVideoList(newestActive);
+
+      // 5) Subscribe for updates
       this.videoSubscription = nostrClient.subscribeVideos((video) => {
-        // If the video is marked deleted, remove it from your local collection
-        if (video.deleted) {
-          if (this.videosMap.has(video.id)) {
-            this.videosMap.delete(video.id);
-            // Now rebuild the list
-            const allVideos = Array.from(this.videosMap.values());
-            const newestPerRoot = dedupeToNewestByRoot(allVideos);
-            this.renderVideoList(newestPerRoot);
-          }
-          return;
-        }
-
-        // Skip private videos if they do not belong to the current user
-        if (video.isPrivate && video.pubkey !== this.pubkey) {
-          return;
-        }
-
-        // Only add if it's not in the map
-        if (!this.videosMap.has(video.id)) {
-          this.videosMap.set(video.id, video);
-          // Re-run the dedupe logic
-          const allVideos = Array.from(this.videosMap.values());
-          const newestPerRoot = dedupeToNewestByRoot(allVideos);
-          this.renderVideoList(newestPerRoot);
-        }
+        // Whenever we get a new or updated event, re-render the newest set:
+        const activeAll = nostrClient.getActiveVideos();
+        this.renderVideoList(activeAll);
       });
     } catch (err) {
-      console.error("Subscription error:", err);
-      this.showError("Could not load videos via subscription.");
+      console.error("Could not load videos:", err);
+      this.showError("Could not load videos from relays.");
       if (this.videoList) {
         this.videoList.innerHTML = `
         <p class="text-center text-gray-500">
@@ -672,21 +725,39 @@ class bitvidApp {
   }
 
   /**
-   * Build the DOM for the video list.
+   * Returns true if there's at least one strictly older version
+   * (same videoRootId, created_at < current) which is NOT deleted.
    */
+  hasOlderVersion(video, allEvents) {
+    if (!video || !video.videoRootId) return false;
+
+    const rootId = video.videoRootId;
+    const currentTs = video.created_at;
+
+    // among ALL known events (including overshadowed), find older, not deleted
+    const olderMatches = allEvents.filter(
+      (v) => v.videoRootId === rootId && v.created_at < currentTs && !v.deleted
+    );
+    return olderMatches.length > 0;
+  }
+
+  // 4) Build the DOM for each video in newestActive
   async renderVideoList(videos) {
     if (!this.videoList) return;
 
     if (!videos || videos.length === 0) {
       this.videoList.innerHTML = `
-        <p class="text-center text-gray-500">
-          No public videos available yet. Be the first to upload one!
-        </p>`;
+      <p class="text-center text-gray-500">
+        No public videos available yet. Be the first to upload one!
+      </p>`;
       return;
     }
 
     // Sort newest first
     videos.sort((a, b) => b.created_at - a.created_at);
+
+    // <-- NEW: Convert allEvents map => array to check older overshadowed events
+    const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
 
     const htmlList = videos.map((video, index) => {
       if (!video.id || !video.title) {
@@ -705,45 +776,64 @@ class bitvidApp {
           : "border-none";
       const timeAgo = this.formatTimeAgo(video.created_at);
 
-      // Gear menu if canEdit
-      const gearMenu = canEdit
+      // 1) Do we have an older version?
+      let hasOlder = false;
+      if (canEdit && video.videoRootId) {
+        hasOlder = this.hasOlderVersion(video, fullAllEventsArray);
+      }
+
+      // 2) If we do => show revert button
+      const revertButton = hasOlder
         ? `
-          <div class="relative inline-block ml-3 overflow-visible">
-            <button
-              type="button"
-              class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              onclick="document.getElementById('settingsDropdown-${index}').classList.toggle('hidden')"
-            >
-              <img
-                src="assets/svg/video-settings-gear.svg"
-                alt="Settings"
-                class="w-5 h-5"
-              />
-            </button>
-            <div
-              id="settingsDropdown-${index}"
-              class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-            >
-              <div class="py-1">
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                  onclick="app.handleEditVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
-                >
-                  Edit
-                </button>
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                  onclick="app.handleDeleteVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
+          <button
+            class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+            onclick="app.handleRevertVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
+          >
+            Revert
+          </button>
         `
         : "";
 
-      // Build card
+      // 3) Gear menu
+      const gearMenu = canEdit
+        ? `
+        <div class="relative inline-block ml-3 overflow-visible">
+          <button
+            type="button"
+            class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onclick="document.getElementById('settingsDropdown-${index}').classList.toggle('hidden')"
+          >
+            <img
+              src="assets/svg/video-settings-gear.svg"
+              alt="Settings"
+              class="w-5 h-5"
+            />
+          </button>
+          <div
+            id="settingsDropdown-${index}"
+            class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+          >
+            <div class="py-1">
+              <button
+                class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                onclick="app.handleEditVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
+              >
+                Edit
+              </button>
+              ${revertButton}
+              <button
+                class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                onclick="app.handleFullDeleteVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
+              >
+                Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      `
+        : "";
+
+      // 4) Build the card markup...
       const cardHtml = `
       <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
         <a
@@ -808,34 +898,44 @@ class bitvidApp {
           </div>
         </div>
       </div>
-      `;
+    `;
 
-      // Kick off a background fetch for the profile
+      // Fire off a background fetch for the author's profile
       this.fetchAndRenderProfile(video.pubkey);
 
       return cardHtml;
     });
 
+    // Filter out any empty strings
     const valid = htmlList.filter((x) => x.length > 0);
     if (valid.length === 0) {
       this.videoList.innerHTML = `
-        <p class="text-center text-gray-500">
-          No valid videos to display.
-        </p>`;
+      <p class="text-center text-gray-500">
+        No valid videos to display.
+      </p>`;
       return;
     }
 
+    // Finally inject into DOM
     this.videoList.innerHTML = valid.join("");
   }
 
   /**
    * Retrieve the profile for a given pubkey (kind:0) and update the DOM.
    */
-  async fetchAndRenderProfile(pubkey) {
-    if (this.profileCache.has(pubkey)) {
-      this.updateProfileInDOM(pubkey, this.profileCache.get(pubkey));
+  async fetchAndRenderProfile(pubkey, forceRefresh = false) {
+    const now = Date.now();
+
+    // Check if we already have a cached entry for this pubkey:
+    const cacheEntry = this.profileCache.get(pubkey);
+
+    // If not forcing refresh, and we have a cache entry less than 60 sec old, use it:
+    if (!forceRefresh && cacheEntry && now - cacheEntry.timestamp < 60000) {
+      this.updateProfileInDOM(pubkey, cacheEntry.profile);
       return;
     }
+
+    // Otherwise, go fetch from the relay
     try {
       const userEvents = await nostrClient.pool.list(nostrClient.relays, [
         { kinds: [0], authors: [pubkey], limit: 1 },
@@ -846,11 +946,18 @@ class bitvidApp {
           name: data.name || data.display_name || "Unknown",
           picture: data.picture || "assets/jpg/default-profile.jpg",
         };
-        this.profileCache.set(pubkey, profile);
+
+        // Store into the cache with a timestamp
+        this.profileCache.set(pubkey, {
+          profile,
+          timestamp: now,
+        });
+
+        // Now update the DOM elements
         this.updateProfileInDOM(pubkey, profile);
       }
     } catch (err) {
-      console.error("Profile fetch error:", err);
+      console.error("Profile fetch error for pubkey:", pubkey, err);
     }
   }
 
@@ -985,8 +1092,11 @@ class bitvidApp {
    */
   async handleEditVideo(index) {
     try {
+      // 1) Fetch the current list of videos (the newest versions)
       const all = await nostrClient.fetchVideos();
       const video = all[index];
+
+      // 2) Basic ownership checks
       if (!this.pubkey) {
         this.showError("Please login to edit videos.");
         return;
@@ -996,7 +1106,7 @@ class bitvidApp {
         return;
       }
 
-      // Prompt for updated fields
+      // 3) Prompt the user for updated fields
       const newTitle = prompt("New Title? (blank=keep existing)", video.title);
       const newMagnet = prompt(
         "New Magnet? (blank=keep existing)",
@@ -1012,7 +1122,7 @@ class bitvidApp {
       );
       const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
 
-      // Build updated data, falling back to old values
+      // 4) Build final updated fields (or fallback to existing)
       const title =
         !newTitle || !newTitle.trim() ? video.title : newTitle.trim();
       const magnet =
@@ -1022,6 +1132,7 @@ class bitvidApp {
       const description =
         !newDesc || !newDesc.trim() ? video.description : newDesc.trim();
 
+      // 5) Create an object with the new data
       const updatedData = {
         version: video.version || 2,
         isPrivate: wantPrivate,
@@ -1032,27 +1143,81 @@ class bitvidApp {
         mode: isDevMode ? "dev" : "live",
       };
 
-      // IMPORTANT: we only pass id and pubkey to avoid reusing the old d-tag
-      // (Do NOT pass video.tags!)
-      const originalEvent = video;
+      // 6) Build the originalEvent stub, now including videoRootId to avoid extra fetch
+      const originalEvent = {
+        id: video.id,
+        pubkey: video.pubkey,
+        videoRootId: video.videoRootId, // <-- pass this if it exists
+      };
 
+      // 7) Call the editVideo method
       await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
 
-      this.showSuccess("Video updated successfully!");
+      // 8) Refresh local UI
       await this.loadVideos();
+      this.showSuccess("Video updated successfully!");
+
+      // 9) Also refresh all profile caches so any new name/pic changes are reflected
+      this.forceRefreshAllProfiles();
     } catch (err) {
-      this.log("Failed to edit video:", err.message);
+      console.error("Failed to edit video:", err);
       this.showError("Failed to edit video. Please try again.");
+    }
+  }
+
+  async handleRevertVideo(index) {
+    try {
+      // 1) Still use fetchVideos to get the video in question
+      const activeVideos = await nostrClient.fetchVideos();
+      const video = activeVideos[index];
+
+      if (!this.pubkey) {
+        this.showError("Please login to revert.");
+        return;
+      }
+      if (!video || video.pubkey !== this.pubkey) {
+        this.showError("You do not own this video.");
+        return;
+      }
+
+      // 2) Grab all known events so older overshadowed ones are included
+      const allEvents = Array.from(nostrClient.allEvents.values());
+
+      // 3) Check for older versions among *all* events, not just the active ones
+      if (!this.hasOlderVersion(video, allEvents)) {
+        this.showError("No older version exists to revert to.");
+        return;
+      }
+
+      if (!confirm(`Revert current version of "${video.title}"?`)) {
+        return;
+      }
+
+      const originalEvent = {
+        id: video.id,
+        pubkey: video.pubkey,
+        tags: video.tags,
+      };
+
+      await nostrClient.revertVideo(originalEvent, this.pubkey);
+
+      await this.loadVideos();
+      this.showSuccess("Current version reverted successfully!");
+      this.forceRefreshAllProfiles();
+    } catch (err) {
+      console.error("Failed to revert video:", err);
+      this.showError("Failed to revert video. Please try again.");
     }
   }
 
   /**
    * Handle "Delete Video" from gear menu.
    */
-  async handleDeleteVideo(index) {
+  async handleFullDeleteVideo(index) {
     try {
       const all = await nostrClient.fetchVideos();
       const video = all[index];
+
       if (!this.pubkey) {
         this.showError("Please login to delete videos.");
         return;
@@ -1061,23 +1226,27 @@ class bitvidApp {
         this.showError("You do not own this video.");
         return;
       }
-      if (!confirm(`Delete "${video.title}"? This can't be undone.`)) {
+      // Make sure the user is absolutely sure:
+      if (
+        !confirm(
+          `Delete ALL versions of "${video.title}"? This action is permanent.`
+        )
+      ) {
         return;
       }
 
-      // Only id and pubkey (omit old tags), so that delete doesn't overshadow the old d-tag
-      const originalEvent = {
-        id: video.id,
-        pubkey: video.pubkey,
-      };
+      // We assume video.videoRootId is not empty, or fallback to video.id if needed
+      const rootId = video.videoRootId || video.id;
 
-      await nostrClient.deleteVideo(originalEvent, this.pubkey);
+      await nostrClient.deleteAllVersions(rootId, this.pubkey);
 
-      this.showSuccess("Video deleted successfully!");
+      // Reload
       await this.loadVideos();
+      this.showSuccess("All versions deleted successfully!");
+      this.forceRefreshAllProfiles();
     } catch (err) {
-      this.log("Failed to delete video:", err.message);
-      this.showError("Failed to delete video. Please try again.");
+      console.error("Failed to delete all versions:", err);
+      this.showError("Failed to delete all versions. Please try again.");
     }
   }
 

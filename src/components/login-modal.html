@@ -1,0 +1,67 @@
+<div
+  id="loginModal"
+  class="fixed inset-0 z-50 hidden"
+  style="background: transparent"
+>
+  <!-- Dark overlay -->
+  <div
+    class="absolute inset-0 z-10"
+    style="
+      background-color: rgba(0, 0, 0, 0.9);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    "
+  ></div>
+
+  <!-- Modal container -->
+  <div
+    class="relative modal-container h-full w-full flex items-center justify-center overflow-y-auto z-20"
+  >
+    <div
+      class="modal-content bg-gray-900 w-full max-w-md my-0 rounded-lg overflow-hidden relative max-h-[90vh]"
+    >
+      <!-- Header -->
+      <div
+        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
+      >
+        <h2 class="text-xl font-bold text-white">Login Options</h2>
+        <button
+          id="closeLoginModal"
+          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-6 h-6 text-gray-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Body with login buttons -->
+      <div class="p-6 space-y-4">
+        <button
+          id="loginNIP07"
+          class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        >
+          Login with Extension (NIP-07)
+        </button>
+        <button
+          id="loginNSEC"
+          class="w-full bg-gray-500 text-white px-4 py-2 rounded-md cursor-not-allowed"
+          disabled
+        >
+          Login with NSEC (Coming Soon)
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

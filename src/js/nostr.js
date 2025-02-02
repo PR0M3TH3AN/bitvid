@@ -269,55 +269,79 @@ class NostrClient {
   /**
    * Edits a video by creating a *new event* with a brand-new d tag,
    * but reuses the same videoRootId as the original.
+   *
    * => old link remains pinned to the old event, new link is a fresh ID.
+   * => older version is overshadowed if your dedupe logic only shows newest.
    */
-  async editVideo(originalVideo, updatedData, pubkey) {
-    if (!pubkey) throw new Error("Not logged in to edit.");
-    if (originalVideo.pubkey !== pubkey) {
-      throw new Error("You do not own this video (different pubkey).");
+  async editVideo(originalEventStub, updatedData, pubkey) {
+    if (!pubkey) {
+      throw new Error("Not logged in to edit.");
+    }
+    if (!originalEventStub.pubkey || originalEventStub.pubkey !== pubkey) {
+      throw new Error("You do not own this video (pubkey mismatch).");
     }
 
-    // Use the videoRootId directly from the converted video
-    const rootId = originalVideo.videoRootId || null;
+    // 1) Attempt to get the FULL old event details (especially videoRootId)
+    let baseEvent = originalEventStub;
+    // If the caller didn't pass .videoRootId, fetch from local or relay:
+    if (!baseEvent.videoRootId) {
+      const fetched = await this.getEventById(originalEventStub.id);
+      if (!fetched) {
+        throw new Error("Could not retrieve the original event to edit.");
+      }
+      baseEvent = fetched;
+    }
+
+    // 2) We now have baseEvent.videoRootId if it existed
+    let oldRootId = baseEvent.videoRootId || null;
 
     // Decrypt the old magnet if it was private
-    let oldPlainMagnet = originalVideo.magnet || "";
-    if (originalVideo.isPrivate && oldPlainMagnet) {
+    let oldPlainMagnet = baseEvent.magnet || "";
+    if (baseEvent.isPrivate && oldPlainMagnet) {
       oldPlainMagnet = fakeDecrypt(oldPlainMagnet);
     }
 
-    // Determine new privacy setting
-    const wantPrivate =
-      updatedData.isPrivate ?? originalVideo.isPrivate ?? false;
+    // 3) Decide new privacy
+    const wantPrivate = updatedData.isPrivate ?? baseEvent.isPrivate ?? false;
 
-    // Fallback to old magnet if none provided
+    // 4) Fallback to old magnet if none was provided
     let finalPlainMagnet = (updatedData.magnet || "").trim();
     if (!finalPlainMagnet) {
       finalPlainMagnet = oldPlainMagnet;
     }
 
-    // Re-encrypt if user wants private
+    // 5) Re-encrypt if user wants private
     let finalMagnet = finalPlainMagnet;
     if (wantPrivate) {
       finalMagnet = fakeEncrypt(finalPlainMagnet);
     }
 
-    // If there's no root yet (legacy), generate it
-    const newRootId =
-      rootId || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // 6) If there's no root yet (legacy), use the old event's own ID.
+    // Otherwise keep the existing rootId.
+    if (!oldRootId) {
+      oldRootId = baseEvent.id;
+      if (isDevMode) {
+        console.log(
+          "No existing root => using baseEvent.id as root:",
+          oldRootId
+        );
+      }
+    }
+
+    // Generate a brand-new d-tag so it doesn't overshadow the old share link
     const newD = `${Date.now()}-edit-${Math.random().toString(36).slice(2)}`;
 
-    // Build updated content
+    // 7) Build updated content
     const contentObject = {
-      videoRootId: newRootId,
-      version: updatedData.version ?? originalVideo.version ?? 1,
+      videoRootId: oldRootId,
+      version: updatedData.version ?? baseEvent.version ?? 1,
       deleted: false,
       isPrivate: wantPrivate,
-      title: updatedData.title ?? originalVideo.title,
+      title: updatedData.title ?? baseEvent.title,
       magnet: finalMagnet,
-      thumbnail: updatedData.thumbnail ?? originalVideo.thumbnail,
-      description: updatedData.description ?? originalVideo.description,
-      mode: updatedData.mode ?? originalVideo.mode ?? "live",
+      thumbnail: updatedData.thumbnail ?? baseEvent.thumbnail,
+      description: updatedData.description ?? baseEvent.description,
+      mode: updatedData.mode ?? baseEvent.mode ?? "live",
     };
 
     const event = {
@@ -332,16 +356,24 @@ class NostrClient {
     };
 
     if (isDevMode) {
-      console.log("Creating edited event with root ID:", newRootId);
+      console.log("Creating edited event with root ID:", oldRootId);
       console.log("Event content:", event.content);
     }
 
+    // 8) Sign and publish the new event
     try {
       const signedEvent = await window.nostr.signEvent(event);
+      if (isDevMode) {
+        console.log("Signed edited event:", signedEvent);
+      }
+
       await Promise.all(
         this.relays.map(async (url) => {
           try {
             await this.pool.publish([url], signedEvent);
+            if (isDevMode) {
+              console.log(`Edited video published to ${url}`);
+            }
           } catch (err) {
             if (isDevMode) {
               console.error(`Publish failed to ${url}`, err);
@@ -357,28 +389,26 @@ class NostrClient {
   }
 
   /**
-   * "Deleting" => we just mark content as {deleted:true} and blank out magnet/desc
+   * "Reverting" => we just mark the most recent content as {deleted:true} and blank out magnet/desc
    */
-  async deleteVideo(originalEvent, pubkey) {
+  async revertVideo(originalEvent, pubkey) {
     if (!pubkey) {
-      throw new Error("Not logged in to delete.");
+      throw new Error("Not logged in to revert.");
     }
     if (originalEvent.pubkey !== pubkey) {
       throw new Error("Not your event (pubkey mismatch).");
     }
 
-    // If front-end didn't pass the tags array, load the full event from local or from the relay:
+    // If front-end didn't pass the tags array, load the full event:
     let baseEvent = originalEvent;
     if (!baseEvent.tags || !Array.isArray(baseEvent.tags)) {
       const fetched = await this.getEventById(originalEvent.id);
       if (!fetched) {
-        throw new Error("Could not fetch the original event for deletion.");
+        throw new Error("Could not fetch the original event for reverting.");
       }
-      // Rebuild baseEvent as a raw Nostr event that includes .tags and .content
       baseEvent = {
         id: fetched.id,
         pubkey: fetched.pubkey,
-        // put the raw JSON content back into string form:
         content: JSON.stringify({
           version: fetched.version,
           deleted: fetched.deleted,
@@ -393,41 +423,34 @@ class NostrClient {
       };
     }
 
-    // Now try to get the old d-tag
+    // Check d-tag
     const dTag = baseEvent.tags.find((t) => t[0] === "d");
     if (!dTag) {
-      throw new Error('No "d" tag => cannot delete addressable kind=30078.');
+      throw new Error(
+        'No "d" tag => cannot revert addressable kind=30078 event.'
+      );
     }
     const existingD = dTag[1];
 
-    // After you've parsed oldContent:
     const oldContent = JSON.parse(baseEvent.content || "{}");
     const oldVersion = oldContent.version ?? 1;
 
-    // ADD this block to handle the old root or fallback:
+    // If no root, fallback
     let finalRootId = oldContent.videoRootId || null;
     if (!finalRootId) {
-      // If it’s a legacy video (no root), we can fallback to your
-      // existing logic used by getActiveKey. For instance, if it had a 'd' tag:
-      if (dTag) {
-        // Some devs store it as 'LEGACY:pubkey:dTagValue'
-        // or you could just store the same as the old approach:
-        finalRootId = `LEGACY:${baseEvent.pubkey}:${dTag[1]}`;
-      } else {
-        finalRootId = `LEGACY:${baseEvent.id}`;
-      }
+      finalRootId = `LEGACY:${baseEvent.pubkey}:${existingD}`;
     }
 
-    // Now build the content object, including videoRootId:
+    // Build “deleted: true” overshadow event => revert current version
     const contentObject = {
-      videoRootId: finalRootId, // <-- CRUCIAL so the delete event shares the same root key
+      videoRootId: finalRootId,
       version: oldVersion,
-      deleted: true,
+      deleted: true, // mark *this version* as deleted
       isPrivate: oldContent.isPrivate ?? false,
       title: oldContent.title || "",
       magnet: "",
       thumbnail: "",
-      description: "Video was deleted by creator.",
+      description: "This version was reverted by the creator.",
       mode: oldContent.mode || "live",
     };
 
@@ -437,44 +460,80 @@ class NostrClient {
       created_at: Math.floor(Date.now() / 1000),
       tags: [
         ["t", "video"],
-        // We reuse the same d => overshadow the original event
-        ["d", existingD],
+        ["d", existingD], // re-use same d => overshadow
       ],
       content: JSON.stringify(contentObject),
     };
 
-    if (isDevMode) {
-      console.log("Deleting video => mark 'deleted:true'.", event.content);
-    }
-
-    try {
-      const signedEvent = await window.nostr.signEvent(event);
-      if (isDevMode) {
-        console.log("Signed deleted event:", signedEvent);
-      }
-
-      // Publish everywhere
-      await Promise.all(
-        this.relays.map(async (url) => {
-          try {
-            await this.pool.publish([url], signedEvent);
-            if (isDevMode) {
-              console.log(`Delete event published to ${url}`);
-            }
-          } catch (err) {
-            if (isDevMode) {
-              console.error(`Failed to publish deleted event to ${url}:`, err);
-            }
+    const signedEvent = await window.nostr.signEvent(event);
+    await Promise.all(
+      this.relays.map(async (url) => {
+        try {
+          await this.pool.publish([url], signedEvent);
+        } catch (err) {
+          if (isDevMode) {
+            console.error(`Failed to revert on ${url}`, err);
           }
-        })
-      );
-      return signedEvent;
-    } catch (err) {
-      if (isDevMode) {
-        console.error("Failed to sign deleted event:", err);
-      }
-      throw new Error("Failed to sign deleted event.");
+        }
+      })
+    );
+
+    return signedEvent;
+  }
+
+  /**
+   * "Deleting" => we just mark all content with the same videoRootId as {deleted:true} and blank out magnet/desc
+   */
+
+  async deleteAllVersions(videoRootId, pubkey) {
+    if (!pubkey) {
+      throw new Error("Not logged in to delete all versions.");
     }
+
+    // 1) Find all events in our local allEvents that share the same root.
+    const matchingEvents = [];
+    for (const [id, vid] of this.allEvents.entries()) {
+      if (
+        vid.videoRootId === videoRootId &&
+        vid.pubkey === pubkey &&
+        !vid.deleted
+      ) {
+        matchingEvents.push(vid);
+      }
+    }
+    // If you want to re-check the relay for older versions too,
+    // you can do a fallback query, but typically your local cache is enough.
+
+    if (!matchingEvents.length) {
+      throw new Error("No existing events found for that root.");
+    }
+
+    // 2) For each event, create a "deleted: true" overshadow
+    //    by re-using the same d-tag so it cannot appear again.
+    for (const vid of matchingEvents) {
+      await this.revertVideo(
+        {
+          // re-using revertVideo logic
+          id: vid.id,
+          pubkey: vid.pubkey,
+          content: JSON.stringify({
+            version: vid.version,
+            deleted: vid.deleted,
+            isPrivate: vid.isPrivate,
+            title: vid.title,
+            magnet: vid.magnet,
+            thumbnail: vid.thumbnail,
+            description: vid.description,
+            mode: vid.mode,
+          }),
+          tags: vid.tags,
+        },
+        pubkey
+      );
+    }
+
+    // Optionally return some status
+    return true;
   }
 
   /**
