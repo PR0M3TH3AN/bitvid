@@ -192,10 +192,6 @@
        * 3) Publishes kind=4 events to chosen relays.
        ********************************************************************/
 
-      /********************************************************************
-       * Noble Secp256k1 - stripped-down code from https://github.com/paulmillr/noble-secp256k1
-       * for ECDH and signing. This is a partial inline library (not full).
-       ********************************************************************/
       (function () {
         // We'll store the main methods we need in an object:
         window.nobleSecp256k1 = {};
@@ -219,23 +215,18 @@
             "32670510020758816978083085130507043184471273380659243275938904335757337482424"
           ),
         };
-        const pow2_256 = _1n << BigInt(256);
 
         function mod(a, b = CURVE.P) {
           const result = a % b;
           return result >= _0n ? result : b + result;
         }
         function invert(number, modulo = CURVE.P) {
-          // Binary Extended Euclidian Algorithm
-          // https://brilliant.org/wiki/extended-euclidean-algorithm/
-          // returns x where (x*number)%modulo==1
-          if (number === _0n || modulo <= _0n) {
+          if (number === _0n || modulo <= _0n)
             throw new Error("invert: wrong inputs");
-          }
           let a = mod(number, modulo);
           let b = modulo;
-          // prettier-ignore
-          let x0 = _0n, x1 = _1n;
+          let x0 = _0n,
+            x1 = _1n;
           while (a !== _0n) {
             const q = b / a;
             const r = b % a;
@@ -264,9 +255,8 @@
           return u8;
         }
         function isWithinCurveOrder(num) {
-          return _0n < num && num < CURVE.n;
+          return BigInt(0) < num && num < CURVE.n;
         }
-        // Simplified point addition/EC math
         class Point {
           constructor(px, py) {
             this.x = px;
@@ -277,14 +267,11 @@
             if (!isWithinCurveOrder(p)) throw new Error("Invalid private key");
             return Point.BASE.multiply(p);
           }
-          // secp256k1 scalar multiplication
           multiply(scalar) {
-            if (!isWithinCurveOrder(scalar)) {
+            if (!isWithinCurveOrder(scalar))
               throw new Error("Point#multiply: invalid scalar");
-            }
             let n = scalar;
             if (n === _0n) return Point.ZERO;
-
             let p = Point.ZERO;
             let d = this;
             while (n > _0n) {
@@ -298,7 +285,7 @@
             const X1 = this.x;
             const Y1 = this.y;
             const a = mod(_3n * X1 * X1);
-            const inv = invert(_2n * Y1, CURVE.P);
+            const inv = invert(_2n * Y1);
             const x3 = mod(a * a * inv * inv - _2n * X1);
             const y3 = mod(a * (X1 - x3) * inv - Y1);
             return new Point(x3, y3);
@@ -310,7 +297,7 @@
               if (this.y !== other.y) return Point.ZERO;
               return this.double();
             }
-            const inv = invert(other.x - this.x, CURVE.P);
+            const inv = invert(other.x - this.x);
             const slope = mod((other.y - this.y) * inv);
             const x3 = mod(slope * slope - this.x - other.x);
             const y3 = mod(slope * (this.x - x3) - this.y);
@@ -321,57 +308,46 @@
           }
           toRawBytes(isCompressed = false) {
             if (!isCompressed) {
-              // 0x04 + x + y
               return new Uint8Array([
                 4,
                 ...numberTo32Bytes(this.x),
                 ...numberTo32Bytes(this.y),
               ]);
             }
-            // 0x02 || 0x03 + x
-            const header = this.y & _1n ? 0x03 : 0x02;
+            const header = (this.y & _1n) === _1n ? 0x03 : 0x02;
             return new Uint8Array([header, ...numberTo32Bytes(this.x)]);
           }
           static fromXY(x, y) {
             return new Point(x, y);
           }
         }
-        Point.BASE = (function () {
-          return new Point(CURVE.Gx, CURVE.Gy);
-        })();
+        Point.BASE = new Point(CURVE.Gx, CURVE.Gy);
         Point.ZERO = new Point(_0n, _0n);
 
-        // getSharedSecret and sign
-        function getSharedSecret(privKey, pubBytes) {
-          const px = pubBytesToPoint(pubBytes);
-          const ib = bytesToNumber(privKey);
-          const hash = px.multiply(ib);
-          return numberTo32Bytes(hash.x);
-        }
         function pubBytesToPoint(bytes) {
-          if (bytes[0] === 0x04 && bytes.length === 65) {
+          const _0x02 = 0x02,
+            _0x03 = 0x03,
+            _0x04 = 0x04;
+          if (bytes[0] === _0x04 && bytes.length === 65) {
             const x = bytesToNumber(bytes.slice(1, 33));
-            const y = bytesToNumber(bytes.slice(33, 65));
+            const y = bytesToNumber(bytes.slice(33));
             return new Point(x, y);
-          } else if (
-            (bytes[0] === 0x02 || bytes[0] === 0x03) &&
+          }
+          if (
+            (bytes[0] === _0x02 || bytes[0] === _0x03) &&
             bytes.length === 33
           ) {
             const x = bytesToNumber(bytes.slice(1));
-            // We find y via formula y^2 = x^3 + 7 mod p
-            const y2 = mod(x * x * x + _7n, CURVE.P);
-            let y = powMod(y2, (CURVE.P + _1n) / _4n, CURVE.P);
-            const isOdd = (y & _1n) === _1n;
-            const wantOdd = bytes[0] === 0x03;
-            if (isOdd !== wantOdd) y = mod(-y, CURVE.P);
+            const y2 = mod(x * x * x + BigInt(7));
+            let y = powMod(y2, (CURVE.P + BigInt(1)) / BigInt(4));
+            const isOdd = (y & BigInt(1)) === BigInt(1);
+            const wantOdd = bytes[0] === _0x03;
+            if (isOdd !== wantOdd) y = mod(-y);
             return new Point(x, y);
           }
           throw new Error("Unsupported compressed pubkey format");
         }
-        // exponent
-        const _7n = BigInt(7);
-        const _4n = BigInt(4);
-        function powMod(a, e, m) {
+        function powMod(a, e, m = CURVE.P) {
           let r = _1n;
           let b = a;
           while (e > 0) {
@@ -382,16 +358,21 @@
           return r;
         }
 
+        function getSharedSecret(privKey, pubBytes) {
+          const px = pubBytesToPoint(pubBytes);
+          const ib = bytesToNumber(privKey);
+          const hash = px.multiply(ib);
+          return numberTo32Bytes(hash.x);
+        }
+        async function randomBytes(len) {
+          const out = new Uint8Array(len);
+          crypto.getRandomValues(out);
+          return out;
+        }
         async function sign(msgHash, privKey) {
-          // We won't implement a full RFC6979 here for brevity
-          // We'll do a simple ephemeral k = random approach. For production, use RFC6979 or a stable approach.
           const d0 = bytesToNumber(privKey);
-          if (!isWithinCurveOrder(d0)) {
-            throw new Error("sign: invalid privkey");
-          }
-          // parse msgHash
+          if (!isWithinCurveOrder(d0)) throw new Error("sign: invalid privkey");
           const e = bytesToNumber(msgHash);
-          // ephemeral k
           let k = bytesToNumber(await randomBytes(32));
           while (!isWithinCurveOrder(k)) {
             k = bytesToNumber(await randomBytes(32));
@@ -402,34 +383,24 @@
           const s = mod(invert(k, CURVE.n) * (e + r * d0), CURVE.n);
           if (s === _0n) return null;
           const sig = new Uint8Array(64);
-          // r, s each 32 bytes
           sig.set(numberTo32Bytes(r), 0);
           sig.set(numberTo32Bytes(s), 32);
           return sig;
         }
-
-        async function randomBytes(length) {
-          const arr = new Uint8Array(length);
-          crypto.getRandomValues(arr);
-          return arr;
-        }
-
         function getPublicKey(privKey, compressed = true) {
           const p = Point.fromPrivateKey(privKey);
           return p.toRawBytes(compressed);
         }
 
-        // Expose minimal API
         window.nobleSecp256k1.getSharedSecret = getSharedSecret;
         window.nobleSecp256k1.sign = sign;
         window.nobleSecp256k1.getPublicKey = getPublicKey;
         window.nobleSecp256k1.randomBytes = randomBytes;
       })();
 
-      /********************************************************************
-       * NIP-04 encryption with ephemeral ephemeral keys:
-       * We'll do AES-256-CBC with random IV, base64-encode "ciphertext?iv".
-       ********************************************************************/
+      /*****************************************************
+       * NIP-04 encryption (AES-CBC, base64)
+       *****************************************************/
       async function nip04Encrypt(privKey, recipientPubKeyHex, plaintext) {
         // 1) convert recipient hex => raw pubkey bytes
         const recPubBin = hexToBytes(recipientPubKeyHex);
@@ -438,7 +409,7 @@
           privKey,
           recPubBin
         );
-        // remove leading 0 byte
+        // remove leading 0 byte if present
         const shReduced = sharedKey.slice(1);
 
         // 3) import as AES key
@@ -450,11 +421,11 @@
           ["encrypt"]
         );
 
-        // 4) create random IV
+        // 4) random IV
         const iv = new Uint8Array(16);
         crypto.getRandomValues(iv);
 
-        // 5) AES-CBC
+        // 5) encrypt
         const enc = new TextEncoder();
         const cipherBuffer = await crypto.subtle.encrypt(
           { name: "AES-CBC", iv },
@@ -465,12 +436,11 @@
         const cipherBytes = new Uint8Array(cipherBuffer);
         const cipherBase64 = b64encode(cipherBytes);
         const ivBase64 = b64encode(iv);
-
-        // final string is "cipher?iv"
         return `${cipherBase64}?${ivBase64}`;
       }
 
       function hexToBytes(hex) {
+        hex = hex.trim().toLowerCase();
         if (hex.startsWith("0x")) hex = hex.slice(2);
         const len = hex.length / 2;
         const out = new Uint8Array(len);
@@ -490,11 +460,10 @@
         return btoa(String.fromCharCode(...data));
       }
 
-      /********************************************************************
-       * getEventHash: standard Nostr ID for an event
-       ********************************************************************/
+      /*****************************************************
+       * Build event.id (Nostr spec)
+       *****************************************************/
       async function getEventHash(evt) {
-        // We'll build the array per NIP-01
         const enc = new TextEncoder();
         const payload = JSON.stringify([
           0,
@@ -510,21 +479,17 @@
         );
         return bytesToHex(new Uint8Array(digest));
       }
-
-      /********************************************************************
-       * signEvent: sign with ephemeral privkey
-       ********************************************************************/
       async function signEvent(evt, privKey) {
         const idHex = await getEventHash(evt);
         const idBytes = hexToBytes(idHex);
         const signature = await window.nobleSecp256k1.sign(idBytes, privKey);
-        evt.id = idHex; // store the final ID
+        evt.id = idHex;
         evt.sig = bytesToHex(signature);
       }
 
-      /********************************************************************
-       * Minimal "SimplePool": open websockets to each relay, send event
-       ********************************************************************/
+      /*****************************************************
+       * SimplePool
+       *****************************************************/
       class SimplePool {
         constructor() {
           this.conns = {};
@@ -543,9 +508,7 @@
               this.conns[url] = ws;
               resolve(ws);
             };
-            ws.onerror = (err) => {
-              reject(err);
-            };
+            ws.onerror = (err) => reject(err);
           });
         }
         async publish(urls, event) {
@@ -558,13 +521,10 @@
         }
       }
 
-      /********************************************************************
-       * On form submit:
-       * 1) generate ephemeral key
-       * 2) for each target npub => do standard nip04 => build kind=4 => sign => publish
-       ********************************************************************/
+      /*****************************************************
+       * Form handling
+       *****************************************************/
       const targetNpubs = [
-        // Example moderators:
         "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe",
       ];
       const relayUrls = {
@@ -581,16 +541,14 @@
         evt.preventDefault();
         statusEl.textContent = "";
 
-        // Gather form fields
         const formData = new FormData(form);
         const dataObject = {};
         formData.forEach((val, key) => {
           dataObject[key] = val.trim();
         });
 
-        // 1) Generate ephemeral keys
+        // Generate ephemeral key
         const ephemeralPriv = await window.nobleSecp256k1.randomBytes(32);
-        // Public key in compressed form
         const ephemeralPubBytes = window.nobleSecp256k1.getPublicKey(
           ephemeralPriv,
           true
@@ -598,36 +556,28 @@
         const ephemeralPubHex = bytesToHex(ephemeralPubBytes);
 
         let overallSuccess = false;
-
-        // convert entire form data to text
         const contentText = JSON.stringify(dataObject, null, 2);
 
-        // For each mod npub, build a new event
         for (const modNpub of targetNpubs) {
           try {
-            // decode modNpub => hex
             const modHex = decodeNpubToHex(modNpub);
-            // do nip04 encryption with ephemeral => mod
             const ciphertext = await nip04Encrypt(
               ephemeralPriv,
               modHex,
               contentText
             );
 
-            // build event
             const now = Math.floor(Date.now() / 1000);
             const event = {
-              kind: 4, // DM
-              pubkey: ephemeralPubHex, // ephemeral pubkey in hex
+              kind: 4,
+              pubkey: ephemeralPubHex,
               created_at: now,
               tags: [["p", modHex]],
               content: ciphertext,
             };
 
-            // sign
             await signEvent(event, ephemeralPriv);
 
-            // publish
             try {
               await pool.publish(Object.keys(relayUrls), event);
               overallSuccess = true;
@@ -644,19 +594,22 @@
           alert("Appeal submitted successfully.");
           form.reset();
         } else {
-          alert("Submission encountered errors. Check status messages above.");
+          alert("Submission encountered errors. See status above.");
         }
       });
 
-      /********************************************************************
-       * decodeNpubToHex: minimal bech32 decode from your prior snippet
-       ********************************************************************/
+      /*****************************************************
+       * decodeNpubToHex with forced lowercase & trim
+       *****************************************************/
       function decodeNpubToHex(npub) {
+        // Trim, force to lower
+        npub = npub.trim().toLowerCase();
         const { hrp, data } = bech32Decode(npub);
         if (hrp !== "npub") throw new Error("Not an npub");
         const converted = convertBits(data, 5, 8, false);
         return bytesToHex(new Uint8Array(converted));
       }
+
       const ALPHABET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
       function polymod(values) {
         let chk = 1;
@@ -683,6 +636,7 @@
         return ret;
       }
       function bech32Decode(str) {
+        str = str.trim(); // <--- extra safety
         let lower = false;
         let upper = false;
         for (let i = 0; i < str.length; i++) {
@@ -697,7 +651,9 @@
             lower = true;
           }
         }
+        // force all-lower
         str = str.toLowerCase();
+
         const sepPos = str.lastIndexOf("1");
         if (sepPos === -1) throw new Error("No separator character for bech32");
         if (sepPos === 0) throw new Error("Empty HRP");
