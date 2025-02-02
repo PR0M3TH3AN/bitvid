@@ -325,7 +325,7 @@
       </footer>
     </div>
 
-    <!-- Load external modal components -->
+    <!-- Load external modal components + attach event listeners -->
     <script>
       async function loadModal(url) {
         try {
@@ -343,24 +343,76 @@
         }
       }
 
-      // Just load the login modal (or any others), without adding event listeners here.
-      // The logic to open/close the modal is all in app.js now.
-      Promise.all([loadModal("components/login-modal.html")]).then(() => {
-        console.log("Modals loaded (login-modal.html, etc.)");
-        // Now that the login-modal is definitely in the DOM:
-        const closeBtn = document.getElementById("closeLoginModal");
-        if (closeBtn) {
-          closeBtn.addEventListener("click", () => {
+      // Load the login modal and application form modal
+      Promise.all([
+        loadModal("components/login-modal.html"),
+        loadModal("components/application-form.html"),
+      ]).then(() => {
+        console.log("Modals loaded (login-modal, application-form)");
+
+        //
+        // 1) Top nav login button => open the login modal
+        //
+        const loginNavBtn = document.getElementById("loginButton");
+        if (loginNavBtn) {
+          loginNavBtn.addEventListener("click", () => {
+            const loginModal = document.getElementById("loginModal");
+            if (loginModal) {
+              loginModal.classList.remove("hidden");
+            }
+          });
+        }
+
+        //
+        // 2) Close button on the login modal
+        //
+        const closeLoginBtn = document.getElementById("closeLoginModal");
+        if (closeLoginBtn) {
+          closeLoginBtn.addEventListener("click", () => {
             const loginModal = document.getElementById("loginModal");
             if (loginModal) {
               loginModal.classList.add("hidden");
             }
           });
         }
+
+        //
+        // 3) “Application Form” button inside the login modal => open the application form
+        //
+        const openAppFormBtn = document.getElementById("openApplicationModal");
+        if (openAppFormBtn) {
+          openAppFormBtn.addEventListener("click", () => {
+            // Hide the login modal first
+            const loginModal = document.getElementById("loginModal");
+            if (loginModal) {
+              loginModal.classList.add("hidden");
+            }
+            // Now show the application form modal
+            const appModal = document.getElementById("nostrFormModal");
+            if (appModal) {
+              appModal.classList.remove("hidden");
+            }
+          });
+        }
+
+        //
+        // 4) Close button on the application form modal
+        //
+        const closeNostrFormBtn = document.getElementById(
+          "closeNostrFormModal"
+        );
+        if (closeNostrFormBtn) {
+          closeNostrFormBtn.addEventListener("click", () => {
+            const appModal = document.getElementById("nostrFormModal");
+            if (appModal) {
+              appModal.classList.add("hidden");
+            }
+          });
+        }
       });
     </script>
 
-    <!-- Scripts -->
+    <!-- Other Scripts -->
     <script src="js/libs/nostr.bundle.js"></script>
     <script type="module" src="js/config.js"></script>
     <script type="module" src="js/lists.js"></script>

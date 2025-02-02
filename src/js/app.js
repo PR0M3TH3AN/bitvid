@@ -454,6 +454,23 @@ class bitvidApp {
       console.log("[popstate] user navigated back/forward; cleaning modal...");
       await this.hideModal();
     });
+
+    // Event delegation for the “Application Form” button inside the login modal
+    document.addEventListener("click", (event) => {
+      if (event.target && event.target.id === "openApplicationModal") {
+        // 1) Hide the login modal
+        const loginModal = document.getElementById("loginModal");
+        if (loginModal) {
+          loginModal.classList.add("hidden");
+        }
+
+        // 2) Show the application modal
+        const appModal = document.getElementById("nostrFormModal");
+        if (appModal) {
+          appModal.classList.remove("hidden");
+        }
+      }
+    });
   }
 
   /**

@@ -8,23 +8,13 @@
     <link href="css/tailwind.min.css" rel="stylesheet" />
   </head>
   <body class="bg-gray-900 text-gray-100">
-    <!-- Button to open the modal -->
-    <div class="p-4">
-      <button
-        id="openNostrForm"
-        class="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        Open Nostr Form
-      </button>
-    </div>
-
-    <!-- Modal Container -->
+    <!-- Application Form Modal -->
     <div
       id="nostrFormModal"
       class="fixed inset-0 z-50 hidden"
       style="background: transparent"
     >
-      <!-- Overlay Layer with dark background and blur -->
+      <!-- Dark/blur overlay (same approach as your other modals) -->
       <div
         class="absolute inset-0 z-10"
         style="
@@ -34,18 +24,19 @@
         "
       ></div>
 
-      <!-- Modal Container -->
+      <!-- Outer container with same sizing as your video modal -->
       <div
-        class="relative modal-container h-full w-full flex items-center justify-center overflow-y-auto z-20"
+        class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
       >
+        <!-- Inner content: wide layout, matching .max-w-[90%] lg:max-w-6xl -->
         <div
-          class="modal-content bg-gray-900 w-full max-w-lg md:max-w-2xl my-0 rounded-lg overflow-hidden relative max-h-[90vh]"
+          class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
         >
-          <!-- Top Bar -->
+          <!-- Header bar (sticky) with exit button on the right -->
           <div
-            class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-300 p-4 flex items-center justify-between"
+            class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
           >
-            <h2 class="text-xl font-bold text-white">My Nostr Form</h2>
+            <h2 class="text-2xl font-bold text-white mb-0">Application Form</h2>
             <button
               id="closeNostrFormModal"
               class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
@@ -67,19 +58,15 @@
             </button>
           </div>
 
-          <!-- Modal Content -->
+          <!-- Main Content -->
           <div class="p-6">
-            <div class="flex justify-center">
+            <!-- Flexible container for the iframe -->
+            <div class="w-full" style="height: 80vh">
               <iframe
                 src="https://formstr.app/#/f/naddr1qvzqqqr4mqpzpcf63zey4c02lz9x4zkn2ny5kmz3g8v8fj9hvehyps5tuj7u272gqythwumn8ghj7un9d3shjtnwdaehgu3wvfskuep0qqsky6t5we5kgh6hdp5hgetvd9ehgh6pwpcxc6trv96xjmmwtarx7und0qc765?hideTitleImage=true"
-                height="700px"
-                width="480px"
+                class="w-full h-full"
                 frameborder="0"
-                style="
-                  border-style: none;
-                  box-shadow: 0px 0px 2px 2px rgba(0, 0, 0, 0.2);
-                "
-                cellspacing="0"
+                style="border: none; box-shadow: 0 0 2px rgba(0, 0, 0, 0.2)"
               ></iframe>
             </div>
           </div>
@@ -87,19 +74,25 @@
       </div>
     </div>
 
-    <!-- Script to toggle modal -->
+    <!-- Optional Script for Opening/Closing (if you have a dedicated button) -->
     <script>
       const openBtn = document.getElementById("openNostrForm");
-      const modal = document.getElementById("nostrFormModal");
+      const appModal = document.getElementById("nostrFormModal");
       const closeBtn = document.getElementById("closeNostrFormModal");
 
-      openBtn.addEventListener("click", () => {
-        modal.classList.remove("hidden");
-      });
+      // Open the modal
+      if (openBtn) {
+        openBtn.addEventListener("click", () => {
+          appModal.classList.remove("hidden");
+        });
+      }
 
-      closeBtn.addEventListener("click", () => {
-        modal.classList.add("hidden");
-      });
+      // Close the modal
+      if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+          appModal.classList.add("hidden");
+        });
+      }
     </script>
   </body>
 </html>

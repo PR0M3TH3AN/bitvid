@@ -14,12 +14,14 @@
     "
   ></div>
 
-  <!-- Modal Container -->
+  <!-- Outer container with the same sizing approach as your other modals -->
   <div
-    class="relative modal-container h-full w-full flex items-start md:items-center justify-center overflow-y-auto z-20"
+    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
   >
+    <!-- Inner content: wide layout, matching your video modal -->
     <div
-      class="modal-content bg-gray-900 w-full max-w-sm md:max-w-md my-0 rounded-lg overflow-hidden relative flex flex-col max-h-[90vh]"
+      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative flex flex-col"
+      style="max-height: 90vh"
     >
       <!-- Modal Header -->
       <div
