@@ -345,12 +345,18 @@
 
       // Just load the login modal (or any others), without adding event listeners here.
       // The logic to open/close the modal is all in app.js now.
-      Promise.all([
-        loadModal("components/login-modal.html"),
-        // e.g. loadModal("components/upload-modal.html"),
-        // loadModal("components/profile-modal.html"),
-      ]).then(() => {
+      Promise.all([loadModal("components/login-modal.html")]).then(() => {
         console.log("Modals loaded (login-modal.html, etc.)");
+        // Now that the login-modal is definitely in the DOM:
+        const closeBtn = document.getElementById("closeLoginModal");
+        if (closeBtn) {
+          closeBtn.addEventListener("click", () => {
+            const loginModal = document.getElementById("loginModal");
+            if (loginModal) {
+              loginModal.classList.add("hidden");
+            }
+          });
+        }
       });
     </script>
 
