@@ -8,8 +8,10 @@
         font-family: Arial, sans-serif;
         margin: 20px;
         max-width: 600px;
-        background-color: rgb(31 41 55 / 0.5);
-        color: #fff; /* all text in white */
+        /* Make the background transparent so it shows page behind */
+        background: transparent;
+        /* Keep text white */
+        color: #fff;
       }
       label {
         display: inline-block;
@@ -24,9 +26,9 @@
         padding: 6px;
         margin-bottom: 16px;
         box-sizing: border-box;
-        background-color: #234566; /* dark blue */
-        color: #fff; /* white text inside inputs */
-        border: 1px solid #888; /* border color for contrast */
+        background-color: #234566; /* dark blue background */
+        color: #fff; /* white text */
+        border: 1px solid #888;
       }
       button {
         padding: 10px 16px;
@@ -40,6 +42,12 @@
       }
       p {
         color: #fff;
+      }
+      /* Status area styling */
+      #status-message {
+        white-space: pre; /* Preserves line breaks when we append text */
+        margin-top: 1em;
+        font-size: 0.9em;
       }
     </style>
   </head>
@@ -176,7 +184,12 @@
     </p>
     <hr />
 
+    <!-- Area to display status feedback -->
+    <div id="status-message"></div>
+
     <script type="module">
+      // Using esm.sh for a pinned version (1.14.4).
+      // This version should include all required methods (generatePrivateKey, etc.).
       import {
         generatePrivateKey,
         getPublicKey,
@@ -185,7 +198,7 @@
         signEvent,
         nip04,
         relayInit,
-      } from "https://cdn.jsdelivr.net/npm/nostr-tools@1.14.1/+esm";
+      } from "https://esm.sh/nostr-tools@1.14.4";
 
       // ---- Configure target npubs and relays here ----
       const targetNpubs = [
@@ -195,7 +208,6 @@
         // "npub1ANOTHER_TARGET",
       ];
 
-      // You can adjust or add more relay URLs as needed
       const relays = {
         "wss://relay.snort.social": true,
         "wss://relay.damus.io": true,
@@ -204,9 +216,11 @@
       // -----------------------------------------------
 
       const form = document.getElementById("appeal-form");
+      const statusEl = document.getElementById("status-message");
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
+        statusEl.textContent = ""; // Clear old status messages
 
         // Collect form data
         const formData = new FormData(form);
@@ -216,30 +230,48 @@
         });
 
         // Generate ephemeral key pair
-        const ephemeralPrivKey = generatePrivateKey();
-        const ephemeralPubKeyHex = getPublicKey(ephemeralPrivKey);
+        let ephemeralPrivKey;
+        let ephemeralPubKeyHex;
+        try {
+          ephemeralPrivKey = generatePrivateKey();
+          ephemeralPubKeyHex = getPublicKey(ephemeralPrivKey);
+        } catch (err) {
+          statusEl.textContent = "Error generating ephemeral key: " + err;
+          return;
+        }
 
         // Convert form data to JSON
         const formText = JSON.stringify(dataObject, null, 2);
 
-        // Send to each target
+        // For each target recipient:
+        let overallSuccess = false; // Track if any relay publishes succeed
         for (const npub of targetNpubs) {
           try {
             const decoded = nip19.decode(npub);
             if (decoded.type !== "npub") {
-              console.error(`Skipping invalid npub: ${npub}`);
+              const msg = `Skipping invalid npub: ${npub}`;
+              console.error(msg);
+              statusEl.textContent += msg + "\n";
               continue;
             }
             const targetPubKeyHex = decoded.data;
 
             // Encrypt using NIP-04
-            const ciphertext = await nip04.encrypt(
-              ephemeralPrivKey,
-              targetPubKeyHex,
-              formText
-            );
+            let ciphertext;
+            try {
+              ciphertext = await nip04.encrypt(
+                ephemeralPrivKey,
+                targetPubKeyHex,
+                formText
+              );
+            } catch (encErr) {
+              const msg = `Failed to encrypt for ${npub}: ${encErr}`;
+              console.error(msg);
+              statusEl.textContent += msg + "\n";
+              continue;
+            }
 
-            // Create event object
+            // Build event
             const now = Math.floor(Date.now() / 1000);
             const eventToSend = {
               kind: 4, // NIP-04 (Encrypted Direct Message)
@@ -250,18 +282,26 @@
             };
 
             // Sign event
-            eventToSend.id = getEventHash(eventToSend);
-            eventToSend.sig = signEvent(eventToSend, ephemeralPrivKey);
+            try {
+              eventToSend.id = getEventHash(eventToSend);
+              eventToSend.sig = signEvent(eventToSend, ephemeralPrivKey);
+            } catch (signErr) {
+              const msg = `Failed to sign event for ${npub}: ${signErr}`;
+              console.error(msg);
+              statusEl.textContent += msg + "\n";
+              continue;
+            }
 
-            // Publish to configured relays
+            // Publish event to each relay
             for (const relayUrl of Object.keys(relays)) {
               const relay = relayInit(relayUrl);
-
               relay.on("connect", () => {
                 console.log(`Connected to ${relayUrl}`);
+                statusEl.textContent += `Connected to ${relayUrl}\n`;
               });
               relay.on("error", () => {
                 console.log(`Failed to connect to ${relayUrl}`);
+                statusEl.textContent += `Failed to connect to ${relayUrl}\n`;
               });
 
               await relay.connect();
@@ -269,24 +309,34 @@
               const pub = relay.publish(eventToSend);
               pub.on("ok", () => {
                 console.log(`Event published to ${relayUrl}`);
+                statusEl.textContent += `Event published to ${relayUrl}\n`;
+                overallSuccess = true;
               });
               pub.on("failed", (reason) => {
                 console.error(`Failed to publish to ${relayUrl}:`, reason);
+                statusEl.textContent += `Failed to publish to ${relayUrl}: ${reason}\n`;
               });
 
               // Close the relay after a short delay
-              setTimeout(() => {
-                relay.close();
-              }, 3000);
+              setTimeout(() => relay.close(), 3000);
             }
           } catch (err) {
-            console.error("Error handling target npub:", npub, err);
+            console.error("Error handling npub:", npub, err);
+            statusEl.textContent += `Error handling npub ${npub}: ${err}\n`;
           }
         }
 
-        // Optional: reset the form
+        // If at least one relay published successfully, we consider it a success
+        if (overallSuccess) {
+          alert(
+            "Your appeal was submitted to at least one relay successfully."
+          );
+        } else {
+          alert("Submission encountered errors. Check status messages above.");
+        }
+
+        // Optionally reset the form
         form.reset();
-        alert("Your appeal has been submitted via Nostr DMs.");
       });
     </script>
   </body>
