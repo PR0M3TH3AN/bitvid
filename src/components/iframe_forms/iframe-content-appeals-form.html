@@ -2,16 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Content Appeals Form</title>
+    <title>Bitvid Content Appeals Form</title>
     <style>
       body {
         font-family: Arial, sans-serif;
         margin: 20px;
         max-width: 600px;
-        /* Make the background transparent so it shows page behind */
-        background: transparent;
-        /* Keep text white */
         color: #fff;
+        background: transparent; /* transparent background */
       }
       label {
         display: inline-block;
@@ -26,7 +24,7 @@
         padding: 6px;
         margin-bottom: 16px;
         box-sizing: border-box;
-        background-color: #234566; /* dark blue background */
+        background-color: #234566; /* dark blue */
         color: #fff; /* white text */
         border: 1px solid #888;
       }
@@ -43,15 +41,15 @@
       p {
         color: #fff;
       }
-      /* Status area styling */
       #status-message {
-        white-space: pre; /* Preserves line breaks when we append text */
+        white-space: pre;
         margin-top: 1em;
         font-size: 0.9em;
       }
     </style>
   </head>
   <body>
+    <h1>Bitvid Content Appeals Form</h1>
     <form id="appeal-form">
       <h3>1. User Information</h3>
       <label for="npub">Nostr Public Key (npub)</label>
@@ -177,166 +175,322 @@
 
       <button type="submit">Submit Appeal</button>
     </form>
-
     <p>
       <strong>Processing Time:</strong> Appeals will be reviewed within 7-14
       days.
     </p>
     <hr />
-
-    <!-- Area to display status feedback -->
     <div id="status-message"></div>
 
-    <script type="module">
-      // Using esm.sh for a pinned version (1.14.4).
-      // This version should include all required methods (generatePrivateKey, etc.).
-      import {
-        generatePrivateKey,
-        getPublicKey,
-        nip19,
-        getEventHash,
-        signEvent,
-        nip04,
-        relayInit,
-      } from "../../js/libs/nostr.bundle.js";
+    <script>
+      /***********************************
+       * Minimal "nostr-tools" subset
+       ***********************************/
 
-      // ---- Configure target npubs and relays here ----
+      // Simple bech32 decoding for npub => hex
+      const ALPHABET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+      function polymod(values) {
+        let chk = 1;
+        for (let p = 0; p < values.length; p++) {
+          const top = chk >> 25;
+          chk = ((chk & 0x1ffffff) << 5) ^ values[p];
+          for (let i = 0; i < 5; i++) {
+            if (((top >> i) & 1) === 1) {
+              chk ^= (0x3b6a57b2 >>> (5 * (4 - i))) & 0x1f;
+            }
+          }
+        }
+        return chk;
+      }
+      function hrpExpand(hrp) {
+        const ret = [];
+        for (let p = 0; p < hrp.length; p++) {
+          ret.push(hrp.charCodeAt(p) >> 5);
+        }
+        ret.push(0);
+        for (let p = 0; p < hrp.length; p++) {
+          ret.push(hrp.charCodeAt(p) & 31);
+        }
+        return ret;
+      }
+      function bech32Decode(str) {
+        let lower = false;
+        let upper = false;
+        for (let i = 0; i < str.length; i++) {
+          const c = str.charCodeAt(i);
+          if (c >= 0x30 && c <= 0x39) continue;
+          if (c >= 0x41 && c <= 0x5a) {
+            if (lower) throw new Error("Mixed-case string");
+            upper = true;
+          }
+          if (c >= 0x61 && c <= 0x7a) {
+            if (upper) throw new Error("Mixed-case string");
+            lower = true;
+          }
+        }
+        str = str.toLowerCase();
+        const sepPos = str.lastIndexOf("1");
+        if (sepPos === -1) throw new Error("No separator character for bech32");
+        if (sepPos === 0) throw new Error("Empty HRP");
+        const hrp = str.slice(0, sepPos);
+        const data = [];
+        for (let i = sepPos + 1; i < str.length; i++) {
+          const d = ALPHABET.indexOf(str[i]);
+          if (d === -1) throw new Error("Unknown character in bech32");
+          data.push(d);
+        }
+        if (data.length < 6) throw new Error("Data too short");
+        const chk = polymod(hrpExpand(hrp).concat(data));
+        if (chk !== 1) throw new Error("Invalid checksum");
+        return { hrp, data: data.slice(0, data.length - 6) };
+      }
+      function convertBits(data, inBits, outBits, pad = true) {
+        let value = 0;
+        let bits = 0;
+        const result = [];
+        const maxV = (1 << outBits) - 1;
+        for (let i = 0; i < data.length; i++) {
+          value = (value << inBits) | data[i];
+          bits += inBits;
+          while (bits >= outBits) {
+            bits -= outBits;
+            result.push((value >> bits) & maxV);
+          }
+        }
+        if (pad) {
+          if (bits > 0) {
+            result.push((value << (outBits - bits)) & maxV);
+          }
+        } else {
+          if (bits >= inBits) throw new Error("Excess padding");
+          if (((value << (outBits - bits)) & maxV) !== 0)
+            throw new Error("Non-zero padding");
+        }
+        return result;
+      }
+      function decodeNpubToHex(npub) {
+        const { hrp, data } = bech32Decode(npub);
+        if (hrp !== "npub") {
+          throw new Error("Not an npub");
+        }
+        const converted = convertBits(data, 5, 8, false);
+        return bytesToHex(new Uint8Array(converted));
+      }
+      function bytesToHex(uint8a) {
+        let hex = "";
+        for (let i = 0; i < uint8a.length; i++) {
+          const b = uint8a[i];
+          hex += b.toString(16).padStart(2, "0");
+        }
+        return hex;
+      }
+
+      // Simple SHA-256 for event hashing
+      // Here we'll rely on browser's crypto.subtle
+      async function sha256Hex(msgUint8) {
+        const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+        const hashArray = new Uint8Array(hashBuffer);
+        let hex = "";
+        for (let i = 0; i < hashArray.length; i++) {
+          hex += hashArray[i].toString(16).padStart(2, "0");
+        }
+        return hex;
+      }
+
+      // Helper to build event.id
+      // This is the "serialize" approach in NIP-01
+      async function getEventHash(evt) {
+        const { kind, pubkey, created_at, tags, content } = evt;
+        const payload = JSON.stringify([
+          0,
+          pubkey,
+          created_at,
+          kind,
+          tags,
+          content,
+        ]);
+        const enc = new TextEncoder();
+        const encodedPayload = enc.encode(payload);
+        return await sha256Hex(encodedPayload);
+      }
+
+      // Minimal "SimplePool" that can publish events
+      class SimplePool {
+        constructor() {
+          this.conns = {};
+        }
+        async connectRelay(url) {
+          return new Promise((resolve, reject) => {
+            if (
+              this.conns[url] &&
+              this.conns[url].readyState === WebSocket.OPEN
+            ) {
+              resolve(this.conns[url]);
+              return;
+            }
+            const ws = new WebSocket(url);
+            ws.onopen = () => {
+              this.conns[url] = ws;
+              resolve(ws);
+            };
+            ws.onerror = (err) => {
+              reject(err);
+            };
+          });
+        }
+        async publish(urls, event) {
+          // For each URL, ensure a WS connection, then send
+          return Promise.all(
+            urls.map(async (url) => {
+              try {
+                const ws = await this.connectRelay(url);
+                const msg = ["EVENT", event];
+                ws.send(JSON.stringify(msg));
+              } catch (err) {
+                throw new Error(`Failed to publish to ${url}: ${err.message}`);
+              }
+            })
+          );
+        }
+      }
+
+      /******************************************
+       * Our "fakeEncrypt" to match your app
+       ******************************************/
+      function fakeEncrypt(str) {
+        return str.split("").reverse().join("");
+      }
+
+      /******************************************
+       * NostrClient - like in your app
+       ******************************************/
+      class NostrClient {
+        constructor(relayUrls) {
+          this.relayUrls = relayUrls;
+          this.pool = new SimplePool();
+          this.pubkey = null; // will store the extension's pubkey
+        }
+
+        // Connect is trivial here; we do it on publish instead
+        async init() {
+          // no-op for now
+        }
+
+        // Attempt to get pubkey from extension
+        async login() {
+          if (!window.nostr) {
+            throw new Error(
+              "No window.nostr found. Please install a Nostr extension."
+            );
+          }
+          const pubkey = await window.nostr.getPublicKey();
+          this.pubkey = pubkey;
+          return pubkey;
+        }
+
+        /**
+         * Publish a kind=4 DM using "fake encryption".
+         * This is not secure. Replace with actual encryption if needed.
+         */
+        async sendAppealDM(targetNpub, formDataObj) {
+          if (!this.pubkey) {
+            throw new Error("You must login first (no pubkey).");
+          }
+          // Convert target npub => hex
+          let targetHex;
+          try {
+            targetHex = decodeNpubToHex(targetNpub);
+          } catch (err) {
+            throw new Error("Invalid target npub: " + err.message);
+          }
+
+          // Fake-encrypt the entire JSON
+          const jsonStr = JSON.stringify(formDataObj, null, 2);
+          const ciphertext = fakeEncrypt(jsonStr);
+
+          // Build the event
+          const now = Math.floor(Date.now() / 1000);
+          const event = {
+            kind: 4,
+            pubkey: this.pubkey,
+            created_at: now,
+            tags: [["p", targetHex]],
+            content: ciphertext,
+          };
+
+          // We need to hash the event, then sign with extension
+          event.id = await getEventHash(event);
+          event.sig = await window.nostr.signEvent(event);
+
+          // Publish to all configured relays
+          await this.pool.publish(Object.keys(this.relayUrls), event);
+          return event;
+        }
+      }
+
+      /******************************************
+       * Main code
+       ******************************************/
+      // Configure your target npubs and relays:
       const targetNpubs = [
-        // Add the npubs that should receive the DMs.
-        // Example:
+        // e.g. Moderation accounts:
         "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe",
-        // "npub1ANOTHER_TARGET",
       ];
-
-      const relays = {
+      const relayUrls = {
         "wss://relay.snort.social": true,
         "wss://relay.damus.io": true,
         "wss://relay.primal.net": true,
       };
-      // -----------------------------------------------
 
       const form = document.getElementById("appeal-form");
       const statusEl = document.getElementById("status-message");
 
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        statusEl.textContent = ""; // Clear old status messages
+      // Create a local client
+      const nostrClient = new NostrClient(relayUrls);
+      // We won't call .init() for now, since we connect on publish if needed.
 
-        // Collect form data
-        const formData = new FormData(form);
-        const dataObject = {};
-        formData.forEach((value, key) => {
-          dataObject[key] = value.trim();
-        });
+      form.addEventListener("submit", async (evt) => {
+        evt.preventDefault();
+        statusEl.textContent = "";
 
-        // Generate ephemeral key pair
-        let ephemeralPrivKey;
-        let ephemeralPubKeyHex;
-        try {
-          ephemeralPrivKey = generatePrivateKey();
-          ephemeralPubKeyHex = getPublicKey(ephemeralPrivKey);
-        } catch (err) {
-          statusEl.textContent = "Error generating ephemeral key: " + err;
-          return;
+        // Gather form fields
+        const data = new FormData(form);
+        const appealData = {};
+        for (const [key, val] of data.entries()) {
+          appealData[key] = val.trim();
         }
 
-        // Convert form data to JSON
-        const formText = JSON.stringify(dataObject, null, 2);
-
-        // For each target recipient:
-        let overallSuccess = false; // Track if any relay publishes succeed
-        for (const npub of targetNpubs) {
+        // If user is not logged in, attempt login
+        if (!nostrClient.pubkey) {
           try {
-            const decoded = nip19.decode(npub);
-            if (decoded.type !== "npub") {
-              const msg = `Skipping invalid npub: ${npub}`;
-              console.error(msg);
-              statusEl.textContent += msg + "\n";
-              continue;
-            }
-            const targetPubKeyHex = decoded.data;
-
-            // Encrypt using NIP-04
-            let ciphertext;
-            try {
-              ciphertext = await nip04.encrypt(
-                ephemeralPrivKey,
-                targetPubKeyHex,
-                formText
-              );
-            } catch (encErr) {
-              const msg = `Failed to encrypt for ${npub}: ${encErr}`;
-              console.error(msg);
-              statusEl.textContent += msg + "\n";
-              continue;
-            }
-
-            // Build event
-            const now = Math.floor(Date.now() / 1000);
-            const eventToSend = {
-              kind: 4, // NIP-04 (Encrypted Direct Message)
-              pubkey: ephemeralPubKeyHex,
-              created_at: now,
-              tags: [["p", targetPubKeyHex]],
-              content: ciphertext,
-            };
-
-            // Sign event
-            try {
-              eventToSend.id = getEventHash(eventToSend);
-              eventToSend.sig = signEvent(eventToSend, ephemeralPrivKey);
-            } catch (signErr) {
-              const msg = `Failed to sign event for ${npub}: ${signErr}`;
-              console.error(msg);
-              statusEl.textContent += msg + "\n";
-              continue;
-            }
-
-            // Publish event to each relay
-            for (const relayUrl of Object.keys(relays)) {
-              const relay = relayInit(relayUrl);
-              relay.on("connect", () => {
-                console.log(`Connected to ${relayUrl}`);
-                statusEl.textContent += `Connected to ${relayUrl}\n`;
-              });
-              relay.on("error", () => {
-                console.log(`Failed to connect to ${relayUrl}`);
-                statusEl.textContent += `Failed to connect to ${relayUrl}\n`;
-              });
-
-              await relay.connect();
-
-              const pub = relay.publish(eventToSend);
-              pub.on("ok", () => {
-                console.log(`Event published to ${relayUrl}`);
-                statusEl.textContent += `Event published to ${relayUrl}\n`;
-                overallSuccess = true;
-              });
-              pub.on("failed", (reason) => {
-                console.error(`Failed to publish to ${relayUrl}:`, reason);
-                statusEl.textContent += `Failed to publish to ${relayUrl}: ${reason}\n`;
-              });
-
-              // Close the relay after a short delay
-              setTimeout(() => relay.close(), 3000);
-            }
+            await nostrClient.login();
           } catch (err) {
-            console.error("Error handling npub:", npub, err);
-            statusEl.textContent += `Error handling npub ${npub}: ${err}\n`;
+            statusEl.textContent =
+              "Failed to login via extension: " + err.message;
+            return;
           }
         }
 
-        // If at least one relay published successfully, we consider it a success
-        if (overallSuccess) {
-          alert(
-            "Your appeal was submitted to at least one relay successfully."
-          );
-        } else {
-          alert("Submission encountered errors. Check status messages above.");
+        let anySuccess = false;
+        // For each target mod npub, send the DM
+        for (const modNpub of targetNpubs) {
+          try {
+            await nostrClient.sendAppealDM(modNpub, appealData);
+            statusEl.textContent += `Sent DM to ${modNpub}\n`;
+            anySuccess = true;
+          } catch (err) {
+            const msg = `Failed to send DM to ${modNpub}: ${err.message}`;
+            console.error(msg);
+            statusEl.textContent += msg + "\n";
+          }
         }
 
-        // Optionally reset the form
-        form.reset();
+        if (anySuccess) {
+          alert("Appeal submitted successfully to at least one mod npub.");
+          form.reset();
+        } else {
+          alert("Could not submit to any target moderators. Check logs above.");
+        }
       });
     </script>
   </body>
