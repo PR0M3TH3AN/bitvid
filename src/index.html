@@ -489,6 +489,15 @@
             appealsModal.classList.remove("hidden");
           }
         }
+        //
+        // 5.1) ?modal=application => open application form
+        //
+        else if (modalParam === "application") {
+          const appModal = document.getElementById("nostrFormModal");
+          if (appModal) {
+            appModal.classList.remove("hidden");
+          }
+        }
 
         //
         // 6) Close content appeals modal
