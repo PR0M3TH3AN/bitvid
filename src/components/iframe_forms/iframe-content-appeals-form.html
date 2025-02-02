@@ -3,17 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <title>Content Appeals Form</title>
-    <!-- You can style the form as needed -->
     <style>
       body {
         font-family: Arial, sans-serif;
         margin: 20px;
         max-width: 600px;
+        background-color: #000; /* black or very dark background */
+        color: #fff; /* all text in white */
       }
       label {
         display: inline-block;
         margin: 8px 0 4px 0;
         font-weight: bold;
+        color: #fff;
       }
       input,
       textarea,
@@ -22,6 +24,9 @@
         padding: 6px;
         margin-bottom: 16px;
         box-sizing: border-box;
+        background-color: #234566; /* dark blue */
+        color: #fff; /* white text inside inputs */
+        border: 1px solid #888; /* border color for contrast */
       }
       button {
         padding: 10px 16px;
@@ -31,6 +36,10 @@
       h2,
       h3 {
         margin-top: 24px;
+        color: #fff;
+      }
+      p {
+        color: #fff;
       }
     </style>
   </head>
@@ -139,11 +148,13 @@
 
       <h3>5. Declaration</h3>
       <p>
-        By submitting this appeal, you confirm that:
-        <br />- You are the original creator or authorized representative of the
-        content in question. <br />- Your appeal is submitted in good faith and
-        aligns with bitvid’s policies. <br />- You understand that final
-        decisions are at the discretion of bitvid’s moderation process.
+        By submitting this appeal, you confirm that:<br />
+        - You are the original creator or authorized representative of the
+        content in question.<br />
+        - Your appeal is submitted in good faith and aligns with bitvid’s
+        policies.<br />
+        - You understand that final decisions are at the discretion of bitvid’s
+        moderation process.
       </p>
       <label for="signature">Signature (Digital or Written)</label>
       <input type="text" id="signature" name="signature" required />
@@ -175,7 +186,7 @@
         signEvent,
         nip04,
         relayInit,
-      } from "https://cdn.jsdelivr.net/npm/nostr-tools/+esm";
+      } from "https://cdn.jsdelivr.net/npm/nostr-tools@1.14.1/+esm";
 
       // ---- Configure target npubs and relays here ----
       const targetNpubs = [
@@ -209,13 +220,10 @@
         const ephemeralPrivKey = generatePrivateKey();
         const ephemeralPubKeyHex = getPublicKey(ephemeralPrivKey);
 
-        // Convert form data to a text block (or JSON string if you prefer)
+        // Convert form data to JSON
         const formText = JSON.stringify(dataObject, null, 2);
 
-        // For each target npub:
-        // 1) Convert to hex
-        // 2) Encrypt the form data with ephemeral key
-        // 3) Create and publish an event to each relay
+        // Send to each target
         for (const npub of targetNpubs) {
           try {
             const decoded = nip19.decode(npub);
@@ -249,6 +257,7 @@
             // Publish to configured relays
             for (const relayUrl of Object.keys(relays)) {
               const relay = relayInit(relayUrl);
+
               relay.on("connect", () => {
                 console.log(`Connected to ${relayUrl}`);
               });
@@ -266,7 +275,7 @@
                 console.error(`Failed to publish to ${relayUrl}:`, reason);
               });
 
-              // Close the relay after a short delay or after publish
+              // Close the relay after a short delay
               setTimeout(() => {
                 relay.close();
               }, 3000);
@@ -276,7 +285,7 @@
           }
         }
 
-        // (Optional) Clear or reset the form
+        // Optional: reset the form
         form.reset();
         alert("Your appeal has been submitted via Nostr DMs.");
       });
