@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Content Appeals Form</title>
+    <!-- You can style the form as needed -->
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        max-width: 600px;
+      }
+      label {
+        display: inline-block;
+        margin: 8px 0 4px 0;
+        font-weight: bold;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 6px;
+        margin-bottom: 16px;
+        box-sizing: border-box;
+      }
+      button {
+        padding: 10px 16px;
+        cursor: pointer;
+      }
+      h1,
+      h2,
+      h3 {
+        margin-top: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Bitvid Content Appeals Form</h1>
+    <form id="appeal-form">
+      <h3>1. User Information</h3>
+      <label for="npub">Nostr Public Key (npub)</label>
+      <input
+        type="text"
+        id="npub"
+        name="npub"
+        placeholder="Your npub"
+        required
+      />
+
+      <label for="contactMethod">Contact Method (if applicable)</label>
+      <input
+        type="text"
+        id="contactMethod"
+        name="contactMethod"
+        placeholder="Nostr DM, email, etc."
+      />
+
+      <h3>2. Content Details</h3>
+      <label for="videoTitle">Title of the Video</label>
+      <input
+        type="text"
+        id="videoTitle"
+        name="videoTitle"
+        placeholder="Exact video title"
+        required
+      />
+
+      <label for="magnetLink">Magnet Link</label>
+      <input
+        type="text"
+        id="magnetLink"
+        name="magnetLink"
+        placeholder="Magnet link for the video"
+        required
+      />
+
+      <label for="submissionDate"
+        >Date of Content Submission (MM/DD/YYYY)</label
+      >
+      <input
+        type="text"
+        id="submissionDate"
+        name="submissionDate"
+        placeholder="MM/DD/YYYY"
+        required
+      />
+
+      <h3>3. Reason for Appeal</h3>
+      <label for="whyUnfair"
+        >Why do you believe your content was unfairly blocked?</label
+      >
+      <textarea id="whyUnfair" name="whyUnfair" rows="4" required></textarea>
+
+      <label for="guidelinesFit"
+        >Does your content fit within bitvid's Community Guidelines?
+        (Yes/No)</label
+      >
+      <input
+        type="text"
+        id="guidelinesFit"
+        name="guidelinesFit"
+        placeholder="Yes or No"
+        required
+      />
+
+      <label for="whichGuidelines"
+        >If yes, which guideline(s) support your appeal?</label
+      >
+      <textarea id="whichGuidelines" name="whichGuidelines" rows="3"></textarea>
+
+      <label for="contentEdited"
+        >Was this content edited after being blocked? (Yes/No)</label
+      >
+      <input
+        type="text"
+        id="contentEdited"
+        name="contentEdited"
+        placeholder="Yes or No"
+        required
+      />
+
+      <label for="changesMade">If yes, what changes were made?</label>
+      <textarea id="changesMade" name="changesMade" rows="3"></textarea>
+
+      <h3>4. Additional Context</h3>
+      <label for="misunderstanding"
+        >Was there any misunderstanding or misclassification?</label
+      >
+      <textarea
+        id="misunderstanding"
+        name="misunderstanding"
+        rows="3"
+      ></textarea>
+
+      <label for="externalRefs"
+        >Are there external references that validate your appeal?</label
+      >
+      <textarea id="externalRefs" name="externalRefs" rows="3"></textarea>
+
+      <h3>5. Declaration</h3>
+      <p>
+        By submitting this appeal, you confirm that:
+        <br />- You are the original creator or authorized representative of the
+        content in question. <br />- Your appeal is submitted in good faith and
+        aligns with bitvid’s policies. <br />- You understand that final
+        decisions are at the discretion of bitvid’s moderation process.
+      </p>
+      <label for="signature">Signature (Digital or Written)</label>
+      <input type="text" id="signature" name="signature" required />
+
+      <label for="dateSigned">Date (MM/DD/YYYY)</label>
+      <input
+        type="text"
+        id="dateSigned"
+        name="dateSigned"
+        placeholder="MM/DD/YYYY"
+        required
+      />
+
+      <button type="submit">Submit Appeal</button>
+    </form>
+
+    <p>
+      <strong>Processing Time:</strong> Appeals will be reviewed within 7-14
+      days.
+    </p>
+    <hr />
+
+    <script type="module">
+      import {
+        generatePrivateKey,
+        getPublicKey,
+        nip19,
+        getEventHash,
+        signEvent,
+        nip04,
+        relayInit,
+      } from "https://cdn.jsdelivr.net/npm/nostr-tools/+esm";
+
+      // ---- Configure target npubs and relays here ----
+      const targetNpubs = [
+        // Add the npubs that should receive the DMs.
+        // Example:
+        "npub1TARGET_EXAMPLE",
+        // "npub1ANOTHER_TARGET",
+      ];
+
+      // You can adjust or add more relay URLs as needed
+      const relays = {
+        "wss://relay.snort.social": true,
+        "wss://relay.damus.io": true,
+      };
+      // -----------------------------------------------
+
+      const form = document.getElementById("appeal-form");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        // Collect form data
+        const formData = new FormData(form);
+        const dataObject = {};
+        formData.forEach((value, key) => {
+          dataObject[key] = value.trim();
+        });
+
+        // Generate ephemeral key pair
+        const ephemeralPrivKey = generatePrivateKey();
+        const ephemeralPubKeyHex = getPublicKey(ephemeralPrivKey);
+
+        // Convert form data to a text block (or JSON string if you prefer)
+        const formText = JSON.stringify(dataObject, null, 2);
+
+        // For each target npub:
+        // 1) Convert to hex
+        // 2) Encrypt the form data with ephemeral key
+        // 3) Create and publish an event to each relay
+        for (const npub of targetNpubs) {
+          try {
+            const decoded = nip19.decode(npub);
+            if (decoded.type !== "npub") {
+              console.error(`Skipping invalid npub: ${npub}`);
+              continue;
+            }
+            const targetPubKeyHex = decoded.data;
+
+            // Encrypt using NIP-04
+            const ciphertext = await nip04.encrypt(
+              ephemeralPrivKey,
+              targetPubKeyHex,
+              formText
+            );
+
+            // Create event object
+            const now = Math.floor(Date.now() / 1000);
+            const eventToSend = {
+              kind: 4, // NIP-04 (Encrypted Direct Message)
+              pubkey: ephemeralPubKeyHex,
+              created_at: now,
+              tags: [["p", targetPubKeyHex]],
+              content: ciphertext,
+            };
+
+            // Sign event
+            eventToSend.id = getEventHash(eventToSend);
+            eventToSend.sig = signEvent(eventToSend, ephemeralPrivKey);
+
+            // Publish to configured relays
+            for (const relayUrl of Object.keys(relays)) {
+              const relay = relayInit(relayUrl);
+              relay.on("connect", () => {
+                console.log(`Connected to ${relayUrl}`);
+              });
+              relay.on("error", () => {
+                console.log(`Failed to connect to ${relayUrl}`);
+              });
+
+              await relay.connect();
+
+              const pub = relay.publish(eventToSend);
+              pub.on("ok", () => {
+                console.log(`Event published to ${relayUrl}`);
+              });
+              pub.on("failed", (reason) => {
+                console.error(`Failed to publish to ${relayUrl}:`, reason);
+              });
+
+              // Close the relay after a short delay or after publish
+              setTimeout(() => {
+                relay.close();
+              }, 3000);
+            }
+          } catch (err) {
+            console.error("Error handling target npub:", npub, err);
+          }
+        }
+
+        // (Optional) Clear or reset the form
+        form.reset();
+        alert("Your appeal has been submitted via Nostr DMs.");
+      });
+    </script>
+  </body>
+</html>
