@@ -6,19 +6,20 @@
     <!-- Link to your main stylesheet -->
     <link rel="stylesheet" href="style.css" />
     <style>
-      /* Override styles to match the rest of the app */
+      /* Override for form page to match modal field styling */
 
-      /* Make the background transparent and use system fonts */
+      /* Make body text white and background transparent */
       body {
         background-color: transparent;
+        color: #fff;
+        font-family: system-ui, -apple-system, sans-serif;
         margin: 20px;
         max-width: 800px;
-        font-family: system-ui, -apple-system, sans-serif;
       }
 
-      /* Container for the form card */
+      /* Card-like container for the form, similar to modal-content */
       .form-container {
-        background-color: var(--color-card);
+        background-color: #111827; /* Tailwind's bg-gray-900 */
         padding: 1.5rem;
         border-radius: 0.5rem;
         box-shadow: var(--shadow-md);
@@ -26,64 +27,72 @@
 
       h1,
       h2 {
-        color: var(--color-primary);
+        color: #fff;
       }
 
+      /* Labels in a light gray */
       label {
         display: block;
         margin-top: 1em;
         font-weight: bold;
-        color: var(--color-text);
+        color: #E5E7EB; /* Tailwind's text-gray-200 */
       }
 
+      /* Input, textarea, and select mimic modal field styles */
       input,
       textarea,
       select {
         width: 100%;
         margin-bottom: 0.75em;
-        background: var(--color-bg);
-        color: var(--color-text);
-        border: 1px solid var(--color-muted);
+        background-color: #1F2937; /* Tailwind's bg-gray-800 */
+        color: #F3F4F6; /* Tailwind's text-gray-100 */
+        border: 1px solid #374151; /* Tailwind's border-gray-700 */
         padding: 0.5em;
-        border-radius: 0.25rem;
+        border-radius: 0.375rem; /* rounded-md */
         box-sizing: border-box;
       }
 
+      input:focus,
+      textarea:focus,
+      select:focus {
+        border-color: #3B82F6; /* blue-500 */
+        outline: none;
+        box-shadow: 0 0 0 1px #3B82F6;
+      }
+
+      /* Button styled similarly to modal publish button */
       button {
         padding: 0.5em 1em;
-        background: var(--color-primary);
+        background: #3B82F6; /* blue-500 */
         color: #fff;
         border: none;
         border-radius: 0.375rem;
         cursor: pointer;
       }
 
+      /* Status log area */
       #status {
         margin-top: 1em;
         padding: 0.5em;
-        background: var(--color-card);
+        background: #111827;
         white-space: pre-wrap;
         min-height: 80px;
         border-radius: 0.25rem;
       }
-
       .status-line {
         margin: 0.25em 0;
       }
-
       .error {
-        color: var(--color-secondary);
+        color: #F87171; /* a red tint */
       }
-
       .success {
-        color: var(--color-primary);
+        color: #3B82F6; /* blue-500 */
       }
-
       .warn {
-        color: var(--color-muted);
+        color: #FACC15; /* a yellow tone */
       }
 
-      /* Custom Scrollbar styling for WebKit */
+      /* Custom Scrollbar styling for WebKit browsers */
       ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
@@ -92,13 +101,13 @@
         background: transparent;
       }
       ::-webkit-scrollbar-thumb {
-        background-color: var(--color-primary);
+        background-color: #3B82F6;
         border-radius: 4px;
       }
       /* Custom Scrollbar styling for Firefox */
       * {
         scrollbar-width: thin;
-        scrollbar-color: var(--color-primary) transparent;
+        scrollbar-color: #3B82F6 transparent;
       }
     </style>
     <!-- Load nostr‑tools v2.10.4 -->
@@ -142,28 +151,36 @@
           <input type="date" id="submissionDate" />
 
           <h2>3. Reason for Appeal</h2>
-          <label for="reasonBlocked">Why do you believe your content was unfairly blocked?</label>
+          <label for="reasonBlocked"
+            >Why do you believe your content was unfairly blocked?</label
+          >
           <textarea
             id="reasonBlocked"
             rows="3"
             placeholder="Explain in detail"
           ></textarea>
 
-          <label for="fitsGuidelines">Does your content fit within bitvid's Community Guidelines?</label>
+          <label for="fitsGuidelines"
+            >Does your content fit within bitvid's Community Guidelines?</label
+          >
           <select id="fitsGuidelines">
             <option value="">Select an option</option>
             <option value="Yes">Yes</option>
             <option value="No">No</option>
           </select>
 
-          <label for="guidelinesCited">If yes, which guideline(s) support your appeal?</label>
+          <label for="guidelinesCited"
+            >If yes, which guideline(s) support your appeal?</label
+          >
           <textarea
             id="guidelinesCited"
             rows="2"
             placeholder="Cite the specific guidelines"
           ></textarea>
 
-          <label for="editedContent">Was this content edited after being blocked?</label>
+          <label for="editedContent"
+            >Was this content edited after being blocked?</label
+          >
           <select id="editedContent">
             <option value="">Select an option</option>
             <option value="Yes">Yes</option>
@@ -178,14 +195,18 @@
           ></textarea>
 
           <h2>4. Additional Context</h2>
-          <label for="misunderstanding">Was there any misunderstanding or misclassification?</label>
+          <label for="misunderstanding"
+            >Was there any misunderstanding or misclassification?</label
+          >
           <textarea
             id="misunderstanding"
             rows="2"
             placeholder="Provide context"
           ></textarea>
 
-          <label for="externalReferences">Are there external references that validate your appeal?</label>
+          <label for="externalReferences"
+            >Are there external references that validate your appeal?</label
+          >
           <textarea
             id="externalReferences"
             rows="2"
