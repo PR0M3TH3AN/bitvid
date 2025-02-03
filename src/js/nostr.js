@@ -47,8 +47,8 @@ function convertEventToVideo(event) {
   const content = JSON.parse(event.content || "{}");
   return {
     id: event.id,
-    // We store a 'videoRootId' in content so we can group multiple edits
-    videoRootId: content.videoRootId || null,
+    // If content.videoRootId is missing, use event.id as a fallback
+    videoRootId: content.videoRootId || event.id,
     version: content.version ?? 1,
     isPrivate: content.isPrivate ?? false,
     title: content.title || "",
