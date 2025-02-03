@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Nostr Ephemeral DM Tester (Using finalizeEvent)</title>
+    <style>
+      /* Basic styling for the demo page */
+      body {
+        background: #222;
+        color: #eee;
+        font-family: sans-serif;
+        margin: 20px;
+        max-width: 600px;
+      }
+      label {
+        display: block;
+        margin-top: 1em;
+        font-weight: bold;
+      }
+      input,
+      textarea {
+        width: 100%;
+        margin-bottom: 0.75em;
+        background: #333;
+        color: #fff;
+        border: 1px solid #888;
+        padding: 0.5em;
+        box-sizing: border-box;
+      }
+      button {
+        padding: 0.5em 1em;
+        background: #3399cc;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 1em;
+        padding: 0.5em;
+        background: #111;
+        white-space: pre-wrap;
+        min-height: 80px;
+      }
+      .status-line {
+        margin: 0.25em 0;
+      }
+      .error {
+        color: #ff6666;
+      }
+      .success {
+        color: #66ff66;
+      }
+      .warn {
+        color: #ffff66;
+      }
+    </style>
+
+    <!--
+      Nostr Ephemeral DM Tester (Using finalizeEvent)
+      
+      This HTML file demonstrates how to create a simple ephemeral DM tool using nostr‑tools v2.10.4.
+      
+      Key steps:
+      
+      1. Decode the target npub (using nip19.decode) to extract the target public key.
+      2. Generate an ephemeral key pair with generateSecretKey (returns Uint8Array) and getPublicKey (returns hex string).
+      3. Encrypt the message using nip04.encrypt (NIP‑04 encryption) with the ephemeral private key and the target public key.
+      4. Build an event template (a kind‑4 event) with the encrypted message and a tag containing the target pubkey.
+      5. Finalize the event using finalizeEvent, which computes the event id, assigns the ephemeral pubkey, and signs the event.
+      6. Publish the event to multiple relays using SimplePool.publish, which returns a promise – we use Promise.any to ensure at least one relay accepted the event.
+      7. Connect to each relay using the Relay API (Relay.connect) and subscribe for the event (using onEvent and onEose callbacks) to verify that it is stored.
+      
+      Important lessons:
+      
+      - finalizeEvent greatly simplifies the process by handling id computation and signing.
+      - The publish API now returns a promise; using Promise.any allows us to wait until one relay accepts the event.
+      - The subscription API has changed – use the Relay API instead of the deprecated pool.sub.
+      - Detailed logging is essential for debugging, so logs are output both to the page and the console.
+      
+      References:
+        - Nostr-tools documentation: :contentReference[oaicite:0]{index=0}
+        - Nostr protocol specifications and community examples.
+    -->
+
+    <!-- Load nostr‑tools v2.10.4 -->
+    <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js"></script>
+  </head>
+  <body>
+    <h1>Nostr Ephemeral DM Tester (Using finalizeEvent)</h1>
+    <p>
+      Generates a random ephemeral key, encrypts your message (NIP‑04),
+      finalizes the event (computes event.id and signs it), then publishes it.
+      It also subscribes to each relay using the Relay API.
+    </p>
+
+    <form id="dm-form">
+      <label for="npubInput">Target npub:</label>
+      <input
+        type="text"
+        id="npubInput"
+        placeholder="npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
+        required
+      />
+
+      <label for="msgInput">Message:</label>
+      <textarea
+        id="msgInput"
+        rows="3"
+        placeholder="Hello from ephemeral DM!"
+      ></textarea>
+
+      <button type="submit">Send DM</button>
+    </form>
+
+    <div id="status"></div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        // Logging functions for both on-page and console output.
+        function log(msg, type = "info") {
+          const div = document.createElement("div");
+          div.classList.add("status-line");
+          if (type === "error") div.classList.add("error");
+          if (type === "success") div.classList.add("success");
+          if (type === "warn") div.classList.add("warn");
+          div.textContent = msg;
+          document.getElementById("status").appendChild(div);
+          console.log(`[${type.toUpperCase()}] ${msg}`);
+        }
+        function clear() {
+          document.getElementById("status").innerHTML = "";
+        }
+
+        if (!window.NostrTools) {
+          log("NostrTools not loaded. Check console or ad-blockers.", "error");
+          return;
+        }
+
+        // Destructure the required functions and classes from nostr-tools.
+        // finalizeEvent is used to automatically compute the event id, sign the event, and assign the pubkey.
+        const {
+          generateSecretKey,
+          getPublicKey,
+          finalizeEvent,
+          nip04,
+          nip19,
+          SimplePool,
+          utils,
+          Relay, // Relay API for subscriptions.
+        } = window.NostrTools;
+
+        // Define relay URLs.
+        const RELAYS = [
+          "wss://relay.snort.social",
+          "wss://relay.damus.io",
+          "wss://relay.primal.net",
+        ];
+
+        // Create a SimplePool instance for publishing events.
+        const pool = new SimplePool();
+
+        // Main form submission handler.
+        document
+          .getElementById("dm-form")
+          .addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            clear();
+
+            try {
+              // 1) Retrieve and validate user input.
+              const npub = document.getElementById("npubInput").value.trim();
+              if (!npub.startsWith("npub")) {
+                throw new Error("Target must start with npub.");
+              }
+              const message =
+                document.getElementById("msgInput").value.trim() ||
+                "Hello from ephemeral DM!";
+
+              // 2) Decode the npub to obtain the target public key.
+              log("Decoding target npub...");
+              const decoded = nip19.decode(npub);
+              log(`[DEBUG] Decoded npub: ${JSON.stringify(decoded)}`);
+              if (decoded.type !== "npub") {
+                throw new Error("Decoded type is not npub.");
+              }
+              const targetPubHex = decoded.data;
+              log(`Target pubkey: ${targetPubHex.slice(0, 16)}...`);
+
+              // 3) Generate an ephemeral key pair.
+              log("Generating ephemeral key...");
+              const ephemeralPriv = generateSecretKey(); // Returns a Uint8Array.
+              const ephemeralPubHex = getPublicKey(ephemeralPriv); // Returns a hex string.
+              log(`Ephemeral pubkey: ${ephemeralPubHex.slice(0, 16)}...`);
+
+              // 4) Encrypt the message using NIP‑04 encryption.
+              log("Encrypting message (nip04)...");
+              const ciphertext = await nip04.encrypt(
+                ephemeralPriv,
+                targetPubHex,
+                message
+              );
+              log(`[DEBUG] Ciphertext: ${ciphertext}`);
+              log("Encryption done.");
+
+              // 5) Build the DM event template (without id and signature).
+              const now = Math.floor(Date.now() / 1000);
+              const eventTemplate = {
+                kind: 4,
+                created_at: now,
+                tags: [["p", targetPubHex]],
+                content: ciphertext,
+              };
+              log(
+                `[DEBUG] Event template before finalizing: ${JSON.stringify(
+                  eventTemplate
+                )}`
+              );
+
+              // 6) Finalize the event: compute the event id, sign it, and assign the pubkey.
+              const event = finalizeEvent(eventTemplate, ephemeralPriv);
+              log(`[DEBUG] Final event: ${JSON.stringify(event)}`);
+
+              // 7) Publish the event to all relays.
+              log("Publishing to relays...");
+              // pool.publish now accepts an array of relay URLs and returns a promise.
+              await Promise.any(pool.publish(RELAYS, event));
+              log("At least one relay accepted the event.", "success");
+
+              // 8) For each relay, connect using the Relay API and subscribe to verify event storage.
+              for (const url of RELAYS) {
+                log(`Connecting to ${url} for subscription...`);
+                const relay = await Relay.connect(url);
+                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                  onEvent(foundEvent) {
+                    if (foundEvent.id === event.id) {
+                      log(
+                        `[${url}] => Found our DM in storage! ID: ${foundEvent.id.slice(
+                          0,
+                          8
+                        )}...`,
+                        "success"
+                      );
+                    }
+                  },
+                  onEose() {
+                    relay.close();
+                  },
+                });
+              }
+
+              log(
+                "Done. If the logs show 'Relay accepted' and 'Found our DM in storage', the event is on at least one relay. Another client must subscribe to ephemeralPubHex or #p=targetPubHex to see it."
+              );
+            } catch (err) {
+              log("Error: " + err.message, "error");
+              console.error(err);
+            }
+          });
+      });
+    </script>
+  </body>
+</html>

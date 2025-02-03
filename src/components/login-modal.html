@@ -3,7 +3,7 @@
   class="fixed inset-0 z-50 hidden"
   style="background: transparent"
 >
-  <!-- Dark overlay -->
+  <!-- Dark overlay with blur (unchanged) -->
   <div
     class="absolute inset-0 z-10"
     style="
@@ -13,14 +13,14 @@
     "
   ></div>
 
-  <!-- Modal container -->
+  <!-- Outer container matching video modal's flex layout & wide sizing -->
   <div
-    class="relative modal-container h-full w-full flex items-center justify-center overflow-y-auto z-20"
+    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
   >
     <div
-      class="modal-content bg-gray-900 w-full max-w-md my-0 rounded-lg overflow-hidden relative max-h-[90vh]"
+      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
     >
-      <!-- Header -->
+      <!-- Header with the special exit button (unchanged) -->
       <div
         class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
       >
@@ -46,8 +46,20 @@
         </button>
       </div>
 
-      <!-- Body with login buttons -->
+      <!-- Body with buttons (unchanged) -->
       <div class="p-6 space-y-4">
+        <!-- Application Form button -->
+        <button
+          id="openApplicationModal"
+          class="w-full bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        >
+          Application Form
+        </button>
+
+        <!-- Simple horizontal rule -->
+        <div class="my-2 border-t border-gray-700"></div>
+
+        <!-- Existing login buttons -->
         <button
           id="loginNIP07"
           class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
