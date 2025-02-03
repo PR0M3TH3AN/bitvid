@@ -2,697 +2,433 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Bitvid Content Appeals Form</title>
+    <title>bitvid Content Appeals Form</title>
     <style>
+      /* Basic styling for the form and log output */
       body {
-        font-family: Arial, sans-serif;
+        background: #222;
+        color: #eee;
+        font-family: sans-serif;
         margin: 20px;
-        max-width: 600px;
-        color: #fff;
-        background: transparent;
+        max-width: 800px;
+      }
+      h1,
+      h2 {
+        color: #66ff66;
       }
       label {
-        display: inline-block;
-        margin: 8px 0 4px 0;
+        display: block;
+        margin-top: 1em;
         font-weight: bold;
-        color: #fff;
       }
       input,
       textarea,
       select {
         width: 100%;
-        padding: 6px;
-        margin-bottom: 16px;
-        box-sizing: border-box;
-        background-color: #234566;
+        margin-bottom: 0.75em;
+        background: #333;
         color: #fff;
         border: 1px solid #888;
+        padding: 0.5em;
+        box-sizing: border-box;
       }
       button {
-        padding: 10px 16px;
+        padding: 0.5em 1em;
+        background: #3399cc;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
         cursor: pointer;
       }
-      h1,
-      h2,
-      h3 {
-        margin-top: 24px;
-        color: #fff;
-      }
-      p {
-        color: #fff;
-      }
-      #status-message {
-        white-space: pre;
+      #status {
         margin-top: 1em;
-        font-size: 0.9em;
+        padding: 0.5em;
+        background: #111;
+        white-space: pre-wrap;
+        min-height: 80px;
+      }
+      .status-line {
+        margin: 0.25em 0;
+      }
+      .error {
+        color: #ff6666;
+      }
+      .success {
+        color: #66ff66;
+      }
+      .warn {
+        color: #ffff66;
       }
     </style>
+
+    <!--
+      bitvid Content Appeals Form
+      
+      Key Points and Lessons Learned:
+      
+      1. We use nostr‑tools v2.10.4 to send a Nostr event that contains the appeal data.
+         - The target npub is decoded (using nip19.decode) to extract the target public key.
+         - An ephemeral key pair is generated with generateSecretKey (returns a Uint8Array) and getPublicKey (returns a hex string).
+      2. The form collects detailed appeal information (user info, content details, reasons, additional context, and declaration).
+      3. On submission, all form field values are assembled into a Markdown‑formatted message.
+      4. The message is encrypted using nip04.encrypt with the ephemeral private key and the target public key.
+      5. The event template (kind 4) is built with the encrypted message and then finalized via finalizeEvent,
+         which automatically computes event.id, assigns the ephemeral pubkey, and signs the event.
+      6. The event is published to multiple relays using SimplePool.publish (which now returns a promise), and we use Promise.any
+         to wait for at least one relay to accept the event.
+      7. For subscriptions, we use the Relay API (Relay.connect and relay.subscribe) to verify that the event appears in storage.
+      
+      This implementation leverages the higher‑level APIs provided by nostr‑tools to simplify event creation,
+      signing, and relay interaction while providing detailed logging for debugging purposes.
+    -->
+
+    <!-- Load nostr‑tools v2.10.4 -->
+    <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js"></script>
   </head>
   <body>
-    <h1>Bitvid Content Appeals Form</h1>
+    <h1>bitvid Content Appeals Form</h1>
+    <p>
+      If you believe your content was unfairly blocked or restricted on bitvid,
+      please complete this form. Appeals will be reviewed manually, and
+      decisions will be communicated back to you.
+    </p>
 
-    <form id="appeal-form">
-      <h3>1. User Information</h3>
-      <label for="npub">Nostr Public Key (npub)</label>
+    <form id="dm-form">
+      <h2>1. User Information</h2>
+      <label for="npubInput">Nostr Public Key (npub):</label>
       <input
         type="text"
-        id="npub"
-        name="npub"
-        placeholder="Your npub"
+        id="npubInput"
+        placeholder="Enter your npub"
         required
       />
 
-      <label for="contactMethod">Contact Method (if applicable)</label>
+      <label for="contactMethod">Contact Method (if applicable):</label>
       <input
         type="text"
         id="contactMethod"
-        name="contactMethod"
-        placeholder="Nostr DM, email, etc."
+        placeholder="Nostr DM, email, or other"
       />
 
-      <h3>2. Content Details</h3>
-      <label for="videoTitle">Title of the Video</label>
-      <input
-        type="text"
-        id="videoTitle"
-        name="videoTitle"
-        placeholder="Exact video title"
-        required
-      />
+      <h2>2. Content Details</h2>
+      <label for="videoTitle">Title of the Video:</label>
+      <input type="text" id="videoTitle" placeholder="Enter the exact title" />
 
-      <label for="magnetLink">Magnet Link</label>
-      <input
-        type="text"
-        id="magnetLink"
-        name="magnetLink"
-        placeholder="Magnet link for the video"
-        required
-      />
+      <label for="magnetLink">Magnet Link:</label>
+      <input type="text" id="magnetLink" placeholder="Enter the magnet link" />
 
-      <label for="submissionDate"
-        >Date of Content Submission (MM/DD/YYYY)</label
-      >
-      <input
-        type="text"
-        id="submissionDate"
-        name="submissionDate"
-        placeholder="MM/DD/YYYY"
-        required
-      />
+      <label for="submissionDate">Date of Content Submission:</label>
+      <input type="date" id="submissionDate" />
 
-      <h3>3. Reason for Appeal</h3>
-      <label for="whyUnfair"
+      <h2>3. Reason for Appeal</h2>
+      <label for="reasonBlocked"
         >Why do you believe your content was unfairly blocked?</label
       >
-      <textarea id="whyUnfair" name="whyUnfair" rows="4" required></textarea>
+      <textarea
+        id="reasonBlocked"
+        rows="3"
+        placeholder="Explain in detail"
+      ></textarea>
 
-      <label for="guidelinesFit"
-        >Does your content fit within bitvid's Community Guidelines?
-        (Yes/No)</label
+      <label for="fitsGuidelines"
+        >Does your content fit within bitvid's Community Guidelines?</label
       >
-      <input
-        type="text"
-        id="guidelinesFit"
-        name="guidelinesFit"
-        placeholder="Yes or No"
-        required
-      />
+      <select id="fitsGuidelines">
+        <option value="">Select an option</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
 
-      <label for="whichGuidelines"
+      <label for="guidelinesCited"
         >If yes, which guideline(s) support your appeal?</label
       >
-      <textarea id="whichGuidelines" name="whichGuidelines" rows="3"></textarea>
+      <textarea
+        id="guidelinesCited"
+        rows="2"
+        placeholder="Cite the specific guidelines"
+      ></textarea>
 
-      <label for="contentEdited"
-        >Was this content edited after being blocked? (Yes/No)</label
+      <label for="editedContent"
+        >Was this content edited after being blocked?</label
       >
-      <input
-        type="text"
-        id="contentEdited"
-        name="contentEdited"
-        placeholder="Yes or No"
-        required
-      />
+      <select id="editedContent">
+        <option value="">Select an option</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
 
       <label for="changesMade">If yes, what changes were made?</label>
-      <textarea id="changesMade" name="changesMade" rows="3"></textarea>
+      <textarea
+        id="changesMade"
+        rows="2"
+        placeholder="Describe the modifications"
+      ></textarea>
 
-      <h3>4. Additional Context</h3>
+      <h2>4. Additional Context</h2>
       <label for="misunderstanding"
         >Was there any misunderstanding or misclassification?</label
       >
       <textarea
         id="misunderstanding"
-        name="misunderstanding"
-        rows="3"
+        rows="2"
+        placeholder="Provide context"
       ></textarea>
 
-      <label for="externalRefs"
+      <label for="externalReferences"
         >Are there external references that validate your appeal?</label
       >
-      <textarea id="externalRefs" name="externalRefs" rows="3"></textarea>
+      <textarea
+        id="externalReferences"
+        rows="2"
+        placeholder="Links, citations, or additional info"
+      ></textarea>
 
-      <h3>5. Declaration</h3>
+      <h2>5. Declaration</h2>
       <p>
-        By submitting this appeal, you confirm that:<br />
-        - You are the original creator or authorized representative of the
-        content in question.<br />
-        - Your appeal is submitted in good faith and aligns with bitvid’s
-        policies.<br />
-        - You understand that final decisions are at the discretion of bitvid’s
-        moderation process.
+        By submitting this appeal, you confirm that:
+        <br />- You are the original creator or authorized representative of the
+        content. <br />- Your appeal is submitted in good faith and aligns with
+        bitvid’s policies. <br />- You understand that final decisions are at
+        the discretion of bitvid’s moderation process.
       </p>
-      <label for="signature">Signature (Digital or Written)</label>
-      <input type="text" id="signature" name="signature" required />
+      <label for="signature">Signature (Digital or Written):</label>
+      <input type="text" id="signature" placeholder="Your signature" />
 
-      <label for="dateSigned">Date (MM/DD/YYYY)</label>
-      <input
-        type="text"
-        id="dateSigned"
-        name="dateSigned"
-        placeholder="MM/DD/YYYY"
-        required
-      />
+      <label for="declarationDate">Date:</label>
+      <input type="date" id="declarationDate" />
 
       <button type="submit">Submit Appeal</button>
     </form>
 
-    <p>
-      <strong>Processing Time:</strong> Appeals will be reviewed within 7-14
-      days.
-    </p>
-    <hr />
-    <div id="status-message"></div>
+    <div id="status"></div>
 
     <script>
-      /********************************************************************
-       * Minimal single-file solution that:
-       * 1) Generates ephemeral secp256k1 keys (sender).
-       * 2) Uses standard NIP-04 encryption (AES-256-CBC, base64).
-       * 3) Publishes kind=4 events to chosen relays.
-       ********************************************************************/
-
-      (function () {
-        // We'll store the main methods we need in an object:
-        window.nobleSecp256k1 = {};
-
-        const _0n = BigInt(0);
-        const _1n = BigInt(1);
-        const _2n = BigInt(2);
-        const _3n = BigInt(3);
-        const _8n = BigInt(8);
-        const CURVE = {
-          P: BigInt(
-            "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
-          ),
-          n: BigInt(
-            "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
-          ),
-          Gx: BigInt(
-            "55066263022277343669578718895168534326250603453777594175500187360389116729240"
-          ),
-          Gy: BigInt(
-            "32670510020758816978083085130507043184471273380659243275938904335757337482424"
-          ),
-        };
-
-        function mod(a, b = CURVE.P) {
-          const result = a % b;
-          return result >= _0n ? result : b + result;
+      document.addEventListener("DOMContentLoaded", () => {
+        // Logging functions for both on-page and console output.
+        function log(msg, type = "info") {
+          const div = document.createElement("div");
+          div.classList.add("status-line");
+          if (type === "error") div.classList.add("error");
+          if (type === "success") div.classList.add("success");
+          if (type === "warn") div.classList.add("warn");
+          div.textContent = msg;
+          document.getElementById("status").appendChild(div);
+          console.log(`[${type.toUpperCase()}] ${msg}`);
         }
-        function invert(number, modulo = CURVE.P) {
-          if (number === _0n || modulo <= _0n)
-            throw new Error("invert: wrong inputs");
-          let a = mod(number, modulo);
-          let b = modulo;
-          let x0 = _0n,
-            x1 = _1n;
-          while (a !== _0n) {
-            const q = b / a;
-            const r = b % a;
-            const x2 = x0 - q * x1;
-            b = a;
-            a = r;
-            x0 = x1;
-            x1 = x2;
-          }
-          if (b !== _1n) throw new Error("invert: does not exist");
-          return mod(x0, modulo);
-        }
-        function bytesToNumber(bytes) {
-          return BigInt(
-            "0x" +
-              [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")
-          );
-        }
-        function numberTo32Bytes(num) {
-          const hex = num.toString(16).padStart(64, "0");
-          const len = hex.length / 2;
-          const u8 = new Uint8Array(len);
-          for (let i = 0; i < len; i++) {
-            u8[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-          }
-          return u8;
-        }
-        function isWithinCurveOrder(num) {
-          return BigInt(0) < num && num < CURVE.n;
-        }
-        class Point {
-          constructor(px, py) {
-            this.x = px;
-            this.y = py;
-          }
-          static fromPrivateKey(privKey) {
-            const p = bytesToNumber(privKey);
-            if (!isWithinCurveOrder(p)) throw new Error("Invalid private key");
-            return Point.BASE.multiply(p);
-          }
-          multiply(scalar) {
-            if (!isWithinCurveOrder(scalar))
-              throw new Error("Point#multiply: invalid scalar");
-            let n = scalar;
-            if (n === _0n) return Point.ZERO;
-            let p = Point.ZERO;
-            let d = this;
-            while (n > _0n) {
-              if ((n & _1n) === _1n) p = p.add(d);
-              d = d.double();
-              n >>= _1n;
-            }
-            return p;
-          }
-          double() {
-            const X1 = this.x;
-            const Y1 = this.y;
-            const a = mod(_3n * X1 * X1);
-            const inv = invert(_2n * Y1);
-            const x3 = mod(a * a * inv * inv - _2n * X1);
-            const y3 = mod(a * (X1 - x3) * inv - Y1);
-            return new Point(x3, y3);
-          }
-          add(other) {
-            if (this.equals(Point.ZERO)) return other;
-            if (other.equals(Point.ZERO)) return this;
-            if (this.x === other.x) {
-              if (this.y !== other.y) return Point.ZERO;
-              return this.double();
-            }
-            const inv = invert(other.x - this.x);
-            const slope = mod((other.y - this.y) * inv);
-            const x3 = mod(slope * slope - this.x - other.x);
-            const y3 = mod(slope * (this.x - x3) - this.y);
-            return new Point(x3, y3);
-          }
-          equals(other) {
-            return this.x === other.x && this.y === other.y;
-          }
-          toRawBytes(isCompressed = false) {
-            if (!isCompressed) {
-              return new Uint8Array([
-                4,
-                ...numberTo32Bytes(this.x),
-                ...numberTo32Bytes(this.y),
-              ]);
-            }
-            const header = (this.y & _1n) === _1n ? 0x03 : 0x02;
-            return new Uint8Array([header, ...numberTo32Bytes(this.x)]);
-          }
-          static fromXY(x, y) {
-            return new Point(x, y);
-          }
-        }
-        Point.BASE = new Point(CURVE.Gx, CURVE.Gy);
-        Point.ZERO = new Point(_0n, _0n);
-
-        function pubBytesToPoint(bytes) {
-          const _0x02 = 0x02,
-            _0x03 = 0x03,
-            _0x04 = 0x04;
-          if (bytes[0] === _0x04 && bytes.length === 65) {
-            const x = bytesToNumber(bytes.slice(1, 33));
-            const y = bytesToNumber(bytes.slice(33));
-            return new Point(x, y);
-          }
-          if (
-            (bytes[0] === _0x02 || bytes[0] === _0x03) &&
-            bytes.length === 33
-          ) {
-            const x = bytesToNumber(bytes.slice(1));
-            const y2 = mod(x * x * x + BigInt(7));
-            let y = powMod(y2, (CURVE.P + BigInt(1)) / BigInt(4));
-            const isOdd = (y & BigInt(1)) === BigInt(1);
-            const wantOdd = bytes[0] === _0x03;
-            if (isOdd !== wantOdd) y = mod(-y);
-            return new Point(x, y);
-          }
-          throw new Error("Unsupported compressed pubkey format");
-        }
-        function powMod(a, e, m = CURVE.P) {
-          let r = _1n;
-          let b = a;
-          while (e > 0) {
-            if (e & _1n) r = mod(r * b, m);
-            b = mod(b * b, m);
-            e >>= _1n;
-          }
-          return r;
+        function clear() {
+          document.getElementById("status").innerHTML = "";
         }
 
-        function getSharedSecret(privKey, pubBytes) {
-          const px = pubBytesToPoint(pubBytes);
-          const ib = bytesToNumber(privKey);
-          const hash = px.multiply(ib);
-          return numberTo32Bytes(hash.x);
-        }
-        async function randomBytes(len) {
-          const out = new Uint8Array(len);
-          crypto.getRandomValues(out);
-          return out;
-        }
-        async function sign(msgHash, privKey) {
-          const d0 = bytesToNumber(privKey);
-          if (!isWithinCurveOrder(d0)) throw new Error("sign: invalid privkey");
-          const e = bytesToNumber(msgHash);
-          let k = bytesToNumber(await randomBytes(32));
-          while (!isWithinCurveOrder(k)) {
-            k = bytesToNumber(await randomBytes(32));
-          }
-          const R = Point.BASE.multiply(k);
-          const r = mod(R.x, CURVE.n);
-          if (r === _0n) return null;
-          const s = mod(invert(k, CURVE.n) * (e + r * d0), CURVE.n);
-          if (s === _0n) return null;
-          const sig = new Uint8Array(64);
-          sig.set(numberTo32Bytes(r), 0);
-          sig.set(numberTo32Bytes(s), 32);
-          return sig;
-        }
-        function getPublicKey(privKey, compressed = true) {
-          const p = Point.fromPrivateKey(privKey);
-          return p.toRawBytes(compressed);
+        if (!window.NostrTools) {
+          log("NostrTools not loaded. Check console or ad-blockers.", "error");
+          return;
         }
 
-        window.nobleSecp256k1.getSharedSecret = getSharedSecret;
-        window.nobleSecp256k1.sign = sign;
-        window.nobleSecp256k1.getPublicKey = getPublicKey;
-        window.nobleSecp256k1.randomBytes = randomBytes;
-      })();
+        // Destructure the required functions and classes from nostr-tools.
+        // finalizeEvent automatically assigns the pubkey, computes event.id, and signs the event.
+        const {
+          generateSecretKey,
+          getPublicKey,
+          finalizeEvent,
+          nip04,
+          nip19,
+          SimplePool,
+          utils,
+          Relay, // Relay API for subscriptions.
+        } = window.NostrTools;
 
-      /*****************************************************
-       * NIP-04 encryption (AES-CBC, base64)
-       *****************************************************/
-      async function nip04Encrypt(privKey, recipientPubKeyHex, plaintext) {
-        // 1) convert recipient hex => raw pubkey bytes
-        const recPubBin = hexToBytes(recipientPubKeyHex);
-        // 2) ECDH => 32-byte shared secret
-        const sharedKey = window.nobleSecp256k1.getSharedSecret(
-          privKey,
-          recPubBin
-        );
-        // remove leading 0 byte if present
-        const shReduced = sharedKey.slice(1);
+        // Define relay URLs.
+        const RELAYS = [
+          "wss://relay.snort.social",
+          "wss://relay.damus.io",
+          "wss://relay.primal.net",
+        ];
 
-        // 3) import as AES key
-        const key = await crypto.subtle.importKey(
-          "raw",
-          shReduced,
-          { name: "AES-CBC" },
-          false,
-          ["encrypt"]
-        );
+        // Create a SimplePool instance for publishing events.
+        const pool = new SimplePool();
 
-        // 4) random IV
-        const iv = new Uint8Array(16);
-        crypto.getRandomValues(iv);
-
-        // 5) encrypt
-        const enc = new TextEncoder();
-        const cipherBuffer = await crypto.subtle.encrypt(
-          { name: "AES-CBC", iv },
-          key,
-          enc.encode(plaintext)
-        );
-
-        const cipherBytes = new Uint8Array(cipherBuffer);
-        const cipherBase64 = b64encode(cipherBytes);
-        const ivBase64 = b64encode(iv);
-        return `${cipherBase64}?${ivBase64}`;
-      }
-
-      function hexToBytes(hex) {
-        hex = hex.trim().toLowerCase();
-        if (hex.startsWith("0x")) hex = hex.slice(2);
-        const len = hex.length / 2;
-        const out = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-        }
-        return out;
-      }
-      function bytesToHex(uint8a) {
-        let hex = "";
-        for (let i = 0; i < uint8a.length; i++) {
-          hex += uint8a[i].toString(16).padStart(2, "0");
-        }
-        return hex;
-      }
-      function b64encode(data) {
-        return btoa(String.fromCharCode(...data));
-      }
-
-      /*****************************************************
-       * Build event.id (Nostr spec)
-       *****************************************************/
-      async function getEventHash(evt) {
-        const enc = new TextEncoder();
-        const payload = JSON.stringify([
-          0,
-          evt.pubkey,
-          evt.created_at,
-          evt.kind,
-          evt.tags,
-          evt.content,
-        ]);
-        const digest = await crypto.subtle.digest(
-          "SHA-256",
-          enc.encode(payload)
-        );
-        return bytesToHex(new Uint8Array(digest));
-      }
-      async function signEvent(evt, privKey) {
-        const idHex = await getEventHash(evt);
-        const idBytes = hexToBytes(idHex);
-        const signature = await window.nobleSecp256k1.sign(idBytes, privKey);
-        evt.id = idHex;
-        evt.sig = bytesToHex(signature);
-      }
-
-      /*****************************************************
-       * SimplePool
-       *****************************************************/
-      class SimplePool {
-        constructor() {
-          this.conns = {};
-        }
-        async connectRelay(url) {
-          return new Promise((resolve, reject) => {
-            if (
-              this.conns[url] &&
-              this.conns[url].readyState === WebSocket.OPEN
-            ) {
-              resolve(this.conns[url]);
-              return;
-            }
-            const ws = new WebSocket(url);
-            ws.onopen = () => {
-              this.conns[url] = ws;
-              resolve(ws);
-            };
-            ws.onerror = (err) => reject(err);
-          });
-        }
-        async publish(urls, event) {
-          return Promise.all(
-            urls.map(async (url) => {
-              const ws = await this.connectRelay(url);
-              ws.send(JSON.stringify(["EVENT", event]));
-            })
-          );
-        }
-      }
-
-      /*****************************************************
-       * Form handling
-       *****************************************************/
-      const targetNpubs = [
-        "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe",
-      ];
-      const relayUrls = {
-        "wss://relay.snort.social": true,
-        "wss://relay.damus.io": true,
-        "wss://relay.primal.net": true,
-      };
-
-      const form = document.getElementById("appeal-form");
-      const statusEl = document.getElementById("status-message");
-      const pool = new SimplePool();
-
-      form.addEventListener("submit", async (evt) => {
-        evt.preventDefault();
-        statusEl.textContent = "";
-
-        const formData = new FormData(form);
-        const dataObject = {};
-        formData.forEach((val, key) => {
-          dataObject[key] = val.trim();
-        });
-
-        // Generate ephemeral key
-        const ephemeralPriv = await window.nobleSecp256k1.randomBytes(32);
-        const ephemeralPubBytes = window.nobleSecp256k1.getPublicKey(
-          ephemeralPriv,
-          true
-        );
-        const ephemeralPubHex = bytesToHex(ephemeralPubBytes);
-
-        let overallSuccess = false;
-        const contentText = JSON.stringify(dataObject, null, 2);
-
-        for (const modNpub of targetNpubs) {
-          try {
-            const modHex = decodeNpubToHex(modNpub);
-            const ciphertext = await nip04Encrypt(
-              ephemeralPriv,
-              modHex,
-              contentText
-            );
-
-            const now = Math.floor(Date.now() / 1000);
-            const event = {
-              kind: 4,
-              pubkey: ephemeralPubHex,
-              created_at: now,
-              tags: [["p", modHex]],
-              content: ciphertext,
-            };
-
-            await signEvent(event, ephemeralPriv);
+        // Main form submission handler.
+        document
+          .getElementById("dm-form")
+          .addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            clear();
 
             try {
-              await pool.publish(Object.keys(relayUrls), event);
-              overallSuccess = true;
-              statusEl.textContent += `Published to ${modNpub}\n`;
-            } catch (pubErr) {
-              statusEl.textContent += `Failed to publish to ${modNpub}: ${pubErr}\n`;
-            }
-          } catch (err) {
-            statusEl.textContent += `Error sending to ${modNpub}: ${err}\n`;
-          }
-        }
+              // 1) Retrieve user input from all fields.
+              const npub = document.getElementById("npubInput").value.trim();
+              if (!npub.startsWith("npub")) {
+                throw new Error("Target must start with npub.");
+              }
+              const contactMethod = document
+                .getElementById("contactMethod")
+                .value.trim();
+              const videoTitle = document
+                .getElementById("videoTitle")
+                .value.trim();
+              const magnetLink = document
+                .getElementById("magnetLink")
+                .value.trim();
+              const submissionDate = document
+                .getElementById("submissionDate")
+                .value.trim();
+              const reasonBlocked = document
+                .getElementById("reasonBlocked")
+                .value.trim();
+              const fitsGuidelines = document
+                .getElementById("fitsGuidelines")
+                .value.trim();
+              const guidelinesCited = document
+                .getElementById("guidelinesCited")
+                .value.trim();
+              const editedContent = document
+                .getElementById("editedContent")
+                .value.trim();
+              const changesMade = document
+                .getElementById("changesMade")
+                .value.trim();
+              const misunderstanding = document
+                .getElementById("misunderstanding")
+                .value.trim();
+              const externalReferences = document
+                .getElementById("externalReferences")
+                .value.trim();
+              const signature = document
+                .getElementById("signature")
+                .value.trim();
+              const declarationDate = document
+                .getElementById("declarationDate")
+                .value.trim();
 
-        if (overallSuccess) {
-          alert("Appeal submitted successfully.");
-          form.reset();
-        } else {
-          alert("Submission encountered errors. See status above.");
-        }
+              // 2) Construct the appeal content as a Markdown formatted string.
+              const appealContent = `
+# **bitvid Content Appeals Form**
+
+**1. User Information**
+- **Nostr Public Key (npub):** ${npub}
+- **Contact Method:** ${contactMethod || "N/A"}
+
+**2. Content Details**
+- **Title of the Video:** ${videoTitle}
+- **Magnet Link:** ${magnetLink}
+- **Date of Content Submission:** ${submissionDate}
+
+**3. Reason for Appeal**
+- **Why do you believe your content was unfairly blocked?**  
+  ${reasonBlocked}
+- **Does your content fit within bitvid's Community Guidelines?**  
+  ${fitsGuidelines}
+- **If yes, which guideline(s) support your appeal?**  
+  ${guidelinesCited}
+- **Was this content edited after being blocked?**  
+  ${editedContent}
+- **If yes, what changes were made?**  
+  ${changesMade}
+
+**4. Additional Context**
+- **Was there any misunderstanding or misclassification?**  
+  ${misunderstanding}
+- **Are there external references that validate your appeal?**  
+  ${externalReferences}
+
+**5. Declaration**
+By submitting this appeal, you confirm that:
+- You are the original creator or an authorized representative of the content.
+- Your appeal is submitted in good faith and aligns with bitvid’s policies.
+- You understand that final decisions are at the discretion of bitvid’s moderation process.
+
+**Signature (Digital or Written):** ${signature}
+**Date:** ${declarationDate}
+
+---
+
+**Processing Time:** Appeals will be reviewed within **7-14 days**. If additional information is required, you will be contacted via your provided contact method.
+
+For further questions, reach out through bitvid’s Nostr support channels.
+            `.trim();
+
+              log("[DEBUG] Constructed appeal content:\n" + appealContent);
+
+              // 3) Decode the target npub to get the target public key.
+              log("Decoding target npub...");
+              const decoded = nip19.decode(npub);
+              log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
+              if (decoded.type !== "npub") {
+                throw new Error("Decoded type is not npub.");
+              }
+              const targetPubHex = decoded.data;
+              log("Target pubkey: " + targetPubHex.slice(0, 16) + "...");
+
+              // 4) Generate an ephemeral key pair.
+              log("Generating ephemeral key...");
+              const ephemeralPriv = generateSecretKey(); // returns a Uint8Array
+              const ephemeralPubHex = getPublicKey(ephemeralPriv); // returns a hex string
+              log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
+
+              // 5) Encrypt the appeal content using NIP‑04.
+              log("Encrypting appeal content (nip04)...");
+              const ciphertext = await nip04.encrypt(
+                ephemeralPriv,
+                targetPubHex,
+                appealContent
+              );
+              log("[DEBUG] Ciphertext: " + ciphertext);
+              log("Encryption done.");
+
+              // 6) Build the Nostr event template (kind 4 for DMs) with the encrypted appeal.
+              const now = Math.floor(Date.now() / 1000);
+              const eventTemplate = {
+                kind: 4,
+                created_at: now,
+                tags: [["p", targetPubHex]],
+                content: ciphertext,
+              };
+              log(
+                "[DEBUG] Event template before finalizing: " +
+                  JSON.stringify(eventTemplate)
+              );
+
+              // 7) Finalize the event: compute event.id, sign it, and assign the pubkey.
+              const event = finalizeEvent(eventTemplate, ephemeralPriv);
+              log("[DEBUG] Final event: " + JSON.stringify(event));
+
+              // 8) Publish the event to all relays.
+              log("Publishing the appeal to relays...");
+              await Promise.any(pool.publish(RELAYS, event));
+              log("At least one relay accepted the event.", "success");
+
+              // 9) For each relay, subscribe using the Relay API to verify that the event appears.
+              for (const url of RELAYS) {
+                log("Connecting to " + url + " for subscription...");
+                const relay = await Relay.connect(url);
+                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                  onEvent(foundEvent) {
+                    if (foundEvent.id === event.id) {
+                      log(
+                        "[" +
+                          url +
+                          "] => Found our appeal in storage! ID: " +
+                          foundEvent.id.slice(0, 8) +
+                          "...",
+                        "success"
+                      );
+                    }
+                  },
+                  onEose() {
+                    relay.close();
+                  },
+                });
+              }
+
+              log(
+                "Done. If the logs show 'Relay accepted' and 'Found our appeal in storage', the appeal was successfully published. A moderator will review your appeal within 7-14 days."
+              );
+            } catch (err) {
+              log("Error: " + err.message, "error");
+              console.error(err);
+            }
+          });
       });
-
-      /*****************************************************
-       * decodeNpubToHex with forced lowercase & trim
-       *****************************************************/
-      function decodeNpubToHex(npub) {
-        // Trim, force to lower
-        npub = npub.trim().toLowerCase();
-        const { hrp, data } = bech32Decode(npub);
-        if (hrp !== "npub") throw new Error("Not an npub");
-        const converted = convertBits(data, 5, 8, false);
-        return bytesToHex(new Uint8Array(converted));
-      }
-
-      const ALPHABET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-      function polymod(values) {
-        let chk = 1;
-        for (let p = 0; p < values.length; p++) {
-          const top = chk >> 25;
-          chk = ((chk & 0x1ffffff) << 5) ^ values[p];
-          for (let i = 0; i < 5; i++) {
-            if (((top >> i) & 1) === 1) {
-              chk ^= (0x3b6a57b2 >>> (5 * (4 - i))) & 0x1f;
-            }
-          }
-        }
-        return chk;
-      }
-      function hrpExpand(hrp) {
-        const ret = [];
-        for (let p = 0; p < hrp.length; p++) {
-          ret.push(hrp.charCodeAt(p) >> 5);
-        }
-        ret.push(0);
-        for (let p = 0; p < hrp.length; p++) {
-          ret.push(hrp.charCodeAt(p) & 31);
-        }
-        return ret;
-      }
-      function bech32Decode(str) {
-        str = str.trim(); // <--- extra safety
-        let lower = false;
-        let upper = false;
-        for (let i = 0; i < str.length; i++) {
-          const c = str.charCodeAt(i);
-          if (c >= 0x30 && c <= 0x39) continue;
-          if (c >= 0x41 && c <= 0x5a) {
-            if (lower) throw new Error("Mixed-case string");
-            upper = true;
-          }
-          if (c >= 0x61 && c <= 0x7a) {
-            if (upper) throw new Error("Mixed-case string");
-            lower = true;
-          }
-        }
-        // force all-lower
-        str = str.toLowerCase();
-
-        const sepPos = str.lastIndexOf("1");
-        if (sepPos === -1) throw new Error("No separator character for bech32");
-        if (sepPos === 0) throw new Error("Empty HRP");
-        const hrp = str.slice(0, sepPos);
-        const data = [];
-        for (let i = sepPos + 1; i < str.length; i++) {
-          const d = ALPHABET.indexOf(str[i]);
-          if (d === -1) throw new Error("Unknown character in bech32");
-          data.push(d);
-        }
-        if (data.length < 6) throw new Error("Data too short");
-        const chk = polymod(hrpExpand(hrp).concat(data));
-        if (chk !== 1) throw new Error("Invalid checksum");
-        return { hrp, data: data.slice(0, data.length - 6) };
-      }
-      function convertBits(data, inBits, outBits, pad = true) {
-        let value = 0;
-        let bits = 0;
-        const maxV = (1 << outBits) - 1;
-        const result = [];
-        for (let i = 0; i < data.length; i++) {
-          value = (value << inBits) | data[i];
-          bits += inBits;
-          while (bits >= outBits) {
-            bits -= outBits;
-            result.push((value >> bits) & maxV);
-          }
-        }
-        if (pad) {
-          if (bits > 0) {
-            result.push((value << (outBits - bits)) & maxV);
-          }
-        } else {
-          if (bits >= inBits) throw new Error("Excess padding");
-          if (((value << (outBits - bits)) & maxV) !== 0)
-            throw new Error("Non-zero padding");
-        }
-        return result;
-      }
     </script>
   </body>
 </html>
