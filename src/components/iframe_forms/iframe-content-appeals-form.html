@@ -7,16 +7,24 @@
     <link rel="stylesheet" href="style.css" />
     <style>
       /* Override for form page to match modal field styling */
-
-      /* Make body text white and background transparent */
+      
+      /* Remove width constraints from body so our container can be full width */
       body {
         background-color: transparent;
         color: #fff;
         font-family: system-ui, -apple-system, sans-serif;
         margin: 20px;
-        max-width: 800px;
+        /* Removed max-width */
       }
-
+      
+      /* Override the .container to use the full available width */
+      .container {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      
       /* Card-like container for the form, similar to modal-content */
       .form-container {
         background-color: #111827; /* Tailwind's bg-gray-900 */
@@ -24,12 +32,12 @@
         border-radius: 0.5rem;
         box-shadow: var(--shadow-md);
       }
-
+      
       h1,
       h2 {
         color: #fff;
       }
-
+      
       /* Labels in a light gray */
       label {
         display: block;
@@ -37,7 +45,7 @@
         font-weight: bold;
         color: #E5E7EB; /* Tailwind's text-gray-200 */
       }
-
+      
       /* Input, textarea, and select mimic modal field styles */
       input,
       textarea,
@@ -51,7 +59,7 @@
         border-radius: 0.375rem; /* rounded-md */
         box-sizing: border-box;
       }
-
+      
       input:focus,
       textarea:focus,
       select:focus {
@@ -59,7 +67,7 @@
         outline: none;
         box-shadow: 0 0 0 1px #3B82F6;
       }
-
+      
       /* Button styled similarly to modal publish button */
       button {
         padding: 0.5em 1em;
@@ -69,7 +77,7 @@
         border-radius: 0.375rem;
         cursor: pointer;
       }
-
+      
       /* Status log area */
       #status {
         margin-top: 1em;
@@ -91,7 +99,7 @@
       .warn {
         color: #FACC15; /* a yellow tone */
       }
-
+      
       /* Custom Scrollbar styling for WebKit browsers */
       ::-webkit-scrollbar {
         width: 8px;
@@ -116,103 +124,60 @@
   <body>
     <div class="container">
       <div class="form-container">
-        <h1>bitvid Content Appeals Form</h1>
         <p>
           If you believe your content was unfairly blocked or restricted on bitvid,
           please complete this form. Appeals will be reviewed manually, and
           decisions will be communicated back to you.
         </p>
-
         <form id="dm-form">
           <h2>1. User Information</h2>
           <label for="npubInput">Nostr Public Key (npub):</label>
-          <input
-            type="text"
-            id="npubInput"
-            placeholder="Enter your npub"
-            required
-          />
-
+          <input type="text" id="npubInput" placeholder="Enter your npub" required />
+          
           <label for="contactMethod">Contact Method (if applicable):</label>
-          <input
-            type="text"
-            id="contactMethod"
-            placeholder="Nostr DM, email, or other"
-          />
-
+          <input type="text" id="contactMethod" placeholder="Nostr DM, email, or other" />
+          
           <h2>2. Content Details</h2>
           <label for="videoTitle">Title of the Video:</label>
           <input type="text" id="videoTitle" placeholder="Enter the exact title" />
-
+          
           <label for="magnetLink">Magnet Link:</label>
           <input type="text" id="magnetLink" placeholder="Enter the magnet link" />
-
+          
           <label for="submissionDate">Date of Content Submission:</label>
           <input type="date" id="submissionDate" />
-
+          
           <h2>3. Reason for Appeal</h2>
-          <label for="reasonBlocked"
-            >Why do you believe your content was unfairly blocked?</label
-          >
-          <textarea
-            id="reasonBlocked"
-            rows="3"
-            placeholder="Explain in detail"
-          ></textarea>
-
-          <label for="fitsGuidelines"
-            >Does your content fit within bitvid's Community Guidelines?</label
-          >
+          <label for="reasonBlocked">Why do you believe your content was unfairly blocked?</label>
+          <textarea id="reasonBlocked" rows="3" placeholder="Explain in detail"></textarea>
+          
+          <label for="fitsGuidelines">Does your content fit within bitvid's Community Guidelines?</label>
           <select id="fitsGuidelines">
             <option value="">Select an option</option>
             <option value="Yes">Yes</option>
             <option value="No">No</option>
           </select>
-
-          <label for="guidelinesCited"
-            >If yes, which guideline(s) support your appeal?</label
-          >
-          <textarea
-            id="guidelinesCited"
-            rows="2"
-            placeholder="Cite the specific guidelines"
-          ></textarea>
-
-          <label for="editedContent"
-            >Was this content edited after being blocked?</label
-          >
+          
+          <label for="guidelinesCited">If yes, which guideline(s) support your appeal?</label>
+          <textarea id="guidelinesCited" rows="2" placeholder="Cite the specific guidelines"></textarea>
+          
+          <label for="editedContent">Was this content edited after being blocked?</label>
           <select id="editedContent">
             <option value="">Select an option</option>
             <option value="Yes">Yes</option>
             <option value="No">No</option>
           </select>
-
+          
           <label for="changesMade">If yes, what changes were made?</label>
-          <textarea
-            id="changesMade"
-            rows="2"
-            placeholder="Describe the modifications"
-          ></textarea>
-
+          <textarea id="changesMade" rows="2" placeholder="Describe the modifications"></textarea>
+          
           <h2>4. Additional Context</h2>
-          <label for="misunderstanding"
-            >Was there any misunderstanding or misclassification?</label
-          >
-          <textarea
-            id="misunderstanding"
-            rows="2"
-            placeholder="Provide context"
-          ></textarea>
-
-          <label for="externalReferences"
-            >Are there external references that validate your appeal?</label
-          >
-          <textarea
-            id="externalReferences"
-            rows="2"
-            placeholder="Links, citations, or additional info"
-          ></textarea>
-
+          <label for="misunderstanding">Was there any misunderstanding or misclassification?</label>
+          <textarea id="misunderstanding" rows="2" placeholder="Provide context"></textarea>
+          
+          <label for="externalReferences">Are there external references that validate your appeal?</label>
+          <textarea id="externalReferences" rows="2" placeholder="Links, citations, or additional info"></textarea>
+          
           <h2>5. Declaration</h2>
           <p>
             By submitting this appeal, you confirm that:
@@ -222,17 +187,15 @@
           </p>
           <label for="signature">Signature (Digital or Written):</label>
           <input type="text" id="signature" placeholder="Your signature" />
-
+          
           <label for="declarationDate">Date:</label>
           <input type="date" id="declarationDate" />
-
+          
           <button type="submit">Submit Appeal</button>
         </form>
-
         <div id="status"></div>
       </div>
     </div>
-
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         // Logging functions for both on-page and console output.
@@ -249,12 +212,10 @@
         function clear() {
           document.getElementById("status").innerHTML = "";
         }
-
         if (!window.NostrTools) {
           log("NostrTools not loaded. Check console or ad-blockers.", "error");
           return;
         }
-
         const {
           generateSecretKey,
           getPublicKey,
@@ -264,19 +225,15 @@
           SimplePool,
           Relay,
         } = window.NostrTools;
-
         const RELAYS = [
           "wss://relay.snort.social",
           "wss://relay.damus.io",
           "wss://relay.primal.net",
         ];
-
         const pool = new SimplePool();
-
         document.getElementById("dm-form").addEventListener("submit", async (ev) => {
           ev.preventDefault();
           clear();
-
           try {
             // Retrieve user input.
             const npub = document.getElementById("npubInput").value.trim();
@@ -296,20 +253,20 @@
             const externalReferences = document.getElementById("externalReferences").value.trim();
             const signature = document.getElementById("signature").value.trim();
             const declarationDate = document.getElementById("declarationDate").value.trim();
-
+  
             // Construct the appeal content.
             const appealContent = `
 # **bitvid Content Appeals Form**
-
+  
 **1. User Information**
 - **Nostr Public Key (npub):** ${npub}
 - **Contact Method:** ${contactMethod || "N/A"}
-
+  
 **2. Content Details**
 - **Title of the Video:** ${videoTitle}
 - **Magnet Link:** ${magnetLink}
 - **Date of Content Submission:** ${submissionDate}
-
+  
 **3. Reason for Appeal**
 - **Why do you believe your content was unfairly blocked?**  
   ${reasonBlocked}
@@ -321,31 +278,31 @@
   ${editedContent}
 - **If yes, what changes were made?**  
   ${changesMade}
-
+  
 **4. Additional Context**
 - **Was there any misunderstanding or misclassification?**  
   ${misunderstanding}
 - **Are there external references that validate your appeal?**  
   ${externalReferences}
-
+  
 **5. Declaration**
 By submitting this appeal, you confirm that:
 - You are the original creator or an authorized representative of the content.
 - Your appeal is submitted in good faith and aligns with bitvid’s policies.
 - You understand that final decisions are at the discretion of bitvid’s moderation process.
-
+  
 **Signature (Digital or Written):** ${signature}
 **Date:** ${declarationDate}
-
+  
 ---
-
+  
 **Processing Time:** Appeals will be reviewed within **7-14 days**. If additional information is required, you will be contacted via your provided contact method.
-
+  
 For further questions, reach out through bitvid’s Nostr support channels.
             `.trim();
-
+  
             log("[DEBUG] Constructed appeal content:\n" + appealContent);
-
+  
             // Decode the target npub to get the public key.
             log("Decoding target npub...");
             const decoded = nip19.decode(npub);
@@ -355,19 +312,19 @@ For further questions, reach out through bitvid’s Nostr support channels.
             }
             const targetPubHex = decoded.data;
             log("Target pubkey: " + targetPubHex.slice(0, 16) + "...");
-
+  
             // Generate an ephemeral key pair.
             log("Generating ephemeral key...");
             const ephemeralPriv = generateSecretKey();
             const ephemeralPubHex = getPublicKey(ephemeralPriv);
             log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
-
+  
             // Encrypt the appeal content.
             log("Encrypting appeal content (nip04)...");
             const ciphertext = await nip04.encrypt(ephemeralPriv, targetPubHex, appealContent);
             log("[DEBUG] Ciphertext: " + ciphertext);
             log("Encryption done.");
-
+  
             // Build the event template.
             const now = Math.floor(Date.now() / 1000);
             const eventTemplate = {
@@ -377,16 +334,16 @@ For further questions, reach out through bitvid’s Nostr support channels.
               content: ciphertext,
             };
             log("[DEBUG] Event template before finalizing: " + JSON.stringify(eventTemplate));
-
+  
             // Finalize the event.
             const event = finalizeEvent(eventTemplate, ephemeralPriv);
             log("[DEBUG] Final event: " + JSON.stringify(event));
-
+  
             // Publish the event to all relays.
             log("Publishing the appeal to relays...");
             await Promise.any(pool.publish(RELAYS, event));
             log("At least one relay accepted the event.", "success");
-
+  
             // Subscribe to each relay.
             for (const url of RELAYS) {
               log("Connecting to " + url + " for subscription...");
@@ -402,7 +359,7 @@ For further questions, reach out through bitvid’s Nostr support channels.
                 },
               });
             }
-
+  
             log("Done. If the logs show that at least one relay accepted the event and the appeal was found in storage, a moderator will review your appeal within 7-14 days.");
           } catch (err) {
             log("Error: " + err.message, "error");
