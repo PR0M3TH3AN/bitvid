@@ -3,204 +3,214 @@
   <head>
     <meta charset="utf-8" />
     <title>bitvid Content Appeals Form</title>
+    <!-- Link to your main stylesheet -->
+    <link rel="stylesheet" href="style.css" />
     <style>
-      /* Basic styling for the form and log output */
+      /* Override styles to match the rest of the app */
+
+      /* Make the background transparent and use system fonts */
       body {
-        background: #222;
-        color: #eee;
-        font-family: sans-serif;
+        background-color: transparent;
         margin: 20px;
         max-width: 800px;
+        font-family: system-ui, -apple-system, sans-serif;
       }
+
+      /* Container for the form card */
+      .form-container {
+        background-color: var(--color-card);
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        box-shadow: var(--shadow-md);
+      }
+
       h1,
       h2 {
-        color: #66ff66;
+        color: var(--color-primary);
       }
+
       label {
         display: block;
         margin-top: 1em;
         font-weight: bold;
+        color: var(--color-text);
       }
+
       input,
       textarea,
       select {
         width: 100%;
         margin-bottom: 0.75em;
-        background: #333;
-        color: #fff;
-        border: 1px solid #888;
+        background: var(--color-bg);
+        color: var(--color-text);
+        border: 1px solid var(--color-muted);
         padding: 0.5em;
+        border-radius: 0.25rem;
         box-sizing: border-box;
       }
+
       button {
         padding: 0.5em 1em;
-        background: #3399cc;
+        background: var(--color-primary);
         color: #fff;
         border: none;
-        border-radius: 4px;
+        border-radius: 0.375rem;
         cursor: pointer;
       }
+
       #status {
         margin-top: 1em;
         padding: 0.5em;
-        background: #111;
+        background: var(--color-card);
         white-space: pre-wrap;
         min-height: 80px;
+        border-radius: 0.25rem;
       }
+
       .status-line {
         margin: 0.25em 0;
       }
+
       .error {
-        color: #ff6666;
+        color: var(--color-secondary);
       }
+
       .success {
-        color: #66ff66;
+        color: var(--color-primary);
       }
+
       .warn {
-        color: #ffff66;
+        color: var(--color-muted);
+      }
+
+      /* Custom Scrollbar styling for WebKit */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: var(--color-primary);
+        border-radius: 4px;
+      }
+      /* Custom Scrollbar styling for Firefox */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-primary) transparent;
       }
     </style>
-
-    <!--
-      bitvid Content Appeals Form
-      
-      Key Points and Lessons Learned:
-      
-      1. We use nostr‑tools v2.10.4 to send a Nostr event that contains the appeal data.
-         - The target npub is decoded (using nip19.decode) to extract the target public key.
-         - An ephemeral key pair is generated with generateSecretKey (returns a Uint8Array) and getPublicKey (returns a hex string).
-      2. The form collects detailed appeal information (user info, content details, reasons, additional context, and declaration).
-      3. On submission, all form field values are assembled into a Markdown‑formatted message.
-      4. The message is encrypted using nip04.encrypt with the ephemeral private key and the target public key.
-      5. The event template (kind 4) is built with the encrypted message and then finalized via finalizeEvent,
-         which automatically computes event.id, assigns the ephemeral pubkey, and signs the event.
-      6. The event is published to multiple relays using SimplePool.publish (which now returns a promise), and we use Promise.any
-         to wait for at least one relay to accept the event.
-      7. For subscriptions, we use the Relay API (Relay.connect and relay.subscribe) to verify that the event appears in storage.
-      
-      This implementation leverages the higher‑level APIs provided by nostr‑tools to simplify event creation,
-      signing, and relay interaction while providing detailed logging for debugging purposes.
-    -->
-
     <!-- Load nostr‑tools v2.10.4 -->
     <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js"></script>
   </head>
   <body>
-    <h1>bitvid Content Appeals Form</h1>
-    <p>
-      If you believe your content was unfairly blocked or restricted on bitvid,
-      please complete this form. Appeals will be reviewed manually, and
-      decisions will be communicated back to you.
-    </p>
+    <div class="container">
+      <div class="form-container">
+        <h1>bitvid Content Appeals Form</h1>
+        <p>
+          If you believe your content was unfairly blocked or restricted on bitvid,
+          please complete this form. Appeals will be reviewed manually, and
+          decisions will be communicated back to you.
+        </p>
 
-    <form id="dm-form">
-      <h2>1. User Information</h2>
-      <label for="npubInput">Nostr Public Key (npub):</label>
-      <input
-        type="text"
-        id="npubInput"
-        placeholder="Enter your npub"
-        required
-      />
+        <form id="dm-form">
+          <h2>1. User Information</h2>
+          <label for="npubInput">Nostr Public Key (npub):</label>
+          <input
+            type="text"
+            id="npubInput"
+            placeholder="Enter your npub"
+            required
+          />
 
-      <label for="contactMethod">Contact Method (if applicable):</label>
-      <input
-        type="text"
-        id="contactMethod"
-        placeholder="Nostr DM, email, or other"
-      />
+          <label for="contactMethod">Contact Method (if applicable):</label>
+          <input
+            type="text"
+            id="contactMethod"
+            placeholder="Nostr DM, email, or other"
+          />
 
-      <h2>2. Content Details</h2>
-      <label for="videoTitle">Title of the Video:</label>
-      <input type="text" id="videoTitle" placeholder="Enter the exact title" />
+          <h2>2. Content Details</h2>
+          <label for="videoTitle">Title of the Video:</label>
+          <input type="text" id="videoTitle" placeholder="Enter the exact title" />
 
-      <label for="magnetLink">Magnet Link:</label>
-      <input type="text" id="magnetLink" placeholder="Enter the magnet link" />
+          <label for="magnetLink">Magnet Link:</label>
+          <input type="text" id="magnetLink" placeholder="Enter the magnet link" />
 
-      <label for="submissionDate">Date of Content Submission:</label>
-      <input type="date" id="submissionDate" />
+          <label for="submissionDate">Date of Content Submission:</label>
+          <input type="date" id="submissionDate" />
 
-      <h2>3. Reason for Appeal</h2>
-      <label for="reasonBlocked"
-        >Why do you believe your content was unfairly blocked?</label
-      >
-      <textarea
-        id="reasonBlocked"
-        rows="3"
-        placeholder="Explain in detail"
-      ></textarea>
+          <h2>3. Reason for Appeal</h2>
+          <label for="reasonBlocked">Why do you believe your content was unfairly blocked?</label>
+          <textarea
+            id="reasonBlocked"
+            rows="3"
+            placeholder="Explain in detail"
+          ></textarea>
 
-      <label for="fitsGuidelines"
-        >Does your content fit within bitvid's Community Guidelines?</label
-      >
-      <select id="fitsGuidelines">
-        <option value="">Select an option</option>
-        <option value="Yes">Yes</option>
-        <option value="No">No</option>
-      </select>
+          <label for="fitsGuidelines">Does your content fit within bitvid's Community Guidelines?</label>
+          <select id="fitsGuidelines">
+            <option value="">Select an option</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
 
-      <label for="guidelinesCited"
-        >If yes, which guideline(s) support your appeal?</label
-      >
-      <textarea
-        id="guidelinesCited"
-        rows="2"
-        placeholder="Cite the specific guidelines"
-      ></textarea>
+          <label for="guidelinesCited">If yes, which guideline(s) support your appeal?</label>
+          <textarea
+            id="guidelinesCited"
+            rows="2"
+            placeholder="Cite the specific guidelines"
+          ></textarea>
 
-      <label for="editedContent"
-        >Was this content edited after being blocked?</label
-      >
-      <select id="editedContent">
-        <option value="">Select an option</option>
-        <option value="Yes">Yes</option>
-        <option value="No">No</option>
-      </select>
+          <label for="editedContent">Was this content edited after being blocked?</label>
+          <select id="editedContent">
+            <option value="">Select an option</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
 
-      <label for="changesMade">If yes, what changes were made?</label>
-      <textarea
-        id="changesMade"
-        rows="2"
-        placeholder="Describe the modifications"
-      ></textarea>
+          <label for="changesMade">If yes, what changes were made?</label>
+          <textarea
+            id="changesMade"
+            rows="2"
+            placeholder="Describe the modifications"
+          ></textarea>
 
-      <h2>4. Additional Context</h2>
-      <label for="misunderstanding"
-        >Was there any misunderstanding or misclassification?</label
-      >
-      <textarea
-        id="misunderstanding"
-        rows="2"
-        placeholder="Provide context"
-      ></textarea>
+          <h2>4. Additional Context</h2>
+          <label for="misunderstanding">Was there any misunderstanding or misclassification?</label>
+          <textarea
+            id="misunderstanding"
+            rows="2"
+            placeholder="Provide context"
+          ></textarea>
 
-      <label for="externalReferences"
-        >Are there external references that validate your appeal?</label
-      >
-      <textarea
-        id="externalReferences"
-        rows="2"
-        placeholder="Links, citations, or additional info"
-      ></textarea>
+          <label for="externalReferences">Are there external references that validate your appeal?</label>
+          <textarea
+            id="externalReferences"
+            rows="2"
+            placeholder="Links, citations, or additional info"
+          ></textarea>
 
-      <h2>5. Declaration</h2>
-      <p>
-        By submitting this appeal, you confirm that:
-        <br />- You are the original creator or authorized representative of the
-        content. <br />- Your appeal is submitted in good faith and aligns with
-        bitvid’s policies. <br />- You understand that final decisions are at
-        the discretion of bitvid’s moderation process.
-      </p>
-      <label for="signature">Signature (Digital or Written):</label>
-      <input type="text" id="signature" placeholder="Your signature" />
+          <h2>5. Declaration</h2>
+          <p>
+            By submitting this appeal, you confirm that:
+            <br />- You are the original creator or authorized representative of the content.
+            <br />- Your appeal is submitted in good faith and aligns with bitvid’s policies.
+            <br />- You understand that final decisions are at the discretion of bitvid’s moderation process.
+          </p>
+          <label for="signature">Signature (Digital or Written):</label>
+          <input type="text" id="signature" placeholder="Your signature" />
 
-      <label for="declarationDate">Date:</label>
-      <input type="date" id="declarationDate" />
+          <label for="declarationDate">Date:</label>
+          <input type="date" id="declarationDate" />
 
-      <button type="submit">Submit Appeal</button>
-    </form>
+          <button type="submit">Submit Appeal</button>
+        </form>
 
-    <div id="status"></div>
+        <div id="status"></div>
+      </div>
+    </div>
 
     <script>
       document.addEventListener("DOMContentLoaded", () => {
@@ -224,8 +234,6 @@
           return;
         }
 
-        // Destructure the required functions and classes from nostr-tools.
-        // finalizeEvent automatically assigns the pubkey, computes event.id, and signs the event.
         const {
           generateSecretKey,
           getPublicKey,
@@ -233,75 +241,43 @@
           nip04,
           nip19,
           SimplePool,
-          utils,
-          Relay, // Relay API for subscriptions.
+          Relay,
         } = window.NostrTools;
 
-        // Define relay URLs.
         const RELAYS = [
           "wss://relay.snort.social",
           "wss://relay.damus.io",
           "wss://relay.primal.net",
         ];
 
-        // Create a SimplePool instance for publishing events.
         const pool = new SimplePool();
 
-        // Main form submission handler.
-        document
-          .getElementById("dm-form")
-          .addEventListener("submit", async (ev) => {
-            ev.preventDefault();
-            clear();
+        document.getElementById("dm-form").addEventListener("submit", async (ev) => {
+          ev.preventDefault();
+          clear();
 
-            try {
-              // 1) Retrieve user input from all fields.
-              const npub = document.getElementById("npubInput").value.trim();
-              if (!npub.startsWith("npub")) {
-                throw new Error("Target must start with npub.");
-              }
-              const contactMethod = document
-                .getElementById("contactMethod")
-                .value.trim();
-              const videoTitle = document
-                .getElementById("videoTitle")
-                .value.trim();
-              const magnetLink = document
-                .getElementById("magnetLink")
-                .value.trim();
-              const submissionDate = document
-                .getElementById("submissionDate")
-                .value.trim();
-              const reasonBlocked = document
-                .getElementById("reasonBlocked")
-                .value.trim();
-              const fitsGuidelines = document
-                .getElementById("fitsGuidelines")
-                .value.trim();
-              const guidelinesCited = document
-                .getElementById("guidelinesCited")
-                .value.trim();
-              const editedContent = document
-                .getElementById("editedContent")
-                .value.trim();
-              const changesMade = document
-                .getElementById("changesMade")
-                .value.trim();
-              const misunderstanding = document
-                .getElementById("misunderstanding")
-                .value.trim();
-              const externalReferences = document
-                .getElementById("externalReferences")
-                .value.trim();
-              const signature = document
-                .getElementById("signature")
-                .value.trim();
-              const declarationDate = document
-                .getElementById("declarationDate")
-                .value.trim();
+          try {
+            // Retrieve user input.
+            const npub = document.getElementById("npubInput").value.trim();
+            if (!npub.startsWith("npub")) {
+              throw new Error("Target must start with npub.");
+            }
+            const contactMethod = document.getElementById("contactMethod").value.trim();
+            const videoTitle = document.getElementById("videoTitle").value.trim();
+            const magnetLink = document.getElementById("magnetLink").value.trim();
+            const submissionDate = document.getElementById("submissionDate").value.trim();
+            const reasonBlocked = document.getElementById("reasonBlocked").value.trim();
+            const fitsGuidelines = document.getElementById("fitsGuidelines").value.trim();
+            const guidelinesCited = document.getElementById("guidelinesCited").value.trim();
+            const editedContent = document.getElementById("editedContent").value.trim();
+            const changesMade = document.getElementById("changesMade").value.trim();
+            const misunderstanding = document.getElementById("misunderstanding").value.trim();
+            const externalReferences = document.getElementById("externalReferences").value.trim();
+            const signature = document.getElementById("signature").value.trim();
+            const declarationDate = document.getElementById("declarationDate").value.trim();
 
-              // 2) Construct the appeal content as a Markdown formatted string.
-              const appealContent = `
+            // Construct the appeal content.
+            const appealContent = `
 # **bitvid Content Appeals Form**
 
 **1. User Information**
@@ -347,87 +323,71 @@ By submitting this appeal, you confirm that:
 For further questions, reach out through bitvid’s Nostr support channels.
             `.trim();
 
-              log("[DEBUG] Constructed appeal content:\n" + appealContent);
+            log("[DEBUG] Constructed appeal content:\n" + appealContent);
 
-              // 3) Decode the target npub to get the target public key.
-              log("Decoding target npub...");
-              const decoded = nip19.decode(npub);
-              log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
-              if (decoded.type !== "npub") {
-                throw new Error("Decoded type is not npub.");
-              }
-              const targetPubHex = decoded.data;
-              log("Target pubkey: " + targetPubHex.slice(0, 16) + "...");
-
-              // 4) Generate an ephemeral key pair.
-              log("Generating ephemeral key...");
-              const ephemeralPriv = generateSecretKey(); // returns a Uint8Array
-              const ephemeralPubHex = getPublicKey(ephemeralPriv); // returns a hex string
-              log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
-
-              // 5) Encrypt the appeal content using NIP‑04.
-              log("Encrypting appeal content (nip04)...");
-              const ciphertext = await nip04.encrypt(
-                ephemeralPriv,
-                targetPubHex,
-                appealContent
-              );
-              log("[DEBUG] Ciphertext: " + ciphertext);
-              log("Encryption done.");
-
-              // 6) Build the Nostr event template (kind 4 for DMs) with the encrypted appeal.
-              const now = Math.floor(Date.now() / 1000);
-              const eventTemplate = {
-                kind: 4,
-                created_at: now,
-                tags: [["p", targetPubHex]],
-                content: ciphertext,
-              };
-              log(
-                "[DEBUG] Event template before finalizing: " +
-                  JSON.stringify(eventTemplate)
-              );
-
-              // 7) Finalize the event: compute event.id, sign it, and assign the pubkey.
-              const event = finalizeEvent(eventTemplate, ephemeralPriv);
-              log("[DEBUG] Final event: " + JSON.stringify(event));
-
-              // 8) Publish the event to all relays.
-              log("Publishing the appeal to relays...");
-              await Promise.any(pool.publish(RELAYS, event));
-              log("At least one relay accepted the event.", "success");
-
-              // 9) For each relay, subscribe using the Relay API to verify that the event appears.
-              for (const url of RELAYS) {
-                log("Connecting to " + url + " for subscription...");
-                const relay = await Relay.connect(url);
-                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
-                  onEvent(foundEvent) {
-                    if (foundEvent.id === event.id) {
-                      log(
-                        "[" +
-                          url +
-                          "] => Found our appeal in storage! ID: " +
-                          foundEvent.id.slice(0, 8) +
-                          "...",
-                        "success"
-                      );
-                    }
-                  },
-                  onEose() {
-                    relay.close();
-                  },
-                });
-              }
-
-              log(
-                "Done. If the logs show 'Relay accepted' and 'Found our appeal in storage', the appeal was successfully published. A moderator will review your appeal within 7-14 days."
-              );
-            } catch (err) {
-              log("Error: " + err.message, "error");
-              console.error(err);
+            // Decode the target npub to get the public key.
+            log("Decoding target npub...");
+            const decoded = nip19.decode(npub);
+            log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
+            if (decoded.type !== "npub") {
+              throw new Error("Decoded type is not npub.");
             }
-          });
+            const targetPubHex = decoded.data;
+            log("Target pubkey: " + targetPubHex.slice(0, 16) + "...");
+
+            // Generate an ephemeral key pair.
+            log("Generating ephemeral key...");
+            const ephemeralPriv = generateSecretKey();
+            const ephemeralPubHex = getPublicKey(ephemeralPriv);
+            log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
+
+            // Encrypt the appeal content.
+            log("Encrypting appeal content (nip04)...");
+            const ciphertext = await nip04.encrypt(ephemeralPriv, targetPubHex, appealContent);
+            log("[DEBUG] Ciphertext: " + ciphertext);
+            log("Encryption done.");
+
+            // Build the event template.
+            const now = Math.floor(Date.now() / 1000);
+            const eventTemplate = {
+              kind: 4,
+              created_at: now,
+              tags: [["p", targetPubHex]],
+              content: ciphertext,
+            };
+            log("[DEBUG] Event template before finalizing: " + JSON.stringify(eventTemplate));
+
+            // Finalize the event.
+            const event = finalizeEvent(eventTemplate, ephemeralPriv);
+            log("[DEBUG] Final event: " + JSON.stringify(event));
+
+            // Publish the event to all relays.
+            log("Publishing the appeal to relays...");
+            await Promise.any(pool.publish(RELAYS, event));
+            log("At least one relay accepted the event.", "success");
+
+            // Subscribe to each relay.
+            for (const url of RELAYS) {
+              log("Connecting to " + url + " for subscription...");
+              const relay = await Relay.connect(url);
+              relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                onEvent(foundEvent) {
+                  if (foundEvent.id === event.id) {
+                    log("[" + url + "] => Found our appeal in storage! ID: " + foundEvent.id.slice(0, 8) + "...", "success");
+                  }
+                },
+                onEose() {
+                  relay.close();
+                },
+              });
+            }
+
+            log("Done. If the logs show that at least one relay accepted the event and the appeal was found in storage, a moderator will review your appeal within 7-14 days.");
+          } catch (err) {
+            log("Error: " + err.message, "error");
+            console.error(err);
+          }
+        });
       });
     </script>
   </body>
