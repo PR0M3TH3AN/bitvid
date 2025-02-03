@@ -1,9 +1,5 @@
 <!-- components/application-form.html 
-//    https://bitvid.network?modal=application => open ???Modal
-//    
-//    Admin: npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe
-//    Form: 
-//    Responces: 
+     https://bitvid.network?modal=application => open nostrFormModal
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -21,7 +17,7 @@
       class="fixed inset-0 z-50 hidden"
       style="background: transparent"
     >
-      <!-- Dark/blur overlay (same approach as your other modals) -->
+      <!-- Dark/blur overlay -->
       <div
         class="absolute inset-0 z-10"
         style="
@@ -31,19 +27,21 @@
         "
       ></div>
 
-      <!-- Outer container with same sizing as your video modal -->
+      <!-- Outer container with full width and centered content -->
       <div
         class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
       >
-        <!-- Inner content: wide layout, matching .max-w-[90%] lg:max-w-6xl -->
+        <!-- Inner content container -->
         <div
           class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
         >
-          <!-- Header bar (sticky) with exit button on the right -->
+          <!-- Header bar with updated styling -->
           <div
-            class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
+            class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between border-b border-gray-700"
           >
-            <h2 class="text-2xl font-bold text-white mb-0">Application Form</h2>
+            <h2 class="text-3xl font-extrabold text-white tracking-wide pb-2">
+              Application Form
+            </h2>
             <button
               id="closeNostrFormModal"
               class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
@@ -67,7 +65,6 @@
 
           <!-- Main Content -->
           <div class="p-6">
-            <!-- Flexible container for the iframe -->
             <div class="w-full" style="height: 80vh">
               <iframe
                 src=""
@@ -81,20 +78,20 @@
       </div>
     </div>
 
-    <!-- Optional Script for Opening/Closing (if you have a dedicated button) -->
+    <!-- Optional Script for Opening/Closing the Modal -->
     <script>
       const openBtn = document.getElementById("openNostrForm");
       const appModal = document.getElementById("nostrFormModal");
       const closeBtn = document.getElementById("closeNostrFormModal");
 
-      // Open the modal
+      // Open the modal when the designated button is clicked.
       if (openBtn) {
         openBtn.addEventListener("click", () => {
           appModal.classList.remove("hidden");
         });
       }
 
-      // Close the modal
+      // Close the modal when the close button is clicked.
       if (closeBtn) {
         closeBtn.addEventListener("click", () => {
           appModal.classList.add("hidden");
