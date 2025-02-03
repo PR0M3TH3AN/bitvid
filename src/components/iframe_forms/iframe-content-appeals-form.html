@@ -14,7 +14,6 @@
         color: #fff;
         font-family: system-ui, -apple-system, sans-serif;
         margin: 20px;
-        /* Removed max-width */
       }
       
       /* Override the .container to use the full available width */
@@ -130,10 +129,8 @@
           decisions will be communicated back to you.
         </p>
         <form id="dm-form">
+          <!-- NPUB input removed as the recipient is now set by the code -->
           <h2>1. User Information</h2>
-          <label for="npubInput">Nostr Public Key (npub):</label>
-          <input type="text" id="npubInput" placeholder="Enter your npub" required />
-          
           <label for="contactMethod">Contact Method (if applicable):</label>
           <input type="text" id="contactMethod" placeholder="Nostr DM, email, or other" />
           
@@ -216,30 +213,25 @@
           log("NostrTools not loaded. Check console or ad-blockers.", "error");
           return;
         }
-        const {
-          generateSecretKey,
-          getPublicKey,
-          finalizeEvent,
-          nip04,
-          nip19,
-          SimplePool,
-          Relay,
-        } = window.NostrTools;
+        const { generateSecretKey, getPublicKey, finalizeEvent, nip04, nip19, SimplePool, Relay } = window.NostrTools;
+        
+        // Set the recipient's NPUB (your personal NPUB) here.
+        const recipientNpub = "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+        
         const RELAYS = [
           "wss://relay.snort.social",
           "wss://relay.damus.io",
-          "wss://relay.primal.net",
+          "wss://relay.primal.net"
         ];
         const pool = new SimplePool();
+        
         document.getElementById("dm-form").addEventListener("submit", async (ev) => {
           ev.preventDefault();
           clear();
           try {
-            // Retrieve user input.
-            const npub = document.getElementById("npubInput").value.trim();
-            if (!npub.startsWith("npub")) {
-              throw new Error("Target must start with npub.");
-            }
+            // Note: The customer's NPUB input is removed.
+            // Use the recipientNpub constant to get the public key.
+            
             const contactMethod = document.getElementById("contactMethod").value.trim();
             const videoTitle = document.getElementById("videoTitle").value.trim();
             const magnetLink = document.getElementById("magnetLink").value.trim();
@@ -259,7 +251,6 @@
 # **bitvid Content Appeals Form**
   
 **1. User Information**
-- **Nostr Public Key (npub):** ${npub}
 - **Contact Method:** ${contactMethod || "N/A"}
   
 **2. Content Details**
@@ -303,15 +294,15 @@ For further questions, reach out through bitvid’s Nostr support channels.
   
             log("[DEBUG] Constructed appeal content:\n" + appealContent);
   
-            // Decode the target npub to get the public key.
-            log("Decoding target npub...");
-            const decoded = nip19.decode(npub);
+            // Decode the recipient NPUB to get the public key.
+            log("Decoding recipient npub...");
+            const decoded = nip19.decode(recipientNpub);
             log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
             if (decoded.type !== "npub") {
               throw new Error("Decoded type is not npub.");
             }
             const targetPubHex = decoded.data;
-            log("Target pubkey: " + targetPubHex.slice(0, 16) + "...");
+            log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
   
             // Generate an ephemeral key pair.
             log("Generating ephemeral key...");
