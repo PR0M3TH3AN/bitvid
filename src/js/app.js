@@ -700,44 +700,46 @@ class bitvidApp {
   async loadVideos() {
     console.log("Starting loadVideos...");
 
-    // 1) If there's an existing subscription, unsubscribe it
-    if (this.videoSubscription) {
-      this.videoSubscription.unsub();
-      this.videoSubscription = null;
-    }
-
-    // 2) Show "Loading..." message
-    if (this.videoList) {
-      this.videoList.innerHTML = `
-      <p class="text-center text-gray-500">
-        Loading videos...
-      </p>`;
-    }
-
-    try {
-      // 3) Force a bulk fetch
-      await nostrClient.fetchVideos();
-
-      // 4) Instead of reusing the entire fetched array,
-      //    use getActiveVideos() for the final display:
-      const newestActive = nostrClient.getActiveVideos();
-      this.renderVideoList(newestActive);
-
-      // 5) Subscribe for updates
-      this.videoSubscription = nostrClient.subscribeVideos((video) => {
-        // Whenever we get a new or updated event, re-render the newest set:
-        const activeAll = nostrClient.getActiveVideos();
-        this.renderVideoList(activeAll);
-      });
-    } catch (err) {
-      console.error("Could not load videos:", err);
-      this.showError("Could not load videos from relays.");
+    // If we already have a subscription, don’t unsubscribe/resubscribe—
+    // just update the UI from local cache.
+    if (!this.videoSubscription) {
+      // First-time load: show “Loading...” message
       if (this.videoList) {
         this.videoList.innerHTML = `
         <p class="text-center text-gray-500">
-          No videos available at this time.
+          Loading videos...
         </p>`;
       }
+
+      // 1) Do a bulk fetch once
+      try {
+        await nostrClient.fetchVideos();
+      } catch (err) {
+        console.error("Could not load videos initially:", err);
+        this.showError("Could not load videos from relays.");
+        if (this.videoList) {
+          this.videoList.innerHTML = `
+          <p class="text-center text-gray-500">
+            No videos available at this time.
+          </p>`;
+        }
+        return;
+      }
+
+      // 2) Render the newest set after the fetch
+      const newestActive = nostrClient.getActiveVideos();
+      this.renderVideoList(newestActive);
+
+      // 3) Create a single subscription that updates our UI
+      this.videoSubscription = nostrClient.subscribeVideos(() => {
+        // Each time a new/updated event arrives, we just re-render from local
+        const updatedAll = nostrClient.getActiveVideos();
+        this.renderVideoList(updatedAll);
+      });
+    } else {
+      // If we’ve already subscribed before, just update from cache
+      const allCached = nostrClient.getActiveVideos();
+      this.renderVideoList(allCached);
     }
   }
 
@@ -1017,26 +1019,27 @@ class bitvidApp {
         return;
       }
 
-      // Look up the video in our subscription map
+      // 1) Check local 'videosMap' or 'nostrClient.getActiveVideos()'
       let matchedVideo = Array.from(this.videosMap.values()).find(
         (v) => v.magnet === decodedMagnet
       );
-
-      // If not found in the map, do a fallback fetch
       if (!matchedVideo) {
-        const allVideos = await nostrClient.fetchVideos();
-        matchedVideo = allVideos.find((v) => v.magnet === decodedMagnet);
+        // Instead of forcing a full `fetchVideos()`,
+        // try looking in the activeVideos from local cache:
+        const activeVideos = nostrClient.getActiveVideos();
+        matchedVideo = activeVideos.find((v) => v.magnet === decodedMagnet);
       }
 
+      // If still not found, you can do a single event-based approach or just show an error:
       if (!matchedVideo) {
-        this.showError("No matching video found.");
+        this.showError("No matching video found in local cache.");
         return;
       }
 
-      // Update our tracking
+      // Update tracking
       this.currentMagnetUri = decodedMagnet;
 
-      // Hand off to the method that already sets modal fields and streams
+      // Delegate to the main method
       await this.playVideoByEventId(matchedVideo.id);
     } catch (error) {
       console.error("Error in playVideo:", error);
@@ -1465,26 +1468,30 @@ class bitvidApp {
       return video;
     }
 
-    // 2) Bulk fetch from relays
-    const allFromBulk = await nostrClient.fetchVideos();
-
-    // 2a) Deduplicate so we only keep newest version per root
-    const newestPerRoot = dedupeToNewestByRoot(allFromBulk);
-
-    // 2b) Find the requested ID within the deduplicated set
-    video = newestPerRoot.find((v) => v.id === eventId);
-    if (video) {
-      // Store it in our local map, so we can open it instantly next time
-      this.videosMap.set(video.id, video);
-      return video;
+    // 2) Already in nostrClient.allEvents?
+    //    (assuming nostrClient.allEvents is a Map of id => video)
+    const fromAll = nostrClient.allEvents.get(eventId);
+    if (fromAll && !fromAll.deleted) {
+      this.videosMap.set(eventId, fromAll);
+      return fromAll;
     }
 
-    // 3) Final fallback: direct single-event fetch
+    // 3) Direct single-event fetch (fewer resources than full fetchVideos)
     const single = await nostrClient.getEventById(eventId);
     if (single && !single.deleted) {
       this.videosMap.set(single.id, single);
       return single;
     }
+
+    // 4) If you wanted a final fallback, you could do it here:
+    //    But it's typically better to avoid repeated full fetches
+    // console.log("Falling back to full fetchVideos...");
+    // const allFetched = await nostrClient.fetchVideos();
+    // video = allFetched.find(v => v.id === eventId && !v.deleted);
+    // if (video) {
+    //   this.videosMap.set(video.id, video);
+    //   return video;
+    // }
 
     // Not found or was deleted
     return null;

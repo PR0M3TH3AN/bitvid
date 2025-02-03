@@ -7,8 +7,6 @@ export class TorrentClient {
     this.client = new WebTorrent();
     this.currentTorrent = null;
     this.TIMEOUT_DURATION = 60000; // 60 seconds
-    // We remove the “statsInterval” since we’re not using it here anymore
-    // this.statsInterval = null;
   }
 
   log(msg) {
@@ -43,6 +41,7 @@ export class TorrentClient {
         return false;
       };
 
+      // Check if already active
       if (checkActivation()) return;
 
       registration.addEventListener("activate", () => {
@@ -60,6 +59,9 @@ export class TorrentClient {
     });
   }
 
+  // --------------------------
+  // UPDATED: setupServiceWorker
+  // --------------------------
   async setupServiceWorker() {
     try {
       const isBraveBrowser = await this.isBrave();
@@ -83,6 +85,7 @@ export class TorrentClient {
           throw new Error("Please enable WebRTC in Brave Shield settings");
         }
 
+        // Unregister any existing SW
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (const registration of registrations) {
           await registration.unregister();
@@ -90,17 +93,13 @@ export class TorrentClient {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      const currentPath = window.location.pathname;
-      const basePath = currentPath.substring(
-        0,
-        currentPath.lastIndexOf("/") + 1
-      );
-
-      this.log("Registering service worker...");
+      // Directly register sw.min.js at /src/sw.min.js
+      // with a scope that covers /src/ (which includes /src/webtorrent).
+      this.log("Registering service worker at /src/sw.min.js...");
       const registration = await navigator.serviceWorker.register(
-        "./sw.min.js",
+        "/src/sw.min.js",
         {
-          scope: basePath,
+          scope: "/src/",
           updateViaCache: "none",
         }
       );
@@ -129,6 +128,7 @@ export class TorrentClient {
       await this.waitForServiceWorkerActivation(registration);
       this.log("Service worker activated");
 
+      // Make sure the SW is fully ready
       const readyRegistration = await Promise.race([
         navigator.serviceWorker.ready,
         new Promise((_, reject) =>
@@ -171,8 +171,14 @@ export class TorrentClient {
         throw new Error("Service worker setup failed");
       }
 
-      // 2) Create WebTorrent server
-      this.client.createServer({ controller: registration });
+      // ------------------------------------------------
+      // UPDATED: Pass pathPrefix to createServer
+      // so that it uses /src/webtorrent/... for streaming
+      // ------------------------------------------------
+      this.client.createServer({
+        controller: registration,
+        pathPrefix: "/src/webtorrent",
+      });
       this.log("WebTorrent server created");
 
       const isFirefoxBrowser = this.isFirefox();
@@ -202,11 +208,37 @@ export class TorrentClient {
     }
   }
 
-  // Minimal handleChromeTorrent — no internal setInterval
+  // Minimal handleChromeTorrent
   handleChromeTorrent(torrent, videoElement, resolve, reject) {
-    const file = torrent.files.find((f) =>
-      /\.(mp4|webm|mkv)$/.test(f.name.toLowerCase())
-    );
+    // OPTIONAL: Listen for “warning” events
+    torrent.on("warning", (err) => {
+      if (err && typeof err.message === "string") {
+        if (
+          err.message.includes("CORS") ||
+          err.message.includes("Access-Control-Allow-Origin")
+        ) {
+          console.warn(
+            "CORS warning detected. Attempting to remove the failing webseed/tracker."
+          );
+          // Example cleanup approach...
+          if (torrent._opts?.urlList?.length) {
+            torrent._opts.urlList = torrent._opts.urlList.filter((url) => {
+              return !url.includes("distribution.bbb3d.renderfarming.net");
+            });
+            console.warn("Cleaned up webseeds =>", torrent._opts.urlList);
+          }
+          if (torrent._opts?.announce?.length) {
+            torrent._opts.announce = torrent._opts.announce.filter((url) => {
+              return !url.includes("fastcast.nz");
+            });
+            console.warn("Cleaned up trackers =>", torrent._opts.announce);
+          }
+        }
+      }
+    });
+
+    // Then proceed with normal file selection
+    const file = torrent.files.find((f) => /\.(mp4|webm|mkv)$/i.test(f.name));
     if (!file) {
       return reject(new Error("No compatible video file found in torrent"));
     }
@@ -215,7 +247,7 @@ export class TorrentClient {
     videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
-    // Catch video errors
+    // Catch video-level errors
     videoElement.addEventListener("error", (e) => {
       this.log("Video error:", e.target.error);
     });
@@ -227,7 +259,6 @@ export class TorrentClient {
       });
     });
 
-    // Actually stream
     try {
       file.streamTo(videoElement);
       this.currentTorrent = torrent;
@@ -237,7 +268,6 @@ export class TorrentClient {
       reject(err);
     }
 
-    // Also handle torrent error events
     torrent.on("error", (err) => {
       this.log("Torrent error (Chrome path):", err);
       reject(err);
@@ -286,7 +316,6 @@ export class TorrentClient {
    */
   async cleanup() {
     try {
-      // No local interval to clear here
       if (this.currentTorrent) {
         this.currentTorrent.destroy();
       }
