@@ -5,6 +5,7 @@ import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
 import { disclaimerModal } from "./disclaimer.js";
+import { initialBlacklist, initialEventBlacklist } from "./lists.js";
 
 /**
  * Simple "decryption" placeholder for private videos.
@@ -82,6 +83,27 @@ class bitvidApp {
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
       document.getElementById("closeLoginModal") || null;
+
+    // Build a set of blacklisted event IDs (hex) from nevent strings, skipping empties
+    this.blacklistedEventIds = new Set();
+    for (const neventStr of initialEventBlacklist) {
+      // Skip any empty or obviously invalid strings
+      if (!neventStr || neventStr.trim().length < 8) {
+        continue;
+      }
+      try {
+        const decoded = window.NostrTools.nip19.decode(neventStr);
+        if (decoded.type === "nevent" && decoded.data.id) {
+          this.blacklistedEventIds.add(decoded.data.id);
+        }
+      } catch (err) {
+        console.error(
+          "[bitvidApp] Invalid nevent in blacklist:",
+          neventStr,
+          err
+        );
+      }
+    }
   }
 
   forceRefreshAllProfiles() {
@@ -700,53 +722,58 @@ class bitvidApp {
   }
 
   /**
-   * Subscribe to new videos & render them.
+   * Subscribe to videos (older + new) and render them as they come in.
    */
-  // js/app.js
-
   async loadVideos() {
     console.log("Starting loadVideos...");
 
-    // If we already have a subscription, don’t unsubscribe/resubscribe—
-    // just update the UI from local cache.
+    // We do NOT decode initialEventBlacklist here.
+    // That happens once in the constructor, creating this.blacklistedEventIds.
+
     if (!this.videoSubscription) {
-      // First-time load: show “Loading...” message
       if (this.videoList) {
         this.videoList.innerHTML = `
         <p class="text-center text-gray-500">
-          Loading videos...
+          Loading videos as they arrive...
         </p>`;
       }
 
-      // 1) Do a bulk fetch once
-      try {
-        await nostrClient.fetchVideos();
-      } catch (err) {
-        console.error("Could not load videos initially:", err);
-        this.showError("Could not load videos from relays.");
-        if (this.videoList) {
-          this.videoList.innerHTML = `
-          <p class="text-center text-gray-500">
-            No videos available at this time.
-          </p>`;
-        }
-        return;
-      }
-
-      // 2) Render the newest set after the fetch
-      const newestActive = nostrClient.getActiveVideos();
-      this.renderVideoList(newestActive);
-
-      // 3) Create a single subscription that updates our UI
+      // Create a single subscription
       this.videoSubscription = nostrClient.subscribeVideos(() => {
-        // Each time a new/updated event arrives, we just re-render from local
         const updatedAll = nostrClient.getActiveVideos();
-        this.renderVideoList(updatedAll);
+
+        // Filter out blacklisted authors & blacklisted event IDs
+        const filteredVideos = updatedAll.filter((video) => {
+          // 1) If the event ID is in our blacklisted set, skip
+          if (this.blacklistedEventIds.has(video.id)) {
+            return false;
+          }
+
+          // 2) Check author (if you’re also blacklisting authors by npub)
+          const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+          if (initialBlacklist.includes(authorNpub)) {
+            return false;
+          }
+
+          return true;
+        });
+
+        this.renderVideoList(filteredVideos);
       });
     } else {
-      // If we’ve already subscribed before, just update from cache
+      // Already subscribed: just show what's cached
       const allCached = nostrClient.getActiveVideos();
-      this.renderVideoList(allCached);
+
+      const filteredCached = allCached.filter((video) => {
+        if (this.blacklistedEventIds.has(video.id)) {
+          return false;
+        }
+
+        const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+        return !initialBlacklist.includes(authorNpub);
+      });
+
+      this.renderVideoList(filteredCached);
     }
   }
 
@@ -1323,6 +1350,12 @@ class bitvidApp {
    * Helper to open a video by event ID (like ?v=...).
    */
   async playVideoByEventId(eventId) {
+    // First, check if this event is blacklisted
+    if (this.blacklistedEventIds.has(eventId)) {
+      this.showError("This content has been removed or is not allowed.");
+      return;
+    }
+
     try {
       // 1) Check local subscription map
       let video = this.videosMap.get(eventId);
@@ -1330,11 +1363,12 @@ class bitvidApp {
       if (!video) {
         video = await this.getOldEventById(eventId);
       }
-      // 3) If still no luck, show error and return
+      // 3) If still not found, show error and return
       if (!video) {
         this.showError("Video not found.");
         return;
       }
+
       // 4) Decrypt magnet if private & owned
       if (
         video.isPrivate &&
@@ -1345,15 +1379,18 @@ class bitvidApp {
         video.magnet = fakeDecrypt(video.magnet);
         video.alreadyDecrypted = true;
       }
+
       // 5) Show the modal
       this.currentVideo = video;
       this.currentMagnetUri = video.magnet;
       this.showModalWithPoster();
+
       // 6) Update ?v= param in the URL
       const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
       const newUrl =
         window.location.pathname + `?v=${encodeURIComponent(nevent)}`;
       window.history.pushState({}, "", newUrl);
+
       // 7) Optionally fetch the author profile
       let creatorProfile = {
         name: "Unknown",
@@ -1373,10 +1410,12 @@ class bitvidApp {
       } catch (error) {
         this.log("Error fetching creator profile:", error);
       }
+
       // 8) Render video details in modal
       const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (this.videoTitle)
+      if (this.videoTitle) {
         this.videoTitle.textContent = video.title || "Untitled";
+      }
       if (this.videoDescription) {
         this.videoDescription.textContent =
           video.description || "No description available.";
@@ -1397,15 +1436,18 @@ class bitvidApp {
         this.creatorAvatar.src = creatorProfile.picture;
         this.creatorAvatar.alt = creatorProfile.name;
       }
-      // 9) Clean up any existing torrent instance before starting a new stream.
+
+      // 9) Clean up any existing torrent instance before starting a new stream
       await torrentClient.cleanup();
-      // 10) Append a cache-busting parameter to the magnet URI.
+      // 10) Append a cache-busting parameter to the magnet URI
       const cacheBustedMagnet = video.magnet + "&ts=" + Date.now();
       this.log("Starting video stream with:", cacheBustedMagnet);
+
       const realTorrent = await torrentClient.streamVideo(
         cacheBustedMagnet,
         this.modalVideo
       );
+
       // 11) Start intervals to update stats
       const updateInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
@@ -1415,6 +1457,7 @@ class bitvidApp {
         this.updateTorrentStatus(realTorrent);
       }, 1000);
       this.activeIntervals.push(updateInterval);
+
       // (Optional) Mirror small inline stats into the modal
       const mirrorInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {

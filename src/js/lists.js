@@ -1,5 +1,6 @@
 // js/lists.js
 
+// Whitelist of npubs that can access the video upload functions
 const npubs = [
   "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe", // bitvid
   "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx", // thePR0M3TH3AN
@@ -15,5 +16,9 @@ const npubs = [
 
 console.log("DEBUG: lists.js loaded, npubs:", npubs);
 
+// Blacklist of npubs that events will not be displayed in the bitvid official client
 export const initialWhitelist = npubs;
 export const initialBlacklist = [""];
+
+// Block specific events with the nevent
+export const initialEventBlacklist = [""];

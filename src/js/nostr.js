@@ -281,59 +281,66 @@ class NostrClient {
   }
 
   /**
-   * Edits a video => old style
+   * Edits a video by creating a *new event* with a brand-new d tag,
+   * but reuses the same videoRootId as the original.
+   *
+   * This version forces version=2 for the original note and uses
+   * lowercase comparison for public keys.
    */
-  async editVideo(originalEventStub, updatedData, pubkey) {
-    if (!pubkey) {
+  async editVideo(originalEventStub, updatedData, userPubkey) {
+    if (!userPubkey) {
       throw new Error("Not logged in to edit.");
     }
-    if (!originalEventStub.pubkey || originalEventStub.pubkey !== pubkey) {
+
+    // Convert the provided pubkey to lowercase
+    const userPubkeyLower = userPubkey.toLowerCase();
+
+    // Use getEventById to fetch the full original event details
+    const baseEvent = await this.getEventById(originalEventStub.id);
+    if (!baseEvent) {
+      throw new Error("Could not retrieve the original event to edit.");
+    }
+
+    // Check that the original event is version 2 or higher
+    if (baseEvent.version < 2) {
+      throw new Error(
+        "This video is not in the supported version for editing."
+      );
+    }
+
+    // Ownership check (compare lowercase hex public keys)
+    if (
+      !baseEvent.pubkey ||
+      baseEvent.pubkey.toLowerCase() !== userPubkeyLower
+    ) {
       throw new Error("You do not own this video (pubkey mismatch).");
     }
 
-    let baseEvent = originalEventStub;
-    if (!baseEvent.videoRootId) {
-      const fetched = await this.getEventById(originalEventStub.id);
-      if (!fetched) {
-        throw new Error("Could not retrieve the original event to edit.");
-      }
-      baseEvent = fetched;
-    }
-
-    let oldRootId = baseEvent.videoRootId || null;
-
-    // Decrypt old magnet if private
+    // Decrypt the old magnet if the note is private
     let oldPlainMagnet = baseEvent.magnet || "";
     if (baseEvent.isPrivate && oldPlainMagnet) {
       oldPlainMagnet = fakeDecrypt(oldPlainMagnet);
     }
 
+    // Determine if the updated note should be private
     const wantPrivate = updatedData.isPrivate ?? baseEvent.isPrivate ?? false;
 
-    let finalPlainMagnet = (updatedData.magnet || "").trim();
-    if (!finalPlainMagnet) {
-      finalPlainMagnet = oldPlainMagnet;
-    }
-    let finalMagnet = finalPlainMagnet;
-    if (wantPrivate) {
-      finalMagnet = fakeEncrypt(finalPlainMagnet);
-    }
+    // Use the new magnet if provided; otherwise, fall back to the decrypted old magnet
+    let finalPlainMagnet = (updatedData.magnet || "").trim() || oldPlainMagnet;
+    let finalMagnet = wantPrivate
+      ? fakeEncrypt(finalPlainMagnet)
+      : finalPlainMagnet;
 
-    if (!oldRootId) {
-      oldRootId = baseEvent.id;
-      if (isDevMode) {
-        console.log(
-          "No existing root => using baseEvent.id as root:",
-          oldRootId
-        );
-      }
-    }
+    // Use the existing videoRootId (or fall back to the base event's ID)
+    const oldRootId = baseEvent.videoRootId || baseEvent.id;
 
+    // Generate a new d-tag so that the edit gets its own share link
     const newD = `${Date.now()}-edit-${Math.random().toString(36).slice(2)}`;
 
+    // Build the updated content object
     const contentObject = {
       videoRootId: oldRootId,
-      version: updatedData.version ?? baseEvent.version ?? 1,
+      version: updatedData.version ?? baseEvent.version ?? 2,
       deleted: false,
       isPrivate: wantPrivate,
       title: updatedData.title ?? baseEvent.title,
@@ -345,11 +352,12 @@ class NostrClient {
 
     const event = {
       kind: 30078,
-      pubkey,
+      // Use the provided userPubkey (or you can also force it to lowercase here if desired)
+      pubkey: userPubkeyLower,
       created_at: Math.floor(Date.now() / 1000),
       tags: [
         ["t", "video"],
-        ["d", newD],
+        ["d", newD], // new share link tag
       ],
       content: JSON.stringify(contentObject),
     };
@@ -379,6 +387,7 @@ class NostrClient {
           }
         })
       );
+
       return signedEvent;
     } catch (err) {
       console.error("Edit failed:", err);
@@ -474,13 +483,27 @@ class NostrClient {
   }
 
   /**
-   * deleteAllVersions => old style
+   * "Deleting" => Mark all content with the same videoRootId as {deleted:true}
+   * and blank out magnet/desc.
+   *
+   * This version now asks for confirmation before proceeding.
    */
   async deleteAllVersions(videoRootId, pubkey) {
     if (!pubkey) {
       throw new Error("Not logged in to delete all versions.");
     }
 
+    // Ask for confirmation before proceeding
+    if (
+      !window.confirm(
+        "Are you sure you want to delete all versions of this video? This action cannot be undone."
+      )
+    ) {
+      console.log("Deletion cancelled by user.");
+      return null; // Cancel deletion if user clicks "Cancel"
+    }
+
+    // 1) Find all events in our local allEvents that share the same root.
     const matchingEvents = [];
     for (const [id, vid] of this.allEvents.entries()) {
       if (
@@ -495,6 +518,8 @@ class NostrClient {
       throw new Error("No existing events found for that root.");
     }
 
+    // 2) For each event, create a "revert" event to mark it as deleted.
+    // This will prompt the user (via the extension) to sign the deletion.
     for (const vid of matchingEvents) {
       await this.revertVideo(
         {
@@ -515,16 +540,23 @@ class NostrClient {
         pubkey
       );
     }
+
     return true;
   }
 
   /**
    * subscribeVideos => old approach
    */
+  /**
+   * Subscribe to *all* videos (old and new) with a single subscription,
+   * then call onVideo() each time a new or updated event arrives.
+   */
   subscribeVideos(onVideo) {
     const filter = {
       kinds: [30078],
       "#t": ["video"],
+      // Remove or adjust limit if you prefer,
+      // and set since=0 to retrieve historical events:
       limit: 500,
       since: 0,
     };
@@ -533,7 +565,6 @@ class NostrClient {
     }
 
     const sub = this.pool.sub(this.relays, [filter]);
-    // Accumulate invalid
     const invalidDuringSub = [];
 
     sub.on("event", (event) => {
@@ -543,18 +574,22 @@ class NostrClient {
           invalidDuringSub.push({ id: video.id, reason: video.reason });
           return;
         }
-        // normal logic here
+        // Store in allEvents
         this.allEvents.set(event.id, video);
+
+        // If it's a "deleted" note, remove from activeMap
         if (video.deleted) {
           const activeKey = getActiveKey(video);
           this.activeMap.delete(activeKey);
           return;
         }
+
+        // Otherwise, if it's newer than what we have, update activeMap
         const activeKey = getActiveKey(video);
         const prevActive = this.activeMap.get(activeKey);
         if (!prevActive || video.created_at > prevActive.created_at) {
           this.activeMap.set(activeKey, video);
-          onVideo(video);
+          onVideo(video); // trigger the callback that re-renders
         }
       } catch (err) {
         if (isDevMode) {
@@ -571,7 +606,9 @@ class NostrClient {
         );
       }
       if (isDevMode) {
-        console.log("[subscribeVideos] Reached EOSE for all relays");
+        console.log(
+          "[subscribeVideos] Reached EOSE for all relays (historical load done)"
+        );
       }
     });
 
