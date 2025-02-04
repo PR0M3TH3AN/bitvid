@@ -1,5 +1,3 @@
-// js/webtorrent.js
-
 import WebTorrent from "./webtorrent.min.js";
 
 export class TorrentClient {
@@ -7,8 +5,6 @@ export class TorrentClient {
     this.client = new WebTorrent();
     this.currentTorrent = null;
     this.TIMEOUT_DURATION = 60000; // 60 seconds
-    // We remove the “statsInterval” since we’re not using it here anymore
-    // this.statsInterval = null;
   }
 
   log(msg) {
@@ -71,7 +67,6 @@ export class TorrentClient {
         throw new Error("Service Worker not supported or disabled");
       }
 
-      // Optional Brave config
       if (isBraveBrowser) {
         this.log("Checking Brave configuration...");
         if (!navigator.serviceWorker) {
@@ -84,23 +79,17 @@ export class TorrentClient {
         }
 
         const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const registration of registrations) {
-          await registration.unregister();
+        for (const reg of registrations) {
+          await reg.unregister();
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      const currentPath = window.location.pathname;
-      const basePath = currentPath.substring(
-        0,
-        currentPath.lastIndexOf("/") + 1
-      );
-
-      this.log("Registering service worker...");
+      this.log("Registering service worker at /sw.min.js...");
       const registration = await navigator.serviceWorker.register(
         "./sw.min.js",
         {
-          scope: basePath,
+          scope: "./",
           updateViaCache: "none",
         }
       );
@@ -143,6 +132,9 @@ export class TorrentClient {
         throw new Error("Service worker not active after ready state");
       }
 
+      // Force the SW to check for updates
+      registration.update();
+
       this.log("Service worker ready");
       return registration;
     } catch (error) {
@@ -151,83 +143,51 @@ export class TorrentClient {
     }
   }
 
-  formatBytes(bytes) {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-  }
-
-  /**
-   * Streams the magnet to the <video> element.
-   * No stats intervals here—just returns the torrent object.
-   */
-  async streamVideo(magnetURI, videoElement) {
-    try {
-      // 1) Setup service worker
-      const registration = await this.setupServiceWorker();
-      if (!registration || !registration.active) {
-        throw new Error("Service worker setup failed");
-      }
-
-      // 2) Create WebTorrent server
-      this.client.createServer({ controller: registration });
-      this.log("WebTorrent server created");
-
-      const isFirefoxBrowser = this.isFirefox();
-
-      return new Promise((resolve, reject) => {
-        if (isFirefoxBrowser) {
-          this.log("Starting torrent download (Firefox path)");
-          this.client.add(
-            magnetURI,
-            { strategy: "sequential", maxWebConns: 4 },
-            (torrent) => {
-              this.log("Torrent added (Firefox path):", torrent.name);
-              this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
-            }
-          );
-        } else {
-          this.log("Starting torrent download (Chrome path)");
-          this.client.add(magnetURI, (torrent) => {
-            this.log("Torrent added (Chrome path):", torrent.name);
-            this.handleChromeTorrent(torrent, videoElement, resolve, reject);
-          });
-        }
-      });
-    } catch (error) {
-      this.log("Failed to setup video streaming:", error);
-      throw error;
-    }
-  }
-
-  // Minimal handleChromeTorrent — no internal setInterval
+  // Minimal handleChromeTorrent
   handleChromeTorrent(torrent, videoElement, resolve, reject) {
-    const file = torrent.files.find((f) =>
-      /\.(mp4|webm|mkv)$/.test(f.name.toLowerCase())
-    );
+    torrent.on("warning", (err) => {
+      if (err && typeof err.message === "string") {
+        if (
+          err.message.includes("CORS") ||
+          err.message.includes("Access-Control-Allow-Origin")
+        ) {
+          console.warn(
+            "CORS warning detected. Attempting to remove the failing webseed/tracker."
+          );
+          if (torrent._opts?.urlList?.length) {
+            torrent._opts.urlList = torrent._opts.urlList.filter((url) => {
+              return !url.includes("distribution.bbb3d.renderfarming.net");
+            });
+            console.warn("Cleaned up webseeds =>", torrent._opts.urlList);
+          }
+          if (torrent._opts?.announce?.length) {
+            torrent._opts.announce = torrent._opts.announce.filter((url) => {
+              return !url.includes("fastcast.nz");
+            });
+            console.warn("Cleaned up trackers =>", torrent._opts.announce);
+          }
+        }
+      }
+    });
+
+    const file = torrent.files.find((f) => /\.(mp4|webm|mkv)$/i.test(f.name));
     if (!file) {
       return reject(new Error("No compatible video file found in torrent"));
     }
 
-    // Mute & crossOrigin
     videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
-    // Catch video errors
     videoElement.addEventListener("error", (e) => {
       this.log("Video error:", e.target.error);
     });
 
-    // Attempt autoplay
     videoElement.addEventListener("canplay", () => {
       videoElement.play().catch((err) => {
         this.log("Autoplay failed:", err);
       });
     });
 
-    // Actually stream
     try {
       file.streamTo(videoElement);
       this.currentTorrent = torrent;
@@ -237,7 +197,6 @@ export class TorrentClient {
       reject(err);
     }
 
-    // Also handle torrent error events
     torrent.on("error", (err) => {
       this.log("Torrent error (Chrome path):", err);
       reject(err);
@@ -282,11 +241,57 @@ export class TorrentClient {
   }
 
   /**
-   * Clean up
+   * Initiates streaming of a torrent magnet to a <video> element.
+   * Ensures the service worker is registered first.
+   */
+  async streamVideo(magnetURI, videoElement) {
+    try {
+      // 1) Setup service worker
+      const registration = await this.setupServiceWorker();
+      if (!registration || !registration.active) {
+        throw new Error("Service worker setup failed");
+      }
+
+      // Create the WebTorrent server with the registered service worker.
+      // Force the server to use '/webtorrent' as the URL prefix.
+      this.client.createServer({
+        controller: registration,
+        pathPrefix: "/webtorrent",
+      });
+      this.log("WebTorrent server created");
+
+      const isFirefoxBrowser = this.isFirefox();
+
+      return new Promise((resolve, reject) => {
+        if (isFirefoxBrowser) {
+          this.log("Starting torrent download (Firefox path)");
+          this.client.add(
+            magnetURI,
+            { strategy: "sequential", maxWebConns: 4 },
+            (torrent) => {
+              this.log("Torrent added (Firefox path):", torrent.name);
+              this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
+            }
+          );
+        } else {
+          this.log("Starting torrent download (Chrome path)");
+          this.client.add(magnetURI, (torrent) => {
+            this.log("Torrent added (Chrome path):", torrent.name);
+            this.handleChromeTorrent(torrent, videoElement, resolve, reject);
+          });
+        }
+      });
+    } catch (error) {
+      this.log("Failed to setup video streaming:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clean up resources.
    */
   async cleanup() {
     try {
-      // No local interval to clear here
       if (this.currentTorrent) {
         this.currentTorrent.destroy();
       }

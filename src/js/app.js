@@ -5,6 +5,7 @@ import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
 import { disclaimerModal } from "./disclaimer.js";
+import { initialBlacklist, initialEventBlacklist } from "./lists.js";
 
 /**
  * Simple "decryption" placeholder for private videos.
@@ -82,6 +83,27 @@ class bitvidApp {
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
       document.getElementById("closeLoginModal") || null;
+
+    // Build a set of blacklisted event IDs (hex) from nevent strings, skipping empties
+    this.blacklistedEventIds = new Set();
+    for (const neventStr of initialEventBlacklist) {
+      // Skip any empty or obviously invalid strings
+      if (!neventStr || neventStr.trim().length < 8) {
+        continue;
+      }
+      try {
+        const decoded = window.NostrTools.nip19.decode(neventStr);
+        if (decoded.type === "nevent" && decoded.data.id) {
+          this.blacklistedEventIds.add(decoded.data.id);
+        }
+      } catch (err) {
+        console.error(
+          "[bitvidApp] Invalid nevent in blacklist:",
+          neventStr,
+          err
+        );
+      }
+    }
   }
 
   forceRefreshAllProfiles() {
@@ -99,6 +121,13 @@ class bitvidApp {
 
   async init() {
     try {
+      // Force update of any registered service workers to ensure latest code is used.
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          registrations.forEach((registration) => registration.update());
+        });
+      }
+
       // 1. Initialize the video modal (components/video-modal.html)
       await this.initModal();
       this.updateModalElements();
@@ -693,51 +722,58 @@ class bitvidApp {
   }
 
   /**
-   * Subscribe to new videos & render them.
+   * Subscribe to videos (older + new) and render them as they come in.
    */
-  // js/app.js
-
   async loadVideos() {
     console.log("Starting loadVideos...");
 
-    // 1) If there's an existing subscription, unsubscribe it
-    if (this.videoSubscription) {
-      this.videoSubscription.unsub();
-      this.videoSubscription = null;
-    }
+    // We do NOT decode initialEventBlacklist here.
+    // That happens once in the constructor, creating this.blacklistedEventIds.
 
-    // 2) Show "Loading..." message
-    if (this.videoList) {
-      this.videoList.innerHTML = `
-      <p class="text-center text-gray-500">
-        Loading videos...
-      </p>`;
-    }
-
-    try {
-      // 3) Force a bulk fetch
-      await nostrClient.fetchVideos();
-
-      // 4) Instead of reusing the entire fetched array,
-      //    use getActiveVideos() for the final display:
-      const newestActive = nostrClient.getActiveVideos();
-      this.renderVideoList(newestActive);
-
-      // 5) Subscribe for updates
-      this.videoSubscription = nostrClient.subscribeVideos((video) => {
-        // Whenever we get a new or updated event, re-render the newest set:
-        const activeAll = nostrClient.getActiveVideos();
-        this.renderVideoList(activeAll);
-      });
-    } catch (err) {
-      console.error("Could not load videos:", err);
-      this.showError("Could not load videos from relays.");
+    if (!this.videoSubscription) {
       if (this.videoList) {
         this.videoList.innerHTML = `
         <p class="text-center text-gray-500">
-          No videos available at this time.
+          Loading videos as they arrive...
         </p>`;
       }
+
+      // Create a single subscription
+      this.videoSubscription = nostrClient.subscribeVideos(() => {
+        const updatedAll = nostrClient.getActiveVideos();
+
+        // Filter out blacklisted authors & blacklisted event IDs
+        const filteredVideos = updatedAll.filter((video) => {
+          // 1) If the event ID is in our blacklisted set, skip
+          if (this.blacklistedEventIds.has(video.id)) {
+            return false;
+          }
+
+          // 2) Check author (if you’re also blacklisting authors by npub)
+          const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+          if (initialBlacklist.includes(authorNpub)) {
+            return false;
+          }
+
+          return true;
+        });
+
+        this.renderVideoList(filteredVideos);
+      });
+    } else {
+      // Already subscribed: just show what's cached
+      const allCached = nostrClient.getActiveVideos();
+
+      const filteredCached = allCached.filter((video) => {
+        if (this.blacklistedEventIds.has(video.id)) {
+          return false;
+        }
+
+        const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+        return !initialBlacklist.includes(authorNpub);
+      });
+
+      this.renderVideoList(filteredCached);
     }
   }
 
@@ -764,7 +800,7 @@ class bitvidApp {
 
     if (!videos || videos.length === 0) {
       this.videoList.innerHTML = `
-      <p class="text-center text-gray-500">
+      <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
         No public videos available yet. Be the first to upload one!
       </p>`;
       return;
@@ -1017,26 +1053,27 @@ class bitvidApp {
         return;
       }
 
-      // Look up the video in our subscription map
+      // 1) Check local 'videosMap' or 'nostrClient.getActiveVideos()'
       let matchedVideo = Array.from(this.videosMap.values()).find(
         (v) => v.magnet === decodedMagnet
       );
-
-      // If not found in the map, do a fallback fetch
       if (!matchedVideo) {
-        const allVideos = await nostrClient.fetchVideos();
-        matchedVideo = allVideos.find((v) => v.magnet === decodedMagnet);
+        // Instead of forcing a full `fetchVideos()`,
+        // try looking in the activeVideos from local cache:
+        const activeVideos = nostrClient.getActiveVideos();
+        matchedVideo = activeVideos.find((v) => v.magnet === decodedMagnet);
       }
 
+      // If still not found, you can do a single event-based approach or just show an error:
       if (!matchedVideo) {
-        this.showError("No matching video found.");
+        this.showError("No matching video found in local cache.");
         return;
       }
 
-      // Update our tracking
+      // Update tracking
       this.currentMagnetUri = decodedMagnet;
 
-      // Hand off to the method that already sets modal fields and streams
+      // Delegate to the main method
       await this.playVideoByEventId(matchedVideo.id);
     } catch (error) {
       console.error("Error in playVideo:", error);
@@ -1172,6 +1209,10 @@ class bitvidApp {
 
       // 8) Refresh local UI
       await this.loadVideos();
+
+      // 8.1) Purge the outdated cache
+      this.videosMap.clear();
+
       this.showSuccess("Video updated successfully!");
 
       // 9) Also refresh all profile caches so any new name/pic changes are reflected
@@ -1309,16 +1350,20 @@ class bitvidApp {
    * Helper to open a video by event ID (like ?v=...).
    */
   async playVideoByEventId(eventId) {
+    // First, check if this event is blacklisted
+    if (this.blacklistedEventIds.has(eventId)) {
+      this.showError("This content has been removed or is not allowed.");
+      return;
+    }
+
     try {
       // 1) Check local subscription map
       let video = this.videosMap.get(eventId);
-
       // 2) If not in local map, attempt fallback fetch from getOldEventById
       if (!video) {
         video = await this.getOldEventById(eventId);
       }
-
-      // 3) If still no luck, show error and return
+      // 3) If still not found, show error and return
       if (!video) {
         this.showError("Video not found.");
         return;
@@ -1368,8 +1413,9 @@ class bitvidApp {
 
       // 8) Render video details in modal
       const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (this.videoTitle)
+      if (this.videoTitle) {
         this.videoTitle.textContent = video.title || "Untitled";
+      }
       if (this.videoDescription) {
         this.videoDescription.textContent =
           video.description || "No description available.";
@@ -1391,14 +1437,18 @@ class bitvidApp {
         this.creatorAvatar.alt = creatorProfile.name;
       }
 
-      // 9) Stream torrent
-      this.log("Starting video stream with:", video.magnet);
+      // 9) Clean up any existing torrent instance before starting a new stream
+      await torrentClient.cleanup();
+      // 10) Append a cache-busting parameter to the magnet URI
+      const cacheBustedMagnet = video.magnet + "&ts=" + Date.now();
+      this.log("Starting video stream with:", cacheBustedMagnet);
+
       const realTorrent = await torrentClient.streamVideo(
-        video.magnet,
+        cacheBustedMagnet,
         this.modalVideo
       );
 
-      // 10) Start intervals to update stats
+      // 11) Start intervals to update stats
       const updateInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
           clearInterval(updateInterval);
@@ -1465,26 +1515,30 @@ class bitvidApp {
       return video;
     }
 
-    // 2) Bulk fetch from relays
-    const allFromBulk = await nostrClient.fetchVideos();
-
-    // 2a) Deduplicate so we only keep newest version per root
-    const newestPerRoot = dedupeToNewestByRoot(allFromBulk);
-
-    // 2b) Find the requested ID within the deduplicated set
-    video = newestPerRoot.find((v) => v.id === eventId);
-    if (video) {
-      // Store it in our local map, so we can open it instantly next time
-      this.videosMap.set(video.id, video);
-      return video;
+    // 2) Already in nostrClient.allEvents?
+    //    (assuming nostrClient.allEvents is a Map of id => video)
+    const fromAll = nostrClient.allEvents.get(eventId);
+    if (fromAll && !fromAll.deleted) {
+      this.videosMap.set(eventId, fromAll);
+      return fromAll;
     }
 
-    // 3) Final fallback: direct single-event fetch
+    // 3) Direct single-event fetch (fewer resources than full fetchVideos)
     const single = await nostrClient.getEventById(eventId);
     if (single && !single.deleted) {
       this.videosMap.set(single.id, single);
       return single;
     }
+
+    // 4) If you wanted a final fallback, you could do it here:
+    //    But it's typically better to avoid repeated full fetches
+    // console.log("Falling back to full fetchVideos...");
+    // const allFetched = await nostrClient.fetchVideos();
+    // video = allFetched.find(v => v.id === eventId && !v.deleted);
+    // if (video) {
+    //   this.videosMap.set(video.id, video);
+    //   return video;
+    // }
 
     // Not found or was deleted
     return null;

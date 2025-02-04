@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <title>bitvid General Feedback Form</title>
     <!-- Link to your main stylesheet -->
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="../../css/style.css" />
     <style>
       /* Override for form page to match modal field styling */
 
@@ -42,7 +42,7 @@
         display: block;
         margin-top: 1em;
         font-weight: bold;
-        color: #E5E7EB; /* Tailwind's text-gray-200 */
+        color: #e5e7eb; /* Tailwind's text-gray-200 */
       }
 
       /* Input, textarea, and select styling */
@@ -51,8 +51,8 @@
       select {
         width: 100%;
         margin-bottom: 0.75em;
-        background-color: #1F2937; /* Tailwind's bg-gray-800 */
-        color: #F3F4F6; /* Tailwind's text-gray-100 */
+        background-color: #1f2937; /* Tailwind's bg-gray-800 */
+        color: #f3f4f6; /* Tailwind's text-gray-100 */
         border: 1px solid #374151; /* Tailwind's border-gray-700 */
         padding: 0.5em;
         border-radius: 0.375rem; /* rounded-md */
@@ -62,9 +62,9 @@
       input:focus,
       textarea:focus,
       select:focus {
-        border-color: #3B82F6; /* blue-500 */
+        border-color: #3b82f6; /* blue-500 */
         outline: none;
-        box-shadow: 0 0 0 1px #3B82F6;
+        box-shadow: 0 0 0 1px #3b82f6;
       }
 
       /* Checkbox group styling */
@@ -84,7 +84,7 @@
       /* Button styling */
       button {
         padding: 0.5em 1em;
-        background: #3B82F6; /* blue-500 */
+        background: #3b82f6; /* blue-500 */
         color: #fff;
         border: none;
         border-radius: 0.375rem;
@@ -104,13 +104,13 @@
         margin: 0.25em 0;
       }
       .error {
-        color: #F87171;
+        color: #f87171;
       }
       .success {
-        color: #3B82F6;
+        color: #3b82f6;
       }
       .warn {
-        color: #FACC15;
+        color: #facc15;
       }
 
       /* Custom Scrollbar styling for WebKit browsers */
@@ -122,13 +122,13 @@
         background: transparent;
       }
       ::-webkit-scrollbar-thumb {
-        background-color: #3B82F6;
+        background-color: #3b82f6;
         border-radius: 4px;
       }
       /* Custom Scrollbar styling for Firefox */
       * {
         scrollbar-width: thin;
-        scrollbar-color: #3B82F6 transparent;
+        scrollbar-color: #3b82f6 transparent;
       }
     </style>
     <!-- Load nostr‑tools v2.10.4 -->
@@ -138,48 +138,112 @@
     <div class="container">
       <div class="form-container">
         <p>
-          Your feedback helps us improve bitvid! Whether it’s a suggestion, a concern, or general thoughts on the platform, we’d love to hear from you.
+          Your feedback helps us improve bitvid! Whether it’s a suggestion, a
+          concern, or general thoughts on the platform, we’d love to hear from
+          you.
         </p>
         <form id="feedback-form">
           <!-- Section 1: User Information -->
           <h2>1. User Information</h2>
           <label for="userNpub">Nostr Public Key (npub) (optional):</label>
-          <input type="text" id="userNpub" placeholder="Enter your npub (optional)" />
+          <input
+            type="text"
+            id="userNpub"
+            placeholder="Enter your npub (optional)"
+          />
           <p>Are you a (check all that apply):</p>
           <div class="checkbox-group">
-            <label><input type="checkbox" name="userRole" value="Viewer" /> Viewer</label>
-            <label><input type="checkbox" name="userRole" value="Content Creator" /> Content Creator</label>
-            <label><input type="checkbox" name="userRole" value="Developer/Contributor" /> Developer / Contributor</label>
+            <label
+              ><input type="checkbox" name="userRole" value="Viewer" />
+              Viewer</label
+            >
+            <label
+              ><input type="checkbox" name="userRole" value="Content Creator" />
+              Content Creator</label
+            >
+            <label
+              ><input
+                type="checkbox"
+                name="userRole"
+                value="Developer/Contributor"
+              />
+              Developer / Contributor</label
+            >
           </div>
 
           <!-- Section 2: General Feedback -->
           <h2>2. General Feedback</h2>
           <label>How would you rate your experience on bitvid so far?</label>
           <div class="radio-group">
-            <label><input type="radio" name="experienceRating" value="Excellent" /> Excellent</label>
-            <label><input type="radio" name="experienceRating" value="Good" /> Good</label>
-            <label><input type="radio" name="experienceRating" value="Average" /> Average</label>
-            <label><input type="radio" name="experienceRating" value="Needs Improvement" /> Needs Improvement</label>
+            <label
+              ><input type="radio" name="experienceRating" value="Excellent" />
+              Excellent</label
+            >
+            <label
+              ><input type="radio" name="experienceRating" value="Good" />
+              Good</label
+            >
+            <label
+              ><input type="radio" name="experienceRating" value="Average" />
+              Average</label
+            >
+            <label
+              ><input
+                type="radio"
+                name="experienceRating"
+                value="Needs Improvement"
+              />
+              Needs Improvement</label
+            >
           </div>
           <label for="likeMost">What do you like most about bitvid?</label>
-          <textarea id="likeMost" rows="3" placeholder="Describe the features, usability, or content you enjoy"></textarea>
+          <textarea
+            id="likeMost"
+            rows="3"
+            placeholder="Describe the features, usability, or content you enjoy"
+          ></textarea>
           <label for="improvements">What would you like to see improved?</label>
-          <textarea id="improvements" rows="3" placeholder="Provide specific areas for improvement"></textarea>
-          <label for="confusingFeatures">Are there any features or tools you find confusing or difficult to use?</label>
-          <textarea id="confusingFeatures" rows="3" placeholder="Explain any challenges you’ve encountered"></textarea>
+          <textarea
+            id="improvements"
+            rows="3"
+            placeholder="Provide specific areas for improvement"
+          ></textarea>
+          <label for="confusingFeatures"
+            >Are there any features or tools you find confusing or difficult to
+            use?</label
+          >
+          <textarea
+            id="confusingFeatures"
+            rows="3"
+            placeholder="Explain any challenges you’ve encountered"
+          ></textarea>
 
           <!-- Section 3: Additional Comments -->
           <h2>3. Additional Comments</h2>
-          <label for="otherSuggestions">Do you have any other suggestions or thoughts about bitvid?</label>
-          <textarea id="otherSuggestions" rows="3" placeholder="Share any other feedback"></textarea>
-          <label for="followUp">Would you like to be contacted for follow-up discussions?</label>
+          <label for="otherSuggestions"
+            >Do you have any other suggestions or thoughts about bitvid?</label
+          >
+          <textarea
+            id="otherSuggestions"
+            rows="3"
+            placeholder="Share any other feedback"
+          ></textarea>
+          <label for="followUp"
+            >Would you like to be contacted for follow-up discussions?</label
+          >
           <select id="followUp">
             <option value="">Select an option</option>
             <option value="Yes">Yes</option>
             <option value="No">No</option>
           </select>
-          <label for="preferredContact">Preferred contact method (if applicable):</label>
-          <input type="text" id="preferredContact" placeholder="Nostr DM, email, or other" />
+          <label for="preferredContact"
+            >Preferred contact method (if applicable):</label
+          >
+          <input
+            type="text"
+            id="preferredContact"
+            placeholder="Nostr DM, email, or other"
+          />
 
           <button type="submit">Submit General Feedback</button>
         </form>
@@ -206,51 +270,78 @@
           log("NostrTools not loaded. Check console or ad-blockers.", "error");
           return;
         }
-        const { generateSecretKey, getPublicKey, finalizeEvent, nip04, nip19, SimplePool, Relay } = window.NostrTools;
+        const {
+          generateSecretKey,
+          getPublicKey,
+          finalizeEvent,
+          nip04,
+          nip19,
+          SimplePool,
+          Relay,
+        } = window.NostrTools;
 
         // Set the recipient's NPUB (your personal NPUB)
-        const recipientNpub = "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+        const recipientNpub =
+          "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
         const RELAYS = [
           "wss://relay.snort.social",
           "wss://relay.damus.io",
-          "wss://relay.primal.net"
+          "wss://relay.primal.net",
         ];
         const pool = new SimplePool();
 
-        document.getElementById("feedback-form").addEventListener("submit", async (ev) => {
-          ev.preventDefault();
-          clear();
+        document
+          .getElementById("feedback-form")
+          .addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            clear();
 
-          try {
-            // Section 1: User Information
-            const userNpub = document.getElementById("userNpub").value.trim();
-            const roleNodes = document.querySelectorAll('input[name="userRole"]:checked');
-            let userRoles = [];
-            roleNodes.forEach(node => {
-              userRoles.push(node.value);
-            });
+            try {
+              // Section 1: User Information
+              const userNpub = document.getElementById("userNpub").value.trim();
+              const roleNodes = document.querySelectorAll(
+                'input[name="userRole"]:checked'
+              );
+              let userRoles = [];
+              roleNodes.forEach((node) => {
+                userRoles.push(node.value);
+              });
 
-            // Section 2: General Feedback
-            const experienceRadio = document.querySelector('input[name="experienceRating"]:checked');
-            const experienceRating = experienceRadio ? experienceRadio.value : "N/A";
-            const likeMost = document.getElementById("likeMost").value.trim();
-            const improvements = document.getElementById("improvements").value.trim();
-            const confusingFeatures = document.getElementById("confusingFeatures").value.trim();
+              // Section 2: General Feedback
+              const experienceRadio = document.querySelector(
+                'input[name="experienceRating"]:checked'
+              );
+              const experienceRating = experienceRadio
+                ? experienceRadio.value
+                : "N/A";
+              const likeMost = document.getElementById("likeMost").value.trim();
+              const improvements = document
+                .getElementById("improvements")
+                .value.trim();
+              const confusingFeatures = document
+                .getElementById("confusingFeatures")
+                .value.trim();
 
-            // Section 3: Additional Comments
-            const otherSuggestions = document.getElementById("otherSuggestions").value.trim();
-            const followUp = document.getElementById("followUp").value.trim();
-            const preferredContact = document.getElementById("preferredContact").value.trim();
+              // Section 3: Additional Comments
+              const otherSuggestions = document
+                .getElementById("otherSuggestions")
+                .value.trim();
+              const followUp = document.getElementById("followUp").value.trim();
+              const preferredContact = document
+                .getElementById("preferredContact")
+                .value.trim();
 
-            // Construct the Markdown feedback content
-            const feedbackContent = `
+              // Construct the Markdown feedback content
+              const feedbackContent = `
 # **bitvid General Feedback Form**
 
 Your feedback helps us improve bitvid! Whether it’s a suggestion, a concern, or general thoughts on the platform, we’d love to hear from you.
 
 ## **1. User Information**
 - **Nostr Public Key (npub) (optional):** ${userNpub || "N/A"}
-- **Are you a (check all that apply):** ${userRoles.length > 0 ? userRoles.join(", ") : "N/A"}
+- **Are you a (check all that apply):** ${
+                userRoles.length > 0 ? userRoles.join(", ") : "N/A"
+              }
 
 ## **2. General Feedback**
 - **How would you rate your experience on bitvid so far?** ${experienceRating}
@@ -264,7 +355,9 @@ Your feedback helps us improve bitvid! Whether it’s a suggestion, a concern, o
 ## **3. Additional Comments**
 - **Do you have any other suggestions or thoughts about bitvid?**  
   ${otherSuggestions || "N/A"}
-- **Would you like to be contacted for follow-up discussions?** ${followUp || "N/A"}
+- **Would you like to be contacted for follow-up discussions?** ${
+                followUp || "N/A"
+              }
 - **Preferred contact method (if applicable):** ${preferredContact || "N/A"}
 
 ---
@@ -274,71 +367,87 @@ We review all feedback regularly to improve bitvid. While not all suggestions ma
 For additional discussions, reach out via bitvid’s Nostr support channels.
             `.trim();
 
-            log("[DEBUG] Constructed feedback content:\n" + feedbackContent);
+              log("[DEBUG] Constructed feedback content:\n" + feedbackContent);
 
-            // Decode the recipient NPUB to get the public key.
-            log("Decoding recipient npub...");
-            const decoded = nip19.decode(recipientNpub);
-            log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
-            if (decoded.type !== "npub") {
-              throw new Error("Decoded type is not npub.");
+              // Decode the recipient NPUB to get the public key.
+              log("Decoding recipient npub...");
+              const decoded = nip19.decode(recipientNpub);
+              log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
+              if (decoded.type !== "npub") {
+                throw new Error("Decoded type is not npub.");
+              }
+              const targetPubHex = decoded.data;
+              log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
+
+              // Generate an ephemeral key pair.
+              log("Generating ephemeral key...");
+              const ephemeralPriv = generateSecretKey();
+              const ephemeralPubHex = getPublicKey(ephemeralPriv);
+              log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
+
+              // Encrypt the feedback content.
+              log("Encrypting feedback content (nip04)...");
+              const ciphertext = await nip04.encrypt(
+                ephemeralPriv,
+                targetPubHex,
+                feedbackContent
+              );
+              log("[DEBUG] Ciphertext: " + ciphertext);
+              log("Encryption done.");
+
+              // Build the event template.
+              const now = Math.floor(Date.now() / 1000);
+              const eventTemplate = {
+                kind: 4,
+                created_at: now,
+                tags: [["p", targetPubHex]],
+                content: ciphertext,
+              };
+              log(
+                "[DEBUG] Event template before finalizing: " +
+                  JSON.stringify(eventTemplate)
+              );
+
+              // Finalize the event.
+              const event = finalizeEvent(eventTemplate, ephemeralPriv);
+              log("[DEBUG] Final event: " + JSON.stringify(event));
+
+              // Publish the event to all relays.
+              log("Publishing the feedback to relays...");
+              await Promise.any(pool.publish(RELAYS, event));
+              log("At least one relay accepted the event.", "success");
+
+              // Subscribe to each relay to verify storage.
+              for (const url of RELAYS) {
+                log("Connecting to " + url + " for subscription...");
+                const relay = await Relay.connect(url);
+                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                  onEvent(foundEvent) {
+                    if (foundEvent.id === event.id) {
+                      log(
+                        "[" +
+                          url +
+                          "] => Found our feedback in storage! ID: " +
+                          foundEvent.id.slice(0, 8) +
+                          "...",
+                        "success"
+                      );
+                    }
+                  },
+                  onEose() {
+                    relay.close();
+                  },
+                });
+              }
+
+              log(
+                "Done. If the logs show that at least one relay accepted the event and the feedback was stored, it will be reviewed accordingly."
+              );
+            } catch (err) {
+              log("Error: " + err.message, "error");
+              console.error(err);
             }
-            const targetPubHex = decoded.data;
-            log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
-
-            // Generate an ephemeral key pair.
-            log("Generating ephemeral key...");
-            const ephemeralPriv = generateSecretKey();
-            const ephemeralPubHex = getPublicKey(ephemeralPriv);
-            log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
-
-            // Encrypt the feedback content.
-            log("Encrypting feedback content (nip04)...");
-            const ciphertext = await nip04.encrypt(ephemeralPriv, targetPubHex, feedbackContent);
-            log("[DEBUG] Ciphertext: " + ciphertext);
-            log("Encryption done.");
-
-            // Build the event template.
-            const now = Math.floor(Date.now() / 1000);
-            const eventTemplate = {
-              kind: 4,
-              created_at: now,
-              tags: [["p", targetPubHex]],
-              content: ciphertext,
-            };
-            log("[DEBUG] Event template before finalizing: " + JSON.stringify(eventTemplate));
-
-            // Finalize the event.
-            const event = finalizeEvent(eventTemplate, ephemeralPriv);
-            log("[DEBUG] Final event: " + JSON.stringify(event));
-
-            // Publish the event to all relays.
-            log("Publishing the feedback to relays...");
-            await Promise.any(pool.publish(RELAYS, event));
-            log("At least one relay accepted the event.", "success");
-
-            // Subscribe to each relay to verify storage.
-            for (const url of RELAYS) {
-              log("Connecting to " + url + " for subscription...");
-              const relay = await Relay.connect(url);
-              relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
-                onEvent(foundEvent) {
-                  if (foundEvent.id === event.id) {
-                    log("[" + url + "] => Found our feedback in storage! ID: " + foundEvent.id.slice(0, 8) + "...", "success");
-                  }
-                },
-                onEose() {
-                  relay.close();
-                },
-              });
-            }
-
-            log("Done. If the logs show that at least one relay accepted the event and the feedback was stored, it will be reviewed accordingly.");
-          } catch (err) {
-            log("Error: " + err.message, "error");
-            console.error(err);
-          }
-        });
+          });
       });
     </script>
   </body>

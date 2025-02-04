@@ -475,32 +475,66 @@
             if (appModal) {
               appModal.classList.add("hidden");
             }
+            // ADDED: If user has not seen disclaimer yet, show it after application modal is closed
+            if (!localStorage.getItem("hasSeenDisclaimer")) {
+              const disclaimerModal =
+                document.getElementById("disclaimerModal");
+              if (disclaimerModal) {
+                disclaimerModal.classList.remove("hidden");
+              }
+            }
           });
         }
 
         //
         // 5) ?modal=appeals => open content appeals form
+        //    ?modal=application => open application form
         //
         const urlParams = new URLSearchParams(window.location.search);
         const modalParam = urlParams.get("modal");
+
         if (modalParam === "appeals") {
           const appealsModal = document.getElementById("contentAppealsModal");
           if (appealsModal) {
             appealsModal.classList.remove("hidden");
           }
-        }
-        //
-        // 5.1) ?modal=application => open application form
-        //
-        else if (modalParam === "application") {
+
+          // ADDED: After user closes appeals, show disclaimer if needed
+          const closeAppealsBtn = document.getElementById(
+            "closeContentAppealsModal"
+          );
+          if (closeAppealsBtn) {
+            closeAppealsBtn.addEventListener("click", () => {
+              appealsModal.classList.add("hidden");
+              if (!localStorage.getItem("hasSeenDisclaimer")) {
+                const disclaimerModal =
+                  document.getElementById("disclaimerModal");
+                if (disclaimerModal) {
+                  disclaimerModal.classList.remove("hidden");
+                }
+              }
+            });
+          }
+        } else if (modalParam === "application") {
+          // Show application form, but DO NOT show disclaimer until user closes
           const appModal = document.getElementById("nostrFormModal");
           if (appModal) {
             appModal.classList.remove("hidden");
           }
+          // Note: The close event above (closeNostrFormBtn) handles the disclaimer after closing.
+        } else {
+          // If there's no special param in the URL, we can consider showing the disclaimer right away
+          const hasSeenDisclaimer = localStorage.getItem("hasSeenDisclaimer");
+          if (!hasSeenDisclaimer) {
+            const disclaimerModal = document.getElementById("disclaimerModal");
+            if (disclaimerModal) {
+              disclaimerModal.classList.remove("hidden");
+            }
+          }
         }
 
         //
-        // 6) Close content appeals modal
+        // 6) Close content appeals modal (needed if user navigates w/o param, then opens appeals)
         //
         const closeAppealsBtn = document.getElementById(
           "closeContentAppealsModal"
@@ -515,23 +549,23 @@
         }
 
         //
-        // 7) Show disclaimer modal on page load, hide on "I Understand"
+        // 7) Disclaimer 'I Understand' Button
         //
-        const disclaimerModal = document.getElementById("disclaimerModal");
         const acceptDisclaimerBtn = document.getElementById("acceptDisclaimer");
-        if (disclaimerModal) {
-          // Show immediately
-          disclaimerModal.classList.remove("hidden");
-          if (acceptDisclaimerBtn) {
-            acceptDisclaimerBtn.addEventListener("click", () => {
+        if (acceptDisclaimerBtn) {
+          acceptDisclaimerBtn.addEventListener("click", () => {
+            // Hide disclaimer
+            const disclaimerModal = document.getElementById("disclaimerModal");
+            if (disclaimerModal) {
               disclaimerModal.classList.add("hidden");
-            });
-          }
+            }
+            // Store the fact that user has seen it
+            localStorage.setItem("hasSeenDisclaimer", "true");
+          });
         }
 
         //
         // 8) Query param checks for the three new forms
-        //
         //    https://bitvid.network?modal=feedback => open generalFeedbackModal
         //    https://bitvid.network?modal=feature => open featureRequestModal
         //    https://bitvid.network?modal=bug => open bugFixModal
@@ -599,6 +633,10 @@
 
     <!-- Other Scripts -->
     <script src="js/libs/nostr.bundle.js"></script>
+    <script type="module">
+      import { nip19, SimplePool } from "https://esm.sh/nostr-tools@1.8.3";
+      window.NostrTools = { nip19, SimplePool };
+    </script>
     <script type="module" src="js/config.js"></script>
     <script type="module" src="js/lists.js"></script>
     <script type="module" src="js/accessControl.js"></script>
