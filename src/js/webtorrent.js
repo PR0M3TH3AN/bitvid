@@ -41,7 +41,7 @@ export class TorrentClient {
         return false;
       };
 
-      // Check if already active
+      // If it's already active
       if (checkActivation()) return;
 
       registration.addEventListener("activate", () => {
@@ -59,10 +59,10 @@ export class TorrentClient {
     });
   }
 
-  // --------------------------
-  // setupServiceWorker
-  // --------------------------
-    async setupServiceWorker() {
+  // ------------------------------------------------------------------
+  // setupServiceWorker: Registers /sw.min.js at the root with scope "/"
+  // ------------------------------------------------------------------
+  async setupServiceWorker() {
     try {
       const isBraveBrowser = await this.isBrave();
 
@@ -73,7 +73,7 @@ export class TorrentClient {
         throw new Error("Service Worker not supported or disabled");
       }
 
-      // Optional Brave config
+      // (Optional) Brave config check
       if (isBraveBrowser) {
         this.log("Checking Brave configuration...");
         if (!navigator.serviceWorker) {
@@ -83,15 +83,16 @@ export class TorrentClient {
           throw new Error("Please enable WebRTC in Brave Shield settings");
         }
 
-        // Unregister any existing SW
+        // Unregister any existing service workers
         const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const registration of registrations) {
-          await registration.unregister();
+        for (const reg of registrations) {
+          await reg.unregister();
         }
+        // A short wait to ensure old workers are gone
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      // Register sw.min.js at the root (e.g. /sw.min.js) with scope = "/"
+      // Register sw.min.js at the root path "/sw.min.js", with scope "/"
       this.log("Registering service worker at /sw.min.js...");
       const registration = await navigator.serviceWorker.register("/sw.min.js", {
         scope: "/",
@@ -122,7 +123,7 @@ export class TorrentClient {
       await this.waitForServiceWorkerActivation(registration);
       this.log("Service worker activated");
 
-      // Ensure the SW is fully ready
+      // Double-check the SW is fully ready
       const readyRegistration = await Promise.race([
         navigator.serviceWorker.ready,
         new Promise((_, reject) =>
@@ -147,7 +148,7 @@ export class TorrentClient {
 
   // Minimal handleChromeTorrent
   handleChromeTorrent(torrent, videoElement, resolve, reject) {
-    // OPTIONAL: Listen for “warning” events
+    // Listen for warnings, e.g. potential CORS blocks
     torrent.on("warning", (err) => {
       if (err && typeof err.message === "string") {
         if (
@@ -157,7 +158,6 @@ export class TorrentClient {
           console.warn(
             "CORS warning detected. Attempting to remove the failing webseed/tracker."
           );
-          // Example cleanup approach...
           if (torrent._opts?.urlList?.length) {
             torrent._opts.urlList = torrent._opts.urlList.filter((url) => {
               return !url.includes("distribution.bbb3d.renderfarming.net");
@@ -174,22 +174,21 @@ export class TorrentClient {
       }
     });
 
-    // Then proceed with normal file selection
     const file = torrent.files.find((f) => /\.(mp4|webm|mkv)$/i.test(f.name));
     if (!file) {
       return reject(new Error("No compatible video file found in torrent"));
     }
 
-    // Mute & crossOrigin
+    // Mute & cross-origin
     videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
-    // Catch video-level errors
+    // Handle video-level errors
     videoElement.addEventListener("error", (e) => {
       this.log("Video error:", e.target.error);
     });
 
-    // Attempt autoplay
+    // Attempt autoplay when canplay
     videoElement.addEventListener("canplay", () => {
       videoElement.play().catch((err) => {
         this.log("Autoplay failed:", err);
@@ -249,7 +248,56 @@ export class TorrentClient {
   }
 
   /**
-   * Clean up
+   * Initiates streaming of a torrent magnet to a <video> element.
+   * Use `setupServiceWorker()` first to ensure the SW is registered.
+   */
+  async streamVideo(magnetURI, videoElement) {
+    try {
+      // 1) Setup service worker
+      const registration = await this.setupServiceWorker();
+      if (!registration || !registration.active) {
+        throw new Error("Service worker setup failed");
+      }
+
+      // 2) Optionally configure a pathPrefix here if your SW
+      //    intercepts /webtorrent/ or /src/webtorrent
+      //    this.client.createServer({
+      //      controller: registration,
+      //      pathPrefix: "/webtorrent",
+      //    });
+
+      this.client.createServer({ controller: registration });
+      this.log("WebTorrent server created");
+
+      const isFirefoxBrowser = this.isFirefox();
+
+      return new Promise((resolve, reject) => {
+        if (isFirefoxBrowser) {
+          this.log("Starting torrent download (Firefox path)");
+          this.client.add(
+            magnetURI,
+            { strategy: "sequential", maxWebConns: 4 },
+            (torrent) => {
+              this.log("Torrent added (Firefox path):", torrent.name);
+              this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
+            }
+          );
+        } else {
+          this.log("Starting torrent download (Chrome path)");
+          this.client.add(magnetURI, (torrent) => {
+            this.log("Torrent added (Chrome path):", torrent.name);
+            this.handleChromeTorrent(torrent, videoElement, resolve, reject);
+          });
+        }
+      });
+    } catch (error) {
+      this.log("Failed to setup video streaming:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clean up resources
    */
   async cleanup() {
     try {
