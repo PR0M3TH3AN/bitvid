@@ -633,6 +633,10 @@
 
     <!-- Other Scripts -->
     <script src="js/libs/nostr.bundle.js"></script>
+    <script type="module">
+      import { nip19, SimplePool } from "https://esm.sh/nostr-tools@1.8.3";
+      window.NostrTools = { nip19, SimplePool };
+    </script>
     <script type="module" src="js/config.js"></script>
     <script type="module" src="js/lists.js"></script>
     <script type="module" src="js/accessControl.js"></script>

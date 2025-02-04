@@ -3,15 +3,18 @@
 import { isDevMode } from "./config.js";
 import { accessControl } from "./accessControl.js";
 
+/**
+ * The usual relays
+ */
 const RELAY_URLS = [
   "wss://relay.damus.io",
   "wss://nos.lol",
   "wss://relay.snort.social",
-  "wss://nostr.wine",
+  "wss://relay.primal.net",
   "wss://relay.nostr.band",
 ];
 
-// Just a helper to keep error spam in check
+// To limit error spam
 let errorLogCount = 0;
 const MAX_ERROR_LOGS = 100;
 function logErrorOnce(message, eventContent = null) {
@@ -31,7 +34,7 @@ function logErrorOnce(message, eventContent = null) {
 
 /**
  * Example "encryption" that just reverses strings.
- * In real usage, swap with actual crypto.
+ * In real usage, replace with actual crypto.
  */
 function fakeEncrypt(magnet) {
   return magnet.split("").reverse().join("");
@@ -42,39 +45,61 @@ function fakeDecrypt(encrypted) {
 
 /**
  * Convert a raw Nostr event => your "video" object.
+ * CHANGED: skip if version <2
  */
 function convertEventToVideo(event) {
-  const content = JSON.parse(event.content || "{}");
-  return {
-    id: event.id,
-    // If content.videoRootId is missing, use event.id as a fallback
-    videoRootId: content.videoRootId || event.id,
-    version: content.version ?? 1,
-    isPrivate: content.isPrivate ?? false,
-    title: content.title || "",
-    magnet: content.magnet || "",
-    thumbnail: content.thumbnail || "",
-    description: content.description || "",
-    mode: content.mode || "live",
-    deleted: content.deleted === true,
-    pubkey: event.pubkey,
-    created_at: event.created_at,
-    tags: event.tags,
-  };
+  try {
+    const content = JSON.parse(event.content || "{}");
+
+    // Example checks:
+    const isSupportedVersion = content.version >= 2;
+    const hasRequiredFields = !!(content.title && content.magnet);
+
+    if (!isSupportedVersion) {
+      return {
+        id: event.id,
+        invalid: true,
+        reason: "version <2",
+      };
+    }
+    if (!hasRequiredFields) {
+      return {
+        id: event.id,
+        invalid: true,
+        reason: "missing title/magnet",
+      };
+    }
+
+    return {
+      id: event.id,
+      videoRootId: content.videoRootId || event.id,
+      version: content.version,
+      isPrivate: content.isPrivate ?? false,
+      title: content.title ?? "",
+      magnet: content.magnet ?? "",
+      thumbnail: content.thumbnail ?? "",
+      description: content.description ?? "",
+      mode: content.mode ?? "live",
+      deleted: content.deleted === true,
+      pubkey: event.pubkey,
+      created_at: event.created_at,
+      tags: event.tags,
+      invalid: false,
+    };
+  } catch (err) {
+    // JSON parse error
+    return { id: event.id, invalid: true, reason: "json parse error" };
+  }
 }
 
 /**
- * Key each "active" video by its root ID => so you only store
- * the newest version for each root. But for older events w/o videoRootId,
- * or w/o 'd' tag, we handle fallback logic below.
+ * If the video has videoRootId => use that as the “group key”.
+ * Otherwise fallback to (pubkey + dTag), or if no dTag => “LEGACY:id”
  */
 function getActiveKey(video) {
-  // If it has a videoRootId, we use that
   if (video.videoRootId) {
     return `ROOT:${video.videoRootId}`;
   }
-  // Otherwise fallback to (pubkey + dTag) or if no dTag, fallback to event.id
-  // This is a fallback approach so older events appear in the "active map".
   const dTag = video.tags?.find((t) => t[0] === "d");
   if (dTag) {
     return `${video.pubkey}:${dTag[1]}`;
@@ -88,15 +113,15 @@ class NostrClient {
     this.pubkey = null;
     this.relays = RELAY_URLS;
 
-    // All events—old or new—so older share links still work
+    // Store all events so older links still work
     this.allEvents = new Map();
 
-    // "activeMap" holds only the newest version for each root ID (or fallback).
+    // “activeMap” holds only the newest version for each root
     this.activeMap = new Map();
   }
 
   /**
-   * Connect to all configured relays
+   * Connect to the configured relays
    */
   async init() {
     if (isDevMode) console.log("Connecting to relays...");
@@ -107,7 +132,9 @@ class NostrClient {
       const successfulRelays = results
         .filter((r) => r.success)
         .map((r) => r.url);
-      if (successfulRelays.length === 0) throw new Error("No relays connected");
+      if (successfulRelays.length === 0) {
+        throw new Error("No relays connected");
+      }
       if (isDevMode) {
         console.log(`Connected to ${successfulRelays.length} relay(s)`);
       }
@@ -133,7 +160,6 @@ class NostrClient {
               sub.unsub();
               resolve({ url, success: true });
             };
-
             sub.on("event", succeed);
             sub.on("eose", succeed);
           })
@@ -142,7 +168,7 @@ class NostrClient {
   }
 
   /**
-   * Attempt Nostr extension login or abort
+   * Attempt login with a Nostr extension
    */
   async login() {
     try {
@@ -152,7 +178,6 @@ class NostrClient {
           "Please install a Nostr extension (Alby, nos2x, etc.)."
         );
       }
-
       const pubkey = await window.nostr.getPublicKey();
       const npub = window.NostrTools.nip19.npubEncode(pubkey);
 
@@ -162,8 +187,7 @@ class NostrClient {
         console.log("Whitelist:", accessControl.getWhitelist());
         console.log("Blacklist:", accessControl.getBlacklist());
       }
-
-      // Access control check
+      // Access control
       if (!accessControl.canAccess(npub)) {
         if (accessControl.isBlacklisted(npub)) {
           throw new Error("Your account has been blocked on this platform.");
@@ -171,15 +195,14 @@ class NostrClient {
           throw new Error("Access restricted to whitelisted users only.");
         }
       }
-
       this.pubkey = pubkey;
       if (isDevMode) {
         console.log("Logged in with extension. Pubkey:", this.pubkey);
       }
       return this.pubkey;
-    } catch (e) {
-      console.error("Login error:", e);
-      throw e;
+    } catch (err) {
+      console.error("Login error:", err);
+      throw err;
     }
   }
 
@@ -188,17 +211,9 @@ class NostrClient {
     if (isDevMode) console.log("User logged out.");
   }
 
-  decodeNsec(nsec) {
-    try {
-      const { data } = window.NostrTools.nip19.decode(nsec);
-      return data;
-    } catch (error) {
-      throw new Error("Invalid NSEC key.");
-    }
-  }
-
   /**
-   * Publish a *new* video with a brand-new d tag & brand-new videoRootId
+   * Publish a new video
+   * CHANGED: Force version=2 for all new notes
    */
   async publishVideo(videoData, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
@@ -212,13 +227,13 @@ class NostrClient {
       finalMagnet = fakeEncrypt(finalMagnet);
     }
 
-    // new "videoRootId" ensures all future edits know they're from the same root
+    // brand-new root & d
     const videoRootId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const dTagValue = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     const contentObject = {
       videoRootId,
-      version: videoData.version ?? 1,
+      version: 2, // forcibly set version=2
       deleted: false,
       isPrivate: videoData.isPrivate ?? false,
       title: videoData.title || "",
@@ -258,7 +273,6 @@ class NostrClient {
           }
         })
       );
-
       return signedEvent;
     } catch (err) {
       if (isDevMode) console.error("Failed to sign/publish:", err);
@@ -267,11 +281,7 @@ class NostrClient {
   }
 
   /**
-   * Edits a video by creating a *new event* with a brand-new d tag,
-   * but reuses the same videoRootId as the original.
-   *
-   * => old link remains pinned to the old event, new link is a fresh ID.
-   * => older version is overshadowed if your dedupe logic only shows newest.
+   * Edits a video => old style
    */
   async editVideo(originalEventStub, updatedData, pubkey) {
     if (!pubkey) {
@@ -281,9 +291,7 @@ class NostrClient {
       throw new Error("You do not own this video (pubkey mismatch).");
     }
 
-    // 1) Attempt to get the FULL old event details (especially videoRootId)
     let baseEvent = originalEventStub;
-    // If the caller didn't pass .videoRootId, fetch from local or relay:
     if (!baseEvent.videoRootId) {
       const fetched = await this.getEventById(originalEventStub.id);
       if (!fetched) {
@@ -292,32 +300,25 @@ class NostrClient {
       baseEvent = fetched;
     }
 
-    // 2) We now have baseEvent.videoRootId if it existed
     let oldRootId = baseEvent.videoRootId || null;
 
-    // Decrypt the old magnet if it was private
+    // Decrypt old magnet if private
     let oldPlainMagnet = baseEvent.magnet || "";
     if (baseEvent.isPrivate && oldPlainMagnet) {
       oldPlainMagnet = fakeDecrypt(oldPlainMagnet);
     }
 
-    // 3) Decide new privacy
     const wantPrivate = updatedData.isPrivate ?? baseEvent.isPrivate ?? false;
 
-    // 4) Fallback to old magnet if none was provided
     let finalPlainMagnet = (updatedData.magnet || "").trim();
     if (!finalPlainMagnet) {
       finalPlainMagnet = oldPlainMagnet;
     }
-
-    // 5) Re-encrypt if user wants private
     let finalMagnet = finalPlainMagnet;
     if (wantPrivate) {
       finalMagnet = fakeEncrypt(finalPlainMagnet);
     }
 
-    // 6) If there's no root yet (legacy), use the old event's own ID.
-    // Otherwise keep the existing rootId.
     if (!oldRootId) {
       oldRootId = baseEvent.id;
       if (isDevMode) {
@@ -328,10 +329,8 @@ class NostrClient {
       }
     }
 
-    // Generate a brand-new d-tag so it doesn't overshadow the old share link
     const newD = `${Date.now()}-edit-${Math.random().toString(36).slice(2)}`;
 
-    // 7) Build updated content
     const contentObject = {
       videoRootId: oldRootId,
       version: updatedData.version ?? baseEvent.version ?? 1,
@@ -350,7 +349,7 @@ class NostrClient {
       created_at: Math.floor(Date.now() / 1000),
       tags: [
         ["t", "video"],
-        ["d", newD], // new share link
+        ["d", newD],
       ],
       content: JSON.stringify(contentObject),
     };
@@ -360,7 +359,6 @@ class NostrClient {
       console.log("Event content:", event.content);
     }
 
-    // 8) Sign and publish the new event
     try {
       const signedEvent = await window.nostr.signEvent(event);
       if (isDevMode) {
@@ -389,7 +387,7 @@ class NostrClient {
   }
 
   /**
-   * "Reverting" => we just mark the most recent content as {deleted:true} and blank out magnet/desc
+   * revertVideo => old style
    */
   async revertVideo(originalEvent, pubkey) {
     if (!pubkey) {
@@ -399,7 +397,6 @@ class NostrClient {
       throw new Error("Not your event (pubkey mismatch).");
     }
 
-    // If front-end didn't pass the tags array, load the full event:
     let baseEvent = originalEvent;
     if (!baseEvent.tags || !Array.isArray(baseEvent.tags)) {
       const fetched = await this.getEventById(originalEvent.id);
@@ -423,7 +420,6 @@ class NostrClient {
       };
     }
 
-    // Check d-tag
     const dTag = baseEvent.tags.find((t) => t[0] === "d");
     if (!dTag) {
       throw new Error(
@@ -435,17 +431,15 @@ class NostrClient {
     const oldContent = JSON.parse(baseEvent.content || "{}");
     const oldVersion = oldContent.version ?? 1;
 
-    // If no root, fallback
     let finalRootId = oldContent.videoRootId || null;
     if (!finalRootId) {
       finalRootId = `LEGACY:${baseEvent.pubkey}:${existingD}`;
     }
 
-    // Build “deleted: true” overshadow event => revert current version
     const contentObject = {
       videoRootId: finalRootId,
       version: oldVersion,
-      deleted: true, // mark *this version* as deleted
+      deleted: true,
       isPrivate: oldContent.isPrivate ?? false,
       title: oldContent.title || "",
       magnet: "",
@@ -460,7 +454,7 @@ class NostrClient {
       created_at: Math.floor(Date.now() / 1000),
       tags: [
         ["t", "video"],
-        ["d", existingD], // re-use same d => overshadow
+        ["d", existingD],
       ],
       content: JSON.stringify(contentObject),
     };
@@ -471,9 +465,7 @@ class NostrClient {
         try {
           await this.pool.publish([url], signedEvent);
         } catch (err) {
-          if (isDevMode) {
-            console.error(`Failed to revert on ${url}`, err);
-          }
+          if (isDevMode) console.error(`Failed to revert on ${url}`, err);
         }
       })
     );
@@ -482,15 +474,13 @@ class NostrClient {
   }
 
   /**
-   * "Deleting" => we just mark all content with the same videoRootId as {deleted:true} and blank out magnet/desc
+   * deleteAllVersions => old style
    */
-
   async deleteAllVersions(videoRootId, pubkey) {
     if (!pubkey) {
       throw new Error("Not logged in to delete all versions.");
     }
 
-    // 1) Find all events in our local allEvents that share the same root.
     const matchingEvents = [];
     for (const [id, vid] of this.allEvents.entries()) {
       if (
@@ -501,19 +491,13 @@ class NostrClient {
         matchingEvents.push(vid);
       }
     }
-    // If you want to re-check the relay for older versions too,
-    // you can do a fallback query, but typically your local cache is enough.
-
     if (!matchingEvents.length) {
       throw new Error("No existing events found for that root.");
     }
 
-    // 2) For each event, create a "deleted: true" overshadow
-    //    by re-using the same d-tag so it cannot appear again.
     for (const vid of matchingEvents) {
       await this.revertVideo(
         {
-          // re-using revertVideo logic
           id: vid.id,
           pubkey: vid.pubkey,
           content: JSON.stringify({
@@ -531,15 +515,11 @@ class NostrClient {
         pubkey
       );
     }
-
-    // Optionally return some status
     return true;
   }
 
   /**
-   * Subscribes to *all* video events. We store them in this.allEvents so older
-   * notes remain accessible by ID, plus we maintain this.activeMap for the newest
-   * version of each root (or fallback).
+   * subscribeVideos => old approach
    */
   subscribeVideos(onVideo) {
     const filter = {
@@ -553,37 +533,28 @@ class NostrClient {
     }
 
     const sub = this.pool.sub(this.relays, [filter]);
+    // Accumulate invalid
+    const invalidDuringSub = [];
+
     sub.on("event", (event) => {
       try {
         const video = convertEventToVideo(event);
-        this.allEvents.set(event.id, video);
-
-        // If it’s marked deleted, remove from active map if it’s the active version
-        // NEW CODE
-        if (video.deleted) {
-          const activeKey = getActiveKey(video);
-          // Don't compare IDs—just remove that key from the active map
-          this.activeMap.delete(activeKey);
-
-          // (Optional) If you want a debug log:
-          // console.log(`[DELETE] Removed activeKey=${activeKey}`);
-
+        if (video.invalid) {
+          invalidDuringSub.push({ id: video.id, reason: video.reason });
           return;
         }
-
-        // Not deleted => see if it’s the newest
+        // normal logic here
+        this.allEvents.set(event.id, video);
+        if (video.deleted) {
+          const activeKey = getActiveKey(video);
+          this.activeMap.delete(activeKey);
+          return;
+        }
         const activeKey = getActiveKey(video);
         const prevActive = this.activeMap.get(activeKey);
-        if (!prevActive) {
-          // brand new => set it
+        if (!prevActive || video.created_at > prevActive.created_at) {
           this.activeMap.set(activeKey, video);
           onVideo(video);
-        } else {
-          // compare timestamps
-          if (video.created_at > prevActive.created_at) {
-            this.activeMap.set(activeKey, video);
-            onVideo(video);
-          }
         }
       } catch (err) {
         if (isDevMode) {
@@ -593,6 +564,12 @@ class NostrClient {
     });
 
     sub.on("eose", () => {
+      if (isDevMode && invalidDuringSub.length > 0) {
+        console.warn(
+          `[subscribeVideos] found ${invalidDuringSub.length} invalid v2 notes:`,
+          invalidDuringSub
+        );
+      }
       if (isDevMode) {
         console.log("[subscribeVideos] Reached EOSE for all relays");
       }
@@ -602,7 +579,7 @@ class NostrClient {
   }
 
   /**
-   * Bulk fetch from all relays, store in allEvents, rebuild activeMap
+   * fetchVideos => old approach
    */
   async fetchVideos() {
     const filter = {
@@ -613,39 +590,51 @@ class NostrClient {
     };
 
     const localAll = new Map();
+    // NEW: track invalid
+    const invalidNotes = [];
+
     try {
-      // 1) Fetch all events from each relay
       await Promise.all(
         this.relays.map(async (url) => {
           const events = await this.pool.list([url], [filter]);
           for (const evt of events) {
             const vid = convertEventToVideo(evt);
-            localAll.set(evt.id, vid);
+            if (vid.invalid) {
+              // Accumulate if invalid
+              invalidNotes.push({ id: vid.id, reason: vid.reason });
+            } else {
+              // Only add if good
+              localAll.set(evt.id, vid);
+            }
           }
         })
       );
 
-      // 2) Merge into this.allEvents
+      // Merge into allEvents
       for (const [id, vid] of localAll.entries()) {
         this.allEvents.set(id, vid);
       }
 
-      // 3) Rebuild activeMap
+      // Rebuild activeMap
       this.activeMap.clear();
       for (const [id, video] of this.allEvents.entries()) {
-        // Skip if the video is marked deleted
         if (video.deleted) continue;
-
         const activeKey = getActiveKey(video);
         const existing = this.activeMap.get(activeKey);
 
-        // If there's no existing entry or this is newer, set/replace
         if (!existing || video.created_at > existing.created_at) {
           this.activeMap.set(activeKey, video);
         }
       }
 
-      // 4) Return newest version for each root in descending order
+      // OPTIONAL: Log invalid stats
+      if (invalidNotes.length > 0 && isDevMode) {
+        console.warn(
+          `Skipped ${invalidNotes.length} invalid v2 notes:\n`,
+          invalidNotes.map((n) => `${n.id.slice(0, 8)}.. => ${n.reason}`)
+        );
+      }
+
       const activeVideos = Array.from(this.activeMap.values()).sort(
         (a, b) => b.created_at - a.created_at
       );
@@ -657,14 +646,13 @@ class NostrClient {
   }
 
   /**
-   * Attempt to fetch an event by ID from local cache, then from the relays
+   * getEventById => old approach
    */
   async getEventById(eventId) {
     const local = this.allEvents.get(eventId);
     if (local) {
       return local;
     }
-    // direct fetch if missing
     try {
       for (const url of this.relays) {
         const maybeEvt = await this.pool.get([url], { ids: [eventId] });
@@ -679,12 +667,9 @@ class NostrClient {
         console.error("getEventById direct fetch error:", err);
       }
     }
-    return null; // not found
+    return null;
   }
 
-  /**
-   * Return newest versions from activeMap if you want to skip older events
-   */
   getActiveVideos() {
     return Array.from(this.activeMap.values()).sort(
       (a, b) => b.created_at - a.created_at

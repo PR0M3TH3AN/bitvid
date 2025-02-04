@@ -99,6 +99,13 @@ class bitvidApp {
 
   async init() {
     try {
+      // Force update of any registered service workers to ensure latest code is used.
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          registrations.forEach((registration) => registration.update());
+        });
+      }
+
       // 1. Initialize the video modal (components/video-modal.html)
       await this.initModal();
       this.updateModalElements();
@@ -766,7 +773,7 @@ class bitvidApp {
 
     if (!videos || videos.length === 0) {
       this.videoList.innerHTML = `
-      <p class="text-center text-gray-500">
+      <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
         No public videos available yet. Be the first to upload one!
       </p>`;
       return;
@@ -1175,6 +1182,10 @@ class bitvidApp {
 
       // 8) Refresh local UI
       await this.loadVideos();
+
+      // 8.1) Purge the outdated cache
+      this.videosMap.clear();
+
       this.showSuccess("Video updated successfully!");
 
       // 9) Also refresh all profile caches so any new name/pic changes are reflected
@@ -1315,18 +1326,15 @@ class bitvidApp {
     try {
       // 1) Check local subscription map
       let video = this.videosMap.get(eventId);
-
       // 2) If not in local map, attempt fallback fetch from getOldEventById
       if (!video) {
         video = await this.getOldEventById(eventId);
       }
-
       // 3) If still no luck, show error and return
       if (!video) {
         this.showError("Video not found.");
         return;
       }
-
       // 4) Decrypt magnet if private & owned
       if (
         video.isPrivate &&
@@ -1337,18 +1345,15 @@ class bitvidApp {
         video.magnet = fakeDecrypt(video.magnet);
         video.alreadyDecrypted = true;
       }
-
       // 5) Show the modal
       this.currentVideo = video;
       this.currentMagnetUri = video.magnet;
       this.showModalWithPoster();
-
       // 6) Update ?v= param in the URL
       const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
       const newUrl =
         window.location.pathname + `?v=${encodeURIComponent(nevent)}`;
       window.history.pushState({}, "", newUrl);
-
       // 7) Optionally fetch the author profile
       let creatorProfile = {
         name: "Unknown",
@@ -1368,7 +1373,6 @@ class bitvidApp {
       } catch (error) {
         this.log("Error fetching creator profile:", error);
       }
-
       // 8) Render video details in modal
       const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
       if (this.videoTitle)
@@ -1393,15 +1397,16 @@ class bitvidApp {
         this.creatorAvatar.src = creatorProfile.picture;
         this.creatorAvatar.alt = creatorProfile.name;
       }
-
-      // 9) Stream torrent
-      this.log("Starting video stream with:", video.magnet);
+      // 9) Clean up any existing torrent instance before starting a new stream.
+      await torrentClient.cleanup();
+      // 10) Append a cache-busting parameter to the magnet URI.
+      const cacheBustedMagnet = video.magnet + "&ts=" + Date.now();
+      this.log("Starting video stream with:", cacheBustedMagnet);
       const realTorrent = await torrentClient.streamVideo(
-        video.magnet,
+        cacheBustedMagnet,
         this.modalVideo
       );
-
-      // 10) Start intervals to update stats
+      // 11) Start intervals to update stats
       const updateInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
           clearInterval(updateInterval);
@@ -1410,7 +1415,6 @@ class bitvidApp {
         this.updateTorrentStatus(realTorrent);
       }, 1000);
       this.activeIntervals.push(updateInterval);
-
       // (Optional) Mirror small inline stats into the modal
       const mirrorInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {

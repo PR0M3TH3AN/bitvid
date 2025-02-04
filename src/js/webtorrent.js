@@ -1,5 +1,3 @@
-// js/webtorrent.js
-
 import WebTorrent from "./webtorrent.min.js";
 
 export class TorrentClient {
@@ -41,7 +39,6 @@ export class TorrentClient {
         return false;
       };
 
-      // If it's already active, resolve immediately
       if (checkActivation()) return;
 
       registration.addEventListener("activate", () => {
@@ -59,9 +56,6 @@ export class TorrentClient {
     });
   }
 
-  // ------------------------------------------------------------------
-  // setupServiceWorker: Registers /sw.min.js at the root with scope "/"
-  // ------------------------------------------------------------------
   async setupServiceWorker() {
     try {
       const isBraveBrowser = await this.isBrave();
@@ -73,31 +67,32 @@ export class TorrentClient {
         throw new Error("Service Worker not supported or disabled");
       }
 
-      // (Optional) Brave config check
       if (isBraveBrowser) {
         this.log("Checking Brave configuration...");
         if (!navigator.serviceWorker) {
-          throw new Error("Please enable Service Workers in Brave Shield settings");
+          throw new Error(
+            "Please enable Service Workers in Brave Shield settings"
+          );
         }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           throw new Error("Please enable WebRTC in Brave Shield settings");
         }
 
-        // Unregister any existing service workers
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (const reg of registrations) {
           await reg.unregister();
         }
-        // Short delay to ensure old workers are removed
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      // Register sw.min.js from the root (Netlify serves it at /sw.min.js)
       this.log("Registering service worker at /sw.min.js...");
-      const registration = await navigator.serviceWorker.register("/sw.min.js", {
-        scope: "/",
-        updateViaCache: "none",
-      });
+      const registration = await navigator.serviceWorker.register(
+        "./sw.min.js",
+        {
+          scope: "./",
+          updateViaCache: "none",
+        }
+      );
       this.log("Service worker registered");
 
       if (registration.installing) {
@@ -123,7 +118,6 @@ export class TorrentClient {
       await this.waitForServiceWorkerActivation(registration);
       this.log("Service worker activated");
 
-      // Ensure the service worker is fully ready
       const readyRegistration = await Promise.race([
         navigator.serviceWorker.ready,
         new Promise((_, reject) =>
@@ -137,6 +131,9 @@ export class TorrentClient {
       if (!readyRegistration.active) {
         throw new Error("Service worker not active after ready state");
       }
+
+      // Force the SW to check for updates
+      registration.update();
 
       this.log("Service worker ready");
       return registration;
@@ -256,9 +253,11 @@ export class TorrentClient {
       }
 
       // Create the WebTorrent server with the registered service worker.
-      // (If you need to specify a custom URL prefix for torrent streaming,
-      //  pass a pathPrefix option here.)
-      this.client.createServer({ controller: registration });
+      // Force the server to use '/webtorrent' as the URL prefix.
+      this.client.createServer({
+        controller: registration,
+        pathPrefix: "/webtorrent",
+      });
       this.log("WebTorrent server created");
 
       const isFirefoxBrowser = this.isFirefox();

@@ -10,6 +10,7 @@ const npubs = [
   "npub19ma2w9dmk3kat0nt0k5dwuqzvmg3va9ezwup0zkakhpwv0vcwvcsg8axkl", // vinney
   "npub1rcr8h76csgzhdhea4a7tq5w5gydcpg9clgf0cffu6z45rnc6yp5sj7cfuz", // djmeistro
   "npub1m5s9w4t03znyetxswhgq0ud7fq8ef8y3l4kscn2e8wkvmv42hh3qujgjl3", // mister_monster
+  "npub13qexjtmajssuhz8gdchgx65dwsnr705drse294zz5vt4e78ya2vqzyg8lv", // SatoshiSignal
 ];
 
 console.log("DEBUG: lists.js loaded, npubs:", npubs);
