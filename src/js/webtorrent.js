@@ -60,9 +60,9 @@ export class TorrentClient {
   }
 
   // --------------------------
-  // UPDATED: setupServiceWorker
+  // setupServiceWorker
   // --------------------------
-  async setupServiceWorker() {
+    async setupServiceWorker() {
     try {
       const isBraveBrowser = await this.isBrave();
 
@@ -77,9 +77,7 @@ export class TorrentClient {
       if (isBraveBrowser) {
         this.log("Checking Brave configuration...");
         if (!navigator.serviceWorker) {
-          throw new Error(
-            "Please enable Service Workers in Brave Shield settings"
-          );
+          throw new Error("Please enable Service Workers in Brave Shield settings");
         }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           throw new Error("Please enable WebRTC in Brave Shield settings");
@@ -93,16 +91,12 @@ export class TorrentClient {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      // Directly register sw.min.js at /src/sw.min.js
-      // with a scope that covers /src/ (which includes /src/webtorrent).
-      this.log("Registering service worker at /src/sw.min.js...");
-      const registration = await navigator.serviceWorker.register(
-        "/src/sw.min.js",
-        {
-          scope: "/src/",
-          updateViaCache: "none",
-        }
-      );
+      // Register sw.min.js at the root (e.g. /sw.min.js) with scope = "/"
+      this.log("Registering service worker at /sw.min.js...");
+      const registration = await navigator.serviceWorker.register("/sw.min.js", {
+        scope: "/",
+        updateViaCache: "none",
+      });
       this.log("Service worker registered");
 
       if (registration.installing) {
@@ -128,7 +122,7 @@ export class TorrentClient {
       await this.waitForServiceWorkerActivation(registration);
       this.log("Service worker activated");
 
-      // Make sure the SW is fully ready
+      // Ensure the SW is fully ready
       const readyRegistration = await Promise.race([
         navigator.serviceWorker.ready,
         new Promise((_, reject) =>
@@ -147,63 +141,6 @@ export class TorrentClient {
       return registration;
     } catch (error) {
       this.log("Service worker setup error:", error);
-      throw error;
-    }
-  }
-
-  formatBytes(bytes) {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-  }
-
-  /**
-   * Streams the magnet to the <video> element.
-   * No stats intervals here—just returns the torrent object.
-   */
-  async streamVideo(magnetURI, videoElement) {
-    try {
-      // 1) Setup service worker
-      const registration = await this.setupServiceWorker();
-      if (!registration || !registration.active) {
-        throw new Error("Service worker setup failed");
-      }
-
-      // ------------------------------------------------
-      // UPDATED: Pass pathPrefix to createServer
-      // so that it uses /src/webtorrent/... for streaming
-      // ------------------------------------------------
-      this.client.createServer({
-        controller: registration,
-        pathPrefix: "/src/webtorrent",
-      });
-      this.log("WebTorrent server created");
-
-      const isFirefoxBrowser = this.isFirefox();
-
-      return new Promise((resolve, reject) => {
-        if (isFirefoxBrowser) {
-          this.log("Starting torrent download (Firefox path)");
-          this.client.add(
-            magnetURI,
-            { strategy: "sequential", maxWebConns: 4 },
-            (torrent) => {
-              this.log("Torrent added (Firefox path):", torrent.name);
-              this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
-            }
-          );
-        } else {
-          this.log("Starting torrent download (Chrome path)");
-          this.client.add(magnetURI, (torrent) => {
-            this.log("Torrent added (Chrome path):", torrent.name);
-            this.handleChromeTorrent(torrent, videoElement, resolve, reject);
-          });
-        }
-      });
-    } catch (error) {
-      this.log("Failed to setup video streaming:", error);
       throw error;
     }
   }
