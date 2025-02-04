@@ -1350,7 +1350,7 @@ class bitvidApp {
    * Helper to open a video by event ID (like ?v=...).
    */
   async playVideoByEventId(eventId) {
-    // First, check if this event is blacklisted
+    // First, check if this event is blacklisted by event ID
     if (this.blacklistedEventIds.has(eventId)) {
       this.showError("This content has been removed or is not allowed.");
       return;
@@ -1366,6 +1366,13 @@ class bitvidApp {
       // 3) If still not found, show error and return
       if (!video) {
         this.showError("Video not found.");
+        return;
+      }
+
+      // **Check if video’s author is blacklisted**
+      const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+      if (initialBlacklist.includes(authorNpub)) {
+        this.showError("This content has been removed or is not allowed.");
         return;
       }
 
