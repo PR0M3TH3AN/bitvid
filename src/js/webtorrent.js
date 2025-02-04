@@ -41,7 +41,7 @@ export class TorrentClient {
         return false;
       };
 
-      // If it's already active
+      // If it's already active, resolve immediately
       if (checkActivation()) return;
 
       registration.addEventListener("activate", () => {
@@ -88,11 +88,11 @@ export class TorrentClient {
         for (const reg of registrations) {
           await reg.unregister();
         }
-        // A short wait to ensure old workers are gone
+        // Short delay to ensure old workers are removed
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      // Register sw.min.js at the root path "/sw.min.js", with scope "/"
+      // Register sw.min.js from the root (Netlify serves it at /sw.min.js)
       this.log("Registering service worker at /sw.min.js...");
       const registration = await navigator.serviceWorker.register("/sw.min.js", {
         scope: "/",
@@ -123,7 +123,7 @@ export class TorrentClient {
       await this.waitForServiceWorkerActivation(registration);
       this.log("Service worker activated");
 
-      // Double-check the SW is fully ready
+      // Ensure the service worker is fully ready
       const readyRegistration = await Promise.race([
         navigator.serviceWorker.ready,
         new Promise((_, reject) =>
@@ -148,7 +148,6 @@ export class TorrentClient {
 
   // Minimal handleChromeTorrent
   handleChromeTorrent(torrent, videoElement, resolve, reject) {
-    // Listen for warnings, e.g. potential CORS blocks
     torrent.on("warning", (err) => {
       if (err && typeof err.message === "string") {
         if (
@@ -179,16 +178,13 @@ export class TorrentClient {
       return reject(new Error("No compatible video file found in torrent"));
     }
 
-    // Mute & cross-origin
     videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
-    // Handle video-level errors
     videoElement.addEventListener("error", (e) => {
       this.log("Video error:", e.target.error);
     });
 
-    // Attempt autoplay when canplay
     videoElement.addEventListener("canplay", () => {
       videoElement.play().catch((err) => {
         this.log("Autoplay failed:", err);
@@ -249,7 +245,7 @@ export class TorrentClient {
 
   /**
    * Initiates streaming of a torrent magnet to a <video> element.
-   * Use `setupServiceWorker()` first to ensure the SW is registered.
+   * Ensures the service worker is registered first.
    */
   async streamVideo(magnetURI, videoElement) {
     try {
@@ -259,13 +255,9 @@ export class TorrentClient {
         throw new Error("Service worker setup failed");
       }
 
-      // 2) Optionally configure a pathPrefix here if your SW
-      //    intercepts /webtorrent/ or /src/webtorrent
-      //    this.client.createServer({
-      //      controller: registration,
-      //      pathPrefix: "/webtorrent",
-      //    });
-
+      // Create the WebTorrent server with the registered service worker.
+      // (If you need to specify a custom URL prefix for torrent streaming,
+      //  pass a pathPrefix option here.)
       this.client.createServer({ controller: registration });
       this.log("WebTorrent server created");
 
@@ -297,7 +289,7 @@ export class TorrentClient {
   }
 
   /**
-   * Clean up resources
+   * Clean up resources.
    */
   async cleanup() {
     try {
