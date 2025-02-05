@@ -545,9 +545,6 @@ class NostrClient {
   }
 
   /**
-   * subscribeVideos => old approach
-   */
-  /**
    * Subscribe to *all* videos (old and new) with a single subscription,
    * then call onVideo() each time a new or updated event arrives.
    */
@@ -612,6 +609,7 @@ class NostrClient {
       }
     });
 
+    // Return the subscription object directly.
     return sub;
   }
 

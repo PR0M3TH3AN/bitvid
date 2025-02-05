@@ -729,10 +729,8 @@ class bitvidApp {
 
     // If forceFetch is true, unsubscribe from the old subscription to start fresh
     if (forceFetch && this.videoSubscription) {
-      // If you have a specific unsubscribe method, call it here.
-      // For example:
-      nostrClient.unsubscribeVideos(this.videoSubscription);
-
+      // Call unsubscribe on the subscription object directly.
+      this.videoSubscription.unsub();
       this.videoSubscription = null;
     }
 
@@ -767,6 +765,15 @@ class bitvidApp {
 
         this.renderVideoList(filteredVideos);
       });
+
+      // *** IMPORTANT ***: Unsubscribe once we get the historical EOSE
+      // so that we do not hold an open subscription forever:
+      if (this.videoSubscription) {
+        this.videoSubscription.on("eose", () => {
+          this.videoSubscription.unsub();
+          console.log("[loadVideos] unsubscribed after EOSE");
+        });
+      }
     } else {
       // Already subscribed: just show what's cached
       const allCached = nostrClient.getActiveVideos();
@@ -1463,13 +1470,14 @@ class bitvidApp {
       );
 
       // 11) Start intervals to update stats
+      // *** Slower stats update => 3 seconds
       const updateInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
           clearInterval(updateInterval);
           return;
         }
         this.updateTorrentStatus(realTorrent);
-      }, 1000);
+      }, 3000);
       this.activeIntervals.push(updateInterval);
 
       // (Optional) Mirror small inline stats into the modal
@@ -1499,7 +1507,7 @@ class bitvidApp {
         if (downloaded && this.modalDownloaded) {
           this.modalDownloaded.textContent = downloaded.textContent;
         }
-      }, 1000);
+      }, 3000);
       this.activeIntervals.push(mirrorInterval);
     } catch (error) {
       this.log("Error in playVideoByEventId:", error);

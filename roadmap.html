@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>bitvid | About</title>
+    <title>bitvid | Roadmap</title>
 
     <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content="bitvid | IPNS" />
+    <meta property="og:title" content="bitvid | Roadmap" />
     <meta
       property="og:description"
       content="View and render markdown content dynamically."
@@ -20,8 +20,12 @@
     <meta property="og:locale" content="en_US" />
 
     <!-- App Icons -->
-    <link rel="icon" href=.ico" sizes="any" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" href="assets/favicon.ico" sizes="any" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="assets/png/apple-touch-icon.png"
+    />
     <link
       rel="icon"
       type="image/png"
@@ -184,10 +188,7 @@
         <p
           class="mt-2 text-xs text-gray-600 font-mono break-all max-w-full overflow-hidden"
         >
-          IPNS:
-          <a href="ipns.html" class="text-blue-600 underline">
-            k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1
-          </a>
+          IPNS: k51qzi5uqu5dgwr4oejq9rk41aoe9zcupenby6iqecsk5byc7rx48uecd133a1
         </p>
       </footer>
     </div>
@@ -199,7 +200,7 @@
 
     <script>
       async function loadMarkdown() {
-        const response = await fetch("content/ipns.md");
+        const response = await fetch("content/roadmap.md");
         if (response.ok) {
           const markdown = await response.text();
           const container = document.getElementById("markdown-container");

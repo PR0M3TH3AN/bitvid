@@ -2,7 +2,7 @@ import WebTorrent from "./webtorrent.min.js";
 
 export class TorrentClient {
   constructor() {
-    this.client = new WebTorrent();
+    this.client = null; // Do NOT instantiate right away
     this.currentTorrent = null;
     this.TIMEOUT_DURATION = 60000; // 60 seconds
   }
@@ -87,12 +87,13 @@ export class TorrentClient {
 
       this.log("Registering service worker at /sw.min.js...");
       const registration = await navigator.serviceWorker.register(
-        "./sw.min.js",
+        "/sw.min.js",
         {
-          scope: "./",
+          scope: "/",
           updateViaCache: "none",
         }
       );
+
       this.log("Service worker registered");
 
       if (registration.installing) {
@@ -246,18 +247,23 @@ export class TorrentClient {
    */
   async streamVideo(magnetURI, videoElement) {
     try {
-      // 1) Setup service worker
+      // 1) Instantiate client on-demand:
+      if (!this.client) {
+        this.client = new WebTorrent();
+      }
+      // 2) Setup service worker
       const registration = await this.setupServiceWorker();
       if (!registration || !registration.active) {
         throw new Error("Service worker setup failed");
       }
 
-      // Create the WebTorrent server with the registered service worker.
+      // 3) Create the WebTorrent server with the registered service worker.
       // Force the server to use '/webtorrent' as the URL prefix.
       this.client.createServer({
         controller: registration,
-        pathPrefix: "/webtorrent",
+        pathPrefix: location.origin + "/webtorrent",
       });
+
       this.log("WebTorrent server created");
 
       const isFirefoxBrowser = this.isFirefox();
@@ -295,9 +301,10 @@ export class TorrentClient {
       if (this.currentTorrent) {
         this.currentTorrent.destroy();
       }
+      // Destroy client entirely and set to null
       if (this.client) {
         await this.client.destroy();
-        this.client = new WebTorrent();
+        this.client = null;
       }
     } catch (error) {
       this.log("Cleanup error:", error);
