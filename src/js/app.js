@@ -4,7 +4,7 @@ import { loadView } from "./viewManager.js";
 import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
-import { disclaimerModal } from "./disclaimer.js";
+import disclaimerModal from "./disclaimer.js";
 import { initialBlacklist, initialEventBlacklist } from "./lists.js";
 
 /**
@@ -724,12 +724,19 @@ class bitvidApp {
   /**
    * Subscribe to videos (older + new) and render them as they come in.
    */
-  async loadVideos() {
-    console.log("Starting loadVideos...");
+  async loadVideos(forceFetch = false) {
+    console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
-    // We do NOT decode initialEventBlacklist here.
-    // That happens once in the constructor, creating this.blacklistedEventIds.
+    // If forceFetch is true, unsubscribe from the old subscription to start fresh
+    if (forceFetch && this.videoSubscription) {
+      // If you have a specific unsubscribe method, call it here.
+      // For example:
+      nostrClient.unsubscribeVideos(this.videoSubscription);
 
+      this.videoSubscription = null;
+    }
+
+    // The rest of your existing logic:
     if (!this.videoSubscription) {
       if (this.videoList) {
         this.videoList.innerHTML = `
@@ -738,7 +745,7 @@ class bitvidApp {
         </p>`;
       }
 
-      // Create a single subscription
+      // Create a new subscription
       this.videoSubscription = nostrClient.subscribeVideos(() => {
         const updatedAll = nostrClient.getActiveVideos();
 
@@ -749,7 +756,7 @@ class bitvidApp {
             return false;
           }
 
-          // 2) Check author (if you’re also blacklisting authors by npub)
+          // 2) Check author if you’re blacklisting authors by npub
           const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
           if (initialBlacklist.includes(authorNpub)) {
             return false;

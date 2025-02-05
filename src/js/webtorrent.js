@@ -175,7 +175,7 @@ export class TorrentClient {
       return reject(new Error("No compatible video file found in torrent"));
     }
 
-    videoElement.muted = true;
+    videoElement.muted = false;
     videoElement.crossOrigin = "anonymous";
 
     videoElement.addEventListener("error", (e) => {

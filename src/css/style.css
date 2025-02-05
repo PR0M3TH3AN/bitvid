@@ -470,3 +470,48 @@ footer a:hover {
   height: 100%;
   object-fit: cover;
 }
+
+/* Sidebar default states */
+#sidebar {
+  /* You can set a default width here for 'expanded' state. */
+  width: 14rem; /* for example */
+}
+
+/* You could define a class for collapsed states on desktop if desired: */
+.sidebar-collapsed {
+  width: 4rem;
+}
+.sidebar-expanded {
+  width: 14rem;
+}
+
+/* Hide text when collapsed. 
+   If you add .sidebar-collapsed to #sidebar, you can hide text like this: */
+.sidebar-collapsed .sidebar-text {
+  display: none;
+}
+
+/* Basic scrolling for the sidebar if it's long */
+#sidebar {
+  overflow-y: auto;
+}
+
+/* The top-level container is already "flex min-h-screen" in index.html.
+   The main content (#app) has "flex-1", so it fills the rest of the space. */
+
+/* Example of customizing the border & background in the sidebar */
+#sidebar hr {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* If you want a smooth transition for showing/hiding the entire sidebar 
+   on mobile (via the "hidden" class), you can do so with a small fade, 
+   but you’ll need a separate approach with absolute positioning or something 
+   if you prefer a sliding effect. */
+
+@media (max-width: 767px) {
+  .sidebar-open {
+    transform: translateX(16rem);
+    transition: transform 0.3s ease;
+  }
+}
