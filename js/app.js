@@ -511,12 +511,12 @@ class bitvidApp {
         { kinds: [0], authors: [pubkey], limit: 1 },
       ]);
       let displayName = "User";
-      let picture = "assets/jpg/default-profile.jpg";
+      let picture = "assets/svg/default-profile.svg";
 
       if (events.length && events[0].content) {
         const data = JSON.parse(events[0].content);
         displayName = data.name || data.display_name || "User";
-        picture = data.picture || "assets/jpg/default-profile.jpg";
+        picture = data.picture || "assets/svg/default-profile.svg";
       }
 
       // If you have a top-bar avatar (profileAvatar)
@@ -707,7 +707,14 @@ class bitvidApp {
       this.activeIntervals = [];
     }
 
-    // 2) Cleanup resources (this stops the torrent, etc.)
+    // *** EXPLICITLY CANCEL THE SERVICE WORKER STREAM ***
+    try {
+      await fetch("/webtorrent/cancel/", { mode: "no-cors" });
+    } catch (err) {
+      // Silently ignore if offline or the request fails
+    }
+
+    // 2) Cleanup resources (stops WebTorrent, etc.)
     await this.cleanup();
 
     // 3) Hide the modal
@@ -945,7 +952,7 @@ class bitvidApp {
                 <img
                   class="author-pic"
                   data-pubkey="${video.pubkey}"
-                  src="assets/jpg/default-profile.jpg"
+                  src="assets/svg/default-profile.svg"
                   alt="Placeholder"
                 />
               </div>
@@ -1011,7 +1018,7 @@ class bitvidApp {
         const data = JSON.parse(userEvents[0].content);
         const profile = {
           name: data.name || data.display_name || "Unknown",
-          picture: data.picture || "assets/jpg/default-profile.jpg",
+          picture: data.picture || "assets/svg/default-profile.svg",
         };
 
         // Store into the cache with a timestamp
@@ -1401,7 +1408,7 @@ class bitvidApp {
         video.alreadyDecrypted = true;
       }
 
-      // 5) Show the modal
+      // 5) Show the modal and set the "please stand by" poster
       this.currentVideo = video;
       this.currentMagnetUri = video.magnet;
       this.showModalWithPoster();
@@ -1464,13 +1471,49 @@ class bitvidApp {
       const cacheBustedMagnet = video.magnet + "&ts=" + Date.now();
       this.log("Starting video stream with:", cacheBustedMagnet);
 
+      // 11) Set autoplay preferences:
+      // Read user preference from localStorage (if not set, default to muted)
+      const storedUnmuted = localStorage.getItem("unmutedAutoplay");
+      const userWantsUnmuted = storedUnmuted === "true";
+      this.modalVideo.muted = !userWantsUnmuted;
+      this.log(
+        "Autoplay preference - unmuted:",
+        userWantsUnmuted,
+        "=> muted:",
+        this.modalVideo.muted
+      );
+
+      // Attach a volumechange listener to update the stored preference
+      this.modalVideo.addEventListener("volumechange", () => {
+        localStorage.setItem(
+          "unmutedAutoplay",
+          (!this.modalVideo.muted).toString()
+        );
+        this.log(
+          "Volume changed, new unmuted preference:",
+          !this.modalVideo.muted
+        );
+      });
+
+      // 12) Start torrent streaming
       const realTorrent = await torrentClient.streamVideo(
         cacheBustedMagnet,
         this.modalVideo
       );
 
-      // 11) Start intervals to update stats
-      // *** Slower stats update => 3 seconds
+      // 13) Attempt to autoplay; if unmuted autoplay fails, fall back to muted
+      this.modalVideo.play().catch((err) => {
+        this.log("Autoplay failed:", err);
+        if (!this.modalVideo.muted) {
+          this.log("Falling back to muted autoplay.");
+          this.modalVideo.muted = true;
+          this.modalVideo.play().catch((err2) => {
+            this.log("Muted autoplay also failed:", err2);
+          });
+        }
+      });
+
+      // 14) Start intervals to update torrent stats (every 3 seconds)
       const updateInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
           clearInterval(updateInterval);
@@ -1480,7 +1523,7 @@ class bitvidApp {
       }, 3000);
       this.activeIntervals.push(updateInterval);
 
-      // (Optional) Mirror small inline stats into the modal
+      // 15) (Optional) Mirror small inline stats into the modal
       const mirrorInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
           clearInterval(mirrorInterval);

@@ -15,3 +15,23 @@ export async function loadView(viewUrl) {
       "<p class='text-center text-red-500'>Failed to load content.</p>";
   }
 }
+
+export const viewInitRegistry = {
+  "most-recent-videos": () => {
+    if (window.app && window.app.loadVideos) {
+      window.app.videoList = document.getElementById("videoList");
+      window.app.loadVideos();
+    }
+    // Force the profiles to update after the new view is in place.
+    if (window.app && window.app.forceRefreshAllProfiles) {
+      window.app.forceRefreshAllProfiles();
+    }
+  },
+  explore: () => {
+    console.log("Explore view loaded.");
+  },
+  subscriptions: () => {
+    console.log("Subscriptions view loaded.");
+  },
+  // Add additional view-specific functions here as needed.
+};

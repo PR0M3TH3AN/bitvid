@@ -1,46 +1,29 @@
 import { loadView } from "./viewManager.js";
+import { viewInitRegistry } from "./viewManager.js";
 
-/**
- * Wire up the sidebar links.
- * Home => loads the "most-recent-videos" partial and re-renders videos
- * Explore => loads explore.html with a "Coming Soon" message
- * Subscriptions => loads subscriptions.html with a "Coming Soon" message
- */
 export function setupSidebarNavigation() {
-  // 1) Home
-  const homeLink = document.querySelector('a[href="#view=most-recent-videos"]');
-  if (homeLink) {
-    homeLink.addEventListener("click", (e) => {
+  // Grab all primary nav links that use the "#view=..." pattern
+  const sidebarLinks = document.querySelectorAll('#sidebar a[href^="#view="]');
+  sidebarLinks.forEach((link) => {
+    link.addEventListener("click", (e) => {
       e.preventDefault();
-      loadView("views/most-recent-videos.html").then(() => {
-        // Once the partial is loaded, reassign #videoList + call loadVideos
-        if (window.app && window.app.loadVideos) {
-          window.app.videoList = document.getElementById("videoList");
-          window.app.loadVideos();
+      // For a link like "#view=most-recent-videos", parse out "most-recent-videos"
+      const href = link.getAttribute("href") || "";
+      const viewMatch = href.match(/#view=(.+)/);
+      if (!viewMatch || !viewMatch[1]) {
+        return;
+      }
+      const viewName = viewMatch[1]; // e.g. "most-recent-videos"
+      const viewUrl = `views/${viewName}.html`;
+
+      // Load the partial view
+      loadView(viewUrl).then(() => {
+        // If there's a post-load function for this view, call it
+        const initFn = viewInitRegistry[viewName];
+        if (typeof initFn === "function") {
+          initFn();
         }
       });
     });
-  }
-
-  // 2) Explore
-  const exploreLink = document.querySelector('a[href="#view=explore"]');
-  if (exploreLink) {
-    exploreLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      loadView("views/explore.html");
-      // We just show the partial. No dynamic videos needed yet.
-    });
-  }
-
-  // 3) Subscriptions
-  const subscriptionsLink = document.querySelector(
-    'a[href="#view=subscriptions"]'
-  );
-  if (subscriptionsLink) {
-    subscriptionsLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      loadView("views/subscriptions.html");
-      // Also "Coming Soon" in that partial for now.
-    });
-  }
+  });
 }
