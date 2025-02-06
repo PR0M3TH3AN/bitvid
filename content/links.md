@@ -32,9 +32,9 @@ Beta - [beta.bitvid.network?modal=appeals](https://beta.bitvid.network?modal=app
 
 ### Feature Request Form
 
-Main - [bitvid.network?modal=feature](https://beta.bitvid.network?modal=feature)
+Main - [bitvid.network?modal=feature](https://bitvid.network?modal=feature)
 
-Beta - [beta.bitvid.network?modal=feature](https://bitvid.network?modal=feature)
+Beta - [beta.bitvid.network?modal=feature](https://beta.bitvid.network?modal=feature)
 
 ---
 
@@ -50,66 +50,90 @@ Beta - [beta.bitvid.network?modal=feedback](https://beta.bitvid.network?modal=fe
 
 ---
 
-Main - **Home:** [bitvid.network#view=most-recent-videos](https://bitvid.network#view=most-recent-videos)
+### Home
 
-Beta - **Home:** [beta.bitvid.network#view=most-recent-videos](https://beta.bitvid.network#view=most-recent-videos)
+Main - [bitvid.network#view=most-recent-videos](https://bitvid.network#view=most-recent-videos)
 
----
-
-Main - **Explore:** [bitvid.network#view=explore](https://bitvid.network#view=explore)
-
-Beta - **Explore:** [beta.bitvid.network#view=explore](https://beta.bitvid.network#view=explore)
+Beta - [beta.bitvid.network#view=most-recent-videos](https://beta.bitvid.network#view=most-recent-videos)
 
 ---
 
-Main - **Subscriptions:** [bitvid.network#view=subscriptions](https://bitvid.network#view=subscriptions) _Requires Nostr login_
+### Explore
 
-Beta - **Subscriptions:** [beta.bitvid.network#view=subscriptions](https://beta.bitvid.network#view=subscriptions) _Requires Nostr login_
+Main - [bitvid.network#view=explore](https://bitvid.network#view=explore)
 
----
-
-Main - **About:** [bitvid.network#view=about](https://bitvid.network#view=about)
-
-Beta - **About:** [beta.bitvid.network#view=about](https://beta.bitvid.network#view=about)
+Beta - [beta.bitvid.network#view=explore](https://beta.bitvid.network#view=explore)
 
 ---
 
-Main - **Guidelines:** [bitvid.network#view=community-guidelines](https://bitvid.network#view=community-guidelines)
+### Subscriptions
 
-Beta - **Guidelines:** [beta.bitvid.network#view=community-guidelines](https://beta.bitvid.network#view=community-guidelines)
+_Requires Nostr login_
 
----
+Main - [bitvid.network#view=subscriptions](https://bitvid.network#view=subscriptions)
 
-Main - **Getting Started:** [bitvid.network#view=getting-started](https://bitvid.network#view=getting-started)
-
-Beta - **Getting Started:** [beta.bitvid.network#view=getting-started](https://beta.bitvid.network#view=getting-started)
+Beta - [beta.bitvid.network#view=subscriptions](https://beta.bitvid.network#view=subscriptions)
 
 ---
 
-Main - **Roadmap:** [bitvid.network#view=roadmap](https://bitvid.network#view=roadmap)
+### About
 
-Beta - **Roadmap:** [beta.bitvid.network#view=roadmap](https://beta.bitvid.network#view=roadmap)
+Main - [bitvid.network#view=about](https://bitvid.network#view=about)
 
----
-
-Main - **βeacon:** [bitvid.network/torrent/beacon.html](https://bitvid.network/torrent/beacon.html)
-
-Beta - **βeacon:** [beta.bitvid.network/torrent/beacon.html](https://beta.bitvid.network/torrent/beacon.html)
+Beta - [beta.bitvid.network#view=about](https://beta.bitvid.network#view=about)
 
 ---
 
-Main - **Beta:** [bitvid.network](https://bitvid.network)
+### Guidelines
 
-Beta - **Beta:** [beta.bitvid.network](https://beta.bitvid.network)
+Main - [bitvid.network#view=community-guidelines](https://bitvid.network#view=community-guidelines)
 
----
-
-Main - **Links:** [bitvid.network#view=links](https://bitvid.network#view=links)
-
-Beta - **Links:** [beta.bitvid.network#view=links](https://beta.bitvid.network#view=links)
+Beta - [beta.bitvid.network#view=community-guidelines](https://beta.bitvid.network#view=community-guidelines)
 
 ---
 
-Main - **IPNS:** [bitvid.network#view=ipns](https://bitvid.network#view=ipns)
+### Getting Started
 
-Beta - **IPNS:** [beta.bitvid.network#view=ipns](https://beta.bitvid.network#view=ipns)
+Main - [bitvid.network#view=getting-started](https://bitvid.network#view=getting-started)
+
+Beta - [beta.bitvid.network#view=getting-started](https://beta.bitvid.network#view=getting-started)
+
+---
+
+### Roadmap
+
+Main - [bitvid.network#view=roadmap](https://bitvid.network#view=roadmap)
+
+Beta - [beta.bitvid.network#view=roadmap](https://beta.bitvid.network#view=roadmap)
+
+---
+
+### βeacon
+
+Main - [bitvid.network/torrent/beacon.html](https://bitvid.network/torrent/beacon.html)
+
+Beta - [beta.bitvid.network/torrent/beacon.html](https://beta.bitvid.network/torrent/beacon.html)
+
+---
+
+### Beta
+
+Main - [bitvid.network](https://bitvid.network)
+
+Beta - [beta.bitvid.network](https://beta.bitvid.network)
+
+---
+
+### Links
+
+Main - [bitvid.network#view=links](https://bitvid.network#view=links)
+
+Beta - [beta.bitvid.network#view=links](https://beta.bitvid.network#view=links)
+
+---
+
+### IPNS
+
+Main - [bitvid.network#view=ipns](https://bitvid.network#view=ipns)
+
+Beta - [beta.bitvid.network#view=ipns](https://beta.bitvid.network#view=ipns)
