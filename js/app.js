@@ -207,8 +207,19 @@ class bitvidApp {
       this.setupEventListeners();
       disclaimerModal.show();
 
-      // 6. Load the default view (most-recent-videos.html)
-      await loadView("views/most-recent-videos.html");
+      // 6) Load the default view ONLY if there's no #view= already
+      if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
+        console.log(
+          "[app.init()] No #view= in the URL, loading default home view"
+        );
+        await loadView("views/most-recent-videos.html");
+      } else {
+        console.log(
+          "[app.init()] Found hash:",
+          window.location.hash,
+          "so skipping default load"
+        );
+      }
 
       // 7. Once loaded, get a reference to #videoList
       this.videoList = document.getElementById("videoList");

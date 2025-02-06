@@ -305,6 +305,7 @@ function handleQueryParams() {
  * Handle #view=... in the hash and load the correct partial view.
  */
 function handleHashChange() {
+  console.log("handleHashChange called, current hash =", window.location.hash);
   const hash = window.location.hash || "";
   // Expecting something like #view=most-recent-videos
   const match = hash.match(/^#view=(.+)/);
