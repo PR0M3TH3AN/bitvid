@@ -1,10 +1,19 @@
+//js/webtorrent.js
+
 import WebTorrent from "./webtorrent.min.js";
 
 export class TorrentClient {
   constructor() {
-    this.client = null; // Do NOT instantiate right away
+    // Reusable objects and flags
+    this.client = null;
     this.currentTorrent = null;
-    this.TIMEOUT_DURATION = 60000; // 60 seconds
+
+    // Service worker registration is cached
+    this.swRegistration = null;
+    this.serverCreated = false; // Indicates if we've called createServer on this.client
+
+    // Timeout for SW operations
+    this.TIMEOUT_DURATION = 60000;
   }
 
   log(msg) {
@@ -19,6 +28,22 @@ export class TorrentClient {
 
   isFirefox() {
     return /firefox/i.test(window.navigator.userAgent);
+  }
+
+  /**
+   * Makes sure we have exactly one WebTorrent client instance and one SW registration.
+   * Called once from streamVideo.
+   */
+  async init() {
+    // 1) If the client doesn't exist, create it
+    if (!this.client) {
+      this.client = new WebTorrent();
+    }
+
+    // 2) If we haven’t registered the service worker yet, do it now
+    if (!this.swRegistration) {
+      this.swRegistration = await this.setupServiceWorker();
+    }
   }
 
   async waitForServiceWorkerActivation(registration) {
@@ -67,6 +92,7 @@ export class TorrentClient {
         throw new Error("Service Worker not supported or disabled");
       }
 
+      // Brave-specific logic
       if (isBraveBrowser) {
         this.log("Checking Brave configuration...");
         if (!navigator.serviceWorker) {
@@ -78,6 +104,7 @@ export class TorrentClient {
           throw new Error("Please enable WebRTC in Brave Shield settings");
         }
 
+        // Unregister all existing service workers before installing a fresh one
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (const reg of registrations) {
           await reg.unregister();
@@ -135,8 +162,8 @@ export class TorrentClient {
 
       // Force the SW to check for updates
       registration.update();
-
       this.log("Service worker ready");
+
       return registration;
     } catch (error) {
       this.log("Service worker setup error:", error);
@@ -144,7 +171,7 @@ export class TorrentClient {
     }
   }
 
-  // Minimal handleChromeTorrent
+  // Handle Chrome-based browsers
   handleChromeTorrent(torrent, videoElement, resolve, reject) {
     torrent.on("warning", (err) => {
       if (err && typeof err.message === "string") {
@@ -204,7 +231,7 @@ export class TorrentClient {
     });
   }
 
-  // Minimal handleFirefoxTorrent
+  // Handle Firefox-based browsers
   handleFirefoxTorrent(torrent, videoElement, resolve, reject) {
     const file = torrent.files.find((f) =>
       /\.(mp4|webm|mkv)$/.test(f.name.toLowerCase())
@@ -227,7 +254,7 @@ export class TorrentClient {
     });
 
     try {
-      file.streamTo(videoElement, { highWaterMark: 32 * 1024 });
+      file.streamTo(videoElement, { highWaterMark: 256 * 1024 });
       this.currentTorrent = torrent;
       resolve(torrent);
     } catch (err) {
@@ -243,32 +270,27 @@ export class TorrentClient {
 
   /**
    * Initiates streaming of a torrent magnet to a <video> element.
-   * Ensures the service worker is registered first.
+   * Ensures the service worker is set up only once and the client is reused.
    */
   async streamVideo(magnetURI, videoElement) {
     try {
-      // 1) Instantiate client on-demand:
-      if (!this.client) {
-        this.client = new WebTorrent();
-      }
-      // 2) Setup service worker
-      const registration = await this.setupServiceWorker();
-      if (!registration || !registration.active) {
-        throw new Error("Service worker setup failed");
-      }
+      // 1) Make sure we have a WebTorrent client and a valid SW registration.
+      await this.init();
 
-      // 3) Create the WebTorrent server with the registered service worker.
-      // Force the server to use '/webtorrent' as the URL prefix.
-      this.client.createServer({
-        controller: registration,
-        pathPrefix: location.origin + "/webtorrent",
-      });
-
-      this.log("WebTorrent server created");
+      // 2) Create the server once if not already created.
+      if (!this.serverCreated) {
+        this.client.createServer({
+          controller: this.swRegistration,
+          pathPrefix: location.origin + "/webtorrent",
+        });
+        this.serverCreated = true;
+        this.log("WebTorrent server created");
+      }
 
       const isFirefoxBrowser = this.isFirefox();
 
       return new Promise((resolve, reject) => {
+        // 3) Add the torrent to the client and handle accordingly.
         if (isFirefoxBrowser) {
           this.log("Starting torrent download (Firefox path)");
           this.client.add(
@@ -281,31 +303,35 @@ export class TorrentClient {
           );
         } else {
           this.log("Starting torrent download (Chrome path)");
-          this.client.add(magnetURI, (torrent) => {
+          this.client.add(magnetURI, { strategy: "sequential" }, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
             this.handleChromeTorrent(torrent, videoElement, resolve, reject);
           });
         }
       });
     } catch (error) {
-      this.log("Failed to setup video streaming:", error);
+      this.log("Failed to set up video streaming:", error);
       throw error;
     }
   }
 
   /**
    * Clean up resources.
+   * You might decide to keep the client alive if you want to reuse torrents.
+   * Currently, this fully destroys the client and resets everything.
    */
   async cleanup() {
     try {
       if (this.currentTorrent) {
         this.currentTorrent.destroy();
       }
-      // Destroy client entirely and set to null
+      // Destroy client entirely and set to null so a future streamVideo call starts fresh
       if (this.client) {
         await this.client.destroy();
         this.client = null;
       }
+      this.currentTorrent = null;
+      this.serverCreated = false;
     } catch (error) {
       this.log("Cleanup error:", error);
     }

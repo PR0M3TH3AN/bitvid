@@ -14,6 +14,48 @@ function fakeDecrypt(str) {
   return str.split("").reverse().join("");
 }
 
+/**
+ * Simple IntersectionObserver-based lazy loader for images (or videos).
+ *
+ * Usage:
+ *   const mediaLoader = new MediaLoader();
+ *   mediaLoader.observe(imgElement);
+ *
+ * This will load the real image source from `imgElement.dataset.lazy`
+ * once the image enters the viewport.
+ */
+class MediaLoader {
+  constructor(rootMargin = "50px") {
+    this.observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const el = entry.target;
+            const lazySrc = el.dataset.lazy;
+            if (lazySrc) {
+              el.src = lazySrc;
+              delete el.dataset.lazy;
+            }
+            // Stop observing once loaded
+            this.observer.unobserve(el);
+          }
+        }
+      },
+      { rootMargin }
+    );
+  }
+
+  observe(el) {
+    if (el.dataset.lazy) {
+      this.observer.observe(el);
+    }
+  }
+
+  disconnect() {
+    this.observer.disconnect();
+  }
+}
+
 class bitvidApp {
   constructor() {
     // Basic auth/display elements
@@ -21,6 +63,9 @@ class bitvidApp {
     this.logoutButton = document.getElementById("logoutButton") || null;
     this.userStatus = document.getElementById("userStatus") || null;
     this.userPubKey = document.getElementById("userPubKey") || null;
+
+    // Lazy-loading helper for images
+    this.mediaLoader = new MediaLoader();
 
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
@@ -478,22 +523,36 @@ class bitvidApp {
       await this.cleanup();
     });
 
-    // 8) Handle back/forward nav => hide video modal
+    // 8) Handle back/forward navigation => hide video modal
     window.addEventListener("popstate", async () => {
       console.log("[popstate] user navigated back/forward; cleaning modal...");
       await this.hideModal();
     });
 
-    // Event delegation for the “Application Form” button inside the login modal
+    // 9) Event delegation on the video list container for playing videos
+    if (this.videoList) {
+      this.videoList.addEventListener("click", (event) => {
+        const magnetTrigger = event.target.closest("[data-play-magnet]");
+        if (magnetTrigger) {
+          // For a normal left-click (button 0, no Ctrl/Cmd), prevent navigation:
+          if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
+            event.preventDefault(); // Stop browser from following the href
+            const magnet = magnetTrigger.dataset.playMagnet;
+            this.playVideo(magnet);
+          }
+        }
+      });
+    }
+
+    // 10) Event delegation for the “Application Form” button inside the login modal
     document.addEventListener("click", (event) => {
       if (event.target && event.target.id === "openApplicationModal") {
-        // 1) Hide the login modal
+        // Hide the login modal
         const loginModal = document.getElementById("loginModal");
         if (loginModal) {
           loginModal.classList.add("hidden");
         }
-
-        // 2) Show the application modal
+        // Show the application modal
         const appModal = document.getElementById("nostrFormModal");
         if (appModal) {
           appModal.classList.remove("hidden");
@@ -533,6 +592,56 @@ class bitvidApp {
     } catch (error) {
       console.error("loadOwnProfile error:", error);
     }
+  }
+
+  async fetchAndRenderProfile(pubkey, forceRefresh = false) {
+    const now = Date.now();
+
+    // 1) Check if we have a cached entry
+    const cacheEntry = this.profileCache.get(pubkey);
+    if (!forceRefresh && cacheEntry && now - cacheEntry.timestamp < 60000) {
+      // If it's less than 60 seconds old, just update DOM with it
+      this.updateProfileInDOM(pubkey, cacheEntry.profile);
+      return;
+    }
+
+    // 2) Otherwise, fetch from Nostr
+    try {
+      const userEvents = await nostrClient.pool.list(nostrClient.relays, [
+        { kinds: [0], authors: [pubkey], limit: 1 },
+      ]);
+      if (userEvents.length > 0 && userEvents[0].content) {
+        const data = JSON.parse(userEvents[0].content);
+        const profile = {
+          name: data.name || data.display_name || "Unknown",
+          picture: data.picture || "assets/svg/default-profile.svg",
+        };
+
+        // Cache it
+        this.profileCache.set(pubkey, { profile, timestamp: now });
+        // Update DOM
+        this.updateProfileInDOM(pubkey, profile);
+      }
+    } catch (err) {
+      console.error("Profile fetch error:", err);
+    }
+  }
+
+  updateProfileInDOM(pubkey, profile) {
+    // For any .author-pic[data-pubkey=...]
+    const picEls = document.querySelectorAll(
+      `.author-pic[data-pubkey="${pubkey}"]`
+    );
+    picEls.forEach((el) => {
+      el.src = profile.picture;
+    });
+    // For any .author-name[data-pubkey=...]
+    const nameEls = document.querySelectorAll(
+      `.author-name[data-pubkey="${pubkey}"]`
+    );
+    nameEls.forEach((el) => {
+      el.textContent = profile.name;
+    });
   }
 
   /**
@@ -815,10 +924,10 @@ class bitvidApp {
     return olderMatches.length > 0;
   }
 
-  // 4) Build the DOM for each video in newestActive
   async renderVideoList(videos) {
     if (!this.videoList) return;
 
+    // Check if there's anything to show
     if (!videos || videos.length === 0) {
       this.videoList.innerHTML = `
       <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
@@ -830,13 +939,14 @@ class bitvidApp {
     // Sort newest first
     videos.sort((a, b) => b.created_at - a.created_at);
 
-    // <-- NEW: Convert allEvents map => array to check older overshadowed events
+    // Convert allEvents to an array for checking older overshadowed events
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
+    const fragment = document.createDocumentFragment();
 
-    const htmlList = videos.map((video, index) => {
+    videos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Video missing ID/title:", video);
-        return "";
+        return;
       }
 
       const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
@@ -850,32 +960,31 @@ class bitvidApp {
           : "border-none";
       const timeAgo = this.formatTimeAgo(video.created_at);
 
-      // 1) Do we have an older version?
+      // Check if there's an older version (for revert button)
       let hasOlder = false;
       if (canEdit && video.videoRootId) {
         hasOlder = this.hasOlderVersion(video, fullAllEventsArray);
       }
 
-      // 2) If we do => show revert button
       const revertButton = hasOlder
         ? `
-          <button
-            class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-            onclick="app.handleRevertVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
-          >
-            Revert
-          </button>
-        `
+        <button
+          class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+          data-revert-index="${index}"
+        >
+          Revert
+        </button>
+      `
         : "";
 
-      // 3) Gear menu
+      // Gear menu (only shown if canEdit)
       const gearMenu = canEdit
         ? `
         <div class="relative inline-block ml-3 overflow-visible">
           <button
             type="button"
             class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            onclick="document.getElementById('settingsDropdown-${index}').classList.toggle('hidden')"
+            data-settings-dropdown="${index}"
           >
             <img
               src="assets/svg/video-settings-gear.svg"
@@ -890,14 +999,14 @@ class bitvidApp {
             <div class="py-1">
               <button
                 class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                onclick="app.handleEditVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
+                data-edit-index="${index}"
               >
                 Edit
               </button>
               ${revertButton}
               <button
                 class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                onclick="app.handleFullDeleteVideo(${index}); document.getElementById('settingsDropdown-${index}').classList.add('hidden');"
+                data-delete-all-index="${index}"
               >
                 Delete All
               </button>
@@ -907,42 +1016,26 @@ class bitvidApp {
       `
         : "";
 
-      // 4) Build the card markup...
+      // Card markup
       const cardHtml = `
       <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
         <a
           href="${shareUrl}"
-          target="_blank"
-          rel="noopener noreferrer"
+          data-play-magnet="${encodeURIComponent(video.magnet)}"
           class="block cursor-pointer relative group"
-          onclick="if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
-            event.preventDefault();
-            app.playVideo('${encodeURIComponent(video.magnet)}');
-          }"
         >
           <div class="ratio-16-9">
             <img
               src="assets/jpg/video-thumbnail-fallback.jpg"
-              data-real-src="${this.escapeHTML(video.thumbnail)}"
+              data-lazy="${this.escapeHTML(video.thumbnail)}"
               alt="${this.escapeHTML(video.title)}"
-              onload="
-                const realSrc = this.getAttribute('data-real-src');
-                if (realSrc) {
-                  const that = this;
-                  const testImg = new Image();
-                  testImg.onload = function() {
-                    that.src = realSrc;
-                  };
-                  testImg.src = realSrc;
-                }
-              "
             />
           </div>
         </a>
         <div class="p-4">
           <h3
             class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-            onclick="app.playVideo('${encodeURIComponent(video.magnet)}')"
+            data-play-magnet="${encodeURIComponent(video.magnet)}"
           >
             ${this.escapeHTML(video.title)}
           </h3>
@@ -974,132 +1067,83 @@ class bitvidApp {
       </div>
     `;
 
-      // Fire off a background fetch for the author's profile
+      // Turn the HTML into an element
+      const template = document.createElement("template");
+      template.innerHTML = cardHtml.trim();
+      const cardEl = template.content.firstElementChild;
+
+      // Fetch the author's profile info in the background
       this.fetchAndRenderProfile(video.pubkey);
 
-      return cardHtml;
+      // Add the finished card to our fragment
+      fragment.appendChild(cardEl);
     });
 
-    // Filter out any empty strings
-    const valid = htmlList.filter((x) => x.length > 0);
-    if (valid.length === 0) {
-      this.videoList.innerHTML = `
-      <p class="text-center text-gray-500">
-        No valid videos to display.
-      </p>`;
-      return;
-    }
+    // Clear the list and add our fragment
+    this.videoList.innerHTML = "";
+    this.videoList.appendChild(fragment);
 
-    // Finally inject into DOM
-    this.videoList.innerHTML = valid.join("");
-  }
+    // Lazy-load images
+    const lazyEls = this.videoList.querySelectorAll("[data-lazy]");
+    lazyEls.forEach((el) => this.mediaLoader.observe(el));
 
-  /**
-   * Retrieve the profile for a given pubkey (kind:0) and update the DOM.
-   */
-  async fetchAndRenderProfile(pubkey, forceRefresh = false) {
-    const now = Date.now();
+    // -------------------------------
+    // Gear menu / button event listeners
+    // -------------------------------
 
-    // Check if we already have a cached entry for this pubkey:
-    const cacheEntry = this.profileCache.get(pubkey);
-
-    // If not forcing refresh, and we have a cache entry less than 60 sec old, use it:
-    if (!forceRefresh && cacheEntry && now - cacheEntry.timestamp < 60000) {
-      this.updateProfileInDOM(pubkey, cacheEntry.profile);
-      return;
-    }
-
-    // Otherwise, go fetch from the relay
-    try {
-      const userEvents = await nostrClient.pool.list(nostrClient.relays, [
-        { kinds: [0], authors: [pubkey], limit: 1 },
-      ]);
-      if (userEvents.length > 0 && userEvents[0].content) {
-        const data = JSON.parse(userEvents[0].content);
-        const profile = {
-          name: data.name || data.display_name || "Unknown",
-          picture: data.picture || "assets/svg/default-profile.svg",
-        };
-
-        // Store into the cache with a timestamp
-        this.profileCache.set(pubkey, {
-          profile,
-          timestamp: now,
-        });
-
-        // Now update the DOM elements
-        this.updateProfileInDOM(pubkey, profile);
-      }
-    } catch (err) {
-      console.error("Profile fetch error for pubkey:", pubkey, err);
-    }
-  }
-
-  /**
-   * Update all DOM elements that match this pubkey, e.g. .author-pic[data-pubkey=...]
-   */
-  updateProfileInDOM(pubkey, profile) {
-    const picEls = document.querySelectorAll(
-      `.author-pic[data-pubkey="${pubkey}"]`
+    // Toggle the gear menu
+    const gearButtons = this.videoList.querySelectorAll(
+      "[data-settings-dropdown]"
     );
-    picEls.forEach((el) => {
-      el.src = profile.picture;
+    gearButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = button.getAttribute("data-settings-dropdown");
+        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        if (dropdown) {
+          dropdown.classList.toggle("hidden");
+        }
+      });
     });
-    const nameEls = document.querySelectorAll(
-      `.author-name[data-pubkey="${pubkey}"]`
+
+    // Edit button
+    const editButtons = this.videoList.querySelectorAll("[data-edit-index]");
+    editButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = button.getAttribute("data-edit-index");
+        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        if (dropdown) dropdown.classList.add("hidden");
+        // Assuming you have a method like this in your code:
+        this.handleEditVideo(index);
+      });
+    });
+
+    // Revert button
+    const revertButtons = this.videoList.querySelectorAll(
+      "[data-revert-index]"
     );
-    nameEls.forEach((el) => {
-      el.textContent = profile.name;
+    revertButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = button.getAttribute("data-revert-index");
+        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        if (dropdown) dropdown.classList.add("hidden");
+        // Assuming you have a method like this in your code:
+        this.handleRevertVideo(index);
+      });
     });
-  }
 
-  /**
-   * Plays a video given its magnet URI.
-   * We simply look up which event has this magnet
-   * and then delegate to playVideoByEventId for
-   * consistent modal and metadata handling.
-   */
-  async playVideo(magnetURI) {
-    try {
-      if (!magnetURI) {
-        this.showError("Invalid Magnet URI.");
-        return;
-      }
-
-      const decodedMagnet = decodeURIComponent(magnetURI);
-
-      // If we are already playing this exact magnet, do nothing.
-      if (this.currentMagnetUri === decodedMagnet) {
-        this.log("Same video requested - already playing");
-        return;
-      }
-
-      // 1) Check local 'videosMap' or 'nostrClient.getActiveVideos()'
-      let matchedVideo = Array.from(this.videosMap.values()).find(
-        (v) => v.magnet === decodedMagnet
-      );
-      if (!matchedVideo) {
-        // Instead of forcing a full `fetchVideos()`,
-        // try looking in the activeVideos from local cache:
-        const activeVideos = nostrClient.getActiveVideos();
-        matchedVideo = activeVideos.find((v) => v.magnet === decodedMagnet);
-      }
-
-      // If still not found, you can do a single event-based approach or just show an error:
-      if (!matchedVideo) {
-        this.showError("No matching video found in local cache.");
-        return;
-      }
-
-      // Update tracking
-      this.currentMagnetUri = decodedMagnet;
-
-      // Delegate to the main method
-      await this.playVideoByEventId(matchedVideo.id);
-    } catch (error) {
-      console.error("Error in playVideo:", error);
-      this.showError(`Playback error: ${error.message}`);
-    }
+    // Delete All button
+    const deleteAllButtons = this.videoList.querySelectorAll(
+      "[data-delete-all-index]"
+    );
+    deleteAllButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = button.getAttribute("data-delete-all-index");
+        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        if (dropdown) dropdown.classList.add("hidden");
+        // Assuming you have a method like this in your code:
+        this.handleFullDeleteVideo(index);
+      });
+    });
   }
 
   /**
@@ -1371,55 +1415,48 @@ class bitvidApp {
    * Helper to open a video by event ID (like ?v=...).
    */
   async playVideoByEventId(eventId) {
-    // First, check if this event is blacklisted by event ID
     if (this.blacklistedEventIds.has(eventId)) {
       this.showError("This content has been removed or is not allowed.");
       return;
     }
 
     try {
-      // 1) Check local subscription map
       let video = this.videosMap.get(eventId);
-      // 2) If not in local map, attempt fallback fetch from getOldEventById
       if (!video) {
         video = await this.getOldEventById(eventId);
       }
-      // 3) If still not found, show error and return
       if (!video) {
         this.showError("Video not found.");
         return;
       }
 
-      // **Check if video’s author is blacklisted**
       const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
       if (initialBlacklist.includes(authorNpub)) {
         this.showError("This content has been removed or is not allowed.");
         return;
       }
 
-      // 4) Decrypt magnet if private & owned
       if (
         video.isPrivate &&
         video.pubkey === this.pubkey &&
         !video.alreadyDecrypted
       ) {
-        this.log("Decrypting private magnet link...");
         video.magnet = fakeDecrypt(video.magnet);
         video.alreadyDecrypted = true;
       }
 
-      // 5) Show the modal and set the "please stand by" poster
       this.currentVideo = video;
       this.currentMagnetUri = video.magnet;
       this.showModalWithPoster();
 
-      // 6) Update ?v= param in the URL
+      // Update ?v= param in the URL
       const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
-      const newUrl =
-        window.location.pathname + `?v=${encodeURIComponent(nevent)}`;
+      const newUrl = `${window.location.pathname}?v=${encodeURIComponent(
+        nevent
+      )}`;
       window.history.pushState({}, "", newUrl);
 
-      // 7) Optionally fetch the author profile
+      // Fetch author profile
       let creatorProfile = {
         name: "Unknown",
         picture: `https://robohash.org/${video.pubkey}`,
@@ -1439,7 +1476,6 @@ class bitvidApp {
         this.log("Error fetching creator profile:", error);
       }
 
-      // 8) Render video details in modal
       const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
       if (this.videoTitle) {
         this.videoTitle.textContent = video.title || "Untitled";
@@ -1465,43 +1501,27 @@ class bitvidApp {
         this.creatorAvatar.alt = creatorProfile.name;
       }
 
-      // 9) Clean up any existing torrent instance before starting a new stream
       await torrentClient.cleanup();
-      // 10) Append a cache-busting parameter to the magnet URI
       const cacheBustedMagnet = video.magnet + "&ts=" + Date.now();
       this.log("Starting video stream with:", cacheBustedMagnet);
 
-      // 11) Set autoplay preferences:
-      // Read user preference from localStorage (if not set, default to muted)
+      // Autoplay preferences
       const storedUnmuted = localStorage.getItem("unmutedAutoplay");
       const userWantsUnmuted = storedUnmuted === "true";
       this.modalVideo.muted = !userWantsUnmuted;
-      this.log(
-        "Autoplay preference - unmuted:",
-        userWantsUnmuted,
-        "=> muted:",
-        this.modalVideo.muted
-      );
 
-      // Attach a volumechange listener to update the stored preference
       this.modalVideo.addEventListener("volumechange", () => {
         localStorage.setItem(
           "unmutedAutoplay",
           (!this.modalVideo.muted).toString()
         );
-        this.log(
-          "Volume changed, new unmuted preference:",
-          !this.modalVideo.muted
-        );
       });
 
-      // 12) Start torrent streaming
       const realTorrent = await torrentClient.streamVideo(
         cacheBustedMagnet,
         this.modalVideo
       );
 
-      // 13) Attempt to autoplay; if unmuted autoplay fails, fall back to muted
       this.modalVideo.play().catch((err) => {
         this.log("Autoplay failed:", err);
         if (!this.modalVideo.muted) {
@@ -1513,7 +1533,7 @@ class bitvidApp {
         }
       });
 
-      // 14) Start intervals to update torrent stats (every 3 seconds)
+      // Update torrent stats every 3s
       const updateInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
           clearInterval(updateInterval);
@@ -1523,7 +1543,7 @@ class bitvidApp {
       }, 3000);
       this.activeIntervals.push(updateInterval);
 
-      // 15) (Optional) Mirror small inline stats into the modal
+      // Mirror stats into the modal if needed
       const mirrorInterval = setInterval(() => {
         if (!document.body.contains(this.modalVideo)) {
           clearInterval(mirrorInterval);
@@ -1534,7 +1554,6 @@ class bitvidApp {
         const peers = document.getElementById("peers");
         const speed = document.getElementById("speed");
         const downloaded = document.getElementById("downloaded");
-
         if (status && this.modalStatus) {
           this.modalStatus.textContent = status.textContent;
         }

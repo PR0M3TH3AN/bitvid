@@ -1,3 +1,5 @@
+//js/sidebar.js
+
 import { loadView } from "./viewManager.js";
 import { viewInitRegistry } from "./viewManager.js";
 
