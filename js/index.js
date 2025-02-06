@@ -79,6 +79,8 @@ Promise.all([
       });
     }
 
+    // Load and set up sidebar navigation
+    // (We assume it calls setHashView(...) now)
     return import("./sidebar.js").then((module) => {
       module.setupSidebarNavigation();
     });
@@ -145,46 +147,76 @@ Promise.all([
       });
     }
 
-    // 5) ?modal=appeals => open content appeals form
-    const urlParams = new URLSearchParams(window.location.search);
-    const modalParam = urlParams.get("modal");
+    // Once everything is loaded, handle the query params (modal? v?) & disclaimers
+    handleQueryParams();
 
-    if (modalParam === "appeals") {
-      const appealsModal = document.getElementById("contentAppealsModal");
-      if (appealsModal) {
-        appealsModal.classList.remove("hidden");
-      }
-      const closeAppealsBtn = document.getElementById(
-        "closeContentAppealsModal"
-      );
-      if (closeAppealsBtn) {
-        closeAppealsBtn.addEventListener("click", () => {
-          appealsModal.classList.add("hidden");
-          if (!localStorage.getItem("hasSeenDisclaimer")) {
-            const disclaimerModal = document.getElementById("disclaimerModal");
-            if (disclaimerModal) {
-              disclaimerModal.classList.remove("hidden");
-            }
-          }
-        });
-      }
-    } else if (modalParam === "application") {
-      const appModal = document.getElementById("nostrFormModal");
-      if (appModal) {
-        appModal.classList.remove("hidden");
-      }
-    } else {
-      // If there's no special param, disclaimers can show if user hasn't seen them
-      const hasSeenDisclaimer = localStorage.getItem("hasSeenDisclaimer");
-      if (!hasSeenDisclaimer) {
-        const disclaimerModal = document.getElementById("disclaimerModal");
-        if (disclaimerModal) {
-          disclaimerModal.classList.remove("hidden");
-        }
-      }
+    // Listen for hash changes
+    window.addEventListener("hashchange", handleHashChange);
+
+    // Also run once on initial load
+    handleHashChange();
+  });
+
+/* -------------------------------------------
+   HELPER FUNCTIONS FOR QUERY AND HASH
+-------------------------------------------- */
+
+/**
+ * Sets the location.hash to "#view=<viewName>",
+ * removing any ?modal=... or ?v=... from the query string.
+ */
+export function setHashView(viewName) {
+  const url = new URL(window.location.href);
+
+  // Remove possibly conflicting query params
+  url.searchParams.delete("modal");
+  url.searchParams.delete("v");
+
+  // Keep the existing path + updated search, set the new hash
+  const newUrl = url.pathname + url.search + `#view=${viewName}`;
+
+  // Replace the URL so no full reload
+  window.history.replaceState({}, "", newUrl);
+
+  // Manually trigger handleHashChange so the view loads immediately
+  handleHashChange();
+}
+
+/**
+ * Sets a query param (e.g. ?modal=xxx or ?v=yyy),
+ * removing any "#view=..." from the hash to avoid collisions.
+ */
+export function setQueryParam(key, value) {
+  const url = new URL(window.location.href);
+
+  // Remove any #view=... from the hash
+  url.hash = "";
+
+  // Set the query param
+  url.searchParams.set(key, value);
+
+  // Replace the URL
+  const newUrl = url.pathname + url.search;
+  window.history.replaceState({}, "", newUrl);
+
+  // Immediately handle it
+  handleQueryParams();
+}
+
+/**
+ * Check the current URL for ?modal=..., ?v=..., etc.
+ * Open the correct modals or disclaimers as needed.
+ */
+function handleQueryParams() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const modalParam = urlParams.get("modal");
+
+  // 5) Check ?modal=... param (moved from original code)
+  if (modalParam === "appeals") {
+    const appealsModal = document.getElementById("contentAppealsModal");
+    if (appealsModal) {
+      appealsModal.classList.remove("hidden");
     }
-
-    // 6) Close content appeals modal if needed
     const closeAppealsBtn = document.getElementById("closeContentAppealsModal");
     if (closeAppealsBtn) {
       closeAppealsBtn.addEventListener("click", () => {
@@ -192,67 +224,114 @@ Promise.all([
         if (appealsModal) {
           appealsModal.classList.add("hidden");
         }
-      });
-    }
-
-    // 7) Disclaimer 'I Understand' Button
-    const acceptDisclaimerBtn = document.getElementById("acceptDisclaimer");
-    if (acceptDisclaimerBtn) {
-      acceptDisclaimerBtn.addEventListener("click", () => {
-        const disclaimerModal = document.getElementById("disclaimerModal");
-        if (disclaimerModal) {
-          disclaimerModal.classList.add("hidden");
+        // Show disclaimer if not seen
+        if (!localStorage.getItem("hasSeenDisclaimer")) {
+          const disclaimerModal = document.getElementById("disclaimerModal");
+          if (disclaimerModal) {
+            disclaimerModal.classList.remove("hidden");
+          }
         }
-        localStorage.setItem("hasSeenDisclaimer", "true");
       });
     }
+  } else if (modalParam === "application") {
+    const appModal = document.getElementById("nostrFormModal");
+    if (appModal) {
+      appModal.classList.remove("hidden");
+    }
+  } else {
+    // If there's no special param, disclaimers can show if user hasn't seen them
+    const hasSeenDisclaimer = localStorage.getItem("hasSeenDisclaimer");
+    if (!hasSeenDisclaimer) {
+      const disclaimerModal = document.getElementById("disclaimerModal");
+      if (disclaimerModal) {
+        disclaimerModal.classList.remove("hidden");
+      }
+    }
+  }
 
-    // 8) Query param checks for the three new forms
-    if (modalParam === "feedback") {
+  // 8) Additional forms
+  if (modalParam === "feedback") {
+    const feedbackModal = document.getElementById("generalFeedbackModal");
+    if (feedbackModal) {
+      feedbackModal.classList.remove("hidden");
+    }
+  } else if (modalParam === "feature") {
+    const featureModal = document.getElementById("featureRequestModal");
+    if (featureModal) {
+      featureModal.classList.remove("hidden");
+    }
+  } else if (modalParam === "bug") {
+    const bugModal = document.getElementById("bugFixModal");
+    if (bugModal) {
+      bugModal.classList.remove("hidden");
+    }
+  }
+
+  // 9) Close buttons
+  const closeFeedbackBtn = document.getElementById("closeGeneralFeedbackModal");
+  if (closeFeedbackBtn) {
+    closeFeedbackBtn.addEventListener("click", () => {
       const feedbackModal = document.getElementById("generalFeedbackModal");
       if (feedbackModal) {
-        feedbackModal.classList.remove("hidden");
+        feedbackModal.classList.add("hidden");
       }
-    } else if (modalParam === "feature") {
+    });
+  }
+  const closeFeatureBtn = document.getElementById("closeFeatureRequestModal");
+  if (closeFeatureBtn) {
+    closeFeatureBtn.addEventListener("click", () => {
       const featureModal = document.getElementById("featureRequestModal");
       if (featureModal) {
-        featureModal.classList.remove("hidden");
+        featureModal.classList.add("hidden");
       }
-    } else if (modalParam === "bug") {
+    });
+  }
+  const closeBugBtn = document.getElementById("closeBugFixModal");
+  if (closeBugBtn) {
+    closeBugBtn.addEventListener("click", () => {
       const bugModal = document.getElementById("bugFixModal");
       if (bugModal) {
-        bugModal.classList.remove("hidden");
+        bugModal.classList.add("hidden");
       }
-    }
+    });
+  }
 
-    // 9) Close buttons for the new forms
-    const closeFeedbackBtn = document.getElementById(
-      "closeGeneralFeedbackModal"
-    );
-    if (closeFeedbackBtn) {
-      closeFeedbackBtn.addEventListener("click", () => {
-        const feedbackModal = document.getElementById("generalFeedbackModal");
-        if (feedbackModal) {
-          feedbackModal.classList.add("hidden");
+  // You could also check ?v=someEvent to open a video, etc.
+  // if you want to keep ?v= param logic here.
+  // ...
+}
+
+/**
+ * Handle #view=... in the hash and load the correct partial view.
+ */
+function handleHashChange() {
+  const hash = window.location.hash || "";
+  // Expecting something like #view=most-recent-videos
+  const match = hash.match(/^#view=(.+)/);
+
+  // If no #view=..., load "most-recent-videos" as default
+  if (!match || !match[1]) {
+    import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
+      loadView("views/most-recent-videos.html").then(() => {
+        const initFn = viewInitRegistry["most-recent-videos"];
+        if (typeof initFn === "function") {
+          initFn();
         }
       });
-    }
-    const closeFeatureBtn = document.getElementById("closeFeatureRequestModal");
-    if (closeFeatureBtn) {
-      closeFeatureBtn.addEventListener("click", () => {
-        const featureModal = document.getElementById("featureRequestModal");
-        if (featureModal) {
-          featureModal.classList.add("hidden");
-        }
-      });
-    }
-    const closeBugBtn = document.getElementById("closeBugFixModal");
-    if (closeBugBtn) {
-      closeBugBtn.addEventListener("click", () => {
-        const bugModal = document.getElementById("bugFixModal");
-        if (bugModal) {
-          bugModal.classList.add("hidden");
-        }
-      });
-    }
+    });
+    return;
+  }
+
+  const viewName = match[1];
+  const viewUrl = `views/${viewName}.html`;
+
+  // Load the partial
+  import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
+    loadView(viewUrl).then(() => {
+      const initFn = viewInitRegistry[viewName];
+      if (typeof initFn === "function") {
+        initFn();
+      }
+    });
   });
+}

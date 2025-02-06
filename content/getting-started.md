@@ -1,5 +1,3 @@
-# Getting Started with bitvid
-
 Ready to jump in? Here's everything you need to know to start watching and sharing videos on bitvid.
 
 ## Watching Videos

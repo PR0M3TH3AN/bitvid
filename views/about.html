@@ -1,0 +1,52 @@
+<!-- views/about.html -->
+<section class="mb-8">
+  <!-- 
+    This container uses a white background and dark text, 
+    overriding your global “body { color: … }” rule
+  -->
+  <div class="bg-white p-6 rounded-lg shadow-md text-gray-900">
+    <h2 class="text-2xl font-bold mb-4 text-gray-700">About BitVid</h2>
+
+    <!-- 
+      The .markdown-body class ensures the Markdown styling 
+      from your markdown.css can be applied here.
+    -->
+    <div id="markdown-container" class="markdown-body">
+      <p class="text-gray-500">Loading content...</p>
+    </div>
+  </div>
+</section>
+
+<script>
+  (async () => {
+    try {
+      const response = await fetch("content/about.md");
+      if (!response.ok) {
+        throw new Error("Failed to load about.md");
+      }
+      const markdownText = await response.text();
+
+      // Convert the markdown to HTML (requires "marked" loaded globally)
+      const html = marked.parse(markdownText);
+
+      // Insert the HTML into the container
+      const container = document.getElementById("markdown-container");
+      if (container) {
+        container.innerHTML = html;
+      }
+
+      // (Optional) Highlight code blocks if "hljs" is available globally
+      document.querySelectorAll("pre code").forEach((block) => {
+        hljs.highlightBlock(block);
+      });
+    } catch (err) {
+      console.error("Error loading About content:", err);
+      const container = document.getElementById("markdown-container");
+      if (container) {
+        container.innerHTML = `
+          <p class="text-red-500">Error loading content. Please try again later.</p>
+        `;
+      }
+    }
+  })();
+</script>

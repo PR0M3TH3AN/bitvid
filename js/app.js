@@ -110,6 +110,9 @@ class bitvidApp {
     this.copyMagnetBtn = null;
     this.shareBtn = null;
 
+    // Hide/Show Subscriptions Link
+    this.subscriptionsLink = null;
+
     // Notification containers
     this.errorContainer = document.getElementById("errorContainer") || null;
     this.successContainer = document.getElementById("successContainer") || null;
@@ -185,10 +188,19 @@ class bitvidApp {
 
       // 4. Connect to Nostr
       await nostrClient.init();
+
+      // Grab the "Subscriptions" link by its id in the sidebar
+      this.subscriptionsLink = document.getElementById("subscriptionsLink");
+
       const savedPubKey = localStorage.getItem("userPubKey");
       if (savedPubKey) {
         // Auto-login if a pubkey was saved
         this.login(savedPubKey, false);
+
+        // If the user was already logged in, show the Subscriptions link
+        if (this.subscriptionsLink) {
+          this.subscriptionsLink.classList.remove("hidden");
+        }
       }
 
       // 5. Setup general event listeners, show disclaimers
@@ -726,6 +738,11 @@ class bitvidApp {
       this.profileButton.classList.remove("hidden");
     }
 
+    // Show the "Subscriptions" link if it exists
+    if (this.subscriptionsLink) {
+      this.subscriptionsLink.classList.remove("hidden");
+    }
+
     // (Optional) load the user's own Nostr profile
     this.loadOwnProfile(pubkey);
 
@@ -772,6 +789,11 @@ class bitvidApp {
       this.profileButton.classList.add("hidden");
     }
 
+    // Hide the Subscriptions link
+    if (this.subscriptionsLink) {
+      this.subscriptionsLink.classList.add("hidden");
+    }
+
     // Clear localStorage
     localStorage.removeItem("userPubKey");
 
@@ -810,31 +832,31 @@ class bitvidApp {
    * Hide the video modal.
    */
   async hideModal() {
-    // 1) Clear intervals
+    // 1) Clear intervals, cleanup, etc. (unchanged)
     if (this.activeIntervals && this.activeIntervals.length) {
       this.activeIntervals.forEach((id) => clearInterval(id));
       this.activeIntervals = [];
     }
 
-    // *** EXPLICITLY CANCEL THE SERVICE WORKER STREAM ***
     try {
       await fetch("/webtorrent/cancel/", { mode: "no-cors" });
     } catch (err) {
-      // Silently ignore if offline or the request fails
+      // ignore
     }
-
-    // 2) Cleanup resources (stops WebTorrent, etc.)
     await this.cleanup();
 
-    // 3) Hide the modal
+    // 2) Hide the modal
     if (this.playerModal) {
       this.playerModal.style.display = "none";
       this.playerModal.classList.add("hidden");
     }
     this.currentMagnetUri = null;
 
-    // 4) Revert ?v= param in the URL
-    window.history.replaceState({}, "", window.location.pathname);
+    // 3) Remove only `?v=` but **keep** the hash
+    const url = new URL(window.location.href);
+    url.searchParams.delete("v"); // remove ?v= param
+    const newUrl = url.pathname + url.search + url.hash;
+    window.history.replaceState({}, "", newUrl);
   }
 
   /**

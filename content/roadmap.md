@@ -1,5 +1,3 @@
-# Roadmap and Bug List
-
 ## UI Enhancements
 
 - Add a copy Magnet button labeled "Seed".
@@ -13,10 +11,6 @@
 
 ## Bug Fixes
 
-- Fix public key wrapping issue on smaller screens.
-- Fix video editing failures.
-- Resolve issue where reopening the same video doesn't work after closing the video player.
-- Address "Video playback error: MEDIA_ELEMENT_ERROR: Empty src attribute" error.
 - Fix "Dev Mode" publishing "Live Mode" notes—add a flag for dev mode posts.
 
 ## Feature Additions

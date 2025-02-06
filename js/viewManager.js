@@ -1,14 +1,32 @@
 // js/viewManager.js
 
 // Load a partial view by URL into the #viewContainer
+// js/viewManager.js
 export async function loadView(viewUrl) {
   try {
     const res = await fetch(viewUrl);
     if (!res.ok) {
       throw new Error(`Failed to load view: ${res.status}`);
     }
-    const html = await res.text();
-    document.getElementById("viewContainer").innerHTML = html;
+    const text = await res.text();
+
+    // DOMParser, parse out the body, inject
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, "text/html");
+    const container = document.getElementById("viewContainer");
+
+    container.innerHTML = doc.body.innerHTML;
+
+    // Now copy and execute each script
+    const scriptTags = doc.querySelectorAll("script");
+    scriptTags.forEach((oldScript) => {
+      const newScript = document.createElement("script");
+      Array.from(oldScript.attributes).forEach((attr) => {
+        newScript.setAttribute(attr.name, attr.value);
+      });
+      newScript.textContent = oldScript.textContent;
+      container.appendChild(newScript);
+    });
   } catch (err) {
     console.error("View loading error:", err);
     document.getElementById("viewContainer").innerHTML =

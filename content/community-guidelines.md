@@ -1,5 +1,3 @@
-# **bitvid Community Guidelines**
-
 Welcome to **bitvid**, a decentralized video-sharing platform built on Nostr. These Community Guidelines outline the types of content allowed and prohibited on the platform. As bitvid is still in early access, enforcement will occur at the client level, meaning violations will result in content being blocked from display rather than removed from relays. These policies will evolve as we implement robust user blocking and reporting features.
 
 ## **1. Content Principles**

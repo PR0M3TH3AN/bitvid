@@ -1,7 +1,3 @@
-![](https://bitvid.netlify.app/assets/jpg/bitvid.jpg)
-
-# About bitvid
-
 Welcome to bitvid, a new kind of video platform that puts you in control. Unlike traditional video sites that keep your content on their servers, bitvid lets videos flow directly between creators and viewers. Think of it like a digital potluck where everyone brings and shares content directly with each other!
 
 ## What Makes bitvid Different?
