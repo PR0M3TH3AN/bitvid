@@ -2,11 +2,6 @@
   id="sidebar"
   class="bg-gray-900 text-white transition-transform duration-300 ease-in-out fixed top-0 left-0 w-64 h-screen overflow-y-auto"
 >
-  <!-- 
-    The sidebar is hidden by default on mobile via CSS (transform: translateX(-100%)).
-    When the "sidebar-open" class is added (via the mobile menu button), CSS will slide it into view.
-    On desktop (min-width: 768px), the sidebar is always visible.
-  -->
   <div class="flex flex-col h-full">
     <!-- Top Navigation Links -->
     <div class="flex-1 overflow-y-auto px-4">
@@ -50,8 +45,36 @@
       </div>
     </div>
 
-    <!-- Footer Links -->
-    <div class="mt-auto">
+    <!-- Mobile Dropdown Button for Footer Links -->
+    <!-- Added p-4 around the button for spacing, and styling consistent with top links -->
+    <div class="md:hidden p-4">
+      <button
+        id="footerDropdownButton"
+        class="flex items-center w-full py-2 px-4 bg-gray-800 hover:bg-gray-700 text-sm font-semibold text-gray-100 rounded shadow-md focus:outline-none transition-colors duration-200"
+      >
+        <!-- Arrow on the left side -->
+        <svg
+          id="footerDropdownIcon"
+          class="w-4 h-4 mr-2 transform transition-transform duration-300"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+        <span id="footerDropdownText">More</span>
+      </button>
+    </div>
+
+    <!-- Footer Links Container -->
+    <!-- On mobile: hidden by default; on desktop: visible and pushed to the bottom -->
+    <div id="footerLinksContainer" class="hidden md:block md:mt-auto">
       <hr class="border-gray-700" />
       <div class="p-4">
         <nav class="space-y-2 text-sm opacity-70">
@@ -197,4 +220,29 @@
       </div>
     </div>
   </div>
+
+  <script>
+    (function () {
+      var btn = document.getElementById("footerDropdownButton");
+      var footerLinks = document.getElementById("footerLinksContainer");
+      if (btn && footerLinks) {
+        btn.addEventListener("click", function () {
+          footerLinks.classList.toggle("hidden");
+          var icon = document.getElementById("footerDropdownIcon");
+          var textSpan = document.getElementById("footerDropdownText");
+          if (footerLinks.classList.contains("hidden")) {
+            textSpan.textContent = "More";
+            if (icon) {
+              icon.classList.remove("rotate-180");
+            }
+          } else {
+            textSpan.textContent = "Less";
+            if (icon) {
+              icon.classList.add("rotate-180");
+            }
+          }
+        });
+      }
+    })();
+  </script>
 </aside>

@@ -66,22 +66,37 @@ Promise.all([
   .then(() => {
     console.log("Sidebar loaded.");
 
-    // Assuming mobileMenuBtn, sidebar, and app are already defined:
+    // Attach mobile menu button toggle logic (for sidebar)
     const mobileMenuBtn = document.getElementById("mobileMenuBtn");
     const sidebar = document.getElementById("sidebar");
     const app = document.getElementById("app");
-
     if (mobileMenuBtn && sidebar && app) {
       mobileMenuBtn.addEventListener("click", () => {
-        // Toggle the dedicated class that controls visibility on mobile
         sidebar.classList.toggle("sidebar-open");
-        // Optionally shift main content on mobile
         app.classList.toggle("sidebar-open");
       });
     }
 
+    // Attach "More" button toggle logic for footer links
+    const footerDropdownButton = document.getElementById(
+      "footerDropdownButton"
+    );
+    if (footerDropdownButton) {
+      footerDropdownButton.addEventListener("click", () => {
+        const footerLinksContainer = document.getElementById(
+          "footerLinksContainer"
+        );
+        if (!footerLinksContainer) return;
+        footerLinksContainer.classList.toggle("hidden");
+        if (footerLinksContainer.classList.contains("hidden")) {
+          footerDropdownButton.innerHTML = "More &#9660;";
+        } else {
+          footerDropdownButton.innerHTML = "Less &#9650;";
+        }
+      });
+    }
+
     // Load and set up sidebar navigation
-    // (We assume it calls setHashView(...) now)
     return import("./sidebar.js").then((module) => {
       module.setupSidebarNavigation();
     });
@@ -115,7 +130,7 @@ Promise.all([
       });
     }
 
-    // 3) “Application Form” => open application form
+    // 3) "Application Form" => open application form
     const openAppFormBtn = document.getElementById("openApplicationModal");
     if (openAppFormBtn) {
       openAppFormBtn.addEventListener("click", () => {
@@ -168,18 +183,10 @@ Promise.all([
  */
 export function setHashView(viewName) {
   const url = new URL(window.location.href);
-
-  // Remove possibly conflicting query params
   url.searchParams.delete("modal");
   url.searchParams.delete("v");
-
-  // Keep the existing path + updated search, set the new hash
   const newUrl = url.pathname + url.search + `#view=${viewName}`;
-
-  // Replace the URL so no full reload
   window.history.replaceState({}, "", newUrl);
-
-  // Manually trigger handleHashChange so the view loads immediately
   handleHashChange();
 }
 
@@ -189,18 +196,10 @@ export function setHashView(viewName) {
  */
 export function setQueryParam(key, value) {
   const url = new URL(window.location.href);
-
-  // Remove any #view=... from the hash
   url.hash = "";
-
-  // Set the query param
   url.searchParams.set(key, value);
-
-  // Replace the URL
   const newUrl = url.pathname + url.search;
   window.history.replaceState({}, "", newUrl);
-
-  // Immediately handle it
   handleQueryParams();
 }
 
@@ -212,7 +211,6 @@ function handleQueryParams() {
   const urlParams = new URLSearchParams(window.location.search);
   const modalParam = urlParams.get("modal");
 
-  // 5) Check ?modal=... param (moved from original code)
   if (modalParam === "appeals") {
     const appealsModal = document.getElementById("contentAppealsModal");
     if (appealsModal) {
@@ -225,7 +223,6 @@ function handleQueryParams() {
         if (appealsModal) {
           appealsModal.classList.add("hidden");
         }
-        // Show disclaimer if not seen
         if (!localStorage.getItem("hasSeenDisclaimer")) {
           const disclaimerModal = document.getElementById("disclaimerModal");
           if (disclaimerModal) {
@@ -240,7 +237,6 @@ function handleQueryParams() {
       appModal.classList.remove("hidden");
     }
   } else {
-    // If there's no special param, disclaimers can show if user hasn't seen them
     const hasSeenDisclaimer = localStorage.getItem("hasSeenDisclaimer");
     if (!hasSeenDisclaimer) {
       const disclaimerModal = document.getElementById("disclaimerModal");
@@ -250,7 +246,6 @@ function handleQueryParams() {
     }
   }
 
-  // 8) Additional forms
   if (modalParam === "feedback") {
     const feedbackModal = document.getElementById("generalFeedbackModal");
     if (feedbackModal) {
@@ -268,7 +263,6 @@ function handleQueryParams() {
     }
   }
 
-  // 9) Close buttons
   const closeFeedbackBtn = document.getElementById("closeGeneralFeedbackModal");
   if (closeFeedbackBtn) {
     closeFeedbackBtn.addEventListener("click", () => {
@@ -296,10 +290,6 @@ function handleQueryParams() {
       }
     });
   }
-
-  // You could also check ?v=someEvent to open a video, etc.
-  // if you want to keep ?v= param logic here.
-  // ...
 }
 
 /**
@@ -308,10 +298,7 @@ function handleQueryParams() {
 function handleHashChange() {
   console.log("handleHashChange called, current hash =", window.location.hash);
   const hash = window.location.hash || "";
-  // Expecting something like #view=most-recent-videos
   const match = hash.match(/^#view=(.+)/);
-
-  // If no #view=..., load "most-recent-videos" as default
   if (!match || !match[1]) {
     import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
       loadView("views/most-recent-videos.html").then(() => {
@@ -323,11 +310,8 @@ function handleHashChange() {
     });
     return;
   }
-
   const viewName = match[1];
   const viewUrl = `views/${viewName}.html`;
-
-  // Load the partial
   import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
     loadView(viewUrl).then(() => {
       const initFn = viewInitRegistry[viewName];
