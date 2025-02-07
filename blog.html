@@ -22256,24 +22256,28 @@ svg {
           },
         };
       }
+      // Theme default to light
       function ZS(e, t, n) {
-        let r = !0;
+        let r = false; // default to light mode
         function o() {
-          n(0, (r = !r)),
-            localStorage.setItem("theme", r ? "dark" : "light"),
-            r
-              ? document.documentElement.classList.add("dark")
-              : document.documentElement.classList.remove("dark");
+          n(0, (r = !r));
+          localStorage.setItem("theme", r ? "dark" : "light");
+          if (r) {
+            document.documentElement.classList.add("dark");
+          } else {
+            document.documentElement.classList.remove("dark");
+          }
         }
-        return (
-          typeof window < "u" &&
-            (localStorage.theme === "dark" ||
-            (!("theme" in localStorage) &&
-              window.matchMedia("(prefers-color-scheme: dark)").matches)
-              ? (document.documentElement.classList.add("dark"), (r = !0))
-              : (document.documentElement.classList.remove("dark"), (r = !1))),
-          [r, o]
-        );
+        if (typeof window !== "undefined") {
+          if (localStorage.theme === "dark") {
+            document.documentElement.classList.add("dark");
+            r = true;
+          } else {
+            document.documentElement.classList.remove("dark");
+            r = false;
+          }
+        }
+        return [r, o];
       }
       class YS extends oo {
         constructor(t) {
@@ -29638,7 +29642,7 @@ svg {
         padding: 0;
       }
       html.dark body {
-        background-color: #242424;
+        background-color: #0f172a;
         color: #cbcbcb;
       }
       #app {
@@ -29647,7 +29651,7 @@ svg {
         max-width: 760px;
         margin: 2rem auto;
         font-family: Arial, Helvetica, sans-serif;
-        color: #242424;
+        color: #0f172a;
       }
       @media only screen and (max-width: 768px) {
         #app {
@@ -29657,12 +29661,12 @@ svg {
         }
       }
       html.dark #app {
-        background-color: #242424;
+        background-color: #0f172a;
         color: #ebebeb;
       }
       a,
       a:visited {
-        color: #242424;
+        color: #0f172a;
       }
       html.dark a,
       html.dark a:visited {
@@ -29773,12 +29777,12 @@ svg {
         background-color: #ebebeb;
       }
       .topic-wrapper div a.selected {
-        background-color: #242424;
+        background-color: #0f172a;
         color: #f5f5f5;
       }
       html.dark .topic-wrapper div a {
         background-color: #747474;
-        color: #242424;
+        color: #0f172a;
       }
       html.dark .topic-wrapper div a:hover {
         background-color: #f5f5f5;
@@ -29802,14 +29806,14 @@ svg {
         border-bottom: 8px solid #ebebeb;
       }
       html.dark .about {
-        border-bottom: 8px solid #373737;
+        border-bottom: 8px solid #1e293b;
       }
       .separator {
         margin-bottom: 2rem;
         border-bottom: 8px solid #ebebeb;
       }
       html.dark .separator {
-        border-bottom: 8px solid #373737;
+        border-bottom: 8px solid #1e293b;
       }
       .top-notes {
         display: flex;
@@ -29867,7 +29871,7 @@ svg {
       }
       html.dark .top-notes {
         color: #cbcbcb;
-        border-bottom: 8px solid #373737;
+        border-bottom: 8px solid #1e293b;
       }
       .short-notes {
         border-bottom: 8px solid #f5f5f5;
@@ -29905,7 +29909,7 @@ svg {
         fill: #a9a9a9;
       }
       html.dark .short-notes {
-        border-bottom: 8px solid #373737;
+        border-bottom: 8px solid #1e293b;
       }
       html.dark .short-notes a {
         color: #cbcbcb;
@@ -29918,7 +29922,7 @@ svg {
         margin-bottom: 2rem;
       }
       .listing-notes.short-feed-full .summary {
-        color: #242424;
+        color: #0f172a;
       }
       .listing-notes ul {
         list-style-type: none;
@@ -30035,7 +30039,7 @@ svg {
         color: #cbcbcb;
       }
       html.dark .footer {
-        border-top: 8px solid #373737;
+        border-top: 8px solid #1e293b;
         color: #747474;
       }
       html.dark .footer a,
@@ -30394,8 +30398,8 @@ svg {
         }
       }
       html.dark .loader.svelte-181fgen:after {
-        border: 6px solid #373737;
-        border-color: #373737 transparent #373737 transparent;
+        border: 6px solid #1e293b;
+        border-color: #1e293b transparent #1e293b transparent;
       }
       #theme-toggle.svelte-bxrhh.svelte-bxrhh {
         display: none;
@@ -30422,7 +30426,7 @@ svg {
       }
       #theme-toggle.svelte-bxrhh:checked + label.svelte-bxrhh {
         background-color: transparent;
-        box-shadow: inset -6px -6px 1px 1px #3f3f3f;
+        box-shadow: inset -6px -6px 1px 1px #1e293b;
       }
     </style>
   </head>
