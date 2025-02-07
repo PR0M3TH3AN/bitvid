@@ -1,5 +1,5 @@
-// js/sidebar.js
-import { setHashView } from "./index.js"; // <--- or wherever you put it
+// sidebar.js
+import { setHashView } from "./index.js";
 
 export function setupSidebarNavigation() {
   const sidebarLinks = document.querySelectorAll('#sidebar a[href^="#view="]');
@@ -13,9 +13,17 @@ export function setupSidebarNavigation() {
       if (!match) return;
 
       const viewName = match[1]; // "about", "ipns", etc.
-      setHashView(viewName);
-      // That removes ?modal=, ?v=, sets #view=viewName,
-      // and triggers handleHashChange() automatically
+      setHashView(viewName); // This changes the hash and loads the view.
+
+      // --- NEW: if on mobile, close the sidebar automatically. ---
+      if (window.innerWidth < 768) {
+        const sidebar = document.getElementById("sidebar");
+        const app = document.getElementById("app");
+        if (sidebar && app) {
+          sidebar.classList.remove("sidebar-open");
+          app.classList.remove("sidebar-open");
+        }
+      }
     });
   });
 }
