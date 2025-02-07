@@ -11,7 +11,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ### Step 1: Set Up Your Account
 
-> ⚠️ **Note:** We are currently invite-only. Reach out to [**bitvid on Nostr**](https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe) to request to be added to the whitelist.
+> ⚠️ **Note:** We are currently invite-only. [Submit an application](https://bitvid.network/?modal=application) to request approval for posting content.
 
 1. Install a [Nostr extension](https://nostrapps.com/#signers#all) (like Alby or Nos2x) in your browser
 2. The extension creates your secure login key automatically

@@ -23,17 +23,7 @@
       </button>
     </div>
 
-    <div class="three columns">
-      <!-- "Open torrent file" button -->
-      <button
-        type="file"
-        ngf-select="$root.openTorrentFile($file)"
-        ng-disabled="$root.disabled"
-        class="button button-danger"
-      >
-        <i class="fa fa-folder-open"></i> Open torrent file
-      </button>
-    </div>
+    <div class="three columns"></div>
 
     <div class="three columns u-pull-right">
       <!-- "Seed files" button -->
@@ -103,15 +93,6 @@
             ng-click="$root.copyMagnetURI(selectedTorrent)"
           >
             Copy Magnet
-          </button>
-        </li>
-        <li>
-          <!-- Download .torrent file button -->
-          <button
-            class="button button-small"
-            ng-click="$root.saveTorrentFile(selectedTorrent)"
-          >
-            Download .torrent
           </button>
         </li>
         <li><strong>Hash:</strong> {{ selectedTorrent.infoHash }}</li>

@@ -1,4 +1,6 @@
-Welcome to **bitvid**, a decentralized video-sharing platform built on Nostr. These Community Guidelines outline the types of content allowed and prohibited on the platform. As bitvid is still in early access, enforcement will occur at the client level, meaning violations will result in content being blocked from display rather than removed from relays. These policies will evolve as we implement robust user blocking and reporting features.
+Welcome to **bitvid**, a decentralized video-sharing platform built on Nostr. These Community Guidelines outline the types of content allowed and prohibited on the client hosted at this domain. As bitvid is still in early access, enforcement will occur at the client level, meaning violations will result in content being blocked from display rather than removed from relays. These policies will evolve as we implement robust user blocking and reporting features.
+
+> ⚠️ **Note:** Don't like the Guidelines? [Fork the code](https://github.com/PR0M3TH3AN/bitvid) and host the client on your own domain.
 
 ## **1. Content Principles**
 
@@ -73,5 +75,9 @@ As we refine the moderation system, we welcome feedback from early users. If you
 ## **7. Final Notes**
 
 bitvid is committed to **free speech and open platforms** while acknowledging the need for responsible content moderation. These guidelines will continue to evolve as we develop better tools for user moderation and decentralized governance.
+
+> ⚠️ **Note:** If you agree to follow these guidelines then [submit an application](https://bitvid.network/?modal=application) to be a content creator!
+
+> ⚠️ **Note:** If you believe your content was unfairly blocked or restricted on [bitvid.network](https://bitvid.network/), please complete [this form](https://bitvid.network/?modal=appeals).
 
 Thank you for being part of the early bitvid community!
