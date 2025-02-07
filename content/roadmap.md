@@ -1,41 +1,34 @@
-## UI Enhancements
-
-- Add a copy Magnet button labeled "Seed".
-- add community guidelines page
-- add links to pop-up modal
-- Convert "Logged in as" from public key to profile image and username (use npub as fallback).
-- Add a sidebar for improved UI flexibility.
-- Customize home screen content via algorithms for better feeds. (trending, new, for you etc.)
-- Improve UI/UX and CSS.
-- Add custom color themes and toggle between light and dark mode.
-
 ## Bug Fixes
 
+> ⚠️ **Note:** If you find a new bug thats not listed here. Please submit a [Bug Report](https://bitvid.network/?modal=bug).
+
 - Fix "Dev Mode" publishing "Live Mode" notes—add a flag for dev mode posts.
+- Fix issue with video post set to private.
 
 ## Feature Additions
 
+> ⚠️ **Note:** Have an idea for improving bitvid? We’d love to hear it! Please use [this form](https://bitvid.network/?modal=feature) to request new features or enhancements.
+
 - Allow users to set custom relay settings, stored in local cache.
 - Add a "Publish" step in the video editing process.
-- Add comments to the video modal.
+- Add Profile/Channel Views. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/04_bitvid_Enhanced_Profile_Channel_Views_Specification.md)
+- Improve event spec for migration to new versions. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/02_bitvid_Enhanced_Migration_of_Note_Spec_Logic.md)
+- Migrate event spec to v3 and add support for Audio/Podcast content. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/03_bitvid_Enhanced_Nostr_Video_%26_Audio_Note_Specification_Version%203.md)
+- Add Block List, Subscription List, Playlist, and Reporting Specification. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/05_bitvid_Enhanced_Block_Subscription_%26_Reporting_Specification.md)
+- Add comments to the video modal. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/06_bitvid_Enhanced_Video_Comment_System_Specification.md)
 - Implement an "Adult Content" flag for note submissions.
-- Enable custom hashtags in the submission spec and form.
-- Allow multiple video resolutions with a selector in the video player.
-- Add a block/unblock list with import/export functionality.
-- Assign unique URLs to each video.
-- Add a profile modal for each user/profile.
+- Enable custom hashtags in the submission spec and form. (Use with future search system)
+- Allow multiple video resolutions with a selector in the video player. (v3 event spec needed)
 - Introduce a subscription mechanism with notifications.
 - Add zaps to videos, profiles, and comments.
+- Create a VRR (View, Rating, and Retention) Penalty Scoring system. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/07_bitvid_Enhanced_View_Rating_%26_Retention_Penalty_Scoring.md)
 - Implement visibility filtering for videos:
   - Show only videos whose magnet links have at least **one active peer online**.
   - Integrate the filtering mechanism into the video list rendering process.
-  - Update the video list dynamically based on real-time peer availability.
-- Add multi-language support for content and filtration.
+  - Update the video list dynamically based on real-time peer availability. (this may not be possible)
+- Dynamic Home Page and Video Tracking Specification. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/08_bitvid_Enhanced_Dynamic_Home_Page_%26_Video_Tracking_Specification.md)
+- Add multi-language support for content and filtration. (v4?)
 - Create a settings menu for local account preferences, including relay, adult content, theme, and language.
+- Better integrate with other Nostr/torrent ecosystem. (NIP-35 + WebRTC Check Integration) [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/09_bitvid_Enhanced_NIP-35_%2B_WebRTC_Check_Integration.md)
 
-## Long-Term Goals
-
-- Add a system for creating high-quality, algorithm-driven content feeds.
-- Thoroughly bug test the video editing and submission process.
-
-If you find a new bug thats not listed here. DM me on [Nostr](https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe).
+> ⚠️ **Note:** Your feedback helps us improve bitvid! Whether it’s a suggestion, a concern, or general thoughts on the platform, we’d love to hear from you. Please tell us what you think [with this form](https://bitvid.network/?modal=feedback).
