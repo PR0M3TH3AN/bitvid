@@ -16,6 +16,9 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text);
   line-height: 1.5;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden; /* Disable horizontal scrolling */
 }
 
 header {
@@ -473,45 +476,53 @@ footer a:hover {
 
 /* Sidebar default states */
 #sidebar {
-  /* You can set a default width here for 'expanded' state. */
-  width: 14rem; /* for example */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 16rem; /* Tailwind's w-64 */
+  height: 100vh;
+  background-color: #0f172a;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transition: transform 0.3s ease;
 }
 
-/* You could define a class for collapsed states on desktop if desired: */
+/* Mobile (max-width: 767px): Hide sidebar by default */
+@media (max-width: 767px) {
+  #sidebar {
+    transform: translateX(-100%);
+  }
+  /* When the sidebar-open class is added, slide the sidebar in */
+  #sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  /* Optionally shift main content when sidebar is open */
+  #app.sidebar-open {
+    transform: translateX(16rem);
+    transition: transform 0.3s ease;
+  }
+}
+
+/* Desktop (min-width: 768px): Always show the sidebar */
+@media (min-width: 768px) {
+  #sidebar {
+    transform: translateX(0) !important;
+  }
+}
+
+/* Collapsed/expanded classes if needed on desktop */
 .sidebar-collapsed {
   width: 4rem;
 }
 .sidebar-expanded {
-  width: 14rem;
+  width: 16rem;
 }
-
-/* Hide text when collapsed. 
-   If you add .sidebar-collapsed to #sidebar, you can hide text like this: */
 .sidebar-collapsed .sidebar-text {
   display: none;
 }
 
-/* Basic scrolling for the sidebar if it's long */
-#sidebar {
-  overflow-y: auto;
-}
-
-/* The top-level container is already "flex min-h-screen" in index.html.
-   The main content (#app) has "flex-1", so it fills the rest of the space. */
-
-/* Example of customizing the border & background in the sidebar */
+/* Example: customizing the border & background in the sidebar */
 #sidebar hr {
   border-color: rgba(255, 255, 255, 0.1);
-}
-
-/* If you want a smooth transition for showing/hiding the entire sidebar 
-   on mobile (via the "hidden" class), you can do so with a small fade, 
-   but you’ll need a separate approach with absolute positioning or something 
-   if you prefer a sliding effect. */
-
-@media (max-width: 767px) {
-  .sidebar-open {
-    transform: translateX(16rem);
-    transition: transform 0.3s ease;
-  }
 }

@@ -1,7 +1,12 @@
 <aside
   id="sidebar"
-  class="bg-gray-900 text-white transition-transform duration-300 ease-in-out fixed top-0 left-0 w-64 h-full -translate-x-full hidden md:translate-x-0 md:block"
+  class="bg-gray-900 text-white transition-transform duration-300 ease-in-out fixed top-0 left-0 w-64 h-screen overflow-y-auto"
 >
+  <!-- 
+    The sidebar is hidden by default on mobile via CSS (transform: translateX(-100%)).
+    When the "sidebar-open" class is added (via the mobile menu button), CSS will slide it into view.
+    On desktop (min-width: 768px), the sidebar is always visible.
+  -->
   <div class="flex flex-col h-full">
     <!-- Top Navigation Links -->
     <div class="flex-1 overflow-y-auto px-4">

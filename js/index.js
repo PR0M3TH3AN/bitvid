@@ -66,15 +66,16 @@ Promise.all([
   .then(() => {
     console.log("Sidebar loaded.");
 
+    // Assuming mobileMenuBtn, sidebar, and app are already defined:
     const mobileMenuBtn = document.getElementById("mobileMenuBtn");
     const sidebar = document.getElementById("sidebar");
-    const app = document.getElementById("app"); // <-- new
+    const app = document.getElementById("app");
 
     if (mobileMenuBtn && sidebar && app) {
       mobileMenuBtn.addEventListener("click", () => {
-        sidebar.classList.toggle("hidden");
-        sidebar.classList.toggle("-translate-x-full");
-        // Toggle the class on #app so it shifts right
+        // Toggle the dedicated class that controls visibility on mobile
+        sidebar.classList.toggle("sidebar-open");
+        // Optionally shift main content on mobile
         app.classList.toggle("sidebar-open");
       });
     }
