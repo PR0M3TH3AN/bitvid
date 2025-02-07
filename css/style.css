@@ -1,0 +1,528 @@
+:root {
+  --color-bg: #0f172a;
+  --color-card: #1e293b;
+  --color-primary: #fe0032;
+  --color-secondary: #ff93a5;
+  --color-text: #f8fafc;
+  --color-muted: #94a3b8;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+}
+
+/* Core Styles */
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden; /* Disable horizontal scrolling */
+}
+
+header {
+  margin-bottom: 2rem;
+  padding: 1rem 0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+header img {
+  height: 6rem;
+  width: auto;
+  max-width: none;
+}
+
+.container {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* Video Grid */
+#videoList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 2rem;
+  padding: 1.5rem 0;
+}
+
+/* Video Cards */
+.video-card {
+  background-color: var(--color-card);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-md);
+}
+
+.video-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.video-card .thumbnail-container {
+  position: relative;
+  padding-top: 56.25%;
+  background-color: #0f172a;
+}
+
+.video-card img.thumbnail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-card .details {
+  padding: 1.25rem;
+}
+
+.video-card h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.75rem;
+}
+
+/* Modal Player */
+#playerModal {
+  position: fixed;
+  inset: 0;
+  background-color: rgb(0 0 0 / 0.9); /* You can adjust opacity if needed */
+  z-index: 50;
+  display: none; /* Hidden by default */
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); /* For Safari support */
+}
+
+#nostrFormModal,
+#profileModal,
+#uploadModal {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); /* For Safari */
+}
+
+/* If you ever want to show it, add ".flex" class dynamically */
+#playerModal.flex {
+  display: flex;
+}
+
+/* Modal Content Container */
+.modal-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #0f172a;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Video Container */
+.video-container {
+  width: 100%;
+  background-color: black;
+  position: sticky;
+  top: 0;
+  z-index: 51;
+}
+
+/* Modal Video */
+#modalVideo {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background-color: black;
+}
+
+/* Video Info Section */
+.video-info {
+  padding: 1rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Responsive Adjustments */
+@media (min-width: 768px) {
+  #playerModal {
+    padding: 2rem;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-content {
+    max-width: 64rem;
+    max-height: calc(100vh - 4rem); /* Account for padding */
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+
+  .video-container {
+    position: relative;
+  }
+}
+
+/* Mobile-specific styles */
+@media (max-width: 767px) {
+  #playerModal {
+    padding: 0;
+  }
+
+  .modal-content {
+    border-radius: 0;
+  }
+}
+
+/* Custom Scrollbar */
+.video-info::-webkit-scrollbar {
+  width: 8px;
+}
+
+.video-info::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.video-info::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.video-info::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* Progress Bars */
+.progress-bar {
+  width: 100%;
+  height: 0.5rem;
+  background-color: rgb(255 255 255 / 0.1);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: var(--color-primary);
+  transition: width 0.3s ease-out;
+}
+
+/* Forms & Inputs */
+input,
+textarea {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: var(--color-bg);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 0.5rem;
+  color: var(--color-text);
+  transition: border-color 0.2s;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  ring: 2px var(--color-primary);
+}
+
+/* -------------------------------------------
+   COMMENTED OUT the 'button:not(.icon-button)' 
+   global rule that overrides your circles
+--------------------------------------------
+
+button:not(.icon-button) {
+  padding: 0.75rem 1.5rem;
+  background-color: var(--color-primary);
+  color: white;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+button:not(.icon-button):hover {
+  background-color: var(--color-secondary);
+  transform: translateY(-1px);
+}
+
+button:not(.icon-button):focus {
+  outline: none;
+  ring: 2px var(--color-primary);
+}
+*/
+
+/* Utility Classes */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hidden {
+  display: none;
+}
+
+/* Notifications */
+/* Base styling without a forced display */
+#errorContainer,
+#successContainer {
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  align-items: center; /* Keep the rest of your styling */
+}
+
+/* When not hidden, display as flex */
+#errorContainer:not(.hidden),
+#successContainer:not(.hidden) {
+  display: flex;
+}
+
+/* Responsive Design */
+@media (max-width: 640px) {
+  #videoList {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .container {
+    padding: 0.75rem;
+  }
+}
+
+footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 4rem;
+  padding-top: 2rem;
+}
+
+footer a {
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+/* Disclaimer Modal Styles */
+#disclaimerModal {
+  position: fixed;
+  inset: 0;
+  background-color: rgb(0 0 0 / 0.9);
+  z-index: 50;
+  /* remove display: none; */
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#disclaimerModal .modal-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg);
+}
+
+#disclaimerModal .modal-scroll {
+  padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Disclaimer Modal Scrollbar */
+#disclaimerModal .modal-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+#disclaimerModal .modal-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#disclaimerModal .modal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+#disclaimerModal .modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* Disclaimer Modal Button Container */
+#disclaimerModal .button-container {
+  padding: 1rem 1.5rem;
+  background-color: #1a2234;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive Adjustments for Disclaimer Modal */
+@media (min-width: 768px) {
+  #disclaimerModal {
+    padding: 2rem;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #disclaimerModal .modal-scroll {
+    max-height: calc(90vh - 5rem);
+  }
+}
+
+/* Mobile-specific styles for Disclaimer Modal */
+@media (max-width: 767px) {
+  #disclaimerModal {
+    padding: 0;
+  }
+
+  #disclaimerModal .modal-content {
+    min-height: 100vh;
+    border-radius: 0;
+  }
+}
+
+/* Override default button styles for back button */
+.back-button {
+  background: rgba(0, 0, 0, 0.5) !important;
+  padding: 0 !important;
+  color: rgb(209 213 219) !important;
+  transform: none !important;
+}
+
+.back-button:hover {
+  background: rgba(0, 0, 0, 0.7) !important;
+  color: white !important;
+}
+
+/* Modal Container */
+.modal-container {
+  padding: 0;
+}
+
+@media (min-width: 768px) {
+  .modal-container {
+    padding: 2rem;
+  }
+}
+
+/* Video info cards */
+.video-info .bg-gray-800\/50 {
+  background-color: rgb(31 41 55 / 0.5);
+  backdrop-filter: blur(4px);
+}
+
+/* Circular Icon Buttons */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem; /* 40px */
+  height: 2.5rem; /* 40px */
+  line-height: 0;
+  background-color: #3f3f46; /* Gray 700 */
+  color: #fff;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.icon-button:hover {
+  background-color: #52525b; /* Gray 600 */
+}
+
+.icon-button:focus,
+.icon-button:active {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.6);
+}
+
+.icon-image {
+  width: 1.25rem; /* 20px */
+  height: 1.25rem; /* 20px */
+  pointer-events: none;
+}
+
+/* Ratio 16:9 Container */
+.ratio-16-9 {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  background-color: #1e293b;
+}
+
+.ratio-16-9 > img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Sidebar default states */
+#sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 16rem; /* Tailwind's w-64 */
+  height: 100vh;
+  background-color: #0f172a;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transition: transform 0.3s ease;
+}
+
+/* Mobile (max-width: 767px): Hide sidebar by default */
+@media (max-width: 767px) {
+  #sidebar {
+    transform: translateX(-100%);
+  }
+  /* When the sidebar-open class is added, slide the sidebar in */
+  #sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  /* Optionally shift main content when sidebar is open */
+  #app.sidebar-open {
+    transform: translateX(16rem);
+    transition: transform 0.3s ease;
+  }
+}
+
+/* Desktop (min-width: 768px): Always show the sidebar */
+@media (min-width: 768px) {
+  #sidebar {
+    transform: translateX(0) !important;
+  }
+}
+
+/* Collapsed/expanded classes if needed on desktop */
+.sidebar-collapsed {
+  width: 4rem;
+}
+.sidebar-expanded {
+  width: 16rem;
+}
+.sidebar-collapsed .sidebar-text {
+  display: none;
+}
+
+/* Example: customizing the border & background in the sidebar */
+#sidebar hr {
+  border-color: rgba(255, 255, 255, 0.1);
+}

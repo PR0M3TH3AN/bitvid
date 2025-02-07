@@ -1,0 +1,248 @@
+<aside
+  id="sidebar"
+  class="bg-gray-900 text-white transition-transform duration-300 ease-in-out fixed top-0 left-0 w-64 h-screen overflow-y-auto"
+>
+  <div class="flex flex-col h-full">
+    <!-- Top Navigation Links -->
+    <div class="flex-1 overflow-y-auto px-4">
+      <div class="bg-gray-800 rounded-lg shadow-md mt-4 p-4">
+        <nav class="flex flex-col space-y-2">
+          <a
+            href="#view=most-recent-videos"
+            class="flex items-center py-2 px-4 hover:bg-gray-700 rounded font-semibold"
+          >
+            <img
+              src="assets/svg/home-icon.svg"
+              alt="Home"
+              class="w-6 h-6 mr-3 flex-shrink-0"
+            />
+            <span class="sidebar-text">Home</span>
+          </a>
+          <a
+            href="#view=explore"
+            class="flex items-center py-2 px-4 hover:bg-gray-700 rounded font-semibold"
+          >
+            <img
+              src="assets/svg/explore-icon.svg"
+              alt="Explore"
+              class="w-6 h-6 mr-3 flex-shrink-0"
+            />
+            <span class="sidebar-text">Explore</span>
+          </a>
+          <a
+            id="subscriptionsLink"
+            href="#view=subscriptions"
+            class="hidden flex items-center py-2 px-4 hover:bg-gray-700 rounded font-semibold"
+          >
+            <img
+              src="assets/svg/subscriptions-icon.svg"
+              alt="Subscriptions"
+              class="w-6 h-6 mr-3 flex-shrink-0"
+            />
+            <span class="sidebar-text">Subscriptions</span>
+          </a>
+        </nav>
+      </div>
+    </div>
+
+    <!-- Mobile Dropdown Button for Footer Links -->
+    <!-- Added p-4 around the button for spacing, and styling consistent with top links -->
+    <div class="md:hidden p-4">
+      <button
+        id="footerDropdownButton"
+        class="flex items-center w-full py-2 px-4 bg-gray-800 hover:bg-gray-700 text-sm font-semibold text-gray-100 rounded shadow-md focus:outline-none transition-colors duration-200"
+      >
+        <!-- Arrow on the left side -->
+        <svg
+          id="footerDropdownIcon"
+          class="w-4 h-4 mr-2 transform transition-transform duration-300"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+        <span id="footerDropdownText">More</span>
+      </button>
+    </div>
+
+    <!-- Footer Links Container -->
+    <!-- On mobile: hidden by default; on desktop: visible and pushed to the bottom -->
+    <div id="footerLinksContainer" class="hidden md:block md:mt-auto">
+      <hr class="border-gray-700" />
+      <div class="p-4">
+        <nav class="space-y-2 text-sm opacity-70">
+          <a
+            href="#view=about"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/about-icon.svg"
+              alt="About"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">About</span>
+          </a>
+          <a
+            href="#view=community-guidelines"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/guidelines-icon.svg"
+              alt="Guidelines"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">Guidelines</span>
+          </a>
+          <a
+            href="#view=getting-started"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/getting-started-icon.svg"
+              alt="Getting Started"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">Getting Started</span>
+          </a>
+          <a
+            href="#view=roadmap"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/roadmap-icon.svg"
+              alt="Roadmap"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">Roadmap</span>
+          </a>
+          <a
+            href="#view=blog"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/blog-icon.svg"
+              alt="Blog"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">Blog</span>
+          </a>
+          <a
+            href="https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/nostr-icon.svg"
+              alt="Nostr"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">Nostr</span>
+          </a>
+          <a
+            href="https://github.com/PR0M3TH3AN/bitvid"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/github-icon.svg"
+              alt="GitHub"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">GitHub</span>
+          </a>
+          <a
+            href="torrent/beacon.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/beacon-icon.svg"
+              alt="βeacon"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">βeacon</span>
+          </a>
+          <a
+            href="https://beta.bitvid.network/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/beta-icon.svg"
+              alt="Beta"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">Beta</span>
+          </a>
+          <a
+            href="#view=links"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/links-icon.svg"
+              alt="Links"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">Links</span>
+          </a>
+          <a
+            href="#view=ipns"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img
+              src="assets/svg/ipns-icon.svg"
+              alt="IPNS"
+              class="w-5 h-5 mr-3"
+            />
+            <span class="sidebar-text">IPNS</span>
+          </a>
+          <a
+            href="https://bitvid.network/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+          >
+            <img src="assets/svg/dns-icon.svg" alt="DNS" class="w-5 h-5 mr-3" />
+            <span class="sidebar-text">DNS</span>
+          </a>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var btn = document.getElementById("footerDropdownButton");
+      var footerLinks = document.getElementById("footerLinksContainer");
+      if (btn && footerLinks) {
+        btn.addEventListener("click", function () {
+          footerLinks.classList.toggle("hidden");
+          var icon = document.getElementById("footerDropdownIcon");
+          var textSpan = document.getElementById("footerDropdownText");
+          if (footerLinks.classList.contains("hidden")) {
+            textSpan.textContent = "More";
+            if (icon) {
+              icon.classList.remove("rotate-180");
+            }
+          } else {
+            textSpan.textContent = "Less";
+            if (icon) {
+              icon.classList.add("rotate-180");
+            }
+          }
+        });
+      }
+    })();
+  </script>
+</aside>

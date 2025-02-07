@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>bitvid | Decentralized Video Sharing</title>
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="BitVid - Decentralized Video Sharing" />
+    <meta
+      property="og:description"
+      content="Share videos and follow creators freely, in a truly decentralized way."
+    />
+    <meta property="og:image" content="assets/jpg/bitvid.jpg" />
+    <meta property="og:url" content="https://bitvid.network" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- App Icons -->
+    <link rel="icon" href="assets/favicon.ico" sizes="any" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="assets/png/apple-touch-icon.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="assets/png/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="assets/png/favicon-16x16.png"
+    />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#0f172a" />
+
+    <!-- Styles -->
+    <link href="css/tailwind.min.css" rel="stylesheet" />
+    <link href="css/style.css" rel="stylesheet" />
+    <link href="css/markdown.css" rel="stylesheet" />
+  </head>
+  <body class="bg-gray-100">
+    <!-- 
+      SIDEBAR CONTAINER:
+      The <aside id="sidebar"> inside handles visibility. 
+      By default, no special position or z-index on #sidebarContainer.
+    -->
+    <div id="sidebarContainer">
+      <!-- components/sidebar.html gets injected here -->
+    </div>
+
+    <!-- 
+      MAIN CONTENT:
+      md:ml-64 ensures content is shifted on desktop so the pinned sidebar doesn't overlap.
+      On mobile, we also toggle .sidebar-open to shift the entire content.
+    -->
+    <div id="app" class="md:ml-64 px-4 py-8 min-h-screen flex flex-col">
+      <!-- Header -->
+      <header class="mb-8 flex items-center w-full">
+        <!-- Mobile hamburger button (hidden on md+) -->
+        <!-- New button -->
+        <button
+          id="mobileMenuBtn"
+          class="md:hidden ml-2 mr-4 flex items-center justify-center w-10 h-10 rounded-full bg-transparent hover:bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f172a] z-[60]"
+        >
+          <img
+            src="assets/svg/mobile-sidebar-menu-icon.svg"
+            alt="Mobile Sidebar Menu Icon"
+            class="w-6 h-6"
+          />
+        </button>
+        <!-- Logo -->
+        <img
+          src="assets/svg/bitvid-logo-light-mode.svg"
+          alt="BitVid Logo"
+          class="h-16"
+        />
+
+        <!-- Buttons on the far right -->
+        <div class="ml-auto flex items-center space-x-4">
+          <!-- Login Button -->
+          <button
+            id="loginButton"
+            style="background-color: #1e293b"
+            class="inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-sm font-bold leading-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+          >
+            <img
+              src="assets/svg/default-profile.svg"
+              alt="Profile Icon"
+              class="w-9 h-9"
+            />
+          </button>
+
+          <!-- Upload Button (hidden by default) -->
+          <button
+            id="uploadButton"
+            style="background-color: #fe0032"
+            class="hidden inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-xl font-bold leading-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+          >
+            +
+          </button>
+
+          <!-- Profile Button (hidden by default) -->
+          <button
+            id="profileButton"
+            class="hidden inline-flex items-center justify-center w-12 h-12 rounded-full bg-black text-white text-sm leading-none hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
+          >
+            <div class="w-10 h-10 rounded-full overflow-hidden">
+              <img
+                id="profileAvatar"
+                src="assets/svg/default-profile.svg"
+                alt="Profile"
+                class="w-full h-full object-cover"
+              />
+            </div>
+          </button>
+        </div>
+      </header>
+
+      <!-- Error Container -->
+      <div
+        id="errorContainer"
+        class="hidden bg-red-100 text-red-900 p-4 rounded-md mb-4"
+      ></div>
+
+      <!-- Success Container -->
+      <div
+        id="successContainer"
+        class="hidden bg-green-100 text-green-900 p-4 rounded-md mb-4"
+      ></div>
+
+      <!-- Dynamic views (like most-recent-videos.html, etc.) -->
+      <main id="viewContainer" class="flex-grow mb-8"></main>
+
+      <!-- Modal Container (external modals) -->
+      <div id="modalContainer"></div>
+
+      <!-- Tagline / Slogan -->
+      <div class="text-center mb-8">
+        <h2 class="text-2xl font-bold text-gray-500 tracking-wide">
+          seed. zap. subscribe.
+        </h2>
+      </div>
+    </div>
+
+    <!-- Additional Scripts -->
+    <script src="js/libs/nostr.bundle.js"></script>
+    <script type="module">
+      import { nip19, SimplePool } from "https://esm.sh/nostr-tools@1.8.3";
+      window.NostrTools = { nip19, SimplePool };
+    </script>
+    <script type="module" src="js/config.js"></script>
+    <script type="module" src="js/lists.js"></script>
+    <script type="module" src="js/accessControl.js"></script>
+    <script type="module" src="js/webtorrent.js"></script>
+    <script type="module" src="js/nostr.js"></script>
+    <script type="module" src="js/viewManager.js"></script>
+    <script type="module" src="js/app.js"></script>
+    <script type="module" src="js/disclaimer.js"></script>
+    <script type="module" src="js/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  </body>
+</html>
