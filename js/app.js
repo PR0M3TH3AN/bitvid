@@ -5,7 +5,12 @@ import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
 import disclaimerModal from "./disclaimer.js";
-import { initialBlacklist, initialEventBlacklist } from "./lists.js";
+import { isWhitelistEnabled } from "./config.js";
+import {
+  initialWhitelist,
+  initialBlacklist,
+  initialEventBlacklist,
+} from "./lists.js";
 
 /**
  * Simple "decryption" placeholder for private videos.
@@ -898,14 +903,19 @@ class bitvidApp {
 
         // Filter out blacklisted authors & blacklisted event IDs
         const filteredVideos = updatedAll.filter((video) => {
-          // 1) If the event ID is in our blacklisted set, skip
+          // 1) If the event ID is in our blacklistedEventIds set, skip
           if (this.blacklistedEventIds.has(video.id)) {
             return false;
           }
 
-          // 2) Check author if you’re blacklisting authors by npub
+          // 2) Check if the author's npub is in initialBlacklist
           const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
           if (initialBlacklist.includes(authorNpub)) {
+            return false;
+          }
+
+          // 3) If whitelist mode is enabled, only keep authors in initialWhitelist
+          if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
             return false;
           }
 
@@ -933,7 +943,15 @@ class bitvidApp {
         }
 
         const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-        return !initialBlacklist.includes(authorNpub);
+        if (initialBlacklist.includes(authorNpub)) {
+          return false;
+        }
+
+        if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
+          return false;
+        }
+
+        return true;
       });
 
       this.renderVideoList(filteredCached);
@@ -1448,12 +1466,14 @@ class bitvidApp {
    * Helper to open a video by event ID (like ?v=...).
    */
   async playVideoByEventId(eventId) {
+    // 1) Event-level blacklist check
     if (this.blacklistedEventIds.has(eventId)) {
       this.showError("This content has been removed or is not allowed.");
       return;
     }
 
     try {
+      // Attempt to get the video from local cache or fetch
       let video = this.videosMap.get(eventId);
       if (!video) {
         video = await this.getOldEventById(eventId);
@@ -1463,12 +1483,20 @@ class bitvidApp {
         return;
       }
 
+      // 2) Author-level blacklist check
       const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
       if (initialBlacklist.includes(authorNpub)) {
         this.showError("This content has been removed or is not allowed.");
         return;
       }
 
+      // 3) Whitelist check if enabled
+      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
+        this.showError("This content is not from a whitelisted author.");
+        return;
+      }
+
+      // Handle private videos (decrypt if owner is the current user)
       if (
         video.isPrivate &&
         video.pubkey === this.pubkey &&
@@ -1509,6 +1537,7 @@ class bitvidApp {
         this.log("Error fetching creator profile:", error);
       }
 
+      // Update UI fields
       const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
       if (this.videoTitle) {
         this.videoTitle.textContent = video.title || "Untitled";
@@ -1534,6 +1563,7 @@ class bitvidApp {
         this.creatorAvatar.alt = creatorProfile.name;
       }
 
+      // Cleanup any previous WebTorrent streams, then start a fresh one
       await torrentClient.cleanup();
       const cacheBustedMagnet = video.magnet + "&ts=" + Date.now();
       this.log("Starting video stream with:", cacheBustedMagnet);
@@ -1555,6 +1585,7 @@ class bitvidApp {
         this.modalVideo
       );
 
+      // Try playing; if autoplay fails, fallback to muted
       this.modalVideo.play().catch((err) => {
         this.log("Autoplay failed:", err);
         if (!this.modalVideo.muted) {
