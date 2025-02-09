@@ -1263,7 +1263,38 @@ class bitvidApp {
       });
     });
   
-    // Edit, Revert, Delete events omitted for brevity...
+    // Edit button
+    const editButtons = this.videoList.querySelectorAll("[data-edit-index]");
+    editButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = button.getAttribute("data-edit-index");
+        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        if (dropdown) dropdown.classList.add("hidden");
+        this.handleEditVideo(index);
+      });
+    });
+
+    // Revert button
+    const revertButtons = this.videoList.querySelectorAll("[data-revert-index]");
+    revertButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = button.getAttribute("data-revert-index");
+        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        if (dropdown) dropdown.classList.add("hidden");
+        this.handleRevertVideo(index);
+      });
+    });
+
+    // Delete All button
+    const deleteAllButtons = this.videoList.querySelectorAll("[data-delete-all-index]");
+    deleteAllButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = button.getAttribute("data-delete-all-index");
+        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        if (dropdown) dropdown.classList.add("hidden");
+        this.handleFullDeleteVideo(index);
+      });
+    });
   
     // 2) After building cards, do one batch profile fetch
     this.batchFetchProfiles(authorSet);
