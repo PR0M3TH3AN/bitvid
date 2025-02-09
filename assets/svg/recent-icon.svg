@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g id="iconmonstr-weather-64.svg" transform="matrix(1,0,0,1,12,12)">
+        <g transform="matrix(1,0,0,1,-12,-12)">
+            <path d="M11,10L0,10L0,8L11,8C11.552,8 12,7.552 12,7C12,6.448 11.552,6 11,6C10.597,6 10.253,6.242 10.095,6.587L8.346,5.631C8.845,4.666 9.84,4 11,4C14.971,4 14.969,10 11,10ZM18,17C18,15.344 16.656,14 15,14L0,14L0,16L15,16C15.552,16 16,16.448 16,17C16,17.552 15.552,18 15,18C14.597,18 14.253,17.758 14.095,17.413L12.346,18.369C12.845,19.334 13.84,20 15,20C16.656,20 18,18.656 18,17ZM19.014,9.345C19.096,8.592 19.726,8 20.5,8C21.327,8 22,8.673 22,9.5C22,10.327 21.327,11 20.5,11L0,11L0,13L20.5,13C22.432,13 24,11.432 24,9.5C24,7.568 22.432,6 20.5,6C18.876,6 17.523,7.116 17.128,8.617L19.014,9.345Z" style="fill:rgb(92,111,138);fill-rule:nonzero;"/>
+        </g>
+    </g>
+</svg>
