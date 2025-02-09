@@ -464,7 +464,6 @@ footer a:hover {
   padding-top: 56.25%;
   background-color: #1e293b;
 }
-
 .ratio-16-9 > img {
   position: absolute;
   top: 0;
@@ -526,3 +525,4 @@ footer a:hover {
 #sidebar hr {
   border-color: rgba(255, 255, 255, 0.1);
 }
+

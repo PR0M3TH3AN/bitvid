@@ -297,9 +297,14 @@ function handleQueryParams() {
  */
 function handleHashChange() {
   console.log("handleHashChange called, current hash =", window.location.hash);
+
   const hash = window.location.hash || "";
-  const match = hash.match(/^#view=(.+)/);
+  // Use a regex that captures up to the first ampersand or end of string.
+  // E.g. "#view=channel-profile&npub=..." => viewName = "channel-profile"
+  const match = hash.match(/^#view=([^&]+)/);
+
   if (!match || !match[1]) {
+    // No valid "#view=..." => default to "most-recent-videos"
     import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
       loadView("views/most-recent-videos.html").then(() => {
         const initFn = viewInitRegistry["most-recent-videos"];
@@ -310,8 +315,11 @@ function handleHashChange() {
     });
     return;
   }
-  const viewName = match[1];
+
+  const viewName = match[1]; // only the chunk before any '&'
   const viewUrl = `views/${viewName}.html`;
+
+  // Now dynamically load that partial, then call its init function
   import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
     loadView(viewUrl).then(() => {
       const initFn = viewInitRegistry[viewName];
