@@ -14,7 +14,9 @@ export async function initChannelProfileView() {
   const hashParams = new URLSearchParams(window.location.hash.slice(1));
   const npub = hashParams.get("npub");
   if (!npub) {
-    console.error("No npub found in hash. Example: #view=channel-profile&npub=npub1...");
+    console.error(
+      "No npub found in hash. Example: #view=channel-profile&npub=npub1..."
+    );
     return;
   }
 
@@ -35,12 +37,12 @@ export async function initChannelProfileView() {
   // 3) Load user’s profile (banner, avatar, etc.)
   await loadUserProfile(hexPub);
 
-  // 4) Load user’s videos (filtered and rendered like home feed)
+  // 4) Load user’s videos (filtered + rendered like the home feed)
   await loadUserVideos(hexPub);
 }
 
 /**
- * Fetches and displays the user’s metadata (kind:0).
+ * Fetches and displays the user’s metadata (kind=0).
  */
 async function loadUserProfile(pubkey) {
   try {
@@ -97,7 +99,8 @@ async function loadUserProfile(pubkey) {
       // Lightning Address
       const lnEl = document.getElementById("channelLightning");
       if (lnEl) {
-        lnEl.textContent = meta.lud16 || meta.lud06 || "No lightning address found.";
+        lnEl.textContent =
+          meta.lud16 || meta.lud06 || "No lightning address found.";
       }
     } else {
       console.warn("No metadata found for this user.");
@@ -109,8 +112,7 @@ async function loadUserProfile(pubkey) {
 
 /**
  * Fetches and displays this user's videos (kind=30078),
- * filtering out older/overshadowed events and blacklisted/non‐whitelisted entries.
- * Renders the video cards using the same `.ratio-16-9` approach as the home view.
+ * filtering out older overshadowed notes, blacklisted, non‐whitelisted, etc.
  */
 async function loadUserVideos(pubkey) {
   try {
@@ -133,7 +135,7 @@ async function loadUserVideos(pubkey) {
       }
     }
 
-    // 3) Convert events to "video" objects
+    // 3) Convert to "video" objects
     let videos = [];
     for (const evt of events) {
       const vid = localConvertEventToVideo(evt);
@@ -142,30 +144,27 @@ async function loadUserVideos(pubkey) {
       }
     }
 
-    // 4) Deduplicate older overshadowed versions (newest only)
+    // 4) Deduplicate older overshadowed versions => newest only
     videos = dedupeToNewestByRoot(videos);
 
-    // 5) Filter out blacklisted event IDs and authors
+    // 5) Filter out blacklisted IDs / authors
     videos = videos.filter((video) => {
       // Event-level blacklisting
-      if (app.blacklistedEventIds.has(video.id)) {
-        return false;
-      }
-      // Author-level checks
+      if (app.blacklistedEventIds.has(video.id)) return false;
+
+      // Author-level
       const authorNpub = app.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (initialBlacklist.includes(authorNpub)) {
-        return false;
-      }
+      if (initialBlacklist.includes(authorNpub)) return false;
       if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
         return false;
       }
       return true;
     });
 
-    // 6) Sort videos by newest first
+    // 6) Sort newest first
     videos.sort((a, b) => b.created_at - a.created_at);
 
-    // 7) Render the videos in #channelVideoList
+    // 7) Render them
     const container = document.getElementById("channelVideoList");
     if (!container) {
       console.warn("channelVideoList element not found in DOM.");
@@ -178,11 +177,13 @@ async function loadUserVideos(pubkey) {
     }
 
     const fragment = document.createDocumentFragment();
-    // We'll store them in a local array so gear handlers match the indexes
     const channelVideos = videos;
 
+    // We'll need all known events for revert-check
+    const allKnownEventsArray = Array.from(nostrClient.allEvents.values());
+
     channelVideos.forEach((video, index) => {
-      // If private + the user is the owner => decrypt
+      // Private => decrypt if owned by the user
       if (
         video.isPrivate &&
         video.pubkey === nostrClient.pubkey &&
@@ -192,8 +193,28 @@ async function loadUserVideos(pubkey) {
         video.alreadyDecrypted = true;
       }
 
-      // Determine if the logged-in user can edit
+      // Check if user can edit
       const canEdit = video.pubkey === app.pubkey;
+      let hasOlder = false;
+      if (canEdit && video.videoRootId) {
+        // Use the same hasOlderVersion approach as home feed
+        hasOlder = app.hasOlderVersion(video, allKnownEventsArray);
+      }
+
+      // If there's an older overshadowed version, show revert
+      const revertButton = hasOlder
+        ? `
+          <button
+            class="block w-full text-left px-4 py-2 text-sm text-red-400 
+            hover:bg-red-700 hover:text-white"
+            data-revert-index="${index}"
+          >
+            Revert
+          </button>
+        `
+        : "";
+
+      // Gear menu
       let gearMenu = "";
       if (canEdit) {
         gearMenu = `
@@ -224,6 +245,7 @@ async function loadUserVideos(pubkey) {
                 >
                   Edit
                 </button>
+                ${revertButton}
                 <button
                   class="block w-full text-left px-4 py-2 text-sm text-red-400 
                   hover:bg-red-700 hover:text-white"
@@ -237,7 +259,7 @@ async function loadUserVideos(pubkey) {
         `;
       }
 
-      // Reuse the `.ratio-16-9` approach from home feed
+      // Fallback thumbnail
       const fallbackThumb = "assets/jpg/video-thumbnail-fallback.jpg";
       const safeThumb = video.thumbnail || fallbackThumb;
 
@@ -253,7 +275,6 @@ async function loadUserVideos(pubkey) {
         "duration-300"
       );
 
-      // The "ratio-16-9" container ensures 16:9 cropping
       cardEl.innerHTML = `
         <div class="cursor-pointer relative group">
           <div class="ratio-16-9">
@@ -290,11 +311,11 @@ async function loadUserVideos(pubkey) {
 
     container.appendChild(fragment);
 
-    // Use app's lazy loader for thumbs
+    // Lazy-load
     const lazyEls = container.querySelectorAll("[data-lazy]");
     lazyEls.forEach((el) => app.mediaLoader.observe(el));
 
-    // Gear menus
+    // Gear menu toggles
     const gearButtons = container.querySelectorAll("[data-settings-dropdown]");
     gearButtons.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
@@ -307,22 +328,41 @@ async function loadUserVideos(pubkey) {
       });
     });
 
-    // "Edit" button
+    // "Edit" handler
     const editBtns = container.querySelectorAll("[data-edit-index]");
     editBtns.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const idx = parseInt(btn.getAttribute("data-edit-index"), 10);
+        // Hide the dropdown
+        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        if (dropdown) dropdown.classList.add("hidden");
         app.handleEditVideo(idx);
       });
     });
 
-    // "Delete All" button
+    // "Revert" handler
+    const revertBtns = container.querySelectorAll("[data-revert-index]");
+    revertBtns.forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const idx = parseInt(btn.getAttribute("data-revert-index"), 10);
+        // Hide the dropdown
+        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        if (dropdown) dropdown.classList.add("hidden");
+        app.handleRevertVideo(idx);
+      });
+    });
+
+    // "Delete All" handler
     const deleteAllBtns = container.querySelectorAll("[data-delete-all-index]");
     deleteAllBtns.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const idx = parseInt(btn.getAttribute("data-delete-all-index"), 10);
+        // Hide the dropdown
+        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        if (dropdown) dropdown.classList.add("hidden");
         app.handleFullDeleteVideo(idx);
       });
     });
