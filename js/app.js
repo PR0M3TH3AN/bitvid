@@ -655,6 +655,53 @@ class bitvidApp {
     }
   }
 
+  async batchFetchProfiles(authorSet) {
+    const pubkeys = Array.from(authorSet);
+    if (!pubkeys.length) return;
+  
+    const filter = {
+      kinds: [0],
+      authors: pubkeys,
+      limit: pubkeys.length,
+    };
+  
+    try {
+      // Query each relay
+      const results = await Promise.all(
+        nostrClient.relays.map(relayUrl =>
+          nostrClient.pool.list([relayUrl], [filter])
+        )
+      );
+      const allProfileEvents = results.flat();
+  
+      // Keep only the newest per author
+      const newestEvents = new Map();
+      for (const evt of allProfileEvents) {
+        if (!newestEvents.has(evt.pubkey) ||
+            evt.created_at > newestEvents.get(evt.pubkey).created_at) {
+          newestEvents.set(evt.pubkey, evt);
+        }
+      }
+  
+      // Update the cache & DOM
+      for (const [pubkey, evt] of newestEvents.entries()) {
+        try {
+          const data = JSON.parse(evt.content);
+          const profile = {
+            name: data.name || data.display_name || "Unknown",
+            picture: data.picture || "assets/svg/default-profile.svg",
+          };
+          this.profileCache.set(pubkey, { profile, timestamp: Date.now() });
+          this.updateProfileInDOM(pubkey, profile);
+        } catch (err) {
+          console.error("Profile parse error:", err);
+        }
+      }
+    } catch (err) {
+      console.error("Batch profile fetch error:", err);
+    }
+  }
+ 
   updateProfileInDOM(pubkey, profile) {
     // For any .author-pic[data-pubkey=...]
     const picEls = document.querySelectorAll(
@@ -925,14 +972,11 @@ class bitvidApp {
         this.renderVideoList(filteredVideos);
       });
 
-      // *** IMPORTANT ***: Unsubscribe once we get the historical EOSE
-      // so that we do not hold an open subscription forever:
       if (this.videoSubscription) {
-        this.videoSubscription.on("eose", () => {
-          this.videoSubscription.unsub();
-          console.log("[loadVideos] unsubscribed after EOSE");
-        });
+
+        console.log("[loadVideos] subscription remains open to get live updates.");
       }
+
     } else {
       // Already subscribed: just show what's cached
       const allCached = nostrClient.getActiveVideos();
@@ -958,6 +1002,29 @@ class bitvidApp {
     }
   }
 
+  async loadOlderVideos(lastTimestamp) {
+    // 1) Use nostrClient to fetch older slices
+    const olderVideos = await nostrClient.fetchOlderVideos(lastTimestamp);
+  
+    if (!olderVideos || olderVideos.length === 0) {
+      this.showSuccess("No more older videos found.");
+      return;
+    }
+  
+    // 2) Merge them into the client’s allEvents / activeMap
+    for (const v of olderVideos) {
+      nostrClient.allEvents.set(v.id, v);
+      // If it’s the newest version for its root, update activeMap
+      const rootKey = v.videoRootId || v.id;
+      // You can call getActiveKey(v) if you want to match your code’s approach.
+      // Then re-check if this one is newer than what’s stored, etc.
+    }
+  
+    // 3) Re-render
+    const all = nostrClient.getActiveVideos();
+    this.renderVideoList(all);
+  } 
+
   /**
    * Returns true if there's at least one strictly older version
    * (same videoRootId, created_at < current) which is NOT deleted.
@@ -977,29 +1044,35 @@ class bitvidApp {
 
   async renderVideoList(videos) {
     if (!this.videoList) return;
-
+  
     // Check if there's anything to show
     if (!videos || videos.length === 0) {
       this.videoList.innerHTML = `
-      <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
-        No public videos available yet. Be the first to upload one!
-      </p>`;
+        <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
+          No public videos available yet. Be the first to upload one!
+        </p>`;
       return;
     }
-
+      
     // Sort newest first
     videos.sort((a, b) => b.created_at - a.created_at);
-
+  
     // Convert allEvents to an array for checking older overshadowed events
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
     const fragment = document.createDocumentFragment();
-
+  
+    // 1) Collect authors here so we can fetch profiles in one go
+    const authorSet = new Set();
+  
     videos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Video missing ID/title:", video);
         return;
       }
-
+  
+      // Track this author's pubkey for the batch fetch later
+      authorSet.add(video.pubkey);
+  
       const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
       const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(
         nevent
@@ -1010,138 +1083,134 @@ class bitvidApp {
           ? "border-2 border-yellow-500"
           : "border-none";
       const timeAgo = this.formatTimeAgo(video.created_at);
-
+  
       // Check if there's an older version (for revert button)
       let hasOlder = false;
       if (canEdit && video.videoRootId) {
         hasOlder = this.hasOlderVersion(video, fullAllEventsArray);
       }
-
+  
       const revertButton = hasOlder
         ? `
-        <button
-          class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-          data-revert-index="${index}"
-        >
-          Revert
-        </button>
-      `
+          <button
+            class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+            data-revert-index="${index}"
+          >
+            Revert
+          </button>
+        `
         : "";
-
+  
       // Gear menu (only shown if canEdit)
       const gearMenu = canEdit
         ? `
-        <div class="relative inline-block ml-3 overflow-visible">
-          <button
-            type="button"
-            class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            data-settings-dropdown="${index}"
-          >
-            <img
-              src="assets/svg/video-settings-gear.svg"
-              alt="Settings"
-              class="w-5 h-5"
-            />
-          </button>
-          <div
-            id="settingsDropdown-${index}"
-            class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-          >
-            <div class="py-1">
-              <button
-                class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                data-edit-index="${index}"
-              >
-                Edit
-              </button>
-              ${revertButton}
-              <button
-                class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                data-delete-all-index="${index}"
-              >
-                Delete All
-              </button>
+          <div class="relative inline-block ml-3 overflow-visible">
+            <button
+              type="button"
+              class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              data-settings-dropdown="${index}"
+            >
+              <img
+                src="assets/svg/video-settings-gear.svg"
+                alt="Settings"
+                class="w-5 h-5"
+              />
+            </button>
+            <div
+              id="settingsDropdown-${index}"
+              class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+            >
+              <div class="py-1">
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                  data-edit-index="${index}"
+                >
+                  Edit
+                </button>
+                ${revertButton}
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                  data-delete-all-index="${index}"
+                >
+                  Delete All
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      `
+        `
         : "";
-
+  
       // Card markup
       const cardHtml = `
-      <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
-        <a
-          href="${shareUrl}"
-          data-play-magnet="${encodeURIComponent(video.magnet)}"
-          class="block cursor-pointer relative group"
-        >
-          <div class="ratio-16-9">
-            <img
-              src="assets/jpg/video-thumbnail-fallback.jpg"
-              data-lazy="${this.escapeHTML(video.thumbnail)}"
-              alt="${this.escapeHTML(video.title)}"
-            />
-          </div>
-        </a>
-        <div class="p-4">
-          <h3
-            class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
+        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
+          <a
+            href="${shareUrl}"
             data-play-magnet="${encodeURIComponent(video.magnet)}"
+            class="block cursor-pointer relative group"
           >
-            ${this.escapeHTML(video.title)}
-          </h3>
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
-                <img
-                  class="author-pic"
-                  data-pubkey="${video.pubkey}"
-                  src="assets/svg/default-profile.svg"
-                  alt="Placeholder"
-                />
-              </div>
-              <div class="min-w-0">
-                <p
-                  class="text-sm text-gray-400 author-name"
-                  data-pubkey="${video.pubkey}"
-                >
-                  Loading name...
-                </p>
-                <div class="flex items-center text-xs text-gray-500 mt-1">
-                  <span>${timeAgo}</span>
+            <div class="ratio-16-9">
+              <img
+                src="assets/jpg/video-thumbnail-fallback.jpg"
+                data-lazy="${this.escapeHTML(video.thumbnail)}"
+                alt="${this.escapeHTML(video.title)}"
+              />
+            </div>
+          </a>
+          <div class="p-4">
+            <h3
+              class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
+              data-play-magnet="${encodeURIComponent(video.magnet)}"
+            >
+              ${this.escapeHTML(video.title)}
+            </h3>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
+                  <img
+                    class="author-pic"
+                    data-pubkey="${video.pubkey}"
+                    src="assets/svg/default-profile.svg"
+                    alt="Placeholder"
+                  />
+                </div>
+                <div class="min-w-0">
+                  <p
+                    class="text-sm text-gray-400 author-name"
+                    data-pubkey="${video.pubkey}"
+                  >
+                    Loading name...
+                  </p>
+                  <div class="flex items-center text-xs text-gray-500 mt-1">
+                    <span>${timeAgo}</span>
+                  </div>
                 </div>
               </div>
+              ${gearMenu}
             </div>
-            ${gearMenu}
           </div>
         </div>
-      </div>
-    `;
-
+      `;
+  
       // Turn the HTML into an element
       const template = document.createElement("template");
       template.innerHTML = cardHtml.trim();
       const cardEl = template.content.firstElementChild;
-
-      // Fetch the author's profile info in the background
-      this.fetchAndRenderProfile(video.pubkey);
-
-      // Add the finished card to our fragment
+  
       fragment.appendChild(cardEl);
     });
-
+  
     // Clear the list and add our fragment
     this.videoList.innerHTML = "";
     this.videoList.appendChild(fragment);
-
+  
     // Lazy-load images
     const lazyEls = this.videoList.querySelectorAll("[data-lazy]");
     lazyEls.forEach((el) => this.mediaLoader.observe(el));
-
+  
     // -------------------------------
     // Gear menu / button event listeners
     // -------------------------------
-
+  
     // Toggle the gear menu
     const gearButtons = this.videoList.querySelectorAll(
       "[data-settings-dropdown]"
@@ -1155,7 +1224,7 @@ class bitvidApp {
         }
       });
     });
-
+  
     // Edit button
     const editButtons = this.videoList.querySelectorAll("[data-edit-index]");
     editButtons.forEach((button) => {
@@ -1163,25 +1232,21 @@ class bitvidApp {
         const index = button.getAttribute("data-edit-index");
         const dropdown = document.getElementById(`settingsDropdown-${index}`);
         if (dropdown) dropdown.classList.add("hidden");
-        // Assuming you have a method like this in your code:
         this.handleEditVideo(index);
       });
     });
-
+  
     // Revert button
-    const revertButtons = this.videoList.querySelectorAll(
-      "[data-revert-index]"
-    );
+    const revertButtons = this.videoList.querySelectorAll("[data-revert-index]");
     revertButtons.forEach((button) => {
       button.addEventListener("click", () => {
         const index = button.getAttribute("data-revert-index");
         const dropdown = document.getElementById(`settingsDropdown-${index}`);
         if (dropdown) dropdown.classList.add("hidden");
-        // Assuming you have a method like this in your code:
         this.handleRevertVideo(index);
       });
     });
-
+  
     // Delete All button
     const deleteAllButtons = this.videoList.querySelectorAll(
       "[data-delete-all-index]"
@@ -1191,12 +1256,14 @@ class bitvidApp {
         const index = button.getAttribute("data-delete-all-index");
         const dropdown = document.getElementById(`settingsDropdown-${index}`);
         if (dropdown) dropdown.classList.add("hidden");
-        // Assuming you have a method like this in your code:
         this.handleFullDeleteVideo(index);
       });
     });
+  
+    // 2) After building cards, do one batch profile fetch
+    this.batchFetchProfiles(authorSet);
   }
-
+  
   /**
    * Updates the modal to reflect current torrent stats.
    * We remove the unused torrent.status references,

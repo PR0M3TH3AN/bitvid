@@ -545,18 +545,30 @@ class NostrClient {
   }
 
   /**
+ * Saves all known events to localStorage (or a different storage if you prefer).
+ */
+  saveLocalData() {
+    // Convert our allEvents map into a plain object for JSON storage
+    const allEventsObject = {};
+    for (const [id, vid] of this.allEvents.entries()) {
+      allEventsObject[id] = vid;
+    }
+    localStorage.setItem("bitvidEvents", JSON.stringify(allEventsObject));
+  }
+
+  /**
    * Subscribe to *all* videos (old and new) with a single subscription,
-   * then call onVideo() each time a new or updated event arrives.
+   * buffering incoming events to avoid excessive DOM updates.
    */
   subscribeVideos(onVideo) {
     const filter = {
       kinds: [30078],
       "#t": ["video"],
-      // Remove or adjust limit if you prefer,
-      // and set since=0 to retrieve historical events:
+      // Adjust limit/time as desired
       limit: 500,
       since: 0,
     };
+
     if (isDevMode) {
       console.log("[subscribeVideos] Subscribing with filter:", filter);
     }
@@ -564,37 +576,61 @@ class NostrClient {
     const sub = this.pool.sub(this.relays, [filter]);
     const invalidDuringSub = [];
 
+    // We'll collect events here instead of processing them instantly
+    let eventBuffer = [];
+
+    // 1) On each incoming event, just push to the buffer
     sub.on("event", (event) => {
-      try {
-        const video = convertEventToVideo(event);
-        if (video.invalid) {
-          invalidDuringSub.push({ id: video.id, reason: video.reason });
-          return;
-        }
-        // Store in allEvents
-        this.allEvents.set(event.id, video);
-
-        // If it's a "deleted" note, remove from activeMap
-        if (video.deleted) {
-          const activeKey = getActiveKey(video);
-          this.activeMap.delete(activeKey);
-          return;
-        }
-
-        // Otherwise, if it's newer than what we have, update activeMap
-        const activeKey = getActiveKey(video);
-        const prevActive = this.activeMap.get(activeKey);
-        if (!prevActive || video.created_at > prevActive.created_at) {
-          this.activeMap.set(activeKey, video);
-          onVideo(video); // trigger the callback that re-renders
-        }
-      } catch (err) {
-        if (isDevMode) {
-          console.error("[subscribeVideos] Error processing event:", err);
-        }
-      }
+      eventBuffer.push(event);
     });
 
+    // 2) Process buffered events on a setInterval (e.g., every second)
+    const processInterval = setInterval(() => {
+      if (eventBuffer.length > 0) {
+        // Copy and clear the buffer
+        const toProcess = eventBuffer.slice();
+        eventBuffer = [];
+
+        // Now handle each event
+        for (const evt of toProcess) {
+          try {
+            const video = convertEventToVideo(evt);
+
+            if (video.invalid) {
+              invalidDuringSub.push({ id: video.id, reason: video.reason });
+              continue;
+            }
+
+            // Store in allEvents
+            this.allEvents.set(evt.id, video);
+
+            // If it's a "deleted" note, remove from activeMap
+            if (video.deleted) {
+              const activeKey = getActiveKey(video);
+              this.activeMap.delete(activeKey);
+              continue;
+            }
+
+            // Otherwise, if it's newer than what we have, update activeMap
+            const activeKey = getActiveKey(video);
+            const prevActive = this.activeMap.get(activeKey);
+            if (!prevActive || video.created_at > prevActive.created_at) {
+              this.activeMap.set(activeKey, video);
+              onVideo(video); // Trigger the callback that re-renders
+            }
+          } catch (err) {
+            if (isDevMode) {
+              console.error("[subscribeVideos] Error processing event:", err);
+            }
+          }
+        }
+
+        // Optionally, save data to local storage after processing the batch
+        this.saveLocalData();
+      }
+    }, 1000);
+
+    // You can still use sub.on("eose") if needed
     sub.on("eose", () => {
       if (isDevMode && invalidDuringSub.length > 0) {
         console.warn(
@@ -609,7 +645,7 @@ class NostrClient {
       }
     });
 
-    // Return the subscription object directly.
+    // Return the subscription object if you need to unsub manually later
     return sub;
   }
 
