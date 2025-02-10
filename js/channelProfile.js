@@ -2,20 +2,21 @@
 
 import { nostrClient } from "./nostr.js";
 import { app } from "./app.js";
+import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { initialBlacklist, initialWhitelist } from "./lists.js";
 import { isWhitelistEnabled } from "./config.js";
 
 /**
  * Initialize the channel profile view.
- * Called when #view=channel-profile is active.
+ * Called when #view=channel-profile&npub=...
  */
 export async function initChannelProfileView() {
-  // 1) Get npub from hash (e.g. #view=channel-profile&npub=...)
+  // 1) Get npub from hash
   const hashParams = new URLSearchParams(window.location.hash.slice(1));
   const npub = hashParams.get("npub");
   if (!npub) {
     console.error(
-      "No npub found in hash. Example: #view=channel-profile&npub=npub1..."
+      "No npub found in hash (e.g. #view=channel-profile&npub=...)"
     );
     return;
   }
@@ -34,15 +35,75 @@ export async function initChannelProfileView() {
     return;
   }
 
-  // 3) Load user’s profile (banner, avatar, etc.)
+  // 3) If user is logged in, load subscriptions and show sub/unsub button
+  if (app.pubkey) {
+    await subscriptions.loadSubscriptions(app.pubkey);
+    renderSubscribeButton(hexPub);
+  } else {
+    const btn = document.getElementById("subscribeBtnArea");
+    if (btn) btn.classList.add("hidden");
+  }
+
+  // 4) Load user’s profile (banner, avatar, etc.)
   await loadUserProfile(hexPub);
 
-  // 4) Load user’s videos (filtered + rendered like the home feed)
+  // 5) Load user’s videos (filtered + rendered like the home feed)
   await loadUserVideos(hexPub);
 }
 
 /**
- * Fetches and displays the user’s metadata (kind=0).
+ * Renders a Subscribe / Unsubscribe button with an icon,
+ * using color #fe0032 and the subscribe-button-icon.svg on the left.
+ */
+function renderSubscribeButton(channelHex) {
+  const container = document.getElementById("subscribeBtnArea");
+  if (!container) return;
+
+  container.classList.remove("hidden");
+  const alreadySubscribed = subscriptions.isSubscribed(channelHex);
+
+  // We'll use #fe0032 for both subscribe/unsubscribe,
+  // and the same icon. If you prefer separate logic for unsub, you can do it here.
+  container.innerHTML = `
+    <button
+      id="subscribeToggleBtn"
+      class="flex items-center gap-2 px-4 py-2 rounded text-white
+             hover:opacity-90 focus:outline-none"
+      style="background-color: #fe0032;"
+    >
+      <img
+        src="assets/svg/subscribe-button-icon.svg"
+        alt="Subscribe Icon"
+        class="w-5 h-5"
+      />
+      <span>${alreadySubscribed ? "Unsubscribe" : "Subscribe"}</span>
+    </button>
+  `;
+
+  const toggleBtn = document.getElementById("subscribeToggleBtn");
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", async () => {
+      if (!app.pubkey) {
+        console.error("Not logged in => cannot subscribe/unsubscribe.");
+        return;
+      }
+      try {
+        if (alreadySubscribed) {
+          await subscriptions.removeChannel(channelHex, app.pubkey);
+        } else {
+          await subscriptions.addChannel(channelHex, app.pubkey);
+        }
+        // Re-render the button so it toggles state
+        renderSubscribeButton(channelHex);
+      } catch (err) {
+        console.error("Failed to update subscription:", err);
+      }
+    });
+  }
+}
+
+/**
+ * Fetches and displays the user's metadata (kind=0).
  */
 async function loadUserProfile(pubkey) {
   try {
@@ -111,8 +172,8 @@ async function loadUserProfile(pubkey) {
 }
 
 /**
- * Fetches and displays this user's videos (kind=30078),
- * filtering out older overshadowed notes, blacklisted, non‐whitelisted, etc.
+ * Fetches and displays this user's videos (kind=30078).
+ * Filters out older overshadowed notes, blacklisted, etc.
  */
 async function loadUserVideos(pubkey) {
   try {
@@ -177,13 +238,10 @@ async function loadUserVideos(pubkey) {
     }
 
     const fragment = document.createDocumentFragment();
-    const channelVideos = videos;
-
-    // We'll need all known events for revert-check
     const allKnownEventsArray = Array.from(nostrClient.allEvents.values());
 
-    channelVideos.forEach((video, index) => {
-      // Private => decrypt if owned by the user
+    videos.forEach((video, index) => {
+      // Decrypt if user owns a private video
       if (
         video.isPrivate &&
         video.pubkey === nostrClient.pubkey &&
@@ -197,15 +255,13 @@ async function loadUserVideos(pubkey) {
       const canEdit = video.pubkey === app.pubkey;
       let hasOlder = false;
       if (canEdit && video.videoRootId) {
-        // Use the same hasOlderVersion approach as home feed
         hasOlder = app.hasOlderVersion(video, allKnownEventsArray);
       }
 
-      // If there's an older overshadowed version, show revert
       const revertButton = hasOlder
         ? `
           <button
-            class="block w-full text-left px-4 py-2 text-sm text-red-400 
+            class="block w-full text-left px-4 py-2 text-sm text-red-400
             hover:bg-red-700 hover:text-white"
             data-revert-index="${index}"
           >
@@ -214,15 +270,14 @@ async function loadUserVideos(pubkey) {
         `
         : "";
 
-      // Gear menu
       let gearMenu = "";
       if (canEdit) {
         gearMenu = `
           <div class="relative inline-block ml-3 overflow-visible">
             <button
               type="button"
-              class="inline-flex items-center p-2 rounded-full text-gray-400 
-              hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 
+              class="inline-flex items-center p-2 rounded-full text-gray-400
+              hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2
               focus:ring-blue-500"
               data-settings-dropdown="${index}"
             >
@@ -234,12 +289,12 @@ async function loadUserVideos(pubkey) {
             </button>
             <div
               id="settingsDropdown-${index}"
-              class="hidden absolute right-0 bottom-full mb-2 w-32 
+              class="hidden absolute right-0 bottom-full mb-2 w-32
               rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
             >
               <div class="py-1">
                 <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 
+                  class="block w-full text-left px-4 py-2 text-sm text-gray-100
                   hover:bg-gray-700"
                   data-edit-index="${index}"
                 >
@@ -247,7 +302,7 @@ async function loadUserVideos(pubkey) {
                 </button>
                 ${revertButton}
                 <button
-                  class="block w-full text-left px-4 py-2 text-sm text-red-400 
+                  class="block w-full text-left px-4 py-2 text-sm text-red-400
                   hover:bg-red-700 hover:text-white"
                   data-delete-all-index="${index}"
                 >
@@ -262,8 +317,8 @@ async function loadUserVideos(pubkey) {
       // Fallback thumbnail
       const fallbackThumb = "assets/jpg/video-thumbnail-fallback.jpg";
       const safeThumb = video.thumbnail || fallbackThumb;
+      const safeTitle = escapeHTML(video.title);
 
-      // Build the card
       const cardEl = document.createElement("div");
       cardEl.classList.add(
         "bg-gray-900",
@@ -281,17 +336,17 @@ async function loadUserVideos(pubkey) {
             <img
               src="${fallbackThumb}"
               data-lazy="${escapeHTML(safeThumb)}"
-              alt="${escapeHTML(video.title)}"
+              alt="${safeTitle}"
             />
           </div>
         </div>
         <div class="p-4 flex items-center justify-between">
           <div>
-            <h3 
+            <h3
               class="text-lg font-bold text-white mb-2 line-clamp-2"
               data-play-magnet="${encodeURIComponent(video.magnet)}"
             >
-              ${escapeHTML(video.title)}
+              ${safeTitle}
             </h3>
             <p class="text-sm text-gray-500">
               ${new Date(video.created_at * 1000).toLocaleString()}
@@ -301,7 +356,7 @@ async function loadUserVideos(pubkey) {
         </div>
       `;
 
-      // Clicking the card (except gear) => open video
+      // Clicking the card => open the video modal
       cardEl.addEventListener("click", () => {
         app.playVideoByEventId(video.id);
       });
@@ -311,7 +366,7 @@ async function loadUserVideos(pubkey) {
 
     container.appendChild(fragment);
 
-    // Lazy-load
+    // Lazy-load images
     const lazyEls = container.querySelectorAll("[data-lazy]");
     lazyEls.forEach((el) => app.mediaLoader.observe(el));
 
@@ -328,39 +383,36 @@ async function loadUserVideos(pubkey) {
       });
     });
 
-    // "Edit" handler
+    // Edit handler
     const editBtns = container.querySelectorAll("[data-edit-index]");
     editBtns.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const idx = parseInt(btn.getAttribute("data-edit-index"), 10);
-        // Hide the dropdown
         const dropdown = document.getElementById(`settingsDropdown-${idx}`);
         if (dropdown) dropdown.classList.add("hidden");
         app.handleEditVideo(idx);
       });
     });
 
-    // "Revert" handler
+    // Revert handler
     const revertBtns = container.querySelectorAll("[data-revert-index]");
     revertBtns.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const idx = parseInt(btn.getAttribute("data-revert-index"), 10);
-        // Hide the dropdown
         const dropdown = document.getElementById(`settingsDropdown-${idx}`);
         if (dropdown) dropdown.classList.add("hidden");
         app.handleRevertVideo(idx);
       });
     });
 
-    // "Delete All" handler
+    // Delete All handler
     const deleteAllBtns = container.querySelectorAll("[data-delete-all-index]");
     deleteAllBtns.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const idx = parseInt(btn.getAttribute("data-delete-all-index"), 10);
-        // Hide the dropdown
         const dropdown = document.getElementById(`settingsDropdown-${idx}`);
         if (dropdown) dropdown.classList.add("hidden");
         app.handleFullDeleteVideo(idx);
@@ -372,14 +424,14 @@ async function loadUserVideos(pubkey) {
 }
 
 /**
- * Minimal placeholder decryption for private videos.
+ * Minimal placeholder for private video decryption.
  */
 function fakeDecrypt(str) {
   return str.split("").reverse().join("");
 }
 
 /**
- * Deduplicate older overshadowed versions – return only the newest for each root.
+ * Keep only the newest version of each video root.
  */
 function dedupeToNewestByRoot(videos) {
   const map = new Map();
@@ -394,7 +446,7 @@ function dedupeToNewestByRoot(videos) {
 }
 
 /**
- * Convert a raw Nostr event => "video" object.
+ * Convert raw event => "video" object.
  */
 function localConvertEventToVideo(event) {
   try {
@@ -431,7 +483,7 @@ function localConvertEventToVideo(event) {
 }
 
 /**
- * Escape HTML to prevent injection or XSS.
+ * Basic escaping to avoid XSS.
  */
 function escapeHTML(unsafe = "") {
   return unsafe

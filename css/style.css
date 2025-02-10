@@ -40,8 +40,24 @@ header img {
   padding: 1rem;
 }
 
-/* Video Grid */
+/* Video Grids */
 #videoList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 2rem;
+  padding: 1.5rem 0;
+}
+
+/* Subscriptions grid: same pattern as #videoList */
+#subscriptionsVideoList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 2rem;
+  padding: 1.5rem 0;
+}
+
+/* Now also match for channelVideoList (channel profile) */
+#channelVideoList {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 2rem;
@@ -525,4 +541,3 @@ footer a:hover {
 #sidebar hr {
   border-color: rgba(255, 255, 255, 0.1);
 }
-

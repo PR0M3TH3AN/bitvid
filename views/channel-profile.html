@@ -1,52 +1,58 @@
 <section class="channel-profile-container">
-    <!-- Modified banner wrapper for taller, rounded style -->
-    <div class="profile-banner relative mb-6 rounded-lg overflow-hidden shadow-lg">
-      <!-- Increase the default height classes -->
-      <img
-        id="channelBanner"
-        class="w-full h-48 md:h-64 object-cover"
-        src=""
-        alt="Banner"
-      />
-      <div class="absolute inset-0 bg-black bg-opacity-50"></div>
-  
-      <div class="absolute bottom-4 left-4 flex items-center">
-        <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-white">
-          <img
-            id="channelAvatar"
-            src="assets/svg/default-profile.svg"
-            alt="Avatar"
-            class="w-full h-full object-cover"
-          />
-        </div>
-        <div class="ml-4 text-white">
-          <h2 id="channelName" class="text-xl font-bold">User Name</h2>
-          <p id="channelNpub" class="text-sm opacity-80">npub...</p>
-        </div>
+  <!-- Modified banner wrapper for taller, rounded style -->
+  <div
+    class="profile-banner relative mb-6 rounded-lg overflow-hidden shadow-lg"
+  >
+    <!-- Increase the default height classes -->
+    <img
+      id="channelBanner"
+      class="w-full h-48 md:h-64 object-cover"
+      src=""
+      alt="Banner"
+    />
+    <div class="absolute inset-0 bg-black bg-opacity-50"></div>
+
+    <div class="absolute bottom-4 left-4 flex items-center">
+      <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-white">
+        <img
+          id="channelAvatar"
+          src="assets/svg/default-profile.svg"
+          alt="Avatar"
+          class="w-full h-full object-cover"
+        />
+      </div>
+      <div class="ml-4 text-white">
+        <h2 id="channelName" class="text-xl font-bold">User Name</h2>
+        <p id="channelNpub" class="text-sm opacity-80">npub...</p>
       </div>
     </div>
-  
-    <div class="profile-details px-4 mt-4">
-      <p id="channelAbout" class="mb-2 text-gray-700"></p>
-      <a
-        id="channelWebsite"
-        href="#"
-        target="_blank"
-        class="block text-blue-500 hover:underline mb-2"
-        >Website</a
-      >
-      <p id="channelLightning" class="text-sm text-gray-500"></p>
-    </div>
-  
-    <hr class="my-6" />
-  
-    <h3 class="text-lg font-bold mb-4 text-gray-700">Videos by This User</h3>
-  
-    <div
-      id="channelVideoList"
-      class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8"
+  </div>
+
+  <!-- Basic profile details: about text, website, LN address -->
+  <div class="profile-details px-4 mt-4">
+    <p id="channelAbout" class="mb-2 text-gray-700"></p>
+    <a
+      id="channelWebsite"
+      href="#"
+      target="_blank"
+      class="block text-blue-500 hover:underline mb-2"
+      >Website</a
     >
-      <!-- User’s videos will go here -->
-    </div>
-  </section>
-  
+    <p id="channelLightning" class="text-sm text-gray-500"></p>
+  </div>
+
+  <!-- Area for Subscribe/Unsubscribe button -->
+  <div class="px-4 my-4">
+    <div id="subscribeBtnArea" class="hidden"></div>
+  </div>
+
+  <hr class="my-6" />
+
+  <h3 class="text-lg font-bold mb-4 text-gray-700">Videos by This User</h3>
+  <div
+    id="channelVideoList"
+    class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8"
+  >
+    <!-- User’s videos will go here -->
+  </div>
+</section>

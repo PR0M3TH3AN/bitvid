@@ -1,5 +1,6 @@
 // js/viewManager.js
 import { initChannelProfileView } from "./channelProfile.js";
+import { subscriptions } from "./subscriptions.js";
 
 /**
  * Load a partial view by URL into the #viewContainer.
@@ -53,11 +54,33 @@ export const viewInitRegistry = {
   explore: () => {
     console.log("Explore view loaded.");
   },
-  subscriptions: () => {
+
+  /**
+   * Subscriptions view:
+   * - If user is logged in, calls subscriptions.showSubscriptionVideos
+   *   which loads subs if needed and renders the video grid in #subscriptionsVideoList
+   */
+  subscriptions: async () => {
     console.log("Subscriptions view loaded.");
+
+    if (!window.app.pubkey) {
+      const container = document.getElementById("subscriptionsVideoList");
+      if (container) {
+        container.innerHTML =
+          "<p class='text-gray-500'>Please log in to see your subscriptions.</p>";
+      }
+      return;
+    }
+
+    // If user is logged in, let the SubscriptionsManager do everything:
+    await subscriptions.showSubscriptionVideos(
+      window.app.pubkey,
+      "subscriptionsVideoList"
+    );
   },
+
   "channel-profile": () => {
     // Call the initialization function from channelProfile.js
     initChannelProfileView();
-  }
+  },
 };
