@@ -276,15 +276,16 @@ async function loadUserVideos(pubkey) {
           <div class="relative inline-block ml-3 overflow-visible">
             <button
               type="button"
-              class="inline-flex items-center p-2 rounded-full text-gray-400
-              hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2
-              focus:ring-blue-500"
+              class="inline-flex items-center justify-center
+                    w-10 h-10 p-2
+                    rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800
+                    focus:outline-none focus:ring-2 focus:ring-blue-500"
               data-settings-dropdown="${index}"
             >
               <img
                 src="assets/svg/video-settings-gear.svg"
                 alt="Settings"
-                class="w-5 h-5"
+                class="w-5 h-5 object-contain"
               />
             </button>
             <div

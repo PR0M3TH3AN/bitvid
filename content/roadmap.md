@@ -2,8 +2,31 @@
 
 > ⚠️ **Note:** If you find a new bug thats not listed here. Please submit a [Bug Report](https://bitvid.network/?modal=bug).
 
+- Speed up loading in subscriptions. Save to local cache?
 - Fix "Dev Mode" publishing "Live Mode" notes—add a flag for dev mode posts.
 - Fix issue with video post set to private.
+- Disable "private video" until I can make it work better.
+- Make "private video" work better using nip-04 encryption for magnet field.
+- Fix slow back button issues on Firefox.
+- Add Amber login support for mobile.
+- Add settings (three dots) button for all videos, not the same as gear menu. Only show delete and edit gear for logged-in users videos.
+- Add support for "Playlist" lists and other custom lists (named whatever) and also "Watch Later" list and "Watch History".
+- Add an "add to playlist" button to the edit button.
+- Add "add to watch later" option to edit button.
+- Add block button to settings button.
+- Add report button to settings button.
+- Fix autoplay broken on iPhone chrome.
+- Fix playback broken on Safari on iPhone.
+- Update note spec v3 transition to include new fields that have been added like "has previous" or "videoRootID" or enentID if null.
+- Change "explore" view to "kids" view and add flag to all notes to see if they are for kids.
+- Add "seed" lists.
+- Make "edit" video a form modal rather than a browser pop-up.
+- Add "upload thumbnail" as option to add/edit video form. (use https://apidocs.imgur.com/)
+- Fix issue where page refreshes when pulling up a video in the video modal.
+- Fix sidebar media query settings on medium-sized screens. (tablet/laptops)
+- Fix various "text wrap" issues causing scroll left and right on profile and modal pages.
+- Add zaps to profile and video modal pages.
+- Add comments to video modal pages.
 
 ## Feature Additions
 

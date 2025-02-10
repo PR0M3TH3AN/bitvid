@@ -349,7 +349,7 @@ class bitvidApp {
           this.showError("Could not generate link.");
         }
       });
-    }    
+    }
 
     // Add click handlers for avatar and name => channel profile
     if (this.creatorAvatar) {
@@ -708,31 +708,33 @@ class bitvidApp {
   async batchFetchProfiles(authorSet) {
     const pubkeys = Array.from(authorSet);
     if (!pubkeys.length) return;
-  
+
     const filter = {
       kinds: [0],
       authors: pubkeys,
       limit: pubkeys.length,
     };
-  
+
     try {
       // Query each relay
       const results = await Promise.all(
-        nostrClient.relays.map(relayUrl =>
+        nostrClient.relays.map((relayUrl) =>
           nostrClient.pool.list([relayUrl], [filter])
         )
       );
       const allProfileEvents = results.flat();
-  
+
       // Keep only the newest per author
       const newestEvents = new Map();
       for (const evt of allProfileEvents) {
-        if (!newestEvents.has(evt.pubkey) ||
-            evt.created_at > newestEvents.get(evt.pubkey).created_at) {
+        if (
+          !newestEvents.has(evt.pubkey) ||
+          evt.created_at > newestEvents.get(evt.pubkey).created_at
+        ) {
           newestEvents.set(evt.pubkey, evt);
         }
       }
-  
+
       // Update the cache & DOM
       for (const [pubkey, evt] of newestEvents.entries()) {
         try {
@@ -751,7 +753,7 @@ class bitvidApp {
       console.error("Batch profile fetch error:", err);
     }
   }
- 
+
   updateProfileInDOM(pubkey, profile) {
     // For any .author-pic[data-pubkey=...]
     const picEls = document.querySelectorAll(
@@ -791,7 +793,7 @@ class bitvidApp {
       thumbnail: thumbEl?.value.trim() || "",
       description: descEl?.value.trim() || "",
       mode: isDevMode ? "dev" : "live",
-      isPrivate: privEl?.checked || false,
+      // isPrivate: privEl?.checked || false,
     };
 
     if (!formData.title || !formData.magnet) {
@@ -1023,10 +1025,10 @@ class bitvidApp {
       });
 
       if (this.videoSubscription) {
-
-        console.log("[loadVideos] subscription remains open to get live updates.");
+        console.log(
+          "[loadVideos] subscription remains open to get live updates."
+        );
       }
-
     } else {
       // Already subscribed: just show what's cached
       const allCached = nostrClient.getActiveVideos();
@@ -1055,12 +1057,12 @@ class bitvidApp {
   async loadOlderVideos(lastTimestamp) {
     // 1) Use nostrClient to fetch older slices
     const olderVideos = await nostrClient.fetchOlderVideos(lastTimestamp);
-  
+
     if (!olderVideos || olderVideos.length === 0) {
       this.showSuccess("No more older videos found.");
       return;
     }
-  
+
     // 2) Merge them into the client’s allEvents / activeMap
     for (const v of olderVideos) {
       nostrClient.allEvents.set(v.id, v);
@@ -1069,11 +1071,11 @@ class bitvidApp {
       // You can call getActiveKey(v) if you want to match your code’s approach.
       // Then re-check if this one is newer than what’s stored, etc.
     }
-  
+
     // 3) Re-render
     const all = nostrClient.getActiveVideos();
     this.renderVideoList(all);
-  } 
+  }
 
   /**
    * Returns true if there's at least one strictly older version
@@ -1094,7 +1096,7 @@ class bitvidApp {
 
   async renderVideoList(videos) {
     if (!this.videoList) return;
-  
+
     // 1) If no videos
     if (!videos || videos.length === 0) {
       this.videoList.innerHTML = `
@@ -1103,38 +1105,40 @@ class bitvidApp {
         </p>`;
       return;
     }
-  
+
     // 2) Sort newest first
     videos.sort((a, b) => b.created_at - a.created_at);
-  
+
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
     const fragment = document.createDocumentFragment();
     const authorSet = new Set();
-  
+
     // 3) Build each card
     videos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Video missing ID/title:", video);
         return;
       }
-  
+
       authorSet.add(video.pubkey);
-  
+
       const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
-      const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(nevent)}`;
+      const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(
+        nevent
+      )}`;
       const canEdit = video.pubkey === this.pubkey;
       const highlightClass =
         video.isPrivate && canEdit
           ? "border-2 border-yellow-500"
           : "border-none";
       const timeAgo = this.formatTimeAgo(video.created_at);
-  
+
       // Check if there's an older version
       let hasOlder = false;
       if (canEdit && video.videoRootId) {
         hasOlder = this.hasOlderVersion(video, fullAllEventsArray);
       }
-  
+
       const revertButton = hasOlder
         ? `
           <button
@@ -1145,7 +1149,7 @@ class bitvidApp {
           </button>
         `
         : "";
-  
+
       const gearMenu = canEdit
         ? `
           <div class="relative inline-block ml-3 overflow-visible">
@@ -1183,7 +1187,7 @@ class bitvidApp {
           </div>
         `
         : "";
-  
+
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <!-- The clickable link to play video -->
@@ -1236,23 +1240,25 @@ class bitvidApp {
           </div>
         </div>
       `;
-  
+
       const template = document.createElement("template");
       template.innerHTML = cardHtml.trim();
       const cardEl = template.content.firstElementChild;
       fragment.appendChild(cardEl);
     });
-  
+
     // Clear old content, add new
     this.videoList.innerHTML = "";
     this.videoList.appendChild(fragment);
-  
+
     // Lazy-load images
     const lazyEls = this.videoList.querySelectorAll("[data-lazy]");
     lazyEls.forEach((el) => this.mediaLoader.observe(el));
-  
+
     // GEAR MENU / button event listeners...
-    const gearButtons = this.videoList.querySelectorAll("[data-settings-dropdown]");
+    const gearButtons = this.videoList.querySelectorAll(
+      "[data-settings-dropdown]"
+    );
     gearButtons.forEach((button) => {
       button.addEventListener("click", () => {
         const index = button.getAttribute("data-settings-dropdown");
@@ -1262,7 +1268,7 @@ class bitvidApp {
         }
       });
     });
-  
+
     // Edit button
     const editButtons = this.videoList.querySelectorAll("[data-edit-index]");
     editButtons.forEach((button) => {
@@ -1275,7 +1281,9 @@ class bitvidApp {
     });
 
     // Revert button
-    const revertButtons = this.videoList.querySelectorAll("[data-revert-index]");
+    const revertButtons = this.videoList.querySelectorAll(
+      "[data-revert-index]"
+    );
     revertButtons.forEach((button) => {
       button.addEventListener("click", () => {
         const index = button.getAttribute("data-revert-index");
@@ -1286,7 +1294,9 @@ class bitvidApp {
     });
 
     // Delete All button
-    const deleteAllButtons = this.videoList.querySelectorAll("[data-delete-all-index]");
+    const deleteAllButtons = this.videoList.querySelectorAll(
+      "[data-delete-all-index]"
+    );
     deleteAllButtons.forEach((button) => {
       button.addEventListener("click", () => {
         const index = button.getAttribute("data-delete-all-index");
@@ -1295,10 +1305,10 @@ class bitvidApp {
         this.handleFullDeleteVideo(index);
       });
     });
-  
+
     // 2) After building cards, do one batch profile fetch
     this.batchFetchProfiles(authorSet);
-  
+
     // === NEW: attach click listeners to .author-pic and .author-name
     const authorPics = this.videoList.querySelectorAll(".author-pic");
     authorPics.forEach((pic) => {
@@ -1310,7 +1320,7 @@ class bitvidApp {
         this.goToProfile(pubkey);
       });
     });
-  
+
     const authorNames = this.videoList.querySelectorAll(".author-name");
     authorNames.forEach((nameEl) => {
       nameEl.style.cursor = "pointer";
@@ -1322,7 +1332,7 @@ class bitvidApp {
       });
     });
   }
-  
+
   /**
    * Updates the modal to reflect current torrent stats.
    * We remove the unused torrent.status references,
@@ -1416,7 +1426,7 @@ class bitvidApp {
         "New Description? (blank=keep existing)",
         video.description
       );
-      const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
+      // const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
 
       // 4) Build final updated fields (or fallback to existing)
       const title =
@@ -1431,7 +1441,7 @@ class bitvidApp {
       // 5) Create an object with the new data
       const updatedData = {
         version: video.version || 2,
-        isPrivate: wantPrivate,
+        // isPrivate: wantPrivate,
         title,
         magnet,
         thumbnail,
