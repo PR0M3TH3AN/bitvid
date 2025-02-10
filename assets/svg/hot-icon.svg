@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g id="iconmonstr-weather-64.svg" transform="matrix(1,0,0,1,12,12)">
+        <g id="iconmonstr-whats-hot-1.svg" transform="matrix(1,0,0,1,-12,-12)">
+            <clipPath id="_clip1">
+                <rect x="0" y="0" width="24" height="24"/>
+            </clipPath>
+            <g clip-path="url(#_clip1)">
+                <path d="M8.625,0C9.235,7.189 3,9.664 3,15.996C3,20.297 6.069,23.968 12,24C17.931,24.032 21,19.586 21,15.044C21,10.903 18.938,6.998 15.048,4.57C15.972,7.177 14.742,9.558 13.547,10.378C13.617,7.041 12.422,2.089 8.625,0ZM13.336,13C17.091,16.989 14.785,22 11.769,22C9.934,22 8.99,20.735 9,19.423C9.019,16.99 11.737,16.988 13.336,13Z" style="fill:rgb(92,111,138);"/>
+            </g>
+        </g>
+        <g id="iconmonstr-whats-hot-1.svg1" serif:id="iconmonstr-whats-hot-1.svg">
+        </g>
+    </g>
+</svg>
