@@ -29,6 +29,9 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 1. Click "Share a Video" on bitvid
 2. Paste your video's magnet link
 3. Add a title, description, and thumbnail
+
+> ⚠️ **Note:** I recomend using [PostImage](https://postimages.org/) to host your image. You can copy the "Direct link" after uploading the image and use that link as your Thumbnail image.
+
 4. Click "Post" to share!
 
 ## Tips for Success
