@@ -7,42 +7,116 @@ class AccessControl {
   constructor() {
     // Debug logging for initialization
     console.log("DEBUG: AccessControl constructor called");
-    console.log("DEBUG: initialWhitelist from import:", initialWhitelist);
-    console.log("DEBUG: typeof initialWhitelist:", typeof initialWhitelist);
-    console.log("DEBUG: initialWhitelist length:", initialWhitelist.length);
 
-    // Initialize empty sets
-    this.whitelist = new Set(initialWhitelist);
-    this.blacklist = new Set(initialBlacklist.filter((x) => x)); // Filter out empty strings
+    const { data: storedWhitelist, status: whitelistStatus } = this.loadWhitelist();
+    const { data: storedBlacklist, status: blacklistStatus } = this.loadBlacklist();
+
+    if (storedWhitelist !== null) {
+      this.whitelist = new Set(storedWhitelist);
+    } else {
+      this.whitelist = new Set(initialWhitelist);
+      this.saveWhitelist();
+      if (whitelistStatus && whitelistStatus !== "missing") {
+        console.warn(
+          `Whitelist storage ${whitelistStatus}. Falling back to initial whitelist.`
+        );
+      }
+    }
+
+    if (storedBlacklist !== null) {
+      this.blacklist = new Set(storedBlacklist);
+    } else {
+      this.blacklist = new Set(initialBlacklist.filter((x) => x)); // Filter out empty strings
+      this.saveBlacklist();
+      if (blacklistStatus && blacklistStatus !== "missing") {
+        console.warn(
+          `Blacklist storage ${blacklistStatus}. Falling back to initial blacklist.`
+        );
+      }
+    }
 
     // Debug the sets
-    console.log("DEBUG: Whitelist after Set creation:", [...this.whitelist]);
-    console.log("DEBUG: Blacklist after Set creation:", [...this.blacklist]);
-
-    // Save to localStorage
-    this.saveWhitelist();
-    this.saveBlacklist();
+    console.log("DEBUG: Whitelist after initialization:", [...this.whitelist]);
+    console.log("DEBUG: Blacklist after initialization:", [...this.blacklist]);
   }
 
   // Rest of the class remains the same...
   loadWhitelist() {
     try {
       const stored = localStorage.getItem("bitvid_whitelist");
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) {
+        if (isDevMode) console.log("No stored whitelist found in localStorage.");
+        return { data: null, status: "missing" };
+      }
+
+      const parsed = JSON.parse(stored);
+      const sanitized = this.sanitizeList(parsed, "whitelist");
+      return {
+        data: sanitized,
+        status: sanitized === null ? "invalid" : "ok",
+      };
     } catch (error) {
-      console.error("Error loading whitelist:", error);
-      return [];
+      console.error("Error loading whitelist, using defaults:", error);
+      return { data: null, status: "error" };
     }
   }
 
   loadBlacklist() {
     try {
       const stored = localStorage.getItem("bitvid_blacklist");
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) {
+        if (isDevMode) console.log("No stored blacklist found in localStorage.");
+        return { data: null, status: "missing" };
+      }
+
+      const parsed = JSON.parse(stored);
+      const sanitized = this.sanitizeList(parsed, "blacklist");
+      return {
+        data: sanitized,
+        status: sanitized === null ? "invalid" : "ok",
+      };
     } catch (error) {
-      console.error("Error loading blacklist:", error);
-      return [];
+      console.error("Error loading blacklist, using defaults:", error);
+      return { data: null, status: "error" };
     }
+  }
+
+  sanitizeList(list, listName) {
+    if (!Array.isArray(list)) {
+      console.warn(
+        `Stored ${listName} is not an array. Received:`,
+        list
+      );
+      return null;
+    }
+
+    const sanitized = [];
+    let invalidEntries = 0;
+
+    list.forEach((value) => {
+      if (typeof value !== "string") {
+        invalidEntries += 1;
+        return;
+      }
+
+      const trimmed = value.trim();
+      if (trimmed) {
+        sanitized.push(trimmed);
+      } else {
+        invalidEntries += 1;
+      }
+    });
+
+    if (invalidEntries > 0) {
+      console.warn(
+        `Stored ${listName} contained ${invalidEntries} invalid entr${
+          invalidEntries === 1 ? "y" : "ies"
+        }. Sanitized list:`,
+        sanitized
+      );
+    }
+
+    return sanitized;
   }
 
   saveWhitelist() {
