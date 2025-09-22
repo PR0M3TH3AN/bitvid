@@ -43,6 +43,48 @@ function fakeDecrypt(encrypted) {
   return encrypted.split("").reverse().join("");
 }
 
+const EXTENSION_MIME_MAP = {
+  mp4: "video/mp4",
+  m4v: "video/x-m4v",
+  webm: "video/webm",
+  mkv: "video/x-matroska",
+  mov: "video/quicktime",
+  avi: "video/x-msvideo",
+  ogv: "video/ogg",
+  ogg: "video/ogg",
+  m3u8: "application/x-mpegURL",
+  mpd: "application/dash+xml",
+  ts: "video/mp2t",
+  mpg: "video/mpeg",
+  mpeg: "video/mpeg",
+  flv: "video/x-flv",
+  "3gp": "video/3gpp",
+};
+
+function inferMimeTypeFromUrl(url) {
+  if (!url || typeof url !== "string") {
+    return "";
+  }
+
+  let pathname = "";
+  try {
+    const parsed = new URL(url);
+    pathname = parsed.pathname || "";
+  } catch (err) {
+    const sanitized = url.split("?")[0].split("#")[0];
+    pathname = sanitized || "";
+  }
+
+  const lastSegment = pathname.split("/").pop() || "";
+  const match = lastSegment.match(/\.([a-z0-9]+)$/i);
+  if (!match) {
+    return "";
+  }
+
+  const extension = match[1].toLowerCase();
+  return EXTENSION_MIME_MAP[extension] || "";
+}
+
 /**
  * Convert a raw Nostr event => your "video" object.
  * CHANGED: skip if version <2
@@ -232,6 +274,20 @@ class NostrClient {
     }
     const finalUrl =
       typeof videoData.url === "string" ? videoData.url.trim() : "";
+    const finalThumbnail =
+      typeof videoData.thumbnail === "string" ? videoData.thumbnail.trim() : "";
+    const finalDescription =
+      typeof videoData.description === "string"
+        ? videoData.description.trim()
+        : "";
+    const finalTitle =
+      typeof videoData.title === "string" ? videoData.title.trim() : "";
+    const providedMimeType =
+      typeof videoData.mimeType === "string"
+        ? videoData.mimeType.trim()
+        : "";
+
+    const createdAt = Math.floor(Date.now() / 1000);
 
     // brand-new root & d
     const videoRootId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -242,18 +298,18 @@ class NostrClient {
       version: 2, // forcibly set version=2
       deleted: false,
       isPrivate: videoData.isPrivate ?? false,
-      title: videoData.title || "",
+      title: finalTitle,
       url: finalUrl,
       magnet: finalMagnet,
-      thumbnail: videoData.thumbnail || "",
-      description: videoData.description || "",
+      thumbnail: finalThumbnail,
+      description: finalDescription,
       mode: videoData.mode || "live",
     };
 
     const event = {
       kind: 30078,
       pubkey,
-      created_at: Math.floor(Date.now() / 1000),
+      created_at: createdAt,
       tags: [
         ["t", "video"],
         ["d", dTagValue],
@@ -280,6 +336,83 @@ class NostrClient {
           }
         })
       );
+
+      if (finalUrl) {
+        const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
+        const mimeType =
+          providedMimeType || inferredMimeType || "application/octet-stream";
+
+        const mirrorTags = [
+          ["url", finalUrl],
+          ["m", mimeType],
+        ];
+
+        if (finalThumbnail) {
+          mirrorTags.push(["thumb", finalThumbnail]);
+        }
+
+        const altText = finalDescription || finalTitle || "";
+        if (altText) {
+          mirrorTags.push(["alt", altText]);
+        }
+
+        if (!contentObject.isPrivate && finalMagnet) {
+          mirrorTags.push(["magnet", finalMagnet]);
+        }
+
+        const mirrorEvent = {
+          kind: 1063,
+          pubkey,
+          created_at: createdAt,
+          tags: mirrorTags,
+          content: altText,
+        };
+
+        if (isDevMode) {
+          console.log("Prepared NIP-94 mirror event:", mirrorEvent);
+        }
+
+        try {
+          const signedMirrorEvent = await window.nostr.signEvent(mirrorEvent);
+          if (isDevMode) {
+            console.log("Signed NIP-94 mirror event:", signedMirrorEvent);
+          }
+
+          await Promise.all(
+            this.relays.map(async (url) => {
+              try {
+                await this.pool.publish([url], signedMirrorEvent);
+                if (isDevMode) {
+                  console.log(`NIP-94 mirror published to ${url}`);
+                }
+              } catch (mirrorErr) {
+                if (isDevMode) {
+                  console.error(
+                    `Failed to publish NIP-94 mirror to ${url}`,
+                    mirrorErr
+                  );
+                }
+              }
+            })
+          );
+
+          if (isDevMode) {
+            console.log(
+              "NIP-94 mirror dispatched for hosted URL:",
+              finalUrl
+            );
+          }
+        } catch (mirrorError) {
+          if (isDevMode) {
+            console.error(
+              "Failed to sign/publish NIP-94 mirror event:",
+              mirrorError
+            );
+          }
+        }
+      } else if (isDevMode) {
+        console.log("Skipping NIP-94 mirror: no hosted URL provided.");
+      }
       return signedEvent;
     } catch (err) {
       if (isDevMode) console.error("Failed to sign/publish:", err);
