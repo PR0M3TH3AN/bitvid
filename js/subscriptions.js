@@ -250,6 +250,11 @@ class SubscriptionsManager {
     // Only declare localAuthorSet once
     const localAuthorSet = new Set();
 
+    const encodeDataValue = (value) =>
+      typeof value === "string" && value.length > 0
+        ? encodeURIComponent(value)
+        : "";
+
     videos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Missing ID or title:", video);
@@ -329,8 +334,8 @@ class SubscriptionsManager {
 
       const safeTitle = window.app?.escapeHTML(video.title) || "Untitled";
       const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
-      const encodedMagnet = encodeURIComponent(video.magnet || "");
-      const encodedUrl = encodeURIComponent(video.url || "");
+      const encodedMagnet = encodeDataValue(video.magnet);
+      const encodedUrl = encodeDataValue(video.url);
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <a
