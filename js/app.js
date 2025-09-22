@@ -55,6 +55,37 @@ function augmentMagnet(raw, ws, xs) {
 }
 
 /**
+ * Basic validation for BitTorrent magnet URIs.
+ *
+ * Returns `true` only when the value looks like a magnet link that WebTorrent
+ * understands (`magnet:` scheme with at least one `xt=urn:btih|btmh` entry).
+ */
+function isValidMagnetUri(magnet) {
+  const trimmed = typeof magnet === "string" ? magnet.trim() : "";
+  if (!trimmed) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol.toLowerCase() !== "magnet:") {
+      return false;
+    }
+
+    const xtValues = parsed.searchParams.getAll("xt");
+    if (!xtValues.length) {
+      return false;
+    }
+
+    return xtValues.some((value) =>
+      typeof value === "string" && /urn:(btih|btmh):/i.test(value)
+    );
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
  * Usage:
@@ -1892,8 +1923,9 @@ class bitvidApp {
       throw new Error("No modal video element available for playback.");
     }
 
-    const trimmedMagnet =
-      typeof fallbackMagnet === "string" ? fallbackMagnet.trim() : "";
+    const trimmedMagnet = isValidMagnetUri(fallbackMagnet)
+      ? fallbackMagnet.trim()
+      : "";
 
     this.resetTorrentStats();
 
@@ -1936,9 +1968,13 @@ class bitvidApp {
   }
 
   async playViaWebTorrent(magnet) {
-    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const trimmedMagnet =
+      typeof magnet === "string" ? magnet.trim() : "";
     if (!trimmedMagnet) {
       throw new Error("No magnet URI provided for torrent playback.");
+    }
+    if (!isValidMagnetUri(trimmedMagnet)) {
+      throw new Error("Invalid magnet URI provided for torrent playback.");
     }
     if (!this.modalVideo) {
       throw new Error("No modal video element available for torrent playback.");
@@ -1980,7 +2016,9 @@ class bitvidApp {
     description = "",
   } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
-    const sanitizedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const sanitizedMagnet = isValidMagnetUri(magnet)
+      ? magnet.trim()
+      : "";
 
     try {
       if (!this.modalVideo) {
@@ -2070,20 +2108,21 @@ class bitvidApp {
     }
 
     const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
-    const trimmedMagnet =
+    const rawMagnet =
       typeof video.magnet === "string" ? video.magnet.trim() : "";
+    const sanitizedMagnet = isValidMagnetUri(rawMagnet) ? rawMagnet : "";
 
     this.currentVideo = {
       ...video,
       url: trimmedUrl,
-      magnet: trimmedMagnet,
+      magnet: sanitizedMagnet,
     };
 
-    this.currentMagnetUri = trimmedMagnet || null;
+    this.currentMagnetUri = sanitizedMagnet || null;
 
     await this.showModalWithPoster();
 
-    this.setCopyMagnetState(!!trimmedMagnet);
+    this.setCopyMagnetState(!!sanitizedMagnet);
     this.setShareButtonState(true);
 
     const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
@@ -2137,7 +2176,7 @@ class bitvidApp {
 
     await this.playVideoWithFallback({
       url: trimmedUrl,
-      magnet: trimmedMagnet,
+      magnet: sanitizedMagnet,
       title: video.title,
       description: video.description,
     });
@@ -2150,7 +2189,9 @@ class bitvidApp {
     description = "",
   } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
-    const sanitizedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const sanitizedMagnet = isValidMagnetUri(magnet)
+      ? magnet.trim()
+      : "";
 
     if (!sanitizedUrl && !sanitizedMagnet) {
       this.showError("This video has no playable source.");
