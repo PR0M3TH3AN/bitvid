@@ -365,8 +365,8 @@ class bitvidApp {
     }
     if (this.shareBtn) {
       this.shareBtn.addEventListener("click", () => {
-        if (!this.currentVideo) {
-          this.showError("No video is loaded to share.");
+        if (!this.currentVideo || !this.currentVideo.id) {
+          this.showError("No shareable video is loaded.");
           return;
         }
         try {
@@ -673,9 +673,9 @@ class bitvidApp {
           const eventId = trigger.getAttribute("data-video-id");
 
           if (eventId) {
-            await this.playVideoWithFallback({ eventId, url, magnet });
+            await this.playVideoByEventId(eventId);
           } else {
-            await this.playVideoWithFallback({ url, magnet });
+            await this.playVideoWithoutEvent({ url, magnet });
           }
         }
       });
@@ -1019,15 +1019,132 @@ class bitvidApp {
     }
   }
 
+  clearActiveIntervals() {
+    if (!Array.isArray(this.activeIntervals) || !this.activeIntervals.length) {
+      return;
+    }
+    this.activeIntervals.forEach((id) => clearInterval(id));
+    this.activeIntervals = [];
+  }
+
+  resetTorrentStats() {
+    if (this.modalPeers) {
+      this.modalPeers.textContent = "";
+    }
+    if (this.modalSpeed) {
+      this.modalSpeed.textContent = "";
+    }
+    if (this.modalDownloaded) {
+      this.modalDownloaded.textContent = "";
+    }
+    if (this.modalProgress) {
+      this.modalProgress.style.width = "0%";
+    }
+  }
+
+  setCopyMagnetState(enabled) {
+    if (!this.copyMagnetBtn) {
+      return;
+    }
+    this.copyMagnetBtn.disabled = !enabled;
+    this.copyMagnetBtn.setAttribute("aria-disabled", (!enabled).toString());
+    this.copyMagnetBtn.classList.toggle("opacity-50", !enabled);
+    this.copyMagnetBtn.classList.toggle("cursor-not-allowed", !enabled);
+  }
+
+  setShareButtonState(enabled) {
+    if (!this.shareBtn) {
+      return;
+    }
+    this.shareBtn.disabled = !enabled;
+    this.shareBtn.setAttribute("aria-disabled", (!enabled).toString());
+    this.shareBtn.classList.toggle("opacity-50", !enabled);
+    this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
+  }
+
+  prepareModalVideoForPlayback() {
+    if (!this.modalVideo) {
+      return;
+    }
+
+    const storedUnmuted = localStorage.getItem("unmutedAutoplay");
+    const userWantsUnmuted = storedUnmuted === "true";
+    this.modalVideo.muted = !userWantsUnmuted;
+
+    if (!this.modalVideo.dataset.autoplayBound) {
+      this.modalVideo.addEventListener("volumechange", () => {
+        localStorage.setItem(
+          "unmutedAutoplay",
+          (!this.modalVideo.muted).toString()
+        );
+      });
+      this.modalVideo.dataset.autoplayBound = "true";
+    }
+  }
+
+  autoplayModalVideo() {
+    if (!this.modalVideo) return;
+    this.modalVideo.play().catch((err) => {
+      this.log("Autoplay failed:", err);
+      if (!this.modalVideo.muted) {
+        this.log("Falling back to muted autoplay.");
+        this.modalVideo.muted = true;
+        this.modalVideo.play().catch((err2) => {
+          this.log("Muted autoplay also failed:", err2);
+        });
+      }
+    });
+  }
+
+  startTorrentStatusMirrors(torrentInstance) {
+    if (!torrentInstance) {
+      return;
+    }
+
+    const updateInterval = setInterval(() => {
+      if (!document.body.contains(this.modalVideo)) {
+        clearInterval(updateInterval);
+        return;
+      }
+      this.updateTorrentStatus(torrentInstance);
+    }, 3000);
+    this.activeIntervals.push(updateInterval);
+
+    const mirrorInterval = setInterval(() => {
+      if (!document.body.contains(this.modalVideo)) {
+        clearInterval(mirrorInterval);
+        return;
+      }
+      const status = document.getElementById("status");
+      const progress = document.getElementById("progress");
+      const peers = document.getElementById("peers");
+      const speed = document.getElementById("speed");
+      const downloaded = document.getElementById("downloaded");
+      if (status && this.modalStatus) {
+        this.modalStatus.textContent = status.textContent;
+      }
+      if (progress && this.modalProgress) {
+        this.modalProgress.style.width = progress.style.width;
+      }
+      if (peers && this.modalPeers) {
+        this.modalPeers.textContent = peers.textContent;
+      }
+      if (speed && this.modalSpeed) {
+        this.modalSpeed.textContent = speed.textContent;
+      }
+      if (downloaded && this.modalDownloaded) {
+        this.modalDownloaded.textContent = downloaded.textContent;
+      }
+    }, 3000);
+    this.activeIntervals.push(mirrorInterval);
+  }
+
   /**
    * Hide the video modal.
    */
   async hideModal() {
     // 1) Clear intervals, cleanup, etc. (unchanged)
-    if (this.activeIntervals && this.activeIntervals.length) {
-      this.activeIntervals.forEach((id) => clearInterval(id));
-      this.activeIntervals = [];
-    }
+    this.clearActiveIntervals();
 
     try {
       await fetch("/webtorrent/cancel/", { mode: "no-cors" });
@@ -1691,313 +1808,202 @@ class bitvidApp {
     }
   }
 
+  async probeUrl(url) {
+    const trimmed = typeof url === "string" ? url.trim() : "";
+    if (!trimmed) {
+      return false;
+    }
+
+    const rangeProbe = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch(trimmed, {
+          method: "GET",
+          headers: { Range: "bytes=0-1023" },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+          return false;
+        }
+        const acceptRanges = response.headers.get("accept-ranges");
+        if (!acceptRanges || acceptRanges.toLowerCase() !== "bytes") {
+          console.warn(
+            `[probeUrl] Range probe missing Accept-Ranges header for ${trimmed}`
+          );
+        }
+        return true;
+      } catch (err) {
+        console.warn(`[probeUrl] Range probe failed for ${trimmed}:`, err);
+        return false;
+      }
+    };
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const response = await fetch(trimmed, {
+        method: "HEAD",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        if (response.status === 405 || response.status === 501) {
+          return rangeProbe();
+        }
+        return false;
+      }
+
+      const acceptRanges = response.headers.get("accept-ranges");
+      if (!acceptRanges || acceptRanges.toLowerCase() !== "bytes") {
+        console.warn(
+          `[probeUrl] HEAD missing Accept-Ranges header for ${trimmed}`
+        );
+      }
+      return true;
+    } catch (err) {
+      console.warn(`[probeUrl] HEAD probe failed for ${trimmed}:`, err);
+      return rangeProbe();
+    }
+  }
+
+  async playHttp(url, { fallbackMagnet = "" } = {}) {
+    if (!this.modalVideo) {
+      throw new Error("No modal video element available for playback.");
+    }
+
+    const trimmedMagnet =
+      typeof fallbackMagnet === "string" ? fallbackMagnet.trim() : "";
+
+    this.resetTorrentStats();
+
+    if (this.modalStatus) {
+      this.modalStatus.textContent = "Loading video...";
+    }
+
+    const markUrlReady = () => {
+      if (this.modalStatus) {
+        this.modalStatus.textContent = "Streaming from URL";
+      }
+    };
+
+    this.modalVideo.addEventListener("loadeddata", markUrlReady, {
+      once: true,
+    });
+
+    if (trimmedMagnet) {
+      this.modalVideo.addEventListener(
+        "error",
+        async () => {
+          this.log("HTTP playback failed, falling back to WebTorrent.");
+          if (this.modalStatus) {
+            this.modalStatus.textContent = "Switching to WebTorrent...";
+          }
+          try {
+            await this.playViaWebTorrent(trimmedMagnet);
+            this.autoplayModalVideo();
+          } catch (torrentErr) {
+            console.error("WebTorrent fallback failed:", torrentErr);
+            this.showError("Unable to play this video.");
+          }
+        },
+        { once: true }
+      );
+    }
+
+    this.modalVideo.src = url;
+    this.modalVideo.load();
+  }
+
+  async playViaWebTorrent(magnet) {
+    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    if (!trimmedMagnet) {
+      throw new Error("No magnet URI provided for torrent playback.");
+    }
+    if (!this.modalVideo) {
+      throw new Error("No modal video element available for torrent playback.");
+    }
+
+    let cacheBustedMagnet = trimmedMagnet;
+    try {
+      const parsed = new URL(trimmedMagnet);
+      parsed.searchParams.set("ts", Date.now().toString());
+      cacheBustedMagnet = parsed.toString();
+    } catch (err) {
+      const separator = trimmedMagnet.includes("?") ? "&" : "?";
+      cacheBustedMagnet = `${trimmedMagnet}${separator}ts=${Date.now()}`;
+    }
+
+    await torrentClient.cleanup();
+    this.resetTorrentStats();
+
+    if (this.modalStatus) {
+      this.modalStatus.textContent = "Streaming via WebTorrent";
+    }
+
+    const torrentInstance = await torrentClient.streamVideo(
+      cacheBustedMagnet,
+      this.modalVideo
+    );
+    this.startTorrentStatusMirrors(torrentInstance);
+    return torrentInstance;
+  }
+
   /**
    * Unified playback helper that prefers HTTP URL sources
    * and falls back to WebTorrent when needed.
    */
   async playVideoWithFallback({
-    url: rawUrl = "",
-    magnet: rawMagnet = "",
-    eventId = null,
+    url = "",
+    magnet = "",
+    title = "",
+    description = "",
   } = {}) {
-    const sanitize = (value) =>
-      typeof value === "string" ? value.trim() : "";
-
-    let trimmedUrl = sanitize(rawUrl);
-    let trimmedMagnet = sanitize(rawMagnet);
+    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+    const sanitizedMagnet = typeof magnet === "string" ? magnet.trim() : "";
 
     try {
-      let video = null;
-
-      if (eventId) {
-        if (this.blacklistedEventIds.has(eventId)) {
-          this.showError("This content has been removed or is not allowed.");
-          return;
-        }
-
-        video = this.videosMap.get(eventId);
-        if (!video) {
-          video = await this.getOldEventById(eventId);
-        }
-        if (!video) {
-          this.showError("Video not found.");
-          return;
-        }
-
-        const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-        if (initialBlacklist.includes(authorNpub)) {
-          this.showError("This content has been removed or is not allowed.");
-          return;
-        }
-
-        if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-          this.showError("This content is not from a whitelisted author.");
-          return;
-        }
-
-        if (
-          video.isPrivate &&
-          video.pubkey === this.pubkey &&
-          !video.alreadyDecrypted
-        ) {
-          video.magnet = fakeDecrypt(video.magnet);
-          video.alreadyDecrypted = true;
-        }
-
-        if (!trimmedMagnet && typeof video.magnet === "string") {
-          trimmedMagnet = video.magnet.trim();
-        }
-        if (!trimmedUrl && typeof video.url === "string") {
-          trimmedUrl = video.url.trim();
-        }
-
-        const hasMagnet = !!trimmedMagnet;
-        const hasUrl = !!trimmedUrl;
-
-        if (!hasMagnet && !hasUrl) {
-          this.showError("This video has no playable source.");
-          return;
-        }
-
-        video.magnet = trimmedMagnet;
-        video.url = trimmedUrl;
-
-        this.currentVideo = video;
-        this.showModalWithPoster();
-
-        if (this.copyMagnetBtn) {
-          this.copyMagnetBtn.disabled = !hasMagnet;
-          this.copyMagnetBtn.setAttribute(
-            "aria-disabled",
-            (!hasMagnet).toString()
-          );
-          this.copyMagnetBtn.classList.toggle("opacity-50", !hasMagnet);
-          this.copyMagnetBtn.classList.toggle(
-            "cursor-not-allowed",
-            !hasMagnet
-          );
-        }
-
-        const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
-        const newUrl = `${window.location.pathname}?v=${encodeURIComponent(
-          nevent
-        )}`;
-        window.history.pushState({}, "", newUrl);
-
-        let creatorProfile = {
-          name: "Unknown",
-          picture: `https://robohash.org/${video.pubkey}`,
-        };
-        try {
-          const userEvents = await nostrClient.pool.list(nostrClient.relays, [
-            { kinds: [0], authors: [video.pubkey], limit: 1 },
-          ]);
-          if (userEvents.length > 0 && userEvents[0]?.content) {
-            const data = JSON.parse(userEvents[0].content);
-            creatorProfile = {
-              name: data.name || data.display_name || "Unknown",
-              picture: data.picture || `https://robohash.org/${video.pubkey}`,
-            };
-          }
-        } catch (error) {
-          this.log("Error fetching creator profile:", error);
-        }
-
-        const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-        if (this.videoTitle) {
-          this.videoTitle.textContent = video.title || "Untitled";
-        }
-        if (this.videoDescription) {
-          this.videoDescription.textContent =
-            video.description || "No description available.";
-        }
-        if (this.videoTimestamp) {
-          this.videoTimestamp.textContent = this.formatTimeAgo(
-            video.created_at
-          );
-        }
-        if (this.creatorName) {
-          this.creatorName.textContent = creatorProfile.name;
-        }
-        if (this.creatorNpub) {
-          this.creatorNpub.textContent = `${creatorNpub.slice(
-            0,
-            8
-          )}...${creatorNpub.slice(-4)}`;
-        }
-        if (this.creatorAvatar) {
-          this.creatorAvatar.src = creatorProfile.picture;
-          this.creatorAvatar.alt = creatorProfile.name;
-        }
-      } else {
-        const hasMagnet = !!trimmedMagnet;
-        const hasUrl = !!trimmedUrl;
-
-        if (!hasMagnet && !hasUrl) {
-          this.showError("This video has no playable source.");
-          return;
-        }
-
-        this.showModalWithPoster();
-
-        if (this.copyMagnetBtn) {
-          this.copyMagnetBtn.disabled = !hasMagnet;
-          this.copyMagnetBtn.setAttribute(
-            "aria-disabled",
-            (!hasMagnet).toString()
-          );
-          this.copyMagnetBtn.classList.toggle("opacity-50", !hasMagnet);
-          this.copyMagnetBtn.classList.toggle(
-            "cursor-not-allowed",
-            !hasMagnet
-          );
-        }
+      if (!this.modalVideo) {
+        throw new Error("Video element is not ready for playback.");
       }
 
-      const hasMagnetFinal = !!trimmedMagnet;
-      const hasUrlFinal = !!trimmedUrl;
+      if (this.modalStatus) {
+        this.modalStatus.textContent = "Preparing video...";
+      }
 
-      this.currentMagnetUri = hasMagnetFinal ? trimmedMagnet : null;
+      this.clearActiveIntervals();
+      this.prepareModalVideoForPlayback();
 
       await torrentClient.cleanup();
 
-      if (!hasMagnetFinal) {
-        if (this.modalPeers) {
-          this.modalPeers.textContent = "";
-        }
-        if (this.modalSpeed) {
-          this.modalSpeed.textContent = "";
-        }
-        if (this.modalDownloaded) {
-          this.modalDownloaded.textContent = "";
-        }
-        if (this.modalProgress) {
-          this.modalProgress.style.width = "0%";
-        }
+      this.modalVideo.pause();
+      this.modalVideo.src = "";
+      this.modalVideo.removeAttribute("src");
+      this.modalVideo.load();
+
+      this.resetTorrentStats();
+
+      let urlPlayable = false;
+      if (sanitizedUrl) {
+        urlPlayable = await this.probeUrl(sanitizedUrl);
       }
 
-      const storedUnmuted = localStorage.getItem("unmutedAutoplay");
-      const userWantsUnmuted = storedUnmuted === "true";
-      if (this.modalVideo) {
-        this.modalVideo.muted = !userWantsUnmuted;
-        this.modalVideo.addEventListener("volumechange", () => {
-          localStorage.setItem(
-            "unmutedAutoplay",
-            (!this.modalVideo.muted).toString()
-          );
+      if (urlPlayable) {
+        await this.playHttp(sanitizedUrl, {
+          fallbackMagnet: sanitizedMagnet,
         });
-      }
-
-      const attemptAutoplay = () => {
-        if (!this.modalVideo) return;
-        this.modalVideo.play().catch((err) => {
-          this.log("Autoplay failed:", err);
-          if (!this.modalVideo.muted) {
-            this.log("Falling back to muted autoplay.");
-            this.modalVideo.muted = true;
-            this.modalVideo.play().catch((err2) => {
-              this.log("Muted autoplay also failed:", err2);
-            });
-          }
-        });
-      };
-
-      const setupTorrentMonitors = (torrentInstance) => {
-        if (!torrentInstance) {
-          return;
-        }
-        const updateInterval = setInterval(() => {
-          if (!document.body.contains(this.modalVideo)) {
-            clearInterval(updateInterval);
-            return;
-          }
-          this.updateTorrentStatus(torrentInstance);
-        }, 3000);
-        this.activeIntervals.push(updateInterval);
-
-        const mirrorInterval = setInterval(() => {
-          if (!document.body.contains(this.modalVideo)) {
-            clearInterval(mirrorInterval);
-            return;
-          }
-          const status = document.getElementById("status");
-          const progress = document.getElementById("progress");
-          const peers = document.getElementById("peers");
-          const speed = document.getElementById("speed");
-          const downloaded = document.getElementById("downloaded");
-          if (status && this.modalStatus) {
-            this.modalStatus.textContent = status.textContent;
-          }
-          if (progress && this.modalProgress) {
-            this.modalProgress.style.width = progress.style.width;
-          }
-          if (peers && this.modalPeers) {
-            this.modalPeers.textContent = peers.textContent;
-          }
-          if (speed && this.modalSpeed) {
-            this.modalSpeed.textContent = speed.textContent;
-          }
-          if (downloaded && this.modalDownloaded) {
-            this.modalDownloaded.textContent = downloaded.textContent;
-          }
-        }, 3000);
-        this.activeIntervals.push(mirrorInterval);
-      };
-
-      const startTorrentPlayback = async () => {
-        if (!hasMagnetFinal || !this.modalVideo) {
-          return null;
-        }
-        const cacheBustedMagnet = `${trimmedMagnet}&ts=${Date.now()}`;
-        this.log("Starting video stream with:", cacheBustedMagnet);
-        if (this.modalStatus) {
-          this.modalStatus.textContent = "Streaming via WebTorrent";
-        }
-        const torrentInstance = await torrentClient.streamVideo(
-          cacheBustedMagnet,
-          this.modalVideo
-        );
-        setupTorrentMonitors(torrentInstance);
-        return torrentInstance;
-      };
-
-      if (hasUrlFinal && this.modalVideo) {
-        if (this.modalStatus) {
-          this.modalStatus.textContent = "Loading video...";
-        }
-        const markUrlReady = () => {
-          if (this.modalStatus) {
-            this.modalStatus.textContent = "Streaming from URL";
-          }
-        };
-        this.modalVideo.addEventListener("loadeddata", markUrlReady, {
-          once: true,
-        });
-        this.modalVideo.src = trimmedUrl;
-        this.modalVideo.load();
-
-        if (hasMagnetFinal) {
-          const fallbackToTorrent = async () => {
-            this.modalVideo.removeEventListener("error", fallbackToTorrent);
-            this.log("HTTP playback failed, falling back to WebTorrent.");
-            try {
-              await torrentClient.cleanup();
-              await startTorrentPlayback();
-              attemptAutoplay();
-            } catch (torrentErr) {
-              console.error("WebTorrent fallback failed:", torrentErr);
-              this.showError("Unable to play this video.");
-            }
-          };
-          this.modalVideo.addEventListener("error", fallbackToTorrent, {
-            once: true,
-          });
-        }
+      } else if (sanitizedMagnet) {
+        await this.playViaWebTorrent(sanitizedMagnet);
       } else {
-        await startTorrentPlayback();
+        if (this.modalStatus) {
+          this.modalStatus.textContent = "No playable source available.";
+        }
+        this.showError("This video has no playable source.");
+        return;
       }
 
-      attemptAutoplay();
+      this.autoplayModalVideo();
     } catch (error) {
       this.log("Error in playVideoWithFallback:", error);
       this.showError(`Playback error: ${error.message}`);
@@ -2005,7 +2011,180 @@ class bitvidApp {
   }
 
   async playVideoByEventId(eventId) {
-    return this.playVideoWithFallback({ eventId });
+    if (!eventId) {
+      this.showError("No video identifier provided.");
+      return;
+    }
+
+    if (this.blacklistedEventIds.has(eventId)) {
+      this.showError("This content has been removed or is not allowed.");
+      return;
+    }
+
+    let video = this.videosMap.get(eventId);
+    if (!video) {
+      video = await this.getOldEventById(eventId);
+    }
+    if (!video) {
+      this.showError("Video not found or has been removed.");
+      return;
+    }
+
+    const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+    if (initialBlacklist.includes(authorNpub)) {
+      this.showError("This content has been removed or is not allowed.");
+      return;
+    }
+
+    if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
+      this.showError("This content is not from a whitelisted author.");
+      return;
+    }
+
+    if (
+      video.isPrivate &&
+      video.pubkey === this.pubkey &&
+      !video.alreadyDecrypted
+    ) {
+      video.magnet = fakeDecrypt(video.magnet);
+      video.alreadyDecrypted = true;
+    }
+
+    const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
+    const trimmedMagnet =
+      typeof video.magnet === "string" ? video.magnet.trim() : "";
+
+    this.currentVideo = {
+      ...video,
+      url: trimmedUrl,
+      magnet: trimmedMagnet,
+    };
+
+    this.currentMagnetUri = trimmedMagnet || null;
+
+    await this.showModalWithPoster();
+
+    this.setCopyMagnetState(!!trimmedMagnet);
+    this.setShareButtonState(true);
+
+    const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
+    const newUrl = `${window.location.pathname}?v=${encodeURIComponent(
+      nevent
+    )}`;
+    window.history.pushState({}, "", newUrl);
+
+    let creatorProfile = {
+      name: "Unknown",
+      picture: `https://robohash.org/${video.pubkey}`,
+    };
+    try {
+      const userEvents = await nostrClient.pool.list(nostrClient.relays, [
+        { kinds: [0], authors: [video.pubkey], limit: 1 },
+      ]);
+      if (userEvents.length > 0 && userEvents[0]?.content) {
+        const data = JSON.parse(userEvents[0].content);
+        creatorProfile = {
+          name: data.name || data.display_name || "Unknown",
+          picture: data.picture || `https://robohash.org/${video.pubkey}`,
+        };
+      }
+    } catch (error) {
+      this.log("Error fetching creator profile:", error);
+    }
+
+    const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+    if (this.videoTitle) {
+      this.videoTitle.textContent = video.title || "Untitled";
+    }
+    if (this.videoDescription) {
+      this.videoDescription.textContent =
+        video.description || "No description available.";
+    }
+    if (this.videoTimestamp) {
+      this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
+    }
+    if (this.creatorName) {
+      this.creatorName.textContent = creatorProfile.name;
+    }
+    if (this.creatorNpub) {
+      this.creatorNpub.textContent = `${creatorNpub.slice(0, 8)}...${creatorNpub.slice(
+        -4
+      )}`;
+    }
+    if (this.creatorAvatar) {
+      this.creatorAvatar.src = creatorProfile.picture;
+      this.creatorAvatar.alt = creatorProfile.name;
+    }
+
+    await this.playVideoWithFallback({
+      url: trimmedUrl,
+      magnet: trimmedMagnet,
+      title: video.title,
+      description: video.description,
+    });
+  }
+
+  async playVideoWithoutEvent({
+    url = "",
+    magnet = "",
+    title = "Untitled",
+    description = "",
+  } = {}) {
+    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+    const sanitizedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+
+    if (!sanitizedUrl && !sanitizedMagnet) {
+      this.showError("This video has no playable source.");
+      return;
+    }
+
+    await this.showModalWithPoster();
+
+    this.currentVideo = {
+      id: null,
+      title,
+      description,
+      url: sanitizedUrl,
+      magnet: sanitizedMagnet,
+    };
+
+    this.currentMagnetUri = sanitizedMagnet || null;
+
+    this.setCopyMagnetState(!!sanitizedMagnet);
+    this.setShareButtonState(false);
+
+    if (this.videoTitle) {
+      this.videoTitle.textContent = title || "Untitled";
+    }
+    if (this.videoDescription) {
+      this.videoDescription.textContent =
+        description || "No description available.";
+    }
+    if (this.videoTimestamp) {
+      this.videoTimestamp.textContent = "";
+    }
+    if (this.creatorName) {
+      this.creatorName.textContent = "Unknown";
+    }
+    if (this.creatorNpub) {
+      this.creatorNpub.textContent = "";
+    }
+    if (this.creatorAvatar) {
+      this.creatorAvatar.src = "assets/svg/default-profile.svg";
+      this.creatorAvatar.alt = "Unknown";
+    }
+
+    const urlObj = new URL(window.location.href);
+    urlObj.searchParams.delete("v");
+    const cleaned = `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
+    window.history.replaceState({}, "", cleaned);
+
+    await this.playVideoWithFallback({
+      url: sanitizedUrl,
+      magnet: sanitizedMagnet,
+      title,
+      description,
+    });
   }
 
   /**
