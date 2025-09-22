@@ -240,6 +240,11 @@ async function loadUserVideos(pubkey) {
     const fragment = document.createDocumentFragment();
     const allKnownEventsArray = Array.from(nostrClient.allEvents.values());
 
+    const encodeDataValue = (value) =>
+      typeof value === "string" && value.length > 0
+        ? encodeURIComponent(value)
+        : "";
+
     videos.forEach((video, index) => {
       // Decrypt if user owns a private video
       if (
@@ -331,11 +336,18 @@ async function loadUserVideos(pubkey) {
         "duration-300"
       );
 
-      const encodedUrl = encodeURIComponent(video.url || "");
-      const encodedMagnet = encodeURIComponent(video.magnet || "");
+      const encodedUrl = encodeDataValue(video.url);
+      const encodedMagnet = encodeDataValue(video.magnet);
+      const rawUrl = typeof video.url === "string" ? video.url : "";
+      const rawMagnet = typeof video.magnet === "string" ? video.magnet : "";
 
       cardEl.innerHTML = `
-        <div class="cursor-pointer relative group">
+        <div
+          class="cursor-pointer relative group"
+          data-video-id="${video.id}"
+          data-play-url="${encodedUrl}"
+          data-play-magnet="${encodedMagnet}"
+        >
           <div class="ratio-16-9">
             <img
               src="${fallbackThumb}"
@@ -364,7 +376,11 @@ async function loadUserVideos(pubkey) {
 
       // Clicking the card => open the video modal
       cardEl.addEventListener("click", () => {
-        app.playVideoByEventId(video.id);
+        app.playVideoWithFallback({
+          eventId: video.id,
+          url: rawUrl,
+          magnet: rawMagnet,
+        });
       });
 
       fragment.appendChild(cardEl);
