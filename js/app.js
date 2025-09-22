@@ -162,6 +162,9 @@ class bitvidApp {
     this.currentMagnetUri = null;
     this.currentVideo = null;
     this.videoSubscription = null;
+    this.videoList = null;
+    this._videoListElement = null;
+    this._videoListClickHandler = null;
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = new Map();
@@ -262,6 +265,7 @@ class bitvidApp {
 
       // 7. Once loaded, get a reference to #videoList
       this.videoList = document.getElementById("videoList");
+      this.attachVideoListHandler();
 
       // 8. Subscribe or fetch videos
       await this.loadVideos();
@@ -641,47 +645,7 @@ class bitvidApp {
       await this.hideModal();
     });
 
-    // 9) Event delegation on the video list container for playing videos
-    if (this.videoList) {
-      this.videoList.addEventListener("click", async (event) => {
-        const trigger = event.target.closest(
-          "[data-play-url], [data-play-magnet]"
-        );
-        if (!trigger) {
-          return;
-        }
-
-        if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
-          event.preventDefault();
-
-          const decodeDataValue = (value) => {
-            if (!value) return "";
-            try {
-              return decodeURIComponent(value);
-            } catch (err) {
-              console.warn("Failed to decode data attribute:", err);
-              return "";
-            }
-          };
-
-          const encodedUrl = trigger.getAttribute("data-play-url") || "";
-          const encodedMagnet =
-            trigger.getAttribute("data-play-magnet") || "";
-
-          const url = decodeDataValue(encodedUrl);
-          const magnet = decodeDataValue(encodedMagnet);
-          const eventId = trigger.getAttribute("data-video-id");
-
-          if (eventId) {
-            await this.playVideoByEventId(eventId);
-          } else {
-            await this.playVideoWithoutEvent({ url, magnet });
-          }
-        }
-      });
-    }
-
-    // 10) Event delegation for the “Application Form” button inside the login modal
+    // 9) Event delegation for the “Application Form” button inside the login modal
     document.addEventListener("click", (event) => {
       if (event.target && event.target.id === "openApplicationModal") {
         // Hide the login modal
@@ -696,6 +660,61 @@ class bitvidApp {
         }
       }
     });
+  }
+
+  attachVideoListHandler() {
+    if (this._videoListElement && this._videoListClickHandler) {
+      this._videoListElement.removeEventListener(
+        "click",
+        this._videoListClickHandler
+      );
+      this._videoListElement = null;
+      this._videoListClickHandler = null;
+    }
+
+    if (!this.videoList) {
+      return;
+    }
+
+    const handler = async (event) => {
+      const trigger = event.target.closest(
+        "[data-play-url], [data-play-magnet]"
+      );
+      if (!trigger) {
+        return;
+      }
+
+      if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+
+        const decodeDataValue = (value) => {
+          if (!value) return "";
+          try {
+            return decodeURIComponent(value);
+          } catch (err) {
+            console.warn("Failed to decode data attribute:", err);
+            return "";
+          }
+        };
+
+        const encodedUrl = trigger.getAttribute("data-play-url") || "";
+        const encodedMagnet = trigger.getAttribute("data-play-magnet") || "";
+
+        const url = decodeDataValue(encodedUrl);
+        const magnet = decodeDataValue(encodedMagnet);
+        const eventId = trigger.getAttribute("data-video-id");
+
+        if (eventId) {
+          await this.playVideoByEventId(eventId);
+        } else {
+          await this.playVideoWithoutEvent({ url, magnet });
+        }
+      }
+    };
+
+    this._videoListElement = this.videoList;
+    this._videoListClickHandler = handler;
+    this.videoList.addEventListener("click", handler);
   }
 
   /**

@@ -44,6 +44,9 @@ export const viewInitRegistry = {
   "most-recent-videos": () => {
     if (window.app && window.app.loadVideos) {
       window.app.videoList = document.getElementById("videoList");
+      if (window.app.attachVideoListHandler) {
+        window.app.attachVideoListHandler();
+      }
       window.app.loadVideos();
     }
     // Force profile updates after the new view is in place.
