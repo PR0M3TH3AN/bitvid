@@ -19,6 +19,42 @@ function fakeDecrypt(str) {
 }
 
 /**
+ * Append optional ws/xs parameters to a magnet URI when valid.
+ */
+function augmentMagnet(raw, ws, xs) {
+  const magnet = (raw || "").trim();
+  if (!magnet) {
+    return "";
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(magnet);
+  } catch (err) {
+    return magnet;
+  }
+
+  if (parsed.protocol !== "magnet:") {
+    return magnet;
+  }
+
+  const appendIfMissing = (key, value) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const existing = parsed.searchParams.getAll(key);
+    if (!existing.includes(trimmed)) {
+      parsed.searchParams.append(key, trimmed);
+    }
+  };
+
+  appendIfMissing("ws", ws);
+  appendIfMissing("xs", xs);
+
+  return parsed.toString();
+}
+
+/**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
  * Usage:
@@ -779,32 +815,49 @@ class bitvidApp {
     }
 
     const titleEl = document.getElementById("uploadTitle");
+    const urlEl = document.getElementById("uploadUrl");
     const magnetEl = document.getElementById("uploadMagnet");
+    const wsEl = document.getElementById("uploadWs");
+    const xsEl = document.getElementById("uploadXs");
     const thumbEl = document.getElementById("uploadThumbnail");
     const descEl = document.getElementById("uploadDescription");
     const privEl = document.getElementById("uploadIsPrivate");
 
+    const title = titleEl?.value.trim() || "";
+    const url = urlEl?.value.trim() || "";
+    const magnet = magnetEl?.value.trim() || "";
+    const ws = wsEl?.value.trim() || "";
+    const xs = xsEl?.value.trim() || "";
+    const thumbnail = thumbEl?.value.trim() || "";
+    const description = descEl?.value.trim() || "";
+
     const formData = {
       version: 2,
-      title: titleEl?.value.trim() || "",
-      magnet: magnetEl?.value.trim() || "",
-      thumbnail: thumbEl?.value.trim() || "",
-      description: descEl?.value.trim() || "",
+      title,
+      url,
+      magnet,
+      thumbnail,
+      description,
       mode: isDevMode ? "dev" : "live",
       // isPrivate: privEl?.checked || false,
     };
 
-    if (!formData.title || !formData.magnet) {
-      this.showError("Title and Magnet are required.");
+    if (!formData.title || (!formData.url && !formData.magnet)) {
+      this.showError("Please provide a title and at least one of URL or Magnet.");
       return;
     }
+
+    formData.magnet = augmentMagnet(formData.magnet, ws, xs);
 
     try {
       await nostrClient.publishVideo(formData, this.pubkey);
 
       // Clear fields
       if (titleEl) titleEl.value = "";
+      if (urlEl) urlEl.value = "";
       if (magnetEl) magnetEl.value = "";
+      if (wsEl) wsEl.value = "";
+      if (xsEl) xsEl.value = "";
       if (thumbEl) thumbEl.value = "";
       if (descEl) descEl.value = "";
       if (privEl) privEl.checked = false;
