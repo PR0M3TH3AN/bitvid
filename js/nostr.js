@@ -53,7 +53,9 @@ function convertEventToVideo(event) {
 
     // Example checks:
     const isSupportedVersion = content.version >= 2;
-    const hasRequiredFields = !!(content.title && content.magnet);
+    const hasRequiredFields = !!(
+      content.title && (content.url || content.magnet)
+    );
 
     if (!isSupportedVersion) {
       return {
@@ -66,7 +68,7 @@ function convertEventToVideo(event) {
       return {
         id: event.id,
         invalid: true,
-        reason: "missing title/magnet",
+        reason: "missing title/url+magnet",
       };
     }
 
@@ -76,6 +78,7 @@ function convertEventToVideo(event) {
       version: content.version,
       isPrivate: content.isPrivate ?? false,
       title: content.title ?? "",
+      url: content.url ?? "",
       magnet: content.magnet ?? "",
       thumbnail: content.thumbnail ?? "",
       description: content.description ?? "",
@@ -222,10 +225,13 @@ class NostrClient {
       console.log("Publishing new video with data:", videoData);
     }
 
-    let finalMagnet = videoData.magnet;
-    if (videoData.isPrivate) {
+    const rawMagnet = typeof videoData.magnet === "string" ? videoData.magnet : "";
+    let finalMagnet = rawMagnet.trim();
+    if (videoData.isPrivate && finalMagnet) {
       finalMagnet = fakeEncrypt(finalMagnet);
     }
+    const finalUrl =
+      typeof videoData.url === "string" ? videoData.url.trim() : "";
 
     // brand-new root & d
     const videoRootId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -237,6 +243,7 @@ class NostrClient {
       deleted: false,
       isPrivate: videoData.isPrivate ?? false,
       title: videoData.title || "",
+      url: finalUrl,
       magnet: finalMagnet,
       thumbnail: videoData.thumbnail || "",
       description: videoData.description || "",
@@ -322,14 +329,23 @@ class NostrClient {
       oldPlainMagnet = fakeDecrypt(oldPlainMagnet);
     }
 
+    const oldUrl = baseEvent.url || "";
+
     // Determine if the updated note should be private
     const wantPrivate = updatedData.isPrivate ?? baseEvent.isPrivate ?? false;
 
     // Use the new magnet if provided; otherwise, fall back to the decrypted old magnet
-    let finalPlainMagnet = (updatedData.magnet || "").trim() || oldPlainMagnet;
-    let finalMagnet = wantPrivate
-      ? fakeEncrypt(finalPlainMagnet)
-      : finalPlainMagnet;
+    const newMagnetValue =
+      typeof updatedData.magnet === "string" ? updatedData.magnet.trim() : "";
+    let finalPlainMagnet = newMagnetValue || oldPlainMagnet;
+    let finalMagnet =
+      wantPrivate && finalPlainMagnet
+        ? fakeEncrypt(finalPlainMagnet)
+        : finalPlainMagnet;
+
+    const newUrlValue =
+      typeof updatedData.url === "string" ? updatedData.url.trim() : "";
+    const finalUrl = newUrlValue || oldUrl;
 
     // Use the existing videoRootId (or fall back to the base event's ID)
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
@@ -344,6 +360,7 @@ class NostrClient {
       deleted: false,
       isPrivate: wantPrivate,
       title: updatedData.title ?? baseEvent.title,
+      url: finalUrl,
       magnet: finalMagnet,
       thumbnail: updatedData.thumbnail ?? baseEvent.thumbnail,
       description: updatedData.description ?? baseEvent.description,
@@ -420,6 +437,7 @@ class NostrClient {
           deleted: fetched.deleted,
           isPrivate: fetched.isPrivate,
           title: fetched.title,
+          url: fetched.url,
           magnet: fetched.magnet,
           thumbnail: fetched.thumbnail,
           description: fetched.description,
@@ -451,6 +469,7 @@ class NostrClient {
       deleted: true,
       isPrivate: oldContent.isPrivate ?? false,
       title: oldContent.title || "",
+      url: "",
       magnet: "",
       thumbnail: "",
       description: "This version was reverted by the creator.",
@@ -530,6 +549,7 @@ class NostrClient {
             deleted: vid.deleted,
             isPrivate: vid.isPrivate,
             title: vid.title,
+            url: vid.url,
             magnet: vid.magnet,
             thumbnail: vid.thumbnail,
             description: vid.description,

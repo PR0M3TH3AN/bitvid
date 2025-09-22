@@ -331,6 +331,9 @@ async function loadUserVideos(pubkey) {
         "duration-300"
       );
 
+      const encodedUrl = encodeURIComponent(video.url || "");
+      const encodedMagnet = encodeURIComponent(video.magnet || "");
+
       cardEl.innerHTML = `
         <div class="cursor-pointer relative group">
           <div class="ratio-16-9">
@@ -345,7 +348,9 @@ async function loadUserVideos(pubkey) {
           <div>
             <h3
               class="text-lg font-bold text-white mb-2 line-clamp-2"
-              data-play-magnet="${encodeURIComponent(video.magnet)}"
+              data-video-id="${video.id}"
+              data-play-url="${encodedUrl}"
+              data-play-magnet="${encodedMagnet}"
             >
               ${safeTitle}
             </h3>
@@ -453,13 +458,15 @@ function localConvertEventToVideo(event) {
   try {
     const content = JSON.parse(event.content || "{}");
     const isSupportedVersion = content.version >= 2;
-    const hasRequiredFields = !!(content.title && content.magnet);
+    const hasRequiredFields = !!(
+      content.title && (content.url || content.magnet)
+    );
 
     if (!isSupportedVersion) {
       return { id: event.id, invalid: true, reason: "version <2" };
     }
     if (!hasRequiredFields) {
-      return { id: event.id, invalid: true, reason: "missing title/magnet" };
+      return { id: event.id, invalid: true, reason: "missing title/url+magnet" };
     }
 
     return {
@@ -468,6 +475,7 @@ function localConvertEventToVideo(event) {
       version: content.version,
       isPrivate: content.isPrivate ?? false,
       title: content.title ?? "",
+      url: content.url ?? "",
       magnet: content.magnet ?? "",
       thumbnail: content.thumbnail ?? "",
       description: content.description ?? "",
