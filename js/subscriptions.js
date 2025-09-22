@@ -329,11 +329,15 @@ class SubscriptionsManager {
 
       const safeTitle = window.app?.escapeHTML(video.title) || "Untitled";
       const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
+      const encodedMagnet = encodeURIComponent(video.magnet || "");
+      const encodedUrl = encodeURIComponent(video.url || "");
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <a
             href="${shareUrl}"
-            data-play-magnet="${encodeURIComponent(video.magnet)}"
+            data-video-id="${video.id}"
+            data-play-url="${encodedUrl}"
+            data-play-magnet="${encodedMagnet}"
             class="block cursor-pointer relative group"
           >
             <div class="ratio-16-9">
@@ -347,7 +351,9 @@ class SubscriptionsManager {
           <div class="p-4">
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-              data-play-magnet="${encodeURIComponent(video.magnet)}"
+              data-video-id="${video.id}"
+              data-play-url="${encodedUrl}"
+              data-play-magnet="${encodedMagnet}"
             >
               ${safeTitle}
             </h3>
@@ -482,7 +488,9 @@ class SubscriptionsManager {
   convertEventToVideo(evt) {
     try {
       const content = JSON.parse(evt.content || "{}");
-      const hasFields = !!(content.title && content.magnet);
+      const hasFields = !!(
+        content.title && (content.url || content.magnet)
+      );
       const versionOk = content.version >= 2;
       if (!versionOk || !hasFields) {
         return { id: evt.id, invalid: true };
@@ -496,6 +504,7 @@ class SubscriptionsManager {
         deleted: content.deleted === true,
         isPrivate: content.isPrivate === true,
         title: content.title || "",
+        url: content.url || "",
         magnet: content.magnet || "",
         thumbnail: content.thumbnail || "",
         description: content.description || "",

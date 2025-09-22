@@ -644,13 +644,14 @@ class bitvidApp {
     // 9) Event delegation on the video list container for playing videos
     if (this.videoList) {
       this.videoList.addEventListener("click", (event) => {
-        const magnetTrigger = event.target.closest("[data-play-magnet]");
-        if (magnetTrigger) {
-          // For a normal left-click (button 0, no Ctrl/Cmd), prevent navigation:
+        const trigger = event.target.closest("[data-video-id]");
+        if (trigger) {
           if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
-            event.preventDefault(); // Stop browser from following the href
-            const magnet = magnetTrigger.dataset.playMagnet;
-            this.playVideo(magnet);
+            event.preventDefault();
+            const eventId = trigger.getAttribute("data-video-id");
+            if (eventId) {
+              this.playVideoByEventId(eventId);
+            }
           }
         }
       });
@@ -1239,12 +1240,16 @@ class bitvidApp {
         `
         : "";
 
+      const encodedMagnet = encodeURIComponent(video.magnet || "");
+      const encodedUrl = encodeURIComponent(video.url || "");
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <!-- The clickable link to play video -->
           <a
             href="${shareUrl}"
-            data-play-magnet="${encodeURIComponent(video.magnet)}"
+            data-video-id="${video.id}"
+            data-play-url="${encodedUrl}"
+            data-play-magnet="${encodedMagnet}"
             class="block cursor-pointer relative group"
           >
             <div class="ratio-16-9">
@@ -1259,7 +1264,9 @@ class bitvidApp {
             <!-- Title triggers the video modal as well -->
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-              data-play-magnet="${encodeURIComponent(video.magnet)}"
+              data-video-id="${video.id}"
+              data-play-url="${encodedUrl}"
+              data-play-magnet="${encodedMagnet}"
             >
               ${this.escapeHTML(video.title)}
             </h3>
@@ -1469,6 +1476,10 @@ class bitvidApp {
         "New Magnet? (blank=keep existing)",
         video.magnet
       );
+      const newUrl = prompt(
+        "New URL? (blank=keep existing)",
+        video.url || ""
+      );
       const newThumb = prompt(
         "New Thumbnail? (blank=keep existing)",
         video.thumbnail
@@ -1484,6 +1495,7 @@ class bitvidApp {
         !newTitle || !newTitle.trim() ? video.title : newTitle.trim();
       const magnet =
         !newMagnet || !newMagnet.trim() ? video.magnet : newMagnet.trim();
+      const url = !newUrl || !newUrl.trim() ? video.url : newUrl.trim();
       const thumbnail =
         !newThumb || !newThumb.trim() ? video.thumbnail : newThumb.trim();
       const description =
@@ -1495,6 +1507,7 @@ class bitvidApp {
         // isPrivate: wantPrivate,
         title,
         magnet,
+        url,
         thumbnail,
         description,
         mode: isDevMode ? "dev" : "live",
@@ -1693,9 +1706,34 @@ class bitvidApp {
         video.alreadyDecrypted = true;
       }
 
+      const trimmedMagnet =
+        typeof video.magnet === "string" ? video.magnet.trim() : "";
+      const trimmedUrl =
+        typeof video.url === "string" ? video.url.trim() : "";
+      const hasMagnet = !!trimmedMagnet;
+      const hasUrl = !!trimmedUrl;
+
+      if (!hasMagnet && !hasUrl) {
+        this.showError("This video has no playable source.");
+        return;
+      }
+
+      video.magnet = trimmedMagnet;
+      video.url = trimmedUrl;
+
       this.currentVideo = video;
-      this.currentMagnetUri = video.magnet;
+      this.currentMagnetUri = hasMagnet ? trimmedMagnet : null;
       this.showModalWithPoster();
+
+      if (this.copyMagnetBtn) {
+        this.copyMagnetBtn.disabled = !hasMagnet;
+        this.copyMagnetBtn.setAttribute(
+          "aria-disabled",
+          (!hasMagnet).toString()
+        );
+        this.copyMagnetBtn.classList.toggle("opacity-50", !hasMagnet);
+        this.copyMagnetBtn.classList.toggle("cursor-not-allowed", !hasMagnet);
+      }
 
       // Update ?v= param in the URL
       const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
@@ -1750,12 +1788,24 @@ class bitvidApp {
         this.creatorAvatar.alt = creatorProfile.name;
       }
 
-      // Cleanup any previous WebTorrent streams, then start a fresh one
+      // Cleanup any previous WebTorrent streams, then start fresh playback
       await torrentClient.cleanup();
-      const cacheBustedMagnet = video.magnet + "&ts=" + Date.now();
-      this.log("Starting video stream with:", cacheBustedMagnet);
 
-      // Autoplay preferences
+      if (!hasMagnet) {
+        if (this.modalPeers) {
+          this.modalPeers.textContent = "";
+        }
+        if (this.modalSpeed) {
+          this.modalSpeed.textContent = "";
+        }
+        if (this.modalDownloaded) {
+          this.modalDownloaded.textContent = "";
+        }
+        if (this.modalProgress) {
+          this.modalProgress.style.width = "0%";
+        }
+      }
+
       const storedUnmuted = localStorage.getItem("unmutedAutoplay");
       const userWantsUnmuted = storedUnmuted === "true";
       this.modalVideo.muted = !userWantsUnmuted;
@@ -1767,61 +1817,115 @@ class bitvidApp {
         );
       });
 
-      const realTorrent = await torrentClient.streamVideo(
-        cacheBustedMagnet,
-        this.modalVideo
-      );
+      const attemptAutoplay = () => {
+        this.modalVideo.play().catch((err) => {
+          this.log("Autoplay failed:", err);
+          if (!this.modalVideo.muted) {
+            this.log("Falling back to muted autoplay.");
+            this.modalVideo.muted = true;
+            this.modalVideo.play().catch((err2) => {
+              this.log("Muted autoplay also failed:", err2);
+            });
+          }
+        });
+      };
 
-      // Try playing; if autoplay fails, fallback to muted
-      this.modalVideo.play().catch((err) => {
-        this.log("Autoplay failed:", err);
-        if (!this.modalVideo.muted) {
-          this.log("Falling back to muted autoplay.");
-          this.modalVideo.muted = true;
-          this.modalVideo.play().catch((err2) => {
-            this.log("Muted autoplay also failed:", err2);
+      const setupTorrentMonitors = (torrentInstance) => {
+        if (!torrentInstance) {
+          return;
+        }
+        const updateInterval = setInterval(() => {
+          if (!document.body.contains(this.modalVideo)) {
+            clearInterval(updateInterval);
+            return;
+          }
+          this.updateTorrentStatus(torrentInstance);
+        }, 3000);
+        this.activeIntervals.push(updateInterval);
+
+        const mirrorInterval = setInterval(() => {
+          if (!document.body.contains(this.modalVideo)) {
+            clearInterval(mirrorInterval);
+            return;
+          }
+          const status = document.getElementById("status");
+          const progress = document.getElementById("progress");
+          const peers = document.getElementById("peers");
+          const speed = document.getElementById("speed");
+          const downloaded = document.getElementById("downloaded");
+          if (status && this.modalStatus) {
+            this.modalStatus.textContent = status.textContent;
+          }
+          if (progress && this.modalProgress) {
+            this.modalProgress.style.width = progress.style.width;
+          }
+          if (peers && this.modalPeers) {
+            this.modalPeers.textContent = peers.textContent;
+          }
+          if (speed && this.modalSpeed) {
+            this.modalSpeed.textContent = speed.textContent;
+          }
+          if (downloaded && this.modalDownloaded) {
+            this.modalDownloaded.textContent = downloaded.textContent;
+          }
+        }, 3000);
+        this.activeIntervals.push(mirrorInterval);
+      };
+
+      const startTorrentPlayback = async () => {
+        if (!hasMagnet) {
+          return null;
+        }
+        const cacheBustedMagnet = `${trimmedMagnet}&ts=${Date.now()}`;
+        this.log("Starting video stream with:", cacheBustedMagnet);
+        if (this.modalStatus) {
+          this.modalStatus.textContent = "Streaming via WebTorrent";
+        }
+        const torrentInstance = await torrentClient.streamVideo(
+          cacheBustedMagnet,
+          this.modalVideo
+        );
+        setupTorrentMonitors(torrentInstance);
+        return torrentInstance;
+      };
+
+      if (hasUrl) {
+        if (this.modalStatus) {
+          this.modalStatus.textContent = "Loading video...";
+        }
+        const markUrlReady = () => {
+          if (this.modalStatus) {
+            this.modalStatus.textContent = "Streaming from URL";
+          }
+        };
+        this.modalVideo.addEventListener("loadeddata", markUrlReady, {
+          once: true,
+        });
+        this.modalVideo.src = trimmedUrl;
+        this.modalVideo.load();
+
+        if (hasMagnet) {
+          const fallbackToTorrent = async () => {
+            this.modalVideo.removeEventListener("error", fallbackToTorrent);
+            this.log("HTTP playback failed, falling back to WebTorrent.");
+            try {
+              await torrentClient.cleanup();
+              await startTorrentPlayback();
+              attemptAutoplay();
+            } catch (torrentErr) {
+              console.error("WebTorrent fallback failed:", torrentErr);
+              this.showError("Unable to play this video.");
+            }
+          };
+          this.modalVideo.addEventListener("error", fallbackToTorrent, {
+            once: true,
           });
         }
-      });
+      } else {
+        await startTorrentPlayback();
+      }
 
-      // Update torrent stats every 3s
-      const updateInterval = setInterval(() => {
-        if (!document.body.contains(this.modalVideo)) {
-          clearInterval(updateInterval);
-          return;
-        }
-        this.updateTorrentStatus(realTorrent);
-      }, 3000);
-      this.activeIntervals.push(updateInterval);
-
-      // Mirror stats into the modal if needed
-      const mirrorInterval = setInterval(() => {
-        if (!document.body.contains(this.modalVideo)) {
-          clearInterval(mirrorInterval);
-          return;
-        }
-        const status = document.getElementById("status");
-        const progress = document.getElementById("progress");
-        const peers = document.getElementById("peers");
-        const speed = document.getElementById("speed");
-        const downloaded = document.getElementById("downloaded");
-        if (status && this.modalStatus) {
-          this.modalStatus.textContent = status.textContent;
-        }
-        if (progress && this.modalProgress) {
-          this.modalProgress.style.width = progress.style.width;
-        }
-        if (peers && this.modalPeers) {
-          this.modalPeers.textContent = peers.textContent;
-        }
-        if (speed && this.modalSpeed) {
-          this.modalSpeed.textContent = speed.textContent;
-        }
-        if (downloaded && this.modalDownloaded) {
-          this.modalDownloaded.textContent = downloaded.textContent;
-        }
-      }, 3000);
-      this.activeIntervals.push(mirrorInterval);
+      attemptAutoplay();
     } catch (error) {
       this.log("Error in playVideoByEventId:", error);
       this.showError(`Playback error: ${error.message}`);
