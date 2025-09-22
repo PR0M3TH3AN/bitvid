@@ -171,6 +171,12 @@ Promise.all([
 
     // Also run once on initial load
     handleHashChange();
+
+    return import("./disclaimer.js");
+  })
+  .then(({ default: disclaimerModal }) => {
+    disclaimerModal.init();
+    disclaimerModal.show();
   });
 
 /* -------------------------------------------

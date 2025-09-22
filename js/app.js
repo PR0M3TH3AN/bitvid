@@ -4,7 +4,6 @@ import { loadView } from "./viewManager.js";
 import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
-import disclaimerModal from "./disclaimer.js";
 import { isWhitelistEnabled } from "./config.js";
 import {
   initialWhitelist,
@@ -208,9 +207,8 @@ class bitvidApp {
         }
       }
 
-      // 5. Setup general event listeners, show disclaimers
+      // 5. Setup general event listeners
       this.setupEventListeners();
-      disclaimerModal.show();
 
       // 6) Load the default view ONLY if there's no #view= already
       if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
