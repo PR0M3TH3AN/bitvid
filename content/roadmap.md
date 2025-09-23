@@ -46,9 +46,9 @@
 - Add zaps to videos, profiles, and comments.
 - Create a VRR (View, Rating, and Retention) Penalty Scoring system. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/07_bitvid_Enhanced_View_Rating_%26_Retention_Penalty_Scoring.md)
 - Implement visibility filtering for videos:
-  - Show only videos whose magnet links have at least **one active peer online**.
-  - Integrate the filtering mechanism into the video list rendering process.
-  - Update the video list dynamically based on real-time peer availability. (this may not be possible)
+  - Run lightweight URL-health probes so cards stay visible when the hosted playback link responds.
+  - When a URL is unreachable, fall back to WebTorrent and surface items only if their magnets can stream via peers or web seeds.
+  - Align the filtering logic with the player’s URL-first, WebTorrent-fallback behavior during list rendering.
 - Dynamic Home Page and Video Tracking Specification. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/08_bitvid_Enhanced_Dynamic_Home_Page_%26_Video_Tracking_Specification.md)
 - Add multi-language support for content and filtration. (v4?)
 - Create a settings menu for local account preferences, including relay, adult content, theme, and language.
