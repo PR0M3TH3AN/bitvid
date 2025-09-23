@@ -4,6 +4,51 @@
  * Extracts normalized fields from a Bitvid video event while
  * tolerating legacy payloads that may omit version >= 2 metadata.
  */
+const MAGNET_URI_PATTERN = /^magnet:\?/i;
+const HEX_INFO_HASH_PATTERN = /\b[0-9a-f]{40}\b/gi;
+
+function extractInfoHashesFromString(value, pushInfoHash) {
+  if (typeof value !== "string") {
+    return;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  const matches = trimmed.match(HEX_INFO_HASH_PATTERN);
+  if (!matches) {
+    return;
+  }
+
+  for (const match of matches) {
+    const normalized = match.toLowerCase();
+    pushInfoHash(normalized);
+  }
+}
+
+function traverseForInfoHashes(value, pushInfoHash) {
+  if (!value) {
+    return;
+  }
+  if (typeof value === "string") {
+    extractInfoHashesFromString(value, pushInfoHash);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      traverseForInfoHashes(item, pushInfoHash);
+    }
+    return;
+  }
+  if (typeof value === "object") {
+    for (const nested of Object.values(value)) {
+      traverseForInfoHashes(nested, pushInfoHash);
+    }
+  }
+}
+
 export function parseVideoEventPayload(event = {}) {
   const rawContent = typeof event.content === "string" ? event.content : "";
 
@@ -29,6 +74,7 @@ export function parseVideoEventPayload(event = {}) {
     : "";
 
   const magnetCandidates = [];
+  const infoHashCandidates = [];
   const urlCandidates = [];
 
   const pushUnique = (arr, value) => {
@@ -38,14 +84,48 @@ export function parseVideoEventPayload(event = {}) {
     arr.push(trimmed);
   };
 
+  const pushInfoHash = (candidate) => {
+    if (!candidate) return;
+    const normalized = candidate.toLowerCase();
+    if (!/^[0-9a-f]{40}$/.test(normalized)) {
+      return;
+    }
+    if (infoHashCandidates.includes(normalized)) {
+      return;
+    }
+    infoHashCandidates.push(normalized);
+  };
+
+  const collectMagnetOrInfoHash = (value) => {
+    if (typeof value !== "string") {
+      return;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    if (MAGNET_URI_PATTERN.test(trimmed)) {
+      pushUnique(magnetCandidates, trimmed);
+    }
+
+    extractInfoHashesFromString(trimmed, pushInfoHash);
+
+    const urnMatch = trimmed.match(/^urn:btih:([0-9a-z]+)$/i);
+    if (urnMatch) {
+      pushInfoHash(urnMatch[1]);
+    }
+  };
+
   if (typeof parsedContent.magnet === "string") {
-    pushUnique(magnetCandidates, parsedContent.magnet);
+    collectMagnetOrInfoHash(parsedContent.magnet);
   }
   if (typeof parsedContent.url === "string") {
     const parsedUrl = parsedContent.url.trim();
     if (parsedUrl && parsedUrl !== thumbnail) {
       pushUnique(urlCandidates, parsedUrl);
     }
+    collectMagnetOrInfoHash(parsedUrl);
   }
 
   const tags = Array.isArray(event.tags) ? event.tags : [];
@@ -57,21 +137,27 @@ export function parseVideoEventPayload(event = {}) {
     if (!value) continue;
 
     if (value.toLowerCase().startsWith("magnet:")) {
-      pushUnique(magnetCandidates, value);
+      collectMagnetOrInfoHash(value);
       continue;
     }
 
     if (urlTagKeys.has(key) && /^https?:\/\//i.test(value)) {
       pushUnique(urlCandidates, value);
     }
+
+    collectMagnetOrInfoHash(value);
   }
 
   const magnetMatch = rawContent.match(/magnet:\?xt=urn:[^"'\s<>]+/i);
   if (magnetMatch) {
-    pushUnique(magnetCandidates, magnetMatch[0]);
+    collectMagnetOrInfoHash(magnetMatch[0]);
   }
 
+  extractInfoHashesFromString(rawContent, pushInfoHash);
+  traverseForInfoHashes(parsedContent, pushInfoHash);
+
   const magnet = magnetCandidates.find(Boolean) || "";
+  const infoHash = infoHashCandidates.find(Boolean) || "";
   const url =
     urlCandidates.find(
       (candidate) => candidate && !candidate.toLowerCase().startsWith("magnet:")
@@ -94,6 +180,7 @@ export function parseVideoEventPayload(event = {}) {
     title,
     url,
     magnet,
+    infoHash,
     version,
   };
 }
