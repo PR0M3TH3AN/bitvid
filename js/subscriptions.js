@@ -261,6 +261,10 @@ class SubscriptionsManager {
         return;
       }
 
+      // Keep the global videos map up to date so delegated playback handlers
+      // can reuse the already fetched metadata for this event.
+      window.app?.videosMap?.set(video.id, video);
+
       localAuthorSet.add(video.pubkey);
 
       const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
@@ -397,6 +401,11 @@ class SubscriptionsManager {
     });
 
     container.appendChild(fragment);
+
+    if (window.app) {
+      window.app.videoList = container;
+      window.app.attachVideoListHandler?.();
+    }
 
     // Lazy-load
     const lazyEls = container.querySelectorAll("[data-lazy]");
