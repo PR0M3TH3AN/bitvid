@@ -205,7 +205,16 @@ export function normalizeAndAugmentMagnet(
     }
   }
 
-  const finalMagnet = parsed.toString();
+  let finalMagnet = parsed.toString();
+  const decodedFinalMagnet = finalMagnet.replace(
+    ENCODED_BTih_PATTERN,
+    (_, hash) => `xt=${BTIH_PREFIX}${hash}`
+  );
+  if (decodedFinalMagnet !== finalMagnet) {
+    finalMagnet = decodedFinalMagnet;
+    didMutate = true;
+  }
+
   return {
     magnet: finalMagnet,
     didChange: didMutate || finalMagnet !== initial,

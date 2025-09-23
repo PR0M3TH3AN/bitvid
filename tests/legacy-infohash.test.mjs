@@ -64,6 +64,23 @@ const LEGACY_INFO_HASH = "0123456789abcdef0123456789abcdef01234567";
   assert.equal(video.rawMagnet, "");
 })();
 
+(function testLegacyEventWithoutTitleStillLoads() {
+  const event = {
+    id: "evt-no-title",
+    pubkey: "pk2",
+    created_at: 2,
+    tags: [],
+    content: JSON.stringify({
+      version: 1,
+      magnet: `magnet:?xt=urn:btih:${LEGACY_INFO_HASH}`,
+    }),
+  };
+
+  const video = convertEventToVideo(event);
+  assert.equal(video.invalid, false, "Legacy events without title should fallback");
+  assert.ok(video.title && video.title.length > 0, "Fallback title should be provided");
+})();
+
 (function testPlaybackConfigNormalizesInfoHash() {
   const result = deriveTorrentPlaybackConfig({
     magnet: "",

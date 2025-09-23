@@ -1,6 +1,9 @@
 // js/subscriptions.js
 import { nostrClient } from "./nostr.js";
-import { parseVideoEventPayload } from "./videoEventUtils.js";
+import {
+  deriveTitleFromEvent,
+  parseVideoEventPayload,
+} from "./videoEventUtils.js";
 
 /**
  * Manages the user's subscription list (kind=30002) *privately*,
@@ -501,22 +504,51 @@ class SubscriptionsManager {
   }
 
   convertEventToVideo(evt) {
-    const { parsedContent, parseError, title, url, magnet, version } =
-      parseVideoEventPayload(evt);
+    const {
+      parsedContent,
+      parseError,
+      title,
+      url,
+      magnet,
+      infoHash,
+      version,
+    } = parseVideoEventPayload(evt);
 
-    if (!title) {
-      return {
-        id: evt.id,
-        invalid: true,
-        reason: parseError ? "missing title (json parse error)" : "missing title",
-      };
-    }
+    const trimmedUrl = typeof url === "string" ? url.trim() : "";
+    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
+    const playbackMagnet = trimmedMagnet || trimmedInfoHash;
+    const numericVersion = Number.isFinite(version) ? version : 0;
 
-    if (!url && !magnet) {
+    const hasPlayableSource = Boolean(trimmedUrl) || Boolean(playbackMagnet);
+    if (!hasPlayableSource) {
       return {
         id: evt.id,
         invalid: true,
         reason: "missing playable source",
+      };
+    }
+
+    const derivedTitle = deriveTitleFromEvent({
+      parsedContent,
+      tags: evt.tags,
+      primaryTitle: title,
+    });
+
+    let resolvedTitle = derivedTitle;
+    if (!resolvedTitle && numericVersion < 2 && playbackMagnet) {
+      resolvedTitle = trimmedInfoHash
+        ? `Legacy Video ${trimmedInfoHash.slice(0, 8)}`
+        : "Legacy BitTorrent Video";
+    }
+
+    if (!resolvedTitle) {
+      return {
+        id: evt.id,
+        invalid: true,
+        reason: parseError
+          ? "missing title (json parse error)"
+          : "missing title",
       };
     }
 
@@ -525,12 +557,14 @@ class SubscriptionsManager {
       pubkey: evt.pubkey,
       created_at: evt.created_at,
       videoRootId: parsedContent.videoRootId || evt.id,
-      version,
+      version: numericVersion,
       deleted: parsedContent.deleted === true,
       isPrivate: parsedContent.isPrivate ?? false,
-      title,
-      url,
-      magnet,
+      title: resolvedTitle,
+      url: trimmedUrl,
+      magnet: playbackMagnet,
+      rawMagnet: trimmedMagnet,
+      infoHash: trimmedInfoHash,
       thumbnail: parsedContent.thumbnail ?? "",
       description: parsedContent.description ?? "",
       mode: parsedContent.mode ?? "live",

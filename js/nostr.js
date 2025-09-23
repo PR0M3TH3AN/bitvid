@@ -2,7 +2,10 @@
 
 import { isDevMode } from "./config.js";
 import { accessControl } from "./accessControl.js";
-import { parseVideoEventPayload } from "./videoEventUtils.js";
+import {
+  deriveTitleFromEvent,
+  parseVideoEventPayload,
+} from "./videoEventUtils.js";
 
 /**
  * The usual relays
@@ -88,7 +91,7 @@ function inferMimeTypeFromUrl(url) {
 
 /**
  * Convert a raw Nostr event => your "video" object.
- * CHANGED: skip if version <2
+ * Accepts legacy (<2) payloads when they expose a usable magnet/info hash.
  */
 function convertEventToVideo(event) {
   const {
@@ -101,16 +104,15 @@ function convertEventToVideo(event) {
     version,
   } = parseVideoEventPayload(event);
 
-  if (!title) {
-    const reason = parseError ? "missing title (json parse error)" : "missing title";
-    return { id: event.id, invalid: true, reason };
-  }
-
+  const trimmedUrl = typeof url === "string" ? url.trim() : "";
   const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
   const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
   const playbackMagnet = trimmedMagnet || trimmedInfoHash;
 
-  if (!url && !playbackMagnet) {
+  const numericVersion = Number.isFinite(version) ? version : 0;
+  const hasPlayableSource = Boolean(trimmedUrl) || Boolean(playbackMagnet);
+
+  if (!hasPlayableSource) {
     return {
       id: event.id,
       invalid: true,
@@ -118,13 +120,33 @@ function convertEventToVideo(event) {
     };
   }
 
+  const derivedTitle = deriveTitleFromEvent({
+    parsedContent,
+    tags: event.tags,
+    primaryTitle: title,
+  });
+
+  let resolvedTitle = derivedTitle;
+  if (!resolvedTitle && numericVersion < 2 && playbackMagnet) {
+    resolvedTitle = trimmedInfoHash
+      ? `Legacy Video ${trimmedInfoHash.slice(0, 8)}`
+      : "Legacy BitTorrent Video";
+  }
+
+  if (!resolvedTitle) {
+    const reason = parseError
+      ? "missing title (json parse error)"
+      : "missing title";
+    return { id: event.id, invalid: true, reason };
+  }
+
   return {
     id: event.id,
     videoRootId: parsedContent.videoRootId || event.id,
-    version,
+    version: numericVersion,
     isPrivate: parsedContent.isPrivate ?? false,
-    title,
-    url,
+    title: resolvedTitle,
+    url: trimmedUrl,
     magnet: playbackMagnet,
     rawMagnet: trimmedMagnet,
     infoHash: trimmedInfoHash,
