@@ -256,6 +256,10 @@ async function loadUserVideos(pubkey) {
         video.alreadyDecrypted = true;
       }
 
+      // Ensure the global videos map is kept up to date so delegated handlers
+      // have the freshest metadata for this event.
+      window.app?.videosMap?.set(video.id, video);
+
       // Check if user can edit
       const canEdit = video.pubkey === app.pubkey;
       let hasOlder = false;
@@ -338,8 +342,6 @@ async function loadUserVideos(pubkey) {
 
       const encodedUrl = encodeDataValue(video.url);
       const encodedMagnet = encodeDataValue(video.magnet);
-      const rawUrl = typeof video.url === "string" ? video.url : "";
-      const rawMagnet = typeof video.magnet === "string" ? video.magnet : "";
 
       cardEl.innerHTML = `
         <div
@@ -374,19 +376,13 @@ async function loadUserVideos(pubkey) {
         </div>
       `;
 
-      // Clicking the card => open the video modal
-      cardEl.addEventListener("click", () => {
-        app.playVideoWithFallback({
-          eventId: video.id,
-          url: rawUrl,
-          magnet: rawMagnet,
-        });
-      });
-
       fragment.appendChild(cardEl);
     });
 
     container.appendChild(fragment);
+
+    window.app.videoList = container;
+    window.app.attachVideoListHandler();
 
     // Lazy-load images
     const lazyEls = container.querySelectorAll("[data-lazy]");
