@@ -96,4 +96,25 @@ const LEGACY_INFO_HASH = "0123456789abcdef0123456789abcdef01234567";
   assert.equal(result.provided, true);
 })();
 
+(function testPlaybackConfigDecodesEncodedMagnet() {
+  const rawMagnet =
+    `magnet:?xt=urn:btih:${LEGACY_INFO_HASH}&dn=Legacy+Example`;
+  const encodedMagnet = encodeURIComponent(rawMagnet);
+  const result = deriveTorrentPlaybackConfig({
+    magnet: encodedMagnet,
+    infoHash: "",
+    url: "",
+  });
+
+  assert.ok(result.magnet.startsWith("magnet:?"));
+  const parsed = new URL(result.magnet);
+  assert.equal(
+    parsed.searchParams.get("xt"),
+    `urn:btih:${LEGACY_INFO_HASH}`,
+    "Expected encoded magnet to be normalized"
+  );
+  assert.equal(result.provided, true);
+  assert.equal(result.usedInfoHash, false);
+})();
+
 console.log("legacy infohash tests passed");
