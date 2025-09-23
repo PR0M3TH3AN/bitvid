@@ -18,6 +18,9 @@ function fakeDecrypt(str) {
   return str.split("").reverse().join("");
 }
 
+const UNSUPPORTED_BTITH_MESSAGE =
+  "This magnet link is missing a compatible BitTorrent v1 info hash.";
+
 /**
  * Append optional ws/xs parameters to a magnet URI when valid.
  */
@@ -58,7 +61,10 @@ function augmentMagnet(raw, ws, xs) {
  * Basic validation for BitTorrent magnet URIs.
  *
  * Returns `true` only when the value looks like a magnet link that WebTorrent
- * understands (`magnet:` scheme with at least one `xt=urn:btih|btmh` entry).
+ * understands (`magnet:` scheme with at least one `xt=urn:btih:<info-hash>`
+ * entry, where `<info-hash>` is either a 40-character hex digest or a
+ * 32-character base32 digest). Magnets that only contain BitTorrent v2 hashes
+ * (e.g. `btmh`) are treated as unsupported.
  */
 function isValidMagnetUri(magnet) {
   const trimmed = typeof magnet === "string" ? magnet.trim() : "";
@@ -77,9 +83,22 @@ function isValidMagnetUri(magnet) {
       return false;
     }
 
-    return xtValues.some((value) =>
-      typeof value === "string" && /urn:(btih|btmh):/i.test(value)
-    );
+    const hexPattern = /^[0-9a-f]{40}$/i;
+    const base32Pattern = /^[A-Z2-7]{32}$/;
+
+    return xtValues.some((value) => {
+      if (typeof value !== "string") return false;
+      const match = value.trim().match(/^urn:btih:([a-z0-9]+)$/i);
+      if (!match) return false;
+
+      const infoHash = match[1];
+      if (hexPattern.test(infoHash)) {
+        return true;
+      }
+
+      const upperHash = infoHash.toUpperCase();
+      return infoHash.length === 32 && base32Pattern.test(upperHash);
+    });
   } catch (err) {
     return false;
   }
@@ -1436,8 +1455,27 @@ class bitvidApp {
         `
         : "";
 
-      const encodedMagnet = encodeDataValue(video.magnet);
-      const encodedUrl = encodeDataValue(video.url);
+      const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
+      const trimmedMagnet =
+        typeof video.magnet === "string" ? video.magnet.trim() : "";
+      const magnetSupported = isValidMagnetUri(trimmedMagnet);
+      const magnetProvided = trimmedMagnet.length > 0;
+      const encodedMagnet = encodeDataValue(trimmedMagnet);
+      const encodedUrl = encodeDataValue(trimmedUrl);
+      const showUnsupportedTorrentBadge =
+        !trimmedUrl && magnetProvided && !magnetSupported;
+      const torrentBadge = showUnsupportedTorrentBadge
+        ? `
+          <p
+            class="mt-3 text-xs text-amber-300"
+            data-torrent-status="unsupported"
+            title="${UNSUPPORTED_BTITH_MESSAGE}"
+          >
+            WebTorrent fallback unavailable (magnet missing btih info hash)
+          </p>
+        `
+        : "";
+
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <!-- The clickable link to play video -->
@@ -1446,6 +1484,7 @@ class bitvidApp {
             data-video-id="${video.id}"
             data-play-url="${encodedUrl}"
             data-play-magnet="${encodedMagnet}"
+            data-torrent-supported="${magnetSupported ? "true" : "false"}"
             class="block cursor-pointer relative group"
           >
             <div class="ratio-16-9">
@@ -1463,6 +1502,7 @@ class bitvidApp {
               data-video-id="${video.id}"
               data-play-url="${encodedUrl}"
               data-play-magnet="${encodedMagnet}"
+              data-torrent-supported="${magnetSupported ? "true" : "false"}"
             >
               ${this.escapeHTML(video.title)}
             </h3>
@@ -1491,6 +1531,7 @@ class bitvidApp {
               </div>
               ${gearMenu}
             </div>
+            ${torrentBadge}
           </div>
         </div>
       `;
@@ -1498,6 +1539,13 @@ class bitvidApp {
       const template = document.createElement("template");
       template.innerHTML = cardHtml.trim();
       const cardEl = template.content.firstElementChild;
+      if (cardEl) {
+        if (showUnsupportedTorrentBadge) {
+          cardEl.dataset.torrentSupported = "false";
+        } else if (magnetProvided && magnetSupported) {
+          cardEl.dataset.torrentSupported = "true";
+        }
+      }
       fragment.appendChild(cardEl);
     });
 
@@ -1974,7 +2022,10 @@ class bitvidApp {
       throw new Error("No magnet URI provided for torrent playback.");
     }
     if (!isValidMagnetUri(trimmedMagnet)) {
-      throw new Error("Invalid magnet URI provided for torrent playback.");
+      if (this.modalStatus) {
+        this.modalStatus.textContent = UNSUPPORTED_BTITH_MESSAGE;
+      }
+      throw new Error(UNSUPPORTED_BTITH_MESSAGE);
     }
     if (!this.modalVideo) {
       throw new Error("No modal video element available for torrent playback.");
@@ -2016,9 +2067,10 @@ class bitvidApp {
     description = "",
   } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
-    const sanitizedMagnet = isValidMagnetUri(magnet)
-      ? magnet.trim()
-      : "";
+    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const magnetSupported = isValidMagnetUri(trimmedMagnet);
+    const sanitizedMagnet = magnetSupported ? trimmedMagnet : "";
+    const magnetProvided = trimmedMagnet.length > 0;
 
     try {
       if (!this.modalVideo) {
@@ -2053,10 +2105,13 @@ class bitvidApp {
       } else if (sanitizedMagnet) {
         await this.playViaWebTorrent(sanitizedMagnet);
       } else {
+        const message = magnetProvided && !magnetSupported
+          ? UNSUPPORTED_BTITH_MESSAGE
+          : "No playable source available.";
         if (this.modalStatus) {
-          this.modalStatus.textContent = "No playable source available.";
+          this.modalStatus.textContent = message;
         }
-        this.showError("This video has no playable source.");
+        this.showError(message);
         return;
       }
 
@@ -2110,12 +2165,15 @@ class bitvidApp {
     const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
     const rawMagnet =
       typeof video.magnet === "string" ? video.magnet.trim() : "";
-    const sanitizedMagnet = isValidMagnetUri(rawMagnet) ? rawMagnet : "";
+    const magnetSupported = isValidMagnetUri(rawMagnet);
+    const sanitizedMagnet = magnetSupported ? rawMagnet : "";
 
     this.currentVideo = {
       ...video,
       url: trimmedUrl,
       magnet: sanitizedMagnet,
+      originalMagnet: rawMagnet,
+      torrentSupported: magnetSupported,
     };
 
     this.currentMagnetUri = sanitizedMagnet || null;
@@ -2176,7 +2234,7 @@ class bitvidApp {
 
     await this.playVideoWithFallback({
       url: trimmedUrl,
-      magnet: sanitizedMagnet,
+      magnet: rawMagnet,
       title: video.title,
       description: video.description,
     });
@@ -2189,12 +2247,15 @@ class bitvidApp {
     description = "",
   } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
-    const sanitizedMagnet = isValidMagnetUri(magnet)
-      ? magnet.trim()
-      : "";
+    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const magnetSupported = isValidMagnetUri(trimmedMagnet);
+    const sanitizedMagnet = magnetSupported ? trimmedMagnet : "";
 
     if (!sanitizedUrl && !sanitizedMagnet) {
-      this.showError("This video has no playable source.");
+      const message = trimmedMagnet && !magnetSupported
+        ? UNSUPPORTED_BTITH_MESSAGE
+        : "This video has no playable source.";
+      this.showError(message);
       return;
     }
 
@@ -2206,6 +2267,8 @@ class bitvidApp {
       description,
       url: sanitizedUrl,
       magnet: sanitizedMagnet,
+      originalMagnet: trimmedMagnet,
+      torrentSupported: magnetSupported,
     };
 
     this.currentMagnetUri = sanitizedMagnet || null;
@@ -2241,7 +2304,7 @@ class bitvidApp {
 
     await this.playVideoWithFallback({
       url: sanitizedUrl,
-      magnet: sanitizedMagnet,
+      magnet: trimmedMagnet,
       title,
       description,
     });
@@ -2373,6 +2436,15 @@ class bitvidApp {
    */
   handleCopyMagnet() {
     if (!this.currentVideo || !this.currentVideo.magnet) {
+      if (
+        this.currentVideo &&
+        this.currentVideo.originalMagnet &&
+        !this.currentVideo.torrentSupported
+      ) {
+        this.showError(UNSUPPORTED_BTITH_MESSAGE);
+        return;
+      }
+
       this.showError("No magnet link to copy.");
       return;
     }
