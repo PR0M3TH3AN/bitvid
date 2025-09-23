@@ -21,10 +21,19 @@ function fakeDecrypt(str) {
 const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
+const DEFAULT_WSS_TRACKERS = [
+  "wss://tracker.openwebtorrent.com",
+  "wss://tracker.btorrent.xyz",
+  "wss://tracker.fastcast.nz",
+];
+
 /**
  * Append optional ws/xs parameters to a magnet URI when valid.
+ *
+ * Always appends the default WSS tracker list, injects any provided hosted
+ * video URL as an `xs=` hint, and de-duplicates repeated query parameters.
  */
-function augmentMagnet(raw, ws, xs) {
+function augmentMagnet(raw, ws, xs, hostedUrl) {
   const magnet = (raw || "").trim();
   if (!magnet) {
     return "";
@@ -41,18 +50,70 @@ function augmentMagnet(raw, ws, xs) {
     return magnet;
   }
 
-  const appendIfMissing = (key, value) => {
+  const appendIfMissing = (key, value, { normalize } = {}) => {
     if (!value) return;
-    const trimmed = value.trim();
+    const trimmed = typeof value === "string" ? value.trim() : "";
     if (!trimmed) return;
-    const existing = parsed.searchParams.getAll(key);
-    if (!existing.includes(trimmed)) {
+    const normalizer =
+      typeof normalize === "function"
+        ? normalize
+        : (val) => (typeof val === "string" ? val.trim() : "");
+    const candidate = normalizer(trimmed);
+    if (!candidate) return;
+    const existing = parsed.searchParams
+      .getAll(key)
+      .map((existingValue) => normalizer(existingValue));
+    if (!existing.includes(candidate)) {
       parsed.searchParams.append(key, trimmed);
     }
   };
 
+  const sanitizeHostedUrl = (value) => {
+    const trimmed = typeof value === "string" ? value.trim() : "";
+    if (!trimmed) {
+      return "";
+    }
+    try {
+      const parsedUrl = new URL(trimmed);
+      if (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:") {
+        return parsedUrl.toString();
+      }
+    } catch (err) {
+      return "";
+    }
+    return "";
+  };
+
+  const normalizedHostedSeed = sanitizeHostedUrl(hostedUrl);
+
   appendIfMissing("ws", ws);
   appendIfMissing("xs", xs);
+  appendIfMissing("xs", normalizedHostedSeed);
+
+  DEFAULT_WSS_TRACKERS.forEach((tracker) => {
+    appendIfMissing("tr", tracker, {
+      normalize: (value) => (typeof value === "string" ? value.trim().toLowerCase() : ""),
+    });
+  });
+
+  const dedupeParam = (key, normalizer = (value) => value.trim()) => {
+    const seen = new Set();
+    const values = parsed.searchParams.getAll(key);
+    parsed.searchParams.delete(key);
+    for (const value of values) {
+      const trimmed = typeof value === "string" ? value.trim() : "";
+      if (!trimmed) continue;
+      const normalized = normalizer(trimmed);
+      if (!normalized) continue;
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      parsed.searchParams.append(key, trimmed);
+    }
+  };
+
+  dedupeParam("tr", (value) => value.trim().toLowerCase());
+  dedupeParam("ws");
+  dedupeParam("xs");
 
   return parsed.toString();
 }
@@ -924,6 +985,7 @@ class bitvidApp {
     const xs = xsEl?.value.trim() || "";
     const thumbnail = thumbEl?.value.trim() || "";
     const description = descEl?.value.trim() || "";
+    const sanitizedHostedUrl = url;
 
     const formData = {
       version: 2,
@@ -941,7 +1003,12 @@ class bitvidApp {
       return;
     }
 
-    formData.magnet = augmentMagnet(formData.magnet, ws, xs);
+    formData.magnet = augmentMagnet(
+      formData.magnet,
+      ws,
+      xs,
+      sanitizedHostedUrl
+    );
 
     try {
       await nostrClient.publishVideo(formData, this.pubkey);
@@ -2070,7 +2137,20 @@ class bitvidApp {
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     const magnetSupported = isValidMagnetUri(trimmedMagnet);
     const sanitizedMagnet = magnetSupported ? trimmedMagnet : "";
+    const augmentedMagnet = sanitizedMagnet
+      ? augmentMagnet(sanitizedMagnet, undefined, undefined, sanitizedUrl)
+      : "";
+    const magnetForPlayback = augmentedMagnet || sanitizedMagnet;
     const magnetProvided = trimmedMagnet.length > 0;
+
+    if (this.currentVideo) {
+      this.currentVideo.magnet = magnetForPlayback;
+      if (!magnetForPlayback) {
+        this.currentVideo.torrentSupported = false;
+      }
+    }
+    this.currentMagnetUri = magnetForPlayback || null;
+    this.setCopyMagnetState(!!magnetForPlayback);
 
     try {
       if (!this.modalVideo) {
@@ -2093,6 +2173,14 @@ class bitvidApp {
 
       this.resetTorrentStats();
 
+      if (magnetForPlayback) {
+        const magnetChanged = magnetForPlayback !== sanitizedMagnet;
+        const label = magnetChanged
+          ? "[playVideoWithFallback] Using augmented magnet URI:"
+          : "[playVideoWithFallback] Using magnet URI:";
+        this.log(`${label} ${magnetForPlayback}`);
+      }
+
       let urlPlayable = false;
       if (sanitizedUrl) {
         urlPlayable = await this.probeUrl(sanitizedUrl);
@@ -2100,10 +2188,10 @@ class bitvidApp {
 
       if (urlPlayable) {
         await this.playHttp(sanitizedUrl, {
-          fallbackMagnet: sanitizedMagnet,
+          fallbackMagnet: magnetForPlayback,
         });
-      } else if (sanitizedMagnet) {
-        await this.playViaWebTorrent(sanitizedMagnet);
+      } else if (magnetForPlayback) {
+        await this.playViaWebTorrent(magnetForPlayback);
       } else {
         const message = magnetProvided && !magnetSupported
           ? UNSUPPORTED_BTITH_MESSAGE
