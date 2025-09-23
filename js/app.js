@@ -5,6 +5,7 @@ import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
 import { isWhitelistEnabled } from "./config.js";
+import { normalizeAndAugmentMagnet } from "./magnetUtils.js";
 import {
   initialWhitelist,
   initialBlacklist,
@@ -20,103 +21,6 @@ function fakeDecrypt(str) {
 
 const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
-
-const DEFAULT_WSS_TRACKERS = [
-  "wss://tracker.openwebtorrent.com",
-  "wss://tracker.btorrent.xyz",
-  "wss://tracker.fastcast.nz",
-];
-
-/**
- * Append optional ws/xs parameters to a magnet URI when valid.
- *
- * Always appends the default WSS tracker list, injects any provided hosted
- * video URL as an `xs=` hint, and de-duplicates repeated query parameters.
- */
-function augmentMagnet(raw, ws, xs, hostedUrl) {
-  const magnet = (raw || "").trim();
-  if (!magnet) {
-    return "";
-  }
-
-  let parsed;
-  try {
-    parsed = new URL(magnet);
-  } catch (err) {
-    return magnet;
-  }
-
-  if (parsed.protocol !== "magnet:") {
-    return magnet;
-  }
-
-  const appendIfMissing = (key, value, { normalize } = {}) => {
-    if (!value) return;
-    const trimmed = typeof value === "string" ? value.trim() : "";
-    if (!trimmed) return;
-    const normalizer =
-      typeof normalize === "function"
-        ? normalize
-        : (val) => (typeof val === "string" ? val.trim() : "");
-    const candidate = normalizer(trimmed);
-    if (!candidate) return;
-    const existing = parsed.searchParams
-      .getAll(key)
-      .map((existingValue) => normalizer(existingValue));
-    if (!existing.includes(candidate)) {
-      parsed.searchParams.append(key, trimmed);
-    }
-  };
-
-  const sanitizeHostedUrl = (value) => {
-    const trimmed = typeof value === "string" ? value.trim() : "";
-    if (!trimmed) {
-      return "";
-    }
-    try {
-      const parsedUrl = new URL(trimmed);
-      if (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:") {
-        return parsedUrl.toString();
-      }
-    } catch (err) {
-      return "";
-    }
-    return "";
-  };
-
-  const normalizedHostedSeed = sanitizeHostedUrl(hostedUrl);
-
-  appendIfMissing("ws", ws);
-  appendIfMissing("xs", xs);
-  appendIfMissing("xs", normalizedHostedSeed);
-
-  DEFAULT_WSS_TRACKERS.forEach((tracker) => {
-    appendIfMissing("tr", tracker, {
-      normalize: (value) => (typeof value === "string" ? value.trim().toLowerCase() : ""),
-    });
-  });
-
-  const dedupeParam = (key, normalizer = (value) => value.trim()) => {
-    const seen = new Set();
-    const values = parsed.searchParams.getAll(key);
-    parsed.searchParams.delete(key);
-    for (const value of values) {
-      const trimmed = typeof value === "string" ? value.trim() : "";
-      if (!trimmed) continue;
-      const normalized = normalizer(trimmed);
-      if (!normalized) continue;
-      if (seen.has(normalized)) continue;
-      seen.add(normalized);
-      parsed.searchParams.append(key, trimmed);
-    }
-  };
-
-  dedupeParam("tr", (value) => value.trim().toLowerCase());
-  dedupeParam("ws");
-  dedupeParam("xs");
-
-  return parsed.toString();
-}
 
 /**
  * Basic validation for BitTorrent magnet URIs.
@@ -1003,12 +907,21 @@ class bitvidApp {
       return;
     }
 
-    formData.magnet = augmentMagnet(
-      formData.magnet,
-      ws,
-      xs,
-      sanitizedHostedUrl
-    );
+    const webSeedCandidates = [];
+    if (ws) {
+      webSeedCandidates.push(ws);
+    }
+    if (sanitizedHostedUrl) {
+      webSeedCandidates.push(sanitizedHostedUrl);
+    }
+
+    const magnetAugmentation = normalizeAndAugmentMagnet(formData.magnet, {
+      webSeed: webSeedCandidates,
+      torrentUrl: xs,
+      logger: (message) => this.log(message),
+    });
+
+    formData.magnet = magnetAugmentation.magnet;
 
     try {
       await nostrClient.publishVideo(formData, this.pubkey);
@@ -2033,13 +1946,16 @@ class bitvidApp {
     }
   }
 
-  async playHttp(url, { fallbackMagnet = "" } = {}) {
+  async playHttp(url, { fallbackMagnet = "", fallbackRawMagnet = "" } = {}) {
     if (!this.modalVideo) {
       throw new Error("No modal video element available for playback.");
     }
 
-    const trimmedMagnet = isValidMagnetUri(fallbackMagnet)
+    const normalizedFallback = isValidMagnetUri(fallbackMagnet)
       ? fallbackMagnet.trim()
+      : "";
+    const rawFallback = isValidMagnetUri(fallbackRawMagnet)
+      ? fallbackRawMagnet.trim()
       : "";
 
     this.resetTorrentStats();
@@ -2058,7 +1974,7 @@ class bitvidApp {
       once: true,
     });
 
-    if (trimmedMagnet) {
+    if (normalizedFallback) {
       this.modalVideo.addEventListener(
         "error",
         async () => {
@@ -2067,7 +1983,9 @@ class bitvidApp {
             this.modalStatus.textContent = "Switching to WebTorrent...";
           }
           try {
-            await this.playViaWebTorrent(trimmedMagnet);
+            await this.playViaWebTorrent(normalizedFallback, {
+              fallbackMagnet: rawFallback,
+            });
             this.autoplayModalVideo();
           } catch (torrentErr) {
             console.error("WebTorrent fallback failed:", torrentErr);
@@ -2082,45 +2000,75 @@ class bitvidApp {
     this.modalVideo.load();
   }
 
-  async playViaWebTorrent(magnet) {
-    const trimmedMagnet =
-      typeof magnet === "string" ? magnet.trim() : "";
-    if (!trimmedMagnet) {
-      throw new Error("No magnet URI provided for torrent playback.");
-    }
-    if (!isValidMagnetUri(trimmedMagnet)) {
-      if (this.modalStatus) {
-        this.modalStatus.textContent = UNSUPPORTED_BTITH_MESSAGE;
+  async playViaWebTorrent(magnet, { fallbackMagnet = "" } = {}) {
+    const attemptStream = async (candidate) => {
+      const trimmedCandidate =
+        typeof candidate === "string" ? candidate.trim() : "";
+      if (!trimmedCandidate) {
+        throw new Error("No magnet URI provided for torrent playback.");
       }
-      throw new Error(UNSUPPORTED_BTITH_MESSAGE);
-    }
-    if (!this.modalVideo) {
-      throw new Error("No modal video element available for torrent playback.");
-    }
+      if (!isValidMagnetUri(trimmedCandidate)) {
+        if (this.modalStatus) {
+          this.modalStatus.textContent = UNSUPPORTED_BTITH_MESSAGE;
+        }
+        throw new Error(UNSUPPORTED_BTITH_MESSAGE);
+      }
+      if (!this.modalVideo) {
+        throw new Error(
+          "No modal video element available for torrent playback."
+        );
+      }
 
-    let cacheBustedMagnet = trimmedMagnet;
+      let cacheBustedMagnet = trimmedCandidate;
+      try {
+        const parsed = new URL(trimmedCandidate);
+        parsed.searchParams.set("ts", Date.now().toString());
+        cacheBustedMagnet = parsed.toString();
+      } catch (err) {
+        const separator = trimmedCandidate.includes("?") ? "&" : "?";
+        cacheBustedMagnet = `${trimmedCandidate}${separator}ts=${Date.now()}`;
+      }
+
+      await torrentClient.cleanup();
+      this.resetTorrentStats();
+
+      if (this.modalStatus) {
+        this.modalStatus.textContent = "Streaming via WebTorrent";
+      }
+
+      const torrentInstance = await torrentClient.streamVideo(
+        cacheBustedMagnet,
+        this.modalVideo
+      );
+      this.startTorrentStatusMirrors(torrentInstance);
+      return torrentInstance;
+    };
+
+    const primaryTrimmed =
+      typeof magnet === "string" ? magnet.trim() : "";
+    const fallbackTrimmed =
+      typeof fallbackMagnet === "string" ? fallbackMagnet.trim() : "";
+    const hasFallback =
+      !!fallbackTrimmed && fallbackTrimmed !== primaryTrimmed;
+
     try {
-      const parsed = new URL(trimmedMagnet);
-      parsed.searchParams.set("ts", Date.now().toString());
-      cacheBustedMagnet = parsed.toString();
-    } catch (err) {
-      const separator = trimmedMagnet.includes("?") ? "&" : "?";
-      cacheBustedMagnet = `${trimmedMagnet}${separator}ts=${Date.now()}`;
+      return await attemptStream(primaryTrimmed);
+    } catch (primaryError) {
+      if (!hasFallback) {
+        throw primaryError;
+      }
+      this.log(
+        `[playViaWebTorrent] Normalized magnet failed: ${primaryError.message}`
+      );
+      this.log(
+        "[playViaWebTorrent] Primary magnet failed, retrying original string."
+      );
+      try {
+        return await attemptStream(fallbackTrimmed);
+      } catch (fallbackError) {
+        throw fallbackError;
+      }
     }
-
-    await torrentClient.cleanup();
-    this.resetTorrentStats();
-
-    if (this.modalStatus) {
-      this.modalStatus.textContent = "Streaming via WebTorrent";
-    }
-
-    const torrentInstance = await torrentClient.streamVideo(
-      cacheBustedMagnet,
-      this.modalVideo
-    );
-    this.startTorrentStatusMirrors(torrentInstance);
-    return torrentInstance;
   }
 
   /**
@@ -2137,14 +2085,24 @@ class bitvidApp {
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     const magnetSupported = isValidMagnetUri(trimmedMagnet);
     const sanitizedMagnet = magnetSupported ? trimmedMagnet : "";
-    const augmentedMagnet = sanitizedMagnet
-      ? augmentMagnet(sanitizedMagnet, undefined, undefined, sanitizedUrl)
+    const magnetNormalization = sanitizedMagnet
+      ? normalizeAndAugmentMagnet(sanitizedMagnet, {
+          webSeed: sanitizedUrl ? [sanitizedUrl] : [],
+          logger: (message) => this.log(message),
+        })
+      : { magnet: "", didChange: false };
+    const magnetForPlayback = sanitizedMagnet
+      ? magnetNormalization.magnet || sanitizedMagnet
       : "";
-    const magnetForPlayback = augmentedMagnet || sanitizedMagnet;
+    const fallbackMagnet = magnetNormalization.didChange
+      ? sanitizedMagnet
+      : "";
     const magnetProvided = trimmedMagnet.length > 0;
 
     if (this.currentVideo) {
       this.currentVideo.magnet = magnetForPlayback;
+      this.currentVideo.normalizedMagnet = magnetForPlayback;
+      this.currentVideo.normalizedMagnetFallback = fallbackMagnet;
       if (!magnetForPlayback) {
         this.currentVideo.torrentSupported = false;
       }
@@ -2174,9 +2132,8 @@ class bitvidApp {
       this.resetTorrentStats();
 
       if (magnetForPlayback) {
-        const magnetChanged = magnetForPlayback !== sanitizedMagnet;
-        const label = magnetChanged
-          ? "[playVideoWithFallback] Using augmented magnet URI:"
+        const label = magnetNormalization.didChange
+          ? "[playVideoWithFallback] Using normalized magnet URI:"
           : "[playVideoWithFallback] Using magnet URI:";
         this.log(`${label} ${magnetForPlayback}`);
       }
@@ -2189,9 +2146,12 @@ class bitvidApp {
       if (urlPlayable) {
         await this.playHttp(sanitizedUrl, {
           fallbackMagnet: magnetForPlayback,
+          fallbackRawMagnet: fallbackMagnet,
         });
       } else if (magnetForPlayback) {
-        await this.playViaWebTorrent(magnetForPlayback);
+        await this.playViaWebTorrent(magnetForPlayback, {
+          fallbackMagnet,
+        });
       } else {
         const message = magnetProvided && !magnetSupported
           ? UNSUPPORTED_BTITH_MESSAGE
