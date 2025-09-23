@@ -91,15 +91,26 @@ function inferMimeTypeFromUrl(url) {
  * CHANGED: skip if version <2
  */
 function convertEventToVideo(event) {
-  const { parsedContent, parseError, title, url, magnet, version } =
-    parseVideoEventPayload(event);
+  const {
+    parsedContent,
+    parseError,
+    title,
+    url,
+    magnet,
+    infoHash,
+    version,
+  } = parseVideoEventPayload(event);
 
   if (!title) {
     const reason = parseError ? "missing title (json parse error)" : "missing title";
     return { id: event.id, invalid: true, reason };
   }
 
-  if (!url && !magnet) {
+  const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+  const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
+  const playbackMagnet = trimmedMagnet || trimmedInfoHash;
+
+  if (!url && !playbackMagnet) {
     return {
       id: event.id,
       invalid: true,
@@ -114,7 +125,9 @@ function convertEventToVideo(event) {
     isPrivate: parsedContent.isPrivate ?? false,
     title,
     url,
-    magnet,
+    magnet: playbackMagnet,
+    rawMagnet: trimmedMagnet,
+    infoHash: trimmedInfoHash,
     thumbnail: parsedContent.thumbnail ?? "",
     description: parsedContent.description ?? "",
     mode: parsedContent.mode ?? "live",
@@ -140,6 +153,8 @@ function getActiveKey(video) {
   }
   return `LEGACY:${video.id}`;
 }
+
+export { convertEventToVideo };
 
 class NostrClient {
   constructor() {

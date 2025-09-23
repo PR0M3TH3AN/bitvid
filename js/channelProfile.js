@@ -341,8 +341,13 @@ async function loadUserVideos(pubkey) {
         "duration-300"
       );
 
+      const trimmedMagnet =
+        typeof video.magnet === "string" ? video.magnet.trim() : "";
+      const legacyInfoHash =
+        typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+      const magnetCandidate = trimmedMagnet || legacyInfoHash;
       const encodedUrl = encodeDataValue(video.url);
-      const encodedMagnet = encodeDataValue(video.magnet);
+      const encodedMagnet = encodeDataValue(magnetCandidate);
 
       cardEl.innerHTML = `
         <div
