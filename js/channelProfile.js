@@ -5,6 +5,7 @@ import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { initialBlacklist, initialWhitelist } from "./lists.js";
 import { isWhitelistEnabled } from "./config.js";
+import { parseVideoEventPayload } from "./videoEventUtils.js";
 
 /**
  * Initialize the channel profile view.
@@ -467,40 +468,35 @@ function dedupeToNewestByRoot(videos) {
  * Convert raw event => "video" object.
  */
 function localConvertEventToVideo(event) {
-  try {
-    const content = JSON.parse(event.content || "{}");
-    const isSupportedVersion = content.version >= 2;
-    const hasRequiredFields = !!(
-      content.title && (content.url || content.magnet)
-    );
+  const { parsedContent, parseError, title, url, magnet, version } =
+    parseVideoEventPayload(event);
 
-    if (!isSupportedVersion) {
-      return { id: event.id, invalid: true, reason: "version <2" };
-    }
-    if (!hasRequiredFields) {
-      return { id: event.id, invalid: true, reason: "missing title/url+magnet" };
-    }
-
-    return {
-      id: event.id,
-      videoRootId: content.videoRootId || event.id,
-      version: content.version,
-      isPrivate: content.isPrivate ?? false,
-      title: content.title ?? "",
-      url: content.url ?? "",
-      magnet: content.magnet ?? "",
-      thumbnail: content.thumbnail ?? "",
-      description: content.description ?? "",
-      mode: content.mode ?? "live",
-      deleted: content.deleted === true,
-      pubkey: event.pubkey,
-      created_at: event.created_at,
-      tags: event.tags,
-      invalid: false,
-    };
-  } catch (err) {
-    return { id: event.id, invalid: true, reason: "json parse error" };
+  if (!title) {
+    const reason = parseError ? "missing title (json parse error)" : "missing title";
+    return { id: event.id, invalid: true, reason };
   }
+
+  if (!url && !magnet) {
+    return { id: event.id, invalid: true, reason: "missing playable source" };
+  }
+
+  return {
+    id: event.id,
+    videoRootId: parsedContent.videoRootId || event.id,
+    version,
+    isPrivate: parsedContent.isPrivate ?? false,
+    title,
+    url,
+    magnet,
+    thumbnail: parsedContent.thumbnail ?? "",
+    description: parsedContent.description ?? "",
+    mode: parsedContent.mode ?? "live",
+    deleted: parsedContent.deleted === true,
+    pubkey: event.pubkey,
+    created_at: event.created_at,
+    tags: event.tags,
+    invalid: false,
+  };
 }
 
 /**
