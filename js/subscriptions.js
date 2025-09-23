@@ -1,5 +1,6 @@
 // js/subscriptions.js
 import { nostrClient } from "./nostr.js";
+import { parseVideoEventPayload } from "./videoEventUtils.js";
 
 /**
  * Manages the user's subscription list (kind=30002) *privately*,
@@ -500,34 +501,42 @@ class SubscriptionsManager {
   }
 
   convertEventToVideo(evt) {
-    try {
-      const content = JSON.parse(evt.content || "{}");
-      const hasFields = !!(
-        content.title && (content.url || content.magnet)
-      );
-      const versionOk = content.version >= 2;
-      if (!versionOk || !hasFields) {
-        return { id: evt.id, invalid: true };
-      }
+    const { parsedContent, parseError, title, url, magnet, version } =
+      parseVideoEventPayload(evt);
+
+    if (!title) {
       return {
         id: evt.id,
-        pubkey: evt.pubkey,
-        created_at: evt.created_at,
-        videoRootId: content.videoRootId || evt.id,
-        version: content.version,
-        deleted: content.deleted === true,
-        isPrivate: content.isPrivate === true,
-        title: content.title || "",
-        url: content.url || "",
-        magnet: content.magnet || "",
-        thumbnail: content.thumbnail || "",
-        description: content.description || "",
-        tags: evt.tags || [],
-        invalid: false,
+        invalid: true,
+        reason: parseError ? "missing title (json parse error)" : "missing title",
       };
-    } catch (err) {
-      return { id: evt.id, invalid: true };
     }
+
+    if (!url && !magnet) {
+      return {
+        id: evt.id,
+        invalid: true,
+        reason: "missing playable source",
+      };
+    }
+
+    return {
+      id: evt.id,
+      pubkey: evt.pubkey,
+      created_at: evt.created_at,
+      videoRootId: parsedContent.videoRootId || evt.id,
+      version,
+      deleted: parsedContent.deleted === true,
+      isPrivate: parsedContent.isPrivate ?? false,
+      title,
+      url,
+      magnet,
+      thumbnail: parsedContent.thumbnail ?? "",
+      description: parsedContent.description ?? "",
+      mode: parsedContent.mode ?? "live",
+      tags: evt.tags || [],
+      invalid: false,
+    };
   }
 
   dedupeToNewestByRoot(videos) {

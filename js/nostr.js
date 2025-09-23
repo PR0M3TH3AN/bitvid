@@ -2,6 +2,7 @@
 
 import { isDevMode } from "./config.js";
 import { accessControl } from "./accessControl.js";
+import { parseVideoEventPayload } from "./videoEventUtils.js";
 
 /**
  * The usual relays
@@ -90,51 +91,39 @@ function inferMimeTypeFromUrl(url) {
  * CHANGED: skip if version <2
  */
 function convertEventToVideo(event) {
-  try {
-    const content = JSON.parse(event.content || "{}");
+  const { parsedContent, parseError, title, url, magnet, version } =
+    parseVideoEventPayload(event);
 
-    // Example checks:
-    const isSupportedVersion = content.version >= 2;
-    const hasRequiredFields = !!(
-      content.title && (content.url || content.magnet)
-    );
+  if (!title) {
+    const reason = parseError ? "missing title (json parse error)" : "missing title";
+    return { id: event.id, invalid: true, reason };
+  }
 
-    if (!isSupportedVersion) {
-      return {
-        id: event.id,
-        invalid: true,
-        reason: "version <2",
-      };
-    }
-    if (!hasRequiredFields) {
-      return {
-        id: event.id,
-        invalid: true,
-        reason: "missing title/url+magnet",
-      };
-    }
-
+  if (!url && !magnet) {
     return {
       id: event.id,
-      videoRootId: content.videoRootId || event.id,
-      version: content.version,
-      isPrivate: content.isPrivate ?? false,
-      title: content.title ?? "",
-      url: content.url ?? "",
-      magnet: content.magnet ?? "",
-      thumbnail: content.thumbnail ?? "",
-      description: content.description ?? "",
-      mode: content.mode ?? "live",
-      deleted: content.deleted === true,
-      pubkey: event.pubkey,
-      created_at: event.created_at,
-      tags: event.tags,
-      invalid: false,
+      invalid: true,
+      reason: "missing playable source",
     };
-  } catch (err) {
-    // JSON parse error
-    return { id: event.id, invalid: true, reason: "json parse error" };
   }
+
+  return {
+    id: event.id,
+    videoRootId: parsedContent.videoRootId || event.id,
+    version,
+    isPrivate: parsedContent.isPrivate ?? false,
+    title,
+    url,
+    magnet,
+    thumbnail: parsedContent.thumbnail ?? "",
+    description: parsedContent.description ?? "",
+    mode: parsedContent.mode ?? "live",
+    deleted: parsedContent.deleted === true,
+    pubkey: event.pubkey,
+    created_at: event.created_at,
+    tags: event.tags,
+    invalid: false,
+  };
 }
 
 /**
@@ -787,7 +776,7 @@ class NostrClient {
     sub.on("eose", () => {
       if (isDevMode && invalidDuringSub.length > 0) {
         console.warn(
-          `[subscribeVideos] found ${invalidDuringSub.length} invalid v2 notes:`,
+          `[subscribeVideos] found ${invalidDuringSub.length} invalid video notes (with reasons):`,
           invalidDuringSub
         );
       }
@@ -854,7 +843,7 @@ class NostrClient {
       // OPTIONAL: Log invalid stats
       if (invalidNotes.length > 0 && isDevMode) {
         console.warn(
-          `Skipped ${invalidNotes.length} invalid v2 notes:\n`,
+          `Skipped ${invalidNotes.length} invalid video notes:\n`,
           invalidNotes.map((n) => `${n.id.slice(0, 8)}.. => ${n.reason}`)
         );
       }
