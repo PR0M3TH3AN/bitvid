@@ -51,6 +51,38 @@ function sanitizeHttpUrl(candidate) {
   return "";
 }
 
+export function safeDecodeMagnet(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  let decoded = value.trim();
+  if (!decoded) {
+    return "";
+  }
+
+  for (let i = 0; i < 2; i += 1) {
+    if (!decoded.includes("%")) {
+      break;
+    }
+
+    try {
+      const candidate = decodeURIComponent(decoded);
+      if (!candidate) {
+        break;
+      }
+      if (candidate === decoded) {
+        break;
+      }
+      decoded = candidate.trim();
+    } catch (err) {
+      break;
+    }
+  }
+
+  return decoded;
+}
+
 export function normalizeAndAugmentMagnet(
   rawValue,
   {

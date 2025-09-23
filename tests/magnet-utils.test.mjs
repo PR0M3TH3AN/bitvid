@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_WSS_TRACKERS,
   normalizeAndAugmentMagnet,
+  safeDecodeMagnet,
 } from "../js/magnetUtils.js";
 
 function getParamValues(magnet, key) {
@@ -90,6 +91,27 @@ function getParamValues(magnet, key) {
   });
   const seeds = getParamValues(result.magnet, "ws");
   assert.deepEqual(seeds, ["http://cdn.example.com/video.mp4"]);
+})();
+
+(function testSafeDecodeMagnetHandlesEncodedValues() {
+  const rawMagnet =
+    "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Example";
+  const encodedMagnet = encodeURIComponent(rawMagnet);
+  assert.equal(
+    safeDecodeMagnet(encodedMagnet),
+    rawMagnet,
+    "Expected percent-encoded magnet to be decoded"
+  );
+})();
+
+(function testSafeDecodeMagnetLeavesPlainStringsUntouched() {
+  const rawMagnet =
+    "magnet:?xt=urn:btih:abcdefabcdefabcdefabcdefabcdefabcdefabcd";
+  assert.equal(
+    safeDecodeMagnet(rawMagnet),
+    rawMagnet,
+    "Plain magnet strings should pass through unchanged"
+  );
 })();
 
 console.log("magnet-utils tests passed");

@@ -5,7 +5,7 @@ import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
 import { isWhitelistEnabled } from "./config.js";
-import { normalizeAndAugmentMagnet } from "./magnetUtils.js";
+import { normalizeAndAugmentMagnet, safeDecodeMagnet } from "./magnetUtils.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import {
   initialWhitelist,
@@ -38,12 +38,15 @@ function isValidMagnetUri(magnet) {
     return false;
   }
 
-  if (/^[0-9a-f]{40}$/i.test(trimmed)) {
+  const decoded = safeDecodeMagnet(trimmed);
+  const candidate = decoded || trimmed;
+
+  if (/^[0-9a-f]{40}$/i.test(candidate)) {
     return true;
   }
 
   try {
-    const parsed = new URL(trimmed);
+    const parsed = new URL(candidate);
     if (parsed.protocol.toLowerCase() !== "magnet:") {
       return false;
     }
@@ -2227,8 +2230,10 @@ class bitvidApp {
     const legacyInfoHash =
       typeof video.infoHash === "string" ? video.infoHash.trim().toLowerCase() : "";
     const magnetCandidate = rawMagnet || legacyInfoHash;
-    const magnetSupported = isValidMagnetUri(magnetCandidate);
-    const sanitizedMagnet = magnetSupported ? magnetCandidate : "";
+    const decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
+    const usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
+    const magnetSupported = isValidMagnetUri(usableMagnetCandidate);
+    const sanitizedMagnet = magnetSupported ? usableMagnetCandidate : "";
 
     this.currentVideo = {
       ...video,
@@ -2297,7 +2302,7 @@ class bitvidApp {
 
     await this.playVideoWithFallback({
       url: trimmedUrl,
-      magnet: magnetCandidate,
+      magnet: usableMagnetCandidate,
       infoHash: legacyInfoHash,
       title: video.title,
       description: video.description,
@@ -2312,8 +2317,10 @@ class bitvidApp {
   } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-    const magnetSupported = isValidMagnetUri(trimmedMagnet);
-    const sanitizedMagnet = magnetSupported ? trimmedMagnet : "";
+    const decodedMagnet = safeDecodeMagnet(trimmedMagnet);
+    const usableMagnet = decodedMagnet || trimmedMagnet;
+    const magnetSupported = isValidMagnetUri(usableMagnet);
+    const sanitizedMagnet = magnetSupported ? usableMagnet : "";
 
     if (!sanitizedUrl && !sanitizedMagnet) {
       const message = trimmedMagnet && !magnetSupported
@@ -2368,7 +2375,7 @@ class bitvidApp {
 
     await this.playVideoWithFallback({
       url: sanitizedUrl,
-      magnet: trimmedMagnet,
+      magnet: usableMagnet,
       title,
       description,
     });
