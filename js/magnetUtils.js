@@ -81,6 +81,21 @@ export function safeDecodeMagnet(value) {
   return decoded;
 }
 
+/**
+ * Normalize a magnet URI while preserving legacy payload quirks and augmenting it
+ * for browser playback.
+ *
+ * Key behaviors:
+ * - Accepts bare info-hash strings and promotes them to full `magnet:?xt=urn:btih:` links.
+ * - Leaves the existing `xt` payload untouched—no percent re-encoding or normalization
+ *   beyond decoding legacy `%3A` segments.
+ * - Only appends browser-safe WSS trackers in addition to whatever the caller provides.
+ * - Skips insecure `http:` web seeds unless the application itself is running over HTTP.
+ *
+ * Note: `didChange` may be reported even if the resulting magnet string is textually
+ * identical to the input. Callers should not rely on `didChange` to detect a modified
+ * URI.
+ */
 export function normalizeAndAugmentMagnet(
   rawValue,
   {
