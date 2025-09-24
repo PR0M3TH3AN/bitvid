@@ -2118,6 +2118,13 @@ class bitvidApp {
     }
   }
 
+  /**
+   * HEAD first avoids downloading bytes when probing, but many hosts reject
+   * HEAD or omit `Accept-Ranges`, so we fall back to a tiny `Range:
+   * bytes=0-1023` GET and only warn when range headers are missing. This
+   * fallback prevents false "unplayable" results and should stay paired with
+   * the HEAD logic unless a new probe keeps both paths in sync.
+   */
   async probeUrl(url) {
     const trimmed = typeof url === "string" ? url.trim() : "";
     if (!trimmed) {
