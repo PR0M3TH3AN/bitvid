@@ -191,8 +191,10 @@ export function parseVideoEventPayload(event = {}) {
   if (typeof parsedContent.url === "string") {
     const parsedUrl = parsedContent.url.trim();
     if (parsedUrl && parsedUrl !== thumbnail) {
+      // Keep this guard so we don't duplicate thumbnail URLs in the playable URL list.
       pushUnique(urlCandidates, parsedUrl);
     }
+    // Legacy Bitvid events sometimes embedded magnets/info-hashes in the URL field, so treat it accordingly.
     collectMagnetOrInfoHash(parsedUrl);
   }
 
