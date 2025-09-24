@@ -1736,6 +1736,10 @@ class bitvidApp {
           cardEl.dataset.torrentSupported = "true";
         }
         const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
+        // We intentionally leave the data-play-* attributes blank in cardHtml and
+        // assign them after template parsing so the raw URL/magnet strings avoid
+        // HTML entity escaping in the literal markup and keep any sensitive
+        // magnet payloads out of the static DOM text.
         interactiveEls.forEach((el) => {
           if (!el.dataset) return;
           el.dataset.playUrl = playbackUrl || "";
