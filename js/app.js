@@ -94,11 +94,35 @@ class MediaLoader {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             const el = entry.target;
-            const lazySrc = el.dataset.lazy;
+            const lazySrc =
+              typeof el.dataset.lazy === "string"
+                ? el.dataset.lazy.trim()
+                : "";
+
             if (lazySrc) {
+              const fallbackSrc =
+                (typeof el.dataset.fallbackSrc === "string"
+                  ? el.dataset.fallbackSrc.trim()
+                  : "") ||
+                el.getAttribute("data-fallback-src") ||
+                "";
+
+              const handleError = () => {
+                if (!fallbackSrc) {
+                  el.removeEventListener("error", handleError);
+                  return;
+                }
+                if (el.src !== fallbackSrc) {
+                  el.src = fallbackSrc;
+                }
+                el.removeEventListener("error", handleError);
+              };
+
+              el.addEventListener("error", handleError);
               el.src = lazySrc;
-              delete el.dataset.lazy;
             }
+
+            delete el.dataset.lazy;
             // Stop observing once loaded
             this.observer.unobserve(el);
           }
@@ -109,7 +133,21 @@ class MediaLoader {
   }
 
   observe(el) {
-    if (el.dataset.lazy) {
+    if (!el || typeof el.dataset === "undefined") {
+      return;
+    }
+
+    if (!el.dataset.fallbackSrc) {
+      const fallbackAttr =
+        el.getAttribute("data-fallback-src") || el.getAttribute("src") || "";
+      if (fallbackAttr) {
+        el.dataset.fallbackSrc = fallbackAttr;
+      }
+    }
+
+    const lazySrc =
+      typeof el.dataset.lazy === "string" ? el.dataset.lazy.trim() : "";
+    if (lazySrc) {
       this.observer.observe(el);
     }
   }
