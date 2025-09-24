@@ -213,6 +213,7 @@ export class TorrentClient {
       return reject(new Error("No compatible video file found in torrent"));
     }
 
+    // Satisfy autoplay requirements and keep cross-origin chunks usable (e.g., for snapshots).
     videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
@@ -250,6 +251,7 @@ export class TorrentClient {
       return reject(new Error("No compatible video file found in torrent"));
     }
 
+    // Satisfy autoplay requirements and keep cross-origin chunks usable (e.g., for snapshots).
     videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
