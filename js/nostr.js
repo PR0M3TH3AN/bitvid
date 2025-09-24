@@ -1,12 +1,9 @@
 // js/nostr.js
 
 import { isDevMode } from "./config.js";
+import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
-import {
-  deriveTitleFromEvent,
-  parseVideoEventPayload,
-  findLegacyMagnetInEvent,
-} from "./videoEventUtils.js";
+import { deriveTitleFromEvent, magnetFromText } from "./videoEventUtils.js";
 
 /**
  * The usual relays
@@ -91,33 +88,80 @@ function inferMimeTypeFromUrl(url) {
 }
 
 /**
- * Convert a raw Nostr event => your "video" object.
- * Accepts legacy (<2) payloads when they expose a usable magnet/info hash.
+ * Convert a raw Nostr event => Bitvid's "video" object.
+ * Accepts legacy (<v2) payloads when ACCEPT_LEGACY_V1 allows it and either a
+ * hosted URL or a recoverable magnet is present.
  */
-function convertEventToVideo(event) {
-  const {
-    parsedContent,
-    parseError,
-    title,
-    url,
-    magnet,
-    infoHash,
-    version,
-  } = parseVideoEventPayload(event);
+function convertEventToVideo(event = {}) {
+  const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
+  const parseInteger = (value) => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return 0;
+  };
 
-  const trimmedUrl = typeof url === "string" ? url.trim() : "";
-  const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-  const legacyMagnet = findLegacyMagnetInEvent(event);
-  const trimmedLegacyMagnet =
-    typeof legacyMagnet === "string" ? legacyMagnet.trim() : "";
-  const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
-  const playbackMagnet =
-    trimmedMagnet || trimmedLegacyMagnet || trimmedInfoHash;
+  const rawContent = safeTrim(event.content);
+  let parsedContent = {};
+  let parseError = null;
+  if (rawContent) {
+    try {
+      const parsed = JSON.parse(rawContent);
+      if (parsed && typeof parsed === "object") {
+        parsedContent = parsed;
+      }
+    } catch (err) {
+      parseError = err;
+      parsedContent = {};
+    }
+  }
 
-  const numericVersion = Number.isFinite(version) ? version : 0;
-  const hasPlayableSource = Boolean(trimmedUrl) || Boolean(playbackMagnet);
+  const declaredTitle = safeTrim(parsedContent.title);
+  const declaredUrl = safeTrim(parsedContent.url);
+  const declaredMagnet = safeTrim(parsedContent.magnet);
 
-  if (!hasPlayableSource) {
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+
+  let recoveredMagnet = "";
+  if (!declaredMagnet && ACCEPT_LEGACY_V1) {
+    recoveredMagnet = safeTrim(magnetFromText(rawContent));
+    if (!recoveredMagnet) {
+      for (const tag of tags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+        const key = safeTrim(tag[0]).toLowerCase();
+        if (key === "magnet" && typeof tag[1] === "string") {
+          const candidate = safeTrim(tag[1]);
+          if (candidate) {
+            recoveredMagnet = candidate;
+            break;
+          }
+        }
+        for (let i = 1; i < tag.length && !recoveredMagnet; i += 1) {
+          const candidate = safeTrim(magnetFromText(tag[i]));
+          if (candidate) {
+            recoveredMagnet = candidate;
+            break;
+          }
+        }
+        if (recoveredMagnet) {
+          break;
+        }
+      }
+    }
+  }
+
+  const magnet = declaredMagnet || recoveredMagnet;
+  const url = declaredUrl;
+
+  if (!url && !magnet) {
     return {
       id: event.id,
       invalid: true,
@@ -125,16 +169,59 @@ function convertEventToVideo(event) {
     };
   }
 
+  const resolveInfoHash = () => {
+    const declaredHash = safeTrim(parsedContent.infoHash);
+    if (declaredHash) {
+      return declaredHash.toLowerCase();
+    }
+    const sourceMagnet = magnet || safeTrim(magnetFromText(rawContent));
+    if (sourceMagnet) {
+      const match = sourceMagnet.match(/xt=urn:btih:([0-9a-z]+)/i);
+      if (match && match[1]) {
+        return match[1].toLowerCase();
+      }
+    }
+    if (ACCEPT_LEGACY_V1) {
+      const hexMatch = rawContent.match(/\b[0-9a-f]{40}\b/i);
+      if (hexMatch && hexMatch[0]) {
+        return hexMatch[0].toLowerCase();
+      }
+      for (const tag of tags) {
+        if (!Array.isArray(tag)) {
+          continue;
+        }
+        for (const value of tag) {
+          if (typeof value !== "string") {
+            continue;
+          }
+          const match = value.match(/\b[0-9a-f]{40}\b/i);
+          if (match && match[0]) {
+            return match[0].toLowerCase();
+          }
+        }
+      }
+    }
+    return "";
+  };
+
+  const infoHash = resolveInfoHash();
+  const version = parseInteger(parsedContent.version);
+
   const derivedTitle = deriveTitleFromEvent({
     parsedContent,
-    tags: event.tags,
-    primaryTitle: title,
+    tags,
+    primaryTitle: declaredTitle,
   });
 
   let resolvedTitle = derivedTitle;
-  if (!resolvedTitle && numericVersion < 2 && playbackMagnet) {
-    resolvedTitle = trimmedInfoHash
-      ? `Legacy Video ${trimmedInfoHash.slice(0, 8)}`
+  if (
+    !resolvedTitle &&
+    ACCEPT_LEGACY_V1 &&
+    version < 2 &&
+    (magnet || infoHash)
+  ) {
+    resolvedTitle = infoHash
+      ? `Legacy Video ${infoHash.slice(0, 8)}`
       : "Legacy BitTorrent Video";
   }
 
@@ -145,23 +232,25 @@ function convertEventToVideo(event) {
     return { id: event.id, invalid: true, reason };
   }
 
+  const normalizeOptional = (value) => safeTrim(value) || "";
+
   return {
     id: event.id,
-    videoRootId: parsedContent.videoRootId || event.id,
-    version: numericVersion,
+    videoRootId: safeTrim(parsedContent.videoRootId) || event.id,
+    version,
     isPrivate: parsedContent.isPrivate ?? false,
     title: resolvedTitle,
-    url: trimmedUrl,
-    magnet: playbackMagnet,
-    rawMagnet: trimmedMagnet || trimmedLegacyMagnet,
-    infoHash: trimmedInfoHash,
-    thumbnail: parsedContent.thumbnail ?? "",
-    description: parsedContent.description ?? "",
-    mode: parsedContent.mode ?? "live",
+    url,
+    magnet,
+    rawMagnet: declaredMagnet || recoveredMagnet,
+    infoHash,
+    thumbnail: normalizeOptional(parsedContent.thumbnail),
+    description: normalizeOptional(parsedContent.description),
+    mode: safeTrim(parsedContent.mode) || "live",
     deleted: parsedContent.deleted === true,
     pubkey: event.pubkey,
     created_at: event.created_at,
-    tags: event.tags,
+    tags,
     invalid: false,
   };
 }
@@ -332,14 +421,14 @@ class NostrClient {
     const contentObject = {
       videoRootId,
       version: 2, // forcibly set version=2
-      deleted: false,
-      isPrivate: videoData.isPrivate ?? false,
       title: finalTitle,
       url: finalUrl,
       magnet: finalMagnet,
       thumbnail: finalThumbnail,
       description: finalDescription,
       mode: videoData.mode || "live",
+      deleted: false,
+      isPrivate: videoData.isPrivate ?? false,
     };
 
     const event = {

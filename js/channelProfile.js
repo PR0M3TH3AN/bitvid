@@ -1,15 +1,13 @@
 // js/channelProfile.js
 
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  convertEventToVideo as sharedConvertEventToVideo,
+} from "./nostr.js";
 import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { initialBlacklist, initialWhitelist } from "./lists.js";
 import { isWhitelistEnabled } from "./config.js";
-import {
-  deriveTitleFromEvent,
-  parseVideoEventPayload,
-  findLegacyMagnetInEvent,
-} from "./videoEventUtils.js";
 
 /**
  * Initialize the channel profile view.
@@ -204,7 +202,7 @@ async function loadUserVideos(pubkey) {
     // 3) Convert to "video" objects
     let videos = [];
     for (const evt of events) {
-      const vid = localConvertEventToVideo(evt);
+      const vid = sharedConvertEventToVideo(evt);
       if (!vid.invalid && !vid.deleted) {
         videos.push(vid);
       }
@@ -477,84 +475,6 @@ function dedupeToNewestByRoot(videos) {
     }
   }
   return Array.from(map.values());
-}
-
-/**
- * Convert raw event => "video" object.
- */
-function localConvertEventToVideo(event) {
-  const {
-    parsedContent,
-    parseError,
-    title,
-    url,
-    magnet,
-    infoHash,
-    version,
-  } = parseVideoEventPayload(event);
-
-  const trimmedUrl = typeof url === "string" ? url.trim() : "";
-  const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-  const legacyMagnet = findLegacyMagnetInEvent(event);
-  const trimmedLegacyMagnet =
-    typeof legacyMagnet === "string" ? legacyMagnet.trim() : "";
-  const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
-  const playbackMagnet =
-    trimmedMagnet || trimmedLegacyMagnet || trimmedInfoHash;
-  const parsedVersion =
-    typeof version === "number"
-      ? version
-      : typeof version === "string"
-        ? Number.parseInt(version, 10)
-        : Number.NaN;
-  const numericVersion = Number.isFinite(parsedVersion)
-    ? parsedVersion
-    : 0;
-
-  const hasPlayableSource = Boolean(trimmedUrl) || Boolean(playbackMagnet);
-  if (!hasPlayableSource) {
-    return { id: event.id, invalid: true, reason: "missing playable source" };
-  }
-
-  const derivedTitle = deriveTitleFromEvent({
-    parsedContent,
-    tags: event.tags,
-    primaryTitle: title,
-  });
-
-  let resolvedTitle = derivedTitle;
-  if (!resolvedTitle && numericVersion < 2 && playbackMagnet) {
-    resolvedTitle = trimmedInfoHash
-      ? `Legacy Video ${trimmedInfoHash.slice(0, 8)}`
-      : "Legacy BitTorrent Video";
-  }
-
-  if (!resolvedTitle) {
-    const reason = parseError
-      ? "missing title (json parse error)"
-      : "missing title";
-    return { id: event.id, invalid: true, reason };
-  }
-
-  return {
-    id: event.id,
-    videoRootId: parsedContent.videoRootId || event.id,
-    version: numericVersion,
-    isPrivate: parsedContent.isPrivate ?? false,
-    title: resolvedTitle,
-    url: trimmedUrl,
-    magnet: playbackMagnet,
-    rawMagnet: trimmedMagnet || trimmedLegacyMagnet,
-    infoHash: trimmedInfoHash,
-    thumbnail: parsedContent.thumbnail ?? "",
-    description: parsedContent.description ?? "",
-    mode: parsedContent.mode ?? "live",
-    deleted: parsedContent.deleted === true,
-    pubkey: event.pubkey,
-    created_at: event.created_at,
-    tags: event.tags,
-    invalid: false,
-  };
 }
 
 /**
