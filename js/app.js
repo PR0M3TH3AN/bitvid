@@ -110,12 +110,27 @@ class MediaLoader {
                 "";
 
               const applyFallback = () => {
-                if (!fallbackSrc) {
+                const resolvedFallback =
+                  fallbackSrc && fallbackSrc.trim()
+                    ? fallbackSrc.trim()
+                    : FALLBACK_THUMBNAIL_SRC;
+
+                if (!resolvedFallback) {
                   return;
                 }
-                if (el.src !== fallbackSrc) {
-                  el.src = fallbackSrc;
+
+                if (el.src !== resolvedFallback) {
+                  el.src = resolvedFallback;
                 }
+
+                if (!el.dataset.fallbackSrc) {
+                  el.dataset.fallbackSrc = resolvedFallback;
+                }
+
+                if (!el.getAttribute("data-fallback-src")) {
+                  el.setAttribute("data-fallback-src", resolvedFallback);
+                }
+
                 el.dataset.thumbnailFailed = "true";
               };
 
