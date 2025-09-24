@@ -173,6 +173,8 @@ export class TorrentClient {
 
   // Handle Chrome-based browsers
   handleChromeTorrent(torrent, videoElement, resolve, reject) {
+    // Prune demo web seeds/trackers that chronically trip Chromium CORS and
+    // deliberately mutate `torrent._opts` as a sanctioned WebTorrent workaround.
     torrent.on("warning", (err) => {
       if (err && typeof err.message === "string") {
         if (
