@@ -23,6 +23,8 @@ function fakeDecrypt(str) {
 const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
+const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+
 /**
  * Basic validation for BitTorrent magnet URIs.
  *
@@ -107,19 +109,56 @@ class MediaLoader {
                 el.getAttribute("data-fallback-src") ||
                 "";
 
-              const handleError = () => {
+              const applyFallback = () => {
                 if (!fallbackSrc) {
-                  el.removeEventListener("error", handleError);
                   return;
                 }
                 if (el.src !== fallbackSrc) {
                   el.src = fallbackSrc;
                 }
+                el.dataset.thumbnailFailed = "true";
+              };
+
+              const cleanupListeners = () => {
                 el.removeEventListener("error", handleError);
+                el.removeEventListener("load", handleLoad);
+              };
+
+              const handleError = () => {
+                cleanupListeners();
+                applyFallback();
+              };
+
+              const handleLoad = () => {
+                cleanupListeners();
+                if (
+                  (el.naturalWidth === 0 && el.naturalHeight === 0) ||
+                  !el.currentSrc
+                ) {
+                  applyFallback();
+                } else {
+                  delete el.dataset.thumbnailFailed;
+                }
               };
 
               el.addEventListener("error", handleError);
-              el.src = lazySrc;
+              el.addEventListener("load", handleLoad);
+
+              if (fallbackSrc && lazySrc === fallbackSrc) {
+                cleanupListeners();
+                delete el.dataset.thumbnailFailed;
+              } else {
+                el.src = lazySrc;
+
+                if (el.complete) {
+                  // Handle cached results synchronously
+                  if (el.naturalWidth === 0 && el.naturalHeight === 0) {
+                    handleError();
+                  } else {
+                    handleLoad();
+                  }
+                }
+              }
             }
 
             delete el.dataset.lazy;
@@ -142,6 +181,20 @@ class MediaLoader {
         el.getAttribute("data-fallback-src") || el.getAttribute("src") || "";
       if (fallbackAttr) {
         el.dataset.fallbackSrc = fallbackAttr;
+      } else if (el.tagName === "IMG") {
+        el.dataset.fallbackSrc = FALLBACK_THUMBNAIL_SRC;
+        el.setAttribute("data-fallback-src", FALLBACK_THUMBNAIL_SRC);
+      }
+    }
+
+    if (
+      el.tagName === "IMG" &&
+      typeof HTMLImageElement !== "undefined" &&
+      "loading" in HTMLImageElement.prototype
+    ) {
+      el.loading = el.loading || "lazy";
+      if ("decoding" in HTMLImageElement.prototype) {
+        el.decoding = el.decoding || "async";
       }
     }
 
@@ -1521,7 +1574,8 @@ class bitvidApp {
           >
             <div class="ratio-16-9">
               <img
-                src="assets/jpg/video-thumbnail-fallback.jpg"
+                src="${FALLBACK_THUMBNAIL_SRC}"
+                data-fallback-src="${FALLBACK_THUMBNAIL_SRC}"
                 data-lazy="${this.escapeHTML(video.thumbnail)}"
                 alt="${this.escapeHTML(video.title)}"
               />
@@ -2510,7 +2564,11 @@ class bitvidApp {
   }
 
   escapeHTML(unsafe) {
-    return unsafe
+    if (unsafe === null || typeof unsafe === "undefined") {
+      return "";
+    }
+
+    return String(unsafe)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
