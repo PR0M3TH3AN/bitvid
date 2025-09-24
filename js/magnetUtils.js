@@ -108,27 +108,69 @@ export function normalizeAndAugmentMagnet(
     didMutate = true;
   }
 
+  const hashIndex = working.indexOf("#");
+  let fragment = "";
+  if (hashIndex !== -1) {
+    fragment = working.slice(hashIndex);
+    working = working.slice(0, hashIndex);
+  }
+
   const decodedXt = working.replace(ENCODED_BTih_PATTERN, (_, hash) => {
     didMutate = true;
     return `xt=${BTIH_PREFIX}${hash}`;
   });
   working = decodedXt;
 
-  let parsed;
-  try {
-    parsed = new URL(working);
-  } catch (err) {
+  if (!/^magnet:/i.test(working)) {
     return {
       magnet: working,
       didChange: didMutate || working !== initial,
     };
   }
 
-  if (parsed.protocol !== "magnet:") {
-    return {
-      magnet: working,
-      didChange: didMutate || working !== initial,
-    };
+  const [schemePart, queryPart = ""] = working.split("?", 2);
+  const normalizedScheme = "magnet:";
+  if (schemePart !== normalizedScheme) {
+    didMutate = true;
+  }
+
+  const rawParams = queryPart
+    .split("&")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const params = [];
+
+  const decodeLoose = (value) => {
+    if (typeof value !== "string" || !value) {
+      return "";
+    }
+    try {
+      return decodeURIComponent(value);
+    } catch (err) {
+      return value;
+    }
+  };
+
+  for (const rawParam of rawParams) {
+    const [rawKey, rawValue = ""] = rawParam.split("=", 2);
+    const key = rawKey.trim();
+    if (!key) {
+      continue;
+    }
+    let value = rawValue.trim();
+    if (key.toLowerCase() === "xt" && value) {
+      const decoded = decodeLoose(value);
+      if (decoded !== value) {
+        value = decoded;
+        didMutate = true;
+      }
+    }
+    params.push({
+      key,
+      value,
+      decoded: decodeLoose(value),
+    });
   }
 
   const torrentHint = typeof torrentUrl === "string" && torrentUrl.trim()
@@ -151,9 +193,9 @@ export function normalizeAndAugmentMagnet(
       : "https:";
 
   const existingTrackers = new Set(
-    parsed.searchParams
-      .getAll("tr")
-      .map((value) => normalizeForComparison(value))
+    params
+      .filter((param) => param.key.toLowerCase() === "tr")
+      .map((param) => normalizeForComparison(param.decoded))
       .filter(Boolean)
   );
 
@@ -177,30 +219,34 @@ export function normalizeAndAugmentMagnet(
     if (!normalizedTracker || existingTrackers.has(normalizedTracker)) {
       continue;
     }
-    parsed.searchParams.append("tr", trimmedTracker);
+    params.push({ key: "tr", value: trimmedTracker, decoded: trimmedTracker });
     existingTrackers.add(normalizedTracker);
     didMutate = true;
   }
 
   if (safeTorrentHint) {
     const existingXs = new Set(
-      parsed.searchParams
-        .getAll("xs")
-        .map((value) => normalizeForComparison(value))
+      params
+        .filter((param) => param.key.toLowerCase() === "xs")
+        .map((param) => normalizeForComparison(param.decoded))
         .filter(Boolean)
     );
     const normalizedXs = normalizeForComparison(safeTorrentHint);
     if (normalizedXs && !existingXs.has(normalizedXs)) {
-      parsed.searchParams.append("xs", safeTorrentHint);
+      params.push({
+        key: "xs",
+        value: safeTorrentHint,
+        decoded: safeTorrentHint,
+      });
       didMutate = true;
     }
   }
 
   if (seedInputs.length) {
     const existingWs = new Set(
-      parsed.searchParams
-        .getAll("ws")
-        .map((value) => normalizeForComparison(value))
+      params
+        .filter((param) => param.key.toLowerCase() === "ws")
+        .map((param) => normalizeForComparison(param.decoded))
         .filter(Boolean)
     );
     for (const seedInput of seedInputs) {
@@ -222,7 +268,7 @@ export function normalizeAndAugmentMagnet(
           const seedValue = parsedSeed.toString();
           const normalizedSeed = normalizeForComparison(seedValue);
           if (normalizedSeed && !existingWs.has(normalizedSeed)) {
-            parsed.searchParams.append("ws", seedValue);
+            params.push({ key: "ws", value: seedValue, decoded: seedValue });
             existingWs.add(normalizedSeed);
             didMutate = true;
           }
@@ -237,15 +283,11 @@ export function normalizeAndAugmentMagnet(
     }
   }
 
-  let finalMagnet = parsed.toString();
-  const decodedFinalMagnet = finalMagnet.replace(
-    ENCODED_BTih_PATTERN,
-    (_, hash) => `xt=${BTIH_PREFIX}${hash}`
-  );
-  if (decodedFinalMagnet !== finalMagnet) {
-    finalMagnet = decodedFinalMagnet;
-    didMutate = true;
-  }
+  const queryString = params
+    .map(({ key, value }) => (value ? `${key}=${value}` : key))
+    .join("&");
+
+  const finalMagnet = `${normalizedScheme}${queryString ? `?${queryString}` : ""}${fragment}`;
 
   return {
     magnet: finalMagnet,
