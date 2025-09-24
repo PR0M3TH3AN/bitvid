@@ -716,7 +716,7 @@ class bitvidApp {
             return decodeURIComponent(value);
           } catch (err) {
             console.warn("Failed to decode data attribute:", err);
-            return "";
+            return value;
           }
         };
 
@@ -724,7 +724,8 @@ class bitvidApp {
         const encodedMagnet = trigger.getAttribute("data-play-magnet") || "";
 
         const url = decodeDataValue(encodedUrl);
-        const magnet = decodeDataValue(encodedMagnet);
+        const rawMagnet = decodeDataValue(encodedMagnet);
+        const magnet = safeDecodeMagnet(rawMagnet) || rawMagnet;
         const eventId = trigger.getAttribute("data-video-id");
 
         if (eventId) {

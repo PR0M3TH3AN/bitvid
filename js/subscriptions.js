@@ -518,7 +518,15 @@ class SubscriptionsManager {
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
     const playbackMagnet = trimmedMagnet || trimmedInfoHash;
-    const numericVersion = Number.isFinite(version) ? version : 0;
+    const parsedVersion =
+      typeof version === "number"
+        ? version
+        : typeof version === "string"
+          ? Number.parseInt(version, 10)
+          : Number.NaN;
+    const numericVersion = Number.isFinite(parsedVersion)
+      ? parsedVersion
+      : 0;
 
     const hasPlayableSource = Boolean(trimmedUrl) || Boolean(playbackMagnet);
     if (!hasPlayableSource) {
