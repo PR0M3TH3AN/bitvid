@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
-import {
-  DEFAULT_WSS_TRACKERS,
-  normalizeAndAugmentMagnet,
-  safeDecodeMagnet,
-} from "../js/magnetUtils.js";
+import { WSS_TRACKERS } from "../js/constants.js";
+import { normalizeAndAugmentMagnet, safeDecodeMagnet } from "../js/magnetUtils.js";
 
 function getParamValues(magnet, key) {
   const parsed = new URL(magnet);
@@ -17,7 +14,7 @@ function getParamValues(magnet, key) {
   const xtValues = getParamValues(result.magnet, "xt");
   assert.deepEqual(xtValues, [`urn:btih:${infoHash}`]);
   const trackerValues = getParamValues(result.magnet, "tr");
-  for (const tracker of DEFAULT_WSS_TRACKERS) {
+  for (const tracker of WSS_TRACKERS) {
     assert.ok(
       trackerValues.includes(tracker),
       `Expected tracker ${tracker} to be appended`

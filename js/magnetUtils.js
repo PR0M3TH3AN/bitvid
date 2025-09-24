@@ -1,10 +1,8 @@
 // js/magnetUtils.js
 
-export const DEFAULT_WSS_TRACKERS = [
-  "wss://tracker.openwebtorrent.com",
-  "wss://tracker.btorrent.xyz",
-  "wss://tracker.fastcast.nz",
-];
+import { WSS_TRACKERS } from "./constants.js";
+
+export { WSS_TRACKERS };
 
 const HEX_INFO_HASH = /^[0-9a-f]{40}$/i;
 const BTIH_PREFIX = "urn:btih:";
@@ -200,7 +198,7 @@ export function normalizeAndAugmentMagnet(
   );
 
   const trackerCandidates = [
-    ...DEFAULT_WSS_TRACKERS,
+    ...WSS_TRACKERS,
     ...extraTrackers,
   ];
 
