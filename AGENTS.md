@@ -91,10 +91,17 @@ This document tells AI agents how Bitvid works **now** and how to extend it goin
 
 ## 5) Key Client Functions (reference)
 
-### 5.1 `augmentMagnet(raw, ws?, xs?)`
+### 5.1 `normalizeAndAugmentMagnet(raw, { webSeed?, torrentUrl?, xs?, extraTrackers? })`
 
-* Accepts a magnet URI and conditionally **appends** `ws` and `xs` query params.
-* Returns the same magnet if not a `magnet:` scheme.
+* Accepts a magnet URI or bare hex info hash and returns a **sanitized magnet**.
+* Fixes accidentally encoded `xt=urn%3Abtih:` segments and tolerates bare hashes by
+  promoting them to `magnet:?xt=urn:btih:<hash>`.
+* Appends only **browser-safe WSS trackers** plus optional extras, avoiding mixed
+  content.
+* Adds HTTPS web seeds (`ws=`) and torrent hints (`xs=`) when provided, skipping
+  insecure `http://` web seeds unless the app itself is served via HTTP.
+* Preserves existing parameters in their original form—no `new URL()` usage and no
+  percent re-encoding of the `xt` payload.
 
 ### 5.2 `probeUrl(url)`
 
@@ -120,12 +127,36 @@ This document tells AI agents how Bitvid works **now** and how to extend it goin
 * **Cards:** add both attributes where applicable:
 
   * `data-play-url="<encoded URL or empty>"`
-  * `data-play-magnet="<magnet or empty>"`
-* **Click delegate:** look for a closest element bearing either attribute; decode `data-play-url` prior to use.
+  * `data-play-magnet="<raw magnet or empty>"`
+* **Click delegate:** look for a closest element bearing either attribute; decode
+  both `data-play-url` and `data-play-magnet` (if encoded upstream) **before** passing
+  them to playback logic. Never double-encode magnets when writing them into the DOM.
 
 ---
 
-## 7) Server Requirements for Hosted URLs
+## 7) Main vs Unstable — legacy WebTorrent compatibility lessons
+
+Legacy Bitvid posts (v1 / magnet-only) still play on **Main**. They broke on
+**Unstable** because of double-encoded magnets, URL constructors, and strict
+filters. Apply these rules to stay compatible:
+
+* **Raw magnets end-to-end.** Store the literal `magnet:?xt=urn:btih:...` in the DOM
+  and feed that same string into WebTorrent. If you must encode for transport, be
+  sure to decode once when handling clicks.
+* **No `new URL()` for magnets.** Appending params with `URLSearchParams` or `new URL`
+  percent-encodes the `xt` value and can corrupt legacy hashes. When you need to add
+  trackers or cache-busting params, concatenate plain text (or use
+  `normalizeAndAugmentMagnet`, which already preserves the payload).
+* **Converters should allow magnet-only posts.** A note is playable when it exposes
+  either a usable `magnet` **or** a direct `url`. Don’t require `version >= 2` to keep
+  legacy uploads alive.
+* **Browser-safe announce list.** Ship WSS trackers for browser playback. Skip UDP
+  trackers in the client path and only add `ws=` hints when they’re HTTPS on HTTPS
+  pages (mixed content gets blocked anyway).
+
+---
+
+## 8) Server Requirements for Hosted URLs
 
 * **CORS:** allow the app origin (or `*`).
 * **Range requests:** ensure `Accept-Ranges: bytes`.
@@ -134,7 +165,7 @@ This document tells AI agents how Bitvid works **now** and how to extend it goin
 
 ---
 
-## 8) P2P Notes for Agents
+## 9) P2P Notes for Agents
 
 * **`ws=` (web seed):** HTTP(S) base path where the file is fetchable; enables WebTorrent to download pieces even with zero peers.
 * **`xs=`:** HTTP(S) URL of the `.torrent` metadata so the client can start promptly without DHT/peer discovery.
@@ -142,7 +173,7 @@ This document tells AI agents how Bitvid works **now** and how to extend it goin
 
 ---
 
-## 9) Interop & Extensions
+## 10) Interop & Extensions
 
 * **Live streams:** future option via HLS URLs (MIME `application/x-mpegURL`). For Nostr live presence, consider **NIP‑53** events alongside VOD 1063 entries.
 * **Adaptive Bitrate + P2P:** if ABR is needed with P2P, consider a segment‑sharing overlay (e.g., p2p segment loaders) rather than WebTorrent.
@@ -150,7 +181,7 @@ This document tells AI agents how Bitvid works **now** and how to extend it goin
 
 ---
 
-## 10) Testing Checklist (agents)
+## 11) Testing Checklist (agents)
 
 * **Form validation:** title present; ensure `(url || magnet)` is true; `ws` and `xs` appended only for magnet.
 * **Probe:** healthy URL returns `ok=true`; dead URL hides/badges card; cache prevents re‑probing every render.
@@ -161,7 +192,7 @@ This document tells AI agents how Bitvid works **now** and how to extend it goin
 
 ---
 
-## 11) Guardrails & Do/Don’t
+## 12) Guardrails & Do/Don’t
 
 **Do**
 
@@ -177,7 +208,7 @@ This document tells AI agents how Bitvid works **now** and how to extend it goin
 
 ---
 
-## 12) Quick Reference (snippets)
+## 13) Quick Reference (snippets)
 
 **Bitvid content object (30078)**
 
@@ -193,17 +224,18 @@ const content = {
 };
 ```
 
-**Magnet augmentation**
+**Magnet normalization & augmentation**
 
 ```js
-function augmentMagnet(raw, ws, xs) {
-  if (!raw) return "";
-  const u = new URL(raw);
-  if (u.protocol !== "magnet:") return raw;
-  if (ws) u.searchParams.append("ws", ws);
-  if (xs) u.searchParams.append("xs", xs);
-  return u.toString();
-}
+import { normalizeAndAugmentMagnet } from "./js/magnetUtils.js";
+
+const { magnet } = normalizeAndAugmentMagnet(inputMagnetOrInfoHash, {
+  webSeed: hostedUrl ? [hostedUrl] : [],
+  torrentUrl: xsHint,
+  extraTrackers: ["wss://tracker.openwebtorrent.com"],
+});
+
+// Feed `magnet` directly to playVideoWithFallback / WebTorrent.
 ```
 
 **Playback with fallback**
@@ -218,7 +250,7 @@ async function playVideoWithFallback({ url, magnet }) {
 
 ---
 
-## 13) Roadmap Hooks (where to extend)
+## 14) Roadmap Hooks (where to extend)
 
 * **Analytics:** Keep using your existing 30078 analytics/logging. Add fields for `play_source: "url"|"torrent"` to measure cost savings.
 * **Integrity:** Optionally compute SHA‑256 of the hosted file (off‑thread) and publish as NIP‑94 `["x", hash]` tag.

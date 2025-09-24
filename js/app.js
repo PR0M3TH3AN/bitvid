@@ -2042,15 +2042,20 @@ class bitvidApp {
         );
       }
 
-      let cacheBustedMagnet = trimmedCandidate;
-      try {
-        const parsed = new URL(trimmedCandidate);
-        parsed.searchParams.set("ts", Date.now().toString());
-        cacheBustedMagnet = parsed.toString();
-      } catch (err) {
-        const separator = trimmedCandidate.includes("?") ? "&" : "?";
-        cacheBustedMagnet = `${trimmedCandidate}${separator}ts=${Date.now()}`;
+      const timestamp = Date.now().toString();
+      const [magnetPrefix, magnetQuery = ""] = trimmedCandidate.split("?", 2);
+      let normalizedMagnet = magnetPrefix;
+      let queryParts = magnetQuery
+        .split("&")
+        .map((part) => part.trim())
+        .filter((part) => part && !/^ts=\d+$/.test(part));
+
+      if (queryParts.length) {
+        normalizedMagnet = `${magnetPrefix}?${queryParts.join("&")}`;
       }
+
+      const separator = normalizedMagnet.includes("?") ? "&" : "?";
+      const cacheBustedMagnet = `${normalizedMagnet}${separator}ts=${timestamp}`;
 
       await torrentClient.cleanup();
       this.resetTorrentStats();
