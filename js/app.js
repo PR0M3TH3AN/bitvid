@@ -24,6 +24,11 @@ const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+// NOTE: The modal uses a "please stand by" animated poster while the torrent
+// or direct URL boots up. We've regressed multiple times by forgetting to clear
+// that poster once playback starts, which leaves the loading GIF covering the
+// video even though audio is playing. Centralising the cleanup logic makes it
+// easier to spot those regressions; see forceRemoveModalPoster() below.
 const MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
 
 /**
@@ -595,13 +600,10 @@ class bitvidApp {
     const videoEl = this.modalVideo;
 
     const clearPoster = () => {
-      videoEl.removeEventListener("loadeddata", clearPoster);
-      videoEl.removeEventListener("playing", clearPoster);
-      this.modalPosterCleanup = null;
-      videoEl.poster = "";
-      if (videoEl.hasAttribute("poster")) {
-        videoEl.removeAttribute("poster");
-      }
+      // Delegate to the shared helper so every code path clears the GIF in the
+      // same way. If we ever change how the poster works we only need to update
+      // forceRemoveModalPoster().
+      this.forceRemoveModalPoster("playback-event");
     };
 
     videoEl.addEventListener("loadeddata", clearPoster);
@@ -613,6 +615,52 @@ class bitvidApp {
       videoEl.removeEventListener("loadeddata", clearPoster);
       videoEl.removeEventListener("playing", clearPoster);
     };
+  }
+
+  /**
+   * Forcefully strip the modal's loading poster.
+   *
+   * The video modal shows an animated "please stand by" GIF while we wait for a
+   * `loadeddata` or `playing` event. Historically, small refactors would remove
+   * the matching cleanup path which left the GIF covering real playback. By
+   * routing every caller through this helper we can add defensive clears (for
+   * example when WebTorrent reports progress) without duplicating poster logic
+   * all over the file.
+   *
+   * @param {string} reason A debugging hint that documents why the poster was
+   * cleared.
+   * @returns {boolean} `true` if a poster attribute/value was removed.
+   */
+  forceRemoveModalPoster(reason = "manual-clear") {
+    if (!this.modalVideo) {
+      return false;
+    }
+
+    const videoEl = this.modalVideo;
+
+    if (typeof this.modalPosterCleanup === "function") {
+      this.modalPosterCleanup();
+      this.modalPosterCleanup = null;
+    }
+
+    const hadPoster =
+      videoEl.hasAttribute("poster") ||
+      (typeof videoEl.poster === "string" && videoEl.poster !== "");
+
+    if (!hadPoster) {
+      return false;
+    }
+
+    videoEl.poster = "";
+    if (videoEl.hasAttribute("poster")) {
+      videoEl.removeAttribute("poster");
+    }
+
+    console.debug(
+      `[bitvidApp] Cleared modal loading poster (${reason}).`
+    );
+
+    return true;
   }
 
   /**
@@ -1799,6 +1847,15 @@ class bitvidApp {
       return;
     }
 
+    if (torrent.ready || (typeof torrent.progress === "number" && torrent.progress > 0)) {
+      // Belt-and-suspenders: if WebTorrent reports progress but the DOM events
+      // failed to fire we still rip off the loading GIF. This regression has
+      // bitten us in past releases, so the extra clear is intentional.
+      this.forceRemoveModalPoster(
+        torrent.ready ? "torrent-ready-flag" : "torrent-progress"
+      );
+    }
+
     // Log only fields that actually exist on the torrent:
     console.log("[DEBUG] torrent.progress =", torrent.progress);
     console.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
@@ -2139,6 +2196,9 @@ class bitvidApp {
       if (this.modalStatus) {
         this.modalStatus.textContent = "Streaming from URL";
       }
+      // Defensive clear so the loading GIF never lingers if browsers skip
+      // firing `playing` (some autoplay policies do this).
+      this.forceRemoveModalPoster("http-loadeddata");
     };
 
     this.modalVideo.addEventListener("loadeddata", markUrlReady, {
@@ -2216,6 +2276,12 @@ class bitvidApp {
         cacheBustedMagnet,
         this.modalVideo
       );
+      if (torrentInstance && torrentInstance.ready) {
+        // Some browsers delay `playing` events for MediaSource-backed torrents.
+        // Clearing the poster here prevents the historic "GIF stuck over the
+        // video" regression when WebTorrent is already feeding data.
+        this.forceRemoveModalPoster("webtorrent-ready");
+      }
       this.startTorrentStatusMirrors(torrentInstance);
       return torrentInstance;
     };
