@@ -125,6 +125,14 @@ class SubscriptionsManager {
     const plainObj = { subPubkeys: Array.from(this.subscribedPubkeys) };
     const plainStr = JSON.stringify(plainObj);
 
+    /*
+     * The subscription list is stored as a NIP-04 message to self, so both
+     * encryption and decryption intentionally use the user's own pubkey.
+     * Extensions are expected to support this encrypt-to-self flow; altering
+     * the target would break loadSubscriptions, which decrypts with the same
+     * pubkey. Any future sharing model (e.g., sharing with another user) will
+     * need a parallel read path and should not overwrite this behavior.
+     */
     let cipherText = "";
     try {
       cipherText = await window.nostr.nip04.encrypt(userPubkey, plainStr);
