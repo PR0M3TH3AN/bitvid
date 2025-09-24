@@ -6,6 +6,7 @@
  */
 const MAGNET_URI_PATTERN = /^magnet:\?/i;
 const HEX_INFO_HASH_PATTERN = /\b[0-9a-f]{40}\b/gi;
+const LEGACY_MAGNET_PATTERN = /magnet:\?xt=urn:btih:[0-9a-z]{40,}[^\s"'<>]*/i;
 
 function safeTrim(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -250,4 +251,40 @@ export function parseVideoEventPayload(event = {}) {
     infoHash,
     version,
   };
+}
+
+function magnetFromText(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const match = value.match(LEGACY_MAGNET_PATTERN);
+  return match ? match[0] : "";
+}
+
+export function findLegacyMagnetInEvent(event = {}) {
+  const fromContent = magnetFromText(event?.content);
+  if (fromContent) {
+    return fromContent.trim();
+  }
+
+  const tags = Array.isArray(event?.tags) ? event.tags : [];
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+    const key = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+    const value = typeof tag[1] === "string" ? tag[1].trim() : "";
+    if (!value) {
+      continue;
+    }
+    if (key === "magnet" && value) {
+      return value;
+    }
+    const fromTag = magnetFromText(value);
+    if (fromTag) {
+      return fromTag.trim();
+    }
+  }
+
+  return "";
 }

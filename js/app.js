@@ -720,12 +720,19 @@ class bitvidApp {
           }
         };
 
-        const encodedUrl = trigger.getAttribute("data-play-url") || "";
-        const encodedMagnet = trigger.getAttribute("data-play-magnet") || "";
+        const rawUrlValue =
+          (trigger.dataset && typeof trigger.dataset.playUrl === "string"
+            ? trigger.dataset.playUrl
+            : null) ?? trigger.getAttribute("data-play-url") ?? "";
+        const rawMagnetValue =
+          (trigger.dataset && typeof trigger.dataset.playMagnet === "string"
+            ? trigger.dataset.playMagnet
+            : null) ?? trigger.getAttribute("data-play-magnet") ?? "";
 
-        const url = decodeDataValue(encodedUrl);
-        const rawMagnet = decodeDataValue(encodedMagnet);
-        const magnet = safeDecodeMagnet(rawMagnet) || rawMagnet;
+        const url = decodeDataValue(rawUrlValue);
+        const decodedMagnetValue = decodeDataValue(rawMagnetValue);
+        const magnet =
+          safeDecodeMagnet(decodedMagnetValue) || decodedMagnetValue;
         const eventId = trigger.getAttribute("data-video-id");
 
         if (eventId) {
@@ -1365,11 +1372,6 @@ class bitvidApp {
     const authorSet = new Set();
 
     // 3) Build each card
-    const encodeDataValue = (value) =>
-      typeof value === "string" && value.length > 0
-        ? encodeURIComponent(value)
-        : "";
-
     videos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Video missing ID/title:", video);
@@ -1452,8 +1454,8 @@ class bitvidApp {
       const magnetCandidate = trimmedMagnet || legacyInfoHash;
       const magnetSupported = isValidMagnetUri(magnetCandidate);
       const magnetProvided = magnetCandidate.length > 0;
-      const encodedMagnet = encodeDataValue(magnetCandidate);
-      const encodedUrl = encodeDataValue(trimmedUrl);
+      const playbackUrl = trimmedUrl;
+      const playbackMagnet = magnetCandidate;
       const showUnsupportedTorrentBadge =
         !trimmedUrl && magnetProvided && !magnetSupported;
       const torrentBadge = showUnsupportedTorrentBadge
@@ -1474,8 +1476,8 @@ class bitvidApp {
           <a
             href="${shareUrl}"
             data-video-id="${video.id}"
-            data-play-url="${encodedUrl}"
-            data-play-magnet="${encodedMagnet}"
+            data-play-url=""
+            data-play-magnet=""
             data-torrent-supported="${magnetSupported ? "true" : "false"}"
             class="block cursor-pointer relative group"
           >
@@ -1492,8 +1494,8 @@ class bitvidApp {
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
               data-video-id="${video.id}"
-              data-play-url="${encodedUrl}"
-              data-play-magnet="${encodedMagnet}"
+              data-play-url=""
+              data-play-magnet=""
               data-torrent-supported="${magnetSupported ? "true" : "false"}"
             >
               ${this.escapeHTML(video.title)}
@@ -1537,6 +1539,15 @@ class bitvidApp {
         } else if (magnetProvided && magnetSupported) {
           cardEl.dataset.torrentSupported = "true";
         }
+        const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
+        interactiveEls.forEach((el) => {
+          if (!el.dataset) return;
+          el.dataset.playUrl = playbackUrl || "";
+          el.dataset.playMagnet = playbackMagnet || "";
+          if (magnetProvided) {
+            el.dataset.torrentSupported = magnetSupported ? "true" : "false";
+          }
+        });
       }
       fragment.appendChild(cardEl);
     });

@@ -3,6 +3,7 @@ import { nostrClient } from "./nostr.js";
 import {
   deriveTitleFromEvent,
   parseVideoEventPayload,
+  findLegacyMagnetInEvent,
 } from "./videoEventUtils.js";
 
 /**
@@ -254,11 +255,6 @@ class SubscriptionsManager {
     // Only declare localAuthorSet once
     const localAuthorSet = new Set();
 
-    const encodeDataValue = (value) =>
-      typeof value === "string" && value.length > 0
-        ? encodeURIComponent(value)
-        : "";
-
     videos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Missing ID or title:", video);
@@ -342,15 +338,17 @@ class SubscriptionsManager {
 
       const safeTitle = window.app?.escapeHTML(video.title) || "Untitled";
       const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
-      const encodedMagnet = encodeDataValue(video.magnet);
-      const encodedUrl = encodeDataValue(video.url);
+      const playbackUrl =
+        typeof video.url === "string" ? video.url : "";
+      const playbackMagnet =
+        typeof video.magnet === "string" ? video.magnet : "";
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <a
             href="${shareUrl}"
             data-video-id="${video.id}"
-            data-play-url="${encodedUrl}"
-            data-play-magnet="${encodedMagnet}"
+            data-play-url=""
+            data-play-magnet=""
             class="block cursor-pointer relative group"
           >
             <div class="ratio-16-9">
@@ -365,8 +363,8 @@ class SubscriptionsManager {
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
               data-video-id="${video.id}"
-              data-play-url="${encodedUrl}"
-              data-play-magnet="${encodedMagnet}"
+              data-play-url=""
+              data-play-magnet=""
             >
               ${safeTitle}
             </h3>
@@ -401,6 +399,14 @@ class SubscriptionsManager {
       const t = document.createElement("template");
       t.innerHTML = cardHtml.trim();
       const cardEl = t.content.firstElementChild;
+      if (cardEl) {
+        const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
+        interactiveEls.forEach((el) => {
+          if (!el.dataset) return;
+          el.dataset.playUrl = playbackUrl || "";
+          el.dataset.playMagnet = playbackMagnet || "";
+        });
+      }
       fragment.appendChild(cardEl);
     });
 
@@ -516,8 +522,13 @@ class SubscriptionsManager {
 
     const trimmedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-    const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
-    const playbackMagnet = trimmedMagnet || trimmedInfoHash;
+    const legacyMagnet = findLegacyMagnetInEvent(evt);
+    const trimmedLegacyMagnet =
+      typeof legacyMagnet === "string" ? legacyMagnet.trim() : "";
+    const trimmedInfoHash =
+      typeof infoHash === "string" ? infoHash.trim() : "";
+    const playbackMagnet =
+      trimmedMagnet || trimmedLegacyMagnet || trimmedInfoHash;
     const parsedVersion =
       typeof version === "number"
         ? version
@@ -571,7 +582,7 @@ class SubscriptionsManager {
       title: resolvedTitle,
       url: trimmedUrl,
       magnet: playbackMagnet,
-      rawMagnet: trimmedMagnet,
+      rawMagnet: trimmedMagnet || trimmedLegacyMagnet,
       infoHash: trimmedInfoHash,
       thumbnail: parsedContent.thumbnail ?? "",
       description: parsedContent.description ?? "",

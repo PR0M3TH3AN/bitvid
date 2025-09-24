@@ -8,6 +8,7 @@ import { isWhitelistEnabled } from "./config.js";
 import {
   deriveTitleFromEvent,
   parseVideoEventPayload,
+  findLegacyMagnetInEvent,
 } from "./videoEventUtils.js";
 
 /**
@@ -244,11 +245,6 @@ async function loadUserVideos(pubkey) {
     const fragment = document.createDocumentFragment();
     const allKnownEventsArray = Array.from(nostrClient.allEvents.values());
 
-    const encodeDataValue = (value) =>
-      typeof value === "string" && value.length > 0
-        ? encodeURIComponent(value)
-        : "";
-
     videos.forEach((video, index) => {
       // Decrypt if user owns a private video
       if (
@@ -349,15 +345,16 @@ async function loadUserVideos(pubkey) {
       const legacyInfoHash =
         typeof video.infoHash === "string" ? video.infoHash.trim() : "";
       const magnetCandidate = trimmedMagnet || legacyInfoHash;
-      const encodedUrl = encodeDataValue(video.url);
-      const encodedMagnet = encodeDataValue(magnetCandidate);
+      const playbackUrl =
+        typeof video.url === "string" ? video.url : "";
+      const playbackMagnet = magnetCandidate || "";
 
       cardEl.innerHTML = `
         <div
           class="cursor-pointer relative group"
           data-video-id="${video.id}"
-          data-play-url="${encodedUrl}"
-          data-play-magnet="${encodedMagnet}"
+          data-play-url=""
+          data-play-magnet=""
         >
           <div class="ratio-16-9">
             <img
@@ -372,8 +369,8 @@ async function loadUserVideos(pubkey) {
             <h3
               class="text-lg font-bold text-white mb-2 line-clamp-2"
               data-video-id="${video.id}"
-              data-play-url="${encodedUrl}"
-              data-play-magnet="${encodedMagnet}"
+              data-play-url=""
+              data-play-magnet=""
             >
               ${safeTitle}
             </h3>
@@ -384,6 +381,13 @@ async function loadUserVideos(pubkey) {
           ${gearMenu}
         </div>
       `;
+
+      const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
+      interactiveEls.forEach((el) => {
+        if (!el.dataset) return;
+        el.dataset.playUrl = playbackUrl || "";
+        el.dataset.playMagnet = playbackMagnet || "";
+      });
 
       fragment.appendChild(cardEl);
     });
@@ -488,8 +492,12 @@ function localConvertEventToVideo(event) {
 
   const trimmedUrl = typeof url === "string" ? url.trim() : "";
   const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+  const legacyMagnet = findLegacyMagnetInEvent(event);
+  const trimmedLegacyMagnet =
+    typeof legacyMagnet === "string" ? legacyMagnet.trim() : "";
   const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
-  const playbackMagnet = trimmedMagnet || trimmedInfoHash;
+  const playbackMagnet =
+    trimmedMagnet || trimmedLegacyMagnet || trimmedInfoHash;
   const parsedVersion =
     typeof version === "number"
       ? version
@@ -533,7 +541,7 @@ function localConvertEventToVideo(event) {
     title: resolvedTitle,
     url: trimmedUrl,
     magnet: playbackMagnet,
-    rawMagnet: trimmedMagnet,
+    rawMagnet: trimmedMagnet || trimmedLegacyMagnet,
     infoHash: trimmedInfoHash,
     thumbnail: parsedContent.thumbnail ?? "",
     description: parsedContent.description ?? "",
