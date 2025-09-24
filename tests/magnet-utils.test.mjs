@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { WSS_TRACKERS } from "../js/constants.js";
 import { normalizeAndAugmentMagnet, safeDecodeMagnet } from "../js/magnetUtils.js";
+import { normalizeAndAugmentMagnet as formNormalize } from "../js/magnet.js";
 
 function getParamValues(magnet, key) {
   const parsed = new URL(magnet);
@@ -108,6 +109,44 @@ function getParamValues(magnet, key) {
     safeDecodeMagnet(rawMagnet),
     rawMagnet,
     "Plain magnet strings should pass through unchanged"
+  );
+})();
+
+(function testFormHelperAugmentsWsXsAndDecodesXt() {
+  const infoHash = "abcdef0123456789abcdef0123456789abcdef01";
+  const encodedMagnet = `magnet:?xt=urn%3Abtih%3A${infoHash}`;
+  const normalized = formNormalize(encodedMagnet, {
+    ws: "https://cdn.example.com/video-base/",
+    xs: "https://cdn.example.com/video.torrent",
+  });
+  const parsed = new URL(normalized);
+  assert.equal(
+    parsed.searchParams.get("xt"),
+    `urn:btih:${infoHash}`,
+    "Form helper should decode encoded xt payloads"
+  );
+  assert.deepEqual(
+    parsed.searchParams.getAll("ws"),
+    ["https://cdn.example.com/video-base/"],
+    "Expected ws hint to be appended"
+  );
+  assert.deepEqual(
+    parsed.searchParams.getAll("xs"),
+    ["https://cdn.example.com/video.torrent"],
+    "Expected xs hint to be appended"
+  );
+})();
+
+(function testFormHelperSkipsInsecureWsOnHttpsOrigin() {
+  const infoHash = "0123456789abcdef0123456789abcdef01234567";
+  const normalized = formNormalize(`magnet:?xt=urn:btih:${infoHash}`, {
+    ws: "http://cdn.example.com/video-base/",
+  });
+  const parsed = new URL(normalized);
+  assert.equal(
+    parsed.searchParams.getAll("ws").length,
+    0,
+    "HTTP ws value should be skipped on HTTPS origins"
   );
 })();
 

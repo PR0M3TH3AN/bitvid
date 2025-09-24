@@ -5,7 +5,8 @@ import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
 import { isWhitelistEnabled } from "./config.js";
-import { normalizeAndAugmentMagnet, safeDecodeMagnet } from "./magnetUtils.js";
+import { safeDecodeMagnet } from "./magnetUtils.js";
+import { normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import {
   initialWhitelist,
@@ -1092,7 +1093,6 @@ class bitvidApp {
     const xs = xsEl?.value.trim() || "";
     const thumbnail = thumbEl?.value.trim() || "";
     const description = descEl?.value.trim() || "";
-    const sanitizedHostedUrl = url;
 
     const formData = {
       version: 2,
@@ -1106,25 +1106,16 @@ class bitvidApp {
     };
 
     if (!formData.title || (!formData.url && !formData.magnet)) {
-      this.showError("Please provide a title and at least one of URL or Magnet.");
+      this.showError(
+        "Please add a title plus either a hosted video URL or a magnet link."
+      );
       return;
     }
 
-    const webSeedCandidates = [];
-    if (ws) {
-      webSeedCandidates.push(ws);
-    }
-    if (sanitizedHostedUrl) {
-      webSeedCandidates.push(sanitizedHostedUrl);
-    }
-
-    const magnetAugmentation = normalizeAndAugmentMagnet(formData.magnet, {
-      webSeed: webSeedCandidates,
-      torrentUrl: xs,
-      logger: (message) => this.log(message),
+    formData.magnet = normalizeAndAugmentMagnet(formData.magnet, {
+      ws,
+      xs,
     });
-
-    formData.magnet = magnetAugmentation.magnet;
 
     try {
       await nostrClient.publishVideo(formData, this.pubkey);
