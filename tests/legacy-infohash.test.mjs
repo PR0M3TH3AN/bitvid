@@ -81,6 +81,24 @@ const LEGACY_INFO_HASH = "0123456789abcdef0123456789abcdef01234567";
   assert.ok(video.title && video.title.length > 0, "Fallback title should be provided");
 })();
 
+(function testConvertRecoversMagnetFromMagnetTag() {
+  const magnetUri =
+    `magnet:?xt=urn:btih:${LEGACY_INFO_HASH}&dn=legacy-tag&tr=wss://tracker.openwebtorrent.com`;
+  const event = {
+    id: "evt-magnet-tag",
+    pubkey: "pk3",
+    created_at: 3,
+    // Deliberately invalid JSON so the converter must rely on scavenging.
+    content: "{not valid json}",
+    tags: [["magnet", magnetUri]],
+  };
+
+  const video = convertEventToVideo(event);
+  assert.equal(video.invalid, false, "Magnet in tag should still be playable");
+  assert.equal(video.magnet, magnetUri);
+  assert.equal(video.rawMagnet, magnetUri);
+})();
+
 (function testPlaybackConfigNormalizesInfoHash() {
   const result = deriveTorrentPlaybackConfig({
     magnet: "",

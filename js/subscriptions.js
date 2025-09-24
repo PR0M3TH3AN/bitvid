@@ -1,10 +1,8 @@
 // js/subscriptions.js
-import { nostrClient } from "./nostr.js";
 import {
-  deriveTitleFromEvent,
-  parseVideoEventPayload,
-  findLegacyMagnetInEvent,
-} from "./videoEventUtils.js";
+  nostrClient,
+  convertEventToVideo as sharedConvertEventToVideo,
+} from "./nostr.js";
 
 /**
  * Manages the user's subscription list (kind=30002) *privately*,
@@ -521,86 +519,7 @@ class SubscriptionsManager {
   }
 
   convertEventToVideo(evt) {
-    const {
-      parsedContent,
-      parseError,
-      title,
-      url,
-      magnet,
-      infoHash,
-      version,
-    } = parseVideoEventPayload(evt);
-
-    const trimmedUrl = typeof url === "string" ? url.trim() : "";
-    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-    const legacyMagnet = findLegacyMagnetInEvent(evt);
-    const trimmedLegacyMagnet =
-      typeof legacyMagnet === "string" ? legacyMagnet.trim() : "";
-    const trimmedInfoHash =
-      typeof infoHash === "string" ? infoHash.trim() : "";
-    const playbackMagnet =
-      trimmedMagnet || trimmedLegacyMagnet || trimmedInfoHash;
-    const parsedVersion =
-      typeof version === "number"
-        ? version
-        : typeof version === "string"
-          ? Number.parseInt(version, 10)
-          : Number.NaN;
-    const numericVersion = Number.isFinite(parsedVersion)
-      ? parsedVersion
-      : 0;
-
-    const hasPlayableSource = Boolean(trimmedUrl) || Boolean(playbackMagnet);
-    if (!hasPlayableSource) {
-      return {
-        id: evt.id,
-        invalid: true,
-        reason: "missing playable source",
-      };
-    }
-
-    const derivedTitle = deriveTitleFromEvent({
-      parsedContent,
-      tags: evt.tags,
-      primaryTitle: title,
-    });
-
-    let resolvedTitle = derivedTitle;
-    if (!resolvedTitle && numericVersion < 2 && playbackMagnet) {
-      resolvedTitle = trimmedInfoHash
-        ? `Legacy Video ${trimmedInfoHash.slice(0, 8)}`
-        : "Legacy BitTorrent Video";
-    }
-
-    if (!resolvedTitle) {
-      return {
-        id: evt.id,
-        invalid: true,
-        reason: parseError
-          ? "missing title (json parse error)"
-          : "missing title",
-      };
-    }
-
-    return {
-      id: evt.id,
-      pubkey: evt.pubkey,
-      created_at: evt.created_at,
-      videoRootId: parsedContent.videoRootId || evt.id,
-      version: numericVersion,
-      deleted: parsedContent.deleted === true,
-      isPrivate: parsedContent.isPrivate ?? false,
-      title: resolvedTitle,
-      url: trimmedUrl,
-      magnet: playbackMagnet,
-      rawMagnet: trimmedMagnet || trimmedLegacyMagnet,
-      infoHash: trimmedInfoHash,
-      thumbnail: parsedContent.thumbnail ?? "",
-      description: parsedContent.description ?? "",
-      mode: parsedContent.mode ?? "live",
-      tags: evt.tags || [],
-      invalid: false,
-    };
+    return sharedConvertEventToVideo(evt);
   }
 
   dedupeToNewestByRoot(videos) {

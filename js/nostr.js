@@ -1,11 +1,12 @@
 // js/nostr.js
 
 import { isDevMode } from "./config.js";
+import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
 import {
   deriveTitleFromEvent,
+  magnetFromText,
   parseVideoEventPayload,
-  findLegacyMagnetInEvent,
 } from "./videoEventUtils.js";
 
 /**
@@ -91,32 +92,82 @@ function inferMimeTypeFromUrl(url) {
 }
 
 /**
- * Convert a raw Nostr event => your "video" object.
- * Accepts legacy (<2) payloads when they expose a usable magnet/info hash.
+ * Convert a raw Nostr event into Bitvid's canonical "video" object.
+ *
+ * The converter intentionally centralises all of the quirky legacy handling so
+ * that feed rendering, subscriptions, and deep links rely on the exact same
+ * rules. Any future regression around magnet-only posts or malformed JSON
+ * should be solved by updating this function (and its tests) instead of
+ * sprinkling ad-hoc checks elsewhere in the UI.
  */
-function convertEventToVideo(event) {
+function convertEventToVideo(event = {}) {
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+
   const {
     parsedContent,
     parseError,
-    title,
-    url,
-    magnet,
+    title: declaredTitle,
+    url: parsedUrl,
+    magnet: parsedMagnet,
     infoHash,
     version,
   } = parseVideoEventPayload(event);
 
-  const trimmedUrl = typeof url === "string" ? url.trim() : "";
-  const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-  const legacyMagnet = findLegacyMagnetInEvent(event);
-  const trimmedLegacyMagnet =
-    typeof legacyMagnet === "string" ? legacyMagnet.trim() : "";
-  const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
-  const playbackMagnet =
-    trimmedMagnet || trimmedLegacyMagnet || trimmedInfoHash;
+  const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
+  const normalizeOptional = (value) => safeTrim(value) || "";
 
   const numericVersion = Number.isFinite(version) ? version : 0;
-  const hasPlayableSource = Boolean(trimmedUrl) || Boolean(playbackMagnet);
+  const normalizedUrl = safeTrim(parsedUrl);
+  const directMagnet = safeTrim(parsedMagnet);
+  const normalizedInfoHash = safeTrim(infoHash).toLowerCase();
 
+  // Legacy Bitvid posts (version < 2) sometimes stored the magnet in free-form
+  // JSON strings or tags. We keep that scavenging behind ACCEPT_LEGACY_V1 so it
+  // can be disabled globally without touching each call-site.
+  let legacyMagnet = "";
+  if (!directMagnet && ACCEPT_LEGACY_V1) {
+    const fromContent = magnetFromText(event.content);
+    if (fromContent) {
+      legacyMagnet = safeTrim(fromContent);
+    }
+
+    if (!legacyMagnet) {
+      for (const tag of tags) {
+        if (!Array.isArray(tag)) {
+          continue;
+        }
+
+        // Specified magnet tags always win.
+        if (safeTrim(tag[0]).toLowerCase() === "magnet" && tag[1]) {
+          const tagValue = magnetFromText(tag[1]) || tag[1];
+          const trimmed = safeTrim(tagValue);
+          if (trimmed) {
+            legacyMagnet = trimmed;
+            break;
+          }
+        }
+
+        // Fall back to scanning the remaining tag values for inline magnets.
+        for (let i = 1; i < tag.length && !legacyMagnet; i += 1) {
+          const candidate = magnetFromText(tag[i]);
+          if (candidate) {
+            legacyMagnet = safeTrim(candidate);
+          }
+        }
+
+        if (legacyMagnet) {
+          break;
+        }
+      }
+    }
+  }
+
+  const magnetCandidate = directMagnet || legacyMagnet;
+  const magnetForPlayback = magnetCandidate
+    || (ACCEPT_LEGACY_V1 ? normalizedInfoHash : "");
+
+  const hasPlayableSource = Boolean(normalizedUrl)
+    || Boolean(magnetForPlayback);
   if (!hasPlayableSource) {
     return {
       id: event.id,
@@ -125,20 +176,25 @@ function convertEventToVideo(event) {
     };
   }
 
-  const derivedTitle = deriveTitleFromEvent({
+  const resolvedTitle = deriveTitleFromEvent({
     parsedContent,
-    tags: event.tags,
-    primaryTitle: title,
+    tags,
+    primaryTitle: declaredTitle,
   });
 
-  let resolvedTitle = derivedTitle;
-  if (!resolvedTitle && numericVersion < 2 && playbackMagnet) {
-    resolvedTitle = trimmedInfoHash
-      ? `Legacy Video ${trimmedInfoHash.slice(0, 8)}`
+  let finalTitle = resolvedTitle;
+  if (
+    !finalTitle &&
+    ACCEPT_LEGACY_V1 &&
+    numericVersion < 2 &&
+    magnetForPlayback
+  ) {
+    finalTitle = normalizedInfoHash
+      ? `Legacy Video ${normalizedInfoHash.slice(0, 8)}`
       : "Legacy BitTorrent Video";
   }
 
-  if (!resolvedTitle) {
+  if (!finalTitle) {
     const reason = parseError
       ? "missing title (json parse error)"
       : "missing title";
@@ -147,21 +203,21 @@ function convertEventToVideo(event) {
 
   return {
     id: event.id,
-    videoRootId: parsedContent.videoRootId || event.id,
+    videoRootId: normalizeOptional(parsedContent.videoRootId) || event.id,
     version: numericVersion,
     isPrivate: parsedContent.isPrivate ?? false,
-    title: resolvedTitle,
-    url: trimmedUrl,
-    magnet: playbackMagnet,
-    rawMagnet: trimmedMagnet || trimmedLegacyMagnet,
-    infoHash: trimmedInfoHash,
-    thumbnail: parsedContent.thumbnail ?? "",
-    description: parsedContent.description ?? "",
-    mode: parsedContent.mode ?? "live",
+    title: finalTitle,
+    url: normalizedUrl,
+    magnet: magnetForPlayback,
+    rawMagnet: directMagnet || (ACCEPT_LEGACY_V1 ? legacyMagnet : ""),
+    infoHash: normalizedInfoHash,
+    thumbnail: normalizeOptional(parsedContent.thumbnail),
+    description: normalizeOptional(parsedContent.description),
+    mode: normalizeOptional(parsedContent.mode) || "live",
     deleted: parsedContent.deleted === true,
     pubkey: event.pubkey,
     created_at: event.created_at,
-    tags: event.tags,
+    tags,
     invalid: false,
   };
 }
@@ -332,14 +388,14 @@ class NostrClient {
     const contentObject = {
       videoRootId,
       version: 2, // forcibly set version=2
-      deleted: false,
-      isPrivate: videoData.isPrivate ?? false,
       title: finalTitle,
       url: finalUrl,
       magnet: finalMagnet,
       thumbnail: finalThumbnail,
       description: finalDescription,
       mode: videoData.mode || "live",
+      deleted: false,
+      isPrivate: videoData.isPrivate ?? false,
     };
 
     const event = {

@@ -255,7 +255,7 @@ export function parseVideoEventPayload(event = {}) {
   };
 }
 
-function magnetFromText(value) {
+export function magnetFromText(value) {
   if (typeof value !== "string") {
     return "";
   }
