@@ -24,6 +24,7 @@ const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+const MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
 
 /**
  * Basic validation for BitTorrent magnet URIs.
@@ -278,6 +279,7 @@ class bitvidApp {
     this.creatorNpub = null;
     this.copyMagnetBtn = null;
     this.shareBtn = null;
+    this.modalPosterCleanup = null;
 
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
@@ -577,9 +579,40 @@ class bitvidApp {
       this.playerModal.style.display = "flex";
       this.playerModal.classList.remove("hidden");
     }
-    if (this.modalVideo) {
-      this.modalVideo.poster = "assets/gif/please-stand-by.gif";
+    this.applyModalLoadingPoster();
+  }
+
+  applyModalLoadingPoster() {
+    if (!this.modalVideo) {
+      return;
     }
+
+    if (typeof this.modalPosterCleanup === "function") {
+      this.modalPosterCleanup();
+      this.modalPosterCleanup = null;
+    }
+
+    const videoEl = this.modalVideo;
+
+    const clearPoster = () => {
+      videoEl.removeEventListener("loadeddata", clearPoster);
+      videoEl.removeEventListener("playing", clearPoster);
+      this.modalPosterCleanup = null;
+      videoEl.poster = "";
+      if (videoEl.hasAttribute("poster")) {
+        videoEl.removeAttribute("poster");
+      }
+    };
+
+    videoEl.addEventListener("loadeddata", clearPoster);
+    videoEl.addEventListener("playing", clearPoster);
+
+    videoEl.poster = MODAL_LOADING_POSTER;
+
+    this.modalPosterCleanup = () => {
+      videoEl.removeEventListener("loadeddata", clearPoster);
+      videoEl.removeEventListener("playing", clearPoster);
+    };
   }
 
   /**
@@ -1328,6 +1361,14 @@ class bitvidApp {
     if (this.playerModal) {
       this.playerModal.style.display = "none";
       this.playerModal.classList.add("hidden");
+    }
+    if (typeof this.modalPosterCleanup === "function") {
+      this.modalPosterCleanup();
+      this.modalPosterCleanup = null;
+    }
+    if (this.modalVideo) {
+      this.modalVideo.poster = "";
+      this.modalVideo.removeAttribute("poster");
     }
     this.currentMagnetUri = null;
 
