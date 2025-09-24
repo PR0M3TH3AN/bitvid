@@ -400,6 +400,9 @@ class SubscriptionsManager {
       t.innerHTML = cardHtml.trim();
       const cardEl = t.content.firstElementChild;
       if (cardEl) {
+        // Leave the data-play-* attributes empty in the literal markup so we can
+        // assign the raw URL/magnet strings post-parsing without HTML entity
+        // escaping, mirroring the approach in app.js.
         const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
         interactiveEls.forEach((el) => {
           if (!el.dataset) return;

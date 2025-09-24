@@ -382,6 +382,9 @@ async function loadUserVideos(pubkey) {
         </div>
       `;
 
+      // Leave the data-play-* attributes empty in the template markup so the raw
+      // URL/magnet strings can be assigned after parsing without HTML entity
+      // escaping, keeping this renderer consistent with app.js.
       const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
       interactiveEls.forEach((el) => {
         if (!el.dataset) return;
