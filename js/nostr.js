@@ -5,6 +5,7 @@ import { accessControl } from "./accessControl.js";
 import {
   deriveTitleFromEvent,
   parseVideoEventPayload,
+  findLegacyMagnetInEvent,
 } from "./videoEventUtils.js";
 
 /**
@@ -106,8 +107,12 @@ function convertEventToVideo(event) {
 
   const trimmedUrl = typeof url === "string" ? url.trim() : "";
   const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+  const legacyMagnet = findLegacyMagnetInEvent(event);
+  const trimmedLegacyMagnet =
+    typeof legacyMagnet === "string" ? legacyMagnet.trim() : "";
   const trimmedInfoHash = typeof infoHash === "string" ? infoHash.trim() : "";
-  const playbackMagnet = trimmedMagnet || trimmedInfoHash;
+  const playbackMagnet =
+    trimmedMagnet || trimmedLegacyMagnet || trimmedInfoHash;
 
   const numericVersion = Number.isFinite(version) ? version : 0;
   const hasPlayableSource = Boolean(trimmedUrl) || Boolean(playbackMagnet);
@@ -148,7 +153,7 @@ function convertEventToVideo(event) {
     title: resolvedTitle,
     url: trimmedUrl,
     magnet: playbackMagnet,
-    rawMagnet: trimmedMagnet,
+    rawMagnet: trimmedMagnet || trimmedLegacyMagnet,
     infoHash: trimmedInfoHash,
     thumbnail: parsedContent.thumbnail ?? "",
     description: parsedContent.description ?? "",
