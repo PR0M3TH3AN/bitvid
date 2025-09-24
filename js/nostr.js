@@ -220,6 +220,11 @@ class NostrClient {
     }
   }
 
+  // We subscribe to kind `0` purely as a liveness probe because almost every
+  // relay can answer it quickly. Either an `event` or `eose` signals success,
+  // while the 5s timer guards against relays that never respond. We immediately
+  // `unsub` to avoid leaking subscriptions. Note: any future change must still
+  // provide a lightweight readiness check with similar timeout semantics.
   async connectToRelays() {
     return Promise.all(
       this.relays.map(
