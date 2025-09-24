@@ -92,7 +92,15 @@ export class TorrentClient {
         throw new Error("Service Worker not supported or disabled");
       }
 
-      // Brave-specific logic
+      // Brave-specific logic: Brave Shields has a long-standing bug where
+      // stale service worker registrations linger even after we ship fixes.
+      // When that happens, the outdated worker keeps intercepting requests
+      // and WebTorrent fails to spin up, leaving playback broken until the
+      // user manually nukes the registration. To guarantee a clean slate we
+      // blanket-unregister every worker, then pause briefly so Brave can
+      // finish tearing down the old instance before we register the fresh
+      // one again. That delay is intentional—future tweaks should not shorten
+      // or remove it without understanding the regression risk.
       if (isBraveBrowser) {
         this.log("Checking Brave configuration...");
         if (!navigator.serviceWorker) {
