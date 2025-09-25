@@ -2180,9 +2180,9 @@ class bitvidApp {
         : status === "offline"
         ? "❌ CDN"
         : status === "unknown"
-        ? "⚠️ Hosted URL reachable (CORS restricted)"
+        ? "⚠️ CDN"
         : status === "timeout"
-        ? "⚠️ Hosted URL check timed out"
+        ? "⚠️ CDN timed out"
         : "Checking hosted URL…");
 
     badgeEl.dataset.urlHealthState = status;
@@ -2276,12 +2276,12 @@ class bitvidApp {
         } else if (outcome === "opaque") {
           entry = {
             status: "unknown",
-            message: "⚠️ Hosted URL reachable (CORS restricted)",
+            message: "⚠️ CDN",
           };
         } else if (outcome === "timeout") {
           entry = {
             status: "timeout",
-            message: "⚠️ Hosted URL check timed out",
+            message: "⚠️ CDN timed out",
           };
         } else {
           entry = {
