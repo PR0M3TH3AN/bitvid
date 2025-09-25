@@ -5,7 +5,7 @@ import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
 import {
   deriveTitleFromEvent,
-  findLegacyMagnetInEvent,
+  magnetFromText,
   parseVideoEventPayload,
 } from "./videoEventUtils.js";
 
@@ -101,6 +101,10 @@ function inferMimeTypeFromUrl(url) {
  * sprinkling ad-hoc checks elsewhere in the UI.
  */
 function convertEventToVideo(event = {}) {
+  const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
+  const normalizeOptional = (value) => safeTrim(value) || "";
+
+  const rawContent = typeof event.content === "string" ? event.content : "";
   const tags = Array.isArray(event.tags) ? event.tags : [];
 
   const {
@@ -113,32 +117,60 @@ function convertEventToVideo(event = {}) {
     version,
   } = parseVideoEventPayload(event);
 
-  const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
-  const normalizeOptional = (value) => safeTrim(value) || "";
-
-  const numericVersion = Number.isFinite(version) ? version : 0;
   const normalizedUrl = safeTrim(parsedUrl);
   const directMagnet = safeTrim(parsedMagnet);
-  const normalizedInfoHash = safeTrim(infoHash).toLowerCase();
+  const parsedInfoHash = safeTrim(infoHash).toLowerCase();
 
-  // Legacy Bitvid posts (version < 2) sometimes stored the magnet in free-form
-  // JSON strings or tags. We keep that scavenging behind ACCEPT_LEGACY_V1 so it
-  // can be disabled globally without touching each call-site.
-  const legacyMagnet =
-    !directMagnet && ACCEPT_LEGACY_V1
-      ? safeTrim(findLegacyMagnetInEvent(event))
-      : "";
+  let recoveredMagnet = "";
+  if (!directMagnet && ACCEPT_LEGACY_V1) {
+    // Legacy v1 payloads frequently stuffed the magnet into arbitrary JSON
+    // strings. Inspect the raw content before JSON parsing so malformed
+    // payloads (or intentionally non-JSON legacy notes) still surface a magnet.
+    const inlineMagnet = magnetFromText(rawContent);
+    if (inlineMagnet) {
+      recoveredMagnet = safeTrim(inlineMagnet);
+    }
 
-  // Prefer the structured magnet from the payload; otherwise accept the
-  // scavenged legacy value. As a last resort we promote the recovered info hash
-  // so downstream callers can rebuild a usable magnet URI during playback.
-  const magnetCandidate = directMagnet || legacyMagnet;
-  const magnetForPlayback =
-    magnetCandidate || (ACCEPT_LEGACY_V1 ? normalizedInfoHash : "");
+    if (!recoveredMagnet) {
+      // Older clients also placed magnets into tags, sometimes under a literal
+      // ["magnet", ...] tuple and other times hidden in auxiliary values. The
+      // scavenger walks each tag to retain those posts while keeping the logic
+      // behind ACCEPT_LEGACY_V1 for easy rollback.
+      for (const tag of tags) {
+        if (!Array.isArray(tag) || tag.length === 0) {
+          continue;
+        }
 
-  const hasPlayableSource = Boolean(normalizedUrl)
-    || Boolean(magnetForPlayback);
-  if (!hasPlayableSource) {
+        const key = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+        if (key === "magnet" && typeof tag[1] === "string") {
+          const tagMagnet = magnetFromText(tag[1]) || tag[1];
+          const trimmed = safeTrim(tagMagnet);
+          if (trimmed) {
+            recoveredMagnet = trimmed;
+            break;
+          }
+        }
+
+        for (let i = 1; i < tag.length && !recoveredMagnet; i += 1) {
+          const candidate = magnetFromText(tag[i]);
+          if (candidate) {
+            recoveredMagnet = safeTrim(candidate);
+          }
+        }
+
+        if (recoveredMagnet) {
+          break;
+        }
+      }
+    }
+  }
+
+  const magnetCandidate = directMagnet || recoveredMagnet;
+  const normalizedMagnet = safeTrim(magnetCandidate);
+  const fallbackInfoHash = ACCEPT_LEGACY_V1 ? parsedInfoHash : "";
+  const magnetForPlayback = normalizedMagnet || fallbackInfoHash;
+
+  if (!normalizedUrl && !magnetForPlayback) {
     return {
       id: event.id,
       invalid: true,
@@ -146,21 +178,38 @@ function convertEventToVideo(event = {}) {
     };
   }
 
-  const resolvedTitle = deriveTitleFromEvent({
+  const deriveInfoHash = () => {
+    // Prefer the structured info hash found during payload parsing so the UI
+    // can surface it directly and playbackUtils can promote it to a magnet.
+    if (parsedInfoHash) {
+      return parsedInfoHash;
+    }
+    const source = normalizedMagnet || "";
+    if (!source) {
+      return "";
+    }
+    // When only a magnet string exists we still try to recover the info hash
+    // because downstream helpers display a friendlier fallback title and can
+    // rebuild a magnet URI if the original string gets mangled later on.
+    const match = source.match(/xt=urn:btih:([0-9a-z]+)/i);
+    if (match && match[1]) {
+      return match[1].toLowerCase();
+    }
+    return "";
+  };
+
+  const resolvedInfoHash = deriveInfoHash();
+
+  const derivedTitle = deriveTitleFromEvent({
     parsedContent,
     tags,
     primaryTitle: declaredTitle,
   });
 
-  let finalTitle = resolvedTitle;
-  if (
-    !finalTitle &&
-    ACCEPT_LEGACY_V1 &&
-    numericVersion < 2 &&
-    magnetForPlayback
-  ) {
-    finalTitle = normalizedInfoHash
-      ? `Legacy Video ${normalizedInfoHash.slice(0, 8)}`
+  let finalTitle = derivedTitle;
+  if (!finalTitle && ACCEPT_LEGACY_V1 && magnetForPlayback) {
+    finalTitle = resolvedInfoHash
+      ? `Legacy Video ${resolvedInfoHash.slice(0, 8)}`
       : "Legacy BitTorrent Video";
   }
 
@@ -171,6 +220,16 @@ function convertEventToVideo(event = {}) {
     return { id: event.id, invalid: true, reason };
   }
 
+  let numericVersion = 0;
+  if (typeof version === "number" && Number.isFinite(version)) {
+    numericVersion = version;
+  } else if (typeof version === "string") {
+    const parsedVersion = Number(version);
+    if (Number.isFinite(parsedVersion)) {
+      numericVersion = parsedVersion;
+    }
+  }
+
   return {
     id: event.id,
     videoRootId: normalizeOptional(parsedContent.videoRootId) || event.id,
@@ -179,8 +238,8 @@ function convertEventToVideo(event = {}) {
     title: finalTitle,
     url: normalizedUrl,
     magnet: magnetForPlayback,
-    rawMagnet: directMagnet || (ACCEPT_LEGACY_V1 ? legacyMagnet : ""),
-    infoHash: normalizedInfoHash,
+    rawMagnet: directMagnet || (ACCEPT_LEGACY_V1 ? recoveredMagnet : ""),
+    infoHash: resolvedInfoHash,
     thumbnail: normalizeOptional(parsedContent.thumbnail),
     description: normalizeOptional(parsedContent.description),
     mode: normalizeOptional(parsedContent.mode) || "live",
