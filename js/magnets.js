@@ -1,4 +1,4 @@
-import parseMagnet from "https://esm.sh/magnet-uri@9.1.2";
+import parseMagnet from "https://esm.sh/magnet-uri@7.0.7";
 
 function normalizeInfoHash(candidate) {
   const trimmed = typeof candidate === "string" ? candidate.trim() : "";
