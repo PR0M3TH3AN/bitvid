@@ -2,6 +2,33 @@
 
 import { trackPageView } from "./analytics.js";
 
+const INTERFACE_FADE_IN_ANIMATION = "interface-fade-in";
+
+const handleInterfaceFadeInComplete = (event) => {
+  const { animationName, target } = event;
+  if (animationName !== INTERFACE_FADE_IN_ANIMATION) {
+    return;
+  }
+
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  if (!target.classList.contains("fade-in")) {
+    return;
+  }
+
+  target.classList.remove("fade-in");
+  Array.from(target.classList).forEach((className) => {
+    if (className.startsWith("fade-in-delay-")) {
+      target.classList.remove(className);
+    }
+  });
+};
+
+document.addEventListener("animationend", handleInterfaceFadeInComplete, true);
+document.addEventListener("animationcancel", handleInterfaceFadeInComplete, true);
+
 // 1) Load modals (login, application, etc.)
 async function loadModal(url) {
   try {
