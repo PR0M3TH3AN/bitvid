@@ -135,6 +135,13 @@ function getParamValues(magnet, key) {
     ["https://cdn.example.com/video.torrent"],
     "Expected xs hint to be appended"
   );
+  const trackers = parsed.searchParams.getAll("tr");
+  for (const tracker of WSS_TRACKERS) {
+    assert.ok(
+      trackers.includes(tracker),
+      `Expected helper to append tracker ${tracker}`
+    );
+  }
 })();
 
 (function testFormHelperSkipsInsecureWsOnHttpsOrigin() {
