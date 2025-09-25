@@ -48,7 +48,8 @@ export class TorrentClient {
       // transient controller drop (e.g. Chrome devtools unregister/reload) does
       // not resurrect the grey-screen regression mentioned in
       // waitForActiveController().
-      await this.waitForActiveController();
+      this.requestClientsClaim(this.swRegistration);
+      await this.waitForActiveController(this.swRegistration);
     }
   }
 
@@ -99,7 +100,31 @@ export class TorrentClient {
    * the controller during navigation. Future refactors **must not** remove this
    * guard — wait for `controllerchange` whenever `controller` is still null.
    */
-  async waitForActiveController() {
+  requestClientsClaim(registration = this.swRegistration) {
+    if (!("serviceWorker" in navigator)) {
+      return;
+    }
+
+    try {
+      const activeWorker = registration?.active;
+      if (!activeWorker) {
+        return;
+      }
+
+      // Some Chromium builds require an explicit startMessages() call before a
+      // yet-to-claim worker will accept postMessage traffic. Calling it is a
+      // harmless no-op elsewhere.
+      if (navigator.serviceWorker.startMessages) {
+        navigator.serviceWorker.startMessages();
+      }
+
+      activeWorker.postMessage({ type: "ENSURE_CLIENTS_CLAIM" });
+    } catch (err) {
+      this.log("Failed to request clients.claim():", err);
+    }
+  }
+
+  async waitForActiveController(registration = this.swRegistration) {
     if (!("serviceWorker" in navigator)) {
       return null;
     }
@@ -108,30 +133,69 @@ export class TorrentClient {
       return navigator.serviceWorker.controller;
     }
 
-    return new Promise((resolve, reject) => {
-      const onControllerChange = () => {
-        if (navigator.serviceWorker.controller) {
-          clearTimeout(timeout);
-          navigator.serviceWorker.removeEventListener(
-            "controllerchange",
-            onControllerChange
-          );
-          resolve(navigator.serviceWorker.controller);
-        }
-      };
+    this.requestClientsClaim(registration);
 
-      const timeout = setTimeout(() => {
+    return new Promise((resolve, reject) => {
+      let timeoutId = null;
+      let pollId = null;
+
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (pollId) {
+          clearInterval(pollId);
+          pollId = null;
+        }
         navigator.serviceWorker.removeEventListener(
           "controllerchange",
           onControllerChange
         );
+      };
+
+      const maybeResolve = () => {
+        const controller = navigator.serviceWorker.controller;
+        if (controller) {
+          cleanup();
+          resolve(controller);
+          return true;
+        }
+        return false;
+      };
+
+      const onControllerChange = () => {
+        if (maybeResolve()) {
+          return;
+        }
+        // If we received a controllerchange event but still don't have a
+        // controller it usually means the new worker hasn't claimed this page
+        // yet. Ask it again to be safe.
+        this.requestClientsClaim(registration);
+      };
+
+      timeoutId = setTimeout(() => {
+        cleanup();
         reject(new Error("Service worker controller claim timeout"));
       }, this.TIMEOUT_DURATION);
+
+      pollId = setInterval(() => {
+        if (maybeResolve()) {
+          return;
+        }
+        this.requestClientsClaim(registration);
+      }, 500);
 
       navigator.serviceWorker.addEventListener(
         "controllerchange",
         onControllerChange
       );
+
+      // One last check in case the controller appeared between the earlier
+      // synchronous guard and the promise wiring above.
+      if (!maybeResolve()) {
+        this.requestClientsClaim(registration);
+      }
     });
   }
 
@@ -222,10 +286,15 @@ export class TorrentClient {
         throw new Error("Service worker not active after ready state");
       }
 
+      // Give the newly activated worker an explicit nudge to claim the page
+      // before we continue. This keeps Chromium's occasionally sluggish claim
+      // hand-offs from derailing the subsequent wait below.
+      this.requestClientsClaim(registration);
+
       // See waitForActiveController() docstring for why this must remain in
       // place. We intentionally wait here instead of racing with playback so a
       // newly installed worker claims the page before WebTorrent spins up.
-      await this.waitForActiveController();
+      await this.waitForActiveController(registration);
 
       // Force the SW to check for updates
       registration.update();
