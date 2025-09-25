@@ -6,6 +6,7 @@ import {
 } from "./nostr.js";
 import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
+import { attachHealthBadges } from "./gridHealth.js";
 import { initialBlacklist, initialWhitelist } from "./lists.js";
 import { isWhitelistEnabled } from "./config.js";
 
@@ -350,6 +351,7 @@ async function loadUserVideos(pubkey) {
 
       const cardEl = document.createElement("div");
       cardEl.classList.add(
+        "video-card",
         "bg-gray-900",
         "rounded-lg",
         "overflow-hidden",
@@ -361,18 +363,22 @@ async function loadUserVideos(pubkey) {
 
       const rawMagnet =
         typeof video.magnet === "string" ? video.magnet : "";
+      const trimmedMagnet = rawMagnet ? rawMagnet.trim() : "";
       const legacyInfoHash =
         typeof video.infoHash === "string" ? video.infoHash.trim() : "";
       const playbackUrl =
         typeof video.url === "string" ? video.url : "";
       const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
-      const playbackMagnet = rawMagnet || legacyInfoHash || "";
+      const playbackMagnet = trimmedMagnet || legacyInfoHash || "";
+      const magnetProvided = playbackMagnet.length > 0;
       const magnetSupported = app.isMagnetUriSupported(playbackMagnet);
+      const showUnsupportedTorrentBadge =
+        !trimmedUrl && magnetProvided && !magnetSupported;
       const urlBadgeHtml = trimmedUrl
         ? app.getUrlHealthPlaceholderMarkup({ includeMargin: false })
         : "";
       const torrentHealthBadgeHtml =
-        magnetSupported && playbackMagnet
+        magnetSupported && magnetProvided
           ? app.getTorrentHealthBadgeMarkup({ includeMargin: false })
           : "";
       const connectionBadgesHtml =
@@ -420,6 +426,20 @@ async function loadUserVideos(pubkey) {
         </div>
       `;
 
+      if (showUnsupportedTorrentBadge) {
+        cardEl.dataset.torrentSupported = "false";
+      } else if (magnetProvided && magnetSupported) {
+        cardEl.dataset.torrentSupported = "true";
+      } else if (cardEl.dataset.torrentSupported) {
+        delete cardEl.dataset.torrentSupported;
+      }
+
+      if (magnetProvided) {
+        cardEl.dataset.magnet = playbackMagnet;
+      } else if (cardEl.dataset.magnet) {
+        delete cardEl.dataset.magnet;
+      }
+
       // Leave the data-play-* attributes empty in the template markup so the raw
       // URL/magnet strings can be assigned after parsing without HTML entity
       // escaping, keeping this renderer consistent with app.js. The stored URL is
@@ -437,6 +457,11 @@ async function loadUserVideos(pubkey) {
         }
 
         el.dataset.playMagnet = playbackMagnet || "";
+        if (magnetProvided) {
+          el.dataset.torrentSupported = magnetSupported ? "true" : "false";
+        } else if (el.dataset.torrentSupported) {
+          delete el.dataset.torrentSupported;
+        }
       });
 
       if (trimmedUrl) {
@@ -454,6 +479,8 @@ async function loadUserVideos(pubkey) {
     });
 
     container.appendChild(fragment);
+
+    attachHealthBadges(container);
 
     window.app.videoList = container;
     window.app.attachVideoListHandler();
