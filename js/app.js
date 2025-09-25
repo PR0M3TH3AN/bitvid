@@ -27,6 +27,7 @@ const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 // We probe hosted URLs often enough that a naive implementation would spam
 // remote CDNs. A medium-lived cache (roughly 45 minutes) keeps us from
@@ -37,6 +38,19 @@ const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
 const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
+
+function removeTrackingScripts(root) {
+  if (!root || typeof root.querySelectorAll !== "function") {
+    return;
+  }
+
+  root.querySelectorAll("script[src]").forEach((script) => {
+    const src = script.getAttribute("src") || "";
+    if (TRACKING_SCRIPT_PATTERN.test(src)) {
+      script.remove();
+    }
+  });
+}
 
 function getUrlHealthStorageKey(eventId) {
   return `${URL_HEALTH_STORAGE_PREFIX}${eventId}`;
@@ -415,6 +429,7 @@ class bitvidApp {
 
     // Lazy-loading helper for images
     this.mediaLoader = new MediaLoader();
+    this.loadedThumbnails = new Map();
     this.activeIntervals = [];
     this.urlPlaybackWatchdogCleanup = null;
 
@@ -618,6 +633,7 @@ class bitvidApp {
       // Instead of overwriting, we append a new DIV with the fetched HTML
       const wrapper = document.createElement("div");
       wrapper.innerHTML = html; // set the markup
+      removeTrackingScripts(wrapper);
       modalContainer.appendChild(wrapper); // append the markup
 
       // Now we can safely find elements inside:
@@ -859,6 +875,7 @@ class bitvidApp {
       // Append the upload modal markup
       const wrapper = document.createElement("div");
       wrapper.innerHTML = html;
+      removeTrackingScripts(wrapper);
       modalContainer.appendChild(wrapper);
 
       // Grab references
@@ -911,6 +928,7 @@ class bitvidApp {
       }
       const wrapper = document.createElement("div");
       wrapper.innerHTML = html;
+      removeTrackingScripts(wrapper);
       modalContainer.appendChild(wrapper);
 
       // Now references
@@ -2088,6 +2106,20 @@ class bitvidApp {
 
     const dedupedVideos = this.dedupeVideosByRoot(videos);
 
+    if (this.loadedThumbnails && this.loadedThumbnails.size) {
+      const activeIds = new Set();
+      dedupedVideos.forEach((video) => {
+        if (video && typeof video.id === "string" && video.id) {
+          activeIds.add(video.id);
+        }
+      });
+      Array.from(this.loadedThumbnails.keys()).forEach((videoId) => {
+        if (!activeIds.has(videoId)) {
+          this.loadedThumbnails.delete(videoId);
+        }
+      });
+    }
+
     // 1) If no videos
     if (!dedupedVideos.length) {
       if (this.lastRenderedVideoSignature === EMPTY_VIDEO_LIST_SIGNATURE) {
@@ -2233,6 +2265,36 @@ class bitvidApp {
         ? this.getUrlHealthPlaceholderMarkup()
         : "";
 
+      const rawThumbnail =
+        typeof video.thumbnail === "string" ? video.thumbnail.trim() : "";
+      const escapedThumbnail = rawThumbnail
+        ? this.escapeHTML(rawThumbnail)
+        : "";
+      const previouslyLoadedThumbnail =
+        this.loadedThumbnails.get(video.id) || "";
+      const shouldLazyLoadThumbnail =
+        escapedThumbnail && previouslyLoadedThumbnail !== escapedThumbnail;
+      const thumbnailAttrLines = ["data-video-thumbnail=\"true\""];
+      if (shouldLazyLoadThumbnail) {
+        thumbnailAttrLines.push(
+          `src=\"${FALLBACK_THUMBNAIL_SRC}\"`,
+          `data-fallback-src=\"${FALLBACK_THUMBNAIL_SRC}\"`,
+          `data-lazy=\"${escapedThumbnail}\"`,
+          'loading="lazy"',
+          'decoding="async"'
+        );
+      } else {
+        thumbnailAttrLines.push(
+          `src=\"${escapedThumbnail || FALLBACK_THUMBNAIL_SRC}\"`,
+          `data-fallback-src=\"${FALLBACK_THUMBNAIL_SRC}\"`,
+          'loading="lazy"',
+          'decoding="async"'
+        );
+      }
+      thumbnailAttrLines.push(
+        `alt=\"${this.escapeHTML(video.title)}\"`
+      );
+
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <!-- The clickable link to play video -->
@@ -2246,10 +2308,7 @@ class bitvidApp {
           >
             <div class="ratio-16-9">
               <img
-                src="${FALLBACK_THUMBNAIL_SRC}"
-                data-fallback-src="${FALLBACK_THUMBNAIL_SRC}"
-                data-lazy="${this.escapeHTML(video.thumbnail)}"
-                alt="${this.escapeHTML(video.title)}"
+                ${thumbnailAttrLines.join("\n                ")}
               />
             </div>
           </a>
@@ -2299,6 +2358,30 @@ class bitvidApp {
       template.innerHTML = cardHtml.trim();
       const cardEl = template.content.firstElementChild;
       if (cardEl) {
+        const thumbnailEl = cardEl.querySelector("[data-video-thumbnail]");
+        if (thumbnailEl) {
+          const handleThumbnailLoad = () => {
+            if (!thumbnailEl.dataset.thumbnailFailed && escapedThumbnail) {
+              this.loadedThumbnails.set(video.id, escapedThumbnail);
+            }
+          };
+          const handleThumbnailError = () => {
+            if (
+              escapedThumbnail &&
+              this.loadedThumbnails.get(video.id) === escapedThumbnail
+            ) {
+              this.loadedThumbnails.delete(video.id);
+            }
+          };
+
+          thumbnailEl.addEventListener("load", handleThumbnailLoad, {
+            once: true,
+          });
+          thumbnailEl.addEventListener("error", handleThumbnailError, {
+            once: true,
+          });
+        }
+
         if (showUnsupportedTorrentBadge) {
           cardEl.dataset.torrentSupported = "false";
         } else if (magnetProvided && magnetSupported) {
