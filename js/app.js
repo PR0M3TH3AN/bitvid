@@ -2153,11 +2153,22 @@ class bitvidApp {
   }
 
   updateUrlHealthBadge(badgeEl, state, videoId) {
-    if (!badgeEl || !badgeEl.isConnected) {
+    if (!badgeEl) {
       return;
     }
 
     if (videoId && badgeEl.dataset.urlHealthFor && badgeEl.dataset.urlHealthFor !== videoId) {
+      return;
+    }
+
+    if (!badgeEl.isConnected) {
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          if (badgeEl.isConnected) {
+            this.updateUrlHealthBadge(badgeEl, state, videoId);
+          }
+        });
+      }
       return;
     }
 
