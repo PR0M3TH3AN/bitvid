@@ -8,6 +8,7 @@ import { isWhitelistEnabled } from "./config.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
 import { normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
+import { URL_FIRST_ENABLED } from "./constants.js";
 import {
   initialWhitelist,
   initialBlacklist,
@@ -2184,61 +2185,37 @@ class bitvidApp {
     }
   }
 
-  async playHttp(url, { fallbackMagnet = "", fallbackRawMagnet = "" } = {}) {
-    if (!this.modalVideo) {
-      throw new Error("No modal video element available for playback.");
+  async playHttp(videoEl, url) {
+    const target = videoEl || this.modalVideo;
+    if (!target) {
+      throw new Error("No video element available for direct playback.");
     }
 
-    const normalizedFallback = isValidMagnetUri(fallbackMagnet)
-      ? fallbackMagnet.trim()
-      : "";
-    const rawFallback = isValidMagnetUri(fallbackRawMagnet)
-      ? fallbackRawMagnet.trim()
-      : "";
-
-    this.resetTorrentStats();
-
-    if (this.modalStatus) {
-      this.modalStatus.textContent = "Loading video...";
+    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+    if (!sanitizedUrl) {
+      throw new Error("No URL provided for direct playback.");
     }
 
-    const markUrlReady = () => {
-      if (this.modalStatus) {
-        this.modalStatus.textContent = "Streaming from URL";
+    target.src = sanitizedUrl;
+    target.load();
+
+    try {
+      await target.play();
+    } catch (err) {
+      this.log("Direct URL autoplay failed:", err);
+      if (!target.muted) {
+        this.log("Retrying direct playback with muted audio.");
+        target.muted = true;
+        try {
+          await target.play();
+        } catch (mutedErr) {
+          this.log("Muted direct playback also failed:", mutedErr);
+          throw mutedErr;
+        }
+      } else {
+        throw err;
       }
-      // Defensive clear so the loading GIF never lingers if browsers skip
-      // firing `playing` (some autoplay policies do this).
-      this.forceRemoveModalPoster("http-loadeddata");
-    };
-
-    this.modalVideo.addEventListener("loadeddata", markUrlReady, {
-      once: true,
-    });
-
-    if (normalizedFallback) {
-      this.modalVideo.addEventListener(
-        "error",
-        async () => {
-          this.log("HTTP playback failed, falling back to WebTorrent.");
-          if (this.modalStatus) {
-            this.modalStatus.textContent = "Switching to WebTorrent...";
-          }
-          try {
-            await this.playViaWebTorrent(normalizedFallback, {
-              fallbackMagnet: rawFallback,
-            });
-            this.autoplayModalVideo();
-          } catch (torrentErr) {
-            console.error("WebTorrent fallback failed:", torrentErr);
-            this.showError("Unable to play this video.");
-          }
-        },
-        { once: true }
-      );
     }
-
-    this.modalVideo.src = url;
-    this.modalVideo.load();
   }
 
   async playViaWebTorrent(magnet, { fallbackMagnet = "" } = {}) {
@@ -2327,21 +2304,12 @@ class bitvidApp {
    * Unified playback helper that prefers HTTP URL sources
    * and falls back to WebTorrent when needed.
    */
-  async playVideoWithFallback({
-    url = "",
-    magnet = "",
-    infoHash = "",
-    title = "",
-    description = "",
-  } = {}) {
+  async playVideoWithFallback({ url = "", magnet = "" } = {}) {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
-    const trimmedInfoHash =
-      typeof infoHash === "string" ? infoHash.trim().toLowerCase() : "";
 
     const playbackConfig = deriveTorrentPlaybackConfig({
       magnet: trimmedMagnet,
-      infoHash: trimmedInfoHash,
       url: sanitizedUrl,
       logger: (message) => this.log(message),
     });
@@ -2370,6 +2338,8 @@ class bitvidApp {
         throw new Error("Video element is not ready for playback.");
       }
 
+      this.showModalWithPoster();
+
       if (this.modalStatus) {
         this.modalStatus.textContent = "Preparing video...";
       }
@@ -2390,6 +2360,7 @@ class bitvidApp {
       this.modalVideo.load();
 
       this.resetTorrentStats();
+      this.playSource = null;
 
       if (magnetForPlayback) {
         const label = playbackConfig.didMutate
@@ -2398,32 +2369,107 @@ class bitvidApp {
         this.log(`${label} ${magnetForPlayback}`);
       }
 
-      let urlPlayable = false;
-      if (sanitizedUrl) {
-        urlPlayable = await this.probeUrl(sanitizedUrl);
-      }
+      const startTorrentPlayback = async (reason) => {
+        if (reason) {
+          this.log(reason);
+        }
 
-      if (urlPlayable) {
-        await this.playHttp(sanitizedUrl, {
-          fallbackMagnet: magnetForPlayback,
-          fallbackRawMagnet: fallbackMagnet,
-        });
-      } else if (magnetForPlayback) {
+        if (!magnetForPlayback) {
+          const message =
+            magnetProvided && !magnetForPlayback
+              ? UNSUPPORTED_BTITH_MESSAGE
+              : "No playable source provided.";
+          if (this.modalStatus) {
+            this.modalStatus.textContent = message;
+          }
+          this.playSource = null;
+          this.showError(message);
+          return false;
+        }
+
+        this.modalVideo.pause();
+        this.modalVideo.src = "";
+        this.modalVideo.removeAttribute("src");
+        this.modalVideo.srcObject = null;
+        this.modalVideo.load();
+
         await this.playViaWebTorrent(magnetForPlayback, {
           fallbackMagnet,
         });
-      } else {
-        const message = magnetProvided && !magnetForPlayback
-          ? UNSUPPORTED_BTITH_MESSAGE
-          : "No playable source available.";
-        if (this.modalStatus) {
-          this.modalStatus.textContent = message;
+        this.playSource = "torrent";
+        this.autoplayModalVideo();
+        return true;
+      };
+
+      if (URL_FIRST_ENABLED && sanitizedUrl) {
+        const urlPlayable = await this.probeUrl(sanitizedUrl);
+
+        if (urlPlayable) {
+          const markUrlReady = () => {
+            if (this.modalStatus) {
+              this.modalStatus.textContent = "Streaming from URL";
+            }
+            this.forceRemoveModalPoster("http-loadeddata");
+          };
+
+          const handleHttpError = async () => {
+            this.modalVideo.removeEventListener("loadeddata", markUrlReady);
+            if (this.modalStatus) {
+              this.modalStatus.textContent = "Switching to WebTorrent...";
+            }
+            await startTorrentPlayback(
+              "[playVideoWithFallback] HTTP playback error triggered torrent fallback."
+            );
+          };
+
+          this.modalVideo.addEventListener("loadeddata", markUrlReady, {
+            once: true,
+          });
+          this.modalVideo.addEventListener("error", handleHttpError, {
+            once: true,
+          });
+
+          if (this.modalStatus) {
+            this.modalStatus.textContent = "Loading video...";
+          }
+
+          try {
+            await this.playHttp(this.modalVideo, sanitizedUrl);
+            this.playSource = "url";
+            return;
+          } catch (httpError) {
+            this.log(
+              "[playVideoWithFallback] Direct URL playback promise rejected:",
+              httpError
+            );
+            this.modalVideo.removeEventListener("error", handleHttpError);
+            this.modalVideo.removeEventListener("loadeddata", markUrlReady);
+            if (this.modalStatus) {
+              this.modalStatus.textContent = "Switching to WebTorrent...";
+            }
+            await startTorrentPlayback(
+              "[playVideoWithFallback] Falling back to torrent after direct URL failure."
+            );
+            return;
+          }
         }
-        this.showError(message);
+      }
+
+      if (magnetForPlayback) {
+        await startTorrentPlayback(
+          "[playVideoWithFallback] Using WebTorrent fallback for playback."
+        );
         return;
       }
 
-      this.autoplayModalVideo();
+      const message = magnetProvided && !magnetForPlayback
+        ? UNSUPPORTED_BTITH_MESSAGE
+        : "No playable source provided.";
+      if (this.modalStatus) {
+        this.modalStatus.textContent = message;
+      }
+      this.playSource = null;
+      this.showError(message);
     } catch (error) {
       this.log("Error in playVideoWithFallback:", error);
       this.showError(`Playback error: ${error.message}`);
@@ -2492,8 +2538,6 @@ class bitvidApp {
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
-    await this.showModalWithPoster();
-
     this.setCopyMagnetState(!!sanitizedMagnet);
     this.setShareButtonState(true);
 
@@ -2549,9 +2593,6 @@ class bitvidApp {
     await this.playVideoWithFallback({
       url: trimmedUrl,
       magnet: usableMagnetCandidate,
-      infoHash: legacyInfoHash,
-      title: video.title,
-      description: video.description,
     });
   }
 
@@ -2575,8 +2616,6 @@ class bitvidApp {
       this.showError(message);
       return;
     }
-
-    await this.showModalWithPoster();
 
     this.currentVideo = {
       id: null,
@@ -2622,8 +2661,6 @@ class bitvidApp {
     await this.playVideoWithFallback({
       url: sanitizedUrl,
       magnet: usableMagnet,
-      title,
-      description,
     });
   }
 
