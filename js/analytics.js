@@ -44,8 +44,9 @@ function scheduleFlush() {
     return;
   }
 
+  // 🔧 merged conflicting changes from codex/add-tracking-script-to-all-pages vs unstable
   flushTimerId = window.setInterval(() => {
-    if (window.umami && typeof window.umami.trackEvent === "function") {
+    if (window.umami && typeof window.umami.track === "function") {
       window.clearInterval(flushTimerId);
       flushTimerId = null;
       flushPendingCalls();
@@ -73,6 +74,8 @@ export function ensureAnalyticsLoaded(doc = typeof document !== "undefined" ? do
   script.src = ANALYTICS_CONFIG.scriptSrc;
   script.setAttribute(SCRIPT_ATTR, SCRIPT_IDENTIFIER);
   script.dataset.websiteId = ANALYTICS_CONFIG.websiteId;
+  // 🔧 merged conflicting changes from codex/add-tracking-script-to-all-pages vs unstable
+  script.dataset.autoTrack = "false";
   script.addEventListener("load", () => {
     scriptLoadedOnce = true;
     flushPendingCalls();
@@ -122,7 +125,31 @@ export function trackPageView(path, referrer) {
   const resolvedReferrer =
     typeof referrer === "string" ? referrer : document.referrer || "";
 
-  invokeUmami("trackView", [resolvedPath, resolvedReferrer]);
+  // 🔧 merged conflicting changes from codex/add-tracking-script-to-all-pages vs unstable
+  let absoluteUrl = resolvedPath;
+  try {
+    absoluteUrl = new URL(resolvedPath, window.location.origin).toString();
+  } catch (err) {
+    // Fall back to the provided path if it cannot be resolved.
+  }
+
+  let absoluteReferrer = resolvedReferrer;
+  if (resolvedReferrer) {
+    try {
+      absoluteReferrer = new URL(resolvedReferrer, window.location.origin).toString();
+    } catch (err) {
+      // Keep original referrer if it cannot be normalized.
+    }
+  }
+
+  invokeUmami("track", [
+    (basePayload = {}) => ({
+      ...basePayload,
+      url: absoluteUrl || basePayload.url,
+      referrer: absoluteReferrer || basePayload.referrer,
+    }),
+    "pageview",
+  ]);
 }
 
 export function trackVideoView({
@@ -158,10 +185,8 @@ export function trackVideoView({
     payload.hasUrl = hasUrl;
   }
 
-  invokeUmami("trackEvent", [
-    ANALYTICS_CONFIG.videoViewEventName,
-    payload,
-  ]);
+  // 🔧 merged conflicting changes from codex/add-tracking-script-to-all-pages vs unstable
+  invokeUmami("track", [ANALYTICS_CONFIG.videoViewEventName, payload]);
 }
 
 // Immediately queue the analytics script so page views are captured early.
