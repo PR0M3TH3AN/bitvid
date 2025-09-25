@@ -59,14 +59,14 @@
       md:ml-64 ensures content is shifted on desktop so the pinned sidebar doesn't overlap.
       On mobile, we also toggle .sidebar-open to shift the entire content.
     -->
-    <div id="app" class="md:ml-64 px-4 py-8 min-h-screen flex flex-col">
+    <div id="app" class="md:ml-64 px-4 py-8 min-h-screen flex flex-col fade-in">
       <!-- Header -->
       <header class="mb-8 flex items-center w-full">
         <!-- Mobile hamburger button (hidden on md+) -->
         <!-- New button -->
         <button
           id="mobileMenuBtn"
-          class="md:hidden ml-2 mr-4 flex items-center justify-center w-10 h-10 rounded-full bg-transparent hover:bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f172a] z-[60]"
+          class="md:hidden ml-2 mr-4 flex items-center justify-center w-10 h-10 rounded-full bg-transparent hover:bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f172a] z-[60] fade-in"
         >
           <img
             src="assets/svg/mobile-sidebar-menu-icon.svg"
@@ -78,11 +78,11 @@
         <img
           src="assets/svg/bitvid-logo-light-mode.svg"
           alt="BitVid Logo"
-          class="h-16"
+          class="h-16 fade-in fade-in-delay-100"
         />
 
         <!-- Buttons on the far right -->
-        <div class="ml-auto flex items-center space-x-4">
+        <div class="ml-auto flex items-center space-x-4 fade-in fade-in-delay-200">
           <!-- Login Button -->
           <button
             id="loginButton"
@@ -141,7 +141,7 @@
       <div id="modalContainer"></div>
 
       <!-- Tagline / Slogan -->
-      <div class="text-center mb-8">
+      <div class="text-center mb-8 fade-in fade-in-delay-300">
         <h2 class="text-2xl font-bold text-gray-500 tracking-wide">
           seed. zap. subscribe.
         </h2>

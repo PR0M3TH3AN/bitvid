@@ -103,8 +103,41 @@ header img {
   }
 }
 
+/* Generic fade-in utility for interface elements */
+.fade-in {
+  opacity: 0;
+  animation: interface-fade-in 280ms ease-out forwards;
+  animation-delay: var(--fade-in-delay, 0ms);
+}
+
+.fade-in-delay-100 {
+  --fade-in-delay: 100ms;
+}
+
+.fade-in-delay-200 {
+  --fade-in-delay: 200ms;
+}
+
+.fade-in-delay-300 {
+  --fade-in-delay: 300ms;
+}
+
+.fade-in-delay-400 {
+  --fade-in-delay: 400ms;
+}
+
+@keyframes interface-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .video-card--enter {
+  .video-card--enter,
+  .fade-in {
     opacity: 1;
     animation: none;
   }
