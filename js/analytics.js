@@ -74,8 +74,7 @@ export function ensureAnalyticsLoaded(doc = typeof document !== "undefined" ? do
   script.src = ANALYTICS_CONFIG.scriptSrc;
   script.setAttribute(SCRIPT_ATTR, SCRIPT_IDENTIFIER);
   script.dataset.websiteId = ANALYTICS_CONFIG.websiteId;
-  // 🔧 merged conflicting changes from codex/add-tracking-script-to-all-pages vs unstable
-  script.dataset.autoTrack = "false";
+  // Allow Umami to handle automatic pageview tracking by default.
   script.addEventListener("load", () => {
     scriptLoadedOnce = true;
     flushPendingCalls();
