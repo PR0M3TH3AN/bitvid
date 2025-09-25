@@ -1,5 +1,7 @@
 // js/index.js
 
+import { trackPageView } from "./analytics.js";
+
 // 1) Load modals (login, application, etc.)
 async function loadModal(url) {
   try {
@@ -314,6 +316,7 @@ function handleHashChange() {
         if (typeof initFn === "function") {
           initFn();
         }
+        recordView("most-recent-videos");
       });
     });
     return;
