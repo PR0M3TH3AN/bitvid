@@ -69,21 +69,31 @@
             />
           </div>
 
-          <div>
-            <label
-              for="uploadUrl"
-              class="block text-sm font-medium text-gray-200"
-              >Hosted video URL</label
+          <!-- Hosted video URL -->
+          <div class="mb-4">
+            <label for="uploadUrl" class="block text-sm font-medium">Hosted video URL</label>
+            <input
+              id="uploadUrl"
+              type="url"
+              class="w-full p-2 rounded"
+              placeholder="https://cdn.example.com/video.mp4 or .webm/.m3u8"
+            >
+          </div>
+
+          <!-- Optional: seed bootstraps for magnet -->
+          <div class="grid grid-cols-1 gap-3 mb-2 text-xs">
+            <input
+              id="uploadWs"
+              type="url"
+              class="w-full p-2 rounded"
+              placeholder="Web seed (ws=) e.g., https://cdn.example.com/video.mp4"
             >
             <input
+              id="uploadXs"
               type="url"
-              id="uploadUrl"
-              placeholder="https://cdn.example.com/video.mp4"
-              class="mt-1 block w-full rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
-            />
-            <p class="mt-1 text-xs text-gray-400">
-              Direct link to your video or stream. Bitvid will play this first before falling back to WebTorrent.
-            </p>
+              class="w-full p-2 rounded"
+              placeholder=".torrent URL (xs=) e.g., https://cdn.example.com/video.torrent"
+            >
           </div>
 
           <div>
@@ -101,41 +111,6 @@
             <p class="mt-1 text-xs text-gray-400">
               Include this when you have a torrent source. Bitvid will automatically augment it with any web seeds or metadata you provide.
             </p>
-          </div>
-
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label
-                for="uploadWs"
-                class="block text-sm font-medium text-gray-200"
-                >Web seed base (ws, optional)</label
-              >
-              <input
-                type="url"
-                id="uploadWs"
-                placeholder="https://cdn.example.com/path/to/"
-                class="mt-1 block w-full rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
-              />
-              <p class="mt-1 text-xs text-gray-400">
-                HTTP(S) base path peers can fetch pieces from when falling back to the magnet.
-              </p>
-            </div>
-            <div>
-              <label
-                for="uploadXs"
-                class="block text-sm font-medium text-gray-200"
-                >Torrent metadata URL (xs, optional)</label
-              >
-              <input
-                type="url"
-                id="uploadXs"
-                placeholder="https://cdn.example.com/video.torrent"
-                class="mt-1 block w-full rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
-              />
-              <p class="mt-1 text-xs text-gray-400">
-                Link to the <code>.torrent</code> file so WebTorrent clients can bootstrap instantly.
-              </p>
-            </div>
           </div>
 
           <div>
