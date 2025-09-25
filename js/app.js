@@ -1942,11 +1942,14 @@ class bitvidApp {
     }
 
     const status = state?.status || "checking";
-    const message = state?.message ||
+    const message =
+      state?.message ||
       (status === "healthy"
         ? "CDN Healthy"
         : status === "offline"
         ? "URL offline — using P2P fallback"
+        : status === "unknown"
+        ? "Hosted URL reachable (CORS restricted)"
         : "Checking hosted URL…");
 
     badgeEl.dataset.urlHealthState = status;
@@ -1967,6 +1970,14 @@ class bitvidApp {
       );
     } else if (status === "offline") {
       badgeEl.classList.add("block", "bg-red-900", "text-red-200");
+    } else if (status === "unknown") {
+      badgeEl.classList.add(
+        "inline-flex",
+        "items-center",
+        "gap-1",
+        "bg-amber-900",
+        "text-amber-200"
+      );
     } else {
       badgeEl.classList.add(
         "inline-flex",
@@ -2017,22 +2028,33 @@ class bitvidApp {
     }
 
     const probePromise = this.probeUrl(trimmedUrl)
-      .then((ok) => {
-        const result = ok
-          ? { status: "healthy", message: "CDN Healthy" }
-          : {
-              status: "offline",
-              message: "URL offline — using P2P fallback",
-            };
-        return this.storeUrlHealth(eventId, trimmedUrl, result);
+      .then((result) => {
+        const outcome = result?.outcome || "error";
+        let entry;
+
+        if (outcome === "ok") {
+          entry = { status: "healthy", message: "CDN Healthy" };
+        } else if (outcome === "opaque") {
+          entry = {
+            status: "unknown",
+            message: "Hosted URL reachable (CORS restricted)",
+          };
+        } else {
+          entry = {
+            status: "offline",
+            message: "URL offline — using P2P fallback",
+          };
+        }
+
+        return this.storeUrlHealth(eventId, trimmedUrl, entry);
       })
       .catch((err) => {
         console.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
-        const result = {
+        const entry = {
           status: "offline",
           message: "URL offline — using P2P fallback",
         };
-        return this.storeUrlHealth(eventId, trimmedUrl, result);
+        return this.storeUrlHealth(eventId, trimmedUrl, entry);
       });
 
     setInFlightUrlProbe(eventId, trimmedUrl, probePromise);
@@ -2650,18 +2672,31 @@ class bitvidApp {
   async probeUrl(url) {
     const trimmed = typeof url === "string" ? url.trim() : "";
     if (!trimmed) {
-      return false;
+      return { outcome: "invalid" };
     }
 
     try {
       const response = await fetch(trimmed, {
         method: "HEAD",
-        mode: "cors",
+        mode: "no-cors",
+        cache: "no-store",
       });
-      return response.ok;
+
+      if (!response) {
+        return { outcome: "error" };
+      }
+
+      if (response.type === "opaque") {
+        return { outcome: "opaque" };
+      }
+
+      return {
+        outcome: response.ok ? "ok" : "bad",
+        status: response.status,
+      };
     } catch (err) {
       console.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
-      return false;
+      return { outcome: "error", error: err };
     }
   }
 
@@ -2856,7 +2891,15 @@ class bitvidApp {
         sanitizedUrl && /^https:\/\//i.test(sanitizedUrl) ? sanitizedUrl : "";
       const webSeedCandidates = httpsUrl ? [httpsUrl] : [];
 
+      let fallbackStarted = false;
       const startTorrentFallback = async (reason) => {
+        if (fallbackStarted) {
+          this.log(
+            `[playVideoWithFallback] Duplicate fallback request ignored (${reason}).`
+          );
+          return null;
+        }
+        fallbackStarted = true;
         this.cleanupUrlPlaybackWatchdog();
         if (!magnetForPlayback) {
           const message =
@@ -2891,34 +2934,91 @@ class bitvidApp {
         if (this.modalStatus) {
           this.modalStatus.textContent = "Checking hosted URL...";
         }
-        const urlPlayable = await this.probeUrl(httpsUrl);
+        const probeResult = await this.probeUrl(httpsUrl);
+        const probeOutcome = probeResult?.outcome || "error";
+        const shouldAttemptHosted =
+          probeOutcome !== "bad" && probeOutcome !== "error";
 
-        if (urlPlayable) {
-          let outcomeResolver;
+        if (shouldAttemptHosted) {
+          let outcomeResolved = false;
+          let outcomeResolver = () => {};
+          let autoplayBlocked = false;
+
           const playbackOutcomePromise = new Promise((resolve) => {
-            outcomeResolver = resolve;
-            this.registerUrlPlaybackWatchdogs(videoEl, {
-              stallMs: 8000,
-              onSuccess: () => resolve({ status: "success" }),
-              onFallback: (reason) => resolve({ status: "fallback", reason }),
-            });
+            outcomeResolver = (value) => {
+              if (outcomeResolved) {
+                return;
+              }
+              outcomeResolved = true;
+              resolve(value);
+            };
           });
 
-          try {
-            videoEl.src = httpsUrl;
-            const playPromise = videoEl.play();
-            if (playPromise && typeof playPromise.then === "function") {
-              await playPromise;
-            }
-          } catch (err) {
+          const attachWatchdogs = ({ stallMs = 8000 } = {}) => {
+            this.registerUrlPlaybackWatchdogs(videoEl, {
+              stallMs,
+              onSuccess: () => outcomeResolver({ status: "success" }),
+              onFallback: (reason) => {
+                if (autoplayBlocked && reason === "stall") {
+                  this.log(
+                    "[playVideoWithFallback] Autoplay blocked; waiting for user gesture before falling back."
+                  );
+                  if (this.modalStatus) {
+                    this.modalStatus.textContent =
+                      "Press play to start the hosted video.";
+                  }
+                  attachWatchdogs({ stallMs: 0 });
+                  return;
+                }
+
+                outcomeResolver({ status: "fallback", reason });
+              },
+            });
+          };
+
+          attachWatchdogs({ stallMs: 8000 });
+
+          const handleFatalPlaybackError = (err) => {
             this.log(
               "[playVideoWithFallback] Direct URL playback threw:",
               err
             );
-            if (typeof outcomeResolver === "function") {
-              outcomeResolver({ status: "fallback", reason: "play-error" });
+            outcomeResolver({ status: "fallback", reason: "play-error" });
+          };
+
+          try {
+            videoEl.src = httpsUrl;
+            const playPromise = videoEl.play();
+            if (playPromise && typeof playPromise.catch === "function") {
+              playPromise.catch((err) => {
+                if (err?.name === "NotAllowedError") {
+                  autoplayBlocked = true;
+                  this.log(
+                    "[playVideoWithFallback] Autoplay blocked by browser; awaiting user interaction.",
+                    err
+                  );
+                  if (this.modalStatus) {
+                    this.modalStatus.textContent =
+                      "Press play to start the hosted video.";
+                  }
+                  this.cleanupUrlPlaybackWatchdog();
+                  attachWatchdogs({ stallMs: 0 });
+                  const restoreOnPlay = () => {
+                    videoEl.removeEventListener("play", restoreOnPlay);
+                    this.cleanupUrlPlaybackWatchdog();
+                    autoplayBlocked = false;
+                    attachWatchdogs({ stallMs: 8000 });
+                  };
+                  videoEl.addEventListener("play", restoreOnPlay, {
+                    once: true,
+                  });
+                  return;
+                }
+                handleFatalPlaybackError(err);
+              });
             }
-            return await startTorrentFallback("play-error");
+          } catch (err) {
+            handleFatalPlaybackError(err);
           }
 
           const playbackOutcome = await playbackOutcomePromise;
@@ -2931,14 +3031,13 @@ class bitvidApp {
             return;
           }
 
-          const fallbackReason =
-            playbackOutcome?.reason || "watchdog-triggered";
+          const fallbackReason = playbackOutcome?.reason || "watchdog-triggered";
           await startTorrentFallback(fallbackReason);
           return;
         }
 
         this.log(
-          "[playVideoWithFallback] Hosted URL probe failed; deferring to WebTorrent."
+          `[playVideoWithFallback] Hosted URL probe reported "${probeOutcome}"; deferring to WebTorrent.`
         );
       }
 
