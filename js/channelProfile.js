@@ -338,15 +338,14 @@ async function loadUserVideos(pubkey) {
         "duration-300"
       );
 
-      const trimmedMagnet =
-        typeof video.magnet === "string" ? video.magnet.trim() : "";
+      const rawMagnet =
+        typeof video.magnet === "string" ? video.magnet : "";
       const legacyInfoHash =
         typeof video.infoHash === "string" ? video.infoHash.trim() : "";
-      const magnetCandidate = trimmedMagnet || legacyInfoHash;
       const playbackUrl =
         typeof video.url === "string" ? video.url : "";
       const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
-      const playbackMagnet = magnetCandidate || "";
+      const playbackMagnet = rawMagnet || legacyInfoHash || "";
       const urlStatusHtml = trimmedUrl
         ? app.getUrlHealthPlaceholderMarkup()
         : "";
@@ -396,7 +395,13 @@ async function loadUserVideos(pubkey) {
       const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
       interactiveEls.forEach((el) => {
         if (!el.dataset) return;
-        el.dataset.playUrl = encodeURIComponent(playbackUrl || "");
+
+        if (trimmedUrl) {
+          el.dataset.playUrl = encodeURIComponent(trimmedUrl);
+        } else {
+          delete el.dataset.playUrl;
+        }
+
         el.dataset.playMagnet = playbackMagnet || "";
       });
 

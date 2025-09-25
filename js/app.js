@@ -984,7 +984,7 @@ class bitvidApp {
 
     const handler = async (event) => {
       const trigger = event.target.closest(
-        "[data-play-url], [data-play-magnet]"
+        "[data-play-magnet],[data-play-url]"
       );
       if (!trigger) {
         return;
@@ -1012,13 +1012,13 @@ class bitvidApp {
           }
         }
 
-        const magnet = safeDecodeMagnet(rawMagnetValue) || rawMagnetValue;
+        const magnet = typeof rawMagnetValue === "string" ? rawMagnetValue : "";
         const eventId = trigger.getAttribute("data-video-id");
 
         if (eventId) {
           await this.playVideoByEventId(eventId);
         } else {
-          await this.playVideoWithoutEvent({ url, magnet });
+          await this.playVideoWithFallback({ url, magnet });
         }
       }
     };
