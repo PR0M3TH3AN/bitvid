@@ -27,11 +27,84 @@ const UNSUPPORTED_BTITH_MESSAGE =
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
 // We probe hosted URLs often enough that a naive implementation would spam
-// remote CDNs. A tiny, short-lived cache keeps us from hammering dead hosts
-// while still giving the UI near-real-time feedback when a URL comes back.
-const URL_HEALTH_TTL_MS = 45_000;
+// remote CDNs. A medium-lived cache (roughly 45 minutes) keeps us from
+// hammering dead hosts while still giving the UI timely updates when a CDN
+// recovers. Results are stored both in-memory and in localStorage so other
+// views can reuse them without re-probing.
+const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
+const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
+
+function getUrlHealthStorageKey(eventId) {
+  return `${URL_HEALTH_STORAGE_PREFIX}${eventId}`;
+}
+
+function readUrlHealthFromStorage(eventId) {
+  if (!eventId || typeof localStorage === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = localStorage.getItem(getUrlHealthStorageKey(eventId));
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
+  } catch (err) {
+    console.warn(`Failed to parse stored URL health for ${eventId}:`, err);
+  }
+
+  removeUrlHealthFromStorage(eventId);
+  return null;
+}
+
+function writeUrlHealthToStorage(eventId, entry) {
+  if (!eventId || typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      getUrlHealthStorageKey(eventId),
+      JSON.stringify(entry)
+    );
+  } catch (err) {
+    console.warn(`Failed to persist URL health for ${eventId}:`, err);
+  }
+}
+
+function removeUrlHealthFromStorage(eventId) {
+  if (!eventId || typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(getUrlHealthStorageKey(eventId));
+  } catch (err) {
+    console.warn(`Failed to remove URL health for ${eventId}:`, err);
+  }
+}
+
+function isUrlHealthEntryFresh(entry, url) {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+
+  const now = Date.now();
+  if (typeof entry.expiresAt !== "number" || entry.expiresAt <= now) {
+    return false;
+  }
+
+  if (url && entry.url && entry.url !== url) {
+    return false;
+  }
+
+  return true;
+}
 
 /**
  * Returns the cached health result for a given event ID when the entry is
@@ -44,29 +117,31 @@ function readUrlHealthFromCache(eventId, url) {
   }
 
   const entry = urlHealthCache.get(eventId);
-  if (!entry) {
-    return null;
+  if (isUrlHealthEntryFresh(entry, url)) {
+    return entry;
   }
 
-  const now = Date.now();
-  if (entry.expiresAt <= now) {
+  if (entry) {
     urlHealthCache.delete(eventId);
+  }
+
+  const stored = readUrlHealthFromStorage(eventId);
+  if (!isUrlHealthEntryFresh(stored, url)) {
+    if (stored) {
+      removeUrlHealthFromStorage(eventId);
+    }
     return null;
   }
 
-  if (url && entry.url && entry.url !== url) {
-    urlHealthCache.delete(eventId);
-    return null;
-  }
-
-  return entry;
+  urlHealthCache.set(eventId, stored);
+  return stored;
 }
 
 /**
- * Stores a health result and calculates the expiry moment. The TTL is short on
- * purpose (~45s) so we recover quickly when a CDN comes back online while
- * still avoiding redundant probes during render thrash.
- */
+ * Stores a health result and calculates the expiry moment. The TTL lasts for
+ * roughly three quarters of an hour so we recover quickly when a CDN returns
+ * while still avoiding redundant probes during render thrash.
+*/
 function writeUrlHealthToCache(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) {
   if (!eventId) {
     return null;
@@ -82,6 +157,7 @@ function writeUrlHealthToCache(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) 
     lastCheckedAt: now,
   };
   urlHealthCache.set(eventId, entry);
+  writeUrlHealthToStorage(eventId, entry);
   return entry;
 }
 
@@ -337,6 +413,7 @@ class bitvidApp {
 
     // Lazy-loading helper for images
     this.mediaLoader = new MediaLoader();
+    this.activeIntervals = [];
 
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
@@ -505,8 +582,6 @@ class bitvidApp {
       // 9. Check URL ?v= param
       this.checkUrlParams();
 
-      // Keep an array of active interval IDs so we can clear them on modal close
-      this.activeIntervals = [];
     } catch (error) {
       console.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
@@ -518,6 +593,12 @@ class bitvidApp {
    */
   async initModal() {
     try {
+      const existingModal = document.getElementById("playerModal");
+      if (existingModal) {
+        this.playerModal = existingModal;
+        return true;
+      }
+
       const resp = await fetch("components/video-modal.html");
       if (!resp.ok) {
         throw new Error(`HTTP error! status: ${resp.status}`);
@@ -605,19 +686,15 @@ class bitvidApp {
           this.showError("No shareable video is loaded.");
           return;
         }
-        try {
-          const nevent = window.NostrTools.nip19.neventEncode({
-            id: this.currentVideo.id,
-          });
-          const shareUrl = `${window.location.origin}${window.location.pathname}?v=${nevent}`;
-          navigator.clipboard
-            .writeText(shareUrl)
-            .then(() => this.showSuccess("Video link copied to clipboard!"))
-            .catch(() => this.showError("Failed to copy the link."));
-        } catch (err) {
-          console.error("Error generating share link:", err);
+        const shareUrl = this.buildShareUrlFromEventId(this.currentVideo.id);
+        if (!shareUrl) {
           this.showError("Could not generate link.");
+          return;
         }
+        navigator.clipboard
+          .writeText(shareUrl)
+          .then(() => this.showSuccess("Video link copied to clipboard!"))
+          .catch(() => this.showError("Failed to copy the link."));
       });
     }
 
@@ -941,8 +1018,10 @@ class bitvidApp {
     }
 
     // 7) Cleanup on page unload
-    window.addEventListener("beforeunload", async () => {
-      await this.cleanup();
+    window.addEventListener("beforeunload", () => {
+      this.cleanup().catch((err) => {
+        console.error("Cleanup before unload failed:", err);
+      });
     });
 
     // 8) Handle back/forward navigation => hide video modal
@@ -1250,7 +1329,7 @@ class bitvidApp {
     }
     // Optionally hide logout or userStatus
     if (this.logoutButton) {
-      this.logoutButton.classList.add("hidden");
+      this.logoutButton.classList.remove("hidden");
     }
     if (this.userStatus) {
       this.userStatus.classList.add("hidden");
@@ -1333,8 +1412,26 @@ class bitvidApp {
   /**
    * Cleanup resources on unload or modal close.
    */
-  async cleanup() {
+  async cleanup({ preserveSubscriptions = false, preserveObservers = false } = {}) {
     try {
+      this.clearActiveIntervals();
+
+      if (!preserveObservers && this.mediaLoader) {
+        this.mediaLoader.disconnect();
+      }
+
+      if (!preserveSubscriptions && this.videoSubscription) {
+        try {
+          if (typeof this.videoSubscription.unsub === "function") {
+            this.videoSubscription.unsub();
+          }
+        } catch (err) {
+          console.error("Failed to unsubscribe from video feed:", err);
+        } finally {
+          this.videoSubscription = null;
+        }
+      }
+
       // If there's a small inline player
       if (this.videoElement) {
         this.videoElement.pause();
@@ -1403,6 +1500,60 @@ class bitvidApp {
     this.shareBtn.setAttribute("aria-disabled", (!enabled).toString());
     this.shareBtn.classList.toggle("opacity-50", !enabled);
     this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
+  }
+
+  getShareUrlBase() {
+    try {
+      const current = new URL(window.location.href);
+      return `${current.origin}${current.pathname}`;
+    } catch (err) {
+      const origin = window.location?.origin || "";
+      const pathname = window.location?.pathname || "";
+      if (origin || pathname) {
+        return `${origin}${pathname}`;
+      }
+      const href = window.location?.href || "";
+      if (href) {
+        const base = href.split(/[?#]/)[0];
+        if (base) {
+          return base;
+        }
+      }
+      console.warn("Unable to determine share URL base:", err);
+      return "";
+    }
+  }
+
+  buildShareUrlFromNevent(nevent) {
+    if (!nevent) {
+      return "";
+    }
+    const base = this.getShareUrlBase();
+    if (!base) {
+      return "";
+    }
+    return `${base}?v=${encodeURIComponent(nevent)}`;
+  }
+
+  buildShareUrlFromEventId(eventId) {
+    if (!eventId) {
+      return "";
+    }
+
+    try {
+      const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
+      return this.buildShareUrlFromNevent(nevent);
+    } catch (err) {
+      console.error("Error generating nevent for share URL:", err);
+      return "";
+    }
+  }
+
+  dedupeVideosByRoot(videos) {
+    if (!Array.isArray(videos) || videos.length === 0) {
+      return [];
+    }
+    return dedupeToNewestByRoot(videos);
   }
 
   prepareModalVideoForPlayback() {
@@ -1494,7 +1645,10 @@ class bitvidApp {
     } catch (err) {
       // ignore
     }
-    await this.cleanup();
+    await this.cleanup({
+      preserveSubscriptions: true,
+      preserveObservers: true,
+    });
 
     // 2) Hide the modal
     if (this.playerModal) {
@@ -1786,8 +1940,10 @@ class bitvidApp {
   async renderVideoList(videos) {
     if (!this.videoList) return;
 
+    const dedupedVideos = this.dedupeVideosByRoot(videos);
+
     // 1) If no videos
-    if (!videos || videos.length === 0) {
+    if (!dedupedVideos.length) {
       this.videoList.innerHTML = `
         <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
           No public videos available yet. Be the first to upload one!
@@ -1796,14 +1952,18 @@ class bitvidApp {
     }
 
     // 2) Sort newest first
-    videos.sort((a, b) => b.created_at - a.created_at);
+    dedupedVideos.sort((a, b) => b.created_at - a.created_at);
 
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
     const fragment = document.createDocumentFragment();
     const authorSet = new Set();
+    const defaultShareBase =
+      this.getShareUrlBase() ||
+      `${window.location?.origin || ""}${window.location?.pathname || ""}` ||
+      (window.location?.href ? window.location.href.split(/[?#]/)[0] : "");
 
     // 3) Build each card
-    videos.forEach((video, index) => {
+    dedupedVideos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Video missing ID/title:", video);
         return;
@@ -1812,9 +1972,9 @@ class bitvidApp {
       authorSet.add(video.pubkey);
 
       const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
-      const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(
-        nevent
-      )}`;
+      const shareUrl =
+        this.buildShareUrlFromNevent(nevent) ||
+        `${defaultShareBase}?v=${encodeURIComponent(nevent)}`;
       const canEdit = video.pubkey === this.pubkey;
       const highlightClass =
         video.isPrivate && canEdit
@@ -2680,10 +2840,12 @@ class bitvidApp {
     this.setShareButtonState(true);
 
     const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
-    const newUrl = `${window.location.pathname}?v=${encodeURIComponent(
-      nevent
-    )}`;
-    window.history.pushState({}, "", newUrl);
+    const pushUrl =
+      this.buildShareUrlFromNevent(nevent) ||
+      `${this.getShareUrlBase() || window.location.pathname}?v=${encodeURIComponent(
+        nevent
+      )}`;
+    window.history.pushState({}, "", pushUrl);
 
     let creatorProfile = {
       name: "Unknown",

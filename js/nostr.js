@@ -959,6 +959,23 @@ class NostrClient {
     });
 
     // Return the subscription object if you need to unsub manually later
+    const originalUnsub =
+      typeof sub.unsub === "function" ? sub.unsub.bind(sub) : () => {};
+    let unsubscribed = false;
+    sub.unsub = () => {
+      if (unsubscribed) {
+        return;
+      }
+      unsubscribed = true;
+      clearInterval(processInterval);
+      try {
+        return originalUnsub();
+      } catch (err) {
+        console.error("[subscribeVideos] Failed to unsub from pool:", err);
+        return undefined;
+      }
+    };
+
     return sub;
   }
 

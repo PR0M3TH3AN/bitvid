@@ -4,6 +4,33 @@ import {
   convertEventToVideo as sharedConvertEventToVideo,
 } from "./nostr.js";
 
+function getAbsoluteShareUrl(nevent) {
+  if (!nevent) {
+    return "";
+  }
+
+  if (window.app?.buildShareUrlFromNevent) {
+    const candidate = window.app.buildShareUrlFromNevent(nevent);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const origin = window.location?.origin || "";
+  const pathname = window.location?.pathname || "";
+  let base = origin || pathname ? `${origin}${pathname}` : "";
+  if (!base) {
+    const href = window.location?.href || "";
+    base = href ? href.split(/[?#]/)[0] : "";
+  }
+
+  if (!base) {
+    return `?v=${encodeURIComponent(nevent)}`;
+  }
+
+  return `${base}?v=${encodeURIComponent(nevent)}`;
+}
+
 /**
  * Manages the user's subscription list (kind=30002) *privately*,
  * using NIP-04 encryption for the content field.
@@ -245,7 +272,12 @@ class SubscriptionsManager {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    if (!videos.length) {
+    const safeVideos = Array.isArray(videos) ? videos : [];
+    const dedupedVideos =
+      window.app?.dedupeVideosByRoot?.(safeVideos) ??
+      this.dedupeToNewestByRoot(safeVideos);
+
+    if (!dedupedVideos.length) {
       container.innerHTML = `
         <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
           No videos available yet.
@@ -254,14 +286,14 @@ class SubscriptionsManager {
     }
 
     // Sort newest first
-    videos.sort((a, b) => b.created_at - a.created_at);
+    dedupedVideos.sort((a, b) => b.created_at - a.created_at);
 
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
     const fragment = document.createDocumentFragment();
     // Only declare localAuthorSet once
     const localAuthorSet = new Set();
 
-    videos.forEach((video, index) => {
+    dedupedVideos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Missing ID or title:", video);
         return;
@@ -274,9 +306,7 @@ class SubscriptionsManager {
       localAuthorSet.add(video.pubkey);
 
       const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
-      const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(
-        nevent
-      )}`;
+      const shareUrl = getAbsoluteShareUrl(nevent);
       const canEdit = window.app?.pubkey === video.pubkey;
 
       const highlightClass =
