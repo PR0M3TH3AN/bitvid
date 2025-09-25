@@ -500,6 +500,7 @@ class bitvidApp {
     this.profileCache = new Map();
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
+    this.renderedVideoIds = new Set();
 
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
@@ -2158,6 +2159,7 @@ class bitvidApp {
 
     // 1) If no videos
     if (!dedupedVideos.length) {
+      this.renderedVideoIds.clear();
       if (this.lastRenderedVideoSignature === EMPTY_VIDEO_LIST_SIGNATURE) {
         return;
       }
@@ -2190,6 +2192,9 @@ class bitvidApp {
     }
     this.lastRenderedVideoSignature = signature;
 
+    const previouslyRenderedIds = new Set(this.renderedVideoIds);
+    this.renderedVideoIds.clear();
+
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
     const fragment = document.createDocumentFragment();
     const authorSet = new Set();
@@ -2216,6 +2221,8 @@ class bitvidApp {
         video.isPrivate && canEdit
           ? "border-2 border-yellow-500"
           : "border-none";
+      const isNewlyRendered = !previouslyRenderedIds.has(video.id);
+      const animationClass = isNewlyRendered ? "video-card--enter" : "";
       const timeAgo = this.formatTimeAgo(video.created_at);
 
       // Check if there's an older version
@@ -2332,7 +2339,7 @@ class bitvidApp {
       );
 
       const cardHtml = `
-        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
+        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass} ${animationClass}">
           <!-- The clickable link to play video -->
           <a
             href="${shareUrl}"
@@ -2452,6 +2459,7 @@ class bitvidApp {
         }
       }
       fragment.appendChild(cardEl);
+      this.renderedVideoIds.add(video.id);
     });
 
     // Clear old content, add new
