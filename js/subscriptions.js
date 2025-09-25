@@ -419,7 +419,13 @@ class SubscriptionsManager {
         const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
         interactiveEls.forEach((el) => {
           if (!el.dataset) return;
-          el.dataset.playUrl = encodeURIComponent(playbackUrl || "");
+
+          if (trimmedUrl) {
+            el.dataset.playUrl = encodeURIComponent(trimmedUrl);
+          } else {
+            delete el.dataset.playUrl;
+          }
+
           el.dataset.playMagnet = playbackMagnet || "";
         });
 
