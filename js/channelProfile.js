@@ -6,6 +6,7 @@ import {
 } from "./nostr.js";
 import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
+import { attachHealthBadges } from "./gridHealth.js";
 import { initialBlacklist, initialWhitelist } from "./lists.js";
 import { isWhitelistEnabled } from "./config.js";
 
@@ -359,17 +360,32 @@ async function loadUserVideos(pubkey) {
         "duration-300"
       );
 
-      const rawMagnet =
-        typeof video.magnet === "string" ? video.magnet : "";
+      const trimmedMagnet =
+        typeof video.magnet === "string" ? video.magnet.trim() : "";
       const legacyInfoHash =
         typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+      const magnetCandidate = trimmedMagnet || legacyInfoHash;
       const playbackUrl =
         typeof video.url === "string" ? video.url : "";
       const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
-      const playbackMagnet = rawMagnet || legacyInfoHash || "";
-      const urlStatusHtml = trimmedUrl
-        ? app.getUrlHealthPlaceholderMarkup()
+      const playbackMagnet = magnetCandidate;
+      const magnetProvided = magnetCandidate.length > 0;
+      const magnetSupported = app.isMagnetUriSupported(playbackMagnet);
+      const urlBadgeHtml = trimmedUrl
+        ? app.getUrlHealthPlaceholderMarkup({ includeMargin: false })
         : "";
+      const torrentHealthBadgeHtml =
+        magnetSupported && magnetProvided
+          ? app.getTorrentHealthBadgeMarkup({ includeMargin: false })
+          : "";
+      const connectionBadgesHtml =
+        urlBadgeHtml || torrentHealthBadgeHtml
+          ? `
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              ${urlBadgeHtml}${torrentHealthBadgeHtml}
+            </div>
+          `
+          : "";
 
       cardEl.innerHTML = `
         <div
@@ -403,7 +419,7 @@ async function loadUserVideos(pubkey) {
             </div>
             ${gearMenu}
           </div>
-          ${urlStatusHtml}
+          ${connectionBadgesHtml}
         </div>
       `;
 
@@ -426,6 +442,12 @@ async function loadUserVideos(pubkey) {
         el.dataset.playMagnet = playbackMagnet || "";
       });
 
+      if (magnetProvided) {
+        cardEl.dataset.magnet = playbackMagnet;
+      } else if (cardEl.dataset.magnet) {
+        delete cardEl.dataset.magnet;
+      }
+
       if (trimmedUrl) {
         const badgeEl = cardEl.querySelector("[data-url-health-state]");
         if (badgeEl) {
@@ -441,6 +463,8 @@ async function loadUserVideos(pubkey) {
     });
 
     container.appendChild(fragment);
+
+    attachHealthBadges(container);
 
     window.app.videoList = container;
     window.app.attachVideoListHandler();
