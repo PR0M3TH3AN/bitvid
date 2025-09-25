@@ -44,7 +44,7 @@ const LEGACY_INFO_HASH = "0123456789abcdef0123456789abcdef01234567";
   assert.equal(parsed.infoHash, LEGACY_INFO_HASH);
 })();
 
-(function testConvertTreatsInfoHashAsPlayable() {
+(function testConvertFlagsBareInfoHashAsInvalid() {
   const event = {
     id: "evt-convert",
     pubkey: "pk",
@@ -58,10 +58,8 @@ const LEGACY_INFO_HASH = "0123456789abcdef0123456789abcdef01234567";
   };
 
   const video = convertEventToVideo(event);
-  assert.equal(video.invalid, false, "Legacy info hash events should not be dropped");
-  assert.equal(video.magnet, LEGACY_INFO_HASH);
-  assert.equal(video.infoHash, LEGACY_INFO_HASH);
-  assert.equal(video.rawMagnet, "");
+  assert.equal(video.invalid, true, "Bare info-hash payloads should be flagged");
+  assert.equal(video.reason, "missing playable source");
 })();
 
 (function testLegacyEventWithoutTitleStillLoads() {
