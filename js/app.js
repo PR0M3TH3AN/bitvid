@@ -3508,6 +3508,7 @@ class bitvidApp {
 
       this.showModalWithPoster();
       const videoEl = this.modalVideo;
+      const HOSTED_URL_SUCCESS_MESSAGE = "✅ Streaming from hosted URL";
 
       if (this.modalStatus) {
         this.modalStatus.textContent = "Preparing video...";
@@ -3542,6 +3543,7 @@ class bitvidApp {
       const httpsUrl =
         sanitizedUrl && /^https:\/\//i.test(sanitizedUrl) ? sanitizedUrl : "";
       const webSeedCandidates = httpsUrl ? [httpsUrl] : [];
+      let cleanupHostedUrlStatusListeners = () => {};
 
       let fallbackStarted = false;
       const startTorrentFallback = async (reason) => {
@@ -3553,6 +3555,7 @@ class bitvidApp {
         }
         fallbackStarted = true;
         this.cleanupUrlPlaybackWatchdog();
+        cleanupHostedUrlStatusListeners();
         if (!magnetForPlayback) {
           const message =
             "Hosted playback failed and no magnet fallback is available.";
@@ -3586,6 +3589,55 @@ class bitvidApp {
         if (this.modalStatus) {
           this.modalStatus.textContent = "Checking hosted URL...";
         }
+        let hostedStatusResolved = false;
+        const hostedStatusHandlers = [];
+        const addHostedStatusListener = (eventName, handler, options) => {
+          if (!videoEl) {
+            return;
+          }
+          videoEl.addEventListener(eventName, handler, options);
+          hostedStatusHandlers.push([eventName, handler, options]);
+        };
+        const markHostedUrlAsLive = () => {
+          if (hostedStatusResolved) {
+            return;
+          }
+          hostedStatusResolved = true;
+          if (this.modalStatus) {
+            this.modalStatus.textContent = HOSTED_URL_SUCCESS_MESSAGE;
+          }
+          cleanupHostedUrlStatusListeners();
+        };
+        const maybeMarkHostedUrl = () => {
+          if (
+            hostedStatusResolved ||
+            !videoEl ||
+            videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+          ) {
+            return;
+          }
+          if (videoEl.currentTime > 0 || !videoEl.paused) {
+            markHostedUrlAsLive();
+          }
+        };
+        cleanupHostedUrlStatusListeners = () => {
+          if (!hostedStatusHandlers.length || !videoEl) {
+            hostedStatusHandlers.length = 0;
+            cleanupHostedUrlStatusListeners = () => {};
+            return;
+          }
+          for (const [eventName, handler, options] of hostedStatusHandlers) {
+            videoEl.removeEventListener(eventName, handler, options);
+          }
+          hostedStatusHandlers.length = 0;
+          cleanupHostedUrlStatusListeners = () => {};
+        };
+        addHostedStatusListener("playing", markHostedUrlAsLive, { once: true });
+        addHostedStatusListener("loadeddata", maybeMarkHostedUrl);
+        addHostedStatusListener("canplay", maybeMarkHostedUrl);
+        addHostedStatusListener("error", () => {
+          cleanupHostedUrlStatusListeners();
+        }, { once: true });
         const probeResult = await this.probeUrl(httpsUrl);
         const probeOutcome = probeResult?.outcome || "error";
         const shouldAttemptHosted =
@@ -3678,8 +3730,9 @@ class bitvidApp {
             this.forceRemoveModalPoster("http-success");
             this.playSource = "url";
             if (this.modalStatus) {
-              this.modalStatus.textContent = "Streaming from URL";
+              this.modalStatus.textContent = HOSTED_URL_SUCCESS_MESSAGE;
             }
+            cleanupHostedUrlStatusListeners();
             return;
           }
 
@@ -3691,6 +3744,7 @@ class bitvidApp {
         this.log(
           `[playVideoWithFallback] Hosted URL probe reported "${probeOutcome}"; deferring to WebTorrent.`
         );
+        cleanupHostedUrlStatusListeners();
       }
 
       if (magnetForPlayback) {
