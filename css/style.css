@@ -90,10 +90,28 @@ header img {
   }
 }
 
+[data-video-thumbnail][data-thumbnail-loaded="true"] {
+  animation: video-thumbnail-fade-in 220ms ease-out forwards;
+}
+
+@keyframes video-thumbnail-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .video-card--enter {
     opacity: 1;
     animation: none;
+  }
+
+  [data-video-thumbnail][data-thumbnail-loaded="true"] {
+    animation: none;
+    opacity: 1;
   }
 }
 
