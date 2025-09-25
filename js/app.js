@@ -1247,12 +1247,20 @@ class bitvidApp {
       if (this.videoElement) {
         this.videoElement.pause();
         this.videoElement.src = "";
+        // When WebTorrent (or other MediaSource based flows) mount a stream they
+        // set `srcObject` behind the scenes. Forgetting to clear it leaves the
+        // detached MediaSource hanging around which breaks the next playback
+        // attempt. Always null it out alongside the normal `src` reset.
+        this.videoElement.srcObject = null;
         this.videoElement.load();
       }
       // If there's a modal video
       if (this.modalVideo) {
         this.modalVideo.pause();
         this.modalVideo.src = "";
+        // See comment above—keep the `srcObject` reset paired with the `src`
+        // wipe so magnet-only replays do not regress into the grey screen bug.
+        this.modalVideo.srcObject = null;
         this.modalVideo.load();
       }
       // Tell webtorrent to cleanup
@@ -2372,8 +2380,13 @@ class bitvidApp {
       await torrentClient.cleanup();
 
       this.modalVideo.pause();
+      // Clearing the WebTorrent attachment requires wiping both `src` and
+      // `srcObject`. Multiple regressions have shipped where we only blanked
+      // `src`, leaving the old MediaSource wired up and the next magnet would
+      // stall on a grey frame. Always clear both before calling `load()`.
       this.modalVideo.src = "";
       this.modalVideo.removeAttribute("src");
+      this.modalVideo.srcObject = null;
       this.modalVideo.load();
 
       this.resetTorrentStats();
