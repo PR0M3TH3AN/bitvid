@@ -43,7 +43,21 @@
 
   <!-- Area for Subscribe/Unsubscribe button -->
   <div class="px-4 my-4">
-    <div id="subscribeBtnArea" class="hidden"></div>
+    <div class="flex items-center gap-3">
+      <button
+        id="zapButton"
+        type="button"
+        class="icon-button"
+        aria-label="Send a zap"
+      >
+        <img
+          src="assets/svg/lightning-bolt.svg"
+          alt="Zap"
+          class="icon-image"
+        />
+      </button>
+      <div id="subscribeBtnArea" class="hidden"></div>
+    </div>
   </div>
 
   <hr class="my-6" />
