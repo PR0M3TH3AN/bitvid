@@ -5,7 +5,7 @@ import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
 import {
   deriveTitleFromEvent,
-  magnetFromText,
+  findLegacyMagnetInEvent,
   parseVideoEventPayload,
 } from "./videoEventUtils.js";
 
@@ -124,47 +124,17 @@ function convertEventToVideo(event = {}) {
   // Legacy Bitvid posts (version < 2) sometimes stored the magnet in free-form
   // JSON strings or tags. We keep that scavenging behind ACCEPT_LEGACY_V1 so it
   // can be disabled globally without touching each call-site.
-  let legacyMagnet = "";
-  if (!directMagnet && ACCEPT_LEGACY_V1) {
-    const fromContent = magnetFromText(event.content);
-    if (fromContent) {
-      legacyMagnet = safeTrim(fromContent);
-    }
+  const legacyMagnet =
+    !directMagnet && ACCEPT_LEGACY_V1
+      ? safeTrim(findLegacyMagnetInEvent(event))
+      : "";
 
-    if (!legacyMagnet) {
-      for (const tag of tags) {
-        if (!Array.isArray(tag)) {
-          continue;
-        }
-
-        // Specified magnet tags always win.
-        if (safeTrim(tag[0]).toLowerCase() === "magnet" && tag[1]) {
-          const tagValue = magnetFromText(tag[1]) || tag[1];
-          const trimmed = safeTrim(tagValue);
-          if (trimmed) {
-            legacyMagnet = trimmed;
-            break;
-          }
-        }
-
-        // Fall back to scanning the remaining tag values for inline magnets.
-        for (let i = 1; i < tag.length && !legacyMagnet; i += 1) {
-          const candidate = magnetFromText(tag[i]);
-          if (candidate) {
-            legacyMagnet = safeTrim(candidate);
-          }
-        }
-
-        if (legacyMagnet) {
-          break;
-        }
-      }
-    }
-  }
-
+  // Prefer the structured magnet from the payload; otherwise accept the
+  // scavenged legacy value. As a last resort we promote the recovered info hash
+  // so downstream callers can rebuild a usable magnet URI during playback.
   const magnetCandidate = directMagnet || legacyMagnet;
-  const magnetForPlayback = magnetCandidate
-    || (ACCEPT_LEGACY_V1 ? normalizedInfoHash : "");
+  const magnetForPlayback =
+    magnetCandidate || (ACCEPT_LEGACY_V1 ? normalizedInfoHash : "");
 
   const hasPlayableSource = Boolean(normalizedUrl)
     || Boolean(magnetForPlayback);
