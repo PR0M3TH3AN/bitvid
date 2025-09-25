@@ -263,15 +263,10 @@ function convertEventToVideo(event = {}) {
     return { id: event.id, invalid: true, reason };
   }
 
-  const rawVersion = parsedContent.version;
-  let version = 0;
-  if (typeof rawVersion === "number" && Number.isFinite(rawVersion)) {
-    version = rawVersion;
-  } else if (typeof rawVersion === "string") {
-    const parsedVersion = Number(rawVersion);
-    if (Number.isFinite(parsedVersion)) {
-      version = parsedVersion;
-    }
+  const rawVersion = parsedContent.version ?? 1;
+  let version = Number(rawVersion);
+  if (!Number.isFinite(version)) {
+    version = 1;
   }
 
   return {
