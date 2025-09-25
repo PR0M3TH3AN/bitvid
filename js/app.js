@@ -3476,6 +3476,10 @@ class bitvidApp {
     }
 
     if (response.type === "opaque") {
+      const fallback = await this.probeUrlWithVideoElement(trimmed);
+      if (fallback && fallback.outcome) {
+        return fallback;
+      }
       return { outcome: "opaque" };
     }
 
