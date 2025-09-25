@@ -2153,7 +2153,7 @@ class bitvidApp {
   }
 
   updateUrlHealthBadge(badgeEl, state, videoId) {
-    if (!badgeEl || !badgeEl.isConnected) {
+    if (!badgeEl) {
       return;
     }
 
@@ -2161,13 +2161,24 @@ class bitvidApp {
       return;
     }
 
+    if (!badgeEl.isConnected) {
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          if (badgeEl.isConnected) {
+            this.updateUrlHealthBadge(badgeEl, state, videoId);
+          }
+        });
+      }
+      return;
+    }
+
     const status = state?.status || "checking";
     const message =
       state?.message ||
       (status === "healthy"
-        ? "✅ CDN Healthy"
+        ? "✅ CDN"
         : status === "offline"
-        ? "⚠️ URL offline — using P2P fallback"
+        ? "❌ CDN"
         : status === "unknown"
         ? "⚠️ Hosted URL reachable (CORS restricted)"
         : status === "timeout"
@@ -2191,7 +2202,13 @@ class bitvidApp {
         "text-green-200"
       );
     } else if (status === "offline") {
-      badgeEl.classList.add("block", "bg-red-900", "text-red-200");
+      badgeEl.classList.add(
+        "inline-flex",
+        "items-center",
+        "gap-1",
+        "bg-red-900",
+        "text-red-200"
+      );
     } else if (status === "unknown" || status === "timeout") {
       badgeEl.classList.add(
         "inline-flex",
@@ -2255,7 +2272,7 @@ class bitvidApp {
         let entry;
 
         if (outcome === "ok") {
-          entry = { status: "healthy", message: "✅ CDN Healthy" };
+          entry = { status: "healthy", message: "✅ CDN" };
         } else if (outcome === "opaque") {
           entry = {
             status: "unknown",
@@ -2269,7 +2286,7 @@ class bitvidApp {
         } else {
           entry = {
             status: "offline",
-            message: "⚠️ URL offline — using P2P fallback",
+            message: "❌ CDN",
           };
         }
 
@@ -2279,7 +2296,7 @@ class bitvidApp {
         console.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
         const entry = {
           status: "offline",
-          message: "⚠️ URL offline — using P2P fallback",
+          message: "❌ CDN",
         };
         return this.storeUrlHealth(eventId, trimmedUrl, entry);
       });
