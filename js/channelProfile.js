@@ -345,7 +345,11 @@ async function loadUserVideos(pubkey) {
       const magnetCandidate = trimmedMagnet || legacyInfoHash;
       const playbackUrl =
         typeof video.url === "string" ? video.url : "";
+      const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
       const playbackMagnet = magnetCandidate || "";
+      const urlStatusHtml = trimmedUrl
+        ? app.getUrlHealthPlaceholderMarkup()
+        : "";
 
       cardEl.innerHTML = `
         <div
@@ -362,21 +366,24 @@ async function loadUserVideos(pubkey) {
             />
           </div>
         </div>
-        <div class="p-4 flex items-center justify-between">
-          <div>
-            <h3
-              class="text-lg font-bold text-white mb-2 line-clamp-2"
-              data-video-id="${video.id}"
-              data-play-url=""
-              data-play-magnet=""
-            >
-              ${safeTitle}
-            </h3>
-            <p class="text-sm text-gray-500">
-              ${new Date(video.created_at * 1000).toLocaleString()}
-            </p>
+        <div class="p-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3
+                class="text-lg font-bold text-white mb-2 line-clamp-2"
+                data-video-id="${video.id}"
+                data-play-url=""
+                data-play-magnet=""
+              >
+                ${safeTitle}
+              </h3>
+              <p class="text-sm text-gray-500">
+                ${new Date(video.created_at * 1000).toLocaleString()}
+              </p>
+            </div>
+            ${gearMenu}
           </div>
-          ${gearMenu}
+          ${urlStatusHtml}
         </div>
       `;
 
@@ -392,6 +399,17 @@ async function loadUserVideos(pubkey) {
         el.dataset.playUrl = encodeURIComponent(playbackUrl || "");
         el.dataset.playMagnet = playbackMagnet || "";
       });
+
+      if (trimmedUrl) {
+        const badgeEl = cardEl.querySelector("[data-url-health-state]");
+        if (badgeEl) {
+          app.handleUrlHealthBadge({
+            video,
+            url: trimmedUrl,
+            badgeEl,
+          });
+        }
+      }
 
       fragment.appendChild(cardEl);
     });

@@ -348,6 +348,10 @@ class SubscriptionsManager {
         typeof video.url === "string" ? video.url : "";
       const playbackMagnet =
         typeof video.magnet === "string" ? video.magnet : "";
+      const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
+      const urlStatusHtml = trimmedUrl
+        ? window.app?.getUrlHealthPlaceholderMarkup?.() ?? ""
+        : "";
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <a
@@ -398,6 +402,7 @@ class SubscriptionsManager {
               </div>
               ${gearMenu}
             </div>
+            ${urlStatusHtml}
           </div>
         </div>
       `;
@@ -417,6 +422,17 @@ class SubscriptionsManager {
           el.dataset.playUrl = encodeURIComponent(playbackUrl || "");
           el.dataset.playMagnet = playbackMagnet || "";
         });
+
+        if (trimmedUrl && window.app?.handleUrlHealthBadge) {
+          const badgeEl = cardEl.querySelector("[data-url-health-state]");
+          if (badgeEl) {
+            window.app.handleUrlHealthBadge({
+              video,
+              url: trimmedUrl,
+              badgeEl,
+            });
+          }
+        }
       }
       fragment.appendChild(cardEl);
     });
