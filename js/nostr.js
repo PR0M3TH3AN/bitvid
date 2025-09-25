@@ -3,7 +3,12 @@
 import { isDevMode } from "./config.js";
 import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
-import { deriveTitleFromEvent, magnetFromText } from "./videoEventUtils.js";
+// 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
+import {
+  deriveTitleFromEvent,
+  magnetFromText,
+  parseVideoEventPayload,
+} from "./videoEventUtils.js";
 
 /**
  * The usual relays
@@ -88,69 +93,75 @@ function inferMimeTypeFromUrl(url) {
 }
 
 /**
- * Convert a raw Nostr event => Bitvid's "video" object.
- * Accepts legacy (<v2) payloads when ACCEPT_LEGACY_V1 allows it and either a
- * hosted URL or a recoverable magnet is present.
+ * Convert a raw Nostr event into Bitvid's canonical "video" object.
+ *
+ * The converter intentionally centralises all of the quirky legacy handling so
+ * that feed rendering, subscriptions, and deep links rely on the exact same
+ * rules. Any future regression around magnet-only posts or malformed JSON
+ * should be solved by updating this function (and its tests) instead of
+ * sprinkling ad-hoc checks elsewhere in the UI.
+ *
+ * Also accepts legacy (<v2) payloads when ACCEPT_LEGACY_V1 allows it.
  */
+// 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 function convertEventToVideo(event = {}) {
   const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
-  const parseInteger = (value) => {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
-    }
-    if (typeof value === "string") {
-      const parsed = Number.parseInt(value, 10);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-    return 0;
-  };
+  const normalizeOptional = (value) => safeTrim(value) || "";
 
-  const rawContent = safeTrim(event.content);
-  let parsedContent = {};
-  let parseError = null;
-  if (rawContent) {
-    try {
-      const parsed = JSON.parse(rawContent);
-      if (parsed && typeof parsed === "object") {
-        parsedContent = parsed;
-      }
-    } catch (err) {
-      parseError = err;
-      parsedContent = {};
-    }
-  }
-
-  const declaredTitle = safeTrim(parsedContent.title);
-  const declaredUrl = safeTrim(parsedContent.url);
-  const declaredMagnet = safeTrim(parsedContent.magnet);
-
+  const rawContent = typeof event.content === "string" ? event.content : "";
   const tags = Array.isArray(event.tags) ? event.tags : [];
 
+  const {
+    parsedContent,
+    parseError,
+    title: declaredTitle,
+    url: parsedUrl,
+    magnet: parsedMagnet,
+    infoHash,
+    version,
+  } = parseVideoEventPayload(event);
+
+  const normalizedUrl = safeTrim(parsedUrl);
+  const directMagnet = safeTrim(parsedMagnet);
+  const parsedInfoHash = safeTrim(infoHash).toLowerCase();
+
   let recoveredMagnet = "";
-  if (!declaredMagnet && ACCEPT_LEGACY_V1) {
-    recoveredMagnet = safeTrim(magnetFromText(rawContent));
+  if (!directMagnet && ACCEPT_LEGACY_V1) {
+    // Legacy v1 payloads frequently stuffed the magnet into arbitrary JSON
+    // strings. Inspect the raw content before JSON parsing so malformed
+    // payloads (or intentionally non-JSON legacy notes) still surface a magnet.
+    const inlineMagnet = magnetFromText(rawContent);
+    if (inlineMagnet) {
+      recoveredMagnet = safeTrim(inlineMagnet);
+    }
+
     if (!recoveredMagnet) {
+      // Older clients also placed magnets into tags, sometimes under a literal
+      // ["magnet", ...] tuple and other times hidden in auxiliary values. The
+      // scavenger walks each tag to retain those posts while keeping the logic
+      // behind ACCEPT_LEGACY_V1 for easy rollback.
       for (const tag of tags) {
-        if (!Array.isArray(tag) || tag.length < 2) {
+        if (!Array.isArray(tag) || tag.length === 0) {
           continue;
         }
-        const key = safeTrim(tag[0]).toLowerCase();
+
+        const key = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
         if (key === "magnet" && typeof tag[1] === "string") {
-          const candidate = safeTrim(tag[1]);
-          if (candidate) {
-            recoveredMagnet = candidate;
+          const tagMagnet = magnetFromText(tag[1]) || tag[1];
+          const trimmed = safeTrim(tagMagnet);
+          if (trimmed) {
+            recoveredMagnet = trimmed;
             break;
           }
         }
+
         for (let i = 1; i < tag.length && !recoveredMagnet; i += 1) {
-          const candidate = safeTrim(magnetFromText(tag[i]));
+          const candidate = magnetFromText(tag[i]);
           if (candidate) {
-            recoveredMagnet = candidate;
-            break;
+            recoveredMagnet = safeTrim(candidate);
           }
         }
+
         if (recoveredMagnet) {
           break;
         }
@@ -158,10 +169,12 @@ function convertEventToVideo(event = {}) {
     }
   }
 
-  const magnet = declaredMagnet || recoveredMagnet;
-  const url = declaredUrl;
+  const magnetCandidate = directMagnet || recoveredMagnet;
+  const normalizedMagnet = safeTrim(magnetCandidate);
+  const fallbackInfoHash = ACCEPT_LEGACY_V1 ? parsedInfoHash : "";
+  const magnetForPlayback = normalizedMagnet || fallbackInfoHash;
 
-  if (!url && !magnet) {
+  if (!normalizedUrl && !magnetForPlayback) {
     return {
       id: event.id,
       invalid: true,
@@ -169,34 +182,35 @@ function convertEventToVideo(event = {}) {
     };
   }
 
-  const resolveInfoHash = () => {
-    const declaredHash = safeTrim(parsedContent.infoHash);
-    if (declaredHash) {
-      return declaredHash.toLowerCase();
+  const deriveInfoHash = () => {
+    // Prefer the structured info hash found during payload parsing so the UI
+    // can surface it directly and playbackUtils can promote it to a magnet.
+    if (parsedInfoHash) {
+      return parsedInfoHash;
     }
-    const sourceMagnet = magnet || safeTrim(magnetFromText(rawContent));
-    if (sourceMagnet) {
-      const match = sourceMagnet.match(/xt=urn:btih:([0-9a-z]+)/i);
+    const source = normalizedMagnet || "";
+    if (source) {
+      // When only a magnet string exists we still try to recover the info hash
+      // because downstream helpers display a friendlier fallback title and can
+      // rebuild a magnet URI if the original string gets mangled later on.
+      const match = source.match(/xt=urn:btih:([0-9a-z]+)/i);
       if (match && match[1]) {
         return match[1].toLowerCase();
       }
     }
+    // Blend in additional legacy recovery from the other branch: 40-char hex hashes
     if (ACCEPT_LEGACY_V1) {
       const hexMatch = rawContent.match(/\b[0-9a-f]{40}\b/i);
       if (hexMatch && hexMatch[0]) {
         return hexMatch[0].toLowerCase();
       }
       for (const tag of tags) {
-        if (!Array.isArray(tag)) {
-          continue;
-        }
+        if (!Array.isArray(tag)) continue;
         for (const value of tag) {
-          if (typeof value !== "string") {
-            continue;
-          }
-          const match = value.match(/\b[0-9a-f]{40}\b/i);
-          if (match && match[0]) {
-            return match[0].toLowerCase();
+          if (typeof value !== "string") continue;
+          const m = value.match(/\b[0-9a-f]{40}\b/i);
+          if (m && m[0]) {
+            return m[0].toLowerCase();
           }
         }
       }
@@ -204,8 +218,7 @@ function convertEventToVideo(event = {}) {
     return "";
   };
 
-  const infoHash = resolveInfoHash();
-  const version = parseInteger(parsedContent.version);
+  const resolvedInfoHash = deriveInfoHash();
 
   const derivedTitle = deriveTitleFromEvent({
     parsedContent,
@@ -213,40 +226,43 @@ function convertEventToVideo(event = {}) {
     primaryTitle: declaredTitle,
   });
 
-  let resolvedTitle = derivedTitle;
-  if (
-    !resolvedTitle &&
-    ACCEPT_LEGACY_V1 &&
-    version < 2 &&
-    (magnet || infoHash)
-  ) {
-    resolvedTitle = infoHash
-      ? `Legacy Video ${infoHash.slice(0, 8)}`
+  let finalTitle = derivedTitle;
+  if (!finalTitle && ACCEPT_LEGACY_V1 && magnetForPlayback) {
+    finalTitle = resolvedInfoHash
+      ? `Legacy Video ${resolvedInfoHash.slice(0, 8)}`
       : "Legacy BitTorrent Video";
   }
 
-  if (!resolvedTitle) {
+  if (!finalTitle) {
     const reason = parseError
       ? "missing title (json parse error)"
       : "missing title";
     return { id: event.id, invalid: true, reason };
   }
 
-  const normalizeOptional = (value) => safeTrim(value) || "";
+  let numericVersion = 0;
+  if (typeof version === "number" && Number.isFinite(version)) {
+    numericVersion = version;
+  } else if (typeof version === "string") {
+    const parsedVersion = Number(version);
+    if (Number.isFinite(parsedVersion)) {
+      numericVersion = parsedVersion;
+    }
+  }
 
   return {
     id: event.id,
-    videoRootId: safeTrim(parsedContent.videoRootId) || event.id,
-    version,
+    videoRootId: normalizeOptional(parsedContent.videoRootId) || event.id,
+    version: numericVersion,
     isPrivate: parsedContent.isPrivate ?? false,
-    title: resolvedTitle,
-    url,
-    magnet,
-    rawMagnet: declaredMagnet || recoveredMagnet,
-    infoHash,
+    title: finalTitle,
+    url: normalizedUrl,
+    magnet: magnetForPlayback,
+    rawMagnet: directMagnet || (ACCEPT_LEGACY_V1 ? recoveredMagnet : ""),
+    infoHash: resolvedInfoHash,
     thumbnail: normalizeOptional(parsedContent.thumbnail),
     description: normalizeOptional(parsedContent.description),
-    mode: safeTrim(parsedContent.mode) || "live",
+    mode: normalizeOptional(parsedContent.mode) || "live",
     deleted: parsedContent.deleted === true,
     pubkey: event.pubkey,
     created_at: event.created_at,
