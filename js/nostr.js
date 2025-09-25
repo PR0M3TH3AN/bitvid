@@ -17,6 +17,10 @@ const RELAY_URLS = [
   "wss://relay.nostr.band",
 ];
 
+const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
+const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
+const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 // To limit error spam
 let errorLogCount = 0;
 const MAX_ERROR_LOGS = 100;
@@ -326,6 +330,107 @@ class NostrClient {
 
     // “activeMap” holds only the newest version for each root
     this.activeMap = new Map();
+
+    this.hasRestoredLocalData = false;
+  }
+
+  restoreLocalData() {
+    if (this.hasRestoredLocalData) {
+      return this.allEvents.size > 0;
+    }
+
+    this.hasRestoredLocalData = true;
+
+    if (typeof localStorage === "undefined") {
+      return false;
+    }
+
+    const now = Date.now();
+    const parsePayload = (raw) => {
+      if (!raw) {
+        return null;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          return parsed;
+        }
+      } catch (err) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to parse cached events:", err);
+        }
+      }
+      return null;
+    };
+
+    let payload = parsePayload(localStorage.getItem(EVENTS_CACHE_STORAGE_KEY));
+
+    if (!payload) {
+      const legacyRaw = localStorage.getItem(LEGACY_EVENTS_STORAGE_KEY);
+      const legacyParsed = parsePayload(legacyRaw);
+      if (legacyParsed) {
+        payload = {
+          version: 1,
+          savedAt: now,
+          events: legacyParsed,
+        };
+      }
+      if (legacyRaw) {
+        try {
+          localStorage.removeItem(LEGACY_EVENTS_STORAGE_KEY);
+        } catch (err) {
+          if (isDevMode) {
+            console.warn("[nostr] Failed to remove legacy cache:", err);
+          }
+        }
+      }
+    }
+
+    if (!payload || payload.version !== 1) {
+      return false;
+    }
+
+    if (
+      typeof payload.savedAt !== "number" ||
+      payload.savedAt <= 0 ||
+      now - payload.savedAt > EVENTS_CACHE_TTL_MS
+    ) {
+      try {
+        localStorage.removeItem(EVENTS_CACHE_STORAGE_KEY);
+      } catch (err) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to clear expired cache:", err);
+        }
+      }
+      return false;
+    }
+
+    const events = payload.events;
+    if (!events || typeof events !== "object") {
+      return false;
+    }
+
+    this.allEvents.clear();
+    this.activeMap.clear();
+
+    for (const [id, video] of Object.entries(events)) {
+      if (!id || !video || typeof video !== "object") {
+        continue;
+      }
+
+      this.allEvents.set(id, video);
+      if (video.deleted) {
+        continue;
+      }
+
+      const activeKey = getActiveKey(video);
+      const existing = this.activeMap.get(activeKey);
+      if (!existing || video.created_at > existing.created_at) {
+        this.activeMap.set(activeKey, video);
+      }
+    }
+
+    return this.allEvents.size > 0;
   }
 
   /**
@@ -333,6 +438,8 @@ class NostrClient {
    */
   async init() {
     if (isDevMode) console.log("Connecting to relays...");
+
+    this.restoreLocalData();
 
     try {
       this.pool = new window.NostrTools.SimplePool();
@@ -868,12 +975,28 @@ class NostrClient {
  * Saves all known events to localStorage (or a different storage if you prefer).
  */
   saveLocalData() {
-    // Convert our allEvents map into a plain object for JSON storage
-    const allEventsObject = {};
-    for (const [id, vid] of this.allEvents.entries()) {
-      allEventsObject[id] = vid;
+    if (typeof localStorage === "undefined") {
+      return;
     }
-    localStorage.setItem("bitvidEvents", JSON.stringify(allEventsObject));
+
+    const payload = {
+      version: 1,
+      savedAt: Date.now(),
+      events: {},
+    };
+
+    for (const [id, vid] of this.allEvents.entries()) {
+      payload.events[id] = vid;
+    }
+
+    try {
+      localStorage.setItem(EVENTS_CACHE_STORAGE_KEY, JSON.stringify(payload));
+      localStorage.removeItem(LEGACY_EVENTS_STORAGE_KEY);
+    } catch (err) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to persist events cache:", err);
+      }
+    }
   }
 
   /**

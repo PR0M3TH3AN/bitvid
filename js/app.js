@@ -29,6 +29,9 @@ const UNSUPPORTED_BTITH_MESSAGE =
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
+const PROFILE_CACHE_STORAGE_KEY = "bitvid:profileCache:v1";
+const PROFILE_CACHE_VERSION = 1;
+const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // We probe hosted URLs often enough that a naive implementation would spam
 // remote CDNs. A medium-lived cache (roughly 45 minutes) keeps us from
 // hammering dead hosts while still giving the UI timely updates when a CDN
@@ -528,6 +531,148 @@ class bitvidApp {
     }
   }
 
+  loadProfileCacheFromStorage() {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+
+    const now = Date.now();
+    const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY);
+    if (!raw) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return;
+      }
+
+      if (parsed.version !== PROFILE_CACHE_VERSION) {
+        return;
+      }
+
+      const entries = parsed.entries;
+      if (!entries || typeof entries !== "object") {
+        return;
+      }
+
+      for (const [pubkey, entry] of Object.entries(entries)) {
+        if (!pubkey || !entry || typeof entry !== "object") {
+          continue;
+        }
+
+        const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
+        if (!timestamp || now - timestamp > PROFILE_CACHE_TTL_MS) {
+          continue;
+        }
+
+        const profile = entry.profile;
+        if (!profile || typeof profile !== "object") {
+          continue;
+        }
+
+        const normalized = {
+          name: profile.name || profile.display_name || "Unknown",
+          picture: profile.picture || "assets/svg/default-profile.svg",
+        };
+
+        this.profileCache.set(pubkey, {
+          profile: normalized,
+          timestamp,
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to parse stored profile cache:", err);
+    }
+  }
+
+  persistProfileCacheToStorage() {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+
+    const now = Date.now();
+    const entries = {};
+
+    for (const [pubkey, entry] of this.profileCache.entries()) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
+      if (!timestamp || now - timestamp > PROFILE_CACHE_TTL_MS) {
+        this.profileCache.delete(pubkey);
+        continue;
+      }
+
+      entries[pubkey] = {
+        profile: entry.profile,
+        timestamp,
+      };
+    }
+
+    const payload = {
+      version: PROFILE_CACHE_VERSION,
+      savedAt: now,
+      entries,
+    };
+
+    if (Object.keys(entries).length === 0) {
+      try {
+        localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY);
+      } catch (err) {
+        console.warn("Failed to clear profile cache storage:", err);
+      }
+      return;
+    }
+
+    try {
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (err) {
+      console.warn("Failed to persist profile cache:", err);
+    }
+  }
+
+  getProfileCacheEntry(pubkey) {
+    if (!pubkey) {
+      return null;
+    }
+
+    const entry = this.profileCache.get(pubkey);
+    if (!entry) {
+      return null;
+    }
+
+    const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
+    if (!timestamp || Date.now() - timestamp > PROFILE_CACHE_TTL_MS) {
+      this.profileCache.delete(pubkey);
+      this.persistProfileCacheToStorage();
+      return null;
+    }
+
+    return entry;
+  }
+
+  setProfileCacheEntry(pubkey, profile) {
+    if (!pubkey || !profile) {
+      return;
+    }
+
+    const normalized = {
+      name: profile.name || profile.display_name || "Unknown",
+      picture: profile.picture || "assets/svg/default-profile.svg",
+    };
+
+    const entry = {
+      profile: normalized,
+      timestamp: Date.now(),
+    };
+
+    this.profileCache.set(pubkey, entry);
+    this.persistProfileCacheToStorage();
+    return entry;
+  }
+
   forceRefreshAllProfiles() {
     // 1) Grab the newest set of videos from nostrClient
     const activeVideos = nostrClient.getActiveVideos();
@@ -549,6 +694,8 @@ class bitvidApp {
           registrations.forEach((registration) => registration.update());
         });
       }
+
+      this.loadProfileCacheFromStorage();
 
       // 1. Initialize the video modal (components/video-modal.html)
       await this.initModal();
@@ -1149,6 +1296,11 @@ class bitvidApp {
         picture = data.picture || "assets/svg/default-profile.svg";
       }
 
+      this.setProfileCacheEntry(pubkey, {
+        name: displayName,
+        picture,
+      });
+
       // If you have a top-bar avatar (profileAvatar)
       if (this.profileAvatar) {
         this.profileAvatar.src = picture;
@@ -1166,14 +1318,12 @@ class bitvidApp {
   }
 
   async fetchAndRenderProfile(pubkey, forceRefresh = false) {
-    const now = Date.now();
-
-    // 1) Check if we have a cached entry
-    const cacheEntry = this.profileCache.get(pubkey);
-    if (!forceRefresh && cacheEntry && now - cacheEntry.timestamp < 60000) {
-      // If it's less than 60 seconds old, just update DOM with it
+    const cacheEntry = this.getProfileCacheEntry(pubkey);
+    if (cacheEntry) {
       this.updateProfileInDOM(pubkey, cacheEntry.profile);
-      return;
+      if (!forceRefresh) {
+        return;
+      }
     }
 
     // 2) Otherwise, fetch from Nostr
@@ -1189,7 +1339,7 @@ class bitvidApp {
         };
 
         // Cache it
-        this.profileCache.set(pubkey, { profile, timestamp: now });
+        this.setProfileCacheEntry(pubkey, profile);
         // Update DOM
         this.updateProfileInDOM(pubkey, profile);
       }
@@ -1202,10 +1352,25 @@ class bitvidApp {
     const pubkeys = Array.from(authorSet);
     if (!pubkeys.length) return;
 
+    const toFetch = [];
+
+    pubkeys.forEach((pubkey) => {
+      const cacheEntry = this.getProfileCacheEntry(pubkey);
+      if (cacheEntry) {
+        this.updateProfileInDOM(pubkey, cacheEntry.profile);
+      } else {
+        toFetch.push(pubkey);
+      }
+    });
+
+    if (!toFetch.length) {
+      return;
+    }
+
     const filter = {
       kinds: [0],
-      authors: pubkeys,
-      limit: pubkeys.length,
+      authors: toFetch,
+      limit: toFetch.length,
     };
 
     try {
@@ -1236,7 +1401,7 @@ class bitvidApp {
             name: data.name || data.display_name || "Unknown",
             picture: data.picture || "assets/svg/default-profile.svg",
           };
-          this.profileCache.set(pubkey, { profile, timestamp: Date.now() });
+          this.setProfileCacheEntry(pubkey, profile);
           this.updateProfileInDOM(pubkey, profile);
         } catch (err) {
           console.error("Profile parse error:", err);
@@ -1851,6 +2016,27 @@ class bitvidApp {
   async loadVideos(forceFetch = false) {
     console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
+    const shouldIncludeVideo = (video) => {
+      if (!video || typeof video !== "object") {
+        return false;
+      }
+
+      if (this.blacklistedEventIds.has(video.id)) {
+        return false;
+      }
+
+      const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+      if (initialBlacklist.includes(authorNpub)) {
+        return false;
+      }
+
+      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
+        return false;
+      }
+
+      return true;
+    };
+
     // If forceFetch is true, unsubscribe from the old subscription to start fresh
     if (forceFetch && this.videoSubscription) {
       // Call unsubscribe on the subscription object directly.
@@ -1873,28 +2059,16 @@ class bitvidApp {
         const updatedAll = nostrClient.getActiveVideos();
 
         // Filter out blacklisted authors & blacklisted event IDs
-        const filteredVideos = updatedAll.filter((video) => {
-          // 1) If the event ID is in our blacklistedEventIds set, skip
-          if (this.blacklistedEventIds.has(video.id)) {
-            return false;
-          }
-
-          // 2) Check if the author's npub is in initialBlacklist
-          const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-          if (initialBlacklist.includes(authorNpub)) {
-            return false;
-          }
-
-          // 3) If whitelist mode is enabled, only keep authors in initialWhitelist
-          if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-            return false;
-          }
-
-          return true;
-        });
+        const filteredVideos = updatedAll.filter(shouldIncludeVideo);
 
         this.renderVideoList(filteredVideos);
       });
+
+      const cachedActiveVideos = nostrClient.getActiveVideos();
+      const cachedFiltered = cachedActiveVideos.filter(shouldIncludeVideo);
+      if (cachedFiltered.length) {
+        this.renderVideoList(cachedFiltered);
+      }
 
       if (this.videoSubscription) {
         console.log(
@@ -1905,22 +2079,7 @@ class bitvidApp {
       // Already subscribed: just show what's cached
       const allCached = nostrClient.getActiveVideos();
 
-      const filteredCached = allCached.filter((video) => {
-        if (this.blacklistedEventIds.has(video.id)) {
-          return false;
-        }
-
-        const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-        if (initialBlacklist.includes(authorNpub)) {
-          return false;
-        }
-
-        if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-          return false;
-        }
-
-        return true;
-      });
+      const filteredCached = allCached.filter(shouldIncludeVideo);
 
       this.renderVideoList(filteredCached);
     }
