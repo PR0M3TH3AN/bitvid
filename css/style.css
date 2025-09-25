@@ -115,6 +115,7 @@ header img {
   the temporary classes so that once an element has gracefully appeared it stays
   opaque even if the DOM is re-used or re-parented later.
 */
+
 .fade-in {
   opacity: 0;
   animation: interface-fade-in 280ms ease-out forwards;
