@@ -2241,13 +2241,27 @@ class bitvidApp {
         ? "⚠️ CDN timed out"
         : "Checking hosted URL…");
 
+    const hadMargin = badgeEl.classList.contains("mt-3");
+
     badgeEl.dataset.urlHealthState = status;
     badgeEl.setAttribute("aria-live", "polite");
     badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
     badgeEl.textContent = message;
 
-    badgeEl.className =
-      "url-health-badge mt-3 text-xs font-semibold px-2 py-1 rounded transition-colors duration-200";
+    const baseClasses = [
+      "url-health-badge",
+      "text-xs",
+      "font-semibold",
+      "px-2",
+      "py-1",
+      "rounded",
+      "transition-colors",
+      "duration-200",
+    ];
+    if (hadMargin) {
+      baseClasses.unshift("mt-3");
+    }
+    badgeEl.className = baseClasses.join(" ");
 
     if (status === "healthy") {
       badgeEl.classList.add(
