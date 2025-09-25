@@ -26,6 +26,100 @@ const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+// We probe hosted URLs often enough that a naive implementation would spam
+// remote CDNs. A tiny, short-lived cache keeps us from hammering dead hosts
+// while still giving the UI near-real-time feedback when a URL comes back.
+const URL_HEALTH_TTL_MS = 45_000;
+const urlHealthCache = new Map();
+const urlHealthInFlight = new Map();
+
+/**
+ * Returns the cached health result for a given event ID when the entry is
+ * still "fresh". Entries are evicted eagerly once their TTL expires or when
+ * the associated URL changes (e.g. a user edits the post to point elsewhere).
+ */
+function readUrlHealthFromCache(eventId, url) {
+  if (!eventId) {
+    return null;
+  }
+
+  const entry = urlHealthCache.get(eventId);
+  if (!entry) {
+    return null;
+  }
+
+  const now = Date.now();
+  if (entry.expiresAt <= now) {
+    urlHealthCache.delete(eventId);
+    return null;
+  }
+
+  if (url && entry.url && entry.url !== url) {
+    urlHealthCache.delete(eventId);
+    return null;
+  }
+
+  return entry;
+}
+
+/**
+ * Stores a health result and calculates the expiry moment. The TTL is short on
+ * purpose (~45s) so we recover quickly when a CDN comes back online while
+ * still avoiding redundant probes during render thrash.
+ */
+function writeUrlHealthToCache(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) {
+  if (!eventId) {
+    return null;
+  }
+
+  const ttl = typeof ttlMs === "number" && ttlMs > 0 ? ttlMs : URL_HEALTH_TTL_MS;
+  const now = Date.now();
+  const entry = {
+    status: result?.status || "checking",
+    message: result?.message || "Checking hosted URL…",
+    url: url || result?.url || "",
+    expiresAt: now + ttl,
+    lastCheckedAt: now,
+  };
+  urlHealthCache.set(eventId, entry);
+  return entry;
+}
+
+/**
+ * Tracks in-flight probe promises so that multiple cards rendering the same
+ * event simultaneously do not all fire off duplicate requests. The stored
+ * metadata includes the URL so edits invalidate the old request immediately.
+ */
+function setInFlightUrlProbe(eventId, url, promise) {
+  if (!eventId || !promise) {
+    return;
+  }
+
+  urlHealthInFlight.set(eventId, { promise, url });
+  promise.finally(() => {
+    const current = urlHealthInFlight.get(eventId);
+    if (current && current.promise === promise) {
+      urlHealthInFlight.delete(eventId);
+    }
+  });
+}
+
+function getInFlightUrlProbe(eventId, url) {
+  if (!eventId) {
+    return null;
+  }
+
+  const entry = urlHealthInFlight.get(eventId);
+  if (!entry) {
+    return null;
+  }
+
+  if (url && entry.url && entry.url !== url) {
+    return null;
+  }
+
+  return entry.promise;
+}
 // NOTE: The modal uses a "please stand by" animated poster while the torrent
 // or direct URL boots up. We've regressed multiple times by forgetting to clear
 // that poster once playback starts, which leaves the loading GIF covering the
@@ -1544,6 +1638,151 @@ class bitvidApp {
     return olderMatches.length > 0;
   }
 
+  /**
+   * Centralised helper for other modules (channel profiles, subscriptions)
+   * so they can re-use the exact same badge skeleton. Keeping the markup in
+   * one place avoids subtle mismatches when we tweak copy or classes later.
+   */
+  getUrlHealthPlaceholderMarkup() {
+    return `
+      <div
+        class="url-health-badge mt-3 text-xs font-semibold px-2 py-1 rounded inline-flex items-center gap-1 bg-gray-800 text-gray-300"
+        data-url-health-state="checking"
+        aria-live="polite"
+        role="status"
+      >
+        Checking hosted URL…
+      </div>
+    `;
+  }
+
+  getCachedUrlHealth(eventId, url) {
+    return readUrlHealthFromCache(eventId, url);
+  }
+
+  storeUrlHealth(eventId, url, result, ttlMs) {
+    return writeUrlHealthToCache(eventId, url, result, ttlMs);
+  }
+
+  updateUrlHealthBadge(badgeEl, state, videoId) {
+    if (!badgeEl || !badgeEl.isConnected) {
+      return;
+    }
+
+    if (videoId && badgeEl.dataset.urlHealthFor && badgeEl.dataset.urlHealthFor !== videoId) {
+      return;
+    }
+
+    const status = state?.status || "checking";
+    const message = state?.message ||
+      (status === "healthy"
+        ? "CDN Healthy"
+        : status === "offline"
+        ? "URL offline — using P2P fallback"
+        : "Checking hosted URL…");
+
+    badgeEl.dataset.urlHealthState = status;
+    badgeEl.setAttribute("aria-live", "polite");
+    badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
+    badgeEl.textContent = message;
+
+    badgeEl.className =
+      "url-health-badge mt-3 text-xs font-semibold px-2 py-1 rounded transition-colors duration-200";
+
+    if (status === "healthy") {
+      badgeEl.classList.add(
+        "inline-flex",
+        "items-center",
+        "gap-1",
+        "bg-green-900",
+        "text-green-200"
+      );
+    } else if (status === "offline") {
+      badgeEl.classList.add("block", "bg-red-900", "text-red-200");
+    } else {
+      badgeEl.classList.add(
+        "inline-flex",
+        "items-center",
+        "gap-1",
+        "bg-gray-800",
+        "text-gray-300"
+      );
+    }
+  }
+
+  handleUrlHealthBadge({ video, url, badgeEl }) {
+    if (!video?.id || !badgeEl || !url) {
+      return;
+    }
+
+    const eventId = video.id;
+    const trimmedUrl = typeof url === "string" ? url.trim() : "";
+    if (!trimmedUrl) {
+      return;
+    }
+
+    badgeEl.dataset.urlHealthFor = eventId;
+
+    const cached = this.getCachedUrlHealth(eventId, trimmedUrl);
+    if (cached) {
+      this.updateUrlHealthBadge(badgeEl, cached, eventId);
+      return;
+    }
+
+    this.updateUrlHealthBadge(badgeEl, { status: "checking" }, eventId);
+
+    const existingProbe = getInFlightUrlProbe(eventId, trimmedUrl);
+    if (existingProbe) {
+      existingProbe
+        .then((entry) => {
+          if (entry) {
+            this.updateUrlHealthBadge(badgeEl, entry, eventId);
+          }
+        })
+        .catch((err) => {
+          console.warn(
+            `[urlHealth] cached probe promise rejected for ${trimmedUrl}:`,
+            err
+          );
+        });
+      return;
+    }
+
+    const probePromise = this.probeUrl(trimmedUrl)
+      .then((ok) => {
+        const result = ok
+          ? { status: "healthy", message: "CDN Healthy" }
+          : {
+              status: "offline",
+              message: "URL offline — using P2P fallback",
+            };
+        return this.storeUrlHealth(eventId, trimmedUrl, result);
+      })
+      .catch((err) => {
+        console.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
+        const result = {
+          status: "offline",
+          message: "URL offline — using P2P fallback",
+        };
+        return this.storeUrlHealth(eventId, trimmedUrl, result);
+      });
+
+    setInFlightUrlProbe(eventId, trimmedUrl, probePromise);
+
+    probePromise
+      .then((entry) => {
+        if (entry) {
+          this.updateUrlHealthBadge(badgeEl, entry, eventId);
+        }
+      })
+      .catch((err) => {
+        console.warn(
+          `[urlHealth] probe promise rejected post-cache for ${trimmedUrl}:`,
+          err
+        );
+      });
+  }
+
   async renderVideoList(videos) {
     if (!this.videoList) return;
 
@@ -1662,6 +1901,10 @@ class bitvidApp {
         `
         : "";
 
+      const urlStatusHtml = trimmedUrl
+        ? this.getUrlHealthPlaceholderMarkup()
+        : "";
+
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <!-- The clickable link to play video -->
@@ -1718,6 +1961,7 @@ class bitvidApp {
               </div>
               ${gearMenu}
             </div>
+            ${urlStatusHtml}
             ${torrentBadge}
           </div>
         </div>
@@ -1748,6 +1992,17 @@ class bitvidApp {
             el.dataset.torrentSupported = magnetSupported ? "true" : "false";
           }
         });
+
+        if (trimmedUrl) {
+          const badgeEl = cardEl.querySelector("[data-url-health-state]");
+          if (badgeEl) {
+            this.handleUrlHealthBadge({
+              video,
+              url: trimmedUrl,
+              badgeEl,
+            });
+          }
+        }
       }
       fragment.appendChild(cardEl);
     });
