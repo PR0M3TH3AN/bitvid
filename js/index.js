@@ -1,5 +1,7 @@
 // js/index.js
 
+import { trackPageView } from "./analytics.js";
+
 // 1) Load modals (login, application, etc.)
 async function loadModal(url) {
   try {
@@ -301,6 +303,11 @@ function handleQueryParams() {
 /**
  * Handle #view=... in the hash and load the correct partial view.
  */
+function recordView(viewName) {
+  const path = `${window.location.pathname}#view=${viewName}`;
+  trackPageView(path);
+}
+
 function handleHashChange() {
   console.log("handleHashChange called, current hash =", window.location.hash);
 
@@ -317,6 +324,7 @@ function handleHashChange() {
         if (typeof initFn === "function") {
           initFn();
         }
+        recordView("most-recent-videos");
       });
     });
     return;
@@ -332,6 +340,7 @@ function handleHashChange() {
       if (typeof initFn === "function") {
         initFn();
       }
+      recordView(viewName);
     });
   });
 }
