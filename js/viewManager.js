@@ -2,6 +2,8 @@
 import { initChannelProfileView } from "./channelProfile.js";
 import { subscriptions } from "./subscriptions.js";
 
+const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
+
 /**
  * Load a partial view by URL into the #viewContainer.
  */
@@ -23,6 +25,10 @@ export async function loadView(viewUrl) {
     // Copy and execute any inline scripts
     const scriptTags = doc.querySelectorAll("script");
     scriptTags.forEach((oldScript) => {
+      const src = oldScript.getAttribute("src") || "";
+      if (src && TRACKING_SCRIPT_PATTERN.test(src)) {
+        return;
+      }
       const newScript = document.createElement("script");
       Array.from(oldScript.attributes).forEach((attr) => {
         newScript.setAttribute(attr.name, attr.value);
