@@ -45,39 +45,16 @@
       </div>
     </div>
 
-    <!-- Mobile Dropdown Button for Footer Links -->
-    <!-- Added p-4 around the button for spacing, and styling consistent with top links -->
-    <div class="md:hidden p-4">
-      <button
-        id="footerDropdownButton"
-        class="flex items-center w-full py-2 px-4 bg-gray-800 hover:bg-gray-700 text-sm font-semibold text-gray-100 rounded shadow-md focus:outline-none transition-colors duration-200"
-      >
-        <!-- Arrow on the left side -->
-        <svg
-          id="footerDropdownIcon"
-          class="w-4 h-4 mr-2 transform transition-transform duration-300"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
-        <span id="footerDropdownText">More</span>
-      </button>
-    </div>
-
     <!-- Footer Links Container -->
-    <!-- On mobile: hidden by default; on desktop: visible and pushed to the bottom -->
-    <div id="footerLinksContainer" class="hidden md:block md:mt-auto">
-      <hr class="border-gray-700" />
-      <div class="p-4">
-        <nav class="space-y-2 text-sm opacity-70">
+    <div class="md:mt-auto px-4 pb-6">
+      <div class="sidebar-dropup">
+        <div
+          id="sidebarResourceLinks"
+          class="sidebar-dropup-panel sidebar-dropup-panel--collapsed"
+          aria-hidden="true"
+        >
+          <div class="sidebar-dropup-panel__inner">
+            <nav class="space-y-2 text-sm opacity-70">
           <a
             href="#view=about"
             class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
@@ -216,30 +193,80 @@
             <img src="assets/svg/dns-icon.svg" alt="DNS" class="w-5 h-5 mr-3" />
             <span class="sidebar-text">DNS</span>
           </a>
-        </nav>
+            </nav>
+          </div>
+        </div>
+        <button
+          id="sidebarResourceToggle"
+          class="sidebar-dropup-trigger"
+          type="button"
+          aria-expanded="false"
+          aria-controls="sidebarResourceLinks"
+        >
+          <span class="sidebar-dropup-trigger__content">
+            <img
+              src="assets/svg/video-settings-gear.svg"
+              alt="Open resources menu"
+              class="w-5 h-5"
+            />
+            <span class="ml-3 text-sm font-semibold tracking-wide">Resources</span>
+          </span>
+          <svg
+            id="sidebarResourceArrow"
+            class="w-4 h-4 ml-3 transition-transform duration-300"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 15l7-7 7 7"
+            />
+          </svg>
+        </button>
       </div>
     </div>
   </div>
 
   <script>
     (function () {
-      var btn = document.getElementById("footerDropdownButton");
-      var footerLinks = document.getElementById("footerLinksContainer");
-      if (btn && footerLinks) {
-        btn.addEventListener("click", function () {
-          footerLinks.classList.toggle("hidden");
-          var icon = document.getElementById("footerDropdownIcon");
-          var textSpan = document.getElementById("footerDropdownText");
-          if (footerLinks.classList.contains("hidden")) {
-            textSpan.textContent = "More";
-            if (icon) {
-              icon.classList.remove("rotate-180");
+      var toggleButton = document.getElementById("sidebarResourceToggle");
+      var dropupPanel = document.getElementById("sidebarResourceLinks");
+      var arrowIcon = document.getElementById("sidebarResourceArrow");
+      if (toggleButton && dropupPanel) {
+        var focusableItems = dropupPanel.querySelectorAll("a, button, [tabindex]");
+        var setFocusableState = function (shouldDisable) {
+          focusableItems.forEach(function (el) {
+            if (shouldDisable) {
+              el.setAttribute("tabindex", "-1");
+            } else if (el.hasAttribute("data-original-tabindex")) {
+              el.setAttribute("tabindex", el.getAttribute("data-original-tabindex"));
+            } else {
+              el.removeAttribute("tabindex");
             }
-          } else {
-            textSpan.textContent = "Less";
-            if (icon) {
-              icon.classList.add("rotate-180");
-            }
+          });
+        };
+
+        focusableItems.forEach(function (el) {
+          if (el.hasAttribute("tabindex")) {
+            el.setAttribute("data-original-tabindex", el.getAttribute("tabindex"));
+          }
+        });
+
+        setFocusableState(true);
+
+        toggleButton.addEventListener("click", function () {
+          var isExpanded = toggleButton.getAttribute("aria-expanded") === "true";
+          toggleButton.setAttribute("aria-expanded", String(!isExpanded));
+          dropupPanel.setAttribute("aria-hidden", String(isExpanded));
+          dropupPanel.classList.toggle("sidebar-dropup-panel--expanded", !isExpanded);
+          dropupPanel.classList.toggle("sidebar-dropup-panel--collapsed", isExpanded);
+          setFocusableState(isExpanded);
+          if (arrowIcon) {
+            arrowIcon.classList.toggle("rotate-180", !isExpanded);
           }
         });
       }
