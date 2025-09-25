@@ -382,11 +382,14 @@ async function loadUserVideos(pubkey) {
 
       // Leave the data-play-* attributes empty in the template markup so the raw
       // URL/magnet strings can be assigned after parsing without HTML entity
-      // escaping, keeping this renderer consistent with app.js.
+      // escaping, keeping this renderer consistent with app.js. The stored URL is
+      // encoded so it stays intact within data-* attributes, and the click
+      // handler decodes it while leaving magnets untouched until
+      // safeDecodeMagnet() runs.
       const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
       interactiveEls.forEach((el) => {
         if (!el.dataset) return;
-        el.dataset.playUrl = playbackUrl || "";
+        el.dataset.playUrl = encodeURIComponent(playbackUrl || "");
         el.dataset.playMagnet = playbackMagnet || "";
       });
 

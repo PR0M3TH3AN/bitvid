@@ -898,16 +898,6 @@ class bitvidApp {
       if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
 
-        const decodeDataValue = (value) => {
-          if (!value) return "";
-          try {
-            return decodeURIComponent(value);
-          } catch (err) {
-            console.warn("Failed to decode data attribute:", err);
-            return value;
-          }
-        };
-
         const rawUrlValue =
           (trigger.dataset && typeof trigger.dataset.playUrl === "string"
             ? trigger.dataset.playUrl
@@ -917,10 +907,17 @@ class bitvidApp {
             ? trigger.dataset.playMagnet
             : null) ?? trigger.getAttribute("data-play-magnet") ?? "";
 
-        const url = decodeDataValue(rawUrlValue);
-        const decodedMagnetValue = decodeDataValue(rawMagnetValue);
-        const magnet =
-          safeDecodeMagnet(decodedMagnetValue) || decodedMagnetValue;
+        let url = "";
+        if (rawUrlValue) {
+          try {
+            url = decodeURIComponent(rawUrlValue);
+          } catch (err) {
+            console.warn("Failed to decode data-play-url attribute:", err);
+            url = rawUrlValue;
+          }
+        }
+
+        const magnet = safeDecodeMagnet(rawMagnetValue) || rawMagnetValue;
         const eventId = trigger.getAttribute("data-video-id");
 
         if (eventId) {
@@ -1739,9 +1736,12 @@ class bitvidApp {
         // assign them after template parsing so the raw URL/magnet strings avoid
         // HTML entity escaping in the literal markup and keep any sensitive
         // magnet payloads out of the static DOM text.
+        // The play URL is stored URL-encoded to keep spaces and query params
+        // intact inside data-* attributes; attachVideoListHandler() decodes it
+        // before playback.
         interactiveEls.forEach((el) => {
           if (!el.dataset) return;
-          el.dataset.playUrl = playbackUrl || "";
+          el.dataset.playUrl = encodeURIComponent(playbackUrl || "");
           el.dataset.playMagnet = playbackMagnet || "";
           if (magnetProvided) {
             el.dataset.torrentSupported = magnetSupported ? "true" : "false";
