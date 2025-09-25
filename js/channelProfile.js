@@ -47,11 +47,29 @@ export async function initChannelProfileView() {
     if (btn) btn.classList.add("hidden");
   }
 
+  setupZapButton();
+
   // 4) Load user’s profile (banner, avatar, etc.)
   await loadUserProfile(hexPub);
 
   // 5) Load user’s videos (filtered + rendered like the home feed)
   await loadUserVideos(hexPub);
+}
+
+function setupZapButton() {
+  const zapButton = document.getElementById("zapButton");
+  if (!zapButton) {
+    return;
+  }
+
+  if (zapButton.dataset.initialized === "true") {
+    return;
+  }
+
+  zapButton.addEventListener("click", () => {
+    window.alert("Zaps coming soon.");
+  });
+  zapButton.dataset.initialized = "true";
 }
 
 /**
