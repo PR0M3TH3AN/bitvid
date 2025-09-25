@@ -8,6 +8,7 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  --modal-motion-duration: 160ms;
 }
 
 /* Core Styles */
@@ -137,7 +138,7 @@ header img {
   display: flex;
   flex-direction: column;
   background-color: #0f172a;
-  animation: fadeIn 0.3s ease-in-out;
+  animation: fadeIn var(--modal-motion-duration) ease-out;
 }
 
 @keyframes fadeIn {
@@ -148,6 +149,12 @@ header img {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-content {
+    animation-duration: 1ms;
   }
 }
 
