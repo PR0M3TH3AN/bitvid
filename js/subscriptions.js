@@ -408,11 +408,13 @@ class SubscriptionsManager {
       if (cardEl) {
         // Leave the data-play-* attributes empty in the literal markup so we can
         // assign the raw URL/magnet strings post-parsing without HTML entity
-        // escaping, mirroring the approach in app.js.
+        // escaping, mirroring the approach in app.js. The URL is encoded so that
+        // special characters survive storage in data-* attributes; the click
+        // handler decodes it right before playback while keeping the magnet raw.
         const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
         interactiveEls.forEach((el) => {
           if (!el.dataset) return;
-          el.dataset.playUrl = playbackUrl || "";
+          el.dataset.playUrl = encodeURIComponent(playbackUrl || "");
           el.dataset.playMagnet = playbackMagnet || "";
         });
       }
