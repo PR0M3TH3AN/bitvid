@@ -298,9 +298,6 @@ function handleQueryParams() {
   }
 }
 
-/**
- * Handle #view=... in the hash and load the correct partial view.
- */
 function handleHashChange() {
   console.log("handleHashChange called, current hash =", window.location.hash);
 
@@ -327,11 +324,11 @@ function handleHashChange() {
 
   // Now dynamically load that partial, then call its init function
   import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
-    loadView(viewUrl).then(() => {
-      const initFn = viewInitRegistry[viewName];
-      if (typeof initFn === "function") {
-        initFn();
-      }
-    });
+      loadView(viewUrl).then(() => {
+        const initFn = viewInitRegistry[viewName];
+        if (typeof initFn === "function") {
+          initFn();
+        }
+      });
   });
 }
