@@ -300,14 +300,6 @@ function handleQueryParams() {
   }
 }
 
-/**
- * Handle #view=... in the hash and load the correct partial view.
- */
-function recordView(viewName) {
-  const path = `${window.location.pathname}#view=${viewName}`;
-  trackPageView(path);
-}
-
 function handleHashChange() {
   console.log("handleHashChange called, current hash =", window.location.hash);
 
@@ -335,12 +327,11 @@ function handleHashChange() {
 
   // Now dynamically load that partial, then call its init function
   import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
-    loadView(viewUrl).then(() => {
-      const initFn = viewInitRegistry[viewName];
-      if (typeof initFn === "function") {
-        initFn();
-      }
-      recordView(viewName);
-    });
+      loadView(viewUrl).then(() => {
+        const initFn = viewInitRegistry[viewName];
+        if (typeof initFn === "function") {
+          initFn();
+        }
+      });
   });
 }
