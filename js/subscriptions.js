@@ -328,6 +328,7 @@ class SubscriptionsManager {
           <button
             class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
             data-revert-index="${index}"
+            data-revert-event-id="${video.id}"
           >
             Revert
           </button>
@@ -356,6 +357,7 @@ class SubscriptionsManager {
                 <button
                   class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
                   data-edit-index="${index}"
+                  data-edit-event-id="${video.id}"
                 >
                   Edit
                 </button>
@@ -363,6 +365,7 @@ class SubscriptionsManager {
                 <button
                   class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
                   data-delete-all-index="${index}"
+                  data-delete-all-event-id="${video.id}"
                 >
                   Delete All
                 </button>
@@ -500,10 +503,15 @@ class SubscriptionsManager {
     editButtons.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const idx = btn.getAttribute("data-edit-index");
-        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        const idxAttr = btn.getAttribute("data-edit-index");
+        const idx = Number.parseInt(idxAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        window.app?.handleEditVideo(idx);
+        const eventId = btn.getAttribute("data-edit-event-id") || "";
+        window.app?.handleEditVideo({
+          eventId,
+          index: Number.isNaN(idx) ? null : idx,
+        });
       });
     });
 
@@ -512,10 +520,15 @@ class SubscriptionsManager {
     revertButtons.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const idx = btn.getAttribute("data-revert-index");
-        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        const idxAttr = btn.getAttribute("data-revert-index");
+        const idx = Number.parseInt(idxAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        window.app?.handleRevertVideo(idx);
+        const eventId = btn.getAttribute("data-revert-event-id") || "";
+        window.app?.handleRevertVideo({
+          eventId,
+          index: Number.isNaN(idx) ? null : idx,
+        });
       });
     });
 
@@ -526,10 +539,15 @@ class SubscriptionsManager {
     deleteAllButtons.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const idx = btn.getAttribute("data-delete-all-index");
-        const dd = document.getElementById(`settingsDropdown-${idx}`);
+        const idxAttr = btn.getAttribute("data-delete-all-index");
+        const idx = Number.parseInt(idxAttr, 10);
+        const dd = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dd) dd.classList.add("hidden");
-        window.app?.handleFullDeleteVideo(idx);
+        const eventId = btn.getAttribute("data-delete-all-event-id") || "";
+        window.app?.handleFullDeleteVideo({
+          eventId,
+          index: Number.isNaN(idx) ? null : idx,
+        });
       });
     });
 
