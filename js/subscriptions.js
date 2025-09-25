@@ -388,9 +388,26 @@ class SubscriptionsManager {
       const magnetCandidate = trimmedMagnet || legacyInfoHash;
       const playbackMagnet = magnetCandidate;
       const magnetProvided = magnetCandidate.length > 0;
-      const urlStatusHtml = trimmedUrl
-        ? window.app?.getUrlHealthPlaceholderMarkup?.() ?? ""
+      const magnetSupported =
+        window.app?.isMagnetUriSupported?.(magnetCandidate) ?? false;
+      const urlBadgeHtml = trimmedUrl
+        ? window.app?.getUrlHealthPlaceholderMarkup?.({ includeMargin: false }) ??
+          ""
         : "";
+      const torrentHealthBadgeHtml =
+        magnetProvided && magnetSupported
+          ? window.app?.getTorrentHealthBadgeMarkup?.({
+              includeMargin: false,
+            }) ?? ""
+          : "";
+      const connectionBadgesHtml =
+        urlBadgeHtml || torrentHealthBadgeHtml
+          ? `
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              ${urlBadgeHtml}${torrentHealthBadgeHtml}
+            </div>
+          `
+          : "";
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <a
@@ -409,19 +426,6 @@ class SubscriptionsManager {
             </div>
           </a>
           <div class="p-4">
-            <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
-              <span class="uppercase tracking-wide text-[0.65rem] text-gray-500">
-                Streamable?
-              </span>
-              <span
-                class="stream-health text-lg"
-                aria-live="polite"
-                aria-label="Checking stream availability"
-                title="Checking stream availability"
-              >
-                🟦
-              </span>
-            </div>
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
               data-video-id="${video.id}"
@@ -454,7 +458,7 @@ class SubscriptionsManager {
               </div>
               ${gearMenu}
             </div>
-            ${urlStatusHtml}
+            ${connectionBadgesHtml}
           </div>
         </div>
       `;
