@@ -10,6 +10,8 @@ import { normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
+import { attachHealthBadges } from "./gridHealth.js";
+import { getPlaybackHealthRowMarkup } from "./playbackHealthMarkup.js";
 import {
   initialWhitelist,
   initialBlacklist,
@@ -2132,16 +2134,11 @@ class bitvidApp {
    * one place avoids subtle mismatches when we tweak copy or classes later.
    */
   getUrlHealthPlaceholderMarkup() {
-    return `
-      <div
-        class="url-health-badge mt-3 text-xs font-semibold px-2 py-1 rounded inline-flex items-center gap-1 bg-gray-800 text-gray-300"
-        data-url-health-state="checking"
-        aria-live="polite"
-        role="status"
-      >
-        Checking hosted URL…
-      </div>
-    `;
+    return getPlaybackHealthRowMarkup({ includeUrlBadge: true });
+  }
+
+  getStreamHealthOnlyMarkup() {
+    return getPlaybackHealthRowMarkup({ includeUrlBadge: false });
   }
 
   getCachedUrlHealth(eventId, url) {
@@ -2191,7 +2188,7 @@ class bitvidApp {
     badgeEl.textContent = message;
 
     badgeEl.className =
-      "url-health-badge mt-3 text-xs font-semibold px-2 py-1 rounded transition-colors duration-200";
+      "url-health-badge text-xs font-semibold px-2 py-1 rounded transition-colors duration-200";
 
     if (status === "healthy") {
       badgeEl.classList.add(
@@ -2491,9 +2488,9 @@ class bitvidApp {
         `
         : "";
 
-      const urlStatusHtml = trimmedUrl
+      const playbackHealthHtml = trimmedUrl
         ? this.getUrlHealthPlaceholderMarkup()
-        : "";
+        : this.getStreamHealthOnlyMarkup();
 
       const rawThumbnail =
         typeof video.thumbnail === "string" ? video.thumbnail.trim() : "";
@@ -2580,7 +2577,7 @@ class bitvidApp {
               </div>
               ${gearMenu}
             </div>
-            ${urlStatusHtml}
+            ${playbackHealthHtml}
             ${torrentBadge}
           </div>
         </div>
@@ -2687,6 +2684,12 @@ class bitvidApp {
         } else if (magnetProvided && magnetSupported) {
           cardEl.dataset.torrentSupported = "true";
         }
+
+        if (magnetProvided) {
+          cardEl.dataset.magnet = playbackMagnet;
+        } else if (cardEl.dataset.magnet) {
+          delete cardEl.dataset.magnet;
+        }
         const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
         // We intentionally leave the data-play-* attributes blank in cardHtml and
         // assign them after template parsing so the raw URL/magnet strings avoid
@@ -2726,6 +2729,7 @@ class bitvidApp {
     // Clear old content, add new
     this.videoList.innerHTML = "";
     this.videoList.appendChild(fragment);
+    attachHealthBadges(this.videoList);
 
     // Ensure every thumbnail can recover with a fallback image if the primary
     // source fails to load or returns a zero-sized response (some CDNs error

@@ -1,5 +1,6 @@
 // js/index.js
 
+import "./bufferPolyfill.js";
 import { trackPageView } from "./analytics.js";
 
 const INTERFACE_FADE_IN_ANIMATION = "interface-fade-in";

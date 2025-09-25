@@ -3,6 +3,8 @@ import {
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
 } from "./nostr.js";
+import { attachHealthBadges } from "./gridHealth.js";
+import { getPlaybackHealthRowMarkup } from "./playbackHealthMarkup.js";
 
 function getAbsoluteShareUrl(nevent) {
   if (!nevent) {
@@ -379,12 +381,17 @@ class SubscriptionsManager {
       const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
       const playbackUrl =
         typeof video.url === "string" ? video.url : "";
-      const playbackMagnet =
-        typeof video.magnet === "string" ? video.magnet : "";
       const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
-      const urlStatusHtml = trimmedUrl
-        ? window.app?.getUrlHealthPlaceholderMarkup?.() ?? ""
-        : "";
+      const trimmedMagnet =
+        typeof video.magnet === "string" ? video.magnet.trim() : "";
+      const legacyInfoHash =
+        typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+      const magnetCandidate = trimmedMagnet || legacyInfoHash;
+      const playbackMagnet = magnetCandidate;
+      const magnetProvided = magnetCandidate.length > 0;
+      const playbackHealthHtml = getPlaybackHealthRowMarkup({
+        includeUrlBadge: Boolean(trimmedUrl),
+      });
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <a
@@ -435,7 +442,7 @@ class SubscriptionsManager {
               </div>
               ${gearMenu}
             </div>
-            ${urlStatusHtml}
+            ${playbackHealthHtml}
           </div>
         </div>
       `;
@@ -462,6 +469,12 @@ class SubscriptionsManager {
           el.dataset.playMagnet = playbackMagnet || "";
         });
 
+        if (magnetProvided) {
+          cardEl.dataset.magnet = playbackMagnet;
+        } else if (cardEl.dataset.magnet) {
+          delete cardEl.dataset.magnet;
+        }
+
         if (trimmedUrl && window.app?.handleUrlHealthBadge) {
           const badgeEl = cardEl.querySelector("[data-url-health-state]");
           if (badgeEl) {
@@ -477,6 +490,7 @@ class SubscriptionsManager {
     });
 
     container.appendChild(fragment);
+    attachHealthBadges(container);
 
     if (window.app) {
       window.app.videoList = container;
