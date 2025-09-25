@@ -2167,34 +2167,31 @@ class bitvidApp {
     const includeMargin = options?.includeMargin !== false;
     const classes = [
       "torrent-health-badge",
-      "inline-flex",
-      "items-center",
-      "gap-2",
+      "text-xs",
+      "font-semibold",
       "px-2",
       "py-1",
       "rounded",
+      "inline-flex",
+      "items-center",
+      "gap-1",
       "bg-gray-800",
       "text-gray-300",
-      "text-xs",
-      "font-semibold",
+      "transition-colors",
+      "duration-200",
     ];
     if (includeMargin) {
       classes.unshift("mt-3");
     }
 
     return `
-      <div class="${classes.join(" ")}">
-        <span
-          class="stream-health text-lg"
-          aria-live="polite"
-          aria-label="Checking WebTorrent availability"
-          title="Checking WebTorrent availability"
-        >
-          🟦
-        </span>
-        <span class="uppercase tracking-wide text-[0.65rem] text-gray-400">
-          WebTorrent
-        </span>
+      <div
+        class="${classes.join(" ")}"
+        data-stream-health-state="checking"
+        aria-live="polite"
+        role="status"
+      >
+        ⏳ Torrent
       </div>
     `;
   }
