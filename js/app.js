@@ -414,6 +414,7 @@ class bitvidApp {
     // Lazy-loading helper for images
     this.mediaLoader = new MediaLoader();
     this.activeIntervals = [];
+    this.urlPlaybackWatchdogCleanup = null;
 
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
@@ -1266,7 +1267,7 @@ class bitvidApp {
     const description = descEl?.value.trim() || "";
 
     const formData = {
-      version: 2,
+      version: 3,
       title,
       url,
       magnet,
@@ -1277,16 +1278,21 @@ class bitvidApp {
     };
 
     if (!formData.title || (!formData.url && !formData.magnet)) {
-      this.showError(
-        "Please add a title plus either a hosted video URL or a magnet link."
-      );
+      this.showError("Title and at least one of URL or Magnet is required.");
       return;
     }
 
-    formData.magnet = normalizeAndAugmentMagnet(formData.magnet, {
-      ws,
-      xs,
-    });
+    if (formData.url && !/^https:\/\//i.test(formData.url)) {
+      this.showError("Hosted video URLs must use HTTPS.");
+      return;
+    }
+
+    if (formData.magnet) {
+      formData.magnet = normalizeAndAugmentMagnet(formData.magnet, {
+        ws,
+        xs,
+      });
+    }
 
     try {
       await nostrClient.publishVideo(formData, this.pubkey);
@@ -1415,6 +1421,7 @@ class bitvidApp {
   async cleanup({ preserveSubscriptions = false, preserveObservers = false } = {}) {
     try {
       this.clearActiveIntervals();
+      this.cleanupUrlPlaybackWatchdog();
 
       if (!preserveObservers && this.mediaLoader) {
         this.mediaLoader.disconnect();
@@ -1465,6 +1472,113 @@ class bitvidApp {
     }
     this.activeIntervals.forEach((id) => clearInterval(id));
     this.activeIntervals = [];
+  }
+
+  cleanupUrlPlaybackWatchdog() {
+    if (typeof this.urlPlaybackWatchdogCleanup === "function") {
+      try {
+        this.urlPlaybackWatchdogCleanup();
+      } catch (err) {
+        console.warn("[cleanupUrlPlaybackWatchdog]", err);
+      } finally {
+        this.urlPlaybackWatchdogCleanup = null;
+      }
+    }
+  }
+
+  registerUrlPlaybackWatchdogs(
+    videoElement,
+    { stallMs = 8000, onSuccess, onFallback } = {}
+  ) {
+    this.cleanupUrlPlaybackWatchdog();
+
+    if (!videoElement || typeof onFallback !== "function") {
+      return () => {};
+    }
+
+    const normalizedStallMs = Number.isFinite(stallMs) && stallMs > 0 ? stallMs : 0;
+    let active = true;
+    let stallTimerId = null;
+
+    const listeners = [];
+
+    const cleanup = () => {
+      if (!active) {
+        return;
+      }
+      active = false;
+      if (stallTimerId) {
+        clearTimeout(stallTimerId);
+        stallTimerId = null;
+      }
+      for (const [eventName, handler] of listeners) {
+        videoElement.removeEventListener(eventName, handler);
+      }
+      this.urlPlaybackWatchdogCleanup = null;
+    };
+
+    const triggerFallback = (reason) => {
+      if (!active) {
+        return;
+      }
+      cleanup();
+      onFallback(reason);
+    };
+
+    const handleSuccess = () => {
+      if (!active) {
+        return;
+      }
+      cleanup();
+      if (typeof onSuccess === "function") {
+        onSuccess();
+      }
+    };
+
+    const resetTimer = () => {
+      if (!active || !normalizedStallMs) {
+        return;
+      }
+      if (stallTimerId) {
+        clearTimeout(stallTimerId);
+      }
+      stallTimerId = setTimeout(() => triggerFallback("stall"), normalizedStallMs);
+    };
+
+    const addListener = (eventName, handler) => {
+      videoElement.addEventListener(eventName, handler);
+      listeners.push([eventName, handler]);
+    };
+
+    addListener("error", () => triggerFallback("error"));
+    addListener("abort", () => triggerFallback("abort"));
+    addListener("stalled", () => triggerFallback("stalled"));
+    addListener("emptied", () => triggerFallback("emptied"));
+    addListener("playing", handleSuccess);
+    addListener("ended", handleSuccess);
+
+    const timerEvents = [
+      "timeupdate",
+      "progress",
+      "loadeddata",
+      "canplay",
+      "canplaythrough",
+      "suspend",
+      "waiting",
+    ];
+    for (const eventName of timerEvents) {
+      addListener(eventName, resetTimer);
+    }
+
+    if (normalizedStallMs) {
+      resetTimer();
+    }
+
+    this.urlPlaybackWatchdogCleanup = () => {
+      cleanup();
+    };
+
+    return this.urlPlaybackWatchdogCleanup;
   }
 
   resetTorrentStats() {
@@ -2573,7 +2687,18 @@ class bitvidApp {
     }
   }
 
-  async playViaWebTorrent(magnet, { fallbackMagnet = "" } = {}) {
+  async playViaWebTorrent(
+    magnet,
+    { fallbackMagnet = "", urlList = [] } = {}
+  ) {
+    const sanitizedUrlList = Array.isArray(urlList)
+      ? urlList
+          .map((entry) =>
+            typeof entry === "string" ? entry.trim() : ""
+          )
+          .filter((entry) => /^https?:\/\//i.test(entry))
+      : [];
+
     const attemptStream = async (candidate) => {
       const trimmedCandidate =
         typeof candidate === "string" ? candidate.trim() : "";
@@ -2616,7 +2741,8 @@ class bitvidApp {
 
       const torrentInstance = await torrentClient.streamVideo(
         cacheBustedMagnet,
-        this.modalVideo
+        this.modalVideo,
+        { urlList: sanitizedUrlList }
       );
       if (torrentInstance && torrentInstance.ready) {
         // Some browsers delay `playing` events for MediaSource-backed torrents.
@@ -2717,6 +2843,7 @@ class bitvidApp {
 
       this.resetTorrentStats();
       this.playSource = null;
+      this.cleanupUrlPlaybackWatchdog();
 
       if (magnetForPlayback) {
         const label = playbackConfig.didMutate
@@ -2725,38 +2852,98 @@ class bitvidApp {
         this.log(`${label} ${magnetForPlayback}`);
       }
 
-      if (URL_FIRST_ENABLED && sanitizedUrl) {
-        if (this.modalStatus) {
-          this.modalStatus.textContent = "Checking hosted URL...";
-        }
-        const urlPlayable = await this.probeUrl(sanitizedUrl);
+      const httpsUrl =
+        sanitizedUrl && /^https:\/\//i.test(sanitizedUrl) ? sanitizedUrl : "";
+      const webSeedCandidates = httpsUrl ? [httpsUrl] : [];
 
-        if (urlPlayable) {
+      const startTorrentFallback = async (reason) => {
+        this.cleanupUrlPlaybackWatchdog();
+        if (!magnetForPlayback) {
+          const message =
+            "Hosted playback failed and no magnet fallback is available.";
           if (this.modalStatus) {
-            this.modalStatus.textContent = "Streaming from URL";
+            this.modalStatus.textContent = message;
           }
-          const played = await this.playHttp(videoEl, sanitizedUrl);
-          if (played) {
-            this.forceRemoveModalPoster("http-success");
-            this.playSource = "url";
-            return;
-          }
-          this.log(
-            "[playVideoWithFallback] Direct URL playback promise rejected."
-          );
+          this.playSource = null;
+          throw new Error(message);
         }
-      }
 
-      if (magnetForPlayback) {
         if (this.modalStatus) {
           this.modalStatus.textContent = "Switching to WebTorrent...";
         }
+        this.log(
+          `[playVideoWithFallback] Falling back to WebTorrent (${reason}).`
+        );
         console.debug("[WT] add magnet =", magnetForPlayback);
-        await this.playViaWebTorrent(magnetForPlayback, {
-          fallbackMagnet,
-        });
+        const torrentInstance = await this.playViaWebTorrent(
+          magnetForPlayback,
+          {
+            fallbackMagnet,
+            urlList: webSeedCandidates,
+          }
+        );
         this.playSource = "torrent";
         this.autoplayModalVideo();
+        return torrentInstance;
+      };
+
+      if (URL_FIRST_ENABLED && httpsUrl) {
+        if (this.modalStatus) {
+          this.modalStatus.textContent = "Checking hosted URL...";
+        }
+        const urlPlayable = await this.probeUrl(httpsUrl);
+
+        if (urlPlayable) {
+          let outcomeResolver;
+          const playbackOutcomePromise = new Promise((resolve) => {
+            outcomeResolver = resolve;
+            this.registerUrlPlaybackWatchdogs(videoEl, {
+              stallMs: 8000,
+              onSuccess: () => resolve({ status: "success" }),
+              onFallback: (reason) => resolve({ status: "fallback", reason }),
+            });
+          });
+
+          try {
+            videoEl.src = httpsUrl;
+            const playPromise = videoEl.play();
+            if (playPromise && typeof playPromise.then === "function") {
+              await playPromise;
+            }
+          } catch (err) {
+            this.log(
+              "[playVideoWithFallback] Direct URL playback threw:",
+              err
+            );
+            if (typeof outcomeResolver === "function") {
+              outcomeResolver({ status: "fallback", reason: "play-error" });
+            }
+            return await startTorrentFallback("play-error");
+          }
+
+          const playbackOutcome = await playbackOutcomePromise;
+          if (playbackOutcome?.status === "success") {
+            this.forceRemoveModalPoster("http-success");
+            this.playSource = "url";
+            if (this.modalStatus) {
+              this.modalStatus.textContent = "Streaming from URL";
+            }
+            return;
+          }
+
+          const fallbackReason =
+            playbackOutcome?.reason || "watchdog-triggered";
+          await startTorrentFallback(fallbackReason);
+          return;
+        }
+
+        this.log(
+          "[playVideoWithFallback] Hosted URL probe failed; deferring to WebTorrent."
+        );
+      }
+
+      if (magnetForPlayback) {
+        await startTorrentFallback("magnet-primary");
         return;
       }
 

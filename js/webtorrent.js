@@ -412,7 +412,7 @@ export class TorrentClient {
    * Initiates streaming of a torrent magnet to a <video> element.
    * Ensures the service worker is set up only once and the client is reused.
    */
-  async streamVideo(magnetURI, videoElement) {
+  async streamVideo(magnetURI, videoElement, opts = {}) {
     try {
       // 1) Make sure we have a WebTorrent client and a valid SW registration.
       await this.init();
@@ -428,6 +428,16 @@ export class TorrentClient {
       }
 
       const isFirefoxBrowser = this.isFirefox();
+      const candidateUrls = Array.isArray(opts?.urlList)
+        ? opts.urlList
+            .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+            .filter((entry) => /^https?:\/\//i.test(entry))
+        : [];
+
+      const chromeOptions = { strategy: "sequential" };
+      if (candidateUrls.length) {
+        chromeOptions.urlList = candidateUrls;
+      }
 
       return new Promise((resolve, reject) => {
         // 3) Add the torrent to the client and handle accordingly.
@@ -435,7 +445,7 @@ export class TorrentClient {
           this.log("Starting torrent download (Firefox path)");
           this.client.add(
             magnetURI,
-            { strategy: "sequential", maxWebConns: 4 },
+            { ...chromeOptions, maxWebConns: 4 },
             (torrent) => {
               this.log("Torrent added (Firefox path):", torrent.name);
               this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
@@ -443,7 +453,7 @@ export class TorrentClient {
           );
         } else {
           this.log("Starting torrent download (Chrome path)");
-          this.client.add(magnetURI, { strategy: "sequential" }, (torrent) => {
+          this.client.add(magnetURI, chromeOptions, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
             this.handleChromeTorrent(torrent, videoElement, resolve, reject);
           });

@@ -70,13 +70,21 @@
           </div>
 
           <!-- Hosted video URL -->
-          <div class="mb-4">
-            <label for="uploadUrl" class="block text-sm font-medium">Hosted video URL</label>
+          <div class="form-group">
+            <label
+              for="uploadUrl"
+              class="block text-sm font-medium text-gray-200"
+              >Hosted video URL (https)</label
+            >
             <input
               id="uploadUrl"
               type="url"
-              class="w-full p-2 rounded"
-              placeholder="https://cdn.example.com/video.mp4 or .webm/.m3u8"
+              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+              placeholder="https://cdn.example.com/video.mp4"
+            />
+            <small class="mt-1 block text-xs text-gray-400"
+              >Optional but preferred. We will play this first and fall back to
+              P2P.</small
             >
           </div>
 
@@ -109,7 +117,8 @@
               class="mt-1 block w-full rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
             />
             <p class="mt-1 text-xs text-gray-400">
-              Include this when you have a torrent source. Bitvid will automatically augment it with any web seeds or metadata you provide.
+              Provide a hosted URL for instant playback. Add a magnet for P2P
+              cost control.
             </p>
           </div>
 

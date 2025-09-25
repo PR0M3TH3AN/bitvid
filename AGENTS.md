@@ -70,4 +70,15 @@ Document the run in PR descriptions so QA can cross-reference results.
 * **Probing:** Lightweight `HEAD`/`GET` requests should back `probeUrl()` so dead URLs can be hidden or flagged without blocking the UI.
 * **Extensibility:** Future work (live streams, NIP-96 uploads, analytics) should preserve the URL-first strategy and magnet safety rules above.
 
+---
+
+## 7. Content Schema v3 & Playback Rules
+
+* **Event payloads:** New video notes serialize as version `3` with the JSON shape:
+  `{ "version": 3, "title": string, "url"?: string, "magnet"?: string, "thumbnail"?: string, "description"?: string, "mode": "live"|"dev", "isPrivate": boolean, "deleted": boolean, "videoRootId": string }`.
+* **Validation:** Every note must include a non-empty `title` plus at least one playable source (`url` or `magnet`). URL-only and magnet-only posts are both valid. Legacy v2 magnet notes stay readable.
+* **Upload UX:** The modal collects a hosted HTTPS URL and/or magnet. Enforce HTTPS for direct playback while keeping magnets optional when a URL is supplied.
+* **Playback orchestration:** `playVideoWithFallback` probes and plays the HTTPS URL first, watches for stalls/errors, and then falls back to WebTorrent. When both sources exist, pass the hosted URL through to WebTorrent as a webseed hint.
+* **Status messaging:** Update modal copy to reflect whether playback is direct or via P2P so regressions surface quickly during QA.
+
 **End of AGENTS.md**
