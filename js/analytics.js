@@ -44,6 +44,7 @@ function scheduleFlush() {
     return;
   }
 
+  // 🔧 merged conflicting changes from codex/add-tracking-script-to-all-pages vs unstable
   flushTimerId = window.setInterval(() => {
     if (window.umami && typeof window.umami.track === "function") {
       window.clearInterval(flushTimerId);
@@ -73,6 +74,7 @@ export function ensureAnalyticsLoaded(doc = typeof document !== "undefined" ? do
   script.src = ANALYTICS_CONFIG.scriptSrc;
   script.setAttribute(SCRIPT_ATTR, SCRIPT_IDENTIFIER);
   script.dataset.websiteId = ANALYTICS_CONFIG.websiteId;
+  // 🔧 merged conflicting changes from codex/add-tracking-script-to-all-pages vs unstable
   script.dataset.autoTrack = "false";
   script.addEventListener("load", () => {
     scriptLoadedOnce = true;
@@ -123,6 +125,7 @@ export function trackPageView(path, referrer) {
   const resolvedReferrer =
     typeof referrer === "string" ? referrer : document.referrer || "";
 
+  // 🔧 merged conflicting changes from codex/add-tracking-script-to-all-pages vs unstable
   let absoluteUrl = resolvedPath;
   try {
     absoluteUrl = new URL(resolvedPath, window.location.origin).toString();
@@ -182,10 +185,8 @@ export function trackVideoView({
     payload.hasUrl = hasUrl;
   }
 
-  invokeUmami("track", [
-    ANALYTICS_CONFIG.videoViewEventName,
-    payload,
-  ]);
+  // 🔧 merged conflicting changes from codex/add-tracking-script-to-all-pages vs unstable
+  invokeUmami("track", [ANALYTICS_CONFIG.videoViewEventName, payload]);
 }
 
 // Immediately queue the analytics script so page views are captured early.
