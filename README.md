@@ -27,10 +27,15 @@
 2. **Login with Nostr**:
    - Use a compatible Nostr browser extension or manually input your public key.
 3. **Upload Videos**:
-   - Provide a title, magnet link, and optional thumbnail or description.
+   - Provide a title plus a hosted URL (recommended) and optionally a magnet link. Bitvid plays the URL first and falls back to WebTorrent.
    - Toggle "Private" for encrypted listings.
 4. **Stream Videos**:
-   - Play videos directly in the browser using WebTorrent technology.
+   - The player attempts the hosted URL first and uses WebTorrent as a fallback when a magnet is available.
+
+#### P2P Hints
+
+- Append `ws=` parameters to magnets to expose HTTPS web seeds that help the fallback warm up quickly.
+- Append `xs=` parameters when you have an HTTPS `.torrent` URL so WebTorrent can bootstrap without waiting on peer discovery.
 
 ---
 
@@ -67,6 +72,10 @@ To run **bitvid** locally:
 
 - **`config.js`**:
   - Toggle `isDevMode` for development (`true`) or production (`false`).
+- **`js/constants.js`**:
+  - Source for browser-safe tracker lists and feature flags that govern WebTorrent behavior.
+- **Magnet helpers**:
+  - Use `safeDecodeMagnet()` and `normalizeAndAugmentMagnet()` from `js/magnetUtils.js` to preserve hashes and add `ws=` / `xs=` hints safely.
 
 ### Adding Features
 
@@ -101,6 +110,21 @@ To run **bitvid** locally:
 - Follow the [MIT License](https://opensource.org/licenses/MIT).
 - Use clear, concise commit messages.
 - Respect the existing coding style and architecture.
+- Run the manual QA script (see below) and note results in PR descriptions for changes that affect upload or playback.
+
+---
+
+## Testing
+
+Use the manual QA checklist before releases or when altering upload/playback flows:
+
+1. Open the Upload modal, confirm validation (title plus URL or magnet), and test submissions for URL-only, magnet-only, and combined entries.
+2. Publish a post with both URL and magnet, verify the player streams the hosted URL, then simulate a URL failure and confirm WebTorrent playback.
+3. Paste encoded magnets to ensure `safeDecodeMagnet()` returns the raw string and `normalizeAndAugmentMagnet()` adds `ws=` / `xs=` hints without corruption.
+4. Confirm magnets include HTTPS `ws=` / optional `xs=` hints and use the WSS tracker list from `js/constants.js`.
+5. Spot-check Chromium and Firefox for console warnings (CORS, Range requests, tracker connectivity).
+
+See [`docs/qa.md`](docs/qa.md) for the copy/paste-friendly checklist we share with QA.
 
 ---
 
