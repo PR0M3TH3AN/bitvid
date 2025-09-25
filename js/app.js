@@ -3093,22 +3093,41 @@ class bitvidApp {
 
       // 3) Prompt the user for updated fields
       const newTitle = prompt("New Title? (blank=keep existing)", video.title);
+      if (newTitle === null) {
+        return;
+      }
+
       const newMagnet = prompt(
         "New Magnet? (blank=keep existing)",
         video.magnet
       );
+      if (newMagnet === null) {
+        return;
+      }
+
       const newUrl = prompt(
         "New URL? (blank=keep existing)",
         video.url || ""
       );
+      if (newUrl === null) {
+        return;
+      }
+
       const newThumb = prompt(
         "New Thumbnail? (blank=keep existing)",
         video.thumbnail
       );
+      if (newThumb === null) {
+        return;
+      }
+
       const newDesc = prompt(
         "New Description? (blank=keep existing)",
         video.description
       );
+      if (newDesc === null) {
+        return;
+      }
       // const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
 
       // 4) Build final updated fields (or fallback to existing)
