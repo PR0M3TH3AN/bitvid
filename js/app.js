@@ -38,6 +38,7 @@ const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // recovers. Results are stored both in-memory and in localStorage so other
 // views can reuse them without re-probing.
 const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
+const URL_PROBE_TIMEOUT_MS = 8 * 1000; // 8 seconds
 const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
@@ -2164,11 +2165,13 @@ class bitvidApp {
     const message =
       state?.message ||
       (status === "healthy"
-        ? "CDN Healthy"
+        ? "✅ CDN Healthy"
         : status === "offline"
-        ? "URL offline — using P2P fallback"
+        ? "⚠️ URL offline — using P2P fallback"
         : status === "unknown"
-        ? "Hosted URL reachable (CORS restricted)"
+        ? "⚠️ Hosted URL reachable (CORS restricted)"
+        : status === "timeout"
+        ? "⚠️ Hosted URL check timed out"
         : "Checking hosted URL…");
 
     badgeEl.dataset.urlHealthState = status;
@@ -2189,7 +2192,7 @@ class bitvidApp {
       );
     } else if (status === "offline") {
       badgeEl.classList.add("block", "bg-red-900", "text-red-200");
-    } else if (status === "unknown") {
+    } else if (status === "unknown" || status === "timeout") {
       badgeEl.classList.add(
         "inline-flex",
         "items-center",
@@ -2252,16 +2255,21 @@ class bitvidApp {
         let entry;
 
         if (outcome === "ok") {
-          entry = { status: "healthy", message: "CDN Healthy" };
+          entry = { status: "healthy", message: "✅ CDN Healthy" };
         } else if (outcome === "opaque") {
           entry = {
             status: "unknown",
-            message: "Hosted URL reachable (CORS restricted)",
+            message: "⚠️ Hosted URL reachable (CORS restricted)",
+          };
+        } else if (outcome === "timeout") {
+          entry = {
+            status: "timeout",
+            message: "⚠️ Hosted URL check timed out",
           };
         } else {
           entry = {
             status: "offline",
-            message: "URL offline — using P2P fallback",
+            message: "⚠️ URL offline — using P2P fallback",
           };
         }
 
@@ -2271,7 +2279,7 @@ class bitvidApp {
         console.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
         const entry = {
           status: "offline",
-          message: "URL offline — using P2P fallback",
+          message: "⚠️ URL offline — using P2P fallback",
         };
         return this.storeUrlHealth(eventId, trimmedUrl, entry);
       });
@@ -3313,35 +3321,151 @@ class bitvidApp {
     }
   }
 
+  async probeUrlWithVideoElement(url, timeoutMs = URL_PROBE_TIMEOUT_MS) {
+    const trimmed = typeof url === "string" ? url.trim() : "";
+    if (!trimmed || typeof document === "undefined") {
+      return { outcome: "error" };
+    }
+
+    return new Promise((resolve) => {
+      const video = document.createElement("video");
+      let settled = false;
+      let timeoutId = null;
+
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        video.removeEventListener("loadeddata", handleSuccess);
+        video.removeEventListener("canplay", handleSuccess);
+        video.removeEventListener("error", handleError);
+        try {
+          video.pause();
+        } catch (err) {
+          // ignore pause failures (e.g. if never played)
+        }
+        try {
+          video.removeAttribute("src");
+          video.load();
+        } catch (err) {
+          // ignore cleanup failures
+        }
+      };
+
+      const settle = (result) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+
+      const handleSuccess = () => {
+        settle({ outcome: "ok" });
+      };
+
+      const handleError = () => {
+        settle({ outcome: "error" });
+      };
+
+      if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+        timeoutId = setTimeout(() => {
+          settle({ outcome: "timeout" });
+        }, timeoutMs);
+      }
+
+      try {
+        video.preload = "metadata";
+        video.muted = true;
+        video.playsInline = true;
+        video.addEventListener("loadeddata", handleSuccess, { once: true });
+        video.addEventListener("canplay", handleSuccess, { once: true });
+        video.addEventListener("error", handleError, { once: true });
+        video.src = trimmed;
+        video.load();
+      } catch (err) {
+        settle({ outcome: "error", error: err });
+      }
+    });
+  }
+
   async probeUrl(url) {
     const trimmed = typeof url === "string" ? url.trim() : "";
     if (!trimmed) {
       return { outcome: "invalid" };
     }
 
-    try {
-      const response = await fetch(trimmed, {
+    const supportsAbort = typeof AbortController !== "undefined";
+    const controller = supportsAbort ? new AbortController() : null;
+    let timeoutId = null;
+
+    const racers = [
+      fetch(trimmed, {
         method: "HEAD",
         mode: "no-cors",
         cache: "no-store",
-      });
+        signal: controller ? controller.signal : undefined,
+      }),
+    ];
 
-      if (!response) {
-        return { outcome: "error" };
-      }
+    if (Number.isFinite(URL_PROBE_TIMEOUT_MS) && URL_PROBE_TIMEOUT_MS > 0) {
+      racers.push(
+        new Promise((resolve) => {
+          timeoutId = setTimeout(() => {
+            if (controller) {
+              try {
+                controller.abort();
+              } catch (err) {
+                // ignore abort errors
+              }
+            }
+            resolve({ outcome: "timeout" });
+          }, URL_PROBE_TIMEOUT_MS);
+        })
+      );
+    }
 
-      if (response.type === "opaque") {
-        return { outcome: "opaque" };
-      }
-
-      return {
-        outcome: response.ok ? "ok" : "bad",
-        status: response.status,
-      };
+    let responseOrTimeout;
+    try {
+      responseOrTimeout = await Promise.race(racers);
     } catch (err) {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       console.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
+      const fallback = await this.probeUrlWithVideoElement(trimmed);
+      if (fallback && fallback.outcome) {
+        return fallback;
+      }
       return { outcome: "error", error: err };
     }
+
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    if (responseOrTimeout && responseOrTimeout.outcome === "timeout") {
+      const fallback = await this.probeUrlWithVideoElement(trimmed);
+      if (fallback && fallback.outcome) {
+        return fallback;
+      }
+      return { outcome: "timeout" };
+    }
+
+    const response = responseOrTimeout;
+    if (!response) {
+      return { outcome: "error" };
+    }
+
+    if (response.type === "opaque") {
+      return { outcome: "opaque" };
+    }
+
+    return {
+      outcome: response.ok ? "ok" : "bad",
+      status: response.status,
+    };
   }
 
   async playHttp(videoEl, url) {
