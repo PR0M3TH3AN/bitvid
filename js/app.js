@@ -10,6 +10,7 @@ import { normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
+import { attachHealthBadges } from "./gridHealth.js";
 import {
   initialWhitelist,
   initialBlacklist,
@@ -2545,6 +2546,19 @@ class bitvidApp {
             </div>
           </a>
           <div class="p-4">
+            <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
+              <span class="uppercase tracking-wide text-[0.65rem] text-gray-500">
+                Streamable?
+              </span>
+              <span
+                class="stream-health text-lg"
+                aria-live="polite"
+                aria-label="Checking stream availability"
+                title="Checking stream availability"
+              >
+                🟦
+              </span>
+            </div>
             <!-- Title triggers the video modal as well -->
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
@@ -2687,6 +2701,12 @@ class bitvidApp {
         } else if (magnetProvided && magnetSupported) {
           cardEl.dataset.torrentSupported = "true";
         }
+
+        if (magnetProvided) {
+          cardEl.dataset.magnet = playbackMagnet;
+        } else if (cardEl.dataset.magnet) {
+          delete cardEl.dataset.magnet;
+        }
         const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
         // We intentionally leave the data-play-* attributes blank in cardHtml and
         // assign them after template parsing so the raw URL/magnet strings avoid
@@ -2726,6 +2746,7 @@ class bitvidApp {
     // Clear old content, add new
     this.videoList.innerHTML = "";
     this.videoList.appendChild(fragment);
+    attachHealthBadges(this.videoList);
 
     // Ensure every thumbnail can recover with a fallback image if the primary
     // source fails to load or returns a zero-sized response (some CDNs error

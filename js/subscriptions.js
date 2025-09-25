@@ -3,6 +3,7 @@ import {
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
 } from "./nostr.js";
+import { attachHealthBadges } from "./gridHealth.js";
 
 function getAbsoluteShareUrl(nevent) {
   if (!nevent) {
@@ -379,9 +380,14 @@ class SubscriptionsManager {
       const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
       const playbackUrl =
         typeof video.url === "string" ? video.url : "";
-      const playbackMagnet =
-        typeof video.magnet === "string" ? video.magnet : "";
       const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
+      const trimmedMagnet =
+        typeof video.magnet === "string" ? video.magnet.trim() : "";
+      const legacyInfoHash =
+        typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+      const magnetCandidate = trimmedMagnet || legacyInfoHash;
+      const playbackMagnet = magnetCandidate;
+      const magnetProvided = magnetCandidate.length > 0;
       const urlStatusHtml = trimmedUrl
         ? window.app?.getUrlHealthPlaceholderMarkup?.() ?? ""
         : "";
@@ -403,6 +409,19 @@ class SubscriptionsManager {
             </div>
           </a>
           <div class="p-4">
+            <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
+              <span class="uppercase tracking-wide text-[0.65rem] text-gray-500">
+                Streamable?
+              </span>
+              <span
+                class="stream-health text-lg"
+                aria-live="polite"
+                aria-label="Checking stream availability"
+                title="Checking stream availability"
+              >
+                🟦
+              </span>
+            </div>
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
               data-video-id="${video.id}"
@@ -462,6 +481,12 @@ class SubscriptionsManager {
           el.dataset.playMagnet = playbackMagnet || "";
         });
 
+        if (magnetProvided) {
+          cardEl.dataset.magnet = playbackMagnet;
+        } else if (cardEl.dataset.magnet) {
+          delete cardEl.dataset.magnet;
+        }
+
         if (trimmedUrl && window.app?.handleUrlHealthBadge) {
           const badgeEl = cardEl.querySelector("[data-url-health-state]");
           if (badgeEl) {
@@ -477,6 +502,7 @@ class SubscriptionsManager {
     });
 
     container.appendChild(fragment);
+    attachHealthBadges(container);
 
     if (window.app) {
       window.app.videoList = container;
