@@ -9,6 +9,7 @@ import { safeDecodeMagnet } from "./magnetUtils.js";
 import { normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import { URL_FIRST_ENABLED } from "./constants.js";
+import { trackVideoView } from "./analytics.js";
 import {
   initialWhitelist,
   initialBlacklist,
@@ -3111,6 +3112,14 @@ class bitvidApp {
     const magnetSupported = isValidMagnetUri(usableMagnetCandidate);
     const sanitizedMagnet = magnetSupported ? usableMagnetCandidate : "";
 
+    trackVideoView({
+      videoId: video.id || eventId,
+      title: video.title || "Untitled",
+      source: "event",
+      hasMagnet: !!sanitizedMagnet,
+      hasUrl: !!trimmedUrl,
+    });
+
     this.currentVideo = {
       ...video,
       url: trimmedUrl,
@@ -3194,6 +3203,17 @@ class bitvidApp {
     const usableMagnet = decodedMagnet || trimmedMagnet;
     const magnetSupported = isValidMagnetUri(usableMagnet);
     const sanitizedMagnet = magnetSupported ? usableMagnet : "";
+
+    trackVideoView({
+      videoId:
+        typeof title === "string" && title.trim().length > 0
+          ? `direct:${title.trim()}`
+          : "direct-playback",
+      title,
+      source: "direct",
+      hasMagnet: !!sanitizedMagnet,
+      hasUrl: !!sanitizedUrl,
+    });
 
     if (!sanitizedUrl && !sanitizedMagnet) {
       const message = trimmedMagnet && !magnetSupported

@@ -34,6 +34,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title></title>
+    <script type="module">
+      import { trackPageView } from "./js/analytics.js";
+      trackPageView(window.location.pathname);
+    </script>
     <script type="module" crossorigin>
       var pv = Object.defineProperty;
       var gv = (e, t, n) =>
