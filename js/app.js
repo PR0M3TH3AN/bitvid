@@ -2476,6 +2476,8 @@ class bitvidApp {
         this.loadedThumbnails.get(video.id) || "";
       const shouldLazyLoadThumbnail =
         escapedThumbnail && previouslyLoadedThumbnail !== escapedThumbnail;
+      const shouldAnimateThumbnail =
+        !!escapedThumbnail && previouslyLoadedThumbnail !== escapedThumbnail;
       const thumbnailAttrLines = ["data-video-thumbnail=\"true\""];
       if (shouldLazyLoadThumbnail) {
         thumbnailAttrLines.push(
@@ -2567,8 +2569,15 @@ class bitvidApp {
               return;
             }
 
-            if (thumbnailEl.dataset.thumbnailLoaded !== "true") {
-              thumbnailEl.dataset.thumbnailLoaded = "true";
+            if (shouldAnimateThumbnail) {
+              // Flag the element so CSS runs a one-time fade. js/index.js scrubs
+              // this attribute in the `animationend` handler so reusing the same
+              // DOM node later will not re-trigger the animation and flash.
+              if (thumbnailEl.dataset.thumbnailLoaded !== "true") {
+                thumbnailEl.dataset.thumbnailLoaded = "true";
+              }
+            } else if (thumbnailEl.dataset.thumbnailLoaded) {
+              delete thumbnailEl.dataset.thumbnailLoaded;
             }
 
             this.loadedThumbnails.set(video.id, escapedThumbnail);

@@ -59,11 +59,22 @@
       md:ml-64 ensures content is shifted on desktop so the pinned sidebar doesn't overlap.
       On mobile, we also toggle .sidebar-open to shift the entire content.
     -->
+    <!--
+      `fade-in` is scrubbed by js/index.js after the first animation so that
+      re-rendering views does not cause the shell to flicker. Only apply it to
+      elements that should animate exactly once on initial paint.
+    -->
+
     <div id="app" class="md:ml-64 px-4 py-8 min-h-screen flex flex-col fade-in">
       <!-- Header -->
       <header class="mb-8 flex items-center w-full">
         <!-- Mobile hamburger button (hidden on md+) -->
         <!-- New button -->
+        <!--
+          Mobile menu button: uses `fade-in` to match the rest of the chrome.
+          The JS animation cleanup removes the helper classes once the entrance
+          finishes to prevent flashes on future sidebar toggles.
+        -->
         <button
           id="mobileMenuBtn"
           class="md:hidden ml-2 mr-4 flex items-center justify-center w-10 h-10 rounded-full bg-transparent hover:bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f172a] z-[60] fade-in"
@@ -75,6 +86,7 @@
           />
         </button>
         <!-- Logo -->
+        <!-- Logo fades in once on initial load. -->
         <img
           src="assets/svg/bitvid-logo-light-mode.svg"
           alt="BitVid Logo"
@@ -82,6 +94,9 @@
         />
 
         <!-- Buttons on the far right -->
+
+        <!-- Header action buttons share the fade-in treatment for consistency. -->
+
         <div class="ml-auto flex items-center space-x-4 fade-in fade-in-delay-200">
           <!-- Login Button -->
           <button
@@ -141,6 +156,9 @@
       <div id="modalContainer"></div>
 
       <!-- Tagline / Slogan -->
+
+      <!-- Tagline fade matches the cards. -->
+
       <div class="text-center mb-8 fade-in fade-in-delay-300">
         <h2 class="text-2xl font-bold text-gray-500 tracking-wide">
           seed. zap. subscribe.
