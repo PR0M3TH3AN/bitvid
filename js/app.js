@@ -2562,10 +2562,63 @@ class bitvidApp {
       if (cardEl) {
         const thumbnailEl = cardEl.querySelector("[data-video-thumbnail]");
         if (thumbnailEl) {
-          const handleThumbnailLoad = () => {
-            if (!thumbnailEl.dataset.thumbnailFailed && escapedThumbnail) {
-              this.loadedThumbnails.set(video.id, escapedThumbnail);
+          const markThumbnailAsLoaded = () => {
+            if (!escapedThumbnail) {
+              return;
             }
+
+            if (thumbnailEl.dataset.thumbnailLoaded !== "true") {
+              thumbnailEl.dataset.thumbnailLoaded = "true";
+            }
+
+            this.loadedThumbnails.set(video.id, escapedThumbnail);
+          };
+
+          const handleThumbnailLoad = () => {
+            if (thumbnailEl.dataset.thumbnailLoaded === "true") {
+              return;
+            }
+
+            const hasPendingLazySrc =
+              typeof thumbnailEl.dataset.lazy === "string" &&
+              thumbnailEl.dataset.lazy.trim().length > 0;
+
+            if (hasPendingLazySrc) {
+              return;
+            }
+
+            if (thumbnailEl.dataset.thumbnailFailed || !escapedThumbnail) {
+              return;
+            }
+
+            const fallbackAttr =
+              (typeof thumbnailEl.dataset.fallbackSrc === "string"
+                ? thumbnailEl.dataset.fallbackSrc.trim()
+                : "") ||
+              thumbnailEl.getAttribute("data-fallback-src") ||
+              "";
+
+            const currentSrc = thumbnailEl.currentSrc || thumbnailEl.src || "";
+            const isFallbackSrc =
+              !!fallbackAttr &&
+              !!currentSrc &&
+              (currentSrc === fallbackAttr || currentSrc.endsWith(fallbackAttr));
+
+            if (isFallbackSrc) {
+              return;
+            }
+
+            if (
+              (thumbnailEl.naturalWidth === 0 &&
+                thumbnailEl.naturalHeight === 0) ||
+              !currentSrc
+            ) {
+              return;
+            }
+
+            markThumbnailAsLoaded();
+
+            thumbnailEl.removeEventListener("load", handleThumbnailLoad);
           };
           const handleThumbnailError = () => {
             if (
@@ -2574,14 +2627,22 @@ class bitvidApp {
             ) {
               this.loadedThumbnails.delete(video.id);
             }
+
+            if (thumbnailEl.dataset.thumbnailLoaded) {
+              delete thumbnailEl.dataset.thumbnailLoaded;
+            }
+
+            thumbnailEl.removeEventListener("load", handleThumbnailLoad);
           };
 
-          thumbnailEl.addEventListener("load", handleThumbnailLoad, {
-            once: true,
-          });
+          thumbnailEl.addEventListener("load", handleThumbnailLoad);
           thumbnailEl.addEventListener("error", handleThumbnailError, {
             once: true,
           });
+
+          if (thumbnailEl.complete) {
+            handleThumbnailLoad();
+          }
         }
 
         if (showUnsupportedTorrentBadge) {
