@@ -26,16 +26,25 @@
 1. **Visit the Site**: Navigate to the live instance of **bitvid** (e.g., `[https://bitvid.network](https://bitvid.network)`).
 2. **Login with Nostr**:
    - Use a compatible Nostr browser extension or manually input your public key.
-3. **Upload Videos**:
-   - Provide a title plus a hosted URL (recommended) and optionally a magnet link. Bitvid plays the URL first and falls back to WebTorrent.
-   - Toggle "Private" for encrypted listings.
-4. **Stream Videos**:
-   - The player attempts the hosted URL first and uses WebTorrent as a fallback when a magnet is available.
 
-#### P2P Hints
+### Post a video
 
-- Append `ws=` parameters to magnets to expose HTTPS web seeds that help the fallback warm up quickly.
-- Append `xs=` parameters when you have an HTTPS `.torrent` URL so WebTorrent can bootstrap without waiting on peer discovery.
+The upload modal enforces **Title + (URL or Magnet)**. Hosted URLs are strongly recommended so the player can start instantly, and you may also add a magnet for resilience.
+
+- **Title**: Required. Matches the in-app validation copy.
+- **Hosted URL (recommended)**: Supply an HTTPS MP4/WebM/HLS/DASH asset. This is the primary playback path.
+- **Magnet (optional but encouraged)**: Paste the literal `magnet:?xt=urn:btih:...` string. The form decodes it with `safeDecodeMagnet()` to prevent hash corruption. Never wrap magnets in `new URL()`—store them raw or decode then pass directly to the helpers.
+- **Web seeds (`ws=`)**: HTTPS only. Point to a file root (e.g., `https://cdn.example.com/video/`). Mixed-content (`http://`) hints are rejected just like the modal message explains.
+- **Additional sources (`xs=`)**: Recommend adding an HTTPS `.torrent` link so WebTorrent peers can bootstrap faster.
+- **Trackers**: Bitvid’s browser client only connects to WSS trackers shipped in `js/constants.js`. Do not add UDP or plaintext HTTP trackers to published magnets.
+- **Private toggle**: Encrypts the listing for invited viewers.
+
+### How playback works
+
+1. **URL-first**: `playVideoWithFallback({ url, magnet })` attempts the hosted URL immediately. Healthy URLs deliver the full experience without touching P2P resources.
+2. **WebTorrent fallback**: If the URL probe fails or returns an error status, Bitvid falls back to WebTorrent using the raw magnet. The helpers append HTTPS `ws=`/`xs=` hints so peers seed quickly.
+3. **Safety checks**: Magnets are decoded with `safeDecodeMagnet()` and normalized via `normalizeAndAugmentMagnet()` before reaching WebTorrent. Trackers remain WSS-only to satisfy browser constraints.
+4. **Operator playbook**: If a deployment causes playback regressions, flip the relevant feature flags back to their default values in `js/constants.js` and redeploy. Capture the rollback steps in AGENTS.md and the PR description so the Main channel stays stable.
 
 ---
 
