@@ -2395,6 +2395,7 @@ class bitvidApp {
           <button
             class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
             data-revert-index="${index}"
+            data-revert-event-id="${video.id}"
           >
             Revert
           </button>
@@ -2423,6 +2424,7 @@ class bitvidApp {
                 <button
                   class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
                   data-edit-index="${index}"
+                  data-edit-event-id="${video.id}"
                 >
                   Edit
                 </button>
@@ -2430,6 +2432,7 @@ class bitvidApp {
                 <button
                   class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
                   data-delete-all-index="${index}"
+                  data-delete-all-event-id="${video.id}"
                 >
                   Delete All
                 </button>
@@ -2687,6 +2690,10 @@ class bitvidApp {
           }
         }
       }
+      if (video && video.id) {
+        this.videosMap.set(video.id, video);
+      }
+
       fragment.appendChild(cardEl);
       this.renderedVideoIds.add(video.id);
     });
@@ -2723,10 +2730,15 @@ class bitvidApp {
     const editButtons = this.videoList.querySelectorAll("[data-edit-index]");
     editButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        const index = button.getAttribute("data-edit-index");
-        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        const indexAttr = button.getAttribute("data-edit-index");
+        const eventId = button.getAttribute("data-edit-event-id") || "";
+        const index = Number.parseInt(indexAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${indexAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        this.handleEditVideo(index);
+        this.handleEditVideo({
+          eventId,
+          index: Number.isNaN(index) ? null : index,
+        });
       });
     });
 
@@ -2736,10 +2748,15 @@ class bitvidApp {
     );
     revertButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        const index = button.getAttribute("data-revert-index");
-        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        const indexAttr = button.getAttribute("data-revert-index");
+        const eventId = button.getAttribute("data-revert-event-id") || "";
+        const index = Number.parseInt(indexAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${indexAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        this.handleRevertVideo(index);
+        this.handleRevertVideo({
+          eventId,
+          index: Number.isNaN(index) ? null : index,
+        });
       });
     });
 
@@ -2749,10 +2766,15 @@ class bitvidApp {
     );
     deleteAllButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        const index = button.getAttribute("data-delete-all-index");
-        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        const indexAttr = button.getAttribute("data-delete-all-index");
+        const eventId = button.getAttribute("data-delete-all-event-id") || "";
+        const index = Number.parseInt(indexAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${indexAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        this.handleFullDeleteVideo(index);
+        this.handleFullDeleteVideo({
+          eventId,
+          index: Number.isNaN(index) ? null : index,
+        });
       });
     });
 
@@ -2934,21 +2956,137 @@ class bitvidApp {
     }
   }
 
+  normalizeActionTarget(target) {
+    if (target && typeof target === "object") {
+      const eventId =
+        typeof target.eventId === "string" ? target.eventId.trim() : "";
+      let index = null;
+      if (typeof target.index === "number" && Number.isInteger(target.index)) {
+        index = target.index;
+      } else if (
+        typeof target.index === "string" && target.index.trim().length > 0
+      ) {
+        const parsed = Number.parseInt(target.index.trim(), 10);
+        index = Number.isNaN(parsed) ? null : parsed;
+      }
+      return { eventId, index };
+    }
+
+    if (typeof target === "string") {
+      const trimmed = target.trim();
+      if (!trimmed) {
+        return { eventId: "", index: null };
+      }
+      if (/^-?\d+$/.test(trimmed)) {
+        const parsed = Number.parseInt(trimmed, 10);
+        return { eventId: "", index: Number.isNaN(parsed) ? null : parsed };
+      }
+      return { eventId: trimmed, index: null };
+    }
+
+    if (typeof target === "number" && Number.isInteger(target)) {
+      return { eventId: "", index: target };
+    }
+
+    return { eventId: "", index: null };
+  }
+
+  async resolveVideoActionTarget({
+    eventId = "",
+    index = null,
+    preloadedList,
+  } = {}) {
+    const trimmedEventId = typeof eventId === "string" ? eventId.trim() : "";
+    const normalizedIndex =
+      typeof index === "number" && Number.isInteger(index) && index >= 0
+        ? index
+        : null;
+
+    const candidateLists = Array.isArray(preloadedList)
+      ? [preloadedList]
+      : [];
+
+    for (const list of candidateLists) {
+      if (trimmedEventId) {
+        const match = list.find((video) => video?.id === trimmedEventId);
+        if (match) {
+          this.videosMap.set(match.id, match);
+          return match;
+        }
+      }
+      if (
+        normalizedIndex !== null &&
+        normalizedIndex >= 0 &&
+        normalizedIndex < list.length
+      ) {
+        const match = list[normalizedIndex];
+        if (match) {
+          this.videosMap.set(match.id, match);
+          return match;
+        }
+      }
+    }
+
+    if (trimmedEventId) {
+      const fromMap = this.videosMap.get(trimmedEventId);
+      if (fromMap) {
+        return fromMap;
+      }
+
+      const activeVideos = nostrClient.getActiveVideos();
+      const fromActive = activeVideos.find((video) => video.id === trimmedEventId);
+      if (fromActive) {
+        this.videosMap.set(fromActive.id, fromActive);
+        return fromActive;
+      }
+
+      const fromAll = nostrClient.allEvents.get(trimmedEventId);
+      if (fromAll) {
+        this.videosMap.set(fromAll.id, fromAll);
+        return fromAll;
+      }
+
+      const fetched = await nostrClient.getEventById(trimmedEventId);
+      if (fetched) {
+        this.videosMap.set(fetched.id, fetched);
+        return fetched;
+      }
+    }
+
+    if (normalizedIndex !== null) {
+      const activeVideos = nostrClient.getActiveVideos();
+      if (normalizedIndex >= 0 && normalizedIndex < activeVideos.length) {
+        const candidate = activeVideos[normalizedIndex];
+        if (candidate) {
+          this.videosMap.set(candidate.id, candidate);
+          return candidate;
+        }
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Handle "Edit Video" from gear menu.
    */
-  async handleEditVideo(index) {
+  async handleEditVideo(target) {
     try {
-      // 1) Fetch the current list of videos (the newest versions)
-      const all = await nostrClient.fetchVideos();
-      const video = all[index];
+      const normalizedTarget = this.normalizeActionTarget(target);
+      const latestVideos = await nostrClient.fetchVideos();
+      const video = await this.resolveVideoActionTarget({
+        ...normalizedTarget,
+        preloadedList: latestVideos,
+      });
 
       // 2) Basic ownership checks
       if (!this.pubkey) {
         this.showError("Please login to edit videos.");
         return;
       }
-      if (!video || video.pubkey !== this.pubkey) {
+      const userPubkey = (this.pubkey || "").toLowerCase();
+      const videoPubkey = (video?.pubkey || "").toLowerCase();
+      if (!video || !videoPubkey || videoPubkey !== userPubkey) {
         this.showError("You do not own this video.");
         return;
       }
@@ -3022,17 +3160,22 @@ class bitvidApp {
     }
   }
 
-  async handleRevertVideo(index) {
+  async handleRevertVideo(target) {
     try {
-      // 1) Still use fetchVideos to get the video in question
+      const normalizedTarget = this.normalizeActionTarget(target);
       const activeVideos = await nostrClient.fetchVideos();
-      const video = activeVideos[index];
+      const video = await this.resolveVideoActionTarget({
+        ...normalizedTarget,
+        preloadedList: activeVideos,
+      });
 
       if (!this.pubkey) {
         this.showError("Please login to revert.");
         return;
       }
-      if (!video || video.pubkey !== this.pubkey) {
+      const userPubkey = (this.pubkey || "").toLowerCase();
+      const videoPubkey = (video?.pubkey || "").toLowerCase();
+      if (!video || !videoPubkey || videoPubkey !== userPubkey) {
         this.showError("You do not own this video.");
         return;
       }
@@ -3070,16 +3213,22 @@ class bitvidApp {
   /**
    * Handle "Delete Video" from gear menu.
    */
-  async handleFullDeleteVideo(index) {
+  async handleFullDeleteVideo(target) {
     try {
+      const normalizedTarget = this.normalizeActionTarget(target);
       const all = await nostrClient.fetchVideos();
-      const video = all[index];
+      const video = await this.resolveVideoActionTarget({
+        ...normalizedTarget,
+        preloadedList: all,
+      });
 
       if (!this.pubkey) {
         this.showError("Please login to delete videos.");
         return;
       }
-      if (!video || video.pubkey !== this.pubkey) {
+      const userPubkey = (this.pubkey || "").toLowerCase();
+      const videoPubkey = (video?.pubkey || "").toLowerCase();
+      if (!video || !videoPubkey || videoPubkey !== userPubkey) {
         this.showError("You do not own this video.");
         return;
       }
