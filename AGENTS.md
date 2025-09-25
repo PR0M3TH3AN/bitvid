@@ -2,6 +2,8 @@
 
 This document tells AI agents how Bitvid works **now** and how to extend it going forward. It focuses on the newly adopted **URL‑first playback with WebTorrent fallback** strategy, minimal code touchpoints, and reliable interop with the Nostr ecosystem.
 
+As you work in the repo, please add detailed comments to help others understand what and why your code is doing. 
+
 ---
 
 ## 1) Mission & Product Direction

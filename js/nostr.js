@@ -3,6 +3,7 @@
 import { isDevMode } from "./config.js";
 import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
+// 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import {
   deriveTitleFromEvent,
   magnetFromText,
@@ -99,7 +100,10 @@ function inferMimeTypeFromUrl(url) {
  * rules. Any future regression around magnet-only posts or malformed JSON
  * should be solved by updating this function (and its tests) instead of
  * sprinkling ad-hoc checks elsewhere in the UI.
+ *
+ * Also accepts legacy (<v2) payloads when ACCEPT_LEGACY_V1 allows it.
  */
+// 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 function convertEventToVideo(event = {}) {
   const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
   const normalizeOptional = (value) => safeTrim(value) || "";
@@ -185,15 +189,31 @@ function convertEventToVideo(event = {}) {
       return parsedInfoHash;
     }
     const source = normalizedMagnet || "";
-    if (!source) {
-      return "";
+    if (source) {
+      // When only a magnet string exists we still try to recover the info hash
+      // because downstream helpers display a friendlier fallback title and can
+      // rebuild a magnet URI if the original string gets mangled later on.
+      const match = source.match(/xt=urn:btih:([0-9a-z]+)/i);
+      if (match && match[1]) {
+        return match[1].toLowerCase();
+      }
     }
-    // When only a magnet string exists we still try to recover the info hash
-    // because downstream helpers display a friendlier fallback title and can
-    // rebuild a magnet URI if the original string gets mangled later on.
-    const match = source.match(/xt=urn:btih:([0-9a-z]+)/i);
-    if (match && match[1]) {
-      return match[1].toLowerCase();
+    // Blend in additional legacy recovery from the other branch: 40-char hex hashes
+    if (ACCEPT_LEGACY_V1) {
+      const hexMatch = rawContent.match(/\b[0-9a-f]{40}\b/i);
+      if (hexMatch && hexMatch[0]) {
+        return hexMatch[0].toLowerCase();
+      }
+      for (const tag of tags) {
+        if (!Array.isArray(tag)) continue;
+        for (const value of tag) {
+          if (typeof value !== "string") continue;
+          const m = value.match(/\b[0-9a-f]{40}\b/i);
+          if (m && m[0]) {
+            return m[0].toLowerCase();
+          }
+        }
+      }
     }
     return "";
   };
