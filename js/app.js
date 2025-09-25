@@ -27,6 +27,7 @@ const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 // We probe hosted URLs often enough that a naive implementation would spam
 // remote CDNs. A medium-lived cache (roughly 45 minutes) keeps us from
 // hammering dead hosts while still giving the UI timely updates when a CDN
@@ -481,6 +482,8 @@ class bitvidApp {
     this.videosMap = new Map();
     // Simple cache for user profiles
     this.profileCache = new Map();
+    this.lastRenderedVideoSignature = null;
+    this._lastRenderedVideoListElement = null;
 
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
@@ -1803,6 +1806,7 @@ class bitvidApp {
     // The rest of your existing logic:
     if (!this.videoSubscription) {
       if (this.videoList) {
+        this.lastRenderedVideoSignature = null;
         this.videoList.innerHTML = `
         <p class="text-center text-gray-500">
           Loading videos as they arrive...
@@ -2077,10 +2081,19 @@ class bitvidApp {
   async renderVideoList(videos) {
     if (!this.videoList) return;
 
+    if (this._lastRenderedVideoListElement !== this.videoList) {
+      this.lastRenderedVideoSignature = null;
+      this._lastRenderedVideoListElement = this.videoList;
+    }
+
     const dedupedVideos = this.dedupeVideosByRoot(videos);
 
     // 1) If no videos
     if (!dedupedVideos.length) {
+      if (this.lastRenderedVideoSignature === EMPTY_VIDEO_LIST_SIGNATURE) {
+        return;
+      }
+      this.lastRenderedVideoSignature = EMPTY_VIDEO_LIST_SIGNATURE;
       this.videoList.innerHTML = `
         <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
           No public videos available yet. Be the first to upload one!
@@ -2090,6 +2103,24 @@ class bitvidApp {
 
     // 2) Sort newest first
     dedupedVideos.sort((a, b) => b.created_at - a.created_at);
+
+    const signaturePayload = dedupedVideos.map((video) => ({
+      id: typeof video.id === "string" ? video.id : "",
+      createdAt: Number.isFinite(video.created_at)
+        ? video.created_at
+        : Number(video.created_at) || 0,
+      deleted: Boolean(video.deleted),
+      isPrivate: Boolean(video.isPrivate),
+      thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
+      url: typeof video.url === "string" ? video.url : "",
+      magnet: typeof video.magnet === "string" ? video.magnet : "",
+    }));
+    const signature = JSON.stringify(signaturePayload);
+
+    if (signature === this.lastRenderedVideoSignature) {
+      return;
+    }
+    this.lastRenderedVideoSignature = signature;
 
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
     const fragment = document.createDocumentFragment();

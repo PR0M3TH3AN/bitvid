@@ -10,9 +10,14 @@ async function loadModal(url) {
       throw new Error("Failed to load " + url);
     }
     const html = await response.text();
+    // Remove analytics loader tags from modal partials to avoid duplicate pageview events.
+    const sanitizedHtml = html.replace(
+      /<script\b[^>]*src=["'][^"']*tracking\.js[^"']*["'][^>]*>\s*<\/script>/gi,
+      ""
+    );
     document
       .getElementById("modalContainer")
-      .insertAdjacentHTML("beforeend", html);
+      .insertAdjacentHTML("beforeend", sanitizedHtml);
     console.log(url, "loaded");
   } catch (err) {
     console.error(err);
