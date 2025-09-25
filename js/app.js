@@ -476,6 +476,7 @@ class bitvidApp {
     this.copyMagnetBtn = null;
     this.shareBtn = null;
     this.modalPosterCleanup = null;
+    this.cleanupPromise = null;
 
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
@@ -1441,50 +1442,85 @@ class bitvidApp {
    * Cleanup resources on unload or modal close.
    */
   async cleanup({ preserveSubscriptions = false, preserveObservers = false } = {}) {
-    try {
-      this.clearActiveIntervals();
-      this.cleanupUrlPlaybackWatchdog();
-
-      if (!preserveObservers && this.mediaLoader) {
-        this.mediaLoader.disconnect();
+    // Serialise teardown so overlapping calls (e.g. close button spam) don't
+    // race each other and clobber a fresh playback setup.
+    if (this.cleanupPromise) {
+      try {
+        await this.cleanupPromise;
+      } catch (err) {
+        console.warn("Previous cleanup rejected:", err);
       }
+    }
 
-      if (!preserveSubscriptions && this.videoSubscription) {
-        try {
-          if (typeof this.videoSubscription.unsub === "function") {
-            this.videoSubscription.unsub();
-          }
-        } catch (err) {
-          console.error("Failed to unsubscribe from video feed:", err);
-        } finally {
-          this.videoSubscription = null;
+    const runCleanup = async () => {
+      try {
+        this.clearActiveIntervals();
+        this.cleanupUrlPlaybackWatchdog();
+
+        if (!preserveObservers && this.mediaLoader) {
+          this.mediaLoader.disconnect();
         }
-      }
 
-      // If there's a small inline player
-      if (this.videoElement) {
-        this.videoElement.pause();
-        this.videoElement.src = "";
-        // When WebTorrent (or other MediaSource based flows) mount a stream they
-        // set `srcObject` behind the scenes. Forgetting to clear it leaves the
-        // detached MediaSource hanging around which breaks the next playback
-        // attempt. Always null it out alongside the normal `src` reset.
-        this.videoElement.srcObject = null;
-        this.videoElement.load();
+        if (!preserveSubscriptions && this.videoSubscription) {
+          try {
+            if (typeof this.videoSubscription.unsub === "function") {
+              this.videoSubscription.unsub();
+            }
+          } catch (err) {
+            console.error("Failed to unsubscribe from video feed:", err);
+          } finally {
+            this.videoSubscription = null;
+          }
+        }
+
+        // If there's a small inline player
+        if (this.videoElement) {
+          this.videoElement.pause();
+          this.videoElement.src = "";
+          // When WebTorrent (or other MediaSource based flows) mount a stream they
+          // set `srcObject` behind the scenes. Forgetting to clear it leaves the
+          // detached MediaSource hanging around which breaks the next playback
+          // attempt. Always null it out alongside the normal `src` reset.
+          this.videoElement.srcObject = null;
+          this.videoElement.load();
+        }
+        // If there's a modal video
+        if (this.modalVideo) {
+          this.modalVideo.pause();
+          this.modalVideo.src = "";
+          // See comment above—keep the `srcObject` reset paired with the `src`
+          // wipe so magnet-only replays do not regress into the grey screen bug.
+          this.modalVideo.srcObject = null;
+          this.modalVideo.load();
+        }
+        // Tell webtorrent to cleanup
+        await torrentClient.cleanup();
+      } catch (err) {
+        console.error("Cleanup error:", err);
       }
-      // If there's a modal video
-      if (this.modalVideo) {
-        this.modalVideo.pause();
-        this.modalVideo.src = "";
-        // See comment above—keep the `srcObject` reset paired with the `src`
-        // wipe so magnet-only replays do not regress into the grey screen bug.
-        this.modalVideo.srcObject = null;
-        this.modalVideo.load();
+    };
+
+    const cleanupPromise = runCleanup();
+    this.cleanupPromise = cleanupPromise;
+
+    try {
+      await cleanupPromise;
+    } finally {
+      if (this.cleanupPromise === cleanupPromise) {
+        this.cleanupPromise = null;
       }
-      // Tell webtorrent to cleanup
-      await torrentClient.cleanup();
+    }
+  }
+
+  async waitForCleanup() {
+    if (!this.cleanupPromise) {
+      return;
+    }
+
+    try {
+      await this.cleanupPromise;
     } catch (err) {
-      console.error("Cleanup error:", err);
+      console.warn("waitForCleanup observed a rejected cleanup:", err);
     }
   }
 
@@ -3024,6 +3060,14 @@ class bitvidApp {
    * and falls back to WebTorrent when needed.
    */
   async playVideoWithFallback({ url = "", magnet = "" } = {}) {
+    // When the modal closes we run an asynchronous cleanup that tears down the
+    // previous MediaSource attachment. If the user immediately selects another
+    // video we must wait for that teardown to finish or the stale cleanup will
+    // wipe the freshly attached `src`/`srcObject`, leaving playback stuck on a
+    // blank frame. Guard every playback entry point with waitForCleanup() so the
+    // race never reappears.
+    await this.waitForCleanup();
+
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
 
