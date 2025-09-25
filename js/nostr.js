@@ -263,10 +263,18 @@ function convertEventToVideo(event = {}) {
     return { id: event.id, invalid: true, reason };
   }
 
-  const rawVersion = parsedContent.version ?? 1;
-  let version = Number(rawVersion);
+  const rawVersion = parsedContent.version;
+  let version = rawVersion === undefined ? 2 : Number(rawVersion);
   if (!Number.isFinite(version)) {
-    version = 1;
+    version = rawVersion === undefined ? 2 : 1;
+  }
+
+  if (version < 2 && !ACCEPT_LEGACY_V1) {
+    return {
+      id: event.id,
+      invalid: true,
+      reason: `unsupported version ${version}`,
+    };
   }
 
   return {
@@ -417,8 +425,7 @@ class NostrClient {
   }
 
   /**
-   * Publish a new video
-   * CHANGED: Force version=2 for all new notes
+   * Publish a new video using the v3 content schema.
    */
   async publishVideo(videoData, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
@@ -454,7 +461,7 @@ class NostrClient {
     const dTagValue = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     const contentObject = {
-      version: 2, // forcibly set version=2
+      version: 3,
       title: finalTitle,
       url: finalUrl,
       magnet: finalMagnet,
