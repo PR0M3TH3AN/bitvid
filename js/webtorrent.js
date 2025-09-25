@@ -43,6 +43,12 @@ export class TorrentClient {
     // 2) If we haven’t registered the service worker yet, do it now
     if (!this.swRegistration) {
       this.swRegistration = await this.setupServiceWorker();
+    } else {
+      // Even with an existing registration we still wait for control so that a
+      // transient controller drop (e.g. Chrome devtools unregister/reload) does
+      // not resurrect the grey-screen regression mentioned in
+      // waitForActiveController().
+      await this.waitForActiveController();
     }
   }
 
@@ -78,6 +84,54 @@ export class TorrentClient {
       registration.addEventListener("statechange", () => {
         checkActivation();
       });
+    });
+  }
+
+  /**
+   * Ensure a live service worker is actively controlling the page before we
+   * start WebTorrent streaming.
+   *
+   * This regression has bitten us repeatedly: the first playback attempt after
+   * a cold load would get stuck on a grey frame because `navigator.serviceWorker`
+   * had finished installing but never claimed the page yet. WebTorrent's
+   * service-worker proxy never attached, so `file.streamTo(videoElement)` fed
+   * data into the void. Refreshing the page “fixed” it because the worker became
+   * the controller during navigation. Future refactors **must not** remove this
+   * guard — wait for `controllerchange` whenever `controller` is still null.
+   */
+  async waitForActiveController() {
+    if (!("serviceWorker" in navigator)) {
+      return null;
+    }
+
+    if (navigator.serviceWorker.controller) {
+      return navigator.serviceWorker.controller;
+    }
+
+    return new Promise((resolve, reject) => {
+      const onControllerChange = () => {
+        if (navigator.serviceWorker.controller) {
+          clearTimeout(timeout);
+          navigator.serviceWorker.removeEventListener(
+            "controllerchange",
+            onControllerChange
+          );
+          resolve(navigator.serviceWorker.controller);
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        navigator.serviceWorker.removeEventListener(
+          "controllerchange",
+          onControllerChange
+        );
+        reject(new Error("Service worker controller claim timeout"));
+      }, this.TIMEOUT_DURATION);
+
+      navigator.serviceWorker.addEventListener(
+        "controllerchange",
+        onControllerChange
+      );
     });
   }
 
@@ -167,6 +221,11 @@ export class TorrentClient {
       if (!readyRegistration.active) {
         throw new Error("Service worker not active after ready state");
       }
+
+      // See waitForActiveController() docstring for why this must remain in
+      // place. We intentionally wait here instead of racing with playback so a
+      // newly installed worker claims the page before WebTorrent spins up.
+      await this.waitForActiveController();
 
       // Force the SW to check for updates
       registration.update();
