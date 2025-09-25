@@ -90,6 +90,12 @@ header img {
   }
 }
 
+/*
+  Thumbnails start transparent and fade in the first time they finish loading.
+  `data-thumbnail-loaded` is cleared by js/index.js once the animation completes
+  so re-rendering the same element later does not replay the transition and cause
+  a distracting flash.
+*/
 [data-video-thumbnail][data-thumbnail-loaded="true"] {
   animation: video-thumbnail-fade-in 220ms ease-out forwards;
 }
@@ -103,8 +109,46 @@ header img {
   }
 }
 
+/*
+  Generic fade-in utility for chrome elements (sidebar, header controls, etc.).
+  js/index.js listens for the `interface-fade-in` animation finishing and removes
+  the temporary classes so that once an element has gracefully appeared it stays
+  opaque even if the DOM is re-used or re-parented later.
+*/
+.fade-in {
+  opacity: 0;
+  animation: interface-fade-in 280ms ease-out forwards;
+  animation-delay: var(--fade-in-delay, 0ms);
+}
+
+.fade-in-delay-100 {
+  --fade-in-delay: 100ms;
+}
+
+.fade-in-delay-200 {
+  --fade-in-delay: 200ms;
+}
+
+.fade-in-delay-300 {
+  --fade-in-delay: 300ms;
+}
+
+.fade-in-delay-400 {
+  --fade-in-delay: 400ms;
+}
+
+@keyframes interface-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .video-card--enter {
+  .video-card--enter,
+  .fade-in {
     opacity: 1;
     animation: none;
   }
