@@ -209,7 +209,7 @@ async function loadUserVideos(pubkey) {
     }
 
     // 4) Deduplicate older overshadowed versions => newest only
-    videos = dedupeToNewestByRoot(videos);
+    videos = app?.dedupeVideosByRoot?.(videos) ?? dedupeToNewestByRoot(videos);
 
     // 5) Filter out blacklisted IDs / authors
     videos = videos.filter((video) => {
