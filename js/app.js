@@ -2132,10 +2132,28 @@ class bitvidApp {
    * so they can re-use the exact same badge skeleton. Keeping the markup in
    * one place avoids subtle mismatches when we tweak copy or classes later.
    */
-  getUrlHealthPlaceholderMarkup() {
+  getUrlHealthPlaceholderMarkup(options = {}) {
+    const includeMargin = options?.includeMargin !== false;
+    const classes = [
+      "url-health-badge",
+      "text-xs",
+      "font-semibold",
+      "px-2",
+      "py-1",
+      "rounded",
+      "inline-flex",
+      "items-center",
+      "gap-1",
+      "bg-gray-800",
+      "text-gray-300",
+    ];
+    if (includeMargin) {
+      classes.splice(1, 0, "mt-3");
+    }
+
     return `
       <div
-        class="url-health-badge mt-3 text-xs font-semibold px-2 py-1 rounded inline-flex items-center gap-1 bg-gray-800 text-gray-300"
+        class="${classes.join(" ")}"
         data-url-health-state="checking"
         aria-live="polite"
         role="status"
@@ -2143,6 +2161,46 @@ class bitvidApp {
         Checking hosted URL…
       </div>
     `;
+  }
+
+  getTorrentHealthBadgeMarkup(options = {}) {
+    const includeMargin = options?.includeMargin !== false;
+    const classes = [
+      "torrent-health-badge",
+      "inline-flex",
+      "items-center",
+      "gap-2",
+      "px-2",
+      "py-1",
+      "rounded",
+      "bg-gray-800",
+      "text-gray-300",
+      "text-xs",
+      "font-semibold",
+    ];
+    if (includeMargin) {
+      classes.unshift("mt-3");
+    }
+
+    return `
+      <div class="${classes.join(" ")}">
+        <span
+          class="stream-health text-lg"
+          aria-live="polite"
+          aria-label="Checking WebTorrent availability"
+          title="Checking WebTorrent availability"
+        >
+          🟦
+        </span>
+        <span class="uppercase tracking-wide text-[0.65rem] text-gray-400">
+          WebTorrent
+        </span>
+      </div>
+    `;
+  }
+
+  isMagnetUriSupported(magnet) {
+    return isValidMagnetUri(magnet);
   }
 
   getCachedUrlHealth(eventId, url) {
@@ -2480,7 +2538,7 @@ class bitvidApp {
       const playbackMagnet = magnetCandidate;
       const showUnsupportedTorrentBadge =
         !trimmedUrl && magnetProvided && !magnetSupported;
-      const torrentBadge = showUnsupportedTorrentBadge
+      const torrentWarningHtml = showUnsupportedTorrentBadge
         ? `
           <p
             class="mt-3 text-xs text-amber-300"
@@ -2492,9 +2550,21 @@ class bitvidApp {
         `
         : "";
 
-      const urlStatusHtml = trimmedUrl
-        ? this.getUrlHealthPlaceholderMarkup()
+      const urlBadgeHtml = trimmedUrl
+        ? this.getUrlHealthPlaceholderMarkup({ includeMargin: false })
         : "";
+      const torrentHealthBadgeHtml =
+        magnetSupported && magnetProvided
+          ? this.getTorrentHealthBadgeMarkup({ includeMargin: false })
+          : "";
+      const connectionBadgesHtml =
+        urlBadgeHtml || torrentHealthBadgeHtml
+          ? `
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              ${urlBadgeHtml}${torrentHealthBadgeHtml}
+            </div>
+          `
+          : "";
 
       const rawThumbnail =
         typeof video.thumbnail === "string" ? video.thumbnail.trim() : "";
@@ -2546,19 +2616,6 @@ class bitvidApp {
             </div>
           </a>
           <div class="p-4">
-            <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
-              <span class="uppercase tracking-wide text-[0.65rem] text-gray-500">
-                Streamable?
-              </span>
-              <span
-                class="stream-health text-lg"
-                aria-live="polite"
-                aria-label="Checking stream availability"
-                title="Checking stream availability"
-              >
-                🟦
-              </span>
-            </div>
             <!-- Title triggers the video modal as well -->
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
@@ -2594,8 +2651,8 @@ class bitvidApp {
               </div>
               ${gearMenu}
             </div>
-            ${urlStatusHtml}
-            ${torrentBadge}
+            ${connectionBadgesHtml}
+            ${torrentWarningHtml}
           </div>
         </div>
       `;
