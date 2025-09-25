@@ -2422,6 +2422,12 @@ class bitvidApp {
     this.videoList.innerHTML = "";
     this.videoList.appendChild(fragment);
 
+    // Ensure every thumbnail can recover with a fallback image if the primary
+    // source fails to load or returns a zero-sized response (some CDNs error
+    // with HTTP 200 + empty body). We set up the listeners before kicking off
+    // any lazy-loading observers so cached failures are covered as well.
+    this.bindThumbnailFallbacks(this.videoList);
+
     // Lazy-load images
     const lazyEls = this.videoList.querySelectorAll("[data-lazy]");
     lazyEls.forEach((el) => this.mediaLoader.observe(el));
@@ -2501,6 +2507,88 @@ class bitvidApp {
         const pubkey = nameEl.getAttribute("data-pubkey");
         this.goToProfile(pubkey);
       });
+    });
+  }
+
+  bindThumbnailFallbacks(container) {
+    if (!container || typeof container.querySelectorAll !== "function") {
+      return;
+    }
+
+    const thumbnails = container.querySelectorAll("[data-video-thumbnail]");
+    thumbnails.forEach((img) => {
+      if (!img) {
+        return;
+      }
+
+      const ensureFallbackSource = () => {
+        let fallbackSrc = "";
+        if (typeof img.dataset.fallbackSrc === "string") {
+          fallbackSrc = img.dataset.fallbackSrc.trim();
+        }
+
+        if (!fallbackSrc) {
+          const attr = img.getAttribute("data-fallback-src") || "";
+          fallbackSrc = attr.trim();
+        }
+
+        if (!fallbackSrc && img.tagName === "IMG") {
+          fallbackSrc = FALLBACK_THUMBNAIL_SRC;
+        }
+
+        if (fallbackSrc) {
+          if (img.dataset.fallbackSrc !== fallbackSrc) {
+            img.dataset.fallbackSrc = fallbackSrc;
+          }
+          if (!img.getAttribute("data-fallback-src")) {
+            img.setAttribute("data-fallback-src", fallbackSrc);
+          }
+        }
+
+        return fallbackSrc;
+      };
+
+      const applyFallback = () => {
+        const fallbackSrc = ensureFallbackSource() || FALLBACK_THUMBNAIL_SRC;
+        if (!fallbackSrc) {
+          return;
+        }
+
+        if (img.src !== fallbackSrc) {
+          img.src = fallbackSrc;
+        }
+
+        img.dataset.thumbnailFailed = "true";
+      };
+
+      const handleLoad = () => {
+        if (
+          (img.naturalWidth === 0 && img.naturalHeight === 0) ||
+          !img.currentSrc
+        ) {
+          applyFallback();
+        } else {
+          delete img.dataset.thumbnailFailed;
+        }
+      };
+
+      ensureFallbackSource();
+
+      if (img.dataset.thumbnailFallbackBound === "true") {
+        if (img.complete) {
+          handleLoad();
+        }
+        return;
+      }
+
+      img.addEventListener("error", applyFallback);
+      img.addEventListener("load", handleLoad);
+
+      img.dataset.thumbnailFallbackBound = "true";
+
+      if (img.complete) {
+        handleLoad();
+      }
     });
   }
 
