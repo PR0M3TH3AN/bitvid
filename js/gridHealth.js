@@ -54,46 +54,82 @@ function toVisual(health) {
   return "noresp";
 }
 
-function formatCount(health) {
-  if (!health || !Number.isFinite(health.seeders) || health.seeders <= 0) {
-    return "";
-  }
-  return ` (${health.seeders})`;
-}
-
 function setBadge(card, visual, health) {
-  const el = card.querySelector(".stream-health");
-  if (!el) {
+  const badge = card.querySelector(".torrent-health-badge");
+  if (!badge) {
     return;
   }
+  const hadMargin = badge.classList.contains("mt-3");
+
+  const baseClasses = [
+    "torrent-health-badge",
+    "text-xs",
+    "font-semibold",
+    "px-2",
+    "py-1",
+    "rounded",
+    "inline-flex",
+    "items-center",
+    "gap-1",
+    "transition-colors",
+    "duration-200",
+  ];
+  if (hadMargin) {
+    baseClasses.unshift("mt-3");
+  }
+  badge.className = baseClasses.join(" ");
+
   const map = {
     good: {
-      text: "🟢",
-      aria: "Streamable: seeders available",
+      icon: "✅",
+      aria: "WebTorrent fallback ready",
+      classes: ["bg-green-900", "text-green-200"],
+      role: "status",
     },
     none: {
-      text: "🟡",
+      icon: "⚠️",
       aria: "No seeders reported by trackers",
+      classes: ["bg-amber-900", "text-amber-200"],
+      role: "status",
     },
     noresp: {
-      text: "⚫",
+      icon: "❌",
       aria: "No tracker response",
+      classes: ["bg-red-900", "text-red-200"],
+      role: "alert",
     },
     checking: {
-      text: "🟦",
-      aria: "Checking stream availability",
+      icon: "⏳",
+      aria: "Checking Torrent availability",
+      classes: ["bg-gray-800", "text-gray-300"],
+      role: "status",
     },
     unknown: {
-      text: "⚪",
-      aria: "Unknown stream availability",
+      icon: "⚠️",
+      aria: "Torrent availability unknown",
+      classes: ["bg-amber-900", "text-amber-200"],
+      role: "status",
     },
   };
+
   const entry = map[visual] || map.unknown;
-  const countText = formatCount(health);
-  el.textContent = `${entry.text}${countText}`;
-  el.setAttribute("aria-label", countText ? `${entry.aria}${countText}` : entry.aria);
-  el.setAttribute("title", countText ? `${entry.aria}${countText}` : entry.aria);
-  el.dataset.streamHealthState = visual;
+  entry.classes.forEach((cls) => badge.classList.add(cls));
+
+  const seederCount =
+    health && Number.isFinite(health.seeders) && health.seeders > 0
+      ? health.seeders
+      : null;
+  const countText = seederCount ? ` (${seederCount})` : "";
+  const ariaCount = seederCount ? ` with ${seederCount} seeders` : "";
+
+  const iconPrefix = entry.icon ? `${entry.icon} ` : "";
+  badge.textContent = `${iconPrefix}Torrent${countText}`;
+  const ariaLabel = `${entry.aria}${ariaCount}`;
+  badge.setAttribute("aria-label", ariaLabel);
+  badge.setAttribute("title", ariaLabel);
+  badge.setAttribute("aria-live", "polite");
+  badge.setAttribute("role", entry.role);
+  badge.dataset.streamHealthState = visual;
 }
 
 function applyHealth(card, health) {

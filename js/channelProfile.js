@@ -367,9 +367,22 @@ async function loadUserVideos(pubkey) {
         typeof video.url === "string" ? video.url : "";
       const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
       const playbackMagnet = rawMagnet || legacyInfoHash || "";
-      const urlStatusHtml = trimmedUrl
-        ? app.getUrlHealthPlaceholderMarkup()
+      const magnetSupported = app.isMagnetUriSupported(playbackMagnet);
+      const urlBadgeHtml = trimmedUrl
+        ? app.getUrlHealthPlaceholderMarkup({ includeMargin: false })
         : "";
+      const torrentHealthBadgeHtml =
+        magnetSupported && playbackMagnet
+          ? app.getTorrentHealthBadgeMarkup({ includeMargin: false })
+          : "";
+      const connectionBadgesHtml =
+        urlBadgeHtml || torrentHealthBadgeHtml
+          ? `
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              ${urlBadgeHtml}${torrentHealthBadgeHtml}
+            </div>
+          `
+          : "";
 
       cardEl.innerHTML = `
         <div
@@ -403,7 +416,7 @@ async function loadUserVideos(pubkey) {
             </div>
             ${gearMenu}
           </div>
-          ${urlStatusHtml}
+          ${connectionBadgesHtml}
         </div>
       `;
 
