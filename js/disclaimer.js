@@ -2,17 +2,29 @@
 
 class DisclaimerModal {
   constructor() {
-    // Initialize elements when the disclaimer HTML is in the DOM.
-    this.init();
+    this.modal = null;
+    this.acceptButton = null;
+    this.acceptHandler = null;
   }
 
   init() {
     this.modal = document.getElementById("disclaimerModal");
-    this.acceptButton = document.getElementById("acceptDisclaimer");
-    if (this.acceptButton) {
-      this.acceptButton.addEventListener("click", () => {
+    const nextAcceptButton = document.getElementById("acceptDisclaimer");
+
+    if (!this.acceptHandler) {
+      this.acceptHandler = () => {
         this.hide();
-      });
+      };
+    }
+
+    if (this.acceptButton && this.acceptHandler) {
+      this.acceptButton.removeEventListener("click", this.acceptHandler);
+    }
+
+    this.acceptButton = nextAcceptButton || null;
+
+    if (this.acceptButton && this.acceptHandler) {
+      this.acceptButton.addEventListener("click", this.acceptHandler);
     }
   }
 

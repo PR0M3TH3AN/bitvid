@@ -24,7 +24,7 @@
     >
       <!-- Top Bar (similar to video-modal) -->
       <div
-        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-300 p-4 flex items-center justify-between"
+        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-150 p-4 flex items-center justify-between"
       >
         <h2 class="text-xl font-bold text-white">Share a Video</h2>
         <button
@@ -52,6 +52,9 @@
       <!-- Form Content -->
       <div class="p-6 space-y-4">
         <form id="uploadForm" class="space-y-4">
+          <p class="text-sm text-gray-400">
+            Share a title plus either a hosted video URL or a magnet link. Providing both helps Bitvid fall back gracefully.
+          </p>
           <div>
             <label
               for="uploadTitle"
@@ -66,18 +69,57 @@
             />
           </div>
 
+          <!-- Hosted video URL -->
+          <div class="form-group">
+            <label
+              for="uploadUrl"
+              class="block text-sm font-medium text-gray-200"
+              >Hosted video URL (https)</label
+            >
+            <input
+              id="uploadUrl"
+              type="url"
+              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+              placeholder="https://cdn.example.com/video.mp4"
+            />
+            <small class="mt-1 block text-xs text-gray-400"
+              >Optional but preferred. We will play this first and fall back to
+              P2P.</small
+            >
+          </div>
+
+          <!-- Optional: seed bootstraps for magnet -->
+          <div class="grid grid-cols-1 gap-3 mb-2 text-xs">
+            <input
+              id="uploadWs"
+              type="url"
+              class="w-full p-2 rounded"
+              placeholder="Web seed (ws=) e.g., https://cdn.example.com/video.mp4"
+            >
+            <input
+              id="uploadXs"
+              type="url"
+              class="w-full p-2 rounded"
+              placeholder=".torrent URL (xs=) e.g., https://cdn.example.com/video.torrent"
+            >
+          </div>
+
           <div>
             <label
               for="uploadMagnet"
               class="block text-sm font-medium text-gray-200"
-              >Magnet Link</label
+              >Magnet link (optional if URL provided)</label
             >
             <input
               type="text"
               id="uploadMagnet"
-              required
-              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+              placeholder="magnet:?xt=urn:btih:..."
+              class="mt-1 block w-full rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
             />
+            <p class="mt-1 text-xs text-gray-400">
+              Provide a hosted URL for instant playback. Add a magnet for P2P
+              cost control.
+            </p>
           </div>
 
           <div>

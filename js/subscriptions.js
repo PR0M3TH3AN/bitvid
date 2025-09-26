@@ -1,5 +1,36 @@
 // js/subscriptions.js
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  convertEventToVideo as sharedConvertEventToVideo,
+} from "./nostr.js";
+import { attachHealthBadges } from "./gridHealth.js";
+
+function getAbsoluteShareUrl(nevent) {
+  if (!nevent) {
+    return "";
+  }
+
+  if (window.app?.buildShareUrlFromNevent) {
+    const candidate = window.app.buildShareUrlFromNevent(nevent);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const origin = window.location?.origin || "";
+  const pathname = window.location?.pathname || "";
+  let base = origin || pathname ? `${origin}${pathname}` : "";
+  if (!base) {
+    const href = window.location?.href || "";
+    base = href ? href.split(/[?#]/)[0] : "";
+  }
+
+  if (!base) {
+    return `?v=${encodeURIComponent(nevent)}`;
+  }
+
+  return `${base}?v=${encodeURIComponent(nevent)}`;
+}
 
 /**
  * Manages the user's subscription list (kind=30002) *privately*,
@@ -120,6 +151,14 @@ class SubscriptionsManager {
     const plainObj = { subPubkeys: Array.from(this.subscribedPubkeys) };
     const plainStr = JSON.stringify(plainObj);
 
+    /*
+     * The subscription list is stored as a NIP-04 message to self, so both
+     * encryption and decryption intentionally use the user's own pubkey.
+     * Extensions are expected to support this encrypt-to-self flow; altering
+     * the target would break loadSubscriptions, which decrypts with the same
+     * pubkey. Any future sharing model (e.g., sharing with another user) will
+     * need a parallel read path and should not overwrite this behavior.
+     */
     let cipherText = "";
     try {
       cipherText = await window.nostr.nip04.encrypt(userPubkey, plainStr);
@@ -234,7 +273,12 @@ class SubscriptionsManager {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    if (!videos.length) {
+    const safeVideos = Array.isArray(videos) ? videos : [];
+    const dedupedVideos =
+      window.app?.dedupeVideosByRoot?.(safeVideos) ??
+      this.dedupeToNewestByRoot(safeVideos);
+
+    if (!dedupedVideos.length) {
       container.innerHTML = `
         <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
           No videos available yet.
@@ -243,25 +287,27 @@ class SubscriptionsManager {
     }
 
     // Sort newest first
-    videos.sort((a, b) => b.created_at - a.created_at);
+    dedupedVideos.sort((a, b) => b.created_at - a.created_at);
 
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
     const fragment = document.createDocumentFragment();
     // Only declare localAuthorSet once
     const localAuthorSet = new Set();
 
-    videos.forEach((video, index) => {
+    dedupedVideos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Missing ID or title:", video);
         return;
       }
 
+      // Keep the global videos map up to date so delegated playback handlers
+      // can reuse the already fetched metadata for this event.
+      window.app?.videosMap?.set(video.id, video);
+
       localAuthorSet.add(video.pubkey);
 
       const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
-      const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(
-        nevent
-      )}`;
+      const shareUrl = getAbsoluteShareUrl(nevent);
       const canEdit = window.app?.pubkey === video.pubkey;
 
       const highlightClass =
@@ -283,6 +329,7 @@ class SubscriptionsManager {
           <button
             class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
             data-revert-index="${index}"
+            data-revert-event-id="${video.id}"
           >
             Revert
           </button>
@@ -311,6 +358,7 @@ class SubscriptionsManager {
                 <button
                   class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
                   data-edit-index="${index}"
+                  data-edit-event-id="${video.id}"
                 >
                   Edit
                 </button>
@@ -318,6 +366,7 @@ class SubscriptionsManager {
                 <button
                   class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
                   data-delete-all-index="${index}"
+                  data-delete-all-event-id="${video.id}"
                 >
                   Delete All
                 </button>
@@ -329,11 +378,43 @@ class SubscriptionsManager {
 
       const safeTitle = window.app?.escapeHTML(video.title) || "Untitled";
       const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
+      const playbackUrl =
+        typeof video.url === "string" ? video.url : "";
+      const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
+      const trimmedMagnet =
+        typeof video.magnet === "string" ? video.magnet.trim() : "";
+      const legacyInfoHash =
+        typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+      const magnetCandidate = trimmedMagnet || legacyInfoHash;
+      const playbackMagnet = magnetCandidate;
+      const magnetProvided = magnetCandidate.length > 0;
+      const magnetSupported =
+        window.app?.isMagnetUriSupported?.(magnetCandidate) ?? false;
+      const urlBadgeHtml = trimmedUrl
+        ? window.app?.getUrlHealthPlaceholderMarkup?.({ includeMargin: false }) ??
+          ""
+        : "";
+      const torrentHealthBadgeHtml =
+        magnetProvided && magnetSupported
+          ? window.app?.getTorrentHealthBadgeMarkup?.({
+              includeMargin: false,
+            }) ?? ""
+          : "";
+      const connectionBadgesHtml =
+        urlBadgeHtml || torrentHealthBadgeHtml
+          ? `
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              ${urlBadgeHtml}${torrentHealthBadgeHtml}
+            </div>
+          `
+          : "";
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
           <a
             href="${shareUrl}"
-            data-play-magnet="${encodeURIComponent(video.magnet)}"
+            data-video-id="${video.id}"
+            data-play-url=""
+            data-play-magnet=""
             class="block cursor-pointer relative group"
           >
             <div class="ratio-16-9">
@@ -347,7 +428,9 @@ class SubscriptionsManager {
           <div class="p-4">
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-              data-play-magnet="${encodeURIComponent(video.magnet)}"
+              data-video-id="${video.id}"
+              data-play-url=""
+              data-play-magnet=""
             >
               ${safeTitle}
             </h3>
@@ -375,6 +458,7 @@ class SubscriptionsManager {
               </div>
               ${gearMenu}
             </div>
+            ${connectionBadgesHtml}
           </div>
         </div>
       `;
@@ -382,10 +466,52 @@ class SubscriptionsManager {
       const t = document.createElement("template");
       t.innerHTML = cardHtml.trim();
       const cardEl = t.content.firstElementChild;
+      if (cardEl) {
+        // Leave the data-play-* attributes empty in the literal markup so we can
+        // assign the raw URL/magnet strings post-parsing without HTML entity
+        // escaping, mirroring the approach in app.js. The URL is encoded so that
+        // special characters survive storage in data-* attributes; the click
+        // handler decodes it right before playback while keeping the magnet raw.
+        const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
+        interactiveEls.forEach((el) => {
+          if (!el.dataset) return;
+
+          if (trimmedUrl) {
+            el.dataset.playUrl = encodeURIComponent(trimmedUrl);
+          } else {
+            delete el.dataset.playUrl;
+          }
+
+          el.dataset.playMagnet = playbackMagnet || "";
+        });
+
+        if (magnetProvided) {
+          cardEl.dataset.magnet = playbackMagnet;
+        } else if (cardEl.dataset.magnet) {
+          delete cardEl.dataset.magnet;
+        }
+
+        if (trimmedUrl && window.app?.handleUrlHealthBadge) {
+          const badgeEl = cardEl.querySelector("[data-url-health-state]");
+          if (badgeEl) {
+            window.app.handleUrlHealthBadge({
+              video,
+              url: trimmedUrl,
+              badgeEl,
+            });
+          }
+        }
+      }
       fragment.appendChild(cardEl);
     });
 
     container.appendChild(fragment);
+    attachHealthBadges(container);
+
+    if (window.app) {
+      window.app.videoList = container;
+      window.app.attachVideoListHandler?.();
+    }
 
     // Lazy-load
     const lazyEls = container.querySelectorAll("[data-lazy]");
@@ -407,10 +533,15 @@ class SubscriptionsManager {
     editButtons.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const idx = btn.getAttribute("data-edit-index");
-        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        const idxAttr = btn.getAttribute("data-edit-index");
+        const idx = Number.parseInt(idxAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        window.app?.handleEditVideo(idx);
+        const eventId = btn.getAttribute("data-edit-event-id") || "";
+        window.app?.handleEditVideo({
+          eventId,
+          index: Number.isNaN(idx) ? null : idx,
+        });
       });
     });
 
@@ -419,10 +550,15 @@ class SubscriptionsManager {
     revertButtons.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const idx = btn.getAttribute("data-revert-index");
-        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        const idxAttr = btn.getAttribute("data-revert-index");
+        const idx = Number.parseInt(idxAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        window.app?.handleRevertVideo(idx);
+        const eventId = btn.getAttribute("data-revert-event-id") || "";
+        window.app?.handleRevertVideo({
+          eventId,
+          index: Number.isNaN(idx) ? null : idx,
+        });
       });
     });
 
@@ -433,10 +569,15 @@ class SubscriptionsManager {
     deleteAllButtons.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const idx = btn.getAttribute("data-delete-all-index");
-        const dd = document.getElementById(`settingsDropdown-${idx}`);
+        const idxAttr = btn.getAttribute("data-delete-all-index");
+        const idx = Number.parseInt(idxAttr, 10);
+        const dd = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dd) dd.classList.add("hidden");
-        window.app?.handleFullDeleteVideo(idx);
+        const eventId = btn.getAttribute("data-delete-all-event-id") || "";
+        window.app?.handleFullDeleteVideo({
+          eventId,
+          index: Number.isNaN(idx) ? null : idx,
+        });
       });
     });
 
@@ -480,31 +621,7 @@ class SubscriptionsManager {
   }
 
   convertEventToVideo(evt) {
-    try {
-      const content = JSON.parse(evt.content || "{}");
-      const hasFields = !!(content.title && content.magnet);
-      const versionOk = content.version >= 2;
-      if (!versionOk || !hasFields) {
-        return { id: evt.id, invalid: true };
-      }
-      return {
-        id: evt.id,
-        pubkey: evt.pubkey,
-        created_at: evt.created_at,
-        videoRootId: content.videoRootId || evt.id,
-        version: content.version,
-        deleted: content.deleted === true,
-        isPrivate: content.isPrivate === true,
-        title: content.title || "",
-        magnet: content.magnet || "",
-        thumbnail: content.thumbnail || "",
-        description: content.description || "",
-        tags: evt.tags || [],
-        invalid: false,
-      };
-    } catch (err) {
-      return { id: evt.id, invalid: true };
-    }
+    return sharedConvertEventToVideo(evt);
   }
 
   dedupeToNewestByRoot(videos) {

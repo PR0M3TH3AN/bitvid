@@ -1,7 +1,10 @@
 // js/nostr.js
 
 import { isDevMode } from "./config.js";
+import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
+// 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
+import { deriveTitleFromEvent, magnetFromText } from "./videoEventUtils.js";
 
 /**
  * The usual relays
@@ -13,6 +16,10 @@ const RELAY_URLS = [
   "wss://relay.primal.net",
   "wss://relay.nostr.band",
 ];
+
+const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
+const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
+const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 // To limit error spam
 let errorLogCount = 0;
@@ -43,53 +50,256 @@ function fakeDecrypt(encrypted) {
   return encrypted.split("").reverse().join("");
 }
 
-/**
- * Convert a raw Nostr event => your "video" object.
- * CHANGED: skip if version <2
- */
-function convertEventToVideo(event) {
+const EXTENSION_MIME_MAP = {
+  mp4: "video/mp4",
+  m4v: "video/x-m4v",
+  webm: "video/webm",
+  mkv: "video/x-matroska",
+  mov: "video/quicktime",
+  avi: "video/x-msvideo",
+  ogv: "video/ogg",
+  ogg: "video/ogg",
+  m3u8: "application/x-mpegURL",
+  mpd: "application/dash+xml",
+  ts: "video/mp2t",
+  mpg: "video/mpeg",
+  mpeg: "video/mpeg",
+  flv: "video/x-flv",
+  "3gp": "video/3gpp",
+};
+
+function inferMimeTypeFromUrl(url) {
+  if (!url || typeof url !== "string") {
+    return "";
+  }
+
+  let pathname = "";
   try {
-    const content = JSON.parse(event.content || "{}");
+    const parsed = new URL(url);
+    pathname = parsed.pathname || "";
+  } catch (err) {
+    const sanitized = url.split("?")[0].split("#")[0];
+    pathname = sanitized || "";
+  }
 
-    // Example checks:
-    const isSupportedVersion = content.version >= 2;
-    const hasRequiredFields = !!(content.title && content.magnet);
+  const lastSegment = pathname.split("/").pop() || "";
+  const match = lastSegment.match(/\.([a-z0-9]+)$/i);
+  if (!match) {
+    return "";
+  }
 
-    if (!isSupportedVersion) {
-      return {
-        id: event.id,
-        invalid: true,
-        reason: "version <2",
-      };
+  const extension = match[1].toLowerCase();
+  return EXTENSION_MIME_MAP[extension] || "";
+}
+
+/**
+ * Convert a raw Nostr event into Bitvid's canonical "video" object.
+ *
+ * The converter intentionally centralises all of the quirky legacy handling so
+ * that feed rendering, subscriptions, and deep links rely on the exact same
+ * rules. Any future regression around magnet-only posts or malformed JSON
+ * should be solved by updating this function (and its tests) instead of
+ * sprinkling ad-hoc checks elsewhere in the UI.
+ *
+ * Also accepts legacy (<v2) payloads when ACCEPT_LEGACY_V1 allows it.
+ */
+function convertEventToVideo(event = {}) {
+  const safeTrim = (value) => (typeof value === "string" ? value.trim() : "");
+
+  const rawContent = typeof event.content === "string" ? event.content : "";
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+
+  let parsedContent = {};
+  let parseError = null;
+  if (rawContent) {
+    try {
+      const parsed = JSON.parse(rawContent);
+      if (parsed && typeof parsed === "object") {
+        parsedContent = parsed;
+      }
+    } catch (err) {
+      parseError = err;
+      parsedContent = {};
     }
-    if (!hasRequiredFields) {
-      return {
-        id: event.id,
-        invalid: true,
-        reason: "missing title/magnet",
-      };
+  }
+
+  const directUrl = safeTrim(parsedContent.url);
+  const directMagnetRaw = safeTrim(parsedContent.magnet);
+
+  const normalizeMagnetCandidate = (value) => {
+    if (typeof value !== "string") {
+      return "";
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    if (trimmed.toLowerCase().startsWith("magnet:?")) {
+      return trimmed;
+    }
+    const extracted = magnetFromText(trimmed);
+    return extracted ? extracted.trim() : "";
+  };
+
+  let magnet = normalizeMagnetCandidate(directMagnetRaw);
+  let rawMagnet = magnet ? directMagnetRaw : "";
+
+  if (!magnet && ACCEPT_LEGACY_V1) {
+    const inlineMagnet = normalizeMagnetCandidate(rawContent);
+    if (inlineMagnet) {
+      magnet = inlineMagnet;
     }
 
+    if (!magnet) {
+      outer: for (const tag of tags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+
+        const key =
+          typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+
+        const startIndex = key === "magnet" ? 1 : 0;
+        for (let i = startIndex; i < tag.length; i += 1) {
+          const candidate = normalizeMagnetCandidate(tag[i]);
+          if (candidate) {
+            magnet = candidate;
+            break outer;
+          }
+        }
+      }
+    }
+
+    if (!magnet) {
+      const recoveredFromRaw = magnetFromText(rawContent);
+      if (recoveredFromRaw) {
+        magnet = safeTrim(recoveredFromRaw);
+      }
+    }
+  }
+
+  if (!rawMagnet && magnet) {
+    rawMagnet = magnet;
+  }
+
+  const url = directUrl;
+
+  if (!url && !magnet) {
+    return { id: event.id, invalid: true, reason: "missing playable source" };
+  }
+
+  const thumbnail = safeTrim(parsedContent.thumbnail);
+  const description = safeTrim(parsedContent.description);
+  const rawMode = safeTrim(parsedContent.mode);
+  const mode = rawMode || "live";
+  const deleted = parsedContent.deleted === true;
+  const isPrivate = parsedContent.isPrivate === true;
+  const videoRootId = safeTrim(parsedContent.videoRootId) || event.id;
+
+  let infoHash = "";
+  const pushInfoHash = (candidate) => {
+    if (typeof candidate !== "string") {
+      return false;
+    }
+    const normalized = candidate.trim().toLowerCase();
+    if (/^[0-9a-f]{40}$/.test(normalized)) {
+      infoHash = normalized;
+      return true;
+    }
+    return false;
+  };
+
+  pushInfoHash(parsedContent.infoHash);
+
+  if (!infoHash && magnet) {
+    const match = magnet.match(/xt=urn:btih:([0-9a-z]+)/i);
+    if (match && match[1]) {
+      pushInfoHash(match[1]);
+    }
+  }
+
+  const searchInfoHashInString = (value) => {
+    if (infoHash || typeof value !== "string") {
+      return;
+    }
+    const match = value.match(/[0-9a-f]{40}/i);
+    if (match && match[0]) {
+      pushInfoHash(match[0]);
+    }
+  };
+
+  if (!infoHash && ACCEPT_LEGACY_V1) {
+    searchInfoHashInString(rawContent);
+    for (const tag of tags) {
+      if (infoHash) {
+        break;
+      }
+      if (!Array.isArray(tag)) {
+        continue;
+      }
+      for (let i = 0; i < tag.length; i += 1) {
+        searchInfoHashInString(tag[i]);
+        if (infoHash) {
+          break;
+        }
+      }
+    }
+  }
+
+  const declaredTitle = safeTrim(parsedContent.title);
+  const derivedTitle = deriveTitleFromEvent({
+    parsedContent,
+    tags,
+    primaryTitle: declaredTitle,
+  });
+
+  let title = safeTrim(derivedTitle);
+  if (!title && ACCEPT_LEGACY_V1 && (magnet || infoHash)) {
+    title = infoHash
+      ? `Legacy Video ${infoHash.slice(0, 8)}`
+      : "Legacy BitTorrent Video";
+  }
+
+  if (!title) {
+    const reason = parseError
+      ? "missing title (json parse error)"
+      : "missing title";
+    return { id: event.id, invalid: true, reason };
+  }
+
+  const rawVersion = parsedContent.version;
+  let version = rawVersion === undefined ? 2 : Number(rawVersion);
+  if (!Number.isFinite(version)) {
+    version = rawVersion === undefined ? 2 : 1;
+  }
+
+  if (version < 2 && !ACCEPT_LEGACY_V1) {
     return {
       id: event.id,
-      videoRootId: content.videoRootId || event.id,
-      version: content.version,
-      isPrivate: content.isPrivate ?? false,
-      title: content.title ?? "",
-      magnet: content.magnet ?? "",
-      thumbnail: content.thumbnail ?? "",
-      description: content.description ?? "",
-      mode: content.mode ?? "live",
-      deleted: content.deleted === true,
-      pubkey: event.pubkey,
-      created_at: event.created_at,
-      tags: event.tags,
-      invalid: false,
+      invalid: true,
+      reason: `unsupported version ${version}`,
     };
-  } catch (err) {
-    // JSON parse error
-    return { id: event.id, invalid: true, reason: "json parse error" };
   }
+
+  return {
+    id: event.id,
+    videoRootId,
+    version,
+    isPrivate,
+    title,
+    url,
+    magnet,
+    rawMagnet,
+    infoHash,
+    thumbnail,
+    description,
+    mode,
+    deleted,
+    pubkey: event.pubkey,
+    created_at: event.created_at,
+    tags,
+    invalid: false,
+  };
 }
 
 /**
@@ -107,6 +317,8 @@ function getActiveKey(video) {
   return `LEGACY:${video.id}`;
 }
 
+export { convertEventToVideo };
+
 class NostrClient {
   constructor() {
     this.pool = null;
@@ -118,6 +330,107 @@ class NostrClient {
 
     // “activeMap” holds only the newest version for each root
     this.activeMap = new Map();
+
+    this.hasRestoredLocalData = false;
+  }
+
+  restoreLocalData() {
+    if (this.hasRestoredLocalData) {
+      return this.allEvents.size > 0;
+    }
+
+    this.hasRestoredLocalData = true;
+
+    if (typeof localStorage === "undefined") {
+      return false;
+    }
+
+    const now = Date.now();
+    const parsePayload = (raw) => {
+      if (!raw) {
+        return null;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          return parsed;
+        }
+      } catch (err) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to parse cached events:", err);
+        }
+      }
+      return null;
+    };
+
+    let payload = parsePayload(localStorage.getItem(EVENTS_CACHE_STORAGE_KEY));
+
+    if (!payload) {
+      const legacyRaw = localStorage.getItem(LEGACY_EVENTS_STORAGE_KEY);
+      const legacyParsed = parsePayload(legacyRaw);
+      if (legacyParsed) {
+        payload = {
+          version: 1,
+          savedAt: now,
+          events: legacyParsed,
+        };
+      }
+      if (legacyRaw) {
+        try {
+          localStorage.removeItem(LEGACY_EVENTS_STORAGE_KEY);
+        } catch (err) {
+          if (isDevMode) {
+            console.warn("[nostr] Failed to remove legacy cache:", err);
+          }
+        }
+      }
+    }
+
+    if (!payload || payload.version !== 1) {
+      return false;
+    }
+
+    if (
+      typeof payload.savedAt !== "number" ||
+      payload.savedAt <= 0 ||
+      now - payload.savedAt > EVENTS_CACHE_TTL_MS
+    ) {
+      try {
+        localStorage.removeItem(EVENTS_CACHE_STORAGE_KEY);
+      } catch (err) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to clear expired cache:", err);
+        }
+      }
+      return false;
+    }
+
+    const events = payload.events;
+    if (!events || typeof events !== "object") {
+      return false;
+    }
+
+    this.allEvents.clear();
+    this.activeMap.clear();
+
+    for (const [id, video] of Object.entries(events)) {
+      if (!id || !video || typeof video !== "object") {
+        continue;
+      }
+
+      this.allEvents.set(id, video);
+      if (video.deleted) {
+        continue;
+      }
+
+      const activeKey = getActiveKey(video);
+      const existing = this.activeMap.get(activeKey);
+      if (!existing || video.created_at > existing.created_at) {
+        this.activeMap.set(activeKey, video);
+      }
+    }
+
+    return this.allEvents.size > 0;
   }
 
   /**
@@ -125,6 +438,8 @@ class NostrClient {
    */
   async init() {
     if (isDevMode) console.log("Connecting to relays...");
+
+    this.restoreLocalData();
 
     try {
       this.pool = new window.NostrTools.SimplePool();
@@ -144,6 +459,11 @@ class NostrClient {
     }
   }
 
+  // We subscribe to kind `0` purely as a liveness probe because almost every
+  // relay can answer it quickly. Either an `event` or `eose` signals success,
+  // while the 5s timer guards against relays that never respond. We immediately
+  // `unsub` to avoid leaking subscriptions. Note: any future change must still
+  // provide a lightweight readiness check with similar timeout semantics.
   async connectToRelays() {
     return Promise.all(
       this.relays.map(
@@ -212,8 +532,7 @@ class NostrClient {
   }
 
   /**
-   * Publish a new video
-   * CHANGED: Force version=2 for all new notes
+   * Publish a new video using the v3 content schema.
    */
   async publishVideo(videoData, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
@@ -222,31 +541,49 @@ class NostrClient {
       console.log("Publishing new video with data:", videoData);
     }
 
-    let finalMagnet = videoData.magnet;
-    if (videoData.isPrivate) {
+    const rawMagnet = typeof videoData.magnet === "string" ? videoData.magnet : "";
+    let finalMagnet = rawMagnet.trim();
+    if (videoData.isPrivate && finalMagnet) {
       finalMagnet = fakeEncrypt(finalMagnet);
     }
+    const finalUrl =
+      typeof videoData.url === "string" ? videoData.url.trim() : "";
+    const finalThumbnail =
+      typeof videoData.thumbnail === "string" ? videoData.thumbnail.trim() : "";
+    const finalDescription =
+      typeof videoData.description === "string"
+        ? videoData.description.trim()
+        : "";
+    const finalTitle =
+      typeof videoData.title === "string" ? videoData.title.trim() : "";
+    const providedMimeType =
+      typeof videoData.mimeType === "string"
+        ? videoData.mimeType.trim()
+        : "";
+
+    const createdAt = Math.floor(Date.now() / 1000);
 
     // brand-new root & d
     const videoRootId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const dTagValue = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     const contentObject = {
+      version: 3,
+      title: finalTitle,
+      url: finalUrl,
+      magnet: finalMagnet,
+      thumbnail: finalThumbnail,
+      description: finalDescription,
+      mode: videoData.mode || "live",
       videoRootId,
-      version: 2, // forcibly set version=2
       deleted: false,
       isPrivate: videoData.isPrivate ?? false,
-      title: videoData.title || "",
-      magnet: finalMagnet,
-      thumbnail: videoData.thumbnail || "",
-      description: videoData.description || "",
-      mode: videoData.mode || "live",
     };
 
     const event = {
       kind: 30078,
       pubkey,
-      created_at: Math.floor(Date.now() / 1000),
+      created_at: createdAt,
       tags: [
         ["t", "video"],
         ["d", dTagValue],
@@ -273,6 +610,83 @@ class NostrClient {
           }
         })
       );
+
+      if (finalUrl) {
+        const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
+        const mimeType =
+          providedMimeType || inferredMimeType || "application/octet-stream";
+
+        const mirrorTags = [
+          ["url", finalUrl],
+          ["m", mimeType],
+        ];
+
+        if (finalThumbnail) {
+          mirrorTags.push(["thumb", finalThumbnail]);
+        }
+
+        const altText = finalDescription || finalTitle || "";
+        if (altText) {
+          mirrorTags.push(["alt", altText]);
+        }
+
+        if (!contentObject.isPrivate && finalMagnet) {
+          mirrorTags.push(["magnet", finalMagnet]);
+        }
+
+        const mirrorEvent = {
+          kind: 1063,
+          pubkey,
+          created_at: createdAt,
+          tags: mirrorTags,
+          content: altText,
+        };
+
+        if (isDevMode) {
+          console.log("Prepared NIP-94 mirror event:", mirrorEvent);
+        }
+
+        try {
+          const signedMirrorEvent = await window.nostr.signEvent(mirrorEvent);
+          if (isDevMode) {
+            console.log("Signed NIP-94 mirror event:", signedMirrorEvent);
+          }
+
+          await Promise.all(
+            this.relays.map(async (url) => {
+              try {
+                await this.pool.publish([url], signedMirrorEvent);
+                if (isDevMode) {
+                  console.log(`NIP-94 mirror published to ${url}`);
+                }
+              } catch (mirrorErr) {
+                if (isDevMode) {
+                  console.error(
+                    `Failed to publish NIP-94 mirror to ${url}`,
+                    mirrorErr
+                  );
+                }
+              }
+            })
+          );
+
+          if (isDevMode) {
+            console.log(
+              "NIP-94 mirror dispatched for hosted URL:",
+              finalUrl
+            );
+          }
+        } catch (mirrorError) {
+          if (isDevMode) {
+            console.error(
+              "Failed to sign/publish NIP-94 mirror event:",
+              mirrorError
+            );
+          }
+        }
+      } else if (isDevMode) {
+        console.log("Skipping NIP-94 mirror: no hosted URL provided.");
+      }
       return signedEvent;
     } catch (err) {
       if (isDevMode) console.error("Failed to sign/publish:", err);
@@ -322,14 +736,23 @@ class NostrClient {
       oldPlainMagnet = fakeDecrypt(oldPlainMagnet);
     }
 
+    const oldUrl = baseEvent.url || "";
+
     // Determine if the updated note should be private
     const wantPrivate = updatedData.isPrivate ?? baseEvent.isPrivate ?? false;
 
     // Use the new magnet if provided; otherwise, fall back to the decrypted old magnet
-    let finalPlainMagnet = (updatedData.magnet || "").trim() || oldPlainMagnet;
-    let finalMagnet = wantPrivate
-      ? fakeEncrypt(finalPlainMagnet)
-      : finalPlainMagnet;
+    const newMagnetValue =
+      typeof updatedData.magnet === "string" ? updatedData.magnet.trim() : "";
+    let finalPlainMagnet = newMagnetValue || oldPlainMagnet;
+    let finalMagnet =
+      wantPrivate && finalPlainMagnet
+        ? fakeEncrypt(finalPlainMagnet)
+        : finalPlainMagnet;
+
+    const newUrlValue =
+      typeof updatedData.url === "string" ? updatedData.url.trim() : "";
+    const finalUrl = newUrlValue || oldUrl;
 
     // Use the existing videoRootId (or fall back to the base event's ID)
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
@@ -344,6 +767,7 @@ class NostrClient {
       deleted: false,
       isPrivate: wantPrivate,
       title: updatedData.title ?? baseEvent.title,
+      url: finalUrl,
       magnet: finalMagnet,
       thumbnail: updatedData.thumbnail ?? baseEvent.thumbnail,
       description: updatedData.description ?? baseEvent.description,
@@ -420,6 +844,7 @@ class NostrClient {
           deleted: fetched.deleted,
           isPrivate: fetched.isPrivate,
           title: fetched.title,
+          url: fetched.url,
           magnet: fetched.magnet,
           thumbnail: fetched.thumbnail,
           description: fetched.description,
@@ -451,6 +876,7 @@ class NostrClient {
       deleted: true,
       isPrivate: oldContent.isPrivate ?? false,
       title: oldContent.title || "",
+      url: "",
       magnet: "",
       thumbnail: "",
       description: "This version was reverted by the creator.",
@@ -530,6 +956,7 @@ class NostrClient {
             deleted: vid.deleted,
             isPrivate: vid.isPrivate,
             title: vid.title,
+            url: vid.url,
             magnet: vid.magnet,
             thumbnail: vid.thumbnail,
             description: vid.description,
@@ -548,12 +975,28 @@ class NostrClient {
  * Saves all known events to localStorage (or a different storage if you prefer).
  */
   saveLocalData() {
-    // Convert our allEvents map into a plain object for JSON storage
-    const allEventsObject = {};
-    for (const [id, vid] of this.allEvents.entries()) {
-      allEventsObject[id] = vid;
+    if (typeof localStorage === "undefined") {
+      return;
     }
-    localStorage.setItem("bitvidEvents", JSON.stringify(allEventsObject));
+
+    const payload = {
+      version: 1,
+      savedAt: Date.now(),
+      events: {},
+    };
+
+    for (const [id, vid] of this.allEvents.entries()) {
+      payload.events[id] = vid;
+    }
+
+    try {
+      localStorage.setItem(EVENTS_CACHE_STORAGE_KEY, JSON.stringify(payload));
+      localStorage.removeItem(LEGACY_EVENTS_STORAGE_KEY);
+    } catch (err) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to persist events cache:", err);
+      }
+    }
   }
 
   /**
@@ -634,7 +1077,7 @@ class NostrClient {
     sub.on("eose", () => {
       if (isDevMode && invalidDuringSub.length > 0) {
         console.warn(
-          `[subscribeVideos] found ${invalidDuringSub.length} invalid v2 notes:`,
+          `[subscribeVideos] found ${invalidDuringSub.length} invalid video notes (with reasons):`,
           invalidDuringSub
         );
       }
@@ -646,6 +1089,23 @@ class NostrClient {
     });
 
     // Return the subscription object if you need to unsub manually later
+    const originalUnsub =
+      typeof sub.unsub === "function" ? sub.unsub.bind(sub) : () => {};
+    let unsubscribed = false;
+    sub.unsub = () => {
+      if (unsubscribed) {
+        return;
+      }
+      unsubscribed = true;
+      clearInterval(processInterval);
+      try {
+        return originalUnsub();
+      } catch (err) {
+        console.error("[subscribeVideos] Failed to unsub from pool:", err);
+        return undefined;
+      }
+    };
+
     return sub;
   }
 
@@ -701,7 +1161,7 @@ class NostrClient {
       // OPTIONAL: Log invalid stats
       if (invalidNotes.length > 0 && isDevMode) {
         console.warn(
-          `Skipped ${invalidNotes.length} invalid v2 notes:\n`,
+          `Skipped ${invalidNotes.length} invalid video notes:\n`,
           invalidNotes.map((n) => `${n.id.slice(0, 8)}.. => ${n.reason}`)
         );
       }

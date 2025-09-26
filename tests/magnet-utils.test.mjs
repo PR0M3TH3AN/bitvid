@@ -1,0 +1,160 @@
+import assert from "node:assert/strict";
+import { WSS_TRACKERS } from "../js/constants.js";
+import { normalizeAndAugmentMagnet, safeDecodeMagnet } from "../js/magnetUtils.js";
+import { normalizeAndAugmentMagnet as formNormalize } from "../js/magnet.js";
+
+function getParamValues(magnet, key) {
+  const parsed = new URL(magnet);
+  return parsed.searchParams.getAll(key);
+}
+
+(function testBareInfoHashNormalization() {
+  const infoHash = "0123456789abcdef0123456789abcdef01234567";
+  const result = normalizeAndAugmentMagnet(infoHash);
+  assert.ok(result.didChange, "Bare info hash should mark didChange true");
+  const xtValues = getParamValues(result.magnet, "xt");
+  assert.deepEqual(xtValues, [`urn:btih:${infoHash}`]);
+  const trackerValues = getParamValues(result.magnet, "tr");
+  for (const tracker of WSS_TRACKERS) {
+    assert.ok(
+      trackerValues.includes(tracker),
+      `Expected tracker ${tracker} to be appended`
+    );
+  }
+})();
+
+(function testEncodedXtDecoding() {
+  const infoHash = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
+  const encodedMagnet = `magnet:?xt=urn%3Abtih%3A${infoHash}&dn=Example`;
+  const result = normalizeAndAugmentMagnet(encodedMagnet);
+  const xtValues = getParamValues(result.magnet, "xt");
+  assert.deepEqual(xtValues, [`urn:btih:${infoHash}`]);
+})();
+
+(function testDuplicateTrackerFiltering() {
+  const infoHash = "fedcba9876543210fedcba9876543210fedcba98";
+  const baseMagnet =
+    `magnet:?xt=urn:btih:${infoHash}` +
+    "&tr=wss://tracker.openwebtorrent.com" +
+    "&tr=WsS://tracker.openwebtorrent.com/" +
+    "&tr=https://not-allowed.example";
+  const result = normalizeAndAugmentMagnet(baseMagnet, {
+    extraTrackers: [
+      "wss://tracker.fastcast.nz",
+      "http://tracker.invalid",
+      "wss://tracker.openwebtorrent.com",
+    ],
+  });
+  const trackers = getParamValues(result.magnet, "tr");
+  const openwebCount = trackers.filter(
+    (value) => value === "wss://tracker.openwebtorrent.com"
+  ).length;
+  assert.equal(openwebCount, 1, "Duplicate WSS tracker should be collapsed");
+  assert.ok(
+    trackers.includes("wss://tracker.fastcast.nz"),
+    "Expected extra WSS tracker to be preserved"
+  );
+  assert.ok(
+    !trackers.includes("http://tracker.invalid"),
+    "Non-WSS tracker candidates should be ignored"
+  );
+})();
+
+(function testWebSeedHandlingWithLogging() {
+  const infoHash = "0123456789abcdef0123456789abcdef01234567";
+  const messages = [];
+  const result = normalizeAndAugmentMagnet(`magnet:?xt=urn:btih:${infoHash}`, {
+    webSeed: [
+      "https://cdn.example.com/video.mp4",
+      "http://cdn.example.com/legacy.mp4",
+      "https://cdn.example.com/video.mp4",
+    ],
+    logger: (msg) => messages.push(msg),
+    appProtocol: "https:",
+  });
+  const seeds = getParamValues(result.magnet, "ws");
+  assert.deepEqual(seeds, ["https://cdn.example.com/video.mp4"]);
+  assert.equal(messages.length, 1, "HTTP seed should have been skipped with a log");
+  assert.ok(
+    messages[0].includes("Skipping insecure web seed"),
+    "Expected skip message for HTTP seed"
+  );
+})();
+
+(function testHttpWebSeedAllowedOnHttpOrigin() {
+  const infoHash = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
+  const result = normalizeAndAugmentMagnet(`magnet:?xt=urn:btih:${infoHash}`, {
+    webSeed: "http://cdn.example.com/video.mp4",
+    appProtocol: "http:",
+  });
+  const seeds = getParamValues(result.magnet, "ws");
+  assert.deepEqual(seeds, ["http://cdn.example.com/video.mp4"]);
+})();
+
+(function testSafeDecodeMagnetHandlesEncodedValues() {
+  const rawMagnet =
+    "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Example";
+  const encodedMagnet = encodeURIComponent(rawMagnet);
+  assert.equal(
+    safeDecodeMagnet(encodedMagnet),
+    rawMagnet,
+    "Expected percent-encoded magnet to be decoded"
+  );
+})();
+
+(function testSafeDecodeMagnetLeavesPlainStringsUntouched() {
+  const rawMagnet =
+    "magnet:?xt=urn:btih:abcdefabcdefabcdefabcdefabcdefabcdefabcd";
+  assert.equal(
+    safeDecodeMagnet(rawMagnet),
+    rawMagnet,
+    "Plain magnet strings should pass through unchanged"
+  );
+})();
+
+(function testFormHelperAugmentsWsXsAndDecodesXt() {
+  const infoHash = "abcdef0123456789abcdef0123456789abcdef01";
+  const encodedMagnet = `magnet:?xt=urn%3Abtih%3A${infoHash}`;
+  const normalized = formNormalize(encodedMagnet, {
+    ws: "https://cdn.example.com/video-base/",
+    xs: "https://cdn.example.com/video.torrent",
+  });
+  const parsed = new URL(normalized);
+  assert.equal(
+    parsed.searchParams.get("xt"),
+    `urn:btih:${infoHash}`,
+    "Form helper should decode encoded xt payloads"
+  );
+  assert.deepEqual(
+    parsed.searchParams.getAll("ws"),
+    ["https://cdn.example.com/video-base/"],
+    "Expected ws hint to be appended"
+  );
+  assert.deepEqual(
+    parsed.searchParams.getAll("xs"),
+    ["https://cdn.example.com/video.torrent"],
+    "Expected xs hint to be appended"
+  );
+  const trackers = parsed.searchParams.getAll("tr");
+  for (const tracker of WSS_TRACKERS) {
+    assert.ok(
+      trackers.includes(tracker),
+      `Expected helper to append tracker ${tracker}`
+    );
+  }
+})();
+
+(function testFormHelperSkipsInsecureWsOnHttpsOrigin() {
+  const infoHash = "0123456789abcdef0123456789abcdef01234567";
+  const normalized = formNormalize(`magnet:?xt=urn:btih:${infoHash}`, {
+    ws: "http://cdn.example.com/video-base/",
+  });
+  const parsed = new URL(normalized);
+  assert.equal(
+    parsed.searchParams.getAll("ws").length,
+    0,
+    "HTTP ws value should be skipped on HTTPS origins"
+  );
+})();
+
+console.log("magnet-utils tests passed");

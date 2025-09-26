@@ -2,11 +2,145 @@
 
 import WebTorrent from "./webtorrent.min.js";
 
+const DEFAULT_PROBE_TRACKERS = Object.freeze([
+  "wss://tracker.btorrent.xyz",
+  "wss://tracker.openwebtorrent.com",
+]);
+
+function decodeComponentSafe(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  try {
+    return decodeURIComponent(value);
+  } catch (err) {
+    return value;
+  }
+}
+
+function normalizeTrackerList(trackers) {
+  const normalized = [];
+  const seen = new Set();
+  if (!Array.isArray(trackers)) {
+    return normalized;
+  }
+  trackers.forEach((tracker) => {
+    if (typeof tracker !== "string") {
+      return;
+    }
+    const trimmed = tracker.trim();
+    if (!trimmed || !/^wss:\/\//i.test(trimmed)) {
+      return;
+    }
+    const lower = trimmed.toLowerCase();
+    if (seen.has(lower)) {
+      return;
+    }
+    seen.add(lower);
+    normalized.push(trimmed);
+  });
+  return normalized;
+}
+
+function appendProbeTrackers(magnetURI, trackers) {
+  if (typeof magnetURI !== "string") {
+    return { magnet: "", appended: false, hasProbeTrackers: false };
+  }
+
+  const trimmedMagnet = magnetURI.trim();
+  if (!trimmedMagnet) {
+    return { magnet: "", appended: false, hasProbeTrackers: false };
+  }
+
+  const probeTrackers = normalizeTrackerList(trackers);
+  if (!probeTrackers.length) {
+    return {
+      magnet: trimmedMagnet,
+      appended: false,
+      hasProbeTrackers: false,
+    };
+  }
+
+  const trackerSet = new Set();
+  const [withoutFragment, fragment = ""] = trimmedMagnet.split("#", 2);
+  const [, queryPart = ""] = withoutFragment.split("?", 2);
+
+  if (queryPart) {
+    queryPart
+      .split("&")
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .forEach((segment) => {
+        const [rawKey, rawValue = ""] = segment.split("=", 2);
+        if (!rawKey || rawKey.trim().toLowerCase() !== "tr") {
+          return;
+        }
+        const decoded = decodeComponentSafe(rawValue).trim().toLowerCase();
+        if (decoded) {
+          trackerSet.add(decoded);
+        }
+      });
+  }
+
+  const normalizedProbe = probeTrackers.map((url) => url.toLowerCase());
+  const hadProbeTracker = normalizedProbe.some((url) => trackerSet.has(url));
+
+  const toAppend = [];
+  probeTrackers.forEach((tracker, index) => {
+    const normalizedTracker = normalizedProbe[index];
+    if (trackerSet.has(normalizedTracker)) {
+      return;
+    }
+    trackerSet.add(normalizedTracker);
+    toAppend.push(`tr=${encodeURIComponent(tracker)}`);
+  });
+
+  if (!toAppend.length) {
+    return {
+      magnet: trimmedMagnet,
+      appended: false,
+      hasProbeTrackers: hadProbeTracker,
+    };
+  }
+
+  const separator = queryPart ? "&" : "?";
+  const augmented = `${withoutFragment}${separator}${toAppend.join("&")}`;
+  const finalMagnet = fragment
+    ? `${augmented}#${fragment}`
+    : augmented;
+
+  return {
+    magnet: finalMagnet,
+    appended: true,
+    hasProbeTrackers: true,
+  };
+}
+
+function normalizeNumber(value, fallback = 0) {
+  const coerced = Number(value);
+  if (Number.isFinite(coerced)) {
+    return coerced;
+  }
+  return fallback;
+}
+
+function toError(err) {
+  if (err instanceof Error) {
+    return err;
+  }
+  try {
+    return new Error(String(err));
+  } catch (stringifyError) {
+    return new Error("Unknown error");
+  }
+}
+
 export class TorrentClient {
   constructor() {
     // Reusable objects and flags
     this.client = null;
     this.currentTorrent = null;
+    this.probeClient = null;
 
     // Service worker registration is cached
     this.swRegistration = null;
@@ -14,6 +148,155 @@ export class TorrentClient {
 
     // Timeout for SW operations
     this.TIMEOUT_DURATION = 60000;
+  }
+
+  ensureClientForProbe() {
+    if (!this.probeClient) {
+      this.probeClient = new WebTorrent();
+    }
+    return this.probeClient;
+  }
+
+  async probePeers(
+    magnetURI,
+    { timeoutMs = 8000, maxWebConns = 2, polls = 3 } = {}
+  ) {
+    const magnet = typeof magnetURI === "string" ? magnetURI.trim() : "";
+    if (!magnet) {
+      return {
+        healthy: false,
+        peers: 0,
+        reason: "invalid",
+        appendedTrackers: false,
+        hasProbeTrackers: false,
+        usedTrackers: [...TorrentClient.PROBE_TRACKERS],
+        durationMs: 0,
+      };
+    }
+
+    const trackers = normalizeTrackerList(TorrentClient.PROBE_TRACKERS);
+    const { magnet: augmentedMagnet, appended, hasProbeTrackers } =
+      appendProbeTrackers(magnet, trackers);
+
+    if (!hasProbeTrackers) {
+      return {
+        healthy: false,
+        peers: 0,
+        reason: "no-trackers",
+        appendedTrackers: false,
+        hasProbeTrackers: false,
+        usedTrackers: trackers,
+        durationMs: 0,
+      };
+    }
+
+    const client = this.ensureClientForProbe();
+    const safeTimeout = Math.max(0, normalizeNumber(timeoutMs, 8000));
+    const safePolls = Math.max(1, Math.floor(normalizeNumber(polls, 3)));
+    const safeMaxWebConns = Math.max(1, Math.floor(normalizeNumber(maxWebConns, 2)));
+    const pollInterval = Math.max(
+      250,
+      Math.floor(safeTimeout / Math.max(1, safePolls))
+    );
+
+    const startedAt =
+      typeof performance !== "undefined" && performance?.now
+        ? performance.now()
+        : Date.now();
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let torrent = null;
+      let timeoutId = null;
+      let pollId = null;
+
+      const finalize = (overrides = {}) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (pollId) {
+          clearInterval(pollId);
+          pollId = null;
+        }
+        if (torrent) {
+          try {
+            torrent.destroy({ destroyStore: true });
+          } catch (err) {
+            // ignore
+          }
+        }
+
+        const endedAt =
+          typeof performance !== "undefined" && performance?.now
+            ? performance.now()
+            : Date.now();
+
+        resolve({
+          healthy: false,
+          peers: 0,
+          reason: "timeout",
+          appendedTrackers: appended,
+          hasProbeTrackers,
+          usedTrackers: trackers,
+          durationMs: Math.max(0, endedAt - startedAt),
+          ...overrides,
+        });
+      };
+
+      try {
+        torrent = client.add(augmentedMagnet, {
+          announce: trackers,
+          maxWebConns: safeMaxWebConns,
+        });
+      } catch (err) {
+        finalize({
+          reason: "error",
+          error: toError(err),
+          peers: 0,
+        });
+        return;
+      }
+
+      const settleHealthy = () => {
+        const peers = Math.max(1, Math.floor(normalizeNumber(torrent?.numPeers, 1)));
+        finalize({ healthy: true, peers, reason: "peer" });
+      };
+
+      torrent.once("wire", settleHealthy);
+
+      torrent.once("error", (err) => {
+        finalize({
+          healthy: false,
+          reason: "error",
+          error: toError(err),
+          peers: Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0))),
+        });
+      });
+
+      if (safeTimeout > 0) {
+        timeoutId = setTimeout(() => {
+          finalize({
+            healthy: false,
+            peers: Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0))),
+          });
+        }, safeTimeout);
+      }
+
+      pollId = setInterval(() => {
+        if (!torrent || settled) {
+          return;
+        }
+        const peers = Math.max(0, Math.floor(normalizeNumber(torrent.numPeers, 0)));
+        if (peers > 0) {
+          finalize({ healthy: true, peers, reason: "peer" });
+        }
+      }, pollInterval);
+    });
   }
 
   log(msg) {
@@ -43,6 +326,13 @@ export class TorrentClient {
     // 2) If we haven’t registered the service worker yet, do it now
     if (!this.swRegistration) {
       this.swRegistration = await this.setupServiceWorker();
+    } else {
+      // Even with an existing registration we still wait for control so that a
+      // transient controller drop (e.g. Chrome devtools unregister/reload) does
+      // not resurrect the grey-screen regression mentioned in
+      // waitForActiveController().
+      this.requestClientsClaim(this.swRegistration);
+      await this.waitForActiveController(this.swRegistration);
     }
   }
 
@@ -81,6 +371,117 @@ export class TorrentClient {
     });
   }
 
+  /**
+   * Ensure a live service worker is actively controlling the page before we
+   * start WebTorrent streaming.
+   *
+   * This regression has bitten us repeatedly: the first playback attempt after
+   * a cold load would get stuck on a grey frame because `navigator.serviceWorker`
+   * had finished installing but never claimed the page yet. WebTorrent's
+   * service-worker proxy never attached, so `file.streamTo(videoElement)` fed
+   * data into the void. Refreshing the page “fixed” it because the worker became
+   * the controller during navigation. Future refactors **must not** remove this
+   * guard — wait for `controllerchange` whenever `controller` is still null.
+   */
+  requestClientsClaim(registration = this.swRegistration) {
+    if (!("serviceWorker" in navigator)) {
+      return;
+    }
+
+    try {
+      const activeWorker = registration?.active;
+      if (!activeWorker) {
+        return;
+      }
+
+      // Some Chromium builds require an explicit startMessages() call before a
+      // yet-to-claim worker will accept postMessage traffic. Calling it is a
+      // harmless no-op elsewhere.
+      if (navigator.serviceWorker.startMessages) {
+        navigator.serviceWorker.startMessages();
+      }
+
+      activeWorker.postMessage({ type: "ENSURE_CLIENTS_CLAIM" });
+    } catch (err) {
+      this.log("Failed to request clients.claim():", err);
+    }
+  }
+
+  async waitForActiveController(registration = this.swRegistration) {
+    if (!("serviceWorker" in navigator)) {
+      return null;
+    }
+
+    if (navigator.serviceWorker.controller) {
+      return navigator.serviceWorker.controller;
+    }
+
+    this.requestClientsClaim(registration);
+
+    return new Promise((resolve, reject) => {
+      let timeoutId = null;
+      let pollId = null;
+
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (pollId) {
+          clearInterval(pollId);
+          pollId = null;
+        }
+        navigator.serviceWorker.removeEventListener(
+          "controllerchange",
+          onControllerChange
+        );
+      };
+
+      const maybeResolve = () => {
+        const controller = navigator.serviceWorker.controller;
+        if (controller) {
+          cleanup();
+          resolve(controller);
+          return true;
+        }
+        return false;
+      };
+
+      const onControllerChange = () => {
+        if (maybeResolve()) {
+          return;
+        }
+        // If we received a controllerchange event but still don't have a
+        // controller it usually means the new worker hasn't claimed this page
+        // yet. Ask it again to be safe.
+        this.requestClientsClaim(registration);
+      };
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error("Service worker controller claim timeout"));
+      }, this.TIMEOUT_DURATION);
+
+      pollId = setInterval(() => {
+        if (maybeResolve()) {
+          return;
+        }
+        this.requestClientsClaim(registration);
+      }, 500);
+
+      navigator.serviceWorker.addEventListener(
+        "controllerchange",
+        onControllerChange
+      );
+
+      // One last check in case the controller appeared between the earlier
+      // synchronous guard and the promise wiring above.
+      if (!maybeResolve()) {
+        this.requestClientsClaim(registration);
+      }
+    });
+  }
+
   async setupServiceWorker() {
     try {
       const isBraveBrowser = await this.isBrave();
@@ -92,7 +493,15 @@ export class TorrentClient {
         throw new Error("Service Worker not supported or disabled");
       }
 
-      // Brave-specific logic
+      // Brave-specific logic: Brave Shields has a long-standing bug where
+      // stale service worker registrations linger even after we ship fixes.
+      // When that happens, the outdated worker keeps intercepting requests
+      // and WebTorrent fails to spin up, leaving playback broken until the
+      // user manually nukes the registration. To guarantee a clean slate we
+      // blanket-unregister every worker, then pause briefly so Brave can
+      // finish tearing down the old instance before we register the fresh
+      // one again. That delay is intentional—future tweaks should not shorten
+      // or remove it without understanding the regression risk.
       if (isBraveBrowser) {
         this.log("Checking Brave configuration...");
         if (!navigator.serviceWorker) {
@@ -160,6 +569,16 @@ export class TorrentClient {
         throw new Error("Service worker not active after ready state");
       }
 
+      // Give the newly activated worker an explicit nudge to claim the page
+      // before we continue. This keeps Chromium's occasionally sluggish claim
+      // hand-offs from derailing the subsequent wait below.
+      this.requestClientsClaim(registration);
+
+      // See waitForActiveController() docstring for why this must remain in
+      // place. We intentionally wait here instead of racing with playback so a
+      // newly installed worker claims the page before WebTorrent spins up.
+      await this.waitForActiveController(registration);
+
       // Force the SW to check for updates
       registration.update();
       this.log("Service worker ready");
@@ -171,8 +590,30 @@ export class TorrentClient {
     }
   }
 
+  attemptAutoplay(videoElement, context = "webtorrent") {
+    if (!videoElement || typeof videoElement.play !== "function") {
+      return;
+    }
+
+    videoElement
+      .play()
+      .catch((err) => {
+        this.log(`Autoplay failed (${context} path):`, err);
+        if (videoElement.muted) {
+          return;
+        }
+        this.log(`Retrying with muted autoplay (${context} path).`);
+        videoElement.muted = true;
+        videoElement.play().catch((err2) => {
+          this.log(`Muted autoplay also failed (${context} path):`, err2);
+        });
+      });
+  }
+
   // Handle Chrome-based browsers
   handleChromeTorrent(torrent, videoElement, resolve, reject) {
+    // Prune demo web seeds/trackers that chronically trip Chromium CORS and
+    // deliberately mutate `torrent._opts` as a sanctioned WebTorrent workaround.
     torrent.on("warning", (err) => {
       if (err && typeof err.message === "string") {
         if (
@@ -203,18 +644,20 @@ export class TorrentClient {
       return reject(new Error("No compatible video file found in torrent"));
     }
 
-    videoElement.muted = true;
+    // Satisfy autoplay requirements and keep cross-origin chunks usable (e.g., for snapshots).
     videoElement.crossOrigin = "anonymous";
 
     videoElement.addEventListener("error", (e) => {
       this.log("Video error:", e.target.error);
     });
 
-    videoElement.addEventListener("canplay", () => {
-      videoElement.play().catch((err) => {
-        this.log("Autoplay failed:", err);
-      });
-    });
+    videoElement.addEventListener(
+      "canplay",
+      () => {
+        this.attemptAutoplay(videoElement, "chrome");
+      },
+      { once: true }
+    );
 
     try {
       file.streamTo(videoElement);
@@ -240,18 +683,20 @@ export class TorrentClient {
       return reject(new Error("No compatible video file found in torrent"));
     }
 
-    videoElement.muted = true;
+    // Satisfy autoplay requirements and keep cross-origin chunks usable (e.g., for snapshots).
     videoElement.crossOrigin = "anonymous";
 
     videoElement.addEventListener("error", (e) => {
       this.log("Video error (Firefox path):", e.target.error);
     });
 
-    videoElement.addEventListener("canplay", () => {
-      videoElement.play().catch((err) => {
-        this.log("Autoplay failed:", err);
-      });
-    });
+    videoElement.addEventListener(
+      "canplay",
+      () => {
+        this.attemptAutoplay(videoElement, "firefox");
+      },
+      { once: true }
+    );
 
     try {
       file.streamTo(videoElement, { highWaterMark: 256 * 1024 });
@@ -272,7 +717,7 @@ export class TorrentClient {
    * Initiates streaming of a torrent magnet to a <video> element.
    * Ensures the service worker is set up only once and the client is reused.
    */
-  async streamVideo(magnetURI, videoElement) {
+  async streamVideo(magnetURI, videoElement, opts = {}) {
     try {
       // 1) Make sure we have a WebTorrent client and a valid SW registration.
       await this.init();
@@ -288,6 +733,16 @@ export class TorrentClient {
       }
 
       const isFirefoxBrowser = this.isFirefox();
+      const candidateUrls = Array.isArray(opts?.urlList)
+        ? opts.urlList
+            .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+            .filter((entry) => /^https?:\/\//i.test(entry))
+        : [];
+
+      const chromeOptions = { strategy: "sequential" };
+      if (candidateUrls.length) {
+        chromeOptions.urlList = candidateUrls;
+      }
 
       return new Promise((resolve, reject) => {
         // 3) Add the torrent to the client and handle accordingly.
@@ -295,7 +750,7 @@ export class TorrentClient {
           this.log("Starting torrent download (Firefox path)");
           this.client.add(
             magnetURI,
-            { strategy: "sequential", maxWebConns: 4 },
+            { ...chromeOptions, maxWebConns: 4 },
             (torrent) => {
               this.log("Torrent added (Firefox path):", torrent.name);
               this.handleFirefoxTorrent(torrent, videoElement, resolve, reject);
@@ -303,7 +758,7 @@ export class TorrentClient {
           );
         } else {
           this.log("Starting torrent download (Chrome path)");
-          this.client.add(magnetURI, { strategy: "sequential" }, (torrent) => {
+          this.client.add(magnetURI, chromeOptions, (torrent) => {
             this.log("Torrent added (Chrome path):", torrent.name);
             this.handleChromeTorrent(torrent, videoElement, resolve, reject);
           });
@@ -330,6 +785,10 @@ export class TorrentClient {
         await this.client.destroy();
         this.client = null;
       }
+      if (this.probeClient) {
+        await this.probeClient.destroy();
+        this.probeClient = null;
+      }
       this.currentTorrent = null;
       this.serverCreated = false;
     } catch (error) {
@@ -337,5 +796,7 @@ export class TorrentClient {
     }
   }
 }
+
+TorrentClient.PROBE_TRACKERS = DEFAULT_PROBE_TRACKERS;
 
 export const torrentClient = new TorrentClient();

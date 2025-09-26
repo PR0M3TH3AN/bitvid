@@ -13,6 +13,7 @@ const npubs = [
   "npub1m5s9w4t03znyetxswhgq0ud7fq8ef8y3l4kscn2e8wkvmv42hh3qujgjl3", // mister_monster
   "npub13qexjtmajssuhz8gdchgx65dwsnr705drse294zz5vt4e78ya2vqzyg8lv", // SatoshiSignal
   "npub1da7m2ksdj24995hm8afv88pjpvzt6t9vh70mg8t52yjwtxza3vjszyar58", // GoblinBox
+  "npub196rl3tls3c4y79pc3ptrrj2430z7p5uwetfhukhtkt69hph0fvwq08l43q", // ~Bordut-Nodlex
 ];
 
 console.log("DEBUG: lists.js loaded, npubs:", npubs);

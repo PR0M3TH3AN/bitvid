@@ -1,6 +1,11 @@
+<!--
+  Sidebar fades in once when hydrated on the client. js/index.js removes the
+  helper classes after the initial animation to avoid flashes each time we
+  re-render navigation links.
+-->
 <aside
   id="sidebar"
-  class="bg-gray-900 text-white transition-transform duration-300 ease-in-out fixed top-0 left-0 w-64 h-screen overflow-y-auto"
+  class="bg-gray-900 text-white transition-transform duration-300 ease-in-out fixed top-0 left-0 w-64 h-screen overflow-y-auto fade-in fade-in-delay-100"
 >
   <div class="flex flex-col h-full">
     <!-- Top Navigation Links -->
@@ -45,178 +50,182 @@
       </div>
     </div>
 
-    <!-- Mobile Dropdown Button for Footer Links -->
-    <!-- Added p-4 around the button for spacing, and styling consistent with top links -->
-    <div class="md:hidden p-4">
-      <button
-        id="footerDropdownButton"
-        class="flex items-center w-full py-2 px-4 bg-gray-800 hover:bg-gray-700 text-sm font-semibold text-gray-100 rounded shadow-md focus:outline-none transition-colors duration-200"
-      >
-        <!-- Arrow on the left side -->
-        <svg
-          id="footerDropdownIcon"
-          class="w-4 h-4 mr-2 transform transition-transform duration-300"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
-        <span id="footerDropdownText">More</span>
-      </button>
-    </div>
-
-    <!-- Footer Links Container -->
-    <!-- On mobile: hidden by default; on desktop: visible and pushed to the bottom -->
-    <div id="footerLinksContainer" class="hidden md:block md:mt-auto">
-      <hr class="border-gray-700" />
+    <!-- Footer Links Toggle -->
+    <div class="md:mt-auto">
       <div class="p-4">
-        <nav class="space-y-2 text-sm opacity-70">
-          <a
-            href="#view=about"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+        <button
+          id="footerDropdownButton"
+          type="button"
+          class="flex items-center w-full py-2 px-4 bg-gray-800 hover:bg-gray-700 text-sm font-semibold text-gray-100 rounded shadow-md focus:outline-none transition-colors duration-200"
+          aria-expanded="false"
+          aria-controls="footerLinksContainer"
+        >
+          <!-- Arrow on the left side -->
+          <svg
+            id="footerDropdownIcon"
+            class="w-4 h-4 mr-2 transform transition-transform duration-300"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
           >
-            <img
-              src="assets/svg/about-icon.svg"
-              alt="About"
-              class="w-5 h-5 mr-3"
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
             />
-            <span class="sidebar-text">About</span>
-          </a>
-          <a
-            href="#view=community-guidelines"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/guidelines-icon.svg"
-              alt="Guidelines"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">Guidelines</span>
-          </a>
-          <a
-            href="#view=getting-started"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/getting-started-icon.svg"
-              alt="Getting Started"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">Getting Started</span>
-          </a>
-          <a
-            href="#view=roadmap"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/roadmap-icon.svg"
-              alt="Roadmap"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">Roadmap</span>
-          </a>
-          <a
-            href="#view=blog"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/blog-icon.svg"
-              alt="Blog"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">Blog</span>
-          </a>
-          <a
-            href="https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/nostr-icon.svg"
-              alt="Nostr"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">Nostr</span>
-          </a>
-          <a
-            href="https://github.com/PR0M3TH3AN/bitvid"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/github-icon.svg"
-              alt="GitHub"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">GitHub</span>
-          </a>
-          <a
-            href="torrent/beacon.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/beacon-icon.svg"
-              alt="βeacon"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">βeacon</span>
-          </a>
-          <a
-            href="https://beta.bitvid.network/"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/beta-icon.svg"
-              alt="Beta"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">Beta</span>
-          </a>
-          <a
-            href="#view=links"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/links-icon.svg"
-              alt="Links"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">Links</span>
-          </a>
-          <a
-            href="#view=ipns"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img
-              src="assets/svg/ipns-icon.svg"
-              alt="IPNS"
-              class="w-5 h-5 mr-3"
-            />
-            <span class="sidebar-text">IPNS</span>
-          </a>
-          <a
-            href="https://bitvid.network/"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-          >
-            <img src="assets/svg/dns-icon.svg" alt="DNS" class="w-5 h-5 mr-3" />
-            <span class="sidebar-text">DNS</span>
-          </a>
-        </nav>
+
+          </svg>
+          <span id="footerDropdownText">More</span>
+        </button>
+      </div>
+
+      <!-- Footer Links Container -->
+      <div id="footerLinksContainer" class="hidden">
+        <hr class="border-gray-700" />
+        <div class="p-4">
+          <nav class="space-y-2 text-sm opacity-70">
+            <a
+              href="#view=about"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/about-icon.svg"
+                alt="About"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">About</span>
+            </a>
+            <a
+              href="#view=community-guidelines"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/guidelines-icon.svg"
+                alt="Guidelines"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">Guidelines</span>
+            </a>
+            <a
+              href="#view=getting-started"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/getting-started-icon.svg"
+                alt="Getting Started"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">Getting Started</span>
+            </a>
+            <a
+              href="#view=roadmap"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/roadmap-icon.svg"
+                alt="Roadmap"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">Roadmap</span>
+            </a>
+            <a
+              href="#view=blog"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/blog-icon.svg"
+                alt="Blog"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">Blog</span>
+            </a>
+            <a
+              href="https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/nostr-icon.svg"
+                alt="Nostr"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">Nostr</span>
+            </a>
+            <a
+              href="https://github.com/PR0M3TH3AN/bitvid"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/github-icon.svg"
+                alt="GitHub"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">GitHub</span>
+            </a>
+            <a
+              href="torrent/beacon.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/beacon-icon.svg"
+                alt="βeacon"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">βeacon</span>
+            </a>
+            <a
+              href="https://beta.bitvid.network/"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/beta-icon.svg"
+                alt="Beta"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">Beta</span>
+            </a>
+            <a
+              href="#view=links"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/links-icon.svg"
+                alt="Links"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">Links</span>
+            </a>
+            <a
+              href="#view=ipns"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img
+                src="assets/svg/ipns-icon.svg"
+                alt="IPNS"
+                class="w-5 h-5 mr-3"
+              />
+              <span class="sidebar-text">IPNS</span>
+            </a>
+            <a
+              href="https://bitvid.network/"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+            >
+              <img src="assets/svg/dns-icon.svg" alt="DNS" class="w-5 h-5 mr-3" />
+              <span class="sidebar-text">DNS</span>
+            </a>
+          </nav>
+        </div>
       </div>
     </div>
   </div>
@@ -228,18 +237,15 @@
       if (btn && footerLinks) {
         btn.addEventListener("click", function () {
           footerLinks.classList.toggle("hidden");
+          var isHidden = footerLinks.classList.contains("hidden");
+          btn.setAttribute("aria-expanded", String(!isHidden));
           var icon = document.getElementById("footerDropdownIcon");
           var textSpan = document.getElementById("footerDropdownText");
-          if (footerLinks.classList.contains("hidden")) {
-            textSpan.textContent = "More";
-            if (icon) {
-              icon.classList.remove("rotate-180");
-            }
-          } else {
-            textSpan.textContent = "Less";
-            if (icon) {
-              icon.classList.add("rotate-180");
-            }
+          if (textSpan) {
+            textSpan.textContent = isHidden ? "More" : "Less";
+          }
+          if (icon) {
+            icon.classList.toggle("rotate-180", !isHidden);
           }
         });
       }

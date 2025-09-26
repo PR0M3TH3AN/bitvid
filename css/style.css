@@ -8,6 +8,7 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  --modal-motion-duration: 160ms;
 }
 
 /* Core Styles */
@@ -71,6 +72,92 @@ header img {
   overflow: hidden;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: var(--shadow-md);
+}
+
+.video-card--enter {
+  opacity: 0;
+  animation: video-card-fade-in 220ms ease-out forwards;
+}
+
+@keyframes video-card-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+  Thumbnails start transparent and fade in the first time they finish loading.
+  `data-thumbnail-loaded` is cleared by js/index.js once the animation completes
+  so re-rendering the same element later does not replay the transition and cause
+  a distracting flash.
+*/
+[data-video-thumbnail][data-thumbnail-loaded="true"] {
+  animation: video-thumbnail-fade-in 220ms ease-out forwards;
+}
+
+@keyframes video-thumbnail-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/*
+  Generic fade-in utility for chrome elements (sidebar, header controls, etc.).
+  js/index.js listens for the `interface-fade-in` animation finishing and removes
+  the temporary classes so that once an element has gracefully appeared it stays
+  opaque even if the DOM is re-used or re-parented later.
+*/
+
+.fade-in {
+  opacity: 0;
+  animation: interface-fade-in 280ms ease-out forwards;
+  animation-delay: var(--fade-in-delay, 0ms);
+}
+
+.fade-in-delay-100 {
+  --fade-in-delay: 100ms;
+}
+
+.fade-in-delay-200 {
+  --fade-in-delay: 200ms;
+}
+
+.fade-in-delay-300 {
+  --fade-in-delay: 300ms;
+}
+
+.fade-in-delay-400 {
+  --fade-in-delay: 400ms;
+}
+
+@keyframes interface-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-card--enter,
+  .fade-in {
+    opacity: 1;
+    animation: none;
+  }
+
+  [data-video-thumbnail][data-thumbnail-loaded="true"] {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 .video-card:hover {
@@ -137,7 +224,7 @@ header img {
   display: flex;
   flex-direction: column;
   background-color: #0f172a;
-  animation: fadeIn 0.3s ease-in-out;
+  animation: fadeIn var(--modal-motion-duration) ease-out;
 }
 
 @keyframes fadeIn {
@@ -148,6 +235,12 @@ header img {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-content {
+    animation-duration: 1ms;
   }
 }
 
@@ -540,4 +633,61 @@ footer a:hover {
 /* Example: customizing the border & background in the sidebar */
 #sidebar hr {
   border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Sidebar drop-up menu styling */
+.sidebar-dropup {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.75rem;
+}
+
+.sidebar-dropup-panel {
+  background-color: #1f2937; /* gray-800 */
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.75rem;
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.45);
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateY(16px);
+  transition: max-height 0.35s ease, opacity 0.25s ease, transform 0.35s ease;
+}
+
+.sidebar-dropup-panel__inner {
+  padding: 1.25rem;
+}
+
+.sidebar-dropup-panel--expanded {
+  max-height: 640px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.sidebar-dropup-trigger {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(14, 116, 144, 0.35));
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+  color: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  width: 100%;
+}
+
+.sidebar-dropup-trigger:hover,
+.sidebar-dropup-trigger:focus {
+  border-color: rgba(148, 163, 184, 0.6);
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.25);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.sidebar-dropup-trigger__content {
+  align-items: center;
+  display: flex;
 }

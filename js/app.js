@@ -4,8 +4,13 @@ import { loadView } from "./viewManager.js";
 import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
-import disclaimerModal from "./disclaimer.js";
 import { isWhitelistEnabled } from "./config.js";
+import { safeDecodeMagnet } from "./magnetUtils.js";
+import { normalizeAndAugmentMagnet } from "./magnet.js";
+import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
+import { URL_FIRST_ENABLED } from "./constants.js";
+import { trackVideoView } from "./analytics.js";
+import { attachHealthBadges } from "./gridHealth.js";
 import {
   initialWhitelist,
   initialBlacklist,
@@ -17,6 +22,260 @@ import {
  */
 function fakeDecrypt(str) {
   return str.split("").reverse().join("");
+}
+
+const UNSUPPORTED_BTITH_MESSAGE =
+  "This magnet link is missing a compatible BitTorrent v1 info hash.";
+
+const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
+const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
+const PROFILE_CACHE_STORAGE_KEY = "bitvid:profileCache:v1";
+const PROFILE_CACHE_VERSION = 1;
+const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// We probe hosted URLs often enough that a naive implementation would spam
+// remote CDNs. A medium-lived cache (roughly 45 minutes) keeps us from
+// hammering dead hosts while still giving the UI timely updates when a CDN
+// recovers. Results are stored both in-memory and in localStorage so other
+// views can reuse them without re-probing.
+const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
+const URL_PROBE_TIMEOUT_MS = 8 * 1000; // 8 seconds
+const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
+const urlHealthCache = new Map();
+const urlHealthInFlight = new Map();
+
+function removeTrackingScripts(root) {
+  if (!root || typeof root.querySelectorAll !== "function") {
+    return;
+  }
+
+  root.querySelectorAll("script[src]").forEach((script) => {
+    const src = script.getAttribute("src") || "";
+    if (TRACKING_SCRIPT_PATTERN.test(src)) {
+      script.remove();
+    }
+  });
+}
+
+function getUrlHealthStorageKey(eventId) {
+  return `${URL_HEALTH_STORAGE_PREFIX}${eventId}`;
+}
+
+function readUrlHealthFromStorage(eventId) {
+  if (!eventId || typeof localStorage === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = localStorage.getItem(getUrlHealthStorageKey(eventId));
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
+  } catch (err) {
+    console.warn(`Failed to parse stored URL health for ${eventId}:`, err);
+  }
+
+  removeUrlHealthFromStorage(eventId);
+  return null;
+}
+
+function writeUrlHealthToStorage(eventId, entry) {
+  if (!eventId || typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      getUrlHealthStorageKey(eventId),
+      JSON.stringify(entry)
+    );
+  } catch (err) {
+    console.warn(`Failed to persist URL health for ${eventId}:`, err);
+  }
+}
+
+function removeUrlHealthFromStorage(eventId) {
+  if (!eventId || typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(getUrlHealthStorageKey(eventId));
+  } catch (err) {
+    console.warn(`Failed to remove URL health for ${eventId}:`, err);
+  }
+}
+
+function isUrlHealthEntryFresh(entry, url) {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+
+  const now = Date.now();
+  if (typeof entry.expiresAt !== "number" || entry.expiresAt <= now) {
+    return false;
+  }
+
+  if (url && entry.url && entry.url !== url) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Returns the cached health result for a given event ID when the entry is
+ * still "fresh". Entries are evicted eagerly once their TTL expires or when
+ * the associated URL changes (e.g. a user edits the post to point elsewhere).
+ */
+function readUrlHealthFromCache(eventId, url) {
+  if (!eventId) {
+    return null;
+  }
+
+  const entry = urlHealthCache.get(eventId);
+  if (isUrlHealthEntryFresh(entry, url)) {
+    return entry;
+  }
+
+  if (entry) {
+    urlHealthCache.delete(eventId);
+  }
+
+  const stored = readUrlHealthFromStorage(eventId);
+  if (!isUrlHealthEntryFresh(stored, url)) {
+    if (stored) {
+      removeUrlHealthFromStorage(eventId);
+    }
+    return null;
+  }
+
+  urlHealthCache.set(eventId, stored);
+  return stored;
+}
+
+/**
+ * Stores a health result and calculates the expiry moment. The TTL lasts for
+ * roughly three quarters of an hour so we recover quickly when a CDN returns
+ * while still avoiding redundant probes during render thrash.
+*/
+function writeUrlHealthToCache(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) {
+  if (!eventId) {
+    return null;
+  }
+
+  const ttl = typeof ttlMs === "number" && ttlMs > 0 ? ttlMs : URL_HEALTH_TTL_MS;
+  const now = Date.now();
+  const entry = {
+    status: result?.status || "checking",
+    message: result?.message || "Checking hosted URL…",
+    url: url || result?.url || "",
+    expiresAt: now + ttl,
+    lastCheckedAt: now,
+  };
+  urlHealthCache.set(eventId, entry);
+  writeUrlHealthToStorage(eventId, entry);
+  return entry;
+}
+
+/**
+ * Tracks in-flight probe promises so that multiple cards rendering the same
+ * event simultaneously do not all fire off duplicate requests. The stored
+ * metadata includes the URL so edits invalidate the old request immediately.
+ */
+function setInFlightUrlProbe(eventId, url, promise) {
+  if (!eventId || !promise) {
+    return;
+  }
+
+  urlHealthInFlight.set(eventId, { promise, url });
+  promise.finally(() => {
+    const current = urlHealthInFlight.get(eventId);
+    if (current && current.promise === promise) {
+      urlHealthInFlight.delete(eventId);
+    }
+  });
+}
+
+function getInFlightUrlProbe(eventId, url) {
+  if (!eventId) {
+    return null;
+  }
+
+  const entry = urlHealthInFlight.get(eventId);
+  if (!entry) {
+    return null;
+  }
+
+  if (url && entry.url && entry.url !== url) {
+    return null;
+  }
+
+  return entry.promise;
+}
+// NOTE: The modal uses a "please stand by" animated poster while the torrent
+// or direct URL boots up. We've regressed multiple times by forgetting to clear
+// that poster once playback starts, which leaves the loading GIF covering the
+// video even though audio is playing. Centralising the cleanup logic makes it
+// easier to spot those regressions; see forceRemoveModalPoster() below.
+const MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
+
+/**
+ * Basic validation for BitTorrent magnet URIs.
+ *
+ * Returns `true` only when the value looks like a magnet link that WebTorrent
+ * understands (`magnet:` scheme with at least one `xt=urn:btih:<info-hash>`
+ * entry, where `<info-hash>` is either a 40-character hex digest or a
+ * 32-character base32 digest). Magnets that only contain BitTorrent v2 hashes
+ * (e.g. `btmh`) are treated as unsupported.
+ */
+function isValidMagnetUri(magnet) {
+  const trimmed = typeof magnet === "string" ? magnet.trim() : "";
+  if (!trimmed) {
+    return false;
+  }
+
+  const decoded = safeDecodeMagnet(trimmed);
+  const candidate = decoded || trimmed;
+
+  if (/^[0-9a-f]{40}$/i.test(candidate)) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol.toLowerCase() !== "magnet:") {
+      return false;
+    }
+
+    const xtValues = parsed.searchParams.getAll("xt");
+    if (!xtValues.length) {
+      return false;
+    }
+
+    const hexPattern = /^[0-9a-f]{40}$/i;
+    const base32Pattern = /^[A-Z2-7]{32}$/;
+
+    return xtValues.some((value) => {
+      if (typeof value !== "string") return false;
+      const match = value.trim().match(/^urn:btih:([a-z0-9]+)$/i);
+      if (!match) return false;
+
+      const infoHash = match[1];
+      if (hexPattern.test(infoHash)) {
+        return true;
+      }
+
+      const upperHash = infoHash.toUpperCase();
+      return infoHash.length === 32 && base32Pattern.test(upperHash);
+    });
+  } catch (err) {
+    return false;
+  }
 }
 
 /**
@@ -36,11 +295,87 @@ class MediaLoader {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             const el = entry.target;
-            const lazySrc = el.dataset.lazy;
+            const lazySrc =
+              typeof el.dataset.lazy === "string"
+                ? el.dataset.lazy.trim()
+                : "";
+
             if (lazySrc) {
-              el.src = lazySrc;
-              delete el.dataset.lazy;
+              const fallbackSrc =
+                (typeof el.dataset.fallbackSrc === "string"
+                  ? el.dataset.fallbackSrc.trim()
+                  : "") ||
+                el.getAttribute("data-fallback-src") ||
+                "";
+
+              const applyFallback = () => {
+                const resolvedFallback =
+                  fallbackSrc && fallbackSrc.trim()
+                    ? fallbackSrc.trim()
+                    : FALLBACK_THUMBNAIL_SRC;
+
+                if (!resolvedFallback) {
+                  return;
+                }
+
+                if (el.src !== resolvedFallback) {
+                  el.src = resolvedFallback;
+                }
+
+                if (!el.dataset.fallbackSrc) {
+                  el.dataset.fallbackSrc = resolvedFallback;
+                }
+
+                if (!el.getAttribute("data-fallback-src")) {
+                  el.setAttribute("data-fallback-src", resolvedFallback);
+                }
+
+                el.dataset.thumbnailFailed = "true";
+              };
+
+              const cleanupListeners = () => {
+                el.removeEventListener("error", handleError);
+                el.removeEventListener("load", handleLoad);
+              };
+
+              const handleError = () => {
+                cleanupListeners();
+                applyFallback();
+              };
+
+              const handleLoad = () => {
+                cleanupListeners();
+                if (
+                  (el.naturalWidth === 0 && el.naturalHeight === 0) ||
+                  !el.currentSrc
+                ) {
+                  applyFallback();
+                } else {
+                  delete el.dataset.thumbnailFailed;
+                }
+              };
+
+              el.addEventListener("error", handleError);
+              el.addEventListener("load", handleLoad);
+
+              if (fallbackSrc && lazySrc === fallbackSrc) {
+                cleanupListeners();
+                delete el.dataset.thumbnailFailed;
+              } else {
+                el.src = lazySrc;
+
+                if (el.complete) {
+                  // Handle cached results synchronously
+                  if (el.naturalWidth === 0 && el.naturalHeight === 0) {
+                    handleError();
+                  } else {
+                    handleLoad();
+                  }
+                }
+              }
             }
+
+            delete el.dataset.lazy;
             // Stop observing once loaded
             this.observer.unobserve(el);
           }
@@ -51,7 +386,35 @@ class MediaLoader {
   }
 
   observe(el) {
-    if (el.dataset.lazy) {
+    if (!el || typeof el.dataset === "undefined") {
+      return;
+    }
+
+    if (!el.dataset.fallbackSrc) {
+      const fallbackAttr =
+        el.getAttribute("data-fallback-src") || el.getAttribute("src") || "";
+      if (fallbackAttr) {
+        el.dataset.fallbackSrc = fallbackAttr;
+      } else if (el.tagName === "IMG") {
+        el.dataset.fallbackSrc = FALLBACK_THUMBNAIL_SRC;
+        el.setAttribute("data-fallback-src", FALLBACK_THUMBNAIL_SRC);
+      }
+    }
+
+    if (
+      el.tagName === "IMG" &&
+      typeof HTMLImageElement !== "undefined" &&
+      "loading" in HTMLImageElement.prototype
+    ) {
+      el.loading = el.loading || "lazy";
+      if ("decoding" in HTMLImageElement.prototype) {
+        el.decoding = el.decoding || "async";
+      }
+    }
+
+    const lazySrc =
+      typeof el.dataset.lazy === "string" ? el.dataset.lazy.trim() : "";
+    if (lazySrc) {
       this.observer.observe(el);
     }
   }
@@ -71,6 +434,9 @@ class bitvidApp {
 
     // Lazy-loading helper for images
     this.mediaLoader = new MediaLoader();
+    this.loadedThumbnails = new Map();
+    this.activeIntervals = [];
+    this.urlPlaybackWatchdogCleanup = null;
 
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
@@ -114,6 +480,9 @@ class bitvidApp {
     this.creatorNpub = null;
     this.copyMagnetBtn = null;
     this.shareBtn = null;
+    this.modalZapBtn = null;
+    this.modalPosterCleanup = null;
+    this.cleanupPromise = null;
 
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
@@ -127,11 +496,17 @@ class bitvidApp {
     this.currentMagnetUri = null;
     this.currentVideo = null;
     this.videoSubscription = null;
+    this.videoList = null;
+    this._videoListElement = null;
+    this._videoListClickHandler = null;
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = new Map();
     // Simple cache for user profiles
     this.profileCache = new Map();
+    this.lastRenderedVideoSignature = null;
+    this._lastRenderedVideoListElement = null;
+    this.renderedVideoIds = new Set();
 
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
@@ -159,6 +534,148 @@ class bitvidApp {
     }
   }
 
+  loadProfileCacheFromStorage() {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+
+    const now = Date.now();
+    const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY);
+    if (!raw) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return;
+      }
+
+      if (parsed.version !== PROFILE_CACHE_VERSION) {
+        return;
+      }
+
+      const entries = parsed.entries;
+      if (!entries || typeof entries !== "object") {
+        return;
+      }
+
+      for (const [pubkey, entry] of Object.entries(entries)) {
+        if (!pubkey || !entry || typeof entry !== "object") {
+          continue;
+        }
+
+        const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
+        if (!timestamp || now - timestamp > PROFILE_CACHE_TTL_MS) {
+          continue;
+        }
+
+        const profile = entry.profile;
+        if (!profile || typeof profile !== "object") {
+          continue;
+        }
+
+        const normalized = {
+          name: profile.name || profile.display_name || "Unknown",
+          picture: profile.picture || "assets/svg/default-profile.svg",
+        };
+
+        this.profileCache.set(pubkey, {
+          profile: normalized,
+          timestamp,
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to parse stored profile cache:", err);
+    }
+  }
+
+  persistProfileCacheToStorage() {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+
+    const now = Date.now();
+    const entries = {};
+
+    for (const [pubkey, entry] of this.profileCache.entries()) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
+      if (!timestamp || now - timestamp > PROFILE_CACHE_TTL_MS) {
+        this.profileCache.delete(pubkey);
+        continue;
+      }
+
+      entries[pubkey] = {
+        profile: entry.profile,
+        timestamp,
+      };
+    }
+
+    const payload = {
+      version: PROFILE_CACHE_VERSION,
+      savedAt: now,
+      entries,
+    };
+
+    if (Object.keys(entries).length === 0) {
+      try {
+        localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY);
+      } catch (err) {
+        console.warn("Failed to clear profile cache storage:", err);
+      }
+      return;
+    }
+
+    try {
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (err) {
+      console.warn("Failed to persist profile cache:", err);
+    }
+  }
+
+  getProfileCacheEntry(pubkey) {
+    if (!pubkey) {
+      return null;
+    }
+
+    const entry = this.profileCache.get(pubkey);
+    if (!entry) {
+      return null;
+    }
+
+    const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
+    if (!timestamp || Date.now() - timestamp > PROFILE_CACHE_TTL_MS) {
+      this.profileCache.delete(pubkey);
+      this.persistProfileCacheToStorage();
+      return null;
+    }
+
+    return entry;
+  }
+
+  setProfileCacheEntry(pubkey, profile) {
+    if (!pubkey || !profile) {
+      return;
+    }
+
+    const normalized = {
+      name: profile.name || profile.display_name || "Unknown",
+      picture: profile.picture || "assets/svg/default-profile.svg",
+    };
+
+    const entry = {
+      profile: normalized,
+      timestamp: Date.now(),
+    };
+
+    this.profileCache.set(pubkey, entry);
+    this.persistProfileCacheToStorage();
+    return entry;
+  }
+
   forceRefreshAllProfiles() {
     // 1) Grab the newest set of videos from nostrClient
     const activeVideos = nostrClient.getActiveVideos();
@@ -180,6 +697,8 @@ class bitvidApp {
           registrations.forEach((registration) => registration.update());
         });
       }
+
+      this.loadProfileCacheFromStorage();
 
       // 1. Initialize the video modal (components/video-modal.html)
       await this.initModal();
@@ -208,9 +727,8 @@ class bitvidApp {
         }
       }
 
-      // 5. Setup general event listeners, show disclaimers
+      // 5. Setup general event listeners
       this.setupEventListeners();
-      disclaimerModal.show();
 
       // 6) Load the default view ONLY if there's no #view= already
       if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
@@ -228,6 +746,7 @@ class bitvidApp {
 
       // 7. Once loaded, get a reference to #videoList
       this.videoList = document.getElementById("videoList");
+      this.attachVideoListHandler();
 
       // 8. Subscribe or fetch videos
       await this.loadVideos();
@@ -235,8 +754,6 @@ class bitvidApp {
       // 9. Check URL ?v= param
       this.checkUrlParams();
 
-      // Keep an array of active interval IDs so we can clear them on modal close
-      this.activeIntervals = [];
     } catch (error) {
       console.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
@@ -248,6 +765,12 @@ class bitvidApp {
    */
   async initModal() {
     try {
+      const existingModal = document.getElementById("playerModal");
+      if (existingModal) {
+        this.playerModal = existingModal;
+        return true;
+      }
+
       const resp = await fetch("components/video-modal.html");
       if (!resp.ok) {
         throw new Error(`HTTP error! status: ${resp.status}`);
@@ -262,6 +785,7 @@ class bitvidApp {
       // Instead of overwriting, we append a new DIV with the fetched HTML
       const wrapper = document.createElement("div");
       wrapper.innerHTML = html; // set the markup
+      removeTrackingScripts(wrapper);
       modalContainer.appendChild(wrapper); // append the markup
 
       // Now we can safely find elements inside:
@@ -322,6 +846,7 @@ class bitvidApp {
     // Copy/Share buttons
     this.copyMagnetBtn = document.getElementById("copyMagnetBtn") || null;
     this.shareBtn = document.getElementById("shareBtn") || null;
+    this.modalZapBtn = document.getElementById("modalZapBtn") || null;
 
     // Attach existing event listeners for copy/share
     if (this.copyMagnetBtn) {
@@ -331,23 +856,24 @@ class bitvidApp {
     }
     if (this.shareBtn) {
       this.shareBtn.addEventListener("click", () => {
-        if (!this.currentVideo) {
-          this.showError("No video is loaded to share.");
+        if (!this.currentVideo || !this.currentVideo.id) {
+          this.showError("No shareable video is loaded.");
           return;
         }
-        try {
-          const nevent = window.NostrTools.nip19.neventEncode({
-            id: this.currentVideo.id,
-          });
-          const shareUrl = `${window.location.origin}${window.location.pathname}?v=${nevent}`;
-          navigator.clipboard
-            .writeText(shareUrl)
-            .then(() => this.showSuccess("Video link copied to clipboard!"))
-            .catch(() => this.showError("Failed to copy the link."));
-        } catch (err) {
-          console.error("Error generating share link:", err);
+        const shareUrl = this.buildShareUrlFromEventId(this.currentVideo.id);
+        if (!shareUrl) {
           this.showError("Could not generate link.");
+          return;
         }
+        navigator.clipboard
+          .writeText(shareUrl)
+          .then(() => this.showSuccess("Video link copied to clipboard!"))
+          .catch(() => this.showError("Failed to copy the link."));
+      });
+    }
+    if (this.modalZapBtn) {
+      this.modalZapBtn.addEventListener("click", () => {
+        window.alert("Zaps coming soon.");
       });
     }
 
@@ -410,9 +936,83 @@ class bitvidApp {
       this.playerModal.style.display = "flex";
       this.playerModal.classList.remove("hidden");
     }
-    if (this.modalVideo) {
-      this.modalVideo.poster = "assets/gif/please-stand-by.gif";
+    this.applyModalLoadingPoster();
+  }
+
+  applyModalLoadingPoster() {
+    if (!this.modalVideo) {
+      return;
     }
+
+    if (typeof this.modalPosterCleanup === "function") {
+      this.modalPosterCleanup();
+      this.modalPosterCleanup = null;
+    }
+
+    const videoEl = this.modalVideo;
+
+    const clearPoster = () => {
+      // Delegate to the shared helper so every code path clears the GIF in the
+      // same way. If we ever change how the poster works we only need to update
+      // forceRemoveModalPoster().
+      this.forceRemoveModalPoster("playback-event");
+    };
+
+    videoEl.addEventListener("loadeddata", clearPoster);
+    videoEl.addEventListener("playing", clearPoster);
+
+    videoEl.poster = MODAL_LOADING_POSTER;
+
+    this.modalPosterCleanup = () => {
+      videoEl.removeEventListener("loadeddata", clearPoster);
+      videoEl.removeEventListener("playing", clearPoster);
+    };
+  }
+
+  /**
+   * Forcefully strip the modal's loading poster.
+   *
+   * The video modal shows an animated "please stand by" GIF while we wait for a
+   * `loadeddata` or `playing` event. Historically, small refactors would remove
+   * the matching cleanup path which left the GIF covering real playback. By
+   * routing every caller through this helper we can add defensive clears (for
+   * example when WebTorrent reports progress) without duplicating poster logic
+   * all over the file.
+   *
+   * @param {string} reason A debugging hint that documents why the poster was
+   * cleared.
+   * @returns {boolean} `true` if a poster attribute/value was removed.
+   */
+  forceRemoveModalPoster(reason = "manual-clear") {
+    if (!this.modalVideo) {
+      return false;
+    }
+
+    const videoEl = this.modalVideo;
+
+    if (typeof this.modalPosterCleanup === "function") {
+      this.modalPosterCleanup();
+      this.modalPosterCleanup = null;
+    }
+
+    const hadPoster =
+      videoEl.hasAttribute("poster") ||
+      (typeof videoEl.poster === "string" && videoEl.poster !== "");
+
+    if (!hadPoster) {
+      return false;
+    }
+
+    videoEl.poster = "";
+    if (videoEl.hasAttribute("poster")) {
+      videoEl.removeAttribute("poster");
+    }
+
+    console.debug(
+      `[bitvidApp] Cleared modal loading poster (${reason}).`
+    );
+
+    return true;
   }
 
   /**
@@ -433,6 +1033,7 @@ class bitvidApp {
       // Append the upload modal markup
       const wrapper = document.createElement("div");
       wrapper.innerHTML = html;
+      removeTrackingScripts(wrapper);
       modalContainer.appendChild(wrapper);
 
       // Grab references
@@ -485,6 +1086,7 @@ class bitvidApp {
       }
       const wrapper = document.createElement("div");
       wrapper.innerHTML = html;
+      removeTrackingScripts(wrapper);
       modalContainer.appendChild(wrapper);
 
       // Now references
@@ -597,8 +1199,10 @@ class bitvidApp {
     }
 
     // 7) Cleanup on page unload
-    window.addEventListener("beforeunload", async () => {
-      await this.cleanup();
+    window.addEventListener("beforeunload", () => {
+      this.cleanup().catch((err) => {
+        console.error("Cleanup before unload failed:", err);
+      });
     });
 
     // 8) Handle back/forward navigation => hide video modal
@@ -607,22 +1211,7 @@ class bitvidApp {
       await this.hideModal();
     });
 
-    // 9) Event delegation on the video list container for playing videos
-    if (this.videoList) {
-      this.videoList.addEventListener("click", (event) => {
-        const magnetTrigger = event.target.closest("[data-play-magnet]");
-        if (magnetTrigger) {
-          // For a normal left-click (button 0, no Ctrl/Cmd), prevent navigation:
-          if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
-            event.preventDefault(); // Stop browser from following the href
-            const magnet = magnetTrigger.dataset.playMagnet;
-            this.playVideo(magnet);
-          }
-        }
-      });
-    }
-
-    // 10) Event delegation for the “Application Form” button inside the login modal
+    // 9) Event delegation for the “Application Form” button inside the login modal
     document.addEventListener("click", (event) => {
       if (event.target && event.target.id === "openApplicationModal") {
         // Hide the login modal
@@ -637,6 +1226,66 @@ class bitvidApp {
         }
       }
     });
+  }
+
+  attachVideoListHandler() {
+    if (this._videoListElement && this._videoListClickHandler) {
+      this._videoListElement.removeEventListener(
+        "click",
+        this._videoListClickHandler
+      );
+      this._videoListElement = null;
+      this._videoListClickHandler = null;
+    }
+
+    if (!this.videoList) {
+      return;
+    }
+
+    const handler = async (event) => {
+      const trigger = event.target.closest(
+        "[data-play-magnet],[data-play-url]"
+      );
+      if (!trigger) {
+        return;
+      }
+
+      if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+
+        const rawUrlValue =
+          (trigger.dataset && typeof trigger.dataset.playUrl === "string"
+            ? trigger.dataset.playUrl
+            : null) ?? trigger.getAttribute("data-play-url") ?? "";
+        const rawMagnetValue =
+          (trigger.dataset && typeof trigger.dataset.playMagnet === "string"
+            ? trigger.dataset.playMagnet
+            : null) ?? trigger.getAttribute("data-play-magnet") ?? "";
+
+        let url = "";
+        if (rawUrlValue) {
+          try {
+            url = decodeURIComponent(rawUrlValue);
+          } catch (err) {
+            console.warn("Failed to decode data-play-url attribute:", err);
+            url = rawUrlValue;
+          }
+        }
+
+        const magnet = typeof rawMagnetValue === "string" ? rawMagnetValue : "";
+        const eventId = trigger.getAttribute("data-video-id");
+
+        if (eventId) {
+          await this.playVideoByEventId(eventId);
+        } else {
+          await this.playVideoWithFallback({ url, magnet });
+        }
+      }
+    };
+
+    this._videoListElement = this.videoList;
+    this._videoListClickHandler = handler;
+    this.videoList.addEventListener("click", handler);
   }
 
   /**
@@ -656,6 +1305,11 @@ class bitvidApp {
         picture = data.picture || "assets/svg/default-profile.svg";
       }
 
+      this.setProfileCacheEntry(pubkey, {
+        name: displayName,
+        picture,
+      });
+
       // If you have a top-bar avatar (profileAvatar)
       if (this.profileAvatar) {
         this.profileAvatar.src = picture;
@@ -673,14 +1327,12 @@ class bitvidApp {
   }
 
   async fetchAndRenderProfile(pubkey, forceRefresh = false) {
-    const now = Date.now();
-
-    // 1) Check if we have a cached entry
-    const cacheEntry = this.profileCache.get(pubkey);
-    if (!forceRefresh && cacheEntry && now - cacheEntry.timestamp < 60000) {
-      // If it's less than 60 seconds old, just update DOM with it
+    const cacheEntry = this.getProfileCacheEntry(pubkey);
+    if (cacheEntry) {
       this.updateProfileInDOM(pubkey, cacheEntry.profile);
-      return;
+      if (!forceRefresh) {
+        return;
+      }
     }
 
     // 2) Otherwise, fetch from Nostr
@@ -696,7 +1348,7 @@ class bitvidApp {
         };
 
         // Cache it
-        this.profileCache.set(pubkey, { profile, timestamp: now });
+        this.setProfileCacheEntry(pubkey, profile);
         // Update DOM
         this.updateProfileInDOM(pubkey, profile);
       }
@@ -709,10 +1361,25 @@ class bitvidApp {
     const pubkeys = Array.from(authorSet);
     if (!pubkeys.length) return;
 
+    const toFetch = [];
+
+    pubkeys.forEach((pubkey) => {
+      const cacheEntry = this.getProfileCacheEntry(pubkey);
+      if (cacheEntry) {
+        this.updateProfileInDOM(pubkey, cacheEntry.profile);
+      } else {
+        toFetch.push(pubkey);
+      }
+    });
+
+    if (!toFetch.length) {
+      return;
+    }
+
     const filter = {
       kinds: [0],
-      authors: pubkeys,
-      limit: pubkeys.length,
+      authors: toFetch,
+      limit: toFetch.length,
     };
 
     try {
@@ -743,7 +1410,7 @@ class bitvidApp {
             name: data.name || data.display_name || "Unknown",
             picture: data.picture || "assets/svg/default-profile.svg",
           };
-          this.profileCache.set(pubkey, { profile, timestamp: Date.now() });
+          this.setProfileCacheEntry(pubkey, profile);
           this.updateProfileInDOM(pubkey, profile);
         } catch (err) {
           console.error("Profile parse error:", err);
@@ -781,24 +1448,48 @@ class bitvidApp {
     }
 
     const titleEl = document.getElementById("uploadTitle");
+    const urlEl = document.getElementById("uploadUrl");
     const magnetEl = document.getElementById("uploadMagnet");
+    const wsEl = document.getElementById("uploadWs");
+    const xsEl = document.getElementById("uploadXs");
     const thumbEl = document.getElementById("uploadThumbnail");
     const descEl = document.getElementById("uploadDescription");
     const privEl = document.getElementById("uploadIsPrivate");
 
+    const title = titleEl?.value.trim() || "";
+    const url = urlEl?.value.trim() || "";
+    const magnet = magnetEl?.value.trim() || "";
+    const ws = wsEl?.value.trim() || "";
+    const xs = xsEl?.value.trim() || "";
+    const thumbnail = thumbEl?.value.trim() || "";
+    const description = descEl?.value.trim() || "";
+
     const formData = {
-      version: 2,
-      title: titleEl?.value.trim() || "",
-      magnet: magnetEl?.value.trim() || "",
-      thumbnail: thumbEl?.value.trim() || "",
-      description: descEl?.value.trim() || "",
+      version: 3,
+      title,
+      url,
+      magnet,
+      thumbnail,
+      description,
       mode: isDevMode ? "dev" : "live",
       // isPrivate: privEl?.checked || false,
     };
 
-    if (!formData.title || !formData.magnet) {
-      this.showError("Title and Magnet are required.");
+    if (!formData.title || (!formData.url && !formData.magnet)) {
+      this.showError("Title and at least one of URL or Magnet is required.");
       return;
+    }
+
+    if (formData.url && !/^https:\/\//i.test(formData.url)) {
+      this.showError("Hosted video URLs must use HTTPS.");
+      return;
+    }
+
+    if (formData.magnet) {
+      formData.magnet = normalizeAndAugmentMagnet(formData.magnet, {
+        ws,
+        xs,
+      });
     }
 
     try {
@@ -806,7 +1497,10 @@ class bitvidApp {
 
       // Clear fields
       if (titleEl) titleEl.value = "";
+      if (urlEl) urlEl.value = "";
       if (magnetEl) magnetEl.value = "";
+      if (wsEl) wsEl.value = "";
+      if (xsEl) xsEl.value = "";
       if (thumbEl) thumbEl.value = "";
       if (descEl) descEl.value = "";
       if (privEl) privEl.checked = false;
@@ -839,7 +1533,7 @@ class bitvidApp {
     }
     // Optionally hide logout or userStatus
     if (this.logoutButton) {
-      this.logoutButton.classList.add("hidden");
+      this.logoutButton.classList.remove("hidden");
     }
     if (this.userStatus) {
       this.userStatus.classList.add("hidden");
@@ -922,25 +1616,368 @@ class bitvidApp {
   /**
    * Cleanup resources on unload or modal close.
    */
-  async cleanup() {
-    try {
-      // If there's a small inline player
-      if (this.videoElement) {
-        this.videoElement.pause();
-        this.videoElement.src = "";
-        this.videoElement.load();
+  async cleanup({ preserveSubscriptions = false, preserveObservers = false } = {}) {
+    // Serialise teardown so overlapping calls (e.g. close button spam) don't
+    // race each other and clobber a fresh playback setup.
+    if (this.cleanupPromise) {
+      try {
+        await this.cleanupPromise;
+      } catch (err) {
+        console.warn("Previous cleanup rejected:", err);
       }
-      // If there's a modal video
-      if (this.modalVideo) {
-        this.modalVideo.pause();
-        this.modalVideo.src = "";
-        this.modalVideo.load();
-      }
-      // Tell webtorrent to cleanup
-      await torrentClient.cleanup();
-    } catch (err) {
-      console.error("Cleanup error:", err);
     }
+
+    const runCleanup = async () => {
+      try {
+        this.clearActiveIntervals();
+        this.cleanupUrlPlaybackWatchdog();
+
+        if (!preserveObservers && this.mediaLoader) {
+          this.mediaLoader.disconnect();
+        }
+
+        if (!preserveSubscriptions && this.videoSubscription) {
+          try {
+            if (typeof this.videoSubscription.unsub === "function") {
+              this.videoSubscription.unsub();
+            }
+          } catch (err) {
+            console.error("Failed to unsubscribe from video feed:", err);
+          } finally {
+            this.videoSubscription = null;
+          }
+        }
+
+        // If there's a small inline player
+        if (this.videoElement) {
+          this.videoElement.pause();
+          this.videoElement.src = "";
+          // When WebTorrent (or other MediaSource based flows) mount a stream they
+          // set `srcObject` behind the scenes. Forgetting to clear it leaves the
+          // detached MediaSource hanging around which breaks the next playback
+          // attempt. Always null it out alongside the normal `src` reset.
+          this.videoElement.srcObject = null;
+          this.videoElement.load();
+        }
+        // If there's a modal video
+        if (this.modalVideo) {
+          this.modalVideo.pause();
+          this.modalVideo.src = "";
+          // See comment above—keep the `srcObject` reset paired with the `src`
+          // wipe so magnet-only replays do not regress into the grey screen bug.
+          this.modalVideo.srcObject = null;
+          this.modalVideo.load();
+        }
+        // Tell webtorrent to cleanup
+        await torrentClient.cleanup();
+      } catch (err) {
+        console.error("Cleanup error:", err);
+      }
+    };
+
+    const cleanupPromise = runCleanup();
+    this.cleanupPromise = cleanupPromise;
+
+    try {
+      await cleanupPromise;
+    } finally {
+      if (this.cleanupPromise === cleanupPromise) {
+        this.cleanupPromise = null;
+      }
+    }
+  }
+
+  async waitForCleanup() {
+    if (!this.cleanupPromise) {
+      return;
+    }
+
+    try {
+      await this.cleanupPromise;
+    } catch (err) {
+      console.warn("waitForCleanup observed a rejected cleanup:", err);
+    }
+  }
+
+  clearActiveIntervals() {
+    if (!Array.isArray(this.activeIntervals) || !this.activeIntervals.length) {
+      return;
+    }
+    this.activeIntervals.forEach((id) => clearInterval(id));
+    this.activeIntervals = [];
+  }
+
+  cleanupUrlPlaybackWatchdog() {
+    if (typeof this.urlPlaybackWatchdogCleanup === "function") {
+      try {
+        this.urlPlaybackWatchdogCleanup();
+      } catch (err) {
+        console.warn("[cleanupUrlPlaybackWatchdog]", err);
+      } finally {
+        this.urlPlaybackWatchdogCleanup = null;
+      }
+    }
+  }
+
+  registerUrlPlaybackWatchdogs(
+    videoElement,
+    { stallMs = 8000, onSuccess, onFallback } = {}
+  ) {
+    this.cleanupUrlPlaybackWatchdog();
+
+    if (!videoElement || typeof onFallback !== "function") {
+      return () => {};
+    }
+
+    const normalizedStallMs = Number.isFinite(stallMs) && stallMs > 0 ? stallMs : 0;
+    let active = true;
+    let stallTimerId = null;
+
+    const listeners = [];
+
+    const cleanup = () => {
+      if (!active) {
+        return;
+      }
+      active = false;
+      if (stallTimerId) {
+        clearTimeout(stallTimerId);
+        stallTimerId = null;
+      }
+      for (const [eventName, handler] of listeners) {
+        videoElement.removeEventListener(eventName, handler);
+      }
+      this.urlPlaybackWatchdogCleanup = null;
+    };
+
+    const triggerFallback = (reason) => {
+      if (!active) {
+        return;
+      }
+      cleanup();
+      onFallback(reason);
+    };
+
+    const handleSuccess = () => {
+      if (!active) {
+        return;
+      }
+      cleanup();
+      if (typeof onSuccess === "function") {
+        onSuccess();
+      }
+    };
+
+    const resetTimer = () => {
+      if (!active || !normalizedStallMs) {
+        return;
+      }
+      if (stallTimerId) {
+        clearTimeout(stallTimerId);
+      }
+      stallTimerId = setTimeout(() => triggerFallback("stall"), normalizedStallMs);
+    };
+
+    const addListener = (eventName, handler) => {
+      videoElement.addEventListener(eventName, handler);
+      listeners.push([eventName, handler]);
+    };
+
+    addListener("error", () => triggerFallback("error"));
+    addListener("abort", () => triggerFallback("abort"));
+    addListener("stalled", () => triggerFallback("stalled"));
+    addListener("emptied", () => triggerFallback("emptied"));
+    addListener("playing", handleSuccess);
+    addListener("ended", handleSuccess);
+
+    const timerEvents = [
+      "timeupdate",
+      "progress",
+      "loadeddata",
+      "canplay",
+      "canplaythrough",
+      "suspend",
+      "waiting",
+    ];
+    for (const eventName of timerEvents) {
+      addListener(eventName, resetTimer);
+    }
+
+    if (normalizedStallMs) {
+      resetTimer();
+    }
+
+    this.urlPlaybackWatchdogCleanup = () => {
+      cleanup();
+    };
+
+    return this.urlPlaybackWatchdogCleanup;
+  }
+
+  resetTorrentStats() {
+    if (this.modalPeers) {
+      this.modalPeers.textContent = "";
+    }
+    if (this.modalSpeed) {
+      this.modalSpeed.textContent = "";
+    }
+    if (this.modalDownloaded) {
+      this.modalDownloaded.textContent = "";
+    }
+    if (this.modalProgress) {
+      this.modalProgress.style.width = "0%";
+    }
+  }
+
+  setCopyMagnetState(enabled) {
+    if (!this.copyMagnetBtn) {
+      return;
+    }
+    this.copyMagnetBtn.disabled = !enabled;
+    this.copyMagnetBtn.setAttribute("aria-disabled", (!enabled).toString());
+    this.copyMagnetBtn.classList.toggle("opacity-50", !enabled);
+    this.copyMagnetBtn.classList.toggle("cursor-not-allowed", !enabled);
+  }
+
+  setShareButtonState(enabled) {
+    if (!this.shareBtn) {
+      return;
+    }
+    this.shareBtn.disabled = !enabled;
+    this.shareBtn.setAttribute("aria-disabled", (!enabled).toString());
+    this.shareBtn.classList.toggle("opacity-50", !enabled);
+    this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
+  }
+
+  getShareUrlBase() {
+    try {
+      const current = new URL(window.location.href);
+      return `${current.origin}${current.pathname}`;
+    } catch (err) {
+      const origin = window.location?.origin || "";
+      const pathname = window.location?.pathname || "";
+      if (origin || pathname) {
+        return `${origin}${pathname}`;
+      }
+      const href = window.location?.href || "";
+      if (href) {
+        const base = href.split(/[?#]/)[0];
+        if (base) {
+          return base;
+        }
+      }
+      console.warn("Unable to determine share URL base:", err);
+      return "";
+    }
+  }
+
+  buildShareUrlFromNevent(nevent) {
+    if (!nevent) {
+      return "";
+    }
+    const base = this.getShareUrlBase();
+    if (!base) {
+      return "";
+    }
+    return `${base}?v=${encodeURIComponent(nevent)}`;
+  }
+
+  buildShareUrlFromEventId(eventId) {
+    if (!eventId) {
+      return "";
+    }
+
+    try {
+      const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
+      return this.buildShareUrlFromNevent(nevent);
+    } catch (err) {
+      console.error("Error generating nevent for share URL:", err);
+      return "";
+    }
+  }
+
+  dedupeVideosByRoot(videos) {
+    if (!Array.isArray(videos) || videos.length === 0) {
+      return [];
+    }
+    return dedupeToNewestByRoot(videos);
+  }
+
+  prepareModalVideoForPlayback() {
+    if (!this.modalVideo) {
+      return;
+    }
+
+    const storedUnmuted = localStorage.getItem("unmutedAutoplay");
+    const userWantsUnmuted = storedUnmuted === "true";
+    this.modalVideo.muted = !userWantsUnmuted;
+
+    if (!this.modalVideo.dataset.autoplayBound) {
+      this.modalVideo.addEventListener("volumechange", () => {
+        localStorage.setItem(
+          "unmutedAutoplay",
+          (!this.modalVideo.muted).toString()
+        );
+      });
+      this.modalVideo.dataset.autoplayBound = "true";
+    }
+  }
+
+  autoplayModalVideo() {
+    if (!this.modalVideo) return;
+    this.modalVideo.play().catch((err) => {
+      this.log("Autoplay failed:", err);
+      if (!this.modalVideo.muted) {
+        this.log("Falling back to muted autoplay.");
+        this.modalVideo.muted = true;
+        this.modalVideo.play().catch((err2) => {
+          this.log("Muted autoplay also failed:", err2);
+        });
+      }
+    });
+  }
+
+  startTorrentStatusMirrors(torrentInstance) {
+    if (!torrentInstance) {
+      return;
+    }
+
+    const updateInterval = setInterval(() => {
+      if (!document.body.contains(this.modalVideo)) {
+        clearInterval(updateInterval);
+        return;
+      }
+      this.updateTorrentStatus(torrentInstance);
+    }, 3000);
+    this.activeIntervals.push(updateInterval);
+
+    const mirrorInterval = setInterval(() => {
+      if (!document.body.contains(this.modalVideo)) {
+        clearInterval(mirrorInterval);
+        return;
+      }
+      const status = document.getElementById("status");
+      const progress = document.getElementById("progress");
+      const peers = document.getElementById("peers");
+      const speed = document.getElementById("speed");
+      const downloaded = document.getElementById("downloaded");
+      if (status && this.modalStatus) {
+        this.modalStatus.textContent = status.textContent;
+      }
+      if (progress && this.modalProgress) {
+        this.modalProgress.style.width = progress.style.width;
+      }
+      if (peers && this.modalPeers) {
+        this.modalPeers.textContent = peers.textContent;
+      }
+      if (speed && this.modalSpeed) {
+        this.modalSpeed.textContent = speed.textContent;
+      }
+      if (downloaded && this.modalDownloaded) {
+        this.modalDownloaded.textContent = downloaded.textContent;
+      }
+    }, 3000);
+    this.activeIntervals.push(mirrorInterval);
   }
 
   /**
@@ -948,22 +1985,30 @@ class bitvidApp {
    */
   async hideModal() {
     // 1) Clear intervals, cleanup, etc. (unchanged)
-    if (this.activeIntervals && this.activeIntervals.length) {
-      this.activeIntervals.forEach((id) => clearInterval(id));
-      this.activeIntervals = [];
-    }
+    this.clearActiveIntervals();
 
     try {
       await fetch("/webtorrent/cancel/", { mode: "no-cors" });
     } catch (err) {
       // ignore
     }
-    await this.cleanup();
+    await this.cleanup({
+      preserveSubscriptions: true,
+      preserveObservers: true,
+    });
 
     // 2) Hide the modal
     if (this.playerModal) {
       this.playerModal.style.display = "none";
       this.playerModal.classList.add("hidden");
+    }
+    if (typeof this.modalPosterCleanup === "function") {
+      this.modalPosterCleanup();
+      this.modalPosterCleanup = null;
+    }
+    if (this.modalVideo) {
+      this.modalVideo.poster = "";
+      this.modalVideo.removeAttribute("poster");
     }
     this.currentMagnetUri = null;
 
@@ -980,6 +2025,27 @@ class bitvidApp {
   async loadVideos(forceFetch = false) {
     console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
+    const shouldIncludeVideo = (video) => {
+      if (!video || typeof video !== "object") {
+        return false;
+      }
+
+      if (this.blacklistedEventIds.has(video.id)) {
+        return false;
+      }
+
+      const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+      if (initialBlacklist.includes(authorNpub)) {
+        return false;
+      }
+
+      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
+        return false;
+      }
+
+      return true;
+    };
+
     // If forceFetch is true, unsubscribe from the old subscription to start fresh
     if (forceFetch && this.videoSubscription) {
       // Call unsubscribe on the subscription object directly.
@@ -990,6 +2056,7 @@ class bitvidApp {
     // The rest of your existing logic:
     if (!this.videoSubscription) {
       if (this.videoList) {
+        this.lastRenderedVideoSignature = null;
         this.videoList.innerHTML = `
         <p class="text-center text-gray-500">
           Loading videos as they arrive...
@@ -1001,28 +2068,16 @@ class bitvidApp {
         const updatedAll = nostrClient.getActiveVideos();
 
         // Filter out blacklisted authors & blacklisted event IDs
-        const filteredVideos = updatedAll.filter((video) => {
-          // 1) If the event ID is in our blacklistedEventIds set, skip
-          if (this.blacklistedEventIds.has(video.id)) {
-            return false;
-          }
-
-          // 2) Check if the author's npub is in initialBlacklist
-          const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-          if (initialBlacklist.includes(authorNpub)) {
-            return false;
-          }
-
-          // 3) If whitelist mode is enabled, only keep authors in initialWhitelist
-          if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-            return false;
-          }
-
-          return true;
-        });
+        const filteredVideos = updatedAll.filter(shouldIncludeVideo);
 
         this.renderVideoList(filteredVideos);
       });
+
+      const cachedActiveVideos = nostrClient.getActiveVideos();
+      const cachedFiltered = cachedActiveVideos.filter(shouldIncludeVideo);
+      if (cachedFiltered.length) {
+        this.renderVideoList(cachedFiltered);
+      }
 
       if (this.videoSubscription) {
         console.log(
@@ -1033,22 +2088,7 @@ class bitvidApp {
       // Already subscribed: just show what's cached
       const allCached = nostrClient.getActiveVideos();
 
-      const filteredCached = allCached.filter((video) => {
-        if (this.blacklistedEventIds.has(video.id)) {
-          return false;
-        }
-
-        const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-        if (initialBlacklist.includes(authorNpub)) {
-          return false;
-        }
-
-        if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-          return false;
-        }
-
-        return true;
-      });
+      const filteredCached = allCached.filter(shouldIncludeVideo);
 
       this.renderVideoList(filteredCached);
     }
@@ -1094,11 +2134,297 @@ class bitvidApp {
     return olderMatches.length > 0;
   }
 
+  /**
+   * Centralised helper for other modules (channel profiles, subscriptions)
+   * so they can re-use the exact same badge skeleton. Keeping the markup in
+   * one place avoids subtle mismatches when we tweak copy or classes later.
+   */
+  getUrlHealthPlaceholderMarkup(options = {}) {
+    const includeMargin = options?.includeMargin !== false;
+    const classes = [
+      "url-health-badge",
+      "text-xs",
+      "font-semibold",
+      "px-2",
+      "py-1",
+      "rounded",
+      "inline-flex",
+      "items-center",
+      "gap-1",
+      "bg-gray-800",
+      "text-gray-300",
+    ];
+    if (includeMargin) {
+      classes.splice(1, 0, "mt-3");
+    }
+
+    return `
+      <div
+        class="${classes.join(" ")}"
+        data-url-health-state="checking"
+        aria-live="polite"
+        role="status"
+      >
+        Checking hosted URL…
+      </div>
+    `;
+  }
+
+  getTorrentHealthBadgeMarkup(options = {}) {
+    const includeMargin = options?.includeMargin !== false;
+    const classes = [
+      "torrent-health-badge",
+      "text-xs",
+      "font-semibold",
+      "px-2",
+      "py-1",
+      "rounded",
+      "inline-flex",
+      "items-center",
+      "gap-1",
+      "bg-gray-800",
+      "text-gray-300",
+      "transition-colors",
+      "duration-200",
+    ];
+    if (includeMargin) {
+      classes.unshift("mt-3");
+    }
+
+    return `
+      <div
+        class="${classes.join(" ")}"
+        data-stream-health-state="checking"
+        aria-live="polite"
+        role="status"
+      >
+        ⏳ Torrent
+      </div>
+    `;
+  }
+
+  isMagnetUriSupported(magnet) {
+    return isValidMagnetUri(magnet);
+  }
+
+  getCachedUrlHealth(eventId, url) {
+    return readUrlHealthFromCache(eventId, url);
+  }
+
+  storeUrlHealth(eventId, url, result, ttlMs) {
+    return writeUrlHealthToCache(eventId, url, result, ttlMs);
+  }
+
+  updateUrlHealthBadge(badgeEl, state, videoId) {
+    if (!badgeEl) {
+      return;
+    }
+
+    if (videoId && badgeEl.dataset.urlHealthFor && badgeEl.dataset.urlHealthFor !== videoId) {
+      return;
+    }
+
+    if (!badgeEl.isConnected) {
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          if (badgeEl.isConnected) {
+            this.updateUrlHealthBadge(badgeEl, state, videoId);
+          }
+        });
+      }
+      return;
+    }
+
+    const status = state?.status || "checking";
+    const message =
+      state?.message ||
+      (status === "healthy"
+        ? "✅ CDN"
+        : status === "offline"
+        ? "❌ CDN"
+        : status === "unknown"
+        ? "⚠️ CDN"
+        : status === "timeout"
+        ? "⚠️ CDN timed out"
+        : "Checking hosted URL…");
+
+    const hadMargin = badgeEl.classList.contains("mt-3");
+
+    badgeEl.dataset.urlHealthState = status;
+    badgeEl.setAttribute("aria-live", "polite");
+    badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
+    badgeEl.textContent = message;
+
+    const baseClasses = [
+      "url-health-badge",
+      "text-xs",
+      "font-semibold",
+      "px-2",
+      "py-1",
+      "rounded",
+      "transition-colors",
+      "duration-200",
+    ];
+    if (hadMargin) {
+      baseClasses.unshift("mt-3");
+    }
+    badgeEl.className = baseClasses.join(" ");
+
+    if (status === "healthy") {
+      badgeEl.classList.add(
+        "inline-flex",
+        "items-center",
+        "gap-1",
+        "bg-green-900",
+        "text-green-200"
+      );
+    } else if (status === "offline") {
+      badgeEl.classList.add(
+        "inline-flex",
+        "items-center",
+        "gap-1",
+        "bg-red-900",
+        "text-red-200"
+      );
+    } else if (status === "unknown" || status === "timeout") {
+      badgeEl.classList.add(
+        "inline-flex",
+        "items-center",
+        "gap-1",
+        "bg-amber-900",
+        "text-amber-200"
+      );
+    } else {
+      badgeEl.classList.add(
+        "inline-flex",
+        "items-center",
+        "gap-1",
+        "bg-gray-800",
+        "text-gray-300"
+      );
+    }
+  }
+
+  handleUrlHealthBadge({ video, url, badgeEl }) {
+    if (!video?.id || !badgeEl || !url) {
+      return;
+    }
+
+    const eventId = video.id;
+    const trimmedUrl = typeof url === "string" ? url.trim() : "";
+    if (!trimmedUrl) {
+      return;
+    }
+
+    badgeEl.dataset.urlHealthFor = eventId;
+
+    const cached = this.getCachedUrlHealth(eventId, trimmedUrl);
+    if (cached) {
+      this.updateUrlHealthBadge(badgeEl, cached, eventId);
+      return;
+    }
+
+    this.updateUrlHealthBadge(badgeEl, { status: "checking" }, eventId);
+
+    const existingProbe = getInFlightUrlProbe(eventId, trimmedUrl);
+    if (existingProbe) {
+      existingProbe
+        .then((entry) => {
+          if (entry) {
+            this.updateUrlHealthBadge(badgeEl, entry, eventId);
+          }
+        })
+        .catch((err) => {
+          console.warn(
+            `[urlHealth] cached probe promise rejected for ${trimmedUrl}:`,
+            err
+          );
+        });
+      return;
+    }
+
+    const probePromise = this.probeUrl(trimmedUrl)
+      .then((result) => {
+        const outcome = result?.outcome || "error";
+        let entry;
+
+        if (outcome === "ok") {
+          entry = { status: "healthy", message: "✅ CDN" };
+        } else if (outcome === "opaque") {
+          entry = {
+            status: "unknown",
+            message: "⚠️ CDN",
+          };
+        } else if (outcome === "timeout") {
+          entry = {
+            status: "timeout",
+            message: "⚠️ CDN timed out",
+          };
+        } else {
+          entry = {
+            status: "offline",
+            message: "❌ CDN",
+          };
+        }
+
+        return this.storeUrlHealth(eventId, trimmedUrl, entry);
+      })
+      .catch((err) => {
+        console.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
+        const entry = {
+          status: "offline",
+          message: "❌ CDN",
+        };
+        return this.storeUrlHealth(eventId, trimmedUrl, entry);
+      });
+
+    setInFlightUrlProbe(eventId, trimmedUrl, probePromise);
+
+    probePromise
+      .then((entry) => {
+        if (entry) {
+          this.updateUrlHealthBadge(badgeEl, entry, eventId);
+        }
+      })
+      .catch((err) => {
+        console.warn(
+          `[urlHealth] probe promise rejected post-cache for ${trimmedUrl}:`,
+          err
+        );
+      });
+  }
+
   async renderVideoList(videos) {
     if (!this.videoList) return;
 
+    if (this._lastRenderedVideoListElement !== this.videoList) {
+      this.lastRenderedVideoSignature = null;
+      this._lastRenderedVideoListElement = this.videoList;
+    }
+
+    const dedupedVideos = this.dedupeVideosByRoot(videos);
+
+    if (this.loadedThumbnails && this.loadedThumbnails.size) {
+      const activeIds = new Set();
+      dedupedVideos.forEach((video) => {
+        if (video && typeof video.id === "string" && video.id) {
+          activeIds.add(video.id);
+        }
+      });
+      Array.from(this.loadedThumbnails.keys()).forEach((videoId) => {
+        if (!activeIds.has(videoId)) {
+          this.loadedThumbnails.delete(videoId);
+        }
+      });
+    }
+
     // 1) If no videos
-    if (!videos || videos.length === 0) {
+    if (!dedupedVideos.length) {
+      this.renderedVideoIds.clear();
+      if (this.lastRenderedVideoSignature === EMPTY_VIDEO_LIST_SIGNATURE) {
+        return;
+      }
+      this.lastRenderedVideoSignature = EMPTY_VIDEO_LIST_SIGNATURE;
       this.videoList.innerHTML = `
         <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
           No public videos available yet. Be the first to upload one!
@@ -1107,14 +2433,39 @@ class bitvidApp {
     }
 
     // 2) Sort newest first
-    videos.sort((a, b) => b.created_at - a.created_at);
+    dedupedVideos.sort((a, b) => b.created_at - a.created_at);
+
+    const signaturePayload = dedupedVideos.map((video) => ({
+      id: typeof video.id === "string" ? video.id : "",
+      createdAt: Number.isFinite(video.created_at)
+        ? video.created_at
+        : Number(video.created_at) || 0,
+      deleted: Boolean(video.deleted),
+      isPrivate: Boolean(video.isPrivate),
+      thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
+      url: typeof video.url === "string" ? video.url : "",
+      magnet: typeof video.magnet === "string" ? video.magnet : "",
+    }));
+    const signature = JSON.stringify(signaturePayload);
+
+    if (signature === this.lastRenderedVideoSignature) {
+      return;
+    }
+    this.lastRenderedVideoSignature = signature;
+
+    const previouslyRenderedIds = new Set(this.renderedVideoIds);
+    this.renderedVideoIds.clear();
 
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
     const fragment = document.createDocumentFragment();
     const authorSet = new Set();
+    const defaultShareBase =
+      this.getShareUrlBase() ||
+      `${window.location?.origin || ""}${window.location?.pathname || ""}` ||
+      (window.location?.href ? window.location.href.split(/[?#]/)[0] : "");
 
     // 3) Build each card
-    videos.forEach((video, index) => {
+    dedupedVideos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Video missing ID/title:", video);
         return;
@@ -1123,14 +2474,16 @@ class bitvidApp {
       authorSet.add(video.pubkey);
 
       const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
-      const shareUrl = `${window.location.pathname}?v=${encodeURIComponent(
-        nevent
-      )}`;
+      const shareUrl =
+        this.buildShareUrlFromNevent(nevent) ||
+        `${defaultShareBase}?v=${encodeURIComponent(nevent)}`;
       const canEdit = video.pubkey === this.pubkey;
       const highlightClass =
         video.isPrivate && canEdit
           ? "border-2 border-yellow-500"
           : "border-none";
+      const isNewlyRendered = !previouslyRenderedIds.has(video.id);
+      const animationClass = isNewlyRendered ? "video-card--enter" : "";
       const timeAgo = this.formatTimeAgo(video.created_at);
 
       // Check if there's an older version
@@ -1144,6 +2497,7 @@ class bitvidApp {
           <button
             class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
             data-revert-index="${index}"
+            data-revert-event-id="${video.id}"
           >
             Revert
           </button>
@@ -1172,6 +2526,7 @@ class bitvidApp {
                 <button
                   class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
                   data-edit-index="${index}"
+                  data-edit-event-id="${video.id}"
                 >
                   Edit
                 </button>
@@ -1179,6 +2534,7 @@ class bitvidApp {
                 <button
                   class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
                   data-delete-all-index="${index}"
+                  data-delete-all-event-id="${video.id}"
                 >
                   Delete All
                 </button>
@@ -1188,19 +2544,92 @@ class bitvidApp {
         `
         : "";
 
+      const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
+      const trimmedMagnet =
+        typeof video.magnet === "string" ? video.magnet.trim() : "";
+      const legacyInfoHash =
+        typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+      const magnetCandidate = trimmedMagnet || legacyInfoHash;
+      const magnetSupported = isValidMagnetUri(magnetCandidate);
+      const magnetProvided = magnetCandidate.length > 0;
+      const playbackUrl = trimmedUrl;
+      const playbackMagnet = magnetCandidate;
+      const showUnsupportedTorrentBadge =
+        !trimmedUrl && magnetProvided && !magnetSupported;
+      const torrentWarningHtml = showUnsupportedTorrentBadge
+        ? `
+          <p
+            class="mt-3 text-xs text-amber-300"
+            data-torrent-status="unsupported"
+            title="${UNSUPPORTED_BTITH_MESSAGE}"
+          >
+            WebTorrent fallback unavailable (magnet missing btih info hash)
+          </p>
+        `
+        : "";
+
+      const urlBadgeHtml = trimmedUrl
+        ? this.getUrlHealthPlaceholderMarkup({ includeMargin: false })
+        : "";
+      const torrentHealthBadgeHtml =
+        magnetSupported && magnetProvided
+          ? this.getTorrentHealthBadgeMarkup({ includeMargin: false })
+          : "";
+      const connectionBadgesHtml =
+        urlBadgeHtml || torrentHealthBadgeHtml
+          ? `
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              ${urlBadgeHtml}${torrentHealthBadgeHtml}
+            </div>
+          `
+          : "";
+
+      const rawThumbnail =
+        typeof video.thumbnail === "string" ? video.thumbnail.trim() : "";
+      const escapedThumbnail = rawThumbnail
+        ? this.escapeHTML(rawThumbnail)
+        : "";
+      const previouslyLoadedThumbnail =
+        this.loadedThumbnails.get(video.id) || "";
+      const shouldLazyLoadThumbnail =
+        escapedThumbnail && previouslyLoadedThumbnail !== escapedThumbnail;
+      const shouldAnimateThumbnail =
+        !!escapedThumbnail && previouslyLoadedThumbnail !== escapedThumbnail;
+      const thumbnailAttrLines = ["data-video-thumbnail=\"true\""];
+      if (shouldLazyLoadThumbnail) {
+        thumbnailAttrLines.push(
+          `src=\"${FALLBACK_THUMBNAIL_SRC}\"`,
+          `data-fallback-src=\"${FALLBACK_THUMBNAIL_SRC}\"`,
+          `data-lazy=\"${escapedThumbnail}\"`,
+          'loading="lazy"',
+          'decoding="async"'
+        );
+      } else {
+        thumbnailAttrLines.push(
+          `src=\"${escapedThumbnail || FALLBACK_THUMBNAIL_SRC}\"`,
+          `data-fallback-src=\"${FALLBACK_THUMBNAIL_SRC}\"`,
+          'loading="lazy"',
+          'decoding="async"'
+        );
+      }
+      thumbnailAttrLines.push(
+        `alt=\"${this.escapeHTML(video.title)}\"`
+      );
+
       const cardHtml = `
-        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
+        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass} ${animationClass}">
           <!-- The clickable link to play video -->
           <a
             href="${shareUrl}"
-            data-play-magnet="${encodeURIComponent(video.magnet)}"
+            data-video-id="${video.id}"
+            data-play-url=""
+            data-play-magnet=""
+            data-torrent-supported="${magnetSupported ? "true" : "false"}"
             class="block cursor-pointer relative group"
           >
             <div class="ratio-16-9">
               <img
-                src="assets/jpg/video-thumbnail-fallback.jpg"
-                data-lazy="${this.escapeHTML(video.thumbnail)}"
-                alt="${this.escapeHTML(video.title)}"
+                ${thumbnailAttrLines.join("\n                ")}
               />
             </div>
           </a>
@@ -1208,7 +2637,10 @@ class bitvidApp {
             <!-- Title triggers the video modal as well -->
             <h3
               class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-              data-play-magnet="${encodeURIComponent(video.magnet)}"
+              data-video-id="${video.id}"
+              data-play-url=""
+              data-play-magnet=""
+              data-torrent-supported="${magnetSupported ? "true" : "false"}"
             >
               ${this.escapeHTML(video.title)}
             </h3>
@@ -1237,6 +2669,8 @@ class bitvidApp {
               </div>
               ${gearMenu}
             </div>
+            ${connectionBadgesHtml}
+            ${torrentWarningHtml}
           </div>
         </div>
       `;
@@ -1244,12 +2678,156 @@ class bitvidApp {
       const template = document.createElement("template");
       template.innerHTML = cardHtml.trim();
       const cardEl = template.content.firstElementChild;
+      if (cardEl) {
+        const thumbnailEl = cardEl.querySelector("[data-video-thumbnail]");
+        if (thumbnailEl) {
+          const markThumbnailAsLoaded = () => {
+            if (!escapedThumbnail) {
+              return;
+            }
+
+            if (shouldAnimateThumbnail) {
+              // Flag the element so CSS runs a one-time fade. js/index.js scrubs
+              // this attribute in the `animationend` handler so reusing the same
+              // DOM node later will not re-trigger the animation and flash.
+              if (thumbnailEl.dataset.thumbnailLoaded !== "true") {
+                thumbnailEl.dataset.thumbnailLoaded = "true";
+              }
+            } else if (thumbnailEl.dataset.thumbnailLoaded) {
+              delete thumbnailEl.dataset.thumbnailLoaded;
+            }
+
+            this.loadedThumbnails.set(video.id, escapedThumbnail);
+          };
+
+          const handleThumbnailLoad = () => {
+            if (thumbnailEl.dataset.thumbnailLoaded === "true") {
+              return;
+            }
+
+            const hasPendingLazySrc =
+              typeof thumbnailEl.dataset.lazy === "string" &&
+              thumbnailEl.dataset.lazy.trim().length > 0;
+
+            if (hasPendingLazySrc) {
+              return;
+            }
+
+            if (thumbnailEl.dataset.thumbnailFailed || !escapedThumbnail) {
+              return;
+            }
+
+            const fallbackAttr =
+              (typeof thumbnailEl.dataset.fallbackSrc === "string"
+                ? thumbnailEl.dataset.fallbackSrc.trim()
+                : "") ||
+              thumbnailEl.getAttribute("data-fallback-src") ||
+              "";
+
+            const currentSrc = thumbnailEl.currentSrc || thumbnailEl.src || "";
+            const isFallbackSrc =
+              !!fallbackAttr &&
+              !!currentSrc &&
+              (currentSrc === fallbackAttr || currentSrc.endsWith(fallbackAttr));
+
+            if (isFallbackSrc) {
+              return;
+            }
+
+            if (
+              (thumbnailEl.naturalWidth === 0 &&
+                thumbnailEl.naturalHeight === 0) ||
+              !currentSrc
+            ) {
+              return;
+            }
+
+            markThumbnailAsLoaded();
+
+            thumbnailEl.removeEventListener("load", handleThumbnailLoad);
+          };
+          const handleThumbnailError = () => {
+            if (
+              escapedThumbnail &&
+              this.loadedThumbnails.get(video.id) === escapedThumbnail
+            ) {
+              this.loadedThumbnails.delete(video.id);
+            }
+
+            if (thumbnailEl.dataset.thumbnailLoaded) {
+              delete thumbnailEl.dataset.thumbnailLoaded;
+            }
+
+            thumbnailEl.removeEventListener("load", handleThumbnailLoad);
+          };
+
+          thumbnailEl.addEventListener("load", handleThumbnailLoad);
+          thumbnailEl.addEventListener("error", handleThumbnailError, {
+            once: true,
+          });
+
+          if (thumbnailEl.complete) {
+            handleThumbnailLoad();
+          }
+        }
+
+        if (showUnsupportedTorrentBadge) {
+          cardEl.dataset.torrentSupported = "false";
+        } else if (magnetProvided && magnetSupported) {
+          cardEl.dataset.torrentSupported = "true";
+        }
+
+        if (magnetProvided) {
+          cardEl.dataset.magnet = playbackMagnet;
+        } else if (cardEl.dataset.magnet) {
+          delete cardEl.dataset.magnet;
+        }
+        const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
+        // We intentionally leave the data-play-* attributes blank in cardHtml and
+        // assign them after template parsing so the raw URL/magnet strings avoid
+        // HTML entity escaping in the literal markup and keep any sensitive
+        // magnet payloads out of the static DOM text.
+        // The play URL is stored URL-encoded to keep spaces and query params
+        // intact inside data-* attributes; attachVideoListHandler() decodes it
+        // before playback.
+        interactiveEls.forEach((el) => {
+          if (!el.dataset) return;
+          el.dataset.playUrl = encodeURIComponent(playbackUrl || "");
+          el.dataset.playMagnet = playbackMagnet || "";
+          if (magnetProvided) {
+            el.dataset.torrentSupported = magnetSupported ? "true" : "false";
+          }
+        });
+
+        if (trimmedUrl) {
+          const badgeEl = cardEl.querySelector("[data-url-health-state]");
+          if (badgeEl) {
+            this.handleUrlHealthBadge({
+              video,
+              url: trimmedUrl,
+              badgeEl,
+            });
+          }
+        }
+      }
+      if (video && video.id) {
+        this.videosMap.set(video.id, video);
+      }
+
       fragment.appendChild(cardEl);
+      this.renderedVideoIds.add(video.id);
     });
 
     // Clear old content, add new
     this.videoList.innerHTML = "";
     this.videoList.appendChild(fragment);
+    attachHealthBadges(this.videoList);
+
+    // Ensure every thumbnail can recover with a fallback image if the primary
+    // source fails to load or returns a zero-sized response (some CDNs error
+    // with HTTP 200 + empty body). We set up the listeners before kicking off
+    // any lazy-loading observers so cached failures are covered as well.
+    this.bindThumbnailFallbacks(this.videoList);
 
     // Lazy-load images
     const lazyEls = this.videoList.querySelectorAll("[data-lazy]");
@@ -1273,10 +2851,15 @@ class bitvidApp {
     const editButtons = this.videoList.querySelectorAll("[data-edit-index]");
     editButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        const index = button.getAttribute("data-edit-index");
-        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        const indexAttr = button.getAttribute("data-edit-index");
+        const eventId = button.getAttribute("data-edit-event-id") || "";
+        const index = Number.parseInt(indexAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${indexAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        this.handleEditVideo(index);
+        this.handleEditVideo({
+          eventId,
+          index: Number.isNaN(index) ? null : index,
+        });
       });
     });
 
@@ -1286,10 +2869,15 @@ class bitvidApp {
     );
     revertButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        const index = button.getAttribute("data-revert-index");
-        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        const indexAttr = button.getAttribute("data-revert-index");
+        const eventId = button.getAttribute("data-revert-event-id") || "";
+        const index = Number.parseInt(indexAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${indexAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        this.handleRevertVideo(index);
+        this.handleRevertVideo({
+          eventId,
+          index: Number.isNaN(index) ? null : index,
+        });
       });
     });
 
@@ -1299,10 +2887,15 @@ class bitvidApp {
     );
     deleteAllButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        const index = button.getAttribute("data-delete-all-index");
-        const dropdown = document.getElementById(`settingsDropdown-${index}`);
+        const indexAttr = button.getAttribute("data-delete-all-index");
+        const eventId = button.getAttribute("data-delete-all-event-id") || "";
+        const index = Number.parseInt(indexAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${indexAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        this.handleFullDeleteVideo(index);
+        this.handleFullDeleteVideo({
+          eventId,
+          index: Number.isNaN(index) ? null : index,
+        });
       });
     });
 
@@ -1333,6 +2926,88 @@ class bitvidApp {
     });
   }
 
+  bindThumbnailFallbacks(container) {
+    if (!container || typeof container.querySelectorAll !== "function") {
+      return;
+    }
+
+    const thumbnails = container.querySelectorAll("[data-video-thumbnail]");
+    thumbnails.forEach((img) => {
+      if (!img) {
+        return;
+      }
+
+      const ensureFallbackSource = () => {
+        let fallbackSrc = "";
+        if (typeof img.dataset.fallbackSrc === "string") {
+          fallbackSrc = img.dataset.fallbackSrc.trim();
+        }
+
+        if (!fallbackSrc) {
+          const attr = img.getAttribute("data-fallback-src") || "";
+          fallbackSrc = attr.trim();
+        }
+
+        if (!fallbackSrc && img.tagName === "IMG") {
+          fallbackSrc = FALLBACK_THUMBNAIL_SRC;
+        }
+
+        if (fallbackSrc) {
+          if (img.dataset.fallbackSrc !== fallbackSrc) {
+            img.dataset.fallbackSrc = fallbackSrc;
+          }
+          if (!img.getAttribute("data-fallback-src")) {
+            img.setAttribute("data-fallback-src", fallbackSrc);
+          }
+        }
+
+        return fallbackSrc;
+      };
+
+      const applyFallback = () => {
+        const fallbackSrc = ensureFallbackSource() || FALLBACK_THUMBNAIL_SRC;
+        if (!fallbackSrc) {
+          return;
+        }
+
+        if (img.src !== fallbackSrc) {
+          img.src = fallbackSrc;
+        }
+
+        img.dataset.thumbnailFailed = "true";
+      };
+
+      const handleLoad = () => {
+        if (
+          (img.naturalWidth === 0 && img.naturalHeight === 0) ||
+          !img.currentSrc
+        ) {
+          applyFallback();
+        } else {
+          delete img.dataset.thumbnailFailed;
+        }
+      };
+
+      ensureFallbackSource();
+
+      if (img.dataset.thumbnailFallbackBound === "true") {
+        if (img.complete) {
+          handleLoad();
+        }
+        return;
+      }
+
+      img.addEventListener("error", applyFallback);
+      img.addEventListener("load", handleLoad);
+
+      img.dataset.thumbnailFallbackBound = "true";
+
+      if (img.complete) {
+        handleLoad();
+      }
+    });
+  }
+
   /**
    * Updates the modal to reflect current torrent stats.
    * We remove the unused torrent.status references,
@@ -1344,6 +3019,15 @@ class bitvidApp {
     if (!torrent) {
       console.log("[DEBUG] torrent is null/undefined!");
       return;
+    }
+
+    if (torrent.ready || (typeof torrent.progress === "number" && torrent.progress > 0)) {
+      // Belt-and-suspenders: if WebTorrent reports progress but the DOM events
+      // failed to fire we still rip off the loading GIF. This regression has
+      // bitten us in past releases, so the extra clear is intentional.
+      this.forceRemoveModalPoster(
+        torrent.ready ? "torrent-ready-flag" : "torrent-progress"
+      );
     }
 
     // Log only fields that actually exist on the torrent:
@@ -1393,39 +3077,178 @@ class bitvidApp {
     }
   }
 
+  normalizeActionTarget(target) {
+    if (target && typeof target === "object") {
+      const eventId =
+        typeof target.eventId === "string" ? target.eventId.trim() : "";
+      let index = null;
+      if (typeof target.index === "number" && Number.isInteger(target.index)) {
+        index = target.index;
+      } else if (
+        typeof target.index === "string" && target.index.trim().length > 0
+      ) {
+        const parsed = Number.parseInt(target.index.trim(), 10);
+        index = Number.isNaN(parsed) ? null : parsed;
+      }
+      return { eventId, index };
+    }
+
+    if (typeof target === "string") {
+      const trimmed = target.trim();
+      if (!trimmed) {
+        return { eventId: "", index: null };
+      }
+      if (/^-?\d+$/.test(trimmed)) {
+        const parsed = Number.parseInt(trimmed, 10);
+        return { eventId: "", index: Number.isNaN(parsed) ? null : parsed };
+      }
+      return { eventId: trimmed, index: null };
+    }
+
+    if (typeof target === "number" && Number.isInteger(target)) {
+      return { eventId: "", index: target };
+    }
+
+    return { eventId: "", index: null };
+  }
+
+  async resolveVideoActionTarget({
+    eventId = "",
+    index = null,
+    preloadedList,
+  } = {}) {
+    const trimmedEventId = typeof eventId === "string" ? eventId.trim() : "";
+    const normalizedIndex =
+      typeof index === "number" && Number.isInteger(index) && index >= 0
+        ? index
+        : null;
+
+    const candidateLists = Array.isArray(preloadedList)
+      ? [preloadedList]
+      : [];
+
+    for (const list of candidateLists) {
+      if (trimmedEventId) {
+        const match = list.find((video) => video?.id === trimmedEventId);
+        if (match) {
+          this.videosMap.set(match.id, match);
+          return match;
+        }
+      }
+      if (
+        normalizedIndex !== null &&
+        normalizedIndex >= 0 &&
+        normalizedIndex < list.length
+      ) {
+        const match = list[normalizedIndex];
+        if (match) {
+          this.videosMap.set(match.id, match);
+          return match;
+        }
+      }
+    }
+
+    if (trimmedEventId) {
+      const fromMap = this.videosMap.get(trimmedEventId);
+      if (fromMap) {
+        return fromMap;
+      }
+
+      const activeVideos = nostrClient.getActiveVideos();
+      const fromActive = activeVideos.find((video) => video.id === trimmedEventId);
+      if (fromActive) {
+        this.videosMap.set(fromActive.id, fromActive);
+        return fromActive;
+      }
+
+      const fromAll = nostrClient.allEvents.get(trimmedEventId);
+      if (fromAll) {
+        this.videosMap.set(fromAll.id, fromAll);
+        return fromAll;
+      }
+
+      const fetched = await nostrClient.getEventById(trimmedEventId);
+      if (fetched) {
+        this.videosMap.set(fetched.id, fetched);
+        return fetched;
+      }
+    }
+
+    if (normalizedIndex !== null) {
+      const activeVideos = nostrClient.getActiveVideos();
+      if (normalizedIndex >= 0 && normalizedIndex < activeVideos.length) {
+        const candidate = activeVideos[normalizedIndex];
+        if (candidate) {
+          this.videosMap.set(candidate.id, candidate);
+          return candidate;
+        }
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Handle "Edit Video" from gear menu.
    */
-  async handleEditVideo(index) {
+  async handleEditVideo(target) {
     try {
-      // 1) Fetch the current list of videos (the newest versions)
-      const all = await nostrClient.fetchVideos();
-      const video = all[index];
+      const normalizedTarget = this.normalizeActionTarget(target);
+      const latestVideos = await nostrClient.fetchVideos();
+      const video = await this.resolveVideoActionTarget({
+        ...normalizedTarget,
+        preloadedList: latestVideos,
+      });
 
       // 2) Basic ownership checks
       if (!this.pubkey) {
         this.showError("Please login to edit videos.");
         return;
       }
-      if (!video || video.pubkey !== this.pubkey) {
+      const userPubkey = (this.pubkey || "").toLowerCase();
+      const videoPubkey = (video?.pubkey || "").toLowerCase();
+      if (!video || !videoPubkey || videoPubkey !== userPubkey) {
         this.showError("You do not own this video.");
         return;
       }
 
       // 3) Prompt the user for updated fields
       const newTitle = prompt("New Title? (blank=keep existing)", video.title);
+      if (newTitle === null) {
+        return;
+      }
+
       const newMagnet = prompt(
         "New Magnet? (blank=keep existing)",
         video.magnet
       );
+      if (newMagnet === null) {
+        return;
+      }
+
+      const newUrl = prompt(
+        "New URL? (blank=keep existing)",
+        video.url || ""
+      );
+      if (newUrl === null) {
+        return;
+      }
+
       const newThumb = prompt(
         "New Thumbnail? (blank=keep existing)",
         video.thumbnail
       );
+      if (newThumb === null) {
+        return;
+      }
+
       const newDesc = prompt(
         "New Description? (blank=keep existing)",
         video.description
       );
+      if (newDesc === null) {
+        return;
+      }
       // const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
 
       // 4) Build final updated fields (or fallback to existing)
@@ -1433,6 +3256,7 @@ class bitvidApp {
         !newTitle || !newTitle.trim() ? video.title : newTitle.trim();
       const magnet =
         !newMagnet || !newMagnet.trim() ? video.magnet : newMagnet.trim();
+      const url = !newUrl || !newUrl.trim() ? video.url : newUrl.trim();
       const thumbnail =
         !newThumb || !newThumb.trim() ? video.thumbnail : newThumb.trim();
       const description =
@@ -1444,6 +3268,7 @@ class bitvidApp {
         // isPrivate: wantPrivate,
         title,
         magnet,
+        url,
         thumbnail,
         description,
         mode: isDevMode ? "dev" : "live",
@@ -1475,17 +3300,22 @@ class bitvidApp {
     }
   }
 
-  async handleRevertVideo(index) {
+  async handleRevertVideo(target) {
     try {
-      // 1) Still use fetchVideos to get the video in question
+      const normalizedTarget = this.normalizeActionTarget(target);
       const activeVideos = await nostrClient.fetchVideos();
-      const video = activeVideos[index];
+      const video = await this.resolveVideoActionTarget({
+        ...normalizedTarget,
+        preloadedList: activeVideos,
+      });
 
       if (!this.pubkey) {
         this.showError("Please login to revert.");
         return;
       }
-      if (!video || video.pubkey !== this.pubkey) {
+      const userPubkey = (this.pubkey || "").toLowerCase();
+      const videoPubkey = (video?.pubkey || "").toLowerCase();
+      if (!video || !videoPubkey || videoPubkey !== userPubkey) {
         this.showError("You do not own this video.");
         return;
       }
@@ -1523,16 +3353,22 @@ class bitvidApp {
   /**
    * Handle "Delete Video" from gear menu.
    */
-  async handleFullDeleteVideo(index) {
+  async handleFullDeleteVideo(target) {
     try {
+      const normalizedTarget = this.normalizeActionTarget(target);
       const all = await nostrClient.fetchVideos();
-      const video = all[index];
+      const video = await this.resolveVideoActionTarget({
+        ...normalizedTarget,
+        preloadedList: all,
+      });
 
       if (!this.pubkey) {
         this.showError("Please login to delete videos.");
         return;
       }
-      if (!video || video.pubkey !== this.pubkey) {
+      const userPubkey = (this.pubkey || "").toLowerCase();
+      const videoPubkey = (video?.pubkey || "").toLowerCase();
+      if (!video || !videoPubkey || videoPubkey !== userPubkey) {
         this.showError("You do not own this video.");
         return;
       }
@@ -1598,183 +3434,786 @@ class bitvidApp {
     }
   }
 
+  async probeUrlWithVideoElement(url, timeoutMs = URL_PROBE_TIMEOUT_MS) {
+    const trimmed = typeof url === "string" ? url.trim() : "";
+    if (!trimmed || typeof document === "undefined") {
+      return { outcome: "error" };
+    }
+
+    return new Promise((resolve) => {
+      const video = document.createElement("video");
+      let settled = false;
+      let timeoutId = null;
+
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        video.removeEventListener("loadeddata", handleSuccess);
+        video.removeEventListener("canplay", handleSuccess);
+        video.removeEventListener("error", handleError);
+        try {
+          video.pause();
+        } catch (err) {
+          // ignore pause failures (e.g. if never played)
+        }
+        try {
+          video.removeAttribute("src");
+          video.load();
+        } catch (err) {
+          // ignore cleanup failures
+        }
+      };
+
+      const settle = (result) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+
+      const handleSuccess = () => {
+        settle({ outcome: "ok" });
+      };
+
+      const handleError = () => {
+        settle({ outcome: "error" });
+      };
+
+      if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+        timeoutId = setTimeout(() => {
+          settle({ outcome: "timeout" });
+        }, timeoutMs);
+      }
+
+      try {
+        video.preload = "metadata";
+        video.muted = true;
+        video.playsInline = true;
+        video.addEventListener("loadeddata", handleSuccess, { once: true });
+        video.addEventListener("canplay", handleSuccess, { once: true });
+        video.addEventListener("error", handleError, { once: true });
+        video.src = trimmed;
+        video.load();
+      } catch (err) {
+        settle({ outcome: "error", error: err });
+      }
+    });
+  }
+
+  async probeUrl(url) {
+    const trimmed = typeof url === "string" ? url.trim() : "";
+    if (!trimmed) {
+      return { outcome: "invalid" };
+    }
+
+    const supportsAbort = typeof AbortController !== "undefined";
+    const controller = supportsAbort ? new AbortController() : null;
+    let timeoutId = null;
+
+    const racers = [
+      fetch(trimmed, {
+        method: "HEAD",
+        mode: "no-cors",
+        cache: "no-store",
+        signal: controller ? controller.signal : undefined,
+      }),
+    ];
+
+    if (Number.isFinite(URL_PROBE_TIMEOUT_MS) && URL_PROBE_TIMEOUT_MS > 0) {
+      racers.push(
+        new Promise((resolve) => {
+          timeoutId = setTimeout(() => {
+            if (controller) {
+              try {
+                controller.abort();
+              } catch (err) {
+                // ignore abort errors
+              }
+            }
+            resolve({ outcome: "timeout" });
+          }, URL_PROBE_TIMEOUT_MS);
+        })
+      );
+    }
+
+    let responseOrTimeout;
+    try {
+      responseOrTimeout = await Promise.race(racers);
+    } catch (err) {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      console.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
+      const fallback = await this.probeUrlWithVideoElement(trimmed);
+      if (fallback && fallback.outcome) {
+        return fallback;
+      }
+      return { outcome: "error", error: err };
+    }
+
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    if (responseOrTimeout && responseOrTimeout.outcome === "timeout") {
+      const fallback = await this.probeUrlWithVideoElement(trimmed);
+      if (fallback && fallback.outcome) {
+        return fallback;
+      }
+      return { outcome: "timeout" };
+    }
+
+    const response = responseOrTimeout;
+    if (!response) {
+      return { outcome: "error" };
+    }
+
+    if (response.type === "opaque") {
+      const fallback = await this.probeUrlWithVideoElement(trimmed);
+      if (fallback && fallback.outcome) {
+        return fallback;
+      }
+      return { outcome: "opaque" };
+    }
+
+    return {
+      outcome: response.ok ? "ok" : "bad",
+      status: response.status,
+    };
+  }
+
+  async playHttp(videoEl, url) {
+    const target = videoEl || this.modalVideo;
+    if (!target) {
+      return false;
+    }
+
+    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+    if (!sanitizedUrl) {
+      return false;
+    }
+
+    target.src = sanitizedUrl;
+
+    try {
+      await target.play();
+      return true;
+    } catch (err) {
+      console.warn("[playHttp] Direct URL playback failed:", err);
+      return false;
+    }
+  }
+
+  async playViaWebTorrent(
+    magnet,
+    { fallbackMagnet = "", urlList = [] } = {}
+  ) {
+    const sanitizedUrlList = Array.isArray(urlList)
+      ? urlList
+          .map((entry) =>
+            typeof entry === "string" ? entry.trim() : ""
+          )
+          .filter((entry) => /^https?:\/\//i.test(entry))
+      : [];
+
+    const attemptStream = async (candidate) => {
+      const trimmedCandidate =
+        typeof candidate === "string" ? candidate.trim() : "";
+      if (!trimmedCandidate) {
+        throw new Error("No magnet URI provided for torrent playback.");
+      }
+      if (!isValidMagnetUri(trimmedCandidate)) {
+        if (this.modalStatus) {
+          this.modalStatus.textContent = UNSUPPORTED_BTITH_MESSAGE;
+        }
+        throw new Error(UNSUPPORTED_BTITH_MESSAGE);
+      }
+      if (!this.modalVideo) {
+        throw new Error(
+          "No modal video element available for torrent playback."
+        );
+      }
+
+      const timestamp = Date.now().toString();
+      const [magnetPrefix, magnetQuery = ""] = trimmedCandidate.split("?", 2);
+      let normalizedMagnet = magnetPrefix;
+      let queryParts = magnetQuery
+        .split("&")
+        .map((part) => part.trim())
+        .filter((part) => part && !/^ts=\d+$/.test(part));
+
+      if (queryParts.length) {
+        normalizedMagnet = `${magnetPrefix}?${queryParts.join("&")}`;
+      }
+
+      const separator = normalizedMagnet.includes("?") ? "&" : "?";
+      const cacheBustedMagnet = `${normalizedMagnet}${separator}ts=${timestamp}`;
+
+      await torrentClient.cleanup();
+      this.resetTorrentStats();
+
+      if (this.modalStatus) {
+        this.modalStatus.textContent = "Streaming via WebTorrent";
+      }
+
+      const torrentInstance = await torrentClient.streamVideo(
+        cacheBustedMagnet,
+        this.modalVideo,
+        { urlList: sanitizedUrlList }
+      );
+      if (torrentInstance && torrentInstance.ready) {
+        // Some browsers delay `playing` events for MediaSource-backed torrents.
+        // Clearing the poster here prevents the historic "GIF stuck over the
+        // video" regression when WebTorrent is already feeding data.
+        this.forceRemoveModalPoster("webtorrent-ready");
+      }
+      this.startTorrentStatusMirrors(torrentInstance);
+      return torrentInstance;
+    };
+
+    const primaryTrimmed =
+      typeof magnet === "string" ? magnet.trim() : "";
+    const fallbackTrimmed =
+      typeof fallbackMagnet === "string" ? fallbackMagnet.trim() : "";
+    const hasFallback =
+      !!fallbackTrimmed && fallbackTrimmed !== primaryTrimmed;
+
+    try {
+      return await attemptStream(primaryTrimmed);
+    } catch (primaryError) {
+      if (!hasFallback) {
+        throw primaryError;
+      }
+      this.log(
+        `[playViaWebTorrent] Normalized magnet failed: ${primaryError.message}`
+      );
+      this.log(
+        "[playViaWebTorrent] Primary magnet failed, retrying original string."
+      );
+      try {
+        return await attemptStream(fallbackTrimmed);
+      } catch (fallbackError) {
+        throw fallbackError;
+      }
+    }
+  }
+
   /**
-   * Helper to open a video by event ID (like ?v=...).
+   * Unified playback helper that prefers HTTP URL sources
+   * and falls back to WebTorrent when needed.
    */
+  async playVideoWithFallback({ url = "", magnet = "" } = {}) {
+    // When the modal closes we run an asynchronous cleanup that tears down the
+    // previous MediaSource attachment. If the user immediately selects another
+    // video we must wait for that teardown to finish or the stale cleanup will
+    // wipe the freshly attached `src`/`srcObject`, leaving playback stuck on a
+    // blank frame. Guard every playback entry point with waitForCleanup() so the
+    // race never reappears.
+    await this.waitForCleanup();
+
+    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+
+    const playbackConfig = deriveTorrentPlaybackConfig({
+      magnet: trimmedMagnet,
+      url: sanitizedUrl,
+      logger: (message) => this.log(message),
+    });
+
+    const magnetIsUsable = isValidMagnetUri(playbackConfig.magnet);
+    const magnetForPlayback = magnetIsUsable ? playbackConfig.magnet : "";
+    const fallbackMagnet = magnetIsUsable
+      ? playbackConfig.fallbackMagnet
+      : "";
+    const magnetProvided = playbackConfig.provided;
+
+    if (this.currentVideo) {
+      this.currentVideo.magnet = magnetForPlayback;
+      this.currentVideo.normalizedMagnet = magnetForPlayback;
+      this.currentVideo.normalizedMagnetFallback = fallbackMagnet;
+      if (playbackConfig.infoHash && !this.currentVideo.legacyInfoHash) {
+        this.currentVideo.legacyInfoHash = playbackConfig.infoHash;
+      }
+      this.currentVideo.torrentSupported = !!magnetForPlayback;
+    }
+    this.currentMagnetUri = magnetForPlayback || null;
+    this.setCopyMagnetState(!!magnetForPlayback);
+
+    try {
+      if (!this.modalVideo) {
+        throw new Error("Video element is not ready for playback.");
+      }
+
+      this.showModalWithPoster();
+      const videoEl = this.modalVideo;
+      const HOSTED_URL_SUCCESS_MESSAGE = "✅ Streaming from hosted URL";
+
+      if (this.modalStatus) {
+        this.modalStatus.textContent = "Preparing video...";
+      }
+
+      this.clearActiveIntervals();
+      this.prepareModalVideoForPlayback();
+
+      await torrentClient.cleanup();
+
+      videoEl.pause();
+      // Clearing the WebTorrent attachment requires wiping both `src` and
+      // `srcObject`. Multiple regressions have shipped where we only blanked
+      // `src`, leaving the old MediaSource wired up and the next magnet would
+      // stall on a grey frame. Always clear both before calling `load()`.
+      videoEl.src = "";
+      videoEl.removeAttribute("src");
+      videoEl.srcObject = null;
+      videoEl.load();
+
+      this.resetTorrentStats();
+      this.playSource = null;
+      this.cleanupUrlPlaybackWatchdog();
+
+      if (magnetForPlayback) {
+        const label = playbackConfig.didMutate
+          ? "[playVideoWithFallback] Using normalized magnet URI:"
+          : "[playVideoWithFallback] Using magnet URI:";
+        this.log(`${label} ${magnetForPlayback}`);
+      }
+
+      const httpsUrl =
+        sanitizedUrl && /^https:\/\//i.test(sanitizedUrl) ? sanitizedUrl : "";
+      const webSeedCandidates = httpsUrl ? [httpsUrl] : [];
+      let cleanupHostedUrlStatusListeners = () => {};
+
+      let fallbackStarted = false;
+      const startTorrentFallback = async (reason) => {
+        if (fallbackStarted) {
+          this.log(
+            `[playVideoWithFallback] Duplicate fallback request ignored (${reason}).`
+          );
+          return null;
+        }
+        fallbackStarted = true;
+        this.cleanupUrlPlaybackWatchdog();
+        cleanupHostedUrlStatusListeners();
+        if (!magnetForPlayback) {
+          const message =
+            "Hosted playback failed and no magnet fallback is available.";
+          if (this.modalStatus) {
+            this.modalStatus.textContent = message;
+          }
+          this.playSource = null;
+          throw new Error(message);
+        }
+
+        if (this.modalStatus) {
+          this.modalStatus.textContent = "Switching to WebTorrent...";
+        }
+        this.log(
+          `[playVideoWithFallback] Falling back to WebTorrent (${reason}).`
+        );
+        console.debug("[WT] add magnet =", magnetForPlayback);
+        const torrentInstance = await this.playViaWebTorrent(
+          magnetForPlayback,
+          {
+            fallbackMagnet,
+            urlList: webSeedCandidates,
+          }
+        );
+        this.playSource = "torrent";
+        this.autoplayModalVideo();
+        return torrentInstance;
+      };
+
+      if (URL_FIRST_ENABLED && httpsUrl) {
+        if (this.modalStatus) {
+          this.modalStatus.textContent = "Checking hosted URL...";
+        }
+        let hostedStatusResolved = false;
+        const hostedStatusHandlers = [];
+        const addHostedStatusListener = (eventName, handler, options) => {
+          if (!videoEl) {
+            return;
+          }
+          videoEl.addEventListener(eventName, handler, options);
+          hostedStatusHandlers.push([eventName, handler, options]);
+        };
+        const markHostedUrlAsLive = () => {
+          if (hostedStatusResolved) {
+            return;
+          }
+          hostedStatusResolved = true;
+          if (this.modalStatus) {
+            this.modalStatus.textContent = HOSTED_URL_SUCCESS_MESSAGE;
+          }
+          cleanupHostedUrlStatusListeners();
+        };
+        const maybeMarkHostedUrl = () => {
+          if (
+            hostedStatusResolved ||
+            !videoEl ||
+            videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+          ) {
+            return;
+          }
+          if (videoEl.currentTime > 0 || !videoEl.paused) {
+            markHostedUrlAsLive();
+          }
+        };
+        cleanupHostedUrlStatusListeners = () => {
+          if (!hostedStatusHandlers.length || !videoEl) {
+            hostedStatusHandlers.length = 0;
+            cleanupHostedUrlStatusListeners = () => {};
+            return;
+          }
+          for (const [eventName, handler, options] of hostedStatusHandlers) {
+            videoEl.removeEventListener(eventName, handler, options);
+          }
+          hostedStatusHandlers.length = 0;
+          cleanupHostedUrlStatusListeners = () => {};
+        };
+        addHostedStatusListener("playing", markHostedUrlAsLive, { once: true });
+        addHostedStatusListener("loadeddata", maybeMarkHostedUrl);
+        addHostedStatusListener("canplay", maybeMarkHostedUrl);
+        addHostedStatusListener("error", () => {
+          cleanupHostedUrlStatusListeners();
+        }, { once: true });
+        const probeResult = await this.probeUrl(httpsUrl);
+        const probeOutcome = probeResult?.outcome || "error";
+        const shouldAttemptHosted =
+          probeOutcome !== "bad" && probeOutcome !== "error";
+
+        if (shouldAttemptHosted) {
+          let outcomeResolved = false;
+          let outcomeResolver = () => {};
+          let autoplayBlocked = false;
+
+          const playbackOutcomePromise = new Promise((resolve) => {
+            outcomeResolver = (value) => {
+              if (outcomeResolved) {
+                return;
+              }
+              outcomeResolved = true;
+              resolve(value);
+            };
+          });
+
+          const attachWatchdogs = ({ stallMs = 8000 } = {}) => {
+            this.registerUrlPlaybackWatchdogs(videoEl, {
+              stallMs,
+              onSuccess: () => outcomeResolver({ status: "success" }),
+              onFallback: (reason) => {
+                if (autoplayBlocked && reason === "stall") {
+                  this.log(
+                    "[playVideoWithFallback] Autoplay blocked; waiting for user gesture before falling back."
+                  );
+                  if (this.modalStatus) {
+                    this.modalStatus.textContent =
+                      "Press play to start the hosted video.";
+                  }
+                  attachWatchdogs({ stallMs: 0 });
+                  return;
+                }
+
+                outcomeResolver({ status: "fallback", reason });
+              },
+            });
+          };
+
+          attachWatchdogs({ stallMs: 8000 });
+
+          const handleFatalPlaybackError = (err) => {
+            this.log(
+              "[playVideoWithFallback] Direct URL playback threw:",
+              err
+            );
+            outcomeResolver({ status: "fallback", reason: "play-error" });
+          };
+
+          try {
+            videoEl.src = httpsUrl;
+            const playPromise = videoEl.play();
+            if (playPromise && typeof playPromise.catch === "function") {
+              playPromise.catch((err) => {
+                if (err?.name === "NotAllowedError") {
+                  autoplayBlocked = true;
+                  this.log(
+                    "[playVideoWithFallback] Autoplay blocked by browser; awaiting user interaction.",
+                    err
+                  );
+                  if (this.modalStatus) {
+                    this.modalStatus.textContent =
+                      "Press play to start the hosted video.";
+                  }
+                  this.cleanupUrlPlaybackWatchdog();
+                  attachWatchdogs({ stallMs: 0 });
+                  const restoreOnPlay = () => {
+                    videoEl.removeEventListener("play", restoreOnPlay);
+                    this.cleanupUrlPlaybackWatchdog();
+                    autoplayBlocked = false;
+                    attachWatchdogs({ stallMs: 8000 });
+                  };
+                  videoEl.addEventListener("play", restoreOnPlay, {
+                    once: true,
+                  });
+                  return;
+                }
+                handleFatalPlaybackError(err);
+              });
+            }
+          } catch (err) {
+            handleFatalPlaybackError(err);
+          }
+
+          const playbackOutcome = await playbackOutcomePromise;
+          if (playbackOutcome?.status === "success") {
+            this.forceRemoveModalPoster("http-success");
+            this.playSource = "url";
+            if (this.modalStatus) {
+              this.modalStatus.textContent = HOSTED_URL_SUCCESS_MESSAGE;
+            }
+            cleanupHostedUrlStatusListeners();
+            return;
+          }
+
+          const fallbackReason = playbackOutcome?.reason || "watchdog-triggered";
+          await startTorrentFallback(fallbackReason);
+          return;
+        }
+
+        this.log(
+          `[playVideoWithFallback] Hosted URL probe reported "${probeOutcome}"; deferring to WebTorrent.`
+        );
+        cleanupHostedUrlStatusListeners();
+      }
+
+      if (magnetForPlayback) {
+        await startTorrentFallback("magnet-primary");
+        return;
+      }
+
+      const message = magnetProvided && !magnetForPlayback
+        ? UNSUPPORTED_BTITH_MESSAGE
+        : "No playable source found.";
+      if (this.modalStatus) {
+        this.modalStatus.textContent = message;
+      }
+      this.playSource = null;
+      this.showError(message);
+    } catch (error) {
+      this.log("Error in playVideoWithFallback:", error);
+      this.showError(`Playback error: ${error.message}`);
+    }
+  }
+
   async playVideoByEventId(eventId) {
-    // 1) Event-level blacklist check
+    if (!eventId) {
+      this.showError("No video identifier provided.");
+      return;
+    }
+
     if (this.blacklistedEventIds.has(eventId)) {
       this.showError("This content has been removed or is not allowed.");
       return;
     }
 
-    try {
-      // Attempt to get the video from local cache or fetch
-      let video = this.videosMap.get(eventId);
-      if (!video) {
-        video = await this.getOldEventById(eventId);
-      }
-      if (!video) {
-        this.showError("Video not found.");
-        return;
-      }
+    let video = this.videosMap.get(eventId);
+    if (!video) {
+      video = await this.getOldEventById(eventId);
+    }
+    if (!video) {
+      this.showError("Video not found or has been removed.");
+      return;
+    }
 
-      // 2) Author-level blacklist check
-      const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (initialBlacklist.includes(authorNpub)) {
-        this.showError("This content has been removed or is not allowed.");
-        return;
-      }
+    const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+    if (initialBlacklist.includes(authorNpub)) {
+      this.showError("This content has been removed or is not allowed.");
+      return;
+    }
 
-      // 3) Whitelist check if enabled
-      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-        this.showError("This content is not from a whitelisted author.");
-        return;
-      }
+    if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
+      this.showError("This content is not from a whitelisted author.");
+      return;
+    }
 
-      // Handle private videos (decrypt if owner is the current user)
-      if (
-        video.isPrivate &&
-        video.pubkey === this.pubkey &&
-        !video.alreadyDecrypted
-      ) {
-        video.magnet = fakeDecrypt(video.magnet);
-        video.alreadyDecrypted = true;
-      }
+    if (
+      video.isPrivate &&
+      video.pubkey === this.pubkey &&
+      !video.alreadyDecrypted
+    ) {
+      video.magnet = fakeDecrypt(video.magnet);
+      video.alreadyDecrypted = true;
+    }
 
-      this.currentVideo = video;
-      this.currentMagnetUri = video.magnet;
-      this.showModalWithPoster();
+    const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
+    const rawMagnet =
+      typeof video.magnet === "string" ? video.magnet.trim() : "";
+    const legacyInfoHash =
+      typeof video.infoHash === "string" ? video.infoHash.trim().toLowerCase() : "";
+    const magnetCandidate = rawMagnet || legacyInfoHash;
+    const decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
+    const usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
+    const magnetSupported = isValidMagnetUri(usableMagnetCandidate);
+    const sanitizedMagnet = magnetSupported ? usableMagnetCandidate : "";
 
-      // Update ?v= param in the URL
-      const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
-      const newUrl = `${window.location.pathname}?v=${encodeURIComponent(
+    trackVideoView({
+      videoId: video.id || eventId,
+      title: video.title || "Untitled",
+      source: "event",
+      hasMagnet: !!sanitizedMagnet,
+      hasUrl: !!trimmedUrl,
+    });
+
+    this.currentVideo = {
+      ...video,
+      url: trimmedUrl,
+      magnet: sanitizedMagnet,
+      originalMagnet: magnetCandidate,
+      torrentSupported: magnetSupported,
+      legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
+    };
+
+    this.currentMagnetUri = sanitizedMagnet || null;
+
+    this.setCopyMagnetState(!!sanitizedMagnet);
+    this.setShareButtonState(true);
+
+    const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
+    const pushUrl =
+      this.buildShareUrlFromNevent(nevent) ||
+      `${this.getShareUrlBase() || window.location.pathname}?v=${encodeURIComponent(
         nevent
       )}`;
-      window.history.pushState({}, "", newUrl);
+    window.history.pushState({}, "", pushUrl);
 
-      // Fetch author profile
-      let creatorProfile = {
-        name: "Unknown",
-        picture: `https://robohash.org/${video.pubkey}`,
-      };
-      try {
-        const userEvents = await nostrClient.pool.list(nostrClient.relays, [
-          { kinds: [0], authors: [video.pubkey], limit: 1 },
-        ]);
-        if (userEvents.length > 0 && userEvents[0]?.content) {
-          const data = JSON.parse(userEvents[0].content);
-          creatorProfile = {
-            name: data.name || data.display_name || "Unknown",
-            picture: data.picture || `https://robohash.org/${video.pubkey}`,
-          };
-        }
-      } catch (error) {
-        this.log("Error fetching creator profile:", error);
+    let creatorProfile = {
+      name: "Unknown",
+      picture: `https://robohash.org/${video.pubkey}`,
+    };
+    try {
+      const userEvents = await nostrClient.pool.list(nostrClient.relays, [
+        { kinds: [0], authors: [video.pubkey], limit: 1 },
+      ]);
+      if (userEvents.length > 0 && userEvents[0]?.content) {
+        const data = JSON.parse(userEvents[0].content);
+        creatorProfile = {
+          name: data.name || data.display_name || "Unknown",
+          picture: data.picture || `https://robohash.org/${video.pubkey}`,
+        };
       }
-
-      // Update UI fields
-      const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (this.videoTitle) {
-        this.videoTitle.textContent = video.title || "Untitled";
-      }
-      if (this.videoDescription) {
-        this.videoDescription.textContent =
-          video.description || "No description available.";
-      }
-      if (this.videoTimestamp) {
-        this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
-      }
-      if (this.creatorName) {
-        this.creatorName.textContent = creatorProfile.name;
-      }
-      if (this.creatorNpub) {
-        this.creatorNpub.textContent = `${creatorNpub.slice(
-          0,
-          8
-        )}...${creatorNpub.slice(-4)}`;
-      }
-      if (this.creatorAvatar) {
-        this.creatorAvatar.src = creatorProfile.picture;
-        this.creatorAvatar.alt = creatorProfile.name;
-      }
-
-      // Cleanup any previous WebTorrent streams, then start a fresh one
-      await torrentClient.cleanup();
-      const cacheBustedMagnet = video.magnet + "&ts=" + Date.now();
-      this.log("Starting video stream with:", cacheBustedMagnet);
-
-      // Autoplay preferences
-      const storedUnmuted = localStorage.getItem("unmutedAutoplay");
-      const userWantsUnmuted = storedUnmuted === "true";
-      this.modalVideo.muted = !userWantsUnmuted;
-
-      this.modalVideo.addEventListener("volumechange", () => {
-        localStorage.setItem(
-          "unmutedAutoplay",
-          (!this.modalVideo.muted).toString()
-        );
-      });
-
-      const realTorrent = await torrentClient.streamVideo(
-        cacheBustedMagnet,
-        this.modalVideo
-      );
-
-      // Try playing; if autoplay fails, fallback to muted
-      this.modalVideo.play().catch((err) => {
-        this.log("Autoplay failed:", err);
-        if (!this.modalVideo.muted) {
-          this.log("Falling back to muted autoplay.");
-          this.modalVideo.muted = true;
-          this.modalVideo.play().catch((err2) => {
-            this.log("Muted autoplay also failed:", err2);
-          });
-        }
-      });
-
-      // Update torrent stats every 3s
-      const updateInterval = setInterval(() => {
-        if (!document.body.contains(this.modalVideo)) {
-          clearInterval(updateInterval);
-          return;
-        }
-        this.updateTorrentStatus(realTorrent);
-      }, 3000);
-      this.activeIntervals.push(updateInterval);
-
-      // Mirror stats into the modal if needed
-      const mirrorInterval = setInterval(() => {
-        if (!document.body.contains(this.modalVideo)) {
-          clearInterval(mirrorInterval);
-          return;
-        }
-        const status = document.getElementById("status");
-        const progress = document.getElementById("progress");
-        const peers = document.getElementById("peers");
-        const speed = document.getElementById("speed");
-        const downloaded = document.getElementById("downloaded");
-        if (status && this.modalStatus) {
-          this.modalStatus.textContent = status.textContent;
-        }
-        if (progress && this.modalProgress) {
-          this.modalProgress.style.width = progress.style.width;
-        }
-        if (peers && this.modalPeers) {
-          this.modalPeers.textContent = peers.textContent;
-        }
-        if (speed && this.modalSpeed) {
-          this.modalSpeed.textContent = speed.textContent;
-        }
-        if (downloaded && this.modalDownloaded) {
-          this.modalDownloaded.textContent = downloaded.textContent;
-        }
-      }, 3000);
-      this.activeIntervals.push(mirrorInterval);
     } catch (error) {
-      this.log("Error in playVideoByEventId:", error);
-      this.showError(`Playback error: ${error.message}`);
+      this.log("Error fetching creator profile:", error);
     }
+
+    const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+    if (this.videoTitle) {
+      this.videoTitle.textContent = video.title || "Untitled";
+    }
+    if (this.videoDescription) {
+      this.videoDescription.textContent =
+        video.description || "No description available.";
+    }
+    if (this.videoTimestamp) {
+      this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
+    }
+    if (this.creatorName) {
+      this.creatorName.textContent = creatorProfile.name;
+    }
+    if (this.creatorNpub) {
+      this.creatorNpub.textContent = `${creatorNpub.slice(0, 8)}...${creatorNpub.slice(
+        -4
+      )}`;
+    }
+    if (this.creatorAvatar) {
+      this.creatorAvatar.src = creatorProfile.picture;
+      this.creatorAvatar.alt = creatorProfile.name;
+    }
+
+    await this.playVideoWithFallback({
+      url: trimmedUrl,
+      magnet: usableMagnetCandidate,
+    });
+  }
+
+  async playVideoWithoutEvent({
+    url = "",
+    magnet = "",
+    title = "Untitled",
+    description = "",
+  } = {}) {
+    const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+    const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const decodedMagnet = safeDecodeMagnet(trimmedMagnet);
+    const usableMagnet = decodedMagnet || trimmedMagnet;
+    const magnetSupported = isValidMagnetUri(usableMagnet);
+    const sanitizedMagnet = magnetSupported ? usableMagnet : "";
+
+    trackVideoView({
+      videoId:
+        typeof title === "string" && title.trim().length > 0
+          ? `direct:${title.trim()}`
+          : "direct-playback",
+      title,
+      source: "direct",
+      hasMagnet: !!sanitizedMagnet,
+      hasUrl: !!sanitizedUrl,
+    });
+
+    if (!sanitizedUrl && !sanitizedMagnet) {
+      const message = trimmedMagnet && !magnetSupported
+        ? UNSUPPORTED_BTITH_MESSAGE
+        : "This video has no playable source.";
+      this.showError(message);
+      return;
+    }
+
+    this.currentVideo = {
+      id: null,
+      title,
+      description,
+      url: sanitizedUrl,
+      magnet: sanitizedMagnet,
+      originalMagnet: trimmedMagnet,
+      torrentSupported: magnetSupported,
+    };
+
+    this.currentMagnetUri = sanitizedMagnet || null;
+
+    this.setCopyMagnetState(!!sanitizedMagnet);
+    this.setShareButtonState(false);
+
+    if (this.videoTitle) {
+      this.videoTitle.textContent = title || "Untitled";
+    }
+    if (this.videoDescription) {
+      this.videoDescription.textContent =
+        description || "No description available.";
+    }
+    if (this.videoTimestamp) {
+      this.videoTimestamp.textContent = "";
+    }
+    if (this.creatorName) {
+      this.creatorName.textContent = "Unknown";
+    }
+    if (this.creatorNpub) {
+      this.creatorNpub.textContent = "";
+    }
+    if (this.creatorAvatar) {
+      this.creatorAvatar.src = "assets/svg/default-profile.svg";
+      this.creatorAvatar.alt = "Unknown";
+    }
+
+    const urlObj = new URL(window.location.href);
+    urlObj.searchParams.delete("v");
+    const cleaned = `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
+    window.history.replaceState({}, "", cleaned);
+
+    await this.playVideoWithFallback({
+      url: sanitizedUrl,
+      magnet: usableMagnet,
+    });
   }
 
   /**
@@ -1851,7 +4290,11 @@ class bitvidApp {
   }
 
   escapeHTML(unsafe) {
-    return unsafe
+    if (unsafe === null || typeof unsafe === "undefined") {
+      return "";
+    }
+
+    return String(unsafe)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -1903,6 +4346,15 @@ class bitvidApp {
    */
   handleCopyMagnet() {
     if (!this.currentVideo || !this.currentVideo.magnet) {
+      if (
+        this.currentVideo &&
+        this.currentVideo.originalMagnet &&
+        !this.currentVideo.torrentSupported
+      ) {
+        this.showError(UNSUPPORTED_BTITH_MESSAGE);
+        return;
+      }
+
       this.showError("No magnet link to copy.");
       return;
     }

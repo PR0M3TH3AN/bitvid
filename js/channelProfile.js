@@ -1,8 +1,12 @@
 // js/channelProfile.js
 
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  convertEventToVideo as sharedConvertEventToVideo,
+} from "./nostr.js";
 import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
+import { attachHealthBadges } from "./gridHealth.js";
 import { initialBlacklist, initialWhitelist } from "./lists.js";
 import { isWhitelistEnabled } from "./config.js";
 
@@ -44,11 +48,29 @@ export async function initChannelProfileView() {
     if (btn) btn.classList.add("hidden");
   }
 
+  setupZapButton();
+
   // 4) Load user’s profile (banner, avatar, etc.)
   await loadUserProfile(hexPub);
 
   // 5) Load user’s videos (filtered + rendered like the home feed)
   await loadUserVideos(hexPub);
+}
+
+function setupZapButton() {
+  const zapButton = document.getElementById("zapButton");
+  if (!zapButton) {
+    return;
+  }
+
+  if (zapButton.dataset.initialized === "true") {
+    return;
+  }
+
+  zapButton.addEventListener("click", () => {
+    window.alert("Zaps coming soon.");
+  });
+  zapButton.dataset.initialized = "true";
 }
 
 /**
@@ -199,14 +221,14 @@ async function loadUserVideos(pubkey) {
     // 3) Convert to "video" objects
     let videos = [];
     for (const evt of events) {
-      const vid = localConvertEventToVideo(evt);
+      const vid = sharedConvertEventToVideo(evt);
       if (!vid.invalid && !vid.deleted) {
         videos.push(vid);
       }
     }
 
     // 4) Deduplicate older overshadowed versions => newest only
-    videos = dedupeToNewestByRoot(videos);
+    videos = app?.dedupeVideosByRoot?.(videos) ?? dedupeToNewestByRoot(videos);
 
     // 5) Filter out blacklisted IDs / authors
     videos = videos.filter((video) => {
@@ -251,6 +273,10 @@ async function loadUserVideos(pubkey) {
         video.alreadyDecrypted = true;
       }
 
+      // Ensure the global videos map is kept up to date so delegated handlers
+      // have the freshest metadata for this event.
+      window.app?.videosMap?.set(video.id, video);
+
       // Check if user can edit
       const canEdit = video.pubkey === app.pubkey;
       let hasOlder = false;
@@ -264,6 +290,7 @@ async function loadUserVideos(pubkey) {
             class="block w-full text-left px-4 py-2 text-sm text-red-400
             hover:bg-red-700 hover:text-white"
             data-revert-index="${index}"
+            data-revert-event-id="${video.id}"
           >
             Revert
           </button>
@@ -298,6 +325,7 @@ async function loadUserVideos(pubkey) {
                   class="block w-full text-left px-4 py-2 text-sm text-gray-100
                   hover:bg-gray-700"
                   data-edit-index="${index}"
+                  data-edit-event-id="${video.id}"
                 >
                   Edit
                 </button>
@@ -306,6 +334,7 @@ async function loadUserVideos(pubkey) {
                   class="block w-full text-left px-4 py-2 text-sm text-red-400
                   hover:bg-red-700 hover:text-white"
                   data-delete-all-index="${index}"
+                  data-delete-all-event-id="${video.id}"
                 >
                   Delete All
                 </button>
@@ -322,6 +351,7 @@ async function loadUserVideos(pubkey) {
 
       const cardEl = document.createElement("div");
       cardEl.classList.add(
+        "video-card",
         "bg-gray-900",
         "rounded-lg",
         "overflow-hidden",
@@ -331,8 +361,42 @@ async function loadUserVideos(pubkey) {
         "duration-300"
       );
 
+      const rawMagnet =
+        typeof video.magnet === "string" ? video.magnet : "";
+      const trimmedMagnet = rawMagnet ? rawMagnet.trim() : "";
+      const legacyInfoHash =
+        typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+      const playbackUrl =
+        typeof video.url === "string" ? video.url : "";
+      const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
+      const playbackMagnet = trimmedMagnet || legacyInfoHash || "";
+      const magnetProvided = playbackMagnet.length > 0;
+      const magnetSupported = app.isMagnetUriSupported(playbackMagnet);
+      const showUnsupportedTorrentBadge =
+        !trimmedUrl && magnetProvided && !magnetSupported;
+      const urlBadgeHtml = trimmedUrl
+        ? app.getUrlHealthPlaceholderMarkup({ includeMargin: false })
+        : "";
+      const torrentHealthBadgeHtml =
+        magnetSupported && magnetProvided
+          ? app.getTorrentHealthBadgeMarkup({ includeMargin: false })
+          : "";
+      const connectionBadgesHtml =
+        urlBadgeHtml || torrentHealthBadgeHtml
+          ? `
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              ${urlBadgeHtml}${torrentHealthBadgeHtml}
+            </div>
+          `
+          : "";
+
       cardEl.innerHTML = `
-        <div class="cursor-pointer relative group">
+        <div
+          class="cursor-pointer relative group"
+          data-video-id="${video.id}"
+          data-play-url=""
+          data-play-magnet=""
+        >
           <div class="ratio-16-9">
             <img
               src="${fallbackThumb}"
@@ -341,31 +405,85 @@ async function loadUserVideos(pubkey) {
             />
           </div>
         </div>
-        <div class="p-4 flex items-center justify-between">
-          <div>
-            <h3
-              class="text-lg font-bold text-white mb-2 line-clamp-2"
-              data-play-magnet="${encodeURIComponent(video.magnet)}"
-            >
-              ${safeTitle}
-            </h3>
-            <p class="text-sm text-gray-500">
-              ${new Date(video.created_at * 1000).toLocaleString()}
-            </p>
+        <div class="p-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3
+                class="text-lg font-bold text-white mb-2 line-clamp-2"
+                data-video-id="${video.id}"
+                data-play-url=""
+                data-play-magnet=""
+              >
+                ${safeTitle}
+              </h3>
+              <p class="text-sm text-gray-500">
+                ${new Date(video.created_at * 1000).toLocaleString()}
+              </p>
+            </div>
+            ${gearMenu}
           </div>
-          ${gearMenu}
+          ${connectionBadgesHtml}
         </div>
       `;
 
-      // Clicking the card => open the video modal
-      cardEl.addEventListener("click", () => {
-        app.playVideoByEventId(video.id);
+      if (showUnsupportedTorrentBadge) {
+        cardEl.dataset.torrentSupported = "false";
+      } else if (magnetProvided && magnetSupported) {
+        cardEl.dataset.torrentSupported = "true";
+      } else if (cardEl.dataset.torrentSupported) {
+        delete cardEl.dataset.torrentSupported;
+      }
+
+      if (magnetProvided) {
+        cardEl.dataset.magnet = playbackMagnet;
+      } else if (cardEl.dataset.magnet) {
+        delete cardEl.dataset.magnet;
+      }
+
+      // Leave the data-play-* attributes empty in the template markup so the raw
+      // URL/magnet strings can be assigned after parsing without HTML entity
+      // escaping, keeping this renderer consistent with app.js. The stored URL is
+      // encoded so it stays intact within data-* attributes, and the click
+      // handler decodes it while leaving magnets untouched until
+      // safeDecodeMagnet() runs.
+      const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
+      interactiveEls.forEach((el) => {
+        if (!el.dataset) return;
+
+        if (trimmedUrl) {
+          el.dataset.playUrl = encodeURIComponent(trimmedUrl);
+        } else {
+          delete el.dataset.playUrl;
+        }
+
+        el.dataset.playMagnet = playbackMagnet || "";
+        if (magnetProvided) {
+          el.dataset.torrentSupported = magnetSupported ? "true" : "false";
+        } else if (el.dataset.torrentSupported) {
+          delete el.dataset.torrentSupported;
+        }
       });
+
+      if (trimmedUrl) {
+        const badgeEl = cardEl.querySelector("[data-url-health-state]");
+        if (badgeEl) {
+          app.handleUrlHealthBadge({
+            video,
+            url: trimmedUrl,
+            badgeEl,
+          });
+        }
+      }
 
       fragment.appendChild(cardEl);
     });
 
     container.appendChild(fragment);
+
+    attachHealthBadges(container);
+
+    window.app.videoList = container;
+    window.app.attachVideoListHandler();
 
     // Lazy-load images
     const lazyEls = container.querySelectorAll("[data-lazy]");
@@ -389,10 +507,15 @@ async function loadUserVideos(pubkey) {
     editBtns.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const idx = parseInt(btn.getAttribute("data-edit-index"), 10);
-        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        const idxAttr = btn.getAttribute("data-edit-index");
+        const idx = Number.parseInt(idxAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        app.handleEditVideo(idx);
+        const eventId = btn.getAttribute("data-edit-event-id") || "";
+        app.handleEditVideo({
+          eventId,
+          index: Number.isNaN(idx) ? null : idx,
+        });
       });
     });
 
@@ -401,10 +524,15 @@ async function loadUserVideos(pubkey) {
     revertBtns.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const idx = parseInt(btn.getAttribute("data-revert-index"), 10);
-        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        const idxAttr = btn.getAttribute("data-revert-index");
+        const idx = Number.parseInt(idxAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        app.handleRevertVideo(idx);
+        const eventId = btn.getAttribute("data-revert-event-id") || "";
+        app.handleRevertVideo({
+          eventId,
+          index: Number.isNaN(idx) ? null : idx,
+        });
       });
     });
 
@@ -413,10 +541,15 @@ async function loadUserVideos(pubkey) {
     deleteAllBtns.forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const idx = parseInt(btn.getAttribute("data-delete-all-index"), 10);
-        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+        const idxAttr = btn.getAttribute("data-delete-all-index");
+        const idx = Number.parseInt(idxAttr, 10);
+        const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
-        app.handleFullDeleteVideo(idx);
+        const eventId = btn.getAttribute("data-delete-all-event-id") || "";
+        app.handleFullDeleteVideo({
+          eventId,
+          index: Number.isNaN(idx) ? null : idx,
+        });
       });
     });
   } catch (err) {
@@ -444,43 +577,6 @@ function dedupeToNewestByRoot(videos) {
     }
   }
   return Array.from(map.values());
-}
-
-/**
- * Convert raw event => "video" object.
- */
-function localConvertEventToVideo(event) {
-  try {
-    const content = JSON.parse(event.content || "{}");
-    const isSupportedVersion = content.version >= 2;
-    const hasRequiredFields = !!(content.title && content.magnet);
-
-    if (!isSupportedVersion) {
-      return { id: event.id, invalid: true, reason: "version <2" };
-    }
-    if (!hasRequiredFields) {
-      return { id: event.id, invalid: true, reason: "missing title/magnet" };
-    }
-
-    return {
-      id: event.id,
-      videoRootId: content.videoRootId || event.id,
-      version: content.version,
-      isPrivate: content.isPrivate ?? false,
-      title: content.title ?? "",
-      magnet: content.magnet ?? "",
-      thumbnail: content.thumbnail ?? "",
-      description: content.description ?? "",
-      mode: content.mode ?? "live",
-      deleted: content.deleted === true,
-      pubkey: event.pubkey,
-      created_at: event.created_at,
-      tags: event.tags,
-      invalid: false,
-    };
-  } catch (err) {
-    return { id: event.id, invalid: true, reason: "json parse error" };
-  }
 }
 
 /**
