@@ -2,11 +2,145 @@
 
 import WebTorrent from "./webtorrent.min.js";
 
+const DEFAULT_PROBE_TRACKERS = Object.freeze([
+  "wss://tracker.btorrent.xyz",
+  "wss://tracker.openwebtorrent.com",
+]);
+
+function decodeComponentSafe(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  try {
+    return decodeURIComponent(value);
+  } catch (err) {
+    return value;
+  }
+}
+
+function normalizeTrackerList(trackers) {
+  const normalized = [];
+  const seen = new Set();
+  if (!Array.isArray(trackers)) {
+    return normalized;
+  }
+  trackers.forEach((tracker) => {
+    if (typeof tracker !== "string") {
+      return;
+    }
+    const trimmed = tracker.trim();
+    if (!trimmed || !/^wss:\/\//i.test(trimmed)) {
+      return;
+    }
+    const lower = trimmed.toLowerCase();
+    if (seen.has(lower)) {
+      return;
+    }
+    seen.add(lower);
+    normalized.push(trimmed);
+  });
+  return normalized;
+}
+
+function appendProbeTrackers(magnetURI, trackers) {
+  if (typeof magnetURI !== "string") {
+    return { magnet: "", appended: false, hasProbeTrackers: false };
+  }
+
+  const trimmedMagnet = magnetURI.trim();
+  if (!trimmedMagnet) {
+    return { magnet: "", appended: false, hasProbeTrackers: false };
+  }
+
+  const probeTrackers = normalizeTrackerList(trackers);
+  if (!probeTrackers.length) {
+    return {
+      magnet: trimmedMagnet,
+      appended: false,
+      hasProbeTrackers: false,
+    };
+  }
+
+  const trackerSet = new Set();
+  const [withoutFragment, fragment = ""] = trimmedMagnet.split("#", 2);
+  const [, queryPart = ""] = withoutFragment.split("?", 2);
+
+  if (queryPart) {
+    queryPart
+      .split("&")
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .forEach((segment) => {
+        const [rawKey, rawValue = ""] = segment.split("=", 2);
+        if (!rawKey || rawKey.trim().toLowerCase() !== "tr") {
+          return;
+        }
+        const decoded = decodeComponentSafe(rawValue).trim().toLowerCase();
+        if (decoded) {
+          trackerSet.add(decoded);
+        }
+      });
+  }
+
+  const normalizedProbe = probeTrackers.map((url) => url.toLowerCase());
+  const hadProbeTracker = normalizedProbe.some((url) => trackerSet.has(url));
+
+  const toAppend = [];
+  probeTrackers.forEach((tracker, index) => {
+    const normalizedTracker = normalizedProbe[index];
+    if (trackerSet.has(normalizedTracker)) {
+      return;
+    }
+    trackerSet.add(normalizedTracker);
+    toAppend.push(`tr=${encodeURIComponent(tracker)}`);
+  });
+
+  if (!toAppend.length) {
+    return {
+      magnet: trimmedMagnet,
+      appended: false,
+      hasProbeTrackers: hadProbeTracker,
+    };
+  }
+
+  const separator = queryPart ? "&" : "?";
+  const augmented = `${withoutFragment}${separator}${toAppend.join("&")}`;
+  const finalMagnet = fragment
+    ? `${augmented}#${fragment}`
+    : augmented;
+
+  return {
+    magnet: finalMagnet,
+    appended: true,
+    hasProbeTrackers: true,
+  };
+}
+
+function normalizeNumber(value, fallback = 0) {
+  const coerced = Number(value);
+  if (Number.isFinite(coerced)) {
+    return coerced;
+  }
+  return fallback;
+}
+
+function toError(err) {
+  if (err instanceof Error) {
+    return err;
+  }
+  try {
+    return new Error(String(err));
+  } catch (stringifyError) {
+    return new Error("Unknown error");
+  }
+}
+
 export class TorrentClient {
   constructor() {
     // Reusable objects and flags
     this.client = null;
     this.currentTorrent = null;
+    this.probeClient = null;
 
     // Service worker registration is cached
     this.swRegistration = null;
@@ -14,6 +148,155 @@ export class TorrentClient {
 
     // Timeout for SW operations
     this.TIMEOUT_DURATION = 60000;
+  }
+
+  ensureClientForProbe() {
+    if (!this.probeClient) {
+      this.probeClient = new WebTorrent();
+    }
+    return this.probeClient;
+  }
+
+  async probePeers(
+    magnetURI,
+    { timeoutMs = 8000, maxWebConns = 2, polls = 3 } = {}
+  ) {
+    const magnet = typeof magnetURI === "string" ? magnetURI.trim() : "";
+    if (!magnet) {
+      return {
+        healthy: false,
+        peers: 0,
+        reason: "invalid",
+        appendedTrackers: false,
+        hasProbeTrackers: false,
+        usedTrackers: [...TorrentClient.PROBE_TRACKERS],
+        durationMs: 0,
+      };
+    }
+
+    const trackers = normalizeTrackerList(TorrentClient.PROBE_TRACKERS);
+    const { magnet: augmentedMagnet, appended, hasProbeTrackers } =
+      appendProbeTrackers(magnet, trackers);
+
+    if (!hasProbeTrackers) {
+      return {
+        healthy: false,
+        peers: 0,
+        reason: "no-trackers",
+        appendedTrackers: false,
+        hasProbeTrackers: false,
+        usedTrackers: trackers,
+        durationMs: 0,
+      };
+    }
+
+    const client = this.ensureClientForProbe();
+    const safeTimeout = Math.max(0, normalizeNumber(timeoutMs, 8000));
+    const safePolls = Math.max(1, Math.floor(normalizeNumber(polls, 3)));
+    const safeMaxWebConns = Math.max(1, Math.floor(normalizeNumber(maxWebConns, 2)));
+    const pollInterval = Math.max(
+      250,
+      Math.floor(safeTimeout / Math.max(1, safePolls))
+    );
+
+    const startedAt =
+      typeof performance !== "undefined" && performance?.now
+        ? performance.now()
+        : Date.now();
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let torrent = null;
+      let timeoutId = null;
+      let pollId = null;
+
+      const finalize = (overrides = {}) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (pollId) {
+          clearInterval(pollId);
+          pollId = null;
+        }
+        if (torrent) {
+          try {
+            torrent.destroy({ destroyStore: true });
+          } catch (err) {
+            // ignore
+          }
+        }
+
+        const endedAt =
+          typeof performance !== "undefined" && performance?.now
+            ? performance.now()
+            : Date.now();
+
+        resolve({
+          healthy: false,
+          peers: 0,
+          reason: "timeout",
+          appendedTrackers: appended,
+          hasProbeTrackers,
+          usedTrackers: trackers,
+          durationMs: Math.max(0, endedAt - startedAt),
+          ...overrides,
+        });
+      };
+
+      try {
+        torrent = client.add(augmentedMagnet, {
+          announce: trackers,
+          maxWebConns: safeMaxWebConns,
+        });
+      } catch (err) {
+        finalize({
+          reason: "error",
+          error: toError(err),
+          peers: 0,
+        });
+        return;
+      }
+
+      const settleHealthy = () => {
+        const peers = Math.max(1, Math.floor(normalizeNumber(torrent?.numPeers, 1)));
+        finalize({ healthy: true, peers, reason: "peer" });
+      };
+
+      torrent.once("wire", settleHealthy);
+
+      torrent.once("error", (err) => {
+        finalize({
+          healthy: false,
+          reason: "error",
+          error: toError(err),
+          peers: Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0))),
+        });
+      });
+
+      if (safeTimeout > 0) {
+        timeoutId = setTimeout(() => {
+          finalize({
+            healthy: false,
+            peers: Math.max(0, Math.floor(normalizeNumber(torrent?.numPeers, 0))),
+          });
+        }, safeTimeout);
+      }
+
+      pollId = setInterval(() => {
+        if (!torrent || settled) {
+          return;
+        }
+        const peers = Math.max(0, Math.floor(normalizeNumber(torrent.numPeers, 0)));
+        if (peers > 0) {
+          finalize({ healthy: true, peers, reason: "peer" });
+        }
+      }, pollInterval);
+    });
   }
 
   log(msg) {
@@ -502,6 +785,10 @@ export class TorrentClient {
         await this.client.destroy();
         this.client = null;
       }
+      if (this.probeClient) {
+        await this.probeClient.destroy();
+        this.probeClient = null;
+      }
       this.currentTorrent = null;
       this.serverCreated = false;
     } catch (error) {
@@ -509,5 +796,7 @@ export class TorrentClient {
     }
   }
 }
+
+TorrentClient.PROBE_TRACKERS = DEFAULT_PROBE_TRACKERS;
 
 export const torrentClient = new TorrentClient();

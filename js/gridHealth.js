@@ -1,12 +1,229 @@
 import { infoHashFromMagnet } from "./magnets.js";
-import {
-  getDefaultHealth,
-  getHealthCached,
-  queueHealthCheck,
-} from "./healthService.js";
+import { TorrentClient, torrentClient } from "./webtorrent.js";
 
 const containerState = new WeakMap();
 const ROOT_MARGIN = "200px 0px";
+
+function now() {
+  return Date.now();
+}
+
+function getCacheEntry(key) {
+  if (!key) {
+    return null;
+  }
+  const entry = probeCache.get(key);
+  if (!entry) {
+    return null;
+  }
+  if (now() - entry.ts > PROBE_CACHE_TTL_MS) {
+    probeCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function setCacheEntry(key, value) {
+  if (!key) {
+    return;
+  }
+  probeCache.set(key, { ts: now(), value });
+}
+
+function formatTime(ts) {
+  if (!Number.isFinite(ts)) {
+    return "";
+  }
+  try {
+    return new Date(ts).toLocaleTimeString([], { hour12: false });
+  } catch (err) {
+    return new Date(ts).toLocaleTimeString();
+  }
+}
+
+function buildTooltip({ peers = 0, checkedAt, reason } = {}) {
+  const parts = [];
+  if (Number.isFinite(peers)) {
+    parts.push(`Peers: ${Math.max(0, peers)}`);
+  }
+  if (Number.isFinite(checkedAt)) {
+    const formatted = formatTime(checkedAt);
+    if (formatted) {
+      parts.push(`Checked ${formatted}`);
+    }
+  }
+  if (typeof reason === "string" && reason && reason !== "peer") {
+    let normalizedReason;
+    if (reason === "timeout") {
+      normalizedReason = "Timed out";
+    } else if (reason === "no-trackers") {
+      normalizedReason = "No WSS trackers";
+    } else if (reason === "invalid") {
+      normalizedReason = "Invalid magnet";
+    } else {
+      normalizedReason = reason.charAt(0).toUpperCase() + reason.slice(1);
+    }
+    parts.push(normalizedReason);
+  }
+  if (!parts.length) {
+    return "WebTorrent status unknown";
+  }
+  return `WebTorrent • ${parts.join(" • ")}`;
+}
+
+function normalizeResult(result) {
+  const fallback = {
+    healthy: false,
+    peers: 0,
+    reason: "error",
+    appendedTrackers: false,
+    hasProbeTrackers: false,
+    usedTrackers: Array.isArray(TorrentClient.PROBE_TRACKERS)
+      ? [...TorrentClient.PROBE_TRACKERS]
+      : [],
+    durationMs: 0,
+  };
+  if (!result || typeof result !== "object") {
+    return { ...fallback, checkedAt: now() };
+  }
+  const peers = Number.isFinite(result.peers)
+    ? Math.max(0, Number(result.peers))
+    : 0;
+  const healthy = Boolean(result.healthy) && peers > 0;
+  const reason = typeof result.reason === "string" ? result.reason : "error";
+  return {
+    healthy,
+    peers: healthy ? Math.max(1, peers) : peers,
+    reason,
+    appendedTrackers: Boolean(result.appendedTrackers),
+    hasProbeTrackers:
+      typeof result.hasProbeTrackers === "boolean"
+        ? result.hasProbeTrackers
+        : healthy || Boolean(result.appendedTrackers),
+    usedTrackers: Array.isArray(result.usedTrackers)
+      ? result.usedTrackers.slice()
+      : fallback.usedTrackers,
+    durationMs: Number.isFinite(result.durationMs)
+      ? Math.max(0, Number(result.durationMs))
+      : 0,
+    checkedAt: now(),
+  };
+}
+
+function queueProbe(magnet, cacheKey) {
+  if (!magnet) {
+    return Promise.resolve(null);
+  }
+
+  const cached = getCacheEntry(cacheKey);
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+
+  if (probeInflight.has(cacheKey)) {
+    return probeInflight.get(cacheKey);
+  }
+
+  const job = probeQueue
+    .run(() =>
+      torrentClient
+        .probePeers(magnet, {
+          timeoutMs: PROBE_TIMEOUT_MS,
+          maxWebConns: 2,
+          polls: PROBE_POLL_COUNT,
+        })
+        .catch((err) => ({
+          healthy: false,
+          peers: 0,
+          reason: "error",
+          error: err,
+          appendedTrackers: false,
+          hasProbeTrackers: false,
+        }))
+    )
+    .then((result) => {
+      const normalized = normalizeResult(result);
+      if (cacheKey) {
+        setCacheEntry(cacheKey, normalized);
+      }
+      return normalized;
+    })
+    .finally(() => {
+      if (cacheKey) {
+        probeInflight.delete(cacheKey);
+      }
+    });
+
+  if (cacheKey) {
+    probeInflight.set(cacheKey, job);
+  }
+
+  return job;
+}
+
+const PROBE_CACHE_TTL_MS = 5 * 60 * 1000;
+const PROBE_TIMEOUT_MS = 8000;
+const PROBE_CONCURRENCY = 3;
+const PROBE_POLL_COUNT = 3;
+
+class ProbeQueue {
+  constructor(max = 2) {
+    this.max = Math.max(1, Number(max) || 1);
+    this.running = 0;
+    this.queue = [];
+  }
+
+  run(task) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ task, resolve, reject });
+      this.drain();
+    });
+  }
+
+  drain() {
+    if (this.running >= this.max) {
+      return;
+    }
+    const job = this.queue.shift();
+    if (!job) {
+      return;
+    }
+    this.running += 1;
+    let finished = false;
+    const finalize = () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      this.running -= 1;
+      this.drain();
+    };
+
+    let result;
+    try {
+      result = job.task();
+    } catch (err) {
+      job.reject(err);
+      finalize();
+      return;
+    }
+
+    Promise.resolve(result)
+      .then((value) => {
+        job.resolve(value);
+      })
+      .catch((err) => {
+        job.reject(err);
+      })
+      .finally(() => {
+        finalize();
+      });
+  }
+}
+
+const probeQueue = new ProbeQueue(PROBE_CONCURRENCY);
+const probeCache = new Map();
+const probeInflight = new Map();
 
 function ensureState(container) {
   let state = containerState.get(container);
@@ -38,23 +255,7 @@ function ensureState(container) {
   return state;
 }
 
-function toVisual(health) {
-  if (!health) {
-    return "unknown";
-  }
-  if (health.ok && health.seeders > 0) {
-    return "good";
-  }
-  if (health.responded) {
-    if (health.seeders > 0) {
-      return "good";
-    }
-    return "none";
-  }
-  return "noresp";
-}
-
-function setBadge(card, visual, health) {
+function setBadge(card, state, details) {
   const badge = card.querySelector(".torrent-health-badge");
   if (!badge) {
     return;
@@ -80,65 +281,61 @@ function setBadge(card, visual, health) {
   badge.className = baseClasses.join(" ");
 
   const map = {
-    good: {
-      icon: "✅",
-      aria: "WebTorrent fallback ready",
+    healthy: {
+      icon: "🟢",
+      aria: "WebTorrent peers available",
       classes: ["bg-green-900", "text-green-200"],
       role: "status",
     },
-    none: {
-      icon: "⚠️",
-      aria: "No seeders reported by trackers",
-      classes: ["bg-amber-900", "text-amber-200"],
-      role: "status",
-    },
-    noresp: {
-      icon: "❌",
-      aria: "No tracker response",
+    unhealthy: {
+      icon: "🔴",
+      aria: "WebTorrent peers unavailable",
       classes: ["bg-red-900", "text-red-200"],
       role: "alert",
     },
     checking: {
       icon: "⏳",
-      aria: "Checking Torrent availability",
+      aria: "Checking WebTorrent peers",
       classes: ["bg-gray-800", "text-gray-300"],
       role: "status",
     },
     unknown: {
-      icon: "⚠️",
-      aria: "Torrent availability unknown",
-      classes: ["bg-amber-900", "text-amber-200"],
+      icon: "⚪",
+      aria: "WebTorrent status unknown",
+      classes: ["bg-gray-800", "text-gray-300"],
       role: "status",
     },
   };
 
-  const entry = map[visual] || map.unknown;
+  const entry = map[state] || map.unknown;
   entry.classes.forEach((cls) => badge.classList.add(cls));
 
-  const seederCount =
-    health && Number.isFinite(health.seeders) && health.seeders > 0
-      ? health.seeders
-      : null;
-  const countText = seederCount ? ` (${seederCount})` : "";
-  const ariaCount = seederCount ? ` with ${seederCount} seeders` : "";
+  const peers =
+    details && Number.isFinite(details.peers)
+      ? Math.max(0, Number(details.peers))
+      : 0;
+  const peersText = state === "healthy" && peers > 0 ? ` (${peers})` : "";
 
   const iconPrefix = entry.icon ? `${entry.icon} ` : "";
-  badge.textContent = `${iconPrefix}Torrent${countText}`;
-  const ariaLabel = `${entry.aria}${ariaCount}`;
-  badge.setAttribute("aria-label", ariaLabel);
-  badge.setAttribute("title", ariaLabel);
-  badge.setAttribute("aria-live", "polite");
+  badge.textContent = `${iconPrefix}WebTorrent${peersText}`;
+  const tooltip =
+    state === "checking" || state === "unknown"
+      ? entry.aria
+      : buildTooltip({
+          peers,
+          checkedAt: details?.checkedAt,
+          reason: details?.reason,
+        });
+  badge.setAttribute("aria-label", tooltip);
+  badge.setAttribute("title", tooltip);
+  badge.setAttribute("aria-live", entry.role === "alert" ? "assertive" : "polite");
   badge.setAttribute("role", entry.role);
-  badge.dataset.streamHealthState = visual;
-}
-
-function applyHealth(card, health) {
-  if (!health) {
-    setBadge(card, "unknown");
-    return;
+  badge.dataset.streamHealthState = state;
+  if (Number.isFinite(peers)) {
+    badge.dataset.streamHealthPeers = String(peers);
+  } else if (badge.dataset.streamHealthPeers) {
+    delete badge.dataset.streamHealthPeers;
   }
-  const visual = toVisual(health);
-  setBadge(card, visual, health);
 }
 
 function handleCardVisible({ card, pendingByCard }) {
@@ -157,32 +354,55 @@ function handleCardVisible({ card, pendingByCard }) {
     return;
   }
 
-  const cached = getHealthCached(infoHash);
-  if (cached) {
-    applyHealth(card, cached);
-    return;
-  }
-
   if (pendingByCard.has(card)) {
     return;
   }
 
-  setBadge(card, "checking", getDefaultHealth());
-  const pending = queueHealthCheck(magnet).then((health) => {
-    pendingByCard.delete(card);
-    if (!card.isConnected) {
-      return;
-    }
-    applyHealth(card, health);
-  });
-  pending.catch(() => {
-    pendingByCard.delete(card);
-    if (!card.isConnected) {
-      return;
-    }
-    setBadge(card, "noresp");
-  });
-  pendingByCard.set(card, pending);
+  const cached = getCacheEntry(infoHash);
+  if (cached) {
+    const cachedState = cached.healthy
+      ? "healthy"
+      : cached.hasProbeTrackers
+      ? "unhealthy"
+      : "unknown";
+    setBadge(card, cachedState, cached);
+    return;
+  }
+
+  setBadge(card, "checking");
+
+  const probePromise = queueProbe(magnet, infoHash);
+
+  pendingByCard.set(card, probePromise);
+
+  probePromise
+    .then((result) => {
+      pendingByCard.delete(card);
+      if (!card.isConnected) {
+        return;
+      }
+      if (!result) {
+        setBadge(card, "unknown");
+        return;
+      }
+      if (!result.hasProbeTrackers) {
+        setBadge(card, "unknown", result);
+        return;
+      }
+      if (result.healthy) {
+        setBadge(card, "healthy", result);
+        return;
+      }
+      setBadge(card, "unhealthy", result);
+    })
+    .catch((err) => {
+      console.warn("[gridHealth] probe failed", err);
+      pendingByCard.delete(card);
+      if (!card.isConnected) {
+        return;
+      }
+      setBadge(card, "unhealthy");
+    });
 }
 
 export function attachHealthBadges(container) {
