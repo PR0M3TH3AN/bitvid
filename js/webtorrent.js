@@ -307,6 +307,26 @@ export class TorrentClient {
     }
   }
 
+  attemptAutoplay(videoElement, context = "webtorrent") {
+    if (!videoElement || typeof videoElement.play !== "function") {
+      return;
+    }
+
+    videoElement
+      .play()
+      .catch((err) => {
+        this.log(`Autoplay failed (${context} path):`, err);
+        if (videoElement.muted) {
+          return;
+        }
+        this.log(`Retrying with muted autoplay (${context} path).`);
+        videoElement.muted = true;
+        videoElement.play().catch((err2) => {
+          this.log(`Muted autoplay also failed (${context} path):`, err2);
+        });
+      });
+  }
+
   // Handle Chrome-based browsers
   handleChromeTorrent(torrent, videoElement, resolve, reject) {
     // Prune demo web seeds/trackers that chronically trip Chromium CORS and
@@ -342,18 +362,19 @@ export class TorrentClient {
     }
 
     // Satisfy autoplay requirements and keep cross-origin chunks usable (e.g., for snapshots).
-    videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
     videoElement.addEventListener("error", (e) => {
       this.log("Video error:", e.target.error);
     });
 
-    videoElement.addEventListener("canplay", () => {
-      videoElement.play().catch((err) => {
-        this.log("Autoplay failed:", err);
-      });
-    });
+    videoElement.addEventListener(
+      "canplay",
+      () => {
+        this.attemptAutoplay(videoElement, "chrome");
+      },
+      { once: true }
+    );
 
     try {
       file.streamTo(videoElement);
@@ -380,18 +401,19 @@ export class TorrentClient {
     }
 
     // Satisfy autoplay requirements and keep cross-origin chunks usable (e.g., for snapshots).
-    videoElement.muted = true;
     videoElement.crossOrigin = "anonymous";
 
     videoElement.addEventListener("error", (e) => {
       this.log("Video error (Firefox path):", e.target.error);
     });
 
-    videoElement.addEventListener("canplay", () => {
-      videoElement.play().catch((err) => {
-        this.log("Autoplay failed:", err);
-      });
-    });
+    videoElement.addEventListener(
+      "canplay",
+      () => {
+        this.attemptAutoplay(videoElement, "firefox");
+      },
+      { once: true }
+    );
 
     try {
       file.streamTo(videoElement, { highWaterMark: 256 * 1024 });
