@@ -455,6 +455,10 @@ class bitvidApp {
     this.closeUploadModalBtn =
       document.getElementById("closeUploadModal") || null;
     this.uploadForm = document.getElementById("uploadForm") || null;
+    this.uploadModeToggleButtons = [];
+    this.customUploadSection = null;
+    this.cloudflareUploadSection = null;
+    this.activeUploadMode = "custom";
 
     // Optional small inline player stats
     this.status = document.getElementById("status") || null;
@@ -1041,6 +1045,13 @@ class bitvidApp {
       this.closeUploadModalBtn =
         document.getElementById("closeUploadModal") || null;
       this.uploadForm = document.getElementById("uploadForm") || null;
+      this.uploadModeToggleButtons = Array.from(
+        document.querySelectorAll(".upload-mode-toggle[data-upload-mode]")
+      );
+      this.customUploadSection =
+        document.getElementById("customUploadSection") || null;
+      this.cloudflareUploadSection =
+        document.getElementById("cloudflareUploadSection") || null;
 
       // Optional: if close button found, wire up
       if (this.closeUploadModalBtn) {
@@ -1058,12 +1069,59 @@ class bitvidApp {
         });
       }
 
+      if (this.uploadModeToggleButtons.length > 0) {
+        this.uploadModeToggleButtons.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const mode = btn.dataset.uploadMode || "custom";
+            this.setUploadMode(mode);
+          });
+        });
+      }
+
+      this.setUploadMode(this.activeUploadMode);
+
       console.log("Upload modal initialization successful");
       return true;
     } catch (error) {
       console.error("initUploadModal failed:", error);
       this.showError(`Failed to initialize upload modal: ${error.message}`);
       return false;
+    }
+  }
+
+  setUploadMode(mode) {
+    const normalized = mode === "cloudflare" ? "cloudflare" : "custom";
+    this.activeUploadMode = normalized;
+
+    if (this.customUploadSection) {
+      if (normalized === "custom") {
+        this.customUploadSection.classList.remove("hidden");
+      } else {
+        this.customUploadSection.classList.add("hidden");
+      }
+    }
+
+    if (this.cloudflareUploadSection) {
+      if (normalized === "cloudflare") {
+        this.cloudflareUploadSection.classList.remove("hidden");
+      } else {
+        this.cloudflareUploadSection.classList.add("hidden");
+      }
+    }
+
+    if (Array.isArray(this.uploadModeToggleButtons)) {
+      this.uploadModeToggleButtons.forEach((btn) => {
+        if (!btn || !btn.dataset) {
+          return;
+        }
+
+        const isActive = btn.dataset.uploadMode === normalized;
+        btn.classList.toggle("bg-blue-500", isActive);
+        btn.classList.toggle("text-white", isActive);
+        btn.classList.toggle("shadow", isActive);
+        btn.classList.toggle("text-gray-300", !isActive);
+        btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+      });
     }
   }
 
