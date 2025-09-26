@@ -50,8 +50,34 @@
       </div>
 
       <!-- Form Content -->
-      <div class="p-6 space-y-4">
-        <form id="uploadForm" class="space-y-4">
+      <div class="p-6 space-y-6">
+        <div class="flex justify-center">
+          <div
+            class="inline-flex items-center rounded-full bg-gray-800/80 p-1 text-sm"
+            role="group"
+            aria-label="Upload mode selector"
+          >
+            <button
+              type="button"
+              class="upload-mode-toggle flex-1 rounded-full px-4 py-2 font-medium text-gray-300 transition-colors hover:bg-gray-700/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+              data-upload-mode="custom"
+              aria-pressed="true"
+            >
+              Custom
+            </button>
+            <button
+              type="button"
+              class="upload-mode-toggle flex-1 rounded-full px-4 py-2 font-medium text-gray-300 transition-colors hover:bg-gray-700/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+              data-upload-mode="cloudflare"
+              aria-pressed="false"
+            >
+              Cloudflare
+            </button>
+          </div>
+        </div>
+
+        <div id="customUploadSection">
+          <form id="uploadForm" class="space-y-4">
           <p class="text-sm text-gray-400">
             Share a title plus either a hosted video URL or a magnet link. Providing both helps Bitvid fall back gracefully.
           </p>
@@ -166,6 +192,15 @@
             Publish
           </button>
         </form>
+        </div>
+
+        <div id="cloudflareUploadSection" class="hidden">
+          <div
+            class="flex min-h-[320px] items-center justify-center rounded-lg border border-dashed border-gray-700 bg-black/20 p-8 text-center text-sm text-gray-400"
+          >
+            Cloudflare uploads are coming soon.
+          </div>
+        </div>
       </div>
     </div>
   </div>
