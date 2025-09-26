@@ -480,6 +480,7 @@ class bitvidApp {
     this.creatorNpub = null;
     this.copyMagnetBtn = null;
     this.shareBtn = null;
+    this.modalZapBtn = null;
     this.modalPosterCleanup = null;
     this.cleanupPromise = null;
 
@@ -845,6 +846,7 @@ class bitvidApp {
     // Copy/Share buttons
     this.copyMagnetBtn = document.getElementById("copyMagnetBtn") || null;
     this.shareBtn = document.getElementById("shareBtn") || null;
+    this.modalZapBtn = document.getElementById("modalZapBtn") || null;
 
     // Attach existing event listeners for copy/share
     if (this.copyMagnetBtn) {
@@ -867,6 +869,11 @@ class bitvidApp {
           .writeText(shareUrl)
           .then(() => this.showSuccess("Video link copied to clipboard!"))
           .catch(() => this.showError("Failed to copy the link."));
+      });
+    }
+    if (this.modalZapBtn) {
+      this.modalZapBtn.addEventListener("click", () => {
+        window.alert("Zaps coming soon.");
       });
     }
 
