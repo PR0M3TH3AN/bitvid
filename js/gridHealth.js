@@ -441,13 +441,13 @@ function setBadge(card, state, details) {
     delete badge.dataset.streamHealthPeers;
   }
 
-  const card = badge.closest(".video-card");
-  if (card) {
-    card.dataset.streamHealthState = state;
+  const cardEl = badge.closest(".video-card");
+  if (cardEl) {
+    cardEl.dataset.streamHealthState = state;
     if (hasPeerCount) {
-      card.dataset.streamHealthPeers = peersTextValue;
-    } else if (card.dataset.streamHealthPeers) {
-      delete card.dataset.streamHealthPeers;
+      cardEl.dataset.streamHealthPeers = peersTextValue;
+    } else if (cardEl.dataset.streamHealthPeers) {
+      delete cardEl.dataset.streamHealthPeers;
     }
   }
 }
