@@ -360,6 +360,13 @@ async function loadUserVideos(pubkey) {
         "duration-300"
       );
 
+      cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
+      if (typeof video.pubkey === "string" && video.pubkey) {
+        cardEl.dataset.ownerPubkey = video.pubkey;
+      } else if (cardEl.dataset.ownerPubkey) {
+        delete cardEl.dataset.ownerPubkey;
+      }
+
       const rawMagnet =
         typeof video.magnet === "string" ? video.magnet : "";
       const trimmedMagnet = rawMagnet ? rawMagnet.trim() : "";
@@ -431,6 +438,15 @@ async function loadUserVideos(pubkey) {
         cardEl.dataset.torrentSupported = "true";
       } else if (cardEl.dataset.torrentSupported) {
         delete cardEl.dataset.torrentSupported;
+      }
+
+      cardEl.dataset.urlHealthState = trimmedUrl ? "checking" : "absent";
+      if (magnetProvided && magnetSupported) {
+        cardEl.dataset.streamHealthState = "checking";
+      } else if (magnetProvided) {
+        cardEl.dataset.streamHealthState = "unsupported";
+      } else {
+        cardEl.dataset.streamHealthState = "absent";
       }
 
       if (magnetProvided) {

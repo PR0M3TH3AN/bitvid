@@ -433,10 +433,22 @@ function setBadge(card, state, details) {
   badge.setAttribute("aria-live", entry.role === "alert" ? "assertive" : "polite");
   badge.setAttribute("role", entry.role);
   badge.dataset.streamHealthState = state;
-  if (Number.isFinite(peers)) {
-    badge.dataset.streamHealthPeers = String(peers);
+  const hasPeerCount = Number.isFinite(peers);
+  const peersTextValue = hasPeerCount ? String(peers) : "";
+  if (hasPeerCount) {
+    badge.dataset.streamHealthPeers = peersTextValue;
   } else if (badge.dataset.streamHealthPeers) {
     delete badge.dataset.streamHealthPeers;
+  }
+
+  const card = badge.closest(".video-card");
+  if (card) {
+    card.dataset.streamHealthState = state;
+    if (hasPeerCount) {
+      card.dataset.streamHealthPeers = peersTextValue;
+    } else if (card.dataset.streamHealthPeers) {
+      delete card.dataset.streamHealthPeers;
+    }
   }
 }
 

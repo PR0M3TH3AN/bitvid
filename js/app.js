@@ -3243,6 +3243,10 @@ class bitvidApp {
     const hadMargin = badgeEl.classList.contains("mt-3");
 
     badgeEl.dataset.urlHealthState = status;
+    const cardEl = badgeEl.closest(".video-card");
+    if (cardEl) {
+      cardEl.dataset.urlHealthState = status;
+    }
     badgeEl.setAttribute("aria-live", "polite");
     badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
     badgeEl.textContent = message;
@@ -3677,6 +3681,22 @@ class bitvidApp {
       template.innerHTML = cardHtml.trim();
       const cardEl = template.content.firstElementChild;
       if (cardEl) {
+        cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
+        if (typeof video.pubkey === "string" && video.pubkey) {
+          cardEl.dataset.ownerPubkey = video.pubkey;
+        } else if (cardEl.dataset.ownerPubkey) {
+          delete cardEl.dataset.ownerPubkey;
+        }
+
+        cardEl.dataset.urlHealthState = trimmedUrl ? "checking" : "absent";
+        if (magnetProvided && magnetSupported) {
+          cardEl.dataset.streamHealthState = "checking";
+        } else if (magnetProvided) {
+          cardEl.dataset.streamHealthState = "unsupported";
+        } else {
+          cardEl.dataset.streamHealthState = "absent";
+        }
+
         const thumbnailEl = cardEl.querySelector("[data-video-thumbnail]");
         if (thumbnailEl) {
           const markThumbnailAsLoaded = () => {

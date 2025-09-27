@@ -467,6 +467,22 @@ class SubscriptionsManager {
       t.innerHTML = cardHtml.trim();
       const cardEl = t.content.firstElementChild;
       if (cardEl) {
+        cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
+        if (typeof video.pubkey === "string" && video.pubkey) {
+          cardEl.dataset.ownerPubkey = video.pubkey;
+        } else if (cardEl.dataset.ownerPubkey) {
+          delete cardEl.dataset.ownerPubkey;
+        }
+
+        cardEl.dataset.urlHealthState = trimmedUrl ? "checking" : "absent";
+        if (magnetProvided && magnetSupported) {
+          cardEl.dataset.streamHealthState = "checking";
+        } else if (magnetProvided) {
+          cardEl.dataset.streamHealthState = "unsupported";
+        } else {
+          cardEl.dataset.streamHealthState = "absent";
+        }
+
         // Leave the data-play-* attributes empty in the literal markup so we can
         // assign the raw URL/magnet strings post-parsing without HTML entity
         // escaping, mirroring the approach in app.js. The URL is encoded so that

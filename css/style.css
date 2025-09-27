@@ -74,6 +74,10 @@ header img {
   box-shadow: var(--shadow-md);
 }
 
+.video-card[data-owner-is-viewer="false"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
+  display: none;
+}
+
 .video-card--enter {
   opacity: 0;
   animation: video-card-fade-in 220ms ease-out forwards;
