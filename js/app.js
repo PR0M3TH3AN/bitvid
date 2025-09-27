@@ -4561,8 +4561,30 @@ class bitvidApp {
       return { outcome: "opaque" };
     }
 
+    if (!response.ok) {
+      const fallback = await this.probeUrlWithVideoElement(trimmed);
+      if (fallback && fallback.outcome) {
+        return fallback;
+      }
+      return {
+        outcome: "bad",
+        status: response.status,
+      };
+    }
+
+    const playbackCheck = await this.probeUrlWithVideoElement(trimmed);
+    if (playbackCheck && playbackCheck.outcome) {
+      if (playbackCheck.outcome === "ok") {
+        return {
+          ...playbackCheck,
+          status: response.status,
+        };
+      }
+      return playbackCheck;
+    }
+
     return {
-      outcome: response.ok ? "ok" : "bad",
+      outcome: "ok",
       status: response.status,
     };
   }
