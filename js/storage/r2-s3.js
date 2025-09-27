@@ -1,10 +1,12 @@
 // js/storage/r2-s3.js
 import {
   S3Client,
+  CreateBucketCommand,
   CreateMultipartUploadCommand,
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  HeadBucketCommand,
   PutBucketCorsCommand,
 } from "https://esm.sh/@aws-sdk/client-s3@3.637.0?target=es2022&bundle";
 
@@ -42,6 +44,34 @@ export function makeR2Client({ accountId, accessKeyId, secretAccessKey }) {
   });
 }
 
+async function ensureBucketExists({ s3, bucket }) {
+  try {
+    await s3.send(new HeadBucketCommand({ Bucket: bucket }));
+    return;
+  } catch (error) {
+    const status = error?.$metadata?.httpStatusCode || 0;
+    const code = error?.name || error?.Code || "";
+    if (status !== 404 && code !== "NotFound" && code !== "NoSuchBucket") {
+      throw error;
+    }
+  }
+
+  try {
+    await s3.send(new CreateBucketCommand({ Bucket: bucket }));
+  } catch (error) {
+    const status = error?.$metadata?.httpStatusCode || 0;
+    const code = error?.name || error?.Code || "";
+    if (
+      status === 409 ||
+      code === "BucketAlreadyOwnedByYou" ||
+      code === "BucketAlreadyExists"
+    ) {
+      return;
+    }
+    throw error;
+  }
+}
+
 export async function ensureBucketCors({ s3, bucket, origins }) {
   if (!s3) {
     throw new Error("S3 client is required to configure CORS");
@@ -54,6 +84,8 @@ export async function ensureBucketCors({ s3, bucket, origins }) {
   if (allowedOrigins.length === 0) {
     return;
   }
+
+  await ensureBucketExists({ s3, bucket });
 
   const command = new PutBucketCorsCommand({
     Bucket: bucket,
