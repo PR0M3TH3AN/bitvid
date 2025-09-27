@@ -226,12 +226,19 @@ function writeUrlHealthToCache(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) 
  * event simultaneously do not all fire off duplicate requests. The stored
  * metadata includes the URL so edits invalidate the old request immediately.
  */
-function setInFlightUrlProbe(eventId, url, promise) {
+function buildUrlProbeKey(url, options = {}) {
+  const trimmed = typeof url === "string" ? url : "";
+  const mode = options?.confirmPlayable ? "playable" : "basic";
+  return `${trimmed}::${mode}`;
+}
+
+function setInFlightUrlProbe(eventId, url, promise, options = {}) {
   if (!eventId || !promise) {
     return;
   }
 
-  urlHealthInFlight.set(eventId, { promise, url });
+  const key = buildUrlProbeKey(url, options);
+  urlHealthInFlight.set(eventId, { promise, key });
   promise.finally(() => {
     const current = urlHealthInFlight.get(eventId);
     if (current && current.promise === promise) {
@@ -240,7 +247,7 @@ function setInFlightUrlProbe(eventId, url, promise) {
   });
 }
 
-function getInFlightUrlProbe(eventId, url) {
+function getInFlightUrlProbe(eventId, url, options = {}) {
   if (!eventId) {
     return null;
   }
@@ -250,7 +257,8 @@ function getInFlightUrlProbe(eventId, url) {
     return null;
   }
 
-  if (url && entry.url && entry.url !== url) {
+  const key = buildUrlProbeKey(url, options);
+  if (entry.key && entry.key !== key) {
     return null;
   }
 
@@ -3308,7 +3316,8 @@ class bitvidApp {
 
     this.updateUrlHealthBadge(badgeEl, { status: "checking" }, eventId);
 
-    const existingProbe = getInFlightUrlProbe(eventId, trimmedUrl);
+    const probeOptions = { confirmPlayable: true };
+    const existingProbe = getInFlightUrlProbe(eventId, trimmedUrl, probeOptions);
     if (existingProbe) {
       existingProbe
         .then((entry) => {
@@ -3325,14 +3334,14 @@ class bitvidApp {
       return;
     }
 
-    const probePromise = this.probeUrl(trimmedUrl)
+    const probePromise = this.probeUrl(trimmedUrl, probeOptions)
       .then((result) => {
         const outcome = result?.outcome || "error";
         let entry;
 
         if (outcome === "ok") {
           entry = { status: "healthy", message: "✅ CDN" };
-        } else if (outcome === "opaque") {
+        } else if (outcome === "opaque" || outcome === "unknown") {
           entry = {
             status: "unknown",
             message: "⚠️ CDN",
@@ -3360,7 +3369,7 @@ class bitvidApp {
         return this.storeUrlHealth(eventId, trimmedUrl, entry);
       });
 
-    setInFlightUrlProbe(eventId, trimmedUrl, probePromise);
+    setInFlightUrlProbe(eventId, trimmedUrl, probePromise, probeOptions);
 
     probePromise
       .then((entry) => {
@@ -4485,11 +4494,33 @@ class bitvidApp {
     });
   }
 
-  async probeUrl(url) {
+  async probeUrl(url, options = {}) {
     const trimmed = typeof url === "string" ? url.trim() : "";
     if (!trimmed) {
       return { outcome: "invalid" };
     }
+
+    const confirmPlayable = options?.confirmPlayable === true;
+
+    const confirmWithVideoElement = async () => {
+      if (!confirmPlayable) {
+        return null;
+      }
+
+      try {
+        const result = await this.probeUrlWithVideoElement(trimmed);
+        if (result && result.outcome) {
+          return result;
+        }
+      } catch (err) {
+        console.warn(
+          `[probeUrl] Video element probe threw for ${trimmed}:`,
+          err
+        );
+      }
+
+      return null;
+    };
 
     const supportsAbort = typeof AbortController !== "undefined";
     const controller = supportsAbort ? new AbortController() : null;
@@ -4529,11 +4560,13 @@ class bitvidApp {
         clearTimeout(timeoutId);
       }
       console.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
-      const fallback = await this.probeUrlWithVideoElement(trimmed);
-      if (fallback && fallback.outcome) {
+      const fallback = await confirmWithVideoElement();
+      if (fallback) {
         return fallback;
       }
-      return { outcome: "error", error: err };
+      return confirmPlayable
+        ? { outcome: "error", error: err }
+        : { outcome: "unknown", error: err };
     }
 
     if (timeoutId) {
@@ -4541,11 +4574,11 @@ class bitvidApp {
     }
 
     if (responseOrTimeout && responseOrTimeout.outcome === "timeout") {
-      const fallback = await this.probeUrlWithVideoElement(trimmed);
-      if (fallback && fallback.outcome) {
+      const fallback = await confirmWithVideoElement();
+      if (fallback) {
         return fallback;
       }
-      return { outcome: "timeout" };
+      return confirmPlayable ? { outcome: "timeout" } : { outcome: "unknown" };
     }
 
     const response = responseOrTimeout;
@@ -4554,16 +4587,16 @@ class bitvidApp {
     }
 
     if (response.type === "opaque") {
-      const fallback = await this.probeUrlWithVideoElement(trimmed);
-      if (fallback && fallback.outcome) {
+      const fallback = await confirmWithVideoElement();
+      if (fallback) {
         return fallback;
       }
-      return { outcome: "opaque" };
+      return { outcome: confirmPlayable ? "opaque" : "unknown" };
     }
 
     if (!response.ok) {
-      const fallback = await this.probeUrlWithVideoElement(trimmed);
-      if (fallback && fallback.outcome) {
+      const fallback = await confirmWithVideoElement();
+      if (fallback) {
         return fallback;
       }
       return {
@@ -4572,8 +4605,8 @@ class bitvidApp {
       };
     }
 
-    const playbackCheck = await this.probeUrlWithVideoElement(trimmed);
-    if (playbackCheck && playbackCheck.outcome) {
+    const playbackCheck = await confirmWithVideoElement();
+    if (playbackCheck) {
       if (playbackCheck.outcome === "ok") {
         return {
           ...playbackCheck,
