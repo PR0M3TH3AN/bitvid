@@ -4834,6 +4834,32 @@ class bitvidApp {
         fallbackStarted = true;
         this.cleanupUrlPlaybackWatchdog();
         cleanupHostedUrlStatusListeners();
+
+        if (videoEl) {
+          try {
+            videoEl.pause();
+          } catch (err) {
+            this.log(
+              "[playVideoWithFallback] Ignoring pause error before torrent fallback:",
+              err
+            );
+          }
+          try {
+            videoEl.removeAttribute("src");
+          } catch (err) {
+            // removeAttribute throws in old browsers when the attribute does not exist
+          }
+          videoEl.src = "";
+          videoEl.srcObject = null;
+          try {
+            videoEl.load();
+          } catch (err) {
+            this.log(
+              "[playVideoWithFallback] Ignoring load error before torrent fallback:",
+              err
+            );
+          }
+        }
         if (!magnetForPlayback) {
           const message =
             "Hosted playback failed and no magnet fallback is available.";
