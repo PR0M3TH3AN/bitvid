@@ -110,7 +110,7 @@ function normalizeResult(result) {
   };
 }
 
-function queueProbe(magnet, cacheKey) {
+function queueProbe(magnet, cacheKey, priority = 0) {
   if (!magnet) {
     return Promise.resolve(null);
   }
@@ -125,21 +125,23 @@ function queueProbe(magnet, cacheKey) {
   }
 
   const job = probeQueue
-    .run(() =>
-      torrentClient
-        .probePeers(magnet, {
-          timeoutMs: PROBE_TIMEOUT_MS,
-          maxWebConns: 2,
-          polls: PROBE_POLL_COUNT,
-        })
-        .catch((err) => ({
-          healthy: false,
-          peers: 0,
-          reason: "error",
-          error: err,
-          appendedTrackers: false,
-          hasProbeTrackers: false,
-        }))
+    .run(
+      () =>
+        torrentClient
+          .probePeers(magnet, {
+            timeoutMs: PROBE_TIMEOUT_MS,
+            maxWebConns: 2,
+            polls: PROBE_POLL_COUNT,
+          })
+          .catch((err) => ({
+            healthy: false,
+            peers: 0,
+            reason: "error",
+            error: err,
+            appendedTrackers: false,
+            hasProbeTrackers: false,
+          })),
+      priority
     )
     .then((result) => {
       const normalized = normalizeResult(result);
@@ -173,11 +175,33 @@ class ProbeQueue {
     this.queue = [];
   }
 
-  run(task) {
+  run(task, priority = 0) {
     return new Promise((resolve, reject) => {
-      this.queue.push({ task, resolve, reject });
+      const normalizedPriority = Number.isFinite(priority) ? priority : 0;
+      const job = {
+        task,
+        resolve,
+        reject,
+        priority: normalizedPriority,
+      };
+      this.enqueue(job);
       this.drain();
     });
+  }
+
+  enqueue(job) {
+    if (!this.queue.length) {
+      this.queue.push(job);
+      return;
+    }
+    const index = this.queue.findIndex(
+      (existing) => existing.priority < job.priority
+    );
+    if (index === -1) {
+      this.queue.push(job);
+    } else {
+      this.queue.splice(index, 0, job);
+    }
   }
 
   drain() {
@@ -233,26 +257,104 @@ function ensureState(container) {
 
   const pendingByCard = new WeakMap();
   const observedCards = new WeakSet();
+  state = { observer: null, pendingByCard, observedCards };
 
   const observer = new IntersectionObserver(
     (entries) => {
-      entries.forEach((entry) => {
-        const card = entry.target;
-        if (!(card instanceof HTMLElement)) {
-          return;
-        }
-        if (!entry.isIntersecting) {
-          return;
-        }
-        handleCardVisible({ card, pendingByCard });
-      });
+      processObserverEntries(entries, state);
     },
     { root: null, rootMargin: ROOT_MARGIN, threshold: 0.01 }
   );
 
-  state = { observer, pendingByCard, observedCards };
+  state.observer = observer;
   containerState.set(container, state);
   return state;
+}
+
+function getViewportCenter() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const width = Number(window.innerWidth) || 0;
+  const height = Number(window.innerHeight) || 0;
+  if (width <= 0 && height <= 0) {
+    return null;
+  }
+  return {
+    x: width > 0 ? width / 2 : 0,
+    y: height > 0 ? height / 2 : 0,
+  };
+}
+
+function calculateDistanceSquared(entry, viewportCenter) {
+  if (!viewportCenter) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const rect = getIntersectionRect(entry);
+  if (!rect) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const dx = centerX - viewportCenter.x;
+  const dy = centerY - viewportCenter.y;
+  return dx * dx + dy * dy;
+}
+
+function computeVisibilityPriority({ ratio, distance }) {
+  const normalizedRatio = Number.isFinite(ratio)
+    ? Math.min(Math.max(ratio, 0), 1)
+    : 0;
+  const distanceScore = Number.isFinite(distance) ? 1 / (1 + distance) : 0;
+  return normalizedRatio * 1000 + distanceScore;
+}
+
+function prioritizeEntries(entries, viewportCenter) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isIntersecting && entry.target instanceof HTMLElement)
+    .map((entry) => {
+      const ratio =
+        typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
+      const distance = calculateDistanceSquared(entry, viewportCenter);
+      const priority = computeVisibilityPriority({ ratio, distance });
+      return { entry, ratio, distance, priority };
+    })
+    .sort((a, b) => {
+      if (b.priority !== a.priority) {
+        return b.priority - a.priority;
+      }
+      return a.distance - b.distance;
+    });
+}
+
+function processObserverEntries(entries, state) {
+  if (!state || !entries || entries.length === 0) {
+    return;
+  }
+  const viewportCenter = getViewportCenter();
+  const prioritized = prioritizeEntries(entries, viewportCenter);
+  prioritized.forEach(({ entry, priority }) => {
+    const card = entry.target;
+    handleCardVisible({ card, pendingByCard: state.pendingByCard, priority });
+  });
+}
+
+function getIntersectionRect(entry) {
+  if (!entry) {
+    return null;
+  }
+  const rect = entry.intersectionRect;
+  if (rect && rect.width > 0 && rect.height > 0) {
+    return rect;
+  }
+  const fallback = entry.boundingClientRect;
+  if (fallback && fallback.width > 0 && fallback.height > 0) {
+    return fallback;
+  }
+  return rect || fallback || null;
 }
 
 function setBadge(card, state, details) {
@@ -338,7 +440,7 @@ function setBadge(card, state, details) {
   }
 }
 
-function handleCardVisible({ card, pendingByCard }) {
+function handleCardVisible({ card, pendingByCard, priority = 0 }) {
   if (!(card instanceof HTMLElement)) {
     return;
   }
@@ -371,7 +473,7 @@ function handleCardVisible({ card, pendingByCard }) {
 
   setBadge(card, "checking");
 
-  const probePromise = queueProbe(magnet, infoHash);
+  const probePromise = queueProbe(magnet, infoHash, priority);
 
   pendingByCard.set(card, probePromise);
 
@@ -424,6 +526,7 @@ export function attachHealthBadges(container) {
       setBadge(card, "unknown");
     }
   });
+  processObserverEntries(state.observer.takeRecords(), state);
 }
 
 export function refreshHealthBadges(container) {
@@ -434,9 +537,6 @@ export function refreshHealthBadges(container) {
   if (!state) {
     return;
   }
-  state.observer.takeRecords().forEach((entry) => {
-    if (entry.isIntersecting) {
-      handleCardVisible({ card: entry.target, pendingByCard: state.pendingByCard });
-    }
-  });
+  const records = state.observer.takeRecords();
+  processObserverEntries(records, state);
 }

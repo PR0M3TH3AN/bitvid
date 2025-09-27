@@ -78,7 +78,9 @@ const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // recovers. Results are stored both in-memory and in localStorage so other
 // views can reuse them without re-probing.
 const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
+const URL_HEALTH_TIMEOUT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
 const URL_PROBE_TIMEOUT_MS = 8 * 1000; // 8 seconds
+const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
@@ -3358,7 +3360,12 @@ class bitvidApp {
           };
         }
 
-        return this.storeUrlHealth(eventId, trimmedUrl, entry);
+        const ttlOverride =
+          entry.status === "timeout" || entry.status === "unknown"
+            ? URL_HEALTH_TIMEOUT_RETRY_MS
+            : undefined;
+
+        return this.storeUrlHealth(eventId, trimmedUrl, entry, ttlOverride);
       })
       .catch((err) => {
         console.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
@@ -4507,19 +4514,42 @@ class bitvidApp {
         return null;
       }
 
-      try {
-        const result = await this.probeUrlWithVideoElement(trimmed);
-        if (result && result.outcome) {
-          return result;
+      const initialTimeout =
+        Number.isFinite(options?.videoProbeTimeoutMs) &&
+        options.videoProbeTimeoutMs > 0
+          ? options.videoProbeTimeoutMs
+          : URL_PROBE_TIMEOUT_MS;
+
+      const attemptWithTimeout = async (timeoutMs) => {
+        try {
+          const result = await this.probeUrlWithVideoElement(trimmed, timeoutMs);
+          if (result && result.outcome) {
+            return result;
+          }
+        } catch (err) {
+          console.warn(
+            `[probeUrl] Video element probe threw for ${trimmed}:`,
+            err
+          );
         }
-      } catch (err) {
-        console.warn(
-          `[probeUrl] Video element probe threw for ${trimmed}:`,
-          err
-        );
+        return null;
+      };
+
+      let result = await attemptWithTimeout(initialTimeout);
+
+      if (
+        result &&
+        result.outcome === "timeout" &&
+        Number.isFinite(URL_PROBE_TIMEOUT_RETRY_MS) &&
+        URL_PROBE_TIMEOUT_RETRY_MS > initialTimeout
+      ) {
+        const retryResult = await attemptWithTimeout(URL_PROBE_TIMEOUT_RETRY_MS);
+        if (retryResult) {
+          result = { ...retryResult, retriedAfterTimeout: true };
+        }
       }
 
-      return null;
+      return result;
     };
 
     const supportsAbort = typeof AbortController !== "undefined";
