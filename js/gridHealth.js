@@ -165,7 +165,7 @@ function queueProbe(magnet, cacheKey, priority = 0) {
 
 const PROBE_CACHE_TTL_MS = 5 * 60 * 1000;
 const PROBE_TIMEOUT_MS = 8000;
-const PROBE_CONCURRENCY = 3;
+const PROBE_CONCURRENCY = 6;
 const PROBE_POLL_COUNT = 3;
 
 class ProbeQueue {
@@ -205,43 +205,42 @@ class ProbeQueue {
   }
 
   drain() {
-    if (this.running >= this.max) {
-      return;
-    }
-    const job = this.queue.shift();
-    if (!job) {
-      return;
-    }
-    this.running += 1;
-    let finished = false;
-    const finalize = () => {
-      if (finished) {
+    while (this.running < this.max && this.queue.length > 0) {
+      const job = this.queue.shift();
+      if (!job) {
         return;
       }
-      finished = true;
-      this.running -= 1;
-      this.drain();
-    };
+      this.running += 1;
+      let finished = false;
+      const finalize = () => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        this.running -= 1;
+        this.drain();
+      };
 
-    let result;
-    try {
-      result = job.task();
-    } catch (err) {
-      job.reject(err);
-      finalize();
-      return;
-    }
-
-    Promise.resolve(result)
-      .then((value) => {
-        job.resolve(value);
-      })
-      .catch((err) => {
+      let result;
+      try {
+        result = job.task();
+      } catch (err) {
         job.reject(err);
-      })
-      .finally(() => {
         finalize();
-      });
+        continue;
+      }
+
+      Promise.resolve(result)
+        .then((value) => {
+          job.resolve(value);
+        })
+        .catch((err) => {
+          job.reject(err);
+        })
+        .finally(() => {
+          finalize();
+        });
+    }
   }
 }
 
