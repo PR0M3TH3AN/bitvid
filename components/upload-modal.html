@@ -226,7 +226,7 @@
                   </div>
                   <div>
                     <label for="r2AccessKeyId" class="block text-sm font-medium text-gray-200"
-                      >Access Key ID</label
+                      >S3 Access Key ID</label
                     >
                     <input
                       id="r2AccessKeyId"
@@ -240,7 +240,7 @@
                 </div>
                 <div>
                   <label for="r2SecretAccessKey" class="block text-sm font-medium text-gray-200"
-                    >Secret Access Key</label
+                    >S3 Secret Access Key</label
                   >
                   <input
                     id="r2SecretAccessKey"
@@ -251,66 +251,53 @@
                   />
                 </div>
                 <div>
-                  <label for="r2PublicBaseUrlTemplate" class="block text-sm font-medium text-gray-200"
-                    >Public base URL template</label
+                  <label for="r2ApiToken" class="block text-sm font-medium text-gray-200"
+                    >Cloudflare API Token (optional)</label
                   >
                   <input
-                    id="r2PublicBaseUrlTemplate"
-                    type="url"
+                    id="r2ApiToken"
+                    type="password"
                     autocomplete="off"
                     class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="https://{bucket}.videos.example.com"
+                    placeholder="Token with Workers R2 Storage Write"
                   />
                   <p class="mt-1 text-xs text-gray-500">
-                    Use <code class="rounded bg-gray-800 px-1 py-0.5">{bucket}</code>
-                    where the bucket name should appear. Defaults to
-                    <code class="rounded bg-gray-800 px-1 py-0.5">https://{bucket}.r2.dev</code>
-                    when blank.
+                    Used to create buckets, configure CORS, and attach domains automatically.
                   </p>
                 </div>
-                <fieldset>
-                  <legend class="text-sm font-medium text-gray-200">
-                    Bucket mode
-                  </legend>
-                  <div class="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-300">
-                    <label class="inline-flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="r2BucketMode"
-                        id="r2BucketModeAuto"
-                        value="auto"
-                        class="h-4 w-4 text-blue-500 focus:ring-blue-500"
-                        checked
-                      />
-                      Auto (per npub)
-                    </label>
-                    <label class="inline-flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="r2BucketMode"
-                        id="r2BucketModeManual"
-                        value="manual"
-                        class="h-4 w-4 text-blue-500 focus:ring-blue-500"
-                      />
-                      Manual bucket
-                    </label>
-                  </div>
-                  <div id="r2ManualBucketGroup" class="mt-3 hidden">
-                    <label for="r2ManualBucket" class="block text-sm font-medium text-gray-200"
-                      >Bucket name</label
+                <div class="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label for="r2ZoneId" class="block text-sm font-medium text-gray-200"
+                      >Zone ID (optional)</label
                     >
                     <input
-                      id="r2ManualBucket"
+                      id="r2ZoneId"
                       type="text"
                       autocomplete="off"
                       class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="bitvid-example-bucket"
+                      placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                     />
                     <p class="mt-1 text-xs text-gray-500">
-                      Lowercase letters, numbers, and hyphens only (3–63 chars).
+                      Required when you want us to attach a custom domain on your behalf.
                     </p>
                   </div>
-                </fieldset>
+                  <div>
+                    <label for="r2BaseDomain" class="block text-sm font-medium text-gray-200"
+                      >Base domain (optional)</label
+                    >
+                    <input
+                      id="r2BaseDomain"
+                      type="text"
+                      autocomplete="off"
+                      class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="cdn.example.com"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">
+                      We'll attach <code class="rounded bg-gray-800 px-1 py-0.5">npub.&lt;baseDomain&gt;</code>.
+                      Leave blank to use the managed <code class="rounded bg-gray-800 px-1 py-0.5">*.r2.dev</code> domain.
+                    </p>
+                  </div>
+                </div>
                 <div class="flex flex-wrap items-center gap-3">
                   <button
                     type="submit"
@@ -422,8 +409,8 @@
                 <div class="rounded-md border border-gray-800 bg-black/40 p-3 text-xs text-gray-400">
                   <p>
                     <strong class="text-gray-200">Bucket preview:</strong>
-                    <span id="cloudflareBucketPreview" class="ml-1">Save your
-                      settings to preview.</span>
+                    <span id="cloudflareBucketPreview" class="ml-1">We'll show your
+                      bucket and public domain after setup.</span>
                   </p>
                 </div>
                 <div class="space-y-2">

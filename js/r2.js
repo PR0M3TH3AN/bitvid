@@ -1,19 +1,56 @@
-const S3_MODULE_URL =
-  "https://esm.sh/@aws-sdk/client-s3@3.614.0?target=es2022&bundle";
-
 const DB_NAME = "bitvidSettings";
 const DB_VERSION = 1;
 const STORE_NAME = "kv";
 const SETTINGS_KEY = "r2Settings";
 const LOCALSTORAGE_FALLBACK_KEY = "bitvid:r2Settings";
 
-let s3ModulePromise = null;
-
-function loadS3Module() {
-  if (!s3ModulePromise) {
-    s3ModulePromise = import(S3_MODULE_URL);
+function sanitizeBaseDomain(domain) {
+  if (!domain) {
+    return "";
   }
-  return s3ModulePromise;
+  let value = String(domain).trim().toLowerCase();
+  value = value.replace(/^https?:\/\//, "");
+  value = value.replace(/\/.*$/, "");
+  return value;
+}
+
+function normalizeBucketEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const bucket = String(entry.bucket || "").toLowerCase();
+  if (!bucket) {
+    return null;
+  }
+  const publicBaseUrl = String(entry.publicBaseUrl || "");
+  const domainType = entry.domainType === "custom" ? "custom" : "managed";
+  const lastUpdated = Number.isFinite(entry.lastUpdated)
+    ? entry.lastUpdated
+    : Date.now();
+  return { bucket, publicBaseUrl, domainType, lastUpdated };
+}
+
+function normalizeSettings(raw) {
+  const base = raw && typeof raw === "object" ? raw : {};
+  const buckets = {};
+  if (base.buckets && typeof base.buckets === "object") {
+    for (const [npub, value] of Object.entries(base.buckets)) {
+      const normalizedEntry = normalizeBucketEntry(value);
+      if (normalizedEntry) {
+        buckets[String(npub)] = normalizedEntry;
+      }
+    }
+  }
+
+  return {
+    accountId: String(base.accountId || ""),
+    accessKeyId: String(base.accessKeyId || ""),
+    secretAccessKey: String(base.secretAccessKey || ""),
+    apiToken: String(base.apiToken || ""),
+    zoneId: String(base.zoneId || ""),
+    baseDomain: sanitizeBaseDomain(base.baseDomain || ""),
+    buckets,
+  };
 }
 
 function isIndexedDbAvailable() {
@@ -48,33 +85,6 @@ function openSettingsDb() {
       reject(request.error || new Error("Failed to open settings DB"));
     };
   });
-}
-
-function normalizeSettings(raw) {
-  if (!raw || typeof raw !== "object") {
-    return {
-      accountId: "",
-      accessKeyId: "",
-      secretAccessKey: "",
-      publicBaseUrlTemplate: "",
-      bucketMode: "auto",
-      manualBucket: "",
-      autoBuckets: {},
-    };
-  }
-
-  return {
-    accountId: String(raw.accountId || ""),
-    accessKeyId: String(raw.accessKeyId || ""),
-    secretAccessKey: String(raw.secretAccessKey || ""),
-    publicBaseUrlTemplate: String(raw.publicBaseUrlTemplate || ""),
-    bucketMode: raw.bucketMode === "manual" ? "manual" : "auto",
-    manualBucket: String(raw.manualBucket || ""),
-    autoBuckets:
-      raw.autoBuckets && typeof raw.autoBuckets === "object"
-        ? { ...raw.autoBuckets }
-        : {},
-  };
 }
 
 export async function loadR2Settings() {
@@ -170,64 +180,21 @@ export async function clearR2Settings() {
   return cleared;
 }
 
-export function bucketForNpub(
-  npub,
-  { prefix = "bitvid", suffix } = {}
-) {
-  const suffixValue = suffix || Math.random().toString(36).slice(2, 8);
-  const npubPart = String(npub || "").toLowerCase();
-  const raw = `${prefix}-${npubPart}-${suffixValue}`
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "");
-  const trimmed = raw.slice(0, 63).replace(/^-+|-+$/g, "");
-  return trimmed || `${prefix}-${Date.now()}`;
-}
-
-function ensureHeadersObject(req) {
-  if (!req) {
-    return;
+export function mergeBucketEntry(settings, npub, entry) {
+  if (!settings || typeof settings !== "object") {
+    return settings;
   }
-
-  if (req.headers && typeof req.headers.set === "function") {
-    req.headers.set("cf-create-bucket-if-missing", "true");
-    return;
+  const normalizedEntry = normalizeBucketEntry(entry);
+  if (!normalizedEntry) {
+    return settings;
   }
-
-  if (req.headers && typeof req.headers === "object") {
-    req.headers["cf-create-bucket-if-missing"] = "true";
-    return;
-  }
-
-  if (typeof req.headers === "undefined") {
-    req.headers = { "cf-create-bucket-if-missing": "true" };
-  }
-}
-
-export async function createR2Client({
-  accountId,
-  accessKeyId,
-  secretAccessKey,
-}) {
-  if (!accountId || !accessKeyId || !secretAccessKey) {
-    throw new Error("Missing required R2 credentials");
-  }
-
-  const { S3Client } = await loadS3Module();
-  const client = new S3Client({
-    region: "auto",
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId, secretAccessKey },
-  });
-
-  client.middlewareStack.add(
-    (next) => async (args) => {
-      ensureHeadersObject(args.request);
-      return next(args);
+  return {
+    ...settings,
+    buckets: {
+      ...(settings.buckets || {}),
+      [npub]: normalizedEntry,
     },
-    { step: "build", name: "r2AutoCreateBucket" }
-  );
-
-  return client;
+  };
 }
 
 function guessExtension(file) {
@@ -276,141 +243,16 @@ export function buildR2Key(npub, file) {
   return `u/${safeNpub}/${year}/${month}/${safeSlug}.${ext}`;
 }
 
-export async function uploadToR2({
-  s3,
-  bucket,
-  key,
-  file,
-  contentType,
-  onProgress,
-  concurrency = 4,
-}) {
-  if (!s3) {
-    throw new Error("S3 client is required");
+export function buildPublicUrl(baseUrl, key) {
+  if (!baseUrl) {
+    return "";
   }
-  if (!bucket) {
-    throw new Error("Bucket is required");
-  }
-  if (!key) {
-    throw new Error("Object key is required");
-  }
-  if (!file) {
-    throw new Error("File is required");
-  }
-
-  const module = await loadS3Module();
-  const {
-    CreateMultipartUploadCommand,
-    UploadPartCommand,
-    CompleteMultipartUploadCommand,
-    AbortMultipartUploadCommand,
-  } = module;
-
-  const resolvedContentType =
-    contentType || file.type || "video/mp4";
-
-  const createCommand = new CreateMultipartUploadCommand({
-    Bucket: bucket,
-    Key: key,
-    ContentType: resolvedContentType,
-    CacheControl: resolvedContentType.includes("mpegurl")
-      ? "public, max-age=30"
-      : "public, max-age=31536000, immutable",
-  });
-
-  const { UploadId } = await s3.send(createCommand);
-  if (!UploadId) {
-    throw new Error("Failed to initiate multipart upload");
-  }
-
-  const PART_SIZE = 8 * 1024 * 1024;
-  const total = file.size;
-  const totalParts = Math.ceil(total / PART_SIZE);
-  const parts = [];
-  let assignedPart = 0;
-  let uploadedBytes = 0;
-  const uploadErrors = [];
-
-  const workers = Array.from({ length: Math.max(1, concurrency) }, () =>
-    (async () => {
-      try {
-        for (;;) {
-          if (assignedPart >= totalParts) {
-            break;
-          }
-
-          const currentIndex = assignedPart;
-          assignedPart += 1;
-
-          const partNumber = currentIndex + 1;
-          const start = currentIndex * PART_SIZE;
-          const end = Math.min(start + PART_SIZE, total);
-          const Body = file.slice(start, end);
-
-          const command = new UploadPartCommand({
-            Bucket: bucket,
-            Key: key,
-            UploadId,
-            PartNumber: partNumber,
-            Body,
-          });
-
-          const { ETag } = await s3.send(command);
-          parts.push({ ETag, PartNumber: partNumber });
-
-          uploadedBytes += end - start;
-          if (typeof onProgress === "function") {
-            onProgress(Math.min(1, uploadedBytes / total));
-          }
-        }
-      } catch (err) {
-        uploadErrors.push(err);
-        assignedPart = totalParts;
-      }
-    })()
-  );
-
-  try {
-    await Promise.all(workers);
-
-    if (uploadErrors.length > 0) {
-      throw uploadErrors[0];
-    }
-
-    parts.sort((a, b) => a.PartNumber - b.PartNumber);
-
-    const completeCommand = new CompleteMultipartUploadCommand({
-      Bucket: bucket,
-      Key: key,
-      UploadId,
-      MultipartUpload: { Parts: parts },
-    });
-
-    await s3.send(completeCommand);
-  } catch (err) {
-    try {
-      const abortCommand = new AbortMultipartUploadCommand({
-        Bucket: bucket,
-        Key: key,
-        UploadId,
-      });
-      await s3.send(abortCommand);
-    } catch (abortErr) {
-      console.warn("Failed to abort multipart upload:", abortErr);
-    }
-    throw err;
-  }
-}
-
-export function buildPublicUrl(bucket, key, template) {
-  const baseTemplate = (template || `https://${bucket}.r2.dev`).replace(
-    /\{bucket\}/g,
-    bucket
-  );
-  const sanitizedBase = baseTemplate.replace(/\/$/, "");
+  const sanitizedBase = String(baseUrl).replace(/\/$/, "");
   const encodedKey = key
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
   return `${sanitizedBase}/${encodedKey}`;
 }
+
+export { sanitizeBaseDomain };
