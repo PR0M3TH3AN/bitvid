@@ -236,14 +236,26 @@ function ensureState(container) {
 
   const observer = new IntersectionObserver(
     (entries) => {
-      entries.forEach((entry) => {
+      const viewportCenter = getViewportCenter();
+      const prioritized = entries
+        .filter((entry) => entry.isIntersecting && entry.target instanceof HTMLElement)
+        .map((entry) => ({
+          entry,
+          ratio:
+            typeof entry.intersectionRatio === "number"
+              ? entry.intersectionRatio
+              : 0,
+          distance: calculateDistanceSquared(entry, viewportCenter),
+        }))
+        .sort((a, b) => {
+          if (b.ratio !== a.ratio) {
+            return b.ratio - a.ratio;
+          }
+          return a.distance - b.distance;
+        });
+
+      prioritized.forEach(({ entry }) => {
         const card = entry.target;
-        if (!(card instanceof HTMLElement)) {
-          return;
-        }
-        if (!entry.isIntersecting) {
-          return;
-        }
         handleCardVisible({ card, pendingByCard });
       });
     },
@@ -253,6 +265,51 @@ function ensureState(container) {
   state = { observer, pendingByCard, observedCards };
   containerState.set(container, state);
   return state;
+}
+
+function getViewportCenter() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const width = Number(window.innerWidth) || 0;
+  const height = Number(window.innerHeight) || 0;
+  if (width <= 0 && height <= 0) {
+    return null;
+  }
+  return {
+    x: width > 0 ? width / 2 : 0,
+    y: height > 0 ? height / 2 : 0,
+  };
+}
+
+function calculateDistanceSquared(entry, viewportCenter) {
+  if (!viewportCenter) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const rect = getIntersectionRect(entry);
+  if (!rect) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const dx = centerX - viewportCenter.x;
+  const dy = centerY - viewportCenter.y;
+  return dx * dx + dy * dy;
+}
+
+function getIntersectionRect(entry) {
+  if (!entry) {
+    return null;
+  }
+  const rect = entry.intersectionRect;
+  if (rect && rect.width > 0 && rect.height > 0) {
+    return rect;
+  }
+  const fallback = entry.boundingClientRect;
+  if (fallback && fallback.width > 0 && fallback.height > 0) {
+    return fallback;
+  }
+  return rect || fallback || null;
 }
 
 function setBadge(card, state, details) {
