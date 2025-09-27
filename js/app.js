@@ -31,6 +31,7 @@ import {
   putCors,
   attachCustomDomainAndWait,
   setManagedDomain,
+  deriveShortSubdomain,
 } from "./storage/r2-mgmt.js";
 import {
   makeR2Client,
@@ -1573,11 +1574,17 @@ class bitvidApp {
   }
 
   deriveSubdomainForNpub(npub) {
+    try {
+      return deriveShortSubdomain(npub);
+    } catch (err) {
+      console.warn("Failed to derive short subdomain, falling back:", err);
+    }
+
     const base = String(npub || "user")
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "")
       .replace(/^-+|[-]+$/g, "");
-    return base.slice(0, 48) || "user";
+    return base.slice(0, 32) || "user";
   }
 
   async ensureBucketConfigForNpub(npub) {
@@ -1616,6 +1623,28 @@ class bitvidApp {
           });
         } catch (err) {
           console.warn("Failed to refresh bucket configuration:", err);
+        }
+      } else if (
+        accessKeyId &&
+        secretAccessKey &&
+        corsOrigins.length > 0
+      ) {
+        try {
+          const s3 = makeR2Client({
+            accountId,
+            accessKeyId,
+            secretAccessKey,
+          });
+          await ensureBucketCors({
+            s3,
+            bucket: entry.bucket,
+            origins: corsOrigins,
+          });
+        } catch (err) {
+          console.warn(
+            "Failed to refresh bucket CORS via access keys:",
+            err
+          );
         }
       }
       return {
@@ -1821,17 +1850,17 @@ class bitvidApp {
     const publicUrl = buildPublicUrl(entry.publicBaseUrl, sampleKey);
     const fullPreview = `${entry.bucket} • ${publicUrl}`;
 
-    let displayHostAndPath = truncateMiddle(publicUrl, 96);
+    let displayHostAndPath = truncateMiddle(publicUrl, 72);
     try {
       const parsed = new URL(publicUrl);
       const cleanPath = parsed.pathname.replace(/^\//, "");
-      const truncatedPath = truncateMiddle(cleanPath || sampleKey, 48);
-      displayHostAndPath = `${truncateMiddle(parsed.host, 48)}/${truncatedPath}`;
+      const truncatedPath = truncateMiddle(cleanPath || sampleKey, 32);
+      displayHostAndPath = `${truncateMiddle(parsed.host, 32)}/${truncatedPath}`;
     } catch (err) {
       // ignore URL parse issues and fall back to the raw string
     }
 
-    const truncatedBucket = truncateMiddle(entry.bucket, 40);
+    const truncatedBucket = truncateMiddle(entry.bucket, 28);
     el.textContent = `${truncatedBucket} • ${displayHostAndPath}`;
     el.setAttribute("title", fullPreview);
   }
