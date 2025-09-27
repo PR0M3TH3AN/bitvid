@@ -440,13 +440,25 @@ async function loadUserVideos(pubkey) {
         delete cardEl.dataset.torrentSupported;
       }
 
-      cardEl.dataset.urlHealthState = trimmedUrl ? "checking" : "absent";
+      if (trimmedUrl) {
+        cardEl.dataset.urlHealthState = "checking";
+        if (cardEl.dataset.urlHealthReason) {
+          delete cardEl.dataset.urlHealthReason;
+        }
+      } else {
+        cardEl.dataset.urlHealthState = "offline";
+        cardEl.dataset.urlHealthReason = "missing-source";
+      }
       if (magnetProvided && magnetSupported) {
         cardEl.dataset.streamHealthState = "checking";
-      } else if (magnetProvided) {
-        cardEl.dataset.streamHealthState = "unsupported";
+        if (cardEl.dataset.streamHealthReason) {
+          delete cardEl.dataset.streamHealthReason;
+        }
       } else {
-        cardEl.dataset.streamHealthState = "absent";
+        cardEl.dataset.streamHealthState = "unhealthy";
+        cardEl.dataset.streamHealthReason = magnetProvided
+          ? "unsupported"
+          : "missing-source";
       }
 
       if (magnetProvided) {
