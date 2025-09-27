@@ -5,6 +5,7 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  PutBucketCorsCommand,
 } from "https://esm.sh/@aws-sdk/client-s3@3.637.0?target=es2022&bundle";
 
 function computeCacheControl(key) {
@@ -39,6 +40,42 @@ export function makeR2Client({ accountId, accessKeyId, secretAccessKey }) {
     credentials: { accessKeyId, secretAccessKey },
     forcePathStyle: true,
   });
+}
+
+export async function ensureBucketCors({ s3, bucket, origins }) {
+  if (!s3) {
+    throw new Error("S3 client is required to configure CORS");
+  }
+  if (!bucket) {
+    throw new Error("Bucket name is required to configure CORS");
+  }
+
+  const allowedOrigins = (origins || []).filter(Boolean);
+  if (allowedOrigins.length === 0) {
+    return;
+  }
+
+  const command = new PutBucketCorsCommand({
+    Bucket: bucket,
+    CORSConfiguration: {
+      CORSRules: [
+        {
+          AllowedHeaders: ["*"],
+          AllowedMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
+          AllowedOrigins: allowedOrigins,
+          ExposeHeaders: [
+            "ETag",
+            "Content-Length",
+            "Content-Range",
+            "Accept-Ranges",
+          ],
+          MaxAgeSeconds: 3600,
+        },
+      ],
+    },
+  });
+
+  await s3.send(command);
 }
 
 export async function multipartUpload({

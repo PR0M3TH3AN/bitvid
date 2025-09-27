@@ -32,7 +32,11 @@ import {
   attachCustomDomainAndWait,
   setManagedDomain,
 } from "./storage/r2-mgmt.js";
-import { makeR2Client, multipartUpload } from "./storage/r2-s3.js";
+import {
+  makeR2Client,
+  multipartUpload,
+  ensureBucketCors,
+} from "./storage/r2-s3.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 
 /**
@@ -1568,6 +1572,10 @@ class bitvidApp {
     const accountId = (this.cloudflareSettings.accountId || "").trim();
     const apiToken = (this.cloudflareSettings.apiToken || "").trim();
     const zoneId = (this.cloudflareSettings.zoneId || "").trim();
+    const accessKeyId = (this.cloudflareSettings.accessKeyId || "").trim();
+    const secretAccessKey =
+      (this.cloudflareSettings.secretAccessKey || "").trim();
+    const corsOrigins = this.getCorsOrigins();
     const baseDomain = this.cloudflareSettings.baseDomain || "";
 
     if (!accountId) {
@@ -1588,7 +1596,7 @@ class bitvidApp {
             accountId,
             bucket: entry.bucket,
             token: apiToken,
-            origins: this.getCorsOrigins(),
+            origins: corsOrigins,
           });
         } catch (err) {
           console.warn("Failed to refresh bucket configuration:", err);
@@ -1625,6 +1633,26 @@ class bitvidApp {
         lastUpdated: Date.now(),
       };
 
+      if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
+        try {
+          const s3 = makeR2Client({
+            accountId,
+            accessKeyId,
+            secretAccessKey,
+          });
+          await ensureBucketCors({
+            s3,
+            bucket: bucketName,
+            origins: corsOrigins,
+          });
+        } catch (corsErr) {
+          console.warn(
+            "Failed to ensure R2 CORS rules via access keys. Configure the bucket's CORS policy manually if uploads continue to fail.",
+            corsErr
+          );
+        }
+      }
+
       let savedEntry = entry;
       if (
         !entry ||
@@ -1656,7 +1684,7 @@ class bitvidApp {
         accountId,
         bucket: bucketName,
         token: apiToken,
-        origins: this.getCorsOrigins(),
+        origins: corsOrigins,
       });
     } catch (err) {
       console.warn("Failed to apply R2 CORS rules:", err);
