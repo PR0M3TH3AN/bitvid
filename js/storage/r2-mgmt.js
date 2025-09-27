@@ -1,12 +1,32 @@
 // js/storage/r2-mgmt.js
 export function sanitizeBucketName(npub) {
-  const base = (npub || "user")
+  let value = String(npub || "")
     .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "")
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
     .replace(/^-+|[-]+$/g, "");
-  const suffix = Date.now().toString(36);
-  const name = `bv-${base || "u"}-${suffix}`.slice(0, 63);
-  return name.length < 3 ? `bv-u-${suffix}` : name;
+
+  if (!value) {
+    value = "bitvid-user";
+  }
+
+  if (!/^[a-z0-9]/.test(value)) {
+    value = `bv-${value}`;
+  }
+
+  if (!/[a-z0-9]$/.test(value)) {
+    value = `${value}0`;
+  }
+
+  if (value.length > 63) {
+    value = value.slice(0, 63).replace(/-+$/g, "");
+  }
+
+  while (value.length < 3) {
+    value += "0";
+  }
+
+  return value;
 }
 
 function buildError(error, fallbackMessage) {
@@ -88,11 +108,14 @@ export async function putCors({ accountId, bucket, token, origins }) {
   }
   const rules = [
     {
-      AllowedOrigins: filteredOrigins,
-      AllowedMethods: ["GET", "HEAD", "PUT", "POST"],
-      AllowedHeaders: ["*"],
-      ExposeHeaders: ["ETag", "Content-Length", "Content-Range"],
-      MaxAgeSeconds: 3600,
+      id: "bitvid-default",
+      allowed: {
+        origins: filteredOrigins,
+        methods: ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
+        headers: ["*"],
+      },
+      expose_headers: ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
+      max_age_seconds: 3600,
     },
   ];
   await cfFetch(`/accounts/${accountId}/r2/buckets/${bucket}/cors`, {
@@ -102,30 +125,112 @@ export async function putCors({ accountId, bucket, token, origins }) {
   });
 }
 
+function extractStatus(payload) {
+  return (
+    payload?.result?.status ||
+    payload?.result?.result?.status ||
+    payload?.status ||
+    payload?.result?.statusText ||
+    null
+  );
+}
+
+async function pollCustomDomain({
+  accountId,
+  bucket,
+  token,
+  domain,
+  pollInterval = 2500,
+  timeoutMs = 120000,
+}) {
+  const path = `/accounts/${accountId}/r2/buckets/${bucket}/domains/custom/${encodeURIComponent(
+    domain
+  )}`;
+  const deadline = Date.now() + timeoutMs;
+  let lastPayload = null;
+
+  while (Date.now() < deadline) {
+    lastPayload = await cfFetch(path, { token, method: "GET" }).catch((err) => {
+      if (err?.status === 404) {
+        return null;
+      }
+      throw err;
+    });
+
+    if (!lastPayload) {
+      break;
+    }
+
+    const status = extractStatus(lastPayload);
+    if (status === "active") {
+      return { status, payload: lastPayload };
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+  }
+
+  return {
+    status: extractStatus(lastPayload) || "unknown",
+    payload: lastPayload,
+  };
+}
+
 // 3) Attach custom domain to bucket (auto-provisions on Cloudflare)
-export async function attachCustomDomain({
+export async function attachCustomDomainAndWait({
   accountId,
   bucket,
   token,
   zoneId,
   domain,
+  pollInterval,
+  timeoutMs,
 }) {
-  const { result } = await cfFetch(
-    `/accounts/${accountId}/r2/buckets/${bucket}/domains/custom`,
-    {
+  let shouldPoll = true;
+  try {
+    await cfFetch(`/accounts/${accountId}/r2/buckets/${bucket}/domains/custom`, {
       token,
       method: "POST",
-      body: { domain, zoneId, enabled: true, minTLS: "1.2" },
+      body: { domain, zoneId, enabled: true },
+    });
+  } catch (error) {
+    const err = buildError(error);
+    if (err.status === 409 || /already exists/i.test(err.message || "")) {
+      shouldPoll = true;
+    } else {
+      throw err;
     }
-  );
-  return `https://${result?.domain || domain}`;
+  }
+
+  let status = "unknown";
+  if (shouldPoll) {
+    const pollResult = await pollCustomDomain({
+      accountId,
+      bucket,
+      token,
+      domain,
+      pollInterval,
+      timeoutMs,
+    });
+    status = pollResult.status;
+  }
+
+  const url = `https://${domain}`;
+  return {
+    url,
+    status,
+    active: status === "active",
+  };
 }
 
-// 4) Or enable r2.dev managed domain as fallback
-export async function enableManagedDomain({ accountId, bucket, token }) {
+// 4) Toggle managed r2.dev domain for the bucket
+export async function setManagedDomain({ accountId, bucket, token, enabled }) {
   const { result } = await cfFetch(
     `/accounts/${accountId}/r2/buckets/${bucket}/domains/managed`,
-    { token, method: "PUT", body: { enabled: true } }
+    { token, method: "PUT", body: { enabled: Boolean(enabled) } }
   );
-  return `https://${result?.domain}`;
+  const domain = result?.domain || result?.result?.domain || "";
+  return {
+    enabled: Boolean(result?.enabled ?? enabled),
+    url: domain ? `https://${domain}` : "",
+  };
 }

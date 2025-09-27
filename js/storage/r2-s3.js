@@ -5,7 +5,28 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
-} from "https://esm.sh/@aws-sdk/client-s3@3.614.0?target=es2022&bundle";
+} from "https://esm.sh/@aws-sdk/client-s3@3.637.0?target=es2022&bundle";
+
+function computeCacheControl(key) {
+  if (!key) {
+    return "public, max-age=3600";
+  }
+
+  const lower = String(key).toLowerCase();
+  if (/(?:\.)(m3u8|mpd)$/.test(lower)) {
+    return "public, max-age=60, must-revalidate";
+  }
+
+  if (
+    /\.(m4s|ts|mp4|webm|mov|mkv|png|jpg|jpeg|gif|svg|vtt|srt|mpg|mpeg)$/.test(
+      lower
+    )
+  ) {
+    return "public, max-age=31536000, immutable";
+  }
+
+  return "public, max-age=3600";
+}
 
 export function makeR2Client({ accountId, accessKeyId, secretAccessKey }) {
   if (!accountId || !accessKeyId || !secretAccessKey) {
@@ -27,7 +48,6 @@ export async function multipartUpload({
   file,
   contentType,
   onProgress,
-  concurrency = 4,
 }) {
   if (!s3) {
     throw new Error("S3 client is required");
@@ -42,78 +62,66 @@ export async function multipartUpload({
     throw new Error("File is required");
   }
 
-  const { UploadId } = await s3.send(
-    new CreateMultipartUploadCommand({
-      Bucket: bucket,
-      Key: key,
-      ContentType: contentType || file.type || "video/mp4",
-      CacheControl: "public, max-age=31536000, immutable",
-    })
+  const createCommand = new CreateMultipartUploadCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType || file.type || "application/octet-stream",
+    CacheControl: computeCacheControl(key),
+  });
+
+  createCommand.middlewareStack.add(
+    (next) => async (args) => {
+      if (args?.request?.headers) {
+        args.request.headers["cf-create-bucket-if-missing"] = "true";
+      }
+      return next(args);
+    },
+    { step: "build" }
   );
+
+  const { UploadId } = await s3.send(createCommand);
 
   if (!UploadId) {
     throw new Error("Failed to start multipart upload");
   }
 
-  const PART = 8 * 1024 * 1024;
+  const MIN_PART = 5 * 1024 * 1024;
+  const maxParts = 10000;
+  const calculated = Math.ceil(file.size / maxParts);
+  const partSize = Math.max(MIN_PART, calculated);
   const total = file.size;
   const parts = [];
-  let sent = 0;
+  let uploadedBytes = 0;
   let partNumber = 1;
-  const totalParts = Math.ceil(total / PART);
-  const errors = [];
 
-  const uploadPart = async () => {
-    const start = sent;
-    if (start >= total) {
-      return null;
-    }
-    const end = Math.min(start + PART, total);
-    const body = file.slice(start, end);
-    const currentPart = partNumber++;
-    sent = end;
+  if (typeof onProgress === "function") {
+    onProgress(0);
+  }
 
-    return s3
-      .send(
+  try {
+    while (uploadedBytes < total) {
+      const start = uploadedBytes;
+      const end = Math.min(start + partSize, total);
+      const chunk = file.slice(start, end);
+
+      const { ETag } = await s3.send(
         new UploadPartCommand({
           Bucket: bucket,
           Key: key,
           UploadId,
-          PartNumber: currentPart,
-          Body: body,
+          PartNumber: partNumber,
+          Body: chunk,
         })
-      )
-      .then(({ ETag }) => {
-        parts.push({ ETag, PartNumber: currentPart });
-        if (typeof onProgress === "function") {
-          onProgress(end / total);
-        }
-      });
-  };
+      );
 
-  const workers = Array.from({ length: Math.max(1, concurrency) }, () =>
-    (async () => {
-      try {
-        while (parts.length < totalParts) {
-          const task = uploadPart();
-          if (!task) {
-            break;
-          }
-          await task;
-        }
-      } catch (error) {
-        errors.push(error);
+      parts.push({ ETag, PartNumber: partNumber });
+      uploadedBytes = end;
+      partNumber += 1;
+
+      if (typeof onProgress === "function") {
+        onProgress(uploadedBytes / total);
       }
-    })()
-  );
-
-  try {
-    await Promise.all(workers);
-    if (errors.length > 0) {
-      throw errors[0];
     }
-
-    parts.sort((a, b) => a.PartNumber - b.PartNumber);
 
     await s3.send(
       new CompleteMultipartUploadCommand({
