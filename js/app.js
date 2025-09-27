@@ -3243,6 +3243,10 @@ class bitvidApp {
     const hadMargin = badgeEl.classList.contains("mt-3");
 
     badgeEl.dataset.urlHealthState = status;
+    const cardEl = badgeEl.closest(".video-card");
+    if (cardEl) {
+      cardEl.dataset.urlHealthState = status;
+    }
     badgeEl.setAttribute("aria-live", "polite");
     badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
     badgeEl.textContent = message;
@@ -3677,6 +3681,34 @@ class bitvidApp {
       template.innerHTML = cardHtml.trim();
       const cardEl = template.content.firstElementChild;
       if (cardEl) {
+        cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
+        if (typeof video.pubkey === "string" && video.pubkey) {
+          cardEl.dataset.ownerPubkey = video.pubkey;
+        } else if (cardEl.dataset.ownerPubkey) {
+          delete cardEl.dataset.ownerPubkey;
+        }
+
+        if (trimmedUrl) {
+          cardEl.dataset.urlHealthState = "checking";
+          if (cardEl.dataset.urlHealthReason) {
+            delete cardEl.dataset.urlHealthReason;
+          }
+        } else {
+          cardEl.dataset.urlHealthState = "offline";
+          cardEl.dataset.urlHealthReason = "missing-source";
+        }
+        if (magnetProvided && magnetSupported) {
+          cardEl.dataset.streamHealthState = "checking";
+          if (cardEl.dataset.streamHealthReason) {
+            delete cardEl.dataset.streamHealthReason;
+          }
+        } else {
+          cardEl.dataset.streamHealthState = "unhealthy";
+          cardEl.dataset.streamHealthReason = magnetProvided
+            ? "unsupported"
+            : "missing-source";
+        }
+
         const thumbnailEl = cardEl.querySelector("[data-video-thumbnail]");
         if (thumbnailEl) {
           const markThumbnailAsLoaded = () => {

@@ -358,10 +358,37 @@ function getIntersectionRect(entry) {
 }
 
 function setBadge(card, state, details) {
+  if (!(card instanceof HTMLElement)) {
+    return;
+  }
+
+  const normalizedState =
+    typeof state === "string" && state ? state : "unknown";
+  const peersValue =
+    details && Number.isFinite(details.peers)
+      ? Math.max(0, Number(details.peers))
+      : 0;
+  const hasPeerCount = details ? Number.isFinite(details.peers) : false;
+  const peersTextValue = hasPeerCount ? String(peersValue) : "";
+
+  card.dataset.streamHealthState = normalizedState;
+  if (hasPeerCount) {
+    card.dataset.streamHealthPeers = peersTextValue;
+  } else if (card.dataset.streamHealthPeers) {
+    delete card.dataset.streamHealthPeers;
+  }
+
+  if (details && typeof details.reason === "string" && details.reason) {
+    card.dataset.streamHealthReason = details.reason;
+  } else if (card.dataset.streamHealthReason) {
+    delete card.dataset.streamHealthReason;
+  }
+
   const badge = card.querySelector(".torrent-health-badge");
   if (!badge) {
     return;
   }
+
   const hadMargin = badge.classList.contains("mt-3");
 
   const baseClasses = [
@@ -409,22 +436,19 @@ function setBadge(card, state, details) {
     },
   };
 
-  const entry = map[state] || map.unknown;
+  const entry = map[normalizedState] || map.unknown;
   entry.classes.forEach((cls) => badge.classList.add(cls));
 
-  const peers =
-    details && Number.isFinite(details.peers)
-      ? Math.max(0, Number(details.peers))
-      : 0;
-  const peersText = state === "healthy" && peers > 0 ? ` (${peers})` : "";
+  const peersText =
+    normalizedState === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
 
   const iconPrefix = entry.icon ? `${entry.icon} ` : "";
   badge.textContent = `${iconPrefix}WebTorrent${peersText}`;
   const tooltip =
-    state === "checking" || state === "unknown"
+    normalizedState === "checking" || normalizedState === "unknown"
       ? entry.aria
       : buildTooltip({
-          peers,
+          peers: peersValue,
           checkedAt: details?.checkedAt,
           reason: details?.reason,
         });
@@ -432,9 +456,9 @@ function setBadge(card, state, details) {
   badge.setAttribute("title", tooltip);
   badge.setAttribute("aria-live", entry.role === "alert" ? "assertive" : "polite");
   badge.setAttribute("role", entry.role);
-  badge.dataset.streamHealthState = state;
-  if (Number.isFinite(peers)) {
-    badge.dataset.streamHealthPeers = String(peers);
+  badge.dataset.streamHealthState = normalizedState;
+  if (hasPeerCount) {
+    badge.dataset.streamHealthPeers = peersTextValue;
   } else if (badge.dataset.streamHealthPeers) {
     delete badge.dataset.streamHealthPeers;
   }
@@ -446,13 +470,13 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
   }
   const magnet = card.dataset.magnet || "";
   if (!magnet) {
-    setBadge(card, "unknown");
+    setBadge(card, "unhealthy", { reason: "missing-source" });
     return;
   }
 
   const infoHash = infoHashFromMagnet(magnet);
   if (!infoHash) {
-    setBadge(card, "unknown");
+    setBadge(card, "unhealthy", { reason: "invalid" });
     return;
   }
 
@@ -523,7 +547,7 @@ export function attachHealthBadges(container) {
     state.observedCards.add(card);
     state.observer.observe(card);
     if (!card.dataset.magnet) {
-      setBadge(card, "unknown");
+      setBadge(card, "unhealthy", { reason: "missing-source" });
     }
   });
   processObserverEntries(state.observer.takeRecords(), state);

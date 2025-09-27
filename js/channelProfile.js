@@ -360,6 +360,13 @@ async function loadUserVideos(pubkey) {
         "duration-300"
       );
 
+      cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
+      if (typeof video.pubkey === "string" && video.pubkey) {
+        cardEl.dataset.ownerPubkey = video.pubkey;
+      } else if (cardEl.dataset.ownerPubkey) {
+        delete cardEl.dataset.ownerPubkey;
+      }
+
       const rawMagnet =
         typeof video.magnet === "string" ? video.magnet : "";
       const trimmedMagnet = rawMagnet ? rawMagnet.trim() : "";
@@ -431,6 +438,27 @@ async function loadUserVideos(pubkey) {
         cardEl.dataset.torrentSupported = "true";
       } else if (cardEl.dataset.torrentSupported) {
         delete cardEl.dataset.torrentSupported;
+      }
+
+      if (trimmedUrl) {
+        cardEl.dataset.urlHealthState = "checking";
+        if (cardEl.dataset.urlHealthReason) {
+          delete cardEl.dataset.urlHealthReason;
+        }
+      } else {
+        cardEl.dataset.urlHealthState = "offline";
+        cardEl.dataset.urlHealthReason = "missing-source";
+      }
+      if (magnetProvided && magnetSupported) {
+        cardEl.dataset.streamHealthState = "checking";
+        if (cardEl.dataset.streamHealthReason) {
+          delete cardEl.dataset.streamHealthReason;
+        }
+      } else {
+        cardEl.dataset.streamHealthState = "unhealthy";
+        cardEl.dataset.streamHealthReason = magnetProvided
+          ? "unsupported"
+          : "missing-source";
       }
 
       if (magnetProvided) {
