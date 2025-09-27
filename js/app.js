@@ -1602,9 +1602,49 @@ class bitvidApp {
     }
 
     if (!apiToken) {
-      throw new Error(
-        "Provide a Cloudflare API token to auto-create the bucket and domain."
-      );
+      const bucketName = entry?.bucket || sanitizeBucketName(npub);
+      const manualCustomDomain = baseDomain
+        ? `https://${this.deriveSubdomainForNpub(npub)}.${baseDomain}`
+        : "";
+
+      let publicBaseUrl = entry?.publicBaseUrl || manualCustomDomain;
+      if (!publicBaseUrl) {
+        publicBaseUrl = `https://${bucketName}.${accountId}.r2.dev`;
+      }
+
+      if (!publicBaseUrl) {
+        throw new Error(
+          "No public bucket domain configured. Add an API token or configure the domain manually."
+        );
+      }
+
+      const manualEntry = {
+        bucket: bucketName,
+        publicBaseUrl,
+        domainType: publicBaseUrl.includes(".r2.dev") ? "managed" : "custom",
+        lastUpdated: Date.now(),
+      };
+
+      let savedEntry = entry;
+      if (
+        !entry ||
+        entry.bucket !== manualEntry.bucket ||
+        entry.publicBaseUrl !== manualEntry.publicBaseUrl ||
+        entry.domainType !== manualEntry.domainType
+      ) {
+        const updatedSettings = await saveR2Settings(
+          mergeBucketEntry(this.cloudflareSettings, npub, manualEntry)
+        );
+        this.cloudflareSettings = updatedSettings;
+        savedEntry = updatedSettings.buckets?.[npub] || manualEntry;
+      }
+
+      return {
+        entry: savedEntry,
+        usedManagedFallback: manualEntry.domainType !== "custom",
+        customDomainStatus:
+          manualEntry.domainType === "custom" ? "manual" : "managed",
+      };
     }
 
     const bucketName = entry?.bucket || sanitizeBucketName(npub);
