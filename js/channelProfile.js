@@ -7,6 +7,7 @@ import {
 import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { attachHealthBadges } from "./gridHealth.js";
+import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { initialBlacklist, initialWhitelist } from "./lists.js";
 import { isWhitelistEnabled } from "./config.js";
 
@@ -445,9 +446,17 @@ async function loadUserVideos(pubkey) {
         if (cardEl.dataset.urlHealthReason) {
           delete cardEl.dataset.urlHealthReason;
         }
+        cardEl.dataset.urlHealthEventId = video.id || "";
+        cardEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
       } else {
         cardEl.dataset.urlHealthState = "offline";
         cardEl.dataset.urlHealthReason = "missing-source";
+        if (cardEl.dataset.urlHealthEventId) {
+          delete cardEl.dataset.urlHealthEventId;
+        }
+        if (cardEl.dataset.urlHealthUrl) {
+          delete cardEl.dataset.urlHealthUrl;
+        }
       }
       if (magnetProvided && magnetSupported) {
         cardEl.dataset.streamHealthState = "checking";
@@ -491,14 +500,18 @@ async function loadUserVideos(pubkey) {
         }
       });
 
-      if (trimmedUrl) {
-        const badgeEl = cardEl.querySelector("[data-url-health-state]");
-        if (badgeEl) {
-          app.handleUrlHealthBadge({
-            video,
-            url: trimmedUrl,
-            badgeEl,
-          });
+      const badgeEl = cardEl.querySelector("[data-url-health-state]");
+      if (badgeEl) {
+        if (trimmedUrl) {
+          badgeEl.dataset.urlHealthEventId = video.id || "";
+          badgeEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
+        } else {
+          if (badgeEl.dataset.urlHealthEventId) {
+            delete badgeEl.dataset.urlHealthEventId;
+          }
+          if (badgeEl.dataset.urlHealthUrl) {
+            delete badgeEl.dataset.urlHealthUrl;
+          }
         }
       }
 
@@ -508,6 +521,10 @@ async function loadUserVideos(pubkey) {
     container.appendChild(fragment);
 
     attachHealthBadges(container);
+    attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
+      const video = app.videosMap.get(eventId) || { id: eventId };
+      app.handleUrlHealthBadge({ video, url, badgeEl });
+    });
 
     window.app.videoList = container;
     window.app.attachVideoListHandler();

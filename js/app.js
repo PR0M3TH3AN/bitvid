@@ -11,6 +11,7 @@ import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
 import { attachHealthBadges } from "./gridHealth.js";
+import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import {
   initialWhitelist,
   initialBlacklist,
@@ -3693,9 +3694,17 @@ class bitvidApp {
           if (cardEl.dataset.urlHealthReason) {
             delete cardEl.dataset.urlHealthReason;
           }
+          cardEl.dataset.urlHealthEventId = video.id || "";
+          cardEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
         } else {
           cardEl.dataset.urlHealthState = "offline";
           cardEl.dataset.urlHealthReason = "missing-source";
+          if (cardEl.dataset.urlHealthEventId) {
+            delete cardEl.dataset.urlHealthEventId;
+          }
+          if (cardEl.dataset.urlHealthUrl) {
+            delete cardEl.dataset.urlHealthUrl;
+          }
         }
         if (magnetProvided && magnetSupported) {
           cardEl.dataset.streamHealthState = "checking";
@@ -3832,11 +3841,18 @@ class bitvidApp {
         if (trimmedUrl) {
           const badgeEl = cardEl.querySelector("[data-url-health-state]");
           if (badgeEl) {
-            this.handleUrlHealthBadge({
-              video,
-              url: trimmedUrl,
-              badgeEl,
-            });
+            badgeEl.dataset.urlHealthEventId = video.id || "";
+            badgeEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
+          }
+        } else {
+          const badgeEl = cardEl.querySelector("[data-url-health-state]");
+          if (badgeEl) {
+            if (badgeEl.dataset.urlHealthEventId) {
+              delete badgeEl.dataset.urlHealthEventId;
+            }
+            if (badgeEl.dataset.urlHealthUrl) {
+              delete badgeEl.dataset.urlHealthUrl;
+            }
           }
         }
       }
@@ -3852,6 +3868,10 @@ class bitvidApp {
     this.videoList.innerHTML = "";
     this.videoList.appendChild(fragment);
     attachHealthBadges(this.videoList);
+    attachUrlHealthBadges(this.videoList, ({ badgeEl, url, eventId }) => {
+      const video = this.videosMap.get(eventId) || { id: eventId };
+      this.handleUrlHealthBadge({ video, url, badgeEl });
+    });
 
     // Ensure every thumbnail can recover with a fallback image if the primary
     // source fails to load or returns a zero-sized response (some CDNs error
