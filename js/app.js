@@ -20,12 +20,19 @@ import {
   loadR2Settings,
   saveR2Settings,
   clearR2Settings,
-  bucketForNpub,
   buildR2Key,
   buildPublicUrl,
-  createR2Client,
-  uploadToR2,
+  mergeBucketEntry,
+  sanitizeBaseDomain,
 } from "./r2.js";
+import {
+  sanitizeBucketName,
+  ensureBucket,
+  putCors,
+  attachCustomDomain,
+  enableManagedDomain,
+} from "./storage/r2-mgmt.js";
+import { makeR2Client, multipartUpload } from "./storage/r2-s3.js";
 
 /**
  * Simple "decryption" placeholder for private videos.
@@ -474,9 +481,6 @@ class bitvidApp {
     this.cloudflareClearSettingsButton = null;
     this.cloudflareSettingsStatus = null;
     this.cloudflareBucketPreview = null;
-    this.cloudflareBucketModeInputs = [];
-    this.cloudflareManualBucketGroup = null;
-    this.cloudflareManualBucketInput = null;
     this.cloudflareUploadForm = null;
     this.cloudflareFileInput = null;
     this.cloudflareUploadButton = null;
@@ -489,10 +493,17 @@ class bitvidApp {
     this.cloudflareMagnetInput = null;
     this.cloudflareWsInput = null;
     this.cloudflareXsInput = null;
+    this.cloudflareAdvancedToggle = null;
+    this.cloudflareAdvancedToggleLabel = null;
+    this.cloudflareAdvancedToggleIcon = null;
+    this.cloudflareAdvancedFields = null;
+    this.cloudflareAdvancedVisible = false;
     this.r2AccountIdInput = null;
     this.r2AccessKeyIdInput = null;
     this.r2SecretAccessKeyInput = null;
-    this.r2PublicBaseUrlInput = null;
+    this.r2ApiTokenInput = null;
+    this.r2ZoneIdInput = null;
+    this.r2BaseDomainInput = null;
 
     // Optional small inline player stats
     this.status = document.getElementById("status") || null;
@@ -1094,13 +1105,6 @@ class bitvidApp {
         document.getElementById("cloudflareSettingsStatus") || null;
       this.cloudflareBucketPreview =
         document.getElementById("cloudflareBucketPreview") || null;
-      this.cloudflareBucketModeInputs = Array.from(
-        document.querySelectorAll("input[name='r2BucketMode']")
-      );
-      this.cloudflareManualBucketGroup =
-        document.getElementById("r2ManualBucketGroup") || null;
-      this.cloudflareManualBucketInput =
-        document.getElementById("r2ManualBucket") || null;
       this.cloudflareUploadForm =
         document.getElementById("cloudflareUploadForm") || null;
       this.cloudflareFileInput =
@@ -1125,14 +1129,25 @@ class bitvidApp {
         document.getElementById("cloudflareWs") || null;
       this.cloudflareXsInput =
         document.getElementById("cloudflareXs") || null;
+      this.cloudflareAdvancedToggle =
+        document.getElementById("cloudflareAdvancedToggle") || null;
+      this.cloudflareAdvancedToggleLabel =
+        document.getElementById("cloudflareAdvancedToggleLabel") || null;
+      this.cloudflareAdvancedToggleIcon =
+        document.getElementById("cloudflareAdvancedToggleIcon") || null;
+      this.cloudflareAdvancedFields =
+        document.getElementById("cloudflareAdvancedFields") || null;
       this.r2AccountIdInput =
         document.getElementById("r2AccountId") || null;
       this.r2AccessKeyIdInput =
         document.getElementById("r2AccessKeyId") || null;
       this.r2SecretAccessKeyInput =
         document.getElementById("r2SecretAccessKey") || null;
-      this.r2PublicBaseUrlInput =
-        document.getElementById("r2PublicBaseUrlTemplate") || null;
+      this.r2ApiTokenInput =
+        document.getElementById("r2ApiToken") || null;
+      this.r2ZoneIdInput = document.getElementById("r2ZoneId") || null;
+      this.r2BaseDomainInput =
+        document.getElementById("r2BaseDomain") || null;
 
       // Optional: if close button found, wire up
       if (this.closeUploadModalBtn) {
@@ -1163,20 +1178,6 @@ class bitvidApp {
         });
       }
 
-      if (this.cloudflareBucketModeInputs.length > 0) {
-        this.cloudflareBucketModeInputs.forEach((input) => {
-          input.addEventListener("change", () => {
-            this.handleCloudflareBucketModeChange();
-          });
-        });
-      }
-
-      if (this.cloudflareManualBucketInput) {
-        this.cloudflareManualBucketInput.addEventListener("input", () => {
-          this.handleManualBucketInputChange();
-        });
-      }
-
       if (this.cloudflareUploadForm) {
         this.cloudflareUploadForm.addEventListener("submit", (e) => {
           e.preventDefault();
@@ -1192,6 +1193,16 @@ class bitvidApp {
           });
         });
       }
+
+      if (this.cloudflareAdvancedToggle) {
+        this.cloudflareAdvancedToggle.addEventListener("click", () => {
+          this.setCloudflareAdvancedVisibility(
+            !this.cloudflareAdvancedVisible
+          );
+        });
+      }
+
+      this.setCloudflareAdvancedVisibility(this.cloudflareAdvancedVisible);
 
       await this.loadCloudflareSettingsFromStorage();
       await this.updateCloudflareBucketPreview();
@@ -1247,23 +1258,34 @@ class bitvidApp {
     }
   }
 
-  getCloudflareBucketMode() {
-    if (this.cloudflareBucketModeInputs.length === 0) {
-      return "auto";
+  setCloudflareAdvancedVisibility(visible) {
+    const isVisible = Boolean(visible);
+    this.cloudflareAdvancedVisible = isVisible;
+
+    if (this.cloudflareAdvancedFields) {
+      if (isVisible) {
+        this.cloudflareAdvancedFields.classList.remove("hidden");
+      } else {
+        this.cloudflareAdvancedFields.classList.add("hidden");
+      }
     }
 
-    const active = this.cloudflareBucketModeInputs.find(
-      (input) => input && input.checked
-    );
-    return active && active.value === "manual" ? "manual" : "auto";
-  }
+    if (this.cloudflareAdvancedToggle) {
+      this.cloudflareAdvancedToggle.setAttribute(
+        "aria-expanded",
+        isVisible ? "true" : "false"
+      );
+    }
 
-  sanitizeBucketName(name) {
-    const raw = String(name || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "");
-    const trimmed = raw.slice(0, 63).replace(/^-+|-+$/g, "");
-    return trimmed;
+    if (this.cloudflareAdvancedToggleLabel) {
+      this.cloudflareAdvancedToggleLabel.textContent = isVisible
+        ? "Hide advanced options"
+        : "Show advanced options";
+    }
+
+    if (this.cloudflareAdvancedToggleIcon) {
+      this.cloudflareAdvancedToggleIcon.classList.toggle("rotate-90", isVisible);
+    }
   }
 
   setCloudflareSettingsStatus(message = "", variant = "info") {
@@ -1381,24 +1403,25 @@ class bitvidApp {
         accountId: "",
         accessKeyId: "",
         secretAccessKey: "",
-        publicBaseUrlTemplate: "",
-        bucketMode: "auto",
-        manualBucket: "",
-        autoBuckets: {},
+        apiToken: "",
+        zoneId: "",
+        baseDomain: "",
+        buckets: {},
       };
       this.populateCloudflareSettingsInputs(this.cloudflareSettings);
     }
   }
 
   populateCloudflareSettingsInputs(settings) {
-    const data = settings || {
-      accountId: "",
-      accessKeyId: "",
-      secretAccessKey: "",
-      publicBaseUrlTemplate: "",
-      bucketMode: "auto",
-      manualBucket: "",
-    };
+    const data =
+      settings || {
+        accountId: "",
+        accessKeyId: "",
+        secretAccessKey: "",
+        apiToken: "",
+        zoneId: "",
+        baseDomain: "",
+      };
 
     if (this.r2AccountIdInput) {
       this.r2AccountIdInput.value = data.accountId || "";
@@ -1409,29 +1432,25 @@ class bitvidApp {
     if (this.r2SecretAccessKeyInput) {
       this.r2SecretAccessKeyInput.value = data.secretAccessKey || "";
     }
-    if (this.r2PublicBaseUrlInput) {
-      this.r2PublicBaseUrlInput.value = data.publicBaseUrlTemplate || "";
+    if (this.r2ApiTokenInput) {
+      this.r2ApiTokenInput.value = data.apiToken || "";
+    }
+    if (this.r2ZoneIdInput) {
+      this.r2ZoneIdInput.value = data.zoneId || "";
+    }
+    if (this.r2BaseDomainInput) {
+      this.r2BaseDomainInput.value = data.baseDomain || "";
     }
 
-    const mode = data.bucketMode === "manual" ? "manual" : "auto";
-    if (this.cloudflareBucketModeInputs.length > 0) {
-      this.cloudflareBucketModeInputs.forEach((input) => {
-        if (input) {
-          input.checked = input.value === mode;
-        }
-      });
-    }
-
-    if (this.cloudflareManualBucketGroup) {
-      if (mode === "manual") {
-        this.cloudflareManualBucketGroup.classList.remove("hidden");
-      } else {
-        this.cloudflareManualBucketGroup.classList.add("hidden");
-      }
-    }
-
-    if (this.cloudflareManualBucketInput) {
-      this.cloudflareManualBucketInput.value = data.manualBucket || "";
+    const hasAdvancedValues = Boolean(
+      (data.apiToken && data.apiToken.length > 0) ||
+        (data.zoneId && data.zoneId.length > 0) ||
+        (data.baseDomain && data.baseDomain.length > 0)
+    );
+    if (hasAdvancedValues) {
+      this.setCloudflareAdvancedVisibility(true);
+    } else if (!this.cloudflareAdvancedVisible) {
+      this.setCloudflareAdvancedVisibility(false);
     }
 
     this.setCloudflareSettingsStatus("");
@@ -1441,13 +1460,11 @@ class bitvidApp {
     const accountId = (this.r2AccountIdInput?.value || "").trim();
     const accessKeyId = (this.r2AccessKeyIdInput?.value || "").trim();
     const secretAccessKey = (this.r2SecretAccessKeyInput?.value || "").trim();
-    const publicBaseUrlTemplate =
-      (this.r2PublicBaseUrlInput?.value || "").trim();
-    const bucketMode = this.getCloudflareBucketMode();
-    let manualBucket = this.cloudflareManualBucketInput
-      ? this.cloudflareManualBucketInput.value
-      : "";
-    manualBucket = this.sanitizeBucketName(manualBucket);
+    const apiToken = (this.r2ApiTokenInput?.value || "").trim();
+    const zoneId = (this.r2ZoneIdInput?.value || "").trim();
+    const baseDomain = sanitizeBaseDomain(
+      this.r2BaseDomainInput?.value || ""
+    );
 
     if (!accountId || !accessKeyId || !secretAccessKey) {
       if (!quiet) {
@@ -1459,32 +1476,26 @@ class bitvidApp {
       return false;
     }
 
-    if (bucketMode === "manual" && manualBucket.length < 3) {
-      if (!quiet) {
-        this.setCloudflareSettingsStatus(
-          "Manual bucket names must be at least 3 characters.",
-          "error"
-        );
-      }
-      return false;
+    let buckets = { ...(this.cloudflareSettings?.buckets || {}) };
+    const previousAccount = this.cloudflareSettings?.accountId || "";
+    const previousBaseDomain = this.cloudflareSettings?.baseDomain || "";
+    const previousZoneId = this.cloudflareSettings?.zoneId || "";
+    if (
+      previousAccount !== accountId ||
+      previousBaseDomain !== baseDomain ||
+      previousZoneId !== zoneId
+    ) {
+      buckets = {};
     }
-
-    if (this.cloudflareManualBucketInput) {
-      this.cloudflareManualBucketInput.value = manualBucket;
-    }
-
-    const autoBuckets = {
-      ...(this.cloudflareSettings?.autoBuckets || {}),
-    };
 
     const updatedSettings = {
       accountId,
       accessKeyId,
       secretAccessKey,
-      publicBaseUrlTemplate,
-      bucketMode,
-      manualBucket,
-      autoBuckets,
+      apiToken,
+      zoneId,
+      baseDomain,
+      buckets,
     };
 
     try {
@@ -1513,6 +1524,7 @@ class bitvidApp {
       await clearR2Settings();
       this.cloudflareSettings = await loadR2Settings();
       this.populateCloudflareSettingsInputs(this.cloudflareSettings);
+      this.setCloudflareAdvancedVisibility(false);
       this.setCloudflareSettingsStatus("Settings cleared.", "success");
       await this.updateCloudflareBucketPreview();
     } catch (err) {
@@ -1524,62 +1536,133 @@ class bitvidApp {
     }
   }
 
-  handleCloudflareBucketModeChange() {
-    const mode = this.getCloudflareBucketMode();
-    if (this.cloudflareManualBucketGroup) {
-      if (mode === "manual") {
-        this.cloudflareManualBucketGroup.classList.remove("hidden");
-      } else {
-        this.cloudflareManualBucketGroup.classList.add("hidden");
+  getCorsOrigins() {
+    const origins = new Set();
+    if (typeof window !== "undefined" && window.location) {
+      const origin = window.location.origin;
+      if (origin && origin !== "null") {
+        origins.add(origin);
+      }
+      if (origin && origin.startsWith("http://localhost")) {
+        origins.add(origin.replace("http://", "https://"));
       }
     }
-    if (this.cloudflareSettings) {
-      this.cloudflareSettings.bucketMode = mode;
-    }
-    this.updateCloudflareBucketPreview();
+    return Array.from(origins);
   }
 
-  handleManualBucketInputChange() {
-    this.updateCloudflareBucketPreview();
+  deriveSubdomainForNpub(npub) {
+    const base = String(npub || "user")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/^-+|[-]+$/g, "");
+    return base.slice(0, 48) || "user";
   }
 
-  async ensureAutoBucketForCurrentUser() {
-    if (!this.pubkey || !this.cloudflareSettings) {
+  async ensureBucketConfigForNpub(npub) {
+    if (!npub || !this.cloudflareSettings) {
       return null;
     }
 
-    const mode = this.cloudflareSettings.bucketMode === "manual" ? "manual" : "auto";
-    if (mode !== "auto") {
-      return null;
+    const accountId = (this.cloudflareSettings.accountId || "").trim();
+    const apiToken = (this.cloudflareSettings.apiToken || "").trim();
+    const zoneId = (this.cloudflareSettings.zoneId || "").trim();
+    const baseDomain = this.cloudflareSettings.baseDomain || "";
+
+    if (!accountId) {
+      throw new Error("Cloudflare account ID is missing.");
     }
 
-    const npub = this.safeEncodeNpub(this.pubkey);
-    if (!npub) {
-      return null;
+    let entry = this.cloudflareSettings.buckets?.[npub] || null;
+
+    if (entry && entry.publicBaseUrl) {
+      if (apiToken) {
+        try {
+          await ensureBucket({
+            accountId,
+            bucket: entry.bucket,
+            token: apiToken,
+          });
+          await putCors({
+            accountId,
+            bucket: entry.bucket,
+            token: apiToken,
+            origins: this.getCorsOrigins(),
+          });
+        } catch (err) {
+          console.warn("Failed to refresh bucket configuration:", err);
+        }
+      }
+      return { entry, usedManagedFallback: entry.domainType !== "custom" };
     }
 
-    const existing = this.cloudflareSettings.autoBuckets?.[npub];
-    if (existing) {
-      return existing;
+    if (!apiToken) {
+      throw new Error(
+        "Provide a Cloudflare API token to auto-create the bucket and domain."
+      );
     }
 
-    const bucket = bucketForNpub(npub);
-    const updatedSettings = {
-      ...this.cloudflareSettings,
-      autoBuckets: {
-        ...(this.cloudflareSettings.autoBuckets || {}),
-        [npub]: bucket,
-      },
-    };
+    const bucketName = entry?.bucket || sanitizeBucketName(npub);
+
+    await ensureBucket({ accountId, bucket: bucketName, token: apiToken });
 
     try {
-      this.cloudflareSettings = await saveR2Settings(updatedSettings);
+      await putCors({
+        accountId,
+        bucket: bucketName,
+        token: apiToken,
+        origins: this.getCorsOrigins(),
+      });
     } catch (err) {
-      console.warn("Failed to persist auto bucket name:", err);
-      this.cloudflareSettings = updatedSettings;
+      console.warn("Failed to apply R2 CORS rules:", err);
     }
 
-    return bucket;
+    let publicBaseUrl = entry?.publicBaseUrl || "";
+    let domainType = entry?.domainType || "managed";
+    let usedManagedFallback = false;
+
+    if (baseDomain && zoneId) {
+      const domain = `${this.deriveSubdomainForNpub(npub)}.${baseDomain}`;
+      try {
+        publicBaseUrl = await attachCustomDomain({
+          accountId,
+          bucket: bucketName,
+          token: apiToken,
+          zoneId,
+          domain,
+        });
+        domainType = "custom";
+      } catch (err) {
+        if (/already exists/i.test(err.message || "")) {
+          publicBaseUrl = `https://${domain}`;
+          domainType = "custom";
+        } else {
+          console.warn("Failed to attach custom domain, falling back:", err);
+          usedManagedFallback = true;
+        }
+      }
+    }
+
+    if (!publicBaseUrl) {
+      publicBaseUrl = await enableManagedDomain({
+        accountId,
+        bucket: bucketName,
+        token: apiToken,
+      });
+      domainType = "managed";
+      usedManagedFallback = true;
+    }
+
+    const mergedEntry = {
+      bucket: bucketName,
+      publicBaseUrl,
+      domainType,
+      lastUpdated: Date.now(),
+    };
+    const updatedSettings = await saveR2Settings(
+      mergeBucketEntry(this.cloudflareSettings, npub, mergedEntry)
+    );
+    this.cloudflareSettings = updatedSettings;
+    return { entry: mergedEntry, usedManagedFallback };
   }
 
   async updateCloudflareBucketPreview() {
@@ -1588,36 +1671,13 @@ class bitvidApp {
     }
 
     const el = this.cloudflareBucketPreview;
-    const mode = this.getCloudflareBucketMode();
-    const template = (this.r2PublicBaseUrlInput?.value || "").trim();
-
-    if (mode === "manual") {
-      const manualBucket = this.sanitizeBucketName(
-        this.cloudflareManualBucketInput?.value ||
-          this.cloudflareSettings?.manualBucket ||
-          ""
-      );
-      if (!manualBucket) {
-        el.textContent = "Enter a manual bucket name.";
-        return;
-      }
-
-      const sampleNpub = this.safeEncodeNpub(this.pubkey) || "anon";
-      const sampleKey = buildR2Key(sampleNpub, {
-        name: "sample.mp4",
-      });
-      const publicUrl = buildPublicUrl(manualBucket, sampleKey, template);
-      el.textContent = `${manualBucket} • ${publicUrl}`;
+    if (!this.cloudflareSettings) {
+      el.textContent = "Save your credentials to configure R2.";
       return;
     }
 
     if (!this.pubkey) {
-      el.textContent = "Login to preview your auto bucket.";
-      return;
-    }
-
-    if (!this.cloudflareSettings) {
-      el.textContent = "Save your credentials to generate a bucket.";
+      el.textContent = "Login to preview your R2 bucket.";
       return;
     }
 
@@ -1627,19 +1687,15 @@ class bitvidApp {
       return;
     }
 
-    let bucket = this.cloudflareSettings.autoBuckets?.[npub];
-    if (!bucket) {
-      bucket = await this.ensureAutoBucketForCurrentUser();
-    }
-
-    if (!bucket) {
-      el.textContent = "Save your credentials to generate a bucket.";
+    const entry = this.cloudflareSettings.buckets?.[npub];
+    if (!entry || !entry.publicBaseUrl) {
+      el.textContent = "Bucket will be auto-created on your next upload.";
       return;
     }
 
     const sampleKey = buildR2Key(npub, { name: "sample.mp4" });
-    const publicUrl = buildPublicUrl(bucket, sampleKey, template);
-    el.textContent = `${bucket} • ${publicUrl}`;
+    const publicUrl = buildPublicUrl(entry.publicBaseUrl, sampleKey);
+    el.textContent = `${entry.bucket} • ${publicUrl}`;
   }
 
   async handleCloudflareUploadSubmit() {
@@ -1678,11 +1734,11 @@ class bitvidApp {
     const ws = (this.cloudflareWsInput?.value || "").trim();
     const xs = (this.cloudflareXsInput?.value || "").trim();
 
-    const accountId = this.cloudflareSettings?.accountId || "";
-    const accessKeyId = this.cloudflareSettings?.accessKeyId || "";
-    const secretAccessKey = this.cloudflareSettings?.secretAccessKey || "";
-    const publicBaseUrlTemplate =
-      this.cloudflareSettings?.publicBaseUrlTemplate || "";
+    const accountId = (this.cloudflareSettings?.accountId || "").trim();
+    const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
+    const secretAccessKey = (
+      this.cloudflareSettings?.secretAccessKey || ""
+    ).trim();
 
     if (!accountId || !accessKeyId || !secretAccessKey) {
       this.setCloudflareUploadStatus(
@@ -1698,54 +1754,56 @@ class bitvidApp {
       return;
     }
 
-    let bucketName = "";
-    const mode = this.cloudflareSettings?.bucketMode === "manual" ? "manual" : "auto";
-    if (mode === "manual") {
-      bucketName = this.sanitizeBucketName(
-        this.cloudflareSettings?.manualBucket ||
-          this.cloudflareManualBucketInput?.value ||
-          ""
-      );
-      if (!bucketName) {
-        this.setCloudflareUploadStatus(
-          "Enter a valid manual bucket name.",
-          "error"
-        );
-        return;
-      }
-    } else {
-      bucketName = this.cloudflareSettings?.autoBuckets?.[npub] ||
-        (await this.ensureAutoBucketForCurrentUser());
-      if (!bucketName) {
-        this.setCloudflareUploadStatus(
-          "Failed to compute an auto bucket name.",
-          "error"
-        );
-        return;
-      }
-    }
-
-    const key = buildR2Key(npub, file);
-    const publicUrl = buildPublicUrl(
-      bucketName,
-      key,
-      publicBaseUrlTemplate
-    );
-
-    this.setCloudflareUploadStatus("Uploading…", "info");
+    this.setCloudflareUploadStatus("Preparing Cloudflare R2…", "info");
     this.updateCloudflareProgress(0);
     this.setCloudflareUploading(true);
 
+    let bucketResult = null;
     try {
-      const s3 = await createR2Client({
-        accountId,
-        accessKeyId,
-        secretAccessKey,
-      });
+      bucketResult = await this.ensureBucketConfigForNpub(npub);
+    } catch (err) {
+      console.error("Failed to prepare R2 bucket:", err);
+      this.setCloudflareUploadStatus(
+        err?.message ? `Bucket setup failed: ${err.message}` : "Bucket setup failed.",
+        "error"
+      );
+      this.setCloudflareUploading(false);
+      this.updateCloudflareProgress(Number.NaN);
+      return;
+    }
 
-      await uploadToR2({
+    const bucketEntry =
+      bucketResult?.entry || this.cloudflareSettings?.buckets?.[npub];
+
+    if (!bucketEntry || !bucketEntry.publicBaseUrl) {
+      this.setCloudflareUploadStatus(
+        "Bucket is missing a public domain. Check your Cloudflare settings.",
+        "error"
+      );
+      this.setCloudflareUploading(false);
+      this.updateCloudflareProgress(Number.NaN);
+      return;
+    }
+
+    const statusMessage = bucketResult?.usedManagedFallback &&
+      (this.cloudflareSettings?.baseDomain || "")
+        ? `Using managed r2.dev domain for ${bucketEntry.bucket}. Verify your Cloudflare zone. Uploading…`
+        : `Uploading to ${bucketEntry.bucket}…`;
+
+    this.setCloudflareUploadStatus(
+      statusMessage,
+      bucketResult?.usedManagedFallback ? "warning" : "info"
+    );
+
+    const key = buildR2Key(npub, file);
+    const publicUrl = buildPublicUrl(bucketEntry.publicBaseUrl, key);
+
+    try {
+      const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+
+      await multipartUpload({
         s3,
-        bucket: bucketName,
+        bucket: bucketEntry.bucket,
         key,
         file,
         contentType: file.type,
