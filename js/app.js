@@ -33,6 +33,7 @@ import {
   setManagedDomain,
 } from "./storage/r2-mgmt.js";
 import { makeR2Client, multipartUpload } from "./storage/r2-s3.js";
+import { initQuickR2Upload } from "./r2-quick.js";
 
 /**
  * Simple "decryption" placeholder for private videos.
@@ -755,6 +756,7 @@ class bitvidApp {
 
       // 2. Initialize the upload modal (components/upload-modal.html)
       await this.initUploadModal();
+      initQuickR2Upload(this);
 
       // 3. (Optional) Initialize the profile modal (components/profile-modal.html)
       await this.initProfileModal();
