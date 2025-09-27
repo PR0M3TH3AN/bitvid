@@ -29,8 +29,8 @@ import {
   sanitizeBucketName,
   ensureBucket,
   putCors,
-  attachCustomDomain,
-  enableManagedDomain,
+  attachCustomDomainAndWait,
+  setManagedDomain,
 } from "./storage/r2-mgmt.js";
 import { makeR2Client, multipartUpload } from "./storage/r2-s3.js";
 
@@ -1592,7 +1592,11 @@ class bitvidApp {
           console.warn("Failed to refresh bucket configuration:", err);
         }
       }
-      return { entry, usedManagedFallback: entry.domainType !== "custom" };
+      return {
+        entry,
+        usedManagedFallback: entry.domainType !== "custom",
+        customDomainStatus: entry.domainType === "custom" ? "active" : "skipped",
+      };
     }
 
     if (!apiToken) {
@@ -1619,37 +1623,71 @@ class bitvidApp {
     let publicBaseUrl = entry?.publicBaseUrl || "";
     let domainType = entry?.domainType || "managed";
     let usedManagedFallback = false;
+    let customDomainStatus = "skipped";
 
     if (baseDomain && zoneId) {
       const domain = `${this.deriveSubdomainForNpub(npub)}.${baseDomain}`;
       try {
-        publicBaseUrl = await attachCustomDomain({
+        const custom = await attachCustomDomainAndWait({
           accountId,
           bucket: bucketName,
           token: apiToken,
           zoneId,
           domain,
+          pollInterval: 2500,
+          timeoutMs: 120000,
         });
-        domainType = "custom";
+        customDomainStatus = custom?.status || "unknown";
+        if (custom?.active && custom?.url) {
+          publicBaseUrl = custom.url;
+          domainType = "custom";
+          try {
+            await setManagedDomain({
+              accountId,
+              bucket: bucketName,
+              token: apiToken,
+              enabled: false,
+            });
+          } catch (disableErr) {
+            console.warn("Failed to disable managed domain:", disableErr);
+          }
+        } else {
+          usedManagedFallback = true;
+        }
       } catch (err) {
         if (/already exists/i.test(err.message || "")) {
           publicBaseUrl = `https://${domain}`;
           domainType = "custom";
+          customDomainStatus = "active";
+          try {
+            await setManagedDomain({
+              accountId,
+              bucket: bucketName,
+              token: apiToken,
+              enabled: false,
+            });
+          } catch (disableErr) {
+            console.warn("Failed to disable managed domain:", disableErr);
+          }
         } else {
           console.warn("Failed to attach custom domain, falling back:", err);
           usedManagedFallback = true;
+          customDomainStatus = "error";
         }
       }
     }
 
     if (!publicBaseUrl) {
-      publicBaseUrl = await enableManagedDomain({
+      const managed = await setManagedDomain({
         accountId,
         bucket: bucketName,
         token: apiToken,
+        enabled: true,
       });
+      publicBaseUrl = managed?.url || `https://${bucketName}.${accountId}.r2.dev`;
       domainType = "managed";
       usedManagedFallback = true;
+      customDomainStatus = customDomainStatus === "skipped" ? "managed" : customDomainStatus;
     }
 
     const mergedEntry = {
@@ -1662,7 +1700,7 @@ class bitvidApp {
       mergeBucketEntry(this.cloudflareSettings, npub, mergedEntry)
     );
     this.cloudflareSettings = updatedSettings;
-    return { entry: mergedEntry, usedManagedFallback };
+    return { entry: mergedEntry, usedManagedFallback, customDomainStatus };
   }
 
   async updateCloudflareBucketPreview() {
@@ -1785,10 +1823,18 @@ class bitvidApp {
       return;
     }
 
-    const statusMessage = bucketResult?.usedManagedFallback &&
-      (this.cloudflareSettings?.baseDomain || "")
-        ? `Using managed r2.dev domain for ${bucketEntry.bucket}. Verify your Cloudflare zone. Uploading…`
-        : `Uploading to ${bucketEntry.bucket}…`;
+    let statusMessage = `Uploading to ${bucketEntry.bucket}…`;
+    if (bucketResult?.usedManagedFallback) {
+      const baseDomain = this.cloudflareSettings?.baseDomain || "";
+      if (baseDomain) {
+        const customStatus = bucketResult?.customDomainStatus
+          ? ` (custom domain status: ${bucketResult.customDomainStatus})`
+          : "";
+        statusMessage = `Using managed r2.dev domain for ${bucketEntry.bucket}. Verify your Cloudflare zone${customStatus}. Uploading…`;
+      } else {
+        statusMessage = `Using managed r2.dev domain for ${bucketEntry.bucket}. Uploading…`;
+      }
+    }
 
     this.setCloudflareUploadStatus(
       statusMessage,
