@@ -16,6 +16,16 @@ import {
   initialBlacklist,
   initialEventBlacklist,
 } from "./lists.js";
+import {
+  loadR2Settings,
+  saveR2Settings,
+  clearR2Settings,
+  bucketForNpub,
+  buildR2Key,
+  buildPublicUrl,
+  createR2Client,
+  uploadToR2,
+} from "./r2.js";
 
 /**
  * Simple "decryption" placeholder for private videos.
@@ -459,6 +469,30 @@ class bitvidApp {
     this.customUploadSection = null;
     this.cloudflareUploadSection = null;
     this.activeUploadMode = "custom";
+    this.cloudflareSettings = null;
+    this.cloudflareSettingsForm = null;
+    this.cloudflareClearSettingsButton = null;
+    this.cloudflareSettingsStatus = null;
+    this.cloudflareBucketPreview = null;
+    this.cloudflareBucketModeInputs = [];
+    this.cloudflareManualBucketGroup = null;
+    this.cloudflareManualBucketInput = null;
+    this.cloudflareUploadForm = null;
+    this.cloudflareFileInput = null;
+    this.cloudflareUploadButton = null;
+    this.cloudflareUploadStatus = null;
+    this.cloudflareProgressBar = null;
+    this.cloudflareProgressFill = null;
+    this.cloudflareTitleInput = null;
+    this.cloudflareDescriptionInput = null;
+    this.cloudflareThumbnailInput = null;
+    this.cloudflareMagnetInput = null;
+    this.cloudflareWsInput = null;
+    this.cloudflareXsInput = null;
+    this.r2AccountIdInput = null;
+    this.r2AccessKeyIdInput = null;
+    this.r2SecretAccessKeyInput = null;
+    this.r2PublicBaseUrlInput = null;
 
     // Optional small inline player stats
     this.status = document.getElementById("status") || null;
@@ -1052,6 +1086,53 @@ class bitvidApp {
         document.getElementById("customUploadSection") || null;
       this.cloudflareUploadSection =
         document.getElementById("cloudflareUploadSection") || null;
+      this.cloudflareSettingsForm =
+        document.getElementById("cloudflareSettingsForm") || null;
+      this.cloudflareClearSettingsButton =
+        document.getElementById("cloudflareClearSettings") || null;
+      this.cloudflareSettingsStatus =
+        document.getElementById("cloudflareSettingsStatus") || null;
+      this.cloudflareBucketPreview =
+        document.getElementById("cloudflareBucketPreview") || null;
+      this.cloudflareBucketModeInputs = Array.from(
+        document.querySelectorAll("input[name='r2BucketMode']")
+      );
+      this.cloudflareManualBucketGroup =
+        document.getElementById("r2ManualBucketGroup") || null;
+      this.cloudflareManualBucketInput =
+        document.getElementById("r2ManualBucket") || null;
+      this.cloudflareUploadForm =
+        document.getElementById("cloudflareUploadForm") || null;
+      this.cloudflareFileInput =
+        document.getElementById("cloudflareFile") || null;
+      this.cloudflareUploadButton =
+        document.getElementById("cloudflareUploadButton") || null;
+      this.cloudflareUploadStatus =
+        document.getElementById("cloudflareUploadStatus") || null;
+      this.cloudflareProgressBar =
+        document.getElementById("cloudflareProgressBar") || null;
+      this.cloudflareProgressFill =
+        document.getElementById("cloudflareProgressFill") || null;
+      this.cloudflareTitleInput =
+        document.getElementById("cloudflareTitle") || null;
+      this.cloudflareDescriptionInput =
+        document.getElementById("cloudflareDescription") || null;
+      this.cloudflareThumbnailInput =
+        document.getElementById("cloudflareThumbnail") || null;
+      this.cloudflareMagnetInput =
+        document.getElementById("cloudflareMagnet") || null;
+      this.cloudflareWsInput =
+        document.getElementById("cloudflareWs") || null;
+      this.cloudflareXsInput =
+        document.getElementById("cloudflareXs") || null;
+      this.r2AccountIdInput =
+        document.getElementById("r2AccountId") || null;
+      this.r2AccessKeyIdInput =
+        document.getElementById("r2AccessKeyId") || null;
+      this.r2SecretAccessKeyInput =
+        document.getElementById("r2SecretAccessKey") || null;
+      this.r2PublicBaseUrlInput =
+        document.getElementById("r2PublicBaseUrlTemplate") || null;
 
       // Optional: if close button found, wire up
       if (this.closeUploadModalBtn) {
@@ -1069,6 +1150,40 @@ class bitvidApp {
         });
       }
 
+      if (this.cloudflareSettingsForm) {
+        this.cloudflareSettingsForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          this.handleCloudflareSettingsSubmit();
+        });
+      }
+
+      if (this.cloudflareClearSettingsButton) {
+        this.cloudflareClearSettingsButton.addEventListener("click", () => {
+          this.handleCloudflareClearSettings();
+        });
+      }
+
+      if (this.cloudflareBucketModeInputs.length > 0) {
+        this.cloudflareBucketModeInputs.forEach((input) => {
+          input.addEventListener("change", () => {
+            this.handleCloudflareBucketModeChange();
+          });
+        });
+      }
+
+      if (this.cloudflareManualBucketInput) {
+        this.cloudflareManualBucketInput.addEventListener("input", () => {
+          this.handleManualBucketInputChange();
+        });
+      }
+
+      if (this.cloudflareUploadForm) {
+        this.cloudflareUploadForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          this.handleCloudflareUploadSubmit();
+        });
+      }
+
       if (this.uploadModeToggleButtons.length > 0) {
         this.uploadModeToggleButtons.forEach((btn) => {
           btn.addEventListener("click", () => {
@@ -1077,6 +1192,9 @@ class bitvidApp {
           });
         });
       }
+
+      await this.loadCloudflareSettingsFromStorage();
+      await this.updateCloudflareBucketPreview();
 
       this.setUploadMode(this.activeUploadMode);
 
@@ -1122,6 +1240,552 @@ class bitvidApp {
         btn.classList.toggle("text-gray-300", !isActive);
         btn.setAttribute("aria-pressed", isActive ? "true" : "false");
       });
+    }
+
+    if (normalized === "cloudflare") {
+      this.updateCloudflareBucketPreview();
+    }
+  }
+
+  getCloudflareBucketMode() {
+    if (this.cloudflareBucketModeInputs.length === 0) {
+      return "auto";
+    }
+
+    const active = this.cloudflareBucketModeInputs.find(
+      (input) => input && input.checked
+    );
+    return active && active.value === "manual" ? "manual" : "auto";
+  }
+
+  sanitizeBucketName(name) {
+    const raw = String(name || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "");
+    const trimmed = raw.slice(0, 63).replace(/^-+|-+$/g, "");
+    return trimmed;
+  }
+
+  setCloudflareSettingsStatus(message = "", variant = "info") {
+    if (!this.cloudflareSettingsStatus) {
+      return;
+    }
+
+    const el = this.cloudflareSettingsStatus;
+    el.textContent = message || "";
+    el.classList.remove(
+      "text-green-400",
+      "text-red-400",
+      "text-yellow-400",
+      "text-gray-400"
+    );
+    if (!message) {
+      el.classList.add("text-gray-400");
+      return;
+    }
+
+    let cls = "text-gray-400";
+    if (variant === "success") {
+      cls = "text-green-400";
+    } else if (variant === "error") {
+      cls = "text-red-400";
+    } else if (variant === "warning") {
+      cls = "text-yellow-400";
+    }
+    el.classList.add(cls);
+  }
+
+  setCloudflareUploadStatus(message = "", variant = "info") {
+    if (!this.cloudflareUploadStatus) {
+      return;
+    }
+
+    const el = this.cloudflareUploadStatus;
+    el.textContent = message || "";
+    el.classList.remove(
+      "text-green-400",
+      "text-red-400",
+      "text-yellow-400",
+      "text-gray-400"
+    );
+    if (!message) {
+      el.classList.add("text-gray-400");
+      return;
+    }
+
+    let cls = "text-gray-400";
+    if (variant === "success") {
+      cls = "text-green-400";
+    } else if (variant === "error") {
+      cls = "text-red-400";
+    } else if (variant === "warning") {
+      cls = "text-yellow-400";
+    }
+    el.classList.add(cls);
+  }
+
+  setCloudflareUploading(isUploading) {
+    if (this.cloudflareUploadButton) {
+      this.cloudflareUploadButton.disabled = Boolean(isUploading);
+      this.cloudflareUploadButton.textContent = isUploading
+        ? "Uploading…"
+        : "Upload to R2 & publish";
+    }
+
+    if (this.cloudflareFileInput) {
+      this.cloudflareFileInput.disabled = Boolean(isUploading);
+    }
+  }
+
+  updateCloudflareProgress(fraction) {
+    if (!this.cloudflareProgressBar || !this.cloudflareProgressFill) {
+      return;
+    }
+
+    if (typeof fraction !== "number" || Number.isNaN(fraction)) {
+      this.cloudflareProgressBar.classList.add("hidden");
+      this.cloudflareProgressFill.style.width = "0%";
+      return;
+    }
+
+    const clamped = Math.max(0, Math.min(1, fraction));
+    this.cloudflareProgressBar.classList.remove("hidden");
+    this.cloudflareProgressFill.style.width = `${(clamped * 100).toFixed(1)}%`;
+  }
+
+  resetCloudflareUploadForm() {
+    if (this.cloudflareTitleInput) this.cloudflareTitleInput.value = "";
+    if (this.cloudflareDescriptionInput)
+      this.cloudflareDescriptionInput.value = "";
+    if (this.cloudflareThumbnailInput)
+      this.cloudflareThumbnailInput.value = "";
+    if (this.cloudflareMagnetInput) this.cloudflareMagnetInput.value = "";
+    if (this.cloudflareWsInput) this.cloudflareWsInput.value = "";
+    if (this.cloudflareXsInput) this.cloudflareXsInput.value = "";
+    if (this.cloudflareFileInput) this.cloudflareFileInput.value = "";
+    this.updateCloudflareProgress(Number.NaN);
+  }
+
+  async loadCloudflareSettingsFromStorage() {
+    try {
+      const settings = await loadR2Settings();
+      this.cloudflareSettings = settings;
+      this.populateCloudflareSettingsInputs(settings);
+    } catch (err) {
+      console.error("Failed to load Cloudflare settings:", err);
+      this.setCloudflareSettingsStatus(
+        "Failed to load saved settings.",
+        "error"
+      );
+      this.cloudflareSettings = {
+        accountId: "",
+        accessKeyId: "",
+        secretAccessKey: "",
+        publicBaseUrlTemplate: "",
+        bucketMode: "auto",
+        manualBucket: "",
+        autoBuckets: {},
+      };
+      this.populateCloudflareSettingsInputs(this.cloudflareSettings);
+    }
+  }
+
+  populateCloudflareSettingsInputs(settings) {
+    const data = settings || {
+      accountId: "",
+      accessKeyId: "",
+      secretAccessKey: "",
+      publicBaseUrlTemplate: "",
+      bucketMode: "auto",
+      manualBucket: "",
+    };
+
+    if (this.r2AccountIdInput) {
+      this.r2AccountIdInput.value = data.accountId || "";
+    }
+    if (this.r2AccessKeyIdInput) {
+      this.r2AccessKeyIdInput.value = data.accessKeyId || "";
+    }
+    if (this.r2SecretAccessKeyInput) {
+      this.r2SecretAccessKeyInput.value = data.secretAccessKey || "";
+    }
+    if (this.r2PublicBaseUrlInput) {
+      this.r2PublicBaseUrlInput.value = data.publicBaseUrlTemplate || "";
+    }
+
+    const mode = data.bucketMode === "manual" ? "manual" : "auto";
+    if (this.cloudflareBucketModeInputs.length > 0) {
+      this.cloudflareBucketModeInputs.forEach((input) => {
+        if (input) {
+          input.checked = input.value === mode;
+        }
+      });
+    }
+
+    if (this.cloudflareManualBucketGroup) {
+      if (mode === "manual") {
+        this.cloudflareManualBucketGroup.classList.remove("hidden");
+      } else {
+        this.cloudflareManualBucketGroup.classList.add("hidden");
+      }
+    }
+
+    if (this.cloudflareManualBucketInput) {
+      this.cloudflareManualBucketInput.value = data.manualBucket || "";
+    }
+
+    this.setCloudflareSettingsStatus("");
+  }
+
+  async handleCloudflareSettingsSubmit({ quiet = false } = {}) {
+    const accountId = (this.r2AccountIdInput?.value || "").trim();
+    const accessKeyId = (this.r2AccessKeyIdInput?.value || "").trim();
+    const secretAccessKey = (this.r2SecretAccessKeyInput?.value || "").trim();
+    const publicBaseUrlTemplate =
+      (this.r2PublicBaseUrlInput?.value || "").trim();
+    const bucketMode = this.getCloudflareBucketMode();
+    let manualBucket = this.cloudflareManualBucketInput
+      ? this.cloudflareManualBucketInput.value
+      : "";
+    manualBucket = this.sanitizeBucketName(manualBucket);
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "Account ID, Access Key ID, and Secret are required.",
+          "error"
+        );
+      }
+      return false;
+    }
+
+    if (bucketMode === "manual" && manualBucket.length < 3) {
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "Manual bucket names must be at least 3 characters.",
+          "error"
+        );
+      }
+      return false;
+    }
+
+    if (this.cloudflareManualBucketInput) {
+      this.cloudflareManualBucketInput.value = manualBucket;
+    }
+
+    const autoBuckets = {
+      ...(this.cloudflareSettings?.autoBuckets || {}),
+    };
+
+    const updatedSettings = {
+      accountId,
+      accessKeyId,
+      secretAccessKey,
+      publicBaseUrlTemplate,
+      bucketMode,
+      manualBucket,
+      autoBuckets,
+    };
+
+    try {
+      this.cloudflareSettings = await saveR2Settings(updatedSettings);
+      this.populateCloudflareSettingsInputs(this.cloudflareSettings);
+      if (!quiet) {
+        this.setCloudflareSettingsStatus("Settings saved locally.", "success");
+      }
+      await this.updateCloudflareBucketPreview();
+      return true;
+    } catch (err) {
+      console.error("Failed to save Cloudflare settings:", err);
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "Failed to save settings. Check console for details.",
+          "error"
+        );
+      }
+    }
+
+    return false;
+  }
+
+  async handleCloudflareClearSettings() {
+    try {
+      await clearR2Settings();
+      this.cloudflareSettings = await loadR2Settings();
+      this.populateCloudflareSettingsInputs(this.cloudflareSettings);
+      this.setCloudflareSettingsStatus("Settings cleared.", "success");
+      await this.updateCloudflareBucketPreview();
+    } catch (err) {
+      console.error("Failed to clear Cloudflare settings:", err);
+      this.setCloudflareSettingsStatus(
+        "Failed to clear settings.",
+        "error"
+      );
+    }
+  }
+
+  handleCloudflareBucketModeChange() {
+    const mode = this.getCloudflareBucketMode();
+    if (this.cloudflareManualBucketGroup) {
+      if (mode === "manual") {
+        this.cloudflareManualBucketGroup.classList.remove("hidden");
+      } else {
+        this.cloudflareManualBucketGroup.classList.add("hidden");
+      }
+    }
+    if (this.cloudflareSettings) {
+      this.cloudflareSettings.bucketMode = mode;
+    }
+    this.updateCloudflareBucketPreview();
+  }
+
+  handleManualBucketInputChange() {
+    this.updateCloudflareBucketPreview();
+  }
+
+  async ensureAutoBucketForCurrentUser() {
+    if (!this.pubkey || !this.cloudflareSettings) {
+      return null;
+    }
+
+    const mode = this.cloudflareSettings.bucketMode === "manual" ? "manual" : "auto";
+    if (mode !== "auto") {
+      return null;
+    }
+
+    const npub = this.safeEncodeNpub(this.pubkey);
+    if (!npub) {
+      return null;
+    }
+
+    const existing = this.cloudflareSettings.autoBuckets?.[npub];
+    if (existing) {
+      return existing;
+    }
+
+    const bucket = bucketForNpub(npub);
+    const updatedSettings = {
+      ...this.cloudflareSettings,
+      autoBuckets: {
+        ...(this.cloudflareSettings.autoBuckets || {}),
+        [npub]: bucket,
+      },
+    };
+
+    try {
+      this.cloudflareSettings = await saveR2Settings(updatedSettings);
+    } catch (err) {
+      console.warn("Failed to persist auto bucket name:", err);
+      this.cloudflareSettings = updatedSettings;
+    }
+
+    return bucket;
+  }
+
+  async updateCloudflareBucketPreview() {
+    if (!this.cloudflareBucketPreview) {
+      return;
+    }
+
+    const el = this.cloudflareBucketPreview;
+    const mode = this.getCloudflareBucketMode();
+    const template = (this.r2PublicBaseUrlInput?.value || "").trim();
+
+    if (mode === "manual") {
+      const manualBucket = this.sanitizeBucketName(
+        this.cloudflareManualBucketInput?.value ||
+          this.cloudflareSettings?.manualBucket ||
+          ""
+      );
+      if (!manualBucket) {
+        el.textContent = "Enter a manual bucket name.";
+        return;
+      }
+
+      const sampleNpub = this.safeEncodeNpub(this.pubkey) || "anon";
+      const sampleKey = buildR2Key(sampleNpub, {
+        name: "sample.mp4",
+      });
+      const publicUrl = buildPublicUrl(manualBucket, sampleKey, template);
+      el.textContent = `${manualBucket} • ${publicUrl}`;
+      return;
+    }
+
+    if (!this.pubkey) {
+      el.textContent = "Login to preview your auto bucket.";
+      return;
+    }
+
+    if (!this.cloudflareSettings) {
+      el.textContent = "Save your credentials to generate a bucket.";
+      return;
+    }
+
+    const npub = this.safeEncodeNpub(this.pubkey);
+    if (!npub) {
+      el.textContent = "Unable to encode npub.";
+      return;
+    }
+
+    let bucket = this.cloudflareSettings.autoBuckets?.[npub];
+    if (!bucket) {
+      bucket = await this.ensureAutoBucketForCurrentUser();
+    }
+
+    if (!bucket) {
+      el.textContent = "Save your credentials to generate a bucket.";
+      return;
+    }
+
+    const sampleKey = buildR2Key(npub, { name: "sample.mp4" });
+    const publicUrl = buildPublicUrl(bucket, sampleKey, template);
+    el.textContent = `${bucket} • ${publicUrl}`;
+  }
+
+  async handleCloudflareUploadSubmit() {
+    if (!this.pubkey) {
+      this.showError("Please login to post a video.");
+      return;
+    }
+
+    const saved = await this.handleCloudflareSettingsSubmit({ quiet: true });
+    if (!saved) {
+      this.setCloudflareUploadStatus(
+        "Fix your R2 settings before uploading.",
+        "error"
+      );
+      return;
+    }
+
+    const title = (this.cloudflareTitleInput?.value || "").trim();
+    if (!title) {
+      this.setCloudflareUploadStatus("Title is required.", "error");
+      return;
+    }
+
+    const file = this.cloudflareFileInput?.files?.[0] || null;
+    if (!file) {
+      this.setCloudflareUploadStatus(
+        "Select a video or HLS file to upload.",
+        "error"
+      );
+      return;
+    }
+
+    const description = (this.cloudflareDescriptionInput?.value || "").trim();
+    const thumbnail = (this.cloudflareThumbnailInput?.value || "").trim();
+    const magnet = (this.cloudflareMagnetInput?.value || "").trim();
+    const ws = (this.cloudflareWsInput?.value || "").trim();
+    const xs = (this.cloudflareXsInput?.value || "").trim();
+
+    const accountId = this.cloudflareSettings?.accountId || "";
+    const accessKeyId = this.cloudflareSettings?.accessKeyId || "";
+    const secretAccessKey = this.cloudflareSettings?.secretAccessKey || "";
+    const publicBaseUrlTemplate =
+      this.cloudflareSettings?.publicBaseUrlTemplate || "";
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      this.setCloudflareUploadStatus(
+        "Missing R2 credentials. Save them before uploading.",
+        "error"
+      );
+      return;
+    }
+
+    const npub = this.safeEncodeNpub(this.pubkey);
+    if (!npub) {
+      this.setCloudflareUploadStatus("Unable to encode npub.", "error");
+      return;
+    }
+
+    let bucketName = "";
+    const mode = this.cloudflareSettings?.bucketMode === "manual" ? "manual" : "auto";
+    if (mode === "manual") {
+      bucketName = this.sanitizeBucketName(
+        this.cloudflareSettings?.manualBucket ||
+          this.cloudflareManualBucketInput?.value ||
+          ""
+      );
+      if (!bucketName) {
+        this.setCloudflareUploadStatus(
+          "Enter a valid manual bucket name.",
+          "error"
+        );
+        return;
+      }
+    } else {
+      bucketName = this.cloudflareSettings?.autoBuckets?.[npub] ||
+        (await this.ensureAutoBucketForCurrentUser());
+      if (!bucketName) {
+        this.setCloudflareUploadStatus(
+          "Failed to compute an auto bucket name.",
+          "error"
+        );
+        return;
+      }
+    }
+
+    const key = buildR2Key(npub, file);
+    const publicUrl = buildPublicUrl(
+      bucketName,
+      key,
+      publicBaseUrlTemplate
+    );
+
+    this.setCloudflareUploadStatus("Uploading…", "info");
+    this.updateCloudflareProgress(0);
+    this.setCloudflareUploading(true);
+
+    try {
+      const s3 = await createR2Client({
+        accountId,
+        accessKeyId,
+        secretAccessKey,
+      });
+
+      await uploadToR2({
+        s3,
+        bucket: bucketName,
+        key,
+        file,
+        contentType: file.type,
+        onProgress: (fraction) => {
+          this.updateCloudflareProgress(fraction);
+        },
+      });
+
+      const payload = {
+        title,
+        url: publicUrl,
+        magnet,
+        thumbnail,
+        description,
+        ws,
+        xs,
+      };
+
+      const published = await this.publishVideoNote(payload, {
+        onSuccess: () => {
+          this.resetCloudflareUploadForm();
+        },
+      });
+
+      if (published) {
+        this.setCloudflareUploadStatus(
+          `Published ${publicUrl}`,
+          "success"
+        );
+      }
+    } catch (err) {
+      console.error("Cloudflare upload failed:", err);
+      this.setCloudflareUploadStatus(
+        err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
+        "error"
+      );
+    } finally {
+      this.setCloudflareUploading(false);
+      this.updateCloudflareProgress(Number.NaN);
+      await this.updateCloudflareBucketPreview();
     }
   }
 
@@ -1496,15 +2160,69 @@ class bitvidApp {
     });
   }
 
+  async publishVideoNote(payload, { onSuccess, suppressModalClose } = {}) {
+    if (!this.pubkey) {
+      this.showError("Please login to post a video.");
+      return false;
+    }
+
+    const title = (payload?.title || "").trim();
+    const url = (payload?.url || "").trim();
+    const magnet = (payload?.magnet || "").trim();
+    const thumbnail = (payload?.thumbnail || "").trim();
+    const description = (payload?.description || "").trim();
+    const ws = (payload?.ws || "").trim();
+    const xs = (payload?.xs || "").trim();
+
+    const formData = {
+      version: 3,
+      title,
+      url,
+      magnet,
+      thumbnail,
+      description,
+      mode: isDevMode ? "dev" : "live",
+    };
+
+    if (!formData.title || (!formData.url && !formData.magnet)) {
+      this.showError("Title and at least one of URL or Magnet is required.");
+      return false;
+    }
+
+    if (formData.url && !/^https:\/\//i.test(formData.url)) {
+      this.showError("Hosted video URLs must use HTTPS.");
+      return false;
+    }
+
+    if (formData.magnet) {
+      formData.magnet = normalizeAndAugmentMagnet(formData.magnet, {
+        ws,
+        xs,
+      });
+    }
+
+    try {
+      await nostrClient.publishVideo(formData, this.pubkey);
+      if (typeof onSuccess === "function") {
+        await onSuccess();
+      }
+      if (suppressModalClose !== true && this.uploadModal) {
+        this.uploadModal.classList.add("hidden");
+      }
+      await this.loadVideos();
+      this.showSuccess("Video shared successfully!");
+      return true;
+    } catch (err) {
+      console.error("Failed to publish video:", err);
+      this.showError("Failed to share video. Please try again later.");
+      return false;
+    }
+  }
+
   /**
    * Actually handle the upload form submission.
    */
   async handleUploadSubmit() {
-    if (!this.pubkey) {
-      this.showError("Please login to post a video.");
-      return;
-    }
-
     const titleEl = document.getElementById("uploadTitle");
     const urlEl = document.getElementById("uploadUrl");
     const magnetEl = document.getElementById("uploadMagnet");
@@ -1522,59 +2240,28 @@ class bitvidApp {
     const thumbnail = thumbEl?.value.trim() || "";
     const description = descEl?.value.trim() || "";
 
-    const formData = {
-      version: 3,
+    const payload = {
       title,
       url,
       magnet,
       thumbnail,
       description,
-      mode: isDevMode ? "dev" : "live",
-      // isPrivate: privEl?.checked || false,
+      ws,
+      xs,
     };
 
-    if (!formData.title || (!formData.url && !formData.magnet)) {
-      this.showError("Title and at least one of URL or Magnet is required.");
-      return;
-    }
-
-    if (formData.url && !/^https:\/\//i.test(formData.url)) {
-      this.showError("Hosted video URLs must use HTTPS.");
-      return;
-    }
-
-    if (formData.magnet) {
-      formData.magnet = normalizeAndAugmentMagnet(formData.magnet, {
-        ws,
-        xs,
-      });
-    }
-
-    try {
-      await nostrClient.publishVideo(formData, this.pubkey);
-
-      // Clear fields
-      if (titleEl) titleEl.value = "";
-      if (urlEl) urlEl.value = "";
-      if (magnetEl) magnetEl.value = "";
-      if (wsEl) wsEl.value = "";
-      if (xsEl) xsEl.value = "";
-      if (thumbEl) thumbEl.value = "";
-      if (descEl) descEl.value = "";
-      if (privEl) privEl.checked = false;
-
-      // Hide the modal
-      if (this.uploadModal) {
-        this.uploadModal.classList.add("hidden");
-      }
-
-      // *** Refresh to show the newly uploaded video in the grid ***
-      await this.loadVideos();
-      this.showSuccess("Video shared successfully!");
-    } catch (err) {
-      console.error("Failed to publish video:", err);
-      this.showError("Failed to share video. Please try again later.");
-    }
+    await this.publishVideoNote(payload, {
+      onSuccess: () => {
+        if (titleEl) titleEl.value = "";
+        if (urlEl) urlEl.value = "";
+        if (magnetEl) magnetEl.value = "";
+        if (wsEl) wsEl.value = "";
+        if (xsEl) xsEl.value = "";
+        if (thumbEl) thumbEl.value = "";
+        if (descEl) descEl.value = "";
+        if (privEl) privEl.checked = false;
+      },
+    });
   }
 
   /**
@@ -1623,6 +2310,8 @@ class bitvidApp {
 
     // Force a fresh fetch of all profile pictures/names
     this.forceRefreshAllProfiles();
+
+    await this.updateCloudflareBucketPreview();
   }
 
   /**
@@ -1669,6 +2358,8 @@ class bitvidApp {
 
     // Force a fresh fetch of all profile pictures/names (public ones in this case)
     this.forceRefreshAllProfiles();
+
+    await this.updateCloudflareBucketPreview();
   }
 
   /**

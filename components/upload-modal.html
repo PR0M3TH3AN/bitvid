@@ -195,10 +195,262 @@
         </div>
 
         <div id="cloudflareUploadSection" class="hidden">
-          <div
-            class="flex min-h-[320px] items-center justify-center rounded-lg border border-dashed border-gray-700 bg-black/20 p-8 text-center text-sm text-gray-400"
-          >
-            Cloudflare uploads are coming soon.
+          <div class="space-y-8">
+            <section class="rounded-lg border border-gray-800 bg-gray-900/60 p-5">
+              <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-gray-100">
+                  Cloudflare R2 credentials
+                </h3>
+                <span class="text-xs uppercase tracking-wide text-gray-500">
+                  stored locally
+                </span>
+              </div>
+              <p class="mb-4 text-sm text-gray-400">
+                Paste your Cloudflare R2 API credentials. We keep them in your
+                browser so uploads happen client-side.
+              </p>
+              <form id="cloudflareSettingsForm" class="space-y-4">
+                <div class="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label for="r2AccountId" class="block text-sm font-medium text-gray-200"
+                      >Account ID</label
+                    >
+                    <input
+                      id="r2AccountId"
+                      type="text"
+                      autocomplete="off"
+                      class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="r2AccessKeyId" class="block text-sm font-medium text-gray-200"
+                      >Access Key ID</label
+                    >
+                    <input
+                      id="r2AccessKeyId"
+                      type="text"
+                      autocomplete="off"
+                      class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="AKIA..."
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label for="r2SecretAccessKey" class="block text-sm font-medium text-gray-200"
+                    >Secret Access Key</label
+                  >
+                  <input
+                    id="r2SecretAccessKey"
+                    type="password"
+                    autocomplete="off"
+                    class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label for="r2PublicBaseUrlTemplate" class="block text-sm font-medium text-gray-200"
+                    >Public base URL template</label
+                  >
+                  <input
+                    id="r2PublicBaseUrlTemplate"
+                    type="url"
+                    autocomplete="off"
+                    class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://{bucket}.videos.example.com"
+                  />
+                  <p class="mt-1 text-xs text-gray-500">
+                    Use <code class="rounded bg-gray-800 px-1 py-0.5">{bucket}</code>
+                    where the bucket name should appear. Defaults to
+                    <code class="rounded bg-gray-800 px-1 py-0.5">https://{bucket}.r2.dev</code>
+                    when blank.
+                  </p>
+                </div>
+                <fieldset>
+                  <legend class="text-sm font-medium text-gray-200">
+                    Bucket mode
+                  </legend>
+                  <div class="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-300">
+                    <label class="inline-flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="r2BucketMode"
+                        id="r2BucketModeAuto"
+                        value="auto"
+                        class="h-4 w-4 text-blue-500 focus:ring-blue-500"
+                        checked
+                      />
+                      Auto (per npub)
+                    </label>
+                    <label class="inline-flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="r2BucketMode"
+                        id="r2BucketModeManual"
+                        value="manual"
+                        class="h-4 w-4 text-blue-500 focus:ring-blue-500"
+                      />
+                      Manual bucket
+                    </label>
+                  </div>
+                  <div id="r2ManualBucketGroup" class="mt-3 hidden">
+                    <label for="r2ManualBucket" class="block text-sm font-medium text-gray-200"
+                      >Bucket name</label
+                    >
+                    <input
+                      id="r2ManualBucket"
+                      type="text"
+                      autocomplete="off"
+                      class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="bitvid-example-bucket"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">
+                      Lowercase letters, numbers, and hyphens only (3–63 chars).
+                    </p>
+                  </div>
+                </fieldset>
+                <div class="flex flex-wrap items-center gap-3">
+                  <button
+                    type="submit"
+                    class="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Save settings
+                  </button>
+                  <button
+                    type="button"
+                    id="cloudflareClearSettings"
+                    class="rounded-md border border-gray-600 px-4 py-2 text-sm font-semibold text-gray-200 transition hover:border-gray-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  >
+                    Clear
+                  </button>
+                  <span
+                    id="cloudflareSettingsStatus"
+                    class="text-xs text-gray-400"
+                    role="status"
+                  ></span>
+                </div>
+              </form>
+            </section>
+
+            <section class="rounded-lg border border-gray-800 bg-gray-900/60 p-5">
+              <div class="mb-4">
+                <h3 class="text-lg font-semibold text-gray-100">
+                  Upload &amp; publish
+                </h3>
+                <p class="mt-1 text-sm text-gray-400">
+                  Choose a file, we will upload it to R2, fill the hosted URL,
+                  and publish your note automatically.
+                </p>
+              </div>
+              <form id="cloudflareUploadForm" class="space-y-4">
+                <div>
+                  <label for="cloudflareTitle" class="block text-sm font-medium text-gray-200"
+                    >Title</label
+                  >
+                  <input
+                    id="cloudflareTitle"
+                    type="text"
+                    required
+                    class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label for="cloudflareDescription" class="block text-sm font-medium text-gray-200"
+                    >Description (optional)</label
+                  >
+                  <textarea
+                    id="cloudflareDescription"
+                    rows="3"
+                    class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  ></textarea>
+                </div>
+                <div class="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label for="cloudflareThumbnail" class="block text-sm font-medium text-gray-200"
+                      >Thumbnail URL (optional)</label
+                    >
+                    <input
+                      id="cloudflareThumbnail"
+                      type="url"
+                      class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label for="cloudflareMagnet" class="block text-sm font-medium text-gray-200"
+                      >Magnet link (optional)</label
+                    >
+                    <input
+                      id="cloudflareMagnet"
+                      type="text"
+                      placeholder="magnet:?xt=urn:btih:..."
+                      class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div class="grid gap-3 md:grid-cols-2">
+                  <input
+                    id="cloudflareWs"
+                    type="url"
+                    placeholder="Web seed (ws=)"
+                    class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    id="cloudflareXs"
+                    type="url"
+                    placeholder=".torrent URL (xs=)"
+                    class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label for="cloudflareFile" class="block text-sm font-medium text-gray-200"
+                    >Video or HLS file</label
+                  >
+                  <input
+                    id="cloudflareFile"
+                    type="file"
+                    accept="video/*,.m3u8,.ts,.mp4,.webm,.mov,.mkv,.mpg,.mpeg"
+                    class="mt-1 w-full rounded-md border border-dashed border-gray-600 bg-gray-900 px-3 py-4 text-sm text-gray-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                  <p class="mt-1 text-xs text-gray-500">
+                    We use multipart uploads with automatic bucket creation.
+                    Large files are supported.
+                  </p>
+                </div>
+                <div class="rounded-md border border-gray-800 bg-black/40 p-3 text-xs text-gray-400">
+                  <p>
+                    <strong class="text-gray-200">Bucket preview:</strong>
+                    <span id="cloudflareBucketPreview" class="ml-1">Save your
+                      settings to preview.</span>
+                  </p>
+                </div>
+                <div class="space-y-2">
+                  <div
+                    id="cloudflareProgressBar"
+                    class="hidden h-2 w-full overflow-hidden rounded-full bg-gray-800"
+                  >
+                    <div
+                      id="cloudflareProgressFill"
+                      class="h-full w-0 bg-blue-500 transition-all duration-150"
+                    ></div>
+                  </div>
+                  <p
+                    id="cloudflareUploadStatus"
+                    class="text-xs text-gray-400"
+                    role="status"
+                  ></p>
+                </div>
+                <button
+                  type="submit"
+                  id="cloudflareUploadButton"
+                  class="w-full rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-blue-900"
+                >
+                  Upload to R2 &amp; publish
+                </button>
+              </form>
+            </section>
           </div>
         </div>
       </div>
