@@ -493,6 +493,11 @@ class bitvidApp {
     this.cloudflareMagnetInput = null;
     this.cloudflareWsInput = null;
     this.cloudflareXsInput = null;
+    this.cloudflareAdvancedToggle = null;
+    this.cloudflareAdvancedToggleLabel = null;
+    this.cloudflareAdvancedToggleIcon = null;
+    this.cloudflareAdvancedFields = null;
+    this.cloudflareAdvancedVisible = false;
     this.r2AccountIdInput = null;
     this.r2AccessKeyIdInput = null;
     this.r2SecretAccessKeyInput = null;
@@ -1124,6 +1129,14 @@ class bitvidApp {
         document.getElementById("cloudflareWs") || null;
       this.cloudflareXsInput =
         document.getElementById("cloudflareXs") || null;
+      this.cloudflareAdvancedToggle =
+        document.getElementById("cloudflareAdvancedToggle") || null;
+      this.cloudflareAdvancedToggleLabel =
+        document.getElementById("cloudflareAdvancedToggleLabel") || null;
+      this.cloudflareAdvancedToggleIcon =
+        document.getElementById("cloudflareAdvancedToggleIcon") || null;
+      this.cloudflareAdvancedFields =
+        document.getElementById("cloudflareAdvancedFields") || null;
       this.r2AccountIdInput =
         document.getElementById("r2AccountId") || null;
       this.r2AccessKeyIdInput =
@@ -1181,6 +1194,16 @@ class bitvidApp {
         });
       }
 
+      if (this.cloudflareAdvancedToggle) {
+        this.cloudflareAdvancedToggle.addEventListener("click", () => {
+          this.setCloudflareAdvancedVisibility(
+            !this.cloudflareAdvancedVisible
+          );
+        });
+      }
+
+      this.setCloudflareAdvancedVisibility(this.cloudflareAdvancedVisible);
+
       await this.loadCloudflareSettingsFromStorage();
       await this.updateCloudflareBucketPreview();
 
@@ -1232,6 +1255,36 @@ class bitvidApp {
 
     if (normalized === "cloudflare") {
       this.updateCloudflareBucketPreview();
+    }
+  }
+
+  setCloudflareAdvancedVisibility(visible) {
+    const isVisible = Boolean(visible);
+    this.cloudflareAdvancedVisible = isVisible;
+
+    if (this.cloudflareAdvancedFields) {
+      if (isVisible) {
+        this.cloudflareAdvancedFields.classList.remove("hidden");
+      } else {
+        this.cloudflareAdvancedFields.classList.add("hidden");
+      }
+    }
+
+    if (this.cloudflareAdvancedToggle) {
+      this.cloudflareAdvancedToggle.setAttribute(
+        "aria-expanded",
+        isVisible ? "true" : "false"
+      );
+    }
+
+    if (this.cloudflareAdvancedToggleLabel) {
+      this.cloudflareAdvancedToggleLabel.textContent = isVisible
+        ? "Hide advanced options"
+        : "Show advanced options";
+    }
+
+    if (this.cloudflareAdvancedToggleIcon) {
+      this.cloudflareAdvancedToggleIcon.classList.toggle("rotate-90", isVisible);
     }
   }
 
@@ -1389,6 +1442,17 @@ class bitvidApp {
       this.r2BaseDomainInput.value = data.baseDomain || "";
     }
 
+    const hasAdvancedValues = Boolean(
+      (data.apiToken && data.apiToken.length > 0) ||
+        (data.zoneId && data.zoneId.length > 0) ||
+        (data.baseDomain && data.baseDomain.length > 0)
+    );
+    if (hasAdvancedValues) {
+      this.setCloudflareAdvancedVisibility(true);
+    } else if (!this.cloudflareAdvancedVisible) {
+      this.setCloudflareAdvancedVisibility(false);
+    }
+
     this.setCloudflareSettingsStatus("");
   }
 
@@ -1460,6 +1524,7 @@ class bitvidApp {
       await clearR2Settings();
       this.cloudflareSettings = await loadR2Settings();
       this.populateCloudflareSettingsInputs(this.cloudflareSettings);
+      this.setCloudflareAdvancedVisibility(false);
       this.setCloudflareSettingsStatus("Settings cleared.", "success");
       await this.updateCloudflareBucketPreview();
     } catch (err) {

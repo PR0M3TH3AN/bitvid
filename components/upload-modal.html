@@ -250,52 +250,79 @@
                     required
                   />
                 </div>
-                <div>
-                  <label for="r2ApiToken" class="block text-sm font-medium text-gray-200"
-                    >Cloudflare API Token (optional)</label
+                <div class="border-t border-gray-800 pt-4">
+                  <button
+                    type="button"
+                    id="cloudflareAdvancedToggle"
+                    class="flex items-center gap-2 text-sm font-medium text-gray-300 transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    aria-expanded="false"
+                    aria-controls="cloudflareAdvancedFields"
                   >
-                  <input
-                    id="r2ApiToken"
-                    type="password"
-                    autocomplete="off"
-                    class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Token with Workers R2 Storage Write"
-                  />
-                  <p class="mt-1 text-xs text-gray-500">
-                    Used to create buckets, configure CORS, and attach domains automatically.
-                  </p>
-                </div>
-                <div class="grid gap-3 md:grid-cols-2">
-                  <div>
-                    <label for="r2ZoneId" class="block text-sm font-medium text-gray-200"
-                      >Zone ID (optional)</label
+                    <svg
+                      id="cloudflareAdvancedToggleIcon"
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-4 w-4 text-gray-300 transition-transform duration-150 transform"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
                     >
-                    <input
-                      id="r2ZoneId"
-                      type="text"
-                      autocomplete="off"
-                      class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    />
-                    <p class="mt-1 text-xs text-gray-500">
-                      Required when you want us to attach a custom domain on your behalf.
-                    </p>
-                  </div>
-                  <div>
-                    <label for="r2BaseDomain" class="block text-sm font-medium text-gray-200"
-                      >Base domain (optional)</label
-                    >
-                    <input
-                      id="r2BaseDomain"
-                      type="text"
-                      autocomplete="off"
-                      class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="cdn.example.com"
-                    />
-                    <p class="mt-1 text-xs text-gray-500">
-                      We'll attach <code class="rounded bg-gray-800 px-1 py-0.5">npub.&lt;baseDomain&gt;</code>.
-                      Leave blank to use the managed <code class="rounded bg-gray-800 px-1 py-0.5">*.r2.dev</code> domain.
-                    </p>
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span id="cloudflareAdvancedToggleLabel">Show advanced options</span>
+                  </button>
+                  <div
+                    id="cloudflareAdvancedFields"
+                    class="mt-3 space-y-4 hidden"
+                  >
+                    <div>
+                      <label for="r2ApiToken" class="block text-sm font-medium text-gray-200"
+                        >Cloudflare API Token (optional)</label
+                      >
+                      <input
+                        id="r2ApiToken"
+                        type="password"
+                        autocomplete="off"
+                        class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Token with Workers R2 Storage Write"
+                      />
+                      <p class="mt-1 text-xs text-gray-500">
+                        Used to create buckets, configure CORS, and attach domains automatically.
+                      </p>
+                    </div>
+                    <div class="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <label for="r2ZoneId" class="block text-sm font-medium text-gray-200"
+                          >Zone ID (optional)</label
+                        >
+                        <input
+                          id="r2ZoneId"
+                          type="text"
+                          autocomplete="off"
+                          class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        />
+                        <p class="mt-1 text-xs text-gray-500">
+                          Required when you want us to attach a custom domain on your behalf.
+                        </p>
+                      </div>
+                      <div>
+                        <label for="r2BaseDomain" class="block text-sm font-medium text-gray-200"
+                          >Base domain (optional)</label
+                        >
+                        <input
+                          id="r2BaseDomain"
+                          type="text"
+                          autocomplete="off"
+                          class="mt-1 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="cdn.example.com"
+                        />
+                        <p class="mt-1 text-xs text-gray-500">
+                          We'll attach <code class="rounded bg-gray-800 px-1 py-0.5">npub.&lt;baseDomain&gt;</code>.
+                          Leave blank to use the managed <code class="rounded bg-gray-800 px-1 py-0.5">*.r2.dev</code> domain.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
