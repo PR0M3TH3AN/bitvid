@@ -31,9 +31,30 @@ import {
   putCors,
   attachCustomDomainAndWait,
   setManagedDomain,
+  deriveShortSubdomain,
 } from "./storage/r2-mgmt.js";
-import { makeR2Client, multipartUpload } from "./storage/r2-s3.js";
+import {
+  makeR2Client,
+  multipartUpload,
+  ensureBucketCors,
+} from "./storage/r2-s3.js";
 import { initQuickR2Upload } from "./r2-quick.js";
+
+function truncateMiddle(text, maxLength = 72) {
+  if (!text || typeof text !== "string") {
+    return "";
+  }
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  const ellipsis = "…";
+  const charsToShow = maxLength - ellipsis.length;
+  const front = Math.ceil(charsToShow / 2);
+  const back = Math.floor(charsToShow / 2);
+  return `${text.slice(0, front)}${ellipsis}${text.slice(text.length - back)}`;
+}
 
 /**
  * Simple "decryption" placeholder for private videos.
@@ -1553,11 +1574,17 @@ class bitvidApp {
   }
 
   deriveSubdomainForNpub(npub) {
+    try {
+      return deriveShortSubdomain(npub);
+    } catch (err) {
+      console.warn("Failed to derive short subdomain, falling back:", err);
+    }
+
     const base = String(npub || "user")
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "")
       .replace(/^-+|[-]+$/g, "");
-    return base.slice(0, 48) || "user";
+    return base.slice(0, 32) || "user";
   }
 
   async ensureBucketConfigForNpub(npub) {
@@ -1568,6 +1595,10 @@ class bitvidApp {
     const accountId = (this.cloudflareSettings.accountId || "").trim();
     const apiToken = (this.cloudflareSettings.apiToken || "").trim();
     const zoneId = (this.cloudflareSettings.zoneId || "").trim();
+    const accessKeyId = (this.cloudflareSettings.accessKeyId || "").trim();
+    const secretAccessKey =
+      (this.cloudflareSettings.secretAccessKey || "").trim();
+    const corsOrigins = this.getCorsOrigins();
     const baseDomain = this.cloudflareSettings.baseDomain || "";
 
     if (!accountId) {
@@ -1588,10 +1619,32 @@ class bitvidApp {
             accountId,
             bucket: entry.bucket,
             token: apiToken,
-            origins: this.getCorsOrigins(),
+            origins: corsOrigins,
           });
         } catch (err) {
           console.warn("Failed to refresh bucket configuration:", err);
+        }
+      } else if (
+        accessKeyId &&
+        secretAccessKey &&
+        corsOrigins.length > 0
+      ) {
+        try {
+          const s3 = makeR2Client({
+            accountId,
+            accessKeyId,
+            secretAccessKey,
+          });
+          await ensureBucketCors({
+            s3,
+            bucket: entry.bucket,
+            origins: corsOrigins,
+          });
+        } catch (err) {
+          console.warn(
+            "Failed to refresh bucket CORS via access keys:",
+            err
+          );
         }
       }
       return {
@@ -1602,9 +1655,69 @@ class bitvidApp {
     }
 
     if (!apiToken) {
-      throw new Error(
-        "Provide a Cloudflare API token to auto-create the bucket and domain."
-      );
+      const bucketName = entry?.bucket || sanitizeBucketName(npub);
+      const manualCustomDomain = baseDomain
+        ? `https://${this.deriveSubdomainForNpub(npub)}.${baseDomain}`
+        : "";
+
+      let publicBaseUrl = entry?.publicBaseUrl || manualCustomDomain;
+      if (!publicBaseUrl) {
+        publicBaseUrl = `https://${bucketName}.${accountId}.r2.dev`;
+      }
+
+      if (!publicBaseUrl) {
+        throw new Error(
+          "No public bucket domain configured. Add an API token or configure the domain manually."
+        );
+      }
+
+      const manualEntry = {
+        bucket: bucketName,
+        publicBaseUrl,
+        domainType: publicBaseUrl.includes(".r2.dev") ? "managed" : "custom",
+        lastUpdated: Date.now(),
+      };
+
+      if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
+        try {
+          const s3 = makeR2Client({
+            accountId,
+            accessKeyId,
+            secretAccessKey,
+          });
+          await ensureBucketCors({
+            s3,
+            bucket: bucketName,
+            origins: corsOrigins,
+          });
+        } catch (corsErr) {
+          console.warn(
+            "Failed to ensure R2 CORS rules via access keys. Configure the bucket's CORS policy manually if uploads continue to fail.",
+            corsErr
+          );
+        }
+      }
+
+      let savedEntry = entry;
+      if (
+        !entry ||
+        entry.bucket !== manualEntry.bucket ||
+        entry.publicBaseUrl !== manualEntry.publicBaseUrl ||
+        entry.domainType !== manualEntry.domainType
+      ) {
+        const updatedSettings = await saveR2Settings(
+          mergeBucketEntry(this.cloudflareSettings, npub, manualEntry)
+        );
+        this.cloudflareSettings = updatedSettings;
+        savedEntry = updatedSettings.buckets?.[npub] || manualEntry;
+      }
+
+      return {
+        entry: savedEntry,
+        usedManagedFallback: manualEntry.domainType !== "custom",
+        customDomainStatus:
+          manualEntry.domainType === "custom" ? "manual" : "managed",
+      };
     }
 
     const bucketName = entry?.bucket || sanitizeBucketName(npub);
@@ -1616,7 +1729,7 @@ class bitvidApp {
         accountId,
         bucket: bucketName,
         token: apiToken,
-        origins: this.getCorsOrigins(),
+        origins: corsOrigins,
       });
     } catch (err) {
       console.warn("Failed to apply R2 CORS rules:", err);
@@ -1735,7 +1848,21 @@ class bitvidApp {
 
     const sampleKey = buildR2Key(npub, { name: "sample.mp4" });
     const publicUrl = buildPublicUrl(entry.publicBaseUrl, sampleKey);
-    el.textContent = `${entry.bucket} • ${publicUrl}`;
+    const fullPreview = `${entry.bucket} • ${publicUrl}`;
+
+    let displayHostAndPath = truncateMiddle(publicUrl, 72);
+    try {
+      const parsed = new URL(publicUrl);
+      const cleanPath = parsed.pathname.replace(/^\//, "");
+      const truncatedPath = truncateMiddle(cleanPath || sampleKey, 32);
+      displayHostAndPath = `${truncateMiddle(parsed.host, 32)}/${truncatedPath}`;
+    } catch (err) {
+      // ignore URL parse issues and fall back to the raw string
+    }
+
+    const truncatedBucket = truncateMiddle(entry.bucket, 28);
+    el.textContent = `${truncatedBucket} • ${displayHostAndPath}`;
+    el.setAttribute("title", fullPreview);
   }
 
   async handleCloudflareUploadSubmit() {

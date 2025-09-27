@@ -1,6 +1,16 @@
 // js/storage/r2-mgmt.js
+function computeSlugHash(input) {
+  const text = String(input || "");
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = Math.imul(31, hash) + text.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 export function sanitizeBucketName(npub) {
-  let value = String(npub || "")
+  const raw = String(npub || "");
+  let value = raw
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
@@ -9,6 +19,14 @@ export function sanitizeBucketName(npub) {
   if (!value) {
     value = "bitvid-user";
   }
+
+  if (value.length > 32) {
+    const prefix = value.slice(0, 20).replace(/-+$/g, "");
+    const hash = computeSlugHash(raw).slice(0, 8);
+    value = [prefix, hash].filter(Boolean).join("-");
+  }
+
+  value = value.replace(/-+/g, "-").replace(/^-+|[-]+$/g, "");
 
   if (!/^[a-z0-9]/.test(value)) {
     value = `bv-${value}`;
@@ -27,6 +45,45 @@ export function sanitizeBucketName(npub) {
   }
 
   return value;
+}
+
+export function deriveShortSubdomain(npub) {
+  const bucketSlug = sanitizeBucketName(npub);
+  const hash = computeSlugHash(npub).slice(0, 6);
+
+  const prefix = bucketSlug
+    .replace(/^bv-/, "")
+    .slice(0, 18)
+    .replace(/-+$/g, "");
+
+  let candidate = [prefix, hash].filter(Boolean).join("-");
+  candidate = candidate
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|[-]+$/g, "");
+
+  if (!candidate) {
+    candidate = "user";
+  }
+
+  if (candidate.length > 32) {
+    candidate = candidate.slice(0, 32).replace(/-+$/g, "");
+  }
+
+  if (!/^[a-z0-9]/.test(candidate)) {
+    candidate = `u${candidate}`;
+  }
+
+  if (!/[a-z0-9]$/.test(candidate)) {
+    candidate = `${candidate}0`;
+  }
+
+  while (candidate.length < 3) {
+    candidate += "0";
+  }
+
+  return candidate;
 }
 
 function buildError(error, fallbackMessage) {
