@@ -218,19 +218,18 @@ async function loadUserVideos(pubkey) {
       }
     }
 
-    // 3) Convert to "video" objects
-    let videos = [];
-    for (const evt of events) {
-      const vid = sharedConvertEventToVideo(evt);
-      if (!vid.invalid && !vid.deleted) {
-        videos.push(vid);
-      }
-    }
+    // 3) Convert to "video" objects and keep everything (including tombstones)
+    const convertedVideos = events
+      .map((evt) => sharedConvertEventToVideo(evt))
+      .filter((vid) => !vid.invalid);
 
     // 4) Deduplicate older overshadowed versions => newest only
-    videos = app?.dedupeVideosByRoot?.(videos) ?? dedupeToNewestByRoot(videos);
+    const newestByRoot =
+      app?.dedupeVideosByRoot?.(convertedVideos) ??
+      dedupeToNewestByRoot(convertedVideos);
 
-    // 5) Filter out blacklisted IDs / authors
+    // 5) Filter out tombstones, blacklisted IDs / authors
+    let videos = newestByRoot.filter((video) => !video.deleted);
     videos = videos.filter((video) => {
       // Event-level blacklisting
       if (app.blacklistedEventIds.has(video.id)) return false;

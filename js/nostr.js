@@ -854,21 +854,26 @@ class NostrClient {
       };
     }
 
-    const dTag = baseEvent.tags.find((t) => t[0] === "d");
-    if (!dTag) {
-      throw new Error(
-        'No "d" tag => cannot revert addressable kind=30078 event.'
-      );
-    }
-    const existingD = dTag[1];
+    const safeTags = Array.isArray(baseEvent.tags) ? baseEvent.tags : [];
+    const dTag = safeTags.find((t) => t[0] === "d");
+    const existingD = dTag ? dTag[1] : null;
 
-    const oldContent = JSON.parse(baseEvent.content || "{}");
+    let oldContent = {};
+    try {
+      oldContent = JSON.parse(baseEvent.content || "{}");
+    } catch (err) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to parse baseEvent.content while reverting:", err);
+      }
+      oldContent = {};
+    }
     const oldVersion = oldContent.version ?? 1;
 
-    let finalRootId = oldContent.videoRootId || null;
-    if (!finalRootId) {
-      finalRootId = `LEGACY:${baseEvent.pubkey}:${existingD}`;
-    }
+    const finalRootId =
+      oldContent.videoRootId ||
+      (existingD
+        ? `LEGACY:${baseEvent.pubkey}:${existingD}`
+        : baseEvent.id);
 
     const contentObject = {
       videoRootId: finalRootId,
@@ -883,14 +888,16 @@ class NostrClient {
       mode: oldContent.mode || "live",
     };
 
+    const tags = [["t", "video"]];
+    if (existingD) {
+      tags.push(["d", existingD]);
+    }
+
     const event = {
       kind: 30078,
       pubkey,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [
-        ["t", "video"],
-        ["d", existingD],
-      ],
+      tags,
       content: JSON.stringify(contentObject),
     };
 
