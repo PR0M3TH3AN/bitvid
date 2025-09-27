@@ -39,6 +39,22 @@ import {
 } from "./storage/r2-s3.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 
+function truncateMiddle(text, maxLength = 72) {
+  if (!text || typeof text !== "string") {
+    return "";
+  }
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  const ellipsis = "…";
+  const charsToShow = maxLength - ellipsis.length;
+  const front = Math.ceil(charsToShow / 2);
+  const back = Math.floor(charsToShow / 2);
+  return `${text.slice(0, front)}${ellipsis}${text.slice(text.length - back)}`;
+}
+
 /**
  * Simple "decryption" placeholder for private videos.
  */
@@ -1803,7 +1819,21 @@ class bitvidApp {
 
     const sampleKey = buildR2Key(npub, { name: "sample.mp4" });
     const publicUrl = buildPublicUrl(entry.publicBaseUrl, sampleKey);
-    el.textContent = `${entry.bucket} • ${publicUrl}`;
+    const fullPreview = `${entry.bucket} • ${publicUrl}`;
+
+    let displayHostAndPath = truncateMiddle(publicUrl, 96);
+    try {
+      const parsed = new URL(publicUrl);
+      const cleanPath = parsed.pathname.replace(/^\//, "");
+      const truncatedPath = truncateMiddle(cleanPath || sampleKey, 48);
+      displayHostAndPath = `${truncateMiddle(parsed.host, 48)}/${truncatedPath}`;
+    } catch (err) {
+      // ignore URL parse issues and fall back to the raw string
+    }
+
+    const truncatedBucket = truncateMiddle(entry.bucket, 40);
+    el.textContent = `${truncatedBucket} • ${displayHostAndPath}`;
+    el.setAttribute("title", fullPreview);
   }
 
   async handleCloudflareUploadSubmit() {
