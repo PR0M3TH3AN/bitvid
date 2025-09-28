@@ -339,7 +339,9 @@ header img {
   margin-left: auto;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.5rem;
+  flex-wrap: nowrap;
 }
 
 .modal-actions__overflow {
