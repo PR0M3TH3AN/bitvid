@@ -1,0 +1,180 @@
+<!-- components/edit-video-modal.html -->
+<div
+  id="editVideoModal"
+  class="fixed inset-0 z-50 hidden"
+  style="background: transparent"
+>
+  <div
+    id="editVideoModalOverlay"
+    class="absolute inset-0 z-10"
+    style="
+      background-color: rgba(0, 0, 0, 0.9);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    "
+  ></div>
+
+  <div
+    class="relative modal-container h-full w-full flex items-start md:items-center justify-center overflow-y-auto z-20"
+  >
+    <div
+      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-4xl my-0 rounded-lg overflow-y-auto relative"
+      style="max-height: 90vh"
+    >
+      <div
+        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-150 p-4 flex items-center justify-between"
+      >
+        <h2 class="text-xl font-bold text-white">Edit Video Note</h2>
+        <button
+          id="closeEditVideoModal"
+          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-6 h-6 text-gray-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-6">
+        <p class="text-sm text-gray-400">
+          Fields that already have values are locked. Click <strong>Edit field</strong> to make changes.
+        </p>
+
+        <form id="editVideoForm" class="space-y-5">
+          <div class="space-y-1">
+            <label for="editVideoTitle" class="block text-sm font-medium text-gray-200">
+              Title
+            </label>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                id="editVideoTitle"
+                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                placeholder="Video title"
+              />
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoTitle"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label for="editVideoUrl" class="block text-sm font-medium text-gray-200">
+              Hosted video URL (https)
+            </label>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="url"
+                id="editVideoUrl"
+                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                placeholder="https://cdn.example.com/video.mp4"
+              />
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoUrl"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label for="editVideoMagnet" class="block text-sm font-medium text-gray-200">
+              Magnet link
+            </label>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                id="editVideoMagnet"
+                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                placeholder="magnet:?xt=urn:btih:..."
+              />
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoMagnet"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label for="editVideoThumbnail" class="block text-sm font-medium text-gray-200">
+              Thumbnail URL
+            </label>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="url"
+                id="editVideoThumbnail"
+                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                placeholder="https://cdn.example.com/preview.jpg"
+              />
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoThumbnail"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label for="editVideoDescription" class="block text-sm font-medium text-gray-200">
+              Description
+            </label>
+            <div class="flex flex-col gap-2">
+              <textarea
+                id="editVideoDescription"
+                rows="4"
+                class="w-full rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                placeholder="What is this video about?"
+              ></textarea>
+              <button
+                type="button"
+                class="edit-field-button self-start hidden"
+                data-edit-target="editVideoDescription"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              id="cancelEditVideo"
+              class="w-full sm:w-auto px-4 py-2 rounded-md bg-gray-800 text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              id="submitEditVideo"
+              class="w-full sm:w-auto px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500"
+            >
+              Save changes
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
