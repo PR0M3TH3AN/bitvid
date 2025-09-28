@@ -112,16 +112,19 @@
         height: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: transparent;
+        background: rgba(255, 255, 255, 0.1);
       }
       ::-webkit-scrollbar-thumb {
-        background-color: #3b82f6;
+        background-color: rgba(255, 255, 255, 0.3);
         border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(255, 255, 255, 0.4);
       }
       /* Custom Scrollbar styling for Firefox */
       * {
         scrollbar-width: thin;
-        scrollbar-color: #3b82f6 transparent;
+        scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
       }
     </style>
     <!-- Load nostr‑tools v2.10.4 -->

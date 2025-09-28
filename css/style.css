@@ -10,6 +10,34 @@
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
   --modal-motion-duration: 160ms;
+  --scrollbar-width: 8px;
+  --scrollbar-track: rgba(255, 255, 255, 0.1);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.3);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.4);
+}
+
+/* Global scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-width);
+  height: var(--scrollbar-width);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Core Styles */
@@ -312,24 +340,6 @@ header img {
   }
 }
 
-/* Custom Scrollbar */
-.video-info::-webkit-scrollbar {
-  width: 8px;
-}
-
-.video-info::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.video-info::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-}
-
-.video-info::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.4);
-}
-
 /* Progress Bars */
 .progress-bar {
   width: 100%;
@@ -466,24 +476,6 @@ footer a:hover {
   padding: 1.5rem;
   flex: 1;
   overflow-y: auto;
-}
-
-/* Disclaimer Modal Scrollbar */
-#disclaimerModal .modal-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-
-#disclaimerModal .modal-scroll::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-#disclaimerModal .modal-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-}
-
-#disclaimerModal .modal-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.4);
 }
 
 /* Disclaimer Modal Button Container */

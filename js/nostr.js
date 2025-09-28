@@ -20,6 +20,7 @@ const RELAY_URLS = [
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const NIP07_LOGIN_TIMEOUT_MS = 15_000; // 15 seconds
 
 // To limit error spam
 let errorLogCount = 0;
@@ -492,13 +493,57 @@ class NostrClient {
    */
   async login() {
     try {
-      if (!window.nostr) {
+      const extension = window.nostr;
+      if (!extension) {
         console.log("No Nostr extension found");
         throw new Error(
           "Please install a Nostr extension (Alby, nos2x, etc.)."
         );
       }
-      const pubkey = await window.nostr.getPublicKey();
+
+      if (typeof extension.getPublicKey !== "function") {
+        throw new Error(
+          "This NIP-07 extension is missing getPublicKey support. Please update the extension."
+        );
+      }
+
+      if (typeof extension.enable === "function") {
+        if (isDevMode) {
+          console.log("Requesting permissions from NIP-07 extension...");
+        }
+        try {
+          await extension.enable();
+        } catch (enableErr) {
+          throw new Error(
+            enableErr && enableErr.message
+              ? enableErr.message
+              : "The NIP-07 extension denied the permission request."
+          );
+        }
+      }
+
+      let timeoutId;
+      const pubkey = await Promise.race([
+        extension.getPublicKey(),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(
+              new Error(
+                "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again."
+              )
+            );
+          }, NIP07_LOGIN_TIMEOUT_MS);
+        }),
+      ]).finally(() => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      });
+      if (!pubkey || typeof pubkey !== "string") {
+        throw new Error(
+          "The NIP-07 extension did not return a public key. Please try again."
+        );
+      }
       const npub = window.NostrTools.nip19.npubEncode(pubkey);
 
       if (isDevMode) {
