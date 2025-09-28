@@ -498,6 +498,7 @@ class bitvidApp {
     this.profileLogoutBtn = null;
     this.profileModalAvatar = null;
     this.profileModalName = null;
+    this.profileChannelLink = null;
 
     // Upload modal elements
     this.uploadButton = document.getElementById("uploadButton") || null;
@@ -756,6 +757,32 @@ class bitvidApp {
     this.profileCache.set(pubkey, entry);
     this.persistProfileCacheToStorage();
     return entry;
+  }
+
+  prepareForViewLoad() {
+    if (this._videoListElement && this._videoListClickHandler) {
+      try {
+        this._videoListElement.removeEventListener(
+          "click",
+          this._videoListClickHandler
+        );
+      } catch (err) {
+        console.warn("[prepareForViewLoad] Failed to detach video list handler:", err);
+      }
+      this._videoListElement = null;
+      this._videoListClickHandler = null;
+    }
+
+    this.videoList = null;
+    this._lastRenderedVideoListElement = null;
+    this.lastRenderedVideoSignature = null;
+    if (this.renderedVideoIds) {
+      this.renderedVideoIds.clear();
+    }
+
+    if (this.mediaLoader && typeof this.mediaLoader.disconnect === "function") {
+      this.mediaLoader.disconnect();
+    }
   }
 
   forceRefreshAllProfiles() {
@@ -2066,6 +2093,8 @@ class bitvidApp {
         document.getElementById("profileModalAvatar") || null;
       this.profileModalName =
         document.getElementById("profileModalName") || null;
+      this.profileChannelLink =
+        document.getElementById("profileChannelLink") || null;
 
       // Wire up
       if (this.closeProfileModal) {
@@ -2078,6 +2107,20 @@ class bitvidApp {
           // On "Logout" inside the profile modal
           this.logout();
           this.profileModal.classList.add("hidden");
+        });
+      }
+
+      if (this.profileChannelLink) {
+        this.profileChannelLink.addEventListener("click", (event) => {
+          event.preventDefault();
+          const targetNpub = this.profileChannelLink?.dataset?.targetNpub;
+          if (!targetNpub) {
+            return;
+          }
+          if (this.profileModal) {
+            this.profileModal.classList.add("hidden");
+          }
+          window.location.hash = `#view=channel-profile&npub=${targetNpub}`;
         });
       }
 
@@ -2287,6 +2330,18 @@ class bitvidApp {
       }
       if (this.profileModalAvatar) {
         this.profileModalAvatar.src = picture;
+      }
+      if (this.profileChannelLink) {
+        const targetNpub = this.safeEncodeNpub(pubkey);
+        if (targetNpub) {
+          this.profileChannelLink.href = `#view=channel-profile&npub=${targetNpub}`;
+          this.profileChannelLink.dataset.targetNpub = targetNpub;
+          this.profileChannelLink.classList.remove("hidden");
+        } else {
+          this.profileChannelLink.removeAttribute("href");
+          delete this.profileChannelLink.dataset.targetNpub;
+          this.profileChannelLink.classList.add("hidden");
+        }
       }
     } catch (error) {
       console.error("loadOwnProfile error:", error);
@@ -2588,6 +2643,11 @@ class bitvidApp {
     }
     if (this.profileButton) {
       this.profileButton.classList.add("hidden");
+    }
+    if (this.profileChannelLink) {
+      this.profileChannelLink.classList.add("hidden");
+      this.profileChannelLink.removeAttribute("href");
+      delete this.profileChannelLink.dataset.targetNpub;
     }
 
     // Hide the Subscriptions link

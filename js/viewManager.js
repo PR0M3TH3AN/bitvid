@@ -9,6 +9,10 @@ const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
  */
 export async function loadView(viewUrl) {
   try {
+    if (window.app && typeof window.app.prepareForViewLoad === "function") {
+      window.app.prepareForViewLoad();
+    }
+
     const res = await fetch(viewUrl);
     if (!res.ok) {
       throw new Error(`Failed to load view: ${res.status}`);
