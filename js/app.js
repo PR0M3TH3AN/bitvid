@@ -3849,6 +3849,21 @@ class bitvidApp {
 
     this.pubkey = pubkey;
 
+    let reloadScheduled = false;
+    if (saveToStorage) {
+      try {
+        localStorage.setItem("userPubKey", pubkey);
+        reloadScheduled = true;
+      } catch (err) {
+        console.warn("[app.js] Failed to persist pubkey:", err);
+      }
+    }
+
+    if (reloadScheduled) {
+      window.location.reload();
+      return;
+    }
+
     // Hide login button if present
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
@@ -3876,11 +3891,6 @@ class bitvidApp {
 
     // (Optional) load the user's own Nostr profile
     this.loadOwnProfile(pubkey);
-
-    // Save pubkey locally if requested
-    if (saveToStorage) {
-      localStorage.setItem("userPubKey", pubkey);
-    }
 
     // Refresh the video list so the user sees any private videos, etc.
     await this.loadVideos();
