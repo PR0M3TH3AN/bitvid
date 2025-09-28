@@ -171,6 +171,32 @@ class AccessControl {
     if (isDevMode) console.log(`Removed ${npub} from blacklist`);
   }
 
+  setBlacklist(entries, { persist = true } = {}) {
+    if (!Array.isArray(entries)) {
+      return;
+    }
+
+    const normalized = [];
+    for (const value of entries) {
+      if (typeof value !== "string") {
+        continue;
+      }
+      const trimmed = value.trim();
+      if (trimmed && this.isValidNpub(trimmed)) {
+        normalized.push(trimmed);
+      }
+    }
+
+    this.blacklist = new Set(normalized);
+    if (persist) {
+      this.saveBlacklist();
+    }
+
+    if (isDevMode) {
+      console.log("[AccessControl] Blacklist replaced:", [...this.blacklist]);
+    }
+  }
+
   isWhitelisted(npub) {
     const result = this.whitelist.has(npub);
     if (isDevMode)
@@ -200,7 +226,13 @@ class AccessControl {
     return videos.filter((video) => {
       try {
         const npub = window.NostrTools.nip19.npubEncode(video.pubkey);
-        return !this.isBlacklisted(npub);
+        if (this.isBlacklisted(npub)) {
+          return false;
+        }
+        if (isWhitelistEnabled && !this.isWhitelisted(npub)) {
+          return false;
+        }
+        return true;
       } catch (error) {
         console.error("Error filtering video:", error);
         return false;

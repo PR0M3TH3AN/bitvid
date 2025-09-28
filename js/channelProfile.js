@@ -8,8 +8,7 @@ import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
-import { initialBlacklist, initialWhitelist } from "./lists.js";
-import { isWhitelistEnabled } from "./config.js";
+import { accessControl } from "./accessControl.js";
 
 let cachedZapButton = null;
 
@@ -69,6 +68,16 @@ export async function initChannelProfileView() {
     return;
   }
 
+  let channelNpub = "";
+  try {
+    channelNpub = window.NostrTools.nip19.npubEncode(hexPub);
+  } catch (err) {
+    console.warn("[channelProfile] Failed to encode channel npub:", err);
+    channelNpub = npub;
+  }
+
+  renderBlockButton(hexPub, channelNpub);
+
   // 3) If user is logged in, load subscriptions and show sub/unsub button
   if (app.pubkey) {
     await subscriptions.loadSubscriptions(app.pubkey);
@@ -84,7 +93,7 @@ export async function initChannelProfileView() {
   await loadUserProfile(hexPub);
 
   // 5) Load user’s videos (filtered + rendered like the home feed)
-  await loadUserVideos(hexPub);
+  await loadUserVideos(hexPub, channelNpub);
 }
 
 function setupZapButton() {
@@ -154,6 +163,67 @@ function renderSubscribeButton(channelHex) {
       }
     });
   }
+}
+
+function renderBlockButton(channelHex, channelNpub = "") {
+  const subscribeContainer = document.getElementById("subscribeBtnArea");
+  if (!subscribeContainer) {
+    return;
+  }
+
+  const actionsWrapper = subscribeContainer.parentElement;
+  if (!actionsWrapper) {
+    return;
+  }
+
+  let npub = channelNpub;
+  if (!npub) {
+    try {
+      npub = window.NostrTools.nip19.npubEncode(channelHex);
+    } catch (err) {
+      npub = "";
+    }
+  }
+
+  let blockBtn = document.getElementById("blockChannelBtn");
+  if (!blockBtn) {
+    blockBtn = document.createElement("button");
+    blockBtn.id = "blockChannelBtn";
+    blockBtn.type = "button";
+    blockBtn.className =
+      "px-4 py-2 rounded-md bg-gray-800 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+    actionsWrapper.appendChild(blockBtn);
+  } else if (blockBtn.parentElement !== actionsWrapper) {
+    actionsWrapper.appendChild(blockBtn);
+  }
+
+  const updateButtonState = () => {
+    const isBlocked = npub ? accessControl.isBlacklisted(npub) : false;
+    blockBtn.textContent = isBlocked ? "Unblock channel" : "Block channel";
+  };
+
+  updateButtonState();
+
+  blockBtn.onclick = async () => {
+    const currentNpub = npub;
+    const currentlyBlocked = currentNpub
+      ? accessControl.isBlacklisted(currentNpub)
+      : false;
+
+    if (currentlyBlocked) {
+      const result = await app.unblockAuthor(currentNpub);
+      if (result) {
+        updateButtonState();
+        await loadUserVideos(channelHex, currentNpub);
+      }
+    } else {
+      const blocked = await app.blockAuthorByHex(channelHex, { closeModal: false });
+      if (blocked) {
+        updateButtonState();
+        await loadUserVideos(channelHex, currentNpub);
+      }
+    }
+  };
 }
 
 /**
@@ -241,8 +311,29 @@ async function loadUserProfile(pubkey) {
  * Fetches and displays this user's videos (kind=30078).
  * Filters out older overshadowed notes, blacklisted, etc.
  */
-async function loadUserVideos(pubkey) {
+async function loadUserVideos(pubkey, providedNpub = "") {
   try {
+    const channelNpub =
+      typeof providedNpub === "string" && providedNpub
+        ? providedNpub
+        : app.safeEncodeNpub(pubkey) ||
+          (function () {
+            try {
+              return window.NostrTools.nip19.npubEncode(pubkey);
+            } catch (err) {
+              return "";
+            }
+          })();
+
+    if (channelNpub && accessControl.isBlacklisted(channelNpub)) {
+      const container = document.getElementById("channelVideoList");
+      if (container) {
+        container.innerHTML =
+          "<p class=\"text-gray-500\">You have blocked this creator.</p>";
+      }
+      return;
+    }
+
     // 1) Build filter for videos from this pubkey
     const filter = {
       kinds: [30078],
@@ -274,18 +365,7 @@ async function loadUserVideos(pubkey) {
 
     // 5) Filter out tombstones, blacklisted IDs / authors
     let videos = newestByRoot.filter((video) => !video.deleted);
-    videos = videos.filter((video) => {
-      // Event-level blacklisting
-      if (app.blacklistedEventIds.has(video.id)) return false;
-
-      // Author-level
-      const authorNpub = app.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (initialBlacklist.includes(authorNpub)) return false;
-      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-        return false;
-      }
-      return true;
-    });
+    videos = app.getFilteredVideosFromList(videos);
 
     // 6) Sort newest first
     videos.sort((a, b) => b.created_at - a.created_at);
@@ -683,6 +763,8 @@ async function loadUserVideos(pubkey) {
         });
       });
     });
+
+    renderBlockButton(pubkey, channelNpub);
   } catch (err) {
     console.error("Error loading user videos:", err);
   }

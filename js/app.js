@@ -1,10 +1,9 @@
 // js/app.js
 
 import { loadView } from "./viewManager.js";
-import { nostrClient } from "./nostr.js";
+import { nostrClient, RELAY_URLS } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
-import { isWhitelistEnabled } from "./config.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
@@ -12,11 +11,10 @@ import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
-import {
-  initialWhitelist,
-  initialBlacklist,
-  initialEventBlacklist,
-} from "./lists.js";
+import { initialEventBlacklist } from "./lists.js";
+import { accessControl } from "./accessControl.js";
+import { relayPrefs } from "./relayPrefs.js";
+import { blocklistManager } from "./blocklistManager.js";
 import {
   loadR2Settings,
   saveR2Settings,
@@ -880,9 +878,11 @@ class bitvidApp {
 
       // 3. (Optional) Initialize the profile modal (components/profile-modal.html)
       await this.initProfileModal();
+      this.populateBlockedList();
 
       // 4. Connect to Nostr
       await nostrClient.init();
+      this.renderRelayPreferences(nostrClient.getRelays());
 
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
@@ -890,7 +890,7 @@ class bitvidApp {
       const savedPubKey = localStorage.getItem("userPubKey");
       if (savedPubKey) {
         // Auto-login if a pubkey was saved
-        this.login(savedPubKey, false);
+        await this.login(savedPubKey, false);
 
         // If the user was already logged in, show the Subscriptions link
         if (this.subscriptionsLink) {
@@ -920,7 +920,9 @@ class bitvidApp {
       this.attachVideoListHandler();
 
       // 8. Subscribe or fetch videos
-      await this.loadVideos();
+      if (!this.videoSubscription) {
+        await this.loadVideos();
+      }
 
       // 9. Check URL ?v= param
       this.checkUrlParams();
@@ -3317,8 +3319,20 @@ class bitvidApp {
 
       if (this.profileAddRelayBtn && !this.profileAddRelayBtn.dataset.bound) {
         this.profileAddRelayBtn.dataset.bound = "true";
-        this.profileAddRelayBtn.addEventListener("click", () => {
-          this.showSuccess("Relay management coming soon.");
+        this.profileAddRelayBtn.addEventListener("click", async () => {
+          const value =
+            typeof this.profileRelayInput?.value === "string"
+              ? this.profileRelayInput.value.trim()
+              : "";
+          if (!value) {
+            this.showError("Enter a relay URL to add.");
+            return;
+          }
+          const candidate = [...nostrClient.getRelays(), value];
+          const success = await this.updateRelayPreferences(candidate);
+          if (success && this.profileRelayInput) {
+            this.profileRelayInput.value = "";
+          }
         });
       }
       if (
@@ -3326,13 +3340,13 @@ class bitvidApp {
         this.profileRestoreRelaysBtn.dataset.bound !== "true"
       ) {
         this.profileRestoreRelaysBtn.dataset.bound = "true";
-        this.profileRestoreRelaysBtn.addEventListener("click", () => {
-          this.showSuccess("Relay management coming soon.");
+        this.profileRestoreRelaysBtn.addEventListener("click", async () => {
+          await this.updateRelayPreferences(RELAY_URLS);
         });
       }
 
       this.selectProfilePane("account");
-      this.populateProfileRelays();
+      this.renderRelayPreferences();
       this.populateBlockedList();
 
       console.log("Profile modal initialization successful");
@@ -3408,7 +3422,7 @@ class bitvidApp {
     }
 
     this.selectProfilePane("account");
-    this.populateProfileRelays();
+    this.renderRelayPreferences();
     this.populateBlockedList();
 
     this.profileModal.classList.remove("hidden");
@@ -3533,19 +3547,16 @@ class bitvidApp {
     this.lastFocusedBeforeProfileModal = null;
   }
 
-  populateProfileRelays(relayUrls) {
+  renderRelayPreferences(relayUrls) {
     if (!this.profileRelayList) {
       return;
     }
 
-    const rawRelays =
-      Array.isArray(relayUrls)
-        ? relayUrls
-        : Array.isArray(nostrClient.relays)
-        ? nostrClient.relays
-        : Array.from(nostrClient.relays || []);
+    const currentRelays = Array.isArray(relayUrls)
+      ? relayUrls
+      : nostrClient.getRelays();
 
-    const relays = rawRelays
+    const relays = currentRelays
       .map((relay) => (typeof relay === "string" ? relay.trim() : ""))
       .filter((relay) => relay.length > 0);
 
@@ -3560,7 +3571,7 @@ class bitvidApp {
       return;
     }
 
-    relays.forEach((relayUrl) => {
+    relays.forEach((relayUrl, index) => {
       const item = document.createElement("li");
       item.className =
         "flex items-start justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
@@ -3587,8 +3598,18 @@ class bitvidApp {
       editBtn.className =
         "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
       editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", () => {
-        this.showSuccess("Relay management coming soon.");
+      editBtn.addEventListener("click", async () => {
+        const nextValue = window.prompt("Update relay URL", relayUrl);
+        if (typeof nextValue !== "string") {
+          return;
+        }
+        const trimmed = nextValue.trim();
+        if (!trimmed || trimmed === relayUrl) {
+          return;
+        }
+        const candidate = relays.slice();
+        candidate[index] = trimmed;
+        await this.updateRelayPreferences(candidate);
       });
 
       const removeBtn = document.createElement("button");
@@ -3596,8 +3617,10 @@ class bitvidApp {
       removeBtn.className =
         "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
       removeBtn.textContent = "Remove";
-      removeBtn.addEventListener("click", () => {
-        this.showSuccess("Relay management coming soon.");
+      removeBtn.addEventListener("click", async () => {
+        const remaining = relays.filter((_, idx) => idx !== index);
+        const targetList = remaining.length ? remaining : RELAY_URLS;
+        await this.updateRelayPreferences(targetList);
       });
 
       actions.appendChild(editBtn);
@@ -3610,12 +3633,52 @@ class bitvidApp {
     });
   }
 
-  populateBlockedList(blocked = []) {
+  async updateRelayPreferences(candidateRelays, { notify = true } = {}) {
+    const currentRelays = nostrClient.getRelays();
+
+    try {
+      const updatedRelays = await nostrClient.setRelays(candidateRelays);
+      const changed =
+        currentRelays.length !== updatedRelays.length ||
+        currentRelays.some((relay, index) => relay !== updatedRelays[index]);
+
+      await relayPrefs.save(this.pubkey, updatedRelays);
+
+      this.renderRelayPreferences(updatedRelays);
+
+      if (changed) {
+        await this.loadVideos(true);
+      }
+
+      if (this.pubkey) {
+        if (notify) {
+          this.showSuccess("Relay list updated.");
+        }
+      } else if (notify) {
+        this.showSuccess("Relay list saved locally. Login to sync with Nostr.");
+      }
+
+      return true;
+    } catch (err) {
+      console.error("[relays] Failed to update preferences:", err);
+      const message =
+        err && typeof err.message === "string" && err.message.trim()
+          ? err.message.trim()
+          : "Failed to update relay list.";
+      this.showError(message);
+      this.renderRelayPreferences(currentRelays);
+      return false;
+    }
+  }
+
+  populateBlockedList(blocked = null) {
     if (!this.profileBlockedList || !this.profileBlockedEmpty) {
       return;
     }
 
-    const entries = Array.isArray(blocked) ? blocked : [];
+    const entries = Array.isArray(blocked)
+      ? blocked
+      : accessControl.getBlacklist();
     this.profileBlockedList.innerHTML = "";
 
     if (!entries.length) {
@@ -3658,9 +3721,12 @@ class bitvidApp {
       actionBtn.type = "button";
       actionBtn.className =
         "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
-      actionBtn.textContent = "Remove";
-      actionBtn.addEventListener("click", () => {
-        this.showSuccess("Block management coming soon.");
+      actionBtn.textContent = "Unblock";
+      actionBtn.addEventListener("click", async () => {
+        const result = await this.unblockAuthor(identifier);
+        if (!result) {
+          this.showError("Failed to update block list.");
+        }
       });
 
       item.appendChild(label);
@@ -3809,6 +3875,26 @@ class bitvidApp {
     }
 
     const handler = async (event) => {
+      const blockTrigger = event.target.closest("[data-action=\"block-author\"]");
+      if (blockTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        const authorHex =
+          blockTrigger.dataset.author || blockTrigger.getAttribute("data-author") || "";
+        if (authorHex) {
+          try {
+            await this.blockAuthorByHex(authorHex, { closeModal: false });
+          } catch (err) {
+            console.error("[block] Failed to block from card:", err);
+            this.showError("Failed to block this creator.");
+          }
+        } else {
+          this.showError("Unable to determine the creator.");
+        }
+        this.closeAllMoreMenus?.();
+        return;
+      }
+
       const trigger = event.target.closest(
         "[data-play-magnet],[data-play-url]"
       );
@@ -4318,16 +4404,62 @@ class bitvidApp {
       this.subscriptionsLink.classList.remove("hidden");
     }
 
+    const relaysChanged = await this.hydrateUserPreferences();
+
     // (Optional) load the user's own Nostr profile
     this.loadOwnProfile(pubkey);
 
     // Refresh the video list so the user sees any private videos, etc.
-    await this.loadVideos();
+    await this.loadVideos(relaysChanged);
 
     // Force a fresh fetch of all profile pictures/names
     this.forceRefreshAllProfiles();
 
     await this.updateCloudflareBucketPreview();
+  }
+
+  async hydrateUserPreferences() {
+    if (!this.pubkey) {
+      return false;
+    }
+
+    let relayConfigChanged = false;
+
+    try {
+      const savedRelays = await relayPrefs.load(this.pubkey);
+      if (Array.isArray(savedRelays) && savedRelays.length) {
+        await nostrClient.setRelays(savedRelays);
+        relayConfigChanged = true;
+      }
+    } catch (err) {
+      console.error("[login] Failed to apply saved relays:", err);
+      this.showError("Failed to apply saved relay list. Using current relays.");
+    }
+
+    this.renderRelayPreferences(nostrClient.getRelays());
+
+    try {
+      const remoteBlocked = await blocklistManager.load(this.pubkey);
+      const localBlocked = accessControl.getBlacklist();
+      const mergedSet = new Set([...(Array.isArray(localBlocked) ? localBlocked : []), ...remoteBlocked]);
+      const merged = Array.from(mergedSet);
+
+      const changed =
+        merged.length !== localBlocked.length ||
+        localBlocked.some((entry) => !mergedSet.has(entry));
+
+      if (changed) {
+        accessControl.setBlacklist(merged);
+      }
+    } catch (err) {
+      console.error("[login] Failed to load remote block list:", err);
+      this.showError("Failed to load your block list from Nostr.");
+    }
+
+    this.populateBlockedList(accessControl.getBlacklist());
+    this.scheduleBlocklistSync();
+
+    return relayConfigChanged;
   }
 
   /**
@@ -4811,27 +4943,6 @@ class bitvidApp {
   async loadVideos(forceFetch = false) {
     console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
-    const shouldIncludeVideo = (video) => {
-      if (!video || typeof video !== "object") {
-        return false;
-      }
-
-      if (this.blacklistedEventIds.has(video.id)) {
-        return false;
-      }
-
-      const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (initialBlacklist.includes(authorNpub)) {
-        return false;
-      }
-
-      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-        return false;
-      }
-
-      return true;
-    };
-
     // If forceFetch is true, unsubscribe from the old subscription to start fresh
     if (forceFetch && this.videoSubscription) {
       // Call unsubscribe on the subscription object directly.
@@ -4852,15 +4963,12 @@ class bitvidApp {
       // Create a new subscription
       this.videoSubscription = nostrClient.subscribeVideos(() => {
         const updatedAll = nostrClient.getActiveVideos();
-
-        // Filter out blacklisted authors & blacklisted event IDs
-        const filteredVideos = updatedAll.filter(shouldIncludeVideo);
-
+        const filteredVideos = this.getFilteredVideosFromList(updatedAll);
         this.renderVideoList(filteredVideos);
       });
 
       const cachedActiveVideos = nostrClient.getActiveVideos();
-      const cachedFiltered = cachedActiveVideos.filter(shouldIncludeVideo);
+      const cachedFiltered = this.getFilteredVideosFromList(cachedActiveVideos);
       if (cachedFiltered.length) {
         this.renderVideoList(cachedFiltered);
       }
@@ -4873,9 +4981,7 @@ class bitvidApp {
     } else {
       // Already subscribed: just show what's cached
       const allCached = nostrClient.getActiveVideos();
-
-      const filteredCached = allCached.filter(shouldIncludeVideo);
-
+      const filteredCached = this.getFilteredVideosFromList(allCached);
       this.renderVideoList(filteredCached);
     }
   }
@@ -4900,7 +5006,8 @@ class bitvidApp {
 
     // 3) Re-render
     const all = nostrClient.getActiveVideos();
-    this.renderVideoList(all);
+    const filtered = this.getFilteredVideosFromList(all);
+    this.renderVideoList(filtered);
   }
 
   /**
@@ -4954,6 +5061,120 @@ class bitvidApp {
         Checking hosted URL…
       </div>
     `;
+  }
+
+  getFilteredVideosFromList(videos = []) {
+    const iterable = Array.isArray(videos) ? videos : [];
+    const withoutEvents = iterable.filter((video) => {
+      if (!video || typeof video !== "object") {
+        return false;
+      }
+      if (this.blacklistedEventIds.has(video.id)) {
+        return false;
+      }
+      return true;
+    });
+
+    return accessControl.filterVideos(withoutEvents);
+  }
+
+  scheduleBlocklistSync() {
+    if (!this.pubkey) {
+      return;
+    }
+
+    const current = accessControl.getBlacklist();
+    blocklistManager.scheduleSave(this.pubkey, current);
+  }
+
+  async blockAuthorByHex(hexPubkey, options = {}) {
+    if (!hexPubkey) {
+      this.showError("Unable to determine the creator.");
+      return false;
+    }
+
+    let npub = "";
+    try {
+      npub = window.NostrTools.nip19.npubEncode(hexPubkey);
+    } catch (err) {
+      console.error("[block] Failed to encode pubkey:", err);
+      this.showError("Failed to block this creator.");
+      return false;
+    }
+
+    return this.blockAuthorByNpub(npub, { ...options, hexPubkey });
+  }
+
+  async blockAuthorByNpub(npub, { hexPubkey, closeModal = false } = {}) {
+    const trimmed = typeof npub === "string" ? npub.trim() : "";
+    if (!trimmed) {
+      this.showError("Unable to determine the creator.");
+      return false;
+    }
+
+    if (accessControl.isBlacklisted(trimmed)) {
+      if (closeModal) {
+        await this.hideModal();
+      }
+      this.showSuccess("You have already blocked this creator.");
+      return true;
+    }
+
+    try {
+      accessControl.addToBlacklist(trimmed);
+    } catch (err) {
+      console.error("[block] Failed to add creator to blacklist:", err);
+      this.showError("Failed to block this creator.");
+      return false;
+    }
+
+    this.populateBlockedList(accessControl.getBlacklist());
+    this.scheduleBlocklistSync();
+
+    const filtered = this.getFilteredVideosFromList(nostrClient.getActiveVideos());
+    this.renderVideoList(filtered);
+
+    if (closeModal) {
+      await this.hideModal();
+    }
+
+    if (hexPubkey) {
+      this.removeChannelCardsFromDom(hexPubkey);
+    }
+
+    this.showSuccess("Creator blocked. Their videos will no longer appear.");
+    return true;
+  }
+
+  async unblockAuthor(npub) {
+    const trimmed = typeof npub === "string" ? npub.trim() : "";
+    if (!trimmed) {
+      return false;
+    }
+
+    if (!accessControl.isBlacklisted(trimmed)) {
+      return true;
+    }
+
+    accessControl.removeFromBlacklist(trimmed);
+    this.populateBlockedList(accessControl.getBlacklist());
+    this.scheduleBlocklistSync();
+
+    const filtered = this.getFilteredVideosFromList(nostrClient.getActiveVideos());
+    this.renderVideoList(filtered);
+    this.showSuccess("Creator removed from block list.");
+    return true;
+  }
+
+  removeChannelCardsFromDom(hexPubkey) {
+    if (!hexPubkey) {
+      return;
+    }
+
+    const selector = `.video-card[data-owner-pubkey="${hexPubkey}"]`;
+    document.querySelectorAll(selector).forEach((card) => {
+      card.remove();
+    });
   }
 
   getTorrentHealthBadgeMarkup(options = {}) {
@@ -6074,7 +6295,20 @@ class bitvidApp {
         break;
       }
       case "block-author": {
-        this.showSuccess("Block management coming soon.");
+        const author =
+          dataset.author ||
+          (context === "modal" && this.currentVideo ? this.currentVideo.pubkey : "");
+        if (!author) {
+          this.showError("Unable to determine the creator.");
+          break;
+        }
+
+        this.blockAuthorByHex(author, { closeModal: context === "modal" }).catch(
+          (err) => {
+            console.error("[block] Failed via more menu:", err);
+            this.showError("Failed to block this creator.");
+          }
+        );
         break;
       }
       case "report": {
@@ -7118,12 +7352,12 @@ class bitvidApp {
     }
 
     const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-    if (initialBlacklist.includes(authorNpub)) {
+    if (accessControl.isBlacklisted(authorNpub)) {
       this.showError("This content has been removed or is not allowed.");
       return;
     }
 
-    if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
+    if (!accessControl.canAccess(authorNpub)) {
       this.showError("This content is not from a whitelisted author.");
       return;
     }

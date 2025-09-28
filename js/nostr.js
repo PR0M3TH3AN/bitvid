@@ -10,13 +10,70 @@ import { extractMagnetHints } from "./magnet.js";
 /**
  * The usual relays
  */
-const RELAY_URLS = [
+export const RELAY_URLS = [
   "wss://relay.damus.io",
   "wss://nos.lol",
   "wss://relay.snort.social",
   "wss://relay.primal.net",
   "wss://relay.nostr.band",
 ];
+
+function normalizeRelayUrl(candidate) {
+  if (typeof candidate !== "string") {
+    throw new Error("Relay URL must be a string.");
+  }
+
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    throw new Error("Relay URL cannot be empty.");
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch (err) {
+    throw new Error(`Invalid relay URL: ${candidate}`);
+  }
+
+  if (parsed.protocol !== "wss:" && parsed.protocol !== "ws:") {
+    throw new Error("Relay URLs must begin with ws:// or wss://");
+  }
+
+  // Simple normalisation: drop trailing slashes to avoid duplicates.
+  const normalisedPath = parsed.pathname.replace(/\/+$/, "");
+  const pathSegment = normalisedPath || "";
+  const searchSegment = parsed.search || "";
+  const finalUrl = `${parsed.protocol}//${parsed.host}${pathSegment}${searchSegment}`;
+
+  return finalUrl;
+}
+
+function sanitizeRelayList(relayList) {
+  if (!Array.isArray(relayList)) {
+    throw new Error("Relay list must be an array of URLs.");
+  }
+
+  const unique = [];
+  const seen = new Set();
+
+  for (const relay of relayList) {
+    try {
+      const normalised = normalizeRelayUrl(relay);
+      if (!seen.has(normalised)) {
+        seen.add(normalised);
+        unique.push(normalised);
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  if (!unique.length) {
+    throw new Error("At least one valid relay URL is required.");
+  }
+
+  return unique;
+}
 
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
@@ -588,6 +645,46 @@ class NostrClient {
   logout() {
     this.pubkey = null;
     if (isDevMode) console.log("User logged out.");
+  }
+
+  getRelays() {
+    return Array.isArray(this.relays) ? [...this.relays] : [];
+  }
+
+  async setRelays(candidateRelays) {
+    const oldRelays = Array.isArray(this.relays) ? [...this.relays] : [];
+    const sanitized = sanitizeRelayList(candidateRelays);
+
+    const unchanged =
+      oldRelays.length === sanitized.length &&
+      oldRelays.every((value, index) => value === sanitized[index]);
+
+    if (unchanged) {
+      return this.getRelays();
+    }
+
+    this.relays = sanitized;
+
+    if (this.pool) {
+      try {
+        this.pool.close(oldRelays);
+      } catch (err) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to close existing relay connections:", err);
+        }
+      }
+    }
+
+    try {
+      this.pool = new window.NostrTools.SimplePool();
+    } catch (err) {
+      console.error("[nostr] Failed to instantiate SimplePool:", err);
+      throw err;
+    }
+
+    await this.connectToRelays();
+
+    return this.getRelays();
   }
 
   /**
