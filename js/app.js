@@ -3,8 +3,8 @@
 import { loadView } from "./viewManager.js";
 import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
-import { isDevMode } from "./config.js";
-import { isWhitelistEnabled } from "./config.js";
+import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
+import { accessControl } from "./accessControl.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
@@ -12,11 +12,7 @@ import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
-import {
-  initialWhitelist,
-  initialBlacklist,
-  initialEventBlacklist,
-} from "./lists.js";
+import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import {
   loadR2Settings,
   saveR2Settings,
@@ -503,11 +499,13 @@ class bitvidApp {
       account: null,
       relays: null,
       blocked: null,
+      admin: null,
     };
     this.profilePaneElements = {
       account: null,
       relays: null,
       blocked: null,
+      admin: null,
     };
     this.profileRelayList = null;
     this.profileBlockedList = null;
@@ -515,10 +513,28 @@ class bitvidApp {
     this.profileRelayInput = null;
     this.profileAddRelayBtn = null;
     this.profileRestoreRelaysBtn = null;
+    this.adminModeratorInput = null;
+    this.adminAddModeratorBtn = null;
+    this.adminModeratorList = null;
+    this.adminModeratorsEmpty = null;
+    this.adminModeratorsSection = null;
+    this.adminWhitelistInput = null;
+    this.adminAddWhitelistBtn = null;
+    this.adminWhitelistList = null;
+    this.adminWhitelistEmpty = null;
+    this.adminWhitelistSection = null;
+    this.adminWhitelistModeToggle = null;
+    this.adminWhitelistModeWrapper = null;
+    this.adminBlacklistInput = null;
+    this.adminAddBlacklistBtn = null;
+    this.adminBlacklistList = null;
+    this.adminBlacklistEmpty = null;
+    this.adminBlacklistSection = null;
     this.lastFocusedBeforeProfileModal = null;
     this.boundProfileModalKeydown = null;
     this.boundProfileModalFocusIn = null;
     this.profileModalFocusables = [];
+    this.currentUserNpub = null;
 
     // Upload modal elements
     this.uploadButton = document.getElementById("uploadButton") || null;
@@ -655,7 +671,7 @@ class bitvidApp {
 
     // Build a set of blacklisted event IDs (hex) from nevent strings, skipping empties
     this.blacklistedEventIds = new Set();
-    for (const neventStr of initialEventBlacklist) {
+    for (const neventStr of ADMIN_INITIAL_EVENT_BLACKLIST) {
       // Skip any empty or obviously invalid strings
       if (!neventStr || neventStr.trim().length < 8) {
         continue;
@@ -3262,12 +3278,16 @@ class bitvidApp {
         document.getElementById("profileNavRelays") || null;
       this.profileNavButtons.blocked =
         document.getElementById("profileNavBlocked") || null;
+      this.profileNavButtons.admin =
+        document.getElementById("profileNavAdmin") || null;
       this.profilePaneElements.account =
         document.getElementById("profilePaneAccount") || null;
       this.profilePaneElements.relays =
         document.getElementById("profilePaneRelays") || null;
       this.profilePaneElements.blocked =
         document.getElementById("profilePaneBlocked") || null;
+      this.profilePaneElements.admin =
+        document.getElementById("profilePaneAdmin") || null;
       this.profileRelayList = document.getElementById("relayList") || null;
       this.profileBlockedList = document.getElementById("blockedList") || null;
       this.profileBlockedEmpty =
@@ -3276,6 +3296,40 @@ class bitvidApp {
       this.profileAddRelayBtn = document.getElementById("addRelayBtn") || null;
       this.profileRestoreRelaysBtn =
         document.getElementById("restoreRelaysBtn") || null;
+      this.adminModeratorsSection =
+        document.getElementById("adminModeratorsSection") || null;
+      this.adminModeratorsEmpty =
+        document.getElementById("adminModeratorsEmpty") || null;
+      this.adminModeratorList =
+        document.getElementById("adminModeratorList") || null;
+      this.adminModeratorInput =
+        document.getElementById("adminModeratorInput") || null;
+      this.adminAddModeratorBtn =
+        document.getElementById("adminAddModeratorBtn") || null;
+      this.adminWhitelistSection =
+        document.getElementById("adminWhitelistSection") || null;
+      this.adminWhitelistEmpty =
+        document.getElementById("adminWhitelistEmpty") || null;
+      this.adminWhitelistList =
+        document.getElementById("adminWhitelistList") || null;
+      this.adminWhitelistInput =
+        document.getElementById("adminWhitelistInput") || null;
+      this.adminAddWhitelistBtn =
+        document.getElementById("adminAddWhitelistBtn") || null;
+      this.adminWhitelistModeToggle =
+        document.getElementById("adminWhitelistModeToggle") || null;
+      this.adminWhitelistModeWrapper =
+        document.getElementById("adminWhitelistModeWrapper") || null;
+      this.adminBlacklistSection =
+        document.getElementById("adminBlacklistSection") || null;
+      this.adminBlacklistEmpty =
+        document.getElementById("adminBlacklistEmpty") || null;
+      this.adminBlacklistList =
+        document.getElementById("adminBlacklistList") || null;
+      this.adminBlacklistInput =
+        document.getElementById("adminBlacklistInput") || null;
+      this.adminAddBlacklistBtn =
+        document.getElementById("adminAddBlacklistBtn") || null;
 
       // Wire up
       if (this.closeProfileModal && !this.closeProfileModal.dataset.bound) {
@@ -3331,9 +3385,89 @@ class bitvidApp {
         });
       }
 
+      if (
+        this.adminAddModeratorBtn &&
+        this.adminAddModeratorBtn.dataset.bound !== "true"
+      ) {
+        this.adminAddModeratorBtn.dataset.bound = "true";
+        this.adminAddModeratorBtn.addEventListener("click", () => {
+          this.handleAddModerator();
+        });
+      }
+      if (
+        this.adminModeratorInput &&
+        this.adminModeratorInput.dataset.bound !== "true"
+      ) {
+        this.adminModeratorInput.dataset.bound = "true";
+        this.adminModeratorInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            this.handleAddModerator();
+          }
+        });
+      }
+
+      if (
+        this.adminAddWhitelistBtn &&
+        this.adminAddWhitelistBtn.dataset.bound !== "true"
+      ) {
+        this.adminAddWhitelistBtn.dataset.bound = "true";
+        this.adminAddWhitelistBtn.addEventListener("click", () => {
+          this.handleAdminListMutation("whitelist", "add");
+        });
+      }
+      if (
+        this.adminWhitelistInput &&
+        this.adminWhitelistInput.dataset.bound !== "true"
+      ) {
+        this.adminWhitelistInput.dataset.bound = "true";
+        this.adminWhitelistInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            this.handleAdminListMutation("whitelist", "add");
+          }
+        });
+      }
+
+      if (
+        this.adminAddBlacklistBtn &&
+        this.adminAddBlacklistBtn.dataset.bound !== "true"
+      ) {
+        this.adminAddBlacklistBtn.dataset.bound = "true";
+        this.adminAddBlacklistBtn.addEventListener("click", () => {
+          this.handleAdminListMutation("blacklist", "add");
+        });
+      }
+      if (
+        this.adminBlacklistInput &&
+        this.adminBlacklistInput.dataset.bound !== "true"
+      ) {
+        this.adminBlacklistInput.dataset.bound = "true";
+        this.adminBlacklistInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            this.handleAdminListMutation("blacklist", "add");
+          }
+        });
+      }
+
+      if (
+        this.adminWhitelistModeToggle &&
+        this.adminWhitelistModeToggle.dataset.bound !== "true"
+      ) {
+        this.adminWhitelistModeToggle.dataset.bound = "true";
+        this.adminWhitelistModeToggle.addEventListener("change", (event) => {
+          const enabled = event.target instanceof HTMLInputElement
+            ? event.target.checked
+            : false;
+          this.handleWhitelistModeToggle(enabled);
+        });
+      }
+
       this.selectProfilePane("account");
       this.populateProfileRelays();
       this.populateBlockedList();
+      this.refreshAdminPaneState();
 
       console.log("Profile modal initialization successful");
       return true;
@@ -3346,12 +3480,27 @@ class bitvidApp {
 
   selectProfilePane(name = "account") {
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";
-    const target = ["account", "relays", "blocked"].includes(normalized)
+    const availableKeys = Object.keys(this.profilePaneElements).filter((key) => {
+      const pane = this.profilePaneElements[key];
+      if (!(pane instanceof HTMLElement)) {
+        return false;
+      }
+      const button = this.profileNavButtons[key];
+      if (button instanceof HTMLElement && button.classList.contains("hidden")) {
+        return false;
+      }
+      return true;
+    });
+
+    const fallbackTarget = availableKeys.includes("account")
+      ? "account"
+      : availableKeys[0] || "account";
+    const target = availableKeys.includes(normalized)
       ? normalized
-      : "account";
+      : fallbackTarget;
 
     Object.entries(this.profilePaneElements).forEach(([key, pane]) => {
-      if (!pane) {
+      if (!(pane instanceof HTMLElement)) {
         return;
       }
       const isActive = key === target;
@@ -3360,7 +3509,7 @@ class bitvidApp {
     });
 
     Object.entries(this.profileNavButtons).forEach(([key, button]) => {
-      if (!button) {
+      if (!(button instanceof HTMLElement)) {
         return;
       }
       const isActive = key === target;
@@ -3406,6 +3555,8 @@ class bitvidApp {
     if (!this.profileModal) {
       return;
     }
+
+    this.refreshAdminPaneState();
 
     this.selectProfilePane("account");
     this.populateProfileRelays();
@@ -3668,6 +3819,384 @@ class bitvidApp {
 
       this.profileBlockedList.appendChild(item);
     });
+  }
+
+  refreshAdminPaneState() {
+    accessControl.refresh();
+    const adminNav = this.profileNavButtons.admin;
+    const adminPane = this.profilePaneElements.admin;
+
+    const actorNpub = this.getCurrentUserNpub();
+    const canEdit = !!actorNpub && accessControl.canEditAdminLists(actorNpub);
+    const isSuperAdmin = !!actorNpub && accessControl.isSuperAdmin(actorNpub);
+
+    if (adminNav instanceof HTMLElement) {
+      adminNav.classList.toggle("hidden", !canEdit);
+      if (!canEdit) {
+        adminNav.setAttribute("aria-selected", "false");
+      }
+    }
+
+    if (adminPane instanceof HTMLElement) {
+      adminPane.classList.toggle("hidden", !canEdit);
+      adminPane.setAttribute("aria-hidden", (!canEdit).toString());
+    }
+
+    if (!canEdit) {
+      this.clearAdminLists();
+      if (typeof actorNpub !== "string" || !actorNpub) {
+        this.currentUserNpub = null;
+      }
+      if (adminNav instanceof HTMLElement && adminNav.classList.contains("bg-gray-800")) {
+        this.selectProfilePane("account");
+      }
+      return;
+    }
+
+    if (this.adminModeratorsSection instanceof HTMLElement) {
+      this.adminModeratorsSection.classList.toggle("hidden", !isSuperAdmin);
+      this.adminModeratorsSection.setAttribute("aria-hidden", (!isSuperAdmin).toString());
+    }
+    if (this.adminWhitelistModeWrapper instanceof HTMLElement) {
+      this.adminWhitelistModeWrapper.classList.toggle("hidden", !isSuperAdmin);
+    }
+    if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
+      this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
+    }
+
+    this.populateAdminLists();
+  }
+
+  clearAdminLists() {
+    if (this.adminModeratorList) {
+      this.adminModeratorList.innerHTML = "";
+    }
+    if (this.adminWhitelistList) {
+      this.adminWhitelistList.innerHTML = "";
+    }
+    if (this.adminBlacklistList) {
+      this.adminBlacklistList.innerHTML = "";
+    }
+    if (this.adminModeratorsEmpty instanceof HTMLElement) {
+      this.adminModeratorsEmpty.classList.remove("hidden");
+    }
+    if (this.adminWhitelistEmpty instanceof HTMLElement) {
+      this.adminWhitelistEmpty.classList.remove("hidden");
+    }
+    if (this.adminBlacklistEmpty instanceof HTMLElement) {
+      this.adminBlacklistEmpty.classList.remove("hidden");
+    }
+    if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
+      this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
+    }
+  }
+
+  renderAdminList(listEl, emptyEl, entries, options = {}) {
+    if (!(listEl instanceof HTMLElement) || !(emptyEl instanceof HTMLElement)) {
+      return;
+    }
+
+    const { onRemove, removeLabel = "Remove", confirmMessage, removable = true } =
+      options;
+
+    listEl.innerHTML = "";
+    const values = Array.isArray(entries) ? [...entries] : [];
+    values.sort((a, b) => a.localeCompare(b));
+
+    if (!values.length) {
+      emptyEl.classList.remove("hidden");
+      listEl.classList.add("hidden");
+      return;
+    }
+
+    emptyEl.classList.add("hidden");
+    listEl.classList.remove("hidden");
+
+    values.forEach((npub) => {
+      const item = document.createElement("li");
+      item.className =
+        "flex flex-col gap-2 rounded-lg bg-gray-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between";
+
+      const label = document.createElement("p");
+      label.className = "text-sm font-medium text-gray-100 break-all";
+      label.textContent = npub;
+      item.appendChild(label);
+
+      if (removable && typeof onRemove === "function") {
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className =
+          "self-start rounded-md bg-gray-700 px-3 py-1 text-xs font-medium text-gray-100 transition hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+        removeBtn.textContent = removeLabel;
+        removeBtn.addEventListener("click", () => {
+          if (confirmMessage) {
+            const message = confirmMessage.replace("{npub}", npub);
+            if (!window.confirm(message)) {
+              return;
+            }
+          }
+          removeBtn.disabled = true;
+          removeBtn.setAttribute("aria-busy", "true");
+          onRemove(npub, removeBtn);
+        });
+        item.appendChild(removeBtn);
+      }
+
+      listEl.appendChild(item);
+    });
+  }
+
+  populateAdminLists() {
+    const actorNpub = this.getCurrentUserNpub();
+    if (!actorNpub || !accessControl.canEditAdminLists(actorNpub)) {
+      this.clearAdminLists();
+      return;
+    }
+
+    const isSuperAdmin = accessControl.isSuperAdmin(actorNpub);
+    const editors = accessControl
+      .getEditors()
+      .filter((npub) => npub && npub !== ADMIN_SUPER_NPUB);
+    const whitelist = accessControl.getWhitelist();
+    const blacklist = accessControl.getBlacklist();
+
+    this.renderAdminList(this.adminModeratorList, this.adminModeratorsEmpty, editors, {
+      onRemove: (npub, button) => this.handleRemoveModerator(npub, button),
+      removeLabel: "Remove",
+      confirmMessage:
+        "Remove moderator {npub}? They will immediately lose access to the admin panel.",
+      removable: isSuperAdmin,
+    });
+
+    this.renderAdminList(this.adminWhitelistList, this.adminWhitelistEmpty, whitelist, {
+      onRemove: (npub, button) =>
+        this.handleAdminListMutation("whitelist", "remove", npub, button),
+      removeLabel: "Remove",
+      confirmMessage: "Remove {npub} from the whitelist?",
+      removable: true,
+    });
+
+    this.renderAdminList(this.adminBlacklistList, this.adminBlacklistEmpty, blacklist, {
+      onRemove: (npub, button) =>
+        this.handleAdminListMutation("blacklist", "remove", npub, button),
+      removeLabel: "Unblock",
+      confirmMessage: "Remove {npub} from the blacklist?",
+      removable: true,
+    });
+  }
+
+  getCurrentUserNpub() {
+    if (typeof this.currentUserNpub === "string" && this.currentUserNpub) {
+      return this.currentUserNpub;
+    }
+
+    if (!this.pubkey) {
+      return null;
+    }
+
+    const encoded = this.safeEncodeNpub(this.pubkey);
+    if (encoded) {
+      this.currentUserNpub = encoded;
+    }
+    return this.currentUserNpub;
+  }
+
+  ensureAdminActor(requireSuperAdmin = false) {
+    const actorNpub = this.getCurrentUserNpub();
+    if (!actorNpub) {
+      this.showError("Please login with a Nostr account to manage admin settings.");
+      return null;
+    }
+    if (!accessControl.canEditAdminLists(actorNpub)) {
+      this.showError("You do not have permission to manage BitVid moderation lists.");
+      return null;
+    }
+    if (requireSuperAdmin && !accessControl.isSuperAdmin(actorNpub)) {
+      this.showError("Only the Super Admin can manage moderators or whitelist mode.");
+      return null;
+    }
+    return actorNpub;
+  }
+
+  handleAddModerator() {
+    const actorNpub = this.ensureAdminActor(true);
+    if (!actorNpub || !this.adminModeratorInput) {
+      return;
+    }
+
+    const value = this.adminModeratorInput.value.trim();
+    if (!value) {
+      this.showError("Enter an npub to add as a moderator.");
+      return;
+    }
+
+    if (this.adminAddModeratorBtn) {
+      this.adminAddModeratorBtn.disabled = true;
+      this.adminAddModeratorBtn.setAttribute("aria-busy", "true");
+    }
+
+    try {
+      const result = accessControl.addModerator(actorNpub, value);
+      if (!result.ok) {
+        this.showError(this.describeAdminError(result.error));
+        return;
+      }
+
+      this.adminModeratorInput.value = "";
+      this.showSuccess("Moderator added successfully.");
+      this.onAccessControlUpdated();
+    } finally {
+      if (this.adminAddModeratorBtn) {
+        this.adminAddModeratorBtn.disabled = false;
+        this.adminAddModeratorBtn.removeAttribute("aria-busy");
+      }
+    }
+  }
+
+  handleRemoveModerator(npub, button) {
+    const actorNpub = this.ensureAdminActor(true);
+    if (!actorNpub) {
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const result = accessControl.removeModerator(actorNpub, npub);
+    if (!result.ok) {
+      this.showError(this.describeAdminError(result.error));
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    this.showSuccess("Moderator removed.");
+    this.onAccessControlUpdated();
+  }
+
+  handleAdminListMutation(listType, action, explicitNpub = null, sourceButton = null) {
+    const actorNpub = this.ensureAdminActor(false);
+    if (!actorNpub) {
+      if (sourceButton instanceof HTMLElement) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const isWhitelist = listType === "whitelist";
+    const input = isWhitelist ? this.adminWhitelistInput : this.adminBlacklistInput;
+    const addButton = isWhitelist ? this.adminAddWhitelistBtn : this.adminAddBlacklistBtn;
+    const isAdd = action === "add";
+
+    let target = typeof explicitNpub === "string" ? explicitNpub.trim() : "";
+    if (!target && input instanceof HTMLInputElement) {
+      target = input.value.trim();
+    }
+
+    if (isAdd && !target) {
+      this.showError("Enter an npub before adding it to the list.");
+      if (sourceButton instanceof HTMLElement) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const buttonToToggle = sourceButton || (isAdd ? addButton : null);
+    if (buttonToToggle instanceof HTMLElement) {
+      buttonToToggle.disabled = true;
+      buttonToToggle.setAttribute("aria-busy", "true");
+    }
+
+    let result;
+    if (isWhitelist) {
+      result = isAdd
+        ? accessControl.addToWhitelist(actorNpub, target)
+        : accessControl.removeFromWhitelist(actorNpub, target);
+    } else {
+      result = isAdd
+        ? accessControl.addToBlacklist(actorNpub, target)
+        : accessControl.removeFromBlacklist(actorNpub, target);
+    }
+
+    if (!result.ok) {
+      this.showError(this.describeAdminError(result.error));
+      if (buttonToToggle instanceof HTMLElement) {
+        buttonToToggle.disabled = false;
+        buttonToToggle.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    if (isAdd && input instanceof HTMLInputElement) {
+      input.value = "";
+    }
+
+    const successMessage = isWhitelist
+      ? isAdd
+        ? "Added to the whitelist."
+        : "Removed from the whitelist."
+      : isAdd
+      ? "Added to the blacklist."
+      : "Removed from the blacklist.";
+    this.showSuccess(successMessage);
+    this.onAccessControlUpdated();
+
+    if (buttonToToggle instanceof HTMLElement) {
+      buttonToToggle.disabled = false;
+      buttonToToggle.removeAttribute("aria-busy");
+    }
+  }
+
+  describeAdminError(code) {
+    switch (code) {
+      case "invalid npub":
+        return "Please provide a valid npub address.";
+      case "immutable":
+        return "That account cannot be modified.";
+      case "forbidden":
+        return "You do not have permission to perform that action.";
+      default:
+        return "Unable to update moderation settings. Please try again.";
+    }
+  }
+
+  handleWhitelistModeToggle(enabled) {
+    const actorNpub = this.ensureAdminActor(true);
+    if (!actorNpub) {
+      if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
+        this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
+      }
+      return;
+    }
+
+    const result = accessControl.setWhitelistMode(actorNpub, enabled);
+    if (!result.ok) {
+      this.showError(this.describeAdminError(result.error));
+      if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
+        this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
+      }
+      return;
+    }
+
+    this.showSuccess(
+      enabled
+        ? "Whitelist mode enabled. Only approved creators will appear in feeds."
+        : "Whitelist mode disabled. All creators except those blacklisted will appear."
+    );
+    this.onAccessControlUpdated();
+  }
+
+  onAccessControlUpdated() {
+    this.refreshAdminPaneState();
+    this.loadVideos(true).catch((error) => {
+      console.error("Failed to refresh videos after admin update:", error);
+    });
+    window.dispatchEvent(new CustomEvent("bitvid:access-control-updated"));
   }
 
   /**
@@ -4277,6 +4806,7 @@ class bitvidApp {
     console.log("[app.js] login() called with pubkey =", pubkey);
 
     this.pubkey = pubkey;
+    this.currentUserNpub = this.safeEncodeNpub(pubkey);
 
     let reloadScheduled = false;
     if (saveToStorage) {
@@ -4292,6 +4822,8 @@ class bitvidApp {
       window.location.reload();
       return;
     }
+
+    this.refreshAdminPaneState();
 
     // Hide login button if present
     if (this.loginButton) {
@@ -4336,6 +4868,7 @@ class bitvidApp {
   async logout() {
     nostrClient.logout();
     this.pubkey = null;
+    this.currentUserNpub = null;
 
     // Show the login button again
     if (this.loginButton) {
@@ -4373,6 +4906,8 @@ class bitvidApp {
 
     // Clear localStorage
     localStorage.removeItem("userPubKey");
+
+    this.refreshAdminPaneState();
 
     // Refresh the video list so user sees only public videos again
     await this.loadVideos();
@@ -4811,6 +5346,8 @@ class bitvidApp {
   async loadVideos(forceFetch = false) {
     console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
+    accessControl.refresh();
+
     const shouldIncludeVideo = (video) => {
       if (!video || typeof video !== "object") {
         return false;
@@ -4820,12 +5357,7 @@ class bitvidApp {
         return false;
       }
 
-      const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (initialBlacklist.includes(authorNpub)) {
-        return false;
-      }
-
-      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
+      if (!accessControl.canAccess(video)) {
         return false;
       }
 
@@ -7117,14 +7649,16 @@ class bitvidApp {
       return;
     }
 
+    accessControl.refresh();
     const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-    if (initialBlacklist.includes(authorNpub)) {
-      this.showError("This content has been removed or is not allowed.");
-      return;
-    }
-
-    if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-      this.showError("This content is not from a whitelisted author.");
+    if (!accessControl.canAccess(authorNpub)) {
+      if (accessControl.isBlacklisted(authorNpub)) {
+        this.showError("This content has been removed or is not allowed.");
+      } else if (accessControl.whitelistMode()) {
+        this.showError("This content is not from a whitelisted author.");
+      } else {
+        this.showError("This content has been removed or is not allowed.");
+      }
       return;
     }
 
@@ -7326,8 +7860,21 @@ class bitvidApp {
    * Simple helper to safely encode an npub.
    */
   safeEncodeNpub(pubkey) {
+    if (typeof pubkey !== "string") {
+      return null;
+    }
+
+    const trimmed = pubkey.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (trimmed.startsWith("npub1")) {
+      return trimmed;
+    }
+
     try {
-      return window.NostrTools.nip19.npubEncode(pubkey);
+      return window.NostrTools.nip19.npubEncode(trimmed);
     } catch (err) {
       return null;
     }

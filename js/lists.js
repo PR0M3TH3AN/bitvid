@@ -19,8 +19,8 @@ const npubs = [
 console.log("DEBUG: lists.js loaded, npubs:", npubs);
 
 // Blacklist of npubs that events will not be displayed in the bitvid official client
-export const initialWhitelist = npubs;
-export const initialBlacklist = [""];
+export const ADMIN_INITIAL_WHITELIST = npubs;
+export const ADMIN_INITIAL_BLACKLIST = [""];
 
 // Block specific events with the nevent
-export const initialEventBlacklist = [""];
+export const ADMIN_INITIAL_EVENT_BLACKLIST = [""];
