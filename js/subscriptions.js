@@ -377,6 +377,48 @@ class SubscriptionsManager {
         `
         : "";
 
+      const moreMenu = `
+        <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
+          <button
+            type="button"
+            class="inline-flex items-center justify-center w-10 h-10 p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            data-more-dropdown="${index}"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="More options"
+          >
+            <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5 object-contain" />
+          </button>
+          <div
+            id="moreDropdown-${index}"
+            class="hidden absolute right-0 bottom-full mb-2 w-40 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+            role="menu"
+            data-more-menu="true"
+          >
+            <div class="py-1">
+              <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="open-channel" data-author="${video.pubkey || ""}">
+                Open channel
+              </button>
+              <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
+                Copy link
+              </button>
+              <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
+                Block creator
+              </button>
+              <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="report" data-event-id="${video.id || ""}">
+                Report
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const cardControls = `
+        <div class="flex items-center">
+          ${moreMenu}${gearMenu}
+        </div>
+      `;
+
       const safeTitle = window.app?.escapeHTML(video.title) || "Untitled";
       const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
       const playbackUrl =
@@ -457,7 +499,7 @@ class SubscriptionsManager {
                   </div>
                 </div>
               </div>
-              ${gearMenu}
+              ${cardControls}
             </div>
             ${connectionBadgesHtml}
           </div>
@@ -565,6 +607,8 @@ class SubscriptionsManager {
     // Lazy-load
     const lazyEls = container.querySelectorAll("[data-lazy]");
     lazyEls.forEach((el) => window.app?.mediaLoader.observe(el));
+
+    window.app?.attachMoreMenuHandlers?.(container);
 
     // Gear menus
     const gearButtons = container.querySelectorAll("[data-settings-dropdown]");

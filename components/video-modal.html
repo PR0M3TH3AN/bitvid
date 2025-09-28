@@ -31,6 +31,55 @@
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
+          <div
+            class="relative ml-auto"
+            data-more-menu-wrapper="true"
+          >
+            <button
+              id="modalMoreBtn"
+              type="button"
+              class="icon-button"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-label="More"
+              data-more-dropdown="modal"
+            >
+              <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5" />
+            </button>
+            <div
+              id="moreDropdown-modal"
+              class="hidden absolute right-0 top-14 w-44 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+              role="menu"
+              data-more-menu="true"
+            >
+              <div class="py-1">
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                  data-action="modal-open-channel"
+                >
+                  Open channel
+                </button>
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                  data-action="modal-copy-link"
+                >
+                  Copy link
+                </button>
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                  data-action="modal-block-author"
+                >
+                  Block creator
+                </button>
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                  data-action="modal-report"
+                >
+                  Report
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

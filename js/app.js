@@ -499,6 +499,26 @@ class bitvidApp {
     this.profileModalAvatar = null;
     this.profileModalName = null;
     this.profileChannelLink = null;
+    this.profileNavButtons = {
+      account: null,
+      relays: null,
+      blocked: null,
+    };
+    this.profilePaneElements = {
+      account: null,
+      relays: null,
+      blocked: null,
+    };
+    this.profileRelayList = null;
+    this.profileBlockedList = null;
+    this.profileBlockedEmpty = null;
+    this.profileRelayInput = null;
+    this.profileAddRelayBtn = null;
+    this.profileRestoreRelaysBtn = null;
+    this.lastFocusedBeforeProfileModal = null;
+    this.boundProfileModalKeydown = null;
+    this.boundProfileModalFocusIn = null;
+    this.profileModalFocusables = [];
 
     // Upload modal elements
     this.uploadButton = document.getElementById("uploadButton") || null;
@@ -597,6 +617,8 @@ class bitvidApp {
     this.copyMagnetBtn = null;
     this.shareBtn = null;
     this.modalZapBtn = null;
+    this.modalMoreBtn = null;
+    this.modalMoreMenu = null;
     this.modalPosterCleanup = null;
     this.cleanupPromise = null;
 
@@ -618,6 +640,9 @@ class bitvidApp {
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = new Map();
+    this.moreMenuGlobalHandlerBound = false;
+    this.boundMoreMenuDocumentClick = null;
+    this.boundMoreMenuDocumentKeydown = null;
     // Simple cache for user profiles
     this.profileCache = new Map();
     this.lastRenderedVideoSignature = null;
@@ -993,6 +1018,8 @@ class bitvidApp {
     this.copyMagnetBtn = document.getElementById("copyMagnetBtn") || null;
     this.shareBtn = document.getElementById("shareBtn") || null;
     this.modalZapBtn = document.getElementById("modalZapBtn") || null;
+    this.modalMoreBtn = document.getElementById("modalMoreBtn") || null;
+    this.modalMoreMenu = document.getElementById("moreDropdown-modal") || null;
     this.setModalZapVisibility(false);
 
     // Attach existing event listeners for copy/share
@@ -1036,6 +1063,10 @@ class bitvidApp {
       this.creatorName.addEventListener("click", () => {
         this.openCreatorChannel();
       });
+    }
+
+    if (this.playerModal) {
+      this.attachMoreMenuHandlers(this.playerModal);
     }
   }
 
@@ -3223,34 +3254,84 @@ class bitvidApp {
         document.getElementById("profileModalName") || null;
       this.profileChannelLink =
         document.getElementById("profileChannelLink") || null;
+      this.profileNavButtons.account =
+        document.getElementById("profileNavAccount") || null;
+      this.profileNavButtons.relays =
+        document.getElementById("profileNavRelays") || null;
+      this.profileNavButtons.blocked =
+        document.getElementById("profileNavBlocked") || null;
+      this.profilePaneElements.account =
+        document.getElementById("profilePaneAccount") || null;
+      this.profilePaneElements.relays =
+        document.getElementById("profilePaneRelays") || null;
+      this.profilePaneElements.blocked =
+        document.getElementById("profilePaneBlocked") || null;
+      this.profileRelayList = document.getElementById("relayList") || null;
+      this.profileBlockedList = document.getElementById("blockedList") || null;
+      this.profileBlockedEmpty =
+        document.getElementById("blockedEmpty") || null;
+      this.profileRelayInput = document.getElementById("relayInput") || null;
+      this.profileAddRelayBtn = document.getElementById("addRelayBtn") || null;
+      this.profileRestoreRelaysBtn =
+        document.getElementById("restoreRelaysBtn") || null;
 
       // Wire up
-      if (this.closeProfileModal) {
+      if (this.closeProfileModal && !this.closeProfileModal.dataset.bound) {
+        this.closeProfileModal.dataset.bound = "true";
         this.closeProfileModal.addEventListener("click", () => {
-          this.profileModal.classList.add("hidden");
+          this.hideProfileModal();
         });
       }
-      if (this.profileLogoutBtn) {
+      if (this.profileLogoutBtn && !this.profileLogoutBtn.dataset.bound) {
+        this.profileLogoutBtn.dataset.bound = "true";
         this.profileLogoutBtn.addEventListener("click", () => {
-          // On "Logout" inside the profile modal
           this.logout();
-          this.profileModal.classList.add("hidden");
+          this.hideProfileModal();
         });
       }
 
-      if (this.profileChannelLink) {
+      if (this.profileChannelLink && !this.profileChannelLink.dataset.bound) {
+        this.profileChannelLink.dataset.bound = "true";
         this.profileChannelLink.addEventListener("click", (event) => {
           event.preventDefault();
           const targetNpub = this.profileChannelLink?.dataset?.targetNpub;
           if (!targetNpub) {
             return;
           }
-          if (this.profileModal) {
-            this.profileModal.classList.add("hidden");
-          }
+          this.hideProfileModal();
           window.location.hash = `#view=channel-profile&npub=${targetNpub}`;
         });
       }
+
+      Object.entries(this.profileNavButtons).forEach(([name, button]) => {
+        if (!button || button.dataset.navBound === "true") {
+          return;
+        }
+        button.dataset.navBound = "true";
+        button.addEventListener("click", () => {
+          this.selectProfilePane(name);
+        });
+      });
+
+      if (this.profileAddRelayBtn && !this.profileAddRelayBtn.dataset.bound) {
+        this.profileAddRelayBtn.dataset.bound = "true";
+        this.profileAddRelayBtn.addEventListener("click", () => {
+          this.showSuccess("Relay management coming soon.");
+        });
+      }
+      if (
+        this.profileRestoreRelaysBtn &&
+        this.profileRestoreRelaysBtn.dataset.bound !== "true"
+      ) {
+        this.profileRestoreRelaysBtn.dataset.bound = "true";
+        this.profileRestoreRelaysBtn.addEventListener("click", () => {
+          this.showSuccess("Relay management coming soon.");
+        });
+      }
+
+      this.selectProfilePane("account");
+      this.populateProfileRelays();
+      this.populateBlockedList();
 
       console.log("Profile modal initialization successful");
       return true;
@@ -3259,6 +3340,332 @@ class bitvidApp {
       // Not critical if missing
       return false;
     }
+  }
+
+  selectProfilePane(name = "account") {
+    const normalized = typeof name === "string" ? name.toLowerCase() : "account";
+    const target = ["account", "relays", "blocked"].includes(normalized)
+      ? normalized
+      : "account";
+
+    Object.entries(this.profilePaneElements).forEach(([key, pane]) => {
+      if (!pane) {
+        return;
+      }
+      const isActive = key === target;
+      pane.classList.toggle("hidden", !isActive);
+      pane.setAttribute("aria-hidden", (!isActive).toString());
+    });
+
+    Object.entries(this.profileNavButtons).forEach(([key, button]) => {
+      if (!button) {
+        return;
+      }
+      const isActive = key === target;
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+      button.classList.toggle("bg-gray-800", isActive);
+      button.classList.toggle("text-white", isActive);
+      button.classList.toggle("text-gray-400", !isActive);
+    });
+
+    this.updateProfileModalFocusables();
+  }
+
+  updateProfileModalFocusables() {
+    if (!this.profileModal) {
+      this.profileModalFocusables = [];
+      return;
+    }
+
+    const focusableSelectors =
+      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+    const candidates = Array.from(
+      this.profileModal.querySelectorAll(focusableSelectors)
+    );
+
+    this.profileModalFocusables = candidates.filter((el) => {
+      if (!(el instanceof HTMLElement)) {
+        return false;
+      }
+      if (el.hasAttribute("disabled")) {
+        return false;
+      }
+      if (el.getAttribute("aria-hidden") === "true") {
+        return false;
+      }
+      if (el.offsetParent === null && el !== document.activeElement) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  openProfileModal() {
+    if (!this.profileModal) {
+      return;
+    }
+
+    this.selectProfilePane("account");
+    this.populateProfileRelays();
+    this.populateBlockedList();
+
+    this.profileModal.classList.remove("hidden");
+    this.profileModal.setAttribute("aria-hidden", "false");
+
+    this.lastFocusedBeforeProfileModal =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    this.updateProfileModalFocusables();
+
+    const initialTarget =
+      this.profileNavButtons.account instanceof HTMLElement
+        ? this.profileNavButtons.account
+        : this.profileModal;
+
+    window.requestAnimationFrame(() => {
+      if (initialTarget && typeof initialTarget.focus === "function") {
+        initialTarget.focus();
+      }
+    });
+
+    if (!this.boundProfileModalKeydown) {
+      this.boundProfileModalKeydown = (event) => {
+        if (!this.profileModal || this.profileModal.classList.contains("hidden")) {
+          return;
+        }
+
+        if (event.key === "Escape") {
+          event.preventDefault();
+          this.hideProfileModal();
+          return;
+        }
+
+        if (event.key !== "Tab") {
+          return;
+        }
+
+        this.updateProfileModalFocusables();
+        if (!this.profileModalFocusables.length) {
+          event.preventDefault();
+          if (typeof this.profileModal.focus === "function") {
+            this.profileModal.focus();
+          }
+          return;
+        }
+
+        const first = this.profileModalFocusables[0];
+        const last = this.profileModalFocusables[this.profileModalFocusables.length - 1];
+        const active = document.activeElement;
+
+        if (event.shiftKey) {
+          if (active === first || !this.profileModal.contains(active)) {
+            event.preventDefault();
+            if (last && typeof last.focus === "function") {
+              last.focus();
+            }
+          }
+          return;
+        }
+
+        if (active === last) {
+          event.preventDefault();
+          if (first && typeof first.focus === "function") {
+            first.focus();
+          }
+        }
+      };
+    }
+
+    if (!this.boundProfileModalFocusIn) {
+      this.boundProfileModalFocusIn = (event) => {
+        if (
+          !this.profileModal ||
+          this.profileModal.classList.contains("hidden") ||
+          this.profileModal.contains(event.target)
+        ) {
+          return;
+        }
+
+        this.updateProfileModalFocusables();
+        const fallback = this.profileModalFocusables[0] || this.profileModal;
+        if (fallback && typeof fallback.focus === "function") {
+          fallback.focus();
+        }
+      };
+    }
+
+    this.profileModal.addEventListener("keydown", this.boundProfileModalKeydown);
+    document.addEventListener("focusin", this.boundProfileModalFocusIn);
+  }
+
+  hideProfileModal() {
+    if (!this.profileModal) {
+      return;
+    }
+
+    if (!this.profileModal.classList.contains("hidden")) {
+      this.profileModal.classList.add("hidden");
+    }
+    this.profileModal.setAttribute("aria-hidden", "true");
+
+    if (this.boundProfileModalKeydown) {
+      this.profileModal.removeEventListener(
+        "keydown",
+        this.boundProfileModalKeydown
+      );
+    }
+    if (this.boundProfileModalFocusIn) {
+      document.removeEventListener("focusin", this.boundProfileModalFocusIn);
+    }
+
+    this.closeAllMoreMenus();
+
+    if (
+      this.lastFocusedBeforeProfileModal &&
+      typeof this.lastFocusedBeforeProfileModal.focus === "function"
+    ) {
+      this.lastFocusedBeforeProfileModal.focus();
+    }
+    this.lastFocusedBeforeProfileModal = null;
+  }
+
+  populateProfileRelays(relayUrls) {
+    if (!this.profileRelayList) {
+      return;
+    }
+
+    const rawRelays =
+      Array.isArray(relayUrls)
+        ? relayUrls
+        : Array.isArray(nostrClient.relays)
+        ? nostrClient.relays
+        : Array.from(nostrClient.relays || []);
+
+    const relays = rawRelays
+      .map((relay) => (typeof relay === "string" ? relay.trim() : ""))
+      .filter((relay) => relay.length > 0);
+
+    this.profileRelayList.innerHTML = "";
+
+    if (!relays.length) {
+      const emptyState = document.createElement("li");
+      emptyState.className =
+        "rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400";
+      emptyState.textContent = "No relays configured.";
+      this.profileRelayList.appendChild(emptyState);
+      return;
+    }
+
+    relays.forEach((relayUrl) => {
+      const item = document.createElement("li");
+      item.className =
+        "flex items-start justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+
+      const info = document.createElement("div");
+      info.className = "flex-1 min-w-0";
+
+      const urlEl = document.createElement("p");
+      urlEl.className = "text-sm font-medium text-gray-100 break-all";
+      urlEl.textContent = relayUrl;
+
+      const statusEl = document.createElement("p");
+      statusEl.className = "mt-1 text-xs text-gray-400";
+      statusEl.textContent = "Active";
+
+      info.appendChild(urlEl);
+      info.appendChild(statusEl);
+
+      const actions = document.createElement("div");
+      actions.className = "flex items-center gap-2";
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className =
+        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", () => {
+        this.showSuccess("Relay management coming soon.");
+      });
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className =
+        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", () => {
+        this.showSuccess("Relay management coming soon.");
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(removeBtn);
+
+      item.appendChild(info);
+      item.appendChild(actions);
+
+      this.profileRelayList.appendChild(item);
+    });
+  }
+
+  populateBlockedList(blocked = []) {
+    if (!this.profileBlockedList || !this.profileBlockedEmpty) {
+      return;
+    }
+
+    const entries = Array.isArray(blocked) ? blocked : [];
+    this.profileBlockedList.innerHTML = "";
+
+    if (!entries.length) {
+      this.profileBlockedEmpty.classList.remove("hidden");
+      this.profileBlockedList.classList.add("hidden");
+      return;
+    }
+
+    this.profileBlockedEmpty.classList.add("hidden");
+    this.profileBlockedList.classList.remove("hidden");
+
+    entries.forEach((entry) => {
+      const identifier =
+        typeof entry === "string"
+          ? entry
+          : typeof entry?.npub === "string" && entry.npub
+          ? entry.npub
+          : typeof entry?.pubkey === "string"
+          ? entry.pubkey
+          : "";
+
+      if (!identifier) {
+        return;
+      }
+
+      const item = document.createElement("li");
+      item.className =
+        "flex items-center justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+
+      const label = document.createElement("div");
+      label.className = "min-w-0";
+
+      const title = document.createElement("p");
+      title.className = "text-sm font-medium text-gray-100 break-all";
+      title.textContent = identifier;
+
+      label.appendChild(title);
+
+      const actionBtn = document.createElement("button");
+      actionBtn.type = "button";
+      actionBtn.className =
+        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      actionBtn.textContent = "Remove";
+      actionBtn.addEventListener("click", () => {
+        this.showSuccess("Block management coming soon.");
+      });
+
+      item.appendChild(label);
+      item.appendChild(actionBtn);
+
+      this.profileBlockedList.appendChild(item);
+    });
   }
 
   /**
@@ -3275,9 +3682,7 @@ class bitvidApp {
     // 2) Profile button
     if (this.profileButton) {
       this.profileButton.addEventListener("click", () => {
-        if (this.profileModal) {
-          this.profileModal.classList.remove("hidden");
-        }
+        this.openProfileModal();
       });
     }
 
@@ -4934,6 +5339,48 @@ class bitvidApp {
         `
         : "";
 
+      const moreMenu = `
+          <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
+            <button
+              type="button"
+              class="inline-flex items-center justify-center w-10 h-10 p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              data-more-dropdown="${index}"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-label="More options"
+            >
+              <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5 object-contain" />
+            </button>
+            <div
+              id="moreDropdown-${index}"
+              class="hidden absolute right-0 bottom-full mb-2 w-40 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+              role="menu"
+              data-more-menu="true"
+            >
+              <div class="py-1">
+                <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="open-channel" data-author="${video.pubkey || ""}">
+                  Open channel
+                </button>
+                <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
+                  Copy link
+                </button>
+                <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
+                  Block creator
+                </button>
+                <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="report" data-event-id="${video.id || ""}">
+                  Report
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+      const cardControls = `
+          <div class="flex items-center">
+            ${moreMenu}${gearMenu}
+          </div>
+        `;
+
       const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
       const trimmedMagnet =
         typeof video.magnet === "string" ? video.magnet.trim() : "";
@@ -5057,7 +5504,7 @@ class bitvidApp {
                   </div>
                 </div>
               </div>
-              ${gearMenu}
+              ${cardControls}
             </div>
             ${connectionBadgesHtml}
             ${torrentWarningHtml}
@@ -5265,6 +5712,7 @@ class bitvidApp {
     // with HTTP 200 + empty body). We set up the listeners before kicking off
     // any lazy-loading observers so cached failures are covered as well.
     this.bindThumbnailFallbacks(this.videoList);
+    this.attachMoreMenuHandlers(this.videoList);
 
     // Lazy-load images
     const lazyEls = this.videoList.querySelectorAll("[data-lazy]");
@@ -5443,6 +5891,169 @@ class bitvidApp {
         handleLoad();
       }
     });
+  }
+
+  ensureGlobalMoreMenuHandlers() {
+    if (this.moreMenuGlobalHandlerBound) {
+      return;
+    }
+
+    this.moreMenuGlobalHandlerBound = true;
+
+    this.boundMoreMenuDocumentClick = (event) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.closest("[data-more-menu-wrapper]") ||
+          target.closest("[data-more-menu]"))
+      ) {
+        return;
+      }
+      this.closeAllMoreMenus();
+    };
+
+    this.boundMoreMenuDocumentKeydown = (event) => {
+      if (event.key === "Escape") {
+        this.closeAllMoreMenus();
+      }
+    };
+
+    document.addEventListener("click", this.boundMoreMenuDocumentClick);
+    document.addEventListener("keydown", this.boundMoreMenuDocumentKeydown);
+  }
+
+  closeAllMoreMenus() {
+    const menus = document.querySelectorAll("[data-more-menu]");
+    menus.forEach((menu) => {
+      if (menu instanceof HTMLElement) {
+        menu.classList.add("hidden");
+      }
+    });
+
+    const buttons = document.querySelectorAll("[data-more-dropdown]");
+    buttons.forEach((btn) => {
+      if (btn instanceof HTMLElement) {
+        btn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
+  attachMoreMenuHandlers(container) {
+    if (!container || typeof container.querySelectorAll !== "function") {
+      return;
+    }
+
+    const buttons = container.querySelectorAll("[data-more-dropdown]");
+    if (!buttons.length) {
+      return;
+    }
+
+    this.ensureGlobalMoreMenuHandlers();
+
+    buttons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      if (button.dataset.moreMenuToggleBound === "true") {
+        return;
+      }
+      button.dataset.moreMenuToggleBound = "true";
+      button.setAttribute("aria-expanded", "false");
+
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const key = button.getAttribute("data-more-dropdown") || "";
+        const dropdown = document.getElementById(`moreDropdown-${key}`);
+        if (!(dropdown instanceof HTMLElement)) {
+          return;
+        }
+
+        const willOpen = dropdown.classList.contains("hidden");
+        this.closeAllMoreMenus();
+
+        if (willOpen) {
+          dropdown.classList.remove("hidden");
+          button.setAttribute("aria-expanded", "true");
+        }
+      });
+    });
+
+    const actionButtons = container.querySelectorAll(
+      "[data-more-menu] button[data-action]"
+    );
+    actionButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      if (button.dataset.moreMenuActionBound === "true") {
+        return;
+      }
+      button.dataset.moreMenuActionBound = "true";
+
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const { action } = button.dataset;
+        this.handleMoreMenuAction(action, button.dataset);
+        this.closeAllMoreMenus();
+      });
+    });
+  }
+
+  handleMoreMenuAction(action, dataset = {}) {
+    const normalized = typeof action === "string" ? action.trim() : "";
+
+    switch (normalized) {
+      case "open-channel": {
+        const author = dataset.author || "";
+        if (author) {
+          this.goToProfile(author);
+        } else {
+          this.showError("No creator info available.");
+        }
+        break;
+      }
+      case "modal-open-channel": {
+        this.openCreatorChannel();
+        break;
+      }
+      case "copy-link":
+      case "modal-copy-link": {
+        const eventId =
+          dataset.eventId ||
+          (normalized === "modal-copy-link" && this.currentVideo
+            ? this.currentVideo.id
+            : "");
+        if (!eventId) {
+          this.showError("Could not generate link.");
+          break;
+        }
+        const shareUrl = this.buildShareUrlFromEventId(eventId);
+        if (!shareUrl) {
+          this.showError("Could not generate link.");
+          break;
+        }
+        navigator.clipboard
+          .writeText(shareUrl)
+          .then(() => this.showSuccess("Video link copied to clipboard!"))
+          .catch(() => this.showError("Failed to copy the link."));
+        break;
+      }
+      case "block-author":
+      case "modal-block-author": {
+        this.showSuccess("Block management coming soon.");
+        break;
+      }
+      case "report":
+      case "modal-report": {
+        this.showSuccess("Reporting coming soon.");
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   /**
