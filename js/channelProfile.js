@@ -11,6 +11,35 @@ import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { initialBlacklist, initialWhitelist } from "./lists.js";
 import { isWhitelistEnabled } from "./config.js";
 
+let cachedZapButton = null;
+
+function getChannelZapButton() {
+  if (cachedZapButton && !document.body.contains(cachedZapButton)) {
+    cachedZapButton = null;
+  }
+  if (!cachedZapButton) {
+    cachedZapButton = document.getElementById("zapButton");
+  }
+  return cachedZapButton;
+}
+
+function setChannelZapVisibility(visible) {
+  const zapButton = getChannelZapButton();
+  if (!zapButton) {
+    return;
+  }
+  const shouldShow = !!visible;
+  zapButton.classList.toggle("hidden", !shouldShow);
+  zapButton.disabled = !shouldShow;
+  zapButton.setAttribute("aria-disabled", (!shouldShow).toString());
+  zapButton.setAttribute("aria-hidden", (!shouldShow).toString());
+  if (shouldShow) {
+    zapButton.removeAttribute("tabindex");
+  } else {
+    zapButton.setAttribute("tabindex", "-1");
+  }
+}
+
 /**
  * Initialize the channel profile view.
  * Called when #view=channel-profile&npub=...
@@ -59,10 +88,12 @@ export async function initChannelProfileView() {
 }
 
 function setupZapButton() {
-  const zapButton = document.getElementById("zapButton");
+  const zapButton = getChannelZapButton();
   if (!zapButton) {
     return;
   }
+
+  setChannelZapVisibility(false);
 
   if (zapButton.dataset.initialized === "true") {
     return;
@@ -182,15 +213,27 @@ async function loadUserProfile(pubkey) {
 
       // Lightning Address
       const lnEl = document.getElementById("channelLightning");
+      const lightningAddress = (meta.lud16 || meta.lud06 || "").trim();
       if (lnEl) {
         lnEl.textContent =
-          meta.lud16 || meta.lud06 || "No lightning address found.";
+          lightningAddress || "No lightning address found.";
       }
+      setChannelZapVisibility(!!lightningAddress);
     } else {
       console.warn("No metadata found for this user.");
+      setChannelZapVisibility(false);
+      const lnEl = document.getElementById("channelLightning");
+      if (lnEl) {
+        lnEl.textContent = "No lightning address found.";
+      }
     }
   } catch (err) {
     console.error("Failed to fetch user profile data:", err);
+    setChannelZapVisibility(false);
+    const lnEl = document.getElementById("channelLightning");
+    if (lnEl) {
+      lnEl.textContent = "No lightning address found.";
+    }
   }
 }
 
