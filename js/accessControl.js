@@ -223,9 +223,6 @@ class AccessControl {
   }
 
   filterVideos(videos) {
-    const applyWhitelist =
-      isWhitelistEnabled && this.whitelist && this.whitelist.size > 0;
-
     return videos.filter((video) => {
       if (!video || typeof video !== "object") {
         return false;
@@ -245,9 +242,6 @@ class AccessControl {
 
         const npub = encodeNpub(video.pubkey);
         if (this.isBlacklisted(npub)) {
-          return false;
-        }
-        if (applyWhitelist && !this.isWhitelisted(npub)) {
           return false;
         }
         return true;
