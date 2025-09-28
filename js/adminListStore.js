@@ -7,10 +7,7 @@ import {
   ADMIN_EDITORS_NPUBS,
   isDevMode,
 } from "./config.js";
-import {
-  ADMIN_INITIAL_BLACKLIST,
-  ADMIN_INITIAL_WHITELIST,
-} from "./lists.js";
+import { ADMIN_INITIAL_BLACKLIST, ADMIN_INITIAL_WHITELIST } from "./lists.js";
 import { nostrClient } from "./nostr.js";
 
 export const ADMIN_EDITORS_KEY = "bitvid_admin_editors";
@@ -87,11 +84,9 @@ function sanitizeNpubList(values) {
 
 function sanitizeAdminState(state = {}) {
   const sanitizedEditors = sanitizeNpubList(state.editors || []);
-  const sanitizedWhitelist = sanitizeNpubList(state.whitelist || []);
-  const sanitizedWhitelistSet = new Set([
-    ...ADMIN_INITIAL_WHITELIST.map(normalizeNpub),
-    ...sanitizedWhitelist,
-  ]);
+  const sanitizedWhitelistSet = new Set(
+    sanitizeNpubList(state.whitelist || [])
+  );
 
   const adminGuardSet = new Set([
     normalizeNpub(ADMIN_SUPER_NPUB),
@@ -361,10 +356,7 @@ async function persistNostrState(actorNpub, updates = {}) {
           ...sanitizeNpubList(updates.editors || []),
         ]);
         const whitelistSet = new Set(
-          sanitizeNpubList([
-            ...ADMIN_INITIAL_WHITELIST,
-            ...(updates.whitelist || []),
-          ])
+          sanitizeNpubList(updates.whitelist || [])
         );
         const sanitizedBlacklist = base.filter((npub) => {
           const normalized = normalizeNpub(npub);
@@ -391,10 +383,7 @@ async function persistNostrState(actorNpub, updates = {}) {
       }
 
       if (key === "whitelist") {
-        const mergedWhitelist = sanitizeNpubList([
-          ...ADMIN_INITIAL_WHITELIST,
-          ...base,
-        ]);
+        const mergedWhitelist = sanitizeNpubList(base);
         return [key, mergedWhitelist];
       }
 

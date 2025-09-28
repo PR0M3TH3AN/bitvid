@@ -8,10 +8,6 @@ import {
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
 } from "./config.js";
 import {
-  ADMIN_INITIAL_BLACKLIST,
-  ADMIN_INITIAL_WHITELIST,
-} from "./lists.js";
-import {
   ADMIN_BLACKLIST_KEY,
   ADMIN_EDITORS_KEY,
   ADMIN_WHITELIST_KEY,
@@ -86,16 +82,10 @@ class AccessControl {
       this.editors = new Set(
         dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
       );
-      const normalizedWhitelist = dedupeNpubs([
-        ...ADMIN_INITIAL_WHITELIST,
-        ...whitelist,
-      ]);
+      const normalizedWhitelist = dedupeNpubs(whitelist);
       this.whitelist = new Set(normalizedWhitelist);
 
-      const blacklistDedupe = dedupeNpubs([
-        ...ADMIN_INITIAL_BLACKLIST,
-        ...blacklist,
-      ]);
+      const blacklistDedupe = dedupeNpubs(blacklist);
       const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
       const adminGuardSet = new Set([
         normalizeNpub(ADMIN_SUPER_NPUB),
