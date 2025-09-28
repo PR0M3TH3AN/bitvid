@@ -3698,28 +3698,48 @@ class bitvidApp {
 
     const original = this.activeEditVideo;
 
+    const titleInput = this.editVideoModal.querySelector("#editVideoTitle");
+    const urlInput = this.editVideoModal.querySelector("#editVideoUrl");
+    const magnetInput = this.editVideoModal.querySelector("#editVideoMagnet");
+    const wsInput = this.editVideoModal.querySelector("#editVideoWs");
+    const xsInput = this.editVideoModal.querySelector("#editVideoXs");
+    const thumbnailInput = this.editVideoModal.querySelector(
+      "#editVideoThumbnail"
+    );
+    const descriptionInput = this.editVideoModal.querySelector(
+      "#editVideoDescription"
+    );
+
     const newTitle = fieldValue("editVideoTitle");
     const newUrl = fieldValue("editVideoUrl");
     const newMagnet = fieldValue("editVideoMagnet");
     const newWs = fieldValue("editVideoWs");
     const newXs = fieldValue("editVideoXs");
-    const wsInput = this.editVideoModal.querySelector("#editVideoWs");
-    const xsInput = this.editVideoModal.querySelector("#editVideoXs");
     const newThumbnail = fieldValue("editVideoThumbnail");
     const newDescription = fieldValue("editVideoDescription");
     const commentsEl = this.editVideoModal.querySelector(
       "#editEnableComments"
     );
 
-    const finalTitle = newTitle || original.title || "";
-    const finalUrl = newUrl || original.url || "";
+    const isEditing = (input) => !input || input.readOnly === false;
+
+    const titleWasEdited = isEditing(titleInput);
+    const urlWasEdited = isEditing(urlInput);
+    const magnetWasEdited = isEditing(magnetInput);
+
+    const finalTitle = titleWasEdited ? newTitle : original.title || "";
+    const finalUrl = urlWasEdited ? newUrl : original.url || "";
     const shouldUseOriginalWs = wsInput ? wsInput.readOnly !== false : true;
     const shouldUseOriginalXs = xsInput ? xsInput.readOnly !== false : true;
     let finalWs = shouldUseOriginalWs ? original.ws || "" : newWs;
     let finalXs = shouldUseOriginalXs ? original.xs || "" : newXs;
-    let finalMagnet = newMagnet || original.magnet || "";
-    const finalThumbnail = newThumbnail || original.thumbnail || "";
-    const finalDescription = newDescription || original.description || "";
+    let finalMagnet = magnetWasEdited ? newMagnet : original.magnet || "";
+    const finalThumbnail = isEditing(thumbnailInput)
+      ? newThumbnail
+      : original.thumbnail || "";
+    const finalDescription = isEditing(descriptionInput)
+      ? newDescription
+      : original.description || "";
     const originalEnableComments =
       typeof original.enableComments === "boolean"
         ? original.enableComments
@@ -3770,6 +3790,8 @@ class bitvidApp {
       xs: finalXs,
       wsEdited: !shouldUseOriginalWs,
       xsEdited: !shouldUseOriginalXs,
+      urlEdited: urlWasEdited,
+      magnetEdited: magnetWasEdited,
       enableComments: finalEnableComments,
     };
 

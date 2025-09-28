@@ -817,17 +817,19 @@ class NostrClient {
     const wantPrivate = updatedData.isPrivate ?? baseEvent.isPrivate ?? false;
 
     // Use the new magnet if provided; otherwise, fall back to the decrypted old magnet
+    const magnetEdited = updatedData.magnetEdited === true;
     const newMagnetValue =
       typeof updatedData.magnet === "string" ? updatedData.magnet.trim() : "";
-    let finalPlainMagnet = newMagnetValue || oldPlainMagnet;
+    let finalPlainMagnet = magnetEdited ? newMagnetValue : oldPlainMagnet;
     let finalMagnet =
       wantPrivate && finalPlainMagnet
         ? fakeEncrypt(finalPlainMagnet)
         : finalPlainMagnet;
 
+    const urlEdited = updatedData.urlEdited === true;
     const newUrlValue =
       typeof updatedData.url === "string" ? updatedData.url.trim() : "";
-    const finalUrl = newUrlValue || oldUrl;
+    const finalUrl = urlEdited ? newUrlValue : oldUrl;
 
     const wsEdited = updatedData.wsEdited === true;
     const xsEdited = updatedData.xsEdited === true;
