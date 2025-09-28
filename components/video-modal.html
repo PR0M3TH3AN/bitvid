@@ -4,7 +4,7 @@
     class="modal-container h-full w-full flex items-start justify-center overflow-y-auto"
   >
     <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
+      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg relative"
     >
       <!-- Navigation bar - sliding at top -->
       <div
@@ -31,72 +31,7 @@
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <div
-            class="relative ml-auto"
-            data-more-menu-wrapper="true"
-          >
-            <button
-              id="modalMoreBtn"
-              type="button"
-              class="icon-button"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-label="More"
-              data-more-dropdown="modal"
-            >
-              <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5" />
-            </button>
-            <div
-              id="moreDropdown-modal"
-              class="hidden absolute right-0 top-14 w-44 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-              role="menu"
-              data-more-menu="true"
-            >
-              <div class="py-1">
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                  data-action="open-channel"
-                  data-context="modal"
-                >
-                  Open channel
-                </button>
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                  data-action="copy-link"
-                  data-context="modal"
-                >
-                  Copy link
-                </button>
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                  data-action="block-author"
-                  data-context="modal"
-                >
-                  Block creator
-                </button>
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                  data-action="report"
-                  data-context="modal"
-                >
-                  Report
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="video-container w-full bg-black">
-        <video id="modalVideo" class="w-full aspect-video" controls></video>
-      </div>
-
-      <div class="video-info p-6">
-        <!-- Title and icons row -->
-        <div class="flex items-center justify-between mb-2">
-          <h2 id="videoTitle" class="text-2xl font-bold text-white"></h2>
-          <div class="flex items-center space-x-2">
-            <!-- Copy Magnet Button (circular) -->
+          <div class="modal-actions">
             <button id="copyMagnetBtn" class="icon-button">
               <img
                 src="assets/svg/copy-magnet.svg"
@@ -104,7 +39,6 @@
                 class="icon-image"
               />
             </button>
-            <!-- Zap Button (circular) -->
             <button
               id="modalZapBtn"
               type="button"
@@ -117,7 +51,6 @@
                 class="icon-image"
               />
             </button>
-            <!-- Share Button (circular) -->
             <button id="shareBtn" class="icon-button">
               <img
                 src="assets/svg/share-video.svg"
@@ -125,7 +58,71 @@
                 class="icon-image"
               />
             </button>
+            <div
+              class="modal-actions__overflow"
+              data-more-menu-wrapper="true"
+            >
+              <button
+                id="modalMoreBtn"
+                type="button"
+                class="icon-button"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-label="More"
+                data-more-dropdown="modal"
+              >
+                <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5" />
+              </button>
+              <div
+                id="moreDropdown-modal"
+                class="hidden absolute right-0 top-14 w-44 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+                role="menu"
+                data-more-menu="true"
+              >
+                <div class="py-1">
+                  <button
+                    class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                    data-action="open-channel"
+                    data-context="modal"
+                  >
+                    Open channel
+                  </button>
+                  <button
+                    class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                    data-action="copy-link"
+                    data-context="modal"
+                  >
+                    Copy link
+                  </button>
+                  <button
+                    class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                    data-action="block-author"
+                    data-context="modal"
+                  >
+                    Block creator
+                  </button>
+                  <button
+                    class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                    data-action="report"
+                    data-context="modal"
+                  >
+                    Report
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
+
+      <div class="video-container w-full bg-black rounded-t-lg overflow-hidden">
+        <video id="modalVideo" class="w-full aspect-video" controls></video>
+      </div>
+
+      <div class="video-info p-6">
+        <!-- Title and icons row -->
+        <div class="flex items-center justify-between mb-2">
+          <h2 id="videoTitle" class="text-2xl font-bold text-white"></h2>
         </div>
 
         <!-- Video Timestamp -->
