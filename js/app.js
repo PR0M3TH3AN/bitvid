@@ -539,6 +539,16 @@ class bitvidApp {
     this.r2ZoneIdInput = null;
     this.r2BaseDomainInput = null;
 
+    // Edit video modal elements
+    this.editVideoModal = null;
+    this.editVideoOverlay = null;
+    this.editVideoForm = null;
+    this.closeEditVideoModalBtn = null;
+    this.cancelEditVideoBtn = null;
+    this.editVideoSubmitBtn = null;
+    this.editVideoFieldButtons = [];
+    this.activeEditVideo = null;
+
     // Optional small inline player stats
     this.status = document.getElementById("status") || null;
     this.progressBar = document.getElementById("progress") || null;
@@ -816,6 +826,9 @@ class bitvidApp {
       // 2. Initialize the upload modal (components/upload-modal.html)
       await this.initUploadModal();
       initQuickR2Upload(this);
+
+      // 2.5 Initialize the edit modal (components/edit-video-modal.html)
+      await this.initEditVideoModal();
 
       // 3. (Optional) Initialize the profile modal (components/profile-modal.html)
       await this.initProfileModal();
@@ -1277,6 +1290,241 @@ class bitvidApp {
       console.error("initUploadModal failed:", error);
       this.showError(`Failed to initialize upload modal: ${error.message}`);
       return false;
+    }
+  }
+
+  async initEditVideoModal() {
+    try {
+      let modal = document.getElementById("editVideoModal");
+      if (!modal) {
+        const resp = await fetch("components/edit-video-modal.html");
+        if (!resp.ok) {
+          throw new Error(`HTTP error! status: ${resp.status}`);
+        }
+        const html = await resp.text();
+        const modalContainer = document.getElementById("modalContainer");
+        if (!modalContainer) {
+          throw new Error("Modal container element not found!");
+        }
+
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = html;
+        removeTrackingScripts(wrapper);
+        modalContainer.appendChild(wrapper);
+
+        modal = wrapper.querySelector("#editVideoModal");
+      }
+
+      if (!modal) {
+        throw new Error("Edit video modal markup missing after load.");
+      }
+
+      this.editVideoModal = modal;
+      this.editVideoOverlay =
+        modal.querySelector("#editVideoModalOverlay") || null;
+      this.editVideoForm = modal.querySelector("#editVideoForm") || null;
+      this.closeEditVideoModalBtn =
+        modal.querySelector("#closeEditVideoModal") || null;
+      this.cancelEditVideoBtn =
+        modal.querySelector("#cancelEditVideo") || null;
+      this.editVideoSubmitBtn =
+        modal.querySelector("#submitEditVideo") || null;
+      this.editVideoFieldButtons = Array.from(
+        modal.querySelectorAll("[data-edit-target]")
+      );
+
+      if (this.editVideoForm) {
+        this.editVideoForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          this.handleEditVideoSubmit();
+        });
+      }
+
+      if (this.closeEditVideoModalBtn) {
+        this.closeEditVideoModalBtn.addEventListener("click", () => {
+          this.hideEditVideoModal();
+        });
+      }
+
+      if (this.cancelEditVideoBtn) {
+        this.cancelEditVideoBtn.addEventListener("click", () => {
+          this.hideEditVideoModal();
+        });
+      }
+
+      if (this.editVideoOverlay) {
+        this.editVideoOverlay.addEventListener("click", () => {
+          this.hideEditVideoModal();
+        });
+      }
+
+      if (Array.isArray(this.editVideoFieldButtons)) {
+        this.editVideoFieldButtons.forEach((btn) => {
+          btn.addEventListener("click", (event) => {
+            this.handleEditFieldToggle(event);
+          });
+        });
+      }
+
+      this.resetEditVideoForm();
+
+      return true;
+    } catch (error) {
+      console.error("initEditVideoModal failed:", error);
+      this.showError(`Failed to initialize edit modal: ${error.message}`);
+      return false;
+    }
+  }
+
+  resetEditVideoForm() {
+    if (!this.editVideoModal) {
+      this.activeEditVideo = null;
+      return;
+    }
+
+    const fieldIds = [
+      "editVideoTitle",
+      "editVideoUrl",
+      "editVideoMagnet",
+      "editVideoThumbnail",
+      "editVideoDescription",
+    ];
+
+    fieldIds.forEach((id) => {
+      const input = this.editVideoModal.querySelector(`#${id}`);
+      if (input) {
+        input.value = "";
+        input.readOnly = false;
+        input.classList.remove("locked-input");
+        delete input.dataset.originalValue;
+      }
+      const button = this.editVideoModal.querySelector(
+        `[data-edit-target="${id}"]`
+      );
+      if (button) {
+        button.classList.add("hidden");
+        button.dataset.mode = "locked";
+        button.textContent = "Edit field";
+      }
+    });
+
+    this.activeEditVideo = null;
+  }
+
+  showEditVideoModal() {
+    if (this.editVideoModal) {
+      this.editVideoModal.classList.remove("hidden");
+    }
+  }
+
+  hideEditVideoModal() {
+    if (this.editVideoModal) {
+      this.editVideoModal.classList.add("hidden");
+    }
+    this.resetEditVideoForm();
+  }
+
+  populateEditVideoForm(video) {
+    if (!video || !this.editVideoModal) {
+      return;
+    }
+
+    this.resetEditVideoForm();
+
+    const fieldMap = {
+      editVideoTitle: video.title || "",
+      editVideoUrl: video.url || "",
+      editVideoMagnet: video.magnet || "",
+      editVideoThumbnail: video.thumbnail || "",
+      editVideoDescription: video.description || "",
+    };
+
+    Object.entries(fieldMap).forEach(([id, rawValue]) => {
+      const input = this.editVideoModal.querySelector(`#${id}`);
+      const button = this.editVideoModal.querySelector(
+        `[data-edit-target="${id}"]`
+      );
+      const value = typeof rawValue === "string" ? rawValue : "";
+      const hasValue = value.trim().length > 0;
+
+      if (input) {
+        input.value = value;
+        input.dataset.originalValue = value;
+        if (hasValue) {
+          input.readOnly = true;
+          input.classList.add("locked-input");
+        } else {
+          input.readOnly = false;
+          input.classList.remove("locked-input");
+        }
+      }
+
+      if (button) {
+        if (hasValue) {
+          button.classList.remove("hidden");
+          button.dataset.mode = "locked";
+          button.textContent = "Edit field";
+        } else {
+          button.classList.add("hidden");
+          button.dataset.mode = "locked";
+          button.textContent = "Edit field";
+        }
+      }
+    });
+
+    this.activeEditVideo = video;
+  }
+
+  handleEditFieldToggle(event) {
+    const button = event?.currentTarget;
+    if (!button || !this.editVideoModal) {
+      return;
+    }
+
+    const targetId = button.dataset?.editTarget;
+    if (!targetId) {
+      return;
+    }
+
+    const input = this.editVideoModal.querySelector(`#${targetId}`);
+    if (!input) {
+      return;
+    }
+
+    const mode = button.dataset.mode || "locked";
+    if (mode === "locked") {
+      input.readOnly = false;
+      input.classList.remove("locked-input");
+      button.dataset.mode = "editing";
+      button.textContent = "Restore original";
+      if (typeof input.focus === "function") {
+        input.focus();
+        if (typeof input.setSelectionRange === "function") {
+          const length = input.value.length;
+          try {
+            input.setSelectionRange(length, length);
+          } catch (err) {
+            // ignore selection errors (e.g. for input types that do not support it)
+          }
+        }
+      }
+      return;
+    }
+
+    const originalValue = input.dataset?.originalValue || "";
+    input.value = originalValue;
+
+    if (originalValue) {
+      input.readOnly = true;
+      input.classList.add("locked-input");
+      button.dataset.mode = "locked";
+      button.textContent = "Edit field";
+    } else {
+      input.readOnly = false;
+      input.classList.remove("locked-input");
+      button.classList.add("hidden");
+      button.dataset.mode = "locked";
+      button.textContent = "Edit field";
     }
   }
 
@@ -2516,6 +2764,73 @@ class bitvidApp {
       console.error("Failed to publish video:", err);
       this.showError("Failed to share video. Please try again later.");
       return false;
+    }
+  }
+
+  async handleEditVideoSubmit() {
+    if (!this.activeEditVideo || !this.editVideoModal) {
+      this.showError("No video selected for editing.");
+      return;
+    }
+
+    const fieldValue = (id) => {
+      const el = this.editVideoModal.querySelector(`#${id}`);
+      if (!el || typeof el.value !== "string") {
+        return "";
+      }
+      return el.value.trim();
+    };
+
+    const original = this.activeEditVideo;
+
+    const newTitle = fieldValue("editVideoTitle");
+    const newUrl = fieldValue("editVideoUrl");
+    const newMagnet = fieldValue("editVideoMagnet");
+    const newThumbnail = fieldValue("editVideoThumbnail");
+    const newDescription = fieldValue("editVideoDescription");
+
+    const finalTitle = newTitle || original.title || "";
+    const finalUrl = newUrl || original.url || "";
+    const finalMagnet = newMagnet || original.magnet || "";
+    const finalThumbnail = newThumbnail || original.thumbnail || "";
+    const finalDescription = newDescription || original.description || "";
+
+    if (!finalTitle || (!finalUrl && !finalMagnet)) {
+      this.showError("Title and at least one of URL or Magnet is required.");
+      return;
+    }
+
+    if (finalUrl && !/^https:\/\//i.test(finalUrl)) {
+      this.showError("Hosted video URLs must use HTTPS.");
+      return;
+    }
+
+    const updatedData = {
+      version: original.version || 2,
+      title: finalTitle,
+      magnet: finalMagnet,
+      url: finalUrl,
+      thumbnail: finalThumbnail,
+      description: finalDescription,
+      mode: isDevMode ? "dev" : "live",
+    };
+
+    const originalEvent = {
+      id: original.id,
+      pubkey: original.pubkey,
+      videoRootId: original.videoRootId,
+    };
+
+    try {
+      await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
+      await this.loadVideos();
+      this.videosMap.clear();
+      this.showSuccess("Video updated successfully!");
+      this.hideEditVideoModal();
+      this.forceRefreshAllProfiles();
+    } catch (err) {
+      console.error("Failed to edit video:", err);
+      this.showError("Failed to edit video. Please try again.");
     }
   }
 
@@ -4339,88 +4654,17 @@ class bitvidApp {
         return;
       }
 
-      // 3) Prompt the user for updated fields
-      const newTitle = prompt("New Title? (blank=keep existing)", video.title);
-      if (newTitle === null) {
+      if (!this.editVideoModal) {
+        await this.initEditVideoModal();
+      }
+
+      if (!this.editVideoModal) {
+        this.showError("Edit modal is not available right now.");
         return;
       }
 
-      const newMagnet = prompt(
-        "New Magnet? (blank=keep existing)",
-        video.magnet
-      );
-      if (newMagnet === null) {
-        return;
-      }
-
-      const newUrl = prompt(
-        "New URL? (blank=keep existing)",
-        video.url || ""
-      );
-      if (newUrl === null) {
-        return;
-      }
-
-      const newThumb = prompt(
-        "New Thumbnail? (blank=keep existing)",
-        video.thumbnail
-      );
-      if (newThumb === null) {
-        return;
-      }
-
-      const newDesc = prompt(
-        "New Description? (blank=keep existing)",
-        video.description
-      );
-      if (newDesc === null) {
-        return;
-      }
-      // const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
-
-      // 4) Build final updated fields (or fallback to existing)
-      const title =
-        !newTitle || !newTitle.trim() ? video.title : newTitle.trim();
-      const magnet =
-        !newMagnet || !newMagnet.trim() ? video.magnet : newMagnet.trim();
-      const url = !newUrl || !newUrl.trim() ? video.url : newUrl.trim();
-      const thumbnail =
-        !newThumb || !newThumb.trim() ? video.thumbnail : newThumb.trim();
-      const description =
-        !newDesc || !newDesc.trim() ? video.description : newDesc.trim();
-
-      // 5) Create an object with the new data
-      const updatedData = {
-        version: video.version || 2,
-        // isPrivate: wantPrivate,
-        title,
-        magnet,
-        url,
-        thumbnail,
-        description,
-        mode: isDevMode ? "dev" : "live",
-      };
-
-      // 6) Build the originalEvent stub, now including videoRootId to avoid extra fetch
-      const originalEvent = {
-        id: video.id,
-        pubkey: video.pubkey,
-        videoRootId: video.videoRootId, // <-- pass this if it exists
-      };
-
-      // 7) Call the editVideo method
-      await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
-
-      // 8) Refresh local UI
-      await this.loadVideos();
-
-      // 8.1) Purge the outdated cache
-      this.videosMap.clear();
-
-      this.showSuccess("Video updated successfully!");
-
-      // 9) Also refresh all profile caches so any new name/pic changes are reflected
-      this.forceRefreshAllProfiles();
+      this.populateEditVideoForm(video);
+      this.showEditVideoModal();
     } catch (err) {
       console.error("Failed to edit video:", err);
       this.showError("Failed to edit video. Please try again.");
