@@ -3229,7 +3229,22 @@ class bitvidApp {
     // 6) NIP-07 button inside the login modal => call the extension & login
     const nip07Button = document.getElementById("loginNIP07");
     if (nip07Button) {
+      const originalLabel = nip07Button.textContent;
+      const setLoadingState = (isLoading) => {
+        nip07Button.disabled = isLoading;
+        nip07Button.dataset.loading = isLoading ? "true" : "false";
+        nip07Button.setAttribute("aria-busy", isLoading ? "true" : "false");
+        nip07Button.textContent = isLoading
+          ? "Connecting to NIP-07 extension..."
+          : originalLabel;
+      };
+
       nip07Button.addEventListener("click", async () => {
+        if (nip07Button.dataset.loading === "true") {
+          return;
+        }
+
+        setLoadingState(true);
         console.log(
           "[app.js] loginNIP07 clicked! Attempting extension login..."
         );
@@ -3245,7 +3260,13 @@ class bitvidApp {
           }
         } catch (err) {
           console.error("[NIP-07 login error]", err);
-          this.showError("Failed to login with NIP-07. Please try again.");
+          const message =
+            err && typeof err.message === "string" && err.message.trim()
+              ? err.message.trim()
+              : "Failed to login with NIP-07. Please try again.";
+          this.showError(message);
+        } finally {
+          setLoadingState(false);
         }
       });
     }
