@@ -1208,6 +1208,134 @@ class NostrClient {
     return null;
   }
 
+  /**
+   * Ensure we have every historical revision for a given video in memory and
+   * return the complete set sorted newest-first. We primarily group revisions
+   * by their shared `videoRootId`, but fall back to the NIP-33 `d` tag when
+   * working with legacy notes. The explicit `d` tag fetch is important because
+   * relays cannot be queried by values that only exist inside the JSON
+   * content. Without this pass, the UI would occasionally miss mid-history
+   * edits that were published from other devices.
+   */
+  async hydrateVideoHistory(video) {
+    if (!video || typeof video !== "object") {
+      return [];
+    }
+
+    const targetRoot = typeof video.videoRootId === "string" ? video.videoRootId : "";
+    const targetPubkey = typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
+    const findDTagValue = (tags = []) => {
+      if (!Array.isArray(tags)) {
+        return "";
+      }
+      for (const tag of tags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+        if (tag[0] === "d" && typeof tag[1] === "string") {
+          return tag[1];
+        }
+      }
+      return "";
+    };
+
+    const targetDTag = findDTagValue(video.tags);
+
+    const collectLocalMatches = () => {
+      const seen = new Set();
+      const matches = [];
+      for (const candidate of this.allEvents.values()) {
+        if (!candidate || typeof candidate !== "object") {
+          continue;
+        }
+        if (targetPubkey) {
+          const candidatePubkey = typeof candidate.pubkey === "string"
+            ? candidate.pubkey.toLowerCase()
+            : "";
+          if (candidatePubkey !== targetPubkey) {
+            continue;
+          }
+        }
+
+        const candidateRoot =
+          typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
+        const candidateDTag = findDTagValue(candidate.tags);
+
+        const sameRoot = targetRoot && candidateRoot === targetRoot;
+        const sameD = targetDTag && candidateDTag === targetDTag;
+
+        // Legacy fallbacks: some old posts reused only the "d" tag without a
+        // canonical videoRootId. If neither identifier exists we at least keep
+        // the active event so the caller can surface an informative message.
+        const sameLegacyRoot =
+          !targetRoot && candidateRoot && candidateRoot === video.id;
+
+        if (sameRoot || sameD || sameLegacyRoot || candidate.id === video.id) {
+          if (!seen.has(candidate.id)) {
+            seen.add(candidate.id);
+            matches.push(candidate);
+          }
+        }
+      }
+      return matches;
+    };
+
+    let localMatches = collectLocalMatches();
+
+    const shouldFetchFromRelays =
+      localMatches.filter((entry) => !entry.deleted).length <= 1 && targetDTag;
+
+    if (shouldFetchFromRelays && this.pool) {
+      const filter = {
+        kinds: [30078],
+        "#t": ["video"],
+        "#d": [targetDTag],
+        limit: 200,
+      };
+      if (targetPubkey) {
+        filter.authors = [video.pubkey];
+      }
+
+      try {
+        const perRelay = await Promise.all(
+          this.relays.map(async (url) => {
+            try {
+              const events = await this.pool.list([url], [filter]);
+              return events || [];
+            } catch (err) {
+              if (isDevMode) {
+                console.warn(`[nostr] History fetch failed on ${url}:`, err);
+              }
+              return [];
+            }
+          })
+        );
+
+        const merged = perRelay.flat();
+        for (const evt of merged) {
+          try {
+            const parsed = convertEventToVideo(evt);
+            if (!parsed.invalid) {
+              this.allEvents.set(evt.id, parsed);
+            }
+          } catch (err) {
+            if (isDevMode) {
+              console.warn("[nostr] Failed to convert historical event:", err);
+            }
+          }
+        }
+      } catch (err) {
+        if (isDevMode) {
+          console.warn("[nostr] hydrateVideoHistory relay fetch error:", err);
+        }
+      }
+
+      localMatches = collectLocalMatches();
+    }
+
+    return localMatches.sort((a, b) => b.created_at - a.created_at);
+  }
+
   getActiveVideos() {
     return Array.from(this.activeMap.values()).sort(
       (a, b) => b.created_at - a.created_at
