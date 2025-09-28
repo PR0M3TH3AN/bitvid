@@ -223,13 +223,31 @@ class AccessControl {
   }
 
   filterVideos(videos) {
+    const applyWhitelist =
+      isWhitelistEnabled && this.whitelist && this.whitelist.size > 0;
+
     return videos.filter((video) => {
+      if (!video || typeof video !== "object") {
+        return false;
+      }
+
       try {
-        const npub = window.NostrTools.nip19.npubEncode(video.pubkey);
+        const encodeNpub = window.NostrTools?.nip19?.npubEncode;
+        if (typeof encodeNpub !== "function" || typeof video.pubkey !== "string") {
+          if (isDevMode) {
+            console.warn(
+              "[AccessControl] Unable to encode npub for video during filtering; allowing through.",
+              video
+            );
+          }
+          return true;
+        }
+
+        const npub = encodeNpub(video.pubkey);
         if (this.isBlacklisted(npub)) {
           return false;
         }
-        if (isWhitelistEnabled && !this.isWhitelisted(npub)) {
+        if (applyWhitelist && !this.isWhitelisted(npub)) {
           return false;
         }
         return true;
