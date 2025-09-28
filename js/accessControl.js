@@ -11,35 +11,13 @@ import {
   ADMIN_INITIAL_BLACKLIST,
   ADMIN_INITIAL_WHITELIST,
 } from "./lists.js";
-
-const ADMIN_EDITORS_KEY = "bitvid_admin_editors";
-const ADMIN_WHITELIST_KEY = "bitvid_admin_whitelist";
-const ADMIN_BLACKLIST_KEY = "bitvid_admin_blacklist";
-
-const LEGACY_WHITELIST_KEY = "bitvid_whitelist";
-const LEGACY_BLACKLIST_KEY = "bitvid_blacklist";
-
-function loadJSONList(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) {
-      return null;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch (error) {
-    console.warn(`Failed to parse list for ${key}:`, error);
-    return null;
-  }
-}
-
-function saveJSONList(key, values) {
-  try {
-    localStorage.setItem(key, JSON.stringify(values));
-  } catch (error) {
-    console.warn(`Failed to persist list for ${key}:`, error);
-  }
-}
+import {
+  ADMIN_BLACKLIST_KEY,
+  ADMIN_EDITORS_KEY,
+  ADMIN_WHITELIST_KEY,
+  loadAdminState,
+  persistAdminState,
+} from "./adminListStore.js";
 
 function normalizeNpub(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -55,26 +33,6 @@ function dedupeNpubs(values) {
       return set;
     }, new Set())
   );
-}
-
-function migrateLegacyList(targetKey, legacyKey, fallback) {
-  const stored = loadJSONList(targetKey);
-  if (stored !== null) {
-    return dedupeNpubs(stored);
-  }
-
-  const legacy = legacyKey ? loadJSONList(legacyKey) : null;
-  if (legacy !== null) {
-    const sanitized = dedupeNpubs(legacy);
-    saveJSONList(targetKey, sanitized);
-    return sanitized;
-  }
-
-  const sanitizedFallback = dedupeNpubs(fallback);
-  if (sanitizedFallback.length) {
-    saveJSONList(targetKey, sanitizedFallback);
-  }
-  return sanitizedFallback;
 }
 
 function isValidNpub(npub) {
@@ -100,30 +58,77 @@ class AccessControl {
     this.whitelist = new Set();
     this.blacklist = new Set();
     this.whitelistEnabled = getWhitelistMode();
-    this.refresh();
+    this.hasLoaded = false;
+    this.lastError = null;
+    this._isRefreshing = false;
+    this._refreshPromise = this._performRefresh();
+    this._refreshPromise.catch((error) => {
+      console.error("Failed to load admin lists:", error);
+    });
+  }
+
+  async _performRefresh() {
+    if (this._isRefreshing) {
+      return this._refreshPromise;
+    }
+
+    this._isRefreshing = true;
+    try {
+      const state = await loadAdminState();
+      const editors = Array.isArray(state?.editors) ? state.editors : [];
+      const whitelist = Array.isArray(state?.whitelist)
+        ? state.whitelist
+        : [];
+      const blacklist = Array.isArray(state?.blacklist)
+        ? state.blacklist
+        : [];
+
+      this.editors = new Set(
+        dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
+      );
+      this.whitelist = new Set(
+        dedupeNpubs([...ADMIN_INITIAL_WHITELIST, ...whitelist])
+      );
+      this.blacklist = new Set(
+        dedupeNpubs([...ADMIN_INITIAL_BLACKLIST, ...blacklist])
+      );
+
+      this.whitelistEnabled = getWhitelistMode();
+      this.hasLoaded = true;
+      this.lastError = null;
+    } catch (error) {
+      this.lastError = error;
+      if (!this.hasLoaded) {
+        this.editors.clear();
+        this.whitelist.clear();
+        this.blacklist.clear();
+      }
+      throw error;
+    } finally {
+      this._isRefreshing = false;
+    }
   }
 
   refresh() {
-    this.editors = new Set(
-      dedupeNpubs([
-        ...ADMIN_EDITORS_NPUBS,
-        ...migrateLegacyList(ADMIN_EDITORS_KEY, null, []),
-      ])
-    );
+    const promise = this._performRefresh();
+    this._refreshPromise = promise;
+    promise.catch((error) => {
+      console.error("Failed to refresh admin lists:", error);
+    });
+    return promise;
+  }
 
-    this.whitelist = new Set(
-      migrateLegacyList(ADMIN_WHITELIST_KEY, LEGACY_WHITELIST_KEY, [
-        ...ADMIN_INITIAL_WHITELIST,
-      ])
-    );
-
-    this.blacklist = new Set(
-      migrateLegacyList(ADMIN_BLACKLIST_KEY, LEGACY_BLACKLIST_KEY, [
-        ...ADMIN_INITIAL_BLACKLIST,
-      ])
-    );
-
-    this.whitelistEnabled = getWhitelistMode();
+  async ensureReady() {
+    try {
+      await this._refreshPromise;
+    } catch (error) {
+      if (!this.hasLoaded) {
+        await this.refresh();
+        await this._refreshPromise;
+      } else {
+        throw error;
+      }
+    }
   }
 
   whitelistMode() {
@@ -162,7 +167,7 @@ class AccessControl {
     return Array.from(this.editors);
   }
 
-  addModerator(requestorNpub, moderatorNpub) {
+  async addModerator(requestorNpub, moderatorNpub) {
     if (!this.isSuperAdmin(requestorNpub)) {
       return { ok: false, error: "forbidden" };
     }
@@ -175,13 +180,18 @@ class AccessControl {
       return { ok: false, error: "immutable" };
     }
 
-    this.editors.add(normalized);
-    saveJSONList(ADMIN_EDITORS_KEY, this.getEditors());
-    this.refresh();
-    return { ok: true };
+    const nextEditors = dedupeNpubs([...this.getEditors(), normalized]);
+
+    try {
+      await persistAdminState(requestorNpub, { editors: nextEditors });
+      await this.refresh();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.code || "storage-error" };
+    }
   }
 
-  removeModerator(requestorNpub, moderatorNpub) {
+  async removeModerator(requestorNpub, moderatorNpub) {
     if (!this.isSuperAdmin(requestorNpub)) {
       return { ok: false, error: "forbidden" };
     }
@@ -190,14 +200,18 @@ class AccessControl {
     if (!normalized || normalized === ADMIN_SUPER_NPUB) {
       return { ok: false, error: "immutable" };
     }
+    const nextEditors = this.getEditors().filter((value) => value !== normalized);
 
-    this.editors.delete(normalized);
-    saveJSONList(ADMIN_EDITORS_KEY, this.getEditors());
-    this.refresh();
-    return { ok: true };
+    try {
+      await persistAdminState(requestorNpub, { editors: nextEditors });
+      await this.refresh();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.code || "storage-error" };
+    }
   }
 
-  addToWhitelist(actorNpub, targetNpub) {
+  async addToWhitelist(actorNpub, targetNpub) {
     if (!this.canEditAdminLists(actorNpub)) {
       return { ok: false, error: "forbidden" };
     }
@@ -210,15 +224,24 @@ class AccessControl {
       return { ok: false, error: "invalid npub" };
     }
 
-    this.blacklist.delete(normalized);
-    this.whitelist.add(normalized);
-    saveJSONList(ADMIN_WHITELIST_KEY, this.getWhitelist());
-    saveJSONList(ADMIN_BLACKLIST_KEY, this.getBlacklist());
-    this.refresh();
-    return { ok: true };
+    const nextWhitelist = dedupeNpubs([...this.getWhitelist(), normalized]);
+    const nextBlacklist = this.getBlacklist().filter(
+      (value) => value !== normalized
+    );
+
+    try {
+      await persistAdminState(actorNpub, {
+        whitelist: nextWhitelist,
+        blacklist: nextBlacklist,
+      });
+      await this.refresh();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.code || "storage-error" };
+    }
   }
 
-  removeFromWhitelist(actorNpub, targetNpub) {
+  async removeFromWhitelist(actorNpub, targetNpub) {
     if (!this.canEditAdminLists(actorNpub)) {
       return { ok: false, error: "forbidden" };
     }
@@ -227,14 +250,20 @@ class AccessControl {
     if (!normalized) {
       return { ok: false, error: "invalid npub" };
     }
+    const nextWhitelist = this.getWhitelist().filter(
+      (value) => value !== normalized
+    );
 
-    this.whitelist.delete(normalized);
-    saveJSONList(ADMIN_WHITELIST_KEY, this.getWhitelist());
-    this.refresh();
-    return { ok: true };
+    try {
+      await persistAdminState(actorNpub, { whitelist: nextWhitelist });
+      await this.refresh();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.code || "storage-error" };
+    }
   }
 
-  addToBlacklist(actorNpub, targetNpub) {
+  async addToBlacklist(actorNpub, targetNpub) {
     if (!this.canEditAdminLists(actorNpub)) {
       return { ok: false, error: "forbidden" };
     }
@@ -251,15 +280,24 @@ class AccessControl {
       return { ok: false, error: "immutable" };
     }
 
-    this.whitelist.delete(normalized);
-    this.blacklist.add(normalized);
-    saveJSONList(ADMIN_BLACKLIST_KEY, this.getBlacklist());
-    saveJSONList(ADMIN_WHITELIST_KEY, this.getWhitelist());
-    this.refresh();
-    return { ok: true };
+    const nextBlacklist = dedupeNpubs([...this.getBlacklist(), normalized]);
+    const nextWhitelist = this.getWhitelist().filter(
+      (value) => value !== normalized
+    );
+
+    try {
+      await persistAdminState(actorNpub, {
+        blacklist: nextBlacklist,
+        whitelist: nextWhitelist,
+      });
+      await this.refresh();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.code || "storage-error" };
+    }
   }
 
-  removeFromBlacklist(actorNpub, targetNpub) {
+  async removeFromBlacklist(actorNpub, targetNpub) {
     if (!this.canEditAdminLists(actorNpub)) {
       return { ok: false, error: "forbidden" };
     }
@@ -268,11 +306,17 @@ class AccessControl {
     if (!normalized) {
       return { ok: false, error: "invalid npub" };
     }
+    const nextBlacklist = this.getBlacklist().filter(
+      (value) => value !== normalized
+    );
 
-    this.blacklist.delete(normalized);
-    saveJSONList(ADMIN_BLACKLIST_KEY, this.getBlacklist());
-    this.refresh();
-    return { ok: true };
+    try {
+      await persistAdminState(actorNpub, { blacklist: nextBlacklist });
+      await this.refresh();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.code || "storage-error" };
+    }
   }
 
   setWhitelistMode(actorNpub, enabled) {
