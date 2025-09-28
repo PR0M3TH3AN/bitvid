@@ -165,8 +165,9 @@ function queueProbe(magnet, cacheKey, priority = 0) {
 
 const PROBE_CACHE_TTL_MS = 5 * 60 * 1000;
 const PROBE_TIMEOUT_MS = 8000;
-const PROBE_CONCURRENCY = 6;
+const PROBE_CONCURRENCY = 12;
 const PROBE_POLL_COUNT = 3;
+const PRIORITY_BASELINE = 1_000_000;
 
 class ProbeQueue {
   constructor(max = 2) {
@@ -285,48 +286,107 @@ function getViewportCenter() {
   };
 }
 
-function calculateDistanceSquared(entry, viewportCenter) {
-  if (!viewportCenter) {
-    return Number.POSITIVE_INFINITY;
-  }
-  const rect = getIntersectionRect(entry);
-  if (!rect) {
-    return Number.POSITIVE_INFINITY;
-  }
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
-  const dx = centerX - viewportCenter.x;
-  const dy = centerY - viewportCenter.y;
-  return dx * dx + dy * dy;
-}
-
-function computeVisibilityPriority({ ratio, distance }) {
-  const normalizedRatio = Number.isFinite(ratio)
-    ? Math.min(Math.max(ratio, 0), 1)
-    : 0;
-  const distanceScore = Number.isFinite(distance) ? 1 / (1 + distance) : 0;
-  return normalizedRatio * 1000 + distanceScore;
-}
-
 function prioritizeEntries(entries, viewportCenter) {
   if (!Array.isArray(entries) || entries.length === 0) {
     return [];
   }
-  return entries
+  const filtered = entries
     .filter((entry) => entry.isIntersecting && entry.target instanceof HTMLElement)
     .map((entry) => {
+      const rect = getIntersectionRect(entry);
+      if (!rect) {
+        return null;
+      }
       const ratio =
         typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
-      const distance = calculateDistanceSquared(entry, viewportCenter);
-      const priority = computeVisibilityPriority({ ratio, distance });
-      return { entry, ratio, distance, priority };
+      const centerY = rect.top + rect.height / 2;
+      const verticalDistance = viewportCenter
+        ? Math.abs(centerY - viewportCenter.y)
+        : Number.POSITIVE_INFINITY;
+      return { entry, ratio, centerY, verticalDistance };
     })
-    .sort((a, b) => {
-      if (b.priority !== a.priority) {
-        return b.priority - a.priority;
+    .filter(Boolean);
+
+  if (filtered.length === 0) {
+    return [];
+  }
+
+  if (!viewportCenter) {
+    return filtered
+      .sort((a, b) => {
+        if (b.ratio !== a.ratio) {
+          return b.ratio - a.ratio;
+        }
+        return a.centerY - b.centerY;
+      })
+      .map((item, index) => ({
+        entry: item.entry,
+        priority: PRIORITY_BASELINE - index,
+      }));
+  }
+
+  const ordered = filtered
+    .slice()
+    .sort((a, b) => a.centerY - b.centerY);
+
+  let centerIndex = 0;
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < ordered.length; i += 1) {
+    const candidate = ordered[i];
+    if (candidate.verticalDistance < minDistance) {
+      minDistance = candidate.verticalDistance;
+      centerIndex = i;
+    }
+  }
+
+  const prioritized = [];
+  const pushCandidate = (candidate) => {
+    if (!candidate) {
+      return;
+    }
+    prioritized.push(candidate);
+  };
+
+  pushCandidate(ordered[centerIndex]);
+
+  let left = centerIndex - 1;
+  let right = centerIndex + 1;
+  while (left >= 0 || right < ordered.length) {
+    const leftCandidate = left >= 0 ? ordered[left] : null;
+    const rightCandidate = right < ordered.length ? ordered[right] : null;
+
+    if (leftCandidate && rightCandidate) {
+      const leftDistance = leftCandidate.verticalDistance;
+      const rightDistance = rightCandidate.verticalDistance;
+      const distanceDelta = Math.abs(leftDistance - rightDistance);
+      if (distanceDelta <= 0.5) {
+        if (rightCandidate.ratio > leftCandidate.ratio) {
+          pushCandidate(rightCandidate);
+          right += 1;
+        } else {
+          pushCandidate(leftCandidate);
+          left -= 1;
+        }
+      } else if (leftDistance < rightDistance) {
+        pushCandidate(leftCandidate);
+        left -= 1;
+      } else {
+        pushCandidate(rightCandidate);
+        right += 1;
       }
-      return a.distance - b.distance;
-    });
+    } else if (rightCandidate) {
+      pushCandidate(rightCandidate);
+      right += 1;
+    } else if (leftCandidate) {
+      pushCandidate(leftCandidate);
+      left -= 1;
+    }
+  }
+
+  return prioritized.map((candidate, index) => ({
+    entry: candidate.entry,
+    priority: PRIORITY_BASELINE - index,
+  }));
 }
 
 function processObserverEntries(entries, state) {
