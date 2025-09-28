@@ -7,13 +7,7 @@ import {
   setWhitelistMode as persistWhitelistMode,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
 } from "./config.js";
-import {
-  ADMIN_BLACKLIST_KEY,
-  ADMIN_EDITORS_KEY,
-  ADMIN_WHITELIST_KEY,
-  loadAdminState,
-  persistAdminState,
-} from "./adminListStore.js";
+import { loadAdminState, persistAdminState } from "./adminListStore.js";
 
 function normalizeNpub(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -396,9 +390,6 @@ class AccessControl {
 
 export const accessControl = new AccessControl();
 export {
-  ADMIN_EDITORS_KEY,
-  ADMIN_WHITELIST_KEY,
-  ADMIN_BLACKLIST_KEY,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
   normalizeNpub,
   isValidNpub,

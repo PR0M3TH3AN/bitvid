@@ -7,21 +7,23 @@ import {
   ADMIN_EDITORS_NPUBS,
   isDevMode,
 } from "./config.js";
-import { ADMIN_INITIAL_BLACKLIST, ADMIN_INITIAL_WHITELIST } from "./lists.js";
 import { nostrClient } from "./nostr.js";
-
-export const ADMIN_EDITORS_KEY = "bitvid_admin_editors";
-export const ADMIN_WHITELIST_KEY = "bitvid_admin_whitelist";
-export const ADMIN_BLACKLIST_KEY = "bitvid_admin_blacklist";
-
-const LEGACY_WHITELIST_KEY = "bitvid_whitelist";
-const LEGACY_BLACKLIST_KEY = "bitvid_blacklist";
 
 const LIST_IDENTIFIERS = {
   editors: "editors",
   whitelist: "whitelist",
   blacklist: "blacklist",
 };
+
+const LEGACY_STORAGE_KEYS = {
+  editors: "bitvid_admin_editors",
+  whitelist: "bitvid_admin_whitelist",
+  whitelistLegacy: "bitvid_whitelist",
+  blacklist: "bitvid_admin_blacklist",
+  blacklistLegacy: "bitvid_blacklist",
+};
+
+const PUBLISH_TIMEOUT_MS = 7000;
 
 function createError(code, message, cause) {
   const error = new Error(message);
@@ -84,14 +86,13 @@ function sanitizeNpubList(values) {
 
 function sanitizeAdminState(state = {}) {
   const sanitizedEditors = sanitizeNpubList(state.editors || []);
-  const sanitizedWhitelistSet = new Set(
-    sanitizeNpubList(state.whitelist || [])
-  );
+  const sanitizedWhitelist = sanitizeNpubList(state.whitelist || []);
+  const whitelistSet = new Set(sanitizedWhitelist.map(normalizeNpub));
 
   const adminGuardSet = new Set([
     normalizeNpub(ADMIN_SUPER_NPUB),
     ...ADMIN_EDITORS_NPUBS.map(normalizeNpub),
-    ...sanitizedEditors,
+    ...sanitizedEditors.map(normalizeNpub),
   ]);
 
   const sanitizedBlacklist = sanitizeNpubList(state.blacklist || []).filter(
@@ -100,10 +101,10 @@ function sanitizeAdminState(state = {}) {
       if (!normalized) {
         return false;
       }
-      if (adminGuardSet.has(normalized)) {
+      if (whitelistSet.has(normalized)) {
         return false;
       }
-      if (sanitizedWhitelistSet.has(normalized)) {
+      if (adminGuardSet.has(normalized)) {
         return false;
       }
       return true;
@@ -112,12 +113,20 @@ function sanitizeAdminState(state = {}) {
 
   return {
     editors: sanitizedEditors,
-    whitelist: Array.from(sanitizedWhitelistSet),
+    whitelist: sanitizedWhitelist,
     blacklist: sanitizedBlacklist,
   };
 }
 
-function loadJSONList(key) {
+function hasAnyEntries(state = {}) {
+  return Boolean(
+    (Array.isArray(state.editors) && state.editors.length) ||
+      (Array.isArray(state.whitelist) && state.whitelist.length) ||
+      (Array.isArray(state.blacklist) && state.blacklist.length)
+  );
+}
+
+function readJsonListFromStorage(key) {
   if (typeof localStorage === "undefined") {
     return null;
   }
@@ -130,86 +139,58 @@ function loadJSONList(key) {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : null;
   } catch (error) {
-    console.warn(`Failed to parse list for ${key}:`, error);
+    if (isDevMode) {
+      console.warn(`[adminListStore] Failed to parse legacy list for ${key}:`, error);
+    }
     return null;
   }
 }
 
-function saveJSONList(key, values) {
+function loadLegacyAdminState() {
+  const editors = readJsonListFromStorage(LEGACY_STORAGE_KEYS.editors) || [];
+  const whitelist =
+    readJsonListFromStorage(LEGACY_STORAGE_KEYS.whitelist) ||
+    readJsonListFromStorage(LEGACY_STORAGE_KEYS.whitelistLegacy) ||
+    [];
+  const blacklist =
+    readJsonListFromStorage(LEGACY_STORAGE_KEYS.blacklist) ||
+    readJsonListFromStorage(LEGACY_STORAGE_KEYS.blacklistLegacy) ||
+    [];
+
+  const sanitized = sanitizeAdminState({ editors, whitelist, blacklist });
+  return hasAnyEntries(sanitized) ? sanitized : null;
+}
+
+function clearLegacyStorageFor(listKey) {
   if (typeof localStorage === "undefined") {
     return;
   }
 
-  try {
-    localStorage.setItem(key, JSON.stringify(values));
-  } catch (error) {
-    console.warn(`Failed to persist list for ${key}:`, error);
-  }
-}
-
-function migrateLegacyList(targetKey, legacyKey, fallback) {
-  const stored = loadJSONList(targetKey);
-  if (stored !== null) {
-    return dedupeNpubs(stored);
-  }
-
-  const legacy = legacyKey ? loadJSONList(legacyKey) : null;
-  if (legacy !== null) {
-    const sanitized = dedupeNpubs(legacy);
-    saveJSONList(targetKey, sanitized);
-    return sanitized;
-  }
-
-  const sanitizedFallback = dedupeNpubs(fallback);
-  if (sanitizedFallback.length) {
-    saveJSONList(targetKey, sanitizedFallback);
-  }
-  return sanitizedFallback;
-}
-
-async function loadLocalState() {
-  const state = {
-    editors: migrateLegacyList(ADMIN_EDITORS_KEY, null, ADMIN_EDITORS_NPUBS),
-    whitelist: migrateLegacyList(
-      ADMIN_WHITELIST_KEY,
-      LEGACY_WHITELIST_KEY,
-      ADMIN_INITIAL_WHITELIST
-    ),
-    blacklist: migrateLegacyList(
-      ADMIN_BLACKLIST_KEY,
-      LEGACY_BLACKLIST_KEY,
-      ADMIN_INITIAL_BLACKLIST
-    ),
+  const keyGroups = {
+    editors: [LEGACY_STORAGE_KEYS.editors],
+    whitelist: [
+      LEGACY_STORAGE_KEYS.whitelist,
+      LEGACY_STORAGE_KEYS.whitelistLegacy,
+    ],
+    blacklist: [
+      LEGACY_STORAGE_KEYS.blacklist,
+      LEGACY_STORAGE_KEYS.blacklistLegacy,
+    ],
   };
 
-  return sanitizeAdminState(state);
-}
-
-async function persistLocalState(_actorNpub, updates = {}) {
-  if (
-    !updates ||
-    (!updates.editors && !updates.whitelist && !updates.blacklist)
-  ) {
+  const keys = keyGroups[listKey];
+  if (!Array.isArray(keys)) {
     return;
   }
 
-  const currentState = await loadLocalState();
-  const merged = {
-    editors: updates.editors ? updates.editors : currentState.editors,
-    whitelist: updates.whitelist ? updates.whitelist : currentState.whitelist,
-    blacklist: updates.blacklist ? updates.blacklist : currentState.blacklist,
-  };
-
-  const sanitized = sanitizeAdminState(merged);
-
-  if (updates.editors) {
-    saveJSONList(ADMIN_EDITORS_KEY, sanitized.editors);
-  }
-  if (updates.whitelist) {
-    saveJSONList(ADMIN_WHITELIST_KEY, sanitized.whitelist);
-  }
-  if (updates.blacklist) {
-    saveJSONList(ADMIN_BLACKLIST_KEY, sanitized.blacklist);
+  for (const key of keys) {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(`[adminListStore] Failed to clear legacy storage for ${key}:`, error);
+      }
+    }
   }
 }
 
@@ -281,24 +262,44 @@ async function loadNostrList(identifier) {
   const filter = {
     kinds: [30000],
     "#d": [dTagValue],
-    limit: 1,
+    limit: 50,
   };
 
-  const perRelay = await Promise.all(
-    relays.map(async (url) => {
-      try {
-        const events = await nostrClient.pool.list([url], [filter]);
-        return Array.isArray(events) ? events : [];
-      } catch (error) {
-        if (isDevMode) {
-          console.warn(`[adminListStore] Relay fetch failed for ${url}:`, error);
-        }
-        return [];
-      }
-    })
-  );
+  let events = [];
+  try {
+    const combined = await nostrClient.pool.list(relays, [filter]);
+    if (Array.isArray(combined)) {
+      events = combined;
+    }
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(
+        `[adminListStore] Combined relay fetch failed for ${identifier}:`,
+        error
+      );
+    }
+  }
 
-  const events = perRelay.flat();
+  if (!events.length) {
+    const perRelay = await Promise.all(
+      relays.map(async (url) => {
+        try {
+          const result = await nostrClient.pool.list([url], [filter]);
+          return Array.isArray(result) ? result : [];
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              `[adminListStore] Relay fetch failed for ${identifier} on ${url}:`,
+              error
+            );
+          }
+          return [];
+        }
+      })
+    );
+    events = perRelay.flat();
+  }
+
   if (!events.length) {
     return [];
   }
@@ -317,19 +318,122 @@ async function loadNostrList(identifier) {
 }
 
 async function loadNostrState() {
-  const editors = await loadNostrList(LIST_IDENTIFIERS.editors);
-  const whitelist = await loadNostrList(LIST_IDENTIFIERS.whitelist);
-  const blacklist = await loadNostrList(LIST_IDENTIFIERS.blacklist);
+  const [editors, whitelist, blacklist] = await Promise.all([
+    loadNostrList(LIST_IDENTIFIERS.editors),
+    loadNostrList(LIST_IDENTIFIERS.whitelist),
+    loadNostrList(LIST_IDENTIFIERS.blacklist),
+  ]);
 
-  return sanitizeAdminState({
-    editors,
-    whitelist,
-    blacklist,
+  return sanitizeAdminState({ editors, whitelist, blacklist });
+}
+
+function buildListEvent(listKey, npubs, actorHex) {
+  const identifier = LIST_IDENTIFIERS[listKey];
+  const dTagValue = `${ADMIN_LIST_NAMESPACE}:${identifier}`;
+
+  const hexPubkeys = Array.from(
+    new Set(npubs.map((npub) => {
+      try {
+        return decodeNpubToHex(npub);
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            `[adminListStore] Failed to decode npub while publishing ${listKey}:`,
+            error
+          );
+        }
+        return "";
+      }
+    }).filter((hex) => !!hex))
+  );
+
+  if (listKey === "whitelist" || listKey === "editors") {
+    try {
+      const superHex = decodeNpubToHex(ADMIN_SUPER_NPUB);
+      if (superHex && !hexPubkeys.includes(superHex)) {
+        hexPubkeys.push(superHex);
+      }
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("Failed to ensure super admin presence:", error);
+      }
+    }
+  }
+
+  const tags = [["d", dTagValue]];
+  hexPubkeys.forEach((hex) => {
+    tags.push(["p", hex]);
+  });
+
+  return {
+    kind: 30000,
+    pubkey: actorHex,
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: "",
+  };
+}
+
+function publishToRelay(url, signedEvent, listKey) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve({ url, success: false, error: new Error("timeout") });
+      }
+    }, PUBLISH_TIMEOUT_MS);
+
+    const finalize = (success, error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      resolve({ url, success, error });
+    };
+
+    try {
+      const pub = nostrClient.pool.publish([url], signedEvent);
+      if (!pub) {
+        finalize(false, new Error("publish returned no result"));
+        return;
+      }
+
+      if (typeof pub.on === "function") {
+        pub.on("ok", () => finalize(true));
+        pub.on("seen", () => finalize(true));
+        pub.on("failed", (reason) => {
+          const error =
+            reason instanceof Error ? reason : new Error(String(reason || "failed"));
+          finalize(false, error);
+        });
+        return;
+      }
+
+      if (typeof pub.then === "function") {
+        pub.then(() => finalize(true)).catch((error) => finalize(false, error));
+        return;
+      }
+    } catch (error) {
+      finalize(false, error);
+      return;
+    }
+
+    finalize(true);
+  }).then((result) => {
+    if (!result.success && isDevMode) {
+      console.warn(
+        `[adminListStore] Publish failed for ${listKey} on ${result.url}:`,
+        result.error
+      );
+    }
+    return result;
   });
 }
 
 async function persistNostrState(actorNpub, updates = {}) {
-  const relays = ensureNostrReady();
+  ensureNostrReady();
   const extension = window?.nostr;
   if (!extension || typeof extension.signEvent !== "function") {
     throw createError(
@@ -343,95 +447,56 @@ async function persistNostrState(actorNpub, updates = {}) {
     throw createError("invalid npub", "Unable to decode the actor npub.");
   }
 
-  const entries = Object.entries(updates)
-    .filter(([key, value]) => {
-      return key in LIST_IDENTIFIERS && Array.isArray(value);
-    })
-    .map(([key, value]) => {
-      const base = sanitizeNpubList(value);
-      if (key === "blacklist") {
-        const guardSet = new Set([
-          normalizeNpub(ADMIN_SUPER_NPUB),
-          ...ADMIN_EDITORS_NPUBS.map(normalizeNpub),
-          ...sanitizeNpubList(updates.editors || []),
-        ]);
-        const whitelistSet = new Set(
-          sanitizeNpubList(updates.whitelist || [])
-        );
-        const sanitizedBlacklist = base.filter((npub) => {
-          const normalized = normalizeNpub(npub);
-          if (!normalized) {
-            return false;
-          }
-          if (guardSet.has(normalized)) {
-            return false;
-          }
-          if (whitelistSet.has(normalized)) {
-            return false;
-          }
-          return true;
-        });
-        return [key, sanitizedBlacklist];
-      }
+  const sanitizedUpdates = {};
 
-      if (key === "editors") {
-        const sanitizedEditors = base.filter((npub) => {
-          const normalized = normalizeNpub(npub);
-          return normalized && normalized !== normalizeNpub(ADMIN_SUPER_NPUB);
-        });
-        return [key, sanitizedEditors];
-      }
-
-      if (key === "whitelist") {
-        const mergedWhitelist = sanitizeNpubList(base);
-        return [key, mergedWhitelist];
-      }
-
-      return [key, base];
+  if (Array.isArray(updates.editors)) {
+    sanitizedUpdates.editors = sanitizeNpubList(updates.editors).filter((npub) => {
+      const normalized = normalizeNpub(npub);
+      return normalized && normalized !== normalizeNpub(ADMIN_SUPER_NPUB);
     });
+  }
+
+  if (Array.isArray(updates.whitelist)) {
+    sanitizedUpdates.whitelist = sanitizeNpubList(updates.whitelist);
+  }
+
+  if (Array.isArray(updates.blacklist)) {
+    const whitelistSet = new Set(
+      (sanitizedUpdates.whitelist || []).map(normalizeNpub)
+    );
+    const editorGuard = new Set([
+      normalizeNpub(ADMIN_SUPER_NPUB),
+      ...ADMIN_EDITORS_NPUBS.map(normalizeNpub),
+      ...((sanitizedUpdates.editors || []).map(normalizeNpub) || []),
+    ]);
+
+    sanitizedUpdates.blacklist = sanitizeNpubList(updates.blacklist).filter(
+      (npub) => {
+        const normalized = normalizeNpub(npub);
+        if (!normalized) {
+          return false;
+        }
+        if (whitelistSet.has(normalized)) {
+          return false;
+        }
+        if (editorGuard.has(normalized)) {
+          return false;
+        }
+        return true;
+      }
+    );
+  }
+
+  const entries = Object.entries(sanitizedUpdates).filter(([, value]) =>
+    Array.isArray(value)
+  );
 
   if (!entries.length) {
     return;
   }
 
-  const now = Math.floor(Date.now() / 1000);
-
   for (const [listKey, npubs] of entries) {
-    const identifier = LIST_IDENTIFIERS[listKey];
-    const dTagValue = `${ADMIN_LIST_NAMESPACE}:${identifier}`;
-
-    const hexPubkeys = Array.from(
-      new Set(
-        npubs.map((npub) => decodeNpubToHex(npub)).filter((hex) => !!hex)
-      )
-    );
-
-    const tags = [["d", dTagValue]];
-    hexPubkeys.forEach((hex) => {
-      tags.push(["p", hex]);
-    });
-
-    // Explicitly keep the super admin on the whitelist and editors lists when publishing.
-    if (listKey === "whitelist" || listKey === "editors") {
-      try {
-        const superHex = decodeNpubToHex(ADMIN_SUPER_NPUB);
-        if (superHex && !hexPubkeys.includes(superHex)) {
-          tags.push(["p", superHex]);
-        }
-      } catch (error) {
-        if (isDevMode) {
-          console.warn("Failed to ensure super admin presence:", error);
-        }
-      }
-    }
-
-    const event = {
-      kind: 30000,
-      pubkey: actorHex,
-      created_at: now,
-      tags,
-      content: "",
-    };
+    const event = buildListEvent(listKey, npubs, actorHex);
 
     let signedEvent;
     try {
@@ -440,24 +505,9 @@ async function persistNostrState(actorNpub, updates = {}) {
       throw createError("signature-failed", "Failed to sign admin list event.", error);
     }
 
+    const relays = ensureNostrReady();
     const publishResults = await Promise.all(
-      relays.map(async (url) => {
-        try {
-          await nostrClient.pool.publish([url], signedEvent);
-          if (isDevMode) {
-            console.log(`[adminListStore] Published ${listKey} list to ${url}`);
-          }
-          return { url, success: true };
-        } catch (error) {
-          if (isDevMode) {
-            console.warn(
-              `[adminListStore] Failed to publish ${listKey} list to ${url}:`,
-              error
-            );
-          }
-          return { url, success: false, error };
-        }
-      })
+      relays.map((url) => publishToRelay(url, signedEvent, listKey))
     );
 
     if (!publishResults.some((result) => result.success)) {
@@ -466,19 +516,38 @@ async function persistNostrState(actorNpub, updates = {}) {
         `Failed to publish ${listKey} list to any relay.`
       );
     }
+
+    clearLegacyStorageFor(listKey);
   }
 }
 
 export async function loadAdminState() {
-  if (ADMIN_LIST_MODE === "nostr") {
-    return loadNostrState();
+  if (ADMIN_LIST_MODE !== "nostr" && isDevMode) {
+    console.warn(
+      `[adminListStore] ADMIN_LIST_MODE "${ADMIN_LIST_MODE}" is deprecated. Defaulting to remote Nostr lists.`
+    );
   }
-  return loadLocalState();
+
+  const state = await loadNostrState();
+  if (!hasAnyEntries(state)) {
+    const legacy = loadLegacyAdminState();
+    if (legacy && isDevMode) {
+      console.warn(
+        "[adminListStore] Ignoring legacy admin lists because remote mode is enforced. Publish them to Nostr to retain access.",
+        legacy
+      );
+    }
+  }
+
+  return state;
 }
 
 export async function persistAdminState(actorNpub, updates) {
-  if (ADMIN_LIST_MODE === "nostr") {
-    return persistNostrState(actorNpub, updates);
+  if (ADMIN_LIST_MODE !== "nostr" && isDevMode) {
+    console.warn(
+      `[adminListStore] ADMIN_LIST_MODE "${ADMIN_LIST_MODE}" is deprecated. Remote lists are enforced.`
+    );
   }
-  return persistLocalState(actorNpub, updates);
+
+  return persistNostrState(actorNpub, updates);
 }
