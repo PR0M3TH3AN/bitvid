@@ -523,8 +523,6 @@ class bitvidApp {
     this.adminWhitelistList = null;
     this.adminWhitelistEmpty = null;
     this.adminWhitelistSection = null;
-    this.adminWhitelistModeToggle = null;
-    this.adminWhitelistModeWrapper = null;
     this.adminBlacklistInput = null;
     this.adminAddBlacklistBtn = null;
     this.adminBlacklistList = null;
@@ -3322,10 +3320,6 @@ class bitvidApp {
         document.getElementById("adminWhitelistInput") || null;
       this.adminAddWhitelistBtn =
         document.getElementById("adminAddWhitelistBtn") || null;
-      this.adminWhitelistModeToggle =
-        document.getElementById("adminWhitelistModeToggle") || null;
-      this.adminWhitelistModeWrapper =
-        document.getElementById("adminWhitelistModeWrapper") || null;
       this.adminBlacklistSection =
         document.getElementById("adminBlacklistSection") || null;
       this.adminBlacklistEmpty =
@@ -3454,19 +3448,6 @@ class bitvidApp {
             event.preventDefault();
             this.handleAdminListMutation("blacklist", "add");
           }
-        });
-      }
-
-      if (
-        this.adminWhitelistModeToggle &&
-        this.adminWhitelistModeToggle.dataset.bound !== "true"
-      ) {
-        this.adminWhitelistModeToggle.dataset.bound = "true";
-        this.adminWhitelistModeToggle.addEventListener("change", (event) => {
-          const enabled = event.target instanceof HTMLInputElement
-            ? event.target.checked
-            : false;
-          this.handleWhitelistModeToggle(enabled);
         });
       }
 
@@ -3887,13 +3868,6 @@ class bitvidApp {
       this.adminModeratorsSection.classList.toggle("hidden", !isSuperAdmin);
       this.adminModeratorsSection.setAttribute("aria-hidden", (!isSuperAdmin).toString());
     }
-    if (this.adminWhitelistModeWrapper instanceof HTMLElement) {
-      this.adminWhitelistModeWrapper.classList.toggle("hidden", !isSuperAdmin);
-    }
-    if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
-      this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
-    }
-
     this.populateAdminLists();
     this.setAdminLoading(false);
   }
@@ -3964,9 +3938,6 @@ class bitvidApp {
         this.adminBlacklistEmpty.dataset.defaultMessage ||
         this.adminBlacklistEmpty.textContent;
       this.adminBlacklistEmpty.classList.remove("hidden");
-    }
-    if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
-      this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
     }
   }
 
@@ -4299,48 +4270,6 @@ class bitvidApp {
       default:
         return "Unable to update moderation settings. Please try again.";
     }
-  }
-
-  async handleWhitelistModeToggle(enabled) {
-    let preloadError = null;
-    try {
-      await accessControl.ensureReady();
-    } catch (error) {
-      preloadError = error;
-      console.error("Failed to load admin lists before toggling whitelist mode:", error);
-    }
-
-    if (preloadError) {
-      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
-      if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
-        this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
-      }
-      return;
-    }
-
-    const actorNpub = this.ensureAdminActor(true);
-    if (!actorNpub) {
-      if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
-        this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
-      }
-      return;
-    }
-
-    const result = accessControl.setWhitelistMode(actorNpub, enabled);
-    if (!result.ok) {
-      this.showError(this.describeAdminError(result.error));
-      if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
-        this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
-      }
-      return;
-    }
-
-    this.showSuccess(
-      enabled
-        ? "Whitelist mode enabled. Only approved creators will appear in feeds."
-        : "Whitelist mode disabled. All creators except those blacklisted will appear."
-    );
-    await this.onAccessControlUpdated();
   }
 
   async onAccessControlUpdated() {
