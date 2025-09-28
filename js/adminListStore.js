@@ -51,6 +51,77 @@ function dedupeNpubs(values) {
   );
 }
 
+function canDecodeNpub() {
+  return !!(
+    typeof window !== "undefined" &&
+    window?.NostrTools?.nip19 &&
+    typeof window.NostrTools.nip19.decode === "function"
+  );
+}
+
+function isLikelyNpub(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (!canDecodeNpub()) {
+    return true;
+  }
+
+  try {
+    const decoded = window.NostrTools.nip19.decode(trimmed);
+    return decoded?.type === "npub";
+  } catch (error) {
+    return false;
+  }
+}
+
+function sanitizeNpubList(values) {
+  return dedupeNpubs(values).filter(isLikelyNpub);
+}
+
+function sanitizeAdminState(state = {}) {
+  const sanitizedEditors = sanitizeNpubList(state.editors || []);
+  const sanitizedWhitelist = sanitizeNpubList(state.whitelist || []);
+  const sanitizedWhitelistSet = new Set([
+    ...ADMIN_INITIAL_WHITELIST.map(normalizeNpub),
+    ...sanitizedWhitelist,
+  ]);
+
+  const adminGuardSet = new Set([
+    normalizeNpub(ADMIN_SUPER_NPUB),
+    ...ADMIN_EDITORS_NPUBS.map(normalizeNpub),
+    ...sanitizedEditors,
+  ]);
+
+  const sanitizedBlacklist = sanitizeNpubList(state.blacklist || []).filter(
+    (npub) => {
+      const normalized = normalizeNpub(npub);
+      if (!normalized) {
+        return false;
+      }
+      if (adminGuardSet.has(normalized)) {
+        return false;
+      }
+      if (sanitizedWhitelistSet.has(normalized)) {
+        return false;
+      }
+      return true;
+    }
+  );
+
+  return {
+    editors: sanitizedEditors,
+    whitelist: Array.from(sanitizedWhitelistSet),
+    blacklist: sanitizedBlacklist,
+  };
+}
+
 function loadJSONList(key) {
   if (typeof localStorage === "undefined") {
     return null;
@@ -102,7 +173,7 @@ function migrateLegacyList(targetKey, legacyKey, fallback) {
 }
 
 async function loadLocalState() {
-  return {
+  const state = {
     editors: migrateLegacyList(ADMIN_EDITORS_KEY, null, ADMIN_EDITORS_NPUBS),
     whitelist: migrateLegacyList(
       ADMIN_WHITELIST_KEY,
@@ -115,17 +186,35 @@ async function loadLocalState() {
       ADMIN_INITIAL_BLACKLIST
     ),
   };
+
+  return sanitizeAdminState(state);
 }
 
 async function persistLocalState(_actorNpub, updates = {}) {
+  if (
+    !updates ||
+    (!updates.editors && !updates.whitelist && !updates.blacklist)
+  ) {
+    return;
+  }
+
+  const currentState = await loadLocalState();
+  const merged = {
+    editors: updates.editors ? updates.editors : currentState.editors,
+    whitelist: updates.whitelist ? updates.whitelist : currentState.whitelist,
+    blacklist: updates.blacklist ? updates.blacklist : currentState.blacklist,
+  };
+
+  const sanitized = sanitizeAdminState(merged);
+
   if (updates.editors) {
-    saveJSONList(ADMIN_EDITORS_KEY, dedupeNpubs(updates.editors));
+    saveJSONList(ADMIN_EDITORS_KEY, sanitized.editors);
   }
   if (updates.whitelist) {
-    saveJSONList(ADMIN_WHITELIST_KEY, dedupeNpubs(updates.whitelist));
+    saveJSONList(ADMIN_WHITELIST_KEY, sanitized.whitelist);
   }
   if (updates.blacklist) {
-    saveJSONList(ADMIN_BLACKLIST_KEY, dedupeNpubs(updates.blacklist));
+    saveJSONList(ADMIN_BLACKLIST_KEY, sanitized.blacklist);
   }
 }
 
@@ -237,11 +326,11 @@ async function loadNostrState() {
   const whitelist = await loadNostrList(LIST_IDENTIFIERS.whitelist);
   const blacklist = await loadNostrList(LIST_IDENTIFIERS.blacklist);
 
-  return {
+  return sanitizeAdminState({
     editors,
     whitelist,
     blacklist,
-  };
+  });
 }
 
 async function persistNostrState(actorNpub, updates = {}) {
@@ -259,9 +348,58 @@ async function persistNostrState(actorNpub, updates = {}) {
     throw createError("invalid npub", "Unable to decode the actor npub.");
   }
 
-  const entries = Object.entries(updates).filter(([key, value]) => {
-    return key in LIST_IDENTIFIERS && Array.isArray(value);
-  });
+  const entries = Object.entries(updates)
+    .filter(([key, value]) => {
+      return key in LIST_IDENTIFIERS && Array.isArray(value);
+    })
+    .map(([key, value]) => {
+      const base = sanitizeNpubList(value);
+      if (key === "blacklist") {
+        const guardSet = new Set([
+          normalizeNpub(ADMIN_SUPER_NPUB),
+          ...ADMIN_EDITORS_NPUBS.map(normalizeNpub),
+          ...sanitizeNpubList(updates.editors || []),
+        ]);
+        const whitelistSet = new Set(
+          sanitizeNpubList([
+            ...ADMIN_INITIAL_WHITELIST,
+            ...(updates.whitelist || []),
+          ])
+        );
+        const sanitizedBlacklist = base.filter((npub) => {
+          const normalized = normalizeNpub(npub);
+          if (!normalized) {
+            return false;
+          }
+          if (guardSet.has(normalized)) {
+            return false;
+          }
+          if (whitelistSet.has(normalized)) {
+            return false;
+          }
+          return true;
+        });
+        return [key, sanitizedBlacklist];
+      }
+
+      if (key === "editors") {
+        const sanitizedEditors = base.filter((npub) => {
+          const normalized = normalizeNpub(npub);
+          return normalized && normalized !== normalizeNpub(ADMIN_SUPER_NPUB);
+        });
+        return [key, sanitizedEditors];
+      }
+
+      if (key === "whitelist") {
+        const mergedWhitelist = sanitizeNpubList([
+          ...ADMIN_INITIAL_WHITELIST,
+          ...base,
+        ]);
+        return [key, mergedWhitelist];
+      }
+
+      return [key, base];
+    });
 
   if (!entries.length) {
     return;

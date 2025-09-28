@@ -86,12 +86,35 @@ class AccessControl {
       this.editors = new Set(
         dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
       );
-      this.whitelist = new Set(
-        dedupeNpubs([...ADMIN_INITIAL_WHITELIST, ...whitelist])
-      );
-      this.blacklist = new Set(
-        dedupeNpubs([...ADMIN_INITIAL_BLACKLIST, ...blacklist])
-      );
+      const normalizedWhitelist = dedupeNpubs([
+        ...ADMIN_INITIAL_WHITELIST,
+        ...whitelist,
+      ]);
+      this.whitelist = new Set(normalizedWhitelist);
+
+      const blacklistDedupe = dedupeNpubs([
+        ...ADMIN_INITIAL_BLACKLIST,
+        ...blacklist,
+      ]);
+      const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
+      const adminGuardSet = new Set([
+        normalizeNpub(ADMIN_SUPER_NPUB),
+        ...Array.from(this.editors),
+      ]);
+      const sanitizedBlacklist = blacklistDedupe.filter((npub) => {
+        const normalized = normalizeNpub(npub);
+        if (!normalized) {
+          return false;
+        }
+        if (whitelistSet.has(normalized)) {
+          return false;
+        }
+        if (adminGuardSet.has(normalized)) {
+          return false;
+        }
+        return true;
+      });
+      this.blacklist = new Set(sanitizedBlacklist);
 
       this.whitelistEnabled = getWhitelistMode();
       this.hasLoaded = true;
@@ -330,7 +353,13 @@ class AccessControl {
 
   isBlacklisted(npub) {
     const normalized = normalizeNpub(npub);
-    return normalized ? this.blacklist.has(normalized) : false;
+    if (!normalized) {
+      return false;
+    }
+    if (this.whitelist.has(normalized)) {
+      return false;
+    }
+    return this.blacklist.has(normalized);
   }
 
   canAccess(candidate) {
@@ -353,6 +382,14 @@ class AccessControl {
     const normalized = normalizeNpub(npub);
     if (!normalized) {
       return false;
+    }
+
+    if (this.isAdminEditor(normalized)) {
+      return true;
+    }
+
+    if (this.whitelist.has(normalized)) {
+      return true;
     }
 
     if (this.blacklist.has(normalized)) {
