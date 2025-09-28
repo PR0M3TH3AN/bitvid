@@ -1068,6 +1068,8 @@ class bitvidApp {
     if (this.playerModal) {
       this.attachMoreMenuHandlers(this.playerModal);
     }
+
+    this.syncModalMoreMenuData();
   }
 
   goToProfile(pubkey) {
@@ -6002,12 +6004,49 @@ class bitvidApp {
     });
   }
 
+  syncModalMoreMenuData() {
+    if (!this.modalMoreMenu) {
+      return;
+    }
+
+    const buttons = this.modalMoreMenu.querySelectorAll("button[data-action]");
+    buttons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+
+      const action = button.dataset.action || "";
+      if (action === "open-channel" || action === "block-author") {
+        if (this.currentVideo && this.currentVideo.pubkey) {
+          button.dataset.author = this.currentVideo.pubkey;
+        } else {
+          delete button.dataset.author;
+        }
+      }
+
+      if (action === "copy-link" || action === "report") {
+        if (this.currentVideo && this.currentVideo.id) {
+          button.dataset.eventId = this.currentVideo.id;
+        } else {
+          delete button.dataset.eventId;
+        }
+      }
+    });
+  }
+
   handleMoreMenuAction(action, dataset = {}) {
     const normalized = typeof action === "string" ? action.trim() : "";
+    const context = dataset.context || "";
 
     switch (normalized) {
       case "open-channel": {
-        const author = dataset.author || "";
+        if (context === "modal") {
+          this.openCreatorChannel();
+          break;
+        }
+
+        const author =
+          dataset.author || (this.currentVideo ? this.currentVideo.pubkey : "");
         if (author) {
           this.goToProfile(author);
         } else {
@@ -6015,17 +6054,10 @@ class bitvidApp {
         }
         break;
       }
-      case "modal-open-channel": {
-        this.openCreatorChannel();
-        break;
-      }
-      case "copy-link":
-      case "modal-copy-link": {
+      case "copy-link": {
         const eventId =
           dataset.eventId ||
-          (normalized === "modal-copy-link" && this.currentVideo
-            ? this.currentVideo.id
-            : "");
+          (context === "modal" && this.currentVideo ? this.currentVideo.id : "");
         if (!eventId) {
           this.showError("Could not generate link.");
           break;
@@ -6041,13 +6073,11 @@ class bitvidApp {
           .catch(() => this.showError("Failed to copy the link."));
         break;
       }
-      case "block-author":
-      case "modal-block-author": {
+      case "block-author": {
         this.showSuccess("Block management coming soon.");
         break;
       }
-      case "report":
-      case "modal-report": {
+      case "report": {
         this.showSuccess("Reporting coming soon.");
         break;
       }
@@ -7136,6 +7166,8 @@ class bitvidApp {
       lightningAddress: null,
     };
 
+    this.syncModalMoreMenuData();
+
     this.currentMagnetUri = sanitizedMagnet || null;
 
     this.setCopyMagnetState(!!sanitizedMagnet);
@@ -7250,6 +7282,8 @@ class bitvidApp {
       torrentSupported: magnetSupported,
       lightningAddress: null,
     };
+
+    this.syncModalMoreMenuData();
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
