@@ -713,6 +713,74 @@ export class TorrentClient {
     });
   }
 
+  async destroyWithTimeout(
+    target,
+    { label = "resource", args = [], timeoutMs = 8000 } = {}
+  ) {
+    if (!target || typeof target.destroy !== "function") {
+      return;
+    }
+
+    const safeTimeout = Math.max(
+      1000,
+      Math.min(
+        Number.isFinite(timeoutMs) ? timeoutMs : 8000,
+        this.TIMEOUT_DURATION
+      )
+    );
+
+    await new Promise((resolve) => {
+      let settled = false;
+
+      const finalize = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeoutId);
+        resolve();
+      };
+
+      const logError = (error) => {
+        if (error) {
+          this.log(`[cleanup] ${label} destroy error:`, error);
+        }
+      };
+
+      const timeoutId = setTimeout(() => {
+        this.log(
+          `[cleanup] ${label} destroy timed out after ${safeTimeout}ms; forcing resolution.`
+        );
+        finalize();
+      }, safeTimeout);
+
+      const callback = (error) => {
+        logError(error);
+        finalize();
+      };
+
+      let result;
+      try {
+        result = target.destroy(...args, callback);
+      } catch (error) {
+        logError(error);
+        finalize();
+        return;
+      }
+
+      if (result && typeof result.then === "function") {
+        result
+          .then(() => {
+            finalize();
+          })
+          .catch((error) => {
+            logError(error);
+            finalize();
+          });
+      }
+    });
+  }
+
   /**
    * Initiates streaming of a torrent magnet to a <video> element.
    * Ensures the service worker is set up only once and the client is reused.
@@ -778,19 +846,38 @@ export class TorrentClient {
   async cleanup() {
     try {
       if (this.currentTorrent) {
-        this.currentTorrent.destroy();
+        try {
+          await this.destroyWithTimeout(this.currentTorrent, {
+            label: "current torrent",
+            args: [{ destroyStore: true }],
+          });
+        } finally {
+          this.currentTorrent = null;
+        }
       }
-      // Destroy client entirely and set to null so a future streamVideo call starts fresh
+
       if (this.client) {
-        await this.client.destroy();
-        this.client = null;
+        try {
+          await this.destroyWithTimeout(this.client, {
+            label: "WebTorrent client",
+          });
+        } finally {
+          this.client = null;
+          this.serverCreated = false;
+        }
+      } else {
+        this.serverCreated = false;
       }
+
       if (this.probeClient) {
-        await this.probeClient.destroy();
-        this.probeClient = null;
+        try {
+          await this.destroyWithTimeout(this.probeClient, {
+            label: "probe client",
+          });
+        } finally {
+          this.probeClient = null;
+        }
       }
-      this.currentTorrent = null;
-      this.serverCreated = false;
     } catch (error) {
       this.log("Cleanup error:", error);
     }
