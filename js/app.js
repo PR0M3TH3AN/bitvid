@@ -930,6 +930,7 @@ class bitvidApp {
     this.copyMagnetBtn = document.getElementById("copyMagnetBtn") || null;
     this.shareBtn = document.getElementById("shareBtn") || null;
     this.modalZapBtn = document.getElementById("modalZapBtn") || null;
+    this.setModalZapVisibility(false);
 
     // Attach existing event listeners for copy/share
     if (this.copyMagnetBtn) {
@@ -2840,6 +2841,22 @@ class bitvidApp {
     this.shareBtn.setAttribute("aria-disabled", (!enabled).toString());
     this.shareBtn.classList.toggle("opacity-50", !enabled);
     this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
+  }
+
+  setModalZapVisibility(visible) {
+    if (!this.modalZapBtn) {
+      return;
+    }
+    const shouldShow = !!visible;
+    this.modalZapBtn.classList.toggle("hidden", !shouldShow);
+    this.modalZapBtn.disabled = !shouldShow;
+    this.modalZapBtn.setAttribute("aria-disabled", (!shouldShow).toString());
+    this.modalZapBtn.setAttribute("aria-hidden", (!shouldShow).toString());
+    if (shouldShow) {
+      this.modalZapBtn.removeAttribute("tabindex");
+    } else {
+      this.modalZapBtn.setAttribute("tabindex", "-1");
+    }
   }
 
   getShareUrlBase() {
@@ -5218,6 +5235,7 @@ class bitvidApp {
       originalMagnet: magnetCandidate,
       torrentSupported: magnetSupported,
       legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
+      lightningAddress: null,
     };
 
     this.currentMagnetUri = sanitizedMagnet || null;
@@ -5233,6 +5251,8 @@ class bitvidApp {
       )}`;
     window.history.pushState({}, "", pushUrl);
 
+    this.setModalZapVisibility(false);
+    let lightningAddress = "";
     let creatorProfile = {
       name: "Unknown",
       picture: `https://robohash.org/${video.pubkey}`,
@@ -5243,6 +5263,7 @@ class bitvidApp {
       ]);
       if (userEvents.length > 0 && userEvents[0]?.content) {
         const data = JSON.parse(userEvents[0].content);
+        lightningAddress = (data.lud16 || data.lud06 || "").trim();
         creatorProfile = {
           name: data.name || data.display_name || "Unknown",
           picture: data.picture || `https://robohash.org/${video.pubkey}`,
@@ -5250,6 +5271,11 @@ class bitvidApp {
       }
     } catch (error) {
       this.log("Error fetching creator profile:", error);
+    }
+
+    this.setModalZapVisibility(!!lightningAddress);
+    if (this.currentVideo) {
+      this.currentVideo.lightningAddress = lightningAddress || null;
     }
 
     const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
@@ -5295,6 +5321,8 @@ class bitvidApp {
     const magnetSupported = isValidMagnetUri(usableMagnet);
     const sanitizedMagnet = magnetSupported ? usableMagnet : "";
 
+    this.setModalZapVisibility(false);
+
     trackVideoView({
       videoId:
         typeof title === "string" && title.trim().length > 0
@@ -5322,6 +5350,7 @@ class bitvidApp {
       magnet: sanitizedMagnet,
       originalMagnet: trimmedMagnet,
       torrentSupported: magnetSupported,
+      lightningAddress: null,
     };
 
     this.currentMagnetUri = sanitizedMagnet || null;
