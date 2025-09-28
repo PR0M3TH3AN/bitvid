@@ -1,7 +1,7 @@
 // js/lists.js
 
-// Whitelist of npubs that can access the video upload functions
-const npubs = [
+// Admin-level (platform) moderation seeds. NOT user-level blocks.
+const ADMIN_SEED_NPUBS = [
   "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe", // bitvid
   "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx", // thePR0M3TH3AN
   "npub1j37gc05qpqzyrmdc5vetsc9h5qtstas7tr25j0n9sdpqxghz6m4q2ej6n8", // Ghost Grid Network
@@ -16,10 +16,7 @@ const npubs = [
   "npub196rl3tls3c4y79pc3ptrrj2430z7p5uwetfhukhtkt69hph0fvwq08l43q", // ~Bordut-Nodlex
 ];
 
-console.log("DEBUG: lists.js loaded, npubs:", npubs);
-
-// Admin-level (platform) moderation seeds. NOT user-level blocks.
-export const ADMIN_INITIAL_WHITELIST = npubs;
+export const ADMIN_INITIAL_WHITELIST = ADMIN_SEED_NPUBS;
 export const ADMIN_INITIAL_BLACKLIST = [""];
 export const ADMIN_INITIAL_EVENT_BLACKLIST = [""];
 

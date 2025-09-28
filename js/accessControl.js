@@ -9,8 +9,8 @@
  */
 
 import {
-  isDevMode,
   isWhitelistEnabled,
+  ADMIN_SUPER_NPUB,
   ADMIN_EDITORS_NPUBS,
 } from "./config.js";
 import {
@@ -23,200 +23,187 @@ const K_ADMIN_BL = "bitvid_admin_blacklist";
 const LEGACY_WL_KEY = "bitvid_whitelist";
 const LEGACY_BL_KEY = "bitvid_blacklist";
 
+function toArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 class AdminAccessControl {
   constructor() {
-    // Debug logging for initialization
-    console.log("DEBUG: AccessControl constructor called");
+    const whitelistSeed = this._loadList(
+      K_ADMIN_WL,
+      LEGACY_WL_KEY,
+      toArray(ADMIN_SEED_ALLOW)
+    );
+    const blacklistSeed = this._loadList(
+      K_ADMIN_BL,
+      LEGACY_BL_KEY,
+      toArray(ADMIN_SEED_DENY)
+    );
 
-    const { data: storedWhitelist, status: whitelistStatus } = this.loadWhitelist();
-    const { data: storedBlacklist, status: blacklistStatus } = this.loadBlacklist();
-
-    if (storedWhitelist !== null) {
-      this.whitelist = new Set(storedWhitelist);
-    } else {
-      this.whitelist = new Set(ADMIN_SEED_ALLOW);
-      this.saveWhitelist();
-      if (whitelistStatus && whitelistStatus !== "missing") {
-        console.warn(
-          `Whitelist storage ${whitelistStatus}. Falling back to initial whitelist.`
-        );
-      }
-    }
-
-    if (storedBlacklist !== null) {
-      this.blacklist = new Set(storedBlacklist);
-    } else {
-      this.blacklist = new Set(ADMIN_SEED_DENY.filter((x) => x)); // Filter out empty strings
-      this.saveBlacklist();
-      if (blacklistStatus && blacklistStatus !== "missing") {
-        console.warn(
-          `Blacklist storage ${blacklistStatus}. Falling back to initial blacklist.`
-        );
-      }
-    }
-
-    // Debug the sets
-    console.log("DEBUG: Whitelist after initialization:", [...this.whitelist]);
-    console.log("DEBUG: Blacklist after initialization:", [...this.blacklist]);
+    this.whitelist = new Set(whitelistSeed);
+    this.blacklist = new Set(blacklistSeed);
   }
 
-  // Rest of the class remains the same...
-  loadWhitelist() {
+  _loadList(primaryKey, legacyKey, fallbackArray) {
+    const fallback = this._sanitizeList(fallbackArray) ?? [];
+
     try {
       const stored =
-        localStorage.getItem(K_ADMIN_WL) ?? localStorage.getItem(LEGACY_WL_KEY);
+        window.localStorage?.getItem(primaryKey) ??
+        window.localStorage?.getItem(legacyKey);
       if (!stored) {
-        if (isDevMode) console.log("No stored whitelist found in localStorage.");
-        return { data: null, status: "missing" };
+        return fallback;
       }
 
       const parsed = JSON.parse(stored);
-      const sanitized = this.sanitizeList(parsed, "whitelist");
-      return {
-        data: sanitized,
-        status: sanitized === null ? "invalid" : "ok",
-      };
+      const sanitized = this._sanitizeList(parsed);
+      return sanitized ?? fallback;
     } catch (error) {
-      console.error("Error loading whitelist, using defaults:", error);
-      return { data: null, status: "error" };
-    }
-  }
-
-  loadBlacklist() {
-    try {
-      const stored =
-        localStorage.getItem(K_ADMIN_BL) ?? localStorage.getItem(LEGACY_BL_KEY);
-      if (!stored) {
-        if (isDevMode) console.log("No stored blacklist found in localStorage.");
-        return { data: null, status: "missing" };
-      }
-
-      const parsed = JSON.parse(stored);
-      const sanitized = this.sanitizeList(parsed, "blacklist");
-      return {
-        data: sanitized,
-        status: sanitized === null ? "invalid" : "ok",
-      };
-    } catch (error) {
-      console.error("Error loading blacklist, using defaults:", error);
-      return { data: null, status: "error" };
-    }
-  }
-
-  sanitizeList(list, listName) {
-    if (!Array.isArray(list)) {
       console.warn(
-        `Stored ${listName} is not an array. Received:`,
-        list
+        `Failed to load admin list for ${primaryKey}, using fallback.`,
+        error
       );
+      return fallback;
+    }
+  }
+
+  _saveList(primaryKey, set) {
+    try {
+      window.localStorage?.setItem(
+        primaryKey,
+        JSON.stringify(Array.from(set))
+      );
+    } catch (error) {
+      console.error(`Failed to persist admin list ${primaryKey}:`, error);
+    }
+  }
+
+  _sanitizeList(list) {
+    if (!Array.isArray(list)) {
       return null;
     }
 
-    const sanitized = [];
-    let invalidEntries = 0;
-
-    list.forEach((value) => {
-      if (typeof value !== "string") {
-        invalidEntries += 1;
-        return;
-      }
-
-      const trimmed = value.trim();
-      if (trimmed) {
-        sanitized.push(trimmed);
-      } else {
-        invalidEntries += 1;
+    const seen = new Set();
+    list.forEach((candidate) => {
+      const normalized = this._normalizeNpub(candidate);
+      if (normalized) {
+        seen.add(normalized);
       }
     });
 
-    if (invalidEntries > 0) {
-      console.warn(
-        `Stored ${listName} contained ${invalidEntries} invalid entr${
-          invalidEntries === 1 ? "y" : "ies"
-        }. Sanitized list:`,
-        sanitized
-      );
-    }
-
-    return sanitized;
+    return Array.from(seen);
   }
 
-  saveWhitelist() {
-    try {
-      localStorage.setItem(K_ADMIN_WL, JSON.stringify([...this.whitelist]));
-    } catch (error) {
-      console.error("Error saving whitelist:", error);
+  _normalizeNpub(npub) {
+    if (typeof npub !== "string") {
+      return "";
     }
+    return npub.trim();
+  }
+
+  _matchesNpub(a, b) {
+    const normalizedA = this._normalizeNpub(a);
+    const normalizedB = this._normalizeNpub(b);
+    return !!normalizedA && normalizedA === normalizedB;
+  }
+
+  // ----- Role helpers -----
+
+  isSuperAdmin(npub) {
+    return this._matchesNpub(npub, ADMIN_SUPER_NPUB);
+  }
+
+  isAdminEditor(npub) {
+    const normalized = this._normalizeNpub(npub);
+    if (!normalized) return false;
+
+    return toArray(ADMIN_EDITORS_NPUBS).some((candidate) =>
+      this._matchesNpub(candidate, normalized)
+    );
+  }
+
+  canEditAdminLists(npub) {
+    return this.isSuperAdmin(npub) || this.isAdminEditor(npub);
+  }
+
+  // ----- Persistence helpers -----
+
+  saveWhitelist() {
+    this._saveList(K_ADMIN_WL, this.whitelist);
   }
 
   saveBlacklist() {
-    try {
-      localStorage.setItem(K_ADMIN_BL, JSON.stringify([...this.blacklist]));
-    } catch (error) {
-      console.error("Error saving blacklist:", error);
-    }
+    this._saveList(K_ADMIN_BL, this.blacklist);
   }
 
+  // ----- Mutations -----
+
   addToWhitelist(npub) {
-    if (!this.isValidNpub(npub)) {
+    const normalized = this._normalizeNpub(npub);
+    if (!this.isValidNpub(normalized)) {
       throw new Error("Invalid npub format");
     }
-    this.whitelist.add(npub);
+    this.whitelist.add(normalized);
     this.saveWhitelist();
-    if (isDevMode) console.log(`Added ${npub} to whitelist`);
   }
 
   removeFromWhitelist(npub) {
-    this.whitelist.delete(npub);
+    const normalized = this._normalizeNpub(npub);
+    this.whitelist.delete(normalized);
     this.saveWhitelist();
-    if (isDevMode) console.log(`Removed ${npub} from whitelist`);
   }
 
   addToBlacklist(npub) {
-    if (!this.isValidNpub(npub)) {
+    const normalized = this._normalizeNpub(npub);
+    if (!this.isValidNpub(normalized)) {
       throw new Error("Invalid npub format");
     }
-    this.blacklist.add(npub);
+    this.blacklist.add(normalized);
     this.saveBlacklist();
-    if (isDevMode) console.log(`Added ${npub} to blacklist`);
   }
 
   removeFromBlacklist(npub) {
-    this.blacklist.delete(npub);
+    const normalized = this._normalizeNpub(npub);
+    this.blacklist.delete(normalized);
     this.saveBlacklist();
-    if (isDevMode) console.log(`Removed ${npub} from blacklist`);
   }
 
+  // ----- Queries -----
+
   isWhitelisted(npub) {
-    const result = this.whitelist.has(npub);
-    if (isDevMode)
-      console.log(
-        `Checking if ${npub} is whitelisted:`,
-        result,
-        "Current whitelist:",
-        [...this.whitelist]
-      );
-    return result;
+    const normalized = this._normalizeNpub(npub);
+    return !!normalized && this.whitelist.has(normalized);
   }
 
   isBlacklisted(npub) {
-    return this.blacklist.has(npub);
+    const normalized = this._normalizeNpub(npub);
+    return !!normalized && this.blacklist.has(normalized);
   }
 
   canAccess(npub) {
     if (this.isBlacklisted(npub)) {
       return false;
     }
-    const canAccess = !isWhitelistEnabled || this.isWhitelisted(npub);
-    if (isDevMode) console.log(`Checking access for ${npub}:`, canAccess);
-    return canAccess;
+    if (!isWhitelistEnabled) {
+      return true;
+    }
+    return this.isWhitelisted(npub);
+  }
+
+  getWhitelist() {
+    return Array.from(this.whitelist);
+  }
+
+  getBlacklist() {
+    return Array.from(this.blacklist);
   }
 
   filterVideos(videos) {
     return videos.filter((video) => {
       try {
-        const npub = window.NostrTools.nip19.npubEncode(video.pubkey);
-        return !this.isBlacklisted(npub);
+        const encoded = window?.NostrTools?.nip19?.npubEncode?.(video.pubkey);
+        const authorNpub = encoded || video.pubkey;
+        return !this.isBlacklisted(authorNpub);
       } catch (error) {
         console.error("Error filtering video:", error);
         return false;
@@ -225,26 +212,20 @@ class AdminAccessControl {
   }
 
   isValidNpub(npub) {
-    try {
-      return npub.startsWith("npub1") && npub.length === 63;
-    } catch (error) {
-      return false;
+    const normalized = this._normalizeNpub(npub);
+    if (!normalized) return false;
+
+    const nip19 = window?.NostrTools?.nip19;
+    if (nip19 && typeof nip19.decode === "function") {
+      try {
+        const decoded = nip19.decode(normalized);
+        return decoded?.type === "npub";
+      } catch (error) {
+        return false;
+      }
     }
-  }
 
-  getWhitelist() {
-    return [...this.whitelist];
-  }
-
-  getBlacklist() {
-    return [...this.blacklist];
-  }
-
-  isAdminEditor(npub) {
-    return (
-      Array.isArray(ADMIN_EDITORS_NPUBS) &&
-      ADMIN_EDITORS_NPUBS.includes(npub)
-    );
+    return normalized.startsWith("npub1") && normalized.length >= 63;
   }
 }
 
