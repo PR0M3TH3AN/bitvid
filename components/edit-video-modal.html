@@ -95,6 +95,48 @@
           </div>
 
           <div class="space-y-1">
+            <label for="editVideoWs" class="block text-sm font-medium text-gray-200">
+              Web seed (ws=)
+            </label>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="url"
+                id="editVideoWs"
+                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                placeholder="https://cdn.example.com/video.mp4"
+              />
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoWs"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label for="editVideoXs" class="block text-sm font-medium text-gray-200">
+              .torrent URL (xs=)
+            </label>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="url"
+                id="editVideoXs"
+                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                placeholder="https://cdn.example.com/video.torrent"
+              />
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoXs"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
             <label for="editVideoMagnet" class="block text-sm font-medium text-gray-200">
               Magnet link
             </label>
@@ -151,6 +193,33 @@
                 type="button"
                 class="edit-field-button self-start hidden"
                 data-edit-target="editVideoDescription"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label for="editEnableComments" class="block text-sm font-medium text-gray-200">
+              Enable comments
+            </label>
+            <div
+              class="flex flex-col gap-2 rounded-md border border-gray-800 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div class="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="editEnableComments"
+                  class="h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                />
+                <span class="text-sm text-gray-300">
+                  Allow replies once comment threads are available.
+                </span>
+              </div>
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editEnableComments"
               >
                 Edit field
               </button>

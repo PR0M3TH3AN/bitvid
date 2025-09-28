@@ -5,6 +5,7 @@ import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import { deriveTitleFromEvent, magnetFromText } from "./videoEventUtils.js";
+import { extractMagnetHints } from "./magnet.js";
 
 /**
  * The usual relays
@@ -196,6 +197,10 @@ function convertEventToVideo(event = {}) {
   const deleted = parsedContent.deleted === true;
   const isPrivate = parsedContent.isPrivate === true;
   const videoRootId = safeTrim(parsedContent.videoRootId) || event.id;
+  const wsField = safeTrim(parsedContent.ws);
+  const xsField = safeTrim(parsedContent.xs);
+  const enableComments =
+    parsedContent.enableComments === false ? false : true;
 
   let infoHash = "";
   const pushInfoHash = (candidate) => {
@@ -282,6 +287,12 @@ function convertEventToVideo(event = {}) {
     };
   }
 
+  const magnetHints = magnet
+    ? extractMagnetHints(magnet)
+    : { ws: "", xs: "" };
+  const ws = wsField || magnetHints.ws || "";
+  const xs = xsField || magnetHints.xs || "";
+
   return {
     id: event.id,
     videoRootId,
@@ -296,6 +307,9 @@ function convertEventToVideo(event = {}) {
     description,
     mode,
     deleted,
+    ws,
+    xs,
+    enableComments,
     pubkey: event.pubkey,
     created_at: event.created_at,
     tags,
@@ -612,6 +626,13 @@ class NostrClient {
     const videoRootId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const dTagValue = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+    const finalEnableComments =
+      videoData.enableComments === false ? false : true;
+    const finalWs =
+      typeof videoData.ws === "string" ? videoData.ws.trim() : "";
+    const finalXs =
+      typeof videoData.xs === "string" ? videoData.xs.trim() : "";
+
     const contentObject = {
       version: 3,
       title: finalTitle,
@@ -623,7 +644,16 @@ class NostrClient {
       videoRootId,
       deleted: false,
       isPrivate: videoData.isPrivate ?? false,
+      enableComments: finalEnableComments,
     };
+
+    if (finalWs) {
+      contentObject.ws = finalWs;
+    }
+
+    if (finalXs) {
+      contentObject.xs = finalXs;
+    }
 
     const event = {
       kind: 30078,
@@ -799,6 +829,25 @@ class NostrClient {
       typeof updatedData.url === "string" ? updatedData.url.trim() : "";
     const finalUrl = newUrlValue || oldUrl;
 
+    const wsEdited = updatedData.wsEdited === true;
+    const xsEdited = updatedData.xsEdited === true;
+    const newWsValue =
+      typeof updatedData.ws === "string" ? updatedData.ws.trim() : "";
+    const newXsValue =
+      typeof updatedData.xs === "string" ? updatedData.xs.trim() : "";
+    const baseWs =
+      typeof baseEvent.ws === "string" ? baseEvent.ws.trim() : "";
+    const baseXs =
+      typeof baseEvent.xs === "string" ? baseEvent.xs.trim() : "";
+    const finalWs = wsEdited ? newWsValue : baseWs;
+    const finalXs = xsEdited ? newXsValue : baseXs;
+    const finalEnableComments =
+      typeof updatedData.enableComments === "boolean"
+        ? updatedData.enableComments
+        : baseEvent.enableComments === false
+          ? false
+          : true;
+
     // Use the existing videoRootId (or fall back to the base event's ID)
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
 
@@ -817,7 +866,16 @@ class NostrClient {
       thumbnail: updatedData.thumbnail ?? baseEvent.thumbnail,
       description: updatedData.description ?? baseEvent.description,
       mode: updatedData.mode ?? baseEvent.mode ?? "live",
+      enableComments: finalEnableComments,
     };
+
+    if (finalWs) {
+      contentObject.ws = finalWs;
+    }
+
+    if (finalXs) {
+      contentObject.xs = finalXs;
+    }
 
     const event = {
       kind: 30078,
