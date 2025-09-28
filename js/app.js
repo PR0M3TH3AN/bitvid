@@ -6,7 +6,7 @@ import { torrentClient } from "./webtorrent.js";
 import { isDevMode } from "./config.js";
 import { isWhitelistEnabled } from "./config.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
-import { normalizeAndAugmentMagnet } from "./magnet.js";
+import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
@@ -506,6 +506,7 @@ class bitvidApp {
     this.closeUploadModalBtn =
       document.getElementById("closeUploadModal") || null;
     this.uploadForm = document.getElementById("uploadForm") || null;
+    this.uploadEnableCommentsInput = null;
     this.uploadModeToggleButtons = [];
     this.customUploadSection = null;
     this.cloudflareUploadSection = null;
@@ -527,6 +528,7 @@ class bitvidApp {
     this.cloudflareMagnetInput = null;
     this.cloudflareWsInput = null;
     this.cloudflareXsInput = null;
+    this.cloudflareEnableCommentsInput = null;
     this.cloudflareAdvancedToggle = null;
     this.cloudflareAdvancedToggleLabel = null;
     this.cloudflareAdvancedToggleIcon = null;
@@ -1186,6 +1188,8 @@ class bitvidApp {
       this.closeUploadModalBtn =
         document.getElementById("closeUploadModal") || null;
       this.uploadForm = document.getElementById("uploadForm") || null;
+      this.uploadEnableCommentsInput =
+        document.getElementById("uploadEnableComments") || null;
       this.uploadModeToggleButtons = Array.from(
         document.querySelectorAll(".upload-mode-toggle[data-upload-mode]")
       );
@@ -1225,6 +1229,8 @@ class bitvidApp {
         document.getElementById("cloudflareWs") || null;
       this.cloudflareXsInput =
         document.getElementById("cloudflareXs") || null;
+      this.cloudflareEnableCommentsInput =
+        document.getElementById("cloudflareEnableComments") || null;
       this.cloudflareAdvancedToggle =
         document.getElementById("cloudflareAdvancedToggle") || null;
       this.cloudflareAdvancedToggleLabel =
@@ -1407,16 +1413,24 @@ class bitvidApp {
       "editVideoTitle",
       "editVideoUrl",
       "editVideoMagnet",
+      "editVideoWs",
+      "editVideoXs",
       "editVideoThumbnail",
       "editVideoDescription",
+      "editEnableComments",
     ];
 
     fieldIds.forEach((id) => {
       const input = this.editVideoModal.querySelector(`#${id}`);
       if (input) {
-        input.value = "";
-        input.readOnly = false;
-        input.classList.remove("locked-input");
+        if (input.type === "checkbox") {
+          input.checked = true;
+          input.disabled = false;
+        } else {
+          input.value = "";
+          input.readOnly = false;
+          input.classList.remove("locked-input");
+        }
         delete input.dataset.originalValue;
       }
       const button = this.editVideoModal.querySelector(
@@ -2225,12 +2239,31 @@ class bitvidApp {
 
     this.resetEditVideoForm();
 
+    const magnetSource = video.magnet || video.rawMagnet || "";
+    const magnetHints = extractMagnetHints(magnetSource);
+    const effectiveWs = video.ws || magnetHints.ws || "";
+    const effectiveXs = video.xs || magnetHints.xs || "";
+    const enableCommentsValue =
+      typeof video.enableComments === "boolean"
+        ? video.enableComments
+        : true;
+
+    const editContext = {
+      ...video,
+      ws: effectiveWs,
+      xs: effectiveXs,
+      enableComments: enableCommentsValue,
+    };
+
     const fieldMap = {
-      editVideoTitle: video.title || "",
-      editVideoUrl: video.url || "",
-      editVideoMagnet: video.magnet || "",
-      editVideoThumbnail: video.thumbnail || "",
-      editVideoDescription: video.description || "",
+      editVideoTitle: editContext.title || "",
+      editVideoUrl: editContext.url || "",
+      editVideoMagnet: editContext.magnet || "",
+      editVideoWs: editContext.ws || "",
+      editVideoXs: editContext.xs || "",
+      editVideoThumbnail: editContext.thumbnail || "",
+      editVideoDescription: editContext.description || "",
+      editEnableComments: editContext.enableComments,
     };
 
     Object.entries(fieldMap).forEach(([id, rawValue]) => {
@@ -2238,19 +2271,47 @@ class bitvidApp {
       const button = this.editVideoModal.querySelector(
         `[data-edit-target="${id}"]`
       );
+      if (!input) {
+        if (button) {
+          button.classList.add("hidden");
+          button.dataset.mode = "locked";
+          button.textContent = "Edit field";
+        }
+        return;
+      }
+
+      const isCheckbox = input.type === "checkbox";
+      if (isCheckbox) {
+        const hasValue = rawValue !== undefined;
+        const boolValue = rawValue === true;
+        input.checked = boolValue;
+        input.disabled = hasValue;
+        input.dataset.originalValue = boolValue ? "true" : "false";
+        if (button) {
+          if (hasValue) {
+            button.classList.remove("hidden");
+            button.dataset.mode = "locked";
+            button.textContent = "Edit field";
+          } else {
+            button.classList.add("hidden");
+            button.dataset.mode = "locked";
+            button.textContent = "Edit field";
+          }
+        }
+        return;
+      }
+
       const value = typeof rawValue === "string" ? rawValue : "";
       const hasValue = value.trim().length > 0;
 
-      if (input) {
-        input.value = value;
-        input.dataset.originalValue = value;
-        if (hasValue) {
-          input.readOnly = true;
-          input.classList.add("locked-input");
-        } else {
-          input.readOnly = false;
-          input.classList.remove("locked-input");
-        }
+      input.value = value;
+      input.dataset.originalValue = value;
+      if (hasValue) {
+        input.readOnly = true;
+        input.classList.add("locked-input");
+      } else {
+        input.readOnly = false;
+        input.classList.remove("locked-input");
       }
 
       if (button) {
@@ -2266,7 +2327,7 @@ class bitvidApp {
       }
     });
 
-    this.activeEditVideo = video;
+    this.activeEditVideo = editContext;
   }
 
   handleEditFieldToggle(event) {
@@ -2286,12 +2347,18 @@ class bitvidApp {
     }
 
     const mode = button.dataset.mode || "locked";
+    const isCheckbox = input.type === "checkbox";
+
     if (mode === "locked") {
-      input.readOnly = false;
-      input.classList.remove("locked-input");
+      if (isCheckbox) {
+        input.disabled = false;
+      } else {
+        input.readOnly = false;
+        input.classList.remove("locked-input");
+      }
       button.dataset.mode = "editing";
       button.textContent = "Restore original";
-      if (typeof input.focus === "function") {
+      if (!isCheckbox && typeof input.focus === "function") {
         input.focus();
         if (typeof input.setSelectionRange === "function") {
           const length = input.value.length;
@@ -2306,6 +2373,15 @@ class bitvidApp {
     }
 
     const originalValue = input.dataset?.originalValue || "";
+
+    if (isCheckbox) {
+      input.checked = originalValue === "true";
+      input.disabled = true;
+      button.dataset.mode = "locked";
+      button.textContent = "Edit field";
+      return;
+    }
+
     input.value = originalValue;
 
     if (originalValue) {
@@ -2461,6 +2537,10 @@ class bitvidApp {
     if (this.cloudflareFileInput) {
       this.cloudflareFileInput.disabled = Boolean(isUploading);
     }
+
+    if (this.cloudflareEnableCommentsInput) {
+      this.cloudflareEnableCommentsInput.disabled = Boolean(isUploading);
+    }
   }
 
   updateCloudflareProgress(fraction) {
@@ -2488,6 +2568,8 @@ class bitvidApp {
     if (this.cloudflareMagnetInput) this.cloudflareMagnetInput.value = "";
     if (this.cloudflareWsInput) this.cloudflareWsInput.value = "";
     if (this.cloudflareXsInput) this.cloudflareXsInput.value = "";
+    if (this.cloudflareEnableCommentsInput)
+      this.cloudflareEnableCommentsInput.checked = true;
     if (this.cloudflareFileInput) this.cloudflareFileInput.value = "";
     this.updateCloudflareProgress(Number.NaN);
   }
@@ -2981,6 +3063,9 @@ class bitvidApp {
     const magnet = (this.cloudflareMagnetInput?.value || "").trim();
     const ws = (this.cloudflareWsInput?.value || "").trim();
     const xs = (this.cloudflareXsInput?.value || "").trim();
+    const enableComments = this.cloudflareEnableCommentsInput
+      ? this.cloudflareEnableCommentsInput.checked
+      : true;
 
     const accountId = (this.cloudflareSettings?.accountId || "").trim();
     const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
@@ -3076,6 +3161,7 @@ class bitvidApp {
         description,
         ws,
         xs,
+        enableComments,
       };
 
       const published = await this.publishVideoNote(payload, {
@@ -3536,6 +3622,12 @@ class bitvidApp {
     const description = (payload?.description || "").trim();
     const ws = (payload?.ws || "").trim();
     const xs = (payload?.xs || "").trim();
+    const enableComments =
+      payload?.enableComments === false
+        ? false
+        : payload?.enableComments === true
+          ? true
+          : true;
 
     const formData = {
       version: 3,
@@ -3545,6 +3637,7 @@ class bitvidApp {
       thumbnail,
       description,
       mode: isDevMode ? "dev" : "live",
+      enableComments,
     };
 
     if (!formData.title || (!formData.url && !formData.magnet)) {
@@ -3558,10 +3651,17 @@ class bitvidApp {
     }
 
     if (formData.magnet) {
-      formData.magnet = normalizeAndAugmentMagnet(formData.magnet, {
+      const normalizedMagnet = normalizeAndAugmentMagnet(formData.magnet, {
         ws,
         xs,
       });
+      formData.magnet = normalizedMagnet;
+      const hints = extractMagnetHints(normalizedMagnet);
+      formData.ws = hints.ws;
+      formData.xs = hints.xs;
+    } else {
+      formData.ws = "";
+      formData.xs = "";
     }
 
     try {
@@ -3601,14 +3701,38 @@ class bitvidApp {
     const newTitle = fieldValue("editVideoTitle");
     const newUrl = fieldValue("editVideoUrl");
     const newMagnet = fieldValue("editVideoMagnet");
+    const newWs = fieldValue("editVideoWs");
+    const newXs = fieldValue("editVideoXs");
+    const wsInput = this.editVideoModal.querySelector("#editVideoWs");
+    const xsInput = this.editVideoModal.querySelector("#editVideoXs");
     const newThumbnail = fieldValue("editVideoThumbnail");
     const newDescription = fieldValue("editVideoDescription");
+    const commentsEl = this.editVideoModal.querySelector(
+      "#editEnableComments"
+    );
 
     const finalTitle = newTitle || original.title || "";
     const finalUrl = newUrl || original.url || "";
-    const finalMagnet = newMagnet || original.magnet || "";
+    const shouldUseOriginalWs = wsInput ? wsInput.readOnly !== false : true;
+    const shouldUseOriginalXs = xsInput ? xsInput.readOnly !== false : true;
+    let finalWs = shouldUseOriginalWs ? original.ws || "" : newWs;
+    let finalXs = shouldUseOriginalXs ? original.xs || "" : newXs;
+    let finalMagnet = newMagnet || original.magnet || "";
     const finalThumbnail = newThumbnail || original.thumbnail || "";
     const finalDescription = newDescription || original.description || "";
+    const originalEnableComments =
+      typeof original.enableComments === "boolean"
+        ? original.enableComments
+        : true;
+
+    let finalEnableComments = originalEnableComments;
+    if (commentsEl) {
+      if (commentsEl.disabled) {
+        finalEnableComments = commentsEl.dataset.originalValue === "true";
+      } else {
+        finalEnableComments = commentsEl.checked;
+      }
+    }
 
     if (!finalTitle || (!finalUrl && !finalMagnet)) {
       this.showError("Title and at least one of URL or Magnet is required.");
@@ -3620,6 +3744,20 @@ class bitvidApp {
       return;
     }
 
+    if (finalMagnet) {
+      const normalizedMagnet = normalizeAndAugmentMagnet(finalMagnet, {
+        ws: finalWs,
+        xs: finalXs,
+      });
+      finalMagnet = normalizedMagnet;
+      const hints = extractMagnetHints(normalizedMagnet);
+      finalWs = hints.ws;
+      finalXs = hints.xs;
+    } else {
+      finalWs = "";
+      finalXs = "";
+    }
+
     const updatedData = {
       version: original.version || 2,
       title: finalTitle,
@@ -3628,6 +3766,11 @@ class bitvidApp {
       thumbnail: finalThumbnail,
       description: finalDescription,
       mode: isDevMode ? "dev" : "live",
+      ws: finalWs,
+      xs: finalXs,
+      wsEdited: !shouldUseOriginalWs,
+      xsEdited: !shouldUseOriginalXs,
+      enableComments: finalEnableComments,
     };
 
     const originalEvent = {
@@ -3661,6 +3804,7 @@ class bitvidApp {
     const thumbEl = document.getElementById("uploadThumbnail");
     const descEl = document.getElementById("uploadDescription");
     const privEl = document.getElementById("uploadIsPrivate");
+    const commentsEl = document.getElementById("uploadEnableComments");
 
     const title = titleEl?.value.trim() || "";
     const url = urlEl?.value.trim() || "";
@@ -3669,6 +3813,7 @@ class bitvidApp {
     const xs = xsEl?.value.trim() || "";
     const thumbnail = thumbEl?.value.trim() || "";
     const description = descEl?.value.trim() || "";
+    const enableComments = commentsEl ? commentsEl.checked : true;
 
     const payload = {
       title,
@@ -3678,6 +3823,7 @@ class bitvidApp {
       description,
       ws,
       xs,
+      enableComments,
     };
 
     await this.publishVideoNote(payload, {
@@ -3690,6 +3836,7 @@ class bitvidApp {
         if (thumbEl) thumbEl.value = "";
         if (descEl) descEl.value = "";
         if (privEl) privEl.checked = false;
+        if (commentsEl) commentsEl.checked = true;
       },
     });
   }
@@ -4655,6 +4802,7 @@ class bitvidApp {
       thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
       url: typeof video.url === "string" ? video.url : "",
       magnet: typeof video.magnet === "string" ? video.magnet : "",
+      enableComments: video.enableComments === false ? false : true,
     }));
     const signature = JSON.stringify(signaturePayload);
 
