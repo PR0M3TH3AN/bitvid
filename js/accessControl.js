@@ -1,9 +1,29 @@
 // js/accessControl.js
 
-import { isDevMode, isWhitelistEnabled } from "./config.js";
-import { initialWhitelist, initialBlacklist } from "./lists.js";
+/**
+ * AdminAccessControl (PLATFORM-LEVEL) — NOT user-level blocking.
+ * - Governs creator access to publish/visibility in the official client.
+ * - Persists to localStorage today, migratable to Nostr later.
+ * - Keys: 'bitvid_admin_whitelist' / 'bitvid_admin_blacklist'
+ *   (Reads legacy 'bitvid_whitelist' / 'bitvid_blacklist' for back-compat.)
+ */
 
-class AccessControl {
+import {
+  isDevMode,
+  isWhitelistEnabled,
+  ADMIN_EDITORS_NPUBS,
+} from "./config.js";
+import {
+  ADMIN_INITIAL_WHITELIST as ADMIN_SEED_ALLOW,
+  ADMIN_INITIAL_BLACKLIST as ADMIN_SEED_DENY,
+} from "./lists.js";
+
+const K_ADMIN_WL = "bitvid_admin_whitelist";
+const K_ADMIN_BL = "bitvid_admin_blacklist";
+const LEGACY_WL_KEY = "bitvid_whitelist";
+const LEGACY_BL_KEY = "bitvid_blacklist";
+
+class AdminAccessControl {
   constructor() {
     // Debug logging for initialization
     console.log("DEBUG: AccessControl constructor called");
@@ -14,7 +34,7 @@ class AccessControl {
     if (storedWhitelist !== null) {
       this.whitelist = new Set(storedWhitelist);
     } else {
-      this.whitelist = new Set(initialWhitelist);
+      this.whitelist = new Set(ADMIN_SEED_ALLOW);
       this.saveWhitelist();
       if (whitelistStatus && whitelistStatus !== "missing") {
         console.warn(
@@ -26,7 +46,7 @@ class AccessControl {
     if (storedBlacklist !== null) {
       this.blacklist = new Set(storedBlacklist);
     } else {
-      this.blacklist = new Set(initialBlacklist.filter((x) => x)); // Filter out empty strings
+      this.blacklist = new Set(ADMIN_SEED_DENY.filter((x) => x)); // Filter out empty strings
       this.saveBlacklist();
       if (blacklistStatus && blacklistStatus !== "missing") {
         console.warn(
@@ -43,7 +63,8 @@ class AccessControl {
   // Rest of the class remains the same...
   loadWhitelist() {
     try {
-      const stored = localStorage.getItem("bitvid_whitelist");
+      const stored =
+        localStorage.getItem(K_ADMIN_WL) ?? localStorage.getItem(LEGACY_WL_KEY);
       if (!stored) {
         if (isDevMode) console.log("No stored whitelist found in localStorage.");
         return { data: null, status: "missing" };
@@ -63,7 +84,8 @@ class AccessControl {
 
   loadBlacklist() {
     try {
-      const stored = localStorage.getItem("bitvid_blacklist");
+      const stored =
+        localStorage.getItem(K_ADMIN_BL) ?? localStorage.getItem(LEGACY_BL_KEY);
       if (!stored) {
         if (isDevMode) console.log("No stored blacklist found in localStorage.");
         return { data: null, status: "missing" };
@@ -121,10 +143,7 @@ class AccessControl {
 
   saveWhitelist() {
     try {
-      localStorage.setItem(
-        "bitvid_whitelist",
-        JSON.stringify([...this.whitelist])
-      );
+      localStorage.setItem(K_ADMIN_WL, JSON.stringify([...this.whitelist]));
     } catch (error) {
       console.error("Error saving whitelist:", error);
     }
@@ -132,10 +151,7 @@ class AccessControl {
 
   saveBlacklist() {
     try {
-      localStorage.setItem(
-        "bitvid_blacklist",
-        JSON.stringify([...this.blacklist])
-      );
+      localStorage.setItem(K_ADMIN_BL, JSON.stringify([...this.blacklist]));
     } catch (error) {
       console.error("Error saving blacklist:", error);
     }
@@ -223,6 +239,14 @@ class AccessControl {
   getBlacklist() {
     return [...this.blacklist];
   }
+
+  isAdminEditor(npub) {
+    return (
+      Array.isArray(ADMIN_EDITORS_NPUBS) &&
+      ADMIN_EDITORS_NPUBS.includes(npub)
+    );
+  }
 }
 
-export const accessControl = new AccessControl();
+export const adminAccessControl = new AdminAccessControl();
+export { adminAccessControl as accessControl };

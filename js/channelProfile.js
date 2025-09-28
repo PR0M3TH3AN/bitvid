@@ -8,8 +8,7 @@ import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
-import { initialBlacklist, initialWhitelist } from "./lists.js";
-import { isWhitelistEnabled } from "./config.js";
+import { accessControl } from "./accessControl.js";
 
 let cachedZapButton = null;
 
@@ -280,10 +279,7 @@ async function loadUserVideos(pubkey) {
 
       // Author-level
       const authorNpub = app.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (initialBlacklist.includes(authorNpub)) return false;
-      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-        return false;
-      }
+      if (!accessControl.canAccess(authorNpub)) return false;
       return true;
     });
 
