@@ -5087,7 +5087,25 @@ class bitvidApp {
     blocklistManager.scheduleSave(this.pubkey, current);
   }
 
+  ensureUserLoggedInForBlocking() {
+    if (this.pubkey) {
+      return true;
+    }
+
+    this.showError("Please log in to block accounts.");
+    const loginModal = document.getElementById("loginModal");
+    if (loginModal) {
+      loginModal.classList.remove("hidden");
+    }
+
+    return false;
+  }
+
   async blockAuthorByHex(hexPubkey, options = {}) {
+    if (!this.ensureUserLoggedInForBlocking()) {
+      return false;
+    }
+
     if (!hexPubkey) {
       this.showError("Unable to determine the creator.");
       return false;
@@ -5106,6 +5124,10 @@ class bitvidApp {
   }
 
   async blockAuthorByNpub(npub, { hexPubkey, closeModal = false } = {}) {
+    if (!this.ensureUserLoggedInForBlocking()) {
+      return false;
+    }
+
     const trimmed = typeof npub === "string" ? npub.trim() : "";
     if (!trimmed) {
       this.showError("Unable to determine the creator.");
