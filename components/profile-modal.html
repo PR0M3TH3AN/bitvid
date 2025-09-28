@@ -88,6 +88,15 @@
             >
               Blocked
             </button>
+            <button
+              id="profileNavAdmin"
+              type="button"
+              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 hidden"
+              aria-controls="profilePaneAdmin"
+              aria-selected="false"
+            >
+              Admin (Moderation)
+            </button>
           </nav>
 
           <!-- Right content panes -->
@@ -175,6 +184,142 @@
                 You haven’t blocked any creators yet.
               </div>
               <ul id="blockedList" class="space-y-3"></ul>
+            </section>
+            <section
+              id="profilePaneAdmin"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavAdmin"
+            >
+              <div class="space-y-2">
+                <h3 class="text-lg font-semibold text-white">Platform moderation</h3>
+                <p class="text-sm text-gray-400">
+                  Manage BitVid’s moderator roles and creator allow/block lists. Changes apply instantly across the app.
+                </p>
+              </div>
+
+              <div id="adminModeratorsSection" class="space-y-4 hidden" aria-hidden="true">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 class="text-base font-semibold text-white">Moderators</h4>
+                  <p class="text-xs uppercase tracking-wide text-gray-400">
+                    Super Admin only
+                  </p>
+                </div>
+                <p class="text-sm text-gray-400">
+                  Moderators can edit the whitelist and blacklist but cannot manage other moderators or whitelist mode.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-gray-300" for="adminModeratorInput">
+                    <span class="mb-2 block font-medium">Moderator npub</span>
+                    <input
+                      id="adminModeratorInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="npub1..."
+                    />
+                  </label>
+                  <button
+                    id="adminAddModeratorBtn"
+                    type="button"
+                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  >
+                    Add moderator
+                  </button>
+                </div>
+                <div
+                  id="adminModeratorsEmpty"
+                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                >
+                  No moderators configured yet.
+                </div>
+                <ul id="adminModeratorList" class="space-y-3"></ul>
+              </div>
+
+              <div id="adminWhitelistSection" class="space-y-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 class="text-base font-semibold text-white">Whitelist</h4>
+                  <label
+                    id="adminWhitelistModeWrapper"
+                    class="flex items-center gap-2 text-xs font-medium text-gray-300 hidden"
+                    for="adminWhitelistModeToggle"
+                  >
+                    <input
+                      id="adminWhitelistModeToggle"
+                      type="checkbox"
+                      class="h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-400"
+                    />
+                    <span>Enable whitelist-only mode</span>
+                  </label>
+                </div>
+                <p class="text-sm text-gray-400">
+                  Creators listed here remain visible when whitelist mode is enabled. Adding someone removes them from the blacklist.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-gray-300" for="adminWhitelistInput">
+                    <span class="mb-2 block font-medium">Creator npub</span>
+                    <input
+                      id="adminWhitelistInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="npub1..."
+                    />
+                  </label>
+                  <button
+                    id="adminAddWhitelistBtn"
+                    type="button"
+                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  >
+                    Add to whitelist
+                  </button>
+                </div>
+                <div
+                  id="adminWhitelistEmpty"
+                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                >
+                  No whitelisted creators yet.
+                </div>
+                <ul id="adminWhitelistList" class="space-y-3"></ul>
+              </div>
+
+              <div id="adminBlacklistSection" class="space-y-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 class="text-base font-semibold text-white">Blacklist</h4>
+                </div>
+                <p class="text-sm text-gray-400">
+                  Creators on the blacklist are hidden from BitVid everywhere. Adding someone removes them from the whitelist.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-gray-300" for="adminBlacklistInput">
+                    <span class="mb-2 block font-medium">Creator npub</span>
+                    <input
+                      id="adminBlacklistInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="npub1..."
+                    />
+                  </label>
+                  <button
+                    id="adminAddBlacklistBtn"
+                    type="button"
+                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  >
+                    Add to blacklist
+                  </button>
+                </div>
+                <div
+                  id="adminBlacklistEmpty"
+                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                >
+                  No blacklisted creators yet.
+                </div>
+                <ul id="adminBlacklistList" class="space-y-3"></ul>
+              </div>
             </section>
           </div>
         </div>

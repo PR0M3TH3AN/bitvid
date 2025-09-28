@@ -8,8 +8,10 @@ import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
-import { initialBlacklist, initialWhitelist } from "./lists.js";
-import { isWhitelistEnabled } from "./config.js";
+import { accessControl } from "./accessControl.js";
+
+let currentChannelHex = null;
+let currentChannelNpub = null;
 
 let cachedZapButton = null;
 
@@ -55,6 +57,9 @@ export async function initChannelProfileView() {
     return;
   }
 
+  currentChannelHex = null;
+  currentChannelNpub = null;
+
   // 2) Decode npub => hex pubkey
   let hexPub;
   try {
@@ -68,6 +73,9 @@ export async function initChannelProfileView() {
     console.error("Error decoding npub:", err);
     return;
   }
+
+  currentChannelHex = hexPub;
+  currentChannelNpub = npub;
 
   // 3) If user is logged in, load subscriptions and show sub/unsub button
   if (app.pubkey) {
@@ -243,6 +251,8 @@ async function loadUserProfile(pubkey) {
  */
 async function loadUserVideos(pubkey) {
   try {
+    accessControl.refresh();
+
     // 1) Build filter for videos from this pubkey
     const filter = {
       kinds: [30078],
@@ -279,11 +289,7 @@ async function loadUserVideos(pubkey) {
       if (app.blacklistedEventIds.has(video.id)) return false;
 
       // Author-level
-      const authorNpub = app.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (initialBlacklist.includes(authorNpub)) return false;
-      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-        return false;
-      }
+      if (!accessControl.canAccess(video)) return false;
       return true;
     });
 
@@ -687,6 +693,26 @@ async function loadUserVideos(pubkey) {
     console.error("Error loading user videos:", err);
   }
 }
+
+window.addEventListener("bitvid:access-control-updated", () => {
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  if (hashParams.get("view") !== "channel-profile") {
+    return;
+  }
+
+  if (!currentChannelHex) {
+    return;
+  }
+
+  const activeNpub = hashParams.get("npub");
+  if (currentChannelNpub && activeNpub && activeNpub !== currentChannelNpub) {
+    return;
+  }
+
+  loadUserVideos(currentChannelHex).catch((error) => {
+    console.error("Failed to refresh channel videos after admin update:", error);
+  });
+});
 
 /**
  * Minimal placeholder for private video decryption.
