@@ -321,12 +321,22 @@ header img {
     max-width: 64rem;
     max-height: calc(100vh - 4rem); /* Account for padding */
     border-radius: 0.5rem;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .video-container {
     position: relative;
   }
+}
+
+#modalNav {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+}
+
+[data-more-menu="true"] {
+  z-index: 70;
 }
 
 /* Mobile-specific styles */
