@@ -335,6 +335,18 @@ header img {
   z-index: 60;
 }
 
+.modal-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.modal-actions__overflow {
+  position: relative;
+  overflow: visible;
+}
+
 [data-more-menu="true"] {
   z-index: 70;
 }
