@@ -180,22 +180,7 @@
 
     <!-- Additional Scripts -->
     <script src="js/libs/nostr.bundle.js"></script>
-    <script type="module">
-      import {
-        nip19,
-        SimplePool,
-        getPublicKey,
-        finalizeEvent,
-        nip04,
-      } from "https://esm.sh/nostr-tools@2.10.4";
-      window.NostrTools = {
-        nip19,
-        SimplePool,
-        getPublicKey,
-        finalizeEvent,
-        nip04,
-      };
-    </script>
+    <script type="module" src="js/nostr-tools-shim.js"></script>
     <script type="module" src="js/config.js"></script>
     <script type="module" src="js/lists.js"></script>
     <script type="module" src="js/accessControl.js"></script>
