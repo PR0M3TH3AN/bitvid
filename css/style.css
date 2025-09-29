@@ -253,8 +253,7 @@ header img {
   align-items: stretch;
   justify-content: stretch;
   background-color: #000;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 
@@ -276,6 +275,7 @@ header img {
   flex-direction: column;
   width: 100%;
   height: 100%;
+  min-height: 100vh;
   padding: 0;
   margin: 0;
   overflow: hidden;
@@ -287,8 +287,8 @@ header img {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: auto;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   max-width: none;
   max-height: none;
   border-radius: 0;
