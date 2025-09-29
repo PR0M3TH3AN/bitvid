@@ -73,9 +73,24 @@ To run **bitvid** locally:
      ```
 
 3. Open the site in your browser:
-   ```
-   http://localhost:8000
-   ```
+  ```
+  http://localhost:8000
+  ```
+
+### CSS build pipeline
+
+Tailwind utilities are generated from `css/tailwind.source.css` using the build
+script below. Run this whenever you add or remove classes in HTML or JavaScript
+so the purged output stays in sync:
+
+```bash
+npm install         # first run only
+npm run build:css
+```
+
+The command compiles Tailwind with `tailwind.config.cjs` and emits the purged,
+minified stylesheet at `css/tailwind.generated.css`. Commit the regenerated
+file alongside any template changes so deployments pick up the latest styles.
 
 ### Configuration
 
