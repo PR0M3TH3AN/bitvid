@@ -121,54 +121,53 @@
                     Preview
                   </span>
                 </div>
-                <div class="flex flex-wrap items-center gap-6" id="profileSwitcherTray">
+                <div class="space-y-4" id="profileSwitcherTray">
                   <button
                     type="button"
-                    class="group relative flex min-w-[6rem] flex-col items-center text-center text-xs text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="group flex w-full items-center gap-4 rounded-xl border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
                     aria-label="Current Nostr profile"
                     aria-pressed="true"
                   >
-                    <span class="relative flex items-center justify-center">
-                      <span
-                        class="h-16 w-16 overflow-hidden rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 transition-all group-hover:ring-blue-400"
-                      >
-                        <img
-                          id="profileModalAvatar"
-                          src="assets/svg/default-profile.svg"
-                          alt="Active profile avatar"
-                          class="h-full w-full object-cover"
-                        />
-                      </span>
-                      <span
-                        class="absolute -bottom-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow-lg"
-                      >
-                        Active
-                      </span>
-                    </span>
                     <span
-                      id="profileModalName"
-                      class="mt-3 text-sm font-semibold text-white group-hover:text-white"
+                      class="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 transition-all group-hover:ring-blue-400"
                     >
-                      Loading...
+                      <img
+                        id="profileModalAvatar"
+                        src="assets/svg/default-profile.svg"
+                        alt="Active profile avatar"
+                        class="h-full w-full object-cover"
+                      />
                     </span>
-                    <span id="profileModalNpub" class="text-[11px] text-gray-500 group-hover:text-gray-300">
-                      npub1...
+                    <span class="flex min-w-0 flex-1 flex-col">
+                      <span class="text-xs font-semibold uppercase tracking-wide text-blue-300">Active profile</span>
+                      <span
+                        id="profileModalName"
+                        class="truncate text-sm font-semibold text-white group-hover:text-white"
+                      >
+                        Loading...
+                      </span>
+                      <span
+                        id="profileModalNpub"
+                        class="break-all text-xs font-mono text-gray-400 group-hover:text-gray-200"
+                      >
+                        npub1...
+                      </span>
                     </span>
                   </button>
                   <div
                     id="profileSwitcherList"
-                    class="flex flex-wrap items-center gap-6"
+                    class="flex flex-col gap-4"
                     aria-live="polite"
                     aria-label="Additional Nostr profiles"
                   ></div>
                   <button
                     type="button"
                     id="profileAddAccountBtn"
-                    class="group flex min-w-[6rem] flex-col items-center text-center text-xs text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="group flex w-full items-center gap-4 rounded-xl border border-dashed border-gray-700 bg-gray-800/70 px-4 py-3 text-left text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 hover:border-blue-500 hover:bg-blue-500/10 hover:text-white"
                     aria-label="Add a new Nostr profile"
                   >
                     <span
-                      class="flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-gray-600 bg-gray-800/70 text-gray-400 transition-colors group-hover:border-blue-500 group-hover:bg-blue-500/10 group-hover:text-white"
+                      class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full border border-dashed border-current text-gray-400 transition-colors group-hover:text-white"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -185,11 +184,9 @@
                         <line x1="5" y1="12" x2="19" y2="12" />
                       </svg>
                     </span>
-                    <span class="mt-3 text-sm font-semibold text-gray-300 group-hover:text-white">
-                      Add profile
-                    </span>
-                    <span class="text-[11px] text-gray-500 group-hover:text-gray-300">
-                      Link another npub
+                    <span class="flex min-w-0 flex-1 flex-col">
+                      <span class="text-sm font-semibold text-gray-300 group-hover:text-white">Add profile</span>
+                      <span class="text-xs text-gray-500 group-hover:text-gray-300">Link another npub</span>
                     </span>
                   </button>
                 </div>
