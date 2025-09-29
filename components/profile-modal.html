@@ -107,7 +107,7 @@
               role="tabpanel"
               aria-labelledby="profileNavAccount"
             >
-              <div class="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 space-y-4">
+              <div class="rounded-3xl border border-gray-800/80 bg-gray-900/70 p-5 shadow-lg shadow-black/20 space-y-4">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 class="text-base font-semibold text-white">Switch profiles</h3>
@@ -123,14 +123,14 @@
                 </div>
                 <div class="space-y-4" id="profileSwitcherTray">
                   <div
-                    class="group flex w-full flex-col gap-4 rounded-2xl border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-left focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 focus-within:ring-offset-gray-900 sm:flex-row sm:items-center sm:gap-4"
+                    class="group flex w-full flex-col gap-4 rounded-3xl border border-blue-400/30 bg-gradient-to-r from-blue-500/10 via-blue-500/5 to-transparent px-5 py-4 text-left shadow-md shadow-blue-500/10 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 sm:flex-row sm:items-center sm:gap-5"
                     aria-label="Current Nostr profile"
                     aria-pressed="true"
                     role="button"
                     tabindex="0"
                   >
                     <span
-                      class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 transition-colors group-focus-within:ring-blue-400"
+                      class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 transition-colors group-focus-visible:ring-blue-400"
                     >
                       <img
                         id="profileModalAvatar"
@@ -173,7 +173,7 @@
                   <button
                     type="button"
                     id="profileAddAccountBtn"
-                    class="group flex w-full items-center gap-4 rounded-2xl border border-dashed border-gray-700 bg-gray-800/70 px-4 py-3 text-left text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 hover:border-blue-500 hover:bg-blue-500/10 hover:text-white"
+                    class="group flex w-full items-center gap-4 rounded-3xl border border-dashed border-gray-700 bg-gray-900/60 px-5 py-4 text-left text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 hover:border-blue-500 hover:bg-blue-500/10 hover:text-white"
                     aria-label="Add a new Nostr profile"
                   >
                     <span
@@ -204,9 +204,6 @@
                   Profiles you add here will stay on this device so you can quickly switch before posting or moderating.
                 </p>
               </div>
-              <p class="text-sm text-gray-400">
-                Manage your account details and upcoming preferences here.
-              </p>
             </section>
 
             <section
