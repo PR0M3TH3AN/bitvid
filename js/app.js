@@ -1004,9 +1004,11 @@ class bitvidApp {
       if (!modalNav || !playerModal) {
         throw new Error("Modal nav (#modalNav) or #playerModal not found!");
       }
+      const scrollRegion =
+        playerModal.querySelector(".player-modal__content") || playerModal;
       let lastScrollY = 0;
-      playerModal.addEventListener("scroll", (e) => {
-        const currentScrollY = e.target.scrollTop;
+      scrollRegion.addEventListener("scroll", () => {
+        const currentScrollY = scrollRegion.scrollTop;
         const shouldShowNav =
           currentScrollY <= lastScrollY || currentScrollY < 50;
         modalNav.style.transform = shouldShowNav
@@ -1145,6 +1147,12 @@ class bitvidApp {
     if (this.playerModal) {
       this.playerModal.style.display = "flex";
       this.playerModal.classList.remove("hidden");
+      document.body.classList.add("modal-open");
+      document.documentElement.classList.add("modal-open");
+      const scrollRegion =
+        this.playerModal.querySelector(".player-modal__content") ||
+        this.playerModal;
+      scrollRegion.scrollTop = 0;
     }
     this.applyModalLoadingPoster();
   }
@@ -5775,6 +5783,8 @@ class bitvidApp {
       this.playerModal.style.display = "none";
       this.playerModal.classList.add("hidden");
     }
+    document.body.classList.remove("modal-open");
+    document.documentElement.classList.remove("modal-open");
     if (typeof this.modalPosterCleanup === "function") {
       this.modalPosterCleanup();
       this.modalPosterCleanup = null;
