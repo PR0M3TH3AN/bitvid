@@ -64,6 +64,12 @@ header img {
   max-width: none;
 }
 
+@media (min-width: 1024px) {
+  header img {
+    height: 5rem;
+  }
+}
+
 .container {
   max-width: 1480px;
   margin: 0 auto;
@@ -92,6 +98,15 @@ header img {
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 2rem;
   padding: 1.5rem 0;
+}
+
+@media (min-width: 1024px) {
+  #videoList,
+  #subscriptionsVideoList,
+  #channelVideoList {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.5rem;
+  }
 }
 
 /* Video Cards */
@@ -231,6 +246,17 @@ header img {
   font-weight: 600;
   color: var(--color-text);
   margin-bottom: 0.75rem;
+}
+
+@media (min-width: 1024px) {
+  .video-card .details {
+    padding: 1rem 1rem 1.125rem;
+  }
+
+  .video-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+  }
 }
 
 /* Modal Player */
