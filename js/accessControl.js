@@ -283,6 +283,11 @@ class AccessControl {
       return { ok: false, error: "invalid npub" };
     }
 
+    const normalizedActor = normalizeNpub(actorNpub);
+    if (normalizedActor && normalized === normalizedActor) {
+      return { ok: false, error: "self" };
+    }
+
     if (this.isSuperAdmin(normalized) || this.isAdminEditor(normalized)) {
       return { ok: false, error: "immutable" };
     }

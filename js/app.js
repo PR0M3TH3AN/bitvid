@@ -4304,6 +4304,8 @@ class bitvidApp {
         return "Please provide a valid npub address.";
       case "immutable":
         return "That account cannot be modified.";
+      case "self":
+        return "You cannot blacklist yourself.";
       case "forbidden":
         return "You do not have permission to perform that action.";
       case "nostr-unavailable":
@@ -6913,6 +6915,9 @@ class bitvidApp {
           } else {
             const code = result?.error || "unknown";
             switch (code) {
+              case "self":
+                this.showError("You cannot blacklist yourself.");
+                break;
               case "immutable":
                 this.showError(
                   "Moderators cannot blacklist the super admin or fellow moderators."
