@@ -1,16 +1,14 @@
 <section class="channel-profile-container">
   <!-- Modified banner wrapper for taller, rounded style -->
-  <div
-    class="profile-banner relative mb-6 rounded-lg overflow-hidden shadow-lg"
-  >
+  <div class="profile-banner relative mb-6 rounded-lg shadow-lg">
     <!-- Increase the default height classes -->
     <img
       id="channelBanner"
-      class="w-full h-48 md:h-64 object-cover"
+      class="w-full h-48 md:h-64 object-cover rounded-lg"
       src=""
       alt="Banner"
     />
-    <div class="absolute inset-0 bg-black bg-opacity-50"></div>
+    <div class="absolute inset-0 bg-black bg-opacity-50 rounded-lg"></div>
 
     <div
       class="absolute bottom-4 left-4 right-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
@@ -30,6 +28,18 @@
         </div>
       </div>
       <div class="flex items-center gap-2 self-start sm:self-end">
+        <button
+          id="zapButton"
+          type="button"
+          class="icon-button"
+          aria-label="Send a zap"
+        >
+          <img
+            src="assets/svg/lightning-bolt.svg"
+            alt="Zap"
+            class="icon-image"
+          />
+        </button>
         <button
           id="channelShareBtn"
           type="button"
@@ -115,21 +125,7 @@
 
   <!-- Area for Subscribe/Unsubscribe button -->
   <div class="px-4 my-4">
-    <div class="flex items-center gap-3">
-      <button
-        id="zapButton"
-        type="button"
-        class="icon-button"
-        aria-label="Send a zap"
-      >
-        <img
-          src="assets/svg/lightning-bolt.svg"
-          alt="Zap"
-          class="icon-image"
-        />
-      </button>
-      <div id="subscribeBtnArea" class="hidden"></div>
-    </div>
+    <div id="subscribeBtnArea" class="hidden"></div>
   </div>
 
   <hr class="my-6" />
