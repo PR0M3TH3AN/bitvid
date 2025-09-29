@@ -523,8 +523,6 @@ class bitvidApp {
     this.adminWhitelistList = null;
     this.adminWhitelistEmpty = null;
     this.adminWhitelistSection = null;
-    this.adminWhitelistModeToggle = null;
-    this.adminWhitelistModeWrapper = null;
     this.adminBlacklistInput = null;
     this.adminAddBlacklistBtn = null;
     this.adminBlacklistList = null;
@@ -899,6 +897,12 @@ class bitvidApp {
 
       // 4. Connect to Nostr
       await nostrClient.init();
+
+      try {
+        await accessControl.refresh();
+      } catch (error) {
+        console.warn("Failed to refresh admin lists after connecting to Nostr:", error);
+      }
 
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
@@ -3316,10 +3320,6 @@ class bitvidApp {
         document.getElementById("adminWhitelistInput") || null;
       this.adminAddWhitelistBtn =
         document.getElementById("adminAddWhitelistBtn") || null;
-      this.adminWhitelistModeToggle =
-        document.getElementById("adminWhitelistModeToggle") || null;
-      this.adminWhitelistModeWrapper =
-        document.getElementById("adminWhitelistModeWrapper") || null;
       this.adminBlacklistSection =
         document.getElementById("adminBlacklistSection") || null;
       this.adminBlacklistEmpty =
@@ -3451,23 +3451,10 @@ class bitvidApp {
         });
       }
 
-      if (
-        this.adminWhitelistModeToggle &&
-        this.adminWhitelistModeToggle.dataset.bound !== "true"
-      ) {
-        this.adminWhitelistModeToggle.dataset.bound = "true";
-        this.adminWhitelistModeToggle.addEventListener("change", (event) => {
-          const enabled = event.target instanceof HTMLInputElement
-            ? event.target.checked
-            : false;
-          this.handleWhitelistModeToggle(enabled);
-        });
-      }
-
       this.selectProfilePane("account");
       this.populateProfileRelays();
       this.populateBlockedList();
-      this.refreshAdminPaneState();
+      await this.refreshAdminPaneState();
 
       console.log("Profile modal initialization successful");
       return true;
@@ -3551,12 +3538,16 @@ class bitvidApp {
     });
   }
 
-  openProfileModal() {
+  async openProfileModal() {
     if (!this.profileModal) {
       return;
     }
 
-    this.refreshAdminPaneState();
+    try {
+      await this.refreshAdminPaneState();
+    } catch (error) {
+      console.error("Failed to refresh admin pane while opening profile modal:", error);
+    }
 
     this.selectProfilePane("account");
     this.populateProfileRelays();
@@ -3821,10 +3812,17 @@ class bitvidApp {
     });
   }
 
-  refreshAdminPaneState() {
-    accessControl.refresh();
+  async refreshAdminPaneState() {
     const adminNav = this.profileNavButtons.admin;
     const adminPane = this.profilePaneElements.admin;
+
+    let loadError = null;
+    this.setAdminLoading(true);
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      loadError = error;
+    }
 
     const actorNpub = this.getCurrentUserNpub();
     const canEdit = !!actorNpub && accessControl.canEditAdminLists(actorNpub);
@@ -3842,6 +3840,18 @@ class bitvidApp {
       adminPane.setAttribute("aria-hidden", (!canEdit).toString());
     }
 
+    if (loadError) {
+      console.error("Failed to load admin lists:", loadError);
+      const message =
+        loadError?.code === "nostr-unavailable"
+          ? "Unable to reach Nostr relays. Moderation lists may be out of date."
+          : "Unable to load moderation lists. Please try again.";
+      this.showError(message);
+      this.clearAdminLists();
+      this.setAdminLoading(false);
+      return;
+    }
+
     if (!canEdit) {
       this.clearAdminLists();
       if (typeof actorNpub !== "string" || !actorNpub) {
@@ -3850,6 +3860,7 @@ class bitvidApp {
       if (adminNav instanceof HTMLElement && adminNav.classList.contains("bg-gray-800")) {
         this.selectProfilePane("account");
       }
+      this.setAdminLoading(false);
       return;
     }
 
@@ -3857,17 +3868,50 @@ class bitvidApp {
       this.adminModeratorsSection.classList.toggle("hidden", !isSuperAdmin);
       this.adminModeratorsSection.setAttribute("aria-hidden", (!isSuperAdmin).toString());
     }
-    if (this.adminWhitelistModeWrapper instanceof HTMLElement) {
-      this.adminWhitelistModeWrapper.classList.toggle("hidden", !isSuperAdmin);
-    }
-    if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
-      this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
+    this.populateAdminLists();
+    this.setAdminLoading(false);
+  }
+
+  storeAdminEmptyMessages() {
+    const capture = (element) => {
+      if (element instanceof HTMLElement && !element.dataset.defaultMessage) {
+        element.dataset.defaultMessage = element.textContent || "";
+      }
+    };
+
+    capture(this.adminModeratorsEmpty);
+    capture(this.adminWhitelistEmpty);
+    capture(this.adminBlacklistEmpty);
+  }
+
+  setAdminLoading(isLoading) {
+    this.storeAdminEmptyMessages();
+    if (this.profilePaneElements.admin instanceof HTMLElement) {
+      this.profilePaneElements.admin.setAttribute(
+        "aria-busy",
+        isLoading ? "true" : "false"
+      );
     }
 
-    this.populateAdminLists();
+    const toggleMessage = (element, message) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      if (isLoading) {
+        element.textContent = message;
+        element.classList.remove("hidden");
+      } else {
+        element.textContent = element.dataset.defaultMessage || element.textContent;
+      }
+    };
+
+    toggleMessage(this.adminModeratorsEmpty, "Loading moderators…");
+    toggleMessage(this.adminWhitelistEmpty, "Loading whitelist…");
+    toggleMessage(this.adminBlacklistEmpty, "Loading blacklist…");
   }
 
   clearAdminLists() {
+    this.storeAdminEmptyMessages();
     if (this.adminModeratorList) {
       this.adminModeratorList.innerHTML = "";
     }
@@ -3878,16 +3922,22 @@ class bitvidApp {
       this.adminBlacklistList.innerHTML = "";
     }
     if (this.adminModeratorsEmpty instanceof HTMLElement) {
+      this.adminModeratorsEmpty.textContent =
+        this.adminModeratorsEmpty.dataset.defaultMessage ||
+        this.adminModeratorsEmpty.textContent;
       this.adminModeratorsEmpty.classList.remove("hidden");
     }
     if (this.adminWhitelistEmpty instanceof HTMLElement) {
+      this.adminWhitelistEmpty.textContent =
+        this.adminWhitelistEmpty.dataset.defaultMessage ||
+        this.adminWhitelistEmpty.textContent;
       this.adminWhitelistEmpty.classList.remove("hidden");
     }
     if (this.adminBlacklistEmpty instanceof HTMLElement) {
+      this.adminBlacklistEmpty.textContent =
+        this.adminBlacklistEmpty.dataset.defaultMessage ||
+        this.adminBlacklistEmpty.textContent;
       this.adminBlacklistEmpty.classList.remove("hidden");
-    }
-    if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
-      this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
     }
   }
 
@@ -4018,7 +4068,20 @@ class bitvidApp {
     return actorNpub;
   }
 
-  handleAddModerator() {
+  async handleAddModerator() {
+    let preloadError = null;
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      preloadError = error;
+      console.error("Failed to load admin lists before adding moderator:", error);
+    }
+
+    if (preloadError) {
+      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
+      return;
+    }
+
     const actorNpub = this.ensureAdminActor(true);
     if (!actorNpub || !this.adminModeratorInput) {
       return;
@@ -4036,7 +4099,7 @@ class bitvidApp {
     }
 
     try {
-      const result = accessControl.addModerator(actorNpub, value);
+      const result = await accessControl.addModerator(actorNpub, value);
       if (!result.ok) {
         this.showError(this.describeAdminError(result.error));
         return;
@@ -4044,7 +4107,7 @@ class bitvidApp {
 
       this.adminModeratorInput.value = "";
       this.showSuccess("Moderator added successfully.");
-      this.onAccessControlUpdated();
+      await this.onAccessControlUpdated();
     } finally {
       if (this.adminAddModeratorBtn) {
         this.adminAddModeratorBtn.disabled = false;
@@ -4053,7 +4116,24 @@ class bitvidApp {
     }
   }
 
-  handleRemoveModerator(npub, button) {
+  async handleRemoveModerator(npub, button) {
+    let preloadError = null;
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      preloadError = error;
+      console.error("Failed to load admin lists before removing moderator:", error);
+    }
+
+    if (preloadError) {
+      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
     const actorNpub = this.ensureAdminActor(true);
     if (!actorNpub) {
       if (button instanceof HTMLElement) {
@@ -4063,7 +4143,7 @@ class bitvidApp {
       return;
     }
 
-    const result = accessControl.removeModerator(actorNpub, npub);
+    const result = await accessControl.removeModerator(actorNpub, npub);
     if (!result.ok) {
       this.showError(this.describeAdminError(result.error));
       if (button instanceof HTMLElement) {
@@ -4074,10 +4154,27 @@ class bitvidApp {
     }
 
     this.showSuccess("Moderator removed.");
-    this.onAccessControlUpdated();
+    await this.onAccessControlUpdated();
   }
 
-  handleAdminListMutation(listType, action, explicitNpub = null, sourceButton = null) {
+  async handleAdminListMutation(listType, action, explicitNpub = null, sourceButton = null) {
+    let preloadError = null;
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      preloadError = error;
+      console.error("Failed to load admin lists before updating entries:", error);
+    }
+
+    if (preloadError) {
+      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
+      if (sourceButton instanceof HTMLElement) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
     const actorNpub = this.ensureAdminActor(false);
     if (!actorNpub) {
       if (sourceButton instanceof HTMLElement) {
@@ -4115,12 +4212,12 @@ class bitvidApp {
     let result;
     if (isWhitelist) {
       result = isAdd
-        ? accessControl.addToWhitelist(actorNpub, target)
-        : accessControl.removeFromWhitelist(actorNpub, target);
+        ? await accessControl.addToWhitelist(actorNpub, target)
+        : await accessControl.removeFromWhitelist(actorNpub, target);
     } else {
       result = isAdd
-        ? accessControl.addToBlacklist(actorNpub, target)
-        : accessControl.removeFromBlacklist(actorNpub, target);
+        ? await accessControl.addToBlacklist(actorNpub, target)
+        : await accessControl.removeFromBlacklist(actorNpub, target);
     }
 
     if (!result.ok) {
@@ -4144,7 +4241,7 @@ class bitvidApp {
       ? "Added to the blacklist."
       : "Removed from the blacklist.";
     this.showSuccess(successMessage);
-    this.onAccessControlUpdated();
+    await this.onAccessControlUpdated();
 
     if (buttonToToggle instanceof HTMLElement) {
       buttonToToggle.disabled = false;
@@ -4160,39 +4257,28 @@ class bitvidApp {
         return "That account cannot be modified.";
       case "forbidden":
         return "You do not have permission to perform that action.";
+      case "nostr-unavailable":
+        return "Unable to reach the configured Nostr relays. Please retry once your connection is restored.";
+      case "nostr-extension-missing":
+        return "Connect a Nostr extension before editing moderation lists.";
+      case "signature-failed":
+        return "We couldn’t sign the update with your Nostr key. Please reconnect your extension and try again.";
+      case "publish-failed":
+        return "Failed to publish the update to Nostr relays. Please try again.";
+      case "storage-error":
+        return "Unable to update moderation settings. Please try again.";
       default:
         return "Unable to update moderation settings. Please try again.";
     }
   }
 
-  handleWhitelistModeToggle(enabled) {
-    const actorNpub = this.ensureAdminActor(true);
-    if (!actorNpub) {
-      if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
-        this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
-      }
-      return;
+  async onAccessControlUpdated() {
+    try {
+      await this.refreshAdminPaneState();
+    } catch (error) {
+      console.error("Failed to refresh admin pane after update:", error);
     }
 
-    const result = accessControl.setWhitelistMode(actorNpub, enabled);
-    if (!result.ok) {
-      this.showError(this.describeAdminError(result.error));
-      if (this.adminWhitelistModeToggle instanceof HTMLInputElement) {
-        this.adminWhitelistModeToggle.checked = accessControl.whitelistMode();
-      }
-      return;
-    }
-
-    this.showSuccess(
-      enabled
-        ? "Whitelist mode enabled. Only approved creators will appear in feeds."
-        : "Whitelist mode disabled. All creators except those blacklisted will appear."
-    );
-    this.onAccessControlUpdated();
-  }
-
-  onAccessControlUpdated() {
-    this.refreshAdminPaneState();
     this.loadVideos(true).catch((error) => {
       console.error("Failed to refresh videos after admin update:", error);
     });
@@ -4213,7 +4299,9 @@ class bitvidApp {
     // 2) Profile button
     if (this.profileButton) {
       this.profileButton.addEventListener("click", () => {
-        this.openProfileModal();
+        this.openProfileModal().catch((error) => {
+          console.error("Failed to open profile modal:", error);
+        });
       });
     }
 
@@ -4823,7 +4911,7 @@ class bitvidApp {
       return;
     }
 
-    this.refreshAdminPaneState();
+    await this.refreshAdminPaneState();
 
     // Hide login button if present
     if (this.loginButton) {
@@ -4907,7 +4995,7 @@ class bitvidApp {
     // Clear localStorage
     localStorage.removeItem("userPubKey");
 
-    this.refreshAdminPaneState();
+    await this.refreshAdminPaneState();
 
     // Refresh the video list so user sees only public videos again
     await this.loadVideos();
@@ -5346,7 +5434,11 @@ class bitvidApp {
   async loadVideos(forceFetch = false) {
     console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
-    accessControl.refresh();
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      console.warn("Failed to ensure admin lists were loaded before fetching videos:", error);
+    }
 
     const shouldIncludeVideo = (video) => {
       if (!video || typeof video !== "object") {
@@ -7649,7 +7741,11 @@ class bitvidApp {
       return;
     }
 
-    accessControl.refresh();
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      console.warn("Failed to ensure admin lists were loaded before playback:", error);
+    }
     const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
     if (!accessControl.canAccess(authorNpub)) {
       if (accessControl.isBlacklisted(authorNpub)) {

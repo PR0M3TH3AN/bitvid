@@ -251,7 +251,11 @@ async function loadUserProfile(pubkey) {
  */
 async function loadUserVideos(pubkey) {
   try {
-    accessControl.refresh();
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      console.warn("Failed to ensure admin lists were loaded before channel fetch:", error);
+    }
 
     // 1) Build filter for videos from this pubkey
     const filter = {

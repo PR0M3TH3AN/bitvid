@@ -3,10 +3,10 @@
 export const isDevMode = true; // Set to false for production
 
 // -----------------------------------------------------------------------------
-// Admin governance (v1 local mode)
+// Admin governance — production defaults rely on remote Nostr lists
 // -----------------------------------------------------------------------------
 
-export const ADMIN_LIST_MODE = "local"; // Future: "nostr"
+export const ADMIN_LIST_MODE = "nostr";
 export const ADMIN_SUPER_NPUB =
   "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
 export const ADMIN_EDITORS_NPUBS = []; // Default moderators (optional)
