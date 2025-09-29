@@ -1,0 +1,119 @@
+<div
+  id="nsecLoginModal"
+  class="fixed inset-0 z-50 hidden"
+  style="background: transparent"
+>
+  <div
+    class="absolute inset-0 z-10"
+    style="background-color: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);"
+  ></div>
+  <div
+    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
+  >
+    <div
+      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-3xl my-8 rounded-lg overflow-hidden shadow-xl border border-gray-700"
+    >
+      <div
+        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
+      >
+        <h2 class="text-xl font-bold text-white">Import NSEC</h2>
+        <button
+          id="closeNsecLoginModal"
+          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-emerald-500"
+          type="button"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-6 h-6 text-gray-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="p-6 space-y-6 text-sm text-gray-200">
+        <p class="text-gray-300">
+          Paste your <span class="font-mono text-emerald-300">nsec1...</span> key, choose a strong passphrase, and we'll encrypt it locally
+          (NIP-49) before storing anything on this device.
+        </p>
+        <form id="nsecLoginForm" class="space-y-5">
+          <div>
+            <label for="nsecInput" class="block text-xs uppercase tracking-wide text-gray-400 mb-2">Nostr Secret Key</label>
+            <textarea
+              id="nsecInput"
+              class="w-full bg-gray-800 border border-gray-700 rounded-md p-3 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
+              rows="3"
+              placeholder="nsec1..."
+              required
+              spellcheck="false"
+            ></textarea>
+          </div>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="md:col-span-1">
+              <label for="nsecPassphrase" class="block text-xs uppercase tracking-wide text-gray-400 mb-2">Passphrase</label>
+              <input
+                id="nsecPassphrase"
+                type="password"
+                class="w-full bg-gray-800 border border-gray-700 rounded-md p-3 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                autocomplete="new-password"
+                required
+              />
+            </div>
+            <div class="md:col-span-1">
+              <label for="nsecPassphraseConfirm" class="block text-xs uppercase tracking-wide text-gray-400 mb-2">Confirm Passphrase</label>
+              <input
+                id="nsecPassphraseConfirm"
+                type="password"
+                class="w-full bg-gray-800 border border-gray-700 rounded-md p-3 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                autocomplete="new-password"
+                required
+              />
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <input
+              id="nsecSaveEncrypted"
+              type="checkbox"
+              class="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-emerald-500 focus:ring-emerald-500"
+              checked
+            />
+            <label for="nsecSaveEncrypted" class="text-sm text-gray-300 leading-6">
+              Save encrypted key on this device (IndexedDB, NIP-49). Passphrase never leaves your browser.
+            </label>
+          </div>
+          <div class="text-xs text-gray-400" id="nsecPassphraseHint">
+            Strength: <span id="nsecPassphraseStrength" class="font-semibold text-gray-300">—</span>
+          </div>
+          <div
+            id="nsecLoginError"
+            class="hidden bg-red-900/70 border border-red-600 text-red-100 rounded-md px-3 py-2 text-sm"
+            role="alert"
+          ></div>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex gap-3">
+              <button
+                id="submitNsecLogin"
+                type="submit"
+                class="inline-flex items-center justify-center px-4 py-2 rounded-md bg-emerald-500 text-sm font-semibold text-white hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              >
+                Import &amp; Unlock
+              </button>
+              <button
+                id="cancelNsecLogin"
+                type="button"
+                class="inline-flex items-center justify-center px-4 py-2 rounded-md bg-gray-700 text-sm font-semibold text-gray-200 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              >
+                Cancel
+              </button>
+            </div>
+            <p class="text-xs text-gray-400">
+              Encryption uses scrypt (<span id="nsecKdfLabel">log<sub>2</sub>N=20</span>) + XChaCha20-Poly1305 in a dedicated worker.
+            </p>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

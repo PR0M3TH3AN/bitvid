@@ -1,0 +1,85 @@
+<div
+  id="unlockModal"
+  class="fixed inset-0 z-50 hidden"
+  style="background: transparent"
+>
+  <div
+    class="absolute inset-0 z-10"
+    style="background-color: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);"
+  ></div>
+  <div
+    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
+  >
+    <div
+      class="modal-content bg-gray-900 w-full max-w-md my-24 rounded-lg overflow-hidden shadow-xl border border-gray-700"
+    >
+      <div
+        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
+      >
+        <h2 class="text-xl font-bold text-white">Unlock Encrypted Key</h2>
+        <button
+          id="closeUnlockModal"
+          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-emerald-500"
+          type="button"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-6 h-6 text-gray-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="p-6 space-y-5 text-sm text-gray-200">
+        <p class="text-gray-300">
+          An encrypted key is stored on this device. Enter your passphrase to unlock it for this session.
+        </p>
+        <form id="unlockForm" class="space-y-4">
+          <div>
+            <label for="unlockPassphrase" class="block text-xs uppercase tracking-wide text-gray-400 mb-2">Passphrase</label>
+            <input
+              id="unlockPassphrase"
+              type="password"
+              class="w-full bg-gray-800 border border-gray-700 rounded-md p-3 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              autocomplete="current-password"
+              required
+            />
+          </div>
+          <div
+            id="unlockError"
+            class="hidden bg-red-900/70 border border-red-600 text-red-100 rounded-md px-3 py-2 text-sm"
+            role="alert"
+          ></div>
+          <div class="flex flex-col gap-3">
+            <button
+              id="submitUnlock"
+              type="submit"
+              class="inline-flex items-center justify-center px-4 py-2 rounded-md bg-emerald-500 text-sm font-semibold text-white hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+            >
+              Unlock Session
+            </button>
+            <div class="flex flex-col gap-2 text-xs text-gray-400">
+              <button
+                id="unlockReimport"
+                type="button"
+                class="text-left text-emerald-300 hover:text-emerald-200 underline underline-offset-2"
+              >
+                Re-import a different NSEC
+              </button>
+              <button
+                id="unlockForget"
+                type="button"
+                class="text-left text-red-300 hover:text-red-200 underline underline-offset-2"
+              >
+                Forget this device (delete encrypted key)
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

@@ -2,6 +2,7 @@
 
 import { loadView } from "./viewManager.js";
 import { nostrClient } from "./nostr.js";
+import { logout as softLogout } from "./auth.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
 import { accessControl, normalizeNpub } from "./accessControl.js";
@@ -5317,6 +5318,7 @@ class bitvidApp {
    * Logout logic
    */
   async logout() {
+    softLogout();
     nostrClient.logout();
     this.pubkey = null;
     this.currentUserNpub = null;
