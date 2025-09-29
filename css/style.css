@@ -301,23 +301,47 @@ header img {
 
 #playerModal .player-modal__video {
   width: 100%;
-  background-color: #000;
   position: sticky;
   top: 0;
   z-index: 51;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(0.75rem, 3.5vw, 2.5rem);
+  background: radial-gradient(
+    120% 120% at 50% 0%,
+    rgba(59, 130, 246, 0.22) 0%,
+    rgba(2, 6, 23, 0.95) 55%,
+    rgba(2, 6, 23, 1) 100%
+  );
+  border-bottom: 0.0625rem solid rgba(59, 130, 246, 0.18);
+  box-shadow: inset 0 -0.0625rem 0 rgba(148, 163, 184, 0.15);
 }
 
 #playerModal .player-modal__video video {
   width: 100%;
   aspect-ratio: 16 / 9;
   background-color: #000;
+  border-radius: 1rem;
+  display: block;
+  box-shadow: 0 1.5rem 3.75rem rgba(2, 6, 23, 0.65);
+  max-height: min(80vh, calc(100vw * 9 / 16));
+  object-fit: contain;
 }
 
 #playerModal .player-modal__info {
   flex: 0 0 auto;
-  padding: 1.5rem;
-  padding-bottom: 3rem;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
+  padding-bottom: clamp(2.5rem, 6vw, 4rem);
+  background: linear-gradient(
+    180deg,
+    rgba(30, 64, 175, 0.22) 0%,
+    rgba(15, 23, 42, 0.96) 45%,
+    rgba(8, 11, 30, 0.98) 100%
+  );
+  border-top: 0.0625rem solid rgba(59, 130, 246, 0.18);
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.1), 0 -1.5rem 3.5rem rgba(2, 6, 23, 0.65);
 }
 
 html.modal-open {
@@ -384,6 +408,40 @@ body.modal-open #app {
     max-width: none;
     border-radius: 0;
   }
+}
+
+#modalNav.modal-nav,
+.modal-nav {
+  background: linear-gradient(
+    180deg,
+    rgba(30, 58, 138, 0.92) 0%,
+    rgba(15, 23, 42, 0.92) 100%
+  );
+  backdrop-filter: blur(0.875rem);
+  -webkit-backdrop-filter: blur(0.875rem);
+  border-bottom: 0.0625rem solid rgba(59, 130, 246, 0.35);
+  box-shadow: 0 1.5rem 3.5rem rgba(2, 6, 23, 0.6);
+}
+
+.modal-nav .flex {
+  position: relative;
+  gap: 0.75rem;
+}
+
+.modal-nav .icon-button {
+  background: rgba(15, 23, 42, 0.55);
+  border: 0.0625rem solid rgba(59, 130, 246, 0.2);
+  box-shadow: 0 1rem 2.25rem rgba(2, 6, 23, 0.45);
+}
+
+.modal-nav .icon-button:hover {
+  background: rgba(37, 99, 235, 0.65);
+  border-color: rgba(96, 165, 250, 0.45);
+}
+
+.modal-nav .icon-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.1875rem rgba(37, 99, 235, 0.45);
 }
 
 #modalNav {
@@ -619,15 +677,18 @@ footer a:hover {
 
 /* Override default button styles for back button */
 .back-button {
-  background: rgba(0, 0, 0, 0.5) !important;
+  background: rgba(15, 23, 42, 0.6) !important;
   padding: 0 !important;
-  color: rgb(209 213 219) !important;
+  color: rgb(226 232 240) !important;
   transform: none !important;
+  border: 0.0625rem solid rgba(59, 130, 246, 0.25) !important;
+  box-shadow: 0 0.75rem 1.75rem rgba(2, 6, 23, 0.55);
 }
 
 .back-button:hover {
-  background: rgba(0, 0, 0, 0.7) !important;
+  background: rgba(37, 99, 235, 0.65) !important;
   color: white !important;
+  border-color: rgba(96, 165, 250, 0.45) !important;
 }
 
 /* Modal Container */
