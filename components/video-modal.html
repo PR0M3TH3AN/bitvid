@@ -5,7 +5,7 @@
       <!-- Navigation bar - sliding at top -->
       <div
         id="modalNav"
-        class="sticky top-0 z-60 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-150"
+        class="modal-nav sticky top-0 z-60 transition-transform duration-150"
       >
         <div class="flex items-center px-6 py-4">
           <button
@@ -119,11 +119,11 @@
         </div>
       </div>
 
-      <div class="player-modal__video">
+      <div class="player-modal__video modal-video-shell">
         <video id="modalVideo" class="w-full aspect-video" controls></video>
       </div>
 
-      <div class="player-modal__info">
+      <div class="player-modal__info modal-info-panel">
         <!-- Title and icons row -->
         <div class="flex items-center justify-between mb-2">
           <h2 id="videoTitle" class="text-2xl font-bold text-white"></h2>
