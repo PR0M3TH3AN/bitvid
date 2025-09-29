@@ -1148,13 +1148,11 @@ class bitvidApp {
       this.playerModal.style.display = "flex";
       this.playerModal.classList.remove("hidden");
       document.body.classList.add("modal-open");
+      document.documentElement.classList.add("modal-open");
       const scrollRegion =
-        this.playerModal.querySelector(".player-modal__content");
-      if (scrollRegion) {
-        scrollRegion.scrollTop = 0;
-      } else {
-        this.playerModal.scrollTop = 0;
-      }
+        this.playerModal.querySelector(".player-modal__content") ||
+        this.playerModal;
+      scrollRegion.scrollTop = 0;
     }
     this.applyModalLoadingPoster();
   }
@@ -5786,6 +5784,7 @@ class bitvidApp {
       this.playerModal.classList.add("hidden");
     }
     document.body.classList.remove("modal-open");
+    document.documentElement.classList.remove("modal-open");
     if (typeof this.modalPosterCleanup === "function") {
       this.modalPosterCleanup();
       this.modalPosterCleanup = null;
