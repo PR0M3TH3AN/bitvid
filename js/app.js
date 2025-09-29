@@ -1145,6 +1145,7 @@ class bitvidApp {
     if (this.playerModal) {
       this.playerModal.style.display = "flex";
       this.playerModal.classList.remove("hidden");
+      document.body.classList.add("modal-open");
     }
     this.applyModalLoadingPoster();
   }
@@ -5775,6 +5776,7 @@ class bitvidApp {
       this.playerModal.style.display = "none";
       this.playerModal.classList.add("hidden");
     }
+    document.body.classList.remove("modal-open");
     if (typeof this.modalPosterCleanup === "function") {
       this.modalPosterCleanup();
       this.modalPosterCleanup = null;

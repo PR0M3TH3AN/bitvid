@@ -247,14 +247,14 @@ header img {
 #playerModal {
   position: fixed;
   inset: 0;
-  background-color: rgb(0 0 0 / 0.9); /* You can adjust opacity if needed */
-  z-index: 50;
-  display: none; /* Hidden by default */
+  z-index: 100;
+  display: none;
   flex-direction: column;
-  overflow-y: auto;
+  align-items: stretch;
+  justify-content: stretch;
+  background-color: #000;
+  overflow: hidden;
   overscroll-behavior: contain;
-  backdrop-filter: blur(0.625rem);
-  -webkit-backdrop-filter: blur(0.625rem); /* For Safari support */
 }
 
 #nostrFormModal,
@@ -267,6 +267,58 @@ header img {
 /* If you ever want to show it, add ".flex" class dynamically */
 #playerModal.flex {
   display: flex;
+}
+
+#playerModal .modal-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+#playerModal .modal-content {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  background-color: #0f172a;
+  overflow: hidden;
+  box-shadow: none;
+  animation: fadeIn var(--modal-motion-duration) ease-out;
+}
+
+#playerModal .video-container {
+  width: 100%;
+  background-color: #000;
+  border-radius: 0;
+  position: sticky;
+  top: 0;
+  z-index: 51;
+}
+
+#playerModal .video-container video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background-color: #000;
+}
+
+#playerModal .video-info {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+body.modal-open {
+  overflow: hidden;
 }
 
 /* Modal Content Container */
@@ -322,9 +374,9 @@ header img {
 /* Responsive Adjustments */
 @media (min-width: 768px) {
   #playerModal {
-    padding: 2rem;
-    align-items: center;
-    justify-content: center;
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
   }
 
   .modal-content {
@@ -334,8 +386,19 @@ header img {
     overflow: visible;
   }
 
+  #playerModal .modal-content {
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    overflow: hidden;
+  }
+
   .video-container {
     position: relative;
+  }
+
+  #playerModal .video-container {
+    position: sticky;
   }
 }
 
@@ -592,22 +655,9 @@ footer a:hover {
   .modal-container {
     padding: 2rem;
   }
-}
 
-@media (min-width: 1024px) {
   #playerModal .modal-container {
     padding: 0;
-  }
-
-  #playerModal .modal-content {
-    max-width: 100%;
-    width: 100%;
-    height: 100%;
-    border-radius: 0;
-  }
-
-  #playerModal .video-container {
-    border-radius: 0;
   }
 }
 
