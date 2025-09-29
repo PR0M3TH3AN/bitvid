@@ -168,3 +168,57 @@ export function normalizeAndAugmentMagnet(rawValue, { ws = "", xs = "" } = {}) {
 
   return `${normalizedScheme}${queryString ? `?${queryString}` : ""}${fragment}`;
 }
+
+export function extractMagnetHints(rawValue) {
+  const hints = { ws: "", xs: "" };
+  if (typeof rawValue !== "string") {
+    return hints;
+  }
+
+  const trimmed = rawValue.trim();
+  if (!trimmed || !trimmed.toLowerCase().startsWith("magnet:")) {
+    return hints;
+  }
+
+  const queryIndex = trimmed.indexOf("?");
+  if (queryIndex === -1 || queryIndex === trimmed.length - 1) {
+    return hints;
+  }
+
+  const query = trimmed.slice(queryIndex + 1);
+  if (!query) {
+    return hints;
+  }
+
+  const parts = query.split("&");
+  for (const part of parts) {
+    if (!part) {
+      continue;
+    }
+    const [rawKey, rawValue = ""] = part.split("=", 2);
+    if (!rawKey) {
+      continue;
+    }
+    const lowerKey = rawKey.trim().toLowerCase();
+    if (lowerKey !== "ws" && lowerKey !== "xs") {
+      continue;
+    }
+    if (hints[lowerKey]) {
+      continue;
+    }
+
+    let decoded = rawValue;
+    try {
+      decoded = decodeURIComponent(rawValue);
+    } catch (err) {
+      // Ignore decode errors and use the raw value.
+    }
+    const clean = typeof decoded === "string" ? decoded.trim() : "";
+    if (!clean) {
+      continue;
+    }
+    hints[lowerKey] = clean;
+  }
+
+  return hints;
+}

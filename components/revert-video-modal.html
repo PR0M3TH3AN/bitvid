@@ -1,0 +1,121 @@
+<!-- components/revert-video-modal.html -->
+<div
+  id="revertVideoModal"
+  class="fixed inset-0 z-50 hidden"
+  style="background: transparent"
+>
+  <div
+    id="revertVideoModalOverlay"
+    class="absolute inset-0 z-10"
+    style="
+      background-color: rgba(0, 0, 0, 0.9);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    "
+  ></div>
+
+  <div
+    class="relative modal-container h-full w-full flex items-start md:items-center justify-center overflow-y-auto z-20"
+  >
+    <div
+      class="modal-content bg-gray-900 w-full max-w-[95%] lg:max-w-5xl my-0 rounded-lg overflow-hidden relative"
+      style="max-height: 92vh"
+    >
+      <div
+        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-150 p-4 flex items-center justify-between"
+      >
+        <div class="flex flex-col">
+          <h2 id="revertModalTitle" class="text-xl font-bold text-white">
+            Revert Video Note
+          </h2>
+          <p id="revertModalSubtitle" class="text-xs text-gray-400">
+            Review previous versions before restoring an older state.
+          </p>
+        </div>
+        <button
+          id="closeRevertVideoModal"
+          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-6 h-6 text-gray-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-6 overflow-y-auto" style="max-height: calc(92vh - 4rem)">
+        <div class="rounded-md border border-gray-700 bg-gray-800/60 p-4 text-sm text-gray-300">
+          <p>
+            Selecting an older version will mark any newer edits as reverted.
+            The previous revision will become the active note on the relays.
+          </p>
+          <p class="mt-2 text-xs text-gray-400">
+            Versions are grouped by their <code class="px-1 py-0.5 bg-gray-900/60 rounded border border-gray-700 text-[0.7rem]">d</code>
+            tag or shared <code class="px-1 py-0.5 bg-gray-900/60 rounded border border-gray-700 text-[0.7rem]">videoRootId</code>. This ensures legacy
+            clients see consistent history when multiple edits were published.
+          </p>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-[minmax(240px,280px)_1fr]">
+          <aside class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-gray-200">Revision history</h3>
+              <span
+                id="revertHistoryCount"
+                class="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400"
+              ></span>
+            </div>
+            <div
+              id="revertVersionsList"
+              class="space-y-2 overflow-y-auto pr-1"
+              style="max-height: 48vh"
+            ></div>
+          </aside>
+
+          <section
+            id="revertVersionDetails"
+            class="rounded-lg border border-gray-800 bg-gray-900/70 p-4 text-sm text-gray-200"
+            aria-live="polite"
+          >
+            <div id="revertVersionPlaceholder" class="flex h-full items-center justify-center text-center text-gray-500">
+              Select an earlier revision to inspect its metadata.
+            </div>
+          </section>
+        </div>
+
+        <p
+          id="revertSelectionStatus"
+          class="text-xs text-gray-400"
+        ></p>
+
+        <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            id="cancelRevertVideo"
+            class="w-full sm:w-auto px-4 py-2 rounded-md bg-gray-800 text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            id="confirmRevertVideo"
+            class="w-full sm:w-auto px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500 disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled
+          >
+            Revert to selected version
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

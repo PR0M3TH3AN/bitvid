@@ -5,6 +5,7 @@ import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import { deriveTitleFromEvent, magnetFromText } from "./videoEventUtils.js";
+import { extractMagnetHints } from "./magnet.js";
 
 /**
  * The usual relays
@@ -20,6 +21,7 @@ const RELAY_URLS = [
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const NIP07_LOGIN_TIMEOUT_MS = 15_000; // 15 seconds
 
 // To limit error spam
 let errorLogCount = 0;
@@ -48,6 +50,94 @@ function fakeEncrypt(magnet) {
 }
 function fakeDecrypt(encrypted) {
   return encrypted.split("").reverse().join("");
+}
+
+function decodeNpubToHex(npub) {
+  if (typeof npub !== "string" || !npub.trim()) {
+    return "";
+  }
+
+  if (
+    !window?.NostrTools?.nip19 ||
+    typeof window.NostrTools.nip19.decode !== "function"
+  ) {
+    return "";
+  }
+
+  try {
+    const decoded = window.NostrTools.nip19.decode(npub.trim());
+    if (decoded?.type === "npub" && typeof decoded.data === "string") {
+      return decoded.data;
+    }
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(`[nostr] Failed to decode npub: ${npub}`, error);
+    }
+  }
+  return "";
+}
+
+const DM_PUBLISH_TIMEOUT_MS = 10_000;
+
+function publishEventToRelay(pool, url, event) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finalize = (success, error = null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve({ url, success, error });
+    };
+
+    const timeoutId = setTimeout(() => {
+      finalize(false, new Error("publish timeout"));
+    }, DM_PUBLISH_TIMEOUT_MS);
+
+    try {
+      const pub = pool.publish([url], event);
+
+      if (pub && typeof pub.on === "function") {
+        pub.on("ok", () => {
+          clearTimeout(timeoutId);
+          finalize(true);
+        });
+        pub.on("seen", () => {
+          clearTimeout(timeoutId);
+          finalize(true);
+        });
+        pub.on("failed", (reason) => {
+          clearTimeout(timeoutId);
+          const err =
+            reason instanceof Error
+              ? reason
+              : new Error(String(reason || "publish failed"));
+          finalize(false, err);
+        });
+        return;
+      }
+
+      if (pub && typeof pub.then === "function") {
+        pub
+          .then(() => {
+            clearTimeout(timeoutId);
+            finalize(true);
+          })
+          .catch((error) => {
+            clearTimeout(timeoutId);
+            finalize(false, error);
+          });
+        return;
+      }
+    } catch (error) {
+      clearTimeout(timeoutId);
+      finalize(false, error);
+      return;
+    }
+
+    clearTimeout(timeoutId);
+    finalize(true);
+  });
 }
 
 const EXTENSION_MIME_MAP = {
@@ -195,6 +285,10 @@ function convertEventToVideo(event = {}) {
   const deleted = parsedContent.deleted === true;
   const isPrivate = parsedContent.isPrivate === true;
   const videoRootId = safeTrim(parsedContent.videoRootId) || event.id;
+  const wsField = safeTrim(parsedContent.ws);
+  const xsField = safeTrim(parsedContent.xs);
+  const enableComments =
+    parsedContent.enableComments === false ? false : true;
 
   let infoHash = "";
   const pushInfoHash = (candidate) => {
@@ -281,6 +375,12 @@ function convertEventToVideo(event = {}) {
     };
   }
 
+  const magnetHints = magnet
+    ? extractMagnetHints(magnet)
+    : { ws: "", xs: "" };
+  const ws = wsField || magnetHints.ws || "";
+  const xs = xsField || magnetHints.xs || "";
+
   return {
     id: event.id,
     videoRootId,
@@ -295,6 +395,9 @@ function convertEventToVideo(event = {}) {
     description,
     mode,
     deleted,
+    ws,
+    xs,
+    enableComments,
     pubkey: event.pubkey,
     created_at: event.created_at,
     tags,
@@ -492,13 +595,57 @@ class NostrClient {
    */
   async login() {
     try {
-      if (!window.nostr) {
+      const extension = window.nostr;
+      if (!extension) {
         console.log("No Nostr extension found");
         throw new Error(
           "Please install a Nostr extension (Alby, nos2x, etc.)."
         );
       }
-      const pubkey = await window.nostr.getPublicKey();
+
+      if (typeof extension.getPublicKey !== "function") {
+        throw new Error(
+          "This NIP-07 extension is missing getPublicKey support. Please update the extension."
+        );
+      }
+
+      if (typeof extension.enable === "function") {
+        if (isDevMode) {
+          console.log("Requesting permissions from NIP-07 extension...");
+        }
+        try {
+          await extension.enable();
+        } catch (enableErr) {
+          throw new Error(
+            enableErr && enableErr.message
+              ? enableErr.message
+              : "The NIP-07 extension denied the permission request."
+          );
+        }
+      }
+
+      let timeoutId;
+      const pubkey = await Promise.race([
+        extension.getPublicKey(),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(
+              new Error(
+                "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again."
+              )
+            );
+          }, NIP07_LOGIN_TIMEOUT_MS);
+        }),
+      ]).finally(() => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      });
+      if (!pubkey || typeof pubkey !== "string") {
+        throw new Error(
+          "The NIP-07 extension did not return a public key. Please try again."
+        );
+      }
       const npub = window.NostrTools.nip19.npubEncode(pubkey);
 
       if (isDevMode) {
@@ -529,6 +676,108 @@ class NostrClient {
   logout() {
     this.pubkey = null;
     if (isDevMode) console.log("User logged out.");
+  }
+
+  async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null) {
+    const trimmedTarget = typeof targetNpub === "string" ? targetNpub.trim() : "";
+    const trimmedMessage = typeof message === "string" ? message.trim() : "";
+
+    if (!trimmedTarget) {
+      return { ok: false, error: "invalid-target" };
+    }
+
+    if (!trimmedMessage) {
+      return { ok: false, error: "empty-message" };
+    }
+
+    if (!this.pool) {
+      return { ok: false, error: "nostr-uninitialized" };
+    }
+
+    const extension = window?.nostr;
+    if (!extension) {
+      return { ok: false, error: "nostr-extension-missing" };
+    }
+
+    const nip04 = extension.nip04;
+    if (!nip04 || typeof nip04.encrypt !== "function") {
+      return { ok: false, error: "nip04-unavailable" };
+    }
+
+    if (typeof extension.signEvent !== "function") {
+      return { ok: false, error: "sign-event-unavailable" };
+    }
+
+    let actorHex =
+      typeof actorPubkeyOverride === "string" && actorPubkeyOverride.trim()
+        ? actorPubkeyOverride.trim()
+        : "";
+
+    if (!actorHex && typeof this.pubkey === "string") {
+      actorHex = this.pubkey.trim();
+    }
+
+    if (!actorHex && typeof extension.getPublicKey === "function") {
+      try {
+        actorHex = await extension.getPublicKey();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to fetch actor pubkey from extension:",
+            error
+          );
+        }
+      }
+    }
+
+    if (!actorHex) {
+      return { ok: false, error: "missing-actor-pubkey" };
+    }
+
+    const targetHex = decodeNpubToHex(trimmedTarget);
+    if (!targetHex) {
+      return { ok: false, error: "invalid-target" };
+    }
+
+    let ciphertext = "";
+    try {
+      ciphertext = await nip04.encrypt(targetHex, trimmedMessage);
+    } catch (error) {
+      return { ok: false, error: "encryption-failed", details: error };
+    }
+
+    const event = {
+      kind: 4,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [["p", targetHex]],
+      content: ciphertext,
+      pubkey: actorHex,
+    };
+
+    let signedEvent;
+    try {
+      signedEvent = await extension.signEvent(event);
+    } catch (error) {
+      return { ok: false, error: "signature-failed", details: error };
+    }
+
+    const relays =
+      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
+
+    const publishResults = await Promise.all(
+      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+    );
+
+    const success = publishResults.some((result) => result.success);
+    if (!success) {
+      return {
+        ok: false,
+        error: "publish-failed",
+        details: publishResults.filter((result) => !result.success),
+      };
+    }
+
+    return { ok: true };
   }
 
   /**
@@ -567,6 +816,13 @@ class NostrClient {
     const videoRootId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const dTagValue = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+    const finalEnableComments =
+      videoData.enableComments === false ? false : true;
+    const finalWs =
+      typeof videoData.ws === "string" ? videoData.ws.trim() : "";
+    const finalXs =
+      typeof videoData.xs === "string" ? videoData.xs.trim() : "";
+
     const contentObject = {
       version: 3,
       title: finalTitle,
@@ -578,7 +834,16 @@ class NostrClient {
       videoRootId,
       deleted: false,
       isPrivate: videoData.isPrivate ?? false,
+      enableComments: finalEnableComments,
     };
+
+    if (finalWs) {
+      contentObject.ws = finalWs;
+    }
+
+    if (finalXs) {
+      contentObject.xs = finalXs;
+    }
 
     const event = {
       kind: 30078,
@@ -742,17 +1007,38 @@ class NostrClient {
     const wantPrivate = updatedData.isPrivate ?? baseEvent.isPrivate ?? false;
 
     // Use the new magnet if provided; otherwise, fall back to the decrypted old magnet
+    const magnetEdited = updatedData.magnetEdited === true;
     const newMagnetValue =
       typeof updatedData.magnet === "string" ? updatedData.magnet.trim() : "";
-    let finalPlainMagnet = newMagnetValue || oldPlainMagnet;
+    let finalPlainMagnet = magnetEdited ? newMagnetValue : oldPlainMagnet;
     let finalMagnet =
       wantPrivate && finalPlainMagnet
         ? fakeEncrypt(finalPlainMagnet)
         : finalPlainMagnet;
 
+    const urlEdited = updatedData.urlEdited === true;
     const newUrlValue =
       typeof updatedData.url === "string" ? updatedData.url.trim() : "";
-    const finalUrl = newUrlValue || oldUrl;
+    const finalUrl = urlEdited ? newUrlValue : oldUrl;
+
+    const wsEdited = updatedData.wsEdited === true;
+    const xsEdited = updatedData.xsEdited === true;
+    const newWsValue =
+      typeof updatedData.ws === "string" ? updatedData.ws.trim() : "";
+    const newXsValue =
+      typeof updatedData.xs === "string" ? updatedData.xs.trim() : "";
+    const baseWs =
+      typeof baseEvent.ws === "string" ? baseEvent.ws.trim() : "";
+    const baseXs =
+      typeof baseEvent.xs === "string" ? baseEvent.xs.trim() : "";
+    const finalWs = wsEdited ? newWsValue : baseWs;
+    const finalXs = xsEdited ? newXsValue : baseXs;
+    const finalEnableComments =
+      typeof updatedData.enableComments === "boolean"
+        ? updatedData.enableComments
+        : baseEvent.enableComments === false
+          ? false
+          : true;
 
     // Use the existing videoRootId (or fall back to the base event's ID)
     const oldRootId = baseEvent.videoRootId || baseEvent.id;
@@ -772,7 +1058,16 @@ class NostrClient {
       thumbnail: updatedData.thumbnail ?? baseEvent.thumbnail,
       description: updatedData.description ?? baseEvent.description,
       mode: updatedData.mode ?? baseEvent.mode ?? "live",
+      enableComments: finalEnableComments,
     };
+
+    if (finalWs) {
+      contentObject.ws = finalWs;
+    }
+
+    if (finalXs) {
+      contentObject.xs = finalXs;
+    }
 
     const event = {
       kind: 30078,
@@ -854,21 +1149,26 @@ class NostrClient {
       };
     }
 
-    const dTag = baseEvent.tags.find((t) => t[0] === "d");
-    if (!dTag) {
-      throw new Error(
-        'No "d" tag => cannot revert addressable kind=30078 event.'
-      );
-    }
-    const existingD = dTag[1];
+    const safeTags = Array.isArray(baseEvent.tags) ? baseEvent.tags : [];
+    const dTag = safeTags.find((t) => t[0] === "d");
+    const existingD = dTag ? dTag[1] : null;
 
-    const oldContent = JSON.parse(baseEvent.content || "{}");
+    let oldContent = {};
+    try {
+      oldContent = JSON.parse(baseEvent.content || "{}");
+    } catch (err) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to parse baseEvent.content while reverting:", err);
+      }
+      oldContent = {};
+    }
     const oldVersion = oldContent.version ?? 1;
 
-    let finalRootId = oldContent.videoRootId || null;
-    if (!finalRootId) {
-      finalRootId = `LEGACY:${baseEvent.pubkey}:${existingD}`;
-    }
+    const finalRootId =
+      oldContent.videoRootId ||
+      (existingD
+        ? `LEGACY:${baseEvent.pubkey}:${existingD}`
+        : baseEvent.id);
 
     const contentObject = {
       videoRootId: finalRootId,
@@ -883,14 +1183,16 @@ class NostrClient {
       mode: oldContent.mode || "live",
     };
 
+    const tags = [["t", "video"]];
+    if (existingD) {
+      tags.push(["d", existingD]);
+    }
+
     const event = {
       kind: 30078,
       pubkey,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [
-        ["t", "video"],
-        ["d", existingD],
-      ],
+      tags,
       content: JSON.stringify(contentObject),
     };
 
@@ -1199,6 +1501,134 @@ class NostrClient {
       }
     }
     return null;
+  }
+
+  /**
+   * Ensure we have every historical revision for a given video in memory and
+   * return the complete set sorted newest-first. We primarily group revisions
+   * by their shared `videoRootId`, but fall back to the NIP-33 `d` tag when
+   * working with legacy notes. The explicit `d` tag fetch is important because
+   * relays cannot be queried by values that only exist inside the JSON
+   * content. Without this pass, the UI would occasionally miss mid-history
+   * edits that were published from other devices.
+   */
+  async hydrateVideoHistory(video) {
+    if (!video || typeof video !== "object") {
+      return [];
+    }
+
+    const targetRoot = typeof video.videoRootId === "string" ? video.videoRootId : "";
+    const targetPubkey = typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
+    const findDTagValue = (tags = []) => {
+      if (!Array.isArray(tags)) {
+        return "";
+      }
+      for (const tag of tags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+        if (tag[0] === "d" && typeof tag[1] === "string") {
+          return tag[1];
+        }
+      }
+      return "";
+    };
+
+    const targetDTag = findDTagValue(video.tags);
+
+    const collectLocalMatches = () => {
+      const seen = new Set();
+      const matches = [];
+      for (const candidate of this.allEvents.values()) {
+        if (!candidate || typeof candidate !== "object") {
+          continue;
+        }
+        if (targetPubkey) {
+          const candidatePubkey = typeof candidate.pubkey === "string"
+            ? candidate.pubkey.toLowerCase()
+            : "";
+          if (candidatePubkey !== targetPubkey) {
+            continue;
+          }
+        }
+
+        const candidateRoot =
+          typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
+        const candidateDTag = findDTagValue(candidate.tags);
+
+        const sameRoot = targetRoot && candidateRoot === targetRoot;
+        const sameD = targetDTag && candidateDTag === targetDTag;
+
+        // Legacy fallbacks: some old posts reused only the "d" tag without a
+        // canonical videoRootId. If neither identifier exists we at least keep
+        // the active event so the caller can surface an informative message.
+        const sameLegacyRoot =
+          !targetRoot && candidateRoot && candidateRoot === video.id;
+
+        if (sameRoot || sameD || sameLegacyRoot || candidate.id === video.id) {
+          if (!seen.has(candidate.id)) {
+            seen.add(candidate.id);
+            matches.push(candidate);
+          }
+        }
+      }
+      return matches;
+    };
+
+    let localMatches = collectLocalMatches();
+
+    const shouldFetchFromRelays =
+      localMatches.filter((entry) => !entry.deleted).length <= 1 && targetDTag;
+
+    if (shouldFetchFromRelays && this.pool) {
+      const filter = {
+        kinds: [30078],
+        "#t": ["video"],
+        "#d": [targetDTag],
+        limit: 200,
+      };
+      if (targetPubkey) {
+        filter.authors = [video.pubkey];
+      }
+
+      try {
+        const perRelay = await Promise.all(
+          this.relays.map(async (url) => {
+            try {
+              const events = await this.pool.list([url], [filter]);
+              return events || [];
+            } catch (err) {
+              if (isDevMode) {
+                console.warn(`[nostr] History fetch failed on ${url}:`, err);
+              }
+              return [];
+            }
+          })
+        );
+
+        const merged = perRelay.flat();
+        for (const evt of merged) {
+          try {
+            const parsed = convertEventToVideo(evt);
+            if (!parsed.invalid) {
+              this.allEvents.set(evt.id, parsed);
+            }
+          } catch (err) {
+            if (isDevMode) {
+              console.warn("[nostr] Failed to convert historical event:", err);
+            }
+          }
+        }
+      } catch (err) {
+        if (isDevMode) {
+          console.warn("[nostr] hydrateVideoHistory relay fetch error:", err);
+        }
+      }
+
+      localMatches = collectLocalMatches();
+    }
+
+    return localMatches.sort((a, b) => b.created_at - a.created_at);
   }
 
   getActiveVideos() {

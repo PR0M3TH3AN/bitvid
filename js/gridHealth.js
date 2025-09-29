@@ -110,7 +110,7 @@ function normalizeResult(result) {
   };
 }
 
-function queueProbe(magnet, cacheKey) {
+function queueProbe(magnet, cacheKey, priority = 0) {
   if (!magnet) {
     return Promise.resolve(null);
   }
@@ -125,21 +125,23 @@ function queueProbe(magnet, cacheKey) {
   }
 
   const job = probeQueue
-    .run(() =>
-      torrentClient
-        .probePeers(magnet, {
-          timeoutMs: PROBE_TIMEOUT_MS,
-          maxWebConns: 2,
-          polls: PROBE_POLL_COUNT,
-        })
-        .catch((err) => ({
-          healthy: false,
-          peers: 0,
-          reason: "error",
-          error: err,
-          appendedTrackers: false,
-          hasProbeTrackers: false,
-        }))
+    .run(
+      () =>
+        torrentClient
+          .probePeers(magnet, {
+            timeoutMs: PROBE_TIMEOUT_MS,
+            maxWebConns: 2,
+            polls: PROBE_POLL_COUNT,
+          })
+          .catch((err) => ({
+            healthy: false,
+            peers: 0,
+            reason: "error",
+            error: err,
+            appendedTrackers: false,
+            hasProbeTrackers: false,
+          })),
+      priority
     )
     .then((result) => {
       const normalized = normalizeResult(result);
@@ -163,8 +165,9 @@ function queueProbe(magnet, cacheKey) {
 
 const PROBE_CACHE_TTL_MS = 5 * 60 * 1000;
 const PROBE_TIMEOUT_MS = 8000;
-const PROBE_CONCURRENCY = 3;
+const PROBE_CONCURRENCY = 96;
 const PROBE_POLL_COUNT = 3;
+const PRIORITY_BASELINE = 1_000_000;
 
 class ProbeQueue {
   constructor(max = 2) {
@@ -173,51 +176,72 @@ class ProbeQueue {
     this.queue = [];
   }
 
-  run(task) {
+  run(task, priority = 0) {
     return new Promise((resolve, reject) => {
-      this.queue.push({ task, resolve, reject });
+      const normalizedPriority = Number.isFinite(priority) ? priority : 0;
+      const job = {
+        task,
+        resolve,
+        reject,
+        priority: normalizedPriority,
+      };
+      this.enqueue(job);
       this.drain();
     });
   }
 
+  enqueue(job) {
+    if (!this.queue.length) {
+      this.queue.push(job);
+      return;
+    }
+    const index = this.queue.findIndex(
+      (existing) => existing.priority < job.priority
+    );
+    if (index === -1) {
+      this.queue.push(job);
+    } else {
+      this.queue.splice(index, 0, job);
+    }
+  }
+
   drain() {
-    if (this.running >= this.max) {
-      return;
-    }
-    const job = this.queue.shift();
-    if (!job) {
-      return;
-    }
-    this.running += 1;
-    let finished = false;
-    const finalize = () => {
-      if (finished) {
+    while (this.running < this.max && this.queue.length > 0) {
+      const job = this.queue.shift();
+      if (!job) {
         return;
       }
-      finished = true;
-      this.running -= 1;
-      this.drain();
-    };
+      this.running += 1;
+      let finished = false;
+      const finalize = () => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        this.running -= 1;
+        this.drain();
+      };
 
-    let result;
-    try {
-      result = job.task();
-    } catch (err) {
-      job.reject(err);
-      finalize();
-      return;
-    }
-
-    Promise.resolve(result)
-      .then((value) => {
-        job.resolve(value);
-      })
-      .catch((err) => {
+      let result;
+      try {
+        result = job.task();
+      } catch (err) {
         job.reject(err);
-      })
-      .finally(() => {
         finalize();
-      });
+        continue;
+      }
+
+      Promise.resolve(result)
+        .then((value) => {
+          job.resolve(value);
+        })
+        .catch((err) => {
+          job.reject(err);
+        })
+        .finally(() => {
+          finalize();
+        });
+    }
   }
 }
 
@@ -233,33 +257,197 @@ function ensureState(container) {
 
   const pendingByCard = new WeakMap();
   const observedCards = new WeakSet();
+  state = { observer: null, pendingByCard, observedCards };
 
   const observer = new IntersectionObserver(
     (entries) => {
-      entries.forEach((entry) => {
-        const card = entry.target;
-        if (!(card instanceof HTMLElement)) {
-          return;
-        }
-        if (!entry.isIntersecting) {
-          return;
-        }
-        handleCardVisible({ card, pendingByCard });
-      });
+      processObserverEntries(entries, state);
     },
     { root: null, rootMargin: ROOT_MARGIN, threshold: 0.01 }
   );
 
-  state = { observer, pendingByCard, observedCards };
+  state.observer = observer;
   containerState.set(container, state);
   return state;
 }
 
+function getViewportCenter() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const width = Number(window.innerWidth) || 0;
+  const height = Number(window.innerHeight) || 0;
+  if (width <= 0 && height <= 0) {
+    return null;
+  }
+  return {
+    x: width > 0 ? width / 2 : 0,
+    y: height > 0 ? height / 2 : 0,
+  };
+}
+
+function prioritizeEntries(entries, viewportCenter) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return [];
+  }
+  const filtered = entries
+    .filter((entry) => entry.isIntersecting && entry.target instanceof HTMLElement)
+    .map((entry) => {
+      const rect = getIntersectionRect(entry);
+      if (!rect) {
+        return null;
+      }
+      const ratio =
+        typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
+      const centerY = rect.top + rect.height / 2;
+      const verticalDistance = viewportCenter
+        ? Math.abs(centerY - viewportCenter.y)
+        : Number.POSITIVE_INFINITY;
+      return { entry, ratio, centerY, verticalDistance };
+    })
+    .filter(Boolean);
+
+  if (filtered.length === 0) {
+    return [];
+  }
+
+  if (!viewportCenter) {
+    return filtered
+      .sort((a, b) => {
+        if (b.ratio !== a.ratio) {
+          return b.ratio - a.ratio;
+        }
+        return a.centerY - b.centerY;
+      })
+      .map((item, index) => ({
+        entry: item.entry,
+        priority: PRIORITY_BASELINE - index,
+      }));
+  }
+
+  const ordered = filtered
+    .slice()
+    .sort((a, b) => a.centerY - b.centerY);
+
+  let centerIndex = 0;
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < ordered.length; i += 1) {
+    const candidate = ordered[i];
+    if (candidate.verticalDistance < minDistance) {
+      minDistance = candidate.verticalDistance;
+      centerIndex = i;
+    }
+  }
+
+  const prioritized = [];
+  const pushCandidate = (candidate) => {
+    if (!candidate) {
+      return;
+    }
+    prioritized.push(candidate);
+  };
+
+  pushCandidate(ordered[centerIndex]);
+
+  let left = centerIndex - 1;
+  let right = centerIndex + 1;
+  while (left >= 0 || right < ordered.length) {
+    const leftCandidate = left >= 0 ? ordered[left] : null;
+    const rightCandidate = right < ordered.length ? ordered[right] : null;
+
+    if (leftCandidate && rightCandidate) {
+      const leftDistance = leftCandidate.verticalDistance;
+      const rightDistance = rightCandidate.verticalDistance;
+      const distanceDelta = Math.abs(leftDistance - rightDistance);
+      if (distanceDelta <= 0.5) {
+        if (rightCandidate.ratio > leftCandidate.ratio) {
+          pushCandidate(rightCandidate);
+          right += 1;
+        } else {
+          pushCandidate(leftCandidate);
+          left -= 1;
+        }
+      } else if (leftDistance < rightDistance) {
+        pushCandidate(leftCandidate);
+        left -= 1;
+      } else {
+        pushCandidate(rightCandidate);
+        right += 1;
+      }
+    } else if (rightCandidate) {
+      pushCandidate(rightCandidate);
+      right += 1;
+    } else if (leftCandidate) {
+      pushCandidate(leftCandidate);
+      left -= 1;
+    }
+  }
+
+  return prioritized.map((candidate, index) => ({
+    entry: candidate.entry,
+    priority: PRIORITY_BASELINE - index,
+  }));
+}
+
+function processObserverEntries(entries, state) {
+  if (!state || !entries || entries.length === 0) {
+    return;
+  }
+  const viewportCenter = getViewportCenter();
+  const prioritized = prioritizeEntries(entries, viewportCenter);
+  prioritized.forEach(({ entry, priority }) => {
+    const card = entry.target;
+    handleCardVisible({ card, pendingByCard: state.pendingByCard, priority });
+  });
+}
+
+function getIntersectionRect(entry) {
+  if (!entry) {
+    return null;
+  }
+  const rect = entry.intersectionRect;
+  if (rect && rect.width > 0 && rect.height > 0) {
+    return rect;
+  }
+  const fallback = entry.boundingClientRect;
+  if (fallback && fallback.width > 0 && fallback.height > 0) {
+    return fallback;
+  }
+  return rect || fallback || null;
+}
+
 function setBadge(card, state, details) {
+  if (!(card instanceof HTMLElement)) {
+    return;
+  }
+
+  const normalizedState =
+    typeof state === "string" && state ? state : "unknown";
+  const peersValue =
+    details && Number.isFinite(details.peers)
+      ? Math.max(0, Number(details.peers))
+      : 0;
+  const hasPeerCount = details ? Number.isFinite(details.peers) : false;
+  const peersTextValue = hasPeerCount ? String(peersValue) : "";
+
+  card.dataset.streamHealthState = normalizedState;
+  if (hasPeerCount) {
+    card.dataset.streamHealthPeers = peersTextValue;
+  } else if (card.dataset.streamHealthPeers) {
+    delete card.dataset.streamHealthPeers;
+  }
+
+  if (details && typeof details.reason === "string" && details.reason) {
+    card.dataset.streamHealthReason = details.reason;
+  } else if (card.dataset.streamHealthReason) {
+    delete card.dataset.streamHealthReason;
+  }
+
   const badge = card.querySelector(".torrent-health-badge");
   if (!badge) {
     return;
   }
+
   const hadMargin = badge.classList.contains("mt-3");
 
   const baseClasses = [
@@ -307,22 +495,19 @@ function setBadge(card, state, details) {
     },
   };
 
-  const entry = map[state] || map.unknown;
+  const entry = map[normalizedState] || map.unknown;
   entry.classes.forEach((cls) => badge.classList.add(cls));
 
-  const peers =
-    details && Number.isFinite(details.peers)
-      ? Math.max(0, Number(details.peers))
-      : 0;
-  const peersText = state === "healthy" && peers > 0 ? ` (${peers})` : "";
+  const peersText =
+    normalizedState === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
 
   const iconPrefix = entry.icon ? `${entry.icon} ` : "";
   badge.textContent = `${iconPrefix}WebTorrent${peersText}`;
   const tooltip =
-    state === "checking" || state === "unknown"
+    normalizedState === "checking" || normalizedState === "unknown"
       ? entry.aria
       : buildTooltip({
-          peers,
+          peers: peersValue,
           checkedAt: details?.checkedAt,
           reason: details?.reason,
         });
@@ -330,27 +515,27 @@ function setBadge(card, state, details) {
   badge.setAttribute("title", tooltip);
   badge.setAttribute("aria-live", entry.role === "alert" ? "assertive" : "polite");
   badge.setAttribute("role", entry.role);
-  badge.dataset.streamHealthState = state;
-  if (Number.isFinite(peers)) {
-    badge.dataset.streamHealthPeers = String(peers);
+  badge.dataset.streamHealthState = normalizedState;
+  if (hasPeerCount) {
+    badge.dataset.streamHealthPeers = peersTextValue;
   } else if (badge.dataset.streamHealthPeers) {
     delete badge.dataset.streamHealthPeers;
   }
 }
 
-function handleCardVisible({ card, pendingByCard }) {
+function handleCardVisible({ card, pendingByCard, priority = 0 }) {
   if (!(card instanceof HTMLElement)) {
     return;
   }
   const magnet = card.dataset.magnet || "";
   if (!magnet) {
-    setBadge(card, "unknown");
+    setBadge(card, "unhealthy", { reason: "missing-source" });
     return;
   }
 
   const infoHash = infoHashFromMagnet(magnet);
   if (!infoHash) {
-    setBadge(card, "unknown");
+    setBadge(card, "unhealthy", { reason: "invalid" });
     return;
   }
 
@@ -371,7 +556,7 @@ function handleCardVisible({ card, pendingByCard }) {
 
   setBadge(card, "checking");
 
-  const probePromise = queueProbe(magnet, infoHash);
+  const probePromise = queueProbe(magnet, infoHash, priority);
 
   pendingByCard.set(card, probePromise);
 
@@ -421,9 +606,10 @@ export function attachHealthBadges(container) {
     state.observedCards.add(card);
     state.observer.observe(card);
     if (!card.dataset.magnet) {
-      setBadge(card, "unknown");
+      setBadge(card, "unhealthy", { reason: "missing-source" });
     }
   });
+  processObserverEntries(state.observer.takeRecords(), state);
 }
 
 export function refreshHealthBadges(container) {
@@ -434,9 +620,6 @@ export function refreshHealthBadges(container) {
   if (!state) {
     return;
   }
-  state.observer.takeRecords().forEach((entry) => {
-    if (entry.isIntersecting) {
-      handleCardVisible({ card: entry.target, pendingByCard: state.pendingByCard });
-    }
-  });
+  const records = state.observer.takeRecords();
+  processObserverEntries(records, state);
 }

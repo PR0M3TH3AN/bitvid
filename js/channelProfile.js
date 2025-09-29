@@ -7,8 +7,206 @@ import {
 import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { attachHealthBadges } from "./gridHealth.js";
-import { initialBlacklist, initialWhitelist } from "./lists.js";
-import { isWhitelistEnabled } from "./config.js";
+import { attachUrlHealthBadges } from "./urlHealthObserver.js";
+import { accessControl } from "./accessControl.js";
+
+let currentChannelHex = null;
+let currentChannelNpub = null;
+
+let cachedZapButton = null;
+let cachedChannelShareButton = null;
+let cachedChannelMenu = null;
+
+function getChannelZapButton() {
+  if (cachedZapButton && !document.body.contains(cachedZapButton)) {
+    cachedZapButton = null;
+  }
+  if (!cachedZapButton) {
+    cachedZapButton = document.getElementById("zapButton");
+  }
+  return cachedZapButton;
+}
+
+function setChannelZapVisibility(visible) {
+  const zapButton = getChannelZapButton();
+  if (!zapButton) {
+    return;
+  }
+  const shouldShow = !!visible;
+  zapButton.classList.toggle("hidden", !shouldShow);
+  zapButton.disabled = !shouldShow;
+  zapButton.setAttribute("aria-disabled", (!shouldShow).toString());
+  zapButton.setAttribute("aria-hidden", (!shouldShow).toString());
+  if (shouldShow) {
+    zapButton.removeAttribute("tabindex");
+  } else {
+    zapButton.setAttribute("tabindex", "-1");
+  }
+}
+
+function getChannelShareButton() {
+  if (cachedChannelShareButton && !document.body.contains(cachedChannelShareButton)) {
+    cachedChannelShareButton = null;
+  }
+  if (!cachedChannelShareButton) {
+    cachedChannelShareButton = document.getElementById("channelShareBtn");
+  }
+  return cachedChannelShareButton;
+}
+
+function getChannelMenuElement() {
+  if (cachedChannelMenu && !document.body.contains(cachedChannelMenu)) {
+    cachedChannelMenu = null;
+  }
+  if (!cachedChannelMenu) {
+    cachedChannelMenu = document.getElementById("moreDropdown-channel-profile");
+  }
+  return cachedChannelMenu;
+}
+
+function buildChannelShareUrl() {
+  if (!currentChannelNpub) {
+    return "";
+  }
+
+  const base = typeof app.getShareUrlBase === "function" ? app.getShareUrlBase() : "";
+  if (base) {
+    return `${base}#view=channel-profile&npub=${encodeURIComponent(currentChannelNpub)}`;
+  }
+
+  try {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = `#view=channel-profile&npub=${currentChannelNpub}`;
+    return url.toString();
+  } catch (error) {
+    console.warn("Falling back to basic channel share URL:", error);
+    const origin = window.location?.origin || "";
+    const pathname = window.location?.pathname || "";
+    if (!origin && !pathname) {
+      return "";
+    }
+    return `${origin}${pathname}#view=channel-profile&npub=${currentChannelNpub}`;
+  }
+}
+
+function syncChannelShareButtonState() {
+  const shareBtn = getChannelShareButton();
+  if (!shareBtn) {
+    return;
+  }
+  const hasNpub = typeof currentChannelNpub === "string" && currentChannelNpub;
+  shareBtn.disabled = !hasNpub;
+  shareBtn.setAttribute("aria-disabled", (!hasNpub).toString());
+  shareBtn.classList.toggle("opacity-50", !hasNpub);
+  shareBtn.classList.toggle("cursor-not-allowed", !hasNpub);
+}
+
+function setupChannelShareButton() {
+  const shareBtn = getChannelShareButton();
+  if (!shareBtn) {
+    return;
+  }
+
+  syncChannelShareButtonState();
+
+  if (shareBtn.dataset.initialized === "true") {
+    return;
+  }
+
+  shareBtn.addEventListener("click", () => {
+    const shareUrl = buildChannelShareUrl();
+    if (!shareUrl) {
+      app.showError("Could not generate channel link.");
+      return;
+    }
+
+    navigator.clipboard
+      .writeText(shareUrl)
+      .then(() => app.showSuccess("Channel link copied to clipboard!"))
+      .catch(() => app.showError("Failed to copy the link."));
+  });
+
+  shareBtn.dataset.initialized = "true";
+}
+
+function setupChannelMoreMenu() {
+  const container = document.querySelector(".channel-profile-container");
+  if (!container) {
+    return;
+  }
+  app.attachMoreMenuHandlers(container);
+}
+
+async function updateChannelMenuState() {
+  const menu = getChannelMenuElement();
+  if (!menu) {
+    return;
+  }
+
+  try {
+    await accessControl.ensureReady();
+  } catch (error) {
+    console.warn("Failed to refresh moderation lists for channel menu:", error);
+  }
+
+  const canBlacklist =
+    typeof app.canCurrentUserManageBlacklist === "function"
+      ? app.canCurrentUserManageBlacklist()
+      : false;
+
+  const buttons = menu.querySelectorAll("button[data-action]");
+  buttons.forEach((button) => {
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+
+    const action = button.dataset.action || "";
+    if (action === "copy-npub") {
+      if (currentChannelNpub) {
+        button.dataset.npub = currentChannelNpub;
+        button.classList.remove("hidden");
+        button.setAttribute("aria-hidden", "false");
+      } else {
+        delete button.dataset.npub;
+        button.classList.add("hidden");
+        button.setAttribute("aria-hidden", "true");
+      }
+      return;
+    }
+
+    if (action === "block-author") {
+      if (currentChannelHex) {
+        button.dataset.author = currentChannelHex;
+        button.classList.remove("hidden");
+        button.setAttribute("aria-hidden", "false");
+      } else {
+        delete button.dataset.author;
+        button.classList.add("hidden");
+        button.setAttribute("aria-hidden", "true");
+      }
+      return;
+    }
+
+    if (action === "blacklist-author") {
+      if (canBlacklist && currentChannelHex) {
+        button.dataset.author = currentChannelHex;
+        if (currentChannelNpub) {
+          button.dataset.npub = currentChannelNpub;
+        } else {
+          delete button.dataset.npub;
+        }
+        button.classList.remove("hidden");
+        button.setAttribute("aria-hidden", "false");
+      } else {
+        delete button.dataset.author;
+        delete button.dataset.npub;
+        button.classList.add("hidden");
+        button.setAttribute("aria-hidden", "true");
+      }
+    }
+  });
+}
 
 /**
  * Initialize the channel profile view.
@@ -25,6 +223,9 @@ export async function initChannelProfileView() {
     return;
   }
 
+  currentChannelHex = null;
+  currentChannelNpub = null;
+
   // 2) Decode npub => hex pubkey
   let hexPub;
   try {
@@ -39,6 +240,13 @@ export async function initChannelProfileView() {
     return;
   }
 
+  currentChannelHex = hexPub;
+  currentChannelNpub = npub;
+
+  setupChannelShareButton();
+  setupChannelMoreMenu();
+  await updateChannelMenuState();
+
   // 3) If user is logged in, load subscriptions and show sub/unsub button
   if (app.pubkey) {
     await subscriptions.loadSubscriptions(app.pubkey);
@@ -49,19 +257,24 @@ export async function initChannelProfileView() {
   }
 
   setupZapButton();
+  syncChannelShareButtonState();
 
   // 4) Load user’s profile (banner, avatar, etc.)
   await loadUserProfile(hexPub);
+  await updateChannelMenuState();
+  syncChannelShareButtonState();
 
   // 5) Load user’s videos (filtered + rendered like the home feed)
   await loadUserVideos(hexPub);
 }
 
 function setupZapButton() {
-  const zapButton = document.getElementById("zapButton");
+  const zapButton = getChannelZapButton();
   if (!zapButton) {
     return;
   }
+
+  setChannelZapVisibility(false);
 
   if (zapButton.dataset.initialized === "true") {
     return;
@@ -181,15 +394,27 @@ async function loadUserProfile(pubkey) {
 
       // Lightning Address
       const lnEl = document.getElementById("channelLightning");
+      const lightningAddress = (meta.lud16 || meta.lud06 || "").trim();
       if (lnEl) {
         lnEl.textContent =
-          meta.lud16 || meta.lud06 || "No lightning address found.";
+          lightningAddress || "No lightning address found.";
       }
+      setChannelZapVisibility(!!lightningAddress);
     } else {
       console.warn("No metadata found for this user.");
+      setChannelZapVisibility(false);
+      const lnEl = document.getElementById("channelLightning");
+      if (lnEl) {
+        lnEl.textContent = "No lightning address found.";
+      }
     }
   } catch (err) {
     console.error("Failed to fetch user profile data:", err);
+    setChannelZapVisibility(false);
+    const lnEl = document.getElementById("channelLightning");
+    if (lnEl) {
+      lnEl.textContent = "No lightning address found.";
+    }
   }
 }
 
@@ -199,6 +424,12 @@ async function loadUserProfile(pubkey) {
  */
 async function loadUserVideos(pubkey) {
   try {
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      console.warn("Failed to ensure admin lists were loaded before channel fetch:", error);
+    }
+
     // 1) Build filter for videos from this pubkey
     const filter = {
       kinds: [30078],
@@ -218,29 +449,24 @@ async function loadUserVideos(pubkey) {
       }
     }
 
-    // 3) Convert to "video" objects
-    let videos = [];
-    for (const evt of events) {
-      const vid = sharedConvertEventToVideo(evt);
-      if (!vid.invalid && !vid.deleted) {
-        videos.push(vid);
-      }
-    }
+    // 3) Convert to "video" objects and keep everything (including tombstones)
+    const convertedVideos = events
+      .map((evt) => sharedConvertEventToVideo(evt))
+      .filter((vid) => !vid.invalid);
 
     // 4) Deduplicate older overshadowed versions => newest only
-    videos = app?.dedupeVideosByRoot?.(videos) ?? dedupeToNewestByRoot(videos);
+    const newestByRoot =
+      app?.dedupeVideosByRoot?.(convertedVideos) ??
+      dedupeToNewestByRoot(convertedVideos);
 
-    // 5) Filter out blacklisted IDs / authors
+    // 5) Filter out tombstones, blacklisted IDs / authors
+    let videos = newestByRoot.filter((video) => !video.deleted);
     videos = videos.filter((video) => {
       // Event-level blacklisting
       if (app.blacklistedEventIds.has(video.id)) return false;
 
       // Author-level
-      const authorNpub = app.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (initialBlacklist.includes(authorNpub)) return false;
-      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-        return false;
-      }
+      if (!accessControl.canAccess(video)) return false;
       return true;
     });
 
@@ -344,6 +570,48 @@ async function loadUserVideos(pubkey) {
         `;
       }
 
+      const moreMenu = `
+        <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
+          <button
+            type="button"
+            class="inline-flex items-center justify-center w-10 h-10 p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            data-more-dropdown="${index}"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="More options"
+          >
+            <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5 object-contain" />
+          </button>
+          <div
+            id="moreDropdown-${index}"
+            class="hidden absolute right-0 bottom-full mb-2 w-40 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+            role="menu"
+            data-more-menu="true"
+          >
+            <div class="py-1">
+              <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="open-channel" data-author="${video.pubkey || ""}">
+                Open channel
+              </button>
+              <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
+                Copy link
+              </button>
+              <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
+                Block creator
+              </button>
+              <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="report" data-event-id="${video.id || ""}">
+                Report
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const cardControls = `
+        <div class="flex items-center">
+          ${moreMenu}${gearMenu}
+        </div>
+      `;
+
       // Fallback thumbnail
       const fallbackThumb = "assets/jpg/video-thumbnail-fallback.jpg";
       const safeThumb = video.thumbnail || fallbackThumb;
@@ -360,6 +628,13 @@ async function loadUserVideos(pubkey) {
         "transition-all",
         "duration-300"
       );
+
+      cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
+      if (typeof video.pubkey === "string" && video.pubkey) {
+        cardEl.dataset.ownerPubkey = video.pubkey;
+      } else if (cardEl.dataset.ownerPubkey) {
+        delete cardEl.dataset.ownerPubkey;
+      }
 
       const rawMagnet =
         typeof video.magnet === "string" ? video.magnet : "";
@@ -420,7 +695,7 @@ async function loadUserVideos(pubkey) {
                 ${new Date(video.created_at * 1000).toLocaleString()}
               </p>
             </div>
-            ${gearMenu}
+            ${cardControls}
           </div>
           ${connectionBadgesHtml}
         </div>
@@ -432,6 +707,35 @@ async function loadUserVideos(pubkey) {
         cardEl.dataset.torrentSupported = "true";
       } else if (cardEl.dataset.torrentSupported) {
         delete cardEl.dataset.torrentSupported;
+      }
+
+      if (trimmedUrl) {
+        cardEl.dataset.urlHealthState = "checking";
+        if (cardEl.dataset.urlHealthReason) {
+          delete cardEl.dataset.urlHealthReason;
+        }
+        cardEl.dataset.urlHealthEventId = video.id || "";
+        cardEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
+      } else {
+        cardEl.dataset.urlHealthState = "offline";
+        cardEl.dataset.urlHealthReason = "missing-source";
+        if (cardEl.dataset.urlHealthEventId) {
+          delete cardEl.dataset.urlHealthEventId;
+        }
+        if (cardEl.dataset.urlHealthUrl) {
+          delete cardEl.dataset.urlHealthUrl;
+        }
+      }
+      if (magnetProvided && magnetSupported) {
+        cardEl.dataset.streamHealthState = "checking";
+        if (cardEl.dataset.streamHealthReason) {
+          delete cardEl.dataset.streamHealthReason;
+        }
+      } else {
+        cardEl.dataset.streamHealthState = "unhealthy";
+        cardEl.dataset.streamHealthReason = magnetProvided
+          ? "unsupported"
+          : "missing-source";
       }
 
       if (magnetProvided) {
@@ -464,14 +768,18 @@ async function loadUserVideos(pubkey) {
         }
       });
 
-      if (trimmedUrl) {
-        const badgeEl = cardEl.querySelector("[data-url-health-state]");
-        if (badgeEl) {
-          app.handleUrlHealthBadge({
-            video,
-            url: trimmedUrl,
-            badgeEl,
-          });
+      const badgeEl = cardEl.querySelector("[data-url-health-state]");
+      if (badgeEl) {
+        if (trimmedUrl) {
+          badgeEl.dataset.urlHealthEventId = video.id || "";
+          badgeEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
+        } else {
+          if (badgeEl.dataset.urlHealthEventId) {
+            delete badgeEl.dataset.urlHealthEventId;
+          }
+          if (badgeEl.dataset.urlHealthUrl) {
+            delete badgeEl.dataset.urlHealthUrl;
+          }
         }
       }
 
@@ -481,6 +789,10 @@ async function loadUserVideos(pubkey) {
     container.appendChild(fragment);
 
     attachHealthBadges(container);
+    attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
+      const video = app.videosMap.get(eventId) || { id: eventId };
+      app.handleUrlHealthBadge({ video, url, badgeEl });
+    });
 
     window.app.videoList = container;
     window.app.attachVideoListHandler();
@@ -488,6 +800,8 @@ async function loadUserVideos(pubkey) {
     // Lazy-load images
     const lazyEls = container.querySelectorAll("[data-lazy]");
     lazyEls.forEach((el) => app.mediaLoader.observe(el));
+
+    app.attachMoreMenuHandlers(container);
 
     // Gear menu toggles
     const gearButtons = container.querySelectorAll("[data-settings-dropdown]");
@@ -556,6 +870,26 @@ async function loadUserVideos(pubkey) {
     console.error("Error loading user videos:", err);
   }
 }
+
+window.addEventListener("bitvid:access-control-updated", () => {
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  if (hashParams.get("view") !== "channel-profile") {
+    return;
+  }
+
+  if (!currentChannelHex) {
+    return;
+  }
+
+  const activeNpub = hashParams.get("npub");
+  if (currentChannelNpub && activeNpub && activeNpub !== currentChannelNpub) {
+    return;
+  }
+
+  loadUserVideos(currentChannelHex).catch((error) => {
+    console.error("Failed to refresh channel videos after admin update:", error);
+  });
+});
 
 /**
  * Minimal placeholder for private video decryption.

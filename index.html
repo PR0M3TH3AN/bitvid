@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>bitvid | Decentralized Video Sharing</title>
 
+    <meta
+      name="description"
+      content="Bitvid is a decentralized video hub that prioritizes URL-first playback with WebTorrent fallback so your audience can stream reliably."
+    />
+    <meta name="robots" content="index,follow" />
+
     <!-- Open Graph Meta Tags -->
     <meta property="og:title" content="BitVid - Decentralized Video Sharing" />
     <meta
@@ -40,7 +46,7 @@
 
     <!-- Styles -->
     <script src="js/tracking.js" defer></script>
-    <link href="css/tailwind.min.css" rel="stylesheet" />
+    <link href="css/tailwind.generated.css" rel="stylesheet" />
     <link href="css/style.css" rel="stylesheet" />
     <link href="css/markdown.css" rel="stylesheet" />
   </head>
@@ -87,11 +93,17 @@
         </button>
         <!-- Logo -->
         <!-- Logo fades in once on initial load. -->
-        <img
-          src="assets/svg/bitvid-logo-light-mode.svg"
-          alt="BitVid Logo"
-          class="h-16 fade-in fade-in-delay-100"
-        />
+        <a
+          href="index.html"
+          aria-label="Return to the bitvid home page"
+          class="fade-in fade-in-delay-100"
+        >
+          <img
+            src="assets/svg/bitvid-logo-light-mode.svg"
+            alt="BitVid Logo"
+            class="h-16"
+          />
+        </a>
 
         <!-- Buttons on the far right -->
 

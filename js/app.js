@@ -3,19 +3,56 @@
 import { loadView } from "./viewManager.js";
 import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
-import { isDevMode } from "./config.js";
-import { isWhitelistEnabled } from "./config.js";
+import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
+import { accessControl, normalizeNpub } from "./accessControl.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
-import { normalizeAndAugmentMagnet } from "./magnet.js";
+import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
 import { attachHealthBadges } from "./gridHealth.js";
+import { attachUrlHealthBadges } from "./urlHealthObserver.js";
+import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
+import { userBlocks } from "./userBlocks.js";
 import {
-  initialWhitelist,
-  initialBlacklist,
-  initialEventBlacklist,
-} from "./lists.js";
+  loadR2Settings,
+  saveR2Settings,
+  clearR2Settings,
+  buildR2Key,
+  buildPublicUrl,
+  mergeBucketEntry,
+  sanitizeBaseDomain,
+} from "./r2.js";
+import {
+  sanitizeBucketName,
+  ensureBucket,
+  putCors,
+  attachCustomDomainAndWait,
+  setManagedDomain,
+  deriveShortSubdomain,
+} from "./storage/r2-mgmt.js";
+import {
+  makeR2Client,
+  multipartUpload,
+  ensureBucketCors,
+} from "./storage/r2-s3.js";
+import { initQuickR2Upload } from "./r2-quick.js";
+
+function truncateMiddle(text, maxLength = 72) {
+  if (!text || typeof text !== "string") {
+    return "";
+  }
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  const ellipsis = "…";
+  const charsToShow = maxLength - ellipsis.length;
+  const front = Math.ceil(charsToShow / 2);
+  const back = Math.floor(charsToShow / 2);
+  return `${text.slice(0, front)}${ellipsis}${text.slice(text.length - back)}`;
+}
 
 /**
  * Simple "decryption" placeholder for private videos.
@@ -28,6 +65,9 @@ const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+const ADMIN_DM_IMAGE_URL =
+  "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
+const BITVID_WEBSITE_URL = "https://bitvid.network/";
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 const PROFILE_CACHE_STORAGE_KEY = "bitvid:profileCache:v1";
@@ -39,7 +79,9 @@ const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // recovers. Results are stored both in-memory and in localStorage so other
 // views can reuse them without re-probing.
 const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
+const URL_HEALTH_TIMEOUT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
 const URL_PROBE_TIMEOUT_MS = 8 * 1000; // 8 seconds
+const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
@@ -187,12 +229,19 @@ function writeUrlHealthToCache(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) 
  * event simultaneously do not all fire off duplicate requests. The stored
  * metadata includes the URL so edits invalidate the old request immediately.
  */
-function setInFlightUrlProbe(eventId, url, promise) {
+function buildUrlProbeKey(url, options = {}) {
+  const trimmed = typeof url === "string" ? url : "";
+  const mode = options?.confirmPlayable ? "playable" : "basic";
+  return `${trimmed}::${mode}`;
+}
+
+function setInFlightUrlProbe(eventId, url, promise, options = {}) {
   if (!eventId || !promise) {
     return;
   }
 
-  urlHealthInFlight.set(eventId, { promise, url });
+  const key = buildUrlProbeKey(url, options);
+  urlHealthInFlight.set(eventId, { promise, key });
   promise.finally(() => {
     const current = urlHealthInFlight.get(eventId);
     if (current && current.promise === promise) {
@@ -201,7 +250,7 @@ function setInFlightUrlProbe(eventId, url, promise) {
   });
 }
 
-function getInFlightUrlProbe(eventId, url) {
+function getInFlightUrlProbe(eventId, url, options = {}) {
   if (!eventId) {
     return null;
   }
@@ -211,7 +260,8 @@ function getInFlightUrlProbe(eventId, url) {
     return null;
   }
 
-  if (url && entry.url && entry.url !== url) {
+  const key = buildUrlProbeKey(url, options);
+  if (entry.key && entry.key !== key) {
     return null;
   }
 
@@ -448,6 +498,47 @@ class bitvidApp {
     this.profileLogoutBtn = null;
     this.profileModalAvatar = null;
     this.profileModalName = null;
+    this.profileChannelLink = null;
+    this.profileNavButtons = {
+      account: null,
+      relays: null,
+      blocked: null,
+      admin: null,
+    };
+    this.profilePaneElements = {
+      account: null,
+      relays: null,
+      blocked: null,
+      admin: null,
+    };
+    this.profileRelayList = null;
+    this.profileBlockedList = null;
+    this.profileBlockedEmpty = null;
+    this.profileBlockedInput = null;
+    this.profileAddBlockedBtn = null;
+    this.profileRelayInput = null;
+    this.profileAddRelayBtn = null;
+    this.profileRestoreRelaysBtn = null;
+    this.adminModeratorInput = null;
+    this.adminAddModeratorBtn = null;
+    this.adminModeratorList = null;
+    this.adminModeratorsEmpty = null;
+    this.adminModeratorsSection = null;
+    this.adminWhitelistInput = null;
+    this.adminAddWhitelistBtn = null;
+    this.adminWhitelistList = null;
+    this.adminWhitelistEmpty = null;
+    this.adminWhitelistSection = null;
+    this.adminBlacklistInput = null;
+    this.adminAddBlacklistBtn = null;
+    this.adminBlacklistList = null;
+    this.adminBlacklistEmpty = null;
+    this.adminBlacklistSection = null;
+    this.lastFocusedBeforeProfileModal = null;
+    this.boundProfileModalKeydown = null;
+    this.boundProfileModalFocusIn = null;
+    this.profileModalFocusables = [];
+    this.currentUserNpub = null;
 
     // Upload modal elements
     this.uploadButton = document.getElementById("uploadButton") || null;
@@ -455,6 +546,71 @@ class bitvidApp {
     this.closeUploadModalBtn =
       document.getElementById("closeUploadModal") || null;
     this.uploadForm = document.getElementById("uploadForm") || null;
+    this.uploadEnableCommentsInput = null;
+    this.uploadModeToggleButtons = [];
+    this.customUploadSection = null;
+    this.cloudflareUploadSection = null;
+    this.activeUploadMode = "custom";
+    this.cloudflareSettings = null;
+    this.cloudflareSettingsForm = null;
+    this.cloudflareClearSettingsButton = null;
+    this.cloudflareSettingsStatus = null;
+    this.cloudflareBucketPreview = null;
+    this.cloudflareUploadForm = null;
+    this.cloudflareFileInput = null;
+    this.cloudflareUploadButton = null;
+    this.cloudflareUploadStatus = null;
+    this.cloudflareProgressBar = null;
+    this.cloudflareProgressFill = null;
+    this.cloudflareTitleInput = null;
+    this.cloudflareDescriptionInput = null;
+    this.cloudflareThumbnailInput = null;
+    this.cloudflareMagnetInput = null;
+    this.cloudflareWsInput = null;
+    this.cloudflareXsInput = null;
+    this.cloudflareEnableCommentsInput = null;
+    this.cloudflareAdvancedToggle = null;
+    this.cloudflareAdvancedToggleLabel = null;
+    this.cloudflareAdvancedToggleIcon = null;
+    this.cloudflareAdvancedFields = null;
+    this.cloudflareAdvancedVisible = false;
+    this.r2AccountIdInput = null;
+    this.r2AccessKeyIdInput = null;
+    this.r2SecretAccessKeyInput = null;
+    this.r2ApiTokenInput = null;
+    this.r2ZoneIdInput = null;
+    this.r2BaseDomainInput = null;
+
+    // Edit video modal elements
+    this.editVideoModal = null;
+    this.editVideoOverlay = null;
+    this.editVideoForm = null;
+    this.closeEditVideoModalBtn = null;
+    this.cancelEditVideoBtn = null;
+    this.editVideoSubmitBtn = null;
+    this.editVideoFieldButtons = [];
+    this.activeEditVideo = null;
+
+    // Revert video modal elements
+    this.revertVideoModal = null;
+    this.revertVideoOverlay = null;
+    this.revertVersionsList = null;
+    this.revertVersionDetails = null;
+    this.revertVersionPlaceholder = null;
+    this.revertVersionDetailsDefaultHTML = "";
+    this.revertHistoryCount = null;
+    this.revertSelectionStatus = null;
+    this.revertModalTitle = null;
+    this.revertModalSubtitle = null;
+    this.closeRevertVideoModalBtn = null;
+    this.cancelRevertVideoBtn = null;
+    this.confirmRevertVideoBtn = null;
+    this.activeRevertVideo = null;
+    this.revertHistory = [];
+    this.selectedRevertTarget = null;
+    this.revertModalBusy = false;
+    this.revertConfirmDefaultLabel = "Revert to selected version";
+    this.pendingRevertEntries = [];
 
     // Optional small inline player stats
     this.status = document.getElementById("status") || null;
@@ -481,6 +637,8 @@ class bitvidApp {
     this.copyMagnetBtn = null;
     this.shareBtn = null;
     this.modalZapBtn = null;
+    this.modalMoreBtn = null;
+    this.modalMoreMenu = null;
     this.modalPosterCleanup = null;
     this.cleanupPromise = null;
 
@@ -502,6 +660,9 @@ class bitvidApp {
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = new Map();
+    this.moreMenuGlobalHandlerBound = false;
+    this.boundMoreMenuDocumentClick = null;
+    this.boundMoreMenuDocumentKeydown = null;
     // Simple cache for user profiles
     this.profileCache = new Map();
     this.lastRenderedVideoSignature = null;
@@ -514,7 +675,7 @@ class bitvidApp {
 
     // Build a set of blacklisted event IDs (hex) from nevent strings, skipping empties
     this.blacklistedEventIds = new Set();
-    for (const neventStr of initialEventBlacklist) {
+    for (const neventStr of ADMIN_INITIAL_EVENT_BLACKLIST) {
       // Skip any empty or obviously invalid strings
       if (!neventStr || neventStr.trim().length < 8) {
         continue;
@@ -676,6 +837,32 @@ class bitvidApp {
     return entry;
   }
 
+  prepareForViewLoad() {
+    if (this._videoListElement && this._videoListClickHandler) {
+      try {
+        this._videoListElement.removeEventListener(
+          "click",
+          this._videoListClickHandler
+        );
+      } catch (err) {
+        console.warn("[prepareForViewLoad] Failed to detach video list handler:", err);
+      }
+      this._videoListElement = null;
+      this._videoListClickHandler = null;
+    }
+
+    this.videoList = null;
+    this._lastRenderedVideoListElement = null;
+    this.lastRenderedVideoSignature = null;
+    if (this.renderedVideoIds) {
+      this.renderedVideoIds.clear();
+    }
+
+    if (this.mediaLoader && typeof this.mediaLoader.disconnect === "function") {
+      this.mediaLoader.disconnect();
+    }
+  }
+
   forceRefreshAllProfiles() {
     // 1) Grab the newest set of videos from nostrClient
     const activeVideos = nostrClient.getActiveVideos();
@@ -706,6 +893,10 @@ class bitvidApp {
 
       // 2. Initialize the upload modal (components/upload-modal.html)
       await this.initUploadModal();
+      initQuickR2Upload(this);
+
+      // 2.5 Initialize the edit modal (components/edit-video-modal.html)
+      await this.initEditVideoModal();
 
       // 3. (Optional) Initialize the profile modal (components/profile-modal.html)
       await this.initProfileModal();
@@ -713,13 +904,23 @@ class bitvidApp {
       // 4. Connect to Nostr
       await nostrClient.init();
 
+      try {
+        await accessControl.refresh();
+      } catch (error) {
+        console.warn("Failed to refresh admin lists after connecting to Nostr:", error);
+      }
+
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
       const savedPubKey = localStorage.getItem("userPubKey");
       if (savedPubKey) {
         // Auto-login if a pubkey was saved
-        this.login(savedPubKey, false);
+        try {
+          await this.login(savedPubKey, false);
+        } catch (error) {
+          console.error("Auto-login failed:", error);
+        }
 
         // If the user was already logged in, show the Subscriptions link
         if (this.subscriptionsLink) {
@@ -803,9 +1004,11 @@ class bitvidApp {
       if (!modalNav || !playerModal) {
         throw new Error("Modal nav (#modalNav) or #playerModal not found!");
       }
+      const scrollRegion =
+        playerModal.querySelector(".player-modal__content") || playerModal;
       let lastScrollY = 0;
-      playerModal.addEventListener("scroll", (e) => {
-        const currentScrollY = e.target.scrollTop;
+      scrollRegion.addEventListener("scroll", () => {
+        const currentScrollY = scrollRegion.scrollTop;
         const shouldShowNav =
           currentScrollY <= lastScrollY || currentScrollY < 50;
         modalNav.style.transform = shouldShowNav
@@ -847,6 +1050,9 @@ class bitvidApp {
     this.copyMagnetBtn = document.getElementById("copyMagnetBtn") || null;
     this.shareBtn = document.getElementById("shareBtn") || null;
     this.modalZapBtn = document.getElementById("modalZapBtn") || null;
+    this.modalMoreBtn = document.getElementById("modalMoreBtn") || null;
+    this.modalMoreMenu = document.getElementById("moreDropdown-modal") || null;
+    this.setModalZapVisibility(false);
 
     // Attach existing event listeners for copy/share
     if (this.copyMagnetBtn) {
@@ -890,6 +1096,12 @@ class bitvidApp {
         this.openCreatorChannel();
       });
     }
+
+    if (this.playerModal) {
+      this.attachMoreMenuHandlers(this.playerModal);
+    }
+
+    this.syncModalMoreMenuData();
   }
 
   goToProfile(pubkey) {
@@ -935,6 +1147,12 @@ class bitvidApp {
     if (this.playerModal) {
       this.playerModal.style.display = "flex";
       this.playerModal.classList.remove("hidden");
+      document.body.classList.add("modal-open");
+      document.documentElement.classList.add("modal-open");
+      const scrollRegion =
+        this.playerModal.querySelector(".player-modal__content") ||
+        this.playerModal;
+      scrollRegion.scrollTop = 0;
     }
     this.applyModalLoadingPoster();
   }
@@ -1041,6 +1259,68 @@ class bitvidApp {
       this.closeUploadModalBtn =
         document.getElementById("closeUploadModal") || null;
       this.uploadForm = document.getElementById("uploadForm") || null;
+      this.uploadEnableCommentsInput =
+        document.getElementById("uploadEnableComments") || null;
+      this.uploadModeToggleButtons = Array.from(
+        document.querySelectorAll(".upload-mode-toggle[data-upload-mode]")
+      );
+      this.customUploadSection =
+        document.getElementById("customUploadSection") || null;
+      this.cloudflareUploadSection =
+        document.getElementById("cloudflareUploadSection") || null;
+      this.cloudflareSettingsForm =
+        document.getElementById("cloudflareSettingsForm") || null;
+      this.cloudflareClearSettingsButton =
+        document.getElementById("cloudflareClearSettings") || null;
+      this.cloudflareSettingsStatus =
+        document.getElementById("cloudflareSettingsStatus") || null;
+      this.cloudflareBucketPreview =
+        document.getElementById("cloudflareBucketPreview") || null;
+      this.cloudflareUploadForm =
+        document.getElementById("cloudflareUploadForm") || null;
+      this.cloudflareFileInput =
+        document.getElementById("cloudflareFile") || null;
+      this.cloudflareUploadButton =
+        document.getElementById("cloudflareUploadButton") || null;
+      this.cloudflareUploadStatus =
+        document.getElementById("cloudflareUploadStatus") || null;
+      this.cloudflareProgressBar =
+        document.getElementById("cloudflareProgressBar") || null;
+      this.cloudflareProgressFill =
+        document.getElementById("cloudflareProgressFill") || null;
+      this.cloudflareTitleInput =
+        document.getElementById("cloudflareTitle") || null;
+      this.cloudflareDescriptionInput =
+        document.getElementById("cloudflareDescription") || null;
+      this.cloudflareThumbnailInput =
+        document.getElementById("cloudflareThumbnail") || null;
+      this.cloudflareMagnetInput =
+        document.getElementById("cloudflareMagnet") || null;
+      this.cloudflareWsInput =
+        document.getElementById("cloudflareWs") || null;
+      this.cloudflareXsInput =
+        document.getElementById("cloudflareXs") || null;
+      this.cloudflareEnableCommentsInput =
+        document.getElementById("cloudflareEnableComments") || null;
+      this.cloudflareAdvancedToggle =
+        document.getElementById("cloudflareAdvancedToggle") || null;
+      this.cloudflareAdvancedToggleLabel =
+        document.getElementById("cloudflareAdvancedToggleLabel") || null;
+      this.cloudflareAdvancedToggleIcon =
+        document.getElementById("cloudflareAdvancedToggleIcon") || null;
+      this.cloudflareAdvancedFields =
+        document.getElementById("cloudflareAdvancedFields") || null;
+      this.r2AccountIdInput =
+        document.getElementById("r2AccountId") || null;
+      this.r2AccessKeyIdInput =
+        document.getElementById("r2AccessKeyId") || null;
+      this.r2SecretAccessKeyInput =
+        document.getElementById("r2SecretAccessKey") || null;
+      this.r2ApiTokenInput =
+        document.getElementById("r2ApiToken") || null;
+      this.r2ZoneIdInput = document.getElementById("r2ZoneId") || null;
+      this.r2BaseDomainInput =
+        document.getElementById("r2BaseDomain") || null;
 
       // Optional: if close button found, wire up
       if (this.closeUploadModalBtn) {
@@ -1058,12 +1338,1925 @@ class bitvidApp {
         });
       }
 
+      if (this.cloudflareSettingsForm) {
+        this.cloudflareSettingsForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          this.handleCloudflareSettingsSubmit();
+        });
+      }
+
+      if (this.cloudflareClearSettingsButton) {
+        this.cloudflareClearSettingsButton.addEventListener("click", () => {
+          this.handleCloudflareClearSettings();
+        });
+      }
+
+      if (this.cloudflareUploadForm) {
+        this.cloudflareUploadForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          this.handleCloudflareUploadSubmit();
+        });
+      }
+
+      if (this.uploadModeToggleButtons.length > 0) {
+        this.uploadModeToggleButtons.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const mode = btn.dataset.uploadMode || "custom";
+            this.setUploadMode(mode);
+          });
+        });
+      }
+
+      if (this.cloudflareAdvancedToggle) {
+        this.cloudflareAdvancedToggle.addEventListener("click", () => {
+          this.setCloudflareAdvancedVisibility(
+            !this.cloudflareAdvancedVisible
+          );
+        });
+      }
+
+      this.setCloudflareAdvancedVisibility(this.cloudflareAdvancedVisible);
+
+      await this.loadCloudflareSettingsFromStorage();
+      await this.updateCloudflareBucketPreview();
+
+      this.setUploadMode(this.activeUploadMode);
+
       console.log("Upload modal initialization successful");
       return true;
     } catch (error) {
       console.error("initUploadModal failed:", error);
       this.showError(`Failed to initialize upload modal: ${error.message}`);
       return false;
+    }
+  }
+
+  async initEditVideoModal() {
+    try {
+      let modal = document.getElementById("editVideoModal");
+      if (!modal) {
+        const resp = await fetch("components/edit-video-modal.html");
+        if (!resp.ok) {
+          throw new Error(`HTTP error! status: ${resp.status}`);
+        }
+        const html = await resp.text();
+        const modalContainer = document.getElementById("modalContainer");
+        if (!modalContainer) {
+          throw new Error("Modal container element not found!");
+        }
+
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = html;
+        removeTrackingScripts(wrapper);
+        modalContainer.appendChild(wrapper);
+
+        modal = wrapper.querySelector("#editVideoModal");
+      }
+
+      if (!modal) {
+        throw new Error("Edit video modal markup missing after load.");
+      }
+
+      this.editVideoModal = modal;
+      this.editVideoOverlay =
+        modal.querySelector("#editVideoModalOverlay") || null;
+      this.editVideoForm = modal.querySelector("#editVideoForm") || null;
+      this.closeEditVideoModalBtn =
+        modal.querySelector("#closeEditVideoModal") || null;
+      this.cancelEditVideoBtn =
+        modal.querySelector("#cancelEditVideo") || null;
+      this.editVideoSubmitBtn =
+        modal.querySelector("#submitEditVideo") || null;
+      this.editVideoFieldButtons = Array.from(
+        modal.querySelectorAll("[data-edit-target]")
+      );
+
+      if (this.editVideoForm) {
+        this.editVideoForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          this.handleEditVideoSubmit();
+        });
+      }
+
+      if (this.closeEditVideoModalBtn) {
+        this.closeEditVideoModalBtn.addEventListener("click", () => {
+          this.hideEditVideoModal();
+        });
+      }
+
+      if (this.cancelEditVideoBtn) {
+        this.cancelEditVideoBtn.addEventListener("click", () => {
+          this.hideEditVideoModal();
+        });
+      }
+
+      if (this.editVideoOverlay) {
+        this.editVideoOverlay.addEventListener("click", () => {
+          this.hideEditVideoModal();
+        });
+      }
+
+      if (Array.isArray(this.editVideoFieldButtons)) {
+        this.editVideoFieldButtons.forEach((btn) => {
+          btn.addEventListener("click", (event) => {
+            this.handleEditFieldToggle(event);
+          });
+        });
+      }
+
+      this.resetEditVideoForm();
+
+      return true;
+    } catch (error) {
+      console.error("initEditVideoModal failed:", error);
+      this.showError(`Failed to initialize edit modal: ${error.message}`);
+      return false;
+    }
+  }
+
+  resetEditVideoForm() {
+    if (!this.editVideoModal) {
+      this.activeEditVideo = null;
+      return;
+    }
+
+    const fieldIds = [
+      "editVideoTitle",
+      "editVideoUrl",
+      "editVideoMagnet",
+      "editVideoWs",
+      "editVideoXs",
+      "editVideoThumbnail",
+      "editVideoDescription",
+      "editEnableComments",
+    ];
+
+    fieldIds.forEach((id) => {
+      const input = this.editVideoModal.querySelector(`#${id}`);
+      if (input) {
+        if (input.type === "checkbox") {
+          input.checked = true;
+          input.disabled = false;
+        } else {
+          input.value = "";
+          input.readOnly = false;
+          input.classList.remove("locked-input");
+        }
+        delete input.dataset.originalValue;
+      }
+      const button = this.editVideoModal.querySelector(
+        `[data-edit-target="${id}"]`
+      );
+      if (button) {
+        button.classList.add("hidden");
+        button.dataset.mode = "locked";
+        button.textContent = "Edit field";
+      }
+    });
+
+    this.activeEditVideo = null;
+  }
+
+  showEditVideoModal() {
+    if (this.editVideoModal) {
+      this.editVideoModal.classList.remove("hidden");
+    }
+  }
+
+  hideEditVideoModal() {
+    if (this.editVideoModal) {
+      this.editVideoModal.classList.add("hidden");
+    }
+    this.resetEditVideoForm();
+  }
+
+  async initRevertVideoModal() {
+    try {
+      let modal = document.getElementById("revertVideoModal");
+      if (!modal) {
+        const response = await fetch("components/revert-video-modal.html");
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const html = await response.text();
+        const modalContainer = document.getElementById("modalContainer");
+        if (!modalContainer) {
+          throw new Error("Modal container element not found!");
+        }
+
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = html;
+        removeTrackingScripts(wrapper);
+        modalContainer.appendChild(wrapper);
+
+        modal = wrapper.querySelector("#revertVideoModal");
+      }
+
+      if (!modal) {
+        throw new Error("Revert video modal markup missing after load.");
+      }
+
+      this.revertVideoModal = modal;
+      this.revertVideoOverlay =
+        modal.querySelector("#revertVideoModalOverlay") || null;
+      this.revertVersionsList =
+        modal.querySelector("#revertVersionsList") || null;
+      this.revertVersionDetails =
+        modal.querySelector("#revertVersionDetails") || null;
+      this.revertVersionPlaceholder =
+        modal.querySelector("#revertVersionPlaceholder") || null;
+      if (this.revertVersionDetails && !this.revertVersionDetailsDefaultHTML) {
+        this.revertVersionDetailsDefaultHTML = this.revertVersionDetails.innerHTML;
+      }
+      this.revertHistoryCount =
+        modal.querySelector("#revertHistoryCount") || null;
+      this.revertSelectionStatus =
+        modal.querySelector("#revertSelectionStatus") || null;
+      this.revertModalTitle =
+        modal.querySelector("#revertModalTitle") || null;
+      this.revertModalSubtitle =
+        modal.querySelector("#revertModalSubtitle") || null;
+      this.closeRevertVideoModalBtn =
+        modal.querySelector("#closeRevertVideoModal") || null;
+      this.cancelRevertVideoBtn =
+        modal.querySelector("#cancelRevertVideo") || null;
+      this.confirmRevertVideoBtn =
+        modal.querySelector("#confirmRevertVideo") || null;
+
+      if (
+        this.revertVersionsList &&
+        !this.revertVersionsList.dataset.listenerAttached
+      ) {
+        this.revertVersionsList.addEventListener("click", (event) => {
+          this.handleRevertVersionListClick(event);
+        });
+        this.revertVersionsList.dataset.listenerAttached = "true";
+      }
+
+      if (this.closeRevertVideoModalBtn && !this.closeRevertVideoModalBtn.dataset.listenerAttached) {
+        this.closeRevertVideoModalBtn.addEventListener("click", () => {
+          if (!this.revertModalBusy) {
+            this.hideRevertVideoModal();
+          }
+        });
+        this.closeRevertVideoModalBtn.dataset.listenerAttached = "true";
+      }
+
+      if (this.cancelRevertVideoBtn && !this.cancelRevertVideoBtn.dataset.listenerAttached) {
+        this.cancelRevertVideoBtn.addEventListener("click", () => {
+          if (!this.revertModalBusy) {
+            this.hideRevertVideoModal();
+          }
+        });
+        this.cancelRevertVideoBtn.dataset.listenerAttached = "true";
+      }
+
+      if (this.revertVideoOverlay && !this.revertVideoOverlay.dataset.listenerAttached) {
+        this.revertVideoOverlay.addEventListener("click", () => {
+          if (!this.revertModalBusy) {
+            this.hideRevertVideoModal();
+          }
+        });
+        this.revertVideoOverlay.dataset.listenerAttached = "true";
+      }
+
+      if (
+        this.confirmRevertVideoBtn &&
+        !this.confirmRevertVideoBtn.dataset.listenerAttached
+      ) {
+        this.confirmRevertVideoBtn.addEventListener("click", () => {
+          this.handleConfirmRevertSelection();
+        });
+        this.confirmRevertVideoBtn.dataset.listenerAttached = "true";
+      }
+
+      this.resetRevertVideoModal();
+
+      return true;
+    } catch (error) {
+      console.error("initRevertVideoModal failed:", error);
+      this.showError(`Failed to initialize revert modal: ${error.message}`);
+      return false;
+    }
+  }
+
+  resetRevertVideoModal() {
+    this.activeRevertVideo = null;
+    this.revertHistory = [];
+    this.selectedRevertTarget = null;
+    this.revertModalBusy = false;
+    this.pendingRevertEntries = [];
+
+    if (this.revertHistoryCount) {
+      this.revertHistoryCount.textContent = "";
+    }
+
+    if (this.revertSelectionStatus) {
+      this.revertSelectionStatus.textContent =
+        "Select an older revision to inspect its metadata before reverting.";
+    }
+
+    if (this.revertModalTitle) {
+      this.revertModalTitle.textContent = "Revert Video Note";
+    }
+
+    if (this.revertModalSubtitle) {
+      this.revertModalSubtitle.textContent =
+        "Review previous versions before restoring an older state.";
+    }
+
+    if (this.revertVersionsList) {
+      this.revertVersionsList.innerHTML = "";
+    }
+
+    if (this.revertVersionDetails && this.revertVersionDetailsDefaultHTML) {
+      this.revertVersionDetails.innerHTML = this.revertVersionDetailsDefaultHTML;
+      this.revertVersionPlaceholder =
+        this.revertVersionDetails.querySelector("#revertVersionPlaceholder");
+    }
+
+    if (this.confirmRevertVideoBtn) {
+      this.confirmRevertVideoBtn.disabled = true;
+      this.confirmRevertVideoBtn.textContent = this.revertConfirmDefaultLabel;
+      this.confirmRevertVideoBtn.classList.remove("cursor-wait");
+    }
+
+    if (this.cancelRevertVideoBtn) {
+      this.cancelRevertVideoBtn.disabled = false;
+      this.cancelRevertVideoBtn.classList.remove("opacity-60", "cursor-not-allowed");
+    }
+
+    if (this.closeRevertVideoModalBtn) {
+      this.closeRevertVideoModalBtn.disabled = false;
+      this.closeRevertVideoModalBtn.classList.remove("opacity-60", "cursor-not-allowed");
+    }
+  }
+
+  showRevertVideoModal() {
+    if (this.revertVideoModal) {
+      this.revertVideoModal.classList.remove("hidden");
+    }
+  }
+
+  hideRevertVideoModal() {
+    if (this.revertVideoModal) {
+      this.revertVideoModal.classList.add("hidden");
+    }
+    this.resetRevertVideoModal();
+  }
+
+  populateRevertVideoModal(video, history = []) {
+    if (!this.revertVideoModal) {
+      return;
+    }
+
+    this.resetRevertVideoModal();
+
+    if (!video || typeof video !== "object") {
+      if (this.revertSelectionStatus) {
+        this.revertSelectionStatus.textContent =
+          "Unable to load revision history for this note.";
+      }
+      return;
+    }
+
+    this.activeRevertVideo = video;
+
+    const merged = Array.isArray(history) ? history.slice() : [];
+    if (video.id && !merged.some((entry) => entry && entry.id === video.id)) {
+      merged.push(video);
+    }
+
+    const deduped = new Map();
+    for (const entry of merged) {
+      if (!entry || typeof entry !== "object" || !entry.id) {
+        continue;
+      }
+      deduped.set(entry.id, entry);
+    }
+
+    this.revertHistory = Array.from(deduped.values()).sort(
+      (a, b) => b.created_at - a.created_at
+    );
+
+    this.selectedRevertTarget = null;
+    if (this.revertHistory.length > 1 && video.created_at) {
+      // Auto-select the newest non-deleted revision that predates the active
+      // event so the confirmation button immediately conveys its effect.
+      const firstOlder = this.revertHistory.find(
+        (entry) =>
+          entry &&
+          entry.id !== video.id &&
+          entry.deleted !== true &&
+          typeof entry.created_at === "number" &&
+          entry.created_at < video.created_at
+      );
+      if (firstOlder) {
+        this.selectedRevertTarget = firstOlder;
+      }
+    }
+
+    if (this.revertHistoryCount) {
+      this.revertHistoryCount.textContent = `${this.revertHistory.length}`;
+    }
+
+    if (this.revertModalTitle) {
+      this.revertModalTitle.textContent = video.title
+        ? `Revert “${video.title}”`
+        : "Revert Video Note";
+    }
+
+    if (this.revertModalSubtitle) {
+      const subtitleParts = [];
+      const dTagValue = this.extractDTagValue(video.tags);
+      if (dTagValue) {
+        subtitleParts.push(`d=${dTagValue}`);
+      }
+      if (video.videoRootId) {
+        subtitleParts.push(`root=${truncateMiddle(video.videoRootId, 40)}`);
+      }
+      this.revertModalSubtitle.textContent = subtitleParts.length
+        ? `History grouped by ${subtitleParts.join(" • ")}`
+        : "Review previous versions before restoring an older state.";
+    }
+
+    this.renderRevertVersionsList();
+
+    if (this.selectedRevertTarget) {
+      this.renderRevertVersionDetails(this.selectedRevertTarget);
+    }
+
+    if (this.revertHistory.length <= 1) {
+      if (this.revertSelectionStatus) {
+        this.revertSelectionStatus.textContent =
+          "No earlier revisions are available for this note.";
+      }
+      this.updateRevertConfirmationState();
+      return;
+    }
+
+    this.updateRevertConfirmationState();
+  }
+
+  renderRevertVersionsList() {
+    if (!this.revertVersionsList) {
+      return;
+    }
+
+    const history = Array.isArray(this.revertHistory)
+      ? this.revertHistory
+      : [];
+    const selectedId = this.selectedRevertTarget?.id || "";
+    const currentId = this.activeRevertVideo?.id || "";
+
+    this.revertVersionsList.innerHTML = "";
+
+    if (!history.length) {
+      this.revertVersionsList.innerHTML =
+        '<p class="text-xs text-gray-500">No revisions found.</p>';
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    history.forEach((entry) => {
+      if (!entry || !entry.id) {
+        return;
+      }
+
+      const isCurrent = entry.id === currentId;
+      const isSelected = entry.id === selectedId;
+      const isDeleted = entry.deleted === true;
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.revertVersionId = entry.id;
+
+      const classes = [
+        "w-full",
+        "text-left",
+        "rounded-md",
+        "border",
+        "px-3",
+        "py-3",
+        "text-sm",
+        "transition",
+        "duration-150",
+        "focus:outline-none",
+        "focus:ring-2",
+        "focus:ring-offset-2",
+        "focus:ring-offset-gray-900",
+      ];
+
+      if (isSelected) {
+        classes.push(
+          "border-blue-500",
+          "bg-blue-500/20",
+          "text-blue-100",
+          "focus:ring-blue-500"
+        );
+      } else if (isCurrent) {
+        classes.push(
+          "border-green-500/60",
+          "bg-green-500/10",
+          "text-green-100",
+          "focus:ring-green-500/80"
+        );
+      } else if (isDeleted) {
+        classes.push(
+          "border-red-800/70",
+          "bg-red-900/30",
+          "text-red-200/90",
+          "hover:bg-red-900/40"
+        );
+      } else {
+        classes.push(
+          "border-gray-800",
+          "bg-gray-800/60",
+          "hover:bg-gray-700/70",
+          "text-gray-200"
+        );
+      }
+
+      button.className = classes.join(" ");
+      button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      if (isCurrent) {
+        button.setAttribute("aria-current", "true");
+      }
+
+      const relative = this.formatTimeAgo(entry.created_at);
+      const absolute = this.formatAbsoluteTimestamp(entry.created_at);
+      const versionLabel =
+        entry.version !== undefined ? `v${entry.version}` : "v?";
+
+      const metaParts = [];
+      if (isCurrent) {
+        metaParts.push("Current version");
+      }
+      if (entry.deleted) {
+        metaParts.push("Marked deleted");
+      }
+      if (entry.isPrivate) {
+        metaParts.push("Private");
+      }
+      const meta = metaParts.join(" • ");
+
+      const metaClass = entry.deleted
+        ? "text-red-200/80"
+        : "text-gray-400";
+
+      button.innerHTML = `
+        <div class="flex items-start justify-between gap-3">
+          <div class="space-y-1">
+            <p class="font-semibold">${this.escapeHTML(
+              entry.title || "Untitled"
+            )}</p>
+            <p class="text-xs text-gray-300">${this.escapeHTML(
+              relative
+            )} • ${this.escapeHTML(absolute)}</p>
+            ${
+              meta
+                ? `<p class="text-xs ${metaClass}">${this.escapeHTML(meta)}</p>`
+                : ""
+            }
+          </div>
+          <div class="text-xs uppercase tracking-wide text-gray-400">
+            ${this.escapeHTML(versionLabel)}
+          </div>
+        </div>
+      `;
+
+      fragment.appendChild(button);
+    });
+
+    this.revertVersionsList.appendChild(fragment);
+  }
+
+  handleRevertVersionListClick(event) {
+    const button = event?.target?.closest?.("[data-revert-version-id]");
+    if (!button || !button.dataset) {
+      return;
+    }
+
+    const versionId = button.dataset.revertVersionId;
+    if (!versionId) {
+      return;
+    }
+
+    const match = (this.revertHistory || []).find(
+      (entry) => entry && entry.id === versionId
+    );
+    if (!match) {
+      return;
+    }
+
+    this.selectedRevertTarget = match;
+    this.renderRevertVersionsList();
+    this.renderRevertVersionDetails(match);
+    this.updateRevertConfirmationState();
+  }
+
+  renderRevertVersionDetails(version) {
+    if (!this.revertVersionDetails) {
+      return;
+    }
+
+    if (!version) {
+      if (this.revertVersionDetailsDefaultHTML) {
+        this.revertVersionDetails.innerHTML =
+          this.revertVersionDetailsDefaultHTML;
+        this.revertVersionPlaceholder =
+          this.revertVersionDetails.querySelector("#revertVersionPlaceholder");
+      }
+      return;
+    }
+
+    const absolute = this.formatAbsoluteTimestamp(version.created_at);
+    const relative = this.formatTimeAgo(version.created_at);
+    const description =
+      typeof version.description === "string" ? version.description : "";
+    const thumbnail =
+      typeof version.thumbnail === "string" ? version.thumbnail.trim() : "";
+    const url = typeof version.url === "string" ? version.url.trim() : "";
+    const magnet =
+      typeof version.magnet === "string" ? version.magnet.trim() : "";
+    const rawMagnet =
+      typeof version.rawMagnet === "string" ? version.rawMagnet.trim() : "";
+    const displayMagnet = magnet || rawMagnet;
+    const isPrivate = version.isPrivate === true;
+    const dTagValue = this.extractDTagValue(version.tags);
+
+    const fallbackThumbnail = this.escapeHTML(FALLBACK_THUMBNAIL_SRC);
+    const thumbnailSrc = thumbnail
+      ? this.escapeHTML(thumbnail)
+      : fallbackThumbnail;
+    const thumbnailAlt = thumbnail
+      ? "Revision thumbnail"
+      : "Fallback thumbnail";
+
+    let urlHtml = '<span class="text-gray-500">None</span>';
+    if (url) {
+      const safeUrl = this.escapeHTML(url);
+      const displayUrl = this.escapeHTML(truncateMiddle(url, 72));
+      urlHtml = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 break-all">${displayUrl}</a>`;
+    }
+
+    let magnetHtml = '<span class="text-gray-500">None</span>';
+    if (displayMagnet) {
+      const label = this.escapeHTML(truncateMiddle(displayMagnet, 72));
+      const caption = isPrivate
+        ? '<span class="block text-xs text-purple-200/90 mt-1">Encrypted magnet (only decrypted locally for the owner).</span>'
+        : "";
+      magnetHtml = `<div class="break-all">${label}${caption}</div>`;
+    }
+
+    const chips = [];
+    if (version.deleted) {
+      chips.push(
+        '<span class="inline-flex items-center rounded-full border border-red-700/70 bg-red-900/40 px-2 py-0.5 text-xs text-red-200/90">Marked deleted</span>'
+      );
+    }
+    if (isPrivate) {
+      chips.push(
+        '<span class="inline-flex items-center rounded-full border border-purple-600/60 bg-purple-900/40 px-2 py-0.5 text-xs text-purple-200/90">Private</span>'
+      );
+    }
+    if (version.version !== undefined) {
+      chips.push(
+        `<span class="inline-flex items-center rounded-full border border-gray-700 bg-gray-800/80 px-2 py-0.5 text-xs text-gray-200">Schema v${this.escapeHTML(
+          String(version.version)
+        )}</span>`
+      );
+    }
+
+    const descriptionHtml = description
+      ? `<p class="whitespace-pre-wrap text-gray-200">${this.escapeHTML(
+          description
+        )}</p>`
+      : '<p class="text-gray-500">No description provided.</p>';
+
+    const rootId =
+      typeof version.videoRootId === "string" ? version.videoRootId : "";
+    const rootDisplay = rootId
+      ? this.escapeHTML(truncateMiddle(rootId, 64))
+      : "";
+    const eventDisplay = version.id
+      ? this.escapeHTML(truncateMiddle(version.id, 64))
+      : "";
+
+    this.revertVersionDetails.innerHTML = `
+      <div class="space-y-4">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
+          <div class="overflow-hidden rounded-md border border-gray-800 bg-black/40 w-full max-w-sm">
+            <img
+              src="${thumbnailSrc}"
+              alt="${this.escapeHTML(thumbnailAlt)}"
+              class="w-full h-auto object-cover"
+              loading="lazy"
+            />
+          </div>
+          <div class="flex-1 space-y-3">
+            <div class="space-y-1">
+              <h3 class="text-lg font-semibold text-white">${this.escapeHTML(
+                version.title || "Untitled"
+              )}</h3>
+              <p class="text-xs text-gray-400">${this.escapeHTML(
+                absolute
+              )} (${this.escapeHTML(relative)})</p>
+            </div>
+            ${
+              chips.length
+                ? `<div class="flex flex-wrap gap-2">${chips.join("")}</div>`
+                : ""
+            }
+            <div class="space-y-2 text-sm text-gray-200">
+              <div>
+                <span class="font-medium text-gray-300">Hosted URL:</span>
+                <div class="mt-1">${urlHtml}</div>
+              </div>
+              <div>
+                <span class="font-medium text-gray-300">Magnet:</span>
+                <div class="mt-1">${magnetHtml}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="text-sm font-semibold text-gray-200">Description</h4>
+          ${descriptionHtml}
+        </div>
+
+        <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+          <div>
+            <dt class="font-semibold text-gray-200">Mode</dt>
+            <dd class="mt-1">${this.escapeHTML(version.mode || "live")}</dd>
+          </div>
+          <div>
+            <dt class="font-semibold text-gray-200">d tag</dt>
+            <dd class="mt-1">
+              ${dTagValue
+                ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5">${this.escapeHTML(
+                    dTagValue
+                  )}</code>`
+                : '<span class="text-gray-500">Not provided</span>'}
+            </dd>
+          </div>
+          <div>
+            <dt class="font-semibold text-gray-200">videoRootId</dt>
+            <dd class="mt-1">
+              ${rootDisplay
+                ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${this.escapeHTML(
+                    rootId
+                  )}">${rootDisplay}</code>`
+                : '<span class="text-gray-500">Not provided</span>'}
+            </dd>
+          </div>
+          <div>
+            <dt class="font-semibold text-gray-200">Event ID</dt>
+            <dd class="mt-1">
+              ${eventDisplay
+                ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${this.escapeHTML(
+                    version.id || ""
+                  )}">${eventDisplay}</code>`
+                : '<span class="text-gray-500">Unknown</span>'}
+            </dd>
+          </div>
+        </dl>
+      </div>
+    `;
+  }
+
+  updateRevertConfirmationState() {
+    if (!this.confirmRevertVideoBtn) {
+      return;
+    }
+
+    if (!this.selectedRevertTarget || !this.activeRevertVideo) {
+      this.pendingRevertEntries = [];
+      this.confirmRevertVideoBtn.disabled = true;
+      if (!this.revertModalBusy) {
+        this.confirmRevertVideoBtn.textContent = this.revertConfirmDefaultLabel;
+      }
+      if (this.revertSelectionStatus) {
+        if ((this.revertHistory || []).length > 1) {
+          this.revertSelectionStatus.textContent =
+            "Select an older revision to enable reverting.";
+        }
+      }
+      return;
+    }
+
+    const target = this.selectedRevertTarget;
+    const activePubkey =
+      typeof this.activeRevertVideo.pubkey === "string"
+        ? this.activeRevertVideo.pubkey.toLowerCase()
+        : "";
+
+    const revertCandidates = (this.revertHistory || []).filter((entry) => {
+      if (!entry || entry.id === target.id) {
+        return false;
+      }
+      if (entry.deleted) {
+        return false;
+      }
+      if (typeof entry.created_at !== "number") {
+        return false;
+      }
+      if (entry.created_at <= target.created_at) {
+        return false;
+      }
+      if (!entry.pubkey) {
+        return false;
+      }
+      const entryPubkey =
+        typeof entry.pubkey === "string" ? entry.pubkey.toLowerCase() : "";
+      if (activePubkey && entryPubkey !== activePubkey) {
+        return false;
+      }
+      return true;
+    });
+
+    this.pendingRevertEntries = revertCandidates;
+
+    const disable =
+      this.revertModalBusy ||
+      target.deleted === true ||
+      revertCandidates.length === 0;
+
+    this.confirmRevertVideoBtn.disabled = disable;
+    if (!this.revertModalBusy) {
+      this.confirmRevertVideoBtn.textContent = this.revertConfirmDefaultLabel;
+    }
+
+    if (this.revertSelectionStatus) {
+      if (target.deleted) {
+        this.revertSelectionStatus.textContent =
+          "This revision was previously marked as deleted and cannot become active.";
+      } else if (revertCandidates.length === 0) {
+        this.revertSelectionStatus.textContent =
+          "The selected revision is already the latest active version.";
+      } else {
+        const suffix = revertCandidates.length === 1 ? "revision" : "revisions";
+        this.revertSelectionStatus.textContent = `Reverting will mark ${revertCandidates.length} newer ${suffix} as reverted.`;
+      }
+    }
+  }
+
+  setRevertModalBusy(isBusy, label) {
+    this.revertModalBusy = Boolean(isBusy);
+
+    if (this.confirmRevertVideoBtn) {
+      const disableConfirm =
+        this.revertModalBusy ||
+        !this.selectedRevertTarget ||
+        !this.pendingRevertEntries ||
+        this.pendingRevertEntries.length === 0 ||
+        (this.selectedRevertTarget && this.selectedRevertTarget.deleted === true);
+      this.confirmRevertVideoBtn.disabled = disableConfirm;
+      this.confirmRevertVideoBtn.textContent = this.revertModalBusy
+        ? label || "Reverting…"
+        : this.revertConfirmDefaultLabel;
+      this.confirmRevertVideoBtn.classList.toggle(
+        "cursor-wait",
+        this.revertModalBusy
+      );
+    }
+
+    const toggleDisabledStyles = (button) => {
+      if (!button) {
+        return;
+      }
+      button.disabled = this.revertModalBusy;
+      button.classList.toggle("opacity-60", this.revertModalBusy);
+      button.classList.toggle("cursor-not-allowed", this.revertModalBusy);
+    };
+
+    toggleDisabledStyles(this.cancelRevertVideoBtn);
+    toggleDisabledStyles(this.closeRevertVideoModalBtn);
+
+    if (!this.revertModalBusy) {
+      this.updateRevertConfirmationState();
+    }
+  }
+
+  async handleConfirmRevertSelection() {
+    if (!this.selectedRevertTarget) {
+      return;
+    }
+    if (!this.pubkey) {
+      this.showError("Please login to revert.");
+      return;
+    }
+
+    const entries = Array.isArray(this.pendingRevertEntries)
+      ? this.pendingRevertEntries.slice()
+      : [];
+    if (!entries.length) {
+      this.updateRevertConfirmationState();
+      return;
+    }
+
+    this.setRevertModalBusy(true, "Reverting…");
+
+    try {
+      for (const entry of entries) {
+        await nostrClient.revertVideo(
+          {
+            id: entry.id,
+            pubkey: entry.pubkey,
+            tags: entry.tags,
+          },
+          this.pubkey
+        );
+      }
+
+      await this.loadVideos();
+
+      const timestampLabel = this.formatAbsoluteTimestamp(
+        this.selectedRevertTarget.created_at
+      );
+      this.showSuccess(`Reverted to revision from ${timestampLabel}.`);
+      this.hideRevertVideoModal();
+      this.forceRefreshAllProfiles();
+    } catch (err) {
+      console.error("Failed to revert video:", err);
+      this.showError("Failed to revert video. Please try again.");
+    } finally {
+      this.setRevertModalBusy(false);
+      this.pendingRevertEntries = [];
+    }
+  }
+
+  extractDTagValue(tags) {
+    if (!Array.isArray(tags)) {
+      return "";
+    }
+    for (const tag of tags) {
+      if (!Array.isArray(tag) || tag.length < 2) {
+        continue;
+      }
+      if (tag[0] === "d" && typeof tag[1] === "string") {
+        return tag[1];
+      }
+    }
+    return "";
+  }
+
+  populateEditVideoForm(video) {
+    if (!video || !this.editVideoModal) {
+      return;
+    }
+
+    this.resetEditVideoForm();
+
+    const magnetSource = video.magnet || video.rawMagnet || "";
+    const magnetHints = extractMagnetHints(magnetSource);
+    const effectiveWs = video.ws || magnetHints.ws || "";
+    const effectiveXs = video.xs || magnetHints.xs || "";
+    const enableCommentsValue =
+      typeof video.enableComments === "boolean"
+        ? video.enableComments
+        : true;
+
+    const editContext = {
+      ...video,
+      ws: effectiveWs,
+      xs: effectiveXs,
+      enableComments: enableCommentsValue,
+    };
+
+    const fieldMap = {
+      editVideoTitle: editContext.title || "",
+      editVideoUrl: editContext.url || "",
+      editVideoMagnet: editContext.magnet || "",
+      editVideoWs: editContext.ws || "",
+      editVideoXs: editContext.xs || "",
+      editVideoThumbnail: editContext.thumbnail || "",
+      editVideoDescription: editContext.description || "",
+      editEnableComments: editContext.enableComments,
+    };
+
+    Object.entries(fieldMap).forEach(([id, rawValue]) => {
+      const input = this.editVideoModal.querySelector(`#${id}`);
+      const button = this.editVideoModal.querySelector(
+        `[data-edit-target="${id}"]`
+      );
+      if (!input) {
+        if (button) {
+          button.classList.add("hidden");
+          button.dataset.mode = "locked";
+          button.textContent = "Edit field";
+        }
+        return;
+      }
+
+      const isCheckbox = input.type === "checkbox";
+      if (isCheckbox) {
+        const hasValue = rawValue !== undefined;
+        const boolValue = rawValue === true;
+        input.checked = boolValue;
+        input.disabled = hasValue;
+        input.dataset.originalValue = boolValue ? "true" : "false";
+        if (button) {
+          if (hasValue) {
+            button.classList.remove("hidden");
+            button.dataset.mode = "locked";
+            button.textContent = "Edit field";
+          } else {
+            button.classList.add("hidden");
+            button.dataset.mode = "locked";
+            button.textContent = "Edit field";
+          }
+        }
+        return;
+      }
+
+      const value = typeof rawValue === "string" ? rawValue : "";
+      const hasValue = value.trim().length > 0;
+
+      input.value = value;
+      input.dataset.originalValue = value;
+      if (hasValue) {
+        input.readOnly = true;
+        input.classList.add("locked-input");
+      } else {
+        input.readOnly = false;
+        input.classList.remove("locked-input");
+      }
+
+      if (button) {
+        if (hasValue) {
+          button.classList.remove("hidden");
+          button.dataset.mode = "locked";
+          button.textContent = "Edit field";
+        } else {
+          button.classList.add("hidden");
+          button.dataset.mode = "locked";
+          button.textContent = "Edit field";
+        }
+      }
+    });
+
+    this.activeEditVideo = editContext;
+  }
+
+  handleEditFieldToggle(event) {
+    const button = event?.currentTarget;
+    if (!button || !this.editVideoModal) {
+      return;
+    }
+
+    const targetId = button.dataset?.editTarget;
+    if (!targetId) {
+      return;
+    }
+
+    const input = this.editVideoModal.querySelector(`#${targetId}`);
+    if (!input) {
+      return;
+    }
+
+    const mode = button.dataset.mode || "locked";
+    const isCheckbox = input.type === "checkbox";
+
+    if (mode === "locked") {
+      if (isCheckbox) {
+        input.disabled = false;
+      } else {
+        input.readOnly = false;
+        input.classList.remove("locked-input");
+      }
+      button.dataset.mode = "editing";
+      button.textContent = "Restore original";
+      if (!isCheckbox && typeof input.focus === "function") {
+        input.focus();
+        if (typeof input.setSelectionRange === "function") {
+          const length = input.value.length;
+          try {
+            input.setSelectionRange(length, length);
+          } catch (err) {
+            // ignore selection errors (e.g. for input types that do not support it)
+          }
+        }
+      }
+      return;
+    }
+
+    const originalValue = input.dataset?.originalValue || "";
+
+    if (isCheckbox) {
+      input.checked = originalValue === "true";
+      input.disabled = true;
+      button.dataset.mode = "locked";
+      button.textContent = "Edit field";
+      return;
+    }
+
+    input.value = originalValue;
+
+    if (originalValue) {
+      input.readOnly = true;
+      input.classList.add("locked-input");
+      button.dataset.mode = "locked";
+      button.textContent = "Edit field";
+    } else {
+      input.readOnly = false;
+      input.classList.remove("locked-input");
+      button.classList.add("hidden");
+      button.dataset.mode = "locked";
+      button.textContent = "Edit field";
+    }
+  }
+
+  setUploadMode(mode) {
+    const normalized = mode === "cloudflare" ? "cloudflare" : "custom";
+    this.activeUploadMode = normalized;
+
+    if (this.customUploadSection) {
+      if (normalized === "custom") {
+        this.customUploadSection.classList.remove("hidden");
+      } else {
+        this.customUploadSection.classList.add("hidden");
+      }
+    }
+
+    if (this.cloudflareUploadSection) {
+      if (normalized === "cloudflare") {
+        this.cloudflareUploadSection.classList.remove("hidden");
+      } else {
+        this.cloudflareUploadSection.classList.add("hidden");
+      }
+    }
+
+    if (Array.isArray(this.uploadModeToggleButtons)) {
+      this.uploadModeToggleButtons.forEach((btn) => {
+        if (!btn || !btn.dataset) {
+          return;
+        }
+
+        const isActive = btn.dataset.uploadMode === normalized;
+        btn.classList.toggle("bg-blue-500", isActive);
+        btn.classList.toggle("text-white", isActive);
+        btn.classList.toggle("shadow", isActive);
+        btn.classList.toggle("text-gray-300", !isActive);
+        btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+      });
+    }
+
+    if (normalized === "cloudflare") {
+      this.updateCloudflareBucketPreview();
+    }
+  }
+
+  setCloudflareAdvancedVisibility(visible) {
+    const isVisible = Boolean(visible);
+    this.cloudflareAdvancedVisible = isVisible;
+
+    if (this.cloudflareAdvancedFields) {
+      if (isVisible) {
+        this.cloudflareAdvancedFields.classList.remove("hidden");
+      } else {
+        this.cloudflareAdvancedFields.classList.add("hidden");
+      }
+    }
+
+    if (this.cloudflareAdvancedToggle) {
+      this.cloudflareAdvancedToggle.setAttribute(
+        "aria-expanded",
+        isVisible ? "true" : "false"
+      );
+    }
+
+    if (this.cloudflareAdvancedToggleLabel) {
+      this.cloudflareAdvancedToggleLabel.textContent = isVisible
+        ? "Hide advanced options"
+        : "Show advanced options";
+    }
+
+    if (this.cloudflareAdvancedToggleIcon) {
+      this.cloudflareAdvancedToggleIcon.classList.toggle("rotate-90", isVisible);
+    }
+  }
+
+  setCloudflareSettingsStatus(message = "", variant = "info") {
+    if (!this.cloudflareSettingsStatus) {
+      return;
+    }
+
+    const el = this.cloudflareSettingsStatus;
+    el.textContent = message || "";
+    el.classList.remove(
+      "text-green-400",
+      "text-red-400",
+      "text-yellow-400",
+      "text-gray-400"
+    );
+    if (!message) {
+      el.classList.add("text-gray-400");
+      return;
+    }
+
+    let cls = "text-gray-400";
+    if (variant === "success") {
+      cls = "text-green-400";
+    } else if (variant === "error") {
+      cls = "text-red-400";
+    } else if (variant === "warning") {
+      cls = "text-yellow-400";
+    }
+    el.classList.add(cls);
+  }
+
+  setCloudflareUploadStatus(message = "", variant = "info") {
+    if (!this.cloudflareUploadStatus) {
+      return;
+    }
+
+    const el = this.cloudflareUploadStatus;
+    el.textContent = message || "";
+    el.classList.remove(
+      "text-green-400",
+      "text-red-400",
+      "text-yellow-400",
+      "text-gray-400"
+    );
+    if (!message) {
+      el.classList.add("text-gray-400");
+      return;
+    }
+
+    let cls = "text-gray-400";
+    if (variant === "success") {
+      cls = "text-green-400";
+    } else if (variant === "error") {
+      cls = "text-red-400";
+    } else if (variant === "warning") {
+      cls = "text-yellow-400";
+    }
+    el.classList.add(cls);
+  }
+
+  setCloudflareUploading(isUploading) {
+    if (this.cloudflareUploadButton) {
+      this.cloudflareUploadButton.disabled = Boolean(isUploading);
+      this.cloudflareUploadButton.textContent = isUploading
+        ? "Uploading…"
+        : "Upload to R2 & publish";
+    }
+
+    if (this.cloudflareFileInput) {
+      this.cloudflareFileInput.disabled = Boolean(isUploading);
+    }
+
+    if (this.cloudflareEnableCommentsInput) {
+      this.cloudflareEnableCommentsInput.disabled = Boolean(isUploading);
+    }
+  }
+
+  updateCloudflareProgress(fraction) {
+    if (!this.cloudflareProgressBar || !this.cloudflareProgressFill) {
+      return;
+    }
+
+    if (typeof fraction !== "number" || Number.isNaN(fraction)) {
+      this.cloudflareProgressBar.classList.add("hidden");
+      this.cloudflareProgressFill.style.width = "0%";
+      return;
+    }
+
+    const clamped = Math.max(0, Math.min(1, fraction));
+    this.cloudflareProgressBar.classList.remove("hidden");
+    this.cloudflareProgressFill.style.width = `${(clamped * 100).toFixed(1)}%`;
+  }
+
+  resetCloudflareUploadForm() {
+    if (this.cloudflareTitleInput) this.cloudflareTitleInput.value = "";
+    if (this.cloudflareDescriptionInput)
+      this.cloudflareDescriptionInput.value = "";
+    if (this.cloudflareThumbnailInput)
+      this.cloudflareThumbnailInput.value = "";
+    if (this.cloudflareMagnetInput) this.cloudflareMagnetInput.value = "";
+    if (this.cloudflareWsInput) this.cloudflareWsInput.value = "";
+    if (this.cloudflareXsInput) this.cloudflareXsInput.value = "";
+    if (this.cloudflareEnableCommentsInput)
+      this.cloudflareEnableCommentsInput.checked = true;
+    if (this.cloudflareFileInput) this.cloudflareFileInput.value = "";
+    this.updateCloudflareProgress(Number.NaN);
+  }
+
+  async loadCloudflareSettingsFromStorage() {
+    try {
+      const settings = await loadR2Settings();
+      this.cloudflareSettings = settings;
+      this.populateCloudflareSettingsInputs(settings);
+    } catch (err) {
+      console.error("Failed to load Cloudflare settings:", err);
+      this.setCloudflareSettingsStatus(
+        "Failed to load saved settings.",
+        "error"
+      );
+      this.cloudflareSettings = {
+        accountId: "",
+        accessKeyId: "",
+        secretAccessKey: "",
+        apiToken: "",
+        zoneId: "",
+        baseDomain: "",
+        buckets: {},
+      };
+      this.populateCloudflareSettingsInputs(this.cloudflareSettings);
+    }
+  }
+
+  populateCloudflareSettingsInputs(settings) {
+    const data =
+      settings || {
+        accountId: "",
+        accessKeyId: "",
+        secretAccessKey: "",
+        apiToken: "",
+        zoneId: "",
+        baseDomain: "",
+      };
+
+    if (this.r2AccountIdInput) {
+      this.r2AccountIdInput.value = data.accountId || "";
+    }
+    if (this.r2AccessKeyIdInput) {
+      this.r2AccessKeyIdInput.value = data.accessKeyId || "";
+    }
+    if (this.r2SecretAccessKeyInput) {
+      this.r2SecretAccessKeyInput.value = data.secretAccessKey || "";
+    }
+    if (this.r2ApiTokenInput) {
+      this.r2ApiTokenInput.value = data.apiToken || "";
+    }
+    if (this.r2ZoneIdInput) {
+      this.r2ZoneIdInput.value = data.zoneId || "";
+    }
+    if (this.r2BaseDomainInput) {
+      this.r2BaseDomainInput.value = data.baseDomain || "";
+    }
+
+    const hasAdvancedValues = Boolean(
+      (data.apiToken && data.apiToken.length > 0) ||
+        (data.zoneId && data.zoneId.length > 0) ||
+        (data.baseDomain && data.baseDomain.length > 0)
+    );
+    if (hasAdvancedValues) {
+      this.setCloudflareAdvancedVisibility(true);
+    } else if (!this.cloudflareAdvancedVisible) {
+      this.setCloudflareAdvancedVisibility(false);
+    }
+
+    this.setCloudflareSettingsStatus("");
+  }
+
+  async handleCloudflareSettingsSubmit({ quiet = false } = {}) {
+    const accountId = (this.r2AccountIdInput?.value || "").trim();
+    const accessKeyId = (this.r2AccessKeyIdInput?.value || "").trim();
+    const secretAccessKey = (this.r2SecretAccessKeyInput?.value || "").trim();
+    const apiToken = (this.r2ApiTokenInput?.value || "").trim();
+    const zoneId = (this.r2ZoneIdInput?.value || "").trim();
+    const baseDomain = sanitizeBaseDomain(
+      this.r2BaseDomainInput?.value || ""
+    );
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "Account ID, Access Key ID, and Secret are required.",
+          "error"
+        );
+      }
+      return false;
+    }
+
+    let buckets = { ...(this.cloudflareSettings?.buckets || {}) };
+    const previousAccount = this.cloudflareSettings?.accountId || "";
+    const previousBaseDomain = this.cloudflareSettings?.baseDomain || "";
+    const previousZoneId = this.cloudflareSettings?.zoneId || "";
+    if (
+      previousAccount !== accountId ||
+      previousBaseDomain !== baseDomain ||
+      previousZoneId !== zoneId
+    ) {
+      buckets = {};
+    }
+
+    const updatedSettings = {
+      accountId,
+      accessKeyId,
+      secretAccessKey,
+      apiToken,
+      zoneId,
+      baseDomain,
+      buckets,
+    };
+
+    try {
+      this.cloudflareSettings = await saveR2Settings(updatedSettings);
+      this.populateCloudflareSettingsInputs(this.cloudflareSettings);
+      if (!quiet) {
+        this.setCloudflareSettingsStatus("Settings saved locally.", "success");
+      }
+      await this.updateCloudflareBucketPreview();
+      return true;
+    } catch (err) {
+      console.error("Failed to save Cloudflare settings:", err);
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "Failed to save settings. Check console for details.",
+          "error"
+        );
+      }
+    }
+
+    return false;
+  }
+
+  async handleCloudflareClearSettings() {
+    try {
+      await clearR2Settings();
+      this.cloudflareSettings = await loadR2Settings();
+      this.populateCloudflareSettingsInputs(this.cloudflareSettings);
+      this.setCloudflareAdvancedVisibility(false);
+      this.setCloudflareSettingsStatus("Settings cleared.", "success");
+      await this.updateCloudflareBucketPreview();
+    } catch (err) {
+      console.error("Failed to clear Cloudflare settings:", err);
+      this.setCloudflareSettingsStatus(
+        "Failed to clear settings.",
+        "error"
+      );
+    }
+  }
+
+  getCorsOrigins() {
+    const origins = new Set();
+    if (typeof window !== "undefined" && window.location) {
+      const origin = window.location.origin;
+      if (origin && origin !== "null") {
+        origins.add(origin);
+      }
+      if (origin && origin.startsWith("http://localhost")) {
+        origins.add(origin.replace("http://", "https://"));
+      }
+    }
+    return Array.from(origins);
+  }
+
+  deriveSubdomainForNpub(npub) {
+    try {
+      return deriveShortSubdomain(npub);
+    } catch (err) {
+      console.warn("Failed to derive short subdomain, falling back:", err);
+    }
+
+    const base = String(npub || "user")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/^-+|[-]+$/g, "");
+    return base.slice(0, 32) || "user";
+  }
+
+  async ensureBucketConfigForNpub(npub) {
+    if (!npub || !this.cloudflareSettings) {
+      return null;
+    }
+
+    const accountId = (this.cloudflareSettings.accountId || "").trim();
+    const apiToken = (this.cloudflareSettings.apiToken || "").trim();
+    const zoneId = (this.cloudflareSettings.zoneId || "").trim();
+    const accessKeyId = (this.cloudflareSettings.accessKeyId || "").trim();
+    const secretAccessKey =
+      (this.cloudflareSettings.secretAccessKey || "").trim();
+    const corsOrigins = this.getCorsOrigins();
+    const baseDomain = this.cloudflareSettings.baseDomain || "";
+
+    if (!accountId) {
+      throw new Error("Cloudflare account ID is missing.");
+    }
+
+    let entry = this.cloudflareSettings.buckets?.[npub] || null;
+
+    if (entry && entry.publicBaseUrl) {
+      if (apiToken) {
+        try {
+          await ensureBucket({
+            accountId,
+            bucket: entry.bucket,
+            token: apiToken,
+          });
+          await putCors({
+            accountId,
+            bucket: entry.bucket,
+            token: apiToken,
+            origins: corsOrigins,
+          });
+        } catch (err) {
+          console.warn("Failed to refresh bucket configuration:", err);
+        }
+      } else if (
+        accessKeyId &&
+        secretAccessKey &&
+        corsOrigins.length > 0
+      ) {
+        try {
+          const s3 = makeR2Client({
+            accountId,
+            accessKeyId,
+            secretAccessKey,
+          });
+          await ensureBucketCors({
+            s3,
+            bucket: entry.bucket,
+            origins: corsOrigins,
+          });
+        } catch (err) {
+          console.warn(
+            "Failed to refresh bucket CORS via access keys:",
+            err
+          );
+        }
+      }
+      return {
+        entry,
+        usedManagedFallback: entry.domainType !== "custom",
+        customDomainStatus: entry.domainType === "custom" ? "active" : "skipped",
+      };
+    }
+
+    if (!apiToken) {
+      const bucketName = entry?.bucket || sanitizeBucketName(npub);
+      const manualCustomDomain = baseDomain
+        ? `https://${this.deriveSubdomainForNpub(npub)}.${baseDomain}`
+        : "";
+
+      let publicBaseUrl = entry?.publicBaseUrl || manualCustomDomain;
+      if (!publicBaseUrl) {
+        publicBaseUrl = `https://${bucketName}.${accountId}.r2.dev`;
+      }
+
+      if (!publicBaseUrl) {
+        throw new Error(
+          "No public bucket domain configured. Add an API token or configure the domain manually."
+        );
+      }
+
+      const manualEntry = {
+        bucket: bucketName,
+        publicBaseUrl,
+        domainType: publicBaseUrl.includes(".r2.dev") ? "managed" : "custom",
+        lastUpdated: Date.now(),
+      };
+
+      if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
+        try {
+          const s3 = makeR2Client({
+            accountId,
+            accessKeyId,
+            secretAccessKey,
+          });
+          await ensureBucketCors({
+            s3,
+            bucket: bucketName,
+            origins: corsOrigins,
+          });
+        } catch (corsErr) {
+          console.warn(
+            "Failed to ensure R2 CORS rules via access keys. Configure the bucket's CORS policy manually if uploads continue to fail.",
+            corsErr
+          );
+        }
+      }
+
+      let savedEntry = entry;
+      if (
+        !entry ||
+        entry.bucket !== manualEntry.bucket ||
+        entry.publicBaseUrl !== manualEntry.publicBaseUrl ||
+        entry.domainType !== manualEntry.domainType
+      ) {
+        const updatedSettings = await saveR2Settings(
+          mergeBucketEntry(this.cloudflareSettings, npub, manualEntry)
+        );
+        this.cloudflareSettings = updatedSettings;
+        savedEntry = updatedSettings.buckets?.[npub] || manualEntry;
+      }
+
+      return {
+        entry: savedEntry,
+        usedManagedFallback: manualEntry.domainType !== "custom",
+        customDomainStatus:
+          manualEntry.domainType === "custom" ? "manual" : "managed",
+      };
+    }
+
+    const bucketName = entry?.bucket || sanitizeBucketName(npub);
+
+    await ensureBucket({ accountId, bucket: bucketName, token: apiToken });
+
+    try {
+      await putCors({
+        accountId,
+        bucket: bucketName,
+        token: apiToken,
+        origins: corsOrigins,
+      });
+    } catch (err) {
+      console.warn("Failed to apply R2 CORS rules:", err);
+    }
+
+    let publicBaseUrl = entry?.publicBaseUrl || "";
+    let domainType = entry?.domainType || "managed";
+    let usedManagedFallback = false;
+    let customDomainStatus = "skipped";
+
+    if (baseDomain && zoneId) {
+      const domain = `${this.deriveSubdomainForNpub(npub)}.${baseDomain}`;
+      try {
+        const custom = await attachCustomDomainAndWait({
+          accountId,
+          bucket: bucketName,
+          token: apiToken,
+          zoneId,
+          domain,
+          pollInterval: 2500,
+          timeoutMs: 120000,
+        });
+        customDomainStatus = custom?.status || "unknown";
+        if (custom?.active && custom?.url) {
+          publicBaseUrl = custom.url;
+          domainType = "custom";
+          try {
+            await setManagedDomain({
+              accountId,
+              bucket: bucketName,
+              token: apiToken,
+              enabled: false,
+            });
+          } catch (disableErr) {
+            console.warn("Failed to disable managed domain:", disableErr);
+          }
+        } else {
+          usedManagedFallback = true;
+        }
+      } catch (err) {
+        if (/already exists/i.test(err.message || "")) {
+          publicBaseUrl = `https://${domain}`;
+          domainType = "custom";
+          customDomainStatus = "active";
+          try {
+            await setManagedDomain({
+              accountId,
+              bucket: bucketName,
+              token: apiToken,
+              enabled: false,
+            });
+          } catch (disableErr) {
+            console.warn("Failed to disable managed domain:", disableErr);
+          }
+        } else {
+          console.warn("Failed to attach custom domain, falling back:", err);
+          usedManagedFallback = true;
+          customDomainStatus = "error";
+        }
+      }
+    }
+
+    if (!publicBaseUrl) {
+      const managed = await setManagedDomain({
+        accountId,
+        bucket: bucketName,
+        token: apiToken,
+        enabled: true,
+      });
+      publicBaseUrl = managed?.url || `https://${bucketName}.${accountId}.r2.dev`;
+      domainType = "managed";
+      usedManagedFallback = true;
+      customDomainStatus = customDomainStatus === "skipped" ? "managed" : customDomainStatus;
+    }
+
+    const mergedEntry = {
+      bucket: bucketName,
+      publicBaseUrl,
+      domainType,
+      lastUpdated: Date.now(),
+    };
+    const updatedSettings = await saveR2Settings(
+      mergeBucketEntry(this.cloudflareSettings, npub, mergedEntry)
+    );
+    this.cloudflareSettings = updatedSettings;
+    return { entry: mergedEntry, usedManagedFallback, customDomainStatus };
+  }
+
+  async updateCloudflareBucketPreview() {
+    if (!this.cloudflareBucketPreview) {
+      return;
+    }
+
+    const el = this.cloudflareBucketPreview;
+    if (!this.cloudflareSettings) {
+      el.textContent = "Save your credentials to configure R2.";
+      return;
+    }
+
+    if (!this.pubkey) {
+      el.textContent = "Login to preview your R2 bucket.";
+      return;
+    }
+
+    const npub = this.safeEncodeNpub(this.pubkey);
+    if (!npub) {
+      el.textContent = "Unable to encode npub.";
+      return;
+    }
+
+    const entry = this.cloudflareSettings.buckets?.[npub];
+    if (!entry || !entry.publicBaseUrl) {
+      el.textContent = "Bucket will be auto-created on your next upload.";
+      return;
+    }
+
+    const sampleKey = buildR2Key(npub, { name: "sample.mp4" });
+    const publicUrl = buildPublicUrl(entry.publicBaseUrl, sampleKey);
+    const fullPreview = `${entry.bucket} • ${publicUrl}`;
+
+    let displayHostAndPath = truncateMiddle(publicUrl, 72);
+    try {
+      const parsed = new URL(publicUrl);
+      const cleanPath = parsed.pathname.replace(/^\//, "");
+      const truncatedPath = truncateMiddle(cleanPath || sampleKey, 32);
+      displayHostAndPath = `${truncateMiddle(parsed.host, 32)}/${truncatedPath}`;
+    } catch (err) {
+      // ignore URL parse issues and fall back to the raw string
+    }
+
+    const truncatedBucket = truncateMiddle(entry.bucket, 28);
+    el.textContent = `${truncatedBucket} • ${displayHostAndPath}`;
+    el.setAttribute("title", fullPreview);
+  }
+
+  async handleCloudflareUploadSubmit() {
+    if (!this.pubkey) {
+      this.showError("Please login to post a video.");
+      return;
+    }
+
+    const saved = await this.handleCloudflareSettingsSubmit({ quiet: true });
+    if (!saved) {
+      this.setCloudflareUploadStatus(
+        "Fix your R2 settings before uploading.",
+        "error"
+      );
+      return;
+    }
+
+    const title = (this.cloudflareTitleInput?.value || "").trim();
+    if (!title) {
+      this.setCloudflareUploadStatus("Title is required.", "error");
+      return;
+    }
+
+    const file = this.cloudflareFileInput?.files?.[0] || null;
+    if (!file) {
+      this.setCloudflareUploadStatus(
+        "Select a video or HLS file to upload.",
+        "error"
+      );
+      return;
+    }
+
+    const description = (this.cloudflareDescriptionInput?.value || "").trim();
+    const thumbnail = (this.cloudflareThumbnailInput?.value || "").trim();
+    const magnet = (this.cloudflareMagnetInput?.value || "").trim();
+    const ws = (this.cloudflareWsInput?.value || "").trim();
+    const xs = (this.cloudflareXsInput?.value || "").trim();
+    const enableComments = this.cloudflareEnableCommentsInput
+      ? this.cloudflareEnableCommentsInput.checked
+      : true;
+
+    const accountId = (this.cloudflareSettings?.accountId || "").trim();
+    const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
+    const secretAccessKey = (
+      this.cloudflareSettings?.secretAccessKey || ""
+    ).trim();
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      this.setCloudflareUploadStatus(
+        "Missing R2 credentials. Save them before uploading.",
+        "error"
+      );
+      return;
+    }
+
+    const npub = this.safeEncodeNpub(this.pubkey);
+    if (!npub) {
+      this.setCloudflareUploadStatus("Unable to encode npub.", "error");
+      return;
+    }
+
+    this.setCloudflareUploadStatus("Preparing Cloudflare R2…", "info");
+    this.updateCloudflareProgress(0);
+    this.setCloudflareUploading(true);
+
+    let bucketResult = null;
+    try {
+      bucketResult = await this.ensureBucketConfigForNpub(npub);
+    } catch (err) {
+      console.error("Failed to prepare R2 bucket:", err);
+      this.setCloudflareUploadStatus(
+        err?.message ? `Bucket setup failed: ${err.message}` : "Bucket setup failed.",
+        "error"
+      );
+      this.setCloudflareUploading(false);
+      this.updateCloudflareProgress(Number.NaN);
+      return;
+    }
+
+    const bucketEntry =
+      bucketResult?.entry || this.cloudflareSettings?.buckets?.[npub];
+
+    if (!bucketEntry || !bucketEntry.publicBaseUrl) {
+      this.setCloudflareUploadStatus(
+        "Bucket is missing a public domain. Check your Cloudflare settings.",
+        "error"
+      );
+      this.setCloudflareUploading(false);
+      this.updateCloudflareProgress(Number.NaN);
+      return;
+    }
+
+    let statusMessage = `Uploading to ${bucketEntry.bucket}…`;
+    if (bucketResult?.usedManagedFallback) {
+      const baseDomain = this.cloudflareSettings?.baseDomain || "";
+      if (baseDomain) {
+        const customStatus = bucketResult?.customDomainStatus
+          ? ` (custom domain status: ${bucketResult.customDomainStatus})`
+          : "";
+        statusMessage = `Using managed r2.dev domain for ${bucketEntry.bucket}. Verify your Cloudflare zone${customStatus}. Uploading…`;
+      } else {
+        statusMessage = `Using managed r2.dev domain for ${bucketEntry.bucket}. Uploading…`;
+      }
+    }
+
+    this.setCloudflareUploadStatus(
+      statusMessage,
+      bucketResult?.usedManagedFallback ? "warning" : "info"
+    );
+
+    const key = buildR2Key(npub, file);
+    const publicUrl = buildPublicUrl(bucketEntry.publicBaseUrl, key);
+
+    try {
+      const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+
+      await multipartUpload({
+        s3,
+        bucket: bucketEntry.bucket,
+        key,
+        file,
+        contentType: file.type,
+        onProgress: (fraction) => {
+          this.updateCloudflareProgress(fraction);
+        },
+      });
+
+      const payload = {
+        title,
+        url: publicUrl,
+        magnet,
+        thumbnail,
+        description,
+        ws,
+        xs,
+        enableComments,
+      };
+
+      const published = await this.publishVideoNote(payload, {
+        onSuccess: () => {
+          this.resetCloudflareUploadForm();
+        },
+      });
+
+      if (published) {
+        this.setCloudflareUploadStatus(
+          `Published ${publicUrl}`,
+          "success"
+        );
+      }
+    } catch (err) {
+      console.error("Cloudflare upload failed:", err);
+      this.setCloudflareUploadStatus(
+        err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
+        "error"
+      );
+    } finally {
+      this.setCloudflareUploading(false);
+      this.updateCloudflareProgress(Number.NaN);
+      await this.updateCloudflareBucketPreview();
     }
   }
 
@@ -1099,20 +3292,213 @@ class bitvidApp {
         document.getElementById("profileModalAvatar") || null;
       this.profileModalName =
         document.getElementById("profileModalName") || null;
+      this.profileChannelLink =
+        document.getElementById("profileChannelLink") || null;
+      this.profileNavButtons.account =
+        document.getElementById("profileNavAccount") || null;
+      this.profileNavButtons.relays =
+        document.getElementById("profileNavRelays") || null;
+      this.profileNavButtons.blocked =
+        document.getElementById("profileNavBlocked") || null;
+      this.profileNavButtons.admin =
+        document.getElementById("profileNavAdmin") || null;
+      this.profilePaneElements.account =
+        document.getElementById("profilePaneAccount") || null;
+      this.profilePaneElements.relays =
+        document.getElementById("profilePaneRelays") || null;
+      this.profilePaneElements.blocked =
+        document.getElementById("profilePaneBlocked") || null;
+      this.profilePaneElements.admin =
+        document.getElementById("profilePaneAdmin") || null;
+      this.profileRelayList = document.getElementById("relayList") || null;
+      this.profileBlockedList = document.getElementById("blockedList") || null;
+      this.profileBlockedEmpty =
+        document.getElementById("blockedEmpty") || null;
+      this.profileBlockedInput =
+        document.getElementById("blockedInput") || null;
+      this.profileAddBlockedBtn =
+        document.getElementById("addBlockedBtn") || null;
+      this.profileRelayInput = document.getElementById("relayInput") || null;
+      this.profileAddRelayBtn = document.getElementById("addRelayBtn") || null;
+      this.profileRestoreRelaysBtn =
+        document.getElementById("restoreRelaysBtn") || null;
+      this.adminModeratorsSection =
+        document.getElementById("adminModeratorsSection") || null;
+      this.adminModeratorsEmpty =
+        document.getElementById("adminModeratorsEmpty") || null;
+      this.adminModeratorList =
+        document.getElementById("adminModeratorList") || null;
+      this.adminModeratorInput =
+        document.getElementById("adminModeratorInput") || null;
+      this.adminAddModeratorBtn =
+        document.getElementById("adminAddModeratorBtn") || null;
+      this.adminWhitelistSection =
+        document.getElementById("adminWhitelistSection") || null;
+      this.adminWhitelistEmpty =
+        document.getElementById("adminWhitelistEmpty") || null;
+      this.adminWhitelistList =
+        document.getElementById("adminWhitelistList") || null;
+      this.adminWhitelistInput =
+        document.getElementById("adminWhitelistInput") || null;
+      this.adminAddWhitelistBtn =
+        document.getElementById("adminAddWhitelistBtn") || null;
+      this.adminBlacklistSection =
+        document.getElementById("adminBlacklistSection") || null;
+      this.adminBlacklistEmpty =
+        document.getElementById("adminBlacklistEmpty") || null;
+      this.adminBlacklistList =
+        document.getElementById("adminBlacklistList") || null;
+      this.adminBlacklistInput =
+        document.getElementById("adminBlacklistInput") || null;
+      this.adminAddBlacklistBtn =
+        document.getElementById("adminAddBlacklistBtn") || null;
 
       // Wire up
-      if (this.closeProfileModal) {
+      if (this.closeProfileModal && !this.closeProfileModal.dataset.bound) {
+        this.closeProfileModal.dataset.bound = "true";
         this.closeProfileModal.addEventListener("click", () => {
-          this.profileModal.classList.add("hidden");
+          this.hideProfileModal();
         });
       }
-      if (this.profileLogoutBtn) {
+      if (this.profileLogoutBtn && !this.profileLogoutBtn.dataset.bound) {
+        this.profileLogoutBtn.dataset.bound = "true";
         this.profileLogoutBtn.addEventListener("click", () => {
-          // On "Logout" inside the profile modal
           this.logout();
-          this.profileModal.classList.add("hidden");
+          this.hideProfileModal();
         });
       }
+
+      if (this.profileChannelLink && !this.profileChannelLink.dataset.bound) {
+        this.profileChannelLink.dataset.bound = "true";
+        this.profileChannelLink.addEventListener("click", (event) => {
+          event.preventDefault();
+          const targetNpub = this.profileChannelLink?.dataset?.targetNpub;
+          if (!targetNpub) {
+            return;
+          }
+          this.hideProfileModal();
+          window.location.hash = `#view=channel-profile&npub=${targetNpub}`;
+        });
+      }
+
+      Object.entries(this.profileNavButtons).forEach(([name, button]) => {
+        if (!button || button.dataset.navBound === "true") {
+          return;
+        }
+        button.dataset.navBound = "true";
+        button.addEventListener("click", () => {
+          this.selectProfilePane(name);
+        });
+      });
+
+      if (this.profileAddRelayBtn && !this.profileAddRelayBtn.dataset.bound) {
+        this.profileAddRelayBtn.dataset.bound = "true";
+        this.profileAddRelayBtn.addEventListener("click", () => {
+          this.showSuccess("Relay management coming soon.");
+        });
+      }
+      if (
+        this.profileRestoreRelaysBtn &&
+        this.profileRestoreRelaysBtn.dataset.bound !== "true"
+      ) {
+        this.profileRestoreRelaysBtn.dataset.bound = "true";
+        this.profileRestoreRelaysBtn.addEventListener("click", () => {
+          this.showSuccess("Relay management coming soon.");
+        });
+      }
+
+      if (
+        this.profileAddBlockedBtn &&
+        this.profileAddBlockedBtn.dataset.bound !== "true"
+      ) {
+        this.profileAddBlockedBtn.dataset.bound = "true";
+        this.profileAddBlockedBtn.addEventListener("click", () => {
+          this.handleAddBlockedCreator();
+        });
+      }
+      if (
+        this.profileBlockedInput &&
+        this.profileBlockedInput.dataset.bound !== "true"
+      ) {
+        this.profileBlockedInput.dataset.bound = "true";
+        this.profileBlockedInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            this.handleAddBlockedCreator();
+          }
+        });
+      }
+
+      if (
+        this.adminAddModeratorBtn &&
+        this.adminAddModeratorBtn.dataset.bound !== "true"
+      ) {
+        this.adminAddModeratorBtn.dataset.bound = "true";
+        this.adminAddModeratorBtn.addEventListener("click", () => {
+          this.handleAddModerator();
+        });
+      }
+      if (
+        this.adminModeratorInput &&
+        this.adminModeratorInput.dataset.bound !== "true"
+      ) {
+        this.adminModeratorInput.dataset.bound = "true";
+        this.adminModeratorInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            this.handleAddModerator();
+          }
+        });
+      }
+
+      if (
+        this.adminAddWhitelistBtn &&
+        this.adminAddWhitelistBtn.dataset.bound !== "true"
+      ) {
+        this.adminAddWhitelistBtn.dataset.bound = "true";
+        this.adminAddWhitelistBtn.addEventListener("click", () => {
+          this.handleAdminListMutation("whitelist", "add");
+        });
+      }
+      if (
+        this.adminWhitelistInput &&
+        this.adminWhitelistInput.dataset.bound !== "true"
+      ) {
+        this.adminWhitelistInput.dataset.bound = "true";
+        this.adminWhitelistInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            this.handleAdminListMutation("whitelist", "add");
+          }
+        });
+      }
+
+      if (
+        this.adminAddBlacklistBtn &&
+        this.adminAddBlacklistBtn.dataset.bound !== "true"
+      ) {
+        this.adminAddBlacklistBtn.dataset.bound = "true";
+        this.adminAddBlacklistBtn.addEventListener("click", () => {
+          this.handleAdminListMutation("blacklist", "add");
+        });
+      }
+      if (
+        this.adminBlacklistInput &&
+        this.adminBlacklistInput.dataset.bound !== "true"
+      ) {
+        this.adminBlacklistInput.dataset.bound = "true";
+        this.adminBlacklistInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            this.handleAdminListMutation("blacklist", "add");
+          }
+        });
+      }
+
+      this.selectProfilePane("account");
+      this.populateProfileRelays();
+      this.populateBlockedList();
+      await this.refreshAdminPaneState();
 
       console.log("Profile modal initialization successful");
       return true;
@@ -1121,6 +3507,1131 @@ class bitvidApp {
       // Not critical if missing
       return false;
     }
+  }
+
+  selectProfilePane(name = "account") {
+    const normalized = typeof name === "string" ? name.toLowerCase() : "account";
+    const availableKeys = Object.keys(this.profilePaneElements).filter((key) => {
+      const pane = this.profilePaneElements[key];
+      if (!(pane instanceof HTMLElement)) {
+        return false;
+      }
+      const button = this.profileNavButtons[key];
+      if (button instanceof HTMLElement && button.classList.contains("hidden")) {
+        return false;
+      }
+      return true;
+    });
+
+    const fallbackTarget = availableKeys.includes("account")
+      ? "account"
+      : availableKeys[0] || "account";
+    const target = availableKeys.includes(normalized)
+      ? normalized
+      : fallbackTarget;
+
+    Object.entries(this.profilePaneElements).forEach(([key, pane]) => {
+      if (!(pane instanceof HTMLElement)) {
+        return;
+      }
+      const isActive = key === target;
+      pane.classList.toggle("hidden", !isActive);
+      pane.setAttribute("aria-hidden", (!isActive).toString());
+    });
+
+    Object.entries(this.profileNavButtons).forEach(([key, button]) => {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      const isActive = key === target;
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+      button.classList.toggle("bg-gray-800", isActive);
+      button.classList.toggle("text-white", isActive);
+      button.classList.toggle("text-gray-400", !isActive);
+    });
+
+    this.updateProfileModalFocusables();
+  }
+
+  updateProfileModalFocusables() {
+    if (!this.profileModal) {
+      this.profileModalFocusables = [];
+      return;
+    }
+
+    const focusableSelectors =
+      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+    const candidates = Array.from(
+      this.profileModal.querySelectorAll(focusableSelectors)
+    );
+
+    this.profileModalFocusables = candidates.filter((el) => {
+      if (!(el instanceof HTMLElement)) {
+        return false;
+      }
+      if (el.hasAttribute("disabled")) {
+        return false;
+      }
+      if (el.getAttribute("aria-hidden") === "true") {
+        return false;
+      }
+      if (el.offsetParent === null && el !== document.activeElement) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  async openProfileModal() {
+    if (!this.profileModal) {
+      return;
+    }
+
+    try {
+      await this.refreshAdminPaneState();
+    } catch (error) {
+      console.error("Failed to refresh admin pane while opening profile modal:", error);
+    }
+
+    this.selectProfilePane("account");
+    this.populateProfileRelays();
+    try {
+      await userBlocks.ensureLoaded(this.pubkey);
+    } catch (error) {
+      console.warn("Failed to refresh user block list while opening profile modal:", error);
+    }
+    this.populateBlockedList();
+
+    this.profileModal.classList.remove("hidden");
+    this.profileModal.setAttribute("aria-hidden", "false");
+
+    this.lastFocusedBeforeProfileModal =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    this.updateProfileModalFocusables();
+
+    const initialTarget =
+      this.profileNavButtons.account instanceof HTMLElement
+        ? this.profileNavButtons.account
+        : this.profileModal;
+
+    window.requestAnimationFrame(() => {
+      if (initialTarget && typeof initialTarget.focus === "function") {
+        initialTarget.focus();
+      }
+    });
+
+    if (!this.boundProfileModalKeydown) {
+      this.boundProfileModalKeydown = (event) => {
+        if (!this.profileModal || this.profileModal.classList.contains("hidden")) {
+          return;
+        }
+
+        if (event.key === "Escape") {
+          event.preventDefault();
+          this.hideProfileModal();
+          return;
+        }
+
+        if (event.key !== "Tab") {
+          return;
+        }
+
+        this.updateProfileModalFocusables();
+        if (!this.profileModalFocusables.length) {
+          event.preventDefault();
+          if (typeof this.profileModal.focus === "function") {
+            this.profileModal.focus();
+          }
+          return;
+        }
+
+        const first = this.profileModalFocusables[0];
+        const last = this.profileModalFocusables[this.profileModalFocusables.length - 1];
+        const active = document.activeElement;
+
+        if (event.shiftKey) {
+          if (active === first || !this.profileModal.contains(active)) {
+            event.preventDefault();
+            if (last && typeof last.focus === "function") {
+              last.focus();
+            }
+          }
+          return;
+        }
+
+        if (active === last) {
+          event.preventDefault();
+          if (first && typeof first.focus === "function") {
+            first.focus();
+          }
+        }
+      };
+    }
+
+    if (!this.boundProfileModalFocusIn) {
+      this.boundProfileModalFocusIn = (event) => {
+        if (
+          !this.profileModal ||
+          this.profileModal.classList.contains("hidden") ||
+          this.profileModal.contains(event.target)
+        ) {
+          return;
+        }
+
+        this.updateProfileModalFocusables();
+        const fallback = this.profileModalFocusables[0] || this.profileModal;
+        if (fallback && typeof fallback.focus === "function") {
+          fallback.focus();
+        }
+      };
+    }
+
+    this.profileModal.addEventListener("keydown", this.boundProfileModalKeydown);
+    document.addEventListener("focusin", this.boundProfileModalFocusIn);
+  }
+
+  hideProfileModal() {
+    if (!this.profileModal) {
+      return;
+    }
+
+    if (!this.profileModal.classList.contains("hidden")) {
+      this.profileModal.classList.add("hidden");
+    }
+    this.profileModal.setAttribute("aria-hidden", "true");
+
+    if (this.boundProfileModalKeydown) {
+      this.profileModal.removeEventListener(
+        "keydown",
+        this.boundProfileModalKeydown
+      );
+    }
+    if (this.boundProfileModalFocusIn) {
+      document.removeEventListener("focusin", this.boundProfileModalFocusIn);
+    }
+
+    this.closeAllMoreMenus();
+
+    if (
+      this.lastFocusedBeforeProfileModal &&
+      typeof this.lastFocusedBeforeProfileModal.focus === "function"
+    ) {
+      this.lastFocusedBeforeProfileModal.focus();
+    }
+    this.lastFocusedBeforeProfileModal = null;
+  }
+
+  populateProfileRelays(relayUrls) {
+    if (!this.profileRelayList) {
+      return;
+    }
+
+    const rawRelays =
+      Array.isArray(relayUrls)
+        ? relayUrls
+        : Array.isArray(nostrClient.relays)
+        ? nostrClient.relays
+        : Array.from(nostrClient.relays || []);
+
+    const relays = rawRelays
+      .map((relay) => (typeof relay === "string" ? relay.trim() : ""))
+      .filter((relay) => relay.length > 0);
+
+    this.profileRelayList.innerHTML = "";
+
+    if (!relays.length) {
+      const emptyState = document.createElement("li");
+      emptyState.className =
+        "rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400";
+      emptyState.textContent = "No relays configured.";
+      this.profileRelayList.appendChild(emptyState);
+      return;
+    }
+
+    relays.forEach((relayUrl) => {
+      const item = document.createElement("li");
+      item.className =
+        "flex items-start justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+
+      const info = document.createElement("div");
+      info.className = "flex-1 min-w-0";
+
+      const urlEl = document.createElement("p");
+      urlEl.className = "text-sm font-medium text-gray-100 break-all";
+      urlEl.textContent = relayUrl;
+
+      const statusEl = document.createElement("p");
+      statusEl.className = "mt-1 text-xs text-gray-400";
+      statusEl.textContent = "Active";
+
+      info.appendChild(urlEl);
+      info.appendChild(statusEl);
+
+      const actions = document.createElement("div");
+      actions.className = "flex items-center gap-2";
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className =
+        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", () => {
+        this.showSuccess("Relay management coming soon.");
+      });
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className =
+        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", () => {
+        this.showSuccess("Relay management coming soon.");
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(removeBtn);
+
+      item.appendChild(info);
+      item.appendChild(actions);
+
+      this.profileRelayList.appendChild(item);
+    });
+  }
+
+  populateBlockedList(blocked = null) {
+    if (!this.profileBlockedList || !this.profileBlockedEmpty) {
+      return;
+    }
+
+    const sourceEntries =
+      Array.isArray(blocked) && blocked.length
+        ? blocked
+        : userBlocks.getBlockedPubkeys();
+
+    const normalizedEntries = [];
+    const pushEntry = (hex, label) => {
+      if (!hex || !label) {
+        return;
+      }
+      normalizedEntries.push({ hex, label });
+    };
+
+    sourceEntries.forEach((entry) => {
+      if (typeof entry === "string") {
+        const trimmed = entry.trim();
+        if (!trimmed) {
+          return;
+        }
+
+        if (trimmed.startsWith("npub1")) {
+          const decoded = this.safeDecodeNpub(trimmed);
+          if (!decoded) {
+            return;
+          }
+          const label = this.safeEncodeNpub(decoded) || trimmed;
+          pushEntry(decoded, label);
+          return;
+        }
+
+        if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+          const hex = trimmed.toLowerCase();
+          const label = this.safeEncodeNpub(hex) || hex;
+          pushEntry(hex, label);
+        }
+        return;
+      }
+
+      if (entry && typeof entry === "object") {
+        const candidateNpub =
+          typeof entry.npub === "string" ? entry.npub.trim() : "";
+        const candidateHex =
+          typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
+
+        if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
+          const normalizedHex = candidateHex.toLowerCase();
+          const label =
+            candidateNpub && candidateNpub.startsWith("npub1")
+              ? candidateNpub
+              : this.safeEncodeNpub(normalizedHex) || normalizedHex;
+          pushEntry(normalizedHex, label);
+          return;
+        }
+
+        if (candidateNpub && candidateNpub.startsWith("npub1")) {
+          const decoded = this.safeDecodeNpub(candidateNpub);
+          if (!decoded) {
+            return;
+          }
+          const label = this.safeEncodeNpub(decoded) || candidateNpub;
+          pushEntry(decoded, label);
+        }
+      }
+    });
+
+    const deduped = [];
+    const seenHex = new Set();
+    normalizedEntries.forEach((entry) => {
+      if (!seenHex.has(entry.hex)) {
+        seenHex.add(entry.hex);
+        deduped.push(entry);
+      }
+    });
+
+    this.profileBlockedList.innerHTML = "";
+
+    if (!deduped.length) {
+      this.profileBlockedEmpty.classList.remove("hidden");
+      this.profileBlockedList.classList.add("hidden");
+      return;
+    }
+
+    this.profileBlockedEmpty.classList.add("hidden");
+    this.profileBlockedList.classList.remove("hidden");
+
+    deduped.forEach(({ hex, label }) => {
+      const item = document.createElement("li");
+      item.className =
+        "flex items-center justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+
+      const info = document.createElement("div");
+      info.className = "min-w-0";
+
+      const title = document.createElement("p");
+      title.className = "text-sm font-medium text-gray-100 break-all";
+      title.textContent = label;
+
+      info.appendChild(title);
+
+      const actionBtn = document.createElement("button");
+      actionBtn.type = "button";
+      actionBtn.className =
+        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      actionBtn.textContent = "Remove";
+      actionBtn.dataset.blockedHex = hex;
+      actionBtn.addEventListener("click", () => {
+        this.handleRemoveBlockedCreator(hex);
+      });
+
+      item.appendChild(info);
+      item.appendChild(actionBtn);
+
+      this.profileBlockedList.appendChild(item);
+    });
+  }
+
+  async handleAddBlockedCreator() {
+    if (!this.profileBlockedInput) {
+      return;
+    }
+
+    const rawValue = this.profileBlockedInput.value;
+    const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";
+
+    if (!trimmed) {
+      this.showError("Enter an npub to block.");
+      return;
+    }
+
+    if (!this.pubkey) {
+      this.showError("Please login to manage your block list.");
+      return;
+    }
+
+    const actorHex = this.pubkey;
+    let targetHex = "";
+
+    if (trimmed.startsWith("npub1")) {
+      targetHex = this.safeDecodeNpub(trimmed) || "";
+      if (!targetHex) {
+        this.showError("Invalid npub. Please double-check and try again.");
+        return;
+      }
+    } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+      targetHex = trimmed.toLowerCase();
+    } else {
+      this.showError("Enter a valid npub or hex pubkey.");
+      return;
+    }
+
+    if (targetHex === actorHex) {
+      this.showError("You cannot block yourself.");
+      return;
+    }
+
+    try {
+      await userBlocks.ensureLoaded(actorHex);
+
+      if (userBlocks.isBlocked(targetHex)) {
+        this.showSuccess("You already blocked this creator.");
+      } else {
+        await userBlocks.addBlock(targetHex, actorHex);
+        this.showSuccess(
+          "Creator blocked. You won't see their videos anymore."
+        );
+      }
+
+      this.profileBlockedInput.value = "";
+      this.populateBlockedList();
+      await this.loadVideos();
+    } catch (error) {
+      console.error("Failed to add creator to personal block list:", error);
+      const message =
+        error?.code === "nip04-missing"
+          ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : "Failed to update your block list. Please try again.";
+      this.showError(message);
+    }
+  }
+
+  async handleRemoveBlockedCreator(candidate) {
+    if (!this.pubkey) {
+      this.showError("Please login to manage your block list.");
+      return;
+    }
+
+    let targetHex = "";
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        return;
+      }
+
+      if (trimmed.startsWith("npub1")) {
+        targetHex = this.safeDecodeNpub(trimmed) || "";
+      } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+        targetHex = trimmed.toLowerCase();
+      }
+    }
+
+    if (!targetHex) {
+      console.warn("No valid pubkey to remove from block list:", candidate);
+      return;
+    }
+
+    try {
+      await userBlocks.ensureLoaded(this.pubkey);
+
+      if (!userBlocks.isBlocked(targetHex)) {
+        this.showSuccess("Creator already removed from your block list.");
+      } else {
+        await userBlocks.removeBlock(targetHex, this.pubkey);
+        this.showSuccess("Creator removed from your block list.");
+      }
+
+      this.populateBlockedList();
+      await this.loadVideos();
+    } catch (error) {
+      console.error(
+        "Failed to remove creator from personal block list:",
+        error
+      );
+      const message =
+        error?.code === "nip04-missing"
+          ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : "Failed to update your block list. Please try again.";
+      this.showError(message);
+    }
+  }
+
+  isAuthorBlocked(pubkey) {
+    return userBlocks.isBlocked(pubkey);
+  }
+
+  async refreshAdminPaneState() {
+    const adminNav = this.profileNavButtons.admin;
+    const adminPane = this.profilePaneElements.admin;
+
+    let loadError = null;
+    this.setAdminLoading(true);
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      loadError = error;
+    }
+
+    const actorNpub = this.getCurrentUserNpub();
+    const canEdit = !!actorNpub && accessControl.canEditAdminLists(actorNpub);
+    const isSuperAdmin = !!actorNpub && accessControl.isSuperAdmin(actorNpub);
+
+    if (adminNav instanceof HTMLElement) {
+      adminNav.classList.toggle("hidden", !canEdit);
+      if (!canEdit) {
+        adminNav.setAttribute("aria-selected", "false");
+      }
+    }
+
+    if (adminPane instanceof HTMLElement) {
+      adminPane.classList.toggle("hidden", !canEdit);
+      adminPane.setAttribute("aria-hidden", (!canEdit).toString());
+    }
+
+    if (loadError) {
+      console.error("Failed to load admin lists:", loadError);
+      const message =
+        loadError?.code === "nostr-unavailable"
+          ? "Unable to reach Nostr relays. Moderation lists may be out of date."
+          : "Unable to load moderation lists. Please try again.";
+      this.showError(message);
+      this.clearAdminLists();
+      this.setAdminLoading(false);
+      return;
+    }
+
+    if (!canEdit) {
+      this.clearAdminLists();
+      if (typeof actorNpub !== "string" || !actorNpub) {
+        this.currentUserNpub = null;
+      }
+      if (adminNav instanceof HTMLElement && adminNav.classList.contains("bg-gray-800")) {
+        this.selectProfilePane("account");
+      }
+      this.setAdminLoading(false);
+      return;
+    }
+
+    if (this.adminModeratorsSection instanceof HTMLElement) {
+      this.adminModeratorsSection.classList.toggle("hidden", !isSuperAdmin);
+      this.adminModeratorsSection.setAttribute("aria-hidden", (!isSuperAdmin).toString());
+    }
+    this.populateAdminLists();
+    this.setAdminLoading(false);
+  }
+
+  storeAdminEmptyMessages() {
+    const capture = (element) => {
+      if (element instanceof HTMLElement && !element.dataset.defaultMessage) {
+        element.dataset.defaultMessage = element.textContent || "";
+      }
+    };
+
+    capture(this.adminModeratorsEmpty);
+    capture(this.adminWhitelistEmpty);
+    capture(this.adminBlacklistEmpty);
+  }
+
+  setAdminLoading(isLoading) {
+    this.storeAdminEmptyMessages();
+    if (this.profilePaneElements.admin instanceof HTMLElement) {
+      this.profilePaneElements.admin.setAttribute(
+        "aria-busy",
+        isLoading ? "true" : "false"
+      );
+    }
+
+    const toggleMessage = (element, message) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      if (isLoading) {
+        element.textContent = message;
+        element.classList.remove("hidden");
+      } else {
+        element.textContent = element.dataset.defaultMessage || element.textContent;
+      }
+    };
+
+    toggleMessage(this.adminModeratorsEmpty, "Loading moderators…");
+    toggleMessage(this.adminWhitelistEmpty, "Loading whitelist…");
+    toggleMessage(this.adminBlacklistEmpty, "Loading blacklist…");
+  }
+
+  clearAdminLists() {
+    this.storeAdminEmptyMessages();
+    if (this.adminModeratorList) {
+      this.adminModeratorList.innerHTML = "";
+    }
+    if (this.adminWhitelistList) {
+      this.adminWhitelistList.innerHTML = "";
+    }
+    if (this.adminBlacklistList) {
+      this.adminBlacklistList.innerHTML = "";
+    }
+    if (this.adminModeratorsEmpty instanceof HTMLElement) {
+      this.adminModeratorsEmpty.textContent =
+        this.adminModeratorsEmpty.dataset.defaultMessage ||
+        this.adminModeratorsEmpty.textContent;
+      this.adminModeratorsEmpty.classList.remove("hidden");
+    }
+    if (this.adminWhitelistEmpty instanceof HTMLElement) {
+      this.adminWhitelistEmpty.textContent =
+        this.adminWhitelistEmpty.dataset.defaultMessage ||
+        this.adminWhitelistEmpty.textContent;
+      this.adminWhitelistEmpty.classList.remove("hidden");
+    }
+    if (this.adminBlacklistEmpty instanceof HTMLElement) {
+      this.adminBlacklistEmpty.textContent =
+        this.adminBlacklistEmpty.dataset.defaultMessage ||
+        this.adminBlacklistEmpty.textContent;
+      this.adminBlacklistEmpty.classList.remove("hidden");
+    }
+  }
+
+  renderAdminList(listEl, emptyEl, entries, options = {}) {
+    if (!(listEl instanceof HTMLElement) || !(emptyEl instanceof HTMLElement)) {
+      return;
+    }
+
+    const { onRemove, removeLabel = "Remove", confirmMessage, removable = true } =
+      options;
+
+    listEl.innerHTML = "";
+    const values = Array.isArray(entries) ? [...entries] : [];
+    values.sort((a, b) => a.localeCompare(b));
+
+    if (!values.length) {
+      emptyEl.classList.remove("hidden");
+      listEl.classList.add("hidden");
+      return;
+    }
+
+    emptyEl.classList.add("hidden");
+    listEl.classList.remove("hidden");
+
+    values.forEach((npub) => {
+      const item = document.createElement("li");
+      item.className =
+        "flex flex-col gap-2 rounded-lg bg-gray-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between";
+
+      const label = document.createElement("p");
+      label.className = "text-sm font-medium text-gray-100 break-all";
+      label.textContent = npub;
+      item.appendChild(label);
+
+      if (removable && typeof onRemove === "function") {
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className =
+          "self-start rounded-md bg-gray-700 px-3 py-1 text-xs font-medium text-gray-100 transition hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+        removeBtn.textContent = removeLabel;
+        removeBtn.addEventListener("click", () => {
+          if (confirmMessage) {
+            const message = confirmMessage.replace("{npub}", npub);
+            if (!window.confirm(message)) {
+              return;
+            }
+          }
+          removeBtn.disabled = true;
+          removeBtn.setAttribute("aria-busy", "true");
+          onRemove(npub, removeBtn);
+        });
+        item.appendChild(removeBtn);
+      }
+
+      listEl.appendChild(item);
+    });
+  }
+
+  populateAdminLists() {
+    const actorNpub = this.getCurrentUserNpub();
+    if (!actorNpub || !accessControl.canEditAdminLists(actorNpub)) {
+      this.clearAdminLists();
+      return;
+    }
+
+    const isSuperAdmin = accessControl.isSuperAdmin(actorNpub);
+    const editors = accessControl
+      .getEditors()
+      .filter((npub) => npub && npub !== ADMIN_SUPER_NPUB);
+    const whitelist = accessControl.getWhitelist();
+    const blacklist = accessControl.getBlacklist();
+
+    this.renderAdminList(this.adminModeratorList, this.adminModeratorsEmpty, editors, {
+      onRemove: (npub, button) => this.handleRemoveModerator(npub, button),
+      removeLabel: "Remove",
+      confirmMessage:
+        "Remove moderator {npub}? They will immediately lose access to the admin panel.",
+      removable: isSuperAdmin,
+    });
+
+    this.renderAdminList(this.adminWhitelistList, this.adminWhitelistEmpty, whitelist, {
+      onRemove: (npub, button) =>
+        this.handleAdminListMutation("whitelist", "remove", npub, button),
+      removeLabel: "Remove",
+      confirmMessage: "Remove {npub} from the whitelist?",
+      removable: true,
+    });
+
+    this.renderAdminList(this.adminBlacklistList, this.adminBlacklistEmpty, blacklist, {
+      onRemove: (npub, button) =>
+        this.handleAdminListMutation("blacklist", "remove", npub, button),
+      removeLabel: "Unblock",
+      confirmMessage: "Remove {npub} from the blacklist?",
+      removable: true,
+    });
+  }
+
+  getCurrentUserNpub() {
+    if (typeof this.currentUserNpub === "string" && this.currentUserNpub) {
+      return this.currentUserNpub;
+    }
+
+    if (!this.pubkey) {
+      return null;
+    }
+
+    const encoded = this.safeEncodeNpub(this.pubkey);
+    if (encoded) {
+      this.currentUserNpub = encoded;
+    }
+    return this.currentUserNpub;
+  }
+
+  canCurrentUserManageBlacklist() {
+    const actorNpub = this.getCurrentUserNpub();
+    if (!actorNpub) {
+      return false;
+    }
+
+    try {
+      return accessControl.canEditAdminLists(actorNpub);
+    } catch (error) {
+      console.warn("Unable to verify blacklist permissions:", error);
+      return false;
+    }
+  }
+
+  ensureAdminActor(requireSuperAdmin = false) {
+    const actorNpub = this.getCurrentUserNpub();
+    if (!actorNpub) {
+      this.showError("Please login with a Nostr account to manage admin settings.");
+      return null;
+    }
+    if (!accessControl.canEditAdminLists(actorNpub)) {
+      this.showError("You do not have permission to manage BitVid moderation lists.");
+      return null;
+    }
+    if (requireSuperAdmin && !accessControl.isSuperAdmin(actorNpub)) {
+      this.showError("Only the Super Admin can manage moderators or whitelist mode.");
+      return null;
+    }
+    return actorNpub;
+  }
+
+  async handleAddModerator() {
+    let preloadError = null;
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      preloadError = error;
+      console.error("Failed to load admin lists before adding moderator:", error);
+    }
+
+    if (preloadError) {
+      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
+      return;
+    }
+
+    const actorNpub = this.ensureAdminActor(true);
+    if (!actorNpub || !this.adminModeratorInput) {
+      return;
+    }
+
+    const value = this.adminModeratorInput.value.trim();
+    if (!value) {
+      this.showError("Enter an npub to add as a moderator.");
+      return;
+    }
+
+    if (this.adminAddModeratorBtn) {
+      this.adminAddModeratorBtn.disabled = true;
+      this.adminAddModeratorBtn.setAttribute("aria-busy", "true");
+    }
+
+    try {
+      const result = await accessControl.addModerator(actorNpub, value);
+      if (!result.ok) {
+        this.showError(this.describeAdminError(result.error));
+        return;
+      }
+
+      this.adminModeratorInput.value = "";
+      this.showSuccess("Moderator added successfully.");
+      await this.onAccessControlUpdated();
+    } finally {
+      if (this.adminAddModeratorBtn) {
+        this.adminAddModeratorBtn.disabled = false;
+        this.adminAddModeratorBtn.removeAttribute("aria-busy");
+      }
+    }
+  }
+
+  async handleRemoveModerator(npub, button) {
+    let preloadError = null;
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      preloadError = error;
+      console.error("Failed to load admin lists before removing moderator:", error);
+    }
+
+    if (preloadError) {
+      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const actorNpub = this.ensureAdminActor(true);
+    if (!actorNpub) {
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const result = await accessControl.removeModerator(actorNpub, npub);
+    if (!result.ok) {
+      this.showError(this.describeAdminError(result.error));
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    this.showSuccess("Moderator removed.");
+    await this.onAccessControlUpdated();
+  }
+
+  async handleAdminListMutation(listType, action, explicitNpub = null, sourceButton = null) {
+    let preloadError = null;
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      preloadError = error;
+      console.error("Failed to load admin lists before updating entries:", error);
+    }
+
+    if (preloadError) {
+      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
+      if (sourceButton instanceof HTMLElement) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const actorNpub = this.ensureAdminActor(false);
+    if (!actorNpub) {
+      if (sourceButton instanceof HTMLElement) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const isWhitelist = listType === "whitelist";
+    const input = isWhitelist ? this.adminWhitelistInput : this.adminBlacklistInput;
+    const addButton = isWhitelist ? this.adminAddWhitelistBtn : this.adminAddBlacklistBtn;
+    const isAdd = action === "add";
+
+    let target = typeof explicitNpub === "string" ? explicitNpub.trim() : "";
+    if (!target && input instanceof HTMLInputElement) {
+      target = input.value.trim();
+    }
+
+    if (isAdd && !target) {
+      this.showError("Enter an npub before adding it to the list.");
+      if (sourceButton instanceof HTMLElement) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const buttonToToggle = sourceButton || (isAdd ? addButton : null);
+    if (buttonToToggle instanceof HTMLElement) {
+      buttonToToggle.disabled = true;
+      buttonToToggle.setAttribute("aria-busy", "true");
+    }
+
+    let result;
+    if (isWhitelist) {
+      result = isAdd
+        ? await accessControl.addToWhitelist(actorNpub, target)
+        : await accessControl.removeFromWhitelist(actorNpub, target);
+    } else {
+      result = isAdd
+        ? await accessControl.addToBlacklist(actorNpub, target)
+        : await accessControl.removeFromBlacklist(actorNpub, target);
+    }
+
+    if (!result.ok) {
+      this.showError(this.describeAdminError(result.error));
+      if (buttonToToggle instanceof HTMLElement) {
+        buttonToToggle.disabled = false;
+        buttonToToggle.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    if (isAdd && input instanceof HTMLInputElement) {
+      input.value = "";
+    }
+
+    const successMessage = isWhitelist
+      ? isAdd
+        ? "Added to the whitelist."
+        : "Removed from the whitelist."
+      : isAdd
+      ? "Added to the blacklist."
+      : "Removed from the blacklist.";
+    this.showSuccess(successMessage);
+    await this.onAccessControlUpdated();
+
+    if (buttonToToggle instanceof HTMLElement) {
+      buttonToToggle.disabled = false;
+      buttonToToggle.removeAttribute("aria-busy");
+    }
+
+    if (isAdd) {
+      try {
+        const notifyResult = await this.sendAdminListNotification({
+          listType,
+          actorNpub,
+          targetNpub: target,
+        });
+        if (!notifyResult?.ok) {
+          const errorMessage = this.describeNotificationError(
+            notifyResult?.error
+          );
+          if (errorMessage) {
+            this.showError(errorMessage);
+          }
+          if (isDevMode && notifyResult?.error) {
+            console.warn(
+              "[admin] Failed to send list notification DM:",
+              notifyResult
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to send list notification DM:", error);
+        if (isDevMode) {
+          console.warn(
+            "List update succeeded, but DM notification threw an unexpected error.",
+            error
+          );
+        }
+      }
+    }
+  }
+
+  describeAdminError(code) {
+    switch (code) {
+      case "invalid npub":
+        return "Please provide a valid npub address.";
+      case "immutable":
+        return "That account cannot be modified.";
+      case "self":
+        return "You cannot blacklist yourself.";
+      case "forbidden":
+        return "You do not have permission to perform that action.";
+      case "nostr-unavailable":
+        return "Unable to reach the configured Nostr relays. Please retry once your connection is restored.";
+      case "nostr-extension-missing":
+        return "Connect a Nostr extension before editing moderation lists.";
+      case "signature-failed":
+        return "We couldn’t sign the update with your Nostr key. Please reconnect your extension and try again.";
+      case "publish-failed":
+        return "Failed to publish the update to Nostr relays. Please try again.";
+      case "storage-error":
+        return "Unable to update moderation settings. Please try again.";
+      default:
+        return "Unable to update moderation settings. Please try again.";
+    }
+  }
+
+  describeNotificationError(code) {
+    switch (code) {
+      case "nostr-extension-missing":
+        return "List updated, but the DM notification failed because no Nostr extension is connected.";
+      case "nostr-uninitialized":
+        return "List updated, but the DM notification system is still connecting to Nostr relays. Please try again in a moment.";
+      case "nip04-unavailable":
+        return "List updated, but your Nostr extension does not support NIP-04 encryption, so the DM notification was not sent.";
+      case "sign-event-unavailable":
+        return "List updated, but your Nostr extension could not sign the DM notification.";
+      case "missing-actor-pubkey":
+        return "List updated, but we could not determine your public key to send the DM notification.";
+      case "publish-failed":
+        return "List updated, but the DM notification could not be delivered to any relay.";
+      case "encryption-failed":
+      case "signature-failed":
+        return "List updated, but the DM notification failed while preparing the encrypted message.";
+      case "invalid-target":
+      case "empty-message":
+        return "";
+      default:
+        return "List updated, but the DM notification could not be sent.";
+    }
+  }
+
+  async sendAdminListNotification({ listType, actorNpub, targetNpub }) {
+    const normalizedTarget = normalizeNpub(targetNpub);
+    if (!normalizedTarget) {
+      return { ok: false, error: "invalid-target" };
+    }
+
+    if (!this.pubkey) {
+      return { ok: false, error: "missing-actor-pubkey" };
+    }
+
+    const actorHex = this.pubkey;
+    const fallbackActor = this.safeEncodeNpub(actorHex) || "a BitVid moderator";
+    const actorDisplay = normalizeNpub(actorNpub) || fallbackActor;
+    const isWhitelist = listType === "whitelist";
+
+    const introLine = isWhitelist
+      ? `Great news—your npub ${normalizedTarget} has been added to the BitVid whitelist by ${actorDisplay}.`
+      : `We wanted to let you know that your npub ${normalizedTarget} has been placed on the BitVid blacklist by ${actorDisplay}.`;
+
+    const statusLine = isWhitelist
+      ? `You now have full creator access across BitVid (${BITVID_WEBSITE_URL}).`
+      : `This hides your channel and prevents uploads across BitVid (${BITVID_WEBSITE_URL}) for now.`;
+
+    const followUpLine = isWhitelist
+      ? "Please take a moment to review our community guidelines (https://bitvid.network/#view=community-guidelines), and reply to this DM if you have any questions."
+      : "Please review our community guidelines (https://bitvid.network/#view=community-guidelines). If you believe this was a mistake, you can submit an appeal at https://bitvid.network/?modal=appeals to request reinstatement, or reply to this DM with any questions.";
+
+    const messageBody = [
+      "Hi there,",
+      "",
+      introLine,
+      "",
+      statusLine,
+      "",
+      followUpLine,
+      "",
+      "— The BitVid Team",
+    ].join("\n");
+
+    const message = `![BitVid status update](${ADMIN_DM_IMAGE_URL})\n\n${messageBody}`;
+
+    return nostrClient.sendDirectMessage(
+      normalizedTarget,
+      message,
+      actorHex
+    );
+  }
+
+  async onAccessControlUpdated() {
+    try {
+      await this.refreshAdminPaneState();
+    } catch (error) {
+      console.error("Failed to refresh admin pane after update:", error);
+    }
+
+    this.loadVideos(true).catch((error) => {
+      console.error("Failed to refresh videos after admin update:", error);
+    });
+    window.dispatchEvent(new CustomEvent("bitvid:access-control-updated"));
   }
 
   /**
@@ -1137,9 +4648,9 @@ class bitvidApp {
     // 2) Profile button
     if (this.profileButton) {
       this.profileButton.addEventListener("click", () => {
-        if (this.profileModal) {
-          this.profileModal.classList.remove("hidden");
-        }
+        this.openProfileModal().catch((error) => {
+          console.error("Failed to open profile modal:", error);
+        });
       });
     }
 
@@ -1177,7 +4688,22 @@ class bitvidApp {
     // 6) NIP-07 button inside the login modal => call the extension & login
     const nip07Button = document.getElementById("loginNIP07");
     if (nip07Button) {
+      const originalLabel = nip07Button.textContent;
+      const setLoadingState = (isLoading) => {
+        nip07Button.disabled = isLoading;
+        nip07Button.dataset.loading = isLoading ? "true" : "false";
+        nip07Button.setAttribute("aria-busy", isLoading ? "true" : "false");
+        nip07Button.textContent = isLoading
+          ? "Connecting to NIP-07 extension..."
+          : originalLabel;
+      };
+
       nip07Button.addEventListener("click", async () => {
+        if (nip07Button.dataset.loading === "true") {
+          return;
+        }
+
+        setLoadingState(true);
         console.log(
           "[app.js] loginNIP07 clicked! Attempting extension login..."
         );
@@ -1193,7 +4719,13 @@ class bitvidApp {
           }
         } catch (err) {
           console.error("[NIP-07 login error]", err);
-          this.showError("Failed to login with NIP-07. Please try again.");
+          const message =
+            err && typeof err.message === "string" && err.message.trim()
+              ? err.message.trim()
+              : "Failed to login with NIP-07. Please try again.";
+          this.showError(message);
+        } finally {
+          setLoadingState(false);
         }
       });
     }
@@ -1321,6 +4853,18 @@ class bitvidApp {
       if (this.profileModalAvatar) {
         this.profileModalAvatar.src = picture;
       }
+      if (this.profileChannelLink) {
+        const targetNpub = this.safeEncodeNpub(pubkey);
+        if (targetNpub) {
+          this.profileChannelLink.href = `#view=channel-profile&npub=${targetNpub}`;
+          this.profileChannelLink.dataset.targetNpub = targetNpub;
+          this.profileChannelLink.classList.remove("hidden");
+        } else {
+          this.profileChannelLink.removeAttribute("href");
+          delete this.profileChannelLink.dataset.targetNpub;
+          this.profileChannelLink.classList.add("hidden");
+        }
+      }
     } catch (error) {
       console.error("loadOwnProfile error:", error);
     }
@@ -1438,31 +4982,25 @@ class bitvidApp {
     });
   }
 
-  /**
-   * Actually handle the upload form submission.
-   */
-  async handleUploadSubmit() {
+  async publishVideoNote(payload, { onSuccess, suppressModalClose } = {}) {
     if (!this.pubkey) {
       this.showError("Please login to post a video.");
-      return;
+      return false;
     }
 
-    const titleEl = document.getElementById("uploadTitle");
-    const urlEl = document.getElementById("uploadUrl");
-    const magnetEl = document.getElementById("uploadMagnet");
-    const wsEl = document.getElementById("uploadWs");
-    const xsEl = document.getElementById("uploadXs");
-    const thumbEl = document.getElementById("uploadThumbnail");
-    const descEl = document.getElementById("uploadDescription");
-    const privEl = document.getElementById("uploadIsPrivate");
-
-    const title = titleEl?.value.trim() || "";
-    const url = urlEl?.value.trim() || "";
-    const magnet = magnetEl?.value.trim() || "";
-    const ws = wsEl?.value.trim() || "";
-    const xs = xsEl?.value.trim() || "";
-    const thumbnail = thumbEl?.value.trim() || "";
-    const description = descEl?.value.trim() || "";
+    const title = (payload?.title || "").trim();
+    const url = (payload?.url || "").trim();
+    const magnet = (payload?.magnet || "").trim();
+    const thumbnail = (payload?.thumbnail || "").trim();
+    const description = (payload?.description || "").trim();
+    const ws = (payload?.ws || "").trim();
+    const xs = (payload?.xs || "").trim();
+    const enableComments =
+      payload?.enableComments === false
+        ? false
+        : payload?.enableComments === true
+          ? true
+          : true;
 
     const formData = {
       version: 3,
@@ -1472,51 +5010,230 @@ class bitvidApp {
       thumbnail,
       description,
       mode: isDevMode ? "dev" : "live",
-      // isPrivate: privEl?.checked || false,
+      enableComments,
     };
 
     if (!formData.title || (!formData.url && !formData.magnet)) {
       this.showError("Title and at least one of URL or Magnet is required.");
-      return;
+      return false;
     }
 
     if (formData.url && !/^https:\/\//i.test(formData.url)) {
       this.showError("Hosted video URLs must use HTTPS.");
-      return;
+      return false;
     }
 
     if (formData.magnet) {
-      formData.magnet = normalizeAndAugmentMagnet(formData.magnet, {
+      const normalizedMagnet = normalizeAndAugmentMagnet(formData.magnet, {
         ws,
         xs,
       });
+      formData.magnet = normalizedMagnet;
+      const hints = extractMagnetHints(normalizedMagnet);
+      formData.ws = hints.ws;
+      formData.xs = hints.xs;
+    } else {
+      formData.ws = "";
+      formData.xs = "";
     }
 
     try {
       await nostrClient.publishVideo(formData, this.pubkey);
-
-      // Clear fields
-      if (titleEl) titleEl.value = "";
-      if (urlEl) urlEl.value = "";
-      if (magnetEl) magnetEl.value = "";
-      if (wsEl) wsEl.value = "";
-      if (xsEl) xsEl.value = "";
-      if (thumbEl) thumbEl.value = "";
-      if (descEl) descEl.value = "";
-      if (privEl) privEl.checked = false;
-
-      // Hide the modal
-      if (this.uploadModal) {
+      if (typeof onSuccess === "function") {
+        await onSuccess();
+      }
+      if (suppressModalClose !== true && this.uploadModal) {
         this.uploadModal.classList.add("hidden");
       }
-
-      // *** Refresh to show the newly uploaded video in the grid ***
       await this.loadVideos();
       this.showSuccess("Video shared successfully!");
+      return true;
     } catch (err) {
       console.error("Failed to publish video:", err);
       this.showError("Failed to share video. Please try again later.");
+      return false;
     }
+  }
+
+  async handleEditVideoSubmit() {
+    if (!this.activeEditVideo || !this.editVideoModal) {
+      this.showError("No video selected for editing.");
+      return;
+    }
+
+    const fieldValue = (id) => {
+      const el = this.editVideoModal.querySelector(`#${id}`);
+      if (!el || typeof el.value !== "string") {
+        return "";
+      }
+      return el.value.trim();
+    };
+
+    const original = this.activeEditVideo;
+
+    const titleInput = this.editVideoModal.querySelector("#editVideoTitle");
+    const urlInput = this.editVideoModal.querySelector("#editVideoUrl");
+    const magnetInput = this.editVideoModal.querySelector("#editVideoMagnet");
+    const wsInput = this.editVideoModal.querySelector("#editVideoWs");
+    const xsInput = this.editVideoModal.querySelector("#editVideoXs");
+    const thumbnailInput = this.editVideoModal.querySelector(
+      "#editVideoThumbnail"
+    );
+    const descriptionInput = this.editVideoModal.querySelector(
+      "#editVideoDescription"
+    );
+
+    const newTitle = fieldValue("editVideoTitle");
+    const newUrl = fieldValue("editVideoUrl");
+    const newMagnet = fieldValue("editVideoMagnet");
+    const newWs = fieldValue("editVideoWs");
+    const newXs = fieldValue("editVideoXs");
+    const newThumbnail = fieldValue("editVideoThumbnail");
+    const newDescription = fieldValue("editVideoDescription");
+    const commentsEl = this.editVideoModal.querySelector(
+      "#editEnableComments"
+    );
+
+    const isEditing = (input) => !input || input.readOnly === false;
+
+    const titleWasEdited = isEditing(titleInput);
+    const urlWasEdited = isEditing(urlInput);
+    const magnetWasEdited = isEditing(magnetInput);
+
+    const finalTitle = titleWasEdited ? newTitle : original.title || "";
+    const finalUrl = urlWasEdited ? newUrl : original.url || "";
+    const shouldUseOriginalWs = wsInput ? wsInput.readOnly !== false : true;
+    const shouldUseOriginalXs = xsInput ? xsInput.readOnly !== false : true;
+    let finalWs = shouldUseOriginalWs ? original.ws || "" : newWs;
+    let finalXs = shouldUseOriginalXs ? original.xs || "" : newXs;
+    let finalMagnet = magnetWasEdited ? newMagnet : original.magnet || "";
+    const finalThumbnail = isEditing(thumbnailInput)
+      ? newThumbnail
+      : original.thumbnail || "";
+    const finalDescription = isEditing(descriptionInput)
+      ? newDescription
+      : original.description || "";
+    const originalEnableComments =
+      typeof original.enableComments === "boolean"
+        ? original.enableComments
+        : true;
+
+    let finalEnableComments = originalEnableComments;
+    if (commentsEl) {
+      if (commentsEl.disabled) {
+        finalEnableComments = commentsEl.dataset.originalValue === "true";
+      } else {
+        finalEnableComments = commentsEl.checked;
+      }
+    }
+
+    if (!finalTitle || (!finalUrl && !finalMagnet)) {
+      this.showError("Title and at least one of URL or Magnet is required.");
+      return;
+    }
+
+    if (finalUrl && !/^https:\/\//i.test(finalUrl)) {
+      this.showError("Hosted video URLs must use HTTPS.");
+      return;
+    }
+
+    if (finalMagnet) {
+      const normalizedMagnet = normalizeAndAugmentMagnet(finalMagnet, {
+        ws: finalWs,
+        xs: finalXs,
+      });
+      finalMagnet = normalizedMagnet;
+      const hints = extractMagnetHints(normalizedMagnet);
+      finalWs = hints.ws;
+      finalXs = hints.xs;
+    } else {
+      finalWs = "";
+      finalXs = "";
+    }
+
+    const updatedData = {
+      version: original.version || 2,
+      title: finalTitle,
+      magnet: finalMagnet,
+      url: finalUrl,
+      thumbnail: finalThumbnail,
+      description: finalDescription,
+      mode: isDevMode ? "dev" : "live",
+      ws: finalWs,
+      xs: finalXs,
+      wsEdited: !shouldUseOriginalWs,
+      xsEdited: !shouldUseOriginalXs,
+      urlEdited: urlWasEdited,
+      magnetEdited: magnetWasEdited,
+      enableComments: finalEnableComments,
+    };
+
+    const originalEvent = {
+      id: original.id,
+      pubkey: original.pubkey,
+      videoRootId: original.videoRootId,
+    };
+
+    try {
+      await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
+      await this.loadVideos();
+      this.videosMap.clear();
+      this.showSuccess("Video updated successfully!");
+      this.hideEditVideoModal();
+      this.forceRefreshAllProfiles();
+    } catch (err) {
+      console.error("Failed to edit video:", err);
+      this.showError("Failed to edit video. Please try again.");
+    }
+  }
+
+  /**
+   * Actually handle the upload form submission.
+   */
+  async handleUploadSubmit() {
+    const titleEl = document.getElementById("uploadTitle");
+    const urlEl = document.getElementById("uploadUrl");
+    const magnetEl = document.getElementById("uploadMagnet");
+    const wsEl = document.getElementById("uploadWs");
+    const xsEl = document.getElementById("uploadXs");
+    const thumbEl = document.getElementById("uploadThumbnail");
+    const descEl = document.getElementById("uploadDescription");
+    const privEl = document.getElementById("uploadIsPrivate");
+    const commentsEl = document.getElementById("uploadEnableComments");
+
+    const title = titleEl?.value.trim() || "";
+    const url = urlEl?.value.trim() || "";
+    const magnet = magnetEl?.value.trim() || "";
+    const ws = wsEl?.value.trim() || "";
+    const xs = xsEl?.value.trim() || "";
+    const thumbnail = thumbEl?.value.trim() || "";
+    const description = descEl?.value.trim() || "";
+    const enableComments = commentsEl ? commentsEl.checked : true;
+
+    const payload = {
+      title,
+      url,
+      magnet,
+      thumbnail,
+      description,
+      ws,
+      xs,
+      enableComments,
+    };
+
+    await this.publishVideoNote(payload, {
+      onSuccess: () => {
+        if (titleEl) titleEl.value = "";
+        if (urlEl) urlEl.value = "";
+        if (magnetEl) magnetEl.value = "";
+        if (wsEl) wsEl.value = "";
+        if (xsEl) xsEl.value = "";
+        if (thumbEl) thumbEl.value = "";
+        if (descEl) descEl.value = "";
+        if (privEl) privEl.checked = false;
+        if (commentsEl) commentsEl.checked = true;
+      },
+    });
   }
 
   /**
@@ -1526,10 +5243,38 @@ class bitvidApp {
     console.log("[app.js] login() called with pubkey =", pubkey);
 
     this.pubkey = pubkey;
+    this.currentUserNpub = this.safeEncodeNpub(pubkey);
+
+    let reloadScheduled = false;
+    if (saveToStorage) {
+      try {
+        localStorage.setItem("userPubKey", pubkey);
+        reloadScheduled = true;
+      } catch (err) {
+        console.warn("[app.js] Failed to persist pubkey:", err);
+      }
+    }
+
+    if (reloadScheduled) {
+      window.location.reload();
+      return;
+    }
+
+    await this.refreshAdminPaneState();
+
+    try {
+      await userBlocks.loadBlocks(pubkey);
+    } catch (error) {
+      console.warn("Failed to load personal block list:", error);
+    }
+
+    this.populateBlockedList();
 
     // Hide login button if present
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
+      this.loginButton.setAttribute("hidden", "");
+      this.loginButton.style.display = "none";
     }
     // Optionally hide logout or userStatus
     if (this.logoutButton) {
@@ -1542,9 +5287,13 @@ class bitvidApp {
     // Show the upload button, profile button, etc.
     if (this.uploadButton) {
       this.uploadButton.classList.remove("hidden");
+      this.uploadButton.removeAttribute("hidden");
+      this.uploadButton.style.display = "inline-flex";
     }
     if (this.profileButton) {
       this.profileButton.classList.remove("hidden");
+      this.profileButton.removeAttribute("hidden");
+      this.profileButton.style.display = "inline-flex";
     }
 
     // Show the "Subscriptions" link if it exists
@@ -1555,16 +5304,13 @@ class bitvidApp {
     // (Optional) load the user's own Nostr profile
     this.loadOwnProfile(pubkey);
 
-    // Save pubkey locally if requested
-    if (saveToStorage) {
-      localStorage.setItem("userPubKey", pubkey);
-    }
-
     // Refresh the video list so the user sees any private videos, etc.
     await this.loadVideos();
 
     // Force a fresh fetch of all profile pictures/names
     this.forceRefreshAllProfiles();
+
+    await this.updateCloudflareBucketPreview();
   }
 
   /**
@@ -1573,10 +5319,16 @@ class bitvidApp {
   async logout() {
     nostrClient.logout();
     this.pubkey = null;
+    this.currentUserNpub = null;
+
+    userBlocks.reset();
+    this.populateBlockedList();
 
     // Show the login button again
     if (this.loginButton) {
       this.loginButton.classList.remove("hidden");
+      this.loginButton.removeAttribute("hidden");
+      this.loginButton.style.display = "";
     }
 
     // Hide logout or userStatus
@@ -1593,9 +5345,18 @@ class bitvidApp {
     // Hide upload & profile
     if (this.uploadButton) {
       this.uploadButton.classList.add("hidden");
+      this.uploadButton.setAttribute("hidden", "");
+      this.uploadButton.style.display = "none";
     }
     if (this.profileButton) {
       this.profileButton.classList.add("hidden");
+      this.profileButton.setAttribute("hidden", "");
+      this.profileButton.style.display = "none";
+    }
+    if (this.profileChannelLink) {
+      this.profileChannelLink.classList.add("hidden");
+      this.profileChannelLink.removeAttribute("href");
+      delete this.profileChannelLink.dataset.targetNpub;
     }
 
     // Hide the Subscriptions link
@@ -1606,20 +5367,28 @@ class bitvidApp {
     // Clear localStorage
     localStorage.removeItem("userPubKey");
 
+    await this.refreshAdminPaneState();
+
     // Refresh the video list so user sees only public videos again
     await this.loadVideos();
 
     // Force a fresh fetch of all profile pictures/names (public ones in this case)
     this.forceRefreshAllProfiles();
+
+    await this.updateCloudflareBucketPreview();
   }
 
   /**
    * Cleanup resources on unload or modal close.
    */
   async cleanup({ preserveSubscriptions = false, preserveObservers = false } = {}) {
+    this.log(
+      `[cleanup] Requested (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers})`
+    );
     // Serialise teardown so overlapping calls (e.g. close button spam) don't
     // race each other and clobber a fresh playback setup.
     if (this.cleanupPromise) {
+      this.log("[cleanup] Waiting for in-flight cleanup to finish before starting a new run.");
       try {
         await this.cleanupPromise;
       } catch (err) {
@@ -1628,6 +5397,9 @@ class bitvidApp {
     }
 
     const runCleanup = async () => {
+      this.log(
+        `[cleanup] Begin (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers})`
+      );
       try {
         this.clearActiveIntervals();
         this.cleanupUrlPlaybackWatchdog();
@@ -1650,28 +5422,33 @@ class bitvidApp {
 
         // If there's a small inline player
         if (this.videoElement) {
-          this.videoElement.pause();
-          this.videoElement.src = "";
-          // When WebTorrent (or other MediaSource based flows) mount a stream they
-          // set `srcObject` behind the scenes. Forgetting to clear it leaves the
-          // detached MediaSource hanging around which breaks the next playback
-          // attempt. Always null it out alongside the normal `src` reset.
-          this.videoElement.srcObject = null;
-          this.videoElement.load();
+          this.videoElement = this.teardownVideoElement(this.videoElement);
         }
         // If there's a modal video
         if (this.modalVideo) {
-          this.modalVideo.pause();
-          this.modalVideo.src = "";
-          // See comment above—keep the `srcObject` reset paired with the `src`
-          // wipe so magnet-only replays do not regress into the grey screen bug.
-          this.modalVideo.srcObject = null;
-          this.modalVideo.load();
+          if (typeof this.modalPosterCleanup === "function") {
+            try {
+              this.modalPosterCleanup();
+            } catch (err) {
+              console.warn("[cleanup] modal poster cleanup threw:", err);
+            } finally {
+              this.modalPosterCleanup = null;
+            }
+          }
+          const refreshedModal = this.teardownVideoElement(this.modalVideo, {
+            replaceNode: true,
+          });
+          if (refreshedModal) {
+            this.modalVideo = refreshedModal;
+          }
         }
         // Tell webtorrent to cleanup
         await torrentClient.cleanup();
+        this.log("[cleanup] WebTorrent cleanup resolved.");
       } catch (err) {
         console.error("Cleanup error:", err);
+      } finally {
+        this.log("[cleanup] Finished.");
       }
     };
 
@@ -1693,7 +5470,9 @@ class bitvidApp {
     }
 
     try {
+      this.log("[waitForCleanup] Awaiting previous cleanup before continuing.");
       await this.cleanupPromise;
+      this.log("[waitForCleanup] Previous cleanup completed.");
     } catch (err) {
       console.warn("waitForCleanup observed a rejected cleanup:", err);
     }
@@ -1719,6 +5498,131 @@ class bitvidApp {
     }
   }
 
+  teardownVideoElement(videoElement, { replaceNode = false } = {}) {
+    if (!videoElement) {
+      this.log(
+        `[teardownVideoElement] No video provided (replaceNode=${replaceNode}); skipping.`
+      );
+      return videoElement;
+    }
+
+    const safe = (fn) => {
+      try {
+        fn();
+      } catch (err) {
+        console.warn("[teardownVideoElement]", err);
+      }
+    };
+
+    const describeSource = () => {
+      try {
+        return videoElement.currentSrc || videoElement.src || "<unset>";
+      } catch (err) {
+        return "<unavailable>";
+      }
+    };
+
+    this.log(
+      `[teardownVideoElement] Resetting video (replaceNode=${replaceNode}) readyState=${videoElement.readyState} networkState=${videoElement.networkState} src=${describeSource()}`
+    );
+
+    safe(() => videoElement.pause());
+
+    safe(() => {
+      videoElement.removeAttribute("src");
+      videoElement.src = "";
+    });
+
+    safe(() => {
+      videoElement.srcObject = null;
+    });
+
+    safe(() => {
+      if ("crossOrigin" in videoElement) {
+        videoElement.crossOrigin = null;
+      }
+      if (videoElement.hasAttribute("crossorigin")) {
+        videoElement.removeAttribute("crossorigin");
+      }
+    });
+
+    safe(() => {
+      if (typeof videoElement.load === "function") {
+        videoElement.load();
+      }
+    });
+
+    if (!replaceNode || !videoElement.parentNode) {
+      this.log(
+        `[teardownVideoElement] Completed without node replacement (readyState=${videoElement.readyState}).`
+      );
+      return videoElement;
+    }
+
+    const parent = videoElement.parentNode;
+    const clone = videoElement.cloneNode(false);
+
+    if (clone.dataset && "autoplayBound" in clone.dataset) {
+      delete clone.dataset.autoplayBound;
+    }
+    if (clone.hasAttribute("data-autoplay-bound")) {
+      clone.removeAttribute("data-autoplay-bound");
+    }
+
+    safe(() => {
+      clone.removeAttribute("src");
+      clone.src = "";
+    });
+
+    safe(() => {
+      clone.srcObject = null;
+    });
+
+    safe(() => {
+      if ("crossOrigin" in clone) {
+        clone.crossOrigin = null;
+      }
+      if (clone.hasAttribute("crossorigin")) {
+        clone.removeAttribute("crossorigin");
+      }
+    });
+
+    clone.autoplay = videoElement.autoplay;
+    clone.controls = videoElement.controls;
+    clone.loop = videoElement.loop;
+    clone.muted = videoElement.muted;
+    clone.defaultMuted = videoElement.defaultMuted;
+    clone.preload = videoElement.preload;
+    clone.playsInline = videoElement.playsInline;
+
+    clone.poster = "";
+    if (clone.hasAttribute("poster")) {
+      clone.removeAttribute("poster");
+    }
+
+    let replaced = false;
+    safe(() => {
+      parent.replaceChild(clone, videoElement);
+      replaced = true;
+    });
+
+    if (!replaced) {
+      return videoElement;
+    }
+
+    safe(() => {
+      if (typeof clone.load === "function") {
+        clone.load();
+      }
+    });
+
+    this.log(
+      `[teardownVideoElement] Replaced modal video node (readyState=${clone.readyState} networkState=${clone.networkState}).`
+    );
+
+    return clone;
+  }
+
   registerUrlPlaybackWatchdogs(
     videoElement,
     { stallMs = 8000, onSuccess, onFallback } = {}
@@ -1730,6 +5634,9 @@ class bitvidApp {
     }
 
     const normalizedStallMs = Number.isFinite(stallMs) && stallMs > 0 ? stallMs : 0;
+    this.log(
+      `[registerUrlPlaybackWatchdogs] Installing watchdogs (stallMs=${normalizedStallMs}) readyState=${videoElement.readyState} networkState=${videoElement.networkState}`
+    );
     let active = true;
     let stallTimerId = null;
 
@@ -1754,6 +5661,9 @@ class bitvidApp {
       if (!active) {
         return;
       }
+      this.log(
+        `[registerUrlPlaybackWatchdogs] Triggering fallback (${reason}) readyState=${videoElement.readyState} networkState=${videoElement.networkState}`
+      );
       cleanup();
       onFallback(reason);
     };
@@ -1762,6 +5672,9 @@ class bitvidApp {
       if (!active) {
         return;
       }
+      this.log(
+        "[registerUrlPlaybackWatchdogs] Hosted playback signaled success; clearing watchdogs."
+      );
       cleanup();
       if (typeof onSuccess === "function") {
         onSuccess();
@@ -1786,7 +5699,6 @@ class bitvidApp {
     addListener("error", () => triggerFallback("error"));
     addListener("abort", () => triggerFallback("abort"));
     addListener("stalled", () => triggerFallback("stalled"));
-    addListener("emptied", () => triggerFallback("emptied"));
     addListener("playing", handleSuccess);
     addListener("ended", handleSuccess);
 
@@ -1808,6 +5720,7 @@ class bitvidApp {
     }
 
     this.urlPlaybackWatchdogCleanup = () => {
+      this.log("[registerUrlPlaybackWatchdogs] Manual watchdog cleanup invoked.");
       cleanup();
     };
 
@@ -1847,6 +5760,22 @@ class bitvidApp {
     this.shareBtn.setAttribute("aria-disabled", (!enabled).toString());
     this.shareBtn.classList.toggle("opacity-50", !enabled);
     this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
+  }
+
+  setModalZapVisibility(visible) {
+    if (!this.modalZapBtn) {
+      return;
+    }
+    const shouldShow = !!visible;
+    this.modalZapBtn.classList.toggle("hidden", !shouldShow);
+    this.modalZapBtn.disabled = !shouldShow;
+    this.modalZapBtn.setAttribute("aria-disabled", (!shouldShow).toString());
+    this.modalZapBtn.setAttribute("aria-hidden", (!shouldShow).toString());
+    if (shouldShow) {
+      this.modalZapBtn.removeAttribute("tabindex");
+    } else {
+      this.modalZapBtn.setAttribute("tabindex", "-1");
+    }
   }
 
   getShareUrlBase() {
@@ -2002,6 +5931,8 @@ class bitvidApp {
       this.playerModal.style.display = "none";
       this.playerModal.classList.add("hidden");
     }
+    document.body.classList.remove("modal-open");
+    document.documentElement.classList.remove("modal-open");
     if (typeof this.modalPosterCleanup === "function") {
       this.modalPosterCleanup();
       this.modalPosterCleanup = null;
@@ -2025,6 +5956,12 @@ class bitvidApp {
   async loadVideos(forceFetch = false) {
     console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      console.warn("Failed to ensure admin lists were loaded before fetching videos:", error);
+    }
+
     const shouldIncludeVideo = (video) => {
       if (!video || typeof video !== "object") {
         return false;
@@ -2034,12 +5971,11 @@ class bitvidApp {
         return false;
       }
 
-      const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-      if (initialBlacklist.includes(authorNpub)) {
+      if (this.isAuthorBlocked(video.pubkey)) {
         return false;
       }
 
-      if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
+      if (!accessControl.canAccess(video)) {
         return false;
       }
 
@@ -2251,6 +6187,10 @@ class bitvidApp {
     const hadMargin = badgeEl.classList.contains("mt-3");
 
     badgeEl.dataset.urlHealthState = status;
+    const cardEl = badgeEl.closest(".video-card");
+    if (cardEl) {
+      cardEl.dataset.urlHealthState = status;
+    }
     badgeEl.setAttribute("aria-live", "polite");
     badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
     badgeEl.textContent = message;
@@ -2326,7 +6266,8 @@ class bitvidApp {
 
     this.updateUrlHealthBadge(badgeEl, { status: "checking" }, eventId);
 
-    const existingProbe = getInFlightUrlProbe(eventId, trimmedUrl);
+    const probeOptions = { confirmPlayable: true };
+    const existingProbe = getInFlightUrlProbe(eventId, trimmedUrl, probeOptions);
     if (existingProbe) {
       existingProbe
         .then((entry) => {
@@ -2343,14 +6284,14 @@ class bitvidApp {
       return;
     }
 
-    const probePromise = this.probeUrl(trimmedUrl)
+    const probePromise = this.probeUrl(trimmedUrl, probeOptions)
       .then((result) => {
         const outcome = result?.outcome || "error";
         let entry;
 
         if (outcome === "ok") {
           entry = { status: "healthy", message: "✅ CDN" };
-        } else if (outcome === "opaque") {
+        } else if (outcome === "opaque" || outcome === "unknown") {
           entry = {
             status: "unknown",
             message: "⚠️ CDN",
@@ -2367,7 +6308,12 @@ class bitvidApp {
           };
         }
 
-        return this.storeUrlHealth(eventId, trimmedUrl, entry);
+        const ttlOverride =
+          entry.status === "timeout" || entry.status === "unknown"
+            ? URL_HEALTH_TIMEOUT_RETRY_MS
+            : undefined;
+
+        return this.storeUrlHealth(eventId, trimmedUrl, entry, ttlOverride);
       })
       .catch((err) => {
         console.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
@@ -2378,7 +6324,7 @@ class bitvidApp {
         return this.storeUrlHealth(eventId, trimmedUrl, entry);
       });
 
-    setInFlightUrlProbe(eventId, trimmedUrl, probePromise);
+    setInFlightUrlProbe(eventId, trimmedUrl, probePromise, probeOptions);
 
     probePromise
       .then((entry) => {
@@ -2445,6 +6391,7 @@ class bitvidApp {
       thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
       url: typeof video.url === "string" ? video.url : "",
       magnet: typeof video.magnet === "string" ? video.magnet : "",
+      enableComments: video.enableComments === false ? false : true,
     }));
     const signature = JSON.stringify(signaturePayload);
 
@@ -2463,6 +6410,7 @@ class bitvidApp {
       this.getShareUrlBase() ||
       `${window.location?.origin || ""}${window.location?.pathname || ""}` ||
       (window.location?.href ? window.location.href.split(/[?#]/)[0] : "");
+    const canManageBlacklist = this.canCurrentUserManageBlacklist();
 
     // 3) Build each card
     dedupedVideos.forEach((video, index) => {
@@ -2543,6 +6491,56 @@ class bitvidApp {
           </div>
         `
         : "";
+
+      const blacklistMenuItem = canManageBlacklist
+        ? `
+                <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="blacklist-author" data-author="${video.pubkey || ""}">
+                  Blacklist creator
+                </button>`
+        : "";
+
+      const moreMenu = `
+          <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
+            <button
+              type="button"
+              class="inline-flex items-center justify-center w-10 h-10 p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              data-more-dropdown="${index}"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-label="More options"
+            >
+              <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5 object-contain" />
+            </button>
+            <div
+              id="moreDropdown-${index}"
+              class="hidden absolute right-0 bottom-full mb-2 w-40 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+              role="menu"
+              data-more-menu="true"
+            >
+              <div class="py-1">
+                <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="open-channel" data-author="${video.pubkey || ""}">
+                  Open channel
+                </button>
+                <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
+                  Copy link
+                </button>
+                ${blacklistMenuItem}
+                <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
+                  Block creator
+                </button>
+                <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="report" data-event-id="${video.id || ""}">
+                  Report
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+      const cardControls = `
+          <div class="flex items-center">
+            ${moreMenu}${gearMenu}
+          </div>
+        `;
 
       const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
       const trimmedMagnet =
@@ -2667,7 +6665,7 @@ class bitvidApp {
                   </div>
                 </div>
               </div>
-              ${gearMenu}
+              ${cardControls}
             </div>
             ${connectionBadgesHtml}
             ${torrentWarningHtml}
@@ -2679,6 +6677,42 @@ class bitvidApp {
       template.innerHTML = cardHtml.trim();
       const cardEl = template.content.firstElementChild;
       if (cardEl) {
+        cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
+        if (typeof video.pubkey === "string" && video.pubkey) {
+          cardEl.dataset.ownerPubkey = video.pubkey;
+        } else if (cardEl.dataset.ownerPubkey) {
+          delete cardEl.dataset.ownerPubkey;
+        }
+
+        if (trimmedUrl) {
+          cardEl.dataset.urlHealthState = "checking";
+          if (cardEl.dataset.urlHealthReason) {
+            delete cardEl.dataset.urlHealthReason;
+          }
+          cardEl.dataset.urlHealthEventId = video.id || "";
+          cardEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
+        } else {
+          cardEl.dataset.urlHealthState = "offline";
+          cardEl.dataset.urlHealthReason = "missing-source";
+          if (cardEl.dataset.urlHealthEventId) {
+            delete cardEl.dataset.urlHealthEventId;
+          }
+          if (cardEl.dataset.urlHealthUrl) {
+            delete cardEl.dataset.urlHealthUrl;
+          }
+        }
+        if (magnetProvided && magnetSupported) {
+          cardEl.dataset.streamHealthState = "checking";
+          if (cardEl.dataset.streamHealthReason) {
+            delete cardEl.dataset.streamHealthReason;
+          }
+        } else {
+          cardEl.dataset.streamHealthState = "unhealthy";
+          cardEl.dataset.streamHealthReason = magnetProvided
+            ? "unsupported"
+            : "missing-source";
+        }
+
         const thumbnailEl = cardEl.querySelector("[data-video-thumbnail]");
         if (thumbnailEl) {
           const markThumbnailAsLoaded = () => {
@@ -2802,11 +6836,18 @@ class bitvidApp {
         if (trimmedUrl) {
           const badgeEl = cardEl.querySelector("[data-url-health-state]");
           if (badgeEl) {
-            this.handleUrlHealthBadge({
-              video,
-              url: trimmedUrl,
-              badgeEl,
-            });
+            badgeEl.dataset.urlHealthEventId = video.id || "";
+            badgeEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
+          }
+        } else {
+          const badgeEl = cardEl.querySelector("[data-url-health-state]");
+          if (badgeEl) {
+            if (badgeEl.dataset.urlHealthEventId) {
+              delete badgeEl.dataset.urlHealthEventId;
+            }
+            if (badgeEl.dataset.urlHealthUrl) {
+              delete badgeEl.dataset.urlHealthUrl;
+            }
           }
         }
       }
@@ -2822,12 +6863,17 @@ class bitvidApp {
     this.videoList.innerHTML = "";
     this.videoList.appendChild(fragment);
     attachHealthBadges(this.videoList);
+    attachUrlHealthBadges(this.videoList, ({ badgeEl, url, eventId }) => {
+      const video = this.videosMap.get(eventId) || { id: eventId };
+      this.handleUrlHealthBadge({ video, url, badgeEl });
+    });
 
     // Ensure every thumbnail can recover with a fallback image if the primary
     // source fails to load or returns a zero-sized response (some CDNs error
     // with HTTP 200 + empty body). We set up the listeners before kicking off
     // any lazy-loading observers so cached failures are covered as well.
     this.bindThumbnailFallbacks(this.videoList);
+    this.attachMoreMenuHandlers(this.videoList);
 
     // Lazy-load images
     const lazyEls = this.videoList.querySelectorAll("[data-lazy]");
@@ -3006,6 +7052,364 @@ class bitvidApp {
         handleLoad();
       }
     });
+  }
+
+  ensureGlobalMoreMenuHandlers() {
+    if (this.moreMenuGlobalHandlerBound) {
+      return;
+    }
+
+    this.moreMenuGlobalHandlerBound = true;
+
+    this.boundMoreMenuDocumentClick = (event) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.closest("[data-more-menu-wrapper]") ||
+          target.closest("[data-more-menu]"))
+      ) {
+        return;
+      }
+      this.closeAllMoreMenus();
+    };
+
+    this.boundMoreMenuDocumentKeydown = (event) => {
+      if (event.key === "Escape") {
+        this.closeAllMoreMenus();
+      }
+    };
+
+    document.addEventListener("click", this.boundMoreMenuDocumentClick);
+    document.addEventListener("keydown", this.boundMoreMenuDocumentKeydown);
+  }
+
+  closeAllMoreMenus() {
+    const menus = document.querySelectorAll("[data-more-menu]");
+    menus.forEach((menu) => {
+      if (menu instanceof HTMLElement) {
+        menu.classList.add("hidden");
+      }
+    });
+
+    const buttons = document.querySelectorAll("[data-more-dropdown]");
+    buttons.forEach((btn) => {
+      if (btn instanceof HTMLElement) {
+        btn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
+  attachMoreMenuHandlers(container) {
+    if (!container || typeof container.querySelectorAll !== "function") {
+      return;
+    }
+
+    const buttons = container.querySelectorAll("[data-more-dropdown]");
+    if (!buttons.length) {
+      return;
+    }
+
+    this.ensureGlobalMoreMenuHandlers();
+
+    buttons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      if (button.dataset.moreMenuToggleBound === "true") {
+        return;
+      }
+      button.dataset.moreMenuToggleBound = "true";
+      button.setAttribute("aria-expanded", "false");
+
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const key = button.getAttribute("data-more-dropdown") || "";
+        const dropdown = document.getElementById(`moreDropdown-${key}`);
+        if (!(dropdown instanceof HTMLElement)) {
+          return;
+        }
+
+        const willOpen = dropdown.classList.contains("hidden");
+        this.closeAllMoreMenus();
+
+        if (willOpen) {
+          dropdown.classList.remove("hidden");
+          button.setAttribute("aria-expanded", "true");
+        }
+      });
+    });
+
+    const actionButtons = container.querySelectorAll(
+      "[data-more-menu] button[data-action]"
+    );
+    actionButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      if (button.dataset.moreMenuActionBound === "true") {
+        return;
+      }
+      button.dataset.moreMenuActionBound = "true";
+
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const { action } = button.dataset;
+        this.handleMoreMenuAction(action, button.dataset);
+        this.closeAllMoreMenus();
+      });
+    });
+  }
+
+  syncModalMoreMenuData() {
+    if (!this.modalMoreMenu) {
+      return;
+    }
+
+    const buttons = this.modalMoreMenu.querySelectorAll("button[data-action]");
+    buttons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+
+      const action = button.dataset.action || "";
+      if (action === "blacklist-author") {
+        const canShow = this.canCurrentUserManageBlacklist();
+        if (canShow && this.currentVideo && this.currentVideo.pubkey) {
+          button.dataset.author = this.currentVideo.pubkey;
+          button.classList.remove("hidden");
+          button.setAttribute("aria-hidden", "false");
+        } else {
+          delete button.dataset.author;
+          button.classList.add("hidden");
+          button.setAttribute("aria-hidden", "true");
+        }
+        return;
+      }
+
+      if (action === "open-channel" || action === "block-author") {
+        if (this.currentVideo && this.currentVideo.pubkey) {
+          button.dataset.author = this.currentVideo.pubkey;
+        } else {
+          delete button.dataset.author;
+        }
+      }
+
+      if (action === "copy-link" || action === "report") {
+        if (this.currentVideo && this.currentVideo.id) {
+          button.dataset.eventId = this.currentVideo.id;
+        } else {
+          delete button.dataset.eventId;
+        }
+      }
+    });
+  }
+
+  async handleMoreMenuAction(action, dataset = {}) {
+    const normalized = typeof action === "string" ? action.trim() : "";
+    const context = dataset.context || "";
+
+    switch (normalized) {
+      case "open-channel": {
+        if (context === "modal") {
+          this.openCreatorChannel();
+          break;
+        }
+
+        const author =
+          dataset.author || (this.currentVideo ? this.currentVideo.pubkey : "");
+        if (author) {
+          this.goToProfile(author);
+        } else {
+          this.showError("No creator info available.");
+        }
+        break;
+      }
+      case "copy-link": {
+        const eventId =
+          dataset.eventId ||
+          (context === "modal" && this.currentVideo ? this.currentVideo.id : "");
+        if (!eventId) {
+          this.showError("Could not generate link.");
+          break;
+        }
+        const shareUrl = this.buildShareUrlFromEventId(eventId);
+        if (!shareUrl) {
+          this.showError("Could not generate link.");
+          break;
+        }
+        navigator.clipboard
+          .writeText(shareUrl)
+          .then(() => this.showSuccess("Video link copied to clipboard!"))
+          .catch(() => this.showError("Failed to copy the link."));
+        break;
+      }
+      case "copy-npub": {
+        const explicitNpub =
+          typeof dataset.npub === "string" && dataset.npub.trim()
+            ? dataset.npub.trim()
+            : "";
+        const authorCandidate = dataset.author || "";
+        const fallbackNpub = this.safeEncodeNpub(authorCandidate);
+        const valueToCopy = explicitNpub || fallbackNpub;
+
+        if (!valueToCopy) {
+          this.showError("No npub available to copy.");
+          break;
+        }
+
+        try {
+          await navigator.clipboard.writeText(valueToCopy);
+          this.showSuccess("Channel npub copied to clipboard!");
+        } catch (error) {
+          console.error("Failed to copy npub:", error);
+          this.showError("Failed to copy the npub.");
+        }
+        break;
+      }
+      case "blacklist-author": {
+        const actorNpub = this.getCurrentUserNpub();
+        if (!actorNpub) {
+          this.showError("Please login as a moderator to manage the blacklist.");
+          break;
+        }
+
+        try {
+          await accessControl.ensureReady();
+        } catch (error) {
+          console.warn("Failed to refresh moderation state before blacklisting:", error);
+        }
+
+        if (!accessControl.canEditAdminLists(actorNpub)) {
+          this.showError("Only moderators can manage the blacklist.");
+          break;
+        }
+
+        let author = dataset.author || "";
+        if (!author && context === "modal" && this.currentVideo?.pubkey) {
+          author = this.currentVideo.pubkey;
+        }
+        if (!author && this.currentVideo?.pubkey) {
+          author = this.currentVideo.pubkey;
+        }
+
+        const explicitNpub =
+          typeof dataset.npub === "string" && dataset.npub.trim()
+            ? dataset.npub.trim()
+            : "";
+        const targetNpub = explicitNpub || this.safeEncodeNpub(author);
+
+        if (!targetNpub) {
+          this.showError("Unable to determine the creator npub.");
+          break;
+        }
+
+        try {
+          const result = await accessControl.addToBlacklist(
+            actorNpub,
+            targetNpub
+          );
+
+          if (result?.ok) {
+            this.showSuccess("Creator added to the blacklist.");
+          } else {
+            const code = result?.error || "unknown";
+            switch (code) {
+              case "self":
+                this.showError("You cannot blacklist yourself.");
+                break;
+              case "immutable":
+                this.showError(
+                  "Moderators cannot blacklist the super admin or fellow moderators."
+                );
+                break;
+              case "invalid npub":
+                this.showError("Unable to blacklist this creator.");
+                break;
+              case "forbidden":
+                this.showError("Only moderators can manage the blacklist.");
+                break;
+              default:
+                this.showError(
+                  "Failed to update the blacklist. Please try again."
+                );
+                break;
+            }
+          }
+        } catch (error) {
+          console.error("Failed to add creator to blacklist:", error);
+          this.showError("Failed to update the blacklist. Please try again.");
+        }
+        break;
+      }
+      case "block-author": {
+        if (!this.pubkey) {
+          this.showError("Please login to manage your block list.");
+          break;
+        }
+
+        const authorCandidate =
+          dataset.author ||
+          (this.currentVideo && this.currentVideo.pubkey) ||
+          "";
+
+        const trimmed =
+          typeof authorCandidate === "string" ? authorCandidate.trim() : "";
+        if (!trimmed) {
+          this.showError("Unable to determine the creator to block.");
+          break;
+        }
+
+        let normalizedHex = "";
+        if (trimmed.startsWith("npub1")) {
+          normalizedHex = this.safeDecodeNpub(trimmed) || "";
+        } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+          normalizedHex = trimmed.toLowerCase();
+        }
+
+        if (!normalizedHex) {
+          this.showError("Unable to determine the creator to block.");
+          break;
+        }
+
+        if (normalizedHex === this.pubkey) {
+          this.showError("You cannot block yourself.");
+          break;
+        }
+
+        try {
+          await userBlocks.ensureLoaded(this.pubkey);
+
+          if (userBlocks.isBlocked(normalizedHex)) {
+            this.showSuccess("You already blocked this creator.");
+          } else {
+            await userBlocks.addBlock(normalizedHex, this.pubkey);
+            this.showSuccess(
+              "Creator blocked. You won't see their videos anymore."
+            );
+          }
+
+          this.populateBlockedList();
+          await this.loadVideos();
+        } catch (error) {
+          console.error("Failed to update personal block list:", error);
+          const message =
+            error?.code === "nip04-missing"
+              ? "Your Nostr extension must support NIP-04 to manage private lists."
+              : "Failed to update your block list. Please try again.";
+          this.showError(message);
+        }
+        break;
+      }
+      case "report": {
+        this.showSuccess("Reporting coming soon.");
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   /**
@@ -3212,88 +7616,17 @@ class bitvidApp {
         return;
       }
 
-      // 3) Prompt the user for updated fields
-      const newTitle = prompt("New Title? (blank=keep existing)", video.title);
-      if (newTitle === null) {
+      if (!this.editVideoModal) {
+        await this.initEditVideoModal();
+      }
+
+      if (!this.editVideoModal) {
+        this.showError("Edit modal is not available right now.");
         return;
       }
 
-      const newMagnet = prompt(
-        "New Magnet? (blank=keep existing)",
-        video.magnet
-      );
-      if (newMagnet === null) {
-        return;
-      }
-
-      const newUrl = prompt(
-        "New URL? (blank=keep existing)",
-        video.url || ""
-      );
-      if (newUrl === null) {
-        return;
-      }
-
-      const newThumb = prompt(
-        "New Thumbnail? (blank=keep existing)",
-        video.thumbnail
-      );
-      if (newThumb === null) {
-        return;
-      }
-
-      const newDesc = prompt(
-        "New Description? (blank=keep existing)",
-        video.description
-      );
-      if (newDesc === null) {
-        return;
-      }
-      // const wantPrivate = confirm("Make this video private? OK=Yes, Cancel=No");
-
-      // 4) Build final updated fields (or fallback to existing)
-      const title =
-        !newTitle || !newTitle.trim() ? video.title : newTitle.trim();
-      const magnet =
-        !newMagnet || !newMagnet.trim() ? video.magnet : newMagnet.trim();
-      const url = !newUrl || !newUrl.trim() ? video.url : newUrl.trim();
-      const thumbnail =
-        !newThumb || !newThumb.trim() ? video.thumbnail : newThumb.trim();
-      const description =
-        !newDesc || !newDesc.trim() ? video.description : newDesc.trim();
-
-      // 5) Create an object with the new data
-      const updatedData = {
-        version: video.version || 2,
-        // isPrivate: wantPrivate,
-        title,
-        magnet,
-        url,
-        thumbnail,
-        description,
-        mode: isDevMode ? "dev" : "live",
-      };
-
-      // 6) Build the originalEvent stub, now including videoRootId to avoid extra fetch
-      const originalEvent = {
-        id: video.id,
-        pubkey: video.pubkey,
-        videoRootId: video.videoRootId, // <-- pass this if it exists
-      };
-
-      // 7) Call the editVideo method
-      await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
-
-      // 8) Refresh local UI
-      await this.loadVideos();
-
-      // 8.1) Purge the outdated cache
-      this.videosMap.clear();
-
-      this.showSuccess("Video updated successfully!");
-
-      // 9) Also refresh all profile caches so any new name/pic changes are reflected
-      this.forceRefreshAllProfiles();
+      this.populateEditVideoForm(video);
+      this.showEditVideoModal();
     } catch (err) {
       console.error("Failed to edit video:", err);
       this.showError("Failed to edit video. Please try again.");
@@ -3320,33 +7653,21 @@ class bitvidApp {
         return;
       }
 
-      // 2) Grab all known events so older overshadowed ones are included
-      const allEvents = Array.from(nostrClient.allEvents.values());
-
-      // 3) Check for older versions among *all* events, not just the active ones
-      if (!this.hasOlderVersion(video, allEvents)) {
-        this.showError("No older version exists to revert to.");
-        return;
+      if (!this.revertVideoModal) {
+        const initialized = await this.initRevertVideoModal();
+        if (!initialized || !this.revertVideoModal) {
+          this.showError("Revert modal is not available right now.");
+          return;
+        }
       }
 
-      if (!confirm(`Revert current version of "${video.title}"?`)) {
-        return;
-      }
+      const history = await nostrClient.hydrateVideoHistory(video);
 
-      const originalEvent = {
-        id: video.id,
-        pubkey: video.pubkey,
-        tags: video.tags,
-      };
-
-      await nostrClient.revertVideo(originalEvent, this.pubkey);
-
-      await this.loadVideos();
-      this.showSuccess("Current version reverted successfully!");
-      this.forceRefreshAllProfiles();
+      this.populateRevertVideoModal(video, history);
+      this.showRevertVideoModal();
     } catch (err) {
       console.error("Failed to revert video:", err);
-      this.showError("Failed to revert video. Please try again.");
+      this.showError("Failed to load revision history. Please try again.");
     }
   }
 
@@ -3503,11 +7824,56 @@ class bitvidApp {
     });
   }
 
-  async probeUrl(url) {
+  async probeUrl(url, options = {}) {
     const trimmed = typeof url === "string" ? url.trim() : "";
     if (!trimmed) {
       return { outcome: "invalid" };
     }
+
+    const confirmPlayable = options?.confirmPlayable === true;
+
+    const confirmWithVideoElement = async () => {
+      if (!confirmPlayable) {
+        return null;
+      }
+
+      const initialTimeout =
+        Number.isFinite(options?.videoProbeTimeoutMs) &&
+        options.videoProbeTimeoutMs > 0
+          ? options.videoProbeTimeoutMs
+          : URL_PROBE_TIMEOUT_MS;
+
+      const attemptWithTimeout = async (timeoutMs) => {
+        try {
+          const result = await this.probeUrlWithVideoElement(trimmed, timeoutMs);
+          if (result && result.outcome) {
+            return result;
+          }
+        } catch (err) {
+          console.warn(
+            `[probeUrl] Video element probe threw for ${trimmed}:`,
+            err
+          );
+        }
+        return null;
+      };
+
+      let result = await attemptWithTimeout(initialTimeout);
+
+      if (
+        result &&
+        result.outcome === "timeout" &&
+        Number.isFinite(URL_PROBE_TIMEOUT_RETRY_MS) &&
+        URL_PROBE_TIMEOUT_RETRY_MS > initialTimeout
+      ) {
+        const retryResult = await attemptWithTimeout(URL_PROBE_TIMEOUT_RETRY_MS);
+        if (retryResult) {
+          result = { ...retryResult, retriedAfterTimeout: true };
+        }
+      }
+
+      return result;
+    };
 
     const supportsAbort = typeof AbortController !== "undefined";
     const controller = supportsAbort ? new AbortController() : null;
@@ -3547,11 +7913,13 @@ class bitvidApp {
         clearTimeout(timeoutId);
       }
       console.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
-      const fallback = await this.probeUrlWithVideoElement(trimmed);
-      if (fallback && fallback.outcome) {
+      const fallback = await confirmWithVideoElement();
+      if (fallback) {
         return fallback;
       }
-      return { outcome: "error", error: err };
+      return confirmPlayable
+        ? { outcome: "error", error: err }
+        : { outcome: "unknown", error: err };
     }
 
     if (timeoutId) {
@@ -3559,11 +7927,11 @@ class bitvidApp {
     }
 
     if (responseOrTimeout && responseOrTimeout.outcome === "timeout") {
-      const fallback = await this.probeUrlWithVideoElement(trimmed);
-      if (fallback && fallback.outcome) {
+      const fallback = await confirmWithVideoElement();
+      if (fallback) {
         return fallback;
       }
-      return { outcome: "timeout" };
+      return confirmPlayable ? { outcome: "timeout" } : { outcome: "unknown" };
     }
 
     const response = responseOrTimeout;
@@ -3572,15 +7940,37 @@ class bitvidApp {
     }
 
     if (response.type === "opaque") {
-      const fallback = await this.probeUrlWithVideoElement(trimmed);
-      if (fallback && fallback.outcome) {
+      const fallback = await confirmWithVideoElement();
+      if (fallback) {
         return fallback;
       }
-      return { outcome: "opaque" };
+      return { outcome: confirmPlayable ? "opaque" : "unknown" };
+    }
+
+    if (!response.ok) {
+      const fallback = await confirmWithVideoElement();
+      if (fallback) {
+        return fallback;
+      }
+      return {
+        outcome: "bad",
+        status: response.status,
+      };
+    }
+
+    const playbackCheck = await confirmWithVideoElement();
+    if (playbackCheck) {
+      if (playbackCheck.outcome === "ok") {
+        return {
+          ...playbackCheck,
+          status: response.status,
+        };
+      }
+      return playbackCheck;
     }
 
     return {
-      outcome: response.ok ? "ok" : "bad",
+      outcome: "ok",
       status: response.status,
     };
   }
@@ -3730,6 +8120,10 @@ class bitvidApp {
       : "";
     const magnetProvided = playbackConfig.provided;
 
+    this.log(
+      `[playVideoWithFallback] Session start urlProvided=${!!sanitizedUrl} magnetProvided=${magnetProvided} magnetUsable=${!!magnetForPlayback}`
+    );
+
     if (this.currentVideo) {
       this.currentVideo.magnet = magnetForPlayback;
       this.currentVideo.normalizedMagnet = magnetForPlayback;
@@ -3742,13 +8136,31 @@ class bitvidApp {
     this.currentMagnetUri = magnetForPlayback || null;
     this.setCopyMagnetState(!!magnetForPlayback);
 
+    let ensureDebugListenersRemoved = () => {};
+
     try {
       if (!this.modalVideo) {
         throw new Error("Video element is not ready for playback.");
       }
 
+      if (typeof this.modalPosterCleanup === "function") {
+        try {
+          this.modalPosterCleanup();
+        } catch (err) {
+          console.warn("[playVideoWithFallback] modal poster cleanup threw:", err);
+        } finally {
+          this.modalPosterCleanup = null;
+        }
+      }
+
+      const refreshedModal = this.teardownVideoElement(this.modalVideo, {
+        replaceNode: true,
+      });
+      if (refreshedModal) {
+        this.modalVideo = refreshedModal;
+      }
+
       this.showModalWithPoster();
-      const videoEl = this.modalVideo;
       const HOSTED_URL_SUCCESS_MESSAGE = "✅ Streaming from hosted URL";
 
       if (this.modalStatus) {
@@ -3760,15 +8172,59 @@ class bitvidApp {
 
       await torrentClient.cleanup();
 
-      videoEl.pause();
-      // Clearing the WebTorrent attachment requires wiping both `src` and
-      // `srcObject`. Multiple regressions have shipped where we only blanked
-      // `src`, leaving the old MediaSource wired up and the next magnet would
-      // stall on a grey frame. Always clear both before calling `load()`.
-      videoEl.src = "";
-      videoEl.removeAttribute("src");
-      videoEl.srcObject = null;
-      videoEl.load();
+      const activeVideoEl = this.teardownVideoElement(this.modalVideo);
+      if (activeVideoEl) {
+        this.modalVideo = activeVideoEl;
+        this.log(
+          `[playVideoWithFallback] Modal video prepared (readyState=${activeVideoEl.readyState} networkState=${activeVideoEl.networkState}).`
+        );
+      }
+
+      if (activeVideoEl) {
+        const debugEvents = [
+          "loadedmetadata",
+          "loadeddata",
+          "canplay",
+          "canplaythrough",
+          "play",
+          "playing",
+          "pause",
+          "stalled",
+          "suspend",
+          "waiting",
+          "ended",
+          "error",
+        ];
+        const debugHandlers = [];
+        ensureDebugListenersRemoved = () => {
+          if (!debugHandlers.length) {
+            return;
+          }
+          for (const [eventName, handler] of debugHandlers) {
+            activeVideoEl.removeEventListener(eventName, handler);
+          }
+          debugHandlers.length = 0;
+          ensureDebugListenersRemoved = () => {};
+        };
+        for (const eventName of debugEvents) {
+          const handler = () => {
+            const { readyState, networkState, currentTime, paused, error } =
+              activeVideoEl;
+            let suffix = `readyState=${readyState} networkState=${networkState} currentTime=${Number.isFinite(currentTime) ? currentTime.toFixed(2) : currentTime} paused=${paused}`;
+            if (eventName === "error" && error) {
+              const errorMessage = error.message || "";
+              suffix += ` code=${error.code || ""} message=${errorMessage}`;
+            }
+            this.log(
+              `[playVideoWithFallback] <video> event ${eventName}; ${suffix}`
+            );
+          };
+          activeVideoEl.addEventListener(eventName, handler);
+          debugHandlers.push([eventName, handler]);
+        }
+      } else {
+        ensureDebugListenersRemoved = () => {};
+      }
 
       this.resetTorrentStats();
       this.playSource = null;
@@ -3785,6 +8241,9 @@ class bitvidApp {
         sanitizedUrl && /^https:\/\//i.test(sanitizedUrl) ? sanitizedUrl : "";
       const webSeedCandidates = httpsUrl ? [httpsUrl] : [];
       let cleanupHostedUrlStatusListeners = () => {};
+      const cleanupDebugListeners = () => {
+        ensureDebugListenersRemoved();
+      };
 
       let fallbackStarted = false;
       const startTorrentFallback = async (reason) => {
@@ -3797,6 +8256,33 @@ class bitvidApp {
         fallbackStarted = true;
         this.cleanupUrlPlaybackWatchdog();
         cleanupHostedUrlStatusListeners();
+        cleanupDebugListeners();
+
+        if (activeVideoEl) {
+          try {
+            activeVideoEl.pause();
+          } catch (err) {
+            this.log(
+              "[playVideoWithFallback] Ignoring pause error before torrent fallback:",
+              err
+            );
+          }
+          try {
+            activeVideoEl.removeAttribute("src");
+          } catch (err) {
+            // removeAttribute throws in old browsers when the attribute does not exist
+          }
+          activeVideoEl.src = "";
+          activeVideoEl.srcObject = null;
+          try {
+            activeVideoEl.load();
+          } catch (err) {
+            this.log(
+              "[playVideoWithFallback] Ignoring load error before torrent fallback:",
+              err
+            );
+          }
+        }
         if (!magnetForPlayback) {
           const message =
             "Hosted playback failed and no magnet fallback is available.";
@@ -3812,6 +8298,13 @@ class bitvidApp {
         }
         this.log(
           `[playVideoWithFallback] Falling back to WebTorrent (${reason}).`
+        );
+        this.log(
+          `[playVideoWithFallback] startTorrentFallback invoked with magnet=${!!magnetForPlayback} readyState=${
+            activeVideoEl ? activeVideoEl.readyState : "n/a"
+          } networkState=${
+            activeVideoEl ? activeVideoEl.networkState : "n/a"
+          }`
         );
         console.debug("[WT] add magnet =", magnetForPlayback);
         const torrentInstance = await this.playViaWebTorrent(
@@ -3830,13 +8323,16 @@ class bitvidApp {
         if (this.modalStatus) {
           this.modalStatus.textContent = "Checking hosted URL...";
         }
+        this.log(
+          `[playVideoWithFallback] Probing hosted URL ${httpsUrl} (readyState=${activeVideoEl?.readyState} networkState=${activeVideoEl?.networkState}).`
+        );
         let hostedStatusResolved = false;
         const hostedStatusHandlers = [];
         const addHostedStatusListener = (eventName, handler, options) => {
-          if (!videoEl) {
+          if (!activeVideoEl) {
             return;
           }
-          videoEl.addEventListener(eventName, handler, options);
+          activeVideoEl.addEventListener(eventName, handler, options);
           hostedStatusHandlers.push([eventName, handler, options]);
         };
         const markHostedUrlAsLive = () => {
@@ -3852,23 +8348,23 @@ class bitvidApp {
         const maybeMarkHostedUrl = () => {
           if (
             hostedStatusResolved ||
-            !videoEl ||
-            videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+            !activeVideoEl ||
+            activeVideoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
           ) {
             return;
           }
-          if (videoEl.currentTime > 0 || !videoEl.paused) {
+          if (activeVideoEl.currentTime > 0 || !activeVideoEl.paused) {
             markHostedUrlAsLive();
           }
         };
         cleanupHostedUrlStatusListeners = () => {
-          if (!hostedStatusHandlers.length || !videoEl) {
+          if (!hostedStatusHandlers.length || !activeVideoEl) {
             hostedStatusHandlers.length = 0;
             cleanupHostedUrlStatusListeners = () => {};
             return;
           }
           for (const [eventName, handler, options] of hostedStatusHandlers) {
-            videoEl.removeEventListener(eventName, handler, options);
+            activeVideoEl.removeEventListener(eventName, handler, options);
           }
           hostedStatusHandlers.length = 0;
           cleanupHostedUrlStatusListeners = () => {};
@@ -3878,11 +8374,16 @@ class bitvidApp {
         addHostedStatusListener("canplay", maybeMarkHostedUrl);
         addHostedStatusListener("error", () => {
           cleanupHostedUrlStatusListeners();
+          cleanupDebugListeners();
         }, { once: true });
         const probeResult = await this.probeUrl(httpsUrl);
         const probeOutcome = probeResult?.outcome || "error";
         const shouldAttemptHosted =
           probeOutcome !== "bad" && probeOutcome !== "error";
+
+        this.log(
+          `[playVideoWithFallback] Hosted URL probe outcome=${probeOutcome} shouldAttemptHosted=${shouldAttemptHosted}`
+        );
 
         if (shouldAttemptHosted) {
           let outcomeResolved = false;
@@ -3900,7 +8401,7 @@ class bitvidApp {
           });
 
           const attachWatchdogs = ({ stallMs = 8000 } = {}) => {
-            this.registerUrlPlaybackWatchdogs(videoEl, {
+            this.registerUrlPlaybackWatchdogs(activeVideoEl, {
               stallMs,
               onSuccess: () => outcomeResolver({ status: "success" }),
               onFallback: (reason) => {
@@ -3932,8 +8433,8 @@ class bitvidApp {
           };
 
           try {
-            videoEl.src = httpsUrl;
-            const playPromise = videoEl.play();
+            activeVideoEl.src = httpsUrl;
+            const playPromise = activeVideoEl.play();
             if (playPromise && typeof playPromise.catch === "function") {
               playPromise.catch((err) => {
                 if (err?.name === "NotAllowedError") {
@@ -3949,12 +8450,12 @@ class bitvidApp {
                   this.cleanupUrlPlaybackWatchdog();
                   attachWatchdogs({ stallMs: 0 });
                   const restoreOnPlay = () => {
-                    videoEl.removeEventListener("play", restoreOnPlay);
+                    activeVideoEl.removeEventListener("play", restoreOnPlay);
                     this.cleanupUrlPlaybackWatchdog();
                     autoplayBlocked = false;
                     attachWatchdogs({ stallMs: 8000 });
                   };
-                  videoEl.addEventListener("play", restoreOnPlay, {
+                  activeVideoEl.addEventListener("play", restoreOnPlay, {
                     once: true,
                   });
                   return;
@@ -3974,6 +8475,7 @@ class bitvidApp {
               this.modalStatus.textContent = HOSTED_URL_SUCCESS_MESSAGE;
             }
             cleanupHostedUrlStatusListeners();
+            cleanupDebugListeners();
             return;
           }
 
@@ -3986,6 +8488,7 @@ class bitvidApp {
           `[playVideoWithFallback] Hosted URL probe reported "${probeOutcome}"; deferring to WebTorrent.`
         );
         cleanupHostedUrlStatusListeners();
+        cleanupDebugListeners();
       }
 
       if (magnetForPlayback) {
@@ -4000,8 +8503,10 @@ class bitvidApp {
         this.modalStatus.textContent = message;
       }
       this.playSource = null;
+      cleanupDebugListeners();
       this.showError(message);
     } catch (error) {
+      ensureDebugListenersRemoved();
       this.log("Error in playVideoWithFallback:", error);
       this.showError(`Playback error: ${error.message}`);
     }
@@ -4027,14 +8532,20 @@ class bitvidApp {
       return;
     }
 
-    const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-    if (initialBlacklist.includes(authorNpub)) {
-      this.showError("This content has been removed or is not allowed.");
-      return;
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      console.warn("Failed to ensure admin lists were loaded before playback:", error);
     }
-
-    if (isWhitelistEnabled && !initialWhitelist.includes(authorNpub)) {
-      this.showError("This content is not from a whitelisted author.");
+    const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
+    if (!accessControl.canAccess(authorNpub)) {
+      if (accessControl.isBlacklisted(authorNpub)) {
+        this.showError("This content has been removed or is not allowed.");
+      } else if (accessControl.whitelistMode()) {
+        this.showError("This content is not from a whitelisted author.");
+      } else {
+        this.showError("This content has been removed or is not allowed.");
+      }
       return;
     }
 
@@ -4073,7 +8584,10 @@ class bitvidApp {
       originalMagnet: magnetCandidate,
       torrentSupported: magnetSupported,
       legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
+      lightningAddress: null,
     };
+
+    this.syncModalMoreMenuData();
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
@@ -4088,6 +8602,8 @@ class bitvidApp {
       )}`;
     window.history.pushState({}, "", pushUrl);
 
+    this.setModalZapVisibility(false);
+    let lightningAddress = "";
     let creatorProfile = {
       name: "Unknown",
       picture: `https://robohash.org/${video.pubkey}`,
@@ -4098,6 +8614,7 @@ class bitvidApp {
       ]);
       if (userEvents.length > 0 && userEvents[0]?.content) {
         const data = JSON.parse(userEvents[0].content);
+        lightningAddress = (data.lud16 || data.lud06 || "").trim();
         creatorProfile = {
           name: data.name || data.display_name || "Unknown",
           picture: data.picture || `https://robohash.org/${video.pubkey}`,
@@ -4105,6 +8622,11 @@ class bitvidApp {
       }
     } catch (error) {
       this.log("Error fetching creator profile:", error);
+    }
+
+    this.setModalZapVisibility(!!lightningAddress);
+    if (this.currentVideo) {
+      this.currentVideo.lightningAddress = lightningAddress || null;
     }
 
     const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
@@ -4150,6 +8672,8 @@ class bitvidApp {
     const magnetSupported = isValidMagnetUri(usableMagnet);
     const sanitizedMagnet = magnetSupported ? usableMagnet : "";
 
+    this.setModalZapVisibility(false);
+
     trackVideoView({
       videoId:
         typeof title === "string" && title.trim().length > 0
@@ -4177,7 +8701,10 @@ class bitvidApp {
       magnet: sanitizedMagnet,
       originalMagnet: trimmedMagnet,
       torrentSupported: magnetSupported,
+      lightningAddress: null,
     };
+
+    this.syncModalMoreMenuData();
 
     this.currentMagnetUri = sanitizedMagnet || null;
 
@@ -4220,11 +8747,46 @@ class bitvidApp {
    * Simple helper to safely encode an npub.
    */
   safeEncodeNpub(pubkey) {
+    if (typeof pubkey !== "string") {
+      return null;
+    }
+
+    const trimmed = pubkey.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (trimmed.startsWith("npub1")) {
+      return trimmed;
+    }
+
     try {
-      return window.NostrTools.nip19.npubEncode(pubkey);
+      return window.NostrTools.nip19.npubEncode(trimmed);
     } catch (err) {
       return null;
     }
+  }
+
+  safeDecodeNpub(npub) {
+    if (typeof npub !== "string") {
+      return null;
+    }
+
+    const trimmed = npub.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    try {
+      const decoded = window.NostrTools.nip19.decode(trimmed);
+      if (decoded.type === "npub" && typeof decoded.data === "string") {
+        return decoded.data;
+      }
+    } catch (err) {
+      return null;
+    }
+
+    return null;
   }
 
   /**
@@ -4270,6 +8832,29 @@ class bitvidApp {
   /**
    * Format "time ago" for a given timestamp (in seconds).
    */
+  formatAbsoluteTimestamp(timestamp) {
+    if (!Number.isFinite(timestamp)) {
+      return "Unknown date";
+    }
+
+    const date = new Date(timestamp * 1000);
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown date";
+    }
+
+    try {
+      return date.toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (err) {
+      return date.toISOString();
+    }
+  }
+
   formatTimeAgo(timestamp) {
     const seconds = Math.floor(Date.now() / 1000 - timestamp);
     const intervals = {

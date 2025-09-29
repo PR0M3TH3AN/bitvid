@@ -2,6 +2,10 @@
 <div
   id="profileModal"
   class="fixed inset-0 z-50 hidden"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="profileModalTitle"
+  tabindex="-1"
   style="background: transparent"
 >
   <!-- Overlay Layer with dark background and blur -->
@@ -27,7 +31,7 @@
       <div
         class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
       >
-        <h2 class="text-xl font-bold text-white">Profile</h2>
+        <h2 id="profileModalTitle" class="text-xl font-bold text-white">Profile</h2>
         <button
           id="closeProfileModal"
           class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
@@ -50,28 +54,294 @@
       </div>
 
       <!-- Modal Body -->
-      <div class="p-6 flex-1 text-gray-200 space-y-4">
-        <div class="flex items-center space-x-4">
-          <img
-            id="profileModalAvatar"
-            src="assets/svg/default-profile.svg"
-            alt="Profile"
-            class="w-16 h-16 object-cover rounded-full"
-          />
-          <p id="profileModalName" class="text-lg font-semibold truncate">
-            Loading...
-          </p>
+      <div class="p-6 flex-1 overflow-hidden">
+        <div class="flex flex-col lg:flex-row gap-6 h-full">
+          <!-- Left navigation column -->
+          <nav
+            class="flex lg:flex-col gap-2 flex-shrink-0"
+            aria-label="Profile sections"
+          >
+            <button
+              id="profileNavAccount"
+              type="button"
+              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-white bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              aria-controls="profilePaneAccount"
+              aria-selected="true"
+            >
+              Account
+            </button>
+            <button
+              id="profileNavRelays"
+              type="button"
+              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              aria-controls="profilePaneRelays"
+              aria-selected="false"
+            >
+              Relays
+            </button>
+            <button
+              id="profileNavBlocked"
+              type="button"
+              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              aria-controls="profilePaneBlocked"
+              aria-selected="false"
+            >
+              Blocked
+            </button>
+            <button
+              id="profileNavAdmin"
+              type="button"
+              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 hidden"
+              aria-controls="profilePaneAdmin"
+              aria-selected="false"
+            >
+              Admin (Moderation)
+            </button>
+          </nav>
+
+          <!-- Right content panes -->
+          <div class="flex-1 min-h-[320px] overflow-y-auto pr-1">
+            <section
+              id="profilePaneAccount"
+              class="profile-pane space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavAccount"
+            >
+              <div class="flex items-center space-x-4">
+                <img
+                  id="profileModalAvatar"
+                  src="assets/svg/default-profile.svg"
+                  alt="Profile"
+                  class="w-16 h-16 object-cover rounded-full"
+                />
+                <p id="profileModalName" class="text-lg font-semibold truncate">
+                  Loading...
+                </p>
+              </div>
+              <a
+                id="profileChannelLink"
+                href="#"
+                class="inline-flex items-center text-sm text-blue-400 hover:text-blue-300 transition-colors hidden"
+              >
+                View your channel
+              </a>
+              <p class="text-sm text-gray-400">
+                Manage your account details and upcoming preferences here.
+              </p>
+            </section>
+
+            <section
+              id="profilePaneRelays"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavRelays"
+            >
+              <div class="space-y-4">
+                <p class="text-sm text-gray-400">
+                  Configure the relays Bitvid will use to discover and publish your videos.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-gray-300" for="relayInput">
+                    <span class="mb-2 block font-medium">Add a relay</span>
+                    <input
+                      id="relayInput"
+                      type="url"
+                      placeholder="wss://relay.example.com"
+                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </label>
+                  <div class="flex gap-2">
+                    <button
+                      id="addRelayBtn"
+                      type="button"
+                      class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    >
+                      Add relay
+                    </button>
+                    <button
+                      id="restoreRelaysBtn"
+                      type="button"
+                      class="px-4 py-2 rounded-md bg-gray-800 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    >
+                      Restore defaults
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <ul id="relayList" class="space-y-3"></ul>
+            </section>
+
+            <section
+              id="profilePaneBlocked"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavBlocked"
+            >
+              <p class="text-sm text-gray-400">
+                Creators you block are hidden from your BitVid experience. This
+                list is private to your account.
+              </p>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="flex-1 text-sm text-gray-300" for="blockedInput">
+                  <span class="mb-2 block font-medium">Creator npub</span>
+                  <input
+                    id="blockedInput"
+                    type="text"
+                    inputmode="text"
+                    autocomplete="off"
+                    class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="npub1..."
+                  />
+                </label>
+                <button
+                  id="addBlockedBtn"
+                  type="button"
+                  class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                >
+                  Block creator
+                </button>
+              </div>
+              <div
+                id="blockedEmpty"
+                class="rounded-lg border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"
+              >
+                You haven’t blocked any creators yet.
+              </div>
+              <ul id="blockedList" class="space-y-3"></ul>
+            </section>
+            <section
+              id="profilePaneAdmin"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavAdmin"
+            >
+              <div class="space-y-2">
+                <h3 class="text-lg font-semibold text-white">Platform moderation</h3>
+                <p class="text-sm text-gray-400">
+                  Manage BitVid’s moderator roles and creator allow/block lists. Changes apply instantly across the app.
+                </p>
+              </div>
+
+              <div id="adminModeratorsSection" class="space-y-4 hidden" aria-hidden="true">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 class="text-base font-semibold text-white">Moderators</h4>
+                  <p class="text-xs uppercase tracking-wide text-gray-400">
+                    Super Admin only
+                  </p>
+                </div>
+                <p class="text-sm text-gray-400">
+                  Moderators can edit the whitelist and blacklist but cannot manage other moderators or whitelist mode.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-gray-300" for="adminModeratorInput">
+                    <span class="mb-2 block font-medium">Moderator npub</span>
+                    <input
+                      id="adminModeratorInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="npub1..."
+                    />
+                  </label>
+                  <button
+                    id="adminAddModeratorBtn"
+                    type="button"
+                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  >
+                    Add moderator
+                  </button>
+                </div>
+                <div
+                  id="adminModeratorsEmpty"
+                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                >
+                  No moderators configured yet.
+                </div>
+                <ul id="adminModeratorList" class="space-y-3"></ul>
+              </div>
+
+              <div id="adminWhitelistSection" class="space-y-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 class="text-base font-semibold text-white">Whitelist</h4>
+                </div>
+                <p class="text-sm text-gray-400">
+                  Creators listed here remain visible when whitelist mode is enabled. Adding someone removes them from the blacklist.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-gray-300" for="adminWhitelistInput">
+                    <span class="mb-2 block font-medium">Creator npub</span>
+                    <input
+                      id="adminWhitelistInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="npub1..."
+                    />
+                  </label>
+                  <button
+                    id="adminAddWhitelistBtn"
+                    type="button"
+                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  >
+                    Add to whitelist
+                  </button>
+                </div>
+                <div
+                  id="adminWhitelistEmpty"
+                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                >
+                  No whitelisted creators yet.
+                </div>
+                <ul id="adminWhitelistList" class="space-y-3"></ul>
+              </div>
+
+              <div id="adminBlacklistSection" class="space-y-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 class="text-base font-semibold text-white">Blacklist</h4>
+                </div>
+                <p class="text-sm text-gray-400">
+                  Creators on the blacklist are hidden from BitVid everywhere. Adding someone removes them from the whitelist.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label class="flex-1 text-sm text-gray-300" for="adminBlacklistInput">
+                    <span class="mb-2 block font-medium">Creator npub</span>
+                    <input
+                      id="adminBlacklistInput"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="off"
+                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="npub1..."
+                    />
+                  </label>
+                  <button
+                    id="adminAddBlacklistBtn"
+                    type="button"
+                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  >
+                    Add to blacklist
+                  </button>
+                </div>
+                <div
+                  id="adminBlacklistEmpty"
+                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                >
+                  No blacklisted creators yet.
+                </div>
+                <ul id="adminBlacklistList" class="space-y-3"></ul>
+              </div>
+            </section>
+          </div>
         </div>
-        <p class="text-sm text-gray-400">
-          Some future profile details or settings could go here.
-        </p>
       </div>
 
       <!-- Modal Footer -->
       <div class="p-4 border-t border-gray-700 flex items-center justify-end">
         <button
           id="profileLogoutBtn"
-          class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+          class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900"
         >
           Logout
         </button>
