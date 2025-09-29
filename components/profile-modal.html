@@ -50,21 +50,106 @@
       </div>
 
       <!-- Modal Body -->
-      <div class="p-6 flex-1 text-gray-200 space-y-4">
-        <div class="flex items-center space-x-4">
-          <img
-            id="profileModalAvatar"
-            src="assets/svg/default-profile.svg"
-            alt="Profile"
-            class="w-16 h-16 object-cover rounded-full"
-          />
-          <p id="profileModalName" class="text-lg font-semibold truncate">
-            Loading...
+      <div class="p-6 flex-1 text-gray-200 space-y-6">
+        <div class="space-y-3">
+          <div class="flex items-center space-x-4">
+            <img
+              id="profileModalAvatar"
+              src="assets/svg/default-profile.svg"
+              alt="Profile"
+              class="w-16 h-16 object-cover rounded-full"
+            />
+            <div>
+              <p id="profileModalName" class="text-lg font-semibold truncate">
+                Loading...
+              </p>
+              <p class="text-sm text-gray-400">Active Nostr identity</p>
+            </div>
+          </div>
+          <p class="text-sm text-gray-400">
+            Some future profile details or settings could go here.
           </p>
         </div>
-        <p class="text-sm text-gray-400">
-          Some future profile details or settings could go here.
-        </p>
+
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-400">
+              Switch Profiles
+            </h3>
+            <button
+              type="button"
+              class="text-xs font-medium text-blue-400 hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-gray-900 rounded-full px-3 py-1"
+            >
+              Manage
+            </button>
+          </div>
+
+          <div class="flex flex-wrap items-start gap-6">
+            <button
+              type="button"
+              class="flex flex-col items-center space-y-2 text-gray-300 hover:text-white focus:outline-none group"
+            >
+              <span
+                class="relative flex items-center justify-center w-16 h-16 rounded-full overflow-hidden shadow-lg ring-2 ring-transparent group-hover:ring-blue-500 transition"
+              >
+                <img
+                  src="assets/svg/default-profile.svg"
+                  alt="Primary profile"
+                  class="w-full h-full object-cover"
+                />
+              </span>
+              <span class="text-xs font-medium">Primary</span>
+            </button>
+
+            <button
+              type="button"
+              class="flex flex-col items-center space-y-2 text-gray-300 hover:text-white focus:outline-none group"
+            >
+              <span
+                class="relative flex items-center justify-center w-16 h-16 rounded-full overflow-hidden shadow-lg ring-2 ring-transparent group-hover:ring-blue-500 transition"
+              >
+                <img
+                  src="assets/svg/default-profile.svg"
+                  alt="Creator profile"
+                  class="w-full h-full object-cover"
+                />
+              </span>
+              <span class="text-xs font-medium">Creator</span>
+            </button>
+
+            <button
+              type="button"
+              class="flex flex-col items-center space-y-2 text-gray-400 hover:text-white focus:outline-none group"
+            >
+              <span
+                class="relative flex items-center justify-center w-16 h-16 rounded-full overflow-hidden shadow-lg ring-2 ring-transparent transition group-hover:ring-blue-500"
+              >
+                <img
+                  src="assets/svg/default-profile.svg"
+                  alt="Add profile"
+                  class="w-full h-full object-cover opacity-40"
+                />
+                <span class="absolute inset-0 bg-black/40"></span>
+                <span
+                  class="relative flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white shadow"
+                  aria-hidden="true"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                </span>
+              </span>
+              <span class="text-xs font-medium">Add profile</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Modal Footer -->
