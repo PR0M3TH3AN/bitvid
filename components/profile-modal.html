@@ -123,21 +123,33 @@
                 </div>
                 <div class="space-y-4" id="profileSwitcherTray">
                   <div
-                    class="group flex w-full flex-col gap-4 rounded-xl border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-left focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 focus-within:ring-offset-gray-900 sm:flex-row sm:items-center sm:gap-6"
+                    class="group flex w-full flex-col gap-4 rounded-xl border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-left focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 focus-within:ring-offset-gray-900 sm:flex-row sm:items-center sm:gap-4"
                     aria-label="Current Nostr profile"
                     aria-pressed="true"
                     role="button"
                     tabindex="0"
                   >
+                    <span
+                      class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 transition-colors group-focus-within:ring-blue-400"
+                    >
+                      <img
+                        id="profileModalAvatar"
+                        src="assets/svg/default-profile.svg"
+                        alt="Active profile avatar"
+                        class="h-10 w-10 rounded-full object-cover"
+                      />
+                    </span>
                     <span class="flex min-w-0 flex-1 flex-col gap-2 text-left">
-                      <span class="text-xs font-semibold uppercase tracking-wide text-blue-300">Active profile</span>
-                      <a
-                        id="profileChannelLink"
-                        href="#"
-                        class="inline-flex w-fit items-center justify-center whitespace-nowrap rounded-full border border-blue-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-300 transition-colors hover:bg-blue-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 hidden"
-                      >
-                        View channel
-                      </a>
+                      <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <span class="text-xs font-semibold uppercase tracking-wide text-blue-300">Active profile</span>
+                        <a
+                          id="profileChannelLink"
+                          href="#"
+                          class="inline-flex items-center justify-center rounded-md border border-blue-500/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-300 transition-colors hover:bg-blue-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 hidden"
+                        >
+                          View channel
+                        </a>
+                      </div>
                       <span
                         id="profileModalName"
                         class="truncate text-sm font-semibold text-white"
@@ -150,16 +162,6 @@
                       >
                         npub1...
                       </span>
-                    </span>
-                    <span
-                      class="flex h-12 w-12 shrink-0 items-center justify-center self-end overflow-hidden rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 transition-colors group-focus-within:ring-blue-400 sm:self-auto"
-                    >
-                      <img
-                        id="profileModalAvatar"
-                        src="assets/svg/default-profile.svg"
-                        alt="Active profile avatar"
-                        class="h-10 w-10 rounded-full object-cover"
-                      />
                     </span>
                   </div>
                   <div
