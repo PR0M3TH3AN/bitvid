@@ -594,6 +594,23 @@ footer a:hover {
   }
 }
 
+@media (min-width: 1024px) {
+  #playerModal .modal-container {
+    padding: 0;
+  }
+
+  #playerModal .modal-content {
+    max-width: 100%;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+
+  #playerModal .video-container {
+    border-radius: 0;
+  }
+}
+
 /* Video info cards */
 .video-info .bg-gray-800\/50 {
   background-color: rgb(31 41 55 / 0.5);

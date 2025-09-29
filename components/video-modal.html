@@ -1,10 +1,10 @@
 <!-- components/video-modal.html -->
 <div id="playerModal" class="fixed inset-0 bg-black/90 z-50 hidden">
   <div
-    class="modal-container h-full w-full flex items-start justify-center overflow-y-auto"
+    class="modal-container h-full w-full flex items-start justify-center overflow-y-auto lg:items-stretch lg:justify-center"
   >
     <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg relative"
+      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-full lg:w-full lg:h-full my-0 rounded-lg lg:rounded-none relative lg:overflow-y-auto"
     >
       <!-- Navigation bar - sliding at top -->
       <div
@@ -123,7 +123,7 @@
         </div>
       </div>
 
-      <div class="video-container w-full bg-black rounded-t-lg overflow-hidden">
+      <div class="video-container w-full bg-black rounded-t-lg lg:rounded-none overflow-hidden">
         <video id="modalVideo" class="w-full aspect-video" controls></video>
       </div>
 
