@@ -88,9 +88,11 @@ npm install         # first run only
 npm run build:css
 ```
 
-The command compiles Tailwind with `tailwind.config.cjs` and emits the purged,
-minified stylesheet at `css/tailwind.generated.css`. Commit the regenerated
-file alongside any template changes so deployments pick up the latest styles.
+The command compiles Tailwind with `tailwind.config.cjs`, runs it through the
+PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and emits
+the purged, minified stylesheet at `css/tailwind.generated.css`. Commit the
+regenerated file alongside any template changes so deployments pick up the
+latest styles.
 
 ### Configuration
 
