@@ -5415,23 +5415,25 @@ class bitvidApp {
 
         // If there's a small inline player
         if (this.videoElement) {
-          this.videoElement.pause();
-          this.videoElement.src = "";
-          // When WebTorrent (or other MediaSource based flows) mount a stream they
-          // set `srcObject` behind the scenes. Forgetting to clear it leaves the
-          // detached MediaSource hanging around which breaks the next playback
-          // attempt. Always null it out alongside the normal `src` reset.
-          this.videoElement.srcObject = null;
-          this.videoElement.load();
+          this.videoElement = this.teardownVideoElement(this.videoElement);
         }
         // If there's a modal video
         if (this.modalVideo) {
-          this.modalVideo.pause();
-          this.modalVideo.src = "";
-          // See comment above—keep the `srcObject` reset paired with the `src`
-          // wipe so magnet-only replays do not regress into the grey screen bug.
-          this.modalVideo.srcObject = null;
-          this.modalVideo.load();
+          if (typeof this.modalPosterCleanup === "function") {
+            try {
+              this.modalPosterCleanup();
+            } catch (err) {
+              console.warn("[cleanup] modal poster cleanup threw:", err);
+            } finally {
+              this.modalPosterCleanup = null;
+            }
+          }
+          const refreshedModal = this.teardownVideoElement(this.modalVideo, {
+            replaceNode: true,
+          });
+          if (refreshedModal) {
+            this.modalVideo = refreshedModal;
+          }
         }
         // Tell webtorrent to cleanup
         await torrentClient.cleanup();
@@ -5482,6 +5484,91 @@ class bitvidApp {
         this.urlPlaybackWatchdogCleanup = null;
       }
     }
+  }
+
+  teardownVideoElement(videoElement, { replaceNode = false } = {}) {
+    if (!videoElement) {
+      return videoElement;
+    }
+
+    const safe = (fn) => {
+      try {
+        fn();
+      } catch (err) {
+        console.warn("[teardownVideoElement]", err);
+      }
+    };
+
+    safe(() => videoElement.pause());
+
+    safe(() => {
+      videoElement.removeAttribute("src");
+      videoElement.src = "";
+    });
+
+    safe(() => {
+      videoElement.srcObject = null;
+    });
+
+    safe(() => {
+      if (typeof videoElement.load === "function") {
+        videoElement.load();
+      }
+    });
+
+    if (!replaceNode || !videoElement.parentNode) {
+      return videoElement;
+    }
+
+    const parent = videoElement.parentNode;
+    const clone = videoElement.cloneNode(false);
+
+    if (clone.dataset && "autoplayBound" in clone.dataset) {
+      delete clone.dataset.autoplayBound;
+    }
+    if (clone.hasAttribute("data-autoplay-bound")) {
+      clone.removeAttribute("data-autoplay-bound");
+    }
+
+    safe(() => {
+      clone.removeAttribute("src");
+      clone.src = "";
+    });
+
+    safe(() => {
+      clone.srcObject = null;
+    });
+
+    clone.autoplay = videoElement.autoplay;
+    clone.controls = videoElement.controls;
+    clone.loop = videoElement.loop;
+    clone.muted = videoElement.muted;
+    clone.defaultMuted = videoElement.defaultMuted;
+    clone.preload = videoElement.preload;
+    clone.playsInline = videoElement.playsInline;
+
+    clone.poster = "";
+    if (clone.hasAttribute("poster")) {
+      clone.removeAttribute("poster");
+    }
+
+    let replaced = false;
+    safe(() => {
+      parent.replaceChild(clone, videoElement);
+      replaced = true;
+    });
+
+    if (!replaced) {
+      return videoElement;
+    }
+
+    safe(() => {
+      if (typeof clone.load === "function") {
+        clone.load();
+      }
+    });
+
+    return clone;
   }
 
   registerUrlPlaybackWatchdogs(
@@ -7989,8 +8076,24 @@ class bitvidApp {
         throw new Error("Video element is not ready for playback.");
       }
 
+      if (typeof this.modalPosterCleanup === "function") {
+        try {
+          this.modalPosterCleanup();
+        } catch (err) {
+          console.warn("[playVideoWithFallback] modal poster cleanup threw:", err);
+        } finally {
+          this.modalPosterCleanup = null;
+        }
+      }
+
+      const refreshedModal = this.teardownVideoElement(this.modalVideo, {
+        replaceNode: true,
+      });
+      if (refreshedModal) {
+        this.modalVideo = refreshedModal;
+      }
+
       this.showModalWithPoster();
-      const videoEl = this.modalVideo;
       const HOSTED_URL_SUCCESS_MESSAGE = "✅ Streaming from hosted URL";
 
       if (this.modalStatus) {
@@ -8002,15 +8105,10 @@ class bitvidApp {
 
       await torrentClient.cleanup();
 
-      videoEl.pause();
-      // Clearing the WebTorrent attachment requires wiping both `src` and
-      // `srcObject`. Multiple regressions have shipped where we only blanked
-      // `src`, leaving the old MediaSource wired up and the next magnet would
-      // stall on a grey frame. Always clear both before calling `load()`.
-      videoEl.src = "";
-      videoEl.removeAttribute("src");
-      videoEl.srcObject = null;
-      videoEl.load();
+      const activeVideoEl = this.teardownVideoElement(this.modalVideo);
+      if (activeVideoEl) {
+        this.modalVideo = activeVideoEl;
+      }
 
       this.resetTorrentStats();
       this.playSource = null;
@@ -8040,9 +8138,9 @@ class bitvidApp {
         this.cleanupUrlPlaybackWatchdog();
         cleanupHostedUrlStatusListeners();
 
-        if (videoEl) {
+        if (activeVideoEl) {
           try {
-            videoEl.pause();
+            activeVideoEl.pause();
           } catch (err) {
             this.log(
               "[playVideoWithFallback] Ignoring pause error before torrent fallback:",
@@ -8050,14 +8148,14 @@ class bitvidApp {
             );
           }
           try {
-            videoEl.removeAttribute("src");
+            activeVideoEl.removeAttribute("src");
           } catch (err) {
             // removeAttribute throws in old browsers when the attribute does not exist
           }
-          videoEl.src = "";
-          videoEl.srcObject = null;
+          activeVideoEl.src = "";
+          activeVideoEl.srcObject = null;
           try {
-            videoEl.load();
+            activeVideoEl.load();
           } catch (err) {
             this.log(
               "[playVideoWithFallback] Ignoring load error before torrent fallback:",
@@ -8101,10 +8199,10 @@ class bitvidApp {
         let hostedStatusResolved = false;
         const hostedStatusHandlers = [];
         const addHostedStatusListener = (eventName, handler, options) => {
-          if (!videoEl) {
+          if (!activeVideoEl) {
             return;
           }
-          videoEl.addEventListener(eventName, handler, options);
+          activeVideoEl.addEventListener(eventName, handler, options);
           hostedStatusHandlers.push([eventName, handler, options]);
         };
         const markHostedUrlAsLive = () => {
@@ -8120,23 +8218,23 @@ class bitvidApp {
         const maybeMarkHostedUrl = () => {
           if (
             hostedStatusResolved ||
-            !videoEl ||
-            videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+            !activeVideoEl ||
+            activeVideoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
           ) {
             return;
           }
-          if (videoEl.currentTime > 0 || !videoEl.paused) {
+          if (activeVideoEl.currentTime > 0 || !activeVideoEl.paused) {
             markHostedUrlAsLive();
           }
         };
         cleanupHostedUrlStatusListeners = () => {
-          if (!hostedStatusHandlers.length || !videoEl) {
+          if (!hostedStatusHandlers.length || !activeVideoEl) {
             hostedStatusHandlers.length = 0;
             cleanupHostedUrlStatusListeners = () => {};
             return;
           }
           for (const [eventName, handler, options] of hostedStatusHandlers) {
-            videoEl.removeEventListener(eventName, handler, options);
+            activeVideoEl.removeEventListener(eventName, handler, options);
           }
           hostedStatusHandlers.length = 0;
           cleanupHostedUrlStatusListeners = () => {};
@@ -8168,7 +8266,7 @@ class bitvidApp {
           });
 
           const attachWatchdogs = ({ stallMs = 8000 } = {}) => {
-            this.registerUrlPlaybackWatchdogs(videoEl, {
+            this.registerUrlPlaybackWatchdogs(activeVideoEl, {
               stallMs,
               onSuccess: () => outcomeResolver({ status: "success" }),
               onFallback: (reason) => {
@@ -8200,8 +8298,8 @@ class bitvidApp {
           };
 
           try {
-            videoEl.src = httpsUrl;
-            const playPromise = videoEl.play();
+            activeVideoEl.src = httpsUrl;
+            const playPromise = activeVideoEl.play();
             if (playPromise && typeof playPromise.catch === "function") {
               playPromise.catch((err) => {
                 if (err?.name === "NotAllowedError") {
@@ -8217,12 +8315,12 @@ class bitvidApp {
                   this.cleanupUrlPlaybackWatchdog();
                   attachWatchdogs({ stallMs: 0 });
                   const restoreOnPlay = () => {
-                    videoEl.removeEventListener("play", restoreOnPlay);
+                    activeVideoEl.removeEventListener("play", restoreOnPlay);
                     this.cleanupUrlPlaybackWatchdog();
                     autoplayBlocked = false;
                     attachWatchdogs({ stallMs: 8000 });
                   };
-                  videoEl.addEventListener("play", restoreOnPlay, {
+                  activeVideoEl.addEventListener("play", restoreOnPlay, {
                     once: true,
                   });
                   return;
