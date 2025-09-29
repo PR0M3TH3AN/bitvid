@@ -279,7 +279,22 @@ class SubscriptionsManager {
       window.app?.dedupeVideosByRoot?.(safeVideos) ??
       this.dedupeToNewestByRoot(safeVideos);
 
-    if (!dedupedVideos.length) {
+    const filteredVideos = dedupedVideos.filter((video) => {
+      if (!video || typeof video !== "object") {
+        return false;
+      }
+
+      if (
+        window.app?.isAuthorBlocked &&
+        window.app.isAuthorBlocked(video.pubkey)
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (!filteredVideos.length) {
       container.innerHTML = `
         <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
           No videos available yet.
@@ -288,14 +303,14 @@ class SubscriptionsManager {
     }
 
     // Sort newest first
-    dedupedVideos.sort((a, b) => b.created_at - a.created_at);
+    filteredVideos.sort((a, b) => b.created_at - a.created_at);
 
     const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
     const fragment = document.createDocumentFragment();
     // Only declare localAuthorSet once
     const localAuthorSet = new Set();
 
-    dedupedVideos.forEach((video, index) => {
+    filteredVideos.forEach((video, index) => {
       if (!video.id || !video.title) {
         console.error("Missing ID or title:", video);
         return;

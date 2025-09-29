@@ -177,6 +177,30 @@
               role="tabpanel"
               aria-labelledby="profileNavBlocked"
             >
+              <p class="text-sm text-gray-400">
+                Creators you block are hidden from your BitVid experience. This
+                list is private to your account.
+              </p>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="flex-1 text-sm text-gray-300" for="blockedInput">
+                  <span class="mb-2 block font-medium">Creator npub</span>
+                  <input
+                    id="blockedInput"
+                    type="text"
+                    inputmode="text"
+                    autocomplete="off"
+                    class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="npub1..."
+                  />
+                </label>
+                <button
+                  id="addBlockedBtn"
+                  type="button"
+                  class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                >
+                  Block creator
+                </button>
+              </div>
               <div
                 id="blockedEmpty"
                 class="rounded-lg border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"
