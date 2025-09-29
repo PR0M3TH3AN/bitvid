@@ -122,38 +122,46 @@
                   </span>
                 </div>
                 <div class="space-y-4" id="profileSwitcherTray">
-                  <button
-                    type="button"
-                    class="group flex w-full items-center gap-4 rounded-xl border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  <div
+                    class="group flex w-full flex-col gap-3 rounded-xl border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-left focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 focus-within:ring-offset-gray-900 sm:flex-row sm:items-center sm:gap-4"
                     aria-label="Current Nostr profile"
                     aria-pressed="true"
+                    role="button"
+                    tabindex="0"
                   >
-                    <span
-                      class="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 transition-all group-hover:ring-blue-400"
-                    >
-                      <img
-                        id="profileModalAvatar"
-                        src="assets/svg/default-profile.svg"
-                        alt="Active profile avatar"
-                        class="h-full w-full object-cover"
-                      />
-                    </span>
-                    <span class="flex min-w-0 flex-1 flex-col">
+                    <span class="flex min-w-0 flex-1 flex-col gap-1 text-left">
                       <span class="text-xs font-semibold uppercase tracking-wide text-blue-300">Active profile</span>
                       <span
                         id="profileModalName"
-                        class="truncate text-sm font-semibold text-white group-hover:text-white"
+                        class="truncate text-sm font-semibold text-white"
                       >
                         Loading...
                       </span>
                       <span
                         id="profileModalNpub"
-                        class="break-all text-xs font-mono text-gray-400 group-hover:text-gray-200"
+                        class="break-all text-xs font-mono text-gray-400"
                       >
                         npub1...
                       </span>
                     </span>
-                  </button>
+                    <a
+                      id="profileChannelLink"
+                      href="#"
+                      class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-blue-500/40 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-300 transition-colors hover:bg-blue-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 hidden"
+                    >
+                      View channel
+                    </a>
+                    <span
+                      class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 transition-colors group-focus-within:ring-blue-400"
+                    >
+                      <img
+                        id="profileModalAvatar"
+                        src="assets/svg/default-profile.svg"
+                        alt="Active profile avatar"
+                        class="h-10 w-10 rounded-full object-cover"
+                      />
+                    </span>
+                  </div>
                   <div
                     id="profileSwitcherList"
                     class="flex flex-col gap-4"
@@ -167,7 +175,7 @@
                     aria-label="Add a new Nostr profile"
                   >
                     <span
-                      class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full border border-dashed border-current text-gray-400 transition-colors group-hover:text-white"
+                      class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border border-dashed border-current text-gray-400 transition-colors group-hover:text-white"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -194,13 +202,6 @@
                   Profiles you add here will stay on this device so you can quickly switch before posting or moderating.
                 </p>
               </div>
-              <a
-                id="profileChannelLink"
-                href="#"
-                class="inline-flex items-center text-sm text-blue-400 transition-colors hover:text-blue-300 hidden"
-              >
-                View your channel
-              </a>
               <p class="text-sm text-gray-400">
                 Manage your account details and upcoming preferences here.
               </p>
