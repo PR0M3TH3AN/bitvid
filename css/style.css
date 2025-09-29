@@ -309,23 +309,17 @@ header img {
   align-items: center;
   justify-content: center;
   padding: clamp(0.75rem, 3.5vw, 2.5rem);
-  background: radial-gradient(
-    120% 120% at 50% 0%,
-    rgba(59, 130, 246, 0.22) 0%,
-    rgba(2, 6, 23, 0.95) 55%,
-    rgba(2, 6, 23, 1) 100%
-  );
-  border-bottom: 0.0625rem solid rgba(59, 130, 246, 0.18);
-  box-shadow: inset 0 -0.0625rem 0 rgba(148, 163, 184, 0.15);
+  background-color: var(--color-bg);
+  border-bottom: 0.0625rem solid rgba(148, 163, 184, 0.18);
 }
 
 #playerModal .player-modal__video video {
   width: 100%;
   aspect-ratio: 16 / 9;
   background-color: #000;
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   display: block;
-  box-shadow: 0 1.5rem 3.75rem rgba(2, 6, 23, 0.65);
+  box-shadow: 0 1.125rem 2.75rem rgba(8, 11, 30, 0.55);
   max-height: min(80vh, calc(100vw * 9 / 16));
   object-fit: contain;
 }
@@ -334,14 +328,9 @@ header img {
   flex: 0 0 auto;
   padding: clamp(1.5rem, 3vw, 2.5rem);
   padding-bottom: clamp(2.5rem, 6vw, 4rem);
-  background: linear-gradient(
-    180deg,
-    rgba(30, 64, 175, 0.22) 0%,
-    rgba(15, 23, 42, 0.96) 45%,
-    rgba(8, 11, 30, 0.98) 100%
-  );
-  border-top: 0.0625rem solid rgba(59, 130, 246, 0.18);
-  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.1), 0 -1.5rem 3.5rem rgba(2, 6, 23, 0.65);
+  background-color: var(--color-bg);
+  border-top: 0.0625rem solid rgba(148, 163, 184, 0.16);
+  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.35);
 }
 
 html.modal-open {
@@ -412,15 +401,9 @@ body.modal-open #app {
 
 #modalNav.modal-nav,
 .modal-nav {
-  background: linear-gradient(
-    180deg,
-    rgba(30, 58, 138, 0.92) 0%,
-    rgba(15, 23, 42, 0.92) 100%
-  );
-  backdrop-filter: blur(0.875rem);
-  -webkit-backdrop-filter: blur(0.875rem);
-  border-bottom: 0.0625rem solid rgba(59, 130, 246, 0.35);
-  box-shadow: 0 1.5rem 3.5rem rgba(2, 6, 23, 0.6);
+  background-color: var(--color-bg);
+  border-bottom: 0.0625rem solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 0.75rem 2rem rgba(8, 11, 30, 0.45);
 }
 
 .modal-nav .flex {
@@ -429,19 +412,20 @@ body.modal-open #app {
 }
 
 .modal-nav .icon-button {
-  background: rgba(15, 23, 42, 0.55);
-  border: 0.0625rem solid rgba(59, 130, 246, 0.2);
-  box-shadow: 0 1rem 2.25rem rgba(2, 6, 23, 0.45);
+  background-color: rgba(30, 41, 59, 0.85);
+  border: 0.0625rem solid rgba(148, 163, 184, 0.4);
+  color: #f8fafc;
+  box-shadow: none;
 }
 
 .modal-nav .icon-button:hover {
-  background: rgba(37, 99, 235, 0.65);
-  border-color: rgba(96, 165, 250, 0.45);
+  background-color: rgba(51, 65, 85, 0.95);
+  border-color: rgba(148, 163, 184, 0.55);
 }
 
 .modal-nav .icon-button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 0.1875rem rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 0.1875rem rgba(148, 163, 184, 0.45);
 }
 
 #modalNav {
@@ -677,18 +661,18 @@ footer a:hover {
 
 /* Override default button styles for back button */
 .back-button {
-  background: rgba(15, 23, 42, 0.6) !important;
+  background: rgba(15, 23, 42, 0.75) !important;
   padding: 0 !important;
   color: rgb(226 232 240) !important;
   transform: none !important;
-  border: 0.0625rem solid rgba(59, 130, 246, 0.25) !important;
-  box-shadow: 0 0.75rem 1.75rem rgba(2, 6, 23, 0.55);
+  border: 0.0625rem solid rgba(148, 163, 184, 0.4) !important;
+  box-shadow: none;
 }
 
 .back-button:hover {
-  background: rgba(37, 99, 235, 0.65) !important;
+  background: rgba(51, 65, 85, 0.95) !important;
   color: white !important;
-  border-color: rgba(96, 165, 250, 0.45) !important;
+  border-color: rgba(148, 163, 184, 0.55) !important;
 }
 
 /* Modal Container */
