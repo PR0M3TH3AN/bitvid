@@ -490,6 +490,10 @@ footer a:hover {
   overscroll-behavior: contain;
 }
 
+#disclaimerModal.hidden {
+  display: none !important;
+}
+
 #disclaimerModal .modal-content {
   width: min(960px, calc(100% - 2rem));
   max-height: min(90vh, 820px);
