@@ -52,6 +52,94 @@ function fakeDecrypt(encrypted) {
   return encrypted.split("").reverse().join("");
 }
 
+function decodeNpubToHex(npub) {
+  if (typeof npub !== "string" || !npub.trim()) {
+    return "";
+  }
+
+  if (
+    !window?.NostrTools?.nip19 ||
+    typeof window.NostrTools.nip19.decode !== "function"
+  ) {
+    return "";
+  }
+
+  try {
+    const decoded = window.NostrTools.nip19.decode(npub.trim());
+    if (decoded?.type === "npub" && typeof decoded.data === "string") {
+      return decoded.data;
+    }
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(`[nostr] Failed to decode npub: ${npub}`, error);
+    }
+  }
+  return "";
+}
+
+const DM_PUBLISH_TIMEOUT_MS = 10_000;
+
+function publishEventToRelay(pool, url, event) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finalize = (success, error = null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve({ url, success, error });
+    };
+
+    const timeoutId = setTimeout(() => {
+      finalize(false, new Error("publish timeout"));
+    }, DM_PUBLISH_TIMEOUT_MS);
+
+    try {
+      const pub = pool.publish([url], event);
+
+      if (pub && typeof pub.on === "function") {
+        pub.on("ok", () => {
+          clearTimeout(timeoutId);
+          finalize(true);
+        });
+        pub.on("seen", () => {
+          clearTimeout(timeoutId);
+          finalize(true);
+        });
+        pub.on("failed", (reason) => {
+          clearTimeout(timeoutId);
+          const err =
+            reason instanceof Error
+              ? reason
+              : new Error(String(reason || "publish failed"));
+          finalize(false, err);
+        });
+        return;
+      }
+
+      if (pub && typeof pub.then === "function") {
+        pub
+          .then(() => {
+            clearTimeout(timeoutId);
+            finalize(true);
+          })
+          .catch((error) => {
+            clearTimeout(timeoutId);
+            finalize(false, error);
+          });
+        return;
+      }
+    } catch (error) {
+      clearTimeout(timeoutId);
+      finalize(false, error);
+      return;
+    }
+
+    clearTimeout(timeoutId);
+    finalize(true);
+  });
+}
+
 const EXTENSION_MIME_MAP = {
   mp4: "video/mp4",
   m4v: "video/x-m4v",
@@ -588,6 +676,108 @@ class NostrClient {
   logout() {
     this.pubkey = null;
     if (isDevMode) console.log("User logged out.");
+  }
+
+  async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null) {
+    const trimmedTarget = typeof targetNpub === "string" ? targetNpub.trim() : "";
+    const trimmedMessage = typeof message === "string" ? message.trim() : "";
+
+    if (!trimmedTarget) {
+      return { ok: false, error: "invalid-target" };
+    }
+
+    if (!trimmedMessage) {
+      return { ok: false, error: "empty-message" };
+    }
+
+    if (!this.pool) {
+      return { ok: false, error: "nostr-uninitialized" };
+    }
+
+    const extension = window?.nostr;
+    if (!extension) {
+      return { ok: false, error: "nostr-extension-missing" };
+    }
+
+    const nip04 = extension.nip04;
+    if (!nip04 || typeof nip04.encrypt !== "function") {
+      return { ok: false, error: "nip04-unavailable" };
+    }
+
+    if (typeof extension.signEvent !== "function") {
+      return { ok: false, error: "sign-event-unavailable" };
+    }
+
+    let actorHex =
+      typeof actorPubkeyOverride === "string" && actorPubkeyOverride.trim()
+        ? actorPubkeyOverride.trim()
+        : "";
+
+    if (!actorHex && typeof this.pubkey === "string") {
+      actorHex = this.pubkey.trim();
+    }
+
+    if (!actorHex && typeof extension.getPublicKey === "function") {
+      try {
+        actorHex = await extension.getPublicKey();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to fetch actor pubkey from extension:",
+            error
+          );
+        }
+      }
+    }
+
+    if (!actorHex) {
+      return { ok: false, error: "missing-actor-pubkey" };
+    }
+
+    const targetHex = decodeNpubToHex(trimmedTarget);
+    if (!targetHex) {
+      return { ok: false, error: "invalid-target" };
+    }
+
+    let ciphertext = "";
+    try {
+      ciphertext = await nip04.encrypt(targetHex, trimmedMessage);
+    } catch (error) {
+      return { ok: false, error: "encryption-failed", details: error };
+    }
+
+    const event = {
+      kind: 4,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [["p", targetHex]],
+      content: ciphertext,
+      pubkey: actorHex,
+    };
+
+    let signedEvent;
+    try {
+      signedEvent = await extension.signEvent(event);
+    } catch (error) {
+      return { ok: false, error: "signature-failed", details: error };
+    }
+
+    const relays =
+      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
+
+    const publishResults = await Promise.all(
+      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+    );
+
+    const success = publishResults.some((result) => result.success);
+    if (!success) {
+      return {
+        ok: false,
+        error: "publish-failed",
+        details: publishResults.filter((result) => !result.success),
+      };
+    }
+
+    return { ok: true };
   }
 
   /**
