@@ -4,7 +4,7 @@ import { loadView } from "./viewManager.js";
 import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
-import { accessControl } from "./accessControl.js";
+import { accessControl, normalizeNpub } from "./accessControl.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
@@ -64,6 +64,9 @@ const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
+const ADMIN_DM_IMAGE_URL =
+  "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
+const BITVID_WEBSITE_URL = "https://bitvid.network/";
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 const PROFILE_CACHE_STORAGE_KEY = "bitvid:profileCache:v1";
@@ -4247,6 +4250,38 @@ class bitvidApp {
       buttonToToggle.disabled = false;
       buttonToToggle.removeAttribute("aria-busy");
     }
+
+    if (isAdd) {
+      try {
+        const notifyResult = await this.sendAdminListNotification({
+          listType,
+          actorNpub,
+          targetNpub: target,
+        });
+        if (!notifyResult?.ok) {
+          const errorMessage = this.describeNotificationError(
+            notifyResult?.error
+          );
+          if (errorMessage) {
+            this.showError(errorMessage);
+          }
+          if (isDevMode && notifyResult?.error) {
+            console.warn(
+              "[admin] Failed to send list notification DM:",
+              notifyResult
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to send list notification DM:", error);
+        if (isDevMode) {
+          console.warn(
+            "List update succeeded, but DM notification threw an unexpected error.",
+            error
+          );
+        }
+      }
+    }
   }
 
   describeAdminError(code) {
@@ -4270,6 +4305,79 @@ class bitvidApp {
       default:
         return "Unable to update moderation settings. Please try again.";
     }
+  }
+
+  describeNotificationError(code) {
+    switch (code) {
+      case "nostr-extension-missing":
+        return "List updated, but the DM notification failed because no Nostr extension is connected.";
+      case "nostr-uninitialized":
+        return "List updated, but the DM notification system is still connecting to Nostr relays. Please try again in a moment.";
+      case "nip04-unavailable":
+        return "List updated, but your Nostr extension does not support NIP-04 encryption, so the DM notification was not sent.";
+      case "sign-event-unavailable":
+        return "List updated, but your Nostr extension could not sign the DM notification.";
+      case "missing-actor-pubkey":
+        return "List updated, but we could not determine your public key to send the DM notification.";
+      case "publish-failed":
+        return "List updated, but the DM notification could not be delivered to any relay.";
+      case "encryption-failed":
+      case "signature-failed":
+        return "List updated, but the DM notification failed while preparing the encrypted message.";
+      case "invalid-target":
+      case "empty-message":
+        return "";
+      default:
+        return "List updated, but the DM notification could not be sent.";
+    }
+  }
+
+  async sendAdminListNotification({ listType, actorNpub, targetNpub }) {
+    const normalizedTarget = normalizeNpub(targetNpub);
+    if (!normalizedTarget) {
+      return { ok: false, error: "invalid-target" };
+    }
+
+    if (!this.pubkey) {
+      return { ok: false, error: "missing-actor-pubkey" };
+    }
+
+    const actorHex = this.pubkey;
+    const fallbackActor = this.safeEncodeNpub(actorHex) || "a BitVid moderator";
+    const actorDisplay = normalizeNpub(actorNpub) || fallbackActor;
+    const isWhitelist = listType === "whitelist";
+
+    const introLine = isWhitelist
+      ? `Great news—your npub ${normalizedTarget} has been added to the BitVid whitelist by ${actorDisplay}.`
+      : `We wanted to let you know that your npub ${normalizedTarget} has been placed on the BitVid blacklist by ${actorDisplay}.`;
+
+    const statusLine = isWhitelist
+      ? `You now have full creator access across BitVid (${BITVID_WEBSITE_URL}).`
+      : `This hides your channel and prevents uploads across BitVid (${BITVID_WEBSITE_URL}) for now.`;
+
+    const followUpLine = isWhitelist
+      ? "Please take a moment to review our community guidelines (https://bitvid.network/#view=community-guidelines), and reply to this DM if you have any questions."
+      : "Please review our community guidelines (https://bitvid.network/#view=community-guidelines). If you believe this was a mistake, you can submit an appeal at https://bitvid.network/?modal=appeals to request reinstatement, or reply to this DM with any questions.";
+
+    const messageBody = [
+      "Hi there,",
+      "",
+      introLine,
+      "",
+      statusLine,
+      "",
+      followUpLine,
+      "",
+      "— The BitVid Team",
+    ].join("\n");
+
+    const message = `![BitVid status update](${ADMIN_DM_IMAGE_URL})\n\n${messageBody}`;
+
+    return nostrClient.sendDirectMessage(
+      normalizedTarget,
+      message,
+      actorHex
+    );
   }
 
   async onAccessControlUpdated() {
