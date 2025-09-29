@@ -5511,6 +5511,15 @@ class bitvidApp {
     });
 
     safe(() => {
+      if ("crossOrigin" in videoElement) {
+        videoElement.crossOrigin = null;
+      }
+      if (videoElement.hasAttribute("crossorigin")) {
+        videoElement.removeAttribute("crossorigin");
+      }
+    });
+
+    safe(() => {
       if (typeof videoElement.load === "function") {
         videoElement.load();
       }
@@ -5537,6 +5546,15 @@ class bitvidApp {
 
     safe(() => {
       clone.srcObject = null;
+    });
+
+    safe(() => {
+      if ("crossOrigin" in clone) {
+        clone.crossOrigin = null;
+      }
+      if (clone.hasAttribute("crossorigin")) {
+        clone.removeAttribute("crossorigin");
+      }
     });
 
     clone.autoplay = videoElement.autoplay;
