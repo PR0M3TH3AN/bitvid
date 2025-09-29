@@ -269,6 +269,280 @@ header img {
   -webkit-backdrop-filter: blur(0.625rem); /* For Safari */
 }
 
+/* --------------------------------------------------------------------------
+   Profile modal account pane
+   --------------------------------------------------------------------------
+   The modal previously mixed Tailwind-style utility classes with our global
+   stylesheet. Those utilities are not always present in the production build,
+   so important layout rules (borders, gaps, flex behaviour) were getting
+   dropped. This block consolidates the account tab styling in one predictable
+   place so future tweaks only require CSS updates here instead of scattered
+   inline class lists.
+--------------------------------------------------------------------------- */
+#profileModal .profile-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+#profileModal .profile-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: clamp(1.25rem, 2vw, 1.5rem);
+  border-radius: 1.25rem;
+  border: 0.0625rem solid rgba(148, 163, 184, 0.28);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.72));
+  box-shadow: 0 1.75rem 3.5rem rgba(8, 11, 30, 0.45);
+}
+
+#profileModal .profile-switcher__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+#profileModal .profile-switcher__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+#profileModal .profile-switcher__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+#profileModal .profile-switcher__subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+#profileModal .profile-switcher__badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-radius: 9999px;
+  background: rgba(59, 130, 246, 0.18);
+  color: rgba(191, 219, 254, 0.95);
+  border: 0.0625rem solid rgba(96, 165, 250, 0.25);
+}
+
+#profileModal .profile-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 0.0625rem solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  outline: none;
+}
+
+#profileModal .profile-card:hover {
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+#profileModal .profile-card:focus-visible {
+  border-color: rgba(96, 165, 250, 0.6);
+  box-shadow: 0 0 0 0.1875rem rgba(37, 99, 235, 0.25);
+}
+
+#profileModal .profile-card--active {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: linear-gradient(160deg, rgba(37, 99, 235, 0.22), rgba(15, 23, 42, 0.78));
+  box-shadow: 0 1.35rem 2.8rem rgba(37, 99, 235, 0.22);
+}
+
+#profileModal .profile-card__avatar {
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  overflow: hidden;
+  border: 0.1875rem solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+#profileModal .profile-card__avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+#profileModal .profile-card--active .profile-card__avatar {
+  border-color: rgba(96, 165, 250, 0.7);
+  box-shadow: 0 0 0 0.1875rem rgba(59, 130, 246, 0.18);
+}
+
+#profileModal .profile-card__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+#profileModal .profile-card__topline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+}
+
+#profileModal .profile-card__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(191, 219, 254, 0.9);
+}
+
+#profileModal .profile-card__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.8rem;
+  border-radius: 9999px;
+  border: 0.0625rem solid rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.14);
+  color: rgba(191, 219, 254, 0.95);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+#profileModal .profile-card__action:hover,
+#profileModal .profile-card__action:focus-visible {
+  background: rgba(59, 130, 246, 0.24);
+  border-color: rgba(59, 130, 246, 0.6);
+  color: #ffffff;
+}
+
+#profileModal .profile-card__name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#profileModal .profile-card__npub {
+  font-size: 0.75rem;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: rgba(148, 163, 184, 0.85);
+  word-break: break-all;
+}
+
+#profileModal .profile-switcher__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+#profileModal .profile-switcher__add {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 0.125rem dashed rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.55);
+  color: rgba(226, 232, 240, 0.85);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+#profileModal .profile-switcher__add:hover,
+#profileModal .profile-switcher__add:focus-visible {
+  border-color: rgba(96, 165, 250, 0.65);
+  background: rgba(59, 130, 246, 0.18);
+  color: #ffffff;
+  outline: none;
+}
+
+#profileModal .profile-switcher__addAvatar {
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  border: 0.125rem dashed currentColor;
+  color: inherit;
+  background: rgba(15, 23, 42, 0.75);
+}
+
+#profileModal .profile-switcher__addAvatar svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+#profileModal .profile-switcher__addCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+#profileModal .profile-switcher__addTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: inherit;
+}
+
+#profileModal .profile-switcher__addHint {
+  font-size: 0.75rem;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+#profileModal .profile-switcher__helper {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(148, 163, 184, 0.7);
+}
+
+@media (min-width: 640px) {
+  #profileModal .profile-switcher__header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  #profileModal .profile-card {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  #profileModal .profile-card__topline {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+}
+
 /* If you ever want to show it, add ".flex" class dynamically */
 #playerModal.flex {
   display: flex;

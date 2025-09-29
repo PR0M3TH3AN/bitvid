@@ -107,100 +107,87 @@
               role="tabpanel"
               aria-labelledby="profileNavAccount"
             >
-              <div class="rounded-3xl border border-gray-800/80 bg-gray-900/70 p-5 shadow-lg shadow-black/20 space-y-4">
-                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 class="text-base font-semibold text-white">Switch profiles</h3>
-                    <p class="text-sm text-gray-400">
+              <!--
+                The account pane now relies on bespoke CSS (see css/style.css under
+                "Profile modal account pane") so we are not dependent on utility
+                classes that may be purged or overridden by other builds.
+              -->
+              <div class="profile-switcher" id="profileSwitcherTray">
+                <div class="profile-switcher__header">
+                  <div class="profile-switcher__intro">
+                    <h3 class="profile-switcher__title">Switch profiles</h3>
+                    <p class="profile-switcher__subtitle">
                       Save multiple Nostr profiles so you can swap identities without leaving BitVid.
                     </p>
                   </div>
-                  <span
-                    class="inline-flex items-center rounded-full bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-300"
-                  >
-                    Preview
+                  <span class="profile-switcher__badge">Preview</span>
+                </div>
+
+                <div
+                  class="profile-card profile-card--active"
+                  aria-label="Current Nostr profile"
+                  aria-pressed="true"
+                  role="button"
+                  tabindex="0"
+                >
+                  <span class="profile-card__avatar">
+                    <img
+                      id="profileModalAvatar"
+                      src="assets/svg/default-profile.svg"
+                      alt="Active profile avatar"
+                    />
+                  </span>
+                  <span class="profile-card__meta">
+                    <span class="profile-card__topline">
+                      <span class="profile-card__label">Active profile</span>
+                      <a
+                        id="profileChannelLink"
+                        href="#"
+                        class="profile-card__action hidden"
+                      >
+                        View channel
+                      </a>
+                    </span>
+                    <span id="profileModalName" class="profile-card__name">Loading...</span>
+                    <span id="profileModalNpub" class="profile-card__npub">npub1...</span>
                   </span>
                 </div>
-                <div class="space-y-4" id="profileSwitcherTray">
-                  <div
-                    class="group flex w-full flex-col gap-4 rounded-3xl border border-blue-400/30 bg-gradient-to-r from-blue-500/10 via-blue-500/5 to-transparent px-5 py-4 text-left shadow-md shadow-blue-500/10 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 sm:flex-row sm:items-center sm:gap-5"
-                    aria-label="Current Nostr profile"
-                    aria-pressed="true"
-                    role="button"
-                    tabindex="0"
-                  >
-                    <span
-                      class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900 transition-colors group-focus-visible:ring-blue-400"
+
+                <div
+                  id="profileSwitcherList"
+                  class="profile-switcher__list"
+                  aria-live="polite"
+                  aria-label="Additional Nostr profiles"
+                ></div>
+
+                <button
+                  type="button"
+                  id="profileAddAccountBtn"
+                  class="profile-switcher__add"
+                  aria-label="Add a new Nostr profile"
+                >
+                  <span class="profile-switcher__addAvatar">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
                     >
-                      <img
-                        id="profileModalAvatar"
-                        src="assets/svg/default-profile.svg"
-                        alt="Active profile avatar"
-                        class="h-10 w-10 rounded-full object-cover"
-                      />
-                    </span>
-                    <span class="flex min-w-0 flex-1 flex-col gap-2 text-left">
-                      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <span class="text-xs font-semibold uppercase tracking-wide text-blue-300">Active profile</span>
-                        <a
-                          id="profileChannelLink"
-                          href="#"
-                          class="inline-flex h-7 items-center justify-center rounded-md border border-blue-400/40 bg-blue-500/5 px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-200 transition-colors hover:bg-blue-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 hidden"
-                        >
-                          View channel
-                        </a>
-                      </div>
-                      <span
-                        id="profileModalName"
-                        class="truncate text-sm font-semibold text-white"
-                      >
-                        Loading...
-                      </span>
-                      <span
-                        id="profileModalNpub"
-                        class="break-all text-xs font-mono text-gray-400"
-                      >
-                        npub1...
-                      </span>
-                    </span>
-                  </div>
-                  <div
-                    id="profileSwitcherList"
-                    class="flex flex-col gap-4"
-                    aria-live="polite"
-                    aria-label="Additional Nostr profiles"
-                  ></div>
-                  <button
-                    type="button"
-                    id="profileAddAccountBtn"
-                    class="group flex w-full items-center gap-4 rounded-3xl border border-dashed border-gray-700 bg-gray-900/60 px-5 py-4 text-left text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 hover:border-blue-500 hover:bg-blue-500/10 hover:text-white"
-                    aria-label="Add a new Nostr profile"
-                  >
-                    <span
-                      class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border border-dashed border-current text-gray-400 transition-colors group-hover:text-white"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        class="h-6 w-6"
-                        aria-hidden="true"
-                      >
-                        <line x1="12" y1="5" x2="12" y2="19" />
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                      </svg>
-                    </span>
-                    <span class="flex min-w-0 flex-1 flex-col">
-                      <span class="text-sm font-semibold text-gray-300 group-hover:text-white">Add profile</span>
-                      <span class="text-xs text-gray-500 group-hover:text-gray-300">Link another npub</span>
-                    </span>
-                  </button>
-                </div>
-                <p class="text-xs text-gray-500">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </span>
+                  <span class="profile-switcher__addCopy">
+                    <span class="profile-switcher__addTitle">Add profile</span>
+                    <span class="profile-switcher__addHint">Link another npub</span>
+                  </span>
+                </button>
+
+                <p class="profile-switcher__helper">
                   Profiles you add here will stay on this device so you can quickly switch before posting or moderating.
                 </p>
               </div>
