@@ -20,21 +20,18 @@
   >
     <!-- The .modal-content, same classes: bg-gray-900, w-full max-w-[90%], etc. -->
     <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
+      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative flex flex-col"
     >
       <!-- Sticky top bar, if you want a top heading or 'X' button up here -->
       <div
-        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
-      >        
+        class="modal-header sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
+      >
       </div>
 
       <!-- Main Content -->
-      <div class="p-6">
+      <div class="modal-body flex-1 overflow-y-auto">
         <!-- Scrollable disclaimers area -->
-        <div
-          class="space-y-6 text-gray-300"
-          style="max-height: 70vh; overflow-y: auto"
-        >
+        <div class="space-y-6 text-gray-300">
           <!-- Example: Insert your disclaimers here -->
 
           <div class="flex justify-center mb-8">
@@ -114,16 +111,16 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Button at bottom -->
-        <div class="mt-6">
-          <button
-            id="acceptDisclaimer"
-            class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black transition-colors duration-200"
-          >
-            I Understand
-          </button>
-        </div>
+      <!-- Button at bottom -->
+      <div class="modal-footer">
+        <button
+          id="acceptDisclaimer"
+          class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black transition-colors duration-200"
+        >
+          I Understand
+        </button>
       </div>
     </div>
   </div>

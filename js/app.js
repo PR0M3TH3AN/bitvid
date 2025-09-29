@@ -5265,6 +5265,8 @@ class bitvidApp {
     // Hide login button if present
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
+      this.loginButton.setAttribute("hidden", "");
+      this.loginButton.style.display = "none";
     }
     // Optionally hide logout or userStatus
     if (this.logoutButton) {
@@ -5277,9 +5279,13 @@ class bitvidApp {
     // Show the upload button, profile button, etc.
     if (this.uploadButton) {
       this.uploadButton.classList.remove("hidden");
+      this.uploadButton.removeAttribute("hidden");
+      this.uploadButton.style.display = "inline-flex";
     }
     if (this.profileButton) {
       this.profileButton.classList.remove("hidden");
+      this.profileButton.removeAttribute("hidden");
+      this.profileButton.style.display = "inline-flex";
     }
 
     // Show the "Subscriptions" link if it exists
@@ -5313,6 +5319,8 @@ class bitvidApp {
     // Show the login button again
     if (this.loginButton) {
       this.loginButton.classList.remove("hidden");
+      this.loginButton.removeAttribute("hidden");
+      this.loginButton.style.display = "";
     }
 
     // Hide logout or userStatus
@@ -5329,9 +5337,13 @@ class bitvidApp {
     // Hide upload & profile
     if (this.uploadButton) {
       this.uploadButton.classList.add("hidden");
+      this.uploadButton.setAttribute("hidden", "");
+      this.uploadButton.style.display = "none";
     }
     if (this.profileButton) {
       this.profileButton.classList.add("hidden");
+      this.profileButton.setAttribute("hidden", "");
+      this.profileButton.style.display = "none";
     }
     if (this.profileChannelLink) {
       this.profileChannelLink.classList.add("hidden");
