@@ -252,7 +252,8 @@ header img {
   flex-direction: column;
   align-items: stretch;
   justify-content: stretch;
-  background-color: #000;
+  background-color: #0f172a;
+  color: #e2e8f0;
   overflow: hidden;
   overscroll-behavior: contain;
 }
@@ -269,7 +270,7 @@ header img {
   display: flex;
 }
 
-#playerModal .modal-container {
+#playerModal .player-modal__container {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -281,7 +282,7 @@ header img {
   overflow: hidden;
 }
 
-#playerModal .modal-content {
+#playerModal .player-modal__content {
   position: relative;
   flex: 1;
   display: flex;
@@ -290,32 +291,30 @@ header img {
   height: 100%;
   min-height: 0;
   max-width: none;
-  max-height: none;
-  border-radius: 0;
   background-color: #0f172a;
   overflow-x: hidden;
   overflow-y: auto;
   box-shadow: none;
   animation: fadeIn var(--modal-motion-duration) ease-out;
+  -webkit-overflow-scrolling: touch;
 }
 
-#playerModal .video-container {
+#playerModal .player-modal__video {
   width: 100%;
   background-color: #000;
-  border-radius: 0;
   position: sticky;
   top: 0;
   z-index: 51;
   flex-shrink: 0;
 }
 
-#playerModal .video-container video {
+#playerModal .player-modal__video video {
   width: 100%;
   aspect-ratio: 16 / 9;
   background-color: #000;
 }
 
-#playerModal .video-info {
+#playerModal .player-modal__info {
   flex: 0 0 auto;
   overflow: visible;
   padding: 1.5rem;
@@ -323,6 +322,10 @@ header img {
 }
 
 body.modal-open {
+  overflow: hidden;
+}
+
+body.modal-open #app {
   overflow: hidden;
 }
 
@@ -353,15 +356,6 @@ body.modal-open {
   }
 }
 
-/* Video Container */
-.video-container {
-  width: 100%;
-  background-color: black;
-  position: sticky;
-  top: 0;
-  z-index: 51;
-}
-
 /* Modal Video */
 #modalVideo {
   width: 100%;
@@ -369,21 +363,8 @@ body.modal-open {
   background-color: black;
 }
 
-/* Video Info Section */
-.video-info {
-  padding: 1rem;
-  flex: 1;
-  overflow-y: auto;
-}
-
 /* Responsive Adjustments */
 @media (min-width: 768px) {
-  #playerModal {
-    padding: 0;
-    align-items: stretch;
-    justify-content: stretch;
-  }
-
   .modal-content {
     max-width: 64rem;
     max-height: calc(100vh - 4rem); /* Account for padding */
@@ -391,20 +372,9 @@ body.modal-open {
     overflow: visible;
   }
 
-  #playerModal .modal-content {
+  #playerModal .player-modal__content {
     max-width: none;
-    max-height: none;
     border-radius: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
-  }
-
-  .video-container {
-    position: relative;
-  }
-
-  #playerModal .video-container {
-    position: sticky;
   }
 }
 
@@ -661,14 +631,10 @@ footer a:hover {
   .modal-container {
     padding: 2rem;
   }
-
-  #playerModal .modal-container {
-    padding: 0;
-  }
 }
 
 /* Video info cards */
-.video-info .bg-gray-800\/50 {
+.player-modal__info .bg-gray-800\/50 {
   background-color: rgb(31 41 55 / 0.5);
   backdrop-filter: blur(0.25rem);
 }
