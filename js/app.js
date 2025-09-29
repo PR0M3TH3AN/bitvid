@@ -5699,7 +5699,6 @@ class bitvidApp {
     addListener("error", () => triggerFallback("error"));
     addListener("abort", () => triggerFallback("abort"));
     addListener("stalled", () => triggerFallback("stalled"));
-    addListener("emptied", () => triggerFallback("emptied"));
     addListener("playing", handleSuccess);
     addListener("ended", handleSuccess);
 
