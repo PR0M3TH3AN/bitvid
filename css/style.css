@@ -285,6 +285,16 @@ header img {
   gap: 1.5rem;
 }
 
+/*
+  Ensure the global `.hidden` helper keeps working for the tab panes. Our
+  profile-pane declaration above sets a `display` value with higher
+  specificity than `.hidden`, so we explicitly restore the hidden state when
+  both classes are present.
+*/
+#profileModal .profile-pane.hidden {
+  display: none;
+}
+
 #profileModal .profile-switcher {
   display: flex;
   flex-direction: column;
