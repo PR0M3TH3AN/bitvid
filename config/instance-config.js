@@ -43,4 +43,4 @@ export const ADMIN_WHITELIST_MODE_STORAGE_KEY = "bitvid_admin_whitelist_mode";
  * Operators can still toggle the mode at runtime; this value only controls the
  * default state when no preference has been stored in localStorage yet.
  */
-export const DEFAULT_WHITELIST_MODE_ENABLED = false;
+export const DEFAULT_WHITELIST_MODE_ENABLED = true;
