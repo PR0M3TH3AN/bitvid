@@ -4,7 +4,7 @@
     class="modal-container h-full w-full flex items-start justify-center overflow-y-auto"
   >
     <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg relative"
+      class="modal-content bg-gray-900 w-full max-w-[92%] lg:max-w-6xl my-0 rounded-2xl relative"
     >
       <!-- Navigation bar - sliding at top -->
       <div
@@ -123,64 +123,70 @@
         </div>
       </div>
 
-      <div class="video-container w-full bg-black rounded-t-lg overflow-hidden">
-        <video id="modalVideo" class="w-full aspect-video" controls></video>
-      </div>
-
-      <div class="video-info p-6">
-        <!-- Title and icons row -->
-        <div class="flex items-center justify-between mb-2">
-          <h2 id="videoTitle" class="text-2xl font-bold text-white"></h2>
-        </div>
-
-        <!-- Video Timestamp -->
-        <div
-          class="flex items-center justify-between text-sm text-gray-400 mb-4"
-        >
-          <span id="videoTimestamp">just now</span>
-          <div id="modalStatus" class="text-gray-300">
-            Initializing... Just give it a sec.
+      <div class="modal-body">
+        <div class="modal-media">
+          <div class="video-container w-full bg-black rounded-xl overflow-hidden">
+            <video id="modalVideo" class="w-full" controls></video>
           </div>
         </div>
 
-        <!-- Creator info -->
-        <div class="flex items-center mb-4 p-4 bg-gray-800/50 rounded-lg">
-          <div class="w-12 h-12 rounded-full bg-gray-700 overflow-hidden">
-            <img
-              id="creatorAvatar"
-              src=""
-              alt="Creator"
-              class="w-full h-full object-cover"
-            />
-          </div>
-          <div class="ml-4">
-            <h3 id="creatorName" class="font-medium text-lg text-white">
-              Creator Name
-            </h3>
-            <p id="creatorNpub" class="text-sm text-gray-400">npub...</p>
-          </div>
-        </div>
+        <div class="modal-sidebar">
+          <div class="video-info">
+            <!-- Title and icons row -->
+            <div class="flex items-center justify-between mb-2">
+              <h2 id="videoTitle" class="text-2xl font-bold text-white"></h2>
+            </div>
 
-        <!-- Video Description -->
-        <div class="bg-gray-800/50 rounded-lg p-4 mb-4">
-          <p id="videoDescription" class="text-gray-300 whitespace-pre-wrap">
-            No description available.
-          </p>
-        </div>
-
-        <!-- Torrent stats -->
-        <div class="bg-gray-800/50 rounded-lg p-4">
-          <div class="w-full bg-gray-700 rounded-full h-2 mb-2">
+            <!-- Video Timestamp -->
             <div
-              class="bg-blue-500 h-2 rounded-full"
-              id="modalProgress"
-              style="width: 0%"
-            ></div>
-          </div>
-          <div class="flex justify-between text-sm text-gray-400">
-            <span id="modalPeers">Peers: 0</span>
-            <span id="modalSpeed">Speed: 0 KB/s</span>
-            <span id="modalDownloaded">Downloaded: 0 MB / 0 MB</span>
+              class="flex items-center justify-between text-sm text-gray-400 mb-4"
+            >
+              <span id="videoTimestamp">just now</span>
+              <div id="modalStatus" class="text-gray-300">
+                Initializing... Just give it a sec.
+              </div>
+            </div>
+
+            <!-- Creator info -->
+            <div class="flex items-center mb-4 p-4 bg-gray-800/50 rounded-lg">
+              <div class="w-12 h-12 rounded-full bg-gray-700 overflow-hidden">
+                <img
+                  id="creatorAvatar"
+                  src=""
+                  alt="Creator"
+                  class="w-full h-full object-cover"
+                />
+              </div>
+              <div class="ml-4">
+                <h3 id="creatorName" class="font-medium text-lg text-white">
+                  Creator Name
+                </h3>
+                <p id="creatorNpub" class="text-sm text-gray-400">npub...</p>
+              </div>
+            </div>
+
+            <!-- Video Description -->
+            <div class="bg-gray-800/50 rounded-lg p-4 mb-4">
+              <p id="videoDescription" class="text-gray-300 whitespace-pre-wrap">
+                No description available.
+              </p>
+            </div>
+
+            <!-- Torrent stats -->
+            <div class="bg-gray-800/50 rounded-lg p-4">
+              <div class="w-full bg-gray-700 rounded-full h-2 mb-2">
+                <div
+                  class="bg-blue-500 h-2 rounded-full"
+                  id="modalProgress"
+                  style="width: 0%"
+                ></div>
+              </div>
+              <div class="flex justify-between text-sm text-gray-400">
+                <span id="modalPeers">Peers: 0</span>
+                <span id="modalSpeed">Speed: 0 KB/s</span>
+                <span id="modalDownloaded">Downloaded: 0 MB / 0 MB</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
