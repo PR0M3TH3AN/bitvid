@@ -4054,6 +4054,20 @@ class bitvidApp {
     return this.currentUserNpub;
   }
 
+  canCurrentUserManageBlacklist() {
+    const actorNpub = this.getCurrentUserNpub();
+    if (!actorNpub) {
+      return false;
+    }
+
+    try {
+      return accessControl.canEditAdminLists(actorNpub);
+    } catch (error) {
+      console.warn("Unable to verify blacklist permissions:", error);
+      return false;
+    }
+  }
+
   ensureAdminActor(requireSuperAdmin = false) {
     const actorNpub = this.getCurrentUserNpub();
     if (!actorNpub) {
@@ -5992,6 +6006,7 @@ class bitvidApp {
       this.getShareUrlBase() ||
       `${window.location?.origin || ""}${window.location?.pathname || ""}` ||
       (window.location?.href ? window.location.href.split(/[?#]/)[0] : "");
+    const canManageBlacklist = this.canCurrentUserManageBlacklist();
 
     // 3) Build each card
     dedupedVideos.forEach((video, index) => {
@@ -6073,6 +6088,13 @@ class bitvidApp {
         `
         : "";
 
+      const blacklistMenuItem = canManageBlacklist
+        ? `
+                <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="blacklist-author" data-author="${video.pubkey || ""}">
+                  Blacklist creator
+                </button>`
+        : "";
+
       const moreMenu = `
           <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
             <button
@@ -6098,6 +6120,7 @@ class bitvidApp {
                 <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
                   Copy link
                 </button>
+                ${blacklistMenuItem}
                 <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
                   Block creator
                 </button>
@@ -6748,6 +6771,20 @@ class bitvidApp {
       }
 
       const action = button.dataset.action || "";
+      if (action === "blacklist-author") {
+        const canShow = this.canCurrentUserManageBlacklist();
+        if (canShow && this.currentVideo && this.currentVideo.pubkey) {
+          button.dataset.author = this.currentVideo.pubkey;
+          button.classList.remove("hidden");
+          button.setAttribute("aria-hidden", "false");
+        } else {
+          delete button.dataset.author;
+          button.classList.add("hidden");
+          button.setAttribute("aria-hidden", "true");
+        }
+        return;
+      }
+
       if (action === "open-channel" || action === "block-author") {
         if (this.currentVideo && this.currentVideo.pubkey) {
           button.dataset.author = this.currentVideo.pubkey;
@@ -6766,7 +6803,7 @@ class bitvidApp {
     });
   }
 
-  handleMoreMenuAction(action, dataset = {}) {
+  async handleMoreMenuAction(action, dataset = {}) {
     const normalized = typeof action === "string" ? action.trim() : "";
     const context = dataset.context || "";
 
@@ -6803,6 +6840,101 @@ class bitvidApp {
           .writeText(shareUrl)
           .then(() => this.showSuccess("Video link copied to clipboard!"))
           .catch(() => this.showError("Failed to copy the link."));
+        break;
+      }
+      case "copy-npub": {
+        const explicitNpub =
+          typeof dataset.npub === "string" && dataset.npub.trim()
+            ? dataset.npub.trim()
+            : "";
+        const authorCandidate = dataset.author || "";
+        const fallbackNpub = this.safeEncodeNpub(authorCandidate);
+        const valueToCopy = explicitNpub || fallbackNpub;
+
+        if (!valueToCopy) {
+          this.showError("No npub available to copy.");
+          break;
+        }
+
+        try {
+          await navigator.clipboard.writeText(valueToCopy);
+          this.showSuccess("Channel npub copied to clipboard!");
+        } catch (error) {
+          console.error("Failed to copy npub:", error);
+          this.showError("Failed to copy the npub.");
+        }
+        break;
+      }
+      case "blacklist-author": {
+        const actorNpub = this.getCurrentUserNpub();
+        if (!actorNpub) {
+          this.showError("Please login as a moderator to manage the blacklist.");
+          break;
+        }
+
+        try {
+          await accessControl.ensureReady();
+        } catch (error) {
+          console.warn("Failed to refresh moderation state before blacklisting:", error);
+        }
+
+        if (!accessControl.canEditAdminLists(actorNpub)) {
+          this.showError("Only moderators can manage the blacklist.");
+          break;
+        }
+
+        let author = dataset.author || "";
+        if (!author && context === "modal" && this.currentVideo?.pubkey) {
+          author = this.currentVideo.pubkey;
+        }
+        if (!author && this.currentVideo?.pubkey) {
+          author = this.currentVideo.pubkey;
+        }
+
+        const explicitNpub =
+          typeof dataset.npub === "string" && dataset.npub.trim()
+            ? dataset.npub.trim()
+            : "";
+        const targetNpub = explicitNpub || this.safeEncodeNpub(author);
+
+        if (!targetNpub) {
+          this.showError("Unable to determine the creator npub.");
+          break;
+        }
+
+        try {
+          const result = await accessControl.addToBlacklist(
+            actorNpub,
+            targetNpub
+          );
+
+          if (result?.ok) {
+            this.showSuccess("Creator added to the blacklist.");
+          } else {
+            const code = result?.error || "unknown";
+            switch (code) {
+              case "immutable":
+                this.showError(
+                  "Moderators cannot blacklist the super admin or fellow moderators."
+                );
+                break;
+              case "invalid npub":
+                this.showError("Unable to blacklist this creator.");
+                break;
+              case "forbidden":
+                this.showError("Only moderators can manage the blacklist.");
+                break;
+              default:
+                this.showError(
+                  "Failed to update the blacklist. Please try again."
+                );
+                break;
+            }
+          }
+        } catch (error) {
+          console.error("Failed to add creator to blacklist:", error);
+          this.showError("Failed to update the blacklist. Please try again.");
+        }
         break;
       }
       case "block-author": {

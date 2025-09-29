@@ -12,18 +12,90 @@
     />
     <div class="absolute inset-0 bg-black bg-opacity-50"></div>
 
-    <div class="absolute bottom-4 left-4 flex items-center">
-      <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-white">
-        <img
-          id="channelAvatar"
-          src="assets/svg/default-profile.svg"
-          alt="Avatar"
-          class="w-full h-full object-cover"
-        />
+    <div
+      class="absolute bottom-4 left-4 right-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+    >
+      <div class="flex items-center">
+        <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-white">
+          <img
+            id="channelAvatar"
+            src="assets/svg/default-profile.svg"
+            alt="Avatar"
+            class="w-full h-full object-cover"
+          />
+        </div>
+        <div class="ml-4 text-white">
+          <h2 id="channelName" class="text-xl font-bold">User Name</h2>
+          <p id="channelNpub" class="text-sm opacity-80">npub...</p>
+        </div>
       </div>
-      <div class="ml-4 text-white">
-        <h2 id="channelName" class="text-xl font-bold">User Name</h2>
-        <p id="channelNpub" class="text-sm opacity-80">npub...</p>
+      <div class="flex items-center gap-2 self-start sm:self-end">
+        <button
+          id="channelShareBtn"
+          type="button"
+          class="icon-button"
+          aria-label="Share channel"
+        >
+          <img
+            src="assets/svg/share-video.svg"
+            alt="Share channel"
+            class="icon-image"
+          />
+        </button>
+        <div
+          class="relative inline-block overflow-visible"
+          data-more-menu-wrapper="true"
+        >
+          <button
+            id="channelMoreBtn"
+            type="button"
+            class="icon-button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="Channel options"
+            data-more-dropdown="channel-profile"
+          >
+            <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5" />
+          </button>
+          <div
+            id="moreDropdown-channel-profile"
+            class="hidden absolute right-0 top-12 w-48 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+            role="menu"
+            data-more-menu="true"
+          >
+            <div class="py-1">
+              <button
+                class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                data-action="copy-npub"
+                data-context="channel-profile"
+              >
+                Copy npub
+              </button>
+              <button
+                class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                data-action="blacklist-author"
+                data-context="channel-profile"
+                data-blacklist-menu="true"
+              >
+                Blacklist channel
+              </button>
+              <button
+                class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                data-action="block-author"
+                data-context="channel-profile"
+              >
+                Block channel
+              </button>
+              <button
+                class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                data-action="report"
+                data-context="channel-profile"
+              >
+                Report
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

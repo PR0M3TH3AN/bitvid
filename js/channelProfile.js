@@ -14,6 +14,8 @@ let currentChannelHex = null;
 let currentChannelNpub = null;
 
 let cachedZapButton = null;
+let cachedChannelShareButton = null;
+let cachedChannelMenu = null;
 
 function getChannelZapButton() {
   if (cachedZapButton && !document.body.contains(cachedZapButton)) {
@@ -40,6 +42,170 @@ function setChannelZapVisibility(visible) {
   } else {
     zapButton.setAttribute("tabindex", "-1");
   }
+}
+
+function getChannelShareButton() {
+  if (cachedChannelShareButton && !document.body.contains(cachedChannelShareButton)) {
+    cachedChannelShareButton = null;
+  }
+  if (!cachedChannelShareButton) {
+    cachedChannelShareButton = document.getElementById("channelShareBtn");
+  }
+  return cachedChannelShareButton;
+}
+
+function getChannelMenuElement() {
+  if (cachedChannelMenu && !document.body.contains(cachedChannelMenu)) {
+    cachedChannelMenu = null;
+  }
+  if (!cachedChannelMenu) {
+    cachedChannelMenu = document.getElementById("moreDropdown-channel-profile");
+  }
+  return cachedChannelMenu;
+}
+
+function buildChannelShareUrl() {
+  if (!currentChannelNpub) {
+    return "";
+  }
+
+  const base = typeof app.getShareUrlBase === "function" ? app.getShareUrlBase() : "";
+  if (base) {
+    return `${base}#view=channel-profile&npub=${encodeURIComponent(currentChannelNpub)}`;
+  }
+
+  try {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = `#view=channel-profile&npub=${currentChannelNpub}`;
+    return url.toString();
+  } catch (error) {
+    console.warn("Falling back to basic channel share URL:", error);
+    const origin = window.location?.origin || "";
+    const pathname = window.location?.pathname || "";
+    if (!origin && !pathname) {
+      return "";
+    }
+    return `${origin}${pathname}#view=channel-profile&npub=${currentChannelNpub}`;
+  }
+}
+
+function syncChannelShareButtonState() {
+  const shareBtn = getChannelShareButton();
+  if (!shareBtn) {
+    return;
+  }
+  const hasNpub = typeof currentChannelNpub === "string" && currentChannelNpub;
+  shareBtn.disabled = !hasNpub;
+  shareBtn.setAttribute("aria-disabled", (!hasNpub).toString());
+  shareBtn.classList.toggle("opacity-50", !hasNpub);
+  shareBtn.classList.toggle("cursor-not-allowed", !hasNpub);
+}
+
+function setupChannelShareButton() {
+  const shareBtn = getChannelShareButton();
+  if (!shareBtn) {
+    return;
+  }
+
+  syncChannelShareButtonState();
+
+  if (shareBtn.dataset.initialized === "true") {
+    return;
+  }
+
+  shareBtn.addEventListener("click", () => {
+    const shareUrl = buildChannelShareUrl();
+    if (!shareUrl) {
+      app.showError("Could not generate channel link.");
+      return;
+    }
+
+    navigator.clipboard
+      .writeText(shareUrl)
+      .then(() => app.showSuccess("Channel link copied to clipboard!"))
+      .catch(() => app.showError("Failed to copy the link."));
+  });
+
+  shareBtn.dataset.initialized = "true";
+}
+
+function setupChannelMoreMenu() {
+  const container = document.querySelector(".channel-profile-container");
+  if (!container) {
+    return;
+  }
+  app.attachMoreMenuHandlers(container);
+}
+
+async function updateChannelMenuState() {
+  const menu = getChannelMenuElement();
+  if (!menu) {
+    return;
+  }
+
+  try {
+    await accessControl.ensureReady();
+  } catch (error) {
+    console.warn("Failed to refresh moderation lists for channel menu:", error);
+  }
+
+  const canBlacklist =
+    typeof app.canCurrentUserManageBlacklist === "function"
+      ? app.canCurrentUserManageBlacklist()
+      : false;
+
+  const buttons = menu.querySelectorAll("button[data-action]");
+  buttons.forEach((button) => {
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+
+    const action = button.dataset.action || "";
+    if (action === "copy-npub") {
+      if (currentChannelNpub) {
+        button.dataset.npub = currentChannelNpub;
+        button.classList.remove("hidden");
+        button.setAttribute("aria-hidden", "false");
+      } else {
+        delete button.dataset.npub;
+        button.classList.add("hidden");
+        button.setAttribute("aria-hidden", "true");
+      }
+      return;
+    }
+
+    if (action === "block-author") {
+      if (currentChannelHex) {
+        button.dataset.author = currentChannelHex;
+        button.classList.remove("hidden");
+        button.setAttribute("aria-hidden", "false");
+      } else {
+        delete button.dataset.author;
+        button.classList.add("hidden");
+        button.setAttribute("aria-hidden", "true");
+      }
+      return;
+    }
+
+    if (action === "blacklist-author") {
+      if (canBlacklist && currentChannelHex) {
+        button.dataset.author = currentChannelHex;
+        if (currentChannelNpub) {
+          button.dataset.npub = currentChannelNpub;
+        } else {
+          delete button.dataset.npub;
+        }
+        button.classList.remove("hidden");
+        button.setAttribute("aria-hidden", "false");
+      } else {
+        delete button.dataset.author;
+        delete button.dataset.npub;
+        button.classList.add("hidden");
+        button.setAttribute("aria-hidden", "true");
+      }
+    }
+  });
 }
 
 /**
@@ -77,6 +243,10 @@ export async function initChannelProfileView() {
   currentChannelHex = hexPub;
   currentChannelNpub = npub;
 
+  setupChannelShareButton();
+  setupChannelMoreMenu();
+  await updateChannelMenuState();
+
   // 3) If user is logged in, load subscriptions and show sub/unsub button
   if (app.pubkey) {
     await subscriptions.loadSubscriptions(app.pubkey);
@@ -87,9 +257,12 @@ export async function initChannelProfileView() {
   }
 
   setupZapButton();
+  syncChannelShareButtonState();
 
   // 4) Load user’s profile (banner, avatar, etc.)
   await loadUserProfile(hexPub);
+  await updateChannelMenuState();
+  syncChannelShareButtonState();
 
   // 5) Load user’s videos (filtered + rendered like the home feed)
   await loadUserVideos(hexPub);
