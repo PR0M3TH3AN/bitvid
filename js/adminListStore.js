@@ -448,6 +448,7 @@ async function persistNostrState(actorNpub, updates = {}) {
   }
 
   const sanitizedUpdates = {};
+  const actorNormalized = normalizeNpub(actorNpub);
 
   if (Array.isArray(updates.editors)) {
     sanitizedUpdates.editors = sanitizeNpubList(updates.editors).filter((npub) => {
@@ -469,6 +470,10 @@ async function persistNostrState(actorNpub, updates = {}) {
       ...ADMIN_EDITORS_NPUBS.map(normalizeNpub),
       ...((sanitizedUpdates.editors || []).map(normalizeNpub) || []),
     ]);
+
+    if (actorNormalized) {
+      editorGuard.add(actorNormalized);
+    }
 
     sanitizedUpdates.blacklist = sanitizeNpubList(updates.blacklist).filter(
       (npub) => {
