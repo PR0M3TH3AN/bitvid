@@ -77,19 +77,37 @@ function decodeNpubToHex(npub) {
   return "";
 }
 
+const DM_PUBLISH_TIMEOUT_MS = 10_000;
+
 function publishEventToRelay(pool, url, event) {
   return new Promise((resolve) => {
+    let settled = false;
     const finalize = (success, error = null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       resolve({ url, success, error });
     };
+
+    const timeoutId = setTimeout(() => {
+      finalize(false, new Error("publish timeout"));
+    }, DM_PUBLISH_TIMEOUT_MS);
 
     try {
       const pub = pool.publish([url], event);
 
       if (pub && typeof pub.on === "function") {
-        pub.on("ok", () => finalize(true));
-        pub.on("seen", () => finalize(true));
+        pub.on("ok", () => {
+          clearTimeout(timeoutId);
+          finalize(true);
+        });
+        pub.on("seen", () => {
+          clearTimeout(timeoutId);
+          finalize(true);
+        });
         pub.on("failed", (reason) => {
+          clearTimeout(timeoutId);
           const err =
             reason instanceof Error
               ? reason
@@ -100,14 +118,24 @@ function publishEventToRelay(pool, url, event) {
       }
 
       if (pub && typeof pub.then === "function") {
-        pub.then(() => finalize(true)).catch((error) => finalize(false, error));
+        pub
+          .then(() => {
+            clearTimeout(timeoutId);
+            finalize(true);
+          })
+          .catch((error) => {
+            clearTimeout(timeoutId);
+            finalize(false, error);
+          });
         return;
       }
     } catch (error) {
+      clearTimeout(timeoutId);
       finalize(false, error);
       return;
     }
 
+    clearTimeout(timeoutId);
     finalize(true);
   });
 }
