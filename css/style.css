@@ -247,14 +247,14 @@ header img {
 #playerModal {
   position: fixed;
   inset: 0;
-  background-color: rgb(0 0 0 / 0.9); /* You can adjust opacity if needed */
+  background-color: #000;
   z-index: 50;
   display: none; /* Hidden by default */
   flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
-  backdrop-filter: blur(0.625rem);
-  -webkit-backdrop-filter: blur(0.625rem); /* For Safari support */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none; /* For Safari support */
 }
 
 #nostrFormModal,
@@ -279,8 +279,16 @@ header img {
   animation: fadeIn var(--modal-motion-duration) ease-out;
 }
 
+#playerModal .modal-container {
+  width: 100%;
+  height: 100vh;
+  overflow-y: auto;
+}
+
 #playerModal .modal-content {
-  max-height: 92vh;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
 }
 
 #playerModal .modal-body {
@@ -288,8 +296,8 @@ header img {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  padding: 0 1.5rem 1.5rem;
+  gap: 0;
+  padding: 0;
 }
 
 #playerModal .modal-media,
@@ -300,12 +308,12 @@ header img {
 #playerModal .modal-media {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0;
 }
 
 #playerModal .modal-sidebar {
   overflow: visible;
-  padding-bottom: 0.5rem;
+  padding: 1.5rem 1.5rem 2rem;
 }
 
 @keyframes fadeIn {
@@ -335,10 +343,12 @@ header img {
 /* Modal Video */
 #playerModal #modalVideo {
   width: 100%;
+  height: auto;
   aspect-ratio: 16/9;
-  max-height: min(60vh, 45rem);
+  max-height: none;
   object-fit: contain;
   background-color: black;
+  display: block;
 }
 
 /* Video Info Section */
@@ -350,50 +360,8 @@ header img {
 
 /* Responsive Adjustments */
 @media (min-width: 768px) {
-  #playerModal {
-    padding: 2rem;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .modal-content {
-    max-width: 64rem;
-    max-height: calc(100vh - 4rem); /* Account for padding */
-    border-radius: 0.5rem;
-    overflow: visible;
-  }
-
-  #playerModal .modal-body {
-    padding: 0 2rem 2rem;
-  }
-}
-
-@media (min-width: 1024px) {
-  #playerModal .modal-content {
-    max-width: 70rem;
-    border-radius: 1rem;
-  }
-
-  #playerModal .modal-body {
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 2rem;
-  }
-
-  #playerModal .modal-media {
-    flex: 3;
-    max-width: 60%;
-  }
-
   #playerModal .modal-sidebar {
-    flex: 2;
-    max-height: calc(92vh - 5.5rem);
-    overflow-y: auto;
-    padding-right: 0.75rem;
-  }
-
-  #playerModal .video-info {
-    padding-right: 0.5rem;
+    padding: 2rem 3rem 3rem;
   }
 }
 
