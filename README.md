@@ -79,6 +79,10 @@ To run **bitvid** locally:
 
 ### Configuration
 
+- **`config/instance-config.js`**:
+  - Central place for instance-specific values like the Super Admin npub and the
+    default whitelist-only mode setting. Update the documented exports here when
+    preparing a new deployment.
 - **`config.js`**:
   - Toggle `isDevMode` for development (`true`) or production (`false`).
 - **`js/constants.js`**:
