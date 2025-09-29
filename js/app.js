@@ -13,6 +13,7 @@ import { trackVideoView } from "./analytics.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
+import { userBlocks } from "./userBlocks.js";
 import {
   loadR2Settings,
   saveR2Settings,
@@ -513,6 +514,8 @@ class bitvidApp {
     this.profileRelayList = null;
     this.profileBlockedList = null;
     this.profileBlockedEmpty = null;
+    this.profileBlockedInput = null;
+    this.profileAddBlockedBtn = null;
     this.profileRelayInput = null;
     this.profileAddRelayBtn = null;
     this.profileRestoreRelaysBtn = null;
@@ -913,7 +916,11 @@ class bitvidApp {
       const savedPubKey = localStorage.getItem("userPubKey");
       if (savedPubKey) {
         // Auto-login if a pubkey was saved
-        this.login(savedPubKey, false);
+        try {
+          await this.login(savedPubKey, false);
+        } catch (error) {
+          console.error("Auto-login failed:", error);
+        }
 
         // If the user was already logged in, show the Subscriptions link
         if (this.subscriptionsLink) {
@@ -3299,6 +3306,10 @@ class bitvidApp {
       this.profileBlockedList = document.getElementById("blockedList") || null;
       this.profileBlockedEmpty =
         document.getElementById("blockedEmpty") || null;
+      this.profileBlockedInput =
+        document.getElementById("blockedInput") || null;
+      this.profileAddBlockedBtn =
+        document.getElementById("addBlockedBtn") || null;
       this.profileRelayInput = document.getElementById("relayInput") || null;
       this.profileAddRelayBtn = document.getElementById("addRelayBtn") || null;
       this.profileRestoreRelaysBtn =
@@ -3385,6 +3396,28 @@ class bitvidApp {
         this.profileRestoreRelaysBtn.dataset.bound = "true";
         this.profileRestoreRelaysBtn.addEventListener("click", () => {
           this.showSuccess("Relay management coming soon.");
+        });
+      }
+
+      if (
+        this.profileAddBlockedBtn &&
+        this.profileAddBlockedBtn.dataset.bound !== "true"
+      ) {
+        this.profileAddBlockedBtn.dataset.bound = "true";
+        this.profileAddBlockedBtn.addEventListener("click", () => {
+          this.handleAddBlockedCreator();
+        });
+      }
+      if (
+        this.profileBlockedInput &&
+        this.profileBlockedInput.dataset.bound !== "true"
+      ) {
+        this.profileBlockedInput.dataset.bound = "true";
+        this.profileBlockedInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            this.handleAddBlockedCreator();
+          }
         });
       }
 
@@ -3554,6 +3587,11 @@ class bitvidApp {
 
     this.selectProfilePane("account");
     this.populateProfileRelays();
+    try {
+      await userBlocks.ensureLoaded(this.pubkey);
+    } catch (error) {
+      console.warn("Failed to refresh user block list while opening profile modal:", error);
+    }
     this.populateBlockedList();
 
     this.profileModal.classList.remove("hidden");
@@ -3755,15 +3793,88 @@ class bitvidApp {
     });
   }
 
-  populateBlockedList(blocked = []) {
+  populateBlockedList(blocked = null) {
     if (!this.profileBlockedList || !this.profileBlockedEmpty) {
       return;
     }
 
-    const entries = Array.isArray(blocked) ? blocked : [];
+    const sourceEntries =
+      Array.isArray(blocked) && blocked.length
+        ? blocked
+        : userBlocks.getBlockedPubkeys();
+
+    const normalizedEntries = [];
+    const pushEntry = (hex, label) => {
+      if (!hex || !label) {
+        return;
+      }
+      normalizedEntries.push({ hex, label });
+    };
+
+    sourceEntries.forEach((entry) => {
+      if (typeof entry === "string") {
+        const trimmed = entry.trim();
+        if (!trimmed) {
+          return;
+        }
+
+        if (trimmed.startsWith("npub1")) {
+          const decoded = this.safeDecodeNpub(trimmed);
+          if (!decoded) {
+            return;
+          }
+          const label = this.safeEncodeNpub(decoded) || trimmed;
+          pushEntry(decoded, label);
+          return;
+        }
+
+        if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+          const hex = trimmed.toLowerCase();
+          const label = this.safeEncodeNpub(hex) || hex;
+          pushEntry(hex, label);
+        }
+        return;
+      }
+
+      if (entry && typeof entry === "object") {
+        const candidateNpub =
+          typeof entry.npub === "string" ? entry.npub.trim() : "";
+        const candidateHex =
+          typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
+
+        if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
+          const normalizedHex = candidateHex.toLowerCase();
+          const label =
+            candidateNpub && candidateNpub.startsWith("npub1")
+              ? candidateNpub
+              : this.safeEncodeNpub(normalizedHex) || normalizedHex;
+          pushEntry(normalizedHex, label);
+          return;
+        }
+
+        if (candidateNpub && candidateNpub.startsWith("npub1")) {
+          const decoded = this.safeDecodeNpub(candidateNpub);
+          if (!decoded) {
+            return;
+          }
+          const label = this.safeEncodeNpub(decoded) || candidateNpub;
+          pushEntry(decoded, label);
+        }
+      }
+    });
+
+    const deduped = [];
+    const seenHex = new Set();
+    normalizedEntries.forEach((entry) => {
+      if (!seenHex.has(entry.hex)) {
+        seenHex.add(entry.hex);
+        deduped.push(entry);
+      }
+    });
+
     this.profileBlockedList.innerHTML = "";
 
-    if (!entries.length) {
+    if (!deduped.length) {
       this.profileBlockedEmpty.classList.remove("hidden");
       this.profileBlockedList.classList.add("hidden");
       return;
@@ -3772,47 +3883,153 @@ class bitvidApp {
     this.profileBlockedEmpty.classList.add("hidden");
     this.profileBlockedList.classList.remove("hidden");
 
-    entries.forEach((entry) => {
-      const identifier =
-        typeof entry === "string"
-          ? entry
-          : typeof entry?.npub === "string" && entry.npub
-          ? entry.npub
-          : typeof entry?.pubkey === "string"
-          ? entry.pubkey
-          : "";
-
-      if (!identifier) {
-        return;
-      }
-
+    deduped.forEach(({ hex, label }) => {
       const item = document.createElement("li");
       item.className =
         "flex items-center justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
 
-      const label = document.createElement("div");
-      label.className = "min-w-0";
+      const info = document.createElement("div");
+      info.className = "min-w-0";
 
       const title = document.createElement("p");
       title.className = "text-sm font-medium text-gray-100 break-all";
-      title.textContent = identifier;
+      title.textContent = label;
 
-      label.appendChild(title);
+      info.appendChild(title);
 
       const actionBtn = document.createElement("button");
       actionBtn.type = "button";
       actionBtn.className =
         "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
       actionBtn.textContent = "Remove";
+      actionBtn.dataset.blockedHex = hex;
       actionBtn.addEventListener("click", () => {
-        this.showSuccess("Block management coming soon.");
+        this.handleRemoveBlockedCreator(hex);
       });
 
-      item.appendChild(label);
+      item.appendChild(info);
       item.appendChild(actionBtn);
 
       this.profileBlockedList.appendChild(item);
     });
+  }
+
+  async handleAddBlockedCreator() {
+    if (!this.profileBlockedInput) {
+      return;
+    }
+
+    const rawValue = this.profileBlockedInput.value;
+    const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";
+
+    if (!trimmed) {
+      this.showError("Enter an npub to block.");
+      return;
+    }
+
+    if (!this.pubkey) {
+      this.showError("Please login to manage your block list.");
+      return;
+    }
+
+    const actorHex = this.pubkey;
+    let targetHex = "";
+
+    if (trimmed.startsWith("npub1")) {
+      targetHex = this.safeDecodeNpub(trimmed) || "";
+      if (!targetHex) {
+        this.showError("Invalid npub. Please double-check and try again.");
+        return;
+      }
+    } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+      targetHex = trimmed.toLowerCase();
+    } else {
+      this.showError("Enter a valid npub or hex pubkey.");
+      return;
+    }
+
+    if (targetHex === actorHex) {
+      this.showError("You cannot block yourself.");
+      return;
+    }
+
+    try {
+      await userBlocks.ensureLoaded(actorHex);
+
+      if (userBlocks.isBlocked(targetHex)) {
+        this.showSuccess("You already blocked this creator.");
+      } else {
+        await userBlocks.addBlock(targetHex, actorHex);
+        this.showSuccess(
+          "Creator blocked. You won't see their videos anymore."
+        );
+      }
+
+      this.profileBlockedInput.value = "";
+      this.populateBlockedList();
+      await this.loadVideos();
+    } catch (error) {
+      console.error("Failed to add creator to personal block list:", error);
+      const message =
+        error?.code === "nip04-missing"
+          ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : "Failed to update your block list. Please try again.";
+      this.showError(message);
+    }
+  }
+
+  async handleRemoveBlockedCreator(candidate) {
+    if (!this.pubkey) {
+      this.showError("Please login to manage your block list.");
+      return;
+    }
+
+    let targetHex = "";
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        return;
+      }
+
+      if (trimmed.startsWith("npub1")) {
+        targetHex = this.safeDecodeNpub(trimmed) || "";
+      } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+        targetHex = trimmed.toLowerCase();
+      }
+    }
+
+    if (!targetHex) {
+      console.warn("No valid pubkey to remove from block list:", candidate);
+      return;
+    }
+
+    try {
+      await userBlocks.ensureLoaded(this.pubkey);
+
+      if (!userBlocks.isBlocked(targetHex)) {
+        this.showSuccess("Creator already removed from your block list.");
+      } else {
+        await userBlocks.removeBlock(targetHex, this.pubkey);
+        this.showSuccess("Creator removed from your block list.");
+      }
+
+      this.populateBlockedList();
+      await this.loadVideos();
+    } catch (error) {
+      console.error(
+        "Failed to remove creator from personal block list:",
+        error
+      );
+      const message =
+        error?.code === "nip04-missing"
+          ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : "Failed to update your block list. Please try again.";
+      this.showError(message);
+    }
+  }
+
+  isAuthorBlocked(pubkey) {
+    return userBlocks.isBlocked(pubkey);
   }
 
   async refreshAdminPaneState() {
@@ -5037,6 +5254,14 @@ class bitvidApp {
 
     await this.refreshAdminPaneState();
 
+    try {
+      await userBlocks.loadBlocks(pubkey);
+    } catch (error) {
+      console.warn("Failed to load personal block list:", error);
+    }
+
+    this.populateBlockedList();
+
     // Hide login button if present
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
@@ -5081,6 +5306,9 @@ class bitvidApp {
     nostrClient.logout();
     this.pubkey = null;
     this.currentUserNpub = null;
+
+    userBlocks.reset();
+    this.populateBlockedList();
 
     // Show the login button again
     if (this.loginButton) {
@@ -5570,6 +5798,10 @@ class bitvidApp {
       }
 
       if (this.blacklistedEventIds.has(video.id)) {
+        return false;
+      }
+
+      if (this.isAuthorBlocked(video.pubkey)) {
         return false;
       }
 
@@ -6943,7 +7175,62 @@ class bitvidApp {
         break;
       }
       case "block-author": {
-        this.showSuccess("Block management coming soon.");
+        if (!this.pubkey) {
+          this.showError("Please login to manage your block list.");
+          break;
+        }
+
+        const authorCandidate =
+          dataset.author ||
+          (this.currentVideo && this.currentVideo.pubkey) ||
+          "";
+
+        const trimmed =
+          typeof authorCandidate === "string" ? authorCandidate.trim() : "";
+        if (!trimmed) {
+          this.showError("Unable to determine the creator to block.");
+          break;
+        }
+
+        let normalizedHex = "";
+        if (trimmed.startsWith("npub1")) {
+          normalizedHex = this.safeDecodeNpub(trimmed) || "";
+        } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+          normalizedHex = trimmed.toLowerCase();
+        }
+
+        if (!normalizedHex) {
+          this.showError("Unable to determine the creator to block.");
+          break;
+        }
+
+        if (normalizedHex === this.pubkey) {
+          this.showError("You cannot block yourself.");
+          break;
+        }
+
+        try {
+          await userBlocks.ensureLoaded(this.pubkey);
+
+          if (userBlocks.isBlocked(normalizedHex)) {
+            this.showSuccess("You already blocked this creator.");
+          } else {
+            await userBlocks.addBlock(normalizedHex, this.pubkey);
+            this.showSuccess(
+              "Creator blocked. You won't see their videos anymore."
+            );
+          }
+
+          this.populateBlockedList();
+          await this.loadVideos();
+        } catch (error) {
+          console.error("Failed to update personal block list:", error);
+          const message =
+            error?.code === "nip04-missing"
+              ? "Your Nostr extension must support NIP-04 to manage private lists."
+              : "Failed to update your block list. Please try again.";
+          this.showError(message);
+        }
         break;
       }
       case "report": {
@@ -8219,6 +8506,28 @@ class bitvidApp {
     } catch (err) {
       return null;
     }
+  }
+
+  safeDecodeNpub(npub) {
+    if (typeof npub !== "string") {
+      return null;
+    }
+
+    const trimmed = npub.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    try {
+      const decoded = window.NostrTools.nip19.decode(trimmed);
+      if (decoded.type === "npub" && typeof decoded.data === "string") {
+        return decoded.data;
+      }
+    } catch (err) {
+      return null;
+    }
+
+    return null;
   }
 
   /**
