@@ -593,7 +593,7 @@ class NostrClient {
   /**
    * Attempt login with a Nostr extension
    */
-  async login() {
+  async login(options = {}) {
     try {
       const extension = window.nostr;
       if (!extension) {
@@ -602,6 +602,13 @@ class NostrClient {
           "Please install a Nostr extension (Alby, nos2x, etc.)."
         );
       }
+
+      const { allowAccountSelection = false, expectPubkey } =
+        typeof options === "object" && options !== null ? options : {};
+      const normalizedExpectedPubkey =
+        typeof expectPubkey === "string" && expectPubkey.trim()
+          ? expectPubkey.trim().toLowerCase()
+          : null;
 
       if (typeof extension.getPublicKey !== "function") {
         throw new Error(
@@ -621,6 +628,30 @@ class NostrClient {
               ? enableErr.message
               : "The NIP-07 extension denied the permission request."
           );
+        }
+      }
+
+      if (allowAccountSelection && typeof extension.selectAccounts === "function") {
+        try {
+          const selection = await extension.selectAccounts(
+            expectPubkey ? [expectPubkey] : undefined
+          );
+
+          const didCancelSelection =
+            selection === undefined ||
+            selection === null ||
+            selection === false ||
+            (Array.isArray(selection) && selection.length === 0);
+
+          if (didCancelSelection) {
+            throw new Error("Account selection was cancelled.");
+          }
+        } catch (selectionErr) {
+          const message =
+            selectionErr && typeof selectionErr.message === "string"
+              ? selectionErr.message
+              : "Account selection was cancelled.";
+          throw new Error(message);
         }
       }
 
@@ -644,6 +675,15 @@ class NostrClient {
       if (!pubkey || typeof pubkey !== "string") {
         throw new Error(
           "The NIP-07 extension did not return a public key. Please try again."
+        );
+      }
+
+      if (
+        normalizedExpectedPubkey &&
+        pubkey.toLowerCase() !== normalizedExpectedPubkey
+      ) {
+        throw new Error(
+          "The selected account doesn't match the expected profile. Please try again."
         );
       }
       const npub = window.NostrTools.nip19.npubEncode(pubkey);
