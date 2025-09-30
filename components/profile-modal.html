@@ -291,8 +291,17 @@
                 Your recently watched videos appear here so you can jump back into favorites.
               </p>
               <div class="space-y-4">
-                <div id="profileHistoryLoading" class="flex justify-center py-6">
+                <div
+                  id="profileHistoryLoading"
+                  class="flex items-center justify-center gap-3 py-6"
+                >
                   <div class="h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <p
+                    id="profileHistoryStatus"
+                    class="text-sm text-gray-300 hidden"
+                    aria-live="polite"
+                    role="status"
+                  ></p>
                 </div>
                 <div
                   id="profileHistoryEmpty"

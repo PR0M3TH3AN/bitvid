@@ -3951,6 +3951,7 @@ class bitvidApp {
           viewSelector: "#profilePaneHistory",
           gridSelector: "#profileHistoryGrid",
           loadingSelector: "#profileHistoryLoading",
+          statusSelector: "#profileHistoryStatus",
           emptySelector: "#profileHistoryEmpty",
           sentinelSelector: "#profileHistorySentinel",
           scrollContainerSelector: "#profileHistoryScroll",
