@@ -89,6 +89,15 @@
               Blocked
             </button>
             <button
+              id="profileNavHistory"
+              type="button"
+              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              aria-controls="profilePaneHistory"
+              aria-selected="false"
+            >
+              Watch history
+            </button>
+            <button
               id="profileNavAdmin"
               type="button"
               class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 hidden"
@@ -271,6 +280,36 @@
                 You haven’t blocked any creators yet.
               </div>
               <ul id="blockedList" class="space-y-3"></ul>
+            </section>
+            <section
+              id="profilePaneHistory"
+              class="profile-pane hidden space-y-4"
+              role="tabpanel"
+              aria-labelledby="profileNavHistory"
+            >
+              <p class="text-sm text-gray-400">
+                Your recently watched videos appear here so you can jump back into favorites.
+              </p>
+              <div class="space-y-4">
+                <div id="profileHistoryLoading" class="flex justify-center py-6">
+                  <div class="h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+                <div
+                  id="profileHistoryEmpty"
+                  class="hidden rounded-lg border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"
+                >
+                  You haven’t watched any videos yet.
+                </div>
+                <div id="profileHistoryScroll" class="relative max-h-[420px] overflow-y-auto pr-1">
+                  <div
+                    id="profileHistoryGrid"
+                    class="hidden"
+                    role="list"
+                    style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem;"
+                  ></div>
+                  <div id="profileHistorySentinel" class="h-1 w-full"></div>
+                </div>
+              </div>
             </section>
             <section
               id="profilePaneAdmin"

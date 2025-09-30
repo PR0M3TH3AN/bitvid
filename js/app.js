@@ -41,6 +41,7 @@ import {
   ensureBucketCors,
 } from "./storage/r2-s3.js";
 import { initQuickR2Upload } from "./r2-quick.js";
+import { createWatchHistoryRenderer } from "./historyView.js";
 
 function truncateMiddle(text, maxLength = 72) {
   if (!text || typeof text !== "string") {
@@ -543,12 +544,14 @@ class bitvidApp {
       account: null,
       relays: null,
       blocked: null,
+      history: null,
       admin: null,
     };
     this.profilePaneElements = {
       account: null,
       relays: null,
       blocked: null,
+      history: null,
       admin: null,
     };
     this.profileRelayList = null;
@@ -559,6 +562,8 @@ class bitvidApp {
     this.profileRelayInput = null;
     this.profileAddRelayBtn = null;
     this.profileRestoreRelaysBtn = null;
+    this.profileHistoryRenderer = null;
+    this.activeProfilePane = null;
     this.adminModeratorInput = null;
     this.adminAddModeratorBtn = null;
     this.adminModeratorList = null;
@@ -3915,6 +3920,8 @@ class bitvidApp {
         document.getElementById("profileNavRelays") || null;
       this.profileNavButtons.blocked =
         document.getElementById("profileNavBlocked") || null;
+      this.profileNavButtons.history =
+        document.getElementById("profileNavHistory") || null;
       this.profileNavButtons.admin =
         document.getElementById("profileNavAdmin") || null;
       this.profilePaneElements.account =
@@ -3923,6 +3930,8 @@ class bitvidApp {
         document.getElementById("profilePaneRelays") || null;
       this.profilePaneElements.blocked =
         document.getElementById("profilePaneBlocked") || null;
+      this.profilePaneElements.history =
+        document.getElementById("profilePaneHistory") || null;
       this.profilePaneElements.admin =
         document.getElementById("profilePaneAdmin") || null;
       this.profileRelayList = document.getElementById("relayList") || null;
@@ -3937,6 +3946,21 @@ class bitvidApp {
       this.profileAddRelayBtn = document.getElementById("addRelayBtn") || null;
       this.profileRestoreRelaysBtn =
         document.getElementById("restoreRelaysBtn") || null;
+      if (!this.profileHistoryRenderer) {
+        this.profileHistoryRenderer = createWatchHistoryRenderer({
+          viewSelector: "#profilePaneHistory",
+          gridSelector: "#profileHistoryGrid",
+          loadingSelector: "#profileHistoryLoading",
+          emptySelector: "#profileHistoryEmpty",
+          sentinelSelector: "#profileHistorySentinel",
+          scrollContainerSelector: "#profileHistoryScroll",
+          emptyCopy: "You haven’t watched any videos yet.",
+          beforeInitialLoad: async () => {
+            const actor = this.pubkey || undefined;
+            await nostrClient.fetchWatchHistory(actor);
+          },
+        });
+      }
       this.adminModeratorsSection =
         document.getElementById("adminModeratorsSection") || null;
       this.adminModeratorsEmpty =
@@ -4138,6 +4162,7 @@ class bitvidApp {
 
   selectProfilePane(name = "account") {
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";
+    const previous = this.activeProfilePane;
     const availableKeys = Object.keys(this.profilePaneElements).filter((key) => {
       const pane = this.profilePaneElements[key];
       if (!(pane instanceof HTMLElement)) {
@@ -4156,6 +4181,14 @@ class bitvidApp {
     const target = availableKeys.includes(normalized)
       ? normalized
       : fallbackTarget;
+
+    if (previous === "history" && target !== "history") {
+      try {
+        this.profileHistoryRenderer?.pause();
+      } catch (error) {
+        console.warn("[profileModal] Failed to pause history renderer:", error);
+      }
+    }
 
     Object.entries(this.profilePaneElements).forEach(([key, pane]) => {
       if (!(pane instanceof HTMLElement)) {
@@ -4178,6 +4211,11 @@ class bitvidApp {
     });
 
     this.updateProfileModalFocusables();
+    this.activeProfilePane = target;
+
+    if (target === "history") {
+      void this.populateProfileWatchHistory();
+    }
   }
 
   updateProfileModalFocusables() {
@@ -4220,6 +4258,7 @@ class bitvidApp {
       console.error("Failed to refresh admin pane while opening profile modal:", error);
     }
 
+    this.activeProfilePane = null;
     this.selectProfilePane("account");
     this.populateProfileRelays();
     try {
@@ -4341,6 +4380,17 @@ class bitvidApp {
     }
 
     this.closeAllMoreMenus();
+
+    try {
+      this.profileHistoryRenderer?.destroy();
+    } catch (error) {
+      console.warn(
+        "[profileModal] Failed to reset watch history renderer on close:",
+        error
+      );
+    }
+
+    this.activeProfilePane = null;
 
     if (
       this.lastFocusedBeforeProfileModal &&
@@ -4547,6 +4597,22 @@ class bitvidApp {
 
       this.profileBlockedList.appendChild(item);
     });
+  }
+
+  async populateProfileWatchHistory() {
+    if (!this.profileHistoryRenderer) {
+      return;
+    }
+
+    try {
+      await this.profileHistoryRenderer.ensureInitialLoad();
+      this.profileHistoryRenderer.resume();
+    } catch (error) {
+      console.error(
+        "[profileModal] Failed to populate watch history pane:",
+        error
+      );
+    }
   }
 
   async handleAddProfile() {
