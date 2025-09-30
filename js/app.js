@@ -5572,6 +5572,12 @@ class bitvidApp {
   }
 
   attachVideoListHandler() {
+    const nextTarget = document;
+
+    if (this._videoListElement === nextTarget && this._videoListClickHandler) {
+      return;
+    }
+
     if (this._videoListElement && this._videoListClickHandler) {
       this._videoListElement.removeEventListener(
         "click",
@@ -5579,10 +5585,6 @@ class bitvidApp {
       );
       this._videoListElement = null;
       this._videoListClickHandler = null;
-    }
-
-    if (!this.videoList) {
-      return;
     }
 
     const handler = async (event) => {
@@ -5593,7 +5595,9 @@ class bitvidApp {
         return;
       }
 
-      if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
+      const isPrimaryClick =
+        typeof event.button !== "number" || event.button === 0;
+      if (isPrimaryClick && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
 
         const rawUrlValue =
@@ -5626,9 +5630,9 @@ class bitvidApp {
       }
     };
 
-    this._videoListElement = this.videoList;
+    nextTarget.addEventListener("click", handler);
+    this._videoListElement = nextTarget;
     this._videoListClickHandler = handler;
-    this.videoList.addEventListener("click", handler);
   }
 
   /**
