@@ -824,7 +824,7 @@ button:not(.icon-button):focus {
   top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 100;
+  z-index: 400; /* Keep notifications above the highest modal overlays */
   width: min(90vw, 32rem);
   display: flex;
   flex-direction: column;
