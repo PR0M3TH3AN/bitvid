@@ -3897,6 +3897,16 @@ class bitvidApp {
         });
       }
 
+      if (
+        this.profileAddAccountBtn &&
+        this.profileAddAccountBtn.dataset.bound !== "true"
+      ) {
+        this.profileAddAccountBtn.dataset.bound = "true";
+        this.profileAddAccountBtn.addEventListener("click", () => {
+          this.handleAddProfile();
+        });
+      }
+
       Object.entries(this.profileNavButtons).forEach(([name, button]) => {
         if (!button || button.dataset.navBound === "true") {
           return;
@@ -4438,6 +4448,119 @@ class bitvidApp {
 
       this.profileBlockedList.appendChild(item);
     });
+  }
+
+  async handleAddProfile() {
+    if (!this.profileAddAccountBtn) {
+      return;
+    }
+
+    const button = this.profileAddAccountBtn;
+    if (button.dataset.loading === "true") {
+      return;
+    }
+
+    const titleEl = button.querySelector(".profile-switcher__addTitle");
+    const hintEl = button.querySelector(".profile-switcher__addHint");
+    const originalTitle = titleEl ? titleEl.textContent : "";
+    const originalHint = hintEl ? hintEl.textContent : "";
+    const originalAriaLabel = button.getAttribute("aria-label");
+    const originalDisabled = button.disabled;
+
+    const setLoadingState = (isLoading) => {
+      button.disabled = isLoading ? true : originalDisabled;
+      button.dataset.loading = isLoading ? "true" : "false";
+      button.setAttribute("aria-busy", isLoading ? "true" : "false");
+      if (isLoading) {
+        button.setAttribute("aria-disabled", "true");
+      } else if (originalDisabled) {
+        button.setAttribute("aria-disabled", "true");
+      } else {
+        button.removeAttribute("aria-disabled");
+      }
+      if (isLoading) {
+        if (titleEl) {
+          titleEl.textContent = "Connecting...";
+        }
+        if (hintEl) {
+          hintEl.textContent = "Check your extension";
+        }
+        button.setAttribute(
+          "aria-label",
+          "Connecting to your Nostr extension"
+        );
+      } else {
+        if (titleEl) {
+          titleEl.textContent = originalTitle;
+        }
+        if (hintEl) {
+          hintEl.textContent = originalHint;
+        }
+        if (originalAriaLabel === null) {
+          button.removeAttribute("aria-label");
+        } else {
+          button.setAttribute("aria-label", originalAriaLabel);
+        }
+      }
+    };
+
+    setLoadingState(true);
+
+    try {
+      const pubkey = await nostrClient.login({
+        allowAccountSelection: true,
+      });
+
+      const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+      if (!normalizedPubkey) {
+        throw new Error(
+          "Received an invalid public key from the Nostr extension."
+        );
+      }
+
+      const alreadySaved = this.savedProfiles.some(
+        (entry) =>
+          this.normalizeHexPubkey(entry.pubkey) === normalizedPubkey
+      );
+      if (alreadySaved) {
+        this.showSuccess("That profile is already saved on this device.");
+        return;
+      }
+
+      const npub = this.safeEncodeNpub(normalizedPubkey) || "";
+      let profileMeta = this.getProfileCacheEntry(normalizedPubkey)?.profile;
+
+      if (!profileMeta) {
+        await this.loadOwnProfile(normalizedPubkey);
+        profileMeta = this.getProfileCacheEntry(normalizedPubkey)?.profile;
+      }
+
+      const name = profileMeta?.name || "";
+      const picture =
+        profileMeta?.picture || "assets/svg/default-profile.svg";
+
+      this.savedProfiles.push({
+        pubkey: normalizedPubkey,
+        npub,
+        name,
+        picture,
+        authType: "nip07",
+      });
+
+      this.persistSavedProfiles({ persistActive: false });
+      this.renderSavedProfiles();
+
+      this.showSuccess("Profile added. Select it when you're ready to switch.");
+    } catch (error) {
+      console.error("Failed to add profile via NIP-07:", error);
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Couldn't add that profile. Please try again.";
+      this.showError(message);
+    } finally {
+      setLoadingState(false);
+    }
   }
 
   async handleAddBlockedCreator() {
