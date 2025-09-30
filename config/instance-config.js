@@ -103,3 +103,13 @@ export const WATCH_HISTORY_PAYLOAD_MAX_BYTES = 60000;
  * so the UI can stitch the full list back together.
  */
 export const WATCH_HISTORY_FETCH_EVENT_LIMIT = 12;
+
+/**
+ * How long clients should cache watch-history snapshots in localStorage.
+ *
+ * A 24-hour window keeps recently played videos available across reloads
+ * without requiring a fresh relay sync on every visit. Increase the value for
+ * longer-lived caches or decrease it if your deployment needs tighter
+ * retention guarantees.
+ */
+export const WATCH_HISTORY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
