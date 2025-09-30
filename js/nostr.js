@@ -2675,3 +2675,9 @@ class NostrClient {
 }
 
 export const nostrClient = new NostrClient();
+
+export const recordVideoView = (...args) =>
+  nostrClient.recordVideoView(...args);
+
+export const updateWatchHistoryList = (...args) =>
+  nostrClient.updateWatchHistoryList(...args);

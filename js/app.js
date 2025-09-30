@@ -1,7 +1,11 @@
 // js/app.js
 
 import { loadView } from "./viewManager.js";
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  recordVideoView,
+  updateWatchHistoryList,
+} from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
 import { accessControl, normalizeNpub } from "./accessControl.js";
@@ -52,6 +56,30 @@ function truncateMiddle(text, maxLength = 72) {
   const front = Math.ceil(charsToShow / 2);
   const back = Math.floor(charsToShow / 2);
   return `${text.slice(0, front)}${ellipsis}${text.slice(text.length - back)}`;
+}
+
+function pointerArrayToKey(pointer) {
+  if (!Array.isArray(pointer) || pointer.length < 2) {
+    return "";
+  }
+
+  const type = pointer[0] === "a" ? "a" : pointer[0] === "e" ? "e" : "";
+  if (!type) {
+    return "";
+  }
+
+  const value =
+    typeof pointer[1] === "string" ? pointer[1].trim().toLowerCase() : "";
+  if (!value) {
+    return "";
+  }
+
+  const relay =
+    pointer.length > 2 && typeof pointer[2] === "string"
+      ? pointer[2].trim()
+      : "";
+
+  return relay ? `${type}:${value}:${relay}` : `${type}:${value}`;
 }
 
 /**
@@ -671,6 +699,10 @@ class bitvidApp {
     this.pubkey = null;
     this.currentMagnetUri = null;
     this.currentVideo = null;
+    this.currentVideoPointer = null;
+    this.currentVideoPointerKey = null;
+    this.playbackTelemetryState = null;
+    this.loggedViewPointerKeys = new Set();
     this.videoSubscription = null;
     this.videoList = null;
     this._videoListElement = null;
@@ -6261,6 +6293,7 @@ class bitvidApp {
         `[cleanup] Begin (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers})`
       );
       try {
+        this.cancelPendingViewLogging();
         this.clearActiveIntervals();
         this.cleanupUrlPlaybackWatchdog();
 
@@ -6355,6 +6388,209 @@ class bitvidApp {
       } finally {
         this.urlPlaybackWatchdogCleanup = null;
       }
+    }
+  }
+
+  cancelPendingViewLogging() {
+    const state = this.playbackTelemetryState;
+    if (!state) {
+      return;
+    }
+
+    if (state.timerId) {
+      clearTimeout(state.timerId);
+    }
+
+    if (Array.isArray(state.handlers) && state.videoEl) {
+      for (const { eventName, handler } of state.handlers) {
+        try {
+          state.videoEl.removeEventListener(eventName, handler);
+        } catch (err) {
+          if (isDevMode) {
+            console.warn(
+              `[cancelPendingViewLogging] Failed to detach ${eventName} listener:`,
+              err
+            );
+          }
+        }
+      }
+    }
+
+    this.playbackTelemetryState = null;
+  }
+
+  preparePlaybackViewLogging(videoEl) {
+    this.cancelPendingViewLogging();
+
+    if (!videoEl || typeof videoEl.addEventListener !== "function") {
+      return;
+    }
+
+    const pointer = this.currentVideoPointer;
+    const pointerKey = this.currentVideoPointerKey || pointerArrayToKey(pointer);
+    if (!pointer || !pointerKey) {
+      return;
+    }
+
+    if (this.loggedViewPointerKeys.has(pointerKey)) {
+      return;
+    }
+
+    const THRESHOLD_SECONDS = 12;
+    const state = {
+      videoEl,
+      pointer,
+      pointerKey,
+      handlers: [],
+      timerId: null,
+      fired: false,
+    };
+
+    const finalize = () => {
+      if (state.fired) {
+        return;
+      }
+      state.fired = true;
+      cancelTimer();
+      this.cancelPendingViewLogging();
+
+      const { pointer: thresholdPointer, pointerKey: thresholdPointerKey } =
+        state;
+
+      (async () => {
+        try {
+          const result = await recordVideoView(thresholdPointer);
+          const viewOk = !!result?.view?.ok;
+          if (viewOk) {
+            this.loggedViewPointerKeys.add(thresholdPointerKey);
+          } else if (isDevMode) {
+            console.warn(
+              "[playVideoWithFallback] View event rejected by relays:",
+              result?.view || result
+            );
+          }
+
+          let historyOk = !!result?.history?.ok;
+          if (!historyOk) {
+            if (isDevMode) {
+              console.warn(
+                "[playVideoWithFallback] Watch history update via recordVideoView failed; retrying.",
+                result?.history || result
+              );
+            }
+            const fallbackHistory = await updateWatchHistoryList(
+              thresholdPointer
+            );
+            historyOk = !!fallbackHistory?.ok;
+            if (!historyOk && isDevMode) {
+              console.warn(
+                "[playVideoWithFallback] Watch history retry failed:",
+                fallbackHistory
+              );
+            }
+          }
+
+          if (!viewOk && isDevMode && historyOk) {
+            console.warn(
+              "[playVideoWithFallback] Watch history updated but view event was rejected."
+            );
+          }
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              "[playVideoWithFallback] Exception while recording video view:",
+              error
+            );
+          }
+          try {
+            const fallbackHistory = await updateWatchHistoryList(
+              thresholdPointer
+            );
+            if (!fallbackHistory?.ok && isDevMode) {
+              console.warn(
+                "[playVideoWithFallback] Watch history retry after view exception failed:",
+                fallbackHistory
+              );
+            }
+          } catch (historyError) {
+            if (isDevMode) {
+              console.warn(
+                "[playVideoWithFallback] Exception while retrying watch history after view failure:",
+                historyError
+              );
+            }
+          }
+        }
+      })().catch((error) => {
+        if (isDevMode) {
+          console.warn(
+            "[playVideoWithFallback] Unexpected error while recording video view:",
+            error
+          );
+        }
+      });
+    };
+
+    const cancelTimer = () => {
+      if (state.timerId) {
+        clearTimeout(state.timerId);
+        state.timerId = null;
+      }
+    };
+
+    const scheduleTimer = () => {
+      if (state.fired) {
+        return;
+      }
+      const currentSeconds = Number.isFinite(videoEl.currentTime)
+        ? videoEl.currentTime
+        : 0;
+      const remainingMs = Math.max(
+        0,
+        Math.ceil((THRESHOLD_SECONDS - currentSeconds) * 1000)
+      );
+      if (remainingMs <= 0) {
+        finalize();
+        return;
+      }
+      state.timerId = window.setTimeout(finalize, remainingMs);
+    };
+
+    const registerHandler = (eventName, handler) => {
+      videoEl.addEventListener(eventName, handler);
+      state.handlers.push({ eventName, handler });
+    };
+
+    registerHandler("timeupdate", () => {
+      if (videoEl.currentTime >= THRESHOLD_SECONDS) {
+        finalize();
+      }
+    });
+
+    const cancelOnPause = () => {
+      if (!state.fired) {
+        cancelTimer();
+      }
+    };
+
+    ["pause", "waiting", "stalled", "ended", "emptied"].forEach((event) =>
+      registerHandler(event, cancelOnPause)
+    );
+
+    const resumeIfNeeded = () => {
+      if (!state.fired && !state.timerId) {
+        scheduleTimer();
+      }
+    };
+
+    ["play", "playing"].forEach((event) =>
+      registerHandler(event, resumeIfNeeded)
+    );
+
+    this.playbackTelemetryState = state;
+
+    if (!videoEl.paused && videoEl.currentTime > 0) {
+      resumeIfNeeded();
     }
   }
 
@@ -6774,6 +7010,7 @@ class bitvidApp {
    */
   async hideModal() {
     // 1) Clear intervals, cleanup, etc. (unchanged)
+    this.cancelPendingViewLogging();
     this.clearActiveIntervals();
 
     try {
@@ -8963,6 +9200,7 @@ class bitvidApp {
     // blank frame. Guard every playback entry point with waitForCleanup() so the
     // race never reappears.
     await this.waitForCleanup();
+    this.cancelPendingViewLogging();
 
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
@@ -9089,6 +9327,7 @@ class bitvidApp {
       this.resetTorrentStats();
       this.playSource = null;
       this.cleanupUrlPlaybackWatchdog();
+      this.preparePlaybackViewLogging(activeVideoEl);
 
       if (magnetForPlayback) {
         const label = playbackConfig.didMutate
@@ -9378,6 +9617,9 @@ class bitvidApp {
       return;
     }
 
+    this.currentVideoPointer = null;
+    this.currentVideoPointerKey = null;
+
     if (this.blacklistedEventIds.has(eventId)) {
       this.showError("This content has been removed or is not allowed.");
       return;
@@ -9446,6 +9688,44 @@ class bitvidApp {
       legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
       lightningAddress: null,
     };
+
+    const dTagValue = (this.extractDTagValue(video.tags) || "").trim();
+    const normalizedPubkey =
+      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
+    const primaryPointer =
+      dTagValue && normalizedPubkey
+        ? [
+            "a",
+            `${
+              typeof video.kind === "number" && Number.isFinite(video.kind)
+                ? video.kind
+                : 30078
+            }:${normalizedPubkey}:${dTagValue}`,
+          ]
+        : null;
+    const fallbackId =
+      typeof (video.id || eventId) === "string"
+        ? (video.id || eventId).trim()
+        : "";
+    const fallbackPointer =
+      !primaryPointer && fallbackId
+        ? ["e", fallbackId]
+        : null;
+
+    const resolvedPointer = primaryPointer || fallbackPointer;
+    const resolvedPointerKey = pointerArrayToKey(resolvedPointer);
+
+    this.currentVideoPointer = resolvedPointer && resolvedPointerKey
+      ? resolvedPointer
+      : null;
+    this.currentVideoPointerKey = this.currentVideoPointer
+      ? resolvedPointerKey
+      : null;
+
+    if (this.currentVideo) {
+      this.currentVideo.pointer = this.currentVideoPointer;
+      this.currentVideo.pointerKey = this.currentVideoPointerKey;
+    }
 
     this.syncModalMoreMenuData();
 
@@ -9525,6 +9805,9 @@ class bitvidApp {
     title = "Untitled",
     description = "",
   } = {}) {
+    this.currentVideoPointer = null;
+    this.currentVideoPointerKey = null;
+
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     const decodedMagnet = safeDecodeMagnet(trimmedMagnet);
@@ -9562,6 +9845,8 @@ class bitvidApp {
       originalMagnet: trimmedMagnet,
       torrentSupported: magnetSupported,
       lightningAddress: null,
+      pointer: null,
+      pointerKey: null,
     };
 
     this.syncModalMoreMenuData();
