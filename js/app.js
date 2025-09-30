@@ -663,6 +663,9 @@ class bitvidApp {
     // Notification containers
     this.errorContainer = document.getElementById("errorContainer") || null;
     this.successContainer = document.getElementById("successContainer") || null;
+    this.statusContainer = document.getElementById("statusContainer") || null;
+    this.statusMessage =
+      this.statusContainer?.querySelector("[data-status-message]") || null;
 
     // Auth state
     this.pubkey = null;
@@ -1201,6 +1204,15 @@ class bitvidApp {
         await accessControl.refresh();
       } catch (error) {
         console.warn("Failed to refresh admin lists after connecting to Nostr:", error);
+      }
+
+      try {
+        await this.refreshAdminPaneState();
+      } catch (error) {
+        console.warn(
+          "Failed to update admin pane after connecting to Nostr:",
+          error
+        );
       }
 
       // Grab the "Subscriptions" link by its id in the sidebar
@@ -4742,6 +4754,7 @@ class bitvidApp {
 
     let loadError = null;
     this.setAdminLoading(true);
+    this.showStatus("Fetching moderation filters…");
     try {
       await accessControl.ensureReady();
     } catch (error) {
@@ -4765,12 +4778,14 @@ class bitvidApp {
     }
 
     if (loadError) {
+      if (loadError?.code === "nostr-unavailable") {
+        console.info("Moderation lists are still syncing with relays.");
+        return;
+      }
+
       console.error("Failed to load admin lists:", loadError);
-      const message =
-        loadError?.code === "nostr-unavailable"
-          ? "Unable to reach Nostr relays. Moderation lists may be out of date."
-          : "Unable to load moderation lists. Please try again.";
-      this.showError(message);
+      this.showStatus(null);
+      this.showError("Unable to load moderation lists. Please try again.");
       this.clearAdminLists();
       this.setAdminLoading(false);
       return;
@@ -4784,6 +4799,7 @@ class bitvidApp {
       if (adminNav instanceof HTMLElement && adminNav.classList.contains("bg-gray-800")) {
         this.selectProfilePane("account");
       }
+      this.showStatus(null);
       this.setAdminLoading(false);
       return;
     }
@@ -4793,6 +4809,7 @@ class bitvidApp {
       this.adminModeratorsSection.setAttribute("aria-hidden", (!isSuperAdmin).toString());
     }
     this.populateAdminLists();
+    this.showStatus(null);
     this.setAdminLoading(false);
   }
 
@@ -9771,6 +9788,27 @@ class bitvidApp {
       this.errorContainer.textContent = "";
       this.errorContainer.classList.add("hidden");
     }, 5000);
+  }
+
+  showStatus(msg) {
+    if (!(this.statusContainer instanceof HTMLElement)) {
+      return;
+    }
+
+    if (!msg) {
+      if (this.statusMessage instanceof HTMLElement) {
+        this.statusMessage.textContent = "";
+      }
+      this.statusContainer.classList.add("hidden");
+      return;
+    }
+
+    if (this.statusMessage instanceof HTMLElement) {
+      this.statusMessage.textContent = msg;
+    } else {
+      this.statusContainer.textContent = msg;
+    }
+    this.statusContainer.classList.remove("hidden");
   }
 
   showSuccess(msg) {
