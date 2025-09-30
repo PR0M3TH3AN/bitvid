@@ -305,7 +305,14 @@ export function createWatchHistoryRenderer(config = {}) {
       }
 
       if (!state.resolvedVideos.length && !state.isLoading) {
+        if (!state.hasMore) {
+          state.hasMore = true;
+        }
         await loadNextBatch({ initial: true });
+
+        if (state.hasMore && !state.observer && !state.scrollListener) {
+          attachObservers();
+        }
       }
     },
     async loadMore() {
