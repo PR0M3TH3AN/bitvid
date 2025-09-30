@@ -2579,19 +2579,46 @@ class NostrClient {
       ? Math.max(1, normalizedBatchSize)
       : 1;
 
-    const classifyWatchHistoryPointer = (pointer) => {
+    const classifyWatchHistoryPointer = (pointer, ownerPubkey) => {
       if (!pointer || pointer.type !== "a") {
         return "none";
       }
-      const [kindStr, pubkey, identifier] = pointer.value.split(":");
+      const value =
+        typeof pointer.value === "string" ? pointer.value.trim() : "";
+      if (!value) {
+        return "none";
+      }
+      const parts = value.split(":");
+      if (parts.length < 3) {
+        return "none";
+      }
+      const [kindStr, pubkeyRaw, ...identifierParts] = parts;
       const kind = Number.parseInt(kindStr, 10);
       if (!Number.isFinite(kind) || kind !== WATCH_HISTORY_KIND) {
         return "none";
       }
-      if (identifier === WATCH_HISTORY_LIST_IDENTIFIER) {
+      const identifier = identifierParts.join(":");
+      const normalizedIdentifier =
+        typeof identifier === "string" ? identifier.trim() : "";
+      if (!normalizedIdentifier) {
+        return "none";
+      }
+      const normalizedIdentifierLower = normalizedIdentifier.toLowerCase();
+      if (normalizedIdentifierLower === WATCH_HISTORY_LIST_IDENTIFIER) {
         return "head";
       }
-      if (typeof identifier === "string" && identifier) {
+      if (!normalizedIdentifierLower.startsWith("watch-history:")) {
+        return "none";
+      }
+      const normalizedOwner =
+        typeof ownerPubkey === "string" && ownerPubkey.trim()
+          ? ownerPubkey.trim().toLowerCase()
+          : "";
+      const normalizedPubkey =
+        typeof pubkeyRaw === "string" && pubkeyRaw.trim()
+          ? pubkeyRaw.trim().toLowerCase()
+          : "";
+      if (!normalizedOwner || !normalizedPubkey || normalizedOwner === normalizedPubkey) {
         return "chunk";
       }
       return "none";
@@ -2628,7 +2655,7 @@ class NostrClient {
       if (!pointer) {
         continue;
       }
-      const pointerType = classifyWatchHistoryPointer(pointer);
+      const pointerType = classifyWatchHistoryPointer(pointer, actor);
       if (pointerType === "head") {
         addPointerToMap(pointer, headPointerMap);
         continue;
@@ -2776,7 +2803,7 @@ class NostrClient {
       if (!key) {
         continue;
       }
-      const pointerType = classifyWatchHistoryPointer(pointer);
+      const pointerType = classifyWatchHistoryPointer(pointer, actor);
       const event = pointerMatches.get(key);
       if (pointerType === "chunk" || pointerType === "head") {
         if (event) {

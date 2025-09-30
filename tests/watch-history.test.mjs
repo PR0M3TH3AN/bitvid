@@ -398,6 +398,81 @@ try {
 
 localStorage.clear();
 
+const VIDEO_POINTER_AUTHOR = `${ACTOR}-video-author`;
+const VIDEO_POINTER_IDENTIFIER = "pointer-video-identifier";
+const videoPointer = {
+  type: "a",
+  value: `${WATCH_HISTORY_KIND}:${VIDEO_POINTER_AUTHOR}:${VIDEO_POINTER_IDENTIFIER}`,
+  relay: null,
+};
+
+const pointerClient = createDecryptClient(ACTOR);
+const pointerEntry = pointerClient.createWatchHistoryEntry(
+  null,
+  [videoPointer],
+  Date.now()
+);
+pointerClient.watchHistoryCache.set(ACTOR, pointerEntry);
+pointerClient.fetchWatchHistory = async () => {};
+
+const observedResolveFilters = [];
+const videoEvent = {
+  id: "video-pointer-event",
+  kind: WATCH_HISTORY_KIND,
+  pubkey: VIDEO_POINTER_AUTHOR,
+  created_at: 1_700_555_000,
+  tags: [["d", VIDEO_POINTER_IDENTIFIER]],
+  content: JSON.stringify({
+    version: 3,
+    title: "Pointer Video",
+    url: "https://cdn.example.com/video.mp4",
+  }),
+};
+
+pointerClient.pool = {
+  list: async (_relays, filters) => {
+    observedResolveFilters.push(filters);
+    return [videoEvent];
+  },
+};
+
+const resolvedFromPointer = await pointerClient.resolveWatchHistory(1);
+
+assert.equal(
+  resolvedFromPointer.length,
+  1,
+  "resolveWatchHistory should return results for 'a' style video pointers"
+);
+assert.equal(
+  resolvedFromPointer[0].id,
+  videoEvent.id,
+  "resolved video should match the pointer event id"
+);
+assert.equal(
+  resolvedFromPointer[0].title,
+  "Pointer Video",
+  "resolved video should parse title from the event payload"
+);
+
+const pointerKey = `a:${videoPointer.value.trim().toLowerCase()}`;
+const cachedEntry = pointerClient.watchHistoryCache.get(ACTOR);
+assert(cachedEntry.resolved.has(pointerKey), "resolved cache should retain the video");
+assert.equal(
+  cachedEntry.resolved.get(pointerKey)?.id,
+  videoEvent.id,
+  "resolved cache should store the converted video result"
+);
+
+assert(
+  observedResolveFilters.some((filters) =>
+    filters.some((filter) =>
+      Array.isArray(filter?.["#d"]) &&
+      filter["#d"].includes(VIDEO_POINTER_IDENTIFIER)
+    )
+  ),
+  "resolveWatchHistory should request the video identifier instead of treating it as a chunk"
+);
+
 const originalDateNow = Date.now;
 try {
   const baseTime = 1_700_000_000_000;
