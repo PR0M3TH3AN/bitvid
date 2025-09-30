@@ -1090,6 +1090,31 @@ class NostrClient {
       }
     }
 
+    const previousChunkPointers = previousEntry?.chunkPointers;
+    const headPointer = previousChunkPointers?.head
+      ? clonePointerItem(previousChunkPointers.head)
+      : null;
+    const chunkPointerList = Array.isArray(previousChunkPointers?.chunks)
+      ? previousChunkPointers.chunks
+          .map((pointer) => clonePointerItem(pointer))
+          .filter(Boolean)
+      : [];
+
+    entry.chunkPointers = {
+      head: headPointer,
+      chunks: chunkPointerList,
+    };
+
+    entry.chunkEvents = new Map();
+    if (previousEntry?.chunkEvents instanceof Map) {
+      for (const [key, value] of previousEntry.chunkEvents.entries()) {
+        const clonedEvent = cloneEventForCache(value);
+        if (clonedEvent) {
+          entry.chunkEvents.set(key, clonedEvent);
+        }
+      }
+    }
+
     return entry;
   }
 
@@ -1528,6 +1553,14 @@ class NostrClient {
     }
 
     const totalChunks = chunkItemsList.length || 1;
+    const chunkIdentifiers = chunkItemsList.map((_, index) =>
+      index === 0
+        ? WATCH_HISTORY_LIST_IDENTIFIER
+        : `watch-history:${snapshotId}:${index}`
+    );
+    const chunkAddresses = chunkIdentifiers.map(
+      (identifier) => `${WATCH_HISTORY_KIND}:${normalizedActor}:${identifier}`
+    );
 
     const nowSeconds = Math.floor(Date.now() / 1000);
     let lastCreatedAt = 0;
@@ -1593,8 +1626,10 @@ class NostrClient {
         return tag;
       });
 
+      const chunkIdentifier = chunkIdentifiers[index] || WATCH_HISTORY_LIST_IDENTIFIER;
+
       const tags = [
-        ["d", WATCH_HISTORY_LIST_IDENTIFIER],
+        ["d", chunkIdentifier],
         ["encrypted", "nip04"],
         ["snapshot", snapshotId],
         ["chunk", String(index), String(totalChunks)],
@@ -1602,6 +1637,14 @@ class NostrClient {
       ];
       if (index === 0) {
         tags.splice(2, 0, ["head", "1"]);
+        const pointerTagsForChunks = chunkAddresses
+          .map((address) =>
+            typeof address === "string" && address
+              ? ["a", address]
+              : null
+          )
+          .filter(Boolean);
+        tags.push(...pointerTagsForChunks);
       }
 
       // Ensure created_at stays monotonic so chunk 0 always outranks prior snapshots
@@ -2047,7 +2090,7 @@ class NostrClient {
       limit: fetchLimit,
     };
 
-    let fetchedEvents = [];
+    let fetchedHeadEvents = [];
     try {
       const events = await this.pool.list(relayList, [filter]);
       if (Array.isArray(events)) {
@@ -2069,13 +2112,121 @@ class NostrClient {
             dedupe.set(id, evt);
           }
         }
-        fetchedEvents = Array.from(dedupe.values());
+        fetchedHeadEvents = Array.from(dedupe.values());
       }
     } catch (error) {
       if (isDevMode) {
         console.warn("[nostr] Failed to fetch watch history list:", error);
       }
     }
+
+    fetchedHeadEvents.sort((a, b) => {
+      const aCreated = typeof a?.created_at === "number" ? a.created_at : 0;
+      const bCreated = typeof b?.created_at === "number" ? b.created_at : 0;
+      return bCreated - aCreated;
+    });
+
+    const chunkIdentifiers = new Set();
+    const snapshotIds = new Set();
+
+    for (const event of fetchedHeadEvents) {
+      if (!event || typeof event !== "object") {
+        continue;
+      }
+
+      const tags = Array.isArray(event.tags) ? event.tags : [];
+      for (const tag of tags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+        if (tag[0] === "snapshot" && typeof tag[1] === "string" && tag[1]) {
+          snapshotIds.add(tag[1]);
+        } else if (tag[0] === "a") {
+          const pointer = normalizePointerTag(tag);
+          if (pointer?.type === "a") {
+            const [kindStr, pubkey, identifier] = pointer.value.split(":");
+            const kind = Number.parseInt(kindStr, 10);
+            if (
+              Number.isFinite(kind) &&
+              kind === WATCH_HISTORY_KIND &&
+              typeof pubkey === "string" &&
+              pubkey === actor &&
+              typeof identifier === "string" &&
+              identifier &&
+              identifier !== WATCH_HISTORY_LIST_IDENTIFIER
+            ) {
+              chunkIdentifiers.add(identifier);
+            }
+          }
+        }
+      }
+    }
+
+    const chunkFilters = [];
+    const chunkFetchLimit = Math.max(
+      fetchLimit,
+      chunkIdentifiers.size ? chunkIdentifiers.size + 1 : 0,
+      snapshotIds.size ? snapshotIds.size * 2 : 0
+    );
+
+    if (chunkIdentifiers.size) {
+      chunkFilters.push({
+        kinds: [WATCH_HISTORY_KIND],
+        authors: [actor],
+        "#d": Array.from(chunkIdentifiers),
+        limit: chunkFetchLimit,
+      });
+    }
+
+    if (snapshotIds.size) {
+      chunkFilters.push({
+        kinds: [WATCH_HISTORY_KIND],
+        authors: [actor],
+        "#snapshot": Array.from(snapshotIds),
+        limit: chunkFetchLimit,
+      });
+    }
+
+    let fetchedChunkEvents = [];
+    if (chunkFilters.length) {
+      try {
+        const events = await this.pool.list(relayList, chunkFilters);
+        if (Array.isArray(events)) {
+          fetchedChunkEvents = events;
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to fetch watch history chunks:",
+            error
+          );
+        }
+      }
+    }
+
+    const eventDedupe = new Map();
+    const registerEvent = (evt) => {
+      if (!evt || typeof evt !== "object") {
+        return;
+      }
+      const id = typeof evt.id === "string" ? evt.id : null;
+      if (!id) {
+        return;
+      }
+      const existing = eventDedupe.get(id);
+      if (
+        !existing ||
+        (typeof evt.created_at === "number" ? evt.created_at : 0) >
+          (typeof existing.created_at === "number" ? existing.created_at : 0)
+      ) {
+        eventDedupe.set(id, evt);
+      }
+    };
+
+    fetchedHeadEvents.forEach(registerEvent);
+    fetchedChunkEvents.forEach(registerEvent);
+
+    const fetchedEvents = Array.from(eventDedupe.values());
 
     fetchedEvents.sort((a, b) => {
       const aCreated = typeof a?.created_at === "number" ? a.created_at : 0;
@@ -2274,6 +2425,85 @@ class NostrClient {
       previousEntry
     );
 
+    if (!(entry.chunkEvents instanceof Map)) {
+      entry.chunkEvents = new Map();
+    } else {
+      entry.chunkEvents.clear();
+    }
+
+    const chunkPointerItemsForEntry = [];
+    let headPointerForEntry = null;
+    const chunkPointerKeys = new Set();
+
+    if (effectiveSnapshot?.snapshotId) {
+      const bucketForEntry = snapshotMap.get(effectiveSnapshot.snapshotId);
+      if (bucketForEntry) {
+        const chunkEntries = Array.from(bucketForEntry.chunks.values()).sort(
+          (a, b) => a.payload.chunkIndex - b.payload.chunkIndex
+        );
+        for (const chunk of chunkEntries) {
+          if (!chunk?.event) {
+            continue;
+          }
+          const addressValue = eventToAddressPointer(chunk.event);
+          if (!addressValue) {
+            continue;
+          }
+          const pointer = clonePointerItem({
+            type: "a",
+            value: addressValue,
+            relay: null,
+          });
+          if (!pointer) {
+            continue;
+          }
+          const key = pointerKey(pointer);
+          if (!key) {
+            continue;
+          }
+          const clonedChunkEvent = cloneEventForCache(chunk.event);
+          if (clonedChunkEvent) {
+            entry.chunkEvents.set(key, clonedChunkEvent);
+          }
+          chunkPointerKeys.add(key);
+          if (chunk.payload?.chunkIndex === 0) {
+            headPointerForEntry = pointer;
+          } else {
+            chunkPointerItemsForEntry.push(pointer);
+          }
+        }
+      }
+    }
+
+    entry.chunkPointers = {
+      head: headPointerForEntry,
+      chunks: chunkPointerItemsForEntry,
+    };
+
+    const headPointerKey = headPointerForEntry ? pointerKey(headPointerForEntry) : "";
+    if (headPointerKey) {
+      chunkPointerKeys.add(headPointerKey);
+      if (entry.pointerEvent) {
+        entry.chunkEvents.set(headPointerKey, cloneEventForCache(entry.pointerEvent));
+      }
+    }
+
+    for (const key of Array.from(entry.resolved.keys())) {
+      if (!key || !key.startsWith("a:")) {
+        continue;
+      }
+      if (!chunkPointerKeys.has(key)) {
+        entry.resolved.delete(key);
+      }
+    }
+
+    for (const key of chunkPointerKeys) {
+      const eventForKey = entry.chunkEvents.get(key);
+      if (eventForKey) {
+        entry.resolved.set(key, cloneEventForCache(eventForKey));
+      }
+    }
+
     this.watchHistoryCache.set(actor, entry);
     this.persistWatchHistoryEntry(actor, entry);
 
@@ -2320,7 +2550,87 @@ class NostrClient {
       ? Math.max(1, normalizedBatchSize)
       : 1;
 
-    const available = entry.items.filter((item) => {
+    const classifyWatchHistoryPointer = (pointer) => {
+      if (!pointer || pointer.type !== "a") {
+        return "none";
+      }
+      const [kindStr, pubkey, identifier] = pointer.value.split(":");
+      const kind = Number.parseInt(kindStr, 10);
+      if (!Number.isFinite(kind) || kind !== WATCH_HISTORY_KIND) {
+        return "none";
+      }
+      if (identifier === WATCH_HISTORY_LIST_IDENTIFIER) {
+        return "head";
+      }
+      if (typeof identifier === "string" && identifier) {
+        return "chunk";
+      }
+      return "none";
+    };
+
+    const addPointerToMap = (pointer, map) => {
+      const normalized = clonePointerItem(pointer);
+      if (!normalized) {
+        return null;
+      }
+      const key = pointerKey(normalized);
+      if (!key) {
+        return null;
+      }
+      map.set(key, normalized);
+      return normalized;
+    };
+
+    const headPointerMap = new Map();
+    const chunkPointerMap = new Map();
+    const videoCandidates = [];
+
+    if (entry.chunkPointers?.head) {
+      addPointerToMap(entry.chunkPointers.head, headPointerMap);
+    }
+    if (Array.isArray(entry.chunkPointers?.chunks)) {
+      for (const chunkPointer of entry.chunkPointers.chunks) {
+        addPointerToMap(chunkPointer, chunkPointerMap);
+      }
+    }
+
+    for (const item of entry.items) {
+      const pointer = clonePointerItem(item);
+      if (!pointer) {
+        continue;
+      }
+      const pointerType = classifyWatchHistoryPointer(pointer);
+      if (pointerType === "head") {
+        addPointerToMap(pointer, headPointerMap);
+        continue;
+      }
+      if (pointerType === "chunk") {
+        addPointerToMap(pointer, chunkPointerMap);
+        continue;
+      }
+      videoCandidates.push(pointer);
+    }
+
+    const pointerEventClone = entry.pointerEvent
+      ? cloneEventForCache(entry.pointerEvent)
+      : null;
+    for (const pointer of headPointerMap.values()) {
+      const key = pointerKey(pointer);
+      if (!key) {
+        continue;
+      }
+      if (pointerEventClone) {
+        entry.resolved.set(key, pointerEventClone);
+        if (entry.chunkEvents instanceof Map) {
+          entry.chunkEvents.set(key, pointerEventClone);
+        }
+      } else if (!entry.resolved.has(key)) {
+        entry.resolved.set(key, null);
+      }
+      entry.resolving.delete(key);
+    }
+
+    const available = videoCandidates.filter((item) => {
       const key = pointerKey(item);
       if (!key) {
         return false;
@@ -2334,12 +2644,43 @@ class NostrClient {
       return true;
     });
 
-    const batch = available.slice(0, effectiveBatchSize);
+    const chunkAvailable = [];
+    for (const [key, pointer] of chunkPointerMap.entries()) {
+      if (!key) {
+        continue;
+      }
+      if (entry.resolved.has(key)) {
+        continue;
+      }
+      if (entry.resolving.has(key)) {
+        continue;
+      }
+      const cachedChunk = entry.chunkEvents?.get?.(key);
+      if (cachedChunk) {
+        const cloned = cloneEventForCache(cachedChunk);
+        if (cloned) {
+          entry.chunkEvents.set(key, cloned);
+          entry.resolved.set(key, cloned);
+        } else {
+          entry.resolved.set(key, cachedChunk);
+        }
+        continue;
+      }
+      chunkAvailable.push(pointer);
+    }
+
+    const videoBatch = available.slice(0, effectiveBatchSize);
+    const batch = [...videoBatch, ...chunkAvailable];
     if (!batch.length) {
       return [];
     }
 
-    batch.forEach((item) => entry.resolving.add(pointerKey(item)));
+    batch.forEach((item) => {
+      const key = pointerKey(item);
+      if (key) {
+        entry.resolving.add(key);
+      }
+    });
 
     const relaySet = new Set(
       Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS
@@ -2403,7 +2744,24 @@ class NostrClient {
 
     for (const pointer of batch) {
       const key = pointerKey(pointer);
+      if (!key) {
+        continue;
+      }
+      const pointerType = classifyWatchHistoryPointer(pointer);
       const event = pointerMatches.get(key);
+      if (pointerType === "chunk" || pointerType === "head") {
+        if (event) {
+          const cloned = cloneEventForCache(event) || event;
+          if (!entry.chunkEvents) {
+            entry.chunkEvents = new Map();
+          }
+          entry.chunkEvents.set(key, cloned);
+          entry.resolved.set(key, cloned);
+        }
+        entry.resolving.delete(key);
+        continue;
+      }
+
       if (event) {
         try {
           const video = convertEventToVideo(event);

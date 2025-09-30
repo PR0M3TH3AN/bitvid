@@ -1,6 +1,11 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 
+const {
+  WATCH_HISTORY_LIST_IDENTIFIER,
+  WATCH_HISTORY_KIND,
+} = await import("../js/config.js");
+
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
 }
@@ -117,6 +122,60 @@ const headTag = publishResult.event.tags.find(
 );
 assert(headTag, "head chunk should include head tag");
 
+const chunkIdentifiers = publishResult.events.map((event) =>
+  event.tags.find((tag) => Array.isArray(tag) && tag[0] === "d")?.[1]
+);
+
+assert.equal(
+  chunkIdentifiers.length,
+  publishResult.events.length,
+  "each chunk should expose a d tag"
+);
+
+assert.equal(
+  chunkIdentifiers[0],
+  WATCH_HISTORY_LIST_IDENTIFIER,
+  "head chunk should retain canonical watch history identifier"
+);
+
+const uniqueChunkIdentifiers = new Set(chunkIdentifiers);
+assert.equal(
+  uniqueChunkIdentifiers.size,
+  publishResult.events.length,
+  "each chunk should have a unique d tag"
+);
+
+chunkIdentifiers.slice(1).forEach((identifier, index) => {
+  assert(
+    identifier && identifier.startsWith("watch-history:"),
+    `chunk ${index + 1} should use a watch-history namespace identifier`
+  );
+  assert.notEqual(
+    identifier,
+    WATCH_HISTORY_LIST_IDENTIFIER,
+    "only the head chunk should use the canonical identifier"
+  );
+});
+
+const headATags = publishResult.event.tags
+  .filter((tag) => Array.isArray(tag) && tag[0] === "a")
+  .map((tag) => tag[1]);
+
+const expectedChunkAddresses = publishResult.events.map((event) => {
+  const identifier = event.tags.find(
+    (tag) => Array.isArray(tag) && tag[0] === "d"
+  )?.[1];
+  assert(identifier, "chunk should include identifier tag");
+  return `${WATCH_HISTORY_KIND}:${ACTOR}:${identifier}`;
+});
+
+expectedChunkAddresses.forEach((address) => {
+  assert(
+    headATags.includes(address),
+    `head chunk should reference ${address}`
+  );
+});
+
 delete globalThis.window.nostr;
 
 if (!globalThis.window.NostrTools.nip04) {
@@ -156,6 +215,117 @@ assert.deepEqual(
     relay: item.relay || null,
   })),
   "chunked fetch should preserve pointer order"
+);
+
+if (typeof localStorage !== "undefined") {
+  localStorage.clear();
+}
+
+const headEvent = publishResult.event;
+const chunkEvents = publishResult.events.filter(
+  (event) => event.id !== headEvent.id
+);
+
+const snapshotId = headEvent.tags.find(
+  (tag) => Array.isArray(tag) && tag[0] === "snapshot"
+)?.[1];
+
+const freshClient = createDecryptClient(ACTOR);
+freshClient.relays = ["wss://unit.test"];
+freshClient.watchHistoryFetchEventLimit = 10;
+
+const observedFilters = [];
+freshClient.pool = {
+  list: async (_relays, filters) => {
+    observedFilters.push(filters);
+
+    const firstFilter = filters[0] || {};
+    const dFilter = Array.isArray(firstFilter["#d"])
+      ? firstFilter["#d"]
+      : [];
+
+    if (filters.length === 1 && dFilter.includes(WATCH_HISTORY_LIST_IDENTIFIER)) {
+      return [headEvent];
+    }
+
+    const requestedIdentifiers = new Set();
+    const requestedSnapshots = new Set();
+
+    for (const filter of filters) {
+      if (Array.isArray(filter?.["#d"])) {
+        for (const identifier of filter["#d"]) {
+          requestedIdentifiers.add(identifier);
+        }
+      }
+      if (Array.isArray(filter?.["#snapshot"])) {
+        for (const value of filter["#snapshot"]) {
+          requestedSnapshots.add(value);
+        }
+      }
+    }
+
+    const responses = [];
+
+    for (const event of publishResult.events) {
+      const identifier = event.tags.find(
+        (tag) => Array.isArray(tag) && tag[0] === "d"
+      )?.[1];
+      const eventSnapshot = event.tags.find(
+        (tag) => Array.isArray(tag) && tag[0] === "snapshot"
+      )?.[1];
+
+      if (identifier && requestedIdentifiers.has(identifier)) {
+        responses.push(event);
+        continue;
+      }
+      if (eventSnapshot && requestedSnapshots.has(eventSnapshot)) {
+        responses.push(event);
+      }
+    }
+
+    return responses;
+  },
+};
+
+const rebuilt = await freshClient.fetchWatchHistory(ACTOR);
+
+assert.equal(
+  rebuilt.items.length,
+  longPointers.length,
+  "fresh client should rebuild full watch history list"
+);
+
+assert(
+  observedFilters.length >= 2,
+  "fetch should include a follow-up query for chunk events"
+);
+
+const followUpFilters = observedFilters[observedFilters.length - 1];
+const identifiersRequested = new Set();
+let snapshotRequested = false;
+
+for (const filter of followUpFilters) {
+  if (Array.isArray(filter?.["#d"])) {
+    for (const identifier of filter["#d"]) {
+      identifiersRequested.add(identifier);
+    }
+  }
+  if (Array.isArray(filter?.["#snapshot"])) {
+    snapshotRequested = snapshotRequested || filter["#snapshot"].includes(snapshotId);
+  }
+}
+
+assert(
+  chunkEvents.every((event) => {
+    const identifier = event.tags.find(
+      (tag) => Array.isArray(tag) && tag[0] === "d"
+    )?.[1];
+    return (
+      identifiersRequested.has(identifier) ||
+      (snapshotId && snapshotRequested)
+    );
+  }),
+  "follow-up query should target chunk identifiers or snapshot"
 );
 
 const MONOTONIC_ACTOR = `${ACTOR}-monotonic`;
