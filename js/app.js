@@ -1204,6 +1204,15 @@ class bitvidApp {
         console.warn("Failed to refresh admin lists after connecting to Nostr:", error);
       }
 
+      try {
+        await this.refreshAdminPaneState();
+      } catch (error) {
+        console.warn(
+          "Failed to update admin pane after connecting to Nostr:",
+          error
+        );
+      }
+
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
