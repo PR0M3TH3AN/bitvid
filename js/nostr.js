@@ -1,6 +1,12 @@
 // js/nostr.js
 
-import { isDevMode } from "./config.js";
+import {
+  isDevMode,
+  WATCH_HISTORY_KIND,
+  WATCH_HISTORY_LIST_IDENTIFIER,
+  WATCH_HISTORY_MAX_ITEMS,
+  WATCH_HISTORY_BATCH_RESOLVE,
+} from "./config.js";
 import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
@@ -22,6 +28,9 @@ const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const NIP07_LOGIN_TIMEOUT_MS = 15_000; // 15 seconds
+const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
+const WATCH_HISTORY_CACHE_STORAGE_KEY = "bitvid:watchHistoryCache:v1";
+const WATCH_HISTORY_CACHE_TTL_MS = EVENTS_CACHE_TTL_MS;
 
 // To limit error spam
 let errorLogCount = 0;
@@ -39,6 +48,245 @@ function logErrorOnce(message, eventContent = null) {
       "Maximum error log limit reached. Further errors will be suppressed."
     );
   }
+}
+
+function pointerKey(pointer) {
+  if (!pointer || typeof pointer !== "object") {
+    return "";
+  }
+
+  const type = pointer.type === "a" ? "a" : "e";
+  const value =
+    typeof pointer.value === "string" ? pointer.value.trim().toLowerCase() : "";
+
+  if (!value) {
+    return "";
+  }
+
+  return `${type}:${value}`;
+}
+
+function clonePointerItem(pointer) {
+  if (!pointer || typeof pointer !== "object") {
+    return null;
+  }
+
+  const type = pointer.type === "a" ? "a" : "e";
+  const value = typeof pointer.value === "string" ? pointer.value.trim() : "";
+  if (!value) {
+    return null;
+  }
+
+  const relay =
+    typeof pointer.relay === "string" && pointer.relay.trim()
+      ? pointer.relay.trim()
+      : null;
+
+  return { type, value, relay };
+}
+
+function normalizePointerTag(tag) {
+  if (!Array.isArray(tag) || tag.length < 2) {
+    return null;
+  }
+
+  const type = tag[0] === "a" ? "a" : tag[0] === "e" ? "e" : "";
+  if (!type) {
+    return null;
+  }
+
+  const value = typeof tag[1] === "string" ? tag[1].trim() : "";
+  if (!value) {
+    return null;
+  }
+
+  const relay =
+    tag.length > 2 && typeof tag[2] === "string" && tag[2].trim()
+      ? tag[2].trim()
+      : null;
+
+  return { type, value, relay };
+}
+
+function normalizePointerInput(pointer) {
+  if (!pointer) {
+    return null;
+  }
+
+  if (Array.isArray(pointer)) {
+    return normalizePointerTag(pointer);
+  }
+
+  if (typeof pointer === "object") {
+    if (typeof pointer.type === "string" && typeof pointer.value === "string") {
+      return clonePointerItem(pointer);
+    }
+
+    if (Array.isArray(pointer.tag)) {
+      return normalizePointerTag(pointer.tag);
+    }
+  }
+
+  if (typeof pointer !== "string") {
+    return null;
+  }
+
+  const trimmed = pointer.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.startsWith("naddr") || trimmed.startsWith("nevent")) {
+    try {
+      const decoder = window?.NostrTools?.nip19?.decode;
+      if (typeof decoder === "function") {
+        const decoded = decoder(trimmed);
+        if (decoded?.type === "naddr" && decoded.data) {
+          const { kind, pubkey, identifier, relays } = decoded.data;
+          if (
+            typeof kind === "number" &&
+            typeof pubkey === "string" &&
+            typeof identifier === "string"
+          ) {
+            const relay =
+              Array.isArray(relays) && relays.length && typeof relays[0] === "string"
+                ? relays[0]
+                : null;
+            return {
+              type: "a",
+              value: `${kind}:${pubkey}:${identifier}`,
+              relay,
+            };
+          }
+        }
+        if (decoded?.type === "nevent" && decoded.data) {
+          const { id, relays } = decoded.data;
+          if (typeof id === "string" && id.trim()) {
+            const relay =
+              Array.isArray(relays) && relays.length && typeof relays[0] === "string"
+                ? relays[0]
+                : null;
+            return {
+              type: "e",
+              value: id.trim(),
+              relay,
+            };
+          }
+        }
+      }
+    } catch (err) {
+      if (isDevMode) {
+        console.warn(`[nostr] Failed to decode pointer ${trimmed}:`, err);
+      }
+    }
+  }
+
+  const type = trimmed.includes(":") ? "a" : "e";
+  return { type, value: trimmed, relay: null };
+}
+
+function pointerToTag(pointer) {
+  const normalized = clonePointerItem(pointer);
+  if (!normalized) {
+    return null;
+  }
+
+  const tag = [normalized.type, normalized.value];
+  if (normalized.relay) {
+    tag.push(normalized.relay);
+  }
+  return tag;
+}
+
+function extractPointerItemsFromEvent(event) {
+  if (!event || typeof event !== "object") {
+    return [];
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  const seen = new Set();
+  const items = [];
+
+  for (const tag of tags) {
+    const pointer = normalizePointerTag(tag);
+    if (!pointer) {
+      continue;
+    }
+
+    const key = pointerKey(pointer);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    items.push(pointer);
+  }
+
+  return items;
+}
+
+function eventToAddressPointer(event) {
+  if (!event || typeof event !== "object") {
+    return "";
+  }
+
+  const kind = typeof event.kind === "number" ? event.kind : null;
+  const pubkey = typeof event.pubkey === "string" ? event.pubkey : "";
+  if (!kind || !pubkey) {
+    return "";
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  for (const tag of tags) {
+    if (Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string") {
+      return `${kind}:${pubkey}:${tag[1]}`;
+    }
+  }
+
+  return "";
+}
+
+function signEventWithPrivateKey(event, privateKey) {
+  if (
+    !privateKey ||
+    typeof privateKey !== "string" ||
+    !window?.NostrTools?.getEventHash ||
+    typeof window.NostrTools.signEvent !== "function"
+  ) {
+    throw new Error("Missing signing primitives");
+  }
+
+  const tags = Array.isArray(event.tags)
+    ? event.tags.map((tag) => (Array.isArray(tag) ? [...tag] : tag))
+    : [];
+
+  const prepared = {
+    kind: event.kind,
+    pubkey: event.pubkey,
+    created_at: event.created_at,
+    tags,
+    content: typeof event.content === "string" ? event.content : "",
+  };
+
+  const id = window.NostrTools.getEventHash(prepared);
+  const sig = window.NostrTools.signEvent(prepared, privateKey);
+
+  return { ...prepared, id, sig };
+}
+
+function cloneEventForCache(event) {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+
+  const cloned = { ...event };
+  if (Array.isArray(event.tags)) {
+    cloned.tags = event.tags.map((tag) =>
+      Array.isArray(tag) ? [...tag] : tag
+    );
+  }
+
+  return cloned;
 }
 
 /**
@@ -435,6 +683,10 @@ class NostrClient {
     this.activeMap = new Map();
 
     this.hasRestoredLocalData = false;
+
+    this.sessionActor = null;
+    this.watchHistoryCache = new Map();
+    this.watchHistoryStorage = null;
   }
 
   restoreLocalData() {
@@ -534,6 +786,750 @@ class NostrClient {
     }
 
     return this.allEvents.size > 0;
+  }
+
+  /**
+   * Load watch history cache payload from localStorage.
+   */
+  getWatchHistoryStorage() {
+    if (this.watchHistoryStorage) {
+      return this.watchHistoryStorage;
+    }
+
+    const base = { version: 1, actors: {} };
+
+    if (typeof localStorage === "undefined") {
+      this.watchHistoryStorage = base;
+      return this.watchHistoryStorage;
+    }
+
+    let parsed = base;
+    try {
+      const raw = localStorage.getItem(WATCH_HISTORY_CACHE_STORAGE_KEY);
+      if (raw) {
+        const candidate = JSON.parse(raw);
+        if (
+          candidate &&
+          typeof candidate === "object" &&
+          candidate.version === 1 &&
+          candidate.actors &&
+          typeof candidate.actors === "object"
+        ) {
+          parsed = { version: 1, actors: candidate.actors };
+        }
+      }
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to parse watch history cache:", error);
+      }
+    }
+
+    const now = Date.now();
+    let mutated = false;
+    for (const [actor, info] of Object.entries(parsed.actors || {})) {
+      if (
+        !info ||
+        typeof info !== "object" ||
+        typeof info.savedAt !== "number" ||
+        now - info.savedAt > WATCH_HISTORY_CACHE_TTL_MS
+      ) {
+        delete parsed.actors[actor];
+        mutated = true;
+      }
+    }
+
+    const actors = { ...(parsed.actors || {}) };
+    this.watchHistoryStorage = { version: 1, actors };
+
+    if (mutated) {
+      try {
+        localStorage.setItem(
+          WATCH_HISTORY_CACHE_STORAGE_KEY,
+          JSON.stringify(this.watchHistoryStorage)
+        );
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to persist cleaned watch history cache:",
+            error
+          );
+        }
+      }
+    }
+
+    return this.watchHistoryStorage;
+  }
+
+  createWatchHistoryEntry(pointerEvent, items, savedAt, previousEntry = null) {
+    const normalizedItems = [];
+    const seen = new Set();
+
+    if (Array.isArray(items)) {
+      for (const raw of items) {
+        const pointer = normalizePointerInput(raw);
+        if (!pointer) {
+          continue;
+        }
+        const key = pointerKey(pointer);
+        if (!key || seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        normalizedItems.push(pointer);
+      }
+    }
+
+    const entry = {
+      pointerEvent: pointerEvent ? cloneEventForCache(pointerEvent) : null,
+      items: normalizedItems,
+      savedAt: typeof savedAt === "number" ? savedAt : Date.now(),
+      resolved: previousEntry?.resolved
+        ? new Map(previousEntry.resolved)
+        : new Map(),
+      resolving: previousEntry?.resolving
+        ? new Set(previousEntry.resolving)
+        : new Set(),
+    };
+
+    const validKeys = new Set(entry.items.map((item) => pointerKey(item)));
+    for (const key of entry.resolved.keys()) {
+      if (!validKeys.has(key)) {
+        entry.resolved.delete(key);
+      }
+    }
+    for (const key of [...entry.resolving]) {
+      if (!validKeys.has(key)) {
+        entry.resolving.delete(key);
+      }
+    }
+
+    return entry;
+  }
+
+  persistWatchHistoryEntry(actor, entry) {
+    if (typeof localStorage === "undefined" || !actor) {
+      return;
+    }
+
+    const storage = this.getWatchHistoryStorage();
+    storage.actors[actor] = {
+      pointerEvent: entry.pointerEvent ? cloneEventForCache(entry.pointerEvent) : null,
+      items: entry.items.map((item) => ({
+        type: item.type,
+        value: item.value,
+        relay: item.relay || null,
+      })),
+      savedAt: entry.savedAt,
+    };
+
+    try {
+      localStorage.setItem(
+        WATCH_HISTORY_CACHE_STORAGE_KEY,
+        JSON.stringify(storage)
+      );
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to persist watch history cache:", error);
+      }
+    }
+  }
+
+  async ensureSessionActor(forceSession = false) {
+    const loggedInPubkey =
+      typeof this.pubkey === "string" && this.pubkey.trim()
+        ? this.pubkey.trim()
+        : "";
+
+    if (!forceSession && loggedInPubkey) {
+      return loggedInPubkey;
+    }
+
+    if (
+      this.sessionActor &&
+      typeof this.sessionActor.pubkey === "string" &&
+      this.sessionActor.pubkey
+    ) {
+      return this.sessionActor.pubkey;
+    }
+
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            typeof parsed.pubkey === "string" &&
+            parsed.pubkey &&
+            typeof parsed.privkey === "string" &&
+            parsed.privkey
+          ) {
+            this.sessionActor = {
+              pubkey: parsed.pubkey,
+              privateKey: parsed.privkey,
+            };
+            return this.sessionActor.pubkey;
+          }
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to restore session actor:", error);
+        }
+      }
+    }
+
+    if (
+      !window?.NostrTools?.generatePrivateKey ||
+      typeof window.NostrTools.getPublicKey !== "function"
+    ) {
+      if (isDevMode) {
+        console.warn(
+          "[nostr] Unable to generate session actor: missing NostrTools helpers."
+        );
+      }
+      return "";
+    }
+
+    const privateKey = window.NostrTools.generatePrivateKey();
+    const pubkey = window.NostrTools.getPublicKey(privateKey);
+
+    this.sessionActor = { pubkey, privateKey };
+
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(
+          SESSION_ACTOR_STORAGE_KEY,
+          JSON.stringify({ pubkey, privkey: privateKey, savedAt: Date.now() })
+        );
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to persist session actor:", error);
+        }
+      }
+    }
+
+    return pubkey;
+  }
+
+  async publishViewEvent(videoPointer, options = {}) {
+    if (!this.pool) {
+      return { ok: false, error: "nostr-uninitialized" };
+    }
+
+    const pointer = normalizePointerInput(videoPointer);
+    if (!pointer) {
+      return { ok: false, error: "invalid-pointer" };
+    }
+
+    const actorPubkey = await this.ensureSessionActor();
+    if (!actorPubkey) {
+      return { ok: false, error: "missing-actor" };
+    }
+
+    const createdAt =
+      typeof options.created_at === "number" && options.created_at > 0
+        ? Math.floor(options.created_at)
+        : Math.floor(Date.now() / 1000);
+
+    const additionalTags = Array.isArray(options.additionalTags)
+      ? options.additionalTags.filter(
+          (tag) => Array.isArray(tag) && typeof tag[0] === "string"
+        )
+      : [];
+
+    const tags = [
+      ["t", "view"],
+      ["video", pointer.value],
+      ...additionalTags,
+    ];
+
+    const content =
+      typeof options.content === "string" ? options.content : "";
+
+    const event = {
+      kind: WATCH_HISTORY_KIND,
+      pubkey: actorPubkey,
+      created_at: createdAt,
+      tags,
+      content,
+    };
+
+    let signedEvent = null;
+    const normalizedActor = actorPubkey.toLowerCase();
+    const normalizedLogged =
+      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+
+    if (
+      normalizedActor &&
+      normalizedActor === normalizedLogged &&
+      window?.nostr &&
+      typeof window.nostr.signEvent === "function"
+    ) {
+      try {
+        signedEvent = await window.nostr.signEvent(event);
+      } catch (error) {
+        console.warn("[nostr] Failed to sign view event with extension:", error);
+        return { ok: false, error: "signing-failed", details: error };
+      }
+    } else {
+      try {
+        if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
+          await this.ensureSessionActor(true);
+        }
+        if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
+          throw new Error("session-actor-mismatch");
+        }
+        const privateKey = this.sessionActor.privateKey;
+        signedEvent = signEventWithPrivateKey(event, privateKey);
+      } catch (error) {
+        console.warn("[nostr] Failed to sign view event with session key:", error);
+        return { ok: false, error: "signing-failed", details: error };
+      }
+    }
+
+    const relayList =
+      Array.isArray(options.relays) && options.relays.length
+        ? options.relays
+        : this.relays;
+    const relays =
+      Array.isArray(relayList) && relayList.length ? relayList : RELAY_URLS;
+
+    const publishResults = await Promise.all(
+      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+    );
+
+    const success = publishResults.some((result) => result.success);
+    if (!success) {
+      console.warn("[nostr] View event rejected by relays:", publishResults);
+    }
+
+    return { ok: success, event: signedEvent, results: publishResults };
+  }
+
+  async updateWatchHistoryList(pointer) {
+    if (!this.pool) {
+      return { ok: false, error: "nostr-uninitialized" };
+    }
+
+    const normalizedPointer = normalizePointerInput(pointer);
+    if (!normalizedPointer) {
+      return { ok: false, error: "invalid-pointer" };
+    }
+
+    const actorPubkey = await this.ensureSessionActor();
+    if (!actorPubkey) {
+      return { ok: false, error: "missing-actor" };
+    }
+
+    await this.fetchWatchHistory(actorPubkey);
+
+    const existingEntry =
+      this.watchHistoryCache.get(actorPubkey) ||
+      this.createWatchHistoryEntry(null, [], Date.now());
+
+    const dedupe = new Map();
+    const nextItems = [];
+    const pushPointer = (item) => {
+      const candidate = normalizePointerInput(item);
+      if (!candidate) {
+        return;
+      }
+      const key = pointerKey(candidate);
+      if (!key || dedupe.has(key)) {
+        return;
+      }
+      dedupe.set(key, true);
+      nextItems.push(candidate);
+    };
+
+    pushPointer(normalizedPointer);
+    for (const item of existingEntry.items) {
+      pushPointer(item);
+      if (nextItems.length >= WATCH_HISTORY_MAX_ITEMS) {
+        break;
+      }
+    }
+
+    const trimmedItems =
+      nextItems.length > WATCH_HISTORY_MAX_ITEMS
+        ? nextItems.slice(0, WATCH_HISTORY_MAX_ITEMS)
+        : nextItems;
+
+    const tags = [["d", WATCH_HISTORY_LIST_IDENTIFIER]];
+    for (const item of trimmedItems) {
+      const tag = pointerToTag(item);
+      if (tag) {
+        tags.push(tag);
+      }
+    }
+
+    const event = {
+      kind: WATCH_HISTORY_KIND,
+      pubkey: actorPubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      tags,
+      content: "",
+    };
+
+    let signedEvent;
+    const normalizedActor = actorPubkey.toLowerCase();
+    const normalizedLogged =
+      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+
+    if (
+      normalizedActor &&
+      normalizedActor === normalizedLogged &&
+      window?.nostr &&
+      typeof window.nostr.signEvent === "function"
+    ) {
+      try {
+        signedEvent = await window.nostr.signEvent(event);
+      } catch (error) {
+        console.warn(
+          "[nostr] Failed to sign watch history list with extension:",
+          error
+        );
+        return { ok: false, error: "signing-failed", details: error };
+      }
+    } else {
+      try {
+        if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
+          await this.ensureSessionActor(true);
+        }
+        if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
+          throw new Error("session-actor-mismatch");
+        }
+        const privateKey = this.sessionActor.privateKey;
+        signedEvent = signEventWithPrivateKey(event, privateKey);
+      } catch (error) {
+        console.warn(
+          "[nostr] Failed to sign watch history list with session key:",
+          error
+        );
+        return { ok: false, error: "signing-failed", details: error };
+      }
+    }
+
+    const relays =
+      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
+
+    const publishResults = await Promise.all(
+      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+    );
+    const success = publishResults.some((result) => result.success);
+    if (!success) {
+      console.warn(
+        "[nostr] Failed to publish watch history list:",
+        publishResults
+      );
+    }
+
+    const newEntry = this.createWatchHistoryEntry(
+      signedEvent,
+      trimmedItems,
+      Date.now(),
+      existingEntry
+    );
+
+    this.watchHistoryCache.set(actorPubkey, newEntry);
+    this.persistWatchHistoryEntry(actorPubkey, newEntry);
+
+    return {
+      ok: success,
+      event: signedEvent,
+      items: newEntry.items.map((item) => clonePointerItem(item)).filter(Boolean),
+    };
+  }
+
+  async fetchWatchHistory(pubkeyOrSession) {
+    let actor =
+      typeof pubkeyOrSession === "string" && pubkeyOrSession.trim()
+        ? pubkeyOrSession.trim()
+        : "";
+
+    if (!actor) {
+      actor = await this.ensureSessionActor();
+    }
+
+    if (!actor) {
+      return { pointerEvent: null, items: [] };
+    }
+
+    const now = Date.now();
+    const cached = this.watchHistoryCache.get(actor);
+    if (cached && now - cached.savedAt < WATCH_HISTORY_CACHE_TTL_MS) {
+      return {
+        pointerEvent: cached.pointerEvent
+          ? cloneEventForCache(cached.pointerEvent)
+          : null,
+        items: cached.items
+          .map((item) => clonePointerItem(item))
+          .filter(Boolean),
+      };
+    }
+
+    if (typeof localStorage !== "undefined") {
+      const storage = this.getWatchHistoryStorage();
+      const stored = storage.actors?.[actor];
+      if (
+        stored &&
+        typeof stored.savedAt === "number" &&
+        now - stored.savedAt < WATCH_HISTORY_CACHE_TTL_MS
+      ) {
+        const entry = this.createWatchHistoryEntry(
+          stored.pointerEvent,
+          Array.isArray(stored.items) ? stored.items : [],
+          stored.savedAt,
+          this.watchHistoryCache.get(actor) || null
+        );
+        this.watchHistoryCache.set(actor, entry);
+        return {
+          pointerEvent: entry.pointerEvent
+            ? cloneEventForCache(entry.pointerEvent)
+            : null,
+          items: entry.items
+            .map((item) => clonePointerItem(item))
+            .filter(Boolean),
+        };
+      }
+    }
+
+    if (!this.pool) {
+      const fallbackEntry = this.createWatchHistoryEntry(
+        null,
+        [],
+        Date.now(),
+        this.watchHistoryCache.get(actor) || null
+      );
+      this.watchHistoryCache.set(actor, fallbackEntry);
+      return { pointerEvent: null, items: [] };
+    }
+
+    const relayList =
+      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
+
+    const filter = {
+      kinds: [WATCH_HISTORY_KIND],
+      authors: [actor],
+      "#d": [WATCH_HISTORY_LIST_IDENTIFIER],
+      limit: 1,
+    };
+
+    let pointerEvent = null;
+    try {
+      const perRelay = await Promise.all(
+        relayList.map(async (url) => {
+          try {
+            const evt = await this.pool.get([url], filter);
+            return evt || null;
+          } catch (err) {
+            if (isDevMode) {
+              console.warn(
+                `[nostr] Failed to fetch watch history from ${url}:`,
+                err
+              );
+            }
+            return null;
+          }
+        })
+      );
+
+      const events = perRelay.filter(Boolean);
+      if (events.length) {
+        pointerEvent = events.reduce((latest, candidate) => {
+          if (!latest) {
+            return candidate;
+          }
+          const latestCreated =
+            typeof latest.created_at === "number" ? latest.created_at : 0;
+          const candidateCreated =
+            typeof candidate.created_at === "number" ? candidate.created_at : 0;
+          return candidateCreated > latestCreated ? candidate : latest;
+        }, null);
+      }
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to fetch watch history list:", error);
+      }
+    }
+
+    const items = pointerEvent ? extractPointerItemsFromEvent(pointerEvent) : [];
+    const entry = this.createWatchHistoryEntry(
+      pointerEvent,
+      items,
+      Date.now(),
+      this.watchHistoryCache.get(actor) || null
+    );
+
+    this.watchHistoryCache.set(actor, entry);
+    this.persistWatchHistoryEntry(actor, entry);
+
+    return {
+      pointerEvent: entry.pointerEvent
+        ? cloneEventForCache(entry.pointerEvent)
+        : null,
+      items: entry.items
+        .map((item) => clonePointerItem(item))
+        .filter(Boolean),
+    };
+  }
+
+  async resolveWatchHistory(batchSize = 20) {
+    if (!this.pool) {
+      return [];
+    }
+
+    const actor = await this.ensureSessionActor();
+    if (!actor) {
+      return [];
+    }
+
+    await this.fetchWatchHistory(actor);
+    const entry = this.watchHistoryCache.get(actor);
+    if (!entry) {
+      return [];
+    }
+
+    const parsedBatchSize = Number(batchSize);
+    const normalizedBatchSize =
+      Number.isFinite(parsedBatchSize) && parsedBatchSize > 0
+        ? Math.floor(parsedBatchSize)
+        : 20;
+    const effectiveBatchSize = WATCH_HISTORY_BATCH_RESOLVE
+      ? Math.max(1, normalizedBatchSize)
+      : 1;
+
+    const available = entry.items.filter((item) => {
+      const key = pointerKey(item);
+      if (!key) {
+        return false;
+      }
+      if (entry.resolved.has(key)) {
+        return false;
+      }
+      if (entry.resolving.has(key)) {
+        return false;
+      }
+      return true;
+    });
+
+    const batch = available.slice(0, effectiveBatchSize);
+    if (!batch.length) {
+      return [];
+    }
+
+    batch.forEach((item) => entry.resolving.add(pointerKey(item)));
+
+    const relaySet = new Set(
+      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS
+    );
+    const filters = [];
+
+    for (const pointer of batch) {
+      if (pointer.relay) {
+        relaySet.add(pointer.relay);
+      }
+      if (pointer.type === "e") {
+        filters.push({ ids: [pointer.value] });
+      } else if (pointer.type === "a") {
+        const [kindStr, pubkey, identifier] = pointer.value.split(":");
+        const kind = Number(kindStr);
+        if (Number.isFinite(kind) && pubkey) {
+          const filter = { kinds: [kind], authors: [pubkey] };
+          if (identifier) {
+            filter["#d"] = [identifier];
+          }
+          filters.push(filter);
+        }
+      }
+    }
+
+    if (!filters.length) {
+      batch.forEach((item) => entry.resolving.delete(pointerKey(item)));
+      return [];
+    }
+
+    let events = [];
+    try {
+      events = await this.pool.list(Array.from(relaySet), filters);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to resolve watch history batch:", error);
+      }
+    }
+
+    const resolvedVideos = [];
+    const pointerMatches = new Map();
+
+    for (const evt of events || []) {
+      if (!evt || typeof evt !== "object") {
+        continue;
+      }
+      if (typeof evt.id === "string" && evt.id) {
+        pointerMatches.set(
+          pointerKey({ type: "e", value: evt.id }),
+          evt
+        );
+      }
+      const addressPointer = eventToAddressPointer(evt);
+      if (addressPointer) {
+        pointerMatches.set(
+          pointerKey({ type: "a", value: addressPointer }),
+          evt
+        );
+      }
+    }
+
+    for (const pointer of batch) {
+      const key = pointerKey(pointer);
+      const event = pointerMatches.get(key);
+      if (event) {
+        try {
+          const video = convertEventToVideo(event);
+          if (!video.invalid) {
+            this.allEvents.set(event.id, video);
+            if (!video.deleted) {
+              const activeKey = getActiveKey(video);
+              const existing = this.activeMap.get(activeKey);
+              if (!existing || video.created_at > existing.created_at) {
+                this.activeMap.set(activeKey, video);
+              }
+            }
+            entry.resolved.set(key, video);
+            resolvedVideos.push(video);
+          }
+        } catch (err) {
+          if (isDevMode) {
+            console.warn("[nostr] Failed to convert watch history event:", err);
+          }
+        }
+      }
+      entry.resolving.delete(key);
+    }
+
+    return resolvedVideos;
+  }
+
+  async recordVideoView(videoPointer, options = {}) {
+    const pointer = normalizePointerInput(videoPointer);
+    if (!pointer) {
+      return {
+        ok: false,
+        error: "invalid-pointer",
+        view: { ok: false, error: "invalid-pointer" },
+        history: { ok: false, error: "invalid-pointer" },
+      };
+    }
+
+    const view = await this.publishViewEvent(pointer, options);
+    const history = await this.updateWatchHistoryList(pointer);
+
+    return {
+      ok: view.ok && history.ok,
+      view,
+      history,
+    };
   }
 
   /**
