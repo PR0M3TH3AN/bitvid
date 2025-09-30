@@ -104,6 +104,34 @@ header img {
   padding: 1.5rem 0;
 }
 
+/* Dedicated watch-history grids mirror the home feed layout */
+.watch-history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 2rem;
+  width: 100%;
+  padding: 1.5rem 0;
+}
+
+/* Profile modal gets a tighter column and removes outer padding */
+.watch-history-grid.watch-history-grid--modal {
+  grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr));
+  gap: 1.5rem;
+  padding: 0;
+}
+
+@media (max-width: 640px) {
+  .watch-history-grid {
+    grid-template-columns: repeat(auto-fill, minmax(16.5rem, 1fr));
+    gap: 1.5rem;
+  }
+
+  .watch-history-grid.watch-history-grid--modal {
+    grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr));
+    gap: 1.25rem;
+  }
+}
+
 /* Video Cards */
 .video-card {
   background-color: var(--color-card);
