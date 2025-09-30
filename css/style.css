@@ -834,6 +834,32 @@ button:not(.icon-button):focus {
   display: flex;
 }
 
+.status-banner {
+  align-items: center;
+  background-color: rgba(31, 41, 55, 0.9);
+  border-radius: 0.5rem;
+  color: #e5e7eb;
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.status-banner .status-spinner {
+  animation: spin 1s linear infinite;
+  border: 0.125rem solid rgba(229, 231, 235, 0.35);
+  border-radius: 9999px;
+  border-top-color: #f9fafb;
+  height: 1.25rem;
+  width: 1.25rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 640px) {
   #videoList {
