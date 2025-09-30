@@ -3,6 +3,8 @@
 import { nostrClient } from "./nostr.js";
 import { WATCH_HISTORY_BATCH_RESOLVE } from "./config.js";
 import { subscriptions } from "./subscriptions.js";
+import { attachHealthBadges } from "./gridHealth.js";
+import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 
 const DEFAULT_BATCH_SIZE = 20;
 const BATCH_SIZE = WATCH_HISTORY_BATCH_RESOLVE ? DEFAULT_BATCH_SIZE : 1;
@@ -13,6 +15,466 @@ export const WATCH_HISTORY_EMPTY_COPY =
 function toNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getAbsoluteShareUrl(nevent) {
+  if (!nevent) {
+    return "";
+  }
+
+  if (window.app?.buildShareUrlFromNevent) {
+    const candidate = window.app.buildShareUrlFromNevent(nevent);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const origin = window.location?.origin || "";
+  const pathname = window.location?.pathname || "";
+  let base = origin || pathname ? `${origin}${pathname}` : "";
+  if (!base) {
+    const href = window.location?.href || "";
+    base = href ? href.split(/[?#]/)[0] : "";
+  }
+
+  if (!base) {
+    return `?v=${encodeURIComponent(nevent)}`;
+  }
+
+  return `${base}?v=${encodeURIComponent(nevent)}`;
+}
+
+function renderWatchHistoryGrid(videos, containerOrElement) {
+  let container = null;
+  if (typeof containerOrElement === "string") {
+    container = document.getElementById(containerOrElement);
+  } else if (containerOrElement instanceof Element) {
+    container = containerOrElement;
+  }
+
+  if (!container) {
+    return;
+  }
+
+  const safeVideos = Array.isArray(videos) ? videos : [];
+  const dedupedVideos =
+    window.app?.dedupeVideosByRoot?.(safeVideos) ??
+    subscriptions.dedupeToNewestByRoot(safeVideos);
+
+  const filteredVideos = dedupedVideos.filter((video) => {
+    if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    if (window.app?.isAuthorBlocked && window.app.isAuthorBlocked(video.pubkey)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (!filteredVideos.length) {
+    container.innerHTML = `
+      <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
+        No videos available yet.
+      </p>`;
+    return;
+  }
+
+  const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
+  const fragment = document.createDocumentFragment();
+  const localAuthorSet = new Set();
+
+  filteredVideos.forEach((video, index) => {
+    if (!video.id || !video.title) {
+      console.error("Missing ID or title:", video);
+      return;
+    }
+
+    window.app?.videosMap?.set(video.id, video);
+
+    localAuthorSet.add(video.pubkey);
+
+    const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
+    const shareUrl = getAbsoluteShareUrl(nevent);
+    const canEdit = window.app?.pubkey === video.pubkey;
+
+    const highlightClass =
+      video.isPrivate && canEdit ? "border-2 border-yellow-500" : "border-none";
+
+    const timeAgo = window.app?.formatTimeAgo
+      ? window.app.formatTimeAgo(video.created_at)
+      : new Date(video.created_at * 1000).toLocaleString();
+
+    let hasOlder = false;
+    if (canEdit && video.videoRootId && window.app?.hasOlderVersion) {
+      hasOlder = window.app.hasOlderVersion(video, fullAllEventsArray);
+    }
+
+    const revertButton = hasOlder
+      ? `
+        <button
+          class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+          data-revert-index="${index}"
+          data-revert-event-id="${video.id}"
+        >
+          Revert
+        </button>
+      `
+      : "";
+
+    const gearMenu = canEdit
+      ? `
+        <div class="relative inline-block ml-3 overflow-visible">
+          <button
+            type="button"
+            class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            data-settings-dropdown="${index}"
+          >
+            <img
+              src="assets/svg/video-settings-gear.svg"
+              alt="Settings"
+              class="w-5 h-5"
+            />
+          </button>
+          <div
+            id="settingsDropdown-${index}"
+            class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+          >
+            <div class="py-1">
+              <button
+                class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                data-edit-index="${index}"
+                data-edit-event-id="${video.id}"
+              >
+                Edit
+              </button>
+              ${revertButton}
+              <button
+                class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                data-delete-all-index="${index}"
+                data-delete-all-event-id="${video.id}"
+              >
+                Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      `
+      : "";
+
+    const moreMenu = `
+      <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
+        <button
+          type="button"
+          class="inline-flex items-center justify-center w-10 h-10 p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          data-more-dropdown="${index}"
+          aria-haspopup="true"
+          aria-expanded="false"
+          aria-label="More options"
+        >
+          <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5 object-contain" />
+        </button>
+        <div
+          id="moreDropdown-${index}"
+          class="hidden absolute right-0 bottom-full mb-2 w-40 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+          role="menu"
+          data-more-menu="true"
+        >
+          <div class="py-1">
+            <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="open-channel" data-author="${video.pubkey || ""}">
+              Open channel
+            </button>
+            <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
+              Copy link
+            </button>
+            <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
+              Block creator
+            </button>
+            <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="report" data-event-id="${video.id || ""}">
+              Report
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const cardControls = `
+      <div class="flex items-center">
+        ${moreMenu}${gearMenu}
+      </div>
+    `;
+
+    const safeTitle = window.app?.escapeHTML(video.title) || "Untitled";
+    const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
+    const playbackUrl = typeof video.url === "string" ? video.url : "";
+    const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
+    const trimmedMagnet =
+      typeof video.magnet === "string" ? video.magnet.trim() : "";
+    const legacyInfoHash =
+      typeof video.infoHash === "string" ? video.infoHash.trim() : "";
+    const magnetCandidate = trimmedMagnet || legacyInfoHash;
+    const playbackMagnet = magnetCandidate;
+    const magnetProvided = magnetCandidate.length > 0;
+    const magnetSupported =
+      window.app?.isMagnetUriSupported?.(magnetCandidate) ?? false;
+    const urlBadgeHtml = trimmedUrl
+      ? window.app?.getUrlHealthPlaceholderMarkup?.({ includeMargin: false }) ?? ""
+      : "";
+    const torrentHealthBadgeHtml =
+      magnetProvided && magnetSupported
+        ? window.app?.getTorrentHealthBadgeMarkup?.({
+            includeMargin: false,
+          }) ?? ""
+        : "";
+    const connectionBadgesHtml = urlBadgeHtml || torrentHealthBadgeHtml
+      ? `
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          ${urlBadgeHtml}${torrentHealthBadgeHtml}
+        </div>
+      `
+      : "";
+    const cardHtml = `
+      <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
+        <a
+          href="${shareUrl}"
+          data-video-id="${video.id}"
+          data-play-url=""
+          data-play-magnet=""
+          class="block cursor-pointer relative group"
+        >
+          <div class="ratio-16-9">
+            <img
+              src="assets/jpg/video-thumbnail-fallback.jpg"
+              data-lazy="${safeThumb}"
+              alt="${safeTitle}"
+            />
+          </div>
+        </a>
+        <div class="p-4">
+          <h3
+            class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
+            data-video-id="${video.id}"
+            data-play-url=""
+            data-play-magnet=""
+          >
+            ${safeTitle}
+          </h3>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
+                <img
+                  class="author-pic"
+                  data-pubkey="${video.pubkey}"
+                  src="assets/svg/default-profile.svg"
+                  alt="Placeholder"
+                />
+              </div>
+              <div class="min-w-0">
+                <p
+                  class="text-sm text-gray-400 author-name"
+                  data-pubkey="${video.pubkey}"
+                >
+                  Loading name...
+                </p>
+                <div class="flex items-center text-xs text-gray-500 mt-1">
+                  <span>${timeAgo}</span>
+                </div>
+              </div>
+            </div>
+            ${cardControls}
+          </div>
+          ${connectionBadgesHtml}
+        </div>
+      </div>
+    `;
+
+    const t = document.createElement("template");
+    t.innerHTML = cardHtml.trim();
+    const cardEl = t.content.firstElementChild;
+    if (cardEl) {
+      cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
+      if (typeof video.pubkey === "string" && video.pubkey) {
+        cardEl.dataset.ownerPubkey = video.pubkey;
+      } else if (cardEl.dataset.ownerPubkey) {
+        delete cardEl.dataset.ownerPubkey;
+      }
+
+      if (trimmedUrl) {
+        cardEl.dataset.urlHealthState = "checking";
+        if (cardEl.dataset.urlHealthReason) {
+          delete cardEl.dataset.urlHealthReason;
+        }
+        cardEl.dataset.urlHealthEventId = video.id || "";
+        cardEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
+      } else {
+        cardEl.dataset.urlHealthState = "offline";
+        cardEl.dataset.urlHealthReason = "missing-source";
+        if (cardEl.dataset.urlHealthEventId) {
+          delete cardEl.dataset.urlHealthEventId;
+        }
+        if (cardEl.dataset.urlHealthUrl) {
+          delete cardEl.dataset.urlHealthUrl;
+        }
+      }
+      if (magnetProvided && magnetSupported) {
+        cardEl.dataset.streamHealthState = "checking";
+        if (cardEl.dataset.streamHealthReason) {
+          delete cardEl.dataset.streamHealthReason;
+        }
+      } else {
+        cardEl.dataset.streamHealthState = "unhealthy";
+        cardEl.dataset.streamHealthReason = magnetProvided
+          ? "unsupported"
+          : "missing-source";
+      }
+
+      const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
+      interactiveEls.forEach((el) => {
+        if (!el.dataset) return;
+
+        if (trimmedUrl) {
+          el.dataset.playUrl = encodeURIComponent(trimmedUrl);
+        } else {
+          delete el.dataset.playUrl;
+        }
+
+        el.dataset.playMagnet = playbackMagnet || "";
+      });
+
+      if (magnetProvided) {
+        cardEl.dataset.magnet = playbackMagnet;
+      } else if (cardEl.dataset.magnet) {
+        delete cardEl.dataset.magnet;
+      }
+
+      const badgeEl = cardEl.querySelector("[data-url-health-state]");
+      if (badgeEl) {
+        if (trimmedUrl) {
+          badgeEl.dataset.urlHealthEventId = video.id || "";
+          badgeEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
+        } else {
+          if (badgeEl.dataset.urlHealthEventId) {
+            delete badgeEl.dataset.urlHealthEventId;
+          }
+          if (badgeEl.dataset.urlHealthUrl) {
+            delete badgeEl.dataset.urlHealthUrl;
+          }
+        }
+      }
+    }
+    fragment.appendChild(cardEl);
+  });
+
+  container.innerHTML = "";
+  container.appendChild(fragment);
+  attachHealthBadges(container);
+  attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
+    if (!window.app?.handleUrlHealthBadge) {
+      return;
+    }
+    const video = window.app.videosMap?.get?.(eventId) || { id: eventId };
+    window.app.handleUrlHealthBadge({ video, url, badgeEl });
+  });
+
+  window.app?.attachVideoListHandler?.();
+
+  const lazyEls = container.querySelectorAll("[data-lazy]");
+  lazyEls.forEach((el) => window.app?.mediaLoader.observe(el));
+
+  window.app?.attachMoreMenuHandlers?.(container);
+
+  const gearButtons = container.querySelectorAll("[data-settings-dropdown]");
+  gearButtons.forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const idx = btn.getAttribute("data-settings-dropdown");
+      const dropdown = document.getElementById(`settingsDropdown-${idx}`);
+      if (dropdown) dropdown.classList.toggle("hidden");
+    });
+  });
+
+  const editButtons = container.querySelectorAll("[data-edit-index]");
+  editButtons.forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const idxAttr = btn.getAttribute("data-edit-index");
+      const idx = Number.parseInt(idxAttr, 10);
+      const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
+      if (dropdown) dropdown.classList.add("hidden");
+      const eventId = btn.getAttribute("data-edit-event-id") || "";
+      window.app?.handleEditVideo({
+        eventId,
+        index: Number.isNaN(idx) ? null : idx,
+      });
+    });
+  });
+
+  const revertButtons = container.querySelectorAll("[data-revert-index]");
+  revertButtons.forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const idxAttr = btn.getAttribute("data-revert-index");
+      const idx = Number.parseInt(idxAttr, 10);
+      const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
+      if (dropdown) dropdown.classList.add("hidden");
+      const eventId = btn.getAttribute("data-revert-event-id") || "";
+      window.app?.handleRevertVideo({
+        eventId,
+        index: Number.isNaN(idx) ? null : idx,
+      });
+    });
+  });
+
+  const deleteAllButtons = container.querySelectorAll("[data-delete-all-index]");
+  deleteAllButtons.forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const idxAttr = btn.getAttribute("data-delete-all-index");
+      const idx = Number.parseInt(idxAttr, 10);
+      const dd = document.getElementById(`settingsDropdown-${idxAttr}`);
+      if (dd) dd.classList.add("hidden");
+      const eventId = btn.getAttribute("data-delete-all-event-id") || "";
+      window.app?.handleFullDeleteVideo({
+        eventId,
+        index: Number.isNaN(idx) ? null : idx,
+      });
+    });
+  });
+
+  const authorPics = container.querySelectorAll(".author-pic");
+  const authorNames = container.querySelectorAll(".author-name");
+
+  authorPics.forEach((pic) => {
+    localAuthorSet.add(pic.getAttribute("data-pubkey"));
+  });
+  authorNames.forEach((nameEl) => {
+    localAuthorSet.add(nameEl.getAttribute("data-pubkey"));
+  });
+
+  if (window.app?.batchFetchProfiles && localAuthorSet.size > 0) {
+    window.app.batchFetchProfiles(localAuthorSet);
+  }
+
+  authorPics.forEach((pic) => {
+    pic.style.cursor = "pointer";
+    pic.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const pubkey = pic.getAttribute("data-pubkey");
+      window.app?.goToProfile(pubkey);
+    });
+  });
+
+  authorNames.forEach((nameEl) => {
+    nameEl.style.cursor = "pointer";
+    nameEl.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const pubkey = nameEl.getAttribute("data-pubkey");
+      window.app?.goToProfile(pubkey);
+    });
+  });
 }
 
 export function createWatchHistoryRenderer(config = {}) {
@@ -268,10 +730,8 @@ export function createWatchHistoryRenderer(config = {}) {
 
     if (typeof renderGrid === "function") {
       renderGrid(state.resolvedVideos, grid);
-    } else if (grid.id) {
-      subscriptions.renderSameGridStyle(state.resolvedVideos, grid.id);
     } else {
-      subscriptions.renderSameGridStyle(state.resolvedVideos, "watchHistoryGrid");
+      renderWatchHistoryGrid(state.resolvedVideos, grid);
     }
 
     grid.classList.remove("hidden");
