@@ -3955,10 +3955,7 @@ class bitvidApp {
           sentinelSelector: "#profileHistorySentinel",
           scrollContainerSelector: "#profileHistoryScroll",
           emptyCopy: "You haven’t watched any videos yet.",
-          beforeInitialLoad: async () => {
-            const actor = this.pubkey || undefined;
-            await nostrClient.fetchWatchHistory(actor);
-          },
+          getActor: async () => this.pubkey || window.app?.pubkey || undefined,
         });
       }
       this.adminModeratorsSection =

@@ -16,22 +16,47 @@ function toNumber(value, fallback) {
 }
 
 export function createWatchHistoryRenderer(config = {}) {
+  const fallbackGetActor = async () => {
+    const candidate =
+      typeof window?.app?.pubkey === "string" && window.app.pubkey.trim()
+        ? window.app.pubkey.trim()
+        : "";
+    return candidate || undefined;
+  };
+
+  const mergedConfig = {
+    viewSelector: "#watchHistoryView",
+    gridSelector: "#watchHistoryGrid",
+    loadingSelector: "#watchHistoryLoading",
+    emptySelector: "#watchHistoryEmpty",
+    sentinelSelector: "#watchHistorySentinel",
+    scrollContainerSelector: null,
+    emptyCopy: WATCH_HISTORY_EMPTY_COPY,
+    batchSize: BATCH_SIZE,
+    getActor: fallbackGetActor,
+    beforeInitialLoad: null,
+    getSnapshotFingerprint: null,
+    resolveBatch: (size) => nostrClient.resolveWatchHistory(size),
+    renderGrid: null,
+    ...config,
+  };
+
   const {
-    viewSelector = "#watchHistoryView",
-    gridSelector = "#watchHistoryGrid",
-    loadingSelector = "#watchHistoryLoading",
-    emptySelector = "#watchHistoryEmpty",
-    sentinelSelector = "#watchHistorySentinel",
-    scrollContainerSelector = null,
-    emptyCopy = WATCH_HISTORY_EMPTY_COPY,
-    beforeInitialLoad = async () => {
-      const actor = window.app?.pubkey || undefined;
-      await nostrClient.fetchWatchHistory(actor);
-    },
-    resolveBatch = (size) => nostrClient.resolveWatchHistory(size),
-    renderGrid = null,
-    batchSize = BATCH_SIZE,
-  } = config;
+    viewSelector,
+    gridSelector,
+    loadingSelector,
+    emptySelector,
+    sentinelSelector,
+    scrollContainerSelector,
+    emptyCopy,
+    batchSize,
+    getActor,
+    resolveBatch,
+    renderGrid,
+  } = mergedConfig;
+
+  const providedBeforeInitialLoad = mergedConfig.beforeInitialLoad;
+  const providedGetSnapshotFingerprint = mergedConfig.getSnapshotFingerprint;
 
   const selectors = {
     view: viewSelector,
@@ -56,6 +81,64 @@ export function createWatchHistoryRenderer(config = {}) {
     }
   };
 
+  const resolveActor = async (hint = null) => {
+    if (typeof hint === "string" && hint.trim()) {
+      return hint.trim();
+    }
+
+    if (typeof getActor === "function") {
+      try {
+        const candidate = await getActor();
+        if (typeof candidate === "string" && candidate.trim()) {
+          return candidate.trim();
+        }
+      } catch (error) {
+        debugLog("failed to resolve actor via getActor", error);
+      }
+    }
+
+    return null;
+  };
+
+  const callBeforeInitialLoad = async (context = {}) => {
+    let actor = await resolveActor(context.actor ?? null);
+    const finalContext = { ...context, actor };
+
+    if (typeof providedBeforeInitialLoad === "function") {
+      return providedBeforeInitialLoad(finalContext);
+    }
+
+    const snapshot = await nostrClient.fetchWatchHistory(actor || undefined);
+
+    if (!actor) {
+      try {
+        const ensured = await nostrClient.ensureSessionActor();
+        if (typeof ensured === "string" && ensured.trim()) {
+          actor = ensured.trim();
+        }
+      } catch (error) {
+        debugLog("failed to ensure session actor while resolving history", error);
+      }
+    }
+
+    return { actor: actor || null, snapshot };
+  };
+
+  const computeSnapshotFingerprint = async (context = {}) => {
+    const actor = await resolveActor(context.actor ?? null);
+    const finalContext = { ...context, actor };
+
+    if (typeof providedGetSnapshotFingerprint === "function") {
+      return providedGetSnapshotFingerprint(finalContext);
+    }
+
+    if (finalContext.refresh) {
+      await nostrClient.fetchWatchHistory(actor || undefined);
+    }
+
+    return nostrClient.getWatchHistoryFingerprint(actor || undefined);
+  };
+
   const state = {
     isLoading: false,
     hasMore: true,
@@ -65,6 +148,8 @@ export function createWatchHistoryRenderer(config = {}) {
     initialized: false,
     emptyCopy,
     batchSize: Math.max(1, toNumber(batchSize, BATCH_SIZE)),
+    actor: null,
+    snapshotFingerprint: null,
   };
 
   const query = (selector) => {
@@ -313,29 +398,75 @@ export function createWatchHistoryRenderer(config = {}) {
     });
   };
 
-  const runInitialLoad = async () => {
+  const runInitialLoad = async (options = {}) => {
+    const { actor: actorHint = null, prefetched = null, fingerprintOverride } =
+      typeof options === "object" && options !== null ? options : {};
+
     const { view } = getElements();
     if (!view) {
       debugLog("runInitialLoad aborted: view not found");
       return;
     }
 
+    const resolvedActor = await resolveActor(actorHint ?? state.actor);
+    state.actor = resolvedActor || null;
+
     cleanupObservers();
     state.resolvedVideos = [];
     state.hasMore = true;
     state.isLoading = false;
     state.initialized = false;
+    state.snapshotFingerprint = null;
     resetUiState();
-    debugLog("starting initial load");
+    debugLog("starting initial load", { actor: state.actor });
 
-    try {
-      await beforeInitialLoad?.();
-    } catch (error) {
-      console.error("[historyView] Failed to fetch watch history list:", error);
-      showEmptyState(
-        "We couldn't load your watch history. Please try again later."
-      );
-      return;
+    let beforeResult;
+    const hasPrefetched =
+      prefetched &&
+      Object.prototype.hasOwnProperty.call(prefetched, "beforeResult");
+
+    if (hasPrefetched) {
+      beforeResult = prefetched.beforeResult;
+    } else {
+      try {
+        beforeResult = await callBeforeInitialLoad({ actor: state.actor });
+      } catch (error) {
+        console.error("[historyView] Failed to fetch watch history list:", error);
+        showEmptyState(
+          "We couldn't load your watch history. Please try again later."
+        );
+        return;
+      }
+    }
+
+    if (
+      beforeResult &&
+      typeof beforeResult === "object" &&
+      typeof beforeResult.actor === "string" &&
+      beforeResult.actor.trim()
+    ) {
+      state.actor = beforeResult.actor.trim();
+    }
+
+    let fingerprint;
+    if (typeof fingerprintOverride !== "undefined") {
+      fingerprint = fingerprintOverride;
+    } else {
+      try {
+        fingerprint = await computeSnapshotFingerprint({
+          actor: state.actor,
+          beforeResult,
+          refresh: false,
+        });
+      } catch (error) {
+        debugLog("failed to compute snapshot fingerprint", error);
+      }
+    }
+
+    if (typeof fingerprint === "string") {
+      state.snapshotFingerprint = fingerprint;
+    } else {
+      state.snapshotFingerprint = null;
     }
 
     await loadNextBatch({ initial: true });
@@ -348,6 +479,7 @@ export function createWatchHistoryRenderer(config = {}) {
     debugLog("initial load complete", {
       hasMore: state.hasMore,
       resolvedCount: state.resolvedVideos.length,
+      actor: state.actor,
     });
   };
 
@@ -367,6 +499,56 @@ export function createWatchHistoryRenderer(config = {}) {
         debugLog("ensureInitialLoad rerunning initial load (not initialized)");
         await runInitialLoad();
         return;
+      }
+
+      state.actor = (await resolveActor(state.actor)) || null;
+
+      if (!state.isLoading) {
+        try {
+          const beforeResult = await callBeforeInitialLoad({
+            actor: state.actor,
+            reason: "ensureInitialLoad",
+          });
+          if (
+            beforeResult &&
+            typeof beforeResult === "object" &&
+            typeof beforeResult.actor === "string" &&
+            beforeResult.actor.trim()
+          ) {
+            state.actor = beforeResult.actor.trim();
+          }
+          const fingerprint = await computeSnapshotFingerprint({
+            actor: state.actor,
+            beforeResult,
+            refresh: false,
+          });
+
+          if (typeof fingerprint === "string") {
+            if (fingerprint !== state.snapshotFingerprint) {
+              debugLog("ensureInitialLoad detected new snapshot", {
+                previous: state.snapshotFingerprint,
+                next: fingerprint,
+                actor: state.actor,
+              });
+              await runInitialLoad({
+                actor: state.actor,
+                prefetched: { beforeResult },
+                fingerprintOverride: fingerprint,
+              });
+              return;
+            }
+            state.snapshotFingerprint = fingerprint;
+          }
+        } catch (error) {
+          console.warn(
+            "[historyView] Failed to refresh watch history snapshot:",
+            error
+          );
+        }
+      } else {
+        debugLog("ensureInitialLoad skipping snapshot refresh (still loading)", {
+          actor: state.actor,
+        });
       }
 
       if (!state.resolvedVideos.length && !state.isLoading) {
@@ -413,6 +595,8 @@ export function createWatchHistoryRenderer(config = {}) {
       state.resolvedVideos = [];
       state.hasMore = true;
       state.isLoading = false;
+      state.actor = null;
+      state.snapshotFingerprint = null;
       resetUiState();
       setLoadingVisible(false);
     },

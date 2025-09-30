@@ -969,6 +969,45 @@ class NostrClient {
     }
   }
 
+  getWatchHistoryFingerprint(pubkeyOrSession) {
+    let actor =
+      typeof pubkeyOrSession === "string" && pubkeyOrSession.trim()
+        ? pubkeyOrSession.trim()
+        : "";
+
+    if (!actor) {
+      if (this.sessionActor?.pubkey) {
+        actor = this.sessionActor.pubkey.trim();
+      } else if (typeof this.pubkey === "string" && this.pubkey.trim()) {
+        actor = this.pubkey.trim();
+      }
+    }
+
+    if (!actor) {
+      return "";
+    }
+
+    const entry = this.watchHistoryCache.get(actor);
+    if (!entry) {
+      return "";
+    }
+
+    const pointerId =
+      entry.pointerEvent && typeof entry.pointerEvent.id === "string"
+        ? entry.pointerEvent.id
+        : "";
+    const pointerCreated =
+      entry.pointerEvent && Number.isFinite(entry.pointerEvent.created_at)
+        ? entry.pointerEvent.created_at
+        : 0;
+    const itemKeys = entry.items
+      .map((item) => pointerKey(item))
+      .filter(Boolean)
+      .join("|");
+
+    return `${pointerId}:${pointerCreated}:${itemKeys}`;
+  }
+
   async encryptWatchHistoryPayload(actorPubkey, payload) {
     const normalizedActor =
       typeof actorPubkey === "string" && actorPubkey.trim()
