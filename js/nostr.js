@@ -1528,7 +1528,33 @@ class NostrClient {
     }
 
     const totalChunks = chunkItemsList.length || 1;
-    const baseTimestamp = Math.floor(Date.now() / 1000);
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    let lastCreatedAt = 0;
+
+    const pointerCandidates = [];
+    if (existingEntry?.pointerEvent) {
+      pointerCandidates.push(existingEntry.pointerEvent);
+    }
+
+    const cachedPointerEvent = this.watchHistoryCache.get(normalizedActor)?.pointerEvent;
+    if (cachedPointerEvent) {
+      pointerCandidates.push(cachedPointerEvent);
+    }
+
+    for (const candidate of pointerCandidates) {
+      if (!candidate || typeof candidate !== "object") {
+        continue;
+      }
+      const createdAt = Number.isFinite(candidate.created_at)
+        ? Math.floor(candidate.created_at)
+        : null;
+      if (createdAt !== null && createdAt > lastCreatedAt) {
+        lastCreatedAt = createdAt;
+      }
+    }
+
+    const baseTimestamp = Math.max(nowSeconds, lastCreatedAt + totalChunks);
     const chunkResults = [];
     let overallSuccess = true;
 
@@ -1578,6 +1604,8 @@ class NostrClient {
         tags.splice(2, 0, ["head", "1"]);
       }
 
+      // Ensure created_at stays monotonic so chunk 0 always outranks prior snapshots
+      // even when multiple publishes land within the same wall-clock second.
       const event = {
         kind: WATCH_HISTORY_KIND,
         pubkey: normalizedActor,
