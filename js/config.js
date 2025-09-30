@@ -4,6 +4,10 @@ import {
   ADMIN_SUPER_NPUB,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
   DEFAULT_WHITELIST_MODE_ENABLED,
+  WATCH_HISTORY_KIND,
+  WATCH_HISTORY_LIST_IDENTIFIER,
+  WATCH_HISTORY_MAX_ITEMS,
+  WATCH_HISTORY_BATCH_RESOLVE,
 } from "../config/instance-config.js";
 
 export const isDevMode = true; // Set to false for production
@@ -42,3 +46,12 @@ export function setWhitelistMode(enabled) {
 }
 
 export { ADMIN_WHITELIST_MODE_STORAGE_KEY };
+
+// -----------------------------------------------------------------------------
+// Watch history — roadmap defaults balance retention with relay load
+// -----------------------------------------------------------------------------
+
+export { WATCH_HISTORY_KIND };
+export { WATCH_HISTORY_LIST_IDENTIFIER };
+export { WATCH_HISTORY_MAX_ITEMS };
+export { WATCH_HISTORY_BATCH_RESOLVE };
