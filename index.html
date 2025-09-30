@@ -149,28 +149,36 @@
         </div>
       </header>
 
-      <!-- Error Container -->
+      <!-- Notification Portal -->
       <div
-        id="errorContainer"
-        class="hidden bg-red-100 text-red-900 p-4 rounded-md mb-4"
-      ></div>
-
-      <!-- Status Container -->
-      <div
-        id="statusContainer"
-        class="hidden status-banner"
-        role="status"
+        id="notificationPortal"
+        role="region"
         aria-live="polite"
+        aria-label="System notifications"
       >
-        <span class="status-spinner" aria-hidden="true"></span>
-        <span class="status-message" data-status-message></span>
-      </div>
+        <!-- Error Container -->
+        <div
+          id="errorContainer"
+          class="hidden bg-red-100 text-red-900 p-4 rounded-md mb-4"
+        ></div>
 
-      <!-- Success Container -->
-      <div
-        id="successContainer"
-        class="hidden bg-green-100 text-green-900 p-4 rounded-md mb-4"
-      ></div>
+        <!-- Status Container -->
+        <div
+          id="statusContainer"
+          class="hidden status-banner"
+          role="status"
+          aria-live="polite"
+        >
+          <span class="status-spinner" aria-hidden="true"></span>
+          <span class="status-message" data-status-message></span>
+        </div>
+
+        <!-- Success Container -->
+        <div
+          id="successContainer"
+          class="hidden bg-green-100 text-green-900 p-4 rounded-md mb-4"
+        ></div>
+      </div>
 
       <!-- Dynamic views (like most-recent-videos.html, etc.) -->
       <main id="viewContainer" class="flex-grow mb-8"></main>
