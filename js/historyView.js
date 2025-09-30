@@ -12,6 +12,9 @@ const BATCH_SIZE = WATCH_HISTORY_BATCH_RESOLVE ? DEFAULT_BATCH_SIZE : 1;
 export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
 
+const WATCH_HISTORY_LOADING_STATUS = "Fetching watch history from relays…";
+const WATCH_HISTORY_EMPTY_STATUS = "No watch history yet.";
+
 function toNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -490,6 +493,7 @@ export function createWatchHistoryRenderer(config = {}) {
     viewSelector: "#watchHistoryView",
     gridSelector: "#watchHistoryGrid",
     loadingSelector: "#watchHistoryLoading",
+    statusSelector: "#watchHistoryStatus",
     emptySelector: "#watchHistoryEmpty",
     sentinelSelector: "#watchHistorySentinel",
     scrollContainerSelector: null,
@@ -507,6 +511,7 @@ export function createWatchHistoryRenderer(config = {}) {
     viewSelector,
     gridSelector,
     loadingSelector,
+    statusSelector,
     emptySelector,
     sentinelSelector,
     scrollContainerSelector,
@@ -524,6 +529,7 @@ export function createWatchHistoryRenderer(config = {}) {
     view: viewSelector,
     grid: gridSelector,
     loading: loadingSelector,
+    status: statusSelector,
     empty: emptySelector,
     sentinel: sentinelSelector,
     scrollContainer: scrollContainerSelector,
@@ -630,36 +636,69 @@ export function createWatchHistoryRenderer(config = {}) {
     view: query(selectors.view),
     grid: query(selectors.grid),
     loadingEl: query(selectors.loading),
+    statusEl: query(selectors.status),
     emptyEl: query(selectors.empty),
     sentinel: query(selectors.sentinel),
     scrollContainer: query(selectors.scrollContainer),
   });
 
-  const setLoadingVisible = (visible) => {
-    const { loadingEl } = getElements();
-    if (!loadingEl) {
+  const setStatusMessage = (message = "") => {
+    const { statusEl } = getElements();
+    if (!statusEl) {
       return;
     }
-    if (visible) {
-      loadingEl.classList.remove("hidden");
+
+    const nextMessage = typeof message === "string" ? message.trim() : "";
+    if (nextMessage) {
+      statusEl.textContent = nextMessage;
+      statusEl.classList.remove("hidden");
     } else {
-      loadingEl.classList.add("hidden");
+      statusEl.textContent = "";
+      statusEl.classList.add("hidden");
+    }
+  };
+
+  const clearStatusMessage = () => {
+    setStatusMessage("");
+  };
+
+  const setLoadingVisible = (visible, { statusMessage } = {}) => {
+    const { loadingEl } = getElements();
+    if (loadingEl) {
+      if (visible) {
+        loadingEl.classList.remove("hidden");
+      } else {
+        loadingEl.classList.add("hidden");
+      }
+    }
+
+    if (visible) {
+      const message =
+        typeof statusMessage === "string" && statusMessage.trim()
+          ? statusMessage
+          : WATCH_HISTORY_LOADING_STATUS;
+      setStatusMessage(message);
+      return;
+    }
+
+    if (typeof statusMessage === "string") {
+      setStatusMessage(statusMessage);
+    } else {
+      clearStatusMessage();
     }
   };
 
   const resetUiState = () => {
-    const { grid, loadingEl, emptyEl } = getElements();
+    const { grid, emptyEl } = getElements();
     if (grid) {
       grid.innerHTML = "";
       grid.classList.add("hidden");
-    }
-    if (loadingEl) {
-      loadingEl.classList.remove("hidden");
     }
     if (emptyEl) {
       emptyEl.textContent = state.emptyCopy;
       emptyEl.classList.add("hidden");
     }
+    setLoadingVisible(true);
   };
 
   const cleanupObservers = () => {
@@ -688,7 +727,9 @@ export function createWatchHistoryRenderer(config = {}) {
       emptyEl.textContent = message;
       emptyEl.classList.remove("hidden");
     }
-    setLoadingVisible(false);
+    const shouldShowEmptyStatus = message === state.emptyCopy;
+    const statusMessage = shouldShowEmptyStatus ? WATCH_HISTORY_EMPTY_STATUS : "";
+    setLoadingVisible(false, { statusMessage });
     state.hasMore = false;
     cleanupObservers();
     debugLog("showing empty state", { message });
@@ -753,6 +794,7 @@ export function createWatchHistoryRenderer(config = {}) {
       return;
     }
 
+    setLoadingVisible(true);
     state.isLoading = true;
     debugLog("loading next batch", {
       initial,
