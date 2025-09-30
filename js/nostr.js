@@ -185,19 +185,6 @@ function normalizePointerInput(pointer) {
   return { type, value: trimmed, relay: null };
 }
 
-function pointerToTag(pointer) {
-  const normalized = clonePointerItem(pointer);
-  if (!normalized) {
-    return null;
-  }
-
-  const tag = [normalized.type, normalized.value];
-  if (normalized.relay) {
-    tag.push(normalized.relay);
-  }
-  return tag;
-}
-
 function extractPointerItemsFromEvent(event) {
   if (!event || typeof event !== "object") {
     return [];
@@ -223,6 +210,53 @@ function extractPointerItemsFromEvent(event) {
   }
 
   return items;
+}
+
+function normalizePointersFromPayload(payload) {
+  const normalized = [];
+  const seen = new Set();
+
+  if (!payload || typeof payload !== "object") {
+    return normalized;
+  }
+
+  const source = Array.isArray(payload.items) ? payload.items : [];
+  for (const candidate of source) {
+    const pointer = normalizePointerInput(candidate);
+    if (!pointer) {
+      continue;
+    }
+    const key = pointerKey(pointer);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push(pointer);
+  }
+
+  return normalized;
+}
+
+function parseWatchHistoryPayload(plaintext) {
+  if (typeof plaintext !== "string") {
+    return { version: 0, items: [] };
+  }
+
+  try {
+    const parsed = JSON.parse(plaintext);
+    if (!parsed || typeof parsed !== "object") {
+      return { version: 0, items: [] };
+    }
+
+    const version = Number.isFinite(parsed.version) ? parsed.version : 0;
+    const items = normalizePointersFromPayload(parsed);
+    return { version, items };
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to parse watch history payload:", error);
+    }
+    return { version: 0, items: [] };
+  }
 }
 
 function eventToAddressPointer(event) {
@@ -935,6 +969,176 @@ class NostrClient {
     }
   }
 
+  async encryptWatchHistoryPayload(actorPubkey, payload) {
+    const normalizedActor =
+      typeof actorPubkey === "string" && actorPubkey.trim()
+        ? actorPubkey.trim().toLowerCase()
+        : "";
+    if (!normalizedActor) {
+      return { ok: false, error: "invalid-actor" };
+    }
+
+    let normalizedPayload = payload;
+    if (!normalizedPayload || typeof normalizedPayload !== "object") {
+      normalizedPayload = {};
+    }
+
+    const items = Array.isArray(normalizedPayload.items)
+      ? normalizedPayload.items
+      : [];
+
+    const prepared = {
+      version: Number.isFinite(normalizedPayload.version)
+        ? normalizedPayload.version
+        : 1,
+      items,
+    };
+
+    const plaintext = JSON.stringify(prepared);
+
+    let ciphertext = "";
+    const normalizedLogged =
+      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+
+    if (
+      normalizedActor &&
+      normalizedActor === normalizedLogged &&
+      window?.nostr?.nip04?.encrypt
+    ) {
+      try {
+        ciphertext = await window.nostr.nip04.encrypt(
+          normalizedActor,
+          plaintext
+        );
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to encrypt watch history with extension:",
+            error
+          );
+        }
+      }
+    }
+
+    if (!ciphertext) {
+      try {
+        if (!this.sessionActor || this.sessionActor.pubkey !== normalizedActor) {
+          await this.ensureSessionActor(true);
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to ensure session actor while encrypting watch history:",
+            error
+          );
+        }
+      }
+
+      const privateKey = this.sessionActor?.privateKey;
+      if (privateKey && window?.NostrTools?.nip04?.encrypt) {
+        try {
+          ciphertext = await window.NostrTools.nip04.encrypt(
+            privateKey,
+            normalizedActor,
+            plaintext
+          );
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              "[nostr] Failed to encrypt watch history with session key:",
+              error
+            );
+          }
+        }
+      }
+    }
+
+    if (!ciphertext) {
+      return { ok: false, error: "encryption-unavailable" };
+    }
+
+    return { ok: true, ciphertext };
+  }
+
+  async decryptWatchHistoryEvent(pointerEvent, actorPubkey) {
+    const normalizedActor =
+      typeof actorPubkey === "string" && actorPubkey.trim()
+        ? actorPubkey.trim().toLowerCase()
+        : "";
+    if (!normalizedActor) {
+      return { version: 0, items: extractPointerItemsFromEvent(pointerEvent) };
+    }
+
+    const ciphertext =
+      pointerEvent && typeof pointerEvent.content === "string"
+        ? pointerEvent.content.trim()
+        : "";
+
+    if (!ciphertext) {
+      return { version: 0, items: extractPointerItemsFromEvent(pointerEvent) };
+    }
+
+    const normalizedLogged =
+      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+
+    if (
+      normalizedActor &&
+      normalizedActor === normalizedLogged &&
+      window?.nostr?.nip04?.decrypt
+    ) {
+      try {
+        const plaintext = await window.nostr.nip04.decrypt(
+          normalizedActor,
+          ciphertext
+        );
+        const parsed = parseWatchHistoryPayload(plaintext);
+        return parsed;
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to decrypt watch history with extension:",
+            error
+          );
+        }
+      }
+    }
+
+    try {
+      if (!this.sessionActor || this.sessionActor.pubkey !== normalizedActor) {
+        await this.ensureSessionActor(true);
+      }
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[nostr] Failed to ensure session actor while decrypting watch history:",
+          error
+        );
+      }
+    }
+
+    const privateKey = this.sessionActor?.privateKey;
+    if (privateKey && window?.NostrTools?.nip04?.decrypt) {
+      try {
+        const plaintext = await window.NostrTools.nip04.decrypt(
+          privateKey,
+          normalizedActor,
+          ciphertext
+        );
+        const parsed = parseWatchHistoryPayload(plaintext);
+        return parsed;
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to decrypt watch history with session key:",
+            error
+          );
+        }
+      }
+    }
+
+    return { version: 0, items: extractPointerItemsFromEvent(pointerEvent) };
+  }
+
   cancelWatchHistoryRepublish(actor) {
     const key =
       typeof actor === "string" && actor.trim()
@@ -1037,20 +1241,37 @@ class NostrClient {
         ? normalizedItems.slice(0, WATCH_HISTORY_MAX_ITEMS)
         : normalizedItems;
 
-    const tags = [["d", WATCH_HISTORY_LIST_IDENTIFIER]];
-    for (const item of trimmedItems) {
-      const tag = pointerToTag(item);
-      if (tag) {
-        tags.push(tag);
+    const payloadItems = trimmedItems.map((item) => ({
+      type: item.type,
+      value: item.value,
+      relay: item.relay || null,
+    }));
+
+    const encryptionResult = await this.encryptWatchHistoryPayload(
+      normalizedActor,
+      { version: 1, items: payloadItems }
+    );
+    if (!encryptionResult.ok) {
+      if (isDevMode) {
+        console.warn(
+          "[nostr] Unable to encrypt watch history snapshot:",
+          encryptionResult.error
+        );
       }
+      return encryptionResult;
     }
+
+    const tags = [
+      ["d", WATCH_HISTORY_LIST_IDENTIFIER],
+      ["encrypted", "nip04"],
+    ];
 
     const event = {
       kind: WATCH_HISTORY_KIND,
       pubkey: normalizedActor,
       created_at: Math.floor(Date.now() / 1000),
       tags,
-      content: "",
+      content: encryptionResult.ciphertext,
     };
 
     let signedEvent;
@@ -1518,8 +1739,11 @@ class NostrClient {
     }
 
     const previousEntry = this.watchHistoryCache.get(actor) || null;
-    const remoteItems = pointerEvent
-      ? extractPointerItemsFromEvent(pointerEvent)
+    const decryptedPayload = pointerEvent
+      ? await this.decryptWatchHistoryEvent(pointerEvent, actor)
+      : { version: 0, items: [] };
+    const remoteItems = Array.isArray(decryptedPayload.items)
+      ? decryptedPayload.items
       : [];
 
     let items = remoteItems;
@@ -1535,7 +1759,11 @@ class NostrClient {
       pointerForEntry = storedPointerEvent;
     }
 
-    if (!items.length) {
+    const shouldFallback =
+      (!pointerEvent && !items.length) ||
+      (pointerEvent && decryptedPayload.version === 0 && !items.length);
+
+    if (shouldFallback) {
       if (previousEntry?.items?.length) {
         items = previousEntry.items;
         usedFallback = true;
