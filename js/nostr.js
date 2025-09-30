@@ -6,6 +6,8 @@ import {
   WATCH_HISTORY_LIST_IDENTIFIER,
   WATCH_HISTORY_MAX_ITEMS,
   WATCH_HISTORY_BATCH_RESOLVE,
+  WATCH_HISTORY_PAYLOAD_MAX_BYTES,
+  WATCH_HISTORY_FETCH_EVENT_LIMIT,
 } from "./config.js";
 import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
@@ -239,24 +241,161 @@ function normalizePointersFromPayload(payload) {
 
 function parseWatchHistoryPayload(plaintext) {
   if (typeof plaintext !== "string") {
-    return { version: 0, items: [] };
+    return {
+      version: 0,
+      items: [],
+      snapshot: "",
+      chunkIndex: 0,
+      totalChunks: 1,
+    };
   }
 
   try {
     const parsed = JSON.parse(plaintext);
     if (!parsed || typeof parsed !== "object") {
-      return { version: 0, items: [] };
+      return {
+        version: 0,
+        items: [],
+        snapshot: "",
+        chunkIndex: 0,
+        totalChunks: 1,
+      };
     }
 
     const version = Number.isFinite(parsed.version) ? parsed.version : 0;
     const items = normalizePointersFromPayload(parsed);
-    return { version, items };
+    const snapshot =
+      typeof parsed.snapshot === "string" ? parsed.snapshot : "";
+    const chunkIndex = Number.isFinite(parsed.chunkIndex)
+      ? Math.max(0, Math.floor(parsed.chunkIndex))
+      : 0;
+    const totalChunks = Number.isFinite(parsed.totalChunks)
+      ? Math.max(1, Math.floor(parsed.totalChunks))
+      : 1;
+    return { version, items, snapshot, chunkIndex, totalChunks };
   } catch (error) {
     if (isDevMode) {
       console.warn("[nostr] Failed to parse watch history payload:", error);
     }
-    return { version: 0, items: [] };
+    return {
+      version: 0,
+      items: [],
+      snapshot: "",
+      chunkIndex: 0,
+      totalChunks: 1,
+    };
   }
+}
+
+function chunkWatchHistoryPayloadItems(payloadItems, snapshotId, maxBytes) {
+  const items = Array.isArray(payloadItems) ? payloadItems : [];
+  const safeMax = Math.max(128, Math.floor(maxBytes || 0));
+  const measurementLimit = Math.max(64, safeMax - 32);
+  const normalizedSnapshot =
+    typeof snapshotId === "string" ? snapshotId : "";
+
+  const chunks = [];
+  const skipped = [];
+  let current = [];
+
+  const estimateLength = (chunkItems, chunkIndex, totalGuess) =>
+    JSON.stringify({
+      version: 2,
+      snapshot: normalizedSnapshot,
+      chunkIndex,
+      totalChunks: totalGuess,
+      items: chunkItems,
+    }).length;
+
+  for (const item of items) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    if (!current.length) {
+      const candidate = [item];
+      const size = estimateLength(candidate, chunks.length, chunks.length + 1);
+      if (size <= measurementLimit) {
+        current = candidate;
+      } else {
+        skipped.push(item);
+      }
+      continue;
+    }
+
+    const chunkIndex = chunks.length;
+    const candidate = [...current, item];
+    const size = estimateLength(candidate, chunkIndex, chunkIndex + 1);
+    if (size <= measurementLimit) {
+      current = candidate;
+      continue;
+    }
+
+    chunks.push(current);
+    current = [];
+
+    const nextIndex = chunks.length;
+    const soloSize = estimateLength([item], nextIndex, nextIndex + 1);
+    if (soloSize <= measurementLimit) {
+      current = [item];
+    } else {
+      skipped.push(item);
+    }
+  }
+
+  if (current.length || chunks.length === 0) {
+    chunks.push(current);
+  }
+
+  let needsRebalance = true;
+  while (needsRebalance) {
+    needsRebalance = false;
+    for (let index = 0; index < chunks.length; index++) {
+      let chunkItems = chunks[index];
+      if (!Array.isArray(chunkItems)) {
+        chunks[index] = [];
+        chunkItems = chunks[index];
+      }
+
+      let payloadSize = JSON.stringify({
+        version: 2,
+        snapshot: normalizedSnapshot,
+        chunkIndex: index,
+        totalChunks: chunks.length,
+        items: chunkItems,
+      }).length;
+
+      while (chunkItems.length && payloadSize > safeMax) {
+        const overflow = chunkItems.pop();
+        if (!overflow) {
+          break;
+        }
+        if (!chunks[index + 1]) {
+          chunks[index + 1] = [];
+        }
+        chunks[index + 1].unshift(overflow);
+        needsRebalance = true;
+        chunkItems = chunks[index];
+        payloadSize = JSON.stringify({
+          version: 2,
+          snapshot: normalizedSnapshot,
+          chunkIndex: index,
+          totalChunks: chunks.length,
+          items: chunkItems,
+        }).length;
+      }
+    }
+  }
+
+  while (chunks.length > 1 && chunks[chunks.length - 1].length === 0) {
+    chunks.pop();
+  }
+
+  if (!chunks.length) {
+    chunks.push([]);
+  }
+
+  return { chunks, skipped };
 }
 
 function eventToAddressPointer(event) {
@@ -1026,12 +1165,27 @@ class NostrClient {
       ? normalizedPayload.items
       : [];
 
+    const version = Number.isFinite(normalizedPayload.version)
+      ? normalizedPayload.version
+      : 1;
+
     const prepared = {
-      version: Number.isFinite(normalizedPayload.version)
-        ? normalizedPayload.version
-        : 1,
+      version,
       items,
     };
+
+    if (version >= 2) {
+      prepared.snapshot =
+        typeof normalizedPayload.snapshot === "string"
+          ? normalizedPayload.snapshot
+          : "";
+      prepared.chunkIndex = Number.isFinite(normalizedPayload.chunkIndex)
+        ? Math.max(0, Math.floor(normalizedPayload.chunkIndex))
+        : 0;
+      prepared.totalChunks = Number.isFinite(normalizedPayload.totalChunks)
+        ? Math.max(1, Math.floor(normalizedPayload.totalChunks))
+        : 1;
+    }
 
     const plaintext = JSON.stringify(prepared);
 
@@ -1101,7 +1255,13 @@ class NostrClient {
 
   async decryptWatchHistoryEvent(pointerEvent, actorPubkey) {
     const fallbackItems = extractPointerItemsFromEvent(pointerEvent);
-    const fallbackPayload = { version: 0, items: fallbackItems };
+    const fallbackPayload = {
+      version: 0,
+      items: fallbackItems,
+      snapshot: "",
+      chunkIndex: 0,
+      totalChunks: 1,
+    };
 
     const normalizedActor =
       typeof actorPubkey === "string" && actorPubkey.trim()
@@ -1295,61 +1455,49 @@ class NostrClient {
       relay: item.relay || null,
     }));
 
-    const encryptionResult = await this.encryptWatchHistoryPayload(
-      normalizedActor,
-      { version: 1, items: payloadItems }
-    );
-    if (!encryptionResult.ok) {
-      if (isDevMode) {
-        console.warn(
-          "[nostr] Unable to encrypt watch history snapshot:",
-          encryptionResult.error
-        );
-      }
-      return encryptionResult;
-    }
+    const maxBytesCandidate = Number.isFinite(this.watchHistoryPayloadMaxBytes)
+      ? this.watchHistoryPayloadMaxBytes
+      : WATCH_HISTORY_PAYLOAD_MAX_BYTES;
+    const maxPayloadBytes = Math.max(64, Math.floor(maxBytesCandidate));
+    const snapshotId = `${Math.floor(Date.now() / 1000)}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
 
-    const pointerTags = trimmedItems.map((item) => {
-      const tag = [item.type, item.value];
-      if (item.relay) {
-        tag.push(item.relay);
-      }
-      return tag;
+    const chunkInfo = chunkWatchHistoryPayloadItems(
+      payloadItems,
+      snapshotId,
+      maxPayloadBytes
+    );
+    const chunkItemsList = chunkInfo.chunks || [];
+    const skippedKeys = new Set(
+      (chunkInfo.skipped || [])
+        .map((item) => pointerKey(item))
+        .filter((key) => !!key)
+    );
+
+    const persistedItems = trimmedItems.filter((item) => {
+      const key = pointerKey(item);
+      return key && !skippedKeys.has(key);
     });
 
-    const tags = [
-      ["d", WATCH_HISTORY_LIST_IDENTIFIER],
-      ["encrypted", "nip04"],
-      ...pointerTags,
-    ];
+    if (chunkInfo.skipped?.length && isDevMode) {
+      console.warn(
+        `[nostr] Skipped ${chunkInfo.skipped.length} oversized watch history entries while chunking.`
+      );
+    }
 
-    const event = {
-      kind: WATCH_HISTORY_KIND,
-      pubkey: normalizedActor,
-      created_at: Math.floor(Date.now() / 1000),
-      tags,
-      content: encryptionResult.ciphertext,
-    };
+    const relays =
+      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
 
-    let signedEvent;
     const normalizedLogged =
       typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
-
-    if (
-      normalizedActor.toLowerCase() === normalizedLogged &&
+    const normalizedActorLower = normalizedActor.toLowerCase();
+    const useExtension =
+      normalizedActorLower === normalizedLogged &&
       window?.nostr &&
-      typeof window.nostr.signEvent === "function"
-    ) {
-      try {
-        signedEvent = await window.nostr.signEvent(event);
-      } catch (error) {
-        console.warn(
-          "[nostr] Failed to sign watch history list with extension:",
-          error
-        );
-        return { ok: false, error: "signing-failed", details: error };
-      }
-    } else {
+      typeof window.nostr.signEvent === "function";
+
+    if (!useExtension) {
       try {
         if (!this.sessionActor || this.sessionActor.pubkey !== normalizedActor) {
           await this.ensureSessionActor(true);
@@ -1357,46 +1505,134 @@ class NostrClient {
         if (!this.sessionActor || this.sessionActor.pubkey !== normalizedActor) {
           throw new Error("session-actor-mismatch");
         }
-        signedEvent = signEventWithPrivateKey(
-          event,
-          this.sessionActor.privateKey
-        );
       } catch (error) {
         console.warn(
-          "[nostr] Failed to sign watch history list with session key:",
+          "[nostr] Failed to prepare signing key for watch history chunks:",
           error
         );
         return { ok: false, error: "signing-failed", details: error };
       }
     }
 
-    const relays =
-      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
+    const totalChunks = chunkItemsList.length || 1;
+    const baseTimestamp = Math.floor(Date.now() / 1000);
+    const chunkResults = [];
+    let overallSuccess = true;
 
-    const publishResults = await Promise.all(
-      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
-    );
+    for (let index = 0; index < totalChunks; index++) {
+      const chunkItems = Array.isArray(chunkItemsList[index])
+        ? chunkItemsList[index]
+        : [];
 
-    const success = publishResults.some((result) => result.success);
-    if (!success) {
-      console.warn(
-        "[nostr] Failed to publish watch history list:",
-        publishResults
+      const payload = {
+        version: 2,
+        snapshot: snapshotId,
+        chunkIndex: index,
+        totalChunks,
+        items: chunkItems,
+      };
+
+      const encryptionResult = await this.encryptWatchHistoryPayload(
+        normalizedActor,
+        payload
       );
+      if (!encryptionResult.ok) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Unable to encrypt watch history chunk:",
+            encryptionResult.error
+          );
+        }
+        return encryptionResult;
+      }
+
+      const pointerTags = chunkItems.map((item) => {
+        const tag = [item.type, item.value];
+        if (item.relay) {
+          tag.push(item.relay);
+        }
+        return tag;
+      });
+
+      const tags = [
+        ["d", WATCH_HISTORY_LIST_IDENTIFIER],
+        ["encrypted", "nip04"],
+        ["snapshot", snapshotId],
+        ["chunk", String(index), String(totalChunks)],
+        ...pointerTags,
+      ];
+      if (index === 0) {
+        tags.splice(2, 0, ["head", "1"]);
+      }
+
+      const event = {
+        kind: WATCH_HISTORY_KIND,
+        pubkey: normalizedActor,
+        created_at: baseTimestamp + (totalChunks - index - 1),
+        tags,
+        content: encryptionResult.ciphertext,
+      };
+
+      let signedEvent;
+      if (useExtension) {
+        try {
+          signedEvent = await window.nostr.signEvent(event);
+        } catch (error) {
+          console.warn(
+            "[nostr] Failed to sign watch history chunk with extension:",
+            error
+          );
+          return { ok: false, error: "signing-failed", details: error };
+        }
+      } else {
+        try {
+          signedEvent = signEventWithPrivateKey(
+            event,
+            this.sessionActor.privateKey
+          );
+        } catch (error) {
+          console.warn(
+            "[nostr] Failed to sign watch history chunk with session key:",
+            error
+          );
+          return { ok: false, error: "signing-failed", details: error };
+        }
+      }
+
+      const publishResults = await Promise.all(
+        relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+      );
+
+      const chunkSuccess = publishResults.some((result) => result.success);
+      if (!chunkSuccess) {
+        overallSuccess = false;
+        console.warn(
+          "[nostr] Failed to publish watch history chunk:",
+          publishResults
+        );
+      }
+
+      chunkResults.push({
+        chunkIndex: index,
+        event: signedEvent,
+        results: publishResults,
+        success: chunkSuccess,
+      });
     }
 
-    if (success) {
+    if (overallSuccess) {
       this.cancelWatchHistoryRepublish(normalizedActor);
-    } else if (allowRetry) {
-      this.scheduleWatchHistoryRepublish(normalizedActor, trimmedItems);
+    } else if (allowRetry && persistedItems.length) {
+      this.scheduleWatchHistoryRepublish(normalizedActor, persistedItems);
     }
 
     const baselineEntry =
       existingEntry || this.watchHistoryCache.get(normalizedActor) || null;
 
+    const headEvent = chunkResults[0]?.event || null;
     const newEntry = this.createWatchHistoryEntry(
-      signedEvent,
-      trimmedItems,
+      headEvent,
+      persistedItems,
       Date.now(),
       baselineEntry
     );
@@ -1405,8 +1641,12 @@ class NostrClient {
     this.persistWatchHistoryEntry(normalizedActor, newEntry);
 
     return {
-      ok: success,
-      event: signedEvent,
+      ok: overallSuccess,
+      event: headEvent,
+      events: chunkResults.map((chunk) => chunk.event),
+      chunks: chunkResults,
+      results: chunkResults.map((chunk) => chunk.results),
+      snapshot: snapshotId,
       items: newEntry.items
         .map((item) => clonePointerItem(item))
         .filter(Boolean),
@@ -1750,44 +1990,41 @@ class NostrClient {
     const relayList =
       Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
 
+    const fetchLimitCandidate = Number.isFinite(this.watchHistoryFetchEventLimit)
+      ? this.watchHistoryFetchEventLimit
+      : WATCH_HISTORY_FETCH_EVENT_LIMIT;
+    const fetchLimit = Math.max(1, Math.floor(fetchLimitCandidate));
+
     const filter = {
       kinds: [WATCH_HISTORY_KIND],
       authors: [actor],
       "#d": [WATCH_HISTORY_LIST_IDENTIFIER],
-      limit: 1,
+      limit: fetchLimit,
     };
 
-    let pointerEvent = null;
+    let fetchedEvents = [];
     try {
-      const perRelay = await Promise.all(
-        relayList.map(async (url) => {
-          try {
-            const evt = await this.pool.get([url], filter);
-            return evt || null;
-          } catch (err) {
-            if (isDevMode) {
-              console.warn(
-                `[nostr] Failed to fetch watch history from ${url}:`,
-                err
-              );
-            }
-            return null;
+      const events = await this.pool.list(relayList, [filter]);
+      if (Array.isArray(events)) {
+        const dedupe = new Map();
+        for (const evt of events) {
+          if (!evt || typeof evt !== "object") {
+            continue;
           }
-        })
-      );
-
-      const events = perRelay.filter(Boolean);
-      if (events.length) {
-        pointerEvent = events.reduce((latest, candidate) => {
-          if (!latest) {
-            return candidate;
+          const id = typeof evt.id === "string" ? evt.id : null;
+          if (!id) {
+            continue;
           }
-          const latestCreated =
-            typeof latest.created_at === "number" ? latest.created_at : 0;
-          const candidateCreated =
-            typeof candidate.created_at === "number" ? candidate.created_at : 0;
-          return candidateCreated > latestCreated ? candidate : latest;
-        }, null);
+          const existing = dedupe.get(id);
+          if (
+            !existing ||
+            (typeof evt.created_at === "number" ? evt.created_at : 0) >
+              (typeof existing.created_at === "number" ? existing.created_at : 0)
+          ) {
+            dedupe.set(id, evt);
+          }
+        }
+        fetchedEvents = Array.from(dedupe.values());
       }
     } catch (error) {
       if (isDevMode) {
@@ -1795,32 +2032,187 @@ class NostrClient {
       }
     }
 
+    fetchedEvents.sort((a, b) => {
+      const aCreated = typeof a?.created_at === "number" ? a.created_at : 0;
+      const bCreated = typeof b?.created_at === "number" ? b.created_at : 0;
+      return bCreated - aCreated;
+    });
+
+    const snapshotMap = new Map();
+
+    for (const event of fetchedEvents) {
+      if (!event || typeof event !== "object") {
+        continue;
+      }
+
+      const tags = Array.isArray(event.tags) ? event.tags : [];
+      let taggedSnapshotId = "";
+      let taggedChunkIndex = null;
+      let taggedTotalChunks = null;
+
+      for (const tag of tags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+        if (tag[0] === "snapshot" && typeof tag[1] === "string") {
+          taggedSnapshotId = tag[1];
+        } else if (tag[0] === "chunk") {
+          const index = Number.parseInt(tag[1], 10);
+          const total = Number.parseInt(tag[2], 10);
+          if (Number.isFinite(index)) {
+            taggedChunkIndex = Math.max(0, index);
+          }
+          if (Number.isFinite(total) && total > 0) {
+            taggedTotalChunks = total;
+          }
+        }
+      }
+
+      const payload = await this.decryptWatchHistoryEvent(event, actor);
+      let snapshotId =
+        (typeof payload.snapshot === "string" && payload.snapshot) ||
+        taggedSnapshotId;
+      if (!snapshotId) {
+        const createdAt =
+          typeof event.created_at === "number" ? event.created_at : 0;
+        const fallbackId =
+          typeof event.id === "string" && event.id
+            ? event.id
+            : `${createdAt}:${Math.random().toString(36).slice(2, 10)}`;
+        snapshotId = fallbackId;
+      }
+
+      let chunkIndex = Number.isFinite(payload.chunkIndex)
+        ? Math.max(0, Math.floor(payload.chunkIndex))
+        : 0;
+      let totalChunks = Number.isFinite(payload.totalChunks)
+        ? Math.max(1, Math.floor(payload.totalChunks))
+        : 1;
+
+      if (Number.isFinite(taggedChunkIndex)) {
+        chunkIndex = Math.max(0, Math.floor(taggedChunkIndex));
+      }
+      if (Number.isFinite(taggedTotalChunks)) {
+        totalChunks = Math.max(1, Math.floor(taggedTotalChunks));
+      }
+
+      const bucket = snapshotMap.get(snapshotId) || {
+        snapshotId,
+        chunks: new Map(),
+        expectedChunks: totalChunks,
+        latestCreatedAt:
+          typeof event.created_at === "number" ? event.created_at : 0,
+        version: payload.version || 0,
+      };
+
+      bucket.chunks.set(chunkIndex, {
+        event,
+        payload: {
+          ...payload,
+          snapshot: snapshotId,
+          chunkIndex,
+          totalChunks,
+        },
+        created_at: typeof event.created_at === "number" ? event.created_at : 0,
+      });
+      bucket.expectedChunks = Math.max(bucket.expectedChunks, totalChunks);
+      const createdAt =
+        typeof event.created_at === "number" ? event.created_at : 0;
+      if (createdAt > bucket.latestCreatedAt) {
+        bucket.latestCreatedAt = createdAt;
+      }
+      bucket.version = Math.max(bucket.version, payload.version || 0);
+      snapshotMap.set(snapshotId, bucket);
+    }
+
+    const snapshotBuckets = Array.from(snapshotMap.values()).sort(
+      (a, b) => b.latestCreatedAt - a.latestCreatedAt
+    );
+
+    let selectedSnapshot = null;
+    let fallbackSnapshot = null;
+
+    for (const bucket of snapshotBuckets) {
+      const chunkIndices = Array.from(bucket.chunks.keys()).sort(
+        (a, b) => a - b
+      );
+      const seenKeys = new Set();
+      const combinedItems = [];
+      let pointerCandidate = null;
+
+      for (const index of chunkIndices) {
+        const chunk = bucket.chunks.get(index);
+        if (!chunk) {
+          continue;
+        }
+        if (!pointerCandidate && chunk.payload.chunkIndex === 0) {
+          pointerCandidate = chunk.event;
+        }
+        const items = Array.isArray(chunk.payload.items)
+          ? chunk.payload.items
+          : [];
+        for (const pointer of items) {
+          const key = pointerKey(pointer);
+          if (!key || seenKeys.has(key)) {
+            continue;
+          }
+          seenKeys.add(key);
+          combinedItems.push(pointer);
+        }
+      }
+
+      if (!pointerCandidate && chunkIndices.length) {
+        const firstChunk = bucket.chunks.get(chunkIndices[0]);
+        pointerCandidate = firstChunk?.event || null;
+      }
+
+      const snapshot = {
+        snapshotId: bucket.snapshotId,
+        items: combinedItems,
+        pointerEvent: pointerCandidate || null,
+        version: bucket.version,
+        chunkCount: chunkIndices.length,
+        expectedChunks: Math.max(bucket.expectedChunks, chunkIndices.length || 1),
+      };
+
+      if (!fallbackSnapshot) {
+        fallbackSnapshot = snapshot;
+      }
+
+      if (snapshot.chunkCount >= snapshot.expectedChunks) {
+        selectedSnapshot = snapshot;
+        break;
+      }
+
+      if (!selectedSnapshot) {
+        selectedSnapshot = snapshot;
+      }
+    }
+
+    const effectiveSnapshot = selectedSnapshot || fallbackSnapshot || null;
+
     const previousEntry = this.watchHistoryCache.get(actor) || null;
-    const decryptedPayload = pointerEvent
-      ? await this.decryptWatchHistoryEvent(pointerEvent, actor)
-      : { version: 0, items: [] };
-    const remoteItems = Array.isArray(decryptedPayload.items)
-      ? decryptedPayload.items
-      : [];
-
-    let items = remoteItems;
-    let pointerForEntry = pointerEvent;
-    let usedFallback = false;
-
     const storedItems = Array.isArray(stored?.items) ? stored.items : [];
     const storedPointerEvent = stored?.pointerEvent || null;
 
-    if (!pointerEvent && previousEntry?.pointerEvent) {
-      pointerForEntry = previousEntry.pointerEvent;
-    } else if (!pointerEvent && storedPointerEvent) {
-      pointerForEntry = storedPointerEvent;
+    const remoteItems = Array.isArray(effectiveSnapshot?.items)
+      ? effectiveSnapshot.items
+      : [];
+
+    let pointerForEntry = effectiveSnapshot?.pointerEvent || null;
+    if (!pointerForEntry) {
+      if (previousEntry?.pointerEvent) {
+        pointerForEntry = previousEntry.pointerEvent;
+      } else if (storedPointerEvent) {
+        pointerForEntry = storedPointerEvent;
+      }
     }
 
-    const shouldFallback =
-      (!pointerEvent && !items.length) ||
-      (pointerEvent && decryptedPayload.version === 0 && !items.length);
+    let items = remoteItems;
+    let usedFallback = false;
+    const remoteVersion = effectiveSnapshot?.version ?? 0;
 
-    if (shouldFallback) {
+    if (!effectiveSnapshot || (remoteVersion === 0 && !remoteItems.length)) {
       if (previousEntry?.items?.length) {
         items = previousEntry.items;
         usedFallback = true;
@@ -1840,7 +2232,11 @@ class NostrClient {
     this.watchHistoryCache.set(actor, entry);
     this.persistWatchHistoryEntry(actor, entry);
 
-    if (!pointerEvent && usedFallback && entry.items.length) {
+    if (
+      (!effectiveSnapshot || !effectiveSnapshot.pointerEvent) &&
+      usedFallback &&
+      entry.items.length
+    ) {
       this.scheduleWatchHistoryRepublish(actor, entry.items);
     }
 
