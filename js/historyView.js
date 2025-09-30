@@ -42,6 +42,20 @@ export function createWatchHistoryRenderer(config = {}) {
     scrollContainer: scrollContainerSelector,
   };
 
+  const LOG_PREFIX = "[historyView]";
+
+  const debugLog = (...args) => {
+    if (typeof console !== "undefined") {
+      if (typeof console.debug === "function") {
+        console.debug(LOG_PREFIX, ...args);
+        return;
+      }
+      if (typeof console.log === "function") {
+        console.log(LOG_PREFIX, ...args);
+      }
+    }
+  };
+
   const state = {
     isLoading: false,
     hasMore: true,
@@ -103,10 +117,12 @@ export function createWatchHistoryRenderer(config = {}) {
 
   const cleanupObservers = () => {
     if (state.observer) {
+      debugLog("disconnecting intersection observer");
       state.observer.disconnect();
       state.observer = null;
     }
     if (state.scrollListener?.target && state.scrollListener?.handler) {
+      debugLog("removing scroll listener");
       state.scrollListener.target.removeEventListener(
         "scroll",
         state.scrollListener.handler
@@ -128,6 +144,7 @@ export function createWatchHistoryRenderer(config = {}) {
     setLoadingVisible(false);
     state.hasMore = false;
     cleanupObservers();
+    debugLog("showing empty state", { message });
   };
 
   const mergeResolvedVideos = (nextVideos) => {
@@ -180,6 +197,11 @@ export function createWatchHistoryRenderer(config = {}) {
 
   const loadNextBatch = async ({ initial = false } = {}) => {
     if (state.isLoading || !state.hasMore) {
+      debugLog("skipping loadNextBatch", {
+        reason: state.isLoading ? "already loading" : "no more items",
+        initial,
+        resolvedCount: state.resolvedVideos.length,
+      });
       if (initial && !state.isLoading && state.resolvedVideos.length === 0) {
         setLoadingVisible(false);
       }
@@ -187,9 +209,18 @@ export function createWatchHistoryRenderer(config = {}) {
     }
 
     state.isLoading = true;
+    debugLog("loading next batch", {
+      initial,
+      batchSize: state.batchSize,
+      resolvedCount: state.resolvedVideos.length,
+    });
 
     try {
       const videos = await resolveBatch(state.batchSize);
+      debugLog("resolveBatch completed", {
+        initial,
+        received: Array.isArray(videos) ? videos.length : "non-array",
+      });
 
       if (!Array.isArray(videos) || videos.length === 0) {
         if (initial && state.resolvedVideos.length === 0) {
@@ -198,6 +229,10 @@ export function createWatchHistoryRenderer(config = {}) {
           state.hasMore = false;
           cleanupObservers();
           setLoadingVisible(false);
+          debugLog("no videos returned", {
+            initial,
+            resolvedCount: state.resolvedVideos.length,
+          });
         }
         return;
       }
@@ -205,6 +240,10 @@ export function createWatchHistoryRenderer(config = {}) {
       mergeResolvedVideos(videos);
       renderResolvedVideos();
       setLoadingVisible(false);
+      debugLog("rendered videos", {
+        totalResolved: state.resolvedVideos.length,
+        initial,
+      });
     } catch (error) {
       console.error("[historyView] Failed to resolve watch history:", error);
       if (initial && state.resolvedVideos.length === 0) {
@@ -214,20 +253,33 @@ export function createWatchHistoryRenderer(config = {}) {
       }
     } finally {
       state.isLoading = false;
+      debugLog("loadNextBatch finished", {
+        initial,
+        hasMore: state.hasMore,
+        resolvedCount: state.resolvedVideos.length,
+      });
     }
   };
 
   const attachObservers = () => {
     const { sentinel, scrollContainer } = getElements();
     if (!sentinel || !state.hasMore) {
+      debugLog("skipping observer attachment", {
+        hasSentinel: Boolean(sentinel),
+        hasMore: state.hasMore,
+      });
       return;
     }
 
     if ("IntersectionObserver" in window) {
+      debugLog("attaching intersection observer", {
+        useScrollContainer: Boolean(scrollContainer),
+      });
       state.observer = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
             if (entry.isIntersecting) {
+              debugLog("sentinel intersected");
               loadNextBatch();
             }
           });
@@ -248,6 +300,7 @@ export function createWatchHistoryRenderer(config = {}) {
         ? scrollContainer.clientHeight
         : window.innerHeight;
       if (rect.top <= threshold + 200) {
+        debugLog("scroll threshold met");
         loadNextBatch();
       }
     };
@@ -255,11 +308,15 @@ export function createWatchHistoryRenderer(config = {}) {
     target.addEventListener("scroll", handler, { passive: true });
     state.scrollListener = { target, handler };
     handler();
+    debugLog("attached scroll listener", {
+      useScrollContainer: Boolean(scrollContainer),
+    });
   };
 
   const runInitialLoad = async () => {
     const { view } = getElements();
     if (!view) {
+      debugLog("runInitialLoad aborted: view not found");
       return;
     }
 
@@ -269,6 +326,7 @@ export function createWatchHistoryRenderer(config = {}) {
     state.isLoading = false;
     state.initialized = false;
     resetUiState();
+    debugLog("starting initial load");
 
     try {
       await beforeInitialLoad?.();
@@ -287,47 +345,69 @@ export function createWatchHistoryRenderer(config = {}) {
     }
 
     state.initialized = true;
+    debugLog("initial load complete", {
+      hasMore: state.hasMore,
+      resolvedCount: state.resolvedVideos.length,
+    });
   };
 
   return {
     async init() {
+      debugLog("init called");
       await runInitialLoad();
     },
     async ensureInitialLoad() {
       const { view } = getElements();
       if (!view) {
+        debugLog("ensureInitialLoad aborted: view not found");
         return;
       }
 
       if (!state.initialized) {
+        debugLog("ensureInitialLoad rerunning initial load (not initialized)");
         await runInitialLoad();
         return;
       }
 
       if (!state.resolvedVideos.length && !state.isLoading) {
         if (!state.hasMore) {
+          debugLog("ensureInitialLoad resetting hasMore before retry");
           state.hasMore = true;
         }
+        debugLog("ensureInitialLoad requesting new batch", {
+          hasMore: state.hasMore,
+        });
         await loadNextBatch({ initial: true });
 
         if (state.hasMore && !state.observer && !state.scrollListener) {
+          debugLog("ensureInitialLoad reattaching observers");
           attachObservers();
         }
+      } else {
+        debugLog("ensureInitialLoad no action", {
+          resolvedCount: state.resolvedVideos.length,
+          isLoading: state.isLoading,
+          hasMore: state.hasMore,
+        });
       }
     },
     async loadMore() {
+      debugLog("loadMore called");
       await loadNextBatch();
     },
     resume() {
       cleanupObservers();
       if (state.hasMore) {
+        debugLog("resume attaching observers");
         attachObservers();
       }
     },
     pause() {
+      debugLog("pause called");
       cleanupObservers();
     },
     destroy() {
+      debugLog("destroy called");
       cleanupObservers();
       state.initialized = false;
       state.resolvedVideos = [];
