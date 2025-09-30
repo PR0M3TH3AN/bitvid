@@ -979,10 +979,19 @@ class NostrClient {
       }
     }
 
-    if (
-      !window?.NostrTools?.generatePrivateKey ||
-      typeof window.NostrTools.getPublicKey !== "function"
-    ) {
+    const nostrTools = window?.NostrTools || {};
+    const keyGenerator =
+      typeof nostrTools.generatePrivateKey === "function"
+        ? nostrTools.generatePrivateKey
+        : typeof nostrTools.generateSecretKey === "function"
+        ? nostrTools.generateSecretKey
+        : null;
+    const pubkeyDeriver =
+      typeof nostrTools.getPublicKey === "function"
+        ? nostrTools.getPublicKey
+        : null;
+
+    if (!keyGenerator || !pubkeyDeriver) {
       if (isDevMode) {
         console.warn(
           "[nostr] Unable to generate session actor: missing NostrTools helpers."
@@ -991,8 +1000,69 @@ class NostrClient {
       return "";
     }
 
-    const privateKey = window.NostrTools.generatePrivateKey();
-    const pubkey = window.NostrTools.getPublicKey(privateKey);
+    let privateKey = keyGenerator();
+    if (privateKey && typeof privateKey !== "string") {
+      const hasLength =
+        typeof privateKey === "object" &&
+        privateKey !== null &&
+        typeof privateKey.length === "number";
+      if (nostrTools.utils?.bytesToHex && hasLength) {
+        try {
+          privateKey = nostrTools.utils.bytesToHex(privateKey);
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              "[nostr] Failed to normalize generated private key:",
+              error
+            );
+          }
+          privateKey = "";
+        }
+      } else {
+        privateKey = "";
+      }
+    }
+
+    if (typeof privateKey !== "string" || !privateKey) {
+      if (isDevMode) {
+        console.warn(
+          "[nostr] Unable to generate session actor: invalid private key output."
+        );
+      }
+      return "";
+    }
+
+    let pubkey = pubkeyDeriver(privateKey);
+    if (pubkey && typeof pubkey !== "string") {
+      const hasLength =
+        typeof pubkey === "object" &&
+        pubkey !== null &&
+        typeof pubkey.length === "number";
+      if (nostrTools.utils?.bytesToHex && hasLength) {
+        try {
+          pubkey = nostrTools.utils.bytesToHex(pubkey);
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              "[nostr] Failed to normalize generated public key:",
+              error
+            );
+          }
+          pubkey = "";
+        }
+      } else {
+        pubkey = "";
+      }
+    }
+
+    if (typeof pubkey !== "string" || !pubkey) {
+      if (isDevMode) {
+        console.warn(
+          "[nostr] Unable to generate session actor: invalid public key output."
+        );
+      }
+      return "";
+    }
 
     this.sessionActor = { pubkey, privateKey };
 
