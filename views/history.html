@@ -1,0 +1,19 @@
+<!-- views/history.html -->
+<section id="watchHistoryView" class="space-y-6">
+  <div class="flex items-center justify-between">
+    <h2 class="text-2xl font-semibold text-white">Watch History</h2>
+  </div>
+  <div id="watchHistoryLoading" class="flex justify-center py-12">
+    <div class="h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+  <div
+    id="watchHistoryGrid"
+    class="hidden"
+    style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2rem;"
+  ></div>
+  <p id="watchHistoryEmpty" class="hidden text-gray-400 text-center py-12">
+    Your watch history is empty. Watch some videos to populate this list.
+  </p>
+  <div id="watchHistorySentinel" class="h-1 w-full"></div>
+  <script type="module" src="js/historyView.js"></script>
+</section>
