@@ -378,7 +378,6 @@ function handleHashChange() {
         if (typeof initFn === "function") {
           initFn();
         }
-        recordView("most-recent-videos");
       });
     });
     return;

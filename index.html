@@ -200,8 +200,32 @@
     <!-- Additional Scripts -->
     <script src="js/libs/nostr.bundle.js"></script>
     <script type="module">
-      import { nip19, SimplePool } from "https://esm.sh/nostr-tools@1.8.3";
-      window.NostrTools = { nip19, SimplePool };
+      import * as nostrTools from "https://esm.sh/nostr-tools@1.8.3";
+
+      const existing =
+        typeof window !== "undefined" &&
+        window.NostrTools &&
+        typeof window.NostrTools === "object"
+          ? window.NostrTools
+          : {};
+
+      const merged = { ...existing, ...nostrTools };
+
+      if (
+        !merged.generatePrivateKey &&
+        typeof merged.generateSecretKey === "function"
+      ) {
+        merged.generatePrivateKey = merged.generateSecretKey.bind(merged);
+      }
+
+      if (
+        !merged.generateSecretKey &&
+        typeof merged.generatePrivateKey === "function"
+      ) {
+        merged.generateSecretKey = merged.generatePrivateKey.bind(merged);
+      }
+
+      window.NostrTools = merged;
     </script>
     <script type="module" src="js/config.js"></script>
     <script type="module" src="js/lists.js"></script>
