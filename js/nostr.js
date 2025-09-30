@@ -1100,12 +1100,15 @@ class NostrClient {
   }
 
   async decryptWatchHistoryEvent(pointerEvent, actorPubkey) {
+    const fallbackItems = extractPointerItemsFromEvent(pointerEvent);
+    const fallbackPayload = { version: 0, items: fallbackItems };
+
     const normalizedActor =
       typeof actorPubkey === "string" && actorPubkey.trim()
         ? actorPubkey.trim().toLowerCase()
         : "";
     if (!normalizedActor) {
-      return { version: 0, items: extractPointerItemsFromEvent(pointerEvent) };
+      return fallbackPayload;
     }
 
     const ciphertext =
@@ -1114,7 +1117,7 @@ class NostrClient {
         : "";
 
     if (!ciphertext) {
-      return { version: 0, items: extractPointerItemsFromEvent(pointerEvent) };
+      return fallbackPayload;
     }
 
     const normalizedLogged =
@@ -1131,7 +1134,10 @@ class NostrClient {
           ciphertext
         );
         const parsed = parseWatchHistoryPayload(plaintext);
-        return parsed;
+        if (parsed.items.length || fallbackItems.length === 0) {
+          return parsed;
+        }
+        return { ...parsed, items: fallbackItems };
       } catch (error) {
         if (isDevMode) {
           console.warn(
@@ -1164,7 +1170,10 @@ class NostrClient {
           ciphertext
         );
         const parsed = parseWatchHistoryPayload(plaintext);
-        return parsed;
+        if (parsed.items.length || fallbackItems.length === 0) {
+          return parsed;
+        }
+        return { ...parsed, items: fallbackItems };
       } catch (error) {
         if (isDevMode) {
           console.warn(
@@ -1175,7 +1184,7 @@ class NostrClient {
       }
     }
 
-    return { version: 0, items: extractPointerItemsFromEvent(pointerEvent) };
+    return fallbackPayload;
   }
 
   cancelWatchHistoryRepublish(actor) {
@@ -1300,9 +1309,18 @@ class NostrClient {
       return encryptionResult;
     }
 
+    const pointerTags = trimmedItems.map((item) => {
+      const tag = [item.type, item.value];
+      if (item.relay) {
+        tag.push(item.relay);
+      }
+      return tag;
+    });
+
     const tags = [
       ["d", WATCH_HISTORY_LIST_IDENTIFIER],
       ["encrypted", "nip04"],
+      ...pointerTags,
     ];
 
     const event = {
