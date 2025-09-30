@@ -8,6 +8,8 @@ import {
   WATCH_HISTORY_LIST_IDENTIFIER,
   WATCH_HISTORY_MAX_ITEMS,
   WATCH_HISTORY_BATCH_RESOLVE,
+  WATCH_HISTORY_PAYLOAD_MAX_BYTES,
+  WATCH_HISTORY_FETCH_EVENT_LIMIT,
 } from "../config/instance-config.js";
 
 export const isDevMode = true; // Set to false for production
@@ -55,3 +57,5 @@ export { WATCH_HISTORY_KIND };
 export { WATCH_HISTORY_LIST_IDENTIFIER };
 export { WATCH_HISTORY_MAX_ITEMS };
 export { WATCH_HISTORY_BATCH_RESOLVE };
+export { WATCH_HISTORY_PAYLOAD_MAX_BYTES };
+export { WATCH_HISTORY_FETCH_EVENT_LIMIT };

@@ -83,3 +83,23 @@ export const WATCH_HISTORY_MAX_ITEMS = 1500;
  * bursty loads can disable batching at the cost of additional round trips.
  */
 export const WATCH_HISTORY_BATCH_RESOLVE = true;
+
+/**
+ * Maximum size of the JSON payload for each watch-history chunk, measured
+ * before encryption.
+ *
+ * BitVid splits large histories across multiple events to stay within relay
+ * limits. This cap keeps individual chunks under roughly 60 KB so that
+ * encrypted payloads remain relay-friendly even after base64 expansion.
+ * Lower the number if your relays enforce tighter limits.
+ */
+export const WATCH_HISTORY_PAYLOAD_MAX_BYTES = 60000;
+
+/**
+ * Number of watch-history events to request when syncing from relays.
+ *
+ * Chunked histories can span several events. This fetch limit should exceed
+ * the maximum number of chunks you expect a client to publish in one snapshot
+ * so the UI can stitch the full list back together.
+ */
+export const WATCH_HISTORY_FETCH_EVENT_LIMIT = 12;
