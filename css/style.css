@@ -819,6 +819,27 @@ button:not(.icon-button):focus {
 }
 
 /* Notifications */
+#notificationPortal {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  width: min(90vw, 32rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  pointer-events: none;
+}
+
+#notificationPortal > * {
+  width: 100%;
+  margin-bottom: 0;
+  pointer-events: auto;
+  border-radius: 0.75rem;
+  box-shadow: 0 1.25rem 3rem rgba(15, 23, 42, 0.3);
+}
+
 /* Base styling without a forced display */
 #errorContainer,
 #successContainer {
