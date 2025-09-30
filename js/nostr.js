@@ -31,6 +31,8 @@ const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const NIP07_LOGIN_TIMEOUT_MS = 15_000; // 15 seconds
+const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
+  "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again.";
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const WATCH_HISTORY_CACHE_STORAGE_KEY = "bitvid:watchHistoryCache:v1";
 
@@ -50,6 +52,24 @@ function logErrorOnce(message, eventContent = null) {
       "Maximum error log limit reached. Further errors will be suppressed."
     );
   }
+}
+
+function withNip07Timeout(operation) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE));
+    }, NIP07_LOGIN_TIMEOUT_MS);
+  });
+
+  return Promise.race([
+    Promise.resolve().then(operation),
+    timeoutPromise,
+  ]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
 }
 
 function pointerKey(pointer) {
@@ -2895,7 +2915,7 @@ class NostrClient {
           console.log("Requesting permissions from NIP-07 extension...");
         }
         try {
-          await extension.enable();
+          await withNip07Timeout(() => extension.enable());
         } catch (enableErr) {
           throw new Error(
             enableErr && enableErr.message
@@ -2907,8 +2927,8 @@ class NostrClient {
 
       if (allowAccountSelection && typeof extension.selectAccounts === "function") {
         try {
-          const selection = await extension.selectAccounts(
-            expectPubkey ? [expectPubkey] : undefined
+          const selection = await withNip07Timeout(() =>
+            extension.selectAccounts(expectPubkey ? [expectPubkey] : undefined)
           );
 
           const didCancelSelection =
@@ -2928,24 +2948,7 @@ class NostrClient {
           throw new Error(message);
         }
       }
-
-      let timeoutId;
-      const pubkey = await Promise.race([
-        extension.getPublicKey(),
-        new Promise((_, reject) => {
-          timeoutId = setTimeout(() => {
-            reject(
-              new Error(
-                "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again."
-              )
-            );
-          }, NIP07_LOGIN_TIMEOUT_MS);
-        }),
-      ]).finally(() => {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-      });
+      const pubkey = await withNip07Timeout(() => extension.getPublicKey());
       if (!pubkey || typeof pubkey !== "string") {
         throw new Error(
           "The NIP-07 extension did not return a public key. Please try again."
