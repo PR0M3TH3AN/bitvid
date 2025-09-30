@@ -158,6 +158,74 @@ assert.deepEqual(
   "chunked fetch should preserve pointer order"
 );
 
+const MONOTONIC_ACTOR = `${ACTOR}-monotonic`;
+const { client: monotonicPublishingClient, publishedEvents: monotonicEvents } =
+  createPublishingClient(MONOTONIC_ACTOR);
+
+const monotonicOriginalDateNow = Date.now;
+try {
+  const monotonicBaseSeconds = 1_700_123_456;
+  Date.now = () => monotonicBaseSeconds * 1000;
+
+  const firstMonotonicPointers = [
+    { type: "e", value: "event-monotonic-1", relay: null },
+    { type: "e", value: "event-monotonic-2", relay: null },
+  ];
+
+  const firstSnapshot = await monotonicPublishingClient.publishWatchHistorySnapshot(
+    MONOTONIC_ACTOR,
+    firstMonotonicPointers
+  );
+
+  const baselineEntry = monotonicPublishingClient.createWatchHistoryEntry(
+    firstSnapshot.event,
+    firstMonotonicPointers,
+    Date.now()
+  );
+  monotonicPublishingClient.watchHistoryCache.set(
+    MONOTONIC_ACTOR,
+    baselineEntry
+  );
+
+  const secondMonotonicPointers = [
+    { type: "e", value: "event-monotonic-3", relay: null },
+    { type: "e", value: "event-monotonic-1", relay: null },
+  ];
+
+  const secondSnapshot = await monotonicPublishingClient.publishWatchHistorySnapshot(
+    MONOTONIC_ACTOR,
+    secondMonotonicPointers,
+    baselineEntry
+  );
+
+  assert(
+    secondSnapshot.event.created_at > firstSnapshot.event.created_at,
+    "new snapshot should advance created_at when reusing the same second"
+  );
+
+  const monotonicDecryptClient = createDecryptClient(MONOTONIC_ACTOR);
+  monotonicDecryptClient.pool = { list: async () => monotonicEvents };
+
+  const monotonicFetched = await monotonicDecryptClient.fetchWatchHistory(
+    MONOTONIC_ACTOR
+  );
+
+  assert.deepEqual(
+    monotonicFetched.items.map((item) => ({
+      type: item.type,
+      value: item.value,
+      relay: item.relay || null,
+    })),
+    [
+      { type: "e", value: "event-monotonic-3", relay: null },
+      { type: "e", value: "event-monotonic-1", relay: null },
+    ],
+    "newer snapshot should win pointer ordering"
+  );
+} finally {
+  Date.now = monotonicOriginalDateNow;
+}
+
 localStorage.clear();
 
 const originalDateNow = Date.now;
