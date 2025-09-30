@@ -158,4 +158,77 @@ assert.deepEqual(
   "chunked fetch should preserve pointer order"
 );
 
+localStorage.clear();
+
+const originalDateNow = Date.now;
+try {
+  const baseTime = 1_700_000_000_000;
+  const ttlActor = `${ACTOR}-ttl`;
+  const pointer = { type: "e", value: "event-ttl", relay: null };
+
+  const cachingClient = createDecryptClient(ttlActor);
+  cachingClient.watchHistoryCacheTtlMs = 24 * 60 * 60 * 1000;
+
+  Date.now = () => baseTime;
+
+  const entry = cachingClient.createWatchHistoryEntry(null, [pointer], baseTime);
+  cachingClient.watchHistoryCache.set(ttlActor, entry);
+  cachingClient.persistWatchHistoryEntry(ttlActor, entry);
+
+  const reloadClient = createDecryptClient(ttlActor);
+  reloadClient.watchHistoryCacheTtlMs = cachingClient.watchHistoryCacheTtlMs;
+
+  Date.now = () => baseTime + 60 * 60 * 1000;
+
+  const cachedSnapshot = await reloadClient.fetchWatchHistory(ttlActor);
+  assert.equal(
+    cachedSnapshot.items.length,
+    1,
+    "cached snapshot should survive within extended TTL"
+  );
+  assert.equal(
+    cachedSnapshot.items[0].value,
+    pointer.value,
+    "cached snapshot should preserve pointer"
+  );
+
+  localStorage.clear();
+
+  const expiryClient = createDecryptClient(ttlActor);
+  expiryClient.watchHistoryCacheTtlMs = 1_000;
+
+  Date.now = () => baseTime;
+
+  const expiringEntry = expiryClient.createWatchHistoryEntry(
+    null,
+    [pointer],
+    baseTime
+  );
+  expiryClient.watchHistoryCache.set(ttlActor, expiringEntry);
+  expiryClient.persistWatchHistoryEntry(ttlActor, expiringEntry);
+
+  Date.now = () => baseTime + 1_500;
+
+  const expiredSnapshot = await expiryClient.fetchWatchHistory(ttlActor);
+  assert.equal(
+    expiredSnapshot.items.length,
+    0,
+    "expired snapshot should be dropped"
+  );
+  const cachedFallback = expiryClient.watchHistoryCache.get(ttlActor);
+  assert.equal(
+    cachedFallback?.items?.length ?? 0,
+    0,
+    "expired snapshot should not preserve stale items in memory"
+  );
+  const storage = expiryClient.getWatchHistoryStorage();
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(storage.actors, ttlActor),
+    false,
+    "expired snapshot should be removed from localStorage"
+  );
+} finally {
+  Date.now = originalDateNow;
+}
+
 console.log("watch history tests passed");

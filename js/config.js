@@ -10,6 +10,7 @@ import {
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
+  WATCH_HISTORY_CACHE_TTL_MS,
 } from "../config/instance-config.js";
 
 export const isDevMode = true; // Set to false for production
@@ -59,3 +60,4 @@ export { WATCH_HISTORY_MAX_ITEMS };
 export { WATCH_HISTORY_BATCH_RESOLVE };
 export { WATCH_HISTORY_PAYLOAD_MAX_BYTES };
 export { WATCH_HISTORY_FETCH_EVENT_LIMIT };
+export { WATCH_HISTORY_CACHE_TTL_MS };

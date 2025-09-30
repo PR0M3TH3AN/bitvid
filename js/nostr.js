@@ -8,6 +8,7 @@ import {
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
+  WATCH_HISTORY_CACHE_TTL_MS,
 } from "./config.js";
 import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
@@ -32,7 +33,6 @@ const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const NIP07_LOGIN_TIMEOUT_MS = 15_000; // 15 seconds
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const WATCH_HISTORY_CACHE_STORAGE_KEY = "bitvid:watchHistoryCache:v1";
-const WATCH_HISTORY_CACHE_TTL_MS = EVENTS_CACHE_TTL_MS;
 
 // To limit error spam
 let errorLogCount = 0;
@@ -861,6 +861,7 @@ class NostrClient {
     this.watchHistoryCache = new Map();
     this.watchHistoryStorage = null;
     this.watchHistoryRepublishTimers = new Map();
+    this.watchHistoryCacheTtlMs = WATCH_HISTORY_CACHE_TTL_MS;
   }
 
   restoreLocalData() {
@@ -963,59 +964,71 @@ class NostrClient {
   }
 
   /**
+   * Resolve the effective TTL for watch-history cache entries.
+   */
+  getWatchHistoryCacheTtlMs() {
+    const candidate = this.watchHistoryCacheTtlMs;
+    if (Number.isFinite(candidate) && candidate >= 0) {
+      return candidate;
+    }
+    return WATCH_HISTORY_CACHE_TTL_MS;
+  }
+
+  /**
    * Load watch history cache payload from localStorage.
    */
   getWatchHistoryStorage() {
-    if (this.watchHistoryStorage) {
-      return this.watchHistoryStorage;
-    }
-
     const base = { version: 1, actors: {} };
 
-    if (typeof localStorage === "undefined") {
-      this.watchHistoryStorage = base;
-      return this.watchHistoryStorage;
-    }
+    if (!this.watchHistoryStorage) {
+      if (typeof localStorage === "undefined") {
+        this.watchHistoryStorage = base;
+        return this.watchHistoryStorage;
+      }
 
-    let parsed = base;
-    try {
-      const raw = localStorage.getItem(WATCH_HISTORY_CACHE_STORAGE_KEY);
-      if (raw) {
-        const candidate = JSON.parse(raw);
-        if (
-          candidate &&
-          typeof candidate === "object" &&
-          candidate.version === 1 &&
-          candidate.actors &&
-          typeof candidate.actors === "object"
-        ) {
-          parsed = { version: 1, actors: candidate.actors };
+      let parsed = base;
+      try {
+        const raw = localStorage.getItem(WATCH_HISTORY_CACHE_STORAGE_KEY);
+        if (raw) {
+          const candidate = JSON.parse(raw);
+          if (
+            candidate &&
+            typeof candidate === "object" &&
+            candidate.version === 1 &&
+            candidate.actors &&
+            typeof candidate.actors === "object"
+          ) {
+            parsed = { version: 1, actors: candidate.actors };
+          }
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to parse watch history cache:", error);
         }
       }
-    } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to parse watch history cache:", error);
-      }
+
+      const actors = { ...(parsed.actors || {}) };
+      this.watchHistoryStorage = { version: 1, actors };
     }
 
     const now = Date.now();
+    const ttl = this.getWatchHistoryCacheTtlMs();
     let mutated = false;
-    for (const [actor, info] of Object.entries(parsed.actors || {})) {
+    const actors = this.watchHistoryStorage.actors || {};
+    for (const actor of Object.keys(actors)) {
+      const info = actors[actor];
       if (
         !info ||
         typeof info !== "object" ||
         typeof info.savedAt !== "number" ||
-        now - info.savedAt > WATCH_HISTORY_CACHE_TTL_MS
+        now - info.savedAt > ttl
       ) {
-        delete parsed.actors[actor];
+        delete actors[actor];
         mutated = true;
       }
     }
 
-    const actors = { ...(parsed.actors || {}) };
-    this.watchHistoryStorage = { version: 1, actors };
-
-    if (mutated) {
+    if (mutated && typeof localStorage !== "undefined") {
       try {
         localStorage.setItem(
           WATCH_HISTORY_CACHE_STORAGE_KEY,
@@ -1936,16 +1949,20 @@ class NostrClient {
     }
 
     const now = Date.now();
+    const ttl = this.getWatchHistoryCacheTtlMs();
     const cached = this.watchHistoryCache.get(actor);
-    if (cached && now - cached.savedAt < WATCH_HISTORY_CACHE_TTL_MS) {
-      return {
-        pointerEvent: cached.pointerEvent
-          ? cloneEventForCache(cached.pointerEvent)
-          : null,
-        items: cached.items
-          .map((item) => clonePointerItem(item))
-          .filter(Boolean),
-      };
+    if (cached) {
+      if (now - cached.savedAt < ttl) {
+        return {
+          pointerEvent: cached.pointerEvent
+            ? cloneEventForCache(cached.pointerEvent)
+            : null,
+          items: cached.items
+            .map((item) => clonePointerItem(item))
+            .filter(Boolean),
+        };
+      }
+      this.watchHistoryCache.delete(actor);
     }
 
     let storage = null;
@@ -1956,7 +1973,7 @@ class NostrClient {
       if (
         stored &&
         typeof stored.savedAt === "number" &&
-        now - stored.savedAt < WATCH_HISTORY_CACHE_TTL_MS
+        now - stored.savedAt < ttl
       ) {
         const entry = this.createWatchHistoryEntry(
           stored.pointerEvent,
