@@ -687,6 +687,7 @@ class NostrClient {
     this.sessionActor = null;
     this.watchHistoryCache = new Map();
     this.watchHistoryStorage = null;
+    this.watchHistoryRepublishTimers = new Map();
   }
 
   restoreLocalData() {
@@ -932,6 +933,206 @@ class NostrClient {
         console.warn("[nostr] Failed to persist watch history cache:", error);
       }
     }
+  }
+
+  cancelWatchHistoryRepublish(actor) {
+    const key =
+      typeof actor === "string" && actor.trim()
+        ? actor.trim().toLowerCase()
+        : "";
+    if (!key) {
+      return;
+    }
+
+    const timer = this.watchHistoryRepublishTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.watchHistoryRepublishTimers.delete(key);
+    }
+  }
+
+  scheduleWatchHistoryRepublish(actor, items) {
+    if (!this.pool) {
+      return;
+    }
+
+    const key =
+      typeof actor === "string" && actor.trim()
+        ? actor.trim().toLowerCase()
+        : "";
+    if (!key || this.watchHistoryRepublishTimers.has(key)) {
+      return;
+    }
+
+    const clonedItems = Array.isArray(items)
+      ? items
+          .map((item) => clonePointerItem(item))
+          .filter((candidate) => !!candidate)
+      : [];
+
+    if (!clonedItems.length) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      this.watchHistoryRepublishTimers.delete(key);
+      this.publishWatchHistorySnapshot(actor, clonedItems, this.watchHistoryCache.get(actor) || null, {
+        allowRetry: false,
+      }).catch((error) => {
+        if (isDevMode) {
+          console.warn(
+            `[nostr] Failed to republish watch history list for ${key}:`,
+            error
+          );
+        }
+      });
+    }, 2000);
+
+    this.watchHistoryRepublishTimers.set(key, timer);
+  }
+
+  async publishWatchHistorySnapshot(
+    actorPubkey,
+    candidateItems,
+    existingEntry = null,
+    options = {}
+  ) {
+    if (!this.pool) {
+      return { ok: false, error: "nostr-uninitialized" };
+    }
+
+    const normalizedActor =
+      typeof actorPubkey === "string" && actorPubkey.trim()
+        ? actorPubkey.trim()
+        : "";
+    if (!normalizedActor) {
+      return { ok: false, error: "missing-actor" };
+    }
+
+    const allowRetry = options?.allowRetry !== false;
+
+    const dedupe = new Map();
+    const normalizedItems = [];
+    const pushItem = (item) => {
+      const pointer = normalizePointerInput(item);
+      if (!pointer) {
+        return;
+      }
+      const key = pointerKey(pointer);
+      if (!key || dedupe.has(key)) {
+        return;
+      }
+      dedupe.set(key, true);
+      normalizedItems.push(pointer);
+    };
+
+    if (Array.isArray(candidateItems)) {
+      candidateItems.forEach((item) => pushItem(item));
+    } else if (candidateItems) {
+      pushItem(candidateItems);
+    }
+
+    const trimmedItems =
+      normalizedItems.length > WATCH_HISTORY_MAX_ITEMS
+        ? normalizedItems.slice(0, WATCH_HISTORY_MAX_ITEMS)
+        : normalizedItems;
+
+    const tags = [["d", WATCH_HISTORY_LIST_IDENTIFIER]];
+    for (const item of trimmedItems) {
+      const tag = pointerToTag(item);
+      if (tag) {
+        tags.push(tag);
+      }
+    }
+
+    const event = {
+      kind: WATCH_HISTORY_KIND,
+      pubkey: normalizedActor,
+      created_at: Math.floor(Date.now() / 1000),
+      tags,
+      content: "",
+    };
+
+    let signedEvent;
+    const normalizedLogged =
+      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+
+    if (
+      normalizedActor.toLowerCase() === normalizedLogged &&
+      window?.nostr &&
+      typeof window.nostr.signEvent === "function"
+    ) {
+      try {
+        signedEvent = await window.nostr.signEvent(event);
+      } catch (error) {
+        console.warn(
+          "[nostr] Failed to sign watch history list with extension:",
+          error
+        );
+        return { ok: false, error: "signing-failed", details: error };
+      }
+    } else {
+      try {
+        if (!this.sessionActor || this.sessionActor.pubkey !== normalizedActor) {
+          await this.ensureSessionActor(true);
+        }
+        if (!this.sessionActor || this.sessionActor.pubkey !== normalizedActor) {
+          throw new Error("session-actor-mismatch");
+        }
+        signedEvent = signEventWithPrivateKey(
+          event,
+          this.sessionActor.privateKey
+        );
+      } catch (error) {
+        console.warn(
+          "[nostr] Failed to sign watch history list with session key:",
+          error
+        );
+        return { ok: false, error: "signing-failed", details: error };
+      }
+    }
+
+    const relays =
+      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
+
+    const publishResults = await Promise.all(
+      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+    );
+
+    const success = publishResults.some((result) => result.success);
+    if (!success) {
+      console.warn(
+        "[nostr] Failed to publish watch history list:",
+        publishResults
+      );
+    }
+
+    if (success) {
+      this.cancelWatchHistoryRepublish(normalizedActor);
+    } else if (allowRetry) {
+      this.scheduleWatchHistoryRepublish(normalizedActor, trimmedItems);
+    }
+
+    const baselineEntry =
+      existingEntry || this.watchHistoryCache.get(normalizedActor) || null;
+
+    const newEntry = this.createWatchHistoryEntry(
+      signedEvent,
+      trimmedItems,
+      Date.now(),
+      baselineEntry
+    );
+
+    this.watchHistoryCache.set(normalizedActor, newEntry);
+    this.persistWatchHistoryEntry(normalizedActor, newEntry);
+
+    return {
+      ok: success,
+      event: signedEvent,
+      items: newEntry.items
+        .map((item) => clonePointerItem(item))
+        .filter(Boolean),
+    };
   }
 
   async ensureSessionActor(forceSession = false) {
@@ -1198,118 +1399,8 @@ class NostrClient {
       this.watchHistoryCache.get(actorPubkey) ||
       this.createWatchHistoryEntry(null, [], Date.now());
 
-    const dedupe = new Map();
-    const nextItems = [];
-    const pushPointer = (item) => {
-      const candidate = normalizePointerInput(item);
-      if (!candidate) {
-        return;
-      }
-      const key = pointerKey(candidate);
-      if (!key || dedupe.has(key)) {
-        return;
-      }
-      dedupe.set(key, true);
-      nextItems.push(candidate);
-    };
-
-    pushPointer(normalizedPointer);
-    for (const item of existingEntry.items) {
-      pushPointer(item);
-      if (nextItems.length >= WATCH_HISTORY_MAX_ITEMS) {
-        break;
-      }
-    }
-
-    const trimmedItems =
-      nextItems.length > WATCH_HISTORY_MAX_ITEMS
-        ? nextItems.slice(0, WATCH_HISTORY_MAX_ITEMS)
-        : nextItems;
-
-    const tags = [["d", WATCH_HISTORY_LIST_IDENTIFIER]];
-    for (const item of trimmedItems) {
-      const tag = pointerToTag(item);
-      if (tag) {
-        tags.push(tag);
-      }
-    }
-
-    const event = {
-      kind: WATCH_HISTORY_KIND,
-      pubkey: actorPubkey,
-      created_at: Math.floor(Date.now() / 1000),
-      tags,
-      content: "",
-    };
-
-    let signedEvent;
-    const normalizedActor = actorPubkey.toLowerCase();
-    const normalizedLogged =
-      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
-
-    if (
-      normalizedActor &&
-      normalizedActor === normalizedLogged &&
-      window?.nostr &&
-      typeof window.nostr.signEvent === "function"
-    ) {
-      try {
-        signedEvent = await window.nostr.signEvent(event);
-      } catch (error) {
-        console.warn(
-          "[nostr] Failed to sign watch history list with extension:",
-          error
-        );
-        return { ok: false, error: "signing-failed", details: error };
-      }
-    } else {
-      try {
-        if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
-          await this.ensureSessionActor(true);
-        }
-        if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
-          throw new Error("session-actor-mismatch");
-        }
-        const privateKey = this.sessionActor.privateKey;
-        signedEvent = signEventWithPrivateKey(event, privateKey);
-      } catch (error) {
-        console.warn(
-          "[nostr] Failed to sign watch history list with session key:",
-          error
-        );
-        return { ok: false, error: "signing-failed", details: error };
-      }
-    }
-
-    const relays =
-      Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS;
-
-    const publishResults = await Promise.all(
-      relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
-    );
-    const success = publishResults.some((result) => result.success);
-    if (!success) {
-      console.warn(
-        "[nostr] Failed to publish watch history list:",
-        publishResults
-      );
-    }
-
-    const newEntry = this.createWatchHistoryEntry(
-      signedEvent,
-      trimmedItems,
-      Date.now(),
-      existingEntry
-    );
-
-    this.watchHistoryCache.set(actorPubkey, newEntry);
-    this.persistWatchHistoryEntry(actorPubkey, newEntry);
-
-    return {
-      ok: success,
-      event: signedEvent,
-      items: newEntry.items.map((item) => clonePointerItem(item)).filter(Boolean),
-    };
+    const candidates = [normalizedPointer, ...(existingEntry.items || [])];
+    return this.publishWatchHistorySnapshot(actorPubkey, candidates, existingEntry);
   }
 
   async fetchWatchHistory(pubkeyOrSession) {
@@ -1339,9 +1430,11 @@ class NostrClient {
       };
     }
 
+    let storage = null;
+    let stored = null;
     if (typeof localStorage !== "undefined") {
-      const storage = this.getWatchHistoryStorage();
-      const stored = storage.actors?.[actor];
+      storage = this.getWatchHistoryStorage();
+      stored = storage.actors?.[actor];
       if (
         stored &&
         typeof stored.savedAt === "number" &&
@@ -1424,16 +1517,47 @@ class NostrClient {
       }
     }
 
-    const items = pointerEvent ? extractPointerItemsFromEvent(pointerEvent) : [];
+    const previousEntry = this.watchHistoryCache.get(actor) || null;
+    const remoteItems = pointerEvent
+      ? extractPointerItemsFromEvent(pointerEvent)
+      : [];
+
+    let items = remoteItems;
+    let pointerForEntry = pointerEvent;
+    let usedFallback = false;
+
+    const storedItems = Array.isArray(stored?.items) ? stored.items : [];
+    const storedPointerEvent = stored?.pointerEvent || null;
+
+    if (!pointerEvent && previousEntry?.pointerEvent) {
+      pointerForEntry = previousEntry.pointerEvent;
+    } else if (!pointerEvent && storedPointerEvent) {
+      pointerForEntry = storedPointerEvent;
+    }
+
+    if (!items.length) {
+      if (previousEntry?.items?.length) {
+        items = previousEntry.items;
+        usedFallback = true;
+      } else if (storedItems.length) {
+        items = storedItems;
+        usedFallback = true;
+      }
+    }
+
     const entry = this.createWatchHistoryEntry(
-      pointerEvent,
+      pointerForEntry,
       items,
       Date.now(),
-      this.watchHistoryCache.get(actor) || null
+      previousEntry
     );
 
     this.watchHistoryCache.set(actor, entry);
     this.persistWatchHistoryEntry(actor, entry);
+
+    if (!pointerEvent && usedFallback && entry.items.length) {
+      this.scheduleWatchHistoryRepublish(actor, entry.items);
+    }
 
     return {
       pointerEvent: entry.pointerEvent
@@ -1781,6 +1905,10 @@ class NostrClient {
 
   logout() {
     this.pubkey = null;
+    for (const timer of this.watchHistoryRepublishTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.watchHistoryRepublishTimers.clear();
     if (isDevMode) console.log("User logged out.");
   }
 
