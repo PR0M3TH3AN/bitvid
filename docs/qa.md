@@ -17,5 +17,8 @@ Run this checklist before publishing releases or merging changes that touch uplo
 5. **Cross-Browser Verification**
    - Spot-check Chromium and Firefox (desktop) for console warnings about CORS, Range requests, or tracker connectivity.
    - Optionally validate on mobile Safari/Chrome if the change targets mobile UX.
+6. **Saved Profile Metadata Refresh**
+   - In the browser devtools console/storage panel, delete `bitvid:profileCache:v1` but keep `bitvid:savedProfiles:v1` populated with Nostr pubkeys that lack stored names/avatars.
+   - Reload the page and open the profile switcher; confirm avatars and display names populate automatically without manual refresh.
 
 Document findings (pass/fail notes plus relevant screenshots or logs) so they can be attached to release or PR notes.

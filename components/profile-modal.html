@@ -107,27 +107,90 @@
               role="tabpanel"
               aria-labelledby="profileNavAccount"
             >
-              <div class="flex items-center space-x-4">
-                <img
-                  id="profileModalAvatar"
-                  src="assets/svg/default-profile.svg"
-                  alt="Profile"
-                  class="w-16 h-16 object-cover rounded-full"
-                />
-                <p id="profileModalName" class="text-lg font-semibold truncate">
-                  Loading...
+              <!--
+                The account pane now relies on bespoke CSS (see css/style.css under
+                "Profile modal account pane") so we are not dependent on utility
+                classes that may be purged or overridden by other builds.
+              -->
+              <div class="profile-switcher" id="profileSwitcherTray">
+                <div class="profile-switcher__header">
+                  <div class="profile-switcher__intro">
+                    <h3 class="profile-switcher__title">Switch profiles</h3>
+                    <p class="profile-switcher__subtitle">
+                      Save multiple Nostr profiles so you can swap identities without leaving BitVid.
+                    </p>
+                  </div>
+                  <span class="profile-switcher__badge">Preview</span>
+                </div>
+
+                <div
+                  class="profile-card profile-card--active"
+                  aria-label="Current Nostr profile"
+                  aria-pressed="true"
+                  role="button"
+                  tabindex="0"
+                >
+                  <span class="profile-card__avatar">
+                    <img
+                      id="profileModalAvatar"
+                      src="assets/svg/default-profile.svg"
+                      alt="Active profile avatar"
+                    />
+                  </span>
+                  <span class="profile-card__meta">
+                    <span class="profile-card__topline">
+                      <span class="profile-card__label">Active profile</span>
+                      <a
+                        id="profileChannelLink"
+                        href="#"
+                        class="profile-card__action hidden"
+                      >
+                        View channel
+                      </a>
+                    </span>
+                    <span id="profileModalName" class="profile-card__name">Loading...</span>
+                    <span id="profileModalNpub" class="profile-card__npub">npub1...</span>
+                  </span>
+                </div>
+
+                <div
+                  id="profileSwitcherList"
+                  class="profile-switcher__list"
+                  aria-live="polite"
+                  aria-label="Additional Nostr profiles"
+                ></div>
+
+                <button
+                  type="button"
+                  id="profileAddAccountBtn"
+                  class="profile-switcher__add"
+                  aria-label="Add a new Nostr profile"
+                >
+                  <span class="profile-switcher__addAvatar">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </span>
+                  <span class="profile-switcher__addCopy">
+                    <span class="profile-switcher__addTitle">Add profile</span>
+                    <span class="profile-switcher__addHint">Link another npub</span>
+                  </span>
+                </button>
+
+                <p class="profile-switcher__helper">
+                  Profiles you add here will stay on this device so you can quickly switch before posting or moderating.
                 </p>
               </div>
-              <a
-                id="profileChannelLink"
-                href="#"
-                class="inline-flex items-center text-sm text-blue-400 hover:text-blue-300 transition-colors hidden"
-              >
-                View your channel
-              </a>
-              <p class="text-sm text-gray-400">
-                Manage your account details and upcoming preferences here.
-              </p>
             </section>
 
             <section

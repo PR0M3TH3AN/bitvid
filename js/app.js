@@ -70,7 +70,18 @@ const ADMIN_DM_IMAGE_URL =
 const BITVID_WEBSITE_URL = "https://bitvid.network/";
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
+/**
+ * Local storage keys for cached profile metadata and saved authentication
+ * sessions. `SAVED_PROFILES_STORAGE_KEY` stores objects shaped like
+ * `{ version: 1, entries: [{ pubkey, npub, name, picture, authType }],
+ *   activePubkey?: string | null }`. `authType` currently supports `"nip07"`
+ * and reserves `"nsec"` for future direct key flows. See docs/nostr-auth.md
+ * for extension guidance.
+ */
 const PROFILE_CACHE_STORAGE_KEY = "bitvid:profileCache:v1";
+const SAVED_PROFILES_STORAGE_KEY = "bitvid:savedProfiles:v1";
+const SAVED_PROFILES_STORAGE_VERSION = 1;
+const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const PROFILE_CACHE_VERSION = 1;
 const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // We probe hosted URLs often enough that a naive implementation would spam
@@ -498,6 +509,7 @@ class bitvidApp {
     this.profileLogoutBtn = null;
     this.profileModalAvatar = null;
     this.profileModalName = null;
+    this.profileModalNpub = null;
     this.profileChannelLink = null;
     this.profileNavButtons = {
       account: null,
@@ -538,6 +550,9 @@ class bitvidApp {
     this.boundProfileModalKeydown = null;
     this.boundProfileModalFocusIn = null;
     this.profileModalFocusables = [];
+    this.profileSwitcherList = null;
+    this.profileAddAccountBtn = null;
+    this.profileSwitcherSelectionPubkey = null;
     this.currentUserNpub = null;
 
     // Upload modal elements
@@ -648,6 +663,9 @@ class bitvidApp {
     // Notification containers
     this.errorContainer = document.getElementById("errorContainer") || null;
     this.successContainer = document.getElementById("successContainer") || null;
+    this.statusContainer = document.getElementById("statusContainer") || null;
+    this.statusMessage =
+      this.statusContainer?.querySelector("[data-status-message]") || null;
 
     // Auth state
     this.pubkey = null;
@@ -665,6 +683,121 @@ class bitvidApp {
     this.boundMoreMenuDocumentKeydown = null;
     // Simple cache for user profiles
     this.profileCache = new Map();
+    this.savedProfiles = [];
+    this.activeProfilePubkey = null;
+    this.readSavedProfilesPayloadFromStorage = () => {
+      if (typeof localStorage === "undefined") {
+        return null;
+      }
+
+      const raw = localStorage.getItem(SAVED_PROFILES_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") {
+          return null;
+        }
+        return parsed;
+      } catch (err) {
+        console.warn("[readSavedProfilesPayloadFromStorage] Failed to parse payload:", err);
+        return null;
+      }
+    };
+    this.writeSavedProfilesPayloadToStorage = (payload) => {
+      if (typeof localStorage === "undefined") {
+        return;
+      }
+
+      try {
+        localStorage.setItem(
+          SAVED_PROFILES_STORAGE_KEY,
+          JSON.stringify(payload)
+        );
+      } catch (err) {
+        const isQuotaError =
+          err &&
+          (err.name === "QuotaExceededError" ||
+            err.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+            err.code === 22 ||
+            err.code === 1014);
+        if (isQuotaError) {
+          console.warn(
+            "[writeSavedProfilesPayloadToStorage] Storage quota exceeded while saving profiles; keeping in-memory copy only.",
+            err
+          );
+        } else {
+          console.warn(
+            "[writeSavedProfilesPayloadToStorage] Failed to persist saved profiles:",
+            err
+          );
+        }
+      }
+    };
+    this.persistSavedProfiles = ({ persistActive = true } = {}) => {
+      if (typeof localStorage === "undefined") {
+        return;
+      }
+
+      if (!this.savedProfiles.length && !this.activeProfilePubkey) {
+        try {
+          localStorage.removeItem(SAVED_PROFILES_STORAGE_KEY);
+        } catch (err) {
+          console.warn("[persistSavedProfiles] Failed to remove empty payload:", err);
+        }
+        return;
+      }
+
+      let activePubkeyToPersist = this.activeProfilePubkey || null;
+      if (!persistActive) {
+        const storedPayload = this.readSavedProfilesPayloadFromStorage();
+        if (storedPayload && typeof storedPayload === "object") {
+          const candidate =
+            typeof storedPayload.activePubkey === "string"
+              ? storedPayload.activePubkey
+              : typeof storedPayload.activePubKey === "string"
+              ? storedPayload.activePubKey
+              : null;
+          const normalizedStored = this.normalizeHexPubkey(candidate);
+          if (normalizedStored) {
+            activePubkeyToPersist = normalizedStored;
+          } else if (candidate === null) {
+            activePubkeyToPersist = null;
+          }
+        }
+      }
+
+      const payload = {
+        version: SAVED_PROFILES_STORAGE_VERSION,
+        entries: this.savedProfiles.map((entry) => ({
+          pubkey: entry.pubkey,
+          npub:
+            typeof entry.npub === "string" && entry.npub.trim()
+              ? entry.npub.trim()
+              : null,
+          name: typeof entry.name === "string" ? entry.name : "",
+          picture:
+            typeof entry.picture === "string" ? entry.picture : "",
+          authType: entry.authType === "nsec" ? "nsec" : "nip07",
+        })),
+        activePubkey: activePubkeyToPersist,
+      };
+
+      this.writeSavedProfilesPayloadToStorage(payload);
+    };
+    this.persistActiveProfileSelection = (
+      pubkey,
+      { persist = true } = {}
+    ) => {
+      const normalized = this.normalizeHexPubkey(pubkey);
+      this.activeProfilePubkey = normalized;
+      if (persist) {
+        this.persistSavedProfiles({ persistActive: true });
+      }
+      this.renderSavedProfiles();
+    };
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
     this.renderedVideoIds = new Set();
@@ -693,6 +826,160 @@ class bitvidApp {
         );
       }
     }
+  }
+
+  loadSavedProfilesFromStorage() {
+    this.savedProfiles = [];
+    this.activeProfilePubkey = null;
+
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+
+    const seenPubkeys = new Set();
+    let needsRewrite = false;
+    let parsed = null;
+    const raw = localStorage.getItem(SAVED_PROFILES_STORAGE_KEY);
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        console.warn("Failed to parse saved profiles payload:", err);
+        needsRewrite = true;
+      }
+    }
+
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      parsed.version === SAVED_PROFILES_STORAGE_VERSION &&
+      Array.isArray(parsed.entries)
+    ) {
+      for (const candidate of parsed.entries) {
+        if (!candidate || typeof candidate !== "object") {
+          needsRewrite = true;
+          continue;
+        }
+
+        const normalizedPubkey = this.normalizeHexPubkey(candidate.pubkey);
+        if (!normalizedPubkey) {
+          needsRewrite = true;
+          continue;
+        }
+
+        if (seenPubkeys.has(normalizedPubkey)) {
+          needsRewrite = true;
+          continue;
+        }
+
+        seenPubkeys.add(normalizedPubkey);
+
+        const storedAuthType =
+          candidate.authType === "nsec" ? "nsec" : "nip07";
+        if (candidate.authType !== storedAuthType) {
+          needsRewrite = true;
+        }
+
+        const entry = {
+          pubkey: normalizedPubkey,
+          npub:
+            typeof candidate.npub === "string" && candidate.npub.trim()
+              ? candidate.npub.trim()
+              : this.safeEncodeNpub(normalizedPubkey),
+          name:
+            typeof candidate.name === "string" ? candidate.name : "",
+          picture:
+            typeof candidate.picture === "string" ? candidate.picture : "",
+          authType: storedAuthType,
+        };
+
+        if (
+          typeof candidate.npub === "string" &&
+          candidate.npub.trim() !== candidate.npub
+        ) {
+          needsRewrite = true;
+        }
+
+        if (
+          entry.npub &&
+          typeof candidate.npub !== "string" &&
+          entry.npub !== candidate.npub
+        ) {
+          needsRewrite = true;
+        }
+
+        this.savedProfiles.push(entry);
+      }
+
+      const activeCandidate =
+        typeof parsed.activePubkey === "string"
+          ? parsed.activePubkey
+          : typeof parsed.activePubKey === "string"
+          ? parsed.activePubKey
+          : null;
+      const normalizedActive = this.normalizeHexPubkey(activeCandidate);
+      if (normalizedActive && seenPubkeys.has(normalizedActive)) {
+        this.activeProfilePubkey = normalizedActive;
+      } else if (activeCandidate) {
+        needsRewrite = true;
+      }
+    } else if (raw) {
+      needsRewrite = true;
+    }
+
+    if (!this.activeProfilePubkey && this.savedProfiles.length) {
+      this.activeProfilePubkey = this.savedProfiles[0].pubkey;
+      needsRewrite = true;
+    }
+
+    if (needsRewrite) {
+      this.persistSavedProfiles();
+    }
+
+    this.renderSavedProfiles();
+  }
+
+  syncSavedProfileFromCache(pubkey, { persist = false } = {}) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return false;
+    }
+
+    const cacheEntry = this.profileCache.get(normalized);
+    if (!cacheEntry || typeof cacheEntry !== "object") {
+      return false;
+    }
+
+    const index = this.savedProfiles.findIndex(
+      (entry) => entry && entry.pubkey === normalized
+    );
+    if (index < 0) {
+      return false;
+    }
+
+    const existing = this.savedProfiles[index] || {};
+    const profile = cacheEntry.profile || {};
+    const nextEntry = {
+      ...existing,
+      name: profile.name || existing.name || "",
+      picture: profile.picture || existing.picture || "",
+    };
+
+    const changed =
+      existing.name !== nextEntry.name || existing.picture !== nextEntry.picture;
+
+    if (!changed) {
+      return false;
+    }
+
+    this.savedProfiles[index] = nextEntry;
+
+    if (persist) {
+      this.persistSavedProfiles({ persistActive: false });
+    }
+
+    this.renderSavedProfiles();
+    return true;
   }
 
   loadProfileCacheFromStorage() {
@@ -798,18 +1085,19 @@ class bitvidApp {
   }
 
   getProfileCacheEntry(pubkey) {
-    if (!pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
       return null;
     }
 
-    const entry = this.profileCache.get(pubkey);
+    const entry = this.profileCache.get(normalized);
     if (!entry) {
       return null;
     }
 
     const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
     if (!timestamp || Date.now() - timestamp > PROFILE_CACHE_TTL_MS) {
-      this.profileCache.delete(pubkey);
+      this.profileCache.delete(normalized);
       this.persistProfileCacheToStorage();
       return null;
     }
@@ -818,7 +1106,8 @@ class bitvidApp {
   }
 
   setProfileCacheEntry(pubkey, profile) {
-    if (!pubkey || !profile) {
+    const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+    if (!normalizedPubkey || !profile) {
       return;
     }
 
@@ -832,8 +1121,14 @@ class bitvidApp {
       timestamp: Date.now(),
     };
 
-    this.profileCache.set(pubkey, entry);
+    this.profileCache.set(normalizedPubkey, entry);
     this.persistProfileCacheToStorage();
+    const didUpdateSavedProfile = this.syncSavedProfileFromCache(normalizedPubkey, {
+      persist: true,
+    });
+    if (!didUpdateSavedProfile) {
+      this.renderSavedProfiles();
+    }
     return entry;
   }
 
@@ -886,6 +1181,7 @@ class bitvidApp {
       }
 
       this.loadProfileCacheFromStorage();
+      this.loadSavedProfilesFromStorage();
 
       // 1. Initialize the video modal (components/video-modal.html)
       await this.initModal();
@@ -910,14 +1206,23 @@ class bitvidApp {
         console.warn("Failed to refresh admin lists after connecting to Nostr:", error);
       }
 
+      try {
+        await this.refreshAdminPaneState();
+      } catch (error) {
+        console.warn(
+          "Failed to update admin pane after connecting to Nostr:",
+          error
+        );
+      }
+
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
-      const savedPubKey = localStorage.getItem("userPubKey");
+      const savedPubKey = this.activeProfilePubkey;
       if (savedPubKey) {
         // Auto-login if a pubkey was saved
         try {
-          await this.login(savedPubKey, false);
+          await this.login(savedPubKey, { persistActive: false });
         } catch (error) {
           console.error("Auto-login failed:", error);
         }
@@ -3260,6 +3565,273 @@ class bitvidApp {
     }
   }
 
+  renderSavedProfiles() {
+    const fallbackAvatar = "assets/svg/default-profile.svg";
+    const normalizedActive = this.normalizeHexPubkey(
+      this.activeProfilePubkey
+    );
+    const entriesNeedingFetch = new Set();
+
+    const resolveMeta = (entry) => {
+      if (!entry || typeof entry !== "object") {
+        return {
+          name: "",
+          picture: fallbackAvatar,
+          npub: null,
+        };
+      }
+
+      const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
+      let cacheEntry = null;
+      if (normalizedPubkey) {
+        cacheEntry = this.getProfileCacheEntry(normalizedPubkey);
+      }
+      const cachedProfile = cacheEntry?.profile || {};
+
+      const hasStoredName =
+        typeof entry.name === "string" && entry.name.trim().length > 0;
+      const hasStoredPicture =
+        typeof entry.picture === "string" && entry.picture.trim().length > 0;
+
+      if (
+        !cacheEntry &&
+        normalizedPubkey &&
+        (!hasStoredName || !hasStoredPicture)
+      ) {
+        entriesNeedingFetch.add(normalizedPubkey);
+      }
+
+      let resolvedNpub =
+        typeof entry.npub === "string" && entry.npub.trim()
+          ? entry.npub.trim()
+          : null;
+      if (!resolvedNpub && entry.pubkey) {
+        resolvedNpub = this.safeEncodeNpub(entry.pubkey);
+      }
+
+      return {
+        name: cachedProfile.name || entry.name || "",
+        picture: cachedProfile.picture || entry.picture || fallbackAvatar,
+        npub: resolvedNpub,
+      };
+    };
+
+    const savedEntries = Array.isArray(this.savedProfiles)
+      ? this.savedProfiles.filter((entry) => entry && entry.pubkey)
+      : [];
+
+    let activeEntry = null;
+    if (normalizedActive) {
+      activeEntry = savedEntries.find(
+        (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedActive
+      );
+    }
+    if (!activeEntry && savedEntries.length) {
+      activeEntry = savedEntries[0];
+    }
+
+    const activeMeta = activeEntry ? resolveMeta(activeEntry) : null;
+    const hasActiveProfile = Boolean(activeEntry && activeMeta);
+    const activeNameFallback = activeMeta?.npub
+      ? truncateMiddle(activeMeta.npub, 32)
+      : "Saved profile";
+    const activeDisplayName = hasActiveProfile
+      ? activeMeta.name?.trim() || activeNameFallback
+      : "No active profile";
+    const activeAvatarSrc = hasActiveProfile
+      ? activeMeta.picture || fallbackAvatar
+      : fallbackAvatar;
+
+    if (this.profileModalName) {
+      this.profileModalName.textContent = activeDisplayName;
+    }
+
+    if (this.profileModalAvatar instanceof HTMLImageElement) {
+      if (this.profileModalAvatar.src !== activeAvatarSrc) {
+        this.profileModalAvatar.src = activeAvatarSrc;
+      }
+      this.profileModalAvatar.alt = hasActiveProfile
+        ? `${activeDisplayName} avatar`
+        : "Default profile avatar";
+    } else if (this.profileModalAvatar) {
+      this.profileModalAvatar.setAttribute("data-avatar-src", activeAvatarSrc);
+    }
+
+    if (this.profileModalNpub) {
+      if (hasActiveProfile && activeMeta?.npub) {
+        this.profileModalNpub.textContent = truncateMiddle(activeMeta.npub, 48);
+      } else if (hasActiveProfile) {
+        this.profileModalNpub.textContent = "npub unavailable";
+      } else {
+        this.profileModalNpub.textContent = "Link a profile to get started";
+      }
+    }
+
+    if (this.profileChannelLink) {
+      if (hasActiveProfile && activeMeta?.npub) {
+        const encodedNpub = activeMeta.npub;
+        this.profileChannelLink.href = `#view=channel-profile&npub=${encodeURIComponent(
+          encodedNpub
+        )}`;
+        this.profileChannelLink.dataset.targetNpub = encodedNpub;
+        this.profileChannelLink.classList.remove("hidden");
+        this.profileChannelLink.setAttribute("aria-hidden", "false");
+      } else {
+        this.profileChannelLink.classList.add("hidden");
+        this.profileChannelLink.removeAttribute("href");
+        delete this.profileChannelLink.dataset.targetNpub;
+        this.profileChannelLink.setAttribute("aria-hidden", "true");
+      }
+    }
+
+    if (this.profileAvatar instanceof HTMLImageElement) {
+      if (this.profileAvatar.src !== activeAvatarSrc) {
+        this.profileAvatar.src = activeAvatarSrc;
+      }
+      this.profileAvatar.alt = hasActiveProfile
+        ? `${activeDisplayName} avatar`
+        : this.profileAvatar.alt || "Profile avatar";
+    }
+
+    const listEl = this.profileSwitcherList;
+    if (listEl instanceof HTMLElement) {
+      listEl.innerHTML = "";
+      let normalizedSelection = this.normalizeHexPubkey(
+        this.profileSwitcherSelectionPubkey
+      );
+      if (normalizedSelection && normalizedSelection === normalizedActive) {
+        normalizedSelection = null;
+        this.profileSwitcherSelectionPubkey = null;
+      }
+      const entriesToRender = savedEntries.filter((entry) => {
+        const normalized = this.normalizeHexPubkey(entry.pubkey);
+        return normalized && normalized !== normalizedActive;
+      });
+
+      if (!entriesToRender.length) {
+        listEl.setAttribute("data-profile-switcher-empty", "true");
+        const helper = document.createElement("p");
+        helper.className = "profile-switcher__empty text-sm text-gray-400";
+        helper.textContent = "No other profiles saved yet.";
+        helper.setAttribute("role", "note");
+        listEl.appendChild(helper);
+      } else {
+        listEl.removeAttribute("data-profile-switcher-empty");
+
+        entriesToRender.forEach((entry) => {
+          const meta = resolveMeta(entry);
+          const button = document.createElement("button");
+          button.type = "button";
+          button.classList.add("profile-card");
+          button.dataset.pubkey = entry.pubkey;
+          if (meta.npub) {
+            button.dataset.npub = meta.npub;
+          }
+          if (entry.authType) {
+            button.dataset.authType = entry.authType;
+          }
+
+          const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
+          const isSelected =
+            normalizedSelection && normalizedPubkey === normalizedSelection;
+          if (isSelected) {
+            button.classList.add("profile-card--active");
+            button.setAttribute("aria-pressed", "true");
+          } else {
+            button.setAttribute("aria-pressed", "false");
+          }
+
+          const avatarSpan = document.createElement("span");
+          avatarSpan.className = "profile-card__avatar";
+          const avatarImg = document.createElement("img");
+          avatarImg.src = meta.picture || fallbackAvatar;
+          const cardDisplayName =
+            meta.name?.trim() ||
+            (meta.npub ? truncateMiddle(meta.npub, 32) : "Saved profile");
+          avatarImg.alt = `${cardDisplayName} avatar`;
+          avatarSpan.appendChild(avatarImg);
+
+          const metaSpan = document.createElement("span");
+          metaSpan.className = "profile-card__meta";
+
+          const topLine = document.createElement("span");
+          topLine.className = "profile-card__topline";
+
+          const label = document.createElement("span");
+          label.className = "profile-card__label";
+          label.textContent =
+            entry.authType === "nsec" ? "Direct key" : "Saved profile";
+
+          const action = document.createElement("span");
+          action.className = "profile-card__action";
+          action.setAttribute("aria-hidden", "true");
+          action.textContent = isSelected ? "Selected" : "Switch";
+
+          topLine.append(label, action);
+
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "profile-card__name";
+          nameSpan.textContent = cardDisplayName;
+
+          const npubSpan = document.createElement("span");
+          npubSpan.className = "profile-card__npub";
+          npubSpan.textContent = meta.npub
+            ? truncateMiddle(meta.npub, 48)
+            : "npub unavailable";
+
+          metaSpan.append(topLine, nameSpan, npubSpan);
+          button.append(avatarSpan, metaSpan);
+
+          const ariaLabel = isSelected
+            ? `${cardDisplayName} selected`
+            : `Switch to ${cardDisplayName}`;
+          button.setAttribute("aria-label", ariaLabel);
+
+          const activateProfile = async (event) => {
+            if (event) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+
+            if (button.dataset.loading === "true") {
+              return;
+            }
+
+            button.dataset.loading = "true";
+            button.setAttribute("aria-busy", "true");
+
+            try {
+              await this.switchProfile(entry.pubkey);
+            } catch (error) {
+              console.error("Failed to switch profile:", error);
+            } finally {
+              button.dataset.loading = "false";
+              button.setAttribute("aria-busy", "false");
+            }
+          };
+
+          button.addEventListener("click", activateProfile);
+          button.addEventListener("keydown", (event) => {
+            const key = event?.key;
+            if (key === "Enter" || key === " " || key === "Spacebar") {
+              activateProfile(event);
+            }
+          });
+
+          listEl.appendChild(button);
+        });
+      }
+
+      this.updateProfileModalFocusables();
+    } else {
+      this.updateProfileModalFocusables();
+    }
+
+    if (entriesNeedingFetch.size) {
+      this.batchFetchProfiles(entriesNeedingFetch);
+    }
+  }
+
   /**
    * (Optional) Initialize a separate profile modal (profile-modal.html).
    */
@@ -3292,8 +3864,19 @@ class bitvidApp {
         document.getElementById("profileModalAvatar") || null;
       this.profileModalName =
         document.getElementById("profileModalName") || null;
+      this.profileModalNpub =
+        document.getElementById("profileModalNpub") || null;
       this.profileChannelLink =
         document.getElementById("profileChannelLink") || null;
+      this.profileSwitcherList =
+        document.getElementById("profileSwitcherList") || null;
+      this.profileAddAccountBtn =
+        document.getElementById("profileAddAccountBtn") || null;
+      const topLevelProfileAvatar =
+        document.getElementById("profileAvatar") || null;
+      if (topLevelProfileAvatar) {
+        this.profileAvatar = topLevelProfileAvatar;
+      }
       this.profileNavButtons.account =
         document.getElementById("profileNavAccount") || null;
       this.profileNavButtons.relays =
@@ -3378,6 +3961,16 @@ class bitvidApp {
           }
           this.hideProfileModal();
           window.location.hash = `#view=channel-profile&npub=${targetNpub}`;
+        });
+      }
+
+      if (
+        this.profileAddAccountBtn &&
+        this.profileAddAccountBtn.dataset.bound !== "true"
+      ) {
+        this.profileAddAccountBtn.dataset.bound = "true";
+        this.profileAddAccountBtn.addEventListener("click", () => {
+          this.handleAddProfile();
         });
       }
 
@@ -3499,6 +4092,8 @@ class bitvidApp {
       this.populateProfileRelays();
       this.populateBlockedList();
       await this.refreshAdminPaneState();
+
+      this.renderSavedProfiles();
 
       console.log("Profile modal initialization successful");
       return true;
@@ -3922,6 +4517,119 @@ class bitvidApp {
     });
   }
 
+  async handleAddProfile() {
+    if (!this.profileAddAccountBtn) {
+      return;
+    }
+
+    const button = this.profileAddAccountBtn;
+    if (button.dataset.loading === "true") {
+      return;
+    }
+
+    const titleEl = button.querySelector(".profile-switcher__addTitle");
+    const hintEl = button.querySelector(".profile-switcher__addHint");
+    const originalTitle = titleEl ? titleEl.textContent : "";
+    const originalHint = hintEl ? hintEl.textContent : "";
+    const originalAriaLabel = button.getAttribute("aria-label");
+    const originalDisabled = button.disabled;
+
+    const setLoadingState = (isLoading) => {
+      button.disabled = isLoading ? true : originalDisabled;
+      button.dataset.loading = isLoading ? "true" : "false";
+      button.setAttribute("aria-busy", isLoading ? "true" : "false");
+      if (isLoading) {
+        button.setAttribute("aria-disabled", "true");
+      } else if (originalDisabled) {
+        button.setAttribute("aria-disabled", "true");
+      } else {
+        button.removeAttribute("aria-disabled");
+      }
+      if (isLoading) {
+        if (titleEl) {
+          titleEl.textContent = "Connecting...";
+        }
+        if (hintEl) {
+          hintEl.textContent = "Check your extension";
+        }
+        button.setAttribute(
+          "aria-label",
+          "Connecting to your Nostr extension"
+        );
+      } else {
+        if (titleEl) {
+          titleEl.textContent = originalTitle;
+        }
+        if (hintEl) {
+          hintEl.textContent = originalHint;
+        }
+        if (originalAriaLabel === null) {
+          button.removeAttribute("aria-label");
+        } else {
+          button.setAttribute("aria-label", originalAriaLabel);
+        }
+      }
+    };
+
+    setLoadingState(true);
+
+    try {
+      const pubkey = await nostrClient.login({
+        allowAccountSelection: true,
+      });
+
+      const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+      if (!normalizedPubkey) {
+        throw new Error(
+          "Received an invalid public key from the Nostr extension."
+        );
+      }
+
+      const alreadySaved = this.savedProfiles.some(
+        (entry) =>
+          this.normalizeHexPubkey(entry.pubkey) === normalizedPubkey
+      );
+      if (alreadySaved) {
+        this.showSuccess("That profile is already saved on this device.");
+        return;
+      }
+
+      const npub = this.safeEncodeNpub(normalizedPubkey) || "";
+      let profileMeta = this.getProfileCacheEntry(normalizedPubkey)?.profile;
+
+      if (!profileMeta) {
+        await this.loadOwnProfile(normalizedPubkey);
+        profileMeta = this.getProfileCacheEntry(normalizedPubkey)?.profile;
+      }
+
+      const name = profileMeta?.name || "";
+      const picture =
+        profileMeta?.picture || "assets/svg/default-profile.svg";
+
+      this.savedProfiles.push({
+        pubkey: normalizedPubkey,
+        npub,
+        name,
+        picture,
+        authType: "nip07",
+      });
+
+      this.persistSavedProfiles({ persistActive: false });
+      this.renderSavedProfiles();
+
+      this.showSuccess("Profile added. Select it when you're ready to switch.");
+    } catch (error) {
+      console.error("Failed to add profile via NIP-07:", error);
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Couldn't add that profile. Please try again.";
+      this.showError(message);
+    } finally {
+      setLoadingState(false);
+    }
+  }
+
   async handleAddBlockedCreator() {
     if (!this.profileBlockedInput) {
       return;
@@ -4046,6 +4754,7 @@ class bitvidApp {
 
     let loadError = null;
     this.setAdminLoading(true);
+    this.showStatus("Fetching moderation filters…");
     try {
       await accessControl.ensureReady();
     } catch (error) {
@@ -4069,12 +4778,14 @@ class bitvidApp {
     }
 
     if (loadError) {
+      if (loadError?.code === "nostr-unavailable") {
+        console.info("Moderation lists are still syncing with relays.");
+        return;
+      }
+
       console.error("Failed to load admin lists:", loadError);
-      const message =
-        loadError?.code === "nostr-unavailable"
-          ? "Unable to reach Nostr relays. Moderation lists may be out of date."
-          : "Unable to load moderation lists. Please try again.";
-      this.showError(message);
+      this.showStatus(null);
+      this.showError("Unable to load moderation lists. Please try again.");
       this.clearAdminLists();
       this.setAdminLoading(false);
       return;
@@ -4088,6 +4799,7 @@ class bitvidApp {
       if (adminNav instanceof HTMLElement && adminNav.classList.contains("bg-gray-800")) {
         this.selectProfilePane("account");
       }
+      this.showStatus(null);
       this.setAdminLoading(false);
       return;
     }
@@ -4097,6 +4809,7 @@ class bitvidApp {
       this.adminModeratorsSection.setAttribute("aria-hidden", (!isSuperAdmin).toString());
     }
     this.populateAdminLists();
+    this.showStatus(null);
     this.setAdminLoading(false);
   }
 
@@ -4710,7 +5423,7 @@ class bitvidApp {
         try {
           const pubkey = await nostrClient.login(); // call the extension
           console.log("[NIP-07] login returned pubkey:", pubkey);
-          this.login(pubkey, true);
+          await this.login(pubkey, { persistActive: true });
 
           // Hide the login modal
           const loginModal = document.getElementById("loginModal");
@@ -4852,6 +5565,12 @@ class bitvidApp {
       }
       if (this.profileModalAvatar) {
         this.profileModalAvatar.src = picture;
+      }
+      if (this.profileModalNpub) {
+        const encoded = this.safeEncodeNpub(pubkey);
+        this.profileModalNpub.textContent = encoded
+          ? truncateMiddle(encoded, 48)
+          : "Not signed in";
       }
       if (this.profileChannelLink) {
         const targetNpub = this.safeEncodeNpub(pubkey);
@@ -5237,80 +5956,222 @@ class bitvidApp {
   }
 
   /**
-   * Called upon successful login.
+   * Removes a saved profile entry and clears the active pointer when it matches
+   * the removed pubkey. Intended for the profile-switcher UI to prune old
+   * accounts without touching cached avatars.
    */
-  async login(pubkey, saveToStorage = true) {
-    console.log("[app.js] login() called with pubkey =", pubkey);
-
-    this.pubkey = pubkey;
-    this.currentUserNpub = this.safeEncodeNpub(pubkey);
-
-    let reloadScheduled = false;
-    if (saveToStorage) {
-      try {
-        localStorage.setItem("userPubKey", pubkey);
-        reloadScheduled = true;
-      } catch (err) {
-        console.warn("[app.js] Failed to persist pubkey:", err);
-      }
-    }
-
-    if (reloadScheduled) {
-      window.location.reload();
+  removeSavedProfile(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    const target = normalized || (typeof pubkey === "string" ? pubkey.trim() : "");
+    if (!target) {
       return;
     }
 
+    const nextProfiles = this.savedProfiles.filter(
+      (entry) => entry.pubkey !== target
+    );
+    if (nextProfiles.length === this.savedProfiles.length) {
+      return;
+    }
+
+    this.savedProfiles = nextProfiles;
+
+    if (this.activeProfilePubkey === target) {
+      this.activeProfilePubkey = null;
+    }
+
+    this.persistSavedProfiles();
+    this.renderSavedProfiles();
+  }
+
+  async switchProfile(pubkey) {
+    const normalizedTarget = this.normalizeHexPubkey(pubkey);
+    if (!normalizedTarget) {
+      this.showError("Unable to switch profiles: invalid account.");
+      return;
+    }
+
+    const normalizedActive = this.normalizeHexPubkey(this.activeProfilePubkey);
+    if (normalizedActive && normalizedActive === normalizedTarget) {
+      this.hideProfileModal();
+      return;
+    }
+
+    try {
+      await nostrClient.login({
+        allowAccountSelection: true,
+        expectPubkey: normalizedTarget,
+      });
+    } catch (error) {
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Profile switch was cancelled.";
+      this.showError(message);
+      return;
+    }
+
+    try {
+      await this.login(normalizedTarget, { persistActive: true });
+    } catch (error) {
+      console.error("Failed to finalize profile switch:", error);
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Failed to switch profiles. Please try again.";
+      this.showError(message);
+      return;
+    }
+
+    this.profileSwitcherSelectionPubkey = null;
+
+    let reordered = false;
+    const currentIndex = this.savedProfiles.findIndex(
+      (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedTarget
+    );
+    if (currentIndex > 0) {
+      const [moved] = this.savedProfiles.splice(currentIndex, 1);
+      this.savedProfiles.unshift(moved);
+      reordered = true;
+    }
+
+    if (reordered) {
+      this.persistSavedProfiles({ persistActive: true });
+    }
+
+    this.renderSavedProfiles();
+    this.hideProfileModal();
+  }
+
+  async applyPostLoginState() {
     await this.refreshAdminPaneState();
 
     try {
-      await userBlocks.loadBlocks(pubkey);
+      await userBlocks.loadBlocks(this.pubkey);
     } catch (error) {
       console.warn("Failed to load personal block list:", error);
     }
 
     this.populateBlockedList();
 
-    // Hide login button if present
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
       this.loginButton.setAttribute("hidden", "");
       this.loginButton.style.display = "none";
     }
-    // Optionally hide logout or userStatus
+
     if (this.logoutButton) {
       this.logoutButton.classList.remove("hidden");
     }
+
     if (this.userStatus) {
       this.userStatus.classList.add("hidden");
     }
 
-    // Show the upload button, profile button, etc.
     if (this.uploadButton) {
       this.uploadButton.classList.remove("hidden");
       this.uploadButton.removeAttribute("hidden");
       this.uploadButton.style.display = "inline-flex";
     }
+
     if (this.profileButton) {
       this.profileButton.classList.remove("hidden");
       this.profileButton.removeAttribute("hidden");
       this.profileButton.style.display = "inline-flex";
     }
 
-    // Show the "Subscriptions" link if it exists
     if (this.subscriptionsLink) {
       this.subscriptionsLink.classList.remove("hidden");
     }
 
-    // (Optional) load the user's own Nostr profile
-    this.loadOwnProfile(pubkey);
+    if (this.pubkey) {
+      this.loadOwnProfile(this.pubkey);
+    }
 
-    // Refresh the video list so the user sees any private videos, etc.
     await this.loadVideos();
 
-    // Force a fresh fetch of all profile pictures/names
     this.forceRefreshAllProfiles();
 
     await this.updateCloudflareBucketPreview();
+  }
+
+  /**
+   * Called upon successful login.
+   */
+  async login(pubkey, options = {}) {
+    console.log("[app.js] login() called with pubkey =", pubkey);
+
+    let normalizedOptions = options;
+    if (typeof normalizedOptions === "boolean") {
+      normalizedOptions = { persistActive: normalizedOptions };
+    } else if (!normalizedOptions || typeof normalizedOptions !== "object") {
+      normalizedOptions = {};
+    }
+
+    const { persistActive = true } = normalizedOptions;
+
+    const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+    if (normalizedPubkey) {
+      this.pubkey = normalizedPubkey;
+    } else {
+      this.pubkey = pubkey;
+    }
+    this.currentUserNpub = this.safeEncodeNpub(this.pubkey);
+
+    let savedProfilesMutated = false;
+    if (normalizedPubkey) {
+      const cacheEntry = this.profileCache.get(normalizedPubkey);
+      const cachedProfile = cacheEntry?.profile || {};
+      const existingIndex = this.savedProfiles.findIndex(
+        (candidate) => candidate.pubkey === normalizedPubkey
+      );
+      const existingEntry =
+        existingIndex >= 0 ? this.savedProfiles[existingIndex] : null;
+      const npub = this.safeEncodeNpub(normalizedPubkey);
+      const nextEntry = {
+        pubkey: normalizedPubkey,
+        npub: npub || existingEntry?.npub || null,
+        name: cachedProfile.name || existingEntry?.name || "",
+        picture: cachedProfile.picture || existingEntry?.picture || "",
+        authType: "nip07",
+      };
+
+      if (existingIndex >= 0) {
+        const currentEntry = this.savedProfiles[existingIndex];
+        const changed =
+          currentEntry.npub !== nextEntry.npub ||
+          currentEntry.name !== nextEntry.name ||
+          currentEntry.picture !== nextEntry.picture ||
+          currentEntry.authType !== nextEntry.authType;
+        if (changed) {
+          this.savedProfiles[existingIndex] = nextEntry;
+          savedProfilesMutated = true;
+        }
+      } else {
+        this.savedProfiles.push(nextEntry);
+        savedProfilesMutated = true;
+      }
+
+      this.persistActiveProfileSelection(normalizedPubkey, {
+        persist: persistActive,
+      });
+
+      if (!persistActive && savedProfilesMutated) {
+        this.persistSavedProfiles({ persistActive: false });
+      }
+    } else {
+      if (persistActive) {
+        console.warn(
+          "[app.js] login() requested storage persistence but pubkey was invalid; skipping saved profile update."
+        );
+      }
+    }
+
+    if (!normalizedPubkey && savedProfilesMutated) {
+      this.persistSavedProfiles({ persistActive: false });
+    }
+
+    await this.applyPostLoginState();
   }
 
   /**
@@ -5320,6 +6181,8 @@ class bitvidApp {
     nostrClient.logout();
     this.pubkey = null;
     this.currentUserNpub = null;
+
+    this.persistActiveProfileSelection(null, { persist: true });
 
     userBlocks.reset();
     this.populateBlockedList();
@@ -5363,9 +6226,6 @@ class bitvidApp {
     if (this.subscriptionsLink) {
       this.subscriptionsLink.classList.add("hidden");
     }
-
-    // Clear localStorage
-    localStorage.removeItem("userPubKey");
 
     await this.refreshAdminPaneState();
 
@@ -8789,6 +9649,30 @@ class bitvidApp {
     return null;
   }
 
+  normalizeHexPubkey(pubkey) {
+    if (typeof pubkey !== "string") {
+      return null;
+    }
+
+    const trimmed = pubkey.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (HEX64_REGEX.test(trimmed)) {
+      return trimmed.toLowerCase();
+    }
+
+    if (trimmed.startsWith("npub1")) {
+      const decoded = this.safeDecodeNpub(trimmed);
+      if (decoded && HEX64_REGEX.test(decoded)) {
+        return decoded.toLowerCase();
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Attempts to fetch an older event by its ID if we can't find it in
    * this.videosMap or from a bulk fetch. Uses nostrClient.getEventById.
@@ -8904,6 +9788,27 @@ class bitvidApp {
       this.errorContainer.textContent = "";
       this.errorContainer.classList.add("hidden");
     }, 5000);
+  }
+
+  showStatus(msg) {
+    if (!(this.statusContainer instanceof HTMLElement)) {
+      return;
+    }
+
+    if (!msg) {
+      if (this.statusMessage instanceof HTMLElement) {
+        this.statusMessage.textContent = "";
+      }
+      this.statusContainer.classList.add("hidden");
+      return;
+    }
+
+    if (this.statusMessage instanceof HTMLElement) {
+      this.statusMessage.textContent = msg;
+    } else {
+      this.statusContainer.textContent = msg;
+    }
+    this.statusContainer.classList.remove("hidden");
   }
 
   showSuccess(msg) {
