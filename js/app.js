@@ -551,6 +551,8 @@ class bitvidApp {
     this.boundProfileModalFocusIn = null;
     this.profileModalFocusables = [];
     this.profileSwitcherList = null;
+    this.profileAddAccountBtn = null;
+    this.profileSwitcherSelectionPubkey = null;
     this.currentUserNpub = null;
 
     // Upload modal elements
@@ -791,6 +793,7 @@ class bitvidApp {
       if (persist) {
         this.persistSavedProfiles({ persistActive: true });
       }
+      this.renderSavedProfiles();
     };
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
@@ -930,7 +933,7 @@ class bitvidApp {
       this.persistSavedProfiles();
     }
 
-    this.renderSavedProfilesList();
+    this.renderSavedProfiles();
   }
 
   syncSavedProfileFromCache(pubkey, { persist = false } = {}) {
@@ -972,7 +975,7 @@ class bitvidApp {
       this.persistSavedProfiles({ persistActive: false });
     }
 
-    this.renderSavedProfilesList();
+    this.renderSavedProfiles();
     return true;
   }
 
@@ -1119,7 +1122,7 @@ class bitvidApp {
       persist: true,
     });
     if (!didUpdateSavedProfile) {
-      this.renderSavedProfilesList();
+      this.renderSavedProfiles();
     }
     return entry;
   }
@@ -3548,11 +3551,11 @@ class bitvidApp {
     }
   }
 
-  renderSavedProfilesList() {
+  renderSavedProfiles() {
+    const fallbackAvatar = "assets/svg/default-profile.svg";
     const normalizedActive = this.normalizeHexPubkey(
       this.activeProfilePubkey
     );
-    const fallbackAvatar = "assets/svg/default-profile.svg";
 
     const resolveMeta = (entry) => {
       if (!entry || typeof entry !== "object") {
@@ -3565,9 +3568,7 @@ class bitvidApp {
 
       const cacheEntry = this.profileCache.get(entry.pubkey);
       const cachedProfile = cacheEntry?.profile || {};
-      const resolvedName = cachedProfile.name || entry.name || "Unknown";
-      const resolvedPicture =
-        cachedProfile.picture || entry.picture || fallbackAvatar;
+
       let resolvedNpub =
         typeof entry.npub === "string" && entry.npub.trim()
           ? entry.npub.trim()
@@ -3577,125 +3578,191 @@ class bitvidApp {
       }
 
       return {
-        name: resolvedName,
-        picture: resolvedPicture,
+        name: cachedProfile.name || entry.name || "",
+        picture: cachedProfile.picture || entry.picture || fallbackAvatar,
         npub: resolvedNpub,
       };
     };
 
     const savedEntries = Array.isArray(this.savedProfiles)
-      ? this.savedProfiles
+      ? this.savedProfiles.filter((entry) => entry && entry.pubkey)
       : [];
-    const activeEntry = normalizedActive
-      ? savedEntries.find((entry) => entry.pubkey === normalizedActive)
-      : null;
-    const activeMeta = activeEntry ? resolveMeta(activeEntry) : null;
 
-    if (this.profileModalName) {
-      this.profileModalName.textContent = activeMeta
-        ? activeMeta.name || "Unnamed profile"
-        : "No active profile";
+    let activeEntry = null;
+    if (normalizedActive) {
+      activeEntry = savedEntries.find(
+        (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedActive
+      );
+    }
+    if (!activeEntry && savedEntries.length) {
+      activeEntry = savedEntries[0];
     }
 
-    if (this.profileModalAvatar) {
-      const avatarSrc = activeMeta?.picture || fallbackAvatar;
-      if (this.profileModalAvatar.src !== avatarSrc) {
-        this.profileModalAvatar.src = avatarSrc;
+    const activeMeta = activeEntry ? resolveMeta(activeEntry) : null;
+    const hasActiveProfile = Boolean(activeEntry && activeMeta);
+    const activeNameFallback = activeMeta?.npub
+      ? truncateMiddle(activeMeta.npub, 32)
+      : "Saved profile";
+    const activeDisplayName = hasActiveProfile
+      ? activeMeta.name?.trim() || activeNameFallback
+      : "No active profile";
+    const activeAvatarSrc = hasActiveProfile
+      ? activeMeta.picture || fallbackAvatar
+      : fallbackAvatar;
+
+    if (this.profileModalName) {
+      this.profileModalName.textContent = activeDisplayName;
+    }
+
+    if (this.profileModalAvatar instanceof HTMLImageElement) {
+      if (this.profileModalAvatar.src !== activeAvatarSrc) {
+        this.profileModalAvatar.src = activeAvatarSrc;
       }
-      this.profileModalAvatar.alt = activeMeta
-        ? `${activeMeta.name || "Saved profile"} avatar`
-        : "Inactive profile avatar";
+      this.profileModalAvatar.alt = hasActiveProfile
+        ? `${activeDisplayName} avatar`
+        : "Default profile avatar";
+    } else if (this.profileModalAvatar) {
+      this.profileModalAvatar.setAttribute("data-avatar-src", activeAvatarSrc);
     }
 
     if (this.profileModalNpub) {
-      if (activeMeta?.npub) {
-        this.profileModalNpub.textContent = truncateMiddle(
-          activeMeta.npub,
-          48
-        );
+      if (hasActiveProfile && activeMeta?.npub) {
+        this.profileModalNpub.textContent = truncateMiddle(activeMeta.npub, 48);
+      } else if (hasActiveProfile) {
+        this.profileModalNpub.textContent = "npub unavailable";
       } else {
-        this.profileModalNpub.textContent = "Not signed in";
+        this.profileModalNpub.textContent = "Link a profile to get started";
       }
     }
 
     if (this.profileChannelLink) {
-      if (activeMeta?.npub) {
+      if (hasActiveProfile && activeMeta?.npub) {
+        const encodedNpub = activeMeta.npub;
         this.profileChannelLink.href = `#view=channel-profile&npub=${encodeURIComponent(
-          activeMeta.npub
+          encodedNpub
         )}`;
-        this.profileChannelLink.dataset.targetNpub = activeMeta.npub;
+        this.profileChannelLink.dataset.targetNpub = encodedNpub;
         this.profileChannelLink.classList.remove("hidden");
+        this.profileChannelLink.setAttribute("aria-hidden", "false");
       } else {
         this.profileChannelLink.classList.add("hidden");
         this.profileChannelLink.removeAttribute("href");
         delete this.profileChannelLink.dataset.targetNpub;
+        this.profileChannelLink.setAttribute("aria-hidden", "true");
       }
     }
 
+    if (this.profileAvatar instanceof HTMLImageElement) {
+      if (this.profileAvatar.src !== activeAvatarSrc) {
+        this.profileAvatar.src = activeAvatarSrc;
+      }
+      this.profileAvatar.alt = hasActiveProfile
+        ? `${activeDisplayName} avatar`
+        : this.profileAvatar.alt || "Profile avatar";
+    }
+
     const listEl = this.profileSwitcherList;
-    if (!(listEl instanceof HTMLElement)) {
-      return;
-    }
+    if (listEl instanceof HTMLElement) {
+      listEl.innerHTML = "";
+      let normalizedSelection = this.normalizeHexPubkey(
+        this.profileSwitcherSelectionPubkey
+      );
+      if (normalizedSelection && normalizedSelection === normalizedActive) {
+        normalizedSelection = null;
+        this.profileSwitcherSelectionPubkey = null;
+      }
+      const entriesToRender = savedEntries.filter((entry) => {
+        const normalized = this.normalizeHexPubkey(entry.pubkey);
+        return normalized && normalized !== normalizedActive;
+      });
 
-    const otherEntries = savedEntries.filter(
-      (entry) => entry && entry.pubkey && entry.pubkey !== normalizedActive
-    );
+      if (!entriesToRender.length) {
+        listEl.setAttribute("data-profile-switcher-empty", "true");
+        const helper = document.createElement("p");
+        helper.className = "profile-switcher__empty text-sm text-gray-400";
+        helper.textContent = "No other profiles saved yet.";
+        helper.setAttribute("role", "note");
+        listEl.appendChild(helper);
+      } else {
+        listEl.removeAttribute("data-profile-switcher-empty");
 
-    if (!otherEntries.length) {
-      listEl.innerHTML = `
-        <div class="text-sm text-gray-400" data-profile-switcher-empty="true">
-          No other profiles saved yet.
-        </div>
-      `;
+        entriesToRender.forEach((entry) => {
+          const meta = resolveMeta(entry);
+          const button = document.createElement("button");
+          button.type = "button";
+          button.classList.add("profile-card");
+          button.dataset.pubkey = entry.pubkey;
+          if (meta.npub) {
+            button.dataset.npub = meta.npub;
+          }
+          if (entry.authType) {
+            button.dataset.authType = entry.authType;
+          }
+
+          const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
+          const isSelected =
+            normalizedSelection && normalizedPubkey === normalizedSelection;
+          if (isSelected) {
+            button.classList.add("profile-card--active");
+            button.setAttribute("aria-pressed", "true");
+          } else {
+            button.setAttribute("aria-pressed", "false");
+          }
+
+          const avatarSpan = document.createElement("span");
+          avatarSpan.className = "profile-card__avatar";
+          const avatarImg = document.createElement("img");
+          avatarImg.src = meta.picture || fallbackAvatar;
+          const cardDisplayName =
+            meta.name?.trim() ||
+            (meta.npub ? truncateMiddle(meta.npub, 32) : "Saved profile");
+          avatarImg.alt = `${cardDisplayName} avatar`;
+          avatarSpan.appendChild(avatarImg);
+
+          const metaSpan = document.createElement("span");
+          metaSpan.className = "profile-card__meta";
+
+          const topLine = document.createElement("span");
+          topLine.className = "profile-card__topline";
+
+          const label = document.createElement("span");
+          label.className = "profile-card__label";
+          label.textContent =
+            entry.authType === "nsec" ? "Direct key" : "Saved profile";
+
+          const action = document.createElement("span");
+          action.className = "profile-card__action";
+          action.setAttribute("aria-hidden", "true");
+          action.textContent = isSelected ? "Selected" : "Switch";
+
+          topLine.append(label, action);
+
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "profile-card__name";
+          nameSpan.textContent = cardDisplayName;
+
+          const npubSpan = document.createElement("span");
+          npubSpan.className = "profile-card__npub";
+          npubSpan.textContent = meta.npub
+            ? truncateMiddle(meta.npub, 48)
+            : "npub unavailable";
+
+          metaSpan.append(topLine, nameSpan, npubSpan);
+          button.append(avatarSpan, metaSpan);
+
+          const ariaLabel = isSelected
+            ? `${cardDisplayName} selected`
+            : `Switch to ${cardDisplayName}`;
+          button.setAttribute("aria-label", ariaLabel);
+
+          listEl.appendChild(button);
+        });
+      }
+
       this.updateProfileModalFocusables();
-      return;
+    } else {
+      this.updateProfileModalFocusables();
     }
-
-    const markup = otherEntries
-      .map((entry) => {
-        const meta = resolveMeta(entry);
-        const truncatedNpub = meta.npub
-          ? truncateMiddle(meta.npub, 48)
-          : "npub unavailable";
-        const authLabel =
-          entry.authType === "nsec" ? "Direct key" : "Saved profile";
-        const npubAttribute =
-          meta.npub && typeof meta.npub === "string"
-            ? ` data-profile-npub="${this.escapeHTML(meta.npub)}"`
-            : "";
-        return `
-          <button
-            type="button"
-            class="profile-card"
-            data-profile-pubkey="${this.escapeHTML(entry.pubkey)}"
-            data-profile-auth-type="${this.escapeHTML(entry.authType || "nip07")}"${npubAttribute}
-          >
-            <span class="profile-card__avatar">
-              <img src="${this.escapeHTML(meta.picture)}" alt="${this.escapeHTML(
-          meta.name || "Saved profile"
-        )}" />
-            </span>
-            <span class="profile-card__meta">
-              <span class="profile-card__topline">
-                <span class="profile-card__label">${this.escapeHTML(
-                  authLabel
-                )}</span>
-                <span class="profile-card__action" aria-hidden="true">Switch</span>
-              </span>
-              <span class="profile-card__name">${this.escapeHTML(
-                meta.name || "Unnamed profile"
-              )}</span>
-              <span class="profile-card__npub">${this.escapeHTML(
-                truncatedNpub
-              )}</span>
-            </span>
-          </button>
-        `;
-      })
-      .join("\n");
-
-    listEl.innerHTML = markup;
-    this.updateProfileModalFocusables();
   }
 
   /**
@@ -3736,6 +3803,13 @@ class bitvidApp {
         document.getElementById("profileChannelLink") || null;
       this.profileSwitcherList =
         document.getElementById("profileSwitcherList") || null;
+      this.profileAddAccountBtn =
+        document.getElementById("profileAddAccountBtn") || null;
+      const topLevelProfileAvatar =
+        document.getElementById("profileAvatar") || null;
+      if (topLevelProfileAvatar) {
+        this.profileAvatar = topLevelProfileAvatar;
+      }
       this.profileNavButtons.account =
         document.getElementById("profileNavAccount") || null;
       this.profileNavButtons.relays =
@@ -3942,7 +4016,7 @@ class bitvidApp {
       this.populateBlockedList();
       await this.refreshAdminPaneState();
 
-      this.renderSavedProfilesList();
+      this.renderSavedProfiles();
 
       console.log("Profile modal initialization successful");
       return true;
@@ -5712,7 +5786,7 @@ class bitvidApp {
     }
 
     this.persistSavedProfiles();
-    this.renderSavedProfilesList();
+    this.renderSavedProfiles();
   }
 
   async applyPostLoginState() {
@@ -5843,8 +5917,6 @@ class bitvidApp {
       this.persistSavedProfiles({ persistActive: false });
     }
 
-    this.renderSavedProfilesList();
-
     await this.applyPostLoginState();
   }
 
@@ -5857,7 +5929,6 @@ class bitvidApp {
     this.currentUserNpub = null;
 
     this.persistActiveProfileSelection(null, { persist: true });
-    this.renderSavedProfilesList();
 
     userBlocks.reset();
     this.populateBlockedList();
