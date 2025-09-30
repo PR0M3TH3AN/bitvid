@@ -3755,6 +3755,37 @@ class bitvidApp {
             : `Switch to ${cardDisplayName}`;
           button.setAttribute("aria-label", ariaLabel);
 
+          const activateProfile = async (event) => {
+            if (event) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+
+            if (button.dataset.loading === "true") {
+              return;
+            }
+
+            button.dataset.loading = "true";
+            button.setAttribute("aria-busy", "true");
+
+            try {
+              await this.switchProfile(entry.pubkey);
+            } catch (error) {
+              console.error("Failed to switch profile:", error);
+            } finally {
+              button.dataset.loading = "false";
+              button.setAttribute("aria-busy", "false");
+            }
+          };
+
+          button.addEventListener("click", activateProfile);
+          button.addEventListener("keydown", (event) => {
+            const key = event?.key;
+            if (key === "Enter" || key === " " || key === "Spacebar") {
+              activateProfile(event);
+            }
+          });
+
           listEl.appendChild(button);
         });
       }
@@ -5910,6 +5941,65 @@ class bitvidApp {
 
     this.persistSavedProfiles();
     this.renderSavedProfiles();
+  }
+
+  async switchProfile(pubkey) {
+    const normalizedTarget = this.normalizeHexPubkey(pubkey);
+    if (!normalizedTarget) {
+      this.showError("Unable to switch profiles: invalid account.");
+      return;
+    }
+
+    const normalizedActive = this.normalizeHexPubkey(this.activeProfilePubkey);
+    if (normalizedActive && normalizedActive === normalizedTarget) {
+      this.hideProfileModal();
+      return;
+    }
+
+    try {
+      await nostrClient.login({
+        allowAccountSelection: true,
+        expectPubkey: normalizedTarget,
+      });
+    } catch (error) {
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Profile switch was cancelled.";
+      this.showError(message);
+      return;
+    }
+
+    try {
+      await this.login(normalizedTarget, { persistActive: true });
+    } catch (error) {
+      console.error("Failed to finalize profile switch:", error);
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Failed to switch profiles. Please try again.";
+      this.showError(message);
+      return;
+    }
+
+    this.profileSwitcherSelectionPubkey = null;
+
+    let reordered = false;
+    const currentIndex = this.savedProfiles.findIndex(
+      (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedTarget
+    );
+    if (currentIndex > 0) {
+      const [moved] = this.savedProfiles.splice(currentIndex, 1);
+      this.savedProfiles.unshift(moved);
+      reordered = true;
+    }
+
+    if (reordered) {
+      this.persistSavedProfiles({ persistActive: true });
+    }
+
+    this.renderSavedProfiles();
+    this.hideProfileModal();
   }
 
   async applyPostLoginState() {
