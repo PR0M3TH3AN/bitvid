@@ -1082,18 +1082,19 @@ class bitvidApp {
   }
 
   getProfileCacheEntry(pubkey) {
-    if (!pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
       return null;
     }
 
-    const entry = this.profileCache.get(pubkey);
+    const entry = this.profileCache.get(normalized);
     if (!entry) {
       return null;
     }
 
     const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
     if (!timestamp || Date.now() - timestamp > PROFILE_CACHE_TTL_MS) {
-      this.profileCache.delete(pubkey);
+      this.profileCache.delete(normalized);
       this.persistProfileCacheToStorage();
       return null;
     }
@@ -1102,7 +1103,8 @@ class bitvidApp {
   }
 
   setProfileCacheEntry(pubkey, profile) {
-    if (!pubkey || !profile) {
+    const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+    if (!normalizedPubkey || !profile) {
       return;
     }
 
@@ -1116,9 +1118,9 @@ class bitvidApp {
       timestamp: Date.now(),
     };
 
-    this.profileCache.set(pubkey, entry);
+    this.profileCache.set(normalizedPubkey, entry);
     this.persistProfileCacheToStorage();
-    const didUpdateSavedProfile = this.syncSavedProfileFromCache(pubkey, {
+    const didUpdateSavedProfile = this.syncSavedProfileFromCache(normalizedPubkey, {
       persist: true,
     });
     if (!didUpdateSavedProfile) {
@@ -3556,6 +3558,7 @@ class bitvidApp {
     const normalizedActive = this.normalizeHexPubkey(
       this.activeProfilePubkey
     );
+    const entriesNeedingFetch = new Set();
 
     const resolveMeta = (entry) => {
       if (!entry || typeof entry !== "object") {
@@ -3566,8 +3569,25 @@ class bitvidApp {
         };
       }
 
-      const cacheEntry = this.profileCache.get(entry.pubkey);
+      const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
+      let cacheEntry = null;
+      if (normalizedPubkey) {
+        cacheEntry = this.getProfileCacheEntry(normalizedPubkey);
+      }
       const cachedProfile = cacheEntry?.profile || {};
+
+      const hasStoredName =
+        typeof entry.name === "string" && entry.name.trim().length > 0;
+      const hasStoredPicture =
+        typeof entry.picture === "string" && entry.picture.trim().length > 0;
+
+      if (
+        !cacheEntry &&
+        normalizedPubkey &&
+        (!hasStoredName || !hasStoredPicture)
+      ) {
+        entriesNeedingFetch.add(normalizedPubkey);
+      }
 
       let resolvedNpub =
         typeof entry.npub === "string" && entry.npub.trim()
@@ -3793,6 +3813,10 @@ class bitvidApp {
       this.updateProfileModalFocusables();
     } else {
       this.updateProfileModalFocusables();
+    }
+
+    if (entriesNeedingFetch.size) {
+      this.batchFetchProfiles(entriesNeedingFetch);
     }
   }
 
