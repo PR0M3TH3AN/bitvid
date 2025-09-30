@@ -62,10 +62,19 @@ function withNip07Timeout(operation) {
     }, NIP07_LOGIN_TIMEOUT_MS);
   });
 
-  return Promise.race([
-    Promise.resolve().then(operation),
-    timeoutPromise,
-  ]).finally(() => {
+  let operationResult;
+  try {
+    operationResult = operation();
+  } catch (err) {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    throw err;
+  }
+
+  const operationPromise = Promise.resolve(operationResult);
+
+  return Promise.race([operationPromise, timeoutPromise]).finally(() => {
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
