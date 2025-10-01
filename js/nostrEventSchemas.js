@@ -82,6 +82,9 @@ const BASE_SCHEMAS = {
     label: "View counter",
     kind: WATCH_HISTORY_KIND,
     topicTag: { name: "t", value: "view" },
+    // TODO(bitvid-task:view-counter-event-shape): migrate pointerTagName to a
+    // standard nostr address tag (e.g. "e") and drop identifierTag so view
+    // events remain non-replaceable once the backlog task lands.
     pointerTagName: "video",
     identifierTag: { name: "d" },
     sessionTag: { name: "session", value: "true" },
@@ -95,6 +98,9 @@ const BASE_SCHEMAS = {
     type: NOTE_TYPES.WATCH_HISTORY_CHUNK,
     label: "Watch history snapshot",
     kind: WATCH_HISTORY_KIND,
+    // TODO(bitvid-task:watch-history-indexed-chunking): once the backlog task
+    // introduces per-snapshot identifiers, allow callers to supply fully
+    // qualified chunk identifiers instead of always using the list constant.
     identifierTag: {
       name: "d",
       value: WATCH_HISTORY_LIST_IDENTIFIER,
