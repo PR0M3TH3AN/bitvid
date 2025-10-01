@@ -8,6 +8,11 @@
     id="videoList"
     class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8"
   >
-    <!-- Videos will be dynamically inserted here -->
+    <div class="sidebar-loading-wrapper" role="status" aria-live="polite">
+      <div class="sidebar-loading-indicator">
+        <span class="status-spinner status-spinner--inline" aria-hidden="true"></span>
+        <span class="sidebar-loading-text">Fetching recent videos…</span>
+      </div>
+    </div>
   </div>
 </section>

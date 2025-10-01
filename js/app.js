@@ -42,6 +42,7 @@ import {
 } from "./storage/r2-s3.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
+import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -7530,15 +7531,17 @@ class bitvidApp {
       this.videoSubscription = null;
     }
 
+    if (this.videoList) {
+      if (this._lastRenderedVideoListElement !== this.videoList) {
+        this.lastRenderedVideoSignature = null;
+      }
+      this.videoList.innerHTML = getSidebarLoadingMarkup(
+        "Fetching recent videos…"
+      );
+    }
+
     // The rest of your existing logic:
     if (!this.videoSubscription) {
-      if (this.videoList) {
-        this.lastRenderedVideoSignature = null;
-        this.videoList.innerHTML = `
-        <p class="text-center text-gray-500">
-          Loading videos as they arrive...
-        </p>`;
-      }
 
       // Create a new subscription
       this.videoSubscription = nostrClient.subscribeVideos(() => {

@@ -4,6 +4,7 @@ import { nostrClient } from "./nostr.js";
 import { WATCH_HISTORY_BATCH_RESOLVE } from "./config.js";
 import { subscriptions } from "./subscriptions.js";
 import { accessControl } from "./accessControl.js";
+import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 
 const DEFAULT_BATCH_SIZE = 20;
 const BATCH_SIZE = WATCH_HISTORY_BATCH_RESOLVE ? DEFAULT_BATCH_SIZE : 1;
@@ -672,14 +673,10 @@ export function createWatchHistoryRenderer(config = {}) {
 
     const nextMessage = typeof message === "string" ? message.trim() : "";
     if (nextMessage) {
-      if (nextMessage === WATCH_HISTORY_LOADING_STATUS) {
-        statusEl.innerHTML =
-          '<span class="watch-history-status watch-history-status--loading"><span class="status-spinner status-spinner--inline" aria-hidden="true"></span><span>' +
-          WATCH_HISTORY_LOADING_STATUS +
-          "</span></span>";
-      } else {
-        statusEl.textContent = nextMessage;
-      }
+      const showSpinner = nextMessage === WATCH_HISTORY_LOADING_STATUS;
+      statusEl.innerHTML = getSidebarLoadingMarkup(nextMessage, {
+        showSpinner,
+      });
       statusEl.classList.remove("hidden");
     } else {
       statusEl.textContent = "";

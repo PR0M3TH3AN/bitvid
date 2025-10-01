@@ -9,6 +9,7 @@ import {
   buildSubscriptionListEvent,
   SUBSCRIPTION_LIST_IDENTIFIER,
 } from "./nostrEventSchemas.js";
+import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 
 function getAbsoluteShareUrl(nevent) {
   if (!nevent) {
@@ -225,6 +226,8 @@ class SubscriptionsManager {
         "<p class='text-gray-500'>No subscriptions found.</p>";
       return;
     }
+
+    container.innerHTML = getSidebarLoadingMarkup("Fetching subscriptions…");
 
     // Gather all videos
     const videos = await this.fetchSubscribedVideos(channelHexes);
