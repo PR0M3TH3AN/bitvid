@@ -234,105 +234,6 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
       }
     }
 
-    let hasOlder = false;
-    if (canEdit && video.videoRootId && window.app?.hasOlderVersion) {
-      hasOlder = window.app.hasOlderVersion(video, fullAllEventsArray);
-    }
-
-    const revertButton = hasOlder
-      ? `
-        <button
-          class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-          data-revert-index="${index}"
-          data-revert-event-id="${video.id}"
-        >
-          Revert
-        </button>
-      `
-      : "";
-
-    const gearMenu = canEdit
-      ? `
-        <div class="relative inline-block ml-3 overflow-visible">
-          <button
-            type="button"
-            class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            data-settings-dropdown="${index}"
-          >
-            <img
-              src="assets/svg/video-settings-gear.svg"
-              alt="Settings"
-              class="w-5 h-5"
-            />
-          </button>
-          <div
-            id="settingsDropdown-${index}"
-            class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-          >
-            <div class="py-1">
-              <button
-                class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                data-edit-index="${index}"
-                data-edit-event-id="${video.id}"
-              >
-                Edit
-              </button>
-              ${revertButton}
-              <button
-                class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                data-delete-all-index="${index}"
-                data-delete-all-event-id="${video.id}"
-              >
-                Delete All
-              </button>
-            </div>
-          </div>
-        </div>
-      `
-      : "";
-
-    const moreMenu = `
-      <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
-        <button
-          type="button"
-          class="inline-flex items-center justify-center w-10 h-10 p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          data-more-dropdown="${index}"
-          aria-haspopup="true"
-          aria-expanded="false"
-          aria-label="More options"
-        >
-          <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5 object-contain" />
-        </button>
-        <div
-          id="moreDropdown-${index}"
-          class="hidden absolute right-0 bottom-full mb-2 w-40 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-          role="menu"
-          data-more-menu="true"
-        >
-          <div class="py-1">
-            <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="open-channel" data-author="${video.pubkey || ""}">
-              Open channel
-            </button>
-            <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
-              Copy link
-            </button>
-            <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
-              Block creator
-            </button>
-            <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="report" data-event-id="${video.id || ""}">
-              Report
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const cardControls = `
-      <div class="watch-history-card__menus">
-        ${moreMenu}${gearMenu}
-      </div>
-    `;
-
     const safeTitle = window.app?.escapeHTML(video.title) || "Untitled";
     const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
     const playbackUrl = typeof video.url === "string" ? video.url : "";
@@ -432,7 +333,6 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
             >
               Remove
             </button>
-            ${cardControls}
           </div>
         </div>
       </article>
@@ -479,66 +379,6 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
 
   const lazyEls = container.querySelectorAll("[data-lazy]");
   lazyEls.forEach((el) => window.app?.mediaLoader.observe(el));
-
-  window.app?.attachMoreMenuHandlers?.(container);
-
-  const gearButtons = container.querySelectorAll("[data-settings-dropdown]");
-  gearButtons.forEach((btn) => {
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      const idx = btn.getAttribute("data-settings-dropdown");
-      const dropdown = document.getElementById(`settingsDropdown-${idx}`);
-      if (dropdown) dropdown.classList.toggle("hidden");
-    });
-  });
-
-  const editButtons = container.querySelectorAll("[data-edit-index]");
-  editButtons.forEach((btn) => {
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      const idxAttr = btn.getAttribute("data-edit-index");
-      const idx = Number.parseInt(idxAttr, 10);
-      const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
-      if (dropdown) dropdown.classList.add("hidden");
-      const eventId = btn.getAttribute("data-edit-event-id") || "";
-      window.app?.handleEditVideo({
-        eventId,
-        index: Number.isNaN(idx) ? null : idx,
-      });
-    });
-  });
-
-  const revertButtons = container.querySelectorAll("[data-revert-index]");
-  revertButtons.forEach((btn) => {
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      const idxAttr = btn.getAttribute("data-revert-index");
-      const idx = Number.parseInt(idxAttr, 10);
-      const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
-      if (dropdown) dropdown.classList.add("hidden");
-      const eventId = btn.getAttribute("data-revert-event-id") || "";
-      window.app?.handleRevertVideo({
-        eventId,
-        index: Number.isNaN(idx) ? null : idx,
-      });
-    });
-  });
-
-  const deleteAllButtons = container.querySelectorAll("[data-delete-all-index]");
-  deleteAllButtons.forEach((btn) => {
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      const idxAttr = btn.getAttribute("data-delete-all-index");
-      const idx = Number.parseInt(idxAttr, 10);
-      const dd = document.getElementById(`settingsDropdown-${idxAttr}`);
-      if (dd) dd.classList.add("hidden");
-      const eventId = btn.getAttribute("data-delete-all-event-id") || "";
-      window.app?.handleFullDeleteVideo({
-        eventId,
-        index: Number.isNaN(idx) ? null : idx,
-      });
-    });
-  });
 
   const authorPics = container.querySelectorAll(".author-pic");
   const authorNames = container.querySelectorAll(".author-name");
@@ -790,10 +630,18 @@ export function createWatchHistoryRenderer(config = {}) {
 
     const nextMessage = typeof message === "string" ? message.trim() : "";
     if (nextMessage) {
-      statusEl.textContent = nextMessage;
+      if (nextMessage === WATCH_HISTORY_LOADING_STATUS) {
+        statusEl.innerHTML =
+          '<span class="watch-history-status watch-history-status--loading"><span class="status-spinner status-spinner--inline" aria-hidden="true"></span><span>' +
+          WATCH_HISTORY_LOADING_STATUS +
+          "</span></span>";
+      } else {
+        statusEl.textContent = nextMessage;
+      }
       statusEl.classList.remove("hidden");
     } else {
       statusEl.textContent = "";
+      statusEl.innerHTML = "";
       statusEl.classList.add("hidden");
     }
   };
@@ -945,6 +793,45 @@ export function createWatchHistoryRenderer(config = {}) {
       return;
     }
 
+    const showRemoveSpinner = (button) => {
+      if (!button || !button.dataset) {
+        return;
+      }
+
+      if (button.dataset.originalHtml === undefined) {
+        button.dataset.originalHtml = button.innerHTML;
+      }
+
+      if (button.dataset.originalAriaLabel === undefined) {
+        button.dataset.originalAriaLabel = button.getAttribute("aria-label") || "";
+      }
+
+      button.innerHTML =
+        '<span class="status-spinner status-spinner--inline" aria-hidden="true"></span>';
+      button.setAttribute("aria-label", "Removing from watch history");
+    };
+
+    const restoreRemoveButton = (button) => {
+      if (!button || !button.dataset) {
+        return;
+      }
+
+      const originalHtml = button.dataset.originalHtml;
+      if (typeof originalHtml === "string") {
+        button.innerHTML = originalHtml;
+      }
+
+      const originalAria = button.dataset.originalAriaLabel || "";
+      if (originalAria) {
+        button.setAttribute("aria-label", originalAria);
+      } else {
+        button.removeAttribute("aria-label");
+      }
+
+      delete button.dataset.originalHtml;
+      delete button.dataset.originalAriaLabel;
+    };
+
     const handler = async (event) => {
       const removeTrigger = event.target.closest(
         "[data-history-remove-key]"
@@ -971,6 +858,7 @@ export function createWatchHistoryRenderer(config = {}) {
 
         removeTrigger.disabled = true;
         removeTrigger.setAttribute("aria-busy", "true");
+        showRemoveSpinner(removeTrigger);
 
         try {
           const result = await nostrClient.removeWatchHistoryItem(targetKey);
@@ -1008,7 +896,10 @@ export function createWatchHistoryRenderer(config = {}) {
             "Failed to remove this video from watch history."
           );
         } finally {
-          removeTrigger.removeAttribute("aria-busy");
+          if (removeTrigger.isConnected) {
+            restoreRemoveButton(removeTrigger);
+            removeTrigger.removeAttribute("aria-busy");
+          }
         }
 
         return;
