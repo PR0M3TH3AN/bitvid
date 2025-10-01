@@ -2005,6 +2005,13 @@ class NostrClient {
         ? Math.floor(options.created_at)
         : Math.floor(Date.now() / 1000);
 
+    const normalizedActor =
+      typeof actorPubkey === "string" ? actorPubkey.toLowerCase() : "";
+    const normalizedLogged =
+      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+    const usingSessionActor =
+      normalizedActor && normalizedActor !== normalizedLogged;
+
     const additionalTags = Array.isArray(options.additionalTags)
       ? options.additionalTags.filter(
           (tag) => Array.isArray(tag) && typeof tag[0] === "string"
@@ -2017,6 +2024,12 @@ class NostrClient {
       ...additionalTags,
     ];
 
+    if (
+      usingSessionActor &&
+      !tags.some((tag) => tag[0] === "session" && tag[1] === "true")
+    ) {
+      tags.push(["session", "true"]);
+    }
     const content =
       typeof options.content === "string" ? options.content : "";
 
@@ -2029,9 +2042,6 @@ class NostrClient {
     };
 
     let signedEvent = null;
-    const normalizedActor = actorPubkey.toLowerCase();
-    const normalizedLogged =
-      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
 
     if (
       normalizedActor &&
