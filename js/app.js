@@ -6457,7 +6457,18 @@ class bitvidApp {
 
     const { persistActive = true } = normalizedOptions;
 
+    const previousActivePubkey =
+      this.normalizeHexPubkey(this.pubkey) ||
+      (typeof this.pubkey === "string" ? this.pubkey.trim() : "");
+
     const normalizedPubkey = this.normalizeHexPubkey(pubkey);
+    const nextActivePubkey =
+      normalizedPubkey || (typeof pubkey === "string" ? pubkey.trim() : "");
+
+    if (previousActivePubkey !== nextActivePubkey) {
+      this.resetViewLoggingState();
+    }
+
     if (normalizedPubkey) {
       this.pubkey = normalizedPubkey;
     } else {
@@ -6526,6 +6537,7 @@ class bitvidApp {
    */
   async logout() {
     nostrClient.logout();
+    this.resetViewLoggingState();
     this.pubkey = null;
     this.currentUserNpub = null;
 
@@ -6741,6 +6753,61 @@ class bitvidApp {
     this.playbackTelemetryState = null;
   }
 
+  resetViewLoggingState() {
+    this.cancelPendingViewLogging();
+    if (this.loggedViewPointerKeys.size > 0) {
+      this.loggedViewPointerKeys.clear();
+    }
+  }
+
+  getActiveViewIdentityKey() {
+    const normalizedUser = this.normalizeHexPubkey(this.pubkey);
+    if (normalizedUser) {
+      return `actor:${normalizedUser}`;
+    }
+
+    const sessionActorPubkey = this.normalizeHexPubkey(
+      nostrClient?.sessionActor?.pubkey
+    );
+    if (sessionActorPubkey) {
+      return `actor:${sessionActorPubkey}`;
+    }
+
+    return "actor:anonymous";
+  }
+
+  deriveViewIdentityKeyFromEvent(event) {
+    if (!event || typeof event !== "object") {
+      return "";
+    }
+
+    const normalizedPubkey = this.normalizeHexPubkey(event.pubkey);
+    if (!normalizedPubkey) {
+      return "";
+    }
+
+    return `actor:${normalizedPubkey}`;
+  }
+
+  buildViewCooldownKey(pointerKey, identityKey) {
+    const normalizedPointerKey =
+      typeof pointerKey === "string" && pointerKey.trim()
+        ? pointerKey.trim()
+        : "";
+    if (!normalizedPointerKey) {
+      return "";
+    }
+
+    const normalizedIdentity =
+      typeof identityKey === "string" && identityKey.trim()
+        ? identityKey.trim().toLowerCase()
+        : "";
+
+    return normalizedIdentity
+      ? `${normalizedPointerKey}::${normalizedIdentity}`
+      : normalizedPointerKey;
+  }
+
   preparePlaybackViewLogging(videoEl) {
     this.cancelPendingViewLogging();
 
@@ -6754,7 +6821,10 @@ class bitvidApp {
       return;
     }
 
-    if (this.loggedViewPointerKeys.has(pointerKey)) {
+    const viewerIdentityKey = this.getActiveViewIdentityKey();
+    const cooldownKey = this.buildViewCooldownKey(pointerKey, viewerIdentityKey);
+
+    if (cooldownKey && this.loggedViewPointerKeys.has(cooldownKey)) {
       return;
     }
 
@@ -6763,6 +6833,7 @@ class bitvidApp {
       videoEl,
       pointer,
       pointerKey,
+      viewerIdentityKey,
       handlers: [],
       timerId: null,
       fired: false,
@@ -6784,7 +6855,17 @@ class bitvidApp {
           const result = await recordVideoView(thresholdPointer);
           const viewOk = !!result?.view?.ok;
           if (viewOk) {
-            this.loggedViewPointerKeys.add(thresholdPointerKey);
+            const eventIdentityKey =
+              this.deriveViewIdentityKeyFromEvent(result?.view?.event) ||
+              state.viewerIdentityKey ||
+              this.getActiveViewIdentityKey();
+            const keyToPersist = this.buildViewCooldownKey(
+              thresholdPointerKey,
+              eventIdentityKey
+            );
+            if (keyToPersist) {
+              this.loggedViewPointerKeys.add(keyToPersist);
+            }
             if (result?.view?.event) {
               ingestLocalViewEvent({
                 event: result.view.event,
