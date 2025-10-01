@@ -5096,7 +5096,6 @@ class bitvidApp {
 
     let loadError = null;
     this.setAdminLoading(true);
-    this.showStatus("Fetching moderation filters…");
     try {
       await accessControl.ensureReady();
     } catch (error) {
@@ -5120,7 +5119,6 @@ class bitvidApp {
     }
 
     if (loadError) {
-      this.showStatus(null);
       this.setAdminLoading(false);
 
       if (loadError?.code === "nostr-unavailable") {
@@ -5142,7 +5140,6 @@ class bitvidApp {
       if (adminNav instanceof HTMLElement && adminNav.classList.contains("bg-gray-800")) {
         this.selectProfilePane("account");
       }
-      this.showStatus(null);
       this.setAdminLoading(false);
       return;
     }
@@ -5152,7 +5149,6 @@ class bitvidApp {
       this.adminModeratorsSection.setAttribute("aria-hidden", (!isSuperAdmin).toString());
     }
     this.populateAdminLists();
-    this.showStatus(null);
     this.setAdminLoading(false);
   }
 

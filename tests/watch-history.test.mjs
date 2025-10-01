@@ -519,6 +519,39 @@ assert.equal(
   removalPointers[0].value,
   "remaining cached pointer should match the survivor"
 );
+
+const MULTI_ACTOR = `${ACTOR}-multi`;
+const { client: multiClient } = createPublishingClient(MULTI_ACTOR);
+
+await multiClient.updateWatchHistoryList({
+  type: "e",
+  value: "multi-first",
+  relay: null,
+});
+
+await multiClient.updateWatchHistoryList({
+  type: "e",
+  value: "multi-second",
+  relay: null,
+});
+
+const multiEntry = multiClient.watchHistoryCache.get(MULTI_ACTOR);
+assert(multiEntry, "multi-update should cache a watch history entry");
+assert.equal(
+  multiEntry.items.length,
+  2,
+  "watch history updates should retain previous pointers"
+);
+assert.equal(
+  multiEntry.items[0].value,
+  "multi-second",
+  "newest watch should remain at the front of the history"
+);
+assert.equal(
+  multiEntry.items[1].value,
+  "multi-first",
+  "prior watches should remain in the list after new plays"
+);
 assert.equal(
   removalEntry.items[0].watchedAt,
   removalPointers[0].watchedAt,

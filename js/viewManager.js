@@ -70,7 +70,15 @@ export const viewInitRegistry = {
   history: async () => {
     try {
       const module = await import("./historyView.js");
-      if (typeof module.initHistoryView === "function") {
+      const rendererState =
+        typeof module.watchHistoryRenderer?.getState === "function"
+          ? module.watchHistoryRenderer.getState()
+          : null;
+      if (rendererState?.initialized) {
+        if (typeof module.watchHistoryRenderer.refresh === "function") {
+          await module.watchHistoryRenderer.refresh();
+        }
+      } else if (typeof module.initHistoryView === "function") {
         await module.initHistoryView();
       }
     } catch (error) {
