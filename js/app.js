@@ -10853,5 +10853,6 @@ function dedupeToNewestByRoot(videos) {
 }
 
 export const app = new bitvidApp();
-app.init();
+export const appReady = app.init();
 window.app = app;
+window.appReady = appReady;
