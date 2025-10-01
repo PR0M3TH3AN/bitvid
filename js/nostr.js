@@ -24,15 +24,18 @@ import {
 } from "./nostrEventSchemas.js";
 
 /**
- * The usual relays
+ * The default relay set BitVid bootstraps with before loading a user's
+ * preferences.
  */
-const RELAY_URLS = [
+export const DEFAULT_RELAY_URLS = Object.freeze([
   "wss://relay.damus.io",
   "wss://nos.lol",
   "wss://relay.snort.social",
   "wss://relay.primal.net",
   "wss://relay.nostr.band",
-];
+]);
+
+const RELAY_URLS = Array.from(DEFAULT_RELAY_URLS);
 
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
@@ -138,6 +141,35 @@ function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request ti
         reject(error);
       });
   });
+}
+
+function sanitizeRelayList(list) {
+  const seen = new Set();
+  const sanitized = [];
+  if (!Array.isArray(list)) {
+    return sanitized;
+  }
+
+  list.forEach((value) => {
+    if (typeof value !== "string") {
+      return;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+    if (!/^wss?:\/\//i.test(trimmed)) {
+      return;
+    }
+    const normalized = trimmed.replace(/\/+$/, "");
+    if (seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    sanitized.push(normalized);
+  });
+
+  return sanitized;
 }
 
 function pointerKey(pointer) {
@@ -1098,7 +1130,9 @@ class NostrClient {
   constructor() {
     this.pool = null;
     this.pubkey = null;
-    this.relays = RELAY_URLS;
+    this.relays = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
+    this.readRelays = Array.from(this.relays);
+    this.writeRelays = Array.from(this.relays);
 
     // Store all events so older links still work
     this.allEvents = new Map();
@@ -1213,6 +1247,35 @@ class NostrClient {
     }
 
     return this.allEvents.size > 0;
+  }
+
+  applyRelayPreferences(preferences = {}) {
+    const normalizedPrefs =
+      preferences && typeof preferences === "object" ? preferences : {};
+    const sanitizedAll = sanitizeRelayList(
+      Array.isArray(normalizedPrefs.all)
+        ? normalizedPrefs.all
+        : this.relays
+    );
+    const effectiveAll =
+      sanitizedAll.length > 0
+        ? sanitizedAll
+        : sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
+
+    const sanitizedRead = sanitizeRelayList(
+      Array.isArray(normalizedPrefs.read)
+        ? normalizedPrefs.read
+        : effectiveAll
+    );
+    const sanitizedWrite = sanitizeRelayList(
+      Array.isArray(normalizedPrefs.write)
+        ? normalizedPrefs.write
+        : effectiveAll
+    );
+
+    this.relays = effectiveAll.length ? effectiveAll : Array.from(RELAY_URLS);
+    this.readRelays = sanitizedRead.length ? sanitizedRead : Array.from(this.relays);
+    this.writeRelays = sanitizedWrite.length ? sanitizedWrite : Array.from(this.relays);
   }
 
   /**

@@ -18,6 +18,7 @@ import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
+import { relayManager } from "./relayManager.js";
 import {
   loadR2Settings,
   saveR2Settings,
@@ -4289,7 +4290,7 @@ class bitvidApp {
       if (this.profileAddRelayBtn && !this.profileAddRelayBtn.dataset.bound) {
         this.profileAddRelayBtn.dataset.bound = "true";
         this.profileAddRelayBtn.addEventListener("click", () => {
-          this.showSuccess("Relay management coming soon.");
+          this.handleAddRelay();
         });
       }
       if (
@@ -4298,7 +4299,19 @@ class bitvidApp {
       ) {
         this.profileRestoreRelaysBtn.dataset.bound = "true";
         this.profileRestoreRelaysBtn.addEventListener("click", () => {
-          this.showSuccess("Relay management coming soon.");
+          this.handleRestoreRelays();
+        });
+      }
+      if (
+        this.profileRelayInput &&
+        this.profileRelayInput.dataset.bound !== "true"
+      ) {
+        this.profileRelayInput.dataset.bound = "true";
+        this.profileRelayInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            this.handleAddRelay();
+          }
         });
       }
 
@@ -4647,21 +4660,40 @@ class bitvidApp {
     this.lastFocusedBeforeProfileModal = null;
   }
 
-  populateProfileRelays(relayUrls) {
+  populateProfileRelays(relayEntries = null) {
     if (!this.profileRelayList) {
       return;
     }
 
-    const rawRelays =
-      Array.isArray(relayUrls)
-        ? relayUrls
-        : Array.isArray(nostrClient.relays)
-        ? nostrClient.relays
-        : Array.from(nostrClient.relays || []);
+    const sourceEntries = Array.isArray(relayEntries)
+      ? relayEntries
+      : relayManager.getEntries();
 
-    const relays = rawRelays
-      .map((relay) => (typeof relay === "string" ? relay.trim() : ""))
-      .filter((relay) => relay.length > 0);
+    const relays = sourceEntries
+      .map((entry) => {
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          return trimmed ? { url: trimmed, mode: "both" } : null;
+        }
+        if (entry && typeof entry === "object") {
+          const url =
+            typeof entry.url === "string" ? entry.url.trim() : "";
+          if (!url) {
+            return null;
+          }
+          const mode = typeof entry.mode === "string" ? entry.mode : "both";
+          const normalizedMode =
+            mode === "read" || mode === "write" ? mode : "both";
+          return {
+            url,
+            mode: normalizedMode,
+            read: entry.read !== false,
+            write: entry.write !== false,
+          };
+        }
+        return null;
+      })
+      .filter((entry) => entry && typeof entry.url === "string");
 
     this.profileRelayList.innerHTML = "";
 
@@ -4674,7 +4706,7 @@ class bitvidApp {
       return;
     }
 
-    relays.forEach((relayUrl) => {
+    relays.forEach((entry) => {
       const item = document.createElement("li");
       item.className =
         "flex items-start justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
@@ -4684,11 +4716,17 @@ class bitvidApp {
 
       const urlEl = document.createElement("p");
       urlEl.className = "text-sm font-medium text-gray-100 break-all";
-      urlEl.textContent = relayUrl;
+      urlEl.textContent = entry.url;
 
       const statusEl = document.createElement("p");
       statusEl.className = "mt-1 text-xs text-gray-400";
-      statusEl.textContent = "Active";
+      let modeLabel = "Read & write";
+      if (entry.mode === "read") {
+        modeLabel = "Read only";
+      } else if (entry.mode === "write") {
+        modeLabel = "Write only";
+      }
+      statusEl.textContent = modeLabel;
 
       info.appendChild(urlEl);
       info.appendChild(statusEl);
@@ -4700,9 +4738,10 @@ class bitvidApp {
       editBtn.type = "button";
       editBtn.className =
         "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
-      editBtn.textContent = "Edit";
+      editBtn.textContent = "Change mode";
+      editBtn.title = "Cycle between read-only, write-only, or read/write modes.";
       editBtn.addEventListener("click", () => {
-        this.showSuccess("Relay management coming soon.");
+        this.handleRelayModeToggle(entry.url);
       });
 
       const removeBtn = document.createElement("button");
@@ -4711,7 +4750,7 @@ class bitvidApp {
         "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
       removeBtn.textContent = "Remove";
       removeBtn.addEventListener("click", () => {
-        this.showSuccess("Relay management coming soon.");
+        this.handleRemoveRelay(entry.url);
       });
 
       actions.appendChild(editBtn);
@@ -4722,6 +4761,144 @@ class bitvidApp {
 
       this.profileRelayList.appendChild(item);
     });
+  }
+
+  async handleRelayOperation(operation, {
+    successMessage = "Relay preferences updated.",
+    skipPublishIfUnchanged = true,
+    unchangedMessage = null,
+  } = {}) {
+    if (!this.pubkey) {
+      this.showError("Please login to manage your relays.");
+      return;
+    }
+
+    if (typeof operation !== "function") {
+      return;
+    }
+
+    const previous = relayManager.snapshot();
+    let result;
+    try {
+      result = operation();
+    } catch (error) {
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Failed to update relay preferences.";
+      this.showError(message);
+      return;
+    }
+
+    const changed = !!result?.changed;
+    if (!changed && skipPublishIfUnchanged) {
+      if (result?.reason === "duplicate") {
+        this.showSuccess("Relay is already configured.");
+      } else if (typeof unchangedMessage === "string" && unchangedMessage) {
+        this.showSuccess(unchangedMessage);
+      }
+      this.populateProfileRelays();
+      return;
+    }
+
+    this.populateProfileRelays();
+
+    try {
+      const publishResult = await relayManager.publishRelayList(this.pubkey);
+      if (!publishResult?.ok) {
+        throw new Error("No relays accepted the update.");
+      }
+      if (successMessage) {
+        this.showSuccess(successMessage);
+      }
+    } catch (error) {
+      relayManager.setEntries(previous, { allowEmpty: false });
+      this.populateProfileRelays();
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Failed to publish relay configuration. Please try again.";
+      this.showError(message);
+    }
+  }
+
+  async handleAddRelay() {
+    if (!this.pubkey) {
+      this.showError("Please login to manage your relays.");
+      return;
+    }
+
+    const rawValue =
+      typeof this.profileRelayInput?.value === "string"
+        ? this.profileRelayInput.value
+        : "";
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      this.showError("Enter a relay URL to add.");
+      return;
+    }
+
+    await this.handleRelayOperation(
+      () => relayManager.addRelay(trimmed),
+      {
+        successMessage: "Relay saved.",
+        unchangedMessage: "Relay is already configured.",
+      }
+    );
+
+    if (this.profileRelayInput) {
+      this.profileRelayInput.value = "";
+    }
+  }
+
+  async handleRestoreRelays() {
+    if (!this.pubkey) {
+      this.showError("Please login to manage your relays.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Restore the recommended relay defaults?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await this.handleRelayOperation(
+      () => relayManager.restoreDefaults(),
+      {
+        successMessage: "Relay defaults restored.",
+        unchangedMessage: "Relay defaults are already in use.",
+      }
+    );
+  }
+
+  async handleRelayModeToggle(url) {
+    if (!url) {
+      return;
+    }
+    await this.handleRelayOperation(
+      () => relayManager.cycleRelayMode(url),
+      { successMessage: "Relay mode updated." }
+    );
+  }
+
+  async handleRemoveRelay(url) {
+    if (!url) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove ${url} from your relay list?`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await this.handleRelayOperation(
+      () => relayManager.removeRelay(url),
+      { successMessage: "Relay removed." }
+    );
   }
 
   populateBlockedList(blocked = null) {
@@ -6402,6 +6579,14 @@ class bitvidApp {
 
     this.populateBlockedList();
 
+    try {
+      await relayManager.loadRelayList(this.pubkey);
+    } catch (error) {
+      console.warn("Failed to load relay list:", error);
+    }
+
+    this.populateProfileRelays();
+
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
       this.loginButton.setAttribute("hidden", "");
@@ -6580,6 +6765,9 @@ class bitvidApp {
 
     userBlocks.reset();
     this.populateBlockedList();
+
+    relayManager.reset();
+    this.populateProfileRelays();
 
     // Show the login button again
     if (this.loginButton) {
