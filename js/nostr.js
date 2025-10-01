@@ -4,6 +4,7 @@ import {
   isDevMode,
   WATCH_HISTORY_KIND,
   WATCH_HISTORY_LIST_IDENTIFIER,
+  WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS,
   WATCH_HISTORY_MAX_ITEMS,
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
@@ -20,6 +21,7 @@ import {
   buildVideoPostEvent,
   buildVideoMirrorEvent,
   buildViewEvent,
+  buildWatchHistoryIndexEvent,
   buildWatchHistoryChunkEvent,
 } from "./nostrEventSchemas.js";
 
@@ -45,6 +47,76 @@ const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
   "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again.";
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const WATCH_HISTORY_CACHE_STORAGE_KEY = "bitvid:watchHistoryCache:v1";
+
+const WATCH_HISTORY_INDEX_IDENTIFIER_LOWER =
+  typeof WATCH_HISTORY_LIST_IDENTIFIER === "string"
+    ? WATCH_HISTORY_LIST_IDENTIFIER.trim().toLowerCase()
+    : "";
+
+const WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX = (() => {
+  const rawIdentifier =
+    typeof WATCH_HISTORY_LIST_IDENTIFIER === "string"
+      ? WATCH_HISTORY_LIST_IDENTIFIER.trim()
+      : "";
+  const suffixes = [":index", "/index"];
+  for (const suffix of suffixes) {
+    if (rawIdentifier.toLowerCase().endsWith(suffix)) {
+      return rawIdentifier
+        .slice(0, rawIdentifier.length - suffix.length)
+        .replace(/\/+$/, "");
+    }
+  }
+  return rawIdentifier.replace(/\/+$/, "") || "watch-history";
+})();
+
+const LEGACY_WATCH_HISTORY_IDENTIFIER_SET = (() => {
+  const identifiers = Array.isArray(WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS)
+    ? WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS
+    : [];
+  const normalized = new Set(
+    identifiers
+      .map((value) =>
+        typeof value === "string" ? value.trim().toLowerCase() : ""
+      )
+      .filter(Boolean)
+  );
+  if (!normalized.size) {
+    normalized.add("watch-history");
+  }
+  return normalized;
+})();
+
+function deriveWatchHistoryChunkIdentifier(snapshotId, chunkIndex) {
+  const prefix = WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX || "watch-history";
+  const sanitizedPrefix = prefix.replace(/\/+$/, "");
+  const safeSnapshot =
+    typeof snapshotId === "string" && snapshotId ? snapshotId : "0";
+  const safeIndex = Number.isFinite(chunkIndex)
+    ? Math.max(0, Math.floor(chunkIndex))
+    : 0;
+  return `${sanitizedPrefix}/${safeSnapshot}/${safeIndex}`;
+}
+
+function isIndexIdentifier(identifier) {
+  if (!identifier || typeof identifier !== "string") {
+    return false;
+  }
+  if (!WATCH_HISTORY_INDEX_IDENTIFIER_LOWER) {
+    return false;
+  }
+  return identifier.trim().toLowerCase() === WATCH_HISTORY_INDEX_IDENTIFIER_LOWER;
+}
+
+function isLegacyHeadIdentifier(identifier) {
+  if (!identifier || typeof identifier !== "string") {
+    return false;
+  }
+  const normalized = identifier.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return LEGACY_WATCH_HISTORY_IDENTIFIER_SET.has(normalized);
+}
 
 // To limit error spam
 let errorLogCount = 0;
@@ -1930,9 +2002,7 @@ class NostrClient {
 
     const totalChunks = chunkItemsList.length || 1;
     const chunkIdentifiers = chunkItemsList.map((_, index) =>
-      index === 0
-        ? WATCH_HISTORY_LIST_IDENTIFIER
-        : `watch-history:${snapshotId}:${index}`
+      deriveWatchHistoryChunkIdentifier(snapshotId, index)
     );
     const chunkAddresses = chunkIdentifiers.map(
       (identifier) => `${WATCH_HISTORY_KIND}:${normalizedActor}:${identifier}`
@@ -2002,7 +2072,8 @@ class NostrClient {
         return tag;
       });
 
-      const chunkIdentifier = chunkIdentifiers[index] || WATCH_HISTORY_LIST_IDENTIFIER;
+      const chunkIdentifier =
+        chunkIdentifiers[index] ?? deriveWatchHistoryChunkIdentifier(snapshotId, index);
 
       // Ensure created_at stays monotonic so chunk 0 always outranks prior snapshots
       // even when multiple publishes land within the same wall-clock second.
@@ -2014,7 +2085,6 @@ class NostrClient {
         chunkIndex: index,
         totalChunks,
         pointerTags,
-        chunkAddresses,
         content: encryptionResult.ciphertext,
       });
 
@@ -2065,6 +2135,50 @@ class NostrClient {
       });
     }
 
+    const indexEvent = buildWatchHistoryIndexEvent({
+      pubkey: normalizedActor,
+      created_at: baseTimestamp + totalChunks,
+      snapshotId,
+      totalChunks,
+      chunkAddresses,
+    });
+
+    let signedIndexEvent = null;
+    try {
+      if (useExtension) {
+        signedIndexEvent = await window.nostr.signEvent(indexEvent);
+      } else {
+        signedIndexEvent = signEventWithPrivateKey(
+          indexEvent,
+          this.sessionActor.privateKey
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "[nostr] Failed to sign watch history index event:",
+        error
+      );
+      signedIndexEvent = null;
+    }
+
+    let indexPublishResults = [];
+    let indexSuccess = false;
+    if (signedIndexEvent) {
+      indexPublishResults = await Promise.all(
+        relays.map((url) => publishEventToRelay(this.pool, url, signedIndexEvent))
+      );
+      indexSuccess = indexPublishResults.some((result) => result.success);
+      if (!indexSuccess) {
+        overallSuccess = false;
+        console.warn(
+          "[nostr] Failed to publish watch history index:",
+          indexPublishResults
+        );
+      }
+    } else {
+      overallSuccess = false;
+    }
+
     if (overallSuccess) {
       this.cancelWatchHistoryRepublish(normalizedActor);
     } else if (allowRetry && persistedItems.length) {
@@ -2074,23 +2188,91 @@ class NostrClient {
     const baselineEntry =
       existingEntry || this.watchHistoryCache.get(normalizedActor) || null;
 
-    const headEvent = chunkResults[0]?.event || null;
+    const pointerEvent = signedIndexEvent || chunkResults[0]?.event || null;
     const newEntry = this.createWatchHistoryEntry(
-      headEvent,
+      pointerEvent,
       persistedItems,
       Date.now(),
       baselineEntry
     );
 
+    if (!(newEntry.chunkEvents instanceof Map)) {
+      newEntry.chunkEvents = new Map();
+    } else {
+      newEntry.chunkEvents.clear();
+    }
+
+    const chunkPointerItems = [];
+    const chunkPointerKeys = new Set();
+
+    chunkResults.forEach((chunk) => {
+      const address = eventToAddressPointer(chunk.event);
+      if (!address) {
+        return;
+      }
+      const pointer = clonePointerItem({ type: "a", value: address, relay: null });
+      if (!pointer) {
+        return;
+      }
+      const key = pointerKey(pointer);
+      if (!key || chunkPointerKeys.has(key)) {
+        return;
+      }
+      chunkPointerKeys.add(key);
+      chunkPointerItems.push(pointer);
+      const clonedChunk = cloneEventForCache(chunk.event);
+      newEntry.chunkEvents.set(key, clonedChunk || chunk.event);
+    });
+
+    let indexPointer = null;
+    if (signedIndexEvent) {
+      const indexAddress = eventToAddressPointer(signedIndexEvent);
+      if (indexAddress) {
+        const pointer = clonePointerItem({
+          type: "a",
+          value: indexAddress,
+          relay: null,
+        });
+        if (pointer) {
+          const key = pointerKey(pointer);
+          if (key) {
+            chunkPointerKeys.add(key);
+            const clonedIndex = cloneEventForCache(signedIndexEvent);
+            newEntry.chunkEvents.set(key, clonedIndex || signedIndexEvent);
+          }
+          indexPointer = pointer;
+        }
+      }
+    }
+
+    newEntry.chunkPointers = {
+      head: indexPointer || chunkPointerItems[0] || null,
+      index: indexPointer,
+      chunks: chunkPointerItems,
+    };
+
     this.watchHistoryCache.set(normalizedActor, newEntry);
     this.persistWatchHistoryEntry(normalizedActor, newEntry);
 
+    const combinedEvents = [];
+    const combinedResults = [];
+    if (signedIndexEvent) {
+      combinedEvents.push(signedIndexEvent);
+      combinedResults.push(indexPublishResults);
+    }
+    chunkResults.forEach((chunk) => {
+      combinedEvents.push(chunk.event);
+      combinedResults.push(chunk.results);
+    });
+
     return {
       ok: overallSuccess,
-      event: headEvent,
-      events: chunkResults.map((chunk) => chunk.event),
+      event: pointerEvent,
+      indexEvent: signedIndexEvent,
+      events: combinedEvents,
       chunks: chunkResults,
-      results: chunkResults.map((chunk) => chunk.results),
+      results: combinedResults,
+      indexResults: indexPublishResults,
       snapshot: snapshotId,
       items: newEntry.items
         .map((item) => clonePointerItem(item))
@@ -2819,12 +3001,33 @@ class NostrClient {
       : WATCH_HISTORY_FETCH_EVENT_LIMIT;
     const fetchLimit = Math.max(1, Math.floor(fetchLimitCandidate));
 
+    const headIdentifierSet = new Set();
+    if (
+      typeof WATCH_HISTORY_LIST_IDENTIFIER === "string" &&
+      WATCH_HISTORY_LIST_IDENTIFIER.trim()
+    ) {
+      headIdentifierSet.add(WATCH_HISTORY_LIST_IDENTIFIER.trim());
+    }
+    if (Array.isArray(WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS)) {
+      WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS.forEach((value) => {
+        if (typeof value === "string" && value.trim()) {
+          headIdentifierSet.add(value.trim());
+        }
+      });
+    }
+    if (!headIdentifierSet.size && WATCH_HISTORY_INDEX_IDENTIFIER_LOWER) {
+      headIdentifierSet.add(WATCH_HISTORY_LIST_IDENTIFIER);
+    }
+
     const filter = {
       kinds: [WATCH_HISTORY_KIND],
       authors: [actor],
-      "#d": [WATCH_HISTORY_LIST_IDENTIFIER],
       limit: fetchLimit,
     };
+
+    if (headIdentifierSet.size) {
+      filter["#d"] = Array.from(headIdentifierSet);
+    }
 
     let fetchedHeadEvents = [];
     try {
@@ -2864,6 +3067,7 @@ class NostrClient {
 
     const chunkIdentifiers = new Set();
     const snapshotIds = new Set();
+    const indexSnapshots = new Map();
 
     for (const event of fetchedHeadEvents) {
       if (!event || typeof event !== "object") {
@@ -2871,15 +3075,29 @@ class NostrClient {
       }
 
       const tags = Array.isArray(event.tags) ? event.tags : [];
+      let identifierTagValue = "";
+      let snapshotTagValue = "";
+      let totalChunksTagValue = null;
+      const pointerIdentifiers = new Set();
+      const pointerAddresses = new Set();
+
       for (const tag of tags) {
         if (!Array.isArray(tag) || tag.length < 2) {
           continue;
         }
-        if (tag[0] === "snapshot" && typeof tag[1] === "string" && tag[1]) {
-          snapshotIds.add(tag[1]);
+        if (tag[0] === "d" && typeof tag[1] === "string") {
+          identifierTagValue = tag[1];
+        } else if (tag[0] === "snapshot" && typeof tag[1] === "string" && tag[1]) {
+          snapshotTagValue = tag[1];
+        } else if (tag[0] === "chunks") {
+          const parsedTotal = Number.parseInt(tag[1], 10);
+          if (Number.isFinite(parsedTotal)) {
+            totalChunksTagValue = Math.max(0, parsedTotal);
+          }
         } else if (tag[0] === "a") {
           const pointer = normalizePointerTag(tag);
-          if (pointer?.type === "a") {
+          if (pointer?.type === "a" && typeof pointer.value === "string") {
+            pointerAddresses.add(pointer.value);
             const [kindStr, pubkey, identifier] = pointer.value.split(":");
             const kind = Number.parseInt(kindStr, 10);
             if (
@@ -2889,11 +3107,117 @@ class NostrClient {
               pubkey === actor &&
               typeof identifier === "string" &&
               identifier &&
-              identifier !== WATCH_HISTORY_LIST_IDENTIFIER
+              !isIndexIdentifier(identifier)
             ) {
-              chunkIdentifiers.add(identifier);
+              pointerIdentifiers.add(identifier);
             }
           }
+        }
+      }
+
+      const identifier = typeof identifierTagValue === "string" ? identifierTagValue : "";
+      let snapshotId = snapshotTagValue;
+      let totalChunks =
+        Number.isFinite(totalChunksTagValue) && totalChunksTagValue !== null
+          ? Math.max(0, Math.floor(totalChunksTagValue))
+          : null;
+
+      const isIndexEvent = isIndexIdentifier(identifier);
+
+      if (isIndexEvent && typeof event.content === "string") {
+        try {
+          const parsed = JSON.parse(event.content);
+          if (!snapshotId && typeof parsed?.snapshot === "string" && parsed.snapshot) {
+            snapshotId = parsed.snapshot;
+          }
+          if (
+            totalChunks === null &&
+            Number.isFinite(Number.parseInt(parsed?.totalChunks, 10))
+          ) {
+            totalChunks = Math.max(0, Math.floor(Number.parseInt(parsed.totalChunks, 10)));
+          }
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              "[nostr] Failed to parse watch history index payload:",
+              error
+            );
+          }
+        }
+      }
+
+      if (!snapshotId) {
+        snapshotId = typeof event.id === "string" && event.id ? event.id : "";
+      }
+
+      if (snapshotId) {
+        snapshotIds.add(snapshotId);
+      }
+
+      pointerIdentifiers.forEach((value) => {
+        if (value) {
+          chunkIdentifiers.add(value);
+        }
+      });
+
+      if (identifier && !isIndexEvent) {
+        chunkIdentifiers.add(identifier);
+      }
+
+      if (isIndexEvent && snapshotId) {
+        const existingMeta = indexSnapshots.get(snapshotId) || {
+          event: null,
+          totalChunks: null,
+          chunkIdentifiers: new Set(),
+          chunkAddresses: new Set(),
+        };
+
+        const existingCreatedAt =
+          typeof existingMeta.event?.created_at === "number"
+            ? existingMeta.event.created_at
+            : 0;
+        const candidateCreatedAt =
+          typeof event.created_at === "number" ? event.created_at : 0;
+        if (!existingMeta.event || candidateCreatedAt >= existingCreatedAt) {
+          existingMeta.event = event;
+        }
+
+        if (Number.isFinite(totalChunks)) {
+          if (
+            !Number.isFinite(existingMeta.totalChunks) ||
+            totalChunks > existingMeta.totalChunks
+          ) {
+            existingMeta.totalChunks = totalChunks;
+          }
+        }
+
+        pointerIdentifiers.forEach((value) => {
+          if (value) {
+            existingMeta.chunkIdentifiers.add(value);
+          }
+        });
+
+        pointerAddresses.forEach((value) => {
+          if (value) {
+            existingMeta.chunkAddresses.add(value);
+          }
+        });
+
+        indexSnapshots.set(snapshotId, existingMeta);
+      } else if (snapshotId) {
+        const existingMeta = indexSnapshots.get(snapshotId);
+        if (existingMeta) {
+          pointerIdentifiers.forEach((value) => {
+            if (value) {
+              existingMeta.chunkIdentifiers.add(value);
+            }
+          });
+          pointerAddresses.forEach((value) => {
+            if (value) {
+              existingMeta.chunkAddresses.add(value);
+            }
+          });
+          indexSnapshots.set(snapshotId, existingMeta);
         }
       }
     }
@@ -2981,10 +3305,14 @@ class NostrClient {
       let taggedSnapshotId = "";
       let taggedChunkIndex = null;
       let taggedTotalChunks = null;
+      let identifierTagValue = "";
 
       for (const tag of tags) {
         if (!Array.isArray(tag) || tag.length < 2) {
           continue;
+        }
+        if (tag[0] === "d" && typeof tag[1] === "string") {
+          identifierTagValue = tag[1];
         }
         if (tag[0] === "snapshot" && typeof tag[1] === "string") {
           taggedSnapshotId = tag[1];
@@ -3035,6 +3363,9 @@ class NostrClient {
         latestCreatedAt:
           typeof event.created_at === "number" ? event.created_at : 0,
         version: payload.version || 0,
+        indexEvent: null,
+        chunkAddresses: new Set(),
+        expectedChunkIdentifiers: new Set(),
       };
 
       bucket.chunks.set(chunkIndex, {
@@ -3054,6 +3385,58 @@ class NostrClient {
         bucket.latestCreatedAt = createdAt;
       }
       bucket.version = Math.max(bucket.version, payload.version || 0);
+      const chunkAddress = eventToAddressPointer(event);
+      if (chunkAddress) {
+        bucket.chunkAddresses.add(chunkAddress);
+      }
+      if (identifierTagValue) {
+        bucket.expectedChunkIdentifiers.add(identifierTagValue);
+      }
+      snapshotMap.set(snapshotId, bucket);
+    }
+
+    for (const [snapshotId, meta] of indexSnapshots.entries()) {
+      const bucket = snapshotMap.get(snapshotId) || {
+        snapshotId,
+        chunks: new Map(),
+        expectedChunks: 0,
+        latestCreatedAt: 0,
+        version: 0,
+        indexEvent: null,
+        chunkAddresses: new Set(),
+        expectedChunkIdentifiers: new Set(),
+      };
+
+      if (meta.event) {
+        const createdAt =
+          typeof meta.event.created_at === "number" ? meta.event.created_at : 0;
+        if (createdAt > bucket.latestCreatedAt) {
+          bucket.latestCreatedAt = createdAt;
+        }
+        bucket.indexEvent = meta.event;
+      }
+
+      if (Number.isFinite(meta.totalChunks)) {
+        const normalized = Math.max(1, Math.floor(meta.totalChunks));
+        bucket.expectedChunks = Math.max(bucket.expectedChunks, normalized);
+      }
+
+      if (meta.chunkAddresses instanceof Set) {
+        meta.chunkAddresses.forEach((value) => {
+          if (typeof value === "string" && value) {
+            bucket.chunkAddresses.add(value);
+          }
+        });
+      }
+
+      if (meta.chunkIdentifiers instanceof Set) {
+        meta.chunkIdentifiers.forEach((value) => {
+          if (typeof value === "string" && value) {
+            bucket.expectedChunkIdentifiers.add(value);
+          }
+        });
+      }
+
       snapshotMap.set(snapshotId, bucket);
     }
 
@@ -3070,7 +3453,7 @@ class NostrClient {
       );
       const seenKeys = new Set();
       const combinedItems = [];
-      let pointerCandidate = null;
+      let pointerCandidate = bucket.indexEvent || null;
 
       for (const index of chunkIndices) {
         const chunk = bucket.chunks.get(index);
@@ -3105,6 +3488,12 @@ class NostrClient {
         version: bucket.version,
         chunkCount: chunkIndices.length,
         expectedChunks: Math.max(bucket.expectedChunks, chunkIndices.length || 1),
+        chunkAddresses: bucket.chunkAddresses instanceof Set
+          ? new Set(bucket.chunkAddresses)
+          : new Set(),
+        expectedChunkIdentifiers: bucket.expectedChunkIdentifiers instanceof Set
+          ? new Set(bucket.expectedChunkIdentifiers)
+          : new Set(),
       };
 
       if (!fallbackSnapshot) {
@@ -3168,8 +3557,31 @@ class NostrClient {
     }
 
     const chunkPointerItemsForEntry = [];
-    let headPointerForEntry = null;
     const chunkPointerKeys = new Set();
+    let indexPointerForEntry = null;
+    let firstChunkPointer = null;
+
+    if (effectiveSnapshot?.pointerEvent) {
+      const indexAddress = eventToAddressPointer(effectiveSnapshot.pointerEvent);
+      if (indexAddress) {
+        const pointer = clonePointerItem({
+          type: "a",
+          value: indexAddress,
+          relay: null,
+        });
+        if (pointer) {
+          const key = pointerKey(pointer);
+          if (key) {
+            chunkPointerKeys.add(key);
+            const clonedIndex = cloneEventForCache(effectiveSnapshot.pointerEvent);
+            if (clonedIndex) {
+              entry.chunkEvents.set(key, clonedIndex);
+            }
+            indexPointerForEntry = pointer;
+          }
+        }
+      }
+    }
 
     if (effectiveSnapshot?.snapshotId) {
       const bucketForEntry = snapshotMap.get(effectiveSnapshot.snapshotId);
@@ -3194,7 +3606,7 @@ class NostrClient {
             continue;
           }
           const key = pointerKey(pointer);
-          if (!key) {
+          if (!key || chunkPointerKeys.has(key)) {
             continue;
           }
           const clonedChunkEvent = cloneEventForCache(chunk.event);
@@ -3202,25 +3614,57 @@ class NostrClient {
             entry.chunkEvents.set(key, clonedChunkEvent);
           }
           chunkPointerKeys.add(key);
-          if (chunk.payload?.chunkIndex === 0) {
-            headPointerForEntry = pointer;
-          } else {
-            chunkPointerItemsForEntry.push(pointer);
+          chunkPointerItemsForEntry.push(pointer);
+          if (chunk.payload?.chunkIndex === 0 && !firstChunkPointer) {
+            firstChunkPointer = pointer;
           }
         }
       }
     }
 
+    if (effectiveSnapshot?.chunkAddresses instanceof Set) {
+      effectiveSnapshot.chunkAddresses.forEach((address) => {
+        const pointer = clonePointerItem({
+          type: "a",
+          value: address,
+          relay: null,
+        });
+        if (!pointer) {
+          return;
+        }
+        const key = pointerKey(pointer);
+        if (!key || chunkPointerKeys.has(key)) {
+          return;
+        }
+        chunkPointerKeys.add(key);
+        chunkPointerItemsForEntry.push(pointer);
+      });
+    }
+
+    const headPointer = indexPointerForEntry || firstChunkPointer || null;
     entry.chunkPointers = {
-      head: headPointerForEntry,
+      head: headPointer,
+      index: indexPointerForEntry,
       chunks: chunkPointerItemsForEntry,
     };
 
-    const headPointerKey = headPointerForEntry ? pointerKey(headPointerForEntry) : "";
-    if (headPointerKey) {
-      chunkPointerKeys.add(headPointerKey);
-      if (entry.pointerEvent) {
-        entry.chunkEvents.set(headPointerKey, cloneEventForCache(entry.pointerEvent));
+    if (headPointer) {
+      const headPointerKey = pointerKey(headPointer);
+      if (headPointerKey) {
+        chunkPointerKeys.add(headPointerKey);
+        const indexPointerKey = indexPointerForEntry
+          ? pointerKey(indexPointerForEntry)
+          : "";
+        if (
+          entry.pointerEvent &&
+          indexPointerKey &&
+          headPointerKey === indexPointerKey
+        ) {
+          entry.chunkEvents.set(
+            headPointerKey,
+            cloneEventForCache(entry.pointerEvent)
+          );
+        }
       }
     }
 
@@ -3320,11 +3764,20 @@ class NostrClient {
       if (!normalizedIdentifier) {
         return "none";
       }
-      const normalizedIdentifierLower = normalizedIdentifier.toLowerCase();
-      if (normalizedIdentifierLower === WATCH_HISTORY_LIST_IDENTIFIER) {
+      if (isIndexIdentifier(normalizedIdentifier)) {
         return "head";
       }
-      if (!normalizedIdentifierLower.startsWith("watch-history:")) {
+      if (isLegacyHeadIdentifier(normalizedIdentifier)) {
+        return "head";
+      }
+      const chunkPrefixLower = WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX
+        ? WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX.trim().toLowerCase()
+        : "";
+      const normalizedIdentifierLower = normalizedIdentifier.toLowerCase();
+      const matchesPrefix = chunkPrefixLower
+        ? normalizedIdentifierLower.startsWith(chunkPrefixLower)
+        : normalizedIdentifierLower.startsWith("watch-history");
+      if (!matchesPrefix) {
         return "none";
       }
       const normalizedOwner =

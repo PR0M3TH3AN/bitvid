@@ -5,6 +5,13 @@ const {
   WATCH_HISTORY_LIST_IDENTIFIER,
   WATCH_HISTORY_KIND,
 } = await import("../js/config.js");
+const {
+  NOTE_TYPES,
+  getNostrEventSchema,
+  setNostrEventSchemaOverrides,
+  buildWatchHistoryIndexEvent,
+  buildWatchHistoryChunkEvent,
+} = await import("../js/nostrEventSchemas.js");
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -66,6 +73,132 @@ function createDecryptClient(actorPubkey) {
 }
 
 const ACTOR = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const WATCH_HISTORY_CHUNK_PREFIX = WATCH_HISTORY_LIST_IDENTIFIER.replace(
+  /[:/]index$/i,
+  ""
+);
+
+const indexSchema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_INDEX);
+assert(indexSchema, "index schema should be available");
+
+const chunkSchema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_CHUNK);
+assert(chunkSchema, "chunk schema should be available");
+
+const sampleChunkIdentifier = `${WATCH_HISTORY_CHUNK_PREFIX}/sample/0`;
+const sampleChunkAddresses = [
+  `${WATCH_HISTORY_KIND}:${ACTOR}:${sampleChunkIdentifier}`,
+  `${WATCH_HISTORY_KIND}:${ACTOR}:${WATCH_HISTORY_CHUNK_PREFIX}/sample/1`,
+];
+
+const sampleIndexEvent = buildWatchHistoryIndexEvent({
+  pubkey: ACTOR,
+  created_at: 111,
+  snapshotId: "sample",
+  totalChunks: 2,
+  chunkAddresses: sampleChunkAddresses,
+});
+
+const sampleIndexIdentifierTag = sampleIndexEvent.tags.find(
+  (tag) => Array.isArray(tag) && tag[0] === "d"
+);
+assert(sampleIndexIdentifierTag, "index event should include identifier tag");
+assert.equal(
+  sampleIndexIdentifierTag[1],
+  WATCH_HISTORY_LIST_IDENTIFIER,
+  "index event should use canonical watch history identifier"
+);
+
+const sampleChunksTag = sampleIndexEvent.tags.find(
+  (tag) => Array.isArray(tag) && tag[0] === "chunks"
+);
+assert(sampleChunksTag, "index event should include chunks tag");
+assert.equal(
+  Number.parseInt(sampleChunksTag[1], 10),
+  2,
+  "chunks tag should reflect total chunks"
+);
+
+const sampleIndexAddresses = sampleIndexEvent.tags
+  .filter((tag) => Array.isArray(tag) && tag[0] === "a")
+  .map((tag) => tag[1]);
+assert.deepEqual(
+  sampleIndexAddresses,
+  sampleChunkAddresses,
+  "index event should list chunk addresses"
+);
+
+const sampleChunkEvent = buildWatchHistoryChunkEvent({
+  pubkey: ACTOR,
+  created_at: 222,
+  chunkIdentifier: sampleChunkIdentifier,
+  snapshotId: "sample",
+  chunkIndex: 0,
+  totalChunks: 2,
+  pointerTags: [["e", "sample-event"]],
+  content: "ciphertext",
+});
+
+const chunkIdentifierTag = sampleChunkEvent.tags.find(
+  (tag) => Array.isArray(tag) && tag[0] === "d"
+);
+assert(chunkIdentifierTag, "chunk event should include identifier tag");
+assert.equal(
+  chunkIdentifierTag[1],
+  sampleChunkIdentifier,
+  "chunk event should use provided identifier"
+);
+assert(
+  sampleChunkEvent.tags.some((tag) => Array.isArray(tag) && tag[0] === "snapshot"),
+  "chunk event should include snapshot tag"
+);
+assert(
+  sampleChunkEvent.tags.some((tag) => Array.isArray(tag) && tag[0] === "chunk"),
+  "chunk event should include chunk tag"
+);
+assert(
+  sampleChunkEvent.tags.some((tag) => Array.isArray(tag) && tag[0] === "encrypted"),
+  "chunk event should include encrypted tag"
+);
+
+setNostrEventSchemaOverrides({
+  [NOTE_TYPES.WATCH_HISTORY_INDEX]: {
+    identifierTag: { name: "d", value: "custom:index" },
+  },
+  [NOTE_TYPES.WATCH_HISTORY_CHUNK]: {
+    identifierTag: { name: "d", value: "custom:chunk" },
+  },
+});
+
+const overriddenIndexEvent = buildWatchHistoryIndexEvent({
+  pubkey: ACTOR,
+  created_at: 333,
+  snapshotId: "override",
+  totalChunks: 1,
+});
+assert(
+  overriddenIndexEvent.tags.some(
+    (tag) => Array.isArray(tag) && tag[0] === "d" && tag[1] === "custom:index"
+  ),
+  "index builder should honor overrides"
+);
+
+const overriddenChunkEvent = buildWatchHistoryChunkEvent({
+  pubkey: ACTOR,
+  created_at: 444,
+  snapshotId: "override",
+  chunkIndex: 0,
+  totalChunks: 1,
+  pointerTags: [],
+  content: "cipher",
+});
+assert(
+  overriddenChunkEvent.tags.some(
+    (tag) => Array.isArray(tag) && tag[0] === "d" && tag[1] === "custom:chunk"
+  ),
+  "chunk builder should honor identifier override"
+);
+
+setNostrEventSchemaOverrides({});
 
 const { client: publishingClient, publishedEvents, payloads } =
   createPublishingClient(ACTOR);
@@ -99,11 +232,11 @@ const publishResult = await publishingClient.publishWatchHistorySnapshot(
 );
 
 assert.equal(publishResult.ok, true, "publish should report success");
-assert(publishResult.events.length > 1, "snapshot should chunk into multiple events");
+assert(publishResult.events.length > 1, "snapshot should include index and chunk events");
 assert.equal(
   publishResult.events.length,
-  payloads.length,
-  "each chunk should produce an encryption payload"
+  payloads.length + 1,
+  "index event should accompany each chunk payload"
 );
 
 payloads.forEach((payload) => {
@@ -120,53 +253,67 @@ const snapshotIds = new Set(
     event.tags.find((tag) => Array.isArray(tag) && tag[0] === "snapshot")?.[1]
   )
 );
-assert.equal(snapshotIds.size, 1, "all chunks should share a snapshot id");
+assert.equal(snapshotIds.size, 1, "all events should share a snapshot id");
 
-const headTag = publishResult.event.tags.find(
-  (tag) => Array.isArray(tag) && tag[0] === "head"
+const indexEvent = publishResult.indexEvent;
+assert(indexEvent, "publish result should include index event");
+
+const indexIdentifierTag = indexEvent.tags.find(
+  (tag) => Array.isArray(tag) && tag[0] === "d"
 );
-assert(headTag, "head chunk should include head tag");
+assert(indexIdentifierTag, "index event should include identifier tag");
+assert.equal(
+  indexIdentifierTag[1],
+  WATCH_HISTORY_LIST_IDENTIFIER,
+  "index event should use canonical identifier"
+);
 
-const chunkIdentifiers = publishResult.events.map((event) =>
+const indexChunksTag = indexEvent.tags.find(
+  (tag) => Array.isArray(tag) && tag[0] === "chunks"
+);
+assert(indexChunksTag, "index event should include chunks tag");
+assert.equal(
+  Number.parseInt(indexChunksTag[1], 10),
+  publishResult.chunks.length,
+  "index event should report chunk count"
+);
+
+const chunkEvents = publishResult.chunks.map((chunk) => chunk.event);
+const chunkIdentifiers = chunkEvents.map((event) =>
   event.tags.find((tag) => Array.isArray(tag) && tag[0] === "d")?.[1]
 );
 
 assert.equal(
   chunkIdentifiers.length,
-  publishResult.events.length,
+  chunkEvents.length,
   "each chunk should expose a d tag"
-);
-
-assert.equal(
-  chunkIdentifiers[0],
-  WATCH_HISTORY_LIST_IDENTIFIER,
-  "head chunk should retain canonical watch history identifier"
 );
 
 const uniqueChunkIdentifiers = new Set(chunkIdentifiers);
 assert.equal(
   uniqueChunkIdentifiers.size,
-  publishResult.events.length,
+  chunkEvents.length,
   "each chunk should have a unique d tag"
 );
 
-chunkIdentifiers.slice(1).forEach((identifier, index) => {
+chunkIdentifiers.forEach((identifier, index) => {
+  assert(identifier, `chunk ${index} should include identifier`);
   assert(
-    identifier && identifier.startsWith("watch-history:"),
-    `chunk ${index + 1} should use a watch-history namespace identifier`
+    identifier.startsWith(WATCH_HISTORY_CHUNK_PREFIX),
+    `chunk ${index} should use the chunk prefix`
   );
   assert.notEqual(
     identifier,
     WATCH_HISTORY_LIST_IDENTIFIER,
-    "only the head chunk should use the canonical identifier"
+    "chunk identifiers should differ from index identifier"
   );
 });
 
-const headATags = publishResult.event.tags
+const indexAddresses = indexEvent.tags
   .filter((tag) => Array.isArray(tag) && tag[0] === "a")
   .map((tag) => tag[1]);
 
-const expectedChunkAddresses = publishResult.events.map((event) => {
+const expectedChunkAddresses = chunkEvents.map((event) => {
   const identifier = event.tags.find(
     (tag) => Array.isArray(tag) && tag[0] === "d"
   )?.[1];
@@ -176,8 +323,8 @@ const expectedChunkAddresses = publishResult.events.map((event) => {
 
 expectedChunkAddresses.forEach((address) => {
   assert(
-    headATags.includes(address),
-    `head chunk should reference ${address}`
+    indexAddresses.includes(address),
+    `index event should reference ${address}`
   );
 });
 
@@ -229,9 +376,6 @@ if (typeof localStorage !== "undefined") {
 }
 
 const headEvent = publishResult.event;
-const chunkEvents = publishResult.events.filter(
-  (event) => event.id !== headEvent.id
-);
 
 const snapshotId = headEvent.tags.find(
   (tag) => Array.isArray(tag) && tag[0] === "snapshot"

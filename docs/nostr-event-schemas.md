@@ -49,7 +49,8 @@ read/write split.
 | NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
 | Relay list (`NOTE_TYPES.RELAY_LIST`) | `10002` | Repeating `['r', <relay url>]` tags, optionally with a marker of `'read'` or `'write'` to scope the relay; marker omitted for read/write relays | Empty content |
 | View counter (`NOTE_TYPES.VIEW_EVENT`) | `WATCH_HISTORY_KIND` (default `30078`) | `['t','view']`, `['video', <pointer id>]`, pointer tag (`['a', ...]` or `['e', ...]`), optional dedupe `['d', <scope>]`, optional `['session','true']` when a session actor signs, plus any extra debugging tags | Optional plaintext message |
-| Watch history chunk (`NOTE_TYPES.WATCH_HISTORY_CHUNK`) | `WATCH_HISTORY_KIND` | `['d', <chunk identifier>]`, `['encrypted','nip04']`, `['snapshot', <id>]`, `['chunk', <index>, <total>]`, pointer tags for each entry, `['head','1']` + `['a', <address>]` pointers on the first chunk | NIP-04 encrypted JSON chunk (`{ version, snapshot, chunkIndex, totalChunks, items[] }`) |
+| Watch history index (`NOTE_TYPES.WATCH_HISTORY_INDEX`) | `WATCH_HISTORY_KIND` | `['d', WATCH_HISTORY_LIST_IDENTIFIER]`, `['snapshot', <id>]`, `['chunks', <total>]`, repeated `['a', <address>]` pointers to each chunk event plus schema append tags | JSON payload `{ snapshot, totalChunks }` |
+| Watch history chunk (`NOTE_TYPES.WATCH_HISTORY_CHUNK`) | `WATCH_HISTORY_KIND` | `['d', <chunk identifier>]`, `['encrypted','nip04']`, `['snapshot', <id>]`, `['chunk', <index>, <total>]`, pointer tags for each entry, plus schema append tags | NIP-04 encrypted JSON chunk (`{ version, snapshot, chunkIndex, totalChunks, items[] }`) |
 | Subscription list (`NOTE_TYPES.SUBSCRIPTION_LIST`) | `30002` | `['d', 'subscriptions']` | NIP-04 encrypted JSON `{ subPubkeys: string[] }` |
 | User block list (`NOTE_TYPES.USER_BLOCK_LIST`) | `30002` | `['d', 'user-blocks']` | NIP-04 encrypted JSON `{ blockedPubkeys: string[] }` |
 | Admin moderation list (`NOTE_TYPES.ADMIN_MODERATION_LIST`) | `30000` | `['d', 'bitvid:admin:editors']`, repeated `['p', <pubkey>]` entries | Empty content |
@@ -59,3 +60,17 @@ read/write split.
 If you introduce a new Nostr feature, add its schema to
 `js/nostrEventSchemas.js` so that the catalogue stays complete and so existing
 builders inherit the same debugging knobs.
+
+### Watch history identifiers
+
+Watch-history snapshots now publish a dedicated index event with
+`#d ${WATCH_HISTORY_LIST_IDENTIFIER}` (defaults to `watch-history:v2:index`). The
+index advertises the active snapshot id, total chunk count, and a pointer to
+each chunk via `a` tags so clients can fetch the encrypted payloads without
+guessing identifiers.
+
+Every chunk event uses a unique `d` tag such as
+`watch-history:v2/<snapshot>/<chunkIndex>`. Legacy snapshots created before the
+index event shipped stored the first chunk at `#d watch-history`; new clients
+should continue reading that identifier for backward compatibility when
+hydrating older histories.
