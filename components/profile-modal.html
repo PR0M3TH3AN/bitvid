@@ -291,17 +291,24 @@
                 Your recently watched videos appear here so you can jump back into favorites.
               </p>
               <div class="space-y-4">
-                <div
-                  id="profileHistoryLoading"
-                  class="flex items-center justify-center gap-3 py-6"
-                >
-                  <div class="h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                  <p
-                    id="profileHistoryStatus"
-                    class="text-sm text-gray-300 hidden"
-                    aria-live="polite"
-                    role="status"
-                  ></p>
+                <div id="profileHistoryLoading" class="py-6">
+                  <div id="profileHistoryStatus">
+                    <div
+                      class="sidebar-loading-wrapper"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <div class="sidebar-loading-indicator">
+                        <span
+                          class="status-spinner status-spinner--inline"
+                          aria-hidden="true"
+                        ></span>
+                        <span class="sidebar-loading-text"
+                          >Fetching watch history from relays…</span
+                        >
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div
                   id="profileHistoryEmpty"

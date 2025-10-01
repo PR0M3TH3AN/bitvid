@@ -7720,9 +7720,11 @@ class bitvidApp {
     }
 
     if (this.videoList) {
-      if (this._lastRenderedVideoListElement !== this.videoList) {
-        this.lastRenderedVideoSignature = null;
-      }
+      // Always reset the cached signature before showing the loading state so the
+      // next render isn't skipped when the incoming payload matches the last
+      // successful render. Without this, the spinner could remain visible for
+      // returning users who already have the latest list cached.
+      this.lastRenderedVideoSignature = null;
       this.videoList.innerHTML = getSidebarLoadingMarkup(
         "Fetching recent videos…"
       );
