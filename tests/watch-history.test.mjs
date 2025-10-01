@@ -34,18 +34,41 @@ delete globalThis.window.nostr;
 
 const { nostrClient } = await import("../js/nostr.js");
 
-function createPublishingClient(actorPubkey) {
+function createPublishingClient(actorPubkey, options = {}) {
   const client = new nostrClient.constructor();
   const publishedEvents = [];
   const payloads = [];
+  const scheduledRepublishes = [];
+  const cancelledRepublishes = [];
+  const persistedEntries = [];
+  const onPublish =
+    typeof options.onPublish === "function" ? options.onPublish : null;
+
   client.pool = {
     publish(urls, event) {
       publishedEvents.push(event);
+      const publishDecision = onPublish ? onPublish(event) : null;
+      const shouldSucceed = publishDecision?.ok !== false;
       return {
         on(eventName, handler) {
-          if (eventName === "ok" || eventName === "seen") {
-            setTimeout(handler, 0);
-          }
+          setTimeout(() => {
+            if (shouldSucceed) {
+              if (eventName === "ok" || eventName === "seen") {
+                handler();
+              }
+            } else if (eventName === "failed") {
+              const providedError = publishDecision?.error;
+              const error =
+                providedError instanceof Error
+                  ? providedError
+                  : new Error(
+                      providedError
+                        ? String(providedError)
+                        : "mock publish failure"
+                    );
+              handler(error);
+            }
+          }, 0);
         },
       };
     },
@@ -59,10 +82,23 @@ function createPublishingClient(actorPubkey) {
     payloads.push(payload);
     return { ok: true, ciphertext: JSON.stringify(payload) };
   };
-  client.persistWatchHistoryEntry = () => {};
-  client.cancelWatchHistoryRepublish = () => {};
-  client.scheduleWatchHistoryRepublish = () => {};
-  return { client, publishedEvents, payloads };
+  client.persistWatchHistoryEntry = (_actor, entry) => {
+    persistedEntries.push(entry);
+  };
+  client.cancelWatchHistoryRepublish = (actor) => {
+    cancelledRepublishes.push(actor);
+  };
+  client.scheduleWatchHistoryRepublish = (actor, items) => {
+    scheduledRepublishes.push({ actor, items });
+  };
+  return {
+    client,
+    publishedEvents,
+    payloads,
+    scheduledRepublishes,
+    cancelledRepublishes,
+    persistedEntries,
+  };
 }
 
 function createDecryptClient(actorPubkey) {
@@ -327,6 +363,125 @@ expectedChunkAddresses.forEach((address) => {
     `index event should reference ${address}`
   );
 });
+
+const CHUNK_FAILURE_ACTOR = `${ACTOR}-chunk-failure`;
+const {
+  client: chunkFailureClient,
+  publishedEvents: chunkFailureEvents,
+  payloads: chunkFailurePayloads,
+  scheduledRepublishes: chunkFailureRepublishes,
+  cancelledRepublishes: chunkFailureCancels,
+} = createPublishingClient(CHUNK_FAILURE_ACTOR, {
+  onPublish(event) {
+    const chunkTag = event.tags.find(
+      (tag) => Array.isArray(tag) && tag[0] === "chunk"
+    );
+    if (chunkTag) {
+      const chunkIndex = Number.parseInt(chunkTag[1], 10);
+      const total = Number.parseInt(chunkTag[2], 10);
+      if (
+        Number.isInteger(chunkIndex) &&
+        Number.isInteger(total) &&
+        (total > 1 ? chunkIndex === total - 1 : chunkIndex === 0)
+      ) {
+        return { ok: false, error: new Error("chunk publish failed") };
+      }
+    }
+    return { ok: true };
+  },
+});
+
+chunkFailureClient.watchHistoryPayloadMaxBytes =
+  publishingClient.watchHistoryPayloadMaxBytes;
+chunkFailureClient.watchHistoryFetchEventLimit = 10;
+
+const chunkFailureResult = await chunkFailureClient.publishWatchHistorySnapshot(
+  CHUNK_FAILURE_ACTOR,
+  longPointers
+);
+
+assert.equal(
+  chunkFailureResult.ok,
+  false,
+  "chunk failure should report overall failure"
+);
+assert.equal(
+  chunkFailureResult.indexEvent,
+  null,
+  "chunk failure should omit index event"
+);
+assert.equal(
+  chunkFailureResult.events.length,
+  chunkFailureResult.chunks.length,
+  "chunk failure should not include index event in combined events"
+);
+assert.equal(
+  chunkFailureResult.indexResults.length,
+  0,
+  "chunk failure should skip index publish attempts"
+);
+assert(
+  chunkFailureResult.chunks.some((chunk) => chunk.success === false),
+  "chunk failure results should flag the failed chunk"
+);
+assert.equal(
+  chunkFailureRepublishes.length,
+  1,
+  "chunk failure should schedule a retry"
+);
+assert.equal(
+  chunkFailureCancels.length,
+  0,
+  "chunk failure should not cancel retries"
+);
+assert.equal(
+  chunkFailureRepublishes[0].actor,
+  CHUNK_FAILURE_ACTOR,
+  "chunk failure retry should target the affected actor"
+);
+assert(
+  chunkFailureEvents.every((event) =>
+    event.tags.some((tag) => Array.isArray(tag) && tag[0] === "chunk")
+  ),
+  "chunk failure should avoid publishing index events"
+);
+assert.equal(
+  chunkFailurePayloads.length,
+  chunkFailureResult.chunks.length,
+  "chunk failure should still prepare payloads for each chunk"
+);
+
+const chunkFailureCache = chunkFailureClient.watchHistoryCache.get(
+  CHUNK_FAILURE_ACTOR
+);
+
+assert(chunkFailureCache, "chunk failure should cache a watch history entry");
+assert.equal(
+  chunkFailureCache.chunkPointers.index,
+  null,
+  "chunk failure cache should not retain an index pointer"
+);
+assert(
+  Array.from(chunkFailureCache.chunkEvents.values()).every((event) =>
+    event.tags.some((tag) => Array.isArray(tag) && tag[0] === "chunk")
+  ),
+  "chunk failure cache should only persist chunk events"
+);
+assert.deepEqual(
+  chunkFailureRepublishes[0].items.map((item) => ({
+    type: item.type,
+    value: item.value,
+    relay: item.relay || null,
+    watchedAt: item.watchedAt,
+  })),
+  chunkFailureResult.items.map((item) => ({
+    type: item.type,
+    value: item.value,
+    relay: item.relay || null,
+    watchedAt: item.watchedAt,
+  })),
+  "republish scheduler should receive the remaining items"
+);
 
 delete globalThis.window.nostr;
 

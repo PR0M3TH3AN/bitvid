@@ -2314,49 +2314,7 @@ class NostrClient {
     }
 
     const baseTimestamp = Math.max(nowSeconds, lastCreatedAt + totalChunks);
-    const chunkResults = [];
-    let overallSuccess = true;
-
-    const indexEvent = buildWatchHistoryIndexEvent({
-      pubkey: normalizedActor,
-      created_at: baseTimestamp + totalChunks,
-      snapshotId,
-      totalChunks,
-      chunkAddresses,
-    });
-
-    let signedIndexEvent = null;
-    try {
-      if (useExtension) {
-        signedIndexEvent = await window.nostr.signEvent(indexEvent);
-      } else {
-        signedIndexEvent = signEventWithPrivateKey(
-          indexEvent,
-          this.sessionActor.privateKey
-        );
-      }
-    } catch (error) {
-      console.warn("[nostr] Failed to sign watch history index event:", error);
-      signedIndexEvent = null;
-    }
-
-    let indexPublishResults = [];
-    let indexSuccess = false;
-    if (signedIndexEvent) {
-      indexPublishResults = await Promise.all(
-        relays.map((url) => publishEventToRelay(this.pool, url, signedIndexEvent))
-      );
-      indexSuccess = indexPublishResults.some((result) => result.success);
-      if (!indexSuccess) {
-        overallSuccess = false;
-        console.warn(
-          "[nostr] Failed to publish watch history index:",
-          indexPublishResults
-        );
-      }
-    } else {
-      overallSuccess = false;
-    }
+    const preparedChunks = [];
 
     for (let index = 0; index < totalChunks; index++) {
       const chunkItems = Array.isArray(chunkItemsList[index])
@@ -2436,8 +2394,18 @@ class NostrClient {
         }
       }
 
+      preparedChunks.push({
+        chunkIndex: index,
+        event: signedEvent,
+      });
+    }
+
+    const chunkResults = [];
+    let overallSuccess = true;
+
+    for (const chunk of preparedChunks) {
       const publishResults = await Promise.all(
-        relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
+        relays.map((url) => publishEventToRelay(this.pool, url, chunk.event))
       );
 
       const chunkSuccess = publishResults.some((result) => result.success);
@@ -2450,11 +2418,60 @@ class NostrClient {
       }
 
       chunkResults.push({
-        chunkIndex: index,
-        event: signedEvent,
+        chunkIndex: chunk.chunkIndex,
+        event: chunk.event,
         results: publishResults,
         success: chunkSuccess,
       });
+    }
+
+    const allChunksSucceeded = chunkResults.every((chunk) => chunk.success);
+
+    let signedIndexEvent = null;
+    let indexPublishResults = [];
+    let indexSuccess = false;
+
+    if (allChunksSucceeded) {
+      const indexEvent = buildWatchHistoryIndexEvent({
+        pubkey: normalizedActor,
+        created_at: baseTimestamp + totalChunks,
+        snapshotId,
+        totalChunks,
+        chunkAddresses,
+      });
+
+      try {
+        if (useExtension) {
+          signedIndexEvent = await window.nostr.signEvent(indexEvent);
+        } else {
+          signedIndexEvent = signEventWithPrivateKey(
+            indexEvent,
+            this.sessionActor.privateKey
+          );
+        }
+      } catch (error) {
+        console.warn("[nostr] Failed to sign watch history index event:", error);
+        signedIndexEvent = null;
+      }
+
+      if (signedIndexEvent) {
+        indexPublishResults = await Promise.all(
+          relays.map((url) => publishEventToRelay(this.pool, url, signedIndexEvent))
+        );
+        indexSuccess = indexPublishResults.some((result) => result.success);
+        if (!indexSuccess) {
+          overallSuccess = false;
+          console.warn(
+            "[nostr] Failed to publish watch history index:",
+            indexPublishResults
+          );
+          signedIndexEvent = null;
+        }
+      } else {
+        overallSuccess = false;
+      }
+    } else {
+      overallSuccess = false;
     }
 
     if (overallSuccess) {
@@ -2466,7 +2483,11 @@ class NostrClient {
     const baselineEntry =
       existingEntry || this.watchHistoryCache.get(normalizedActor) || null;
 
-    const pointerEvent = signedIndexEvent || chunkResults[0]?.event || null;
+    const pointerEvent =
+      signedIndexEvent ||
+      chunkResults.find((chunk) => chunk.success)?.event ||
+      chunkResults[0]?.event ||
+      null;
     const newEntry = this.createWatchHistoryEntry(
       pointerEvent,
       persistedItems,
