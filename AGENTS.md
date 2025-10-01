@@ -81,4 +81,13 @@ Document the run in PR descriptions so QA can cross-reference results.
 * **Playback orchestration:** `playVideoWithFallback` probes and plays the HTTPS URL first, watches for stalls/errors, and then falls back to WebTorrent. When both sources exist, pass the hosted URL through to WebTorrent as a webseed hint.
 * **Status messaging:** Update modal copy to reflect whether playback is direct or via P2P so regressions surface quickly during QA.
 
+## Next
+
+Please read these documents next. 
+
+docs/nostr-event-schemas.md 
+js/nostrEventSchemas.js
+
+And if you need to create new nostr kinds please keep the logic centralized there in nostrEventSchemas.js and the nostr-event-schemas.md up to date. 
+
 **End of AGENTS.md**
