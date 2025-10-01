@@ -42,6 +42,13 @@ import {
 } from "./storage/r2-s3.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
+import {
+  initViewCounter,
+  subscribeToVideoViewCount,
+  unsubscribeFromVideoViewCount,
+  formatViewCount,
+  ingestLocalViewEvent,
+} from "./viewCounter.js";
 
 function truncateMiddle(text, maxLength = 72) {
   if (!text || typeof text !== "string") {
@@ -716,6 +723,9 @@ class bitvidApp {
     this.videoList = null;
     this._videoListElement = null;
     this._videoListClickHandler = null;
+    this.viewCountSubscriptions = new Map();
+    this.modalViewCountUnsub = null;
+    this.videoViewCountEl = null;
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = new Map();
@@ -1242,6 +1252,12 @@ class bitvidApp {
       await nostrClient.init();
 
       try {
+        initViewCounter({ nostrClient });
+      } catch (error) {
+        console.warn("Failed to initialize view counter:", error);
+      }
+
+      try {
         await accessControl.refresh();
       } catch (error) {
         console.warn("Failed to refresh admin lists after connecting to Nostr:", error);
@@ -1363,6 +1379,9 @@ class bitvidApp {
         lastScrollY = currentScrollY;
       });
 
+      this.videoViewCountEl =
+        document.getElementById("videoViewCount") || null;
+
       console.log("Video modal initialization successful");
       return true;
     } catch (error) {
@@ -1386,6 +1405,8 @@ class bitvidApp {
     this.videoTitle = document.getElementById("videoTitle") || null;
     this.videoDescription = document.getElementById("videoDescription") || null;
     this.videoTimestamp = document.getElementById("videoTimestamp") || null;
+    this.videoViewCountEl =
+      document.getElementById("videoViewCount") || null;
 
     // The two elements we want to make clickable
     this.creatorAvatar = document.getElementById("creatorAvatar") || null;
@@ -2647,6 +2668,228 @@ class bitvidApp {
       }
     }
     return "";
+  }
+
+  deriveVideoPointerInfo(video) {
+    if (!video || typeof video !== "object") {
+      return null;
+    }
+
+    const dTagValue = (this.extractDTagValue(video.tags) || "").trim();
+    const normalizedPubkey =
+      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
+    const kind =
+      typeof video.kind === "number" && Number.isFinite(video.kind)
+        ? video.kind
+        : VIDEO_EVENT_KIND;
+
+    if (dTagValue && normalizedPubkey) {
+      const pointer = ["a", `${kind}:${normalizedPubkey}:${dTagValue}`];
+      const key = pointerArrayToKey(pointer);
+      if (key) {
+        return { pointer, key };
+      }
+    }
+
+    const fallbackId =
+      typeof video.id === "string" && video.id.trim()
+        ? video.id.trim()
+        : "";
+    if (fallbackId) {
+      const pointer = ["e", fallbackId];
+      const key = pointerArrayToKey(pointer);
+      if (key) {
+        return { pointer, key };
+      }
+    }
+
+    return null;
+  }
+
+  formatViewCountLabel(total) {
+    const value = Number.isFinite(total) ? Number(total) : 0;
+    const label = value === 1 ? "view" : "views";
+    return `${formatViewCount(value)} ${label}`;
+  }
+
+  ensureViewCountSubscription(pointerInfo) {
+    if (!pointerInfo || !pointerInfo.key || !pointerInfo.pointer) {
+      return null;
+    }
+
+    const existing = this.viewCountSubscriptions.get(pointerInfo.key);
+    if (existing) {
+      return existing;
+    }
+
+    const entry = {
+      pointer: pointerInfo.pointer,
+      key: pointerInfo.key,
+      token: null,
+      elements: new Set(),
+      lastTotal: null,
+      lastStatus: "idle",
+      lastText: "– views",
+    };
+
+    try {
+      const token = subscribeToVideoViewCount(
+        pointerInfo.pointer,
+        ({ total, status }) => {
+          let text;
+          if (Number.isFinite(total)) {
+            const numeric = Number(total);
+            entry.lastTotal = numeric;
+            text = this.formatViewCountLabel(numeric);
+          } else if (status === "hydrating") {
+            text = "Loading views…";
+          } else {
+            text = "– views";
+          }
+
+          entry.lastStatus = status;
+          entry.lastText = text;
+
+          for (const el of Array.from(entry.elements)) {
+            if (!el || !el.isConnected) {
+              entry.elements.delete(el);
+              continue;
+            }
+            el.textContent = text;
+          }
+        }
+      );
+      entry.token = token;
+      this.viewCountSubscriptions.set(pointerInfo.key, entry);
+      return entry;
+    } catch (error) {
+      console.warn("[viewCount] Failed to subscribe to view counter:", error);
+      return null;
+    }
+  }
+
+  registerVideoViewCountElement(cardEl, pointerInfo) {
+    if (!cardEl || !pointerInfo) {
+      return;
+    }
+
+    const viewCountEl = cardEl.querySelector("[data-view-count]");
+    if (!viewCountEl) {
+      return;
+    }
+
+    if (!viewCountEl.textContent || !viewCountEl.textContent.trim()) {
+      viewCountEl.textContent = "– views";
+    }
+
+    const entry = this.ensureViewCountSubscription(pointerInfo);
+    if (!entry) {
+      return;
+    }
+
+    entry.elements.add(viewCountEl);
+    if (typeof pointerInfo.key === "string") {
+      viewCountEl.dataset.viewPointer = pointerInfo.key;
+    }
+    viewCountEl.textContent = entry.lastText;
+  }
+
+  pruneDetachedViewCountElements() {
+    for (const entry of this.viewCountSubscriptions.values()) {
+      if (!entry || !(entry.elements instanceof Set)) {
+        continue;
+      }
+      for (const el of Array.from(entry.elements)) {
+        if (!el || !el.isConnected) {
+          entry.elements.delete(el);
+        }
+      }
+    }
+  }
+
+  teardownAllViewCountSubscriptions() {
+    const keys = Array.from(this.viewCountSubscriptions.keys());
+    keys.forEach((key) => {
+      const entry = this.viewCountSubscriptions.get(key);
+      if (entry && entry.token && entry.pointer) {
+        try {
+          unsubscribeFromVideoViewCount(entry.pointer, entry.token);
+        } catch (error) {
+          console.warn(
+            `[viewCount] Failed to unsubscribe from pointer ${key}:`,
+            error
+          );
+        }
+      }
+      this.viewCountSubscriptions.delete(key);
+    });
+  }
+
+  teardownModalViewCountSubscription() {
+    if (typeof this.modalViewCountUnsub === "function") {
+      try {
+        this.modalViewCountUnsub();
+      } catch (error) {
+        console.warn("[viewCount] Failed to tear down modal subscription:", error);
+      }
+    }
+    this.modalViewCountUnsub = null;
+    if (this.videoViewCountEl) {
+      this.videoViewCountEl.textContent = "– views";
+      if (this.videoViewCountEl.dataset?.viewPointer) {
+        delete this.videoViewCountEl.dataset.viewPointer;
+      }
+    }
+  }
+
+  subscribeModalViewCount(pointer, pointerKey) {
+    if (!this.videoViewCountEl) {
+      return;
+    }
+
+    this.teardownModalViewCountSubscription();
+
+    if (!pointer || !pointerKey) {
+      return;
+    }
+
+    this.videoViewCountEl.textContent = "Loading views…";
+    try {
+      const token = subscribeToVideoViewCount(pointer, ({ total, status }) => {
+        if (!this.videoViewCountEl) {
+          return;
+        }
+
+        if (Number.isFinite(total)) {
+          const numeric = Number(total);
+          this.videoViewCountEl.textContent = this.formatViewCountLabel(numeric);
+          return;
+        }
+
+        if (status === "hydrating") {
+          this.videoViewCountEl.textContent = "Loading views…";
+        } else {
+          this.videoViewCountEl.textContent = "– views";
+        }
+      });
+
+      this.modalViewCountUnsub = () => {
+        try {
+          unsubscribeFromVideoViewCount(pointer, token);
+        } catch (error) {
+          console.warn(
+            "[viewCount] Failed to unsubscribe modal view counter:",
+            error
+          );
+        } finally {
+          this.modalViewCountUnsub = null;
+        }
+      };
+      this.videoViewCountEl.dataset.viewPointer = pointerKey;
+    } catch (error) {
+      console.warn("[viewCount] Failed to subscribe modal view counter:", error);
+      this.videoViewCountEl.textContent = "– views";
+    }
   }
 
   populateEditVideoForm(video) {
@@ -6368,9 +6611,16 @@ class bitvidApp {
         this.cancelPendingViewLogging();
         this.clearActiveIntervals();
         this.cleanupUrlPlaybackWatchdog();
+        this.teardownModalViewCountSubscription();
 
         if (!preserveObservers && this.mediaLoader) {
           this.mediaLoader.disconnect();
+        }
+
+        if (!preserveObservers) {
+          this.teardownAllViewCountSubscriptions();
+        } else {
+          this.pruneDetachedViewCountElements();
         }
 
         if (!preserveSubscriptions && this.videoSubscription) {
@@ -6535,6 +6785,12 @@ class bitvidApp {
           const viewOk = !!result?.view?.ok;
           if (viewOk) {
             this.loggedViewPointerKeys.add(thresholdPointerKey);
+            if (result?.view?.event) {
+              ingestLocalViewEvent({
+                event: result.view.event,
+                pointer: thresholdPointer,
+              });
+            }
           } else if (isDevMode) {
             console.warn(
               "[playVideoWithFallback] View event rejected by relays:",
@@ -7084,6 +7340,7 @@ class bitvidApp {
     // 1) Clear intervals, cleanup, etc. (unchanged)
     this.cancelPendingViewLogging();
     this.clearActiveIntervals();
+    this.teardownModalViewCountSubscription();
 
     try {
       await fetch("/webtorrent/cancel/", { mode: "no-cors" });
@@ -7519,6 +7776,40 @@ class bitvidApp {
 
     const dedupedVideos = this.dedupeVideosByRoot(videos);
 
+    const activePointerKeys = new Set();
+    dedupedVideos.forEach((video) => {
+      const pointerInfo = this.deriveVideoPointerInfo(video);
+      if (pointerInfo) {
+        activePointerKeys.add(pointerInfo.key);
+      }
+    });
+
+    const keysToRemove = [];
+    for (const [key, entry] of this.viewCountSubscriptions.entries()) {
+      if (!activePointerKeys.has(key)) {
+        keysToRemove.push(key);
+        continue;
+      }
+      if (entry && entry.elements instanceof Set) {
+        entry.elements.clear();
+      }
+    }
+
+    keysToRemove.forEach((key) => {
+      const entry = this.viewCountSubscriptions.get(key);
+      if (entry && entry.pointer && entry.token) {
+        try {
+          unsubscribeFromVideoViewCount(entry.pointer, entry.token);
+        } catch (error) {
+          console.warn(
+            `[viewCount] Failed to unsubscribe from stale pointer ${key}:`,
+            error
+          );
+        }
+      }
+      this.viewCountSubscriptions.delete(key);
+    });
+
     if (this.loadedThumbnails && this.loadedThumbnails.size) {
       const activeIds = new Set();
       dedupedVideos.forEach((video) => {
@@ -7793,6 +8084,18 @@ class bitvidApp {
         `alt=\"${this.escapeHTML(video.title)}\"`
       );
 
+      const pointerInfo = this.deriveVideoPointerInfo(video);
+      const metadataPieces = [`<span>${timeAgo}</span>`];
+      if (pointerInfo) {
+        metadataPieces.push(
+          '<span class="mx-1 text-gray-600" aria-hidden="true">•</span>',
+          `<span class="view-count-text" data-view-count data-view-pointer="${this.escapeHTML(
+            pointerInfo.key
+          )}">– views</span>`
+        );
+      }
+      const metadataHtml = metadataPieces.join("");
+
       const cardHtml = `
         <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass} ${animationClass}">
           <!-- The clickable link to play video -->
@@ -7839,8 +8142,7 @@ class bitvidApp {
                     Loading name...
                   </p>
                   <div class="flex items-center text-xs text-gray-500 mt-1">
-                    <span>${timeAgo}</span>
-                    <!-- We removed the 'Channel' button here -->
+                    ${metadataHtml}
                   </div>
                 </div>
               </div>
@@ -7891,6 +8193,10 @@ class bitvidApp {
           cardEl.dataset.streamHealthReason = magnetProvided
             ? "unsupported"
             : "missing-source";
+        }
+
+        if (pointerInfo) {
+          this.registerVideoViewCountElement(cardEl, pointerInfo);
         }
 
         const thumbnailEl = cardEl.querySelector("[data-video-thumbnail]");
@@ -8152,6 +8458,7 @@ class bitvidApp {
     });
 
     this.refreshVideoDiscussionCounts(dedupedVideos);
+    this.pruneDetachedViewCountElements();
   }
 
   refreshVideoDiscussionCounts(videos = []) {
@@ -9999,6 +10306,11 @@ class bitvidApp {
       this.currentVideo.pointerKey = this.currentVideoPointerKey;
     }
 
+    this.subscribeModalViewCount(
+      this.currentVideoPointer,
+      this.currentVideoPointerKey
+    );
+
     this.syncModalMoreMenuData();
 
     this.currentMagnetUri = sanitizedMagnet || null;
@@ -10079,6 +10391,7 @@ class bitvidApp {
   } = {}) {
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
+    this.subscribeModalViewCount(null, null);
 
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
