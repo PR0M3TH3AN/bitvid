@@ -8,12 +8,10 @@ import {
   isDevMode,
 } from "./config.js";
 import { nostrClient } from "./nostr.js";
-
-const LIST_IDENTIFIERS = {
-  editors: "editors",
-  whitelist: "whitelist",
-  blacklist: "blacklist",
-};
+import {
+  buildAdminListEvent,
+  ADMIN_LIST_IDENTIFIERS,
+} from "./nostrEventSchemas.js";
 
 const LEGACY_STORAGE_KEYS = {
   editors: "bitvid_admin_editors",
@@ -319,18 +317,15 @@ async function loadNostrList(identifier) {
 
 async function loadNostrState() {
   const [editors, whitelist, blacklist] = await Promise.all([
-    loadNostrList(LIST_IDENTIFIERS.editors),
-    loadNostrList(LIST_IDENTIFIERS.whitelist),
-    loadNostrList(LIST_IDENTIFIERS.blacklist),
+    loadNostrList(ADMIN_LIST_IDENTIFIERS.editors),
+    loadNostrList(ADMIN_LIST_IDENTIFIERS.whitelist),
+    loadNostrList(ADMIN_LIST_IDENTIFIERS.blacklist),
   ]);
 
   return sanitizeAdminState({ editors, whitelist, blacklist });
 }
 
 function buildListEvent(listKey, npubs, actorHex) {
-  const identifier = LIST_IDENTIFIERS[listKey];
-  const dTagValue = `${ADMIN_LIST_NAMESPACE}:${identifier}`;
-
   const hexPubkeys = Array.from(
     new Set(npubs.map((npub) => {
       try {
@@ -360,18 +355,11 @@ function buildListEvent(listKey, npubs, actorHex) {
     }
   }
 
-  const tags = [["d", dTagValue]];
-  hexPubkeys.forEach((hex) => {
-    tags.push(["p", hex]);
-  });
-
-  return {
-    kind: 30000,
+  return buildAdminListEvent(listKey, {
     pubkey: actorHex,
     created_at: Math.floor(Date.now() / 1000),
-    tags,
-    content: "",
-  };
+    hexPubkeys,
+  });
 }
 
 function publishToRelay(url, signedEvent, listKey) {

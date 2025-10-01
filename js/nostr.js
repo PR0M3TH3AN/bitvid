@@ -16,6 +16,12 @@ import { accessControl } from "./accessControl.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import { deriveTitleFromEvent, magnetFromText } from "./videoEventUtils.js";
 import { extractMagnetHints } from "./magnet.js";
+import {
+  buildVideoPostEvent,
+  buildVideoMirrorEvent,
+  buildViewEvent,
+  buildWatchHistoryChunkEvent,
+} from "./nostrEventSchemas.js";
 
 /**
  * The usual relays
@@ -1935,34 +1941,19 @@ class NostrClient {
 
       const chunkIdentifier = chunkIdentifiers[index] || WATCH_HISTORY_LIST_IDENTIFIER;
 
-      const tags = [
-        ["d", chunkIdentifier],
-        ["encrypted", "nip04"],
-        ["snapshot", snapshotId],
-        ["chunk", String(index), String(totalChunks)],
-        ...pointerTags,
-      ];
-      if (index === 0) {
-        tags.splice(2, 0, ["head", "1"]);
-        const pointerTagsForChunks = chunkAddresses
-          .map((address) =>
-            typeof address === "string" && address
-              ? ["a", address]
-              : null
-          )
-          .filter(Boolean);
-        tags.push(...pointerTagsForChunks);
-      }
-
       // Ensure created_at stays monotonic so chunk 0 always outranks prior snapshots
       // even when multiple publishes land within the same wall-clock second.
-      const event = {
-        kind: WATCH_HISTORY_KIND,
+      const event = buildWatchHistoryChunkEvent({
         pubkey: normalizedActor,
         created_at: baseTimestamp + (totalChunks - index - 1),
-        tags,
+        chunkIdentifier,
+        snapshotId,
+        chunkIndex: index,
+        totalChunks,
+        pointerTags,
+        chunkAddresses,
         content: encryptionResult.ciphertext,
-      };
+      });
 
       let signedEvent;
       if (useExtension) {
@@ -2234,41 +2225,24 @@ class NostrClient {
         ? ["e", pointer.value, pointer.relay]
         : ["e", pointer.value];
 
-    const tags = [
-      ["t", "view"],
-      ["video", pointer.value],
-      pointerTag,
-      ...additionalTags,
-    ];
-
     const dedupeTagValue = deriveViewEventDedupTag(
       actorPubkey,
       pointer,
       createdAt
     );
-    if (
-      dedupeTagValue &&
-      !tags.some((tag) => tag[0] === "d" && tag[1] === dedupeTagValue)
-    ) {
-      tags.push(["d", dedupeTagValue]);
-    }
-
-    if (
-      usingSessionActor &&
-      !tags.some((tag) => tag[0] === "session" && tag[1] === "true")
-    ) {
-      tags.push(["session", "true"]);
-    }
     const content =
       typeof options.content === "string" ? options.content : "";
 
-    const event = {
-      kind: WATCH_HISTORY_KIND,
+    const event = buildViewEvent({
       pubkey: actorPubkey,
       created_at: createdAt,
-      tags,
+      pointerValue: pointer.value,
+      pointerTag,
+      dedupeTag: dedupeTagValue,
+      includeSessionTag: usingSessionActor,
+      additionalTags,
       content,
-    };
+    });
 
     let signedEvent = null;
 
@@ -3918,16 +3892,12 @@ class NostrClient {
       contentObject.xs = finalXs;
     }
 
-    const event = {
-      kind: 30078,
+    const event = buildVideoPostEvent({
       pubkey,
       created_at: createdAt,
-      tags: [
-        ["t", "video"],
-        ["d", dTagValue],
-      ],
-      content: JSON.stringify(contentObject),
-    };
+      dTagValue,
+      content: contentObject,
+    });
 
     if (isDevMode) {
       console.log("Publish event with brand-new root:", videoRootId);
@@ -3972,13 +3942,12 @@ class NostrClient {
           mirrorTags.push(["magnet", finalMagnet]);
         }
 
-        const mirrorEvent = {
-          kind: 1063,
+        const mirrorEvent = buildVideoMirrorEvent({
           pubkey,
           created_at: createdAt,
           tags: mirrorTags,
           content: altText,
-        };
+        });
 
         if (isDevMode) {
           console.log("Prepared NIP-94 mirror event:", mirrorEvent);
