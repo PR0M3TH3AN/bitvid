@@ -63,14 +63,14 @@ export const WATCH_HISTORY_KIND = 30078;
  * BitVid deployments that share relays, but keep it stable once clients begin
  * syncing history.
  */
-export const WATCH_HISTORY_LIST_IDENTIFIER = "watch-history:v2:index";
+export const WATCH_HISTORY_LIST_IDENTIFIER = "watch-history";
 
 /**
  * Legacy identifiers that BitVid clients should continue honoring when
  * fetching historical watch-history snapshots.
  */
 export const WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS = Object.freeze([
-  "watch-history",
+  "watch-history:v2:index",
 ]);
 
 /**

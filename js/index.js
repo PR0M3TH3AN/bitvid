@@ -2,6 +2,45 @@
 
 import "./bufferPolyfill.js";
 import { trackPageView } from "./analytics.js";
+import { nostrClient } from "./nostr.js";
+
+const HISTORY_PREFETCH_DEBOUNCE_MS = 250;
+
+function prefetchWatchHistory(options = {}) {
+  if (typeof nostrClient?.fetchWatchHistory !== "function") {
+    return;
+  }
+
+  const force = options.force === true;
+  const now = Date.now();
+
+  if (typeof window !== "undefined") {
+    const last =
+      typeof window.__bitvidLastHistoryPrefetch === "number"
+        ? window.__bitvidLastHistoryPrefetch
+        : 0;
+
+    if (!force && now - last < HISTORY_PREFETCH_DEBOUNCE_MS) {
+      return;
+    }
+
+    window.__bitvidLastHistoryPrefetch = now;
+  }
+
+  let actor;
+  if (typeof window?.app?.pubkey === "string" && window.app.pubkey.trim()) {
+    actor = window.app.pubkey.trim();
+  }
+
+  void nostrClient
+    .fetchWatchHistory(actor, { forceRefresh: true })
+    .catch((error) => {
+      console.warn(
+        "[index] Failed to prefetch watch history during navigation:",
+        error
+      );
+    });
+}
 
 const INTERFACE_FADE_IN_ANIMATION = "interface-fade-in";
 const VIDEO_THUMBNAIL_FADE_IN_ANIMATION = "video-thumbnail-fade-in";
@@ -257,6 +296,11 @@ export function setHashView(viewName) {
   url.searchParams.delete("v");
   const newUrl = url.pathname + url.search + `#view=${viewName}`;
   window.history.replaceState({}, "", newUrl);
+
+  if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
+    prefetchWatchHistory({ force: true });
+  }
+
   handleHashChange();
 }
 
@@ -403,6 +447,9 @@ async function handleHashChange() {
     }
 
     const viewName = match[1]; // only the chunk before any '&'
+    if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
+      prefetchWatchHistory();
+    }
     const viewUrl = `views/${viewName}.html`;
 
     // Now dynamically load that partial, then call its init function

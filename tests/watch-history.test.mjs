@@ -109,9 +109,30 @@ function createDecryptClient(actorPubkey) {
 }
 
 const ACTOR = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-const WATCH_HISTORY_CHUNK_PREFIX = WATCH_HISTORY_LIST_IDENTIFIER.replace(
-  /[:/]index$/i,
-  ""
+function deriveChunkPrefix(identifier) {
+  if (typeof identifier !== "string") {
+    return "watch-history:v2";
+  }
+
+  const trimmed = identifier.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "watch-history:v2";
+  }
+
+  if (/[:/]index$/i.test(trimmed)) {
+    const base = trimmed.replace(/[:/]index$/i, "").replace(/\/+$/, "");
+    return base || "watch-history:v2";
+  }
+
+  if (/:v\d+$/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `${trimmed}:v2`;
+}
+
+const WATCH_HISTORY_CHUNK_PREFIX = deriveChunkPrefix(
+  WATCH_HISTORY_LIST_IDENTIFIER
 );
 
 const indexSchema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_INDEX);

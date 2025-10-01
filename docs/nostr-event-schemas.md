@@ -64,10 +64,12 @@ builders inherit the same debugging knobs.
 ### Watch history identifiers
 
 Watch-history snapshots now publish a dedicated index event with
-`#d ${WATCH_HISTORY_LIST_IDENTIFIER}` (defaults to `watch-history:v2:index`). The
+`#d ${WATCH_HISTORY_LIST_IDENTIFIER}` (defaults to `watch-history`). The
 index advertises the active snapshot id, total chunk count, and a pointer to
 each chunk via `a` tags so clients can fetch the encrypted payloads without
-guessing identifiers.
+guessing identifiers. Deployments that previously used
+`watch-history:v2:index` continue to resolve thanks to the legacy identifier
+list.
 
 Every chunk event uses a unique `d` tag such as
 `watch-history:v2/<snapshot>/<chunkIndex>`. Legacy snapshots created before the

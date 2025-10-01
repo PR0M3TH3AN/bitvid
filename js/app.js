@@ -4283,6 +4283,29 @@ class bitvidApp {
         }
         button.dataset.navBound = "true";
         button.addEventListener("click", () => {
+          if (name === "history") {
+            let actorCandidate;
+            if (typeof this.pubkey === "string" && this.pubkey.trim()) {
+              actorCandidate = this.pubkey.trim();
+            } else if (
+              typeof window?.app?.pubkey === "string" &&
+              window.app.pubkey.trim()
+            ) {
+              actorCandidate = window.app.pubkey.trim();
+            }
+
+            void nostrClient
+              .fetchWatchHistory(actorCandidate, { forceRefresh: true })
+              .catch((error) => {
+                if (isDevMode) {
+                  console.warn(
+                    "[profileModal] Failed to prefetch watch history on navigation:",
+                    error
+                  );
+                }
+              });
+          }
+
           this.selectProfilePane(name);
         });
       });
