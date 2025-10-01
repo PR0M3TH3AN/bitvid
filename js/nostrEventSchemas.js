@@ -8,6 +8,7 @@ import {
 export const NOTE_TYPES = Object.freeze({
   VIDEO_POST: "videoPost",
   VIDEO_MIRROR: "videoMirror",
+  RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
   WATCH_HISTORY_CHUNK: "watchHistoryChunk",
   SUBSCRIPTION_LIST: "subscriptionList",
@@ -65,6 +66,16 @@ const BASE_SCHEMAS = {
       format: "text",
       description: "Optional alt text carried alongside hosted URL metadata.",
     },
+  },
+  [NOTE_TYPES.RELAY_LIST]: {
+    type: NOTE_TYPES.RELAY_LIST,
+    label: "Relay list metadata",
+    kind: 10002,
+    relayTagName: "r",
+    readMarker: "read",
+    writeMarker: "write",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: { format: "empty", description: "Content field unused." },
   },
   [NOTE_TYPES.VIEW_EVENT]: {
     type: NOTE_TYPES.VIEW_EVENT,
@@ -308,6 +319,79 @@ export function buildVideoMirrorEvent({
     created_at,
     tags: combinedTags,
     content: typeof content === "string" ? content : String(content ?? ""),
+  };
+}
+
+export function buildRelayListEvent({
+  pubkey,
+  created_at,
+  relays = [],
+  additionalTags = [],
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.RELAY_LIST);
+  const tags = [];
+  const relayTagName = schema?.relayTagName || "r";
+  const readMarker = schema?.readMarker || "read";
+  const writeMarker = schema?.writeMarker || "write";
+
+  if (Array.isArray(relays)) {
+    relays.forEach((entry) => {
+      let url = "";
+      let mode = "";
+      if (typeof entry === "string") {
+        url = entry;
+      } else if (entry && typeof entry === "object") {
+        if (typeof entry.url === "string") {
+          url = entry.url;
+        }
+        if (typeof entry.mode === "string") {
+          mode = entry.mode;
+        } else if (typeof entry.marker === "string") {
+          mode = entry.marker;
+        } else if (entry.read === true && entry.write === false) {
+          mode = "read";
+        } else if (entry.write === true && entry.read === false) {
+          mode = "write";
+        }
+      } else if (Array.isArray(entry) && entry.length >= 1) {
+        url = typeof entry[0] === "string" ? entry[0] : String(entry[0]);
+        if (entry.length > 1 && typeof entry[1] === "string") {
+          mode = entry[1];
+        }
+      }
+
+      const normalizedUrl = typeof url === "string" ? url.trim() : "";
+      if (!normalizedUrl) {
+        return;
+      }
+
+      const normalizedMode = typeof mode === "string" ? mode.trim().toLowerCase() : "";
+      if (normalizedMode === "read") {
+        tags.push([relayTagName, normalizedUrl, readMarker]);
+      } else if (normalizedMode === "write") {
+        tags.push([relayTagName, normalizedUrl, writeMarker]);
+      } else {
+        tags.push([relayTagName, normalizedUrl]);
+      }
+    });
+  }
+
+  appendSchemaTags(tags, schema);
+
+  if (Array.isArray(additionalTags)) {
+    additionalTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+      }
+    });
+  }
+
+  return {
+    kind: schema?.kind ?? 10002,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
   };
 }
 
