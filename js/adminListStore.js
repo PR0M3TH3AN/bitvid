@@ -389,14 +389,40 @@ function publishToRelay(url, signedEvent, listKey) {
       }
 
       if (typeof pub.on === "function") {
-        pub.on("ok", () => finalize(true));
-        pub.on("seen", () => finalize(true));
-        pub.on("failed", (reason) => {
+        const registerHandler = (eventName, handler) => {
+          try {
+            pub.on(eventName, handler);
+            return true;
+          } catch (error) {
+            if (isDevMode) {
+              console.warn(
+                `[adminListStore] Relay publish rejected ${eventName} listener:`,
+                error
+              );
+            }
+            return false;
+          }
+        };
+
+        const handleFailure = (reason) => {
           const error =
-            reason instanceof Error ? reason : new Error(String(reason || "failed"));
+            reason instanceof Error
+              ? reason
+              : new Error(String(reason || "failed"));
           finalize(false, error);
-        });
-        return;
+        };
+
+        let handlerRegistered = false;
+        handlerRegistered =
+          registerHandler("ok", () => finalize(true)) || handlerRegistered;
+        handlerRegistered =
+          registerHandler("seen", () => finalize(true)) || handlerRegistered;
+        handlerRegistered =
+          registerHandler("failed", handleFailure) || handlerRegistered;
+
+        if (handlerRegistered) {
+          return;
+        }
       }
 
       if (typeof pub.then === "function") {
