@@ -9,6 +9,10 @@ const {
   VIEW_COUNT_CACHE_TTL_MS,
 } = await import("../js/config.js");
 
+const { buildViewEvent, setNostrEventSchemaOverrides } = await import(
+  "../js/nostrEventSchemas.js"
+);
+
 const VIEW_COUNTER_STORAGE_KEY = "bitvid:view-counter:v1";
 const CACHE_TTL_TEST_POINTER = { type: "e", value: "view-counter-cache-ttl" };
 
@@ -41,6 +45,40 @@ if (typeof globalThis.window === "undefined") {
 if (!globalThis.window.NostrTools) {
   globalThis.window.NostrTools = {};
 }
+
+setNostrEventSchemaOverrides({});
+
+const canonicalViewEvent = buildViewEvent({
+  pubkey: "actor-canonical",
+  created_at: 1000,
+  pointerValue: CACHE_TTL_TEST_POINTER.value,
+  pointerTag: [CACHE_TTL_TEST_POINTER.type, CACHE_TTL_TEST_POINTER.value],
+  dedupeTag: "ignore-dedupe",
+});
+
+assert.deepEqual(
+  canonicalViewEvent.tags,
+  [["t", "view"], [CACHE_TTL_TEST_POINTER.type, CACHE_TTL_TEST_POINTER.value]],
+  "view event should only include topic and supplied pointer tags by default"
+);
+
+const sessionViewEvent = buildViewEvent({
+  pubkey: "actor-session",
+  created_at: 2000,
+  pointerValue: "kind:1234:actor-session",
+  pointerTag: ["a", "kind:1234:actor-session"],
+  includeSessionTag: true,
+});
+
+assert.deepEqual(
+  sessionViewEvent.tags,
+  [
+    ["t", "view"],
+    ["a", "kind:1234:actor-session"],
+    ["session", "true"],
+  ],
+  "view event should append the session tag when requested"
+);
 
 const { nostrClient } = await import("../js/nostr.js");
 
