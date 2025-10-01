@@ -5,6 +5,7 @@ import {
 } from "./nostr.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
+import { buildFetchingMessage } from "./loadingTemplates.js";
 
 function getAbsoluteShareUrl(nevent) {
   if (!nevent) {
@@ -210,13 +211,16 @@ class SubscriptionsManager {
       if (c) c.innerHTML = "<p class='text-gray-500'>Please log in first.</p>";
       return;
     }
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.innerHTML = buildFetchingMessage("Fetching subscriptions...");
+
     if (!this.loaded) {
       await this.loadSubscriptions(userPubkey);
     }
 
     const channelHexes = Array.from(this.subscribedPubkeys);
-    const container = document.getElementById(containerId);
-    if (!container) return;
 
     if (!channelHexes.length) {
       container.innerHTML =

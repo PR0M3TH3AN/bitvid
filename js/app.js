@@ -16,6 +16,7 @@ import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
+import { buildFetchingMessage } from "./loadingTemplates.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
 import {
@@ -7534,10 +7535,9 @@ class bitvidApp {
     if (!this.videoSubscription) {
       if (this.videoList) {
         this.lastRenderedVideoSignature = null;
-        this.videoList.innerHTML = `
-        <p class="text-center text-gray-500">
-          Loading videos as they arrive...
-        </p>`;
+        this.videoList.innerHTML = buildFetchingMessage(
+          "Fetching recent videos..."
+        );
       }
 
       // Create a new subscription
