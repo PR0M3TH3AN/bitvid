@@ -107,6 +107,13 @@ latest styles.
 - **Magnet helpers**:
   - Use `safeDecodeMagnet()` and `normalizeAndAugmentMagnet()` from `js/magnetUtils.js` to preserve hashes and add `ws=` / `xs=` hints safely.
 
+### Relay compatibility
+
+Bitvid now requests per-video discussion counts using the NIP-45 `COUNT` frame. The bundled client opens each relay via
+`this.pool.ensureRelay(url)` and streams a raw `COUNT` message, so your relay stack must understand that verb (nostr-tools ≥ 1.8
+or any relay advertising NIP-45 support). Relays that do not implement `COUNT` are skipped gracefully—the UI keeps the count
+placeholder at “—” and development builds log a warning—so mixed deployments remain usable while you phase in compatible relays.
+
 ### Adding Features
 
 1. **Fork the repository** and create a new branch for your feature.

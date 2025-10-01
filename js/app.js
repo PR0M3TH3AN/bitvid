@@ -97,6 +97,8 @@ const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
 const ADMIN_DM_IMAGE_URL =
   "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
 const BITVID_WEBSITE_URL = "https://bitvid.network/";
+const MAX_DISCUSSION_COUNT_VIDEOS = 24;
+const VIDEO_EVENT_KIND = 30078;
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 /**
@@ -525,6 +527,8 @@ class bitvidApp {
     // Lazy-loading helper for images
     this.mediaLoader = new MediaLoader();
     this.loadedThumbnails = new Map();
+    this.videoDiscussionCountCache = new Map();
+    this.inFlightDiscussionCounts = new Map();
     this.activeIntervals = [];
     this.urlPlaybackWatchdogCleanup = null;
 
@@ -7747,6 +7751,16 @@ class bitvidApp {
           `
           : "";
 
+      const showDiscussionCount = video.enableComments !== false;
+      const discussionCountHtml = showDiscussionCount
+        ? `
+            <div class="flex items-center text-xs text-gray-500 mt-3" data-discussion-count="${video.id}" data-count-state="idle">
+              <span data-discussion-count-value>—</span>
+              <span class="ml-1">notes</span>
+            </div>
+          `
+        : "";
+
       const rawThumbnail =
         typeof video.thumbnail === "string" ? video.thumbnail.trim() : "";
       const escapedThumbnail = rawThumbnail
@@ -7833,6 +7847,7 @@ class bitvidApp {
               ${cardControls}
             </div>
             ${connectionBadgesHtml}
+            ${discussionCountHtml}
             ${torrentWarningHtml}
           </div>
         </div>
@@ -8135,6 +8150,195 @@ class bitvidApp {
         this.goToProfile(pubkey);
       });
     });
+
+    this.refreshVideoDiscussionCounts(dedupedVideos);
+  }
+
+  refreshVideoDiscussionCounts(videos = []) {
+    if (
+      !Array.isArray(videos) ||
+      !videos.length ||
+      !this.videoList ||
+      !nostrClient?.pool
+    ) {
+      return;
+    }
+
+    const eligible = videos
+      .filter(
+        (video) =>
+          video &&
+          typeof video.id === "string" &&
+          video.id &&
+          video.enableComments !== false
+      )
+      .slice(0, MAX_DISCUSSION_COUNT_VIDEOS);
+
+    eligible.forEach((video) => {
+      const container = this.videoList.querySelector(
+        `[data-discussion-count="${video.id}"]`
+      );
+      if (!container) {
+        return;
+      }
+
+      const cached = this.videoDiscussionCountCache.get(video.id);
+      if (typeof cached === "number") {
+        this.updateDiscussionCountElement(container, cached);
+        return;
+      }
+
+      const filters = this.buildDiscussionCountFilters(video);
+      if (!filters.length) {
+        this.markDiscussionCountError(container, { unsupported: true });
+        return;
+      }
+
+      const existingPromise = this.inFlightDiscussionCounts.get(video.id);
+      if (existingPromise) {
+        this.setDiscussionCountPending(container);
+        return;
+      }
+
+      this.setDiscussionCountPending(container);
+
+      const request = nostrClient
+        .countEventsAcrossRelays(filters)
+        .then((result) => {
+          const perRelay = Array.isArray(result?.perRelay)
+            ? result.perRelay.filter((entry) => entry && entry.ok)
+            : [];
+
+          if (!perRelay.length) {
+            this.markDiscussionCountError(container, { unsupported: true });
+            return result;
+          }
+
+          const total = Number(result?.total);
+          const normalized =
+            Number.isFinite(total) && total >= 0 ? total : 0;
+          this.videoDiscussionCountCache.set(video.id, normalized);
+          this.updateDiscussionCountElement(container, normalized);
+          return result;
+        })
+        .catch((error) => {
+          if (isDevMode) {
+            console.warn(
+              `[counts] Failed to fetch discussion count for ${video.id}:`,
+              error
+            );
+          }
+          this.markDiscussionCountError(container);
+          throw error;
+        })
+        .finally(() => {
+          this.inFlightDiscussionCounts.delete(video.id);
+        });
+
+      this.inFlightDiscussionCounts.set(video.id, request);
+    });
+  }
+
+  buildDiscussionCountFilters(video) {
+    if (!video || typeof video !== "object") {
+      return [];
+    }
+
+    const filters = [];
+    const eventId =
+      typeof video.id === "string" ? video.id.trim() : "";
+    if (eventId) {
+      filters.push({ kinds: [1], "#e": [eventId] });
+    }
+
+    const address = this.getVideoAddressPointer(video);
+    if (address) {
+      filters.push({ kinds: [1], "#a": [address] });
+    }
+
+    return filters;
+  }
+
+  getVideoAddressPointer(video) {
+    if (!video || typeof video !== "object") {
+      return "";
+    }
+
+    const tags = Array.isArray(video.tags) ? video.tags : [];
+    const dTag = tags.find(
+      (tag) =>
+        Array.isArray(tag) &&
+        tag.length >= 2 &&
+        tag[0] === "d" &&
+        typeof tag[1] === "string" &&
+        tag[1].trim()
+    );
+
+    if (!dTag) {
+      return "";
+    }
+
+    const pubkey =
+      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
+    if (!pubkey) {
+      return "";
+    }
+
+    const identifier = dTag[1].trim();
+    if (!identifier) {
+      return "";
+    }
+
+    const kind =
+      Number.isFinite(video.kind) && video.kind > 0
+        ? Math.floor(video.kind)
+        : VIDEO_EVENT_KIND;
+
+    return `${kind}:${pubkey}:${identifier}`;
+  }
+
+  setDiscussionCountPending(element) {
+    if (!element) {
+      return;
+    }
+    element.dataset.countState = "pending";
+    const valueEl = element.querySelector("[data-discussion-count-value]");
+    if (valueEl) {
+      valueEl.textContent = "…";
+    }
+    element.removeAttribute("title");
+  }
+
+  updateDiscussionCountElement(element, count) {
+    if (!element) {
+      return;
+    }
+    const valueEl = element.querySelector("[data-discussion-count-value]");
+    if (!valueEl) {
+      return;
+    }
+    const numeric = Number(count);
+    const safeValue =
+      Number.isFinite(numeric) && numeric >= 0 ? Math.floor(numeric) : 0;
+    element.dataset.countState = "ready";
+    valueEl.textContent = safeValue.toLocaleString();
+    element.removeAttribute("title");
+  }
+
+  markDiscussionCountError(element, { unsupported = false } = {}) {
+    if (!element) {
+      return;
+    }
+    const valueEl = element.querySelector("[data-discussion-count-value]");
+    if (valueEl) {
+      valueEl.textContent = "—";
+    }
+    element.dataset.countState = unsupported ? "unsupported" : "error";
+    if (unsupported) {
+      element.title = "Relay does not support NIP-45 COUNT queries.";
+    } else {
+      element.removeAttribute("title");
+    }
   }
 
   bindThumbnailFallbacks(container) {
