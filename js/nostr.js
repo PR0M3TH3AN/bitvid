@@ -2785,8 +2785,50 @@ class NostrClient {
         ? ["e", pointer.value, pointer.relay]
         : ["e", pointer.value];
 
-    const content =
-      typeof options.content === "string" ? options.content : "";
+    let content = "";
+    if (typeof options.content === "string") {
+      content = options.content;
+    } else if (
+      options.content &&
+      typeof options.content === "object" &&
+      !Array.isArray(options.content)
+    ) {
+      try {
+        content = JSON.stringify(options.content);
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to serialize custom view event content:",
+            error
+          );
+        }
+        content = "";
+      }
+    }
+
+    if (!content) {
+      const payload = {
+        target: {
+          type: pointer.type,
+          value: pointer.value,
+        },
+        created_at: createdAt,
+      };
+      if (pointer.relay) {
+        payload.target.relay = pointer.relay;
+      }
+      try {
+        content = JSON.stringify(payload);
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to serialize default view event content:",
+            error
+          );
+        }
+        content = "";
+      }
+    }
 
     const event = buildViewEvent({
       pubkey: actorPubkey,

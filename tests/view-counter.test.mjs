@@ -506,6 +506,139 @@ async function testUnsubscribeStopsCallbacks() {
   );
 }
 
+async function testRecordVideoViewEmitsJsonPayload() {
+  localStorage.clear();
+  harness.reset();
+  harness.resetMetrics();
+
+  const pointer = {
+    type: "a",
+    value: "30078:pub:view-json",
+    relay: "wss://relay.example",
+  };
+  const createdAt = Math.floor(Date.now() / 1000);
+
+  const originalPool = nostrClient.pool;
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalEnsureSessionActor = nostrClient.ensureSessionActor;
+  const originalSessionActor = nostrClient.sessionActor;
+  const originalPubkey = nostrClient.pubkey;
+  const originalUpdateHistory = nostrClient.updateWatchHistoryList;
+  const originalWarn = console.warn;
+  const originalNostrTools = window.NostrTools;
+
+  const warnings = [];
+  console.warn = (...args) => {
+    warnings.push(
+      args
+        .map((value) => {
+          if (typeof value === "string") {
+            return value;
+          }
+          try {
+            return JSON.stringify(value);
+          } catch (error) {
+            return String(value);
+          }
+        })
+        .join(" ")
+    );
+  };
+
+  window.NostrTools = {
+    ...window.NostrTools,
+    getEventHash: () => "event-hash-record", // deterministic stub for tests
+    signEvent: () => "event-sig-record",
+  };
+
+  const publishCalls = [];
+  nostrClient.pool = {
+    publish(relayUrls, event) {
+      publishCalls.push({ relays: relayUrls, event });
+      return {
+        on(type, handler) {
+          if (type === "ok") {
+            setTimeout(() => handler(), 0);
+          }
+          return this;
+        },
+      };
+    },
+  };
+  nostrClient.relays = ["wss://relay.example"];
+  nostrClient.ensureSessionActor = async () => {
+    nostrClient.sessionActor = {
+      pubkey: "pub-record-json",
+      privateKey: "priv-record-json",
+    };
+    return "pub-record-json";
+  };
+  nostrClient.pubkey = "";
+
+  nostrClient.updateWatchHistoryList = async () => ({ ok: true });
+
+  try {
+    const result = await nostrClient.recordVideoView(pointer, {
+      created_at: createdAt,
+    });
+
+    assert.ok(result.ok, "recordVideoView should succeed with stubbed handlers");
+    assert.equal(
+      publishCalls.length,
+      1,
+      "publishViewEvent should be invoked once per recordVideoView call"
+    );
+
+    const emittedEvent = publishCalls[0]?.event || null;
+    assert.ok(emittedEvent, "publishViewEvent should enqueue an event for relays");
+    assert.equal(
+      typeof emittedEvent.content,
+      "string",
+      "recordVideoView should provide serialized view content"
+    );
+
+    const payload = JSON.parse(emittedEvent.content);
+    assert.deepEqual(
+      payload,
+      {
+        target: {
+          type: pointer.type,
+          value: pointer.value,
+          relay: pointer.relay,
+        },
+        created_at: createdAt,
+      },
+      "default view content should capture pointer metadata and timestamp"
+    );
+
+    assert.equal(
+      result.view.event.content,
+      emittedEvent.content,
+      "serialized payload should persist on the emitted event"
+    );
+  } finally {
+    nostrClient.pool = originalPool;
+    nostrClient.relays = originalRelays;
+    nostrClient.ensureSessionActor = originalEnsureSessionActor;
+    nostrClient.sessionActor = originalSessionActor;
+    nostrClient.pubkey = originalPubkey;
+    nostrClient.updateWatchHistoryList = originalUpdateHistory;
+    console.warn = originalWarn;
+    window.NostrTools = originalNostrTools;
+  }
+
+  const viewCounterWarnings = warnings.filter((message) =>
+    message.includes("[viewCounter] Failed to ingest local view event")
+  );
+  assert.equal(
+    viewCounterWarnings.length,
+    0,
+    "viewCounter.ingestLocalViewEvent should not reject JSON view payloads"
+  );
+}
+
 // Cached totals older than VIEW_COUNT_CACHE_TTL_MS should be discarded and rehydrated from relays.
 async function testHydrationRefreshesAfterCacheTtl() {
   harness.reset();
@@ -568,5 +701,6 @@ await testHydrationSkipsStaleEventsAndRollsOff();
 await testLocalIngestNotifiesImmediately();
 await testUnsubscribeStopsCallbacks();
 await testRelayCountAggregationUsesBestEstimate();
+await testRecordVideoViewEmitsJsonPayload();
 
 console.log("View counter tests completed successfully.");
