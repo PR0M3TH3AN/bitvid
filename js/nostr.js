@@ -9,6 +9,7 @@ import {
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
   WATCH_HISTORY_CACHE_TTL_MS,
+  VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
 } from "./config.js";
 import { ACCEPT_LEGACY_V1 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
@@ -338,6 +339,41 @@ function createVideoViewEventFilters(pointer) {
   };
 
   return { pointer: resolved, filters: [pointerFilter, legacyFilter] };
+}
+
+function deriveViewEventBucketIndex(createdAtSeconds) {
+  const timestamp = Number.isFinite(createdAtSeconds)
+    ? Math.floor(createdAtSeconds)
+    : Math.floor(Date.now() / 1000);
+  const windowSize = Math.max(
+    1,
+    Number(VIEW_COUNT_DEDUPE_WINDOW_SECONDS) || 0
+  );
+  return Math.floor(timestamp / windowSize);
+}
+
+function deriveViewEventDedupTag(actorPubkey, pointer, createdAtSeconds) {
+  if (typeof actorPubkey !== "string") {
+    return null;
+  }
+
+  const normalizedActor = actorPubkey.trim().toLowerCase();
+  if (!normalizedActor) {
+    return null;
+  }
+
+  const pointerValueRaw =
+    typeof pointer?.value === "string" ? pointer.value.trim() : "";
+  if (!pointerValueRaw) {
+    return null;
+  }
+
+  const pointerType = pointer?.type === "a" ? "a" : "e";
+  const pointerValue = pointerValueRaw.toLowerCase();
+  const bucket = deriveViewEventBucketIndex(createdAtSeconds);
+  const scope = pointerType === "a" ? `a:${pointerValue}` : `e:${pointerValue}`;
+
+  return `bitvid:view:${normalizedActor}:${scope}:${bucket}`;
 }
 
 function isVideoViewEvent(event, pointer) {
@@ -2205,6 +2241,18 @@ class NostrClient {
       ...additionalTags,
     ];
 
+    const dedupeTagValue = deriveViewEventDedupTag(
+      actorPubkey,
+      pointer,
+      createdAt
+    );
+    if (
+      dedupeTagValue &&
+      !tags.some((tag) => tag[0] === "d" && tag[1] === dedupeTagValue)
+    ) {
+      tags.push(["d", dedupeTagValue]);
+    }
+
     if (
       usingSessionActor &&
       !tags.some((tag) => tag[0] === "session" && tag[1] === "true")
@@ -2263,12 +2311,26 @@ class NostrClient {
       relays.map((url) => publishEventToRelay(this.pool, url, signedEvent))
     );
 
-    const success = publishResults.some((result) => result.success);
-    if (!success) {
+    const acceptedRelays = publishResults
+      .filter((result) => result.success)
+      .map((result) => result.url)
+      .filter((url) => typeof url === "string" && url);
+    const success = acceptedRelays.length > 0;
+    if (success) {
+      console.info(
+        `[nostr] View event accepted by ${acceptedRelays.length} relay(s):`,
+        acceptedRelays.join(", ")
+      );
+    } else {
       console.warn("[nostr] View event rejected by relays:", publishResults);
     }
 
-    return { ok: success, event: signedEvent, results: publishResults };
+    return {
+      ok: success,
+      event: signedEvent,
+      results: publishResults,
+      acceptedRelays,
+    };
   }
 
   async listVideoViewEvents(pointer, options = {}) {
@@ -2537,8 +2599,20 @@ class NostrClient {
       ? await Promise.race([listPromise, abortPromise])
       : await listPromise;
 
+    const uniqueCount = Array.isArray(events)
+      ? (() => {
+          const withIds = events
+            .filter((event) => event && typeof event.id === "string")
+            .map((event) => event.id);
+          if (withIds.length === 0) {
+            return events.length;
+          }
+          return new Set(withIds).size;
+        })()
+      : 0;
+
     return {
-      total: Array.isArray(events) ? events.length : 0,
+      total: uniqueCount,
       perRelay: [],
       best: null,
       fallback: true,
