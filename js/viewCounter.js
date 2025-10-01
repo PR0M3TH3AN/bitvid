@@ -485,10 +485,18 @@ async function hydratePointer(key, listeners) {
       mutated = applyEventToState(key, event) || mutated;
     }
   }
-  if (countResult && Number.isFinite(countResult.total)) {
+  const bestCount = Number.isFinite(countResult?.best?.count)
+    ? Number(countResult.best.count)
+    : Number.isFinite(countResult?.total)
+    ? Number(countResult.total)
+    : null;
+
+  if (bestCount !== null) {
     const state = ensurePointerState(key);
-    if (countResult.total > state.total) {
-      state.total = Number(countResult.total);
+    const shouldUpdate =
+      !countResult?.fallback || bestCount >= state.total || state.total === 0;
+    if (shouldUpdate && state.total !== bestCount) {
+      state.total = bestCount;
       state.lastSyncedAt = Date.now();
       mutated = true;
     }
