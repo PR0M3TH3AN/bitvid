@@ -1,7 +1,6 @@
 // js/userBlocks.js
 import { nostrClient } from "./nostr.js";
-
-const BLOCK_LIST_IDENTIFIER = "user-blocks";
+import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
 
 function normalizeHex(pubkey) {
   if (typeof pubkey !== "string") {
@@ -250,13 +249,11 @@ class UserBlockListManager {
       throw err;
     }
 
-    const event = {
-      kind: 30002,
+    const event = buildBlockListEvent({
       pubkey: normalized,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [["d", BLOCK_LIST_IDENTIFIER]],
       content: cipherText,
-    };
+    });
 
     const signedEvent = await window.nostr.signEvent(event);
 

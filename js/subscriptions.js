@@ -5,6 +5,10 @@ import {
 } from "./nostr.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
+import {
+  buildSubscriptionListEvent,
+  SUBSCRIPTION_LIST_IDENTIFIER,
+} from "./nostrEventSchemas.js";
 
 function getAbsoluteShareUrl(nevent) {
   if (!nevent) {
@@ -58,7 +62,7 @@ class SubscriptionsManager {
       const filter = {
         kinds: [30002],
         authors: [userPubkey],
-        "#d": ["subscriptions"],
+        "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
         limit: 1,
       };
 
@@ -168,13 +172,11 @@ class SubscriptionsManager {
       throw err;
     }
 
-    const evt = {
-      kind: 30002,
+    const evt = buildSubscriptionListEvent({
       pubkey: userPubkey,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [["d", "subscriptions"]],
       content: cipherText,
-    };
+    });
 
     try {
       const signedEvent = await window.nostr.signEvent(evt);
