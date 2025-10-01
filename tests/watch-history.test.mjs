@@ -12,6 +12,9 @@ const {
   buildWatchHistoryIndexEvent,
   buildWatchHistoryChunkEvent,
 } = await import("../js/nostrEventSchemas.js");
+const { compareByWatchedAtDesc, getWatchedAtScore } = await import(
+  "../js/watchHistorySort.js"
+);
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -1062,5 +1065,39 @@ try {
 } finally {
   Date.now = originalDateNow;
 }
+
+const unsortedVideos = [
+  { id: "alpha", watchHistory: { watchedAt: 1_700_000_000_500 } },
+  { id: "bravo", watchHistory: { watchedAt: 1_700_000_010_000 } },
+  { id: "charlie", created_at: 1_699_999_000 },
+];
+
+const sortedVideos = unsortedVideos.slice().sort(compareByWatchedAtDesc);
+
+assert.deepEqual(
+  sortedVideos.map((video) => video.id),
+  ["bravo", "alpha", "charlie"],
+  "videos should be ordered by watchedAt descending with created_at fallback",
+);
+
+const tieVideos = [
+  { id: "echo", watchHistory: { watchedAt: 1_700_100_000_000 }, created_at: 1_700_100_100 },
+  { id: "delta", watchHistory: { watchedAt: 1_700_100_000_000 }, created_at: 1_700_100_200 },
+  { id: "foxtrot", watchHistory: { watchedAt: 1_700_100_000_000 }, created_at: 1_700_100_200 },
+];
+
+tieVideos.sort(compareByWatchedAtDesc);
+
+assert.equal(
+  getWatchedAtScore(tieVideos[0]),
+  getWatchedAtScore(tieVideos[1]),
+  "ties should preserve identical watchedAt scores",
+);
+
+assert.deepEqual(
+  tieVideos.map((video) => video.id),
+  ["delta", "foxtrot", "echo"],
+  "created_at should break watchedAt ties with stable fallback",
+);
 
 console.log("watch history tests passed");
