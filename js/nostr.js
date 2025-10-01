@@ -81,6 +81,58 @@ function withNip07Timeout(operation) {
   });
 }
 
+function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
+  const resolvedTimeout = Number(timeoutMs);
+  const effectiveTimeout =
+    Number.isFinite(resolvedTimeout) && resolvedTimeout > 0
+      ? Math.floor(resolvedTimeout)
+      : 4000;
+
+  let timeoutId = null;
+  let settled = false;
+
+  return new Promise((resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (typeof onTimeout === "function") {
+        try {
+          onTimeout();
+        } catch (cleanupError) {
+          if (isDevMode) {
+            console.warn("[nostr] COUNT timeout cleanup failed:", cleanupError);
+          }
+        }
+      }
+      reject(new Error(message));
+    }, effectiveTimeout);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        resolve(value);
+      })
+      .catch((error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        reject(error);
+      });
+  });
+}
+
 function pointerKey(pointer) {
   if (!pointer || typeof pointer !== "object") {
     return "";
@@ -901,6 +953,7 @@ class NostrClient {
     this.watchHistoryStorage = null;
     this.watchHistoryRepublishTimers = new Map();
     this.watchHistoryCacheTtlMs = WATCH_HISTORY_CACHE_TTL_MS;
+    this.countRequestCounter = 0;
   }
 
   restoreLocalData() {
@@ -4045,6 +4098,310 @@ class NostrClient {
       }
     }
     return null;
+  }
+
+  getRequestTimeoutMs(timeoutMs) {
+    const candidate = Number(timeoutMs);
+    if (Number.isFinite(candidate) && candidate > 0) {
+      return Math.floor(candidate);
+    }
+    const poolTimeout = Number(this.pool?.getTimeout);
+    if (Number.isFinite(poolTimeout) && poolTimeout > 0) {
+      return Math.floor(poolTimeout);
+    }
+    return 3400;
+  }
+
+  normalizeCountFilter(filter) {
+    if (!filter || typeof filter !== "object") {
+      return null;
+    }
+
+    const normalized = {};
+
+    const toStringArray = (value) => {
+      if (value === undefined || value === null) {
+        return [];
+      }
+      const source = Array.isArray(value) ? value : [value];
+      const collected = [];
+      for (const item of source) {
+        if (typeof item !== "string") {
+          continue;
+        }
+        const trimmed = item.trim();
+        if (!trimmed || collected.includes(trimmed)) {
+          continue;
+        }
+        collected.push(trimmed);
+      }
+      return collected;
+    };
+
+    if (filter.kinds !== undefined) {
+      const kindsSource = Array.isArray(filter.kinds)
+        ? filter.kinds
+        : [filter.kinds];
+      const normalizedKinds = [];
+      const seenKinds = new Set();
+      for (const candidate of kindsSource) {
+        const parsed = Number(candidate);
+        if (!Number.isFinite(parsed)) {
+          continue;
+        }
+        const normalizedValue = Math.floor(parsed);
+        if (seenKinds.has(normalizedValue)) {
+          continue;
+        }
+        seenKinds.add(normalizedValue);
+        normalizedKinds.push(normalizedValue);
+      }
+      if (normalizedKinds.length) {
+        normalized.kinds = normalizedKinds;
+      }
+    }
+
+    const ids = toStringArray(filter.ids);
+    if (ids.length) {
+      normalized.ids = ids;
+    }
+
+    const authors = toStringArray(filter.authors);
+    if (authors.length) {
+      normalized.authors = authors;
+    }
+
+    for (const [key, value] of Object.entries(filter)) {
+      if (!key.startsWith("#")) {
+        continue;
+      }
+      const tagValues = toStringArray(value);
+      if (tagValues.length) {
+        normalized[key] = tagValues;
+      }
+    }
+
+    if (filter.since !== undefined) {
+      const parsedSince = Number(filter.since);
+      if (Number.isFinite(parsedSince)) {
+        normalized.since = Math.floor(parsedSince);
+      }
+    }
+
+    if (filter.until !== undefined) {
+      const parsedUntil = Number(filter.until);
+      if (Number.isFinite(parsedUntil)) {
+        normalized.until = Math.floor(parsedUntil);
+      }
+    }
+
+    if (filter.limit !== undefined) {
+      const parsedLimit = Number(filter.limit);
+      if (Number.isFinite(parsedLimit) && parsedLimit >= 0) {
+        normalized.limit = Math.floor(parsedLimit);
+      }
+    }
+
+    return Object.keys(normalized).length ? normalized : null;
+  }
+
+  normalizeCountFilters(filters) {
+    if (!filters) {
+      return [];
+    }
+
+    const list = Array.isArray(filters) ? filters : [filters];
+    const normalized = [];
+
+    for (const candidate of list) {
+      const normalizedFilter = this.normalizeCountFilter(candidate);
+      if (normalizedFilter) {
+        normalized.push(normalizedFilter);
+      }
+    }
+
+    return normalized;
+  }
+
+  generateCountRequestId(prefix = "count") {
+    this.countRequestCounter += 1;
+    if (this.countRequestCounter > Number.MAX_SAFE_INTEGER - 1) {
+      this.countRequestCounter = 1;
+    }
+    const normalizedPrefix =
+      typeof prefix === "string" && prefix.trim() ? prefix.trim() : "count";
+    const timestamp = Date.now().toString(36);
+    const counter = this.countRequestCounter.toString(36);
+    const random = Math.random().toString(36).slice(2, 8);
+    return `${normalizedPrefix}:${timestamp}:${counter}${random}`;
+  }
+
+  extractCountValue(payload) {
+    if (typeof payload === "number") {
+      const value = Math.floor(payload);
+      return value >= 0 ? value : 0;
+    }
+
+    if (payload && typeof payload === "object") {
+      const candidate =
+        typeof payload.count === "number"
+          ? payload.count
+          : Number(payload.count);
+      if (Number.isFinite(candidate)) {
+        const value = Math.floor(candidate);
+        return value >= 0 ? value : 0;
+      }
+    }
+
+    const parsed = Number(payload);
+    if (Number.isFinite(parsed)) {
+      const value = Math.floor(parsed);
+      return value >= 0 ? value : 0;
+    }
+
+    return 0;
+  }
+
+  async sendRawCountFrame(relayUrl, filters, options = {}) {
+    if (!this.pool) {
+      throw new Error(
+        "Nostr pool not initialized. Call nostrClient.init() before requesting counts."
+      );
+    }
+
+    const normalizedUrl =
+      typeof relayUrl === "string" ? relayUrl.trim() : "";
+    if (!normalizedUrl) {
+      throw new Error("Invalid relay URL for COUNT request.");
+    }
+
+    const normalizedFilters = this.normalizeCountFilters(filters);
+    if (!normalizedFilters.length) {
+      throw new Error("At least one filter is required for a COUNT request.");
+    }
+
+    const requestId =
+      typeof options.subId === "string" && options.subId.trim()
+        ? options.subId.trim()
+        : this.generateCountRequestId();
+
+    let relay;
+    try {
+      relay = await this.pool.ensureRelay(normalizedUrl);
+    } catch (error) {
+      throw new Error(`Failed to connect to relay ${normalizedUrl}`);
+    }
+
+    if (!relay) {
+      throw new Error(
+        `Relay ${normalizedUrl} is unavailable for COUNT requests.`
+      );
+    }
+
+    const frame = ["COUNT", requestId, ...normalizedFilters];
+    let countPromise;
+
+    if (
+      relay.openCountRequests instanceof Map &&
+      typeof relay.send === "function"
+    ) {
+      countPromise = new Promise((resolve, reject) => {
+        const cleanup = () => {
+          if (relay.openCountRequests instanceof Map) {
+            relay.openCountRequests.delete(requestId);
+          }
+        };
+
+        relay.openCountRequests.set(requestId, {
+          resolve: (value) => {
+            cleanup();
+            resolve(value);
+          },
+          reject: (error) => {
+            cleanup();
+            reject(error);
+          },
+        });
+
+        let sendResult;
+        try {
+          sendResult = relay.send(JSON.stringify(frame));
+        } catch (error) {
+          cleanup();
+          reject(error);
+          return;
+        }
+
+        if (sendResult && typeof sendResult.catch === "function") {
+          sendResult.catch((error) => {
+            cleanup();
+            reject(error);
+          });
+        }
+      });
+    } else if (typeof relay.count === "function") {
+      countPromise = relay.count(normalizedFilters, { id: requestId });
+    } else {
+      throw new Error(
+        `[nostr] Relay ${normalizedUrl} does not support COUNT frames.`
+      );
+    }
+
+    const timeoutMs = this.getRequestTimeoutMs(options.timeoutMs);
+    const rawResult = await withRequestTimeout(
+      countPromise,
+      timeoutMs,
+      () => {
+        if (relay?.openCountRequests instanceof Map) {
+          relay.openCountRequests.delete(requestId);
+        }
+      },
+      `COUNT request timed out after ${timeoutMs}ms`
+    );
+
+    const countValue = this.extractCountValue(rawResult);
+    return ["COUNT", requestId, { count: countValue }];
+  }
+
+  async countEventsAcrossRelays(filters, options = {}) {
+    const normalizedFilters = this.normalizeCountFilters(filters);
+    if (!normalizedFilters.length) {
+      return { total: 0, perRelay: [] };
+    }
+
+    const relayList =
+      Array.isArray(options.relays) && options.relays.length
+        ? options.relays
+        : Array.isArray(this.relays) && this.relays.length
+        ? this.relays
+        : RELAY_URLS;
+
+    const perRelay = await Promise.all(
+      relayList.map(async (url) => {
+        try {
+          const frame = await this.sendRawCountFrame(url, normalizedFilters, {
+            timeoutMs: options.timeoutMs,
+          });
+          const count = this.extractCountValue(frame?.[2]);
+          return { url, ok: true, frame, count };
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(`[nostr] COUNT request failed on ${url}:`, error);
+          }
+          return { url, ok: false, error };
+        }
+      })
+    );
+
+    const total = perRelay.reduce((sum, entry) => {
+      if (!entry || !entry.ok) {
+        return sum;
+      }
+      const value = Number(entry.count);
+      return Number.isFinite(value) && value > 0 ? sum + value : sum;
+    }, 0);
+
+    return { total, perRelay };
   }
 
   /**
