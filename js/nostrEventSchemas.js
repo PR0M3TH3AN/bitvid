@@ -83,8 +83,6 @@ const BASE_SCHEMAS = {
     label: "View counter",
     kind: WATCH_HISTORY_KIND,
     topicTag: { name: "t", value: "view" },
-    pointerTagName: "video",
-    identifierTag: { name: "d" },
     sessionTag: { name: "session", value: "true" },
     appendTags: DEFAULT_APPEND_TAGS,
     content: {
@@ -418,6 +416,7 @@ export function buildViewEvent({
   created_at,
   pointerValue,
   pointerTag,
+  pointerTags = [],
   dedupeTag,
   includeSessionTag = false,
   additionalTags = [],
@@ -429,13 +428,28 @@ export function buildViewEvent({
     tags.push([schema.topicTag.name, schema.topicTag.value]);
   }
 
-  const pointerTagName = schema?.pointerTagName || "video";
-  if (pointerValue) {
+  const pointerTagName = schema?.pointerTagName;
+  if (pointerValue && pointerTagName) {
     tags.push([pointerTagName, pointerValue]);
   }
+  const normalizedPointerTags = [];
   if (Array.isArray(pointerTag) && pointerTag.length >= 2) {
-    tags.push(pointerTag.map((value) => (typeof value === "string" ? value : String(value))));
+    normalizedPointerTags.push(
+      pointerTag.map((value) => (typeof value === "string" ? value : String(value)))
+    );
   }
+  if (Array.isArray(pointerTags)) {
+    pointerTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        normalizedPointerTags.push(
+          tag.map((value) => (typeof value === "string" ? value : String(value)))
+        );
+      }
+    });
+  }
+  normalizedPointerTags.forEach((tag) => {
+    tags.push(tag);
+  });
   if (Array.isArray(additionalTags)) {
     additionalTags.forEach((tag) => {
       if (Array.isArray(tag) && tag.length >= 2) {
@@ -444,8 +458,8 @@ export function buildViewEvent({
     });
   }
 
-  if (dedupeTag) {
-    const identifierName = schema?.identifierTag?.name || "d";
+  if (dedupeTag && schema?.identifierTag?.name) {
+    const identifierName = schema.identifierTag.name;
     const hasDedupe = tags.some(
       (tag) => tag[0] === identifierName && tag[1] === dedupeTag
     );
