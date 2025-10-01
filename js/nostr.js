@@ -1509,6 +1509,21 @@ class NostrClient {
     this.watchHistoryRefreshPromises = new Map();
     this.watchHistoryCacheTtlMs = WATCH_HISTORY_CACHE_TTL_MS;
     this.countRequestCounter = 0;
+    this.countUnsupportedRelays = new Set();
+  }
+
+  makeCountUnsupportedError(relayUrl) {
+    const normalizedUrl =
+      typeof relayUrl === "string" && relayUrl.trim()
+        ? relayUrl.trim()
+        : "";
+    const error = new Error(
+      `[nostr] Relay ${normalizedUrl} does not support COUNT frames.`
+    );
+    error.code = "count-unsupported";
+    error.relay = normalizedUrl;
+    error.unsupported = true;
+    return error;
   }
 
   restoreLocalData() {
@@ -5757,6 +5772,10 @@ class NostrClient {
       throw new Error("Invalid relay URL for COUNT request.");
     }
 
+    if (this.countUnsupportedRelays.has(normalizedUrl)) {
+      throw this.makeCountUnsupportedError(normalizedUrl);
+    }
+
     const normalizedFilters = this.normalizeCountFilters(filters);
     if (!normalizedFilters.length) {
       throw new Error("At least one filter is required for a COUNT request.");
@@ -5824,9 +5843,8 @@ class NostrClient {
     } else if (typeof relay.count === "function") {
       countPromise = relay.count(normalizedFilters, { id: requestId });
     } else {
-      throw new Error(
-        `[nostr] Relay ${normalizedUrl} does not support COUNT frames.`
-      );
+      this.countUnsupportedRelays.add(normalizedUrl);
+      throw this.makeCountUnsupportedError(normalizedUrl);
     }
 
     const timeoutMs = this.getRequestTimeoutMs(options.timeoutMs);
@@ -5858,8 +5876,29 @@ class NostrClient {
         ? this.relays
         : RELAY_URLS;
 
-    const perRelayResults = await Promise.all(
-      relayList.map(async (url) => {
+    const normalizedRelayList = relayList
+      .map((url) => (typeof url === "string" ? url.trim() : ""))
+      .filter(Boolean);
+
+    const activeRelays = [];
+    const precomputedEntries = [];
+
+    for (const url of normalizedRelayList) {
+      if (this.countUnsupportedRelays.has(url)) {
+        const error = this.makeCountUnsupportedError(url);
+        precomputedEntries.push({
+          url,
+          ok: false,
+          error,
+          unsupported: true,
+        });
+        continue;
+      }
+      activeRelays.push(url);
+    }
+
+    const activeResults = await Promise.all(
+      activeRelays.map(async (url) => {
         try {
           const frame = await this.sendRawCountFrame(url, normalizedFilters, {
             timeoutMs: options.timeoutMs,
@@ -5867,13 +5906,30 @@ class NostrClient {
           const count = this.extractCountValue(frame?.[2]);
           return { url, ok: true, frame, count };
         } catch (error) {
-          if (isDevMode) {
+          const isUnsupported = error?.code === "count-unsupported";
+          if (isUnsupported) {
+            this.countUnsupportedRelays.add(url);
+          } else if (isDevMode) {
             console.warn(`[nostr] COUNT request failed on ${url}:`, error);
           }
-          return { url, ok: false, error };
+          return { url, ok: false, error, unsupported: isUnsupported };
         }
       })
     );
+
+    const resultsByUrl = new Map();
+    for (const entry of [...precomputedEntries, ...activeResults]) {
+      if (entry && typeof entry.url === "string") {
+        resultsByUrl.set(entry.url, entry);
+      }
+    }
+
+    const perRelayResults = normalizedRelayList.map((url) => {
+      if (resultsByUrl.has(url)) {
+        return resultsByUrl.get(url);
+      }
+      return { url, ok: false };
+    });
 
     let bestEstimate = null;
     const perRelay = perRelayResults.map((entry) => {
