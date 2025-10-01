@@ -1066,6 +1066,194 @@ try {
   Date.now = originalDateNow;
 }
 
+const plaintextPayload = {
+  version: 2,
+  snapshot: "plaintext-snapshot",
+  chunkIndex: 0,
+  totalChunks: 1,
+  items: [
+    {
+      type: "e",
+      value: "plaintext-pointer",
+      relay: "wss://relay.unit",
+      watchedAt: 1_700_000_123_000,
+    },
+  ],
+};
+
+const plaintextChunkEvent = {
+  kind: WATCH_HISTORY_KIND,
+  pubkey: ACTOR,
+  created_at: 333,
+  tags: [
+    ["d", `${WATCH_HISTORY_CHUNK_PREFIX}/plaintext/0`],
+    ["snapshot", plaintextPayload.snapshot],
+    ["chunk", String(plaintextPayload.chunkIndex), String(plaintextPayload.totalChunks)],
+    ["e", plaintextPayload.items[0].value, plaintextPayload.items[0].relay],
+  ],
+  content: JSON.stringify(plaintextPayload),
+};
+
+const originalWindowNostr = globalThis.window.nostr;
+if (!globalThis.window.NostrTools) {
+  globalThis.window.NostrTools = {};
+}
+if (!globalThis.window.NostrTools.nip04) {
+  globalThis.window.NostrTools.nip04 = {};
+}
+const originalSessionDecrypt = globalThis.window.NostrTools.nip04.decrypt;
+
+try {
+  globalThis.window.nostr = {
+    nip04: {
+      decrypt: () => {
+        throw new Error("plaintext chunk should not trigger extension decrypt");
+      },
+    },
+  };
+  globalThis.window.NostrTools.nip04.decrypt = () => {
+    throw new Error("plaintext chunk should not trigger session decrypt");
+  };
+
+  const plaintextClient = createDecryptClient(ACTOR);
+  const plaintextResult = await plaintextClient.decryptWatchHistoryEvent(
+    plaintextChunkEvent,
+    ACTOR
+  );
+
+  assert.deepEqual(
+    plaintextResult.items.map((item) => ({
+      type: item.type,
+      value: item.value,
+      relay: item.relay,
+      watchedAt: item.watchedAt,
+    })),
+    plaintextPayload.items,
+    "plaintext payload should be parsed without invoking nip04 helpers",
+  );
+  assert.equal(
+    plaintextResult.snapshot,
+    plaintextPayload.snapshot,
+    "plaintext payload should preserve snapshot metadata",
+  );
+  assert.equal(
+    plaintextResult.chunkIndex,
+    plaintextPayload.chunkIndex,
+    "plaintext payload should preserve chunk index",
+  );
+  assert.equal(
+    plaintextResult.totalChunks,
+    plaintextPayload.totalChunks,
+    "plaintext payload should preserve chunk count",
+  );
+} finally {
+  globalThis.window.nostr = originalWindowNostr;
+  if (originalSessionDecrypt === undefined) {
+    delete globalThis.window.NostrTools.nip04.decrypt;
+  } else {
+    globalThis.window.NostrTools.nip04.decrypt = originalSessionDecrypt;
+  }
+}
+
+const encryptedPayload = {
+  version: 2,
+  snapshot: "encrypted-snapshot",
+  chunkIndex: 0,
+  totalChunks: 1,
+  items: [
+    {
+      type: "e",
+      value: "encrypted-pointer",
+      relay: "wss://relay.unit",
+      watchedAt: 1_700_000_456_000,
+    },
+  ],
+};
+
+const encryptedCiphertext = "ZW5jcnlwdGVkQ29udGVudD9mb29iYXI=?iv=YWJjMTIz";
+
+const encryptedChunkEvent = {
+  kind: WATCH_HISTORY_KIND,
+  pubkey: ACTOR,
+  created_at: 444,
+  tags: [
+    ["d", `${WATCH_HISTORY_CHUNK_PREFIX}/encrypted/0`],
+    ["encrypted", "nip04"],
+    ["snapshot", encryptedPayload.snapshot],
+    ["chunk", String(encryptedPayload.chunkIndex), String(encryptedPayload.totalChunks)],
+    ["e", encryptedPayload.items[0].value, encryptedPayload.items[0].relay],
+  ],
+  content: encryptedCiphertext,
+};
+
+const encryptedClient = createDecryptClient(ACTOR);
+encryptedClient.pubkey = ACTOR;
+
+const priorWindowNostr = globalThis.window.nostr;
+const priorSessionDecrypt = globalThis.window.NostrTools.nip04.decrypt;
+let extensionDecryptCalls = 0;
+let sessionDecryptCalls = 0;
+
+try {
+  globalThis.window.nostr = {
+    nip04: {
+      decrypt: async (pubkey, ciphertext) => {
+        extensionDecryptCalls += 1;
+        assert.equal(pubkey, ACTOR, "extension decrypt should target the actor");
+        assert.equal(
+          ciphertext,
+          encryptedCiphertext,
+          "extension decrypt should receive the chunk ciphertext",
+        );
+        return JSON.stringify(encryptedPayload);
+      },
+    },
+  };
+
+  globalThis.window.NostrTools.nip04.decrypt = async () => {
+    sessionDecryptCalls += 1;
+    return JSON.stringify(encryptedPayload);
+  };
+
+  const decryptedResult = await encryptedClient.decryptWatchHistoryEvent(
+    encryptedChunkEvent,
+    ACTOR
+  );
+
+  assert.equal(
+    extensionDecryptCalls,
+    1,
+    "encrypted chunks should invoke extension nip04 decrypt",
+  );
+  assert.equal(
+    sessionDecryptCalls,
+    0,
+    "successful extension decrypt should skip session fallback",
+  );
+  assert.deepEqual(
+    decryptedResult.items.map((item) => ({
+      type: item.type,
+      value: item.value,
+      relay: item.relay,
+      watchedAt: item.watchedAt,
+    })),
+    encryptedPayload.items,
+    "encrypted payload should be reconstructed from decrypted content",
+  );
+  assert.equal(
+    decryptedResult.snapshot,
+    encryptedPayload.snapshot,
+    "encrypted payload should preserve snapshot metadata",
+  );
+} finally {
+  globalThis.window.nostr = priorWindowNostr;
+  if (priorSessionDecrypt === undefined) {
+    delete globalThis.window.NostrTools.nip04.decrypt;
+  } else {
+    globalThis.window.NostrTools.nip04.decrypt = priorSessionDecrypt;
+  }
+}
+
 const unsortedVideos = [
   { id: "alpha", watchHistory: { watchedAt: 1_700_000_000_500 } },
   { id: "bravo", watchHistory: { watchedAt: 1_700_000_010_000 } },

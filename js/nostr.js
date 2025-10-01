@@ -2012,6 +2012,20 @@ class NostrClient {
       totalChunks: 1,
     };
 
+    const ciphertextRaw =
+      pointerEvent && typeof pointerEvent.content === "string"
+        ? pointerEvent.content
+        : "";
+    const ciphertext = ciphertextRaw.trim();
+
+    if (!isNip04EncryptedWatchHistoryEvent(pointerEvent, ciphertext)) {
+      return parseWatchHistoryContentWithFallback(
+        ciphertext,
+        fallbackItems,
+        fallbackPayload
+      );
+    }
+
     const normalizedActor =
       typeof actorPubkey === "string" && actorPubkey.trim()
         ? actorPubkey.trim().toLowerCase()
@@ -2019,11 +2033,6 @@ class NostrClient {
     if (!normalizedActor) {
       return fallbackPayload;
     }
-
-    const ciphertext =
-      pointerEvent && typeof pointerEvent.content === "string"
-        ? pointerEvent.content.trim()
-        : "";
 
     if (!ciphertext) {
       return fallbackPayload;
@@ -2042,11 +2051,11 @@ class NostrClient {
           normalizedActor,
           ciphertext
         );
-        const parsed = parseWatchHistoryPayload(plaintext);
-        if (parsed.items.length || fallbackItems.length === 0) {
-          return parsed;
-        }
-        return { ...parsed, items: fallbackItems };
+        return parseWatchHistoryContentWithFallback(
+          typeof plaintext === "string" ? plaintext.trim() : "",
+          fallbackItems,
+          fallbackPayload
+        );
       } catch (error) {
         if (isDevMode) {
           console.warn(
@@ -2078,11 +2087,11 @@ class NostrClient {
           normalizedActor,
           ciphertext
         );
-        const parsed = parseWatchHistoryPayload(plaintext);
-        if (parsed.items.length || fallbackItems.length === 0) {
-          return parsed;
-        }
-        return { ...parsed, items: fallbackItems };
+        return parseWatchHistoryContentWithFallback(
+          typeof plaintext === "string" ? plaintext.trim() : "",
+          fallbackItems,
+          fallbackPayload
+        );
       } catch (error) {
         if (isDevMode) {
           console.warn(
@@ -6019,6 +6028,114 @@ class NostrClient {
       (a, b) => b.created_at - a.created_at
     );
   }
+}
+
+function looksLikeJsonStructure(content) {
+  if (typeof content !== "string") {
+    return false;
+  }
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const first = trimmed[0];
+  return first === "{" || first === "[";
+}
+
+function mergeWatchHistoryItemsWithFallback(parsed, fallbackItems) {
+  if (!parsed || typeof parsed !== "object") {
+    return {
+      version: 0,
+      items: fallbackItems,
+      snapshot: "",
+      chunkIndex: 0,
+      totalChunks: 1,
+    };
+  }
+
+  if (Array.isArray(parsed.items) && parsed.items.length) {
+    return parsed;
+  }
+
+  if (!Array.isArray(fallbackItems) || fallbackItems.length === 0) {
+    return parsed;
+  }
+
+  return { ...parsed, items: fallbackItems };
+}
+
+function parseWatchHistoryContentWithFallback(
+  content,
+  fallbackItems,
+  fallbackPayload
+) {
+  if (!looksLikeJsonStructure(content)) {
+    return fallbackPayload;
+  }
+
+  try {
+    JSON.parse(content);
+  } catch (error) {
+    return fallbackPayload;
+  }
+
+  const parsed = parseWatchHistoryPayload(content);
+  return mergeWatchHistoryItemsWithFallback(parsed, fallbackItems);
+}
+
+function isNip04EncryptedWatchHistoryEvent(pointerEvent, ciphertext) {
+  if (!pointerEvent || typeof pointerEvent !== "object") {
+    return false;
+  }
+
+  const tags = Array.isArray(pointerEvent.tags) ? pointerEvent.tags : [];
+  const normalizedCiphertext =
+    typeof ciphertext === "string" ? ciphertext.trim() : "";
+
+  if (!normalizedCiphertext) {
+    return false;
+  }
+
+  const hasEncryptionTag = tags.some((tag) => {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      return false;
+    }
+    const label =
+      typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+    if (label !== "encrypted") {
+      return false;
+    }
+    const value =
+      typeof tag[1] === "string" ? tag[1].trim().toLowerCase() : "";
+    return value === "nip04" || value === "nip-04";
+  });
+
+  if (hasEncryptionTag) {
+    return !looksLikeJsonStructure(normalizedCiphertext);
+  }
+
+  if (looksLikeJsonStructure(normalizedCiphertext)) {
+    return false;
+  }
+
+  const ivIndex = normalizedCiphertext.indexOf("?iv=");
+  const baseSegment =
+    ivIndex >= 0
+      ? normalizedCiphertext.slice(0, ivIndex)
+      : normalizedCiphertext;
+  const ivSegment =
+    ivIndex >= 0 ? normalizedCiphertext.slice(ivIndex + 4) : "";
+
+  const base64Regex = /^[A-Za-z0-9+/]+={0,2}$/;
+  if (!baseSegment || !base64Regex.test(baseSegment)) {
+    return false;
+  }
+
+  if (ivSegment && !base64Regex.test(ivSegment)) {
+    return false;
+  }
+
+  return true;
 }
 
 export const nostrClient = new NostrClient();
