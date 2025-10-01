@@ -3,8 +3,6 @@
 import { nostrClient } from "./nostr.js";
 import { WATCH_HISTORY_BATCH_RESOLVE } from "./config.js";
 import { subscriptions } from "./subscriptions.js";
-import { attachHealthBadges } from "./gridHealth.js";
-import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 
 const DEFAULT_BATCH_SIZE = 20;
 const BATCH_SIZE = WATCH_HISTORY_BATCH_RESOLVE ? DEFAULT_BATCH_SIZE : 1;
@@ -103,11 +101,30 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
     const canEdit = window.app?.pubkey === video.pubkey;
 
     const highlightClass =
-      video.isPrivate && canEdit ? "border-2 border-yellow-500" : "border-none";
+      video.isPrivate && canEdit ? "watch-history-card--private" : "";
 
     const timeAgo = window.app?.formatTimeAgo
       ? window.app.formatTimeAgo(video.created_at)
       : new Date(video.created_at * 1000).toLocaleString();
+
+    const watchedAtTimestamp = toNumber(
+      video?.watchHistory?.watchedAt,
+      null
+    );
+    let watchedAtLabel = "Watch date unavailable";
+    if (Number.isFinite(watchedAtTimestamp) && watchedAtTimestamp > 0) {
+      const watchedDate = new Date(watchedAtTimestamp);
+      if (!Number.isNaN(watchedDate.getTime())) {
+        try {
+          watchedAtLabel = `Watched on ${watchedDate.toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}`;
+        } catch (err) {
+          watchedAtLabel = `Watched on ${watchedDate.toLocaleString()}`;
+        }
+      }
+    }
 
     let hasOlder = false;
     if (canEdit && video.videoRootId && window.app?.hasOlderVersion) {
@@ -203,7 +220,7 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
     `;
 
     const cardControls = `
-      <div class="flex items-center">
+      <div class="watch-history-card__menus">
         ${moreMenu}${gearMenu}
       </div>
     `;
@@ -219,77 +236,98 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
     const magnetCandidate = trimmedMagnet || legacyInfoHash;
     const playbackMagnet = magnetCandidate;
     const magnetProvided = magnetCandidate.length > 0;
-    const magnetSupported =
-      window.app?.isMagnetUriSupported?.(magnetCandidate) ?? false;
-    const urlBadgeHtml = trimmedUrl
-      ? window.app?.getUrlHealthPlaceholderMarkup?.({ includeMargin: false }) ?? ""
-      : "";
-    const torrentHealthBadgeHtml =
-      magnetProvided && magnetSupported
-        ? window.app?.getTorrentHealthBadgeMarkup?.({
-            includeMargin: false,
-          }) ?? ""
-        : "";
-    const connectionBadgesHtml = urlBadgeHtml || torrentHealthBadgeHtml
-      ? `
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-          ${urlBadgeHtml}${torrentHealthBadgeHtml}
-        </div>
-      `
-      : "";
+    const watchHistoryKey = video?.watchHistory?.key || "";
     const cardHtml = `
-      <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
-        <a
-          href="${shareUrl}"
-          data-video-id="${video.id}"
-          data-play-url=""
-          data-play-magnet=""
-          class="block cursor-pointer relative group"
-        >
-          <div class="ratio-16-9">
-            <img
-              src="assets/jpg/video-thumbnail-fallback.jpg"
-              data-lazy="${safeThumb}"
-              alt="${safeTitle}"
-            />
-          </div>
-        </a>
-        <div class="p-4">
-          <h3
-            class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
+      <article
+        class="watch-history-card ${highlightClass}"
+        data-watch-history-key="${watchHistoryKey}"
+      >
+        <div class="watch-history-card__primary">
+          <a
+            href="${shareUrl}"
             data-video-id="${video.id}"
             data-play-url=""
             data-play-magnet=""
+            class="watch-history-card__thumbnail"
           >
-            ${safeTitle}
-          </h3>
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
-                <img
-                  class="author-pic"
-                  data-pubkey="${video.pubkey}"
-                  src="assets/svg/default-profile.svg"
-                  alt="Placeholder"
-                />
-              </div>
-              <div class="min-w-0">
-                <p
-                  class="text-sm text-gray-400 author-name"
-                  data-pubkey="${video.pubkey}"
-                >
-                  Loading name...
-                </p>
-                <div class="flex items-center text-xs text-gray-500 mt-1">
-                  <span>${timeAgo}</span>
-                </div>
-              </div>
+            <div class="watch-history-card__thumbnailInner ratio-16-9">
+              <img
+                src="assets/jpg/video-thumbnail-fallback.jpg"
+                data-lazy="${safeThumb}"
+                alt="${safeTitle}"
+              />
             </div>
+          </a>
+          <div class="watch-history-card__details">
+            <h3
+              class="watch-history-card__title"
+              data-video-id="${video.id}"
+              data-play-url=""
+              data-play-magnet=""
+            >
+              ${safeTitle}
+            </h3>
+            <p class="watch-history-card__created">${timeAgo}</p>
+          </div>
+        </div>
+        <div class="watch-history-card__meta">
+          <p class="watch-history-card__watched" data-watched-at="${
+            watchedAtTimestamp || ""
+          }">${watchedAtLabel}</p>
+          <div class="watch-history-card__creator">
+            <button
+              type="button"
+              class="watch-history-card__creatorAvatar"
+              data-pubkey="${video.pubkey}"
+              aria-label="View creator profile"
+            >
+              <img
+                class="author-pic"
+                data-pubkey="${video.pubkey}"
+                src="assets/svg/default-profile.svg"
+                alt="Creator avatar"
+              />
+            </button>
+            <button
+              type="button"
+              class="watch-history-card__creatorName author-name"
+              data-pubkey="${video.pubkey}"
+            >
+              Loading name...
+            </button>
+          </div>
+          <div class="watch-history-card__actions">
+            <a
+              href="${shareUrl}"
+              data-video-id="${video.id}"
+              data-play-url=""
+              data-play-magnet=""
+              class="watch-history-card__action watch-history-card__action--primary"
+            >
+              View
+            </a>
+            <button
+              type="button"
+              class="watch-history-card__action"
+              data-history-share="true"
+              data-share-url="${shareUrl}"
+              data-share-title="${safeTitle}"
+              data-event-id="${video.id}"
+            >
+              Share
+            </button>
+            <button
+              type="button"
+              class="watch-history-card__action watch-history-card__action--danger"
+              data-history-remove-key="${watchHistoryKey}"
+              data-history-remove-event-id="${video.id}"
+            >
+              Remove
+            </button>
             ${cardControls}
           </div>
-          ${connectionBadgesHtml}
         </div>
-      </div>
+      </article>
     `;
 
     const t = document.createElement("template");
@@ -301,35 +339,6 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
         cardEl.dataset.ownerPubkey = video.pubkey;
       } else if (cardEl.dataset.ownerPubkey) {
         delete cardEl.dataset.ownerPubkey;
-      }
-
-      if (trimmedUrl) {
-        cardEl.dataset.urlHealthState = "checking";
-        if (cardEl.dataset.urlHealthReason) {
-          delete cardEl.dataset.urlHealthReason;
-        }
-        cardEl.dataset.urlHealthEventId = video.id || "";
-        cardEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
-      } else {
-        cardEl.dataset.urlHealthState = "offline";
-        cardEl.dataset.urlHealthReason = "missing-source";
-        if (cardEl.dataset.urlHealthEventId) {
-          delete cardEl.dataset.urlHealthEventId;
-        }
-        if (cardEl.dataset.urlHealthUrl) {
-          delete cardEl.dataset.urlHealthUrl;
-        }
-      }
-      if (magnetProvided && magnetSupported) {
-        cardEl.dataset.streamHealthState = "checking";
-        if (cardEl.dataset.streamHealthReason) {
-          delete cardEl.dataset.streamHealthReason;
-        }
-      } else {
-        cardEl.dataset.streamHealthState = "unhealthy";
-        cardEl.dataset.streamHealthReason = magnetProvided
-          ? "unsupported"
-          : "missing-source";
       }
 
       const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
@@ -351,34 +360,12 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
         delete cardEl.dataset.magnet;
       }
 
-      const badgeEl = cardEl.querySelector("[data-url-health-state]");
-      if (badgeEl) {
-        if (trimmedUrl) {
-          badgeEl.dataset.urlHealthEventId = video.id || "";
-          badgeEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
-        } else {
-          if (badgeEl.dataset.urlHealthEventId) {
-            delete badgeEl.dataset.urlHealthEventId;
-          }
-          if (badgeEl.dataset.urlHealthUrl) {
-            delete badgeEl.dataset.urlHealthUrl;
-          }
-        }
-      }
     }
     fragment.appendChild(cardEl);
   });
 
   container.innerHTML = "";
   container.appendChild(fragment);
-  attachHealthBadges(container);
-  attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
-    if (!window.app?.handleUrlHealthBadge) {
-      return;
-    }
-    const video = window.app.videosMap?.get?.(eventId) || { id: eventId };
-    window.app.handleUrlHealthBadge({ video, url, badgeEl });
-  });
 
   window.app?.attachVideoListHandler?.();
 
@@ -447,6 +434,9 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
 
   const authorPics = container.querySelectorAll(".author-pic");
   const authorNames = container.querySelectorAll(".author-name");
+  const creatorButtons = container.querySelectorAll(
+    ".watch-history-card__creatorAvatar"
+  );
 
   authorPics.forEach((pic) => {
     localAuthorSet.add(pic.getAttribute("data-pubkey"));
@@ -454,29 +444,50 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
   authorNames.forEach((nameEl) => {
     localAuthorSet.add(nameEl.getAttribute("data-pubkey"));
   });
+  creatorButtons.forEach((btn) => {
+    localAuthorSet.add(btn.getAttribute("data-pubkey"));
+  });
 
   if (window.app?.batchFetchProfiles && localAuthorSet.size > 0) {
     window.app.batchFetchProfiles(localAuthorSet);
   }
 
   authorPics.forEach((pic) => {
-    pic.style.cursor = "pointer";
-    pic.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const pubkey = pic.getAttribute("data-pubkey");
-      window.app?.goToProfile(pubkey);
-    });
+    if (!pic.dataset.watchHistoryClickAttached) {
+      pic.dataset.watchHistoryClickAttached = "true";
+      pic.style.cursor = "pointer";
+      pic.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const pubkey = pic.getAttribute("data-pubkey");
+        window.app?.goToProfile(pubkey);
+      });
+    }
+  });
+
+  creatorButtons.forEach((btn) => {
+    if (!btn.dataset.watchHistoryClickAttached) {
+      btn.dataset.watchHistoryClickAttached = "true";
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const pubkey = btn.getAttribute("data-pubkey");
+        window.app?.goToProfile(pubkey);
+      });
+    }
   });
 
   authorNames.forEach((nameEl) => {
-    nameEl.style.cursor = "pointer";
-    nameEl.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const pubkey = nameEl.getAttribute("data-pubkey");
-      window.app?.goToProfile(pubkey);
-    });
+    if (!nameEl.dataset.watchHistoryClickAttached) {
+      nameEl.dataset.watchHistoryClickAttached = "true";
+      nameEl.style.cursor = "pointer";
+      nameEl.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const pubkey = nameEl.getAttribute("data-pubkey");
+        window.app?.goToProfile(pubkey);
+      });
+    }
   });
 }
 
@@ -618,6 +629,7 @@ export function createWatchHistoryRenderer(config = {}) {
     batchSize: Math.max(1, toNumber(batchSize, BATCH_SIZE)),
     actor: null,
     snapshotFingerprint: null,
+    gridEventHandler: null,
   };
 
   const query = (selector) => {
@@ -717,6 +729,17 @@ export function createWatchHistoryRenderer(config = {}) {
     }
   };
 
+  const cleanupGridHandler = () => {
+    if (!state.gridEventHandler) {
+      return;
+    }
+    const { grid } = getElements();
+    if (grid) {
+      grid.removeEventListener("click", state.gridEventHandler);
+    }
+    state.gridEventHandler = null;
+  };
+
   const showEmptyState = (message = state.emptyCopy) => {
     const { grid, emptyEl } = getElements();
     if (grid) {
@@ -754,6 +777,130 @@ export function createWatchHistoryRenderer(config = {}) {
     state.resolvedVideos = Array.from(dedupeMap.values());
   };
 
+  const ensureGridEventHandlers = () => {
+    const { grid } = getElements();
+    if (!grid || state.gridEventHandler) {
+      return;
+    }
+
+    const handler = async (event) => {
+      const removeTrigger = event.target.closest(
+        "[data-history-remove-key]"
+      );
+      if (removeTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (removeTrigger.disabled) {
+          return;
+        }
+
+        const targetKey = removeTrigger
+          .getAttribute("data-history-remove-key")
+          ?.trim();
+        const targetEventId = removeTrigger
+          .getAttribute("data-history-remove-event-id")
+          ?.trim();
+        if (!targetKey) {
+          window.app?.showError?.(
+            "Unable to remove this video from watch history."
+          );
+          return;
+        }
+
+        removeTrigger.disabled = true;
+        removeTrigger.setAttribute("aria-busy", "true");
+
+        try {
+          const result = await nostrClient.removeWatchHistoryItem(targetKey);
+          if (!result?.ok) {
+            const errorMessage =
+              typeof result?.error === "string" && result.error
+                ? result.error
+                : "remove-failed";
+            throw new Error(errorMessage);
+          }
+
+          state.resolvedVideos = state.resolvedVideos.filter((video) => {
+            const key = video?.watchHistory?.key || "";
+            if (key) {
+              return key !== targetKey;
+            }
+            if (targetEventId) {
+              return video?.id !== targetEventId;
+            }
+            return true;
+          });
+
+          setLoadingVisible(false);
+          renderResolvedVideos();
+          window.app?.showSuccess?.("Removed from watch history.");
+        } catch (error) {
+          console.error(
+            "[historyView] Failed to remove watch history item:",
+            error
+          );
+          removeTrigger.disabled = false;
+          window.app?.showError?.(
+            "Failed to remove this video from watch history."
+          );
+        } finally {
+          removeTrigger.removeAttribute("aria-busy");
+        }
+
+        return;
+      }
+
+      const shareTrigger = event.target.closest("[data-history-share]");
+      if (shareTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const shareUrl = shareTrigger.getAttribute("data-share-url") || "";
+        const shareTitle = shareTrigger.getAttribute("data-share-title") || "";
+        const eventId = shareTrigger.getAttribute("data-event-id") || "";
+
+        const normalizedTitle = shareTitle || "Watch on Bitvid";
+
+        try {
+          if (shareUrl && navigator.share) {
+            await navigator.share({ title: normalizedTitle, url: shareUrl });
+            return;
+          }
+
+          if (window.app?.handleMoreMenuAction) {
+            await window.app.handleMoreMenuAction("copy-link", { eventId });
+            return;
+          }
+
+          if (shareUrl && navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(shareUrl);
+            window.app?.showSuccess?.("Video link copied to clipboard!");
+            return;
+          }
+
+          if (shareUrl) {
+            window.open(shareUrl, "_blank", "noopener,noreferrer");
+            return;
+          }
+
+          window.app?.showError?.("Unable to share this video right now.");
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            return;
+          }
+          console.error(
+            "[historyView] Failed to share watch history item:",
+            error
+          );
+          window.app?.showError?.("Unable to share this video right now.");
+        }
+      }
+    };
+
+    grid.addEventListener("click", handler);
+    state.gridEventHandler = handler;
+  };
+
   const renderResolvedVideos = () => {
     const { grid, emptyEl } = getElements();
     if (!grid) {
@@ -774,6 +921,8 @@ export function createWatchHistoryRenderer(config = {}) {
     } else {
       renderWatchHistoryGrid(state.resolvedVideos, grid);
     }
+
+    ensureGridEventHandlers();
 
     grid.classList.remove("hidden");
     if (emptyEl) {
@@ -1097,6 +1246,7 @@ export function createWatchHistoryRenderer(config = {}) {
     destroy() {
       debugLog("destroy called");
       cleanupObservers();
+      cleanupGridHandler();
       state.initialized = false;
       state.resolvedVideos = [];
       state.hasMore = true;
