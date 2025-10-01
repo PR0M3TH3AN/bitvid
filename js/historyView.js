@@ -3,6 +3,7 @@
 import { nostrClient } from "./nostr.js";
 import { WATCH_HISTORY_BATCH_RESOLVE } from "./config.js";
 import { subscriptions } from "./subscriptions.js";
+import { accessControl } from "./accessControl.js";
 
 const DEFAULT_BATCH_SIZE = 20;
 const BATCH_SIZE = WATCH_HISTORY_BATCH_RESOLVE ? DEFAULT_BATCH_SIZE : 1;
@@ -16,6 +17,123 @@ const WATCH_HISTORY_EMPTY_STATUS = "No watch history yet.";
 function toNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getVideoAuthorIdentifiers(video) {
+  if (!video || typeof video !== "object") {
+    return { pubkey: "", npub: "" };
+  }
+
+  const extractString = (candidate) =>
+    typeof candidate === "string" && candidate.trim() ? candidate.trim() : "";
+
+  const candidateNpubs = [
+    extractString(video.npub),
+    extractString(video.authorNpub),
+    extractString(video?.author?.npub),
+    extractString(video?.watchHistory?.npub),
+    extractString(video?.watchHistory?.npubEncoded),
+    extractString(video?.watchHistory?.authorNpub),
+    extractString(video?.watchHistory?.ownerNpub),
+  ];
+
+  let pubkey = extractString(video.pubkey);
+  if (!pubkey && video?.author && typeof video.author === "object") {
+    pubkey = extractString(video.author.pubkey);
+  }
+
+  let npub = candidateNpubs.find((value) => value) || "";
+
+  if (!npub) {
+    if (pubkey && pubkey.startsWith("npub")) {
+      npub = pubkey;
+    } else if (pubkey && window?.NostrTools?.nip19?.npubEncode) {
+      try {
+        npub = window.NostrTools.nip19.npubEncode(pubkey);
+      } catch (error) {
+        npub = "";
+      }
+    }
+  }
+
+  if (!pubkey && npub && window?.NostrTools?.nip19?.decode) {
+    try {
+      const decoded = window.NostrTools.nip19.decode(npub);
+      if (decoded?.type === "npub") {
+        if (typeof decoded?.data === "string" && decoded.data) {
+          pubkey = decoded.data;
+        } else if (
+          decoded?.data &&
+          typeof decoded.data === "object" &&
+          typeof decoded.data.hex === "string"
+        ) {
+          pubkey = decoded.data.hex;
+        }
+      }
+    } catch (error) {
+      pubkey = "";
+    }
+  }
+
+  return { pubkey, npub };
+}
+
+function isVideoBlocked(video) {
+  const { pubkey, npub } = getVideoAuthorIdentifiers(video);
+
+  if (pubkey && typeof window?.app?.isAuthorBlocked === "function") {
+    try {
+      if (window.app.isAuthorBlocked(pubkey)) {
+        return true;
+      }
+    } catch (error) {
+      console.warn("[historyView] Failed to check personal block list:", error);
+    }
+  }
+
+  if (npub && typeof accessControl?.isBlacklisted === "function") {
+    try {
+      if (accessControl.isBlacklisted(npub)) {
+        return true;
+      }
+    } catch (error) {
+      console.warn("[historyView] Failed to check access blacklist:", error);
+    }
+  }
+
+  return false;
+}
+
+function filterAccessibleVideos(videos) {
+  if (!Array.isArray(videos)) {
+    return [];
+  }
+
+  return videos.filter((video) => {
+    if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    return !isVideoBlocked(video);
+  });
+}
+
+function getWatchedAtScore(video) {
+  if (!video || typeof video !== "object") {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const watchedAt = toNumber(video?.watchHistory?.watchedAt, Number.NaN);
+  if (Number.isFinite(watchedAt)) {
+    return watchedAt;
+  }
+
+  const createdAtSeconds = toNumber(video?.created_at, Number.NaN);
+  if (Number.isFinite(createdAtSeconds)) {
+    return createdAtSeconds * 1000;
+  }
+
+  return Number.NEGATIVE_INFINITY;
 }
 
 function getAbsoluteShareUrl(nevent) {
@@ -62,17 +180,7 @@ function renderWatchHistoryGrid(videos, containerOrElement) {
     window.app?.dedupeVideosByRoot?.(safeVideos) ??
     subscriptions.dedupeToNewestByRoot(safeVideos);
 
-  const filteredVideos = dedupedVideos.filter((video) => {
-    if (!video || typeof video !== "object") {
-      return false;
-    }
-
-    if (window.app?.isAuthorBlocked && window.app.isAuthorBlocked(video.pubkey)) {
-      return false;
-    }
-
-    return true;
-  });
+  const filteredVideos = filterAccessibleVideos(dedupedVideos);
 
   if (!filteredVideos.length) {
     container.innerHTML = `
@@ -632,6 +740,26 @@ export function createWatchHistoryRenderer(config = {}) {
     gridEventHandler: null,
   };
 
+  const applyAccessFilters = () => {
+    if (!Array.isArray(state.resolvedVideos)) {
+      state.resolvedVideos = [];
+      return state.resolvedVideos;
+    }
+
+    const beforeLength = state.resolvedVideos.length;
+    const filtered = filterAccessibleVideos(state.resolvedVideos);
+
+    if (filtered.length !== beforeLength) {
+      debugLog("filtered resolved videos due to block settings", {
+        before: beforeLength,
+        after: filtered.length,
+      });
+    }
+
+    state.resolvedVideos = filtered;
+    return state.resolvedVideos;
+  };
+
   const query = (selector) => {
     if (!selector) {
       return null;
@@ -759,22 +887,56 @@ export function createWatchHistoryRenderer(config = {}) {
   };
 
   const mergeResolvedVideos = (nextVideos) => {
+    const ingest = (map, video) => {
+      if (!video || typeof video !== "object" || !video.id) {
+        return;
+      }
+
+      const existing = map.get(video.id);
+      if (!existing) {
+        map.set(video.id, video);
+        return;
+      }
+
+      const existingScore = getWatchedAtScore(existing);
+      const nextScore = getWatchedAtScore(video);
+
+      if (nextScore > existingScore) {
+        map.set(video.id, video);
+        return;
+      }
+
+      if (nextScore === existingScore) {
+        const existingCreated = toNumber(
+          existing?.created_at,
+          Number.NEGATIVE_INFINITY
+        );
+        const nextCreated = toNumber(
+          video?.created_at,
+          Number.NEGATIVE_INFINITY
+        );
+
+        if (nextCreated > existingCreated) {
+          map.set(video.id, video);
+        }
+      }
+    };
+
+    if (!Array.isArray(state.resolvedVideos)) {
+      state.resolvedVideos = [];
+    }
+
     if (!Array.isArray(nextVideos) || !nextVideos.length) {
+      applyAccessFilters();
       return;
     }
 
     const dedupeMap = new Map();
-    state.resolvedVideos.forEach((video) => {
-      if (video && video.id) {
-        dedupeMap.set(video.id, video);
-      }
-    });
-    nextVideos.forEach((video) => {
-      if (video && video.id) {
-        dedupeMap.set(video.id, video);
-      }
-    });
+    state.resolvedVideos.forEach((video) => ingest(dedupeMap, video));
+    nextVideos.forEach((video) => ingest(dedupeMap, video));
+
     state.resolvedVideos = Array.from(dedupeMap.values());
+    applyAccessFilters();
   };
 
   const ensureGridEventHandlers = () => {
@@ -830,6 +992,8 @@ export function createWatchHistoryRenderer(config = {}) {
             }
             return true;
           });
+
+          applyAccessFilters();
 
           setLoadingVisible(false);
           renderResolvedVideos();
@@ -907,7 +1071,9 @@ export function createWatchHistoryRenderer(config = {}) {
       return;
     }
 
-    if (!state.resolvedVideos.length) {
+    const accessibleVideos = applyAccessFilters();
+
+    if (!accessibleVideos.length) {
       if (emptyEl) {
         emptyEl.textContent = state.emptyCopy;
         emptyEl.classList.remove("hidden");
@@ -917,9 +1083,9 @@ export function createWatchHistoryRenderer(config = {}) {
     }
 
     if (typeof renderGrid === "function") {
-      renderGrid(state.resolvedVideos, grid);
+      renderGrid(accessibleVideos, grid);
     } else {
-      renderWatchHistoryGrid(state.resolvedVideos, grid);
+      renderWatchHistoryGrid(accessibleVideos, grid);
     }
 
     ensureGridEventHandlers();
@@ -1122,6 +1288,15 @@ export function createWatchHistoryRenderer(config = {}) {
       state.snapshotFingerprint = fingerprint;
     } else {
       state.snapshotFingerprint = null;
+    }
+
+    try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      console.warn(
+        "[historyView] Access control not ready, proceeding with cached lists:",
+        error
+      );
     }
 
     await loadNextBatch({ initial: true });
