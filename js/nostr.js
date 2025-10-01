@@ -12,7 +12,10 @@ import {
   WATCH_HISTORY_CACHE_TTL_MS,
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
 } from "./config.js";
-import { ACCEPT_LEGACY_V1 } from "./constants.js";
+import {
+  ACCEPT_LEGACY_V1,
+  VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
+} from "./constants.js";
 import { accessControl } from "./accessControl.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import { deriveTitleFromEvent, magnetFromText } from "./videoEventUtils.js";
@@ -47,6 +50,7 @@ const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
   "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again.";
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const WATCH_HISTORY_CACHE_STORAGE_KEY = "bitvid:watchHistoryCache:v1";
+const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 
 const WATCH_HISTORY_INDEX_IDENTIFIER_LOWER =
   typeof WATCH_HISTORY_LIST_IDENTIFIER === "string"
@@ -94,6 +98,31 @@ const LEGACY_WATCH_HISTORY_IDENTIFIER_SET = (() => {
   }
   return normalized;
 })();
+
+const viewEventPublishMemory = new Map();
+
+let ingestLocalViewEventRef = null;
+
+async function loadIngestLocalViewEvent() {
+  if (typeof ingestLocalViewEventRef === "function") {
+    return ingestLocalViewEventRef;
+  }
+  try {
+    const module = await import("./viewCounter.js");
+    if (typeof module?.ingestLocalViewEvent === "function") {
+      ingestLocalViewEventRef = module.ingestLocalViewEvent;
+      return ingestLocalViewEventRef;
+    }
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(
+        "[nostr] Failed to load view counter ingest helper:",
+        error
+      );
+    }
+  }
+  return null;
+}
 
 function deriveWatchHistoryChunkIdentifier(snapshotId, chunkIndex) {
   const sanitizedPrefix = WATCH_HISTORY_CHUNK_V2_PREFIX.replace(/\/+$/, "");
@@ -541,13 +570,17 @@ function createVideoViewEventFilters(pointer) {
     pointerFilter["#e"] = [resolved.value];
   }
 
-  const legacyFilter = {
-    kinds: [WATCH_HISTORY_KIND],
-    "#t": ["view"],
-    "#video": [resolved.value],
-  };
+  const filters = [pointerFilter];
 
-  return { pointer: resolved, filters: [pointerFilter, legacyFilter] };
+  if (VIEW_FILTER_INCLUDE_LEGACY_VIDEO) {
+    filters.push({
+      kinds: [WATCH_HISTORY_KIND],
+      "#t": ["view"],
+      "#video": [resolved.value],
+    });
+  }
+
+  return { pointer: resolved, filters };
 }
 
 function deriveViewEventBucketIndex(createdAtSeconds) {
@@ -561,28 +594,124 @@ function deriveViewEventBucketIndex(createdAtSeconds) {
   return Math.floor(timestamp / windowSize);
 }
 
-function deriveViewEventDedupTag(actorPubkey, pointer, createdAtSeconds) {
-  if (typeof actorPubkey !== "string") {
-    return null;
-  }
+function getViewEventGuardWindowMs() {
+  const windowSeconds = Math.max(
+    1,
+    Number(VIEW_COUNT_DEDUPE_WINDOW_SECONDS) || 0
+  );
+  return windowSeconds * 1000;
+}
 
-  const normalizedActor = actorPubkey.trim().toLowerCase();
-  if (!normalizedActor) {
-    return null;
+function deriveViewEventPointerScope(pointer) {
+  const pointerValue =
+    typeof pointer?.value === "string" ? pointer.value.trim().toLowerCase() : "";
+  if (!pointerValue) {
+    return "";
   }
-
-  const pointerValueRaw =
-    typeof pointer?.value === "string" ? pointer.value.trim() : "";
-  if (!pointerValueRaw) {
-    return null;
-  }
-
   const pointerType = pointer?.type === "a" ? "a" : "e";
-  const pointerValue = pointerValueRaw.toLowerCase();
-  const bucket = deriveViewEventBucketIndex(createdAtSeconds);
-  const scope = pointerType === "a" ? `a:${pointerValue}` : `e:${pointerValue}`;
+  return `${pointerType}:${pointerValue}`;
+}
 
-  return `bitvid:view:${normalizedActor}:${scope}:${bucket}`;
+function hasRecentViewPublish(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return false;
+  }
+
+  const windowMs = getViewEventGuardWindowMs();
+  const now = Date.now();
+  const entry = viewEventPublishMemory.get(scope);
+
+  if (entry) {
+    const age = now - Number(entry.seenAt);
+    if (!Number.isFinite(entry.seenAt) || age >= windowMs) {
+      viewEventPublishMemory.delete(scope);
+    } else if (Number(entry.bucket) === bucketIndex) {
+      return true;
+    }
+  }
+
+  if (typeof localStorage === "undefined") {
+    return false;
+  }
+
+  const storageKey = `${VIEW_EVENT_GUARD_PREFIX}:${scope}`;
+  let rawValue = null;
+  try {
+    rawValue = localStorage.getItem(storageKey);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to read view guard entry:", error);
+    }
+    return false;
+  }
+
+  if (typeof rawValue !== "string" || !rawValue) {
+    return false;
+  }
+
+  const [storedBucketRaw, storedSeenRaw] = rawValue.split(":", 2);
+  const storedBucket = Number(storedBucketRaw);
+  const storedSeenAt = Number(storedSeenRaw);
+
+  if (!Number.isFinite(storedBucket) || !Number.isFinite(storedSeenAt)) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to clear corrupt view guard entry:", error);
+      }
+    }
+    return false;
+  }
+
+  if (now - storedSeenAt >= windowMs) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to remove expired view guard entry:", error);
+      }
+    }
+    return false;
+  }
+
+  viewEventPublishMemory.set(scope, {
+    bucket: storedBucket,
+    seenAt: storedSeenAt,
+  });
+
+  return storedBucket === bucketIndex;
+}
+
+function rememberViewPublish(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return;
+  }
+
+  const now = Date.now();
+  const windowMs = getViewEventGuardWindowMs();
+  const entry = viewEventPublishMemory.get(scope);
+  if (entry && Number.isFinite(entry.seenAt) && now - entry.seenAt >= windowMs) {
+    viewEventPublishMemory.delete(scope);
+  }
+
+  viewEventPublishMemory.set(scope, {
+    bucket: bucketIndex,
+    seenAt: now,
+  });
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const storageKey = `${VIEW_EVENT_GUARD_PREFIX}:${scope}`;
+  try {
+    localStorage.setItem(storageKey, `${bucketIndex}:${now}`);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to persist view guard entry:", error);
+    }
+  }
 }
 
 function isVideoViewEvent(event, pointer) {
@@ -598,7 +727,9 @@ function isVideoViewEvent(event, pointer) {
   let hasViewTag = false;
   let matchesPointer = false;
 
-  const pointerValue = typeof pointer?.value === "string" ? pointer.value : "";
+  const pointerValueRaw =
+    typeof pointer?.value === "string" ? pointer.value.trim() : "";
+  const pointerValueLower = pointerValueRaw.toLowerCase();
   const pointerType = pointer?.type === "a" ? "a" : "e";
 
   for (const tag of tags) {
@@ -618,21 +749,34 @@ function isVideoViewEvent(event, pointer) {
       continue;
     }
 
-    if (matchesPointer || !pointerValue) {
+    if (matchesPointer || !pointerValueLower) {
       continue;
     }
 
-    if (label === "video" && value === pointerValue) {
+    if (
+      VIEW_FILTER_INCLUDE_LEGACY_VIDEO &&
+      label === "video" &&
+      value.toLowerCase() === pointerValueLower
+    ) {
       matchesPointer = true;
       continue;
     }
 
-    if (pointerType === "a" && label === "a" && value === pointerValue) {
-      matchesPointer = true;
+    const pointerTag = normalizePointerTag(tag);
+    if (!pointerTag) {
       continue;
     }
 
-    if (pointerType === "e" && label === "e" && value === pointerValue) {
+    const tagValueLower =
+      typeof pointerTag.value === "string"
+        ? pointerTag.value.trim().toLowerCase()
+        : "";
+
+    if (!tagValueLower || tagValueLower !== pointerValueLower) {
+      continue;
+    }
+
+    if (pointerTag.type === pointerType) {
       matchesPointer = true;
       continue;
     }
@@ -2582,6 +2726,21 @@ class NostrClient {
         ? Math.floor(options.created_at)
         : Math.floor(Date.now() / 1000);
 
+    const guardScope = deriveViewEventPointerScope(pointer);
+    const guardBucket = deriveViewEventBucketIndex(createdAt);
+    if (guardScope && hasRecentViewPublish(guardScope, guardBucket)) {
+      if (isDevMode) {
+        console.info("[nostr] Skipping duplicate view publish for scope", guardScope);
+      }
+      return {
+        ok: true,
+        duplicate: true,
+        event: null,
+        results: [],
+        acceptedRelays: [],
+      };
+    }
+
     const normalizedActor =
       typeof actorPubkey === "string" ? actorPubkey.toLowerCase() : "";
     const normalizedLogged =
@@ -2604,11 +2763,6 @@ class NostrClient {
         ? ["e", pointer.value, pointer.relay]
         : ["e", pointer.value];
 
-    const dedupeTagValue = deriveViewEventDedupTag(
-      actorPubkey,
-      pointer,
-      createdAt
-    );
     const content =
       typeof options.content === "string" ? options.content : "";
 
@@ -2617,7 +2771,6 @@ class NostrClient {
       created_at: createdAt,
       pointerValue: pointer.value,
       pointerTag,
-      dedupeTag: dedupeTagValue,
       includeSessionTag: usingSessionActor,
       additionalTags,
       content,
@@ -2670,6 +2823,9 @@ class NostrClient {
       .filter((url) => typeof url === "string" && url);
     const success = acceptedRelays.length > 0;
     if (success) {
+      if (guardScope) {
+        rememberViewPublish(guardScope, guardBucket);
+      }
       console.info(
         `[nostr] View event accepted by ${acceptedRelays.length} relay(s):`,
         acceptedRelays.join(", ")
@@ -4265,6 +4421,23 @@ class NostrClient {
     }
 
     const view = await this.publishViewEvent(pointer, options);
+
+    if (view?.ok && view.event) {
+      try {
+        const ingest = await loadIngestLocalViewEvent();
+        if (typeof ingest === "function") {
+          ingest({ event: view.event, pointer });
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to ingest optimistic view event:",
+            error
+          );
+        }
+      }
+    }
+
     const history = await this.updateWatchHistoryList(pointer);
 
     return {
