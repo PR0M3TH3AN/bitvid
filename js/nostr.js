@@ -1139,23 +1139,46 @@ function publishEventToRelay(pool, url, event) {
       const pub = pool.publish([url], event);
 
       if (pub && typeof pub.on === "function") {
-        pub.on("ok", () => {
+        const registerHandler = (eventName, handler) => {
+          try {
+            pub.on(eventName, handler);
+            return true;
+          } catch (error) {
+            if (isDevMode) {
+              console.warn(
+                `[nostr] Relay publish handle rejected ${eventName} listener:`,
+                error
+              );
+            }
+            return false;
+          }
+        };
+
+        const handleSuccess = () => {
           clearTimeout(timeoutId);
           finalize(true);
-        });
-        pub.on("seen", () => {
-          clearTimeout(timeoutId);
-          finalize(true);
-        });
-        pub.on("failed", (reason) => {
+        };
+
+        const handleFailure = (reason) => {
           clearTimeout(timeoutId);
           const err =
             reason instanceof Error
               ? reason
               : new Error(String(reason || "publish failed"));
           finalize(false, err);
-        });
-        return;
+        };
+
+        let handlerRegistered = false;
+        handlerRegistered =
+          registerHandler("ok", handleSuccess) || handlerRegistered;
+        handlerRegistered =
+          registerHandler("seen", handleSuccess) || handlerRegistered;
+        handlerRegistered =
+          registerHandler("failed", handleFailure) || handlerRegistered;
+
+        if (handlerRegistered) {
+          return;
+        }
       }
 
       if (pub && typeof pub.then === "function") {

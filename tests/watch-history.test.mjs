@@ -507,6 +507,43 @@ assert.deepEqual(
   "republish scheduler should receive the remaining items"
 );
 
+const NO_SEEN_ACTOR = `${ACTOR}-no-seen`;
+const {
+  client: noSeenClient,
+  publishedEvents: noSeenPublishedEvents,
+} = createPublishingClient(NO_SEEN_ACTOR);
+
+noSeenClient.pool.publish = (_urls, event) => {
+  noSeenPublishedEvents.push(event);
+  return {
+    on(eventName, handler) {
+      if (eventName === "seen") {
+        throw new TypeError("seen unsupported");
+      }
+      if (eventName === "ok") {
+        setTimeout(handler, 0);
+      } else if (eventName === "failed") {
+        // Never invoke failed handlers in this mock; they should remain idle.
+      }
+    },
+  };
+};
+
+const noSeenResult = await noSeenClient.publishWatchHistorySnapshot(
+  NO_SEEN_ACTOR,
+  [{ type: "e", value: "no-seen-pointer", relay: null }]
+);
+
+assert.equal(
+  noSeenResult.ok,
+  true,
+  "publish should succeed when relay handle rejects seen handlers"
+);
+assert(
+  noSeenResult.events.length > 0,
+  "publish should still return the emitted events when seen is unsupported"
+);
+
 delete globalThis.window.nostr;
 
 if (!globalThis.window.NostrTools.nip04) {
