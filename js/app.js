@@ -7531,14 +7531,17 @@ class bitvidApp {
       this.videoSubscription = null;
     }
 
+    if (this.videoList) {
+      if (this._lastRenderedVideoListElement !== this.videoList) {
+        this.lastRenderedVideoSignature = null;
+      }
+      this.videoList.innerHTML = getSidebarLoadingMarkup(
+        "Fetching recent videos…"
+      );
+    }
+
     // The rest of your existing logic:
     if (!this.videoSubscription) {
-      if (this.videoList) {
-        this.lastRenderedVideoSignature = null;
-        this.videoList.innerHTML = getSidebarLoadingMarkup(
-          "Fetching recent videos…"
-        );
-      }
 
       // Create a new subscription
       this.videoSubscription = nostrClient.subscribeVideos(() => {
