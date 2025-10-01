@@ -1102,8 +1102,14 @@ class NostrClient {
       resolved: previousEntry?.resolved
         ? new Map(previousEntry.resolved)
         : new Map(),
+      resolvedVideos: previousEntry?.resolvedVideos
+        ? new Map(previousEntry.resolvedVideos)
+        : new Map(),
       resolving: previousEntry?.resolving
         ? new Set(previousEntry.resolving)
+        : new Set(),
+      delivered: previousEntry?.delivered instanceof Set
+        ? new Set(previousEntry.delivered)
         : new Set(),
     };
 
@@ -1113,9 +1119,19 @@ class NostrClient {
         entry.resolved.delete(key);
       }
     }
+    for (const key of entry.resolvedVideos.keys()) {
+      if (!validKeys.has(key)) {
+        entry.resolvedVideos.delete(key);
+      }
+    }
     for (const key of [...entry.resolving]) {
       if (!validKeys.has(key)) {
         entry.resolving.delete(key);
+      }
+    }
+    for (const key of [...entry.delivered]) {
+      if (!validKeys.has(key)) {
+        entry.delivered.delete(key);
       }
     }
 
@@ -1212,6 +1228,40 @@ class NostrClient {
       .join("|");
 
     return `${pointerId}:${pointerCreated}:${itemKeys}`;
+  }
+
+  resetWatchHistoryProgress(pubkeyOrSession = null) {
+    let actor =
+      typeof pubkeyOrSession === "string" && pubkeyOrSession.trim()
+        ? pubkeyOrSession.trim()
+        : "";
+
+    if (!actor) {
+      if (this.sessionActor?.pubkey) {
+        actor = this.sessionActor.pubkey.trim();
+      } else if (typeof this.pubkey === "string" && this.pubkey.trim()) {
+        actor = this.pubkey.trim();
+      }
+    }
+
+    if (!actor) {
+      return;
+    }
+
+    const entry = this.watchHistoryCache.get(actor);
+    if (!entry) {
+      return;
+    }
+
+    if (!(entry.delivered instanceof Set)) {
+      entry.delivered = new Set();
+    } else {
+      entry.delivered.clear();
+    }
+
+    if (entry.resolving instanceof Set) {
+      entry.resolving.clear();
+    }
   }
 
   async encryptWatchHistoryPayload(actorPubkey, payload) {
@@ -2518,7 +2568,10 @@ class NostrClient {
     }
 
     for (const key of Array.from(entry.resolved.keys())) {
-      if (!key || !key.startsWith("a:")) {
+      if (
+        !key ||
+        !key.startsWith(`a:${WATCH_HISTORY_KIND}:`)
+      ) {
         continue;
       }
       if (!chunkPointerKeys.has(key)) {
@@ -2568,6 +2621,13 @@ class NostrClient {
     const entry = this.watchHistoryCache.get(actor);
     if (!entry) {
       return [];
+    }
+
+    if (!(entry.resolvedVideos instanceof Map)) {
+      entry.resolvedVideos = new Map();
+    }
+    if (!(entry.delivered instanceof Set)) {
+      entry.delivered = new Set();
     }
 
     const parsedBatchSize = Number(batchSize);
@@ -2691,11 +2751,17 @@ class NostrClient {
       if (!key) {
         return false;
       }
-      if (entry.resolved.has(key)) {
+      if (entry.delivered.has(key)) {
         return false;
       }
       if (entry.resolving.has(key)) {
         return false;
+      }
+      if (entry.resolvedVideos.has(key)) {
+        const cachedVideo = entry.resolvedVideos.get(key);
+        if (cachedVideo && typeof cachedVideo === "object" && cachedVideo.id) {
+          return false;
+        }
       }
       return true;
     });
@@ -2727,56 +2793,53 @@ class NostrClient {
 
     const videoBatch = available.slice(0, effectiveBatchSize);
     const batch = [...videoBatch, ...chunkAvailable];
-    if (!batch.length) {
-      return [];
-    }
-
-    batch.forEach((item) => {
-      const key = pointerKey(item);
-      if (key) {
-        entry.resolving.add(key);
-      }
-    });
 
     const relaySet = new Set(
       Array.isArray(this.relays) && this.relays.length ? this.relays : RELAY_URLS
     );
     const filters = [];
 
-    for (const pointer of batch) {
-      if (pointer.relay) {
-        relaySet.add(pointer.relay);
-      }
-      if (pointer.type === "e") {
-        filters.push({ ids: [pointer.value] });
-      } else if (pointer.type === "a") {
-        const [kindStr, pubkey, identifier] = pointer.value.split(":");
-        const kind = Number(kindStr);
-        if (Number.isFinite(kind) && pubkey) {
-          const filter = { kinds: [kind], authors: [pubkey] };
-          if (identifier) {
-            filter["#d"] = [identifier];
+    if (batch.length) {
+      batch.forEach((item) => {
+        const key = pointerKey(item);
+        if (key) {
+          entry.resolving.add(key);
+        }
+      });
+
+      for (const pointer of batch) {
+        if (pointer.relay) {
+          relaySet.add(pointer.relay);
+        }
+        if (pointer.type === "e") {
+          filters.push({ ids: [pointer.value] });
+        } else if (pointer.type === "a") {
+          const [kindStr, pubkey, identifier] = pointer.value.split(":");
+          const kind = Number(kindStr);
+          if (Number.isFinite(kind) && pubkey) {
+            const filter = { kinds: [kind], authors: [pubkey] };
+            if (identifier) {
+              filter["#d"] = [identifier];
+            }
+            filters.push(filter);
           }
-          filters.push(filter);
         }
       }
     }
 
-    if (!filters.length) {
-      batch.forEach((item) => entry.resolving.delete(pointerKey(item)));
-      return [];
-    }
-
     let events = [];
-    try {
-      events = await this.pool.list(Array.from(relaySet), filters);
-    } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to resolve watch history batch:", error);
+    if (filters.length) {
+      try {
+        events = await this.pool.list(Array.from(relaySet), filters);
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to resolve watch history batch:", error);
+        }
       }
+    } else if (batch.length) {
+      batch.forEach((item) => entry.resolving.delete(pointerKey(item)));
     }
 
-    const resolvedVideos = [];
     const pointerMatches = new Map();
 
     for (const evt of events || []) {
@@ -2830,8 +2893,7 @@ class NostrClient {
                 this.activeMap.set(activeKey, video);
               }
             }
-            entry.resolved.set(key, video);
-            resolvedVideos.push(video);
+            entry.resolvedVideos.set(key, video);
           }
         } catch (err) {
           if (isDevMode) {
@@ -2842,7 +2904,23 @@ class NostrClient {
       entry.resolving.delete(key);
     }
 
-    return resolvedVideos;
+    const deliverableVideos = [];
+    for (const pointer of videoCandidates) {
+      if (deliverableVideos.length >= effectiveBatchSize) {
+        break;
+      }
+      const key = pointerKey(pointer);
+      if (!key || entry.delivered.has(key)) {
+        continue;
+      }
+      const cachedVideo = entry.resolvedVideos.get(key);
+      if (cachedVideo && typeof cachedVideo === "object" && cachedVideo.id) {
+        deliverableVideos.push(cachedVideo);
+        entry.delivered.add(key);
+      }
+    }
+
+    return deliverableVideos;
   }
 
   async recordVideoView(videoPointer, options = {}) {

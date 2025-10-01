@@ -456,11 +456,18 @@ assert.equal(
 
 const pointerKey = `a:${videoPointer.value.trim().toLowerCase()}`;
 const cachedEntry = pointerClient.watchHistoryCache.get(ACTOR);
-assert(cachedEntry.resolved.has(pointerKey), "resolved cache should retain the video");
+assert(
+  cachedEntry.resolvedVideos.has(pointerKey),
+  "resolved cache should retain the video"
+);
 assert.equal(
-  cachedEntry.resolved.get(pointerKey)?.id,
+  cachedEntry.resolvedVideos.get(pointerKey)?.id,
   videoEvent.id,
   "resolved cache should store the converted video result"
+);
+assert(
+  cachedEntry.delivered.has(pointerKey),
+  "delivery set should mark the pointer as delivered"
 );
 
 assert(
@@ -471,6 +478,38 @@ assert(
     )
   ),
   "resolveWatchHistory should request the video identifier instead of treating it as a chunk"
+);
+
+const secondResolve = await pointerClient.resolveWatchHistory(1);
+assert.equal(
+  secondResolve.length,
+  0,
+  "subsequent resolve calls should avoid refetching already delivered videos"
+);
+
+pointerClient.resetWatchHistoryProgress(ACTOR);
+assert.equal(
+  cachedEntry.delivered.size,
+  0,
+  "resetWatchHistoryProgress should clear delivered pointers"
+);
+
+pointerClient.pool = {
+  list: async () => {
+    throw new Error("cached resolve should not trigger network fetch");
+  },
+};
+
+const cachedResolve = await pointerClient.resolveWatchHistory(1);
+assert.equal(
+  cachedResolve.length,
+  1,
+  "reset should allow cached videos to be delivered again"
+);
+assert.equal(
+  cachedResolve[0].id,
+  videoEvent.id,
+  "cached resolve should reuse the stored video payload"
 );
 
 const originalDateNow = Date.now;
