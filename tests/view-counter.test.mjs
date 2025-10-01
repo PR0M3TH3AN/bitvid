@@ -46,7 +46,7 @@ const { nostrClient } = await import("../js/nostr.js");
 
 function createMockNostrHarness() {
   const storedEvents = new Map();
-  const customTotals = new Map();
+  const customCountResults = new Map();
   const subscribers = new Map();
   const metrics = { list: 0, count: 0 };
 
@@ -108,11 +108,37 @@ function createMockNostrHarness() {
   const countVideoViewEvents = async (pointer) => {
     metrics.count += 1;
     const key = pointerKeyFromInput(pointer);
-    if (customTotals.has(key)) {
-      return { total: customTotals.get(key) };
+    if (customCountResults.has(key)) {
+      const stored = customCountResults.get(key);
+      if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+        const totalValue = Number(stored.total);
+        const normalizedTotal =
+          Number.isFinite(totalValue) && totalValue >= 0 ? totalValue : 0;
+        const perRelay = Array.isArray(stored.perRelay)
+          ? stored.perRelay.map((entry) =>
+              entry && typeof entry === "object" ? { ...entry } : entry
+            )
+          : [];
+        const result = {
+          total: normalizedTotal,
+          perRelay,
+          best:
+            stored.best && typeof stored.best === "object"
+              ? { ...stored.best }
+              : null,
+        };
+        if (stored.fallback) {
+          result.fallback = true;
+        }
+        return result;
+      }
+      const numericTotal = Number(stored);
+      const normalizedTotal =
+        Number.isFinite(numericTotal) && numericTotal >= 0 ? numericTotal : 0;
+      return { total: normalizedTotal, perRelay: [], best: null };
     }
     const events = storedEvents.get(key) || [];
-    return { total: events.length };
+    return { total: events.length, perRelay: [], best: null };
   };
 
   const subscribeVideoViewEvents = (pointer, options = {}) => {
@@ -152,16 +178,22 @@ function createMockNostrHarness() {
   };
 
   const setCountTotal = (key, total) => {
-    if (Number.isFinite(total)) {
-      customTotals.set(key, Number(total));
+    if (
+      typeof total === "object" &&
+      total !== null &&
+      !Array.isArray(total)
+    ) {
+      customCountResults.set(key, JSON.parse(JSON.stringify(total)));
+    } else if (Number.isFinite(total)) {
+      customCountResults.set(key, Number(total));
     } else {
-      customTotals.delete(key);
+      customCountResults.delete(key);
     }
   };
 
   const reset = () => {
     storedEvents.clear();
-    customTotals.clear();
+    customCountResults.clear();
     subscribers.clear();
     resetMetrics();
   };
@@ -319,6 +351,45 @@ async function testHydrationSkipsStaleEventsAndRollsOff() {
   }
 }
 
+async function testRelayCountAggregationUsesBestEstimate() {
+  localStorage.clear();
+  harness.reset();
+  harness.resetMetrics();
+
+  const pointer = { type: "e", value: "view-counter-multi-relay" };
+  const pointerKey = harness.pointerKeyFromInput(pointer);
+
+  harness.setEvents(pointerKey, []);
+  harness.setCountTotal(pointerKey, {
+    total: 5,
+    best: { relay: "wss://relay.alpha", count: 5 },
+    perRelay: [
+      { url: "wss://relay.alpha", ok: true, count: 5 },
+      { url: "wss://relay.beta", ok: true, count: 5 },
+    ],
+  });
+
+  const updates = [];
+  const token = subscribeToVideoViewCount(pointer, (state) => {
+    updates.push({ ...state });
+  });
+
+  try {
+    await flushPromises();
+    await flushPromises();
+
+    const final = updates.at(-1);
+    assert.ok(final, "expected hydration update for aggregated relay counts");
+    assert.equal(
+      final.total,
+      5,
+      "identical relay COUNT responses should not be double-counted"
+    );
+  } finally {
+    unsubscribeFromVideoViewCount(pointer, token);
+  }
+}
+
 async function testLocalIngestNotifiesImmediately() {
   localStorage.clear();
   harness.reset();
@@ -458,5 +529,6 @@ await testDedupesWithinWindow();
 await testHydrationSkipsStaleEventsAndRollsOff();
 await testLocalIngestNotifiesImmediately();
 await testUnsubscribeStopsCallbacks();
+await testRelayCountAggregationUsesBestEstimate();
 
 console.log("View counter tests completed successfully.");

@@ -2465,6 +2465,7 @@ class NostrClient {
       return {
         total: Array.isArray(events) ? events.length : 0,
         perRelay: [],
+        best: null,
         fallback: true,
       };
     }
@@ -2539,6 +2540,7 @@ class NostrClient {
     return {
       total: Array.isArray(events) ? events.length : 0,
       perRelay: [],
+      best: null,
       fallback: true,
     };
   }
@@ -4766,7 +4768,7 @@ class NostrClient {
   async countEventsAcrossRelays(filters, options = {}) {
     const normalizedFilters = this.normalizeCountFilters(filters);
     if (!normalizedFilters.length) {
-      return { total: 0, perRelay: [] };
+      return { total: 0, best: null, perRelay: [] };
     }
 
     const relayList =
@@ -4776,7 +4778,7 @@ class NostrClient {
         ? this.relays
         : RELAY_URLS;
 
-    const perRelay = await Promise.all(
+    const perRelayResults = await Promise.all(
       relayList.map(async (url) => {
         try {
           const frame = await this.sendRawCountFrame(url, normalizedFilters, {
@@ -4793,15 +4795,47 @@ class NostrClient {
       })
     );
 
-    const total = perRelay.reduce((sum, entry) => {
+    let bestEstimate = null;
+    const perRelay = perRelayResults.map((entry) => {
       if (!entry || !entry.ok) {
-        return sum;
+        return entry;
       }
-      const value = Number(entry.count);
-      return Number.isFinite(value) && value > 0 ? sum + value : sum;
-    }, 0);
 
-    return { total, perRelay };
+      const numericValue = Number(entry.count);
+      const normalizedCount =
+        Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : 0;
+
+      const normalizedEntry = {
+        ...entry,
+        count: normalizedCount,
+      };
+
+      if (!Number.isFinite(numericValue) || numericValue < 0) {
+        normalizedEntry.rawCount = entry.count;
+      }
+
+      if (
+        !bestEstimate ||
+        normalizedCount > bestEstimate.count ||
+        (bestEstimate && normalizedCount === bestEstimate.count && !bestEstimate.frame)
+      ) {
+        bestEstimate = {
+          relay: normalizedEntry.url,
+          count: normalizedCount,
+          frame: normalizedEntry.frame,
+        };
+      }
+
+      return normalizedEntry;
+    });
+
+    const total = bestEstimate ? bestEstimate.count : 0;
+
+    return {
+      total,
+      best: bestEstimate,
+      perRelay,
+    };
   }
 
   /**
