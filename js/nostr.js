@@ -4516,12 +4516,7 @@ class NostrClient {
   async recordVideoView(videoPointer, options = {}) {
     const pointer = normalizePointerInput(videoPointer);
     if (!pointer) {
-      return {
-        ok: false,
-        error: "invalid-pointer",
-        view: { ok: false, error: "invalid-pointer" },
-        history: { ok: false, error: "invalid-pointer" },
-      };
+      return { ok: false, error: "invalid-pointer" };
     }
 
     const view = await this.publishViewEvent(pointer, options);
@@ -4542,13 +4537,7 @@ class NostrClient {
       }
     }
 
-    const history = await this.updateWatchHistoryList(pointer);
-
-    return {
-      ok: view.ok && history.ok,
-      view,
-      history,
-    };
+    return view;
   }
 
   /**
