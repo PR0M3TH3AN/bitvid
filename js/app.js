@@ -8124,14 +8124,35 @@ class bitvidApp {
           : "";
 
       const showDiscussionCount = video.enableComments !== false;
-      const discussionCountHtml = showDiscussionCount
-        ? `
-            <div class="flex items-center text-xs text-gray-500 mt-3" data-discussion-count="${video.id}" data-count-state="idle">
-              <span data-discussion-count-value>—</span>
+      let discussionCountHtml = "";
+      if (showDiscussionCount) {
+        let initialDiscussionCount = null;
+        if (typeof video.discussionCount === "number") {
+          initialDiscussionCount = video.discussionCount;
+        } else if (typeof video.discussionCount === "string") {
+          const trimmedCount = video.discussionCount.trim();
+          if (trimmedCount) {
+            const parsed = Number.parseInt(trimmedCount, 10);
+            if (Number.isFinite(parsed)) {
+              initialDiscussionCount = parsed;
+            }
+          }
+        }
+
+        if (
+          initialDiscussionCount !== null &&
+          Number.isFinite(initialDiscussionCount) &&
+          initialDiscussionCount >= 0
+        ) {
+          const safeDiscussionCount = Math.floor(initialDiscussionCount);
+          discussionCountHtml = `
+            <div class="flex items-center text-xs text-gray-500 mt-3" data-discussion-count="${video.id}" data-count-state="ready">
+              <span data-discussion-count-value>${safeDiscussionCount.toLocaleString()}</span>
               <span class="ml-1">notes</span>
             </div>
-          `
-        : "";
+          `;
+        }
+      }
 
       const rawThumbnail =
         typeof video.thumbnail === "string" ? video.thumbnail.trim() : "";
