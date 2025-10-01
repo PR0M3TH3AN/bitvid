@@ -42,6 +42,7 @@ function createPublishingClient(actorPubkey) {
         },
       };
     },
+    list: async () => [],
   };
   client.relays = ["wss://unit.test"];
   client.pubkey = "";
@@ -72,19 +73,23 @@ const { client: publishingClient, publishedEvents, payloads } =
 publishingClient.watchHistoryPayloadMaxBytes = 400;
 publishingClient.watchHistoryFetchEventLimit = 10;
 
+const baseWatchedAt = 1_700_000_000_000;
 const longPointers = Array.from({ length: 8 }, (_, index) => {
   const relay = index % 3 === 0 ? "wss://relay.unit" : null;
+  const watchedAt = baseWatchedAt + index * 60_000;
   if (index % 2 === 0) {
     return {
       type: "e",
       value: `event-${index}-${"x".repeat(90)}`,
       relay,
+      watchedAt,
     };
   }
   return {
     type: "a",
     value: `30078:${ACTOR}:history-${index}-${"y".repeat(60)}`,
     relay,
+    watchedAt,
   };
 });
 
@@ -208,13 +213,15 @@ assert.deepEqual(
     type: item.type,
     value: item.value,
     relay: item.relay || null,
+    watchedAt: item.watchedAt,
   })),
   longPointers.map((item) => ({
     type: item.type,
     value: item.value,
     relay: item.relay || null,
+    watchedAt: item.watchedAt,
   })),
-  "chunked fetch should preserve pointer order"
+  "chunked fetch should preserve pointer order and timestamps"
 );
 
 if (typeof localStorage !== "undefined") {
@@ -293,6 +300,22 @@ assert.equal(
   rebuilt.items.length,
   longPointers.length,
   "fresh client should rebuild full watch history list"
+);
+
+assert.deepEqual(
+  rebuilt.items.map((item) => ({
+    type: item.type,
+    value: item.value,
+    relay: item.relay || null,
+    watchedAt: item.watchedAt,
+  })),
+  longPointers.map((item) => ({
+    type: item.type,
+    value: item.value,
+    relay: item.relay || null,
+    watchedAt: item.watchedAt,
+  })),
+  "rebuilt snapshot should preserve timestamps"
 );
 
 assert(
@@ -398,6 +421,121 @@ try {
 
 localStorage.clear();
 
+const UPDATE_ACTOR = `${ACTOR}-update`;
+const { client: updateClient } = createPublishingClient(UPDATE_ACTOR);
+const updateOriginalDateNow = Date.now;
+try {
+  const updateTimestamp = 1_701_111_111_111;
+  Date.now = () => updateTimestamp;
+
+  const updateResult = await updateClient.updateWatchHistoryList({
+    type: "e",
+    value: "update-pointer",
+    relay: null,
+  });
+
+  assert.equal(
+    updateResult.ok,
+    true,
+    "updateWatchHistoryList should publish when adding a new pointer"
+  );
+  const updateEntry = updateClient.watchHistoryCache.get(UPDATE_ACTOR);
+  assert(updateEntry, "updateWatchHistoryList should cache the new entry");
+  assert.equal(
+    updateEntry.items[0].watchedAt,
+    updateTimestamp,
+    "cached entry should record watchedAt from Date.now()"
+  );
+  assert.equal(
+    updateResult.items[0].watchedAt,
+    updateTimestamp,
+    "returned publish result should include the watchedAt timestamp"
+  );
+} finally {
+  Date.now = updateOriginalDateNow;
+}
+
+const REMOVE_ACTOR = `${ACTOR}-remove`;
+const {
+  client: removalClient,
+  payloads: removalPayloads,
+} = createPublishingClient(REMOVE_ACTOR);
+
+const removalPointers = [
+  {
+    type: "e",
+    value: "remove-first",
+    relay: null,
+    watchedAt: 1_701_222_000_000,
+  },
+  {
+    type: "e",
+    value: "remove-second",
+    relay: null,
+    watchedAt: 1_701_222_100_000,
+  },
+];
+
+await removalClient.publishWatchHistorySnapshot(
+  REMOVE_ACTOR,
+  removalPointers
+);
+
+const removalKey = `e:${removalPointers[1].value.trim().toLowerCase()}`;
+const removalResult = await removalClient.removeWatchHistoryItem(removalKey);
+
+assert.equal(removalResult.ok, true, "removeWatchHistoryItem should succeed");
+assert.equal(
+  removalResult.removedKey,
+  removalKey,
+  "removeWatchHistoryItem should echo the removed pointer key"
+);
+
+const latestRemovalPayload = removalPayloads[removalPayloads.length - 1];
+assert.equal(
+  latestRemovalPayload.items.length,
+  1,
+  "removal republish should trim the pointer list"
+);
+assert.equal(
+  latestRemovalPayload.items[0].value,
+  removalPointers[0].value,
+  "republished payload should only include remaining pointer"
+);
+assert.equal(
+  latestRemovalPayload.items[0].watchedAt,
+  removalPointers[0].watchedAt,
+  "republished payload should preserve watchedAt"
+);
+
+const removalEntry = removalClient.watchHistoryCache.get(REMOVE_ACTOR);
+assert.equal(
+  removalEntry.items.length,
+  1,
+  "watch history cache should drop the removed pointer"
+);
+assert.equal(
+  removalEntry.items[0].value,
+  removalPointers[0].value,
+  "remaining cached pointer should match the survivor"
+);
+assert.equal(
+  removalEntry.items[0].watchedAt,
+  removalPointers[0].watchedAt,
+  "remaining cached pointer should retain watchedAt"
+);
+
+assert.equal(
+  removalResult.items.map((item) => item.value).join(","),
+  removalPointers.slice(0, 1).map((item) => item.value).join(","),
+  "removeWatchHistoryItem result should reflect updated items"
+);
+assert.equal(
+  removalResult.items[0].watchedAt,
+  removalPointers[0].watchedAt,
+  "removeWatchHistoryItem result should preserve watchedAt"
+);
+
 const VIDEO_POINTER_AUTHOR = `${ACTOR}-video-author`;
 const VIDEO_POINTER_IDENTIFIER = "pointer-video-identifier";
 const videoPointer = {
@@ -438,6 +576,8 @@ pointerClient.pool = {
 
 const resolvedFromPointer = await pointerClient.resolveWatchHistory(1);
 
+const pointerKey = `a:${videoPointer.value.trim().toLowerCase()}`;
+
 assert.equal(
   resolvedFromPointer.length,
   1,
@@ -454,7 +594,23 @@ assert.equal(
   "resolved video should parse title from the event payload"
 );
 
-const pointerKey = `a:${videoPointer.value.trim().toLowerCase()}`;
+assert(resolvedFromPointer[0].watchHistory, "resolved video should include watchHistory metadata");
+assert.equal(
+  resolvedFromPointer[0].watchHistory.key,
+  pointerKey,
+  "watchHistory metadata should expose the pointer key"
+);
+assert.equal(
+  resolvedFromPointer[0].watchHistory.pointer.value,
+  videoPointer.value,
+  "watchHistory metadata should include the pointer payload"
+);
+assert.equal(
+  resolvedFromPointer[0].watchHistory.pointer.watchedAt,
+  pointerEntry.items[0].watchedAt,
+  "watchHistory metadata should preserve watchedAt"
+);
+
 const cachedEntry = pointerClient.watchHistoryCache.get(ACTOR);
 assert(
   cachedEntry.resolvedVideos.has(pointerKey),
@@ -510,6 +666,10 @@ assert.equal(
   cachedResolve[0].id,
   videoEvent.id,
   "cached resolve should reuse the stored video payload"
+);
+assert(
+  cachedResolve[0].watchHistory?.watchedAt === pointerEntry.items[0].watchedAt,
+  "cached resolve should retain watchHistory metadata"
 );
 
 const originalDateNow = Date.now;
