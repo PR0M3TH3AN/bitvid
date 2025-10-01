@@ -6,7 +6,33 @@ import assert from "node:assert/strict";
 const {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
   VIEW_COUNT_BACKFILL_MAX_DAYS,
+  VIEW_COUNT_CACHE_TTL_MS,
 } = await import("../js/config.js");
+
+const VIEW_COUNTER_STORAGE_KEY = "bitvid:view-counter:v1";
+const CACHE_TTL_TEST_POINTER = { type: "e", value: "view-counter-cache-ttl" };
+
+// Seed a stale cache entry so we can verify hydration ignores data older than the TTL.
+const staleSavedAt = Date.now() - (VIEW_COUNT_CACHE_TTL_MS + 60_000);
+localStorage.clear();
+localStorage.setItem(
+  VIEW_COUNTER_STORAGE_KEY,
+  JSON.stringify({
+    version: 1,
+    savedAt: staleSavedAt,
+    entries: [
+      [
+        `${CACHE_TTL_TEST_POINTER.type}:${CACHE_TTL_TEST_POINTER.value}`,
+        {
+          total: 42,
+          dedupeBuckets: [["pub-cache-ttl:bucket", staleSavedAt]],
+          lastSyncedAt: staleSavedAt - 5_000,
+          status: "live",
+        },
+      ],
+    ],
+  })
+);
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -22,6 +48,12 @@ function createMockNostrHarness() {
   const storedEvents = new Map();
   const customTotals = new Map();
   const subscribers = new Map();
+  const metrics = { list: 0, count: 0 };
+
+  const resetMetrics = () => {
+    metrics.list = 0;
+    metrics.count = 0;
+  };
 
   const pointerKeyFromInput = (input) => {
     if (!input) {
@@ -60,6 +92,7 @@ function createMockNostrHarness() {
   };
 
   const listVideoViewEvents = async (pointer, options = {}) => {
+    metrics.list += 1;
     const key = pointerKeyFromInput(pointer);
     const events = storedEvents.get(key) || [];
     const since = Number.isFinite(options?.since) ? Number(options.since) : null;
@@ -73,6 +106,7 @@ function createMockNostrHarness() {
   };
 
   const countVideoViewEvents = async (pointer) => {
+    metrics.count += 1;
     const key = pointerKeyFromInput(pointer);
     if (customTotals.has(key)) {
       return { total: customTotals.get(key) };
@@ -129,12 +163,15 @@ function createMockNostrHarness() {
     storedEvents.clear();
     customTotals.clear();
     subscribers.clear();
+    resetMetrics();
   };
 
   const subscriptionCount = (key) => {
     const handlers = subscribers.get(key);
     return handlers ? handlers.size : 0;
   };
+
+  const getCallCounts = () => ({ list: metrics.list, count: metrics.count });
 
   return {
     listVideoViewEvents,
@@ -146,6 +183,8 @@ function createMockNostrHarness() {
     reset,
     pointerKeyFromInput,
     subscriptionCount,
+    resetMetrics,
+    getCallCounts,
   };
 }
 
@@ -169,6 +208,7 @@ const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 async function testDedupesWithinWindow() {
   localStorage.clear();
   harness.reset();
+  harness.resetMetrics();
 
   const pointer = { type: "e", value: "view-counter-dedupe" };
   const pointerKey = harness.pointerKeyFromInput(pointer);
@@ -206,6 +246,7 @@ async function testDedupesWithinWindow() {
 async function testHydrationSkipsStaleEventsAndRollsOff() {
   localStorage.clear();
   harness.reset();
+  harness.resetMetrics();
 
   const pointer = { type: "a", value: "30078:pk:test-hydrate" };
   const pointerKey = harness.pointerKeyFromInput(pointer);
@@ -281,6 +322,7 @@ async function testHydrationSkipsStaleEventsAndRollsOff() {
 async function testLocalIngestNotifiesImmediately() {
   localStorage.clear();
   harness.reset();
+  harness.resetMetrics();
 
   const pointer = { type: "e", value: "view-counter-local" };
   const pointerKey = harness.pointerKeyFromInput(pointer);
@@ -320,6 +362,7 @@ async function testLocalIngestNotifiesImmediately() {
 async function testUnsubscribeStopsCallbacks() {
   localStorage.clear();
   harness.reset();
+  harness.resetMetrics();
 
   const pointer = { type: "e", value: "view-counter-unsubscribe" };
   const pointerKey = harness.pointerKeyFromInput(pointer);
@@ -354,6 +397,63 @@ async function testUnsubscribeStopsCallbacks() {
   );
 }
 
+// Cached totals older than VIEW_COUNT_CACHE_TTL_MS should be discarded and rehydrated from relays.
+async function testHydrationRefreshesAfterCacheTtl() {
+  harness.reset();
+  harness.resetMetrics();
+
+  assert.equal(
+    localStorage.getItem(VIEW_COUNTER_STORAGE_KEY),
+    null,
+    "stale cache snapshot should be cleared when it exceeds the TTL"
+  );
+
+  const pointer = CACHE_TTL_TEST_POINTER;
+  const pointerKey = harness.pointerKeyFromInput(pointer);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const events = [
+    { id: "evt-ttl-1", pubkey: "pub-cache-ttl-1", created_at: nowSeconds - 15 },
+    { id: "evt-ttl-2", pubkey: "pub-cache-ttl-2", created_at: nowSeconds - 5 },
+  ];
+  harness.setEvents(pointerKey, events);
+  harness.setCountTotal(pointerKey, events.length);
+
+  const updates = [];
+  const token = subscribeToVideoViewCount(pointer, (state) => {
+    updates.push({ ...state });
+  });
+
+  try {
+    await flushPromises();
+    await flushPromises();
+
+    const initial = updates.at(0);
+    assert.ok(initial, "expected initial state update for cache TTL test");
+    assert.equal(
+      initial.total,
+      0,
+      "expired cache entries should not hydrate subscribers with stale totals"
+    );
+
+    const { list: listCalls, count: countCalls } = harness.getCallCounts();
+    assert.ok(
+      listCalls > 0 || countCalls > 0,
+      "hydration should fetch fresh data from relays once the cache TTL elapses"
+    );
+
+    const final = updates.at(-1);
+    assert.ok(final, "expected final state update for cache TTL test");
+    assert.equal(
+      final.total,
+      events.length,
+      "totals should reflect fresh relay data after invalidating the expired cache"
+    );
+  } finally {
+    unsubscribeFromVideoViewCount(pointer, token);
+  }
+}
+
+await testHydrationRefreshesAfterCacheTtl();
 await testDedupesWithinWindow();
 await testHydrationSkipsStaleEventsAndRollsOff();
 await testLocalIngestNotifiesImmediately();
