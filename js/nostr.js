@@ -58,7 +58,28 @@ const WATCH_HISTORY_INDEX_IDENTIFIER_LOWER =
     ? WATCH_HISTORY_LIST_IDENTIFIER.trim().toLowerCase()
     : "";
 
-const WATCH_HISTORY_CHUNK_V2_PREFIX = "watch-history:v2";
+const WATCH_HISTORY_CHUNK_V2_PREFIX = (() => {
+  const rawIdentifier =
+    typeof WATCH_HISTORY_LIST_IDENTIFIER === "string"
+      ? WATCH_HISTORY_LIST_IDENTIFIER.trim()
+      : "";
+
+  if (rawIdentifier) {
+    const trimmed = rawIdentifier.replace(/\/+$/, "");
+    if (/[:/]index$/i.test(trimmed)) {
+      const base = trimmed.replace(/[:/]index$/i, "").replace(/\/+$/, "");
+      return base || "watch-history:v2";
+    }
+
+    if (/:v\d+$/i.test(trimmed)) {
+      return trimmed;
+    }
+
+    return `${trimmed}:v2`;
+  }
+
+  return "watch-history:v2";
+})();
 
 const LEGACY_WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX = (() => {
   const rawIdentifier =
