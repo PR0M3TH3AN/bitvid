@@ -36,6 +36,7 @@ const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
   "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again.";
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const WATCH_HISTORY_CACHE_STORAGE_KEY = "bitvid:watchHistoryCache:v1";
+const COUNT_UNSUPPORTED_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 
 // To limit error spam
 let errorLogCount = 0;
@@ -53,6 +54,36 @@ function logErrorOnce(message, eventContent = null) {
       "Maximum error log limit reached. Further errors will be suppressed."
     );
   }
+}
+
+function createDeferred() {
+  let resolveFn;
+  let rejectFn;
+  let state = "pending";
+  const promise = new Promise((resolve, reject) => {
+    resolveFn = (value) => {
+      if (state !== "pending") {
+        return;
+      }
+      state = "fulfilled";
+      resolve(value);
+    };
+    rejectFn = (error) => {
+      if (state !== "pending") {
+        return;
+      }
+      state = "rejected";
+      reject(error);
+    };
+  });
+
+  return {
+    promise,
+    resolve: resolveFn,
+    reject: rejectFn,
+    isSettled: () => state !== "pending",
+    getState: () => state,
+  };
 }
 
 function withNip07Timeout(operation) {
@@ -1108,6 +1139,9 @@ class NostrClient {
     this.watchHistoryRepublishTimers = new Map();
     this.watchHistoryCacheTtlMs = WATCH_HISTORY_CACHE_TTL_MS;
     this.countRequestCounter = 0;
+    this.countUnsupportedRelays = new Map();
+
+    this._poolReadyDeferred = createDeferred();
   }
 
   restoreLocalData() {
@@ -3597,13 +3631,19 @@ class NostrClient {
         .filter((r) => r.success)
         .map((r) => r.url);
       if (successfulRelays.length === 0) {
-        throw new Error("No relays connected");
+        const error = new Error("No relays connected");
+        this._poolReadyDeferred.reject(error);
+        this.pool = null;
+        throw error;
       }
       if (isDevMode) {
         console.log(`Connected to ${successfulRelays.length} relay(s)`);
       }
+      this._poolReadyDeferred.resolve();
     } catch (err) {
       console.error("Nostr init failed:", err);
+      this._poolReadyDeferred.reject(err);
+      this.pool = null;
       throw err;
     }
   }
@@ -4699,6 +4739,46 @@ class NostrClient {
     return normalized;
   }
 
+  markCountUnsupported(relayUrl, ttlMs = COUNT_UNSUPPORTED_COOLDOWN_MS) {
+    const normalizedUrl = typeof relayUrl === "string" ? relayUrl.trim() : "";
+    if (!normalizedUrl) {
+      return;
+    }
+    const now = Date.now();
+    const expiry = now + Math.max(0, Number(ttlMs) || 0);
+    this.countUnsupportedRelays.set(normalizedUrl, expiry);
+  }
+
+  isCountTemporarilyUnsupported(relayUrl) {
+    const normalizedUrl = typeof relayUrl === "string" ? relayUrl.trim() : "";
+    if (!normalizedUrl) {
+      return false;
+    }
+    const expiry = this.countUnsupportedRelays.get(normalizedUrl);
+    if (!expiry) {
+      return false;
+    }
+    if (Date.now() >= expiry) {
+      this.countUnsupportedRelays.delete(normalizedUrl);
+      return false;
+    }
+    return true;
+  }
+
+  waitForPool(timeoutMs) {
+    if (this.pool && this._poolReadyDeferred.isSettled()) {
+      return Promise.resolve();
+    }
+
+    const promise = this._poolReadyDeferred.promise;
+    const numericTimeout = Number(timeoutMs);
+    if (!Number.isFinite(numericTimeout) || numericTimeout <= 0) {
+      return promise;
+    }
+
+    return withRequestTimeout(promise, numericTimeout, null, "Timed out waiting for Nostr pool readiness");
+  }
+
   generateCountRequestId(prefix = "count") {
     this.countRequestCounter += 1;
     if (this.countRequestCounter > Number.MAX_SAFE_INTEGER - 1) {
@@ -4818,6 +4898,7 @@ class NostrClient {
     } else if (typeof relay.count === "function") {
       countPromise = relay.count(normalizedFilters, { id: requestId });
     } else {
+      this.markCountUnsupported(normalizedUrl);
       throw new Error(
         `[nostr] Relay ${normalizedUrl} does not support COUNT frames.`
       );
@@ -4854,6 +4935,13 @@ class NostrClient {
 
     const perRelayResults = await Promise.all(
       relayList.map(async (url) => {
+        if (this.isCountTemporarilyUnsupported(url)) {
+          return {
+            url,
+            ok: false,
+            error: new Error("COUNT unsupported (cached)"),
+          };
+        }
         try {
           const frame = await this.sendRawCountFrame(url, normalizedFilters, {
             timeoutMs: options.timeoutMs,
@@ -4861,8 +4949,19 @@ class NostrClient {
           const count = this.extractCountValue(frame?.[2]);
           return { url, ok: true, frame, count };
         } catch (error) {
-          if (isDevMode) {
-            console.warn(`[nostr] COUNT request failed on ${url}:`, error);
+          if (
+            error &&
+            typeof error.message === "string" &&
+            error.message.includes("does not support COUNT frames")
+          ) {
+            this.markCountUnsupported(url);
+            logErrorOnce(`[nostr] COUNT disabled for ${url} (no support).`);
+          } else if (isDevMode) {
+            const message =
+              error && typeof error.message === "string"
+                ? error.message
+                : String(error);
+            logErrorOnce(`[nostr] COUNT request failed on ${url}: ${message}`);
           }
           return { url, ok: false, error };
         }

@@ -194,8 +194,27 @@ function clearLegacyStorageFor(listKey) {
   }
 }
 
-function ensureNostrReady() {
-  if (!nostrClient || !nostrClient.pool) {
+async function ensureNostrReady() {
+  if (!nostrClient) {
+    throw createError(
+      "nostr-unavailable",
+      "Nostr relay pool is not initialized."
+    );
+  }
+
+  if (typeof nostrClient.waitForPool === "function") {
+    try {
+      await nostrClient.waitForPool();
+    } catch (error) {
+      throw createError(
+        "nostr-unavailable",
+        "Nostr relay pool is not initialized.",
+        error
+      );
+    }
+  }
+
+  if (!nostrClient.pool) {
     throw createError(
       "nostr-unavailable",
       "Nostr relay pool is not initialized."
@@ -257,7 +276,7 @@ function extractNpubsFromEvent(event) {
 }
 
 async function loadNostrList(identifier) {
-  const relays = ensureNostrReady();
+  const relays = await ensureNostrReady();
   const dTagValue = `${ADMIN_LIST_NAMESPACE}:${identifier}`;
   const filter = {
     kinds: [30000],
@@ -401,14 +420,27 @@ function publishToRelay(url, signedEvent, listKey) {
       }
 
       if (typeof pub.on === "function") {
-        pub.on("ok", () => finalize(true));
-        pub.on("seen", () => finalize(true));
-        pub.on("failed", (reason) => {
-          const error =
-            reason instanceof Error ? reason : new Error(String(reason || "failed"));
-          finalize(false, error);
-        });
-        return;
+        try {
+          pub.on("ok", () => finalize(true));
+          pub.on("seen", () => finalize(true));
+          pub.on("failed", (reason) => {
+            const error =
+              reason instanceof Error
+                ? reason
+                : new Error(String(reason || "failed"));
+            finalize(false, error);
+          });
+          return;
+        } catch (listenerError) {
+          if (isDevMode) {
+            console.warn(
+              `[adminListStore] Failed to wire publish listeners for ${url}:`,
+              listenerError
+            );
+          }
+          finalize(true);
+          return;
+        }
       }
 
       if (typeof pub.then === "function") {
@@ -433,7 +465,7 @@ function publishToRelay(url, signedEvent, listKey) {
 }
 
 async function persistNostrState(actorNpub, updates = {}) {
-  ensureNostrReady();
+  await ensureNostrReady();
   const extension = window?.nostr;
   if (!extension || typeof extension.signEvent !== "function") {
     throw createError(
@@ -510,7 +542,7 @@ async function persistNostrState(actorNpub, updates = {}) {
       throw createError("signature-failed", "Failed to sign admin list event.", error);
     }
 
-    const relays = ensureNostrReady();
+    const relays = await ensureNostrReady();
     const publishResults = await Promise.all(
       relays.map((url) => publishToRelay(url, signedEvent, listKey))
     );
