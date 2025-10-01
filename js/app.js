@@ -6465,7 +6465,8 @@ class bitvidApp {
     const nextActivePubkey =
       normalizedPubkey || (typeof pubkey === "string" ? pubkey.trim() : "");
 
-    if (previousActivePubkey !== nextActivePubkey) {
+    const identityChanged = previousActivePubkey !== nextActivePubkey;
+    if (identityChanged) {
       this.resetViewLoggingState();
     }
 
@@ -6475,6 +6476,21 @@ class bitvidApp {
       this.pubkey = pubkey;
     }
     this.currentUserNpub = this.safeEncodeNpub(this.pubkey);
+
+    if (
+      identityChanged &&
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
+      window.dispatchEvent(
+        new CustomEvent("bitvid:auth-changed", {
+          detail: {
+            pubkey: nextActivePubkey || null,
+            previousPubkey: previousActivePubkey || null,
+          },
+        })
+      );
+    }
 
     let savedProfilesMutated = false;
     if (normalizedPubkey) {
@@ -6537,9 +6553,27 @@ class bitvidApp {
    */
   async logout() {
     nostrClient.logout();
+    const previousPubkey =
+      this.normalizeHexPubkey(this.pubkey) ||
+      (typeof this.pubkey === "string" ? this.pubkey.trim() : "");
     this.resetViewLoggingState();
     this.pubkey = null;
     this.currentUserNpub = null;
+
+    if (
+      previousPubkey &&
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
+      window.dispatchEvent(
+        new CustomEvent("bitvid:auth-changed", {
+          detail: {
+            pubkey: null,
+            previousPubkey,
+          },
+        })
+      );
+    }
 
     this.persistActiveProfileSelection(null, { persist: true });
 

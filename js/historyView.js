@@ -484,6 +484,48 @@ export function createWatchHistoryRenderer(config = {}) {
   const providedBeforeInitialLoad = mergedConfig.beforeInitialLoad;
   const providedGetSnapshotFingerprint = mergedConfig.getSnapshotFingerprint;
 
+  let authChangeListener = null;
+  let authRefreshPromise = null;
+  let scheduleAuthRefresh = null;
+
+  const normalizeActorHint = (actorHint) => {
+    if (typeof actorHint === "string") {
+      const trimmed = actorHint.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+    return null;
+  };
+
+  const attachAuthChangeListener = () => {
+    if (authChangeListener || typeof window === "undefined") {
+      return;
+    }
+
+    authChangeListener = (event) => {
+      const detail = event?.detail || {};
+      const actorHint =
+        typeof detail.pubkey === "string" ? detail.pubkey : null;
+      try {
+        scheduleAuthRefresh?.(actorHint ?? null);
+      } catch (error) {
+        console.warn("[historyView] Failed to schedule auth refresh:", error);
+      }
+    };
+
+    window.addEventListener("bitvid:auth-changed", authChangeListener);
+  };
+
+  const detachAuthChangeListener = () => {
+    if (!authChangeListener || typeof window === "undefined") {
+      return;
+    }
+
+    window.removeEventListener("bitvid:auth-changed", authChangeListener);
+    authChangeListener = null;
+  };
+
   const selectors = {
     view: viewSelector,
     grid: gridSelector,
@@ -1106,6 +1148,51 @@ export function createWatchHistoryRenderer(config = {}) {
     });
   };
 
+  scheduleAuthRefresh = (actorHint) => {
+    const normalizedActor = normalizeActorHint(actorHint);
+
+    const perform = async () => {
+      const nextActor = normalizedActor || null;
+
+      try {
+        const { view } = getElements();
+        if (!view) {
+          state.actor = nextActor;
+          state.snapshotFingerprint = null;
+          state.initialized = false;
+          state.resolvedVideos = [];
+          state.hasMore = true;
+          state.isLoading = false;
+          cleanupObservers();
+          return;
+        }
+
+        await runInitialLoad({ actor: nextActor });
+      } catch (error) {
+        console.error(
+          "[historyView] Failed to refresh watch history after auth change:",
+          error
+        );
+      }
+    };
+
+    const pendingRefresh =
+      authRefreshPromise !== null
+        ? authRefreshPromise.then(perform, perform)
+        : perform();
+
+    let currentPromise;
+    const finalize = () => {
+      if (authRefreshPromise === currentPromise) {
+        authRefreshPromise = null;
+      }
+    };
+
+    currentPromise = pendingRefresh.finally(finalize);
+    authRefreshPromise = currentPromise;
+    return currentPromise;
+  };
+
   const runInitialLoad = async (options = {}) => {
     const { actor: actorHint = null, prefetched = null, fingerprintOverride } =
       typeof options === "object" && options !== null ? options : {};
@@ -1203,6 +1290,8 @@ export function createWatchHistoryRenderer(config = {}) {
       actor: state.actor,
     });
   };
+
+  attachAuthChangeListener();
 
   return {
     async init() {
@@ -1313,6 +1402,7 @@ export function createWatchHistoryRenderer(config = {}) {
       debugLog("destroy called");
       cleanupObservers();
       cleanupGridHandler();
+      detachAuthChangeListener();
       state.initialized = false;
       state.resolvedVideos = [];
       state.hasMore = true;
@@ -1321,6 +1411,9 @@ export function createWatchHistoryRenderer(config = {}) {
       state.snapshotFingerprint = null;
       resetUiState();
       setLoadingVisible(false);
+    },
+    async refresh(actorHint = null) {
+      await scheduleAuthRefresh(actorHint);
     },
     render() {
       renderResolvedVideos();
@@ -1340,7 +1433,10 @@ export async function initHistoryView() {
   await watchHistoryRenderer.init();
 }
 
-if (!window.bitvid) {
-  window.bitvid = {};
+if (typeof window !== "undefined") {
+  if (!window.bitvid) {
+    window.bitvid = {};
+  }
+  window.bitvid.initHistoryView = initHistoryView;
+  window.bitvid.watchHistoryRenderer = watchHistoryRenderer;
 }
-window.bitvid.initHistoryView = initHistoryView;
