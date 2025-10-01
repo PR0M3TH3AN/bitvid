@@ -5120,16 +5120,17 @@ class bitvidApp {
     }
 
     if (loadError) {
+      this.showStatus(null);
+      this.setAdminLoading(false);
+
       if (loadError?.code === "nostr-unavailable") {
         console.info("Moderation lists are still syncing with relays.");
         return;
       }
 
       console.error("Failed to load admin lists:", loadError);
-      this.showStatus(null);
       this.showError("Unable to load moderation lists. Please try again.");
       this.clearAdminLists();
-      this.setAdminLoading(false);
       return;
     }
 
