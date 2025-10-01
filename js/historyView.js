@@ -5,6 +5,11 @@ import { WATCH_HISTORY_BATCH_RESOLVE } from "./config.js";
 import { subscriptions } from "./subscriptions.js";
 import { accessControl } from "./accessControl.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
+import {
+  toNumber,
+  getWatchedAtScore,
+  compareByWatchedAtDesc,
+} from "./watchHistorySort.js";
 
 const DEFAULT_BATCH_SIZE = 20;
 const BATCH_SIZE = WATCH_HISTORY_BATCH_RESOLVE ? DEFAULT_BATCH_SIZE : 1;
@@ -14,11 +19,6 @@ export const WATCH_HISTORY_EMPTY_COPY =
 
 const WATCH_HISTORY_LOADING_STATUS = "Fetching watch history from relays…";
 const WATCH_HISTORY_EMPTY_STATUS = "No watch history yet.";
-
-function toNumber(value, fallback) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
 
 function getVideoAuthorIdentifiers(video) {
   if (!video || typeof video !== "object") {
@@ -117,24 +117,6 @@ function filterAccessibleVideos(videos) {
 
     return !isVideoBlocked(video);
   });
-}
-
-function getWatchedAtScore(video) {
-  if (!video || typeof video !== "object") {
-    return Number.NEGATIVE_INFINITY;
-  }
-
-  const watchedAt = toNumber(video?.watchHistory?.watchedAt, Number.NaN);
-  if (Number.isFinite(watchedAt)) {
-    return watchedAt;
-  }
-
-  const createdAtSeconds = toNumber(video?.created_at, Number.NaN);
-  if (Number.isFinite(createdAtSeconds)) {
-    return createdAtSeconds * 1000;
-  }
-
-  return Number.NEGATIVE_INFINITY;
 }
 
 function getAbsoluteShareUrl(nevent) {
@@ -822,7 +804,9 @@ export function createWatchHistoryRenderer(config = {}) {
     state.resolvedVideos.forEach((video) => ingest(dedupeMap, video));
     nextVideos.forEach((video) => ingest(dedupeMap, video));
 
-    state.resolvedVideos = Array.from(dedupeMap.values());
+    state.resolvedVideos = Array.from(dedupeMap.values()).sort(
+      compareByWatchedAtDesc
+    );
     applyAccessFilters();
   };
 
