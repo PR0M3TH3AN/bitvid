@@ -11,6 +11,7 @@ import {
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
   WATCH_HISTORY_CACHE_TTL_MS,
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
+  VIEW_COUNT_BACKFILL_MAX_DAYS,
 } from "./config.js";
 import {
   ACCEPT_LEGACY_V1,
@@ -3052,8 +3053,51 @@ class NostrClient {
   }
 
   async countVideoViewEvents(pointer, options = {}) {
+    const relayList =
+      Array.isArray(options?.relays) && options.relays.length
+        ? options.relays
+        : undefined;
+
+    const fallbackListOptions = (() => {
+      const listOptions = {};
+
+      if (relayList) {
+        listOptions.relays = relayList;
+      }
+
+      if (Number.isFinite(options?.since)) {
+        listOptions.since = Math.floor(options.since);
+      } else {
+        const horizonDaysRaw = Number(VIEW_COUNT_BACKFILL_MAX_DAYS);
+        const horizonDays = Number.isFinite(horizonDaysRaw)
+          ? Math.max(0, Math.floor(horizonDaysRaw))
+          : 0;
+        if (horizonDays > 0) {
+          const secondsPerDay = 86_400;
+          const nowSeconds = Math.floor(Date.now() / 1000);
+          const fallbackSinceSeconds = Math.max(
+            0,
+            nowSeconds - horizonDays * secondsPerDay
+          );
+          listOptions.since = Math.floor(fallbackSinceSeconds);
+        }
+      }
+
+      if (Number.isFinite(options?.until)) {
+        listOptions.until = Math.floor(options.until);
+      }
+
+      if (Number.isFinite(options?.limit) && options.limit > 0) {
+        listOptions.limit = Math.floor(options.limit);
+      }
+
+      return listOptions;
+    })();
+
     if (!this.pool) {
-      const events = await this.listVideoViewEvents(pointer, options);
+      const events = await this.listVideoViewEvents(pointer, {
+        ...fallbackListOptions,
+      });
       return {
         total: Array.isArray(events) ? events.length : 0,
         perRelay: [],
@@ -3067,9 +3111,6 @@ class NostrClient {
     if (!pointerFilter || typeof pointerFilter !== "object") {
       throw new Error("Invalid video pointer supplied for view lookup.");
     }
-    const relayList = Array.isArray(options?.relays) && options.relays.length
-      ? options.relays
-      : undefined;
 
     const signal = options?.signal;
     const normalizeAbortError = () => {
@@ -3122,7 +3163,7 @@ class NostrClient {
         : null;
 
     const listPromise = this.listVideoViewEvents(pointer, {
-      relays: relayList,
+      ...fallbackListOptions,
     });
 
     const events = abortPromise
