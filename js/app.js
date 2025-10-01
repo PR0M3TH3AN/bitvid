@@ -10615,13 +10615,26 @@ class bitvidApp {
       typeof (video.id || eventId) === "string"
         ? (video.id || eventId).trim()
         : "";
-    const fallbackPointer =
-      !primaryPointer && fallbackId
-        ? ["e", fallbackId]
-        : null;
+    const fallbackPointer = fallbackId ? ["e", fallbackId] : null;
 
-    const resolvedPointer = primaryPointer || fallbackPointer;
-    const resolvedPointerKey = pointerArrayToKey(resolvedPointer);
+    let resolvedPointer = null;
+    let resolvedPointerKey = "";
+    const pointerCandidates = [];
+    if (primaryPointer) {
+      pointerCandidates.push(primaryPointer);
+    }
+    if (fallbackPointer) {
+      pointerCandidates.push(fallbackPointer);
+    }
+
+    for (const candidate of pointerCandidates) {
+      const key = pointerArrayToKey(candidate);
+      if (key) {
+        resolvedPointer = candidate;
+        resolvedPointerKey = key;
+        break;
+      }
+    }
 
     this.currentVideoPointer = resolvedPointer && resolvedPointerKey
       ? resolvedPointer
