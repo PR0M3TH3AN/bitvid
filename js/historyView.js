@@ -487,6 +487,7 @@ export function createWatchHistoryRenderer(config = {}) {
   let authChangeListener = null;
   let authRefreshPromise = null;
   let scheduleAuthRefresh = null;
+  let watchHistoryUpdateListener = null;
 
   const normalizeActorHint = (actorHint) => {
     if (typeof actorHint === "string") {
@@ -524,6 +525,53 @@ export function createWatchHistoryRenderer(config = {}) {
 
     window.removeEventListener("bitvid:auth-changed", authChangeListener);
     authChangeListener = null;
+  };
+
+  const handleWatchHistoryUpdate = (event) => {
+    const detail = event?.detail || {};
+    const actorHint =
+      typeof detail.actor === "string" && detail.actor.trim()
+        ? detail.actor.trim()
+        : "";
+
+    if (actorHint && state.actor && actorHint !== state.actor) {
+      return;
+    }
+
+    const normalizedActor = actorHint || state.actor || null;
+
+    try {
+      scheduleAuthRefresh?.(normalizedActor);
+    } catch (error) {
+      console.warn(
+        "[historyView] Failed to refresh watch history after update:",
+        error
+      );
+    }
+  };
+
+  const attachWatchHistoryListener = () => {
+    if (watchHistoryUpdateListener || typeof window === "undefined") {
+      return;
+    }
+
+    watchHistoryUpdateListener = handleWatchHistoryUpdate;
+    window.addEventListener(
+      "bitvid:watch-history-updated",
+      watchHistoryUpdateListener
+    );
+  };
+
+  const detachWatchHistoryListener = () => {
+    if (!watchHistoryUpdateListener || typeof window === "undefined") {
+      return;
+    }
+
+    window.removeEventListener(
+      "bitvid:watch-history-updated",
+      watchHistoryUpdateListener
+    );
+    watchHistoryUpdateListener = null;
   };
 
   const selectors = {
@@ -1292,6 +1340,7 @@ export function createWatchHistoryRenderer(config = {}) {
   };
 
   attachAuthChangeListener();
+  attachWatchHistoryListener();
 
   return {
     async init() {
@@ -1403,6 +1452,7 @@ export function createWatchHistoryRenderer(config = {}) {
       cleanupObservers();
       cleanupGridHandler();
       detachAuthChangeListener();
+      detachWatchHistoryListener();
       state.initialized = false;
       state.resolvedVideos = [];
       state.hasMore = true;

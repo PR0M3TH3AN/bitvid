@@ -4850,8 +4850,7 @@ class bitvidApp {
     }
 
     try {
-      await this.profileHistoryRenderer.ensureInitialLoad();
-      this.profileHistoryRenderer.resume();
+      await this.profileHistoryRenderer.refresh();
     } catch (error) {
       console.error(
         "[profileModal] Failed to populate watch history pane:",

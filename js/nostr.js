@@ -1523,6 +1523,66 @@ class NostrClient {
     }
   }
 
+  notifyWatchHistoryUpdate(actor, entry = null) {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const normalizedActor =
+      typeof actor === "string" && actor.trim() ? actor.trim() : "";
+
+    const detail = { actor: normalizedActor || null };
+
+    if (entry && typeof entry === "object") {
+      detail.items = Array.isArray(entry.items)
+        ? entry.items.map((item) => clonePointerItem(item)).filter(Boolean)
+        : [];
+      detail.pointerEvent = entry.pointerEvent
+        ? cloneEventForCache(entry.pointerEvent)
+        : null;
+    }
+
+    if (typeof window.dispatchEvent !== "function") {
+      return;
+    }
+
+    try {
+      const EventCtor =
+        typeof window.CustomEvent === "function"
+          ? window.CustomEvent
+          : null;
+      const BaseEventCtor =
+        !EventCtor && typeof window.Event === "function"
+          ? window.Event
+          : typeof Event === "function"
+          ? Event
+          : null;
+
+      const event = EventCtor
+        ? new EventCtor("bitvid:watch-history-updated", { detail })
+        : BaseEventCtor
+        ? new BaseEventCtor("bitvid:watch-history-updated")
+        : null;
+
+      if (!event) {
+        return;
+      }
+
+      if (!EventCtor) {
+        event.detail = detail;
+      }
+
+      window.dispatchEvent(event);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[nostr] Failed to dispatch watch history update event:",
+          error
+        );
+      }
+    }
+  }
+
   async encryptWatchHistoryPayload(actorPubkey, payload) {
     const normalizedActor =
       typeof actorPubkey === "string" && actorPubkey.trim()
@@ -2064,6 +2124,7 @@ class NostrClient {
 
     this.watchHistoryCache.set(normalizedActor, newEntry);
     this.persistWatchHistoryEntry(normalizedActor, newEntry);
+    this.notifyWatchHistoryUpdate(normalizedActor, newEntry);
 
     return {
       ok: overallSuccess,
