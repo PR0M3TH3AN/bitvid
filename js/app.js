@@ -7074,59 +7074,9 @@ class bitvidApp {
         state;
 
       (async () => {
+        let viewResult;
         try {
-          const result = await recordVideoView(thresholdPointer);
-          const viewOk = !!result?.view?.ok;
-          if (viewOk) {
-            const eventIdentityKey =
-              this.deriveViewIdentityKeyFromEvent(result?.view?.event) ||
-              state.viewerIdentityKey ||
-              this.getActiveViewIdentityKey();
-            const keyToPersist = this.buildViewCooldownKey(
-              thresholdPointerKey,
-              eventIdentityKey
-            );
-            if (keyToPersist) {
-              this.loggedViewPointerKeys.add(keyToPersist);
-            }
-            if (result?.view?.event) {
-              ingestLocalViewEvent({
-                event: result.view.event,
-                pointer: thresholdPointer,
-              });
-            }
-          } else if (isDevMode) {
-            console.warn(
-              "[playVideoWithFallback] View event rejected by relays:",
-              result?.view || result
-            );
-          }
-
-          let historyOk = !!result?.history?.ok;
-          if (!historyOk) {
-            if (isDevMode) {
-              console.warn(
-                "[playVideoWithFallback] Watch history update via recordVideoView failed; retrying.",
-                result?.history || result
-              );
-            }
-            const fallbackHistory = await updateWatchHistoryList(
-              thresholdPointer
-            );
-            historyOk = !!fallbackHistory?.ok;
-            if (!historyOk && isDevMode) {
-              console.warn(
-                "[playVideoWithFallback] Watch history retry failed:",
-                fallbackHistory
-              );
-            }
-          }
-
-          if (!viewOk && isDevMode && historyOk) {
-            console.warn(
-              "[playVideoWithFallback] Watch history updated but view event was rejected."
-            );
-          }
+          viewResult = await recordVideoView(thresholdPointer);
         } catch (error) {
           if (isDevMode) {
             console.warn(
@@ -7134,23 +7084,48 @@ class bitvidApp {
               error
             );
           }
-          try {
-            const fallbackHistory = await updateWatchHistoryList(
-              thresholdPointer
+        }
+
+        const viewOk = !!viewResult?.ok;
+        if (viewOk) {
+          const eventIdentityKey =
+            this.deriveViewIdentityKeyFromEvent(viewResult?.event) ||
+            state.viewerIdentityKey ||
+            this.getActiveViewIdentityKey();
+          const keyToPersist = this.buildViewCooldownKey(
+            thresholdPointerKey,
+            eventIdentityKey
+          );
+          if (keyToPersist) {
+            this.loggedViewPointerKeys.add(keyToPersist);
+          }
+          if (viewResult?.event) {
+            ingestLocalViewEvent({
+              event: viewResult.event,
+              pointer: thresholdPointer,
+            });
+          }
+        } else if (isDevMode && viewResult) {
+          console.warn(
+            "[playVideoWithFallback] View event rejected by relays:",
+            viewResult
+          );
+        }
+
+        try {
+          const historyResult = await updateWatchHistoryList(thresholdPointer);
+          if (!historyResult?.ok && isDevMode) {
+            console.warn(
+              "[playVideoWithFallback] Watch history update failed:",
+              historyResult
             );
-            if (!fallbackHistory?.ok && isDevMode) {
-              console.warn(
-                "[playVideoWithFallback] Watch history retry after view exception failed:",
-                fallbackHistory
-              );
-            }
-          } catch (historyError) {
-            if (isDevMode) {
-              console.warn(
-                "[playVideoWithFallback] Exception while retrying watch history after view failure:",
-                historyError
-              );
-            }
+          }
+        } catch (historyError) {
+          if (isDevMode) {
+            console.warn(
+              "[playVideoWithFallback] Exception while updating watch history:",
+              historyError
+            );
           }
         }
       })().catch((error) => {
