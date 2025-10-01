@@ -577,7 +577,11 @@ async function testRecordVideoViewEmitsJsonPayload() {
   };
   nostrClient.pubkey = "";
 
-  nostrClient.updateWatchHistoryList = async () => ({ ok: true });
+  nostrClient.updateWatchHistoryList = async () => {
+    throw new Error(
+      "recordVideoView should not invoke updateWatchHistoryList during view publishes"
+    );
+  };
 
   try {
     const result = await nostrClient.recordVideoView(pointer, {
@@ -614,7 +618,7 @@ async function testRecordVideoViewEmitsJsonPayload() {
     );
 
     assert.equal(
-      result.view.event.content,
+      result.event.content,
       emittedEvent.content,
       "serialized payload should persist on the emitted event"
     );
