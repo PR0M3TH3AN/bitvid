@@ -113,3 +113,34 @@ export const WATCH_HISTORY_FETCH_EVENT_LIMIT = 12;
  * retention guarantees.
  */
 export const WATCH_HISTORY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long the view counter should treat repeat plays as duplicates.
+ *
+ * BitVid de-duplicates view events that occur within this rolling window so
+ * quick refreshes or stalled replays do not inflate the totals. The default of
+ * 24 hours mirrors common analytics tooling, but you can tighten or relax the
+ * window depending on how aggressively you want to filter repeat traffic.
+ */
+export const VIEW_COUNT_DEDUPE_WINDOW_SECONDS = 86_400;
+
+/**
+ * How far back the view counter should hydrate historical events during
+ * backfills.
+ *
+ * When a new analytics worker starts up, it can walk older Nostr events to
+ * reconstruct totals. Limiting the backfill horizon keeps catch-up jobs
+ * bounded—90 days covers recent trends without hammering relays for year-old
+ * history. Increase the number if you need deeper analytics or shrink it for
+ * lighter start-up workloads.
+ */
+export const VIEW_COUNT_BACKFILL_MAX_DAYS = 90;
+
+/**
+ * How long clients can trust cached view totals before re-fetching.
+ *
+ * Cached results smooth out traffic spikes and reduce relay load. Five minutes
+ * strikes a balance between responsiveness and efficiency; lower the TTL for
+ * fresher dashboards or raise it if your analytics traffic is heavy.
+ */
+export const VIEW_COUNT_CACHE_TTL_MS = 5 * 60 * 1000;
