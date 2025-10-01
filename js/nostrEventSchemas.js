@@ -10,6 +10,7 @@ export const NOTE_TYPES = Object.freeze({
   VIDEO_MIRROR: "videoMirror",
   RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
+  WATCH_HISTORY_INDEX: "watchHistoryIndex",
   WATCH_HISTORY_CHUNK: "watchHistoryChunk",
   SUBSCRIPTION_LIST: "subscriptionList",
   USER_BLOCK_LIST: "userBlockList",
@@ -91,13 +92,30 @@ const BASE_SCHEMAS = {
       description: "Optional plaintext content used for diagnostics.",
     },
   },
+  [NOTE_TYPES.WATCH_HISTORY_INDEX]: {
+    type: NOTE_TYPES.WATCH_HISTORY_INDEX,
+    label: "Watch history index",
+    kind: WATCH_HISTORY_KIND,
+    identifierTag: {
+      name: "d",
+      value: WATCH_HISTORY_LIST_IDENTIFIER,
+    },
+    snapshotTagName: "snapshot",
+    totalTagName: "chunks",
+    chunkPointerTagName: "a",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "json",
+      description:
+        "JSON payload describing the active snapshot and chunk count.",
+    },
+  },
   [NOTE_TYPES.WATCH_HISTORY_CHUNK]: {
     type: NOTE_TYPES.WATCH_HISTORY_CHUNK,
     label: "Watch history snapshot",
     kind: WATCH_HISTORY_KIND,
     identifierTag: {
       name: "d",
-      value: WATCH_HISTORY_LIST_IDENTIFIER,
     },
     encryptionTag: { name: "encrypted", value: "nip04" },
     snapshotTagName: "snapshot",
@@ -451,6 +469,73 @@ export function buildViewEvent({
     created_at,
     tags,
     content: typeof content === "string" ? content : String(content ?? ""),
+  };
+}
+
+export function buildWatchHistoryIndexEvent({
+  pubkey,
+  created_at,
+  snapshotId,
+  totalChunks,
+  chunkAddresses = [],
+  additionalTags = [],
+  content,
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.WATCH_HISTORY_INDEX);
+  const tags = [];
+  const identifierName = schema?.identifierTag?.name || "d";
+  const identifierValue = schema?.identifierTag?.value || WATCH_HISTORY_LIST_IDENTIFIER;
+  if (identifierName && identifierValue) {
+    tags.push([identifierName, identifierValue]);
+  }
+  const snapshotTagName = schema?.snapshotTagName || "snapshot";
+  if (snapshotTagName && snapshotId) {
+    tags.push([snapshotTagName, snapshotId]);
+  }
+  const totalTagName = schema?.totalTagName || "chunks";
+  if (totalTagName && Number.isFinite(totalChunks)) {
+    tags.push([totalTagName, String(Math.max(0, Math.floor(totalChunks)))]);
+  }
+  const pointerTagName = schema?.chunkPointerTagName || "a";
+  chunkAddresses.forEach((address) => {
+    if (typeof address === "string" && address) {
+      tags.push([pointerTagName, address]);
+    }
+  });
+
+  appendSchemaTags(tags, schema);
+
+  if (Array.isArray(additionalTags)) {
+    additionalTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+      }
+    });
+  }
+
+  let resolvedContent = content;
+  if (resolvedContent === undefined) {
+    const payload = {};
+    if (snapshotId) {
+      payload.snapshot = snapshotId;
+    }
+    if (Number.isFinite(totalChunks)) {
+      payload.totalChunks = Math.max(0, Math.floor(totalChunks));
+    }
+    resolvedContent = JSON.stringify(payload);
+  } else if (typeof resolvedContent !== "string") {
+    resolvedContent = JSON.stringify(resolvedContent ?? {});
+  }
+
+  return {
+    kind: schema?.kind ?? WATCH_HISTORY_KIND,
+    pubkey,
+    created_at,
+    tags,
+    content:
+      typeof resolvedContent === "string"
+        ? resolvedContent
+        : String(resolvedContent ?? ""),
   };
 }
 
