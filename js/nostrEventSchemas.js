@@ -30,6 +30,69 @@ export const ADMIN_LIST_IDENTIFIERS = Object.freeze({
 
 const DEFAULT_APPEND_TAGS = [];
 
+let cachedUtf8Encoder = null;
+
+function ensureValidUtf8Content(value) {
+  let normalized = "";
+  if (typeof value === "string") {
+    normalized = value;
+  } else if (value === undefined || value === null) {
+    normalized = "";
+  } else if (typeof value === "object") {
+    try {
+      const stringified = JSON.stringify(value);
+      normalized = typeof stringified === "string" ? stringified : "";
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[nostrEventSchemas] Failed to serialize view event content:",
+          error
+        );
+      }
+      normalized = "";
+    }
+  } else {
+    normalized = String(value);
+  }
+
+  if (!cachedUtf8Encoder && typeof TextEncoder !== "undefined") {
+    cachedUtf8Encoder = new TextEncoder();
+  }
+
+  if (cachedUtf8Encoder) {
+    try {
+      cachedUtf8Encoder.encode(normalized);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[nostrEventSchemas] Dropping invalid UTF-8 characters from event content",
+          error
+        );
+      }
+      const sanitized = Array.from(normalized)
+        .filter((char) => {
+          const code = char.charCodeAt(0);
+          return code < 0xd800 || code > 0xdfff;
+        })
+        .join("");
+      try {
+        cachedUtf8Encoder.encode(sanitized);
+        normalized = sanitized;
+      } catch (encodeError) {
+        if (isDevMode) {
+          console.warn(
+            "[nostrEventSchemas] Failed to normalize view event content; defaulting to empty string",
+            encodeError
+          );
+        }
+        normalized = "";
+      }
+    }
+  }
+
+  return normalized;
+}
+
 const BASE_SCHEMAS = {
   [NOTE_TYPES.VIDEO_POST]: {
     type: NOTE_TYPES.VIDEO_POST,
@@ -477,12 +540,14 @@ export function buildViewEvent({
   }
   appendSchemaTags(tags, schema);
 
+  const resolvedContent = ensureValidUtf8Content(content);
+
   return {
     kind: schema?.kind ?? WATCH_HISTORY_KIND,
     pubkey,
     created_at,
     tags,
-    content: typeof content === "string" ? content : String(content ?? ""),
+    content: resolvedContent,
   };
 }
 
