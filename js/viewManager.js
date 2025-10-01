@@ -67,6 +67,16 @@ export const viewInitRegistry = {
   explore: () => {
     console.log("Explore view loaded.");
   },
+  history: async () => {
+    try {
+      const module = await import("./historyView.js");
+      if (typeof module.initHistoryView === "function") {
+        await module.initHistoryView();
+      }
+    } catch (error) {
+      console.error("Failed to initialize history view:", error);
+    }
+  },
 
   /**
    * Subscriptions view:

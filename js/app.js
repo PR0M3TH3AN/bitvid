@@ -1,7 +1,11 @@
 // js/app.js
 
 import { loadView } from "./viewManager.js";
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  recordVideoView,
+  updateWatchHistoryList,
+} from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
 import { accessControl, normalizeNpub } from "./accessControl.js";
@@ -37,6 +41,7 @@ import {
   ensureBucketCors,
 } from "./storage/r2-s3.js";
 import { initQuickR2Upload } from "./r2-quick.js";
+import { createWatchHistoryRenderer } from "./historyView.js";
 
 function truncateMiddle(text, maxLength = 72) {
   if (!text || typeof text !== "string") {
@@ -54,6 +59,30 @@ function truncateMiddle(text, maxLength = 72) {
   return `${text.slice(0, front)}${ellipsis}${text.slice(text.length - back)}`;
 }
 
+function pointerArrayToKey(pointer) {
+  if (!Array.isArray(pointer) || pointer.length < 2) {
+    return "";
+  }
+
+  const type = pointer[0] === "a" ? "a" : pointer[0] === "e" ? "e" : "";
+  if (!type) {
+    return "";
+  }
+
+  const value =
+    typeof pointer[1] === "string" ? pointer[1].trim().toLowerCase() : "";
+  if (!value) {
+    return "";
+  }
+
+  const relay =
+    pointer.length > 2 && typeof pointer[2] === "string"
+      ? pointer[2].trim()
+      : "";
+
+  return relay ? `${type}:${value}:${relay}` : `${type}:${value}`;
+}
+
 /**
  * Simple "decryption" placeholder for private videos.
  */
@@ -68,6 +97,8 @@ const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
 const ADMIN_DM_IMAGE_URL =
   "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
 const BITVID_WEBSITE_URL = "https://bitvid.network/";
+const MAX_DISCUSSION_COUNT_VIDEOS = 24;
+const VIDEO_EVENT_KIND = 30078;
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 /**
@@ -496,6 +527,8 @@ class bitvidApp {
     // Lazy-loading helper for images
     this.mediaLoader = new MediaLoader();
     this.loadedThumbnails = new Map();
+    this.videoDiscussionCountCache = new Map();
+    this.inFlightDiscussionCounts = new Map();
     this.activeIntervals = [];
     this.urlPlaybackWatchdogCleanup = null;
 
@@ -515,12 +548,14 @@ class bitvidApp {
       account: null,
       relays: null,
       blocked: null,
+      history: null,
       admin: null,
     };
     this.profilePaneElements = {
       account: null,
       relays: null,
       blocked: null,
+      history: null,
       admin: null,
     };
     this.profileRelayList = null;
@@ -531,6 +566,8 @@ class bitvidApp {
     this.profileRelayInput = null;
     this.profileAddRelayBtn = null;
     this.profileRestoreRelaysBtn = null;
+    this.profileHistoryRenderer = null;
+    this.activeProfilePane = null;
     this.adminModeratorInput = null;
     this.adminAddModeratorBtn = null;
     this.adminModeratorList = null;
@@ -671,6 +708,10 @@ class bitvidApp {
     this.pubkey = null;
     this.currentMagnetUri = null;
     this.currentVideo = null;
+    this.currentVideoPointer = null;
+    this.currentVideoPointerKey = null;
+    this.playbackTelemetryState = null;
+    this.loggedViewPointerKeys = new Set();
     this.videoSubscription = null;
     this.videoList = null;
     this._videoListElement = null;
@@ -3883,6 +3924,8 @@ class bitvidApp {
         document.getElementById("profileNavRelays") || null;
       this.profileNavButtons.blocked =
         document.getElementById("profileNavBlocked") || null;
+      this.profileNavButtons.history =
+        document.getElementById("profileNavHistory") || null;
       this.profileNavButtons.admin =
         document.getElementById("profileNavAdmin") || null;
       this.profilePaneElements.account =
@@ -3891,6 +3934,8 @@ class bitvidApp {
         document.getElementById("profilePaneRelays") || null;
       this.profilePaneElements.blocked =
         document.getElementById("profilePaneBlocked") || null;
+      this.profilePaneElements.history =
+        document.getElementById("profilePaneHistory") || null;
       this.profilePaneElements.admin =
         document.getElementById("profilePaneAdmin") || null;
       this.profileRelayList = document.getElementById("relayList") || null;
@@ -3905,6 +3950,19 @@ class bitvidApp {
       this.profileAddRelayBtn = document.getElementById("addRelayBtn") || null;
       this.profileRestoreRelaysBtn =
         document.getElementById("restoreRelaysBtn") || null;
+      if (!this.profileHistoryRenderer) {
+        this.profileHistoryRenderer = createWatchHistoryRenderer({
+          viewSelector: "#profilePaneHistory",
+          gridSelector: "#profileHistoryGrid",
+          loadingSelector: "#profileHistoryLoading",
+          statusSelector: "#profileHistoryStatus",
+          emptySelector: "#profileHistoryEmpty",
+          sentinelSelector: "#profileHistorySentinel",
+          scrollContainerSelector: "#profileHistoryScroll",
+          emptyCopy: "You haven’t watched any videos yet.",
+          getActor: async () => this.pubkey || window.app?.pubkey || undefined,
+        });
+      }
       this.adminModeratorsSection =
         document.getElementById("adminModeratorsSection") || null;
       this.adminModeratorsEmpty =
@@ -4106,6 +4164,7 @@ class bitvidApp {
 
   selectProfilePane(name = "account") {
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";
+    const previous = this.activeProfilePane;
     const availableKeys = Object.keys(this.profilePaneElements).filter((key) => {
       const pane = this.profilePaneElements[key];
       if (!(pane instanceof HTMLElement)) {
@@ -4124,6 +4183,14 @@ class bitvidApp {
     const target = availableKeys.includes(normalized)
       ? normalized
       : fallbackTarget;
+
+    if (previous === "history" && target !== "history") {
+      try {
+        this.profileHistoryRenderer?.pause();
+      } catch (error) {
+        console.warn("[profileModal] Failed to pause history renderer:", error);
+      }
+    }
 
     Object.entries(this.profilePaneElements).forEach(([key, pane]) => {
       if (!(pane instanceof HTMLElement)) {
@@ -4146,6 +4213,11 @@ class bitvidApp {
     });
 
     this.updateProfileModalFocusables();
+    this.activeProfilePane = target;
+
+    if (target === "history") {
+      void this.populateProfileWatchHistory();
+    }
   }
 
   updateProfileModalFocusables() {
@@ -4188,6 +4260,7 @@ class bitvidApp {
       console.error("Failed to refresh admin pane while opening profile modal:", error);
     }
 
+    this.activeProfilePane = null;
     this.selectProfilePane("account");
     this.populateProfileRelays();
     try {
@@ -4309,6 +4382,17 @@ class bitvidApp {
     }
 
     this.closeAllMoreMenus();
+
+    try {
+      this.profileHistoryRenderer?.destroy();
+    } catch (error) {
+      console.warn(
+        "[profileModal] Failed to reset watch history renderer on close:",
+        error
+      );
+    }
+
+    this.activeProfilePane = null;
 
     if (
       this.lastFocusedBeforeProfileModal &&
@@ -4515,6 +4599,22 @@ class bitvidApp {
 
       this.profileBlockedList.appendChild(item);
     });
+  }
+
+  async populateProfileWatchHistory() {
+    if (!this.profileHistoryRenderer) {
+      return;
+    }
+
+    try {
+      await this.profileHistoryRenderer.ensureInitialLoad();
+      this.profileHistoryRenderer.resume();
+    } catch (error) {
+      console.error(
+        "[profileModal] Failed to populate watch history pane:",
+        error
+      );
+    }
   }
 
   async handleAddProfile() {
@@ -5474,6 +5574,12 @@ class bitvidApp {
   }
 
   attachVideoListHandler() {
+    const nextTarget = document;
+
+    if (this._videoListElement === nextTarget && this._videoListClickHandler) {
+      return;
+    }
+
     if (this._videoListElement && this._videoListClickHandler) {
       this._videoListElement.removeEventListener(
         "click",
@@ -5481,10 +5587,6 @@ class bitvidApp {
       );
       this._videoListElement = null;
       this._videoListClickHandler = null;
-    }
-
-    if (!this.videoList) {
-      return;
     }
 
     const handler = async (event) => {
@@ -5495,7 +5597,9 @@ class bitvidApp {
         return;
       }
 
-      if (event.button === 0 && !event.ctrlKey && !event.metaKey) {
+      const isPrimaryClick =
+        typeof event.button !== "number" || event.button === 0;
+      if (isPrimaryClick && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
 
         const rawUrlValue =
@@ -5528,9 +5632,9 @@ class bitvidApp {
       }
     };
 
-    this._videoListElement = this.videoList;
+    nextTarget.addEventListener("click", handler);
+    this._videoListElement = nextTarget;
     this._videoListClickHandler = handler;
-    this.videoList.addEventListener("click", handler);
   }
 
   /**
@@ -6261,6 +6365,7 @@ class bitvidApp {
         `[cleanup] Begin (preserveSubscriptions=${preserveSubscriptions}, preserveObservers=${preserveObservers})`
       );
       try {
+        this.cancelPendingViewLogging();
         this.clearActiveIntervals();
         this.cleanupUrlPlaybackWatchdog();
 
@@ -6355,6 +6460,209 @@ class bitvidApp {
       } finally {
         this.urlPlaybackWatchdogCleanup = null;
       }
+    }
+  }
+
+  cancelPendingViewLogging() {
+    const state = this.playbackTelemetryState;
+    if (!state) {
+      return;
+    }
+
+    if (state.timerId) {
+      clearTimeout(state.timerId);
+    }
+
+    if (Array.isArray(state.handlers) && state.videoEl) {
+      for (const { eventName, handler } of state.handlers) {
+        try {
+          state.videoEl.removeEventListener(eventName, handler);
+        } catch (err) {
+          if (isDevMode) {
+            console.warn(
+              `[cancelPendingViewLogging] Failed to detach ${eventName} listener:`,
+              err
+            );
+          }
+        }
+      }
+    }
+
+    this.playbackTelemetryState = null;
+  }
+
+  preparePlaybackViewLogging(videoEl) {
+    this.cancelPendingViewLogging();
+
+    if (!videoEl || typeof videoEl.addEventListener !== "function") {
+      return;
+    }
+
+    const pointer = this.currentVideoPointer;
+    const pointerKey = this.currentVideoPointerKey || pointerArrayToKey(pointer);
+    if (!pointer || !pointerKey) {
+      return;
+    }
+
+    if (this.loggedViewPointerKeys.has(pointerKey)) {
+      return;
+    }
+
+    const THRESHOLD_SECONDS = 12;
+    const state = {
+      videoEl,
+      pointer,
+      pointerKey,
+      handlers: [],
+      timerId: null,
+      fired: false,
+    };
+
+    const finalize = () => {
+      if (state.fired) {
+        return;
+      }
+      state.fired = true;
+      cancelTimer();
+      this.cancelPendingViewLogging();
+
+      const { pointer: thresholdPointer, pointerKey: thresholdPointerKey } =
+        state;
+
+      (async () => {
+        try {
+          const result = await recordVideoView(thresholdPointer);
+          const viewOk = !!result?.view?.ok;
+          if (viewOk) {
+            this.loggedViewPointerKeys.add(thresholdPointerKey);
+          } else if (isDevMode) {
+            console.warn(
+              "[playVideoWithFallback] View event rejected by relays:",
+              result?.view || result
+            );
+          }
+
+          let historyOk = !!result?.history?.ok;
+          if (!historyOk) {
+            if (isDevMode) {
+              console.warn(
+                "[playVideoWithFallback] Watch history update via recordVideoView failed; retrying.",
+                result?.history || result
+              );
+            }
+            const fallbackHistory = await updateWatchHistoryList(
+              thresholdPointer
+            );
+            historyOk = !!fallbackHistory?.ok;
+            if (!historyOk && isDevMode) {
+              console.warn(
+                "[playVideoWithFallback] Watch history retry failed:",
+                fallbackHistory
+              );
+            }
+          }
+
+          if (!viewOk && isDevMode && historyOk) {
+            console.warn(
+              "[playVideoWithFallback] Watch history updated but view event was rejected."
+            );
+          }
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              "[playVideoWithFallback] Exception while recording video view:",
+              error
+            );
+          }
+          try {
+            const fallbackHistory = await updateWatchHistoryList(
+              thresholdPointer
+            );
+            if (!fallbackHistory?.ok && isDevMode) {
+              console.warn(
+                "[playVideoWithFallback] Watch history retry after view exception failed:",
+                fallbackHistory
+              );
+            }
+          } catch (historyError) {
+            if (isDevMode) {
+              console.warn(
+                "[playVideoWithFallback] Exception while retrying watch history after view failure:",
+                historyError
+              );
+            }
+          }
+        }
+      })().catch((error) => {
+        if (isDevMode) {
+          console.warn(
+            "[playVideoWithFallback] Unexpected error while recording video view:",
+            error
+          );
+        }
+      });
+    };
+
+    const cancelTimer = () => {
+      if (state.timerId) {
+        clearTimeout(state.timerId);
+        state.timerId = null;
+      }
+    };
+
+    const scheduleTimer = () => {
+      if (state.fired) {
+        return;
+      }
+      const currentSeconds = Number.isFinite(videoEl.currentTime)
+        ? videoEl.currentTime
+        : 0;
+      const remainingMs = Math.max(
+        0,
+        Math.ceil((THRESHOLD_SECONDS - currentSeconds) * 1000)
+      );
+      if (remainingMs <= 0) {
+        finalize();
+        return;
+      }
+      state.timerId = window.setTimeout(finalize, remainingMs);
+    };
+
+    const registerHandler = (eventName, handler) => {
+      videoEl.addEventListener(eventName, handler);
+      state.handlers.push({ eventName, handler });
+    };
+
+    registerHandler("timeupdate", () => {
+      if (videoEl.currentTime >= THRESHOLD_SECONDS) {
+        finalize();
+      }
+    });
+
+    const cancelOnPause = () => {
+      if (!state.fired) {
+        cancelTimer();
+      }
+    };
+
+    ["pause", "waiting", "stalled", "ended", "emptied"].forEach((event) =>
+      registerHandler(event, cancelOnPause)
+    );
+
+    const resumeIfNeeded = () => {
+      if (!state.fired && !state.timerId) {
+        scheduleTimer();
+      }
+    };
+
+    ["play", "playing"].forEach((event) =>
+      registerHandler(event, resumeIfNeeded)
+    );
+
+    this.playbackTelemetryState = state;
+
+    if (!videoEl.paused && videoEl.currentTime > 0) {
+      resumeIfNeeded();
     }
   }
 
@@ -6774,6 +7082,7 @@ class bitvidApp {
    */
   async hideModal() {
     // 1) Clear intervals, cleanup, etc. (unchanged)
+    this.cancelPendingViewLogging();
     this.clearActiveIntervals();
 
     try {
@@ -7442,6 +7751,16 @@ class bitvidApp {
           `
           : "";
 
+      const showDiscussionCount = video.enableComments !== false;
+      const discussionCountHtml = showDiscussionCount
+        ? `
+            <div class="flex items-center text-xs text-gray-500 mt-3" data-discussion-count="${video.id}" data-count-state="idle">
+              <span data-discussion-count-value>—</span>
+              <span class="ml-1">notes</span>
+            </div>
+          `
+        : "";
+
       const rawThumbnail =
         typeof video.thumbnail === "string" ? video.thumbnail.trim() : "";
       const escapedThumbnail = rawThumbnail
@@ -7528,6 +7847,7 @@ class bitvidApp {
               ${cardControls}
             </div>
             ${connectionBadgesHtml}
+            ${discussionCountHtml}
             ${torrentWarningHtml}
           </div>
         </div>
@@ -7830,6 +8150,195 @@ class bitvidApp {
         this.goToProfile(pubkey);
       });
     });
+
+    this.refreshVideoDiscussionCounts(dedupedVideos);
+  }
+
+  refreshVideoDiscussionCounts(videos = []) {
+    if (
+      !Array.isArray(videos) ||
+      !videos.length ||
+      !this.videoList ||
+      !nostrClient?.pool
+    ) {
+      return;
+    }
+
+    const eligible = videos
+      .filter(
+        (video) =>
+          video &&
+          typeof video.id === "string" &&
+          video.id &&
+          video.enableComments !== false
+      )
+      .slice(0, MAX_DISCUSSION_COUNT_VIDEOS);
+
+    eligible.forEach((video) => {
+      const container = this.videoList.querySelector(
+        `[data-discussion-count="${video.id}"]`
+      );
+      if (!container) {
+        return;
+      }
+
+      const cached = this.videoDiscussionCountCache.get(video.id);
+      if (typeof cached === "number") {
+        this.updateDiscussionCountElement(container, cached);
+        return;
+      }
+
+      const filters = this.buildDiscussionCountFilters(video);
+      if (!filters.length) {
+        this.markDiscussionCountError(container, { unsupported: true });
+        return;
+      }
+
+      const existingPromise = this.inFlightDiscussionCounts.get(video.id);
+      if (existingPromise) {
+        this.setDiscussionCountPending(container);
+        return;
+      }
+
+      this.setDiscussionCountPending(container);
+
+      const request = nostrClient
+        .countEventsAcrossRelays(filters)
+        .then((result) => {
+          const perRelay = Array.isArray(result?.perRelay)
+            ? result.perRelay.filter((entry) => entry && entry.ok)
+            : [];
+
+          if (!perRelay.length) {
+            this.markDiscussionCountError(container, { unsupported: true });
+            return result;
+          }
+
+          const total = Number(result?.total);
+          const normalized =
+            Number.isFinite(total) && total >= 0 ? total : 0;
+          this.videoDiscussionCountCache.set(video.id, normalized);
+          this.updateDiscussionCountElement(container, normalized);
+          return result;
+        })
+        .catch((error) => {
+          if (isDevMode) {
+            console.warn(
+              `[counts] Failed to fetch discussion count for ${video.id}:`,
+              error
+            );
+          }
+          this.markDiscussionCountError(container);
+          throw error;
+        })
+        .finally(() => {
+          this.inFlightDiscussionCounts.delete(video.id);
+        });
+
+      this.inFlightDiscussionCounts.set(video.id, request);
+    });
+  }
+
+  buildDiscussionCountFilters(video) {
+    if (!video || typeof video !== "object") {
+      return [];
+    }
+
+    const filters = [];
+    const eventId =
+      typeof video.id === "string" ? video.id.trim() : "";
+    if (eventId) {
+      filters.push({ kinds: [1], "#e": [eventId] });
+    }
+
+    const address = this.getVideoAddressPointer(video);
+    if (address) {
+      filters.push({ kinds: [1], "#a": [address] });
+    }
+
+    return filters;
+  }
+
+  getVideoAddressPointer(video) {
+    if (!video || typeof video !== "object") {
+      return "";
+    }
+
+    const tags = Array.isArray(video.tags) ? video.tags : [];
+    const dTag = tags.find(
+      (tag) =>
+        Array.isArray(tag) &&
+        tag.length >= 2 &&
+        tag[0] === "d" &&
+        typeof tag[1] === "string" &&
+        tag[1].trim()
+    );
+
+    if (!dTag) {
+      return "";
+    }
+
+    const pubkey =
+      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
+    if (!pubkey) {
+      return "";
+    }
+
+    const identifier = dTag[1].trim();
+    if (!identifier) {
+      return "";
+    }
+
+    const kind =
+      Number.isFinite(video.kind) && video.kind > 0
+        ? Math.floor(video.kind)
+        : VIDEO_EVENT_KIND;
+
+    return `${kind}:${pubkey}:${identifier}`;
+  }
+
+  setDiscussionCountPending(element) {
+    if (!element) {
+      return;
+    }
+    element.dataset.countState = "pending";
+    const valueEl = element.querySelector("[data-discussion-count-value]");
+    if (valueEl) {
+      valueEl.textContent = "…";
+    }
+    element.removeAttribute("title");
+  }
+
+  updateDiscussionCountElement(element, count) {
+    if (!element) {
+      return;
+    }
+    const valueEl = element.querySelector("[data-discussion-count-value]");
+    if (!valueEl) {
+      return;
+    }
+    const numeric = Number(count);
+    const safeValue =
+      Number.isFinite(numeric) && numeric >= 0 ? Math.floor(numeric) : 0;
+    element.dataset.countState = "ready";
+    valueEl.textContent = safeValue.toLocaleString();
+    element.removeAttribute("title");
+  }
+
+  markDiscussionCountError(element, { unsupported = false } = {}) {
+    if (!element) {
+      return;
+    }
+    const valueEl = element.querySelector("[data-discussion-count-value]");
+    if (valueEl) {
+      valueEl.textContent = "—";
+    }
+    element.dataset.countState = unsupported ? "unsupported" : "error";
+    if (unsupported) {
+      element.title = "Relay does not support NIP-45 COUNT queries.";
+    } else {
+      element.removeAttribute("title");
+    }
   }
 
   bindThumbnailFallbacks(container) {
@@ -8963,6 +9472,7 @@ class bitvidApp {
     // blank frame. Guard every playback entry point with waitForCleanup() so the
     // race never reappears.
     await this.waitForCleanup();
+    this.cancelPendingViewLogging();
 
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
@@ -9089,6 +9599,7 @@ class bitvidApp {
       this.resetTorrentStats();
       this.playSource = null;
       this.cleanupUrlPlaybackWatchdog();
+      this.preparePlaybackViewLogging(activeVideoEl);
 
       if (magnetForPlayback) {
         const label = playbackConfig.didMutate
@@ -9378,6 +9889,9 @@ class bitvidApp {
       return;
     }
 
+    this.currentVideoPointer = null;
+    this.currentVideoPointerKey = null;
+
     if (this.blacklistedEventIds.has(eventId)) {
       this.showError("This content has been removed or is not allowed.");
       return;
@@ -9446,6 +9960,44 @@ class bitvidApp {
       legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
       lightningAddress: null,
     };
+
+    const dTagValue = (this.extractDTagValue(video.tags) || "").trim();
+    const normalizedPubkey =
+      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
+    const primaryPointer =
+      dTagValue && normalizedPubkey
+        ? [
+            "a",
+            `${
+              typeof video.kind === "number" && Number.isFinite(video.kind)
+                ? video.kind
+                : 30078
+            }:${normalizedPubkey}:${dTagValue}`,
+          ]
+        : null;
+    const fallbackId =
+      typeof (video.id || eventId) === "string"
+        ? (video.id || eventId).trim()
+        : "";
+    const fallbackPointer =
+      !primaryPointer && fallbackId
+        ? ["e", fallbackId]
+        : null;
+
+    const resolvedPointer = primaryPointer || fallbackPointer;
+    const resolvedPointerKey = pointerArrayToKey(resolvedPointer);
+
+    this.currentVideoPointer = resolvedPointer && resolvedPointerKey
+      ? resolvedPointer
+      : null;
+    this.currentVideoPointerKey = this.currentVideoPointer
+      ? resolvedPointerKey
+      : null;
+
+    if (this.currentVideo) {
+      this.currentVideo.pointer = this.currentVideoPointer;
+      this.currentVideo.pointerKey = this.currentVideoPointerKey;
+    }
 
     this.syncModalMoreMenuData();
 
@@ -9525,6 +10077,9 @@ class bitvidApp {
     title = "Untitled",
     description = "",
   } = {}) {
+    this.currentVideoPointer = null;
+    this.currentVideoPointerKey = null;
+
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     const decodedMagnet = safeDecodeMagnet(trimmedMagnet);
@@ -9562,6 +10117,8 @@ class bitvidApp {
       originalMagnet: trimmedMagnet,
       torrentSupported: magnetSupported,
       lightningAddress: null,
+      pointer: null,
+      pointerKey: null,
     };
 
     this.syncModalMoreMenuData();

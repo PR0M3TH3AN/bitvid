@@ -44,3 +44,72 @@ export const ADMIN_WHITELIST_MODE_STORAGE_KEY = "bitvid_admin_whitelist_mode";
  * default state when no preference has been stored in localStorage yet.
  */
 export const DEFAULT_WHITELIST_MODE_ENABLED = true;
+
+/**
+ * Nostr kind used when persisting watch history events.
+ *
+ * BitVid’s roadmap standardizes on kind 30078 so that watch events, view logs,
+ * and media metadata stay in the same family of documents. Operators that want
+ * to experiment with a separate list kind (for example, a NIP-51 collection)
+ * can flip this number so long as their relays accept the chosen kind.
+ */
+export const WATCH_HISTORY_KIND = 30078;
+
+/**
+ * Identifier applied to the watch-history list when storing it on relays.
+ *
+ * This becomes the value of the `d` tag so clients can find the correct list
+ * without guessing. Customize the slug if you need isolation between multiple
+ * BitVid deployments that share relays, but keep it stable once clients begin
+ * syncing history.
+ */
+export const WATCH_HISTORY_LIST_IDENTIFIER = "watch-history";
+
+/**
+ * Maximum number of watch-history entries to retain per user.
+ *
+ * The roadmap targets a rolling window of 1,500 items so the UI can highlight
+ * recently played videos without ballooning relay storage. Adjust this cap up
+ * or down depending on your retention and privacy policies; smaller values
+ * reduce storage pressure while larger ones surface a deeper backlog.
+ */
+export const WATCH_HISTORY_MAX_ITEMS = 1500;
+
+/**
+ * Whether clients should resolve watch-history entries in batches.
+ *
+ * When enabled, BitVid fetches video metadata in grouped queries instead of
+ * issuing one request per entry. Operators with relays that struggle under
+ * bursty loads can disable batching at the cost of additional round trips.
+ */
+export const WATCH_HISTORY_BATCH_RESOLVE = true;
+
+/**
+ * Maximum size of the JSON payload for each watch-history chunk, measured
+ * before encryption.
+ *
+ * BitVid splits large histories across multiple events to stay within relay
+ * limits. This cap keeps individual chunks under roughly 60 KB so that
+ * encrypted payloads remain relay-friendly even after base64 expansion.
+ * Lower the number if your relays enforce tighter limits.
+ */
+export const WATCH_HISTORY_PAYLOAD_MAX_BYTES = 60000;
+
+/**
+ * Number of watch-history events to request when syncing from relays.
+ *
+ * Chunked histories can span several events. This fetch limit should exceed
+ * the maximum number of chunks you expect a client to publish in one snapshot
+ * so the UI can stitch the full list back together.
+ */
+export const WATCH_HISTORY_FETCH_EVENT_LIMIT = 12;
+
+/**
+ * How long clients should cache watch-history snapshots in localStorage.
+ *
+ * A 24-hour window keeps recently played videos available across reloads
+ * without requiring a fresh relay sync on every visit. Increase the value for
+ * longer-lived caches or decrease it if your deployment needs tighter
+ * retention guarantees.
+ */
+export const WATCH_HISTORY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
