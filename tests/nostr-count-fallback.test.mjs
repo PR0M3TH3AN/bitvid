@@ -144,8 +144,72 @@ async function testFallbackAfterCountFailureUsesDefaultWindow() {
   }
 }
 
+async function testUnsupportedRelaySkipsWarningsAndFallsBack() {
+  const client = new NostrClient();
+  const unsupportedRelay = "wss://unsupported.example";
+  client.relays = [unsupportedRelay];
+
+  let ensureRelayCalls = 0;
+  client.pool = {
+    ensureRelay: async (url) => {
+      ensureRelayCalls += 1;
+      assert.equal(
+        url,
+        unsupportedRelay,
+        "COUNT helper should target the configured relay"
+      );
+      return {};
+    },
+  };
+
+  let listCalls = 0;
+  client.listVideoViewEvents = async () => {
+    listCalls += 1;
+    return [];
+  };
+
+  const originalWarn = console.warn;
+  const warnCalls = [];
+  console.warn = (...args) => {
+    warnCalls.push(args);
+  };
+
+  try {
+    const pointer = { type: "e", value: "unsupported-relay" };
+    const result = await client.countVideoViewEvents(pointer, {});
+
+    assert.equal(listCalls, 1, "fallback should query list once when COUNT fails");
+    assert.equal(result?.fallback, true, "unsupported relay should trigger fallback");
+    assert.ok(
+      client.countUnsupportedRelays.has(unsupportedRelay),
+      "unsupported relay should be remembered for future requests"
+    );
+    assert.equal(
+      warnCalls.length,
+      0,
+      "unsupported relay error should not emit console warnings"
+    );
+
+    // Subsequent calls should skip the unsupported relay entirely.
+    await client.countVideoViewEvents(pointer, {});
+    assert.equal(
+      ensureRelayCalls,
+      1,
+      "unsupported relays should be skipped after the first failure"
+    );
+    assert.equal(
+      warnCalls.length,
+      0,
+      "no warnings should be emitted for cached unsupported relays"
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
+}
+
 await testFallbackAddsDefaultSinceWhenPoolMissing();
 await testFallbackHonorsCallerOverrides();
 await testFallbackAfterCountFailureUsesDefaultWindow();
+await testUnsupportedRelaySkipsWarningsAndFallsBack();
 
 console.log("nostr COUNT fallback tests completed successfully.");
