@@ -112,8 +112,18 @@ function clonePointerItem(pointer) {
     typeof pointer.relay === "string" && pointer.relay.trim()
       ? pointer.relay.trim()
       : null;
+  const watchedAtRaw = Number.isFinite(pointer.watchedAt)
+    ? pointer.watchedAt
+    : null;
+  const watchedAt =
+    watchedAtRaw !== null ? Math.max(0, Math.floor(watchedAtRaw)) : null;
 
-  return { type, value, relay };
+  const cloned = { type, value, relay };
+  if (watchedAt !== null) {
+    cloned.watchedAt = watchedAt;
+  }
+
+  return cloned;
 }
 
 function normalizePointerTag(tag) {
@@ -1091,7 +1101,12 @@ class NostrClient {
           continue;
         }
         seen.add(key);
-        normalizedItems.push(pointer);
+        const watchedAtRaw = Number.isFinite(pointer.watchedAt)
+          ? pointer.watchedAt
+          : null;
+        const watchedAt =
+          watchedAtRaw !== null ? Math.max(0, Math.floor(watchedAtRaw)) : 0;
+        normalizedItems.push({ ...pointer, watchedAt });
       }
     }
 
@@ -1175,6 +1190,9 @@ class NostrClient {
         type: item.type,
         value: item.value,
         relay: item.relay || null,
+        watchedAt: Number.isFinite(item.watchedAt)
+          ? Math.max(0, Math.floor(item.watchedAt))
+          : 0,
       })),
       savedAt: entry.savedAt,
     };
@@ -1570,6 +1588,9 @@ class NostrClient {
       type: item.type,
       value: item.value,
       relay: item.relay || null,
+      watchedAt: Number.isFinite(item.watchedAt)
+        ? Math.max(0, Math.floor(item.watchedAt))
+        : 0,
     }));
 
     const maxBytesCandidate = Number.isFinite(this.watchHistoryPayloadMaxBytes)
@@ -2069,6 +2090,15 @@ class NostrClient {
       return { ok: false, error: "invalid-pointer" };
     }
 
+    if (Number.isFinite(normalizedPointer.watchedAt)) {
+      normalizedPointer.watchedAt = Math.max(
+        0,
+        Math.floor(normalizedPointer.watchedAt)
+      );
+    } else {
+      normalizedPointer.watchedAt = Date.now();
+    }
+
     const actorPubkey = await this.ensureSessionActor();
     if (!actorPubkey) {
       return { ok: false, error: "missing-actor" };
@@ -2082,6 +2112,57 @@ class NostrClient {
 
     const candidates = [normalizedPointer, ...(existingEntry.items || [])];
     return this.publishWatchHistorySnapshot(actorPubkey, candidates, existingEntry);
+  }
+
+  async removeWatchHistoryItem(pointerOrKey) {
+    if (!this.pool) {
+      return { ok: false, error: "nostr-uninitialized" };
+    }
+
+    const actorPubkey = await this.ensureSessionActor();
+    if (!actorPubkey) {
+      return { ok: false, error: "missing-actor" };
+    }
+
+    await this.fetchWatchHistory(actorPubkey);
+
+    const entry = this.watchHistoryCache.get(actorPubkey);
+    if (!entry) {
+      return { ok: false, error: "missing-entry" };
+    }
+
+    let targetKey = "";
+    if (typeof pointerOrKey === "string" && pointerOrKey.trim()) {
+      targetKey = pointerOrKey.trim().toLowerCase();
+    } else if (pointerOrKey) {
+      const normalizedPointer = normalizePointerInput(pointerOrKey);
+      targetKey = pointerKey(normalizedPointer);
+    }
+
+    if (!targetKey) {
+      return { ok: false, error: "invalid-pointer" };
+    }
+
+    const filteredItems = entry.items.filter((item) => {
+      const key = pointerKey(item);
+      return key && key !== targetKey;
+    });
+
+    if (filteredItems.length === entry.items.length) {
+      return { ok: false, error: "pointer-not-found" };
+    }
+
+    const result = await this.publishWatchHistorySnapshot(
+      actorPubkey,
+      filteredItems,
+      entry
+    );
+
+    if (!result.ok) {
+      return result;
+    }
+
+    return { ...result, removedKey: targetKey };
   }
 
   async fetchWatchHistory(pubkeyOrSession) {
@@ -2915,7 +2996,25 @@ class NostrClient {
       }
       const cachedVideo = entry.resolvedVideos.get(key);
       if (cachedVideo && typeof cachedVideo === "object" && cachedVideo.id) {
-        deliverableVideos.push(cachedVideo);
+        const pointerClone = clonePointerItem(pointer);
+        const watchedAt = Number.isFinite(pointerClone?.watchedAt)
+          ? pointerClone.watchedAt
+          : 0;
+        const videoWithHistory = {
+          ...cachedVideo,
+          watchHistory: {
+            key,
+            watchedAt,
+            pointer:
+              pointerClone || {
+                type: pointer.type,
+                value: pointer.value,
+                relay: pointer.relay || null,
+                watchedAt,
+              },
+          },
+        };
+        deliverableVideos.push(videoWithHistory);
         entry.delivered.add(key);
       }
     }
@@ -4080,3 +4179,6 @@ export const recordVideoView = (...args) =>
 
 export const updateWatchHistoryList = (...args) =>
   nostrClient.updateWatchHistoryList(...args);
+
+export const removeWatchHistoryItem = (...args) =>
+  nostrClient.removeWatchHistoryItem(...args);
