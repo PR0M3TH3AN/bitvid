@@ -53,7 +53,9 @@ const WATCH_HISTORY_INDEX_IDENTIFIER_LOWER =
     ? WATCH_HISTORY_LIST_IDENTIFIER.trim().toLowerCase()
     : "";
 
-const WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX = (() => {
+const WATCH_HISTORY_CHUNK_V2_PREFIX = "watch-history:v2";
+
+const LEGACY_WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX = (() => {
   const rawIdentifier =
     typeof WATCH_HISTORY_LIST_IDENTIFIER === "string"
       ? WATCH_HISTORY_LIST_IDENTIFIER.trim()
@@ -68,6 +70,13 @@ const WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX = (() => {
   }
   return rawIdentifier.replace(/\/+$/, "") || "watch-history";
 })();
+
+const WATCH_HISTORY_CHUNK_V2_PREFIX_LOWER = WATCH_HISTORY_CHUNK_V2_PREFIX.toLowerCase();
+
+const LEGACY_WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX_LOWER =
+  LEGACY_WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX
+    ? LEGACY_WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX.toLowerCase()
+    : "";
 
 const LEGACY_WATCH_HISTORY_IDENTIFIER_SET = (() => {
   const identifiers = Array.isArray(WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS)
@@ -87,8 +96,7 @@ const LEGACY_WATCH_HISTORY_IDENTIFIER_SET = (() => {
 })();
 
 function deriveWatchHistoryChunkIdentifier(snapshotId, chunkIndex) {
-  const prefix = WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX || "watch-history";
-  const sanitizedPrefix = prefix.replace(/\/+$/, "");
+  const sanitizedPrefix = WATCH_HISTORY_CHUNK_V2_PREFIX.replace(/\/+$/, "");
   const safeSnapshot =
     typeof snapshotId === "string" && snapshotId ? snapshotId : "0";
   const safeIndex = Number.isFinite(chunkIndex)
@@ -116,6 +124,97 @@ function isLegacyHeadIdentifier(identifier) {
     return false;
   }
   return LEGACY_WATCH_HISTORY_IDENTIFIER_SET.has(normalized);
+}
+
+function isWatchHistoryChunkIdentifier(identifier) {
+  if (!identifier || typeof identifier !== "string") {
+    return false;
+  }
+  const normalized = identifier.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (normalized.startsWith(`${WATCH_HISTORY_CHUNK_V2_PREFIX_LOWER}/`)) {
+    return true;
+  }
+  if (
+    LEGACY_WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX_LOWER &&
+    normalized.startsWith(
+      `${LEGACY_WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX_LOWER}/`
+    )
+  ) {
+    return true;
+  }
+  return normalized.startsWith("watch-history/");
+}
+
+function extractSnapshotIdFromEvent(event) {
+  if (!event || typeof event !== "object") {
+    return "";
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  for (const tag of tags) {
+    if (Array.isArray(tag) && tag[0] === "snapshot" && typeof tag[1] === "string") {
+      const snapshot = tag[1].trim();
+      if (snapshot) {
+        return snapshot;
+      }
+    }
+  }
+
+  if (typeof event.content === "string" && event.content.trim()) {
+    const trimmedContent = event.content.trim();
+    if (trimmedContent.startsWith("{") || trimmedContent.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmedContent);
+        if (parsed && typeof parsed === "object") {
+          const snapshot =
+            typeof parsed.snapshot === "string" ? parsed.snapshot.trim() : "";
+          if (snapshot) {
+            return snapshot;
+          }
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to parse snapshot from event content:",
+            error
+          );
+        }
+      }
+    }
+  }
+
+  if (typeof event.id === "string" && event.id) {
+    return event.id;
+  }
+
+  return "";
+}
+
+function getWatchHistoryEntrySnapshotId(entry) {
+  if (!entry || typeof entry !== "object") {
+    return "";
+  }
+
+  if (entry.pointerEvent) {
+    const pointerSnapshot = extractSnapshotIdFromEvent(entry.pointerEvent);
+    if (pointerSnapshot) {
+      return pointerSnapshot;
+    }
+  }
+
+  if (entry.chunkEvents instanceof Map) {
+    for (const evt of entry.chunkEvents.values()) {
+      const snapshot = extractSnapshotIdFromEvent(evt);
+      if (snapshot) {
+        return snapshot;
+      }
+    }
+  }
+
+  return "";
 }
 
 // To limit error spam
@@ -1218,6 +1317,7 @@ class NostrClient {
     this.watchHistoryCache = new Map();
     this.watchHistoryStorage = null;
     this.watchHistoryRepublishTimers = new Map();
+    this.watchHistoryRefreshPromises = new Map();
     this.watchHistoryCacheTtlMs = WATCH_HISTORY_CACHE_TTL_MS;
     this.countRequestCounter = 0;
   }
@@ -1886,6 +1986,42 @@ class NostrClient {
     this.watchHistoryRepublishTimers.set(key, timer);
   }
 
+  ensureWatchHistoryBackgroundRefresh(actor) {
+    const key =
+      typeof actor === "string" && actor.trim()
+        ? actor.trim().toLowerCase()
+        : "";
+    if (!key) {
+      return;
+    }
+
+    if (!(this.watchHistoryRefreshPromises instanceof Map)) {
+      this.watchHistoryRefreshPromises = new Map();
+    }
+
+    if (this.watchHistoryRefreshPromises.has(key)) {
+      return;
+    }
+
+    const refreshPromise = this.fetchWatchHistory(actor, {
+      forceRefresh: true,
+      background: true,
+    })
+      .catch((error) => {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Background watch history refresh failed:",
+            error
+          );
+        }
+      })
+      .finally(() => {
+        this.watchHistoryRefreshPromises.delete(key);
+      });
+
+    this.watchHistoryRefreshPromises.set(key, refreshPromise);
+  }
+
   async publishWatchHistorySnapshot(
     actorPubkey,
     candidateItems,
@@ -2037,6 +2173,47 @@ class NostrClient {
     const chunkResults = [];
     let overallSuccess = true;
 
+    const indexEvent = buildWatchHistoryIndexEvent({
+      pubkey: normalizedActor,
+      created_at: baseTimestamp + totalChunks,
+      snapshotId,
+      totalChunks,
+      chunkAddresses,
+    });
+
+    let signedIndexEvent = null;
+    try {
+      if (useExtension) {
+        signedIndexEvent = await window.nostr.signEvent(indexEvent);
+      } else {
+        signedIndexEvent = signEventWithPrivateKey(
+          indexEvent,
+          this.sessionActor.privateKey
+        );
+      }
+    } catch (error) {
+      console.warn("[nostr] Failed to sign watch history index event:", error);
+      signedIndexEvent = null;
+    }
+
+    let indexPublishResults = [];
+    let indexSuccess = false;
+    if (signedIndexEvent) {
+      indexPublishResults = await Promise.all(
+        relays.map((url) => publishEventToRelay(this.pool, url, signedIndexEvent))
+      );
+      indexSuccess = indexPublishResults.some((result) => result.success);
+      if (!indexSuccess) {
+        overallSuccess = false;
+        console.warn(
+          "[nostr] Failed to publish watch history index:",
+          indexPublishResults
+        );
+      }
+    } else {
+      overallSuccess = false;
+    }
+
     for (let index = 0; index < totalChunks; index++) {
       const chunkItems = Array.isArray(chunkItemsList[index])
         ? chunkItemsList[index]
@@ -2085,6 +2262,7 @@ class NostrClient {
         chunkIndex: index,
         totalChunks,
         pointerTags,
+        chunkAddresses,
         content: encryptionResult.ciphertext,
       });
 
@@ -2133,50 +2311,6 @@ class NostrClient {
         results: publishResults,
         success: chunkSuccess,
       });
-    }
-
-    const indexEvent = buildWatchHistoryIndexEvent({
-      pubkey: normalizedActor,
-      created_at: baseTimestamp + totalChunks,
-      snapshotId,
-      totalChunks,
-      chunkAddresses,
-    });
-
-    let signedIndexEvent = null;
-    try {
-      if (useExtension) {
-        signedIndexEvent = await window.nostr.signEvent(indexEvent);
-      } else {
-        signedIndexEvent = signEventWithPrivateKey(
-          indexEvent,
-          this.sessionActor.privateKey
-        );
-      }
-    } catch (error) {
-      console.warn(
-        "[nostr] Failed to sign watch history index event:",
-        error
-      );
-      signedIndexEvent = null;
-    }
-
-    let indexPublishResults = [];
-    let indexSuccess = false;
-    if (signedIndexEvent) {
-      indexPublishResults = await Promise.all(
-        relays.map((url) => publishEventToRelay(this.pool, url, signedIndexEvent))
-      );
-      indexSuccess = indexPublishResults.some((result) => result.success);
-      if (!indexSuccess) {
-        overallSuccess = false;
-        console.warn(
-          "[nostr] Failed to publish watch history index:",
-          indexPublishResults
-        );
-      }
-    } else {
-      overallSuccess = false;
     }
 
     if (overallSuccess) {
@@ -2923,7 +3057,9 @@ class NostrClient {
     return { ...result, removedKey: targetKey };
   }
 
-  async fetchWatchHistory(pubkeyOrSession) {
+  async fetchWatchHistory(pubkeyOrSession, options = {}) {
+    const forceRefresh = options?.forceRefresh === true;
+    const background = options?.background === true;
     let actor =
       typeof pubkeyOrSession === "string" && pubkeyOrSession.trim()
         ? pubkeyOrSession.trim()
@@ -2940,8 +3076,12 @@ class NostrClient {
     const now = Date.now();
     const ttl = this.getWatchHistoryCacheTtlMs();
     const cached = this.watchHistoryCache.get(actor);
-    if (cached) {
+    const priorEntry = cached || null;
+    if (!forceRefresh && cached) {
       if (now - cached.savedAt < ttl) {
+        if (!background) {
+          this.ensureWatchHistoryBackgroundRefresh(actor);
+        }
         return {
           pointerEvent: cached.pointerEvent
             ? cloneEventForCache(cached.pointerEvent)
@@ -2960,6 +3100,7 @@ class NostrClient {
       storage = this.getWatchHistoryStorage();
       stored = storage.actors?.[actor];
       if (
+        !forceRefresh &&
         stored &&
         typeof stored.savedAt === "number" &&
         now - stored.savedAt < ttl
@@ -2971,6 +3112,9 @@ class NostrClient {
           this.watchHistoryCache.get(actor) || null
         );
         this.watchHistoryCache.set(actor, entry);
+        if (!background) {
+          this.ensureWatchHistoryBackgroundRefresh(actor);
+        }
         return {
           pointerEvent: entry.pointerEvent
             ? cloneEventForCache(entry.pointerEvent)
@@ -2982,12 +3126,15 @@ class NostrClient {
       }
     }
 
+    const cachedSnapshotId = getWatchHistoryEntrySnapshotId(priorEntry);
+    let snapshotChanged = false;
+
     if (!this.pool) {
       const fallbackEntry = this.createWatchHistoryEntry(
         null,
         [],
         Date.now(),
-        this.watchHistoryCache.get(actor) || null
+        priorEntry
       );
       this.watchHistoryCache.set(actor, fallbackEntry);
       return { pointerEvent: null, items: [] };
@@ -3001,63 +3148,96 @@ class NostrClient {
       : WATCH_HISTORY_FETCH_EVENT_LIMIT;
     const fetchLimit = Math.max(1, Math.floor(fetchLimitCandidate));
 
-    const headIdentifierSet = new Set();
-    if (
+    const indexIdentifier =
       typeof WATCH_HISTORY_LIST_IDENTIFIER === "string" &&
       WATCH_HISTORY_LIST_IDENTIFIER.trim()
-    ) {
-      headIdentifierSet.add(WATCH_HISTORY_LIST_IDENTIFIER.trim());
-    }
+        ? WATCH_HISTORY_LIST_IDENTIFIER.trim()
+        : "";
+    const indexIdentifiers = indexIdentifier ? [indexIdentifier] : [];
+
+    const legacyIdentifierSet = new Set();
     if (Array.isArray(WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS)) {
       WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS.forEach((value) => {
         if (typeof value === "string" && value.trim()) {
-          headIdentifierSet.add(value.trim());
+          const normalized = value.trim();
+          if (normalized && normalized !== indexIdentifier) {
+            legacyIdentifierSet.add(normalized);
+          }
         }
       });
     }
-    if (!headIdentifierSet.size && WATCH_HISTORY_INDEX_IDENTIFIER_LOWER) {
-      headIdentifierSet.add(WATCH_HISTORY_LIST_IDENTIFIER);
+
+    if (!indexIdentifiers.length && WATCH_HISTORY_INDEX_IDENTIFIER_LOWER) {
+      indexIdentifiers.push(WATCH_HISTORY_LIST_IDENTIFIER);
     }
 
-    const filter = {
-      kinds: [WATCH_HISTORY_KIND],
-      authors: [actor],
-      limit: fetchLimit,
+    const headEventMap = new Map();
+    const registerHeadEvent = (evt) => {
+      if (!evt || typeof evt !== "object") {
+        return;
+      }
+      const id = typeof evt.id === "string" ? evt.id : null;
+      if (!id) {
+        return;
+      }
+      const createdAt = typeof evt.created_at === "number" ? evt.created_at : 0;
+      const existing = headEventMap.get(id);
+      if (
+        !existing ||
+        createdAt >
+          (typeof existing?.created_at === "number" ? existing.created_at : 0)
+      ) {
+        headEventMap.set(id, evt);
+      }
     };
 
-    if (headIdentifierSet.size) {
-      filter["#d"] = Array.from(headIdentifierSet);
+    if (indexIdentifiers.length) {
+      const indexFilter = {
+        kinds: [WATCH_HISTORY_KIND],
+        authors: [actor],
+        limit: fetchLimit,
+        "#d": indexIdentifiers,
+      };
+
+      try {
+        const events = await this.pool.list(relayList, [indexFilter]);
+        if (Array.isArray(events)) {
+          events.forEach(registerHeadEvent);
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to fetch watch history index events:",
+            error
+          );
+        }
+      }
     }
 
-    let fetchedHeadEvents = [];
-    try {
-      const events = await this.pool.list(relayList, [filter]);
-      if (Array.isArray(events)) {
-        const dedupe = new Map();
-        for (const evt of events) {
-          if (!evt || typeof evt !== "object") {
-            continue;
-          }
-          const id = typeof evt.id === "string" ? evt.id : null;
-          if (!id) {
-            continue;
-          }
-          const existing = dedupe.get(id);
-          if (
-            !existing ||
-            (typeof evt.created_at === "number" ? evt.created_at : 0) >
-              (typeof existing.created_at === "number" ? existing.created_at : 0)
-          ) {
-            dedupe.set(id, evt);
-          }
+    if (legacyIdentifierSet.size) {
+      const legacyFilter = {
+        kinds: [WATCH_HISTORY_KIND],
+        authors: [actor],
+        limit: fetchLimit,
+        "#d": Array.from(legacyIdentifierSet),
+      };
+
+      try {
+        const events = await this.pool.list(relayList, [legacyFilter]);
+        if (Array.isArray(events)) {
+          events.forEach(registerHeadEvent);
         }
-        fetchedHeadEvents = Array.from(dedupe.values());
-      }
-    } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to fetch watch history list:", error);
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to fetch legacy watch history pointers:",
+            error
+          );
+        }
       }
     }
+
+    const fetchedHeadEvents = Array.from(headEventMap.values());
 
     fetchedHeadEvents.sort((a, b) => {
       const aCreated = typeof a?.created_at === "number" ? a.created_at : 0;
@@ -3220,6 +3400,33 @@ class NostrClient {
           indexSnapshots.set(snapshotId, existingMeta);
         }
       }
+    }
+
+    let latestIndexSnapshotMeta = null;
+    for (const [snapshotId, meta] of indexSnapshots.entries()) {
+      if (!meta?.event) {
+        continue;
+      }
+      const createdAt =
+        typeof meta.event.created_at === "number" ? meta.event.created_at : 0;
+      if (
+        !latestIndexSnapshotMeta ||
+        createdAt > latestIndexSnapshotMeta.createdAt
+      ) {
+        latestIndexSnapshotMeta = {
+          snapshotId,
+          createdAt,
+        };
+      }
+    }
+
+    if (
+      latestIndexSnapshotMeta?.snapshotId &&
+      cachedSnapshotId &&
+      cachedSnapshotId !== latestIndexSnapshotMeta.snapshotId
+    ) {
+      snapshotChanged = true;
+      this.watchHistoryCache.delete(actor);
     }
 
     const chunkFilters = [];
@@ -3512,9 +3719,11 @@ class NostrClient {
 
     const effectiveSnapshot = selectedSnapshot || fallbackSnapshot || null;
 
-    const previousEntry = this.watchHistoryCache.get(actor) || null;
-    const storedItems = Array.isArray(stored?.items) ? stored.items : [];
-    const storedPointerEvent = stored?.pointerEvent || null;
+    const previousEntry = snapshotChanged ? null : priorEntry;
+    const storedItems =
+      !snapshotChanged && Array.isArray(stored?.items) ? stored.items : [];
+    const storedPointerEvent =
+      !snapshotChanged && stored?.pointerEvent ? stored.pointerEvent : null;
 
     const remoteItems = Array.isArray(effectiveSnapshot?.items)
       ? effectiveSnapshot.items
@@ -3770,14 +3979,7 @@ class NostrClient {
       if (isLegacyHeadIdentifier(normalizedIdentifier)) {
         return "head";
       }
-      const chunkPrefixLower = WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX
-        ? WATCH_HISTORY_CHUNK_IDENTIFIER_PREFIX.trim().toLowerCase()
-        : "";
-      const normalizedIdentifierLower = normalizedIdentifier.toLowerCase();
-      const matchesPrefix = chunkPrefixLower
-        ? normalizedIdentifierLower.startsWith(chunkPrefixLower)
-        : normalizedIdentifierLower.startsWith("watch-history");
-      if (!matchesPrefix) {
+      if (!isWatchHistoryChunkIdentifier(normalizedIdentifier)) {
         return "none";
       }
       const normalizedOwner =
