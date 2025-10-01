@@ -950,6 +950,10 @@ export function createWatchHistoryRenderer(config = {}) {
       state.actor = beforeResult.actor.trim();
     }
 
+    if (state.actor) {
+      nostrClient.resetWatchHistoryProgress(state.actor);
+    }
+
     let fingerprint;
     if (typeof fingerprintOverride !== "undefined") {
       fingerprint = fingerprintOverride;

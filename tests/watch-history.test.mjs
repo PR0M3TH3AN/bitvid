@@ -398,6 +398,120 @@ try {
 
 localStorage.clear();
 
+const VIDEO_POINTER_AUTHOR = `${ACTOR}-video-author`;
+const VIDEO_POINTER_IDENTIFIER = "pointer-video-identifier";
+const videoPointer = {
+  type: "a",
+  value: `${WATCH_HISTORY_KIND}:${VIDEO_POINTER_AUTHOR}:${VIDEO_POINTER_IDENTIFIER}`,
+  relay: null,
+};
+
+const pointerClient = createDecryptClient(ACTOR);
+const pointerEntry = pointerClient.createWatchHistoryEntry(
+  null,
+  [videoPointer],
+  Date.now()
+);
+pointerClient.watchHistoryCache.set(ACTOR, pointerEntry);
+pointerClient.fetchWatchHistory = async () => {};
+
+const observedResolveFilters = [];
+const videoEvent = {
+  id: "video-pointer-event",
+  kind: WATCH_HISTORY_KIND,
+  pubkey: VIDEO_POINTER_AUTHOR,
+  created_at: 1_700_555_000,
+  tags: [["d", VIDEO_POINTER_IDENTIFIER]],
+  content: JSON.stringify({
+    version: 3,
+    title: "Pointer Video",
+    url: "https://cdn.example.com/video.mp4",
+  }),
+};
+
+pointerClient.pool = {
+  list: async (_relays, filters) => {
+    observedResolveFilters.push(filters);
+    return [videoEvent];
+  },
+};
+
+const resolvedFromPointer = await pointerClient.resolveWatchHistory(1);
+
+assert.equal(
+  resolvedFromPointer.length,
+  1,
+  "resolveWatchHistory should return results for 'a' style video pointers"
+);
+assert.equal(
+  resolvedFromPointer[0].id,
+  videoEvent.id,
+  "resolved video should match the pointer event id"
+);
+assert.equal(
+  resolvedFromPointer[0].title,
+  "Pointer Video",
+  "resolved video should parse title from the event payload"
+);
+
+const pointerKey = `a:${videoPointer.value.trim().toLowerCase()}`;
+const cachedEntry = pointerClient.watchHistoryCache.get(ACTOR);
+assert(
+  cachedEntry.resolvedVideos.has(pointerKey),
+  "resolved cache should retain the video"
+);
+assert.equal(
+  cachedEntry.resolvedVideos.get(pointerKey)?.id,
+  videoEvent.id,
+  "resolved cache should store the converted video result"
+);
+assert(
+  cachedEntry.delivered.has(pointerKey),
+  "delivery set should mark the pointer as delivered"
+);
+
+assert(
+  observedResolveFilters.some((filters) =>
+    filters.some((filter) =>
+      Array.isArray(filter?.["#d"]) &&
+      filter["#d"].includes(VIDEO_POINTER_IDENTIFIER)
+    )
+  ),
+  "resolveWatchHistory should request the video identifier instead of treating it as a chunk"
+);
+
+const secondResolve = await pointerClient.resolveWatchHistory(1);
+assert.equal(
+  secondResolve.length,
+  0,
+  "subsequent resolve calls should avoid refetching already delivered videos"
+);
+
+pointerClient.resetWatchHistoryProgress(ACTOR);
+assert.equal(
+  cachedEntry.delivered.size,
+  0,
+  "resetWatchHistoryProgress should clear delivered pointers"
+);
+
+pointerClient.pool = {
+  list: async () => {
+    throw new Error("cached resolve should not trigger network fetch");
+  },
+};
+
+const cachedResolve = await pointerClient.resolveWatchHistory(1);
+assert.equal(
+  cachedResolve.length,
+  1,
+  "reset should allow cached videos to be delivered again"
+);
+assert.equal(
+  cachedResolve[0].id,
+  videoEvent.id,
+  "cached resolve should reuse the stored video payload"
+);
+
 const originalDateNow = Date.now;
 try {
   const baseTime = 1_700_000_000_000;
