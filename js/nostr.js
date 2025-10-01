@@ -278,7 +278,7 @@ function normalizePointerInput(pointer) {
   return { type, value: trimmed, relay: null };
 }
 
-function resolveVideoViewPointerValue(pointer) {
+function resolveVideoViewPointer(pointer) {
   const normalized = normalizePointerInput(pointer);
   if (!normalized || typeof normalized.value !== "string") {
     throw new Error("Invalid video pointer supplied for view lookup.");
@@ -289,19 +289,58 @@ function resolveVideoViewPointerValue(pointer) {
     throw new Error("Invalid video pointer supplied for view lookup.");
   }
 
-  return value;
+  const type = normalized.type === "a" ? "a" : "e";
+  const descriptor = { type, value };
+
+  if (typeof normalized.relay === "string" && normalized.relay.trim()) {
+    descriptor.relay = normalized.relay.trim();
+  }
+
+  return descriptor;
 }
 
-function createVideoViewEventFilter(pointer) {
-  const pointerValue = resolveVideoViewPointerValue(pointer);
-  return {
+function createVideoViewEventFilters(pointer) {
+  let resolved;
+
+  if (
+    pointer &&
+    typeof pointer === "object" &&
+    (pointer.type === "a" || pointer.type === "e") &&
+    typeof pointer.value === "string"
+  ) {
+    const value = pointer.value.trim();
+    if (!value) {
+      throw new Error("Invalid video pointer supplied for view lookup.");
+    }
+    resolved = { type: pointer.type === "a" ? "a" : "e", value };
+    if (typeof pointer.relay === "string" && pointer.relay.trim()) {
+      resolved.relay = pointer.relay.trim();
+    }
+  } else {
+    resolved = resolveVideoViewPointer(pointer);
+  }
+
+  const pointerFilter = {
     kinds: [WATCH_HISTORY_KIND],
     "#t": ["view"],
-    "#video": [pointerValue],
   };
+
+  if (resolved.type === "a") {
+    pointerFilter["#a"] = [resolved.value];
+  } else {
+    pointerFilter["#e"] = [resolved.value];
+  }
+
+  const legacyFilter = {
+    kinds: [WATCH_HISTORY_KIND],
+    "#t": ["view"],
+    "#video": [resolved.value],
+  };
+
+  return { pointer: resolved, filters: [pointerFilter, legacyFilter] };
 }
 
-function isVideoViewEvent(event, pointerValue) {
+function isVideoViewEvent(event, pointer) {
   if (!event || typeof event !== "object") {
     return false;
   }
@@ -312,7 +351,10 @@ function isVideoViewEvent(event, pointerValue) {
 
   const tags = Array.isArray(event.tags) ? event.tags : [];
   let hasViewTag = false;
-  let hasVideoTag = false;
+  let matchesPointer = false;
+
+  const pointerValue = typeof pointer?.value === "string" ? pointer.value : "";
+  const pointerType = pointer?.type === "a" ? "a" : "e";
 
   for (const tag of tags) {
     if (!Array.isArray(tag) || tag.length < 2) {
@@ -328,16 +370,30 @@ function isVideoViewEvent(event, pointerValue) {
 
     if (!hasViewTag && label === "t" && value === "view") {
       hasViewTag = true;
-    } else if (!hasVideoTag && label === "video" && value === pointerValue) {
-      hasVideoTag = true;
+      continue;
     }
 
-    if (hasViewTag && hasVideoTag) {
-      return true;
+    if (matchesPointer || !pointerValue) {
+      continue;
+    }
+
+    if (label === "video" && value === pointerValue) {
+      matchesPointer = true;
+      continue;
+    }
+
+    if (pointerType === "a" && label === "a" && value === pointerValue) {
+      matchesPointer = true;
+      continue;
+    }
+
+    if (pointerType === "e" && label === "e" && value === pointerValue) {
+      matchesPointer = true;
+      continue;
     }
   }
 
-  return false;
+  return hasViewTag && matchesPointer;
 }
 
 function extractPointerItemsFromEvent(event) {
@@ -2133,9 +2189,19 @@ class NostrClient {
         )
       : [];
 
+    const pointerTag =
+      pointer.type === "a"
+        ? pointer.relay
+          ? ["a", pointer.value, pointer.relay]
+          : ["a", pointer.value]
+        : pointer.relay
+        ? ["e", pointer.value, pointer.relay]
+        : ["e", pointer.value];
+
     const tags = [
       ["t", "view"],
       ["video", pointer.value],
+      pointerTag,
       ...additionalTags,
     ];
 
@@ -2210,20 +2276,24 @@ class NostrClient {
       return [];
     }
 
-    const filter = createVideoViewEventFilter(pointer);
-    const pointerValue = filter["#video"][0];
+    const { pointer: pointerDescriptor, filters } = createVideoViewEventFilters(
+      pointer
+    );
     const { since, until, limit, relays } = options || {};
 
-    if (Number.isFinite(since)) {
-      filter.since = Math.floor(since);
-    }
-
-    if (Number.isFinite(until)) {
-      filter.until = Math.floor(until);
-    }
-
-    if (Number.isFinite(limit) && limit > 0) {
-      filter.limit = Math.floor(limit);
+    for (const filter of filters) {
+      if (!filter || typeof filter !== "object") {
+        continue;
+      }
+      if (Number.isFinite(since)) {
+        filter.since = Math.floor(since);
+      }
+      if (Number.isFinite(until)) {
+        filter.until = Math.floor(until);
+      }
+      if (Number.isFinite(limit) && limit > 0) {
+        filter.limit = Math.floor(limit);
+      }
     }
 
     const relayList = Array.isArray(relays) && relays.length
@@ -2234,7 +2304,7 @@ class NostrClient {
 
     let rawResults;
     try {
-      rawResults = await this.pool.list(relayList, [filter]);
+      rawResults = await this.pool.list(relayList, filters);
     } catch (error) {
       if (isDevMode) {
         console.warn("[nostr] Failed to list video view events:", error);
@@ -2267,7 +2337,7 @@ class NostrClient {
     const order = [];
 
     for (const event of flattened) {
-      if (!isVideoViewEvent(event, pointerValue)) {
+      if (!isVideoViewEvent(event, pointerDescriptor)) {
         continue;
       }
 
@@ -2319,11 +2389,16 @@ class NostrClient {
       return () => {};
     }
 
-    const filter = createVideoViewEventFilter(pointer);
-    const pointerValue = filter["#video"][0];
+    const { pointer: pointerDescriptor, filters } = createVideoViewEventFilters(
+      pointer
+    );
 
     if (Number.isFinite(options?.since)) {
-      filter.since = Math.floor(options.since);
+      for (const filter of filters) {
+        if (filter && typeof filter === "object") {
+          filter.since = Math.floor(options.since);
+        }
+      }
     }
 
     const relayList = Array.isArray(options?.relays) && options.relays.length
@@ -2336,7 +2411,7 @@ class NostrClient {
 
     let subscription;
     try {
-      subscription = this.pool.sub(relayList, [filter]);
+      subscription = this.pool.sub(relayList, filters);
     } catch (error) {
       if (isDevMode) {
         console.warn("[nostr] Failed to open video view subscription:", error);
@@ -2346,7 +2421,7 @@ class NostrClient {
 
     if (onEvent) {
       subscription.on("event", (event) => {
-        if (isVideoViewEvent(event, pointerValue)) {
+        if (isVideoViewEvent(event, pointerDescriptor)) {
           try {
             onEvent(event);
           } catch (error) {
@@ -2394,7 +2469,11 @@ class NostrClient {
       };
     }
 
-    const filter = createVideoViewEventFilter(pointer);
+    const { filters } = createVideoViewEventFilters(pointer);
+    const pointerFilter = Array.isArray(filters) && filters.length ? filters[0] : null;
+    if (!pointerFilter || typeof pointerFilter !== "object") {
+      throw new Error("Invalid video pointer supplied for view lookup.");
+    }
     const relayList = Array.isArray(options?.relays) && options.relays.length
       ? options.relays
       : undefined;
@@ -2416,7 +2495,7 @@ class NostrClient {
     }
 
     try {
-      const result = await this.countEventsAcrossRelays([filter], {
+      const result = await this.countEventsAcrossRelays([pointerFilter], {
         relays: relayList,
         timeoutMs: options?.timeoutMs,
       });
