@@ -278,6 +278,68 @@ function normalizePointerInput(pointer) {
   return { type, value: trimmed, relay: null };
 }
 
+function resolveVideoViewPointerValue(pointer) {
+  const normalized = normalizePointerInput(pointer);
+  if (!normalized || typeof normalized.value !== "string") {
+    throw new Error("Invalid video pointer supplied for view lookup.");
+  }
+
+  const value = normalized.value.trim();
+  if (!value) {
+    throw new Error("Invalid video pointer supplied for view lookup.");
+  }
+
+  return value;
+}
+
+function createVideoViewEventFilter(pointer) {
+  const pointerValue = resolveVideoViewPointerValue(pointer);
+  return {
+    kinds: [WATCH_HISTORY_KIND],
+    "#t": ["view"],
+    "#video": [pointerValue],
+  };
+}
+
+function isVideoViewEvent(event, pointerValue) {
+  if (!event || typeof event !== "object") {
+    return false;
+  }
+
+  if (Number(event.kind) !== WATCH_HISTORY_KIND) {
+    return false;
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  let hasViewTag = false;
+  let hasVideoTag = false;
+
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+
+    const label = typeof tag[0] === "string" ? tag[0] : "";
+    const value = typeof tag[1] === "string" ? tag[1].trim() : "";
+
+    if (!label) {
+      continue;
+    }
+
+    if (!hasViewTag && label === "t" && value === "view") {
+      hasViewTag = true;
+    } else if (!hasVideoTag && label === "video" && value === pointerValue) {
+      hasVideoTag = true;
+    }
+
+    if (hasViewTag && hasVideoTag) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function extractPointerItemsFromEvent(event) {
   if (!event || typeof event !== "object") {
     return [];
@@ -2141,6 +2203,265 @@ class NostrClient {
     }
 
     return { ok: success, event: signedEvent, results: publishResults };
+  }
+
+  async listVideoViewEvents(pointer, options = {}) {
+    if (!this.pool) {
+      return [];
+    }
+
+    const filter = createVideoViewEventFilter(pointer);
+    const pointerValue = filter["#video"][0];
+    const { since, until, limit, relays } = options || {};
+
+    if (Number.isFinite(since)) {
+      filter.since = Math.floor(since);
+    }
+
+    if (Number.isFinite(until)) {
+      filter.until = Math.floor(until);
+    }
+
+    if (Number.isFinite(limit) && limit > 0) {
+      filter.limit = Math.floor(limit);
+    }
+
+    const relayList = Array.isArray(relays) && relays.length
+      ? relays
+      : Array.isArray(this.relays) && this.relays.length
+      ? this.relays
+      : RELAY_URLS;
+
+    let rawResults;
+    try {
+      rawResults = await this.pool.list(relayList, [filter]);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to list video view events:", error);
+      }
+      return [];
+    }
+
+    const flattenResults = (input) => {
+      if (!Array.isArray(input)) {
+        return [];
+      }
+
+      const flat = [];
+      for (const chunk of input) {
+        if (Array.isArray(chunk)) {
+          for (const item of chunk) {
+            if (item && typeof item === "object") {
+              flat.push(item);
+            }
+          }
+        } else if (chunk && typeof chunk === "object") {
+          flat.push(chunk);
+        }
+      }
+      return flat;
+    };
+
+    const flattened = flattenResults(rawResults);
+    const dedupe = new Map();
+    const order = [];
+
+    for (const event of flattened) {
+      if (!isVideoViewEvent(event, pointerValue)) {
+        continue;
+      }
+
+      const eventId = typeof event.id === "string" ? event.id : null;
+      if (!eventId) {
+        order.push({ type: "raw", event });
+        continue;
+      }
+
+      const existing = dedupe.get(eventId);
+      if (!existing) {
+        dedupe.set(eventId, event);
+        order.push({ type: "id", key: eventId });
+        continue;
+      }
+
+      const existingCreated = Number.isFinite(existing?.created_at)
+        ? existing.created_at
+        : 0;
+      const incomingCreated = Number.isFinite(event.created_at)
+        ? event.created_at
+        : 0;
+      if (incomingCreated > existingCreated) {
+        dedupe.set(eventId, event);
+      }
+    }
+
+    return order
+      .map((entry) => {
+        if (!entry) {
+          return null;
+        }
+        if (entry.type === "raw") {
+          return entry.event || null;
+        }
+        if (entry.type === "id") {
+          return dedupe.get(entry.key) || null;
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  subscribeVideoViewEvents(pointer, options = {}) {
+    if (!this.pool) {
+      if (isDevMode) {
+        console.warn("[nostr] Unable to subscribe to view events: pool missing.");
+      }
+      return () => {};
+    }
+
+    const filter = createVideoViewEventFilter(pointer);
+    const pointerValue = filter["#video"][0];
+
+    if (Number.isFinite(options?.since)) {
+      filter.since = Math.floor(options.since);
+    }
+
+    const relayList = Array.isArray(options?.relays) && options.relays.length
+      ? options.relays
+      : Array.isArray(this.relays) && this.relays.length
+      ? this.relays
+      : RELAY_URLS;
+
+    const onEvent = typeof options?.onEvent === "function" ? options.onEvent : null;
+
+    let subscription;
+    try {
+      subscription = this.pool.sub(relayList, [filter]);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to open video view subscription:", error);
+      }
+      return () => {};
+    }
+
+    if (onEvent) {
+      subscription.on("event", (event) => {
+        if (isVideoViewEvent(event, pointerValue)) {
+          try {
+            onEvent(event);
+          } catch (error) {
+            if (isDevMode) {
+              console.warn("[nostr] Video view event handler threw:", error);
+            }
+          }
+        }
+      });
+    }
+
+    const originalUnsub =
+      typeof subscription.unsub === "function"
+        ? subscription.unsub.bind(subscription)
+        : null;
+
+    let unsubscribed = false;
+    return () => {
+      if (unsubscribed) {
+        return;
+      }
+      unsubscribed = true;
+      if (originalUnsub) {
+        try {
+          originalUnsub();
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              "[nostr] Failed to unsubscribe from video view events:",
+              error
+            );
+          }
+        }
+      }
+    };
+  }
+
+  async countVideoViewEvents(pointer, options = {}) {
+    if (!this.pool) {
+      const events = await this.listVideoViewEvents(pointer, options);
+      return {
+        total: Array.isArray(events) ? events.length : 0,
+        perRelay: [],
+        fallback: true,
+      };
+    }
+
+    const filter = createVideoViewEventFilter(pointer);
+    const relayList = Array.isArray(options?.relays) && options.relays.length
+      ? options.relays
+      : undefined;
+
+    const signal = options?.signal;
+    const normalizeAbortError = () => {
+      if (signal?.reason instanceof Error) {
+        return signal.reason;
+      }
+      if (typeof DOMException === "function") {
+        return new DOMException("Operation aborted", "AbortError");
+      }
+      const error = new Error("Operation aborted");
+      error.name = "AbortError";
+      return error;
+    };
+    if (signal?.aborted) {
+      throw normalizeAbortError();
+    }
+
+    try {
+      const result = await this.countEventsAcrossRelays([filter], {
+        relays: relayList,
+        timeoutMs: options?.timeoutMs,
+      });
+
+      if (result?.perRelay?.some((entry) => entry && entry.ok)) {
+        return { ...result, fallback: false };
+      }
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] COUNT view request failed:", error);
+      }
+    }
+
+    if (signal?.aborted) {
+      throw normalizeAbortError();
+    }
+
+    const abortPromise =
+      signal &&
+      typeof signal === "object" &&
+      typeof signal.addEventListener === "function"
+        ? new Promise((_, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                reject(normalizeAbortError());
+              },
+              { once: true }
+            );
+          })
+        : null;
+
+    const listPromise = this.listVideoViewEvents(pointer, {
+      relays: relayList,
+    });
+
+    const events = abortPromise
+      ? await Promise.race([listPromise, abortPromise])
+      : await listPromise;
+
+    return {
+      total: Array.isArray(events) ? events.length : 0,
+      perRelay: [],
+      fallback: true,
+    };
   }
 
   async updateWatchHistoryList(pointer) {
@@ -4549,3 +4870,24 @@ export const updateWatchHistoryList = (...args) =>
 
 export const removeWatchHistoryItem = (...args) =>
   nostrClient.removeWatchHistoryItem(...args);
+
+export const listVideoViewEvents = (...args) => {
+  if (typeof nostrClient.listVideoViewEvents !== "function") {
+    throw new Error("Video view listing is unavailable in this build.");
+  }
+  return nostrClient.listVideoViewEvents(...args);
+};
+
+export const subscribeVideoViewEvents = (...args) => {
+  if (typeof nostrClient.subscribeVideoViewEvents !== "function") {
+    throw new Error("Video view subscriptions are unavailable in this build.");
+  }
+  return nostrClient.subscribeVideoViewEvents(...args);
+};
+
+export const countVideoViewEvents = (...args) => {
+  if (typeof nostrClient.countVideoViewEvents !== "function") {
+    throw new Error("Video view counting is unavailable in this build.");
+  }
+  return nostrClient.countVideoViewEvents(...args);
+};
