@@ -4,8 +4,9 @@ const DEFAULT_FLAGS = Object.freeze({
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
   WSS_TRACKERS: Object.freeze([
     "wss://tracker.openwebtorrent.com",
-    "wss://tracker.btorrent.xyz",
+    "wss://tracker.fastcast.nz",
     "wss://tracker.webtorrent.dev",
+    "wss://tracker.sloppyta.co:443/announce",
   ]),
 });
 
