@@ -46,6 +46,8 @@ const originalWatchHistoryLastCreatedAt = nostrClient.watchHistoryLastCreatedAt;
 const originalRecordVideoView = nostrClient.recordVideoView;
 const originalWatchHistoryCache = nostrClient.watchHistoryCache;
 const originalWatchHistoryStorage = nostrClient.watchHistoryStorage;
+const originalScheduleWatchHistoryRepublish =
+  nostrClient.scheduleWatchHistoryRepublish;
 
 nostrClient.watchHistoryCache = new Map();
 nostrClient.watchHistoryStorage = {
@@ -605,6 +607,211 @@ async function testPublishSnapshotFailureRetry() {
   }
 }
 
+async function testWatchHistoryPartialRelayRetry() {
+  poolHarness.reset();
+  watchHistoryService.resetProgress();
+  nostrClient.watchHistoryLastCreatedAt = 0;
+
+  const actor = "partial-actor";
+  const restoreCrypto = installSessionCrypto({ privateKey: "partial-priv" });
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalPublishSnapshot = nostrClient.publishWatchHistorySnapshot;
+  const originalSchedule = nostrClient.scheduleWatchHistoryRepublish;
+  const originalRecordView = nostrClient.recordVideoView;
+
+  try {
+    nostrClient.pubkey = "";
+    nostrClient.sessionActor = { pubkey: actor, privateKey: "partial-priv" };
+    nostrClient.ensureSessionActor = async () => actor;
+
+    const relaySet = [
+      "wss://relay.one",
+      "wss://relay.two",
+      "wss://relay.three",
+    ];
+    nostrClient.relays = [...relaySet];
+    nostrClient.writeRelays = [...relaySet];
+
+    let attemptIndex = 0;
+    let currentAttempt = 0;
+    nostrClient.publishWatchHistorySnapshot = async function publishWithTracking(
+      ...args
+    ) {
+      attemptIndex += 1;
+      currentAttempt = attemptIndex;
+      return originalPublishSnapshot.apply(this, args);
+    };
+
+    nostrClient.recordVideoView = async () => ({
+      ok: true,
+      event: {
+        id: `view-${Date.now()}`,
+        pubkey: actor,
+        created_at: Math.floor(Date.now() / 1000),
+      },
+    });
+
+    await watchHistoryService.publishView(
+      { type: "e", value: "partial-pointer" },
+      Math.floor(Date.now() / 1000),
+      { actor },
+    );
+
+    const queuedBefore = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      queuedBefore.length,
+      1,
+      "queue should contain the partial pointer before snapshot",
+    );
+    assert.deepEqual(
+      nostrClient.writeRelays,
+      relaySet,
+      "write relays should include all configured endpoints",
+    );
+
+    const attemptPlans = [
+      {
+        "wss://relay.one": true,
+        "wss://relay.two": true,
+        "wss://relay.three": false,
+      },
+      {
+        "wss://relay.one": true,
+        "wss://relay.two": false,
+        "wss://relay.three": true,
+      },
+      {
+        "wss://relay.one": true,
+        "wss://relay.two": true,
+        "wss://relay.three": true,
+      },
+    ];
+
+    poolHarness.setResolver(({ relays }) => {
+      const relayUrl = Array.isArray(relays) && relays.length ? relays[0] : "";
+      const index = Math.min(
+        Math.max(currentAttempt, 1) - 1,
+        attemptPlans.length - 1,
+      );
+      const plan = attemptPlans[index] || {};
+      const accept = plan?.[relayUrl];
+      if (accept) {
+        return { ok: true };
+      }
+      return { ok: false, error: new Error(`reject-${relayUrl || "unknown"}`) };
+    });
+
+    const scheduledRuns = [];
+    nostrClient.scheduleWatchHistoryRepublish = (snapshotId, operation) => {
+      const promise = (async () => {
+        let attempt = 1;
+        let result = null;
+        for (; attempt <= attemptPlans.length + 1; attempt += 1) {
+          result = await operation(attempt);
+          if (result?.ok || !result?.retryable) {
+            break;
+          }
+        }
+        return result;
+      })();
+      scheduledRuns.push({ snapshotId, promise });
+      return { attempt: 1, delay: 0 };
+    };
+
+    let thrownError = null;
+    try {
+      await watchHistoryService.snapshot(null, { actor, reason: "partial-test" });
+    } catch (error) {
+      thrownError = error;
+    }
+
+    assert(thrownError, "snapshot should throw when partial acceptance occurs");
+    assert.equal(
+      thrownError?.result?.retryable,
+      true,
+      "partial failures should be marked retryable",
+    );
+    assert.equal(
+      thrownError?.result?.error,
+      "partial-relay-acceptance",
+      "partial failures should expose the partial acceptance error code",
+    );
+    assert(thrownError?.result?.partial, "result should report partial acceptance");
+
+    const initialPointerStatus =
+      thrownError?.result?.publishResults?.relayStatus?.pointer || [];
+    assert(
+      initialPointerStatus.some((entry) => entry && entry.success === false),
+      "initial relay status should capture pointer rejections",
+    );
+
+    assert(
+      attemptIndex >= 1,
+      "initial snapshot attempt should increment the attempt counter",
+    );
+    assert.equal(
+      scheduledRuns.length,
+      1,
+      "partial failure should schedule a republish operation",
+    );
+
+    const finalResult = await scheduledRuns[0].promise;
+    assert(finalResult?.ok, "republish attempts should converge to success");
+    assert.equal(
+      attemptIndex,
+      3,
+      "republish loop should retry until every relay accepts",
+    );
+    assert.equal(
+      finalResult?.partial,
+      false,
+      "final result should not mark the publish as partial",
+    );
+
+    const finalPointerStatus =
+      finalResult?.publishResults?.relayStatus?.pointer || [];
+    assert.equal(
+      finalPointerStatus.filter((entry) => entry?.success).length,
+      relaySet.length,
+      "final pointer publish should succeed on all relays",
+    );
+    for (const chunkStatus of finalResult?.publishResults?.relayStatus?.chunks || []) {
+      assert.equal(
+        chunkStatus.filter((entry) => entry?.success).length,
+        relaySet.length,
+        "final chunk publish should succeed on all relays",
+      );
+    }
+
+    const remainingQueue = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      remainingQueue.length,
+      0,
+      "queue should remain empty after successful retries",
+    );
+  } finally {
+    nostrClient.scheduleWatchHistoryRepublish = originalSchedule;
+    nostrClient.publishWatchHistorySnapshot = originalPublishSnapshot;
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.recordVideoView = originalRecordView;
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+    poolHarness.setResolver(() => ({ ok: true }));
+    watchHistoryService.resetProgress(actor);
+    restoreCrypto.restore();
+  }
+}
+
 async function testResolveWatchHistoryBatchingWindow() {
   const actor = "batch-window-actor";
   const originalEnsure = nostrClient.ensureSessionActor;
@@ -776,6 +983,7 @@ async function testWatchHistoryServiceIntegration() {
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesExtensionCrypto();
 await testPublishSnapshotFailureRetry();
+await testWatchHistoryPartialRelayRetry();
 await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
 
@@ -794,6 +1002,8 @@ nostrClient.watchHistoryLastCreatedAt = originalWatchHistoryLastCreatedAt;
 nostrClient.recordVideoView = originalRecordVideoView;
 nostrClient.watchHistoryCache = originalWatchHistoryCache;
 nostrClient.watchHistoryStorage = originalWatchHistoryStorage;
+nostrClient.scheduleWatchHistoryRepublish =
+  originalScheduleWatchHistoryRepublish;
 
 if (!originalFlag) {
   setWatchHistoryV2Enabled(false);

@@ -753,9 +753,14 @@ function scheduleRepublishForQueue(actorKey) {
           source: `${queue.lastSnapshotReason || "session"}-retry`,
         }
       );
+      if (publishResult?.snapshotId) {
+        queue.pendingSnapshotId = publishResult.snapshotId;
+      }
       if (publishResult?.ok) {
         queue.pendingSnapshotId = null;
         queue.republishScheduled = false;
+        queue.items.clear();
+        queue.throttle.clear();
         await updateFingerprintCache(
           actorKey,
           publishResult.items || latestItems,

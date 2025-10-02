@@ -703,7 +703,6 @@ export function createWatchHistoryRenderer(config = {}) {
   const {
     fetchHistory = watchHistoryService.loadLatest.bind(watchHistoryService),
     snapshot = watchHistoryService.snapshot.bind(watchHistoryService),
-    remove,
     getActor,
     viewSelector = "#watchHistoryView",
     gridSelector = "#watchHistoryGrid",
