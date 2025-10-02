@@ -1,11 +1,7 @@
 // js/app.js
 
 import { loadView } from "./viewManager.js";
-import {
-  nostrClient,
-  recordVideoView,
-  updateWatchHistoryList,
-} from "./nostr.js";
+import { nostrClient, recordVideoView } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
 import { accessControl, normalizeNpub } from "./accessControl.js";
@@ -4289,29 +4285,6 @@ class bitvidApp {
         }
         button.dataset.navBound = "true";
         button.addEventListener("click", () => {
-          if (name === "history") {
-            let actorCandidate;
-            if (typeof this.pubkey === "string" && this.pubkey.trim()) {
-              actorCandidate = this.pubkey.trim();
-            } else if (
-              typeof window?.app?.pubkey === "string" &&
-              window.app.pubkey.trim()
-            ) {
-              actorCandidate = window.app.pubkey.trim();
-            }
-
-            void nostrClient
-              .fetchWatchHistory(actorCandidate, { forceRefresh: true })
-              .catch((error) => {
-                if (isDevMode) {
-                  console.warn(
-                    "[profileModal] Failed to prefetch watch history on navigation:",
-                    error
-                  );
-                }
-              });
-          }
-
           this.selectProfilePane(name);
         });
       });
@@ -6987,10 +6960,6 @@ class bitvidApp {
       clearTimeout(state.viewTimerId);
     }
 
-    if (state.historyTimerId) {
-      clearTimeout(state.historyTimerId);
-    }
-
     if (Array.isArray(state.handlers) && state.videoEl) {
       for (const { eventName, handler } of state.handlers) {
         try {
@@ -7085,7 +7054,6 @@ class bitvidApp {
     }
 
     const VIEW_THRESHOLD_SECONDS = 12;
-    const WATCH_HISTORY_THRESHOLD_SECONDS = 10;
     const state = {
       videoEl,
       pointer,
@@ -7093,15 +7061,7 @@ class bitvidApp {
       viewerIdentityKey,
       handlers: [],
       viewTimerId: null,
-      historyTimerId: null,
       viewFired: false,
-      historyFired: false,
-    };
-
-    const maybeCleanup = () => {
-      if (state.viewFired && state.historyFired) {
-        this.cancelPendingViewLogging();
-      }
     };
 
     const clearTimer = (timerKey) => {
@@ -7118,7 +7078,7 @@ class bitvidApp {
       }
       state.viewFired = true;
       clearTimer("view");
-      maybeCleanup();
+      this.cancelPendingViewLogging();
 
       const { pointer: thresholdPointer, pointerKey: thresholdPointerKey } =
         state;
@@ -7171,41 +7131,6 @@ class bitvidApp {
       });
     };
 
-    const finalizeWatchHistory = () => {
-      if (state.historyFired) {
-        return;
-      }
-      state.historyFired = true;
-      clearTimer("history");
-      maybeCleanup();
-
-      const { pointer: thresholdPointer } = state;
-
-      (async () => {
-        try {
-          const historyResult = await updateWatchHistoryList(thresholdPointer);
-          if (!historyResult?.ok) {
-            console.warn(
-              "[playVideoWithFallback] Watch history update failed:",
-              historyResult
-            );
-          }
-        } catch (historyError) {
-          console.warn(
-            "[playVideoWithFallback] Exception while updating watch history:",
-            historyError
-          );
-        }
-      })().catch((error) => {
-        if (isDevMode) {
-          console.warn(
-            "[playVideoWithFallback] Unexpected error while updating watch history:",
-            error
-          );
-        }
-      });
-    };
-
     const scheduleTimer = (timerKey, thresholdSeconds, callback) => {
       const firedKey = `${timerKey}Fired`;
       const idKey = `${timerKey}TimerId`;
@@ -7232,12 +7157,6 @@ class bitvidApp {
     };
 
     registerHandler("timeupdate", () => {
-      if (
-        !state.historyFired &&
-        videoEl.currentTime >= WATCH_HISTORY_THRESHOLD_SECONDS
-      ) {
-        finalizeWatchHistory();
-      }
       if (!state.viewFired && videoEl.currentTime >= VIEW_THRESHOLD_SECONDS) {
         finalizeView();
       }
@@ -7247,9 +7166,6 @@ class bitvidApp {
       if (!state.viewFired) {
         clearTimer("view");
       }
-      if (!state.historyFired) {
-        clearTimer("history");
-      }
     };
 
     ["pause", "waiting", "stalled", "ended", "emptied"].forEach((event) =>
@@ -7257,14 +7173,9 @@ class bitvidApp {
     );
 
     const resumeIfNeeded = () => {
-      if (state.viewFired && state.historyFired) {
+      if (state.viewFired) {
         return;
       }
-      scheduleTimer(
-        "history",
-        WATCH_HISTORY_THRESHOLD_SECONDS,
-        finalizeWatchHistory
-      );
       scheduleTimer("view", VIEW_THRESHOLD_SECONDS, finalizeView);
     };
 
