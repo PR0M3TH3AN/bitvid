@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 const {
   WATCH_HISTORY_LIST_IDENTIFIER,
   WATCH_HISTORY_KIND,
+  WATCH_HISTORY_FETCH_EVENT_LIMIT,
 } = await import("../js/config.js");
 const {
   NOTE_TYPES,
@@ -264,7 +265,7 @@ const { client: publishingClient, publishedEvents, payloads } =
   createPublishingClient(ACTOR);
 
 publishingClient.watchHistoryPayloadMaxBytes = 400;
-publishingClient.watchHistoryFetchEventLimit = 10;
+publishingClient.watchHistoryFetchEventLimit = WATCH_HISTORY_FETCH_EVENT_LIMIT;
 
 const baseWatchedAt = 1_700_000_000_000;
 const longPointers = Array.from({ length: 8 }, (_, index) => {
@@ -417,7 +418,7 @@ const {
 
 chunkFailureClient.watchHistoryPayloadMaxBytes =
   publishingClient.watchHistoryPayloadMaxBytes;
-chunkFailureClient.watchHistoryFetchEventLimit = 10;
+chunkFailureClient.watchHistoryFetchEventLimit = WATCH_HISTORY_FETCH_EVENT_LIMIT;
 
 const chunkFailureResult = await chunkFailureClient.publishWatchHistorySnapshot(
   CHUNK_FAILURE_ACTOR,
@@ -648,7 +649,7 @@ globalThis.window.NostrTools.nip04.decrypt = async (
 
 const decryptClient = createDecryptClient(ACTOR);
 decryptClient.relays = ["wss://unit.test"];
-decryptClient.watchHistoryFetchEventLimit = 10;
+decryptClient.watchHistoryFetchEventLimit = WATCH_HISTORY_FETCH_EVENT_LIMIT;
 decryptClient.pool = {
   list: async () => publishedEvents,
 };
@@ -689,7 +690,7 @@ const snapshotId = headEvent.tags.find(
 
 const freshClient = createDecryptClient(ACTOR);
 freshClient.relays = ["wss://unit.test"];
-freshClient.watchHistoryFetchEventLimit = 10;
+freshClient.watchHistoryFetchEventLimit = WATCH_HISTORY_FETCH_EVENT_LIMIT;
 
 const observedFilters = [];
 freshClient.pool = {
@@ -799,6 +800,124 @@ assert(
     );
   }),
   "follow-up query should target chunk identifiers or snapshot"
+);
+
+const OVERFLOW_ACTOR = `${ACTOR}-overflow`;
+const overflowSnapshotId = "overflow-snapshot";
+const overflowTotalChunks = 18;
+const overflowBaseCreatedAt = 1_700_555_000;
+
+const overflowPointers = Array.from({ length: overflowTotalChunks }, (_, index) => {
+  const relay = index % 3 === 0 ? "wss://overflow.unit" : null;
+  return {
+    type: index % 2 === 0 ? "e" : "a",
+    value:
+      index % 2 === 0
+        ? `overflow-event-${index}`
+        : `${WATCH_HISTORY_KIND}:${OVERFLOW_ACTOR}:overflow-${index}`,
+    relay,
+    watchedAt: baseWatchedAt + index * 45_000,
+  };
+});
+
+const overflowChunkEvents = overflowPointers.map((pointer, index) => {
+  const chunkIdentifier = `${WATCH_HISTORY_CHUNK_PREFIX}/${overflowSnapshotId}/${index}`;
+  const pointerTag = [pointer.type, pointer.value];
+  if (pointer.relay) {
+    pointerTag.push(pointer.relay);
+  }
+  const payload = {
+    version: 2,
+    snapshot: overflowSnapshotId,
+    chunkIndex: index,
+    totalChunks: overflowTotalChunks,
+    items: [pointer],
+  };
+  const event = buildWatchHistoryChunkEvent({
+    pubkey: OVERFLOW_ACTOR,
+    created_at: overflowBaseCreatedAt + (overflowTotalChunks - index),
+    chunkIdentifier,
+    snapshotId: overflowSnapshotId,
+    chunkIndex: index,
+    totalChunks: overflowTotalChunks,
+    pointerTags: [pointerTag],
+    chunkAddresses: [],
+    content: JSON.stringify(payload),
+  });
+  event.id = window.NostrTools.getEventHash(event);
+  event.sig = `sig-overflow-chunk-${index}`;
+  return event;
+});
+
+const overflowIndexEvent = buildWatchHistoryIndexEvent({
+  pubkey: OVERFLOW_ACTOR,
+  created_at: overflowBaseCreatedAt + overflowTotalChunks + 5,
+  snapshotId: overflowSnapshotId,
+  totalChunks: overflowTotalChunks,
+  chunkAddresses: [],
+});
+overflowIndexEvent.id = window.NostrTools.getEventHash(overflowIndexEvent);
+overflowIndexEvent.sig = "sig-overflow-index";
+
+const overflowClient = createDecryptClient(OVERFLOW_ACTOR);
+overflowClient.relays = ["wss://overflow.test"];
+// Simulate deployments that kept the fetch limit near the historical default.
+overflowClient.watchHistoryFetchEventLimit = 12;
+
+const overflowChunkLimits = [];
+overflowClient.pool = {
+  list: async (_relays, filters) => {
+    const firstFilter = filters[0] || {};
+    const dFilter = Array.isArray(firstFilter["#d"]) ? firstFilter["#d"] : [];
+    if (filters.length === 1 && dFilter.includes(WATCH_HISTORY_LIST_IDENTIFIER)) {
+      return [overflowIndexEvent];
+    }
+
+    filters.forEach((filter) => {
+      if (Number.isFinite(filter?.limit)) {
+        overflowChunkLimits.push(filter.limit);
+      }
+    });
+
+    const requestedSnapshots = new Set();
+    filters.forEach((filter) => {
+      if (Array.isArray(filter?.["#snapshot"])) {
+        filter["#snapshot"].forEach((value) => {
+          if (typeof value === "string" && value) {
+            requestedSnapshots.add(value);
+          }
+        });
+      }
+    });
+
+    if (!requestedSnapshots.size) {
+      return [];
+    }
+
+    return overflowChunkEvents.filter((event) => {
+      const snapshotTag = event.tags.find(
+        (tag) => Array.isArray(tag) && tag[0] === "snapshot"
+      );
+      return snapshotTag && requestedSnapshots.has(snapshotTag[1]);
+    });
+  },
+};
+
+const overflowFetched = await overflowClient.fetchWatchHistory(OVERFLOW_ACTOR);
+
+assert.equal(
+  overflowFetched.items.length,
+  overflowTotalChunks,
+  "fetch should hydrate snapshots larger than the legacy limit"
+);
+
+const maxOverflowLimit = overflowChunkLimits.length
+  ? Math.max(...overflowChunkLimits)
+  : 0;
+
+assert(
+  maxOverflowLimit >= overflowTotalChunks + 1,
+  "chunk fetch should cover all chunks plus the newest index event"
 );
 
 const MONOTONIC_ACTOR = `${ACTOR}-monotonic`;
