@@ -265,6 +265,10 @@ function clonePointerItem(pointer) {
     cloned.watchedAt = watchedAt;
   }
 
+  if (pointer.session === true) {
+    cloned.session = true;
+  }
+
   return cloned;
 }
 
@@ -5312,3 +5316,5 @@ export const countVideoViewEvents = (...args) => {
   }
   return nostrClient.countVideoViewEvents(...args);
 };
+
+export { normalizePointerInput, pointerKey, chunkWatchHistoryPayloadItems, normalizeActorKey };

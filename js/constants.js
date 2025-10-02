@@ -2,6 +2,7 @@ const DEFAULT_FLAGS = Object.freeze({
   URL_FIRST_ENABLED: true,   // try URL before magnet in the player
   ACCEPT_LEGACY_V1: true,    // accept v1 magnet-only notes
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
+  FEATURE_WATCH_HISTORY_V2: false,
   WSS_TRACKERS: Object.freeze([
     "wss://tracker.openwebtorrent.com",
     "wss://tracker.fastcast.nz",
@@ -21,6 +22,7 @@ const runtimeFlags = (() => {
     ACCEPT_LEGACY_V1: DEFAULT_FLAGS.ACCEPT_LEGACY_V1,
     VIEW_FILTER_INCLUDE_LEGACY_VIDEO:
       DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
+    FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
     WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
   };
   if (globalScope) {
@@ -101,6 +103,11 @@ export let VIEW_FILTER_INCLUDE_LEGACY_VIDEO = coerceBoolean(
   DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO
 );
 
+export let FEATURE_WATCH_HISTORY_V2 = coerceBoolean(
+  runtimeFlags.FEATURE_WATCH_HISTORY_V2,
+  DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2
+);
+
 export let WSS_TRACKERS = freezeTrackers(
   sanitizeTrackerList(runtimeFlags.WSS_TRACKERS)
 );
@@ -141,6 +148,20 @@ Object.defineProperty(runtimeFlags, "VIEW_FILTER_INCLUDE_LEGACY_VIDEO", {
   },
 });
 
+Object.defineProperty(runtimeFlags, "FEATURE_WATCH_HISTORY_V2", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return FEATURE_WATCH_HISTORY_V2;
+  },
+  set(next) {
+    FEATURE_WATCH_HISTORY_V2 = coerceBoolean(
+      next,
+      DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2
+    );
+  },
+});
+
 Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
   configurable: true,
   enumerable: true,
@@ -156,6 +177,7 @@ Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
 runtimeFlags.URL_FIRST_ENABLED = URL_FIRST_ENABLED;
 runtimeFlags.ACCEPT_LEGACY_V1 = ACCEPT_LEGACY_V1;
 runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO = VIEW_FILTER_INCLUDE_LEGACY_VIDEO;
+runtimeFlags.FEATURE_WATCH_HISTORY_V2 = FEATURE_WATCH_HISTORY_V2;
 runtimeFlags.WSS_TRACKERS = WSS_TRACKERS;
 
 export function setUrlFirstEnabled(next) {
@@ -184,8 +206,14 @@ export function resetRuntimeFlags() {
   setViewFilterIncludeLegacyVideo(
     DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO
   );
+  setWatchHistoryV2Enabled(DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2);
   setWssTrackers(DEFAULT_FLAGS.WSS_TRACKERS);
 }
 
 export const RUNTIME_FLAGS = runtimeFlags;
+
+export function setWatchHistoryV2Enabled(next) {
+  runtimeFlags.FEATURE_WATCH_HISTORY_V2 = next;
+  return FEATURE_WATCH_HISTORY_V2;
+}
 
