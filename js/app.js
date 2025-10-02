@@ -592,6 +592,7 @@ class bitvidApp {
     this.lastFocusedBeforeProfileModal = null;
     this.boundProfileModalKeydown = null;
     this.boundProfileModalFocusIn = null;
+    this.boundProfileHistoryVisibility = null;
     this.profileModalFocusables = [];
     this.profileSwitcherList = null;
     this.profileAddAccountBtn = null;
@@ -4207,8 +4208,29 @@ class bitvidApp {
           emptySelector: "#profileHistoryEmpty",
           sentinelSelector: "#profileHistorySentinel",
           scrollContainerSelector: "#profileHistoryScroll",
+          errorBannerSelector: "#profileHistoryError",
+          clearButtonSelector: "#profileHistoryClear",
+          republishButtonSelector: "#profileHistoryRepublish",
+          featureBannerSelector: "#profileHistoryFeatureBanner",
+          toastRegionSelector: "#profileHistoryToastRegion",
+          sessionWarningSelector: "#profileHistorySessionWarning",
+          metadataToggleSelector: "#profileHistoryMetadataToggle",
+          metadataThumbSelector: "#profileHistoryMetadataThumb",
+          metadataLabelSelector: "#profileHistoryMetadataLabel",
+          metadataDescriptionSelector: "#profileHistoryMetadataDescription",
           emptyCopy: "You haven’t watched any videos yet.",
-          getActor: async () => this.pubkey || window.app?.pubkey || undefined,
+          getActor: async () => {
+            if (this.pubkey) {
+              return this.pubkey;
+            }
+            if (
+              typeof nostrClient?.sessionActor?.pubkey === "string" &&
+              nostrClient.sessionActor.pubkey
+            ) {
+              return nostrClient.sessionActor.pubkey;
+            }
+            return window.app?.pubkey || undefined;
+          },
         });
       }
       this.adminModeratorsSection =
@@ -4640,6 +4662,13 @@ class bitvidApp {
     if (this.boundProfileModalFocusIn) {
       document.removeEventListener("focusin", this.boundProfileModalFocusIn);
     }
+    if (this.boundProfileHistoryVisibility) {
+      document.removeEventListener(
+        "visibilitychange",
+        this.boundProfileHistoryVisibility
+      );
+      this.boundProfileHistoryVisibility = null;
+    }
 
     this.closeAllMoreMenus();
 
@@ -5030,9 +5059,40 @@ class bitvidApp {
       return;
     }
 
+    let primaryActor =
+      typeof this.pubkey === "string" && this.pubkey ? this.pubkey : undefined;
+    if (
+      !primaryActor &&
+      typeof nostrClient?.sessionActor?.pubkey === "string" &&
+      nostrClient.sessionActor.pubkey
+    ) {
+      primaryActor = nostrClient.sessionActor.pubkey;
+    }
+
     try {
-      await this.profileHistoryRenderer.ensureInitialLoad();
-      this.profileHistoryRenderer.resume();
+      await this.profileHistoryRenderer.ensureInitialLoad({ actor: primaryActor });
+      await this.profileHistoryRenderer.refresh({ actor: primaryActor, force: true });
+      if (!this.boundProfileHistoryVisibility) {
+        this.boundProfileHistoryVisibility = () => {
+          if (!this.profileHistoryRenderer) {
+            return;
+          }
+          if (document.visibilityState === "visible") {
+            this.profileHistoryRenderer.resume();
+          } else {
+            this.profileHistoryRenderer.pause();
+          }
+        };
+        document.addEventListener(
+          "visibilitychange",
+          this.boundProfileHistoryVisibility
+        );
+      }
+      if (document.visibilityState === "hidden") {
+        this.profileHistoryRenderer.pause();
+      } else {
+        this.profileHistoryRenderer.resume();
+      }
     } catch (error) {
       console.error(
         "[profileModal] Failed to populate watch history pane:",

@@ -2022,6 +2022,8 @@ class NostrClient {
       return;
     }
 
+    const onSchedule =
+      typeof options?.onSchedule === "function" ? options.onSchedule : null;
     const previous = this.watchHistoryRepublishTimers.get(key);
     if (previous && typeof previous.timer === "number") {
       clearTimeout(previous.timer);
@@ -2049,6 +2051,19 @@ class NostrClient {
       Math.floor(cappedDelay + jitter),
     );
 
+    if (onSchedule) {
+      try {
+        onSchedule({ snapshotId: key, attempt: attempt + 1, delay });
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            `[nostr] Failed to notify watch history republish schedule for ${key}:`,
+            error,
+          );
+        }
+      }
+    }
+
     const timer = setTimeout(async () => {
       this.watchHistoryRepublishTimers.delete(key);
       try {
@@ -2057,6 +2072,7 @@ class NostrClient {
           if (attempt + 1 <= WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS) {
             this.scheduleWatchHistoryRepublish(key, operation, {
               attempt: attempt + 1,
+              onSchedule,
             });
           } else if (isDevMode) {
             console.warn(
@@ -2073,6 +2089,7 @@ class NostrClient {
         if (attempt + 1 <= WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS) {
           this.scheduleWatchHistoryRepublish(key, operation, {
             attempt: attempt + 1,
+            onSchedule,
           });
         }
       }
@@ -2083,6 +2100,8 @@ class NostrClient {
       attempt,
       operation,
     });
+
+    return { attempt: attempt + 1, delay };
   }
 
   async getWatchHistoryFingerprint(actorInput, itemsOverride = null) {
