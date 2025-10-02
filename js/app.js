@@ -1261,6 +1261,12 @@ class bitvidApp {
 
       try {
         await accessControl.refresh();
+        console.assert(
+          !accessControl.lastError ||
+            accessControl.lastError?.code !== "nostr-unavailable",
+          "[app.init()] Access control refresh should not run before nostrClient.init()",
+          accessControl.lastError
+        );
       } catch (error) {
         console.warn("Failed to refresh admin lists after connecting to Nostr:", error);
       }
