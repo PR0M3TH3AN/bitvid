@@ -1,11 +1,9 @@
 //js/webtorrent.js
 
 import WebTorrent from "./webtorrent.min.js";
+import { WSS_TRACKERS } from "./constants.js";
 
-const DEFAULT_PROBE_TRACKERS = Object.freeze([
-  "wss://tracker.btorrent.xyz",
-  "wss://tracker.openwebtorrent.com",
-]);
+const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
 
 function decodeComponentSafe(value) {
   if (typeof value !== "string") {
