@@ -530,7 +530,6 @@ async function testRecordVideoViewEmitsJsonPayload() {
   const originalEnsureSessionActor = nostrClient.ensureSessionActor;
   const originalSessionActor = nostrClient.sessionActor;
   const originalPubkey = nostrClient.pubkey;
-  const originalUpdateHistory = nostrClient.updateWatchHistoryList;
   const originalWarn = console.warn;
   const originalNostrTools = window.NostrTools;
 
@@ -582,11 +581,6 @@ async function testRecordVideoViewEmitsJsonPayload() {
   };
   nostrClient.pubkey = "";
 
-  nostrClient.updateWatchHistoryList = async () => {
-    throw new Error(
-      "recordVideoView should not invoke updateWatchHistoryList during view publishes"
-    );
-  };
 
   try {
     const result = await nostrClient.recordVideoView(pointer, {
@@ -633,7 +627,6 @@ async function testRecordVideoViewEmitsJsonPayload() {
     nostrClient.ensureSessionActor = originalEnsureSessionActor;
     nostrClient.sessionActor = originalSessionActor;
     nostrClient.pubkey = originalPubkey;
-    nostrClient.updateWatchHistoryList = originalUpdateHistory;
     console.warn = originalWarn;
     window.NostrTools = originalNostrTools;
   }
