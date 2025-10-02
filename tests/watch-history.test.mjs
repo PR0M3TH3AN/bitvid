@@ -1381,6 +1381,79 @@ try {
   }
 }
 
+const missingSignerClient = createDecryptClient(LOGGED_ACTOR);
+missingSignerClient.pubkey = LOGGED_ACTOR;
+missingSignerClient.sessionActor = null;
+
+let missingSignerEnsureCalls = 0;
+missingSignerClient.ensureSessionActor = async () => {
+  missingSignerEnsureCalls += 1;
+  return LOGGED_ACTOR;
+};
+
+const priorMissingSignerNostr = globalThis.window.nostr;
+const priorMissingSignerSessionDecrypt = globalThis.window.NostrTools.nip04.decrypt;
+let missingSignerSessionDecryptCalls = 0;
+
+try {
+  delete globalThis.window.nostr;
+  globalThis.window.NostrTools.nip04.decrypt = async () => {
+    missingSignerSessionDecryptCalls += 1;
+    return JSON.stringify(encryptedPayload);
+  };
+
+  const missingSignerChunkEvent = {
+    ...encryptedChunkEvent,
+    pubkey: LOGGED_ACTOR,
+    id: "missing-signer-event",
+  };
+
+  const missingSignerResult = await missingSignerClient.decryptWatchHistoryEvent(
+    missingSignerChunkEvent,
+    LOGGED_ACTOR
+  );
+
+  assert.equal(
+    missingSignerEnsureCalls,
+    0,
+    "missing signer should not trigger session actor ensure"
+  );
+  assert.equal(
+    missingSignerSessionDecryptCalls,
+    0,
+    "missing signer should skip session decrypt fallback"
+  );
+  assert.equal(
+    missingSignerResult.needsSignerRetry,
+    true,
+    "missing signer fallback should mark retry flag"
+  );
+  assert.deepEqual(
+    missingSignerResult.items.map((item) => ({
+      type: item.type,
+      value: item.value,
+      relay: item.relay || null,
+    })),
+    encryptedPayload.items.map((item) => ({
+      type: item.type,
+      value: item.value,
+      relay: item.relay || null,
+    })),
+    "missing signer fallback should preserve pointer metadata"
+  );
+} finally {
+  if (priorMissingSignerNostr === undefined) {
+    delete globalThis.window.nostr;
+  } else {
+    globalThis.window.nostr = priorMissingSignerNostr;
+  }
+  if (priorMissingSignerSessionDecrypt === undefined) {
+    delete globalThis.window.NostrTools.nip04.decrypt;
+  } else {
+    globalThis.window.NostrTools.nip04.decrypt = priorMissingSignerSessionDecrypt;
+  }
+}
+
 const unsortedVideos = [
   { id: "alpha", watchHistory: { watchedAt: 1_700_000_000_500 } },
   { id: "bravo", watchHistory: { watchedAt: 1_700_000_010_000 } },
