@@ -3823,11 +3823,37 @@ class NostrClient {
       this.watchHistoryCache.delete(actor);
     }
 
+    let newestSnapshotChunkTarget = 0;
+    let newestSnapshotIdentifierTarget = 0;
+    if (latestIndexSnapshotMeta?.snapshotId) {
+      const latestSnapshotMeta = indexSnapshots.get(
+        latestIndexSnapshotMeta.snapshotId
+      );
+      if (latestSnapshotMeta) {
+        const totalChunksForLatest = Number.isFinite(
+          latestSnapshotMeta.totalChunks
+        )
+          ? Math.max(0, Math.floor(latestSnapshotMeta.totalChunks))
+          : 0;
+        if (totalChunksForLatest > 0) {
+          newestSnapshotChunkTarget = totalChunksForLatest + 1;
+        }
+        if (latestSnapshotMeta.chunkIdentifiers instanceof Set) {
+          const identifierCount = latestSnapshotMeta.chunkIdentifiers.size;
+          if (identifierCount > 0) {
+            newestSnapshotIdentifierTarget = identifierCount + 1;
+          }
+        }
+      }
+    }
+
     const chunkFilters = [];
     const chunkFetchLimit = Math.max(
       fetchLimit,
       chunkIdentifiers.size ? chunkIdentifiers.size + 1 : 0,
-      snapshotIds.size ? snapshotIds.size * 2 : 0
+      snapshotIds.size ? snapshotIds.size * 2 : 0,
+      newestSnapshotChunkTarget,
+      newestSnapshotIdentifierTarget
     );
 
     if (chunkIdentifiers.size) {

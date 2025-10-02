@@ -110,7 +110,7 @@ export const WATCH_HISTORY_PAYLOAD_MAX_BYTES = 60000;
  * the maximum number of chunks you expect a client to publish in one snapshot
  * so the UI can stitch the full list back together.
  */
-export const WATCH_HISTORY_FETCH_EVENT_LIMIT = 12;
+export const WATCH_HISTORY_FETCH_EVENT_LIMIT = 64;
 
 /**
  * How long clients should cache watch-history snapshots in localStorage.
