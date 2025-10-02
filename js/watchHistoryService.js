@@ -835,6 +835,13 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   );
 
   if (!isFeatureEnabled()) {
+    console.info(
+      "[watchHistoryService] Watch history feature disabled; skipping queue update.",
+      {
+        pointer: pointerInput,
+        createdAt,
+      }
+    );
     return viewResult;
   }
 
@@ -979,6 +986,13 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
 async function snapshot(items, options = {}) {
   if (!isFeatureEnabled()) {
+    console.info(
+      "[watchHistoryService] Snapshot skipped because watch history feature is disabled.",
+      {
+        requestedItems: Array.isArray(items) ? items.length : 0,
+        reason: typeof options.reason === "string" ? options.reason : "manual",
+      }
+    );
     return { ok: true, skipped: true, reason: "feature-disabled" };
   }
   const reason = typeof options.reason === "string" ? options.reason : "manual";
@@ -1091,6 +1105,10 @@ async function snapshot(items, options = {}) {
 
 async function loadLatest(actorInput) {
   if (!isFeatureEnabled()) {
+    console.info(
+      "[watchHistoryService] loadLatest skipped because watch history feature is disabled.",
+      { actor: resolveActorKey(actorInput) || null }
+    );
     return [];
   }
   const actorKey = resolveActorKey(actorInput);

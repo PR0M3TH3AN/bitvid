@@ -7585,10 +7585,9 @@ class bitvidApp {
       (async () => {
         let viewResult;
         try {
-          const watchHistoryEnabled =
-            watchHistoryService?.isEnabled?.() === true &&
-            typeof watchHistoryService.publishView === "function";
-          if (watchHistoryEnabled) {
+          const canUseWatchHistoryService =
+            typeof watchHistoryService?.publishView === "function";
+          if (canUseWatchHistoryService) {
             viewResult = await watchHistoryService.publishView(thresholdPointer);
           } else if (typeof nostrClient?.recordVideoView === "function") {
             viewResult = await nostrClient.recordVideoView(thresholdPointer);
