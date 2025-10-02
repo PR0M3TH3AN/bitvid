@@ -2552,6 +2552,51 @@ class NostrClient {
       overallSuccess = false;
     }
 
+    const publishAttemptSummaries = [];
+    const acceptedRelaySet = new Set();
+
+    const recordPublishAttempt = (label, results) => {
+      if (!Array.isArray(results) || !results.length) {
+        return;
+      }
+      const accepted = results
+        .filter((result) => result && result.success)
+        .map((result) => result.url)
+        .filter((url) => typeof url === "string" && url);
+      if (accepted.length) {
+        accepted.forEach((url) => acceptedRelaySet.add(url));
+      }
+      publishAttemptSummaries.push({ label, accepted, results });
+    };
+
+    chunkResults.forEach((chunk) => {
+      recordPublishAttempt(`chunk#${chunk.chunkIndex}`, chunk.results);
+    });
+    recordPublishAttempt("index", indexPublishResults);
+
+    const failedAttempts = publishAttemptSummaries.filter(
+      (attempt) => !attempt.accepted.length
+    );
+
+    if (acceptedRelaySet.size) {
+      console.info(
+        `[nostr] Watch history publish accepted by ${acceptedRelaySet.size} relay(s):`,
+        Array.from(acceptedRelaySet).join(", ")
+      );
+    }
+
+    if (failedAttempts.length) {
+      console.warn(
+        "[nostr] Watch history publish rejected by relays:",
+        failedAttempts.map((attempt) => ({
+          label: attempt.label,
+          results: attempt.results,
+        }))
+      );
+    } else if (!acceptedRelaySet.size && publishAttemptSummaries.length) {
+      console.warn("[nostr] Watch history publish had no relay attempts.");
+    }
+
     if (overallSuccess) {
       this.cancelWatchHistoryRepublish(normalizedActor);
     } else if (allowRetry && persistedItems.length) {
