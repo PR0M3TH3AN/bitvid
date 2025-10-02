@@ -1171,8 +1171,23 @@ function publishEventToRelay(pool, url, event) {
         let handlerRegistered = false;
         handlerRegistered =
           registerHandler("ok", handleSuccess) || handlerRegistered;
-        handlerRegistered =
-          registerHandler("seen", handleSuccess) || handlerRegistered;
+
+        const supportsSeenEvent = (() => {
+          if (!pub || typeof pub !== "object") {
+            return false;
+          }
+          const candidateArrays = [
+            pub.seen,
+            pub._seen,
+            pub.listeners?.seen,
+          ];
+          return candidateArrays.some((value) => Array.isArray(value));
+        })();
+
+        if (supportsSeenEvent) {
+          handlerRegistered =
+            registerHandler("seen", handleSuccess) || handlerRegistered;
+        }
         handlerRegistered =
           registerHandler("failed", handleFailure) || handlerRegistered;
 
