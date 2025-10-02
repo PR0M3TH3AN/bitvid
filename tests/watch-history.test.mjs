@@ -113,6 +113,7 @@ function createDecryptClient(actorPubkey) {
 }
 
 const ACTOR = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const LEGACY_WATCH_HISTORY_KIND = 30078;
 function deriveChunkPrefix(identifier) {
   if (typeof identifier !== "string") {
     return "watch-history:v2";
@@ -281,7 +282,7 @@ const longPointers = Array.from({ length: 8 }, (_, index) => {
   }
   return {
     type: "a",
-    value: `30078:${ACTOR}:history-${index}-${"y".repeat(60)}`,
+    value: `${WATCH_HISTORY_KIND}:${ACTOR}:history-${index}-${"y".repeat(60)}`,
     relay,
     watchedAt,
   };
@@ -526,7 +527,7 @@ const noSignerItems = [
   },
   {
     type: "a",
-    value: `30078:${LOGGED_ACTOR}:history`,
+    value: `${WATCH_HISTORY_KIND}:${LOGGED_ACTOR}:history`,
     watchedAt: baseWatchedAt + 456,
   },
 ];
@@ -684,6 +685,32 @@ if (typeof localStorage !== "undefined") {
 
 const headEvent = publishResult.event;
 
+const legacyPointerIdentifiers = new Set();
+const legacyIndexEvent = JSON.parse(JSON.stringify(headEvent));
+legacyIndexEvent.kind = LEGACY_WATCH_HISTORY_KIND;
+legacyIndexEvent.tags = legacyIndexEvent.tags.map((tag) => {
+  if (
+    Array.isArray(tag) &&
+    tag[0] === "a" &&
+    typeof tag[1] === "string" &&
+    !legacyPointerIdentifiers.size
+  ) {
+    const [kindStr, pubkey, ...identifierParts] = tag[1].split(":");
+    if (kindStr === String(WATCH_HISTORY_KIND) && identifierParts.length) {
+      const identifier = identifierParts.join(":");
+      legacyPointerIdentifiers.add(identifier);
+      const legacyAddress = `${LEGACY_WATCH_HISTORY_KIND}:${pubkey}:${identifier}`;
+      const clone = tag.slice();
+      clone[1] = legacyAddress;
+      return clone;
+    }
+  }
+  return tag;
+});
+const legacyChunkIdentifier = legacyPointerIdentifiers.size
+  ? Array.from(legacyPointerIdentifiers)[0]
+  : null;
+
 const snapshotId = headEvent.tags.find(
   (tag) => Array.isArray(tag) && tag[0] === "snapshot"
 )?.[1];
@@ -703,7 +730,7 @@ freshClient.pool = {
       : [];
 
     if (filters.length === 1 && dFilter.includes(WATCH_HISTORY_LIST_IDENTIFIER)) {
-      return [headEvent];
+      return [legacyIndexEvent];
     }
 
     const requestedIdentifiers = new Set();
@@ -725,6 +752,18 @@ freshClient.pool = {
     const responses = [];
 
     for (const event of publishResult.events) {
+      if (event.id === headEvent.id) {
+        continue;
+      }
+      const cloned = JSON.parse(JSON.stringify(event));
+      if (legacyChunkIdentifier) {
+        const identifierTag = cloned.tags.find(
+          (tag) => Array.isArray(tag) && tag[0] === "d"
+        );
+        if (identifierTag?.[1] === legacyChunkIdentifier) {
+          cloned.kind = LEGACY_WATCH_HISTORY_KIND;
+        }
+      }
       const identifier = event.tags.find(
         (tag) => Array.isArray(tag) && tag[0] === "d"
       )?.[1];
@@ -733,11 +772,11 @@ freshClient.pool = {
       )?.[1];
 
       if (identifier && requestedIdentifiers.has(identifier)) {
-        responses.push(event);
+        responses.push(cloned);
         continue;
       }
       if (eventSnapshot && requestedSnapshots.has(eventSnapshot)) {
-        responses.push(event);
+        responses.push(cloned);
       }
     }
 
@@ -767,6 +806,19 @@ assert.deepEqual(
     watchedAt: item.watchedAt,
   })),
   "rebuilt snapshot should preserve timestamps"
+);
+
+assert(
+  observedFilters.some((filters) =>
+    filters.some((filter) => {
+      const kinds = Array.isArray(filter?.kinds) ? filter.kinds : [];
+      return (
+        kinds.includes(WATCH_HISTORY_KIND) &&
+        kinds.includes(LEGACY_WATCH_HISTORY_KIND)
+      );
+    })
+  ),
+  "fetchWatchHistory should request both new and legacy kinds during migration"
 );
 
 assert(
