@@ -2315,6 +2315,22 @@ class NostrClient {
       return key && !skippedKeys.has(key);
     });
 
+    const baselineEntry =
+      existingEntry || this.watchHistoryCache.get(normalizedActor) || null;
+
+    const persistSnapshotToCache = () => {
+      const pointerForCache = baselineEntry?.pointerEvent || null;
+      const entry = this.createWatchHistoryEntry(
+        pointerForCache,
+        persistedItems,
+        Date.now(),
+        baselineEntry
+      );
+      this.watchHistoryCache.set(normalizedActor, entry);
+      this.persistWatchHistoryEntry(normalizedActor, entry);
+      return entry;
+    };
+
     if (chunkInfo.skipped?.length && isDevMode) {
       console.warn(
         `[nostr] Skipped ${chunkInfo.skipped.length} oversized watch history entries while chunking.`
@@ -2333,6 +2349,24 @@ class NostrClient {
       typeof window.nostr.signEvent === "function";
 
     if (!useExtension) {
+      if (
+        normalizedActorLower === normalizedLogged &&
+        (!window?.nostr || typeof window.nostr.signEvent !== "function")
+      ) {
+        const cachedEntry = persistSnapshotToCache();
+        if (allowRetry && persistedItems.length) {
+          this.scheduleWatchHistoryRepublish(normalizedActor, persistedItems);
+        }
+        return {
+          ok: false,
+          error: "signing-unavailable",
+          snapshot: snapshotId,
+          items: cachedEntry.items
+            .map((item) => clonePointerItem(item))
+            .filter(Boolean),
+        };
+      }
+
       try {
         if (!this.sessionActor || this.sessionActor.pubkey !== normalizedActor) {
           await this.ensureSessionActor(true);
@@ -2548,9 +2582,6 @@ class NostrClient {
     } else if (allowRetry && persistedItems.length) {
       this.scheduleWatchHistoryRepublish(normalizedActor, persistedItems);
     }
-
-    const baselineEntry =
-      existingEntry || this.watchHistoryCache.get(normalizedActor) || null;
 
     const pointerEvent =
       signedIndexEvent ||
