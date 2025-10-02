@@ -677,6 +677,13 @@ export function createWatchHistoryRenderer(config = {}) {
     infoSelector = "#watchHistoryInfo",
     errorBannerSelector = "#watchHistoryError",
     scrollContainerSelector = null,
+    featureBannerSelector = "#profileHistoryFeatureBanner",
+    toastRegionSelector = "#profileHistoryToastRegion",
+    sessionWarningSelector = "#profileHistorySessionWarning",
+    metadataToggleSelector = "#profileHistoryMetadataToggle",
+    metadataThumbSelector = "#profileHistoryMetadataThumb",
+    metadataLabelSelector = "#profileHistoryMetadataLabel",
+    metadataDescriptionSelector = "#profileHistoryMetadataDescription",
     emptyCopy = WATCH_HISTORY_EMPTY_COPY,
     batchSize = WATCH_HISTORY_BATCH_SIZE,
   } = config;
@@ -700,6 +707,11 @@ export function createWatchHistoryRenderer(config = {}) {
       activeVideos: null,
       catalogPromise: null,
     },
+    metadataStorageEnabled:
+      typeof watchHistoryService.shouldStoreMetadata === "function"
+        ? watchHistoryService.shouldStoreMetadata() !== false
+        : true,
+    sessionFallbackActive: false,
   };
 
   let elements = {
@@ -719,6 +731,13 @@ export function createWatchHistoryRenderer(config = {}) {
     info: null,
     errorBanner: null,
     scrollContainer: null,
+    featureBanner: null,
+    toastRegion: null,
+    sessionWarning: null,
+    metadataToggle: null,
+    metadataThumb: null,
+    metadataLabel: null,
+    metadataDescription: null,
   };
 
   let boundGridClickHandler = null;
@@ -727,6 +746,10 @@ export function createWatchHistoryRenderer(config = {}) {
   let boundRepublishHandler = null;
   let boundPrivacyToggleHandler = null;
   let boundPrivacyDismissHandler = null;
+  let boundMetadataToggleHandler = null;
+
+  const subscriptions = new Set();
+  const toastTimers = new Set();
 
   function refreshElements() {
     elements = {
@@ -746,7 +769,174 @@ export function createWatchHistoryRenderer(config = {}) {
       info: resolveElement(infoSelector),
       errorBanner: resolveElement(errorBannerSelector),
       scrollContainer: resolveElement(scrollContainerSelector),
+      featureBanner: resolveElement(featureBannerSelector),
+      toastRegion: resolveElement(toastRegionSelector),
+      sessionWarning: resolveElement(sessionWarningSelector),
+      metadataToggle: resolveElement(metadataToggleSelector),
+      metadataThumb: resolveElement(metadataThumbSelector),
+      metadataLabel: resolveElement(metadataLabelSelector),
+      metadataDescription: resolveElement(metadataDescriptionSelector),
     };
+  }
+
+  function clearSubscriptions() {
+    for (const unsubscribe of subscriptions) {
+      try {
+        unsubscribe();
+      } catch (error) {
+        if (isDevEnv) {
+          console.warn(
+            "[historyView] Failed to unsubscribe from watch history event:",
+            error,
+          );
+        }
+      }
+    }
+    subscriptions.clear();
+  }
+
+  function clearToasts() {
+    for (const timer of toastTimers) {
+      clearTimeout(timer);
+    }
+    toastTimers.clear();
+    if (elements.toastRegion instanceof HTMLElement) {
+      elements.toastRegion.innerHTML = "";
+    }
+  }
+
+  function pushToast({ message, variant = "info", duration = 8000 }) {
+    if (!(elements.toastRegion instanceof HTMLElement)) {
+      return;
+    }
+    const text = typeof message === "string" ? message.trim() : "";
+    if (!text) {
+      return;
+    }
+    const variantClass = {
+      info: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+      warning: "border-amber-500/40 bg-amber-500/10 text-amber-100",
+      error: "border-red-500/40 bg-red-500/10 text-red-100",
+    }[variant] || "border-gray-600 bg-gray-800/70 text-gray-100";
+
+    if (elements.toastRegion.childElementCount >= 3) {
+      const firstChild = elements.toastRegion.firstElementChild;
+      if (firstChild instanceof HTMLElement) {
+        firstChild.remove();
+      }
+    }
+
+    const toast = document.createElement("div");
+    toast.className = `rounded-md border px-4 py-2 text-sm ${variantClass}`;
+    toast.setAttribute("role", "status");
+    toast.textContent = text;
+    elements.toastRegion.appendChild(toast);
+
+    const timeout = Number.isFinite(duration) ? Math.max(0, duration) : 8000;
+    if (timeout > 0) {
+      const timer = setTimeout(() => {
+        toast.remove();
+        toastTimers.delete(timer);
+      }, timeout);
+      toastTimers.add(timer);
+    }
+  }
+
+  function updateFeatureBanner() {
+    if (!(elements.featureBanner instanceof HTMLElement)) {
+      return;
+    }
+    if (watchHistoryService.isEnabled?.() === true) {
+      elements.featureBanner.textContent = "";
+      setHidden(elements.featureBanner, true);
+      return;
+    }
+    elements.featureBanner.textContent =
+      "Watch history sync is disabled on this server. Local history only.";
+    setHidden(elements.featureBanner, false);
+  }
+
+  function updateMetadataToggle() {
+    if (!(elements.metadataToggle instanceof HTMLElement)) {
+      return;
+    }
+    const enabled = state.metadataStorageEnabled;
+    elements.metadataToggle.setAttribute("aria-checked", enabled ? "true" : "false");
+    elements.metadataToggle.classList.toggle("bg-blue-600", enabled);
+    elements.metadataToggle.classList.toggle("border-blue-500", enabled);
+    elements.metadataToggle.classList.toggle("bg-gray-700", !enabled);
+    elements.metadataToggle.classList.toggle("border-gray-600", !enabled);
+    if (elements.metadataThumb instanceof HTMLElement) {
+      elements.metadataThumb.classList.toggle("translate-x-5", enabled);
+      elements.metadataThumb.classList.toggle("translate-x-1", !enabled);
+    }
+  }
+
+  function updateSessionFallbackWarning() {
+    if (!(elements.sessionWarning instanceof HTMLElement)) {
+      return;
+    }
+    const nip07Pubkey =
+      typeof nostrClient?.pubkey === "string" ? nostrClient.pubkey : "";
+    const sessionPubkey =
+      typeof nostrClient?.sessionActor?.pubkey === "string"
+        ? nostrClient.sessionActor.pubkey
+        : "";
+    const activeActor = typeof state.actor === "string" ? state.actor : "";
+    const fallbackActive = !nip07Pubkey && sessionPubkey && sessionPubkey === activeActor;
+    state.sessionFallbackActive = Boolean(fallbackActive);
+    setHidden(elements.sessionWarning, !fallbackActive);
+  }
+
+  function subscribeToMetadataPreference() {
+    if (typeof watchHistoryService.subscribe !== "function") {
+      return;
+    }
+    const unsubscribe = watchHistoryService.subscribe(
+      "metadata-preference",
+      (payload) => {
+        const enabled = payload?.enabled !== false;
+        state.metadataStorageEnabled = enabled;
+        updateMetadataToggle();
+      }
+    );
+    if (typeof unsubscribe === "function") {
+      subscriptions.add(unsubscribe);
+    }
+  }
+
+  function subscribeToRepublishEvents() {
+    if (typeof watchHistoryService.subscribe !== "function") {
+      return;
+    }
+    const unsubscribe = watchHistoryService.subscribe(
+      "republish-scheduled",
+      (payload) => {
+        if (!payload) {
+          return;
+        }
+        if (
+          payload.actor &&
+          state.actor &&
+          payload.actor !== state.actor
+        ) {
+          return;
+        }
+        let message = "Republish retry scheduled.";
+        const delayMs = Number.isFinite(payload.delayMs)
+          ? Math.max(0, Math.floor(payload.delayMs))
+          : null;
+        if (delayMs != null) {
+          const seconds = Math.max(1, Math.round(delayMs / 1000));
+          const suffix = seconds === 1 ? "" : "s";
+          message = `Republish retry scheduled in about ${seconds} second${suffix}.`;
+        }
+        pushToast({ message, variant: "warning" });
+      }
+    );
+    if (typeof unsubscribe === "function") {
+      subscriptions.add(unsubscribe);
+    }
   }
 
   function setLoadingState(loading) {
@@ -927,17 +1117,74 @@ export function createWatchHistoryRenderer(config = {}) {
         hydrated.push({ ...item, metadata: state.metadataCache.get(item.pointerKey) });
         continue;
       }
+      const pointerKeyValue = item.pointerKey;
       let video = null;
-      try {
-        video = await resolveVideoFromPointer(item.pointer, caches);
-      } catch (error) {
-        if (isDevEnv) {
-          console.warn("[historyView] Failed to resolve video for pointer:", error);
+      let profile = null;
+      if (
+        pointerKeyValue &&
+        typeof watchHistoryService.getLocalMetadata === "function"
+      ) {
+        try {
+          const stored = watchHistoryService.getLocalMetadata(pointerKeyValue);
+          if (stored) {
+            video = stored.video || null;
+            profile = stored.profile || null;
+          }
+        } catch (error) {
+          if (isDevEnv) {
+            console.warn(
+              "[historyView] Failed to read stored metadata for pointer:",
+              pointerKeyValue,
+              error,
+            );
+          }
         }
       }
-      const profile = video?.pubkey ? resolveProfileForPubkey(video.pubkey) : null;
-      const metadata = { video, profile };
-      state.metadataCache.set(item.pointerKey, metadata);
+      try {
+        const resolvedVideo = await resolveVideoFromPointer(item.pointer, caches);
+        if (resolvedVideo) {
+          video = resolvedVideo;
+        }
+      } catch (error) {
+        if (isDevEnv) {
+          console.warn(
+            "[historyView] Failed to resolve video for pointer:",
+            error,
+          );
+        }
+      }
+      if (video?.pubkey) {
+        profile = resolveProfileForPubkey(video.pubkey) || profile;
+      }
+      const metadata = { video: video || null, profile: profile || null };
+      state.metadataCache.set(pointerKeyValue, metadata);
+      if (pointerKeyValue) {
+        if (state.metadataStorageEnabled) {
+          try {
+            watchHistoryService.setLocalMetadata?.(pointerKeyValue, metadata);
+          } catch (error) {
+            if (isDevEnv) {
+              console.warn(
+                "[historyView] Failed to persist metadata for pointer:",
+                pointerKeyValue,
+                error,
+              );
+            }
+          }
+        } else {
+          try {
+            watchHistoryService.removeLocalMetadata?.(pointerKeyValue);
+          } catch (error) {
+            if (isDevEnv) {
+              console.warn(
+                "[historyView] Failed to remove cached metadata for pointer:",
+                pointerKeyValue,
+                error,
+              );
+            }
+          }
+        }
+      }
       hydrated.push({ ...item, metadata });
     }
     return hydrated;
@@ -1124,6 +1371,16 @@ export function createWatchHistoryRenderer(config = {}) {
           state.cursor = 0;
           state.hasMore = false;
           state.metadataCache.clear();
+          try {
+            watchHistoryService.clearLocalMetadata?.();
+          } catch (error) {
+            if (isDevEnv) {
+              console.warn(
+                "[historyView] Failed to clear stored metadata while resetting progress:",
+                error,
+              );
+            }
+          }
           showEmptyState();
           const app = getAppInstance();
           app?.showSuccess?.("Local watch history cache cleared.");
@@ -1209,13 +1466,62 @@ export function createWatchHistoryRenderer(config = {}) {
     }
   }
 
-  async function loadHistory({ force = false } = {}) {
+  function bindMetadataToggle() {
+    if (!(elements.metadataToggle instanceof HTMLElement)) {
+      return;
+    }
+    if (boundMetadataToggleHandler) {
+      elements.metadataToggle.removeEventListener(
+        "click",
+        boundMetadataToggleHandler
+      );
+    }
+    boundMetadataToggleHandler = (event) => {
+      event.preventDefault();
+      const nextValue = !state.metadataStorageEnabled;
+      try {
+        if (typeof watchHistoryService.setMetadataPreference === "function") {
+          watchHistoryService.setMetadataPreference(nextValue);
+        }
+      } catch (error) {
+        if (isDevEnv) {
+          console.warn("[historyView] Failed to set metadata preference:", error);
+        }
+      }
+      state.metadataStorageEnabled =
+        typeof watchHistoryService.shouldStoreMetadata === "function"
+          ? watchHistoryService.shouldStoreMetadata() !== false
+          : nextValue;
+      updateMetadataToggle();
+      if (!state.metadataStorageEnabled) {
+        try {
+          watchHistoryService.clearLocalMetadata?.();
+        } catch (error) {
+          if (isDevEnv) {
+            console.warn(
+              "[historyView] Failed to clear stored metadata after disabling preference:",
+              error,
+            );
+          }
+        }
+        state.metadataCache.clear();
+        void renderer.render();
+      }
+    };
+    elements.metadataToggle.addEventListener("click", boundMetadataToggleHandler);
+  }
+
+  async function loadHistory({ force = false, actorOverride } = {}) {
     if (state.isLoading) {
       return false;
     }
     setLoadingState(true);
-    const actor = await resolveActorKey();
+    const actor =
+      typeof actorOverride === "string" && actorOverride.trim()
+        ? actorOverride.trim()
+        : await resolveActorKey();
     state.actor = actor;
+    updateSessionFallbackWarning();
     let items = [];
     try {
       items = await fetchHistory(actor);
@@ -1264,17 +1570,28 @@ export function createWatchHistoryRenderer(config = {}) {
   }
 
   const renderer = {
-    async init() {
+    async init(options = {}) {
       if (typeof document === "undefined") {
         return;
       }
+      clearSubscriptions();
+      clearToasts();
       refreshElements();
+      updateFeatureBanner();
       ensureObserver();
       bindGridEvents();
       bindLoadMore();
       bindActions();
       bindPrivacyControls();
+      bindMetadataToggle();
+      subscribeToMetadataPreference();
+      subscribeToRepublishEvents();
       updateInfoCallout();
+      state.metadataStorageEnabled =
+        typeof watchHistoryService.shouldStoreMetadata === "function"
+          ? watchHistoryService.shouldStoreMetadata() !== false
+          : true;
+      updateMetadataToggle();
       const storedPreference = readPreference(
         WATCH_HISTORY_METADATA_PREF_KEY,
         "encrypted-only"
@@ -1287,18 +1604,28 @@ export function createWatchHistoryRenderer(config = {}) {
       ) === "true";
       updatePrivacyBanner();
       state.initialized = true;
-      await this.refresh();
+      await this.refresh({ ...options, force: true });
     },
-    async ensureInitialLoad() {
+    async ensureInitialLoad(options = {}) {
       if (!state.initialized) {
-        await this.init();
+        await this.init(options);
         return;
       }
       refreshElements();
-      await this.refresh();
+      updateFeatureBanner();
+      bindMetadataToggle();
+      state.metadataStorageEnabled =
+        typeof watchHistoryService.shouldStoreMetadata === "function"
+          ? watchHistoryService.shouldStoreMetadata() !== false
+          : true;
+      updateMetadataToggle();
     },
-    async refresh() {
-      const changed = await loadHistory({ force: true });
+    async refresh(options = {}) {
+      const { actor, force = true } = options;
+      const changed = await loadHistory({
+        force,
+        actorOverride: actor,
+      });
       if (!changed && state.items.length) {
         updateLoadMoreVisibility();
         return;
@@ -1354,6 +1681,15 @@ export function createWatchHistoryRenderer(config = {}) {
         );
         boundPrivacyDismissHandler = null;
       }
+      if (elements.metadataToggle && boundMetadataToggleHandler) {
+        elements.metadataToggle.removeEventListener(
+          "click",
+          boundMetadataToggleHandler
+        );
+        boundMetadataToggleHandler = null;
+      }
+      clearSubscriptions();
+      clearToasts();
       if (elements.grid) {
         elements.grid.innerHTML = "";
       }
@@ -1383,6 +1719,18 @@ export function createWatchHistoryRenderer(config = {}) {
       const parentDay = card?.closest("[data-history-day]");
       if (card) {
         card.remove();
+      }
+      state.metadataCache.delete(pointerKeyValue);
+      try {
+        watchHistoryService.removeLocalMetadata?.(pointerKeyValue);
+      } catch (error) {
+        if (isDevEnv) {
+          console.warn(
+            "[historyView] Failed to drop cached metadata for pointer:",
+            pointerKeyValue,
+            error,
+          );
+        }
       }
       removeEmptyDayContainers(elements.grid);
       if (!state.items.length) {

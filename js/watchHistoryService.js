@@ -16,6 +16,9 @@ import { isDevMode } from "./config.js";
 const SESSION_STORAGE_KEY = "bitvid:watch-history:session:v1";
 const SESSION_STORAGE_VERSION = 1;
 const POINTER_THROTTLE_MS = 60 * 1000;
+const METADATA_STORAGE_KEY = "bitvid:watch-history:metadata-cache:v1";
+const METADATA_STORAGE_VERSION = 1;
+const METADATA_PREFERENCE_KEY = "bitvid:watch-history:metadata:store-locally";
 
 const state = {
   restored: false,
@@ -23,6 +26,11 @@ const state = {
   inflightSnapshots: new Map(),
   fingerprintCache: new Map(),
   listeners: new Map(),
+  metadata: {
+    restored: false,
+    cache: new Map(),
+    preference: null,
+  },
 };
 
 function isFeatureEnabled() {
@@ -40,6 +48,313 @@ function getSessionStorage() {
     }
   }
   return null;
+}
+
+function getLocalStorage() {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage;
+    }
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[watchHistoryService] localStorage unavailable:", error);
+    }
+  }
+  return null;
+}
+
+function ensureMetadataPreference() {
+  if (typeof state.metadata.preference === "boolean") {
+    return state.metadata.preference;
+  }
+  const storage = getLocalStorage();
+  if (!storage) {
+    state.metadata.preference = true;
+    return state.metadata.preference;
+  }
+  try {
+    const stored = storage.getItem(METADATA_PREFERENCE_KEY);
+    if (stored === null) {
+      state.metadata.preference = true;
+    } else {
+      state.metadata.preference = stored === "true";
+    }
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(
+        "[watchHistoryService] Failed to read metadata preference:",
+        error,
+      );
+    }
+    state.metadata.preference = true;
+  }
+  return state.metadata.preference;
+}
+
+function persistMetadataPreference(value) {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+  try {
+    if (value === true) {
+      storage.setItem(METADATA_PREFERENCE_KEY, "true");
+    } else {
+      storage.setItem(METADATA_PREFERENCE_KEY, "false");
+    }
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(
+        "[watchHistoryService] Failed to persist metadata preference:",
+        error,
+      );
+    }
+  }
+}
+
+function sanitizeVideoForStorage(video) {
+  if (!video || typeof video !== "object") {
+    return null;
+  }
+  const createdAt = Number.isFinite(video.created_at)
+    ? Math.floor(Number(video.created_at))
+    : null;
+  return {
+    id: typeof video.id === "string" ? video.id : "",
+    title: typeof video.title === "string" ? video.title : "",
+    thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
+    url: typeof video.url === "string" ? video.url : "",
+    magnet: typeof video.magnet === "string" ? video.magnet : "",
+    pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+    created_at: createdAt,
+    infoHash: typeof video.infoHash === "string" ? video.infoHash : "",
+    mode: typeof video.mode === "string" ? video.mode : "",
+    isPrivate: video?.isPrivate === true,
+    description:
+      typeof video.description === "string" ? video.description : "",
+  };
+}
+
+function sanitizeProfileForStorage(profile) {
+  if (!profile || typeof profile !== "object") {
+    return null;
+  }
+  return {
+    pubkey: typeof profile.pubkey === "string" ? profile.pubkey : "",
+    name: typeof profile.name === "string" ? profile.name : "",
+    display_name:
+      typeof profile.display_name === "string" ? profile.display_name : "",
+    picture: typeof profile.picture === "string" ? profile.picture : "",
+    nip05: typeof profile.nip05 === "string" ? profile.nip05 : "",
+  };
+}
+
+function restoreMetadataCache() {
+  if (state.metadata.restored) {
+    return;
+  }
+  state.metadata.restored = true;
+
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+
+  let raw = null;
+  try {
+    raw = storage.getItem(METADATA_STORAGE_KEY);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(
+        "[watchHistoryService] Failed to read metadata cache:",
+        error,
+      );
+    }
+    return;
+  }
+
+  if (!raw || typeof raw !== "string") {
+    return;
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(
+        "[watchHistoryService] Failed to parse metadata cache:",
+        error,
+      );
+    }
+    try {
+      storage.removeItem(METADATA_STORAGE_KEY);
+    } catch (cleanupError) {
+      if (isDevMode) {
+        console.warn(
+          "[watchHistoryService] Failed to clear corrupt metadata cache:",
+          cleanupError,
+        );
+      }
+    }
+    return;
+  }
+
+  if (!parsed || parsed.version !== METADATA_STORAGE_VERSION) {
+    try {
+      storage.removeItem(METADATA_STORAGE_KEY);
+    } catch (cleanupError) {
+      if (isDevMode) {
+        console.warn(
+          "[watchHistoryService] Failed to clear outdated metadata cache:",
+          cleanupError,
+        );
+      }
+    }
+    return;
+  }
+
+  state.metadata.cache.clear();
+  const entries = parsed.entries && typeof parsed.entries === "object"
+    ? parsed.entries
+    : {};
+  for (const [key, entry] of Object.entries(entries)) {
+    if (typeof key !== "string" || !key) {
+      continue;
+    }
+    const sanitizedVideo = sanitizeVideoForStorage(entry?.video);
+    const sanitizedProfile = sanitizeProfileForStorage(entry?.profile);
+    state.metadata.cache.set(key, {
+      video: sanitizedVideo,
+      profile: sanitizedProfile,
+      storedAt: Number.isFinite(entry?.storedAt) ? entry.storedAt : Date.now(),
+    });
+  }
+}
+
+function persistMetadataCache() {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+  const shouldStore = shouldStoreMetadataLocally();
+  if (!shouldStore || !state.metadata.cache.size) {
+    try {
+      storage.removeItem(METADATA_STORAGE_KEY);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[watchHistoryService] Failed to clear metadata cache:",
+          error,
+        );
+      }
+    }
+    return;
+  }
+
+  const payload = { version: METADATA_STORAGE_VERSION, entries: {} };
+  for (const [key, entry] of state.metadata.cache.entries()) {
+    payload.entries[key] = {
+      video: sanitizeVideoForStorage(entry?.video) || null,
+      profile: sanitizeProfileForStorage(entry?.profile) || null,
+      storedAt: Number.isFinite(entry?.storedAt) ? entry.storedAt : Date.now(),
+    };
+  }
+  try {
+    storage.setItem(METADATA_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(
+        "[watchHistoryService] Failed to persist metadata cache:",
+        error,
+      );
+    }
+  }
+}
+
+function shouldStoreMetadataLocally() {
+  return ensureMetadataPreference() === true;
+}
+
+function setMetadataPreference(enabled) {
+  const normalized = enabled === false ? false : true;
+  const previous = ensureMetadataPreference();
+  state.metadata.preference = normalized;
+  persistMetadataPreference(normalized);
+  if (!normalized) {
+    state.metadata.cache.clear();
+    persistMetadataCache();
+  } else {
+    persistMetadataCache();
+  }
+  if (previous !== normalized) {
+    emit("metadata-preference", { enabled: normalized });
+  }
+}
+
+function getMetadataPreference() {
+  return ensureMetadataPreference();
+}
+
+function getLocalMetadata(pointerKeyValue) {
+  restoreMetadataCache();
+  const key = typeof pointerKeyValue === "string" ? pointerKeyValue : "";
+  if (!key) {
+    return null;
+  }
+  const stored = state.metadata.cache.get(key);
+  if (!stored) {
+    return null;
+  }
+  return {
+    video: stored.video ? { ...stored.video } : null,
+    profile: stored.profile ? { ...stored.profile } : null,
+    storedAt: stored.storedAt,
+  };
+}
+
+function setLocalMetadata(pointerKeyValue, metadata) {
+  if (!shouldStoreMetadataLocally()) {
+    return;
+  }
+  const key = typeof pointerKeyValue === "string" ? pointerKeyValue : "";
+  if (!key) {
+    return;
+  }
+  restoreMetadataCache();
+  if (!metadata || typeof metadata !== "object") {
+    state.metadata.cache.delete(key);
+    persistMetadataCache();
+    return;
+  }
+  const video = sanitizeVideoForStorage(metadata.video);
+  const profile = sanitizeProfileForStorage(metadata.profile);
+  state.metadata.cache.set(key, {
+    video,
+    profile,
+    storedAt: Date.now(),
+  });
+  persistMetadataCache();
+}
+
+function removeLocalMetadata(pointerKeyValue) {
+  const key = typeof pointerKeyValue === "string" ? pointerKeyValue : "";
+  if (!key) {
+    return;
+  }
+  restoreMetadataCache();
+  if (state.metadata.cache.delete(key)) {
+    persistMetadataCache();
+  }
+}
+
+function clearLocalMetadata() {
+  restoreMetadataCache();
+  if (!state.metadata.cache.size) {
+    return;
+  }
+  state.metadata.cache.clear();
+  persistMetadataCache();
 }
 
 function emit(eventName, payload) {
@@ -378,41 +693,57 @@ function scheduleRepublishForQueue(actorKey) {
   }
   const snapshotId = queue.pendingSnapshotId;
   queue.republishScheduled = true;
-  nostrClient.scheduleWatchHistoryRepublish(snapshotId, async (attempt) => {
-    const latestItems = collectQueueItems(actorKey);
-    if (!latestItems.length) {
-      queue.pendingSnapshotId = null;
-      queue.republishScheduled = false;
-      persistQueueState();
-      return {
-        ok: true,
-        skipped: true,
-        actor: actorKey,
-        snapshotId,
-      };
-    }
-    const publishResult = await nostrClient.publishWatchHistorySnapshot(
-      latestItems,
-      {
-        actorPubkey: actorKey,
-        snapshotId,
-        attempt,
-        source: `${queue.lastSnapshotReason || "session"}-retry`,
+  nostrClient.scheduleWatchHistoryRepublish(
+    snapshotId,
+    async (attempt) => {
+      const latestItems = collectQueueItems(actorKey);
+      if (!latestItems.length) {
+        queue.pendingSnapshotId = null;
+        queue.republishScheduled = false;
+        persistQueueState();
+        return {
+          ok: true,
+          skipped: true,
+          actor: actorKey,
+          snapshotId,
+        };
       }
-    );
-    if (publishResult?.ok) {
-      queue.pendingSnapshotId = null;
-      queue.republishScheduled = false;
-      await updateFingerprintCache(actorKey, publishResult.items || latestItems);
-      persistQueueState();
-      notifyQueueChange(actorKey);
-    } else if (!publishResult?.retryable) {
-      queue.pendingSnapshotId = publishResult?.snapshotId || queue.pendingSnapshotId;
-      queue.republishScheduled = false;
-      persistQueueState();
+      const publishResult = await nostrClient.publishWatchHistorySnapshot(
+        latestItems,
+        {
+          actorPubkey: actorKey,
+          snapshotId,
+          attempt,
+          source: `${queue.lastSnapshotReason || "session"}-retry`,
+        }
+      );
+      if (publishResult?.ok) {
+        queue.pendingSnapshotId = null;
+        queue.republishScheduled = false;
+        await updateFingerprintCache(
+          actorKey,
+          publishResult.items || latestItems,
+        );
+        persistQueueState();
+        notifyQueueChange(actorKey);
+      } else if (!publishResult?.retryable) {
+        queue.pendingSnapshotId =
+          publishResult?.snapshotId || queue.pendingSnapshotId;
+        queue.republishScheduled = false;
+        persistQueueState();
+      }
+      return publishResult;
+    },
+    {
+      onSchedule: ({ delay }) => {
+        emit("republish-scheduled", {
+          actor: actorKey,
+          snapshotId,
+          delayMs: Number.isFinite(delay) ? delay : null,
+        });
+      },
     }
-    return publishResult;
-  });
+  );
 }
 
 async function updateFingerprintCache(actorKey, items) {
@@ -764,6 +1095,13 @@ const watchHistoryService = {
   resetProgress,
   getQueuedPointers,
   getAllQueues,
+  getMetadataPreference,
+  setMetadataPreference,
+  shouldStoreMetadata: shouldStoreMetadataLocally,
+  getLocalMetadata,
+  setLocalMetadata,
+  removeLocalMetadata,
+  clearLocalMetadata,
   subscribe,
 };
 
