@@ -48,12 +48,15 @@ export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 /**
  * Nostr kind used when persisting watch history events.
  *
- * BitVid’s roadmap standardizes on kind 30078 so that watch events, view logs,
- * and media metadata stay in the same family of documents. Operators that want
- * to experiment with a separate list kind (for example, a NIP-51 collection)
- * can flip this number so long as their relays accept the chosen kind.
+ * BitVid’s roadmap standardizes on kind 30079 so that watch events, view logs,
+ * and media metadata stay in the same family of documents. During the rollout
+ * from the legacy 30078 payloads, clients query both kinds so historical data
+ * keeps syncing; remove the compatibility fetch once all writers emit the new
+ * kind. Operators that want to experiment with a separate list kind (for
+ * example, a NIP-51 collection) can flip this number so long as their relays
+ * accept the chosen kind.
  */
-export const WATCH_HISTORY_KIND = 30078;
+export const WATCH_HISTORY_KIND = 30079;
 
 /**
  * Identifier applied to the watch-history list when storing it on relays.

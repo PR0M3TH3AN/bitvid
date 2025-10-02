@@ -58,6 +58,19 @@ const WATCH_HISTORY_INDEX_IDENTIFIER_LOWER =
     ? WATCH_HISTORY_LIST_IDENTIFIER.trim().toLowerCase()
     : "";
 
+// Continue reading historical payloads from kind 30078 until operators retire it.
+const LEGACY_WATCH_HISTORY_KINDS = Object.freeze([30078]);
+
+const WATCH_HISTORY_READ_KINDS = Object.freeze(
+  Array.from(
+    new Set(
+      [WATCH_HISTORY_KIND, ...LEGACY_WATCH_HISTORY_KINDS]
+        .map((value) => Number.parseInt(value, 10))
+        .filter((value) => Number.isFinite(value))
+    )
+  )
+);
+
 const WATCH_HISTORY_CHUNK_V2_PREFIX = (() => {
   const rawIdentifier =
     typeof WATCH_HISTORY_LIST_IDENTIFIER === "string"
@@ -120,6 +133,14 @@ const LEGACY_WATCH_HISTORY_IDENTIFIER_SET = (() => {
   }
   return normalized;
 })();
+
+function isWatchHistoryKind(kind) {
+  const numericKind = Number.parseInt(kind, 10);
+  if (!Number.isFinite(numericKind)) {
+    return false;
+  }
+  return WATCH_HISTORY_READ_KINDS.includes(numericKind);
+}
 
 const viewEventPublishMemory = new Map();
 
@@ -582,7 +603,7 @@ function createVideoViewEventFilters(pointer) {
   }
 
   const pointerFilter = {
-    kinds: [WATCH_HISTORY_KIND],
+    kinds: WATCH_HISTORY_READ_KINDS,
     "#t": ["view"],
   };
 
@@ -596,7 +617,7 @@ function createVideoViewEventFilters(pointer) {
 
   if (VIEW_FILTER_INCLUDE_LEGACY_VIDEO) {
     filters.push({
-      kinds: [WATCH_HISTORY_KIND],
+      kinds: WATCH_HISTORY_READ_KINDS,
       "#t": ["view"],
       "#video": [resolved.value],
     });
@@ -741,7 +762,7 @@ function isVideoViewEvent(event, pointer) {
     return false;
   }
 
-  if (Number(event.kind) !== WATCH_HISTORY_KIND) {
+  if (!isWatchHistoryKind(event.kind)) {
     return false;
   }
 
@@ -3587,7 +3608,7 @@ class NostrClient {
 
     if (indexIdentifiers.length) {
       const indexFilter = {
-        kinds: [WATCH_HISTORY_KIND],
+        kinds: WATCH_HISTORY_READ_KINDS,
         authors: [actor],
         limit: fetchLimit,
         "#d": indexIdentifiers,
@@ -3610,7 +3631,7 @@ class NostrClient {
 
     if (legacyIdentifierSet.size) {
       const legacyFilter = {
-        kinds: [WATCH_HISTORY_KIND],
+        kinds: WATCH_HISTORY_READ_KINDS,
         authors: [actor],
         limit: fetchLimit,
         "#d": Array.from(legacyIdentifierSet),
@@ -3676,7 +3697,7 @@ class NostrClient {
             const kind = Number.parseInt(kindStr, 10);
             if (
               Number.isFinite(kind) &&
-              kind === WATCH_HISTORY_KIND &&
+              isWatchHistoryKind(kind) &&
               typeof pubkey === "string" &&
               pubkey === actor &&
               typeof identifier === "string" &&
@@ -3858,7 +3879,7 @@ class NostrClient {
 
     if (chunkIdentifiers.size) {
       chunkFilters.push({
-        kinds: [WATCH_HISTORY_KIND],
+        kinds: WATCH_HISTORY_READ_KINDS,
         authors: [actor],
         "#d": Array.from(chunkIdentifiers),
         limit: chunkFetchLimit,
@@ -3867,7 +3888,7 @@ class NostrClient {
 
     if (snapshotIds.size) {
       chunkFilters.push({
-        kinds: [WATCH_HISTORY_KIND],
+        kinds: WATCH_HISTORY_READ_KINDS,
         authors: [actor],
         "#snapshot": Array.from(snapshotIds),
         limit: chunkFetchLimit,
@@ -4335,10 +4356,15 @@ class NostrClient {
     }
 
     for (const key of Array.from(entry.resolved.keys())) {
-      if (
-        !key ||
-        !key.startsWith(`a:${WATCH_HISTORY_KIND}:`)
-      ) {
+      if (!key || !key.startsWith("a:")) {
+        continue;
+      }
+      const pointerValue = key.slice(2);
+      if (!pointerValue) {
+        continue;
+      }
+      const pointerKind = Number.parseInt(pointerValue.split(":")[0], 10);
+      if (!Number.isFinite(pointerKind) || !isWatchHistoryKind(pointerKind)) {
         continue;
       }
       if (!chunkPointerKeys.has(key)) {
@@ -4421,7 +4447,7 @@ class NostrClient {
       }
       const [kindStr, pubkeyRaw, ...identifierParts] = parts;
       const kind = Number.parseInt(kindStr, 10);
-      if (!Number.isFinite(kind) || kind !== WATCH_HISTORY_KIND) {
+      if (!Number.isFinite(kind) || !isWatchHistoryKind(kind)) {
         return "none";
       }
       const identifier = identifierParts.join(":");

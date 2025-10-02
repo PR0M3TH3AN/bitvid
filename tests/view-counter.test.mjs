@@ -4,6 +4,7 @@ import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 
 const {
+  WATCH_HISTORY_KIND,
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
   VIEW_COUNT_BACKFILL_MAX_DAYS,
   VIEW_COUNT_CACHE_TTL_MS,
@@ -318,7 +319,7 @@ async function testHydrationSkipsStaleEventsAndRollsOff() {
   harness.reset();
   harness.resetMetrics();
 
-  const pointer = { type: "a", value: "30078:pk:test-hydrate" };
+  const pointer = { type: "a", value: `${WATCH_HISTORY_KIND}:pk:test-hydrate` };
   const pointerKey = harness.pointerKeyFromInput(pointer);
   const nowSeconds = Math.floor(Date.now() / 1000);
   const horizonSeconds = VIEW_COUNT_BACKFILL_MAX_DAYS * 86_400;
@@ -513,7 +514,7 @@ async function testRecordVideoViewEmitsJsonPayload() {
 
   const pointer = {
     type: "a",
-    value: "30078:pub:view-json",
+    value: `${WATCH_HISTORY_KIND}:pub:view-json`,
     relay: "wss://relay.example",
   };
   const createdAt = Math.floor(Date.now() / 1000);
