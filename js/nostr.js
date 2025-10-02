@@ -3720,23 +3720,38 @@ class NostrClient {
       const isIndexEvent = isIndexIdentifier(identifier);
 
       if (isIndexEvent && typeof event.content === "string") {
-        try {
-          const parsed = JSON.parse(event.content);
-          if (!snapshotId && typeof parsed?.snapshot === "string" && parsed.snapshot) {
-            snapshotId = parsed.snapshot;
-          }
-          if (
-            totalChunks === null &&
-            Number.isFinite(Number.parseInt(parsed?.totalChunks, 10))
-          ) {
-            totalChunks = Math.max(0, Math.floor(Number.parseInt(parsed.totalChunks, 10)));
-          }
-        } catch (error) {
-          if (isDevMode) {
-            console.warn(
-              "[nostr] Failed to parse watch history index payload:",
-              error
-            );
+        const trimmedContent = event.content.trim();
+        if (trimmedContent) {
+          const firstChar = trimmedContent[0];
+          if (firstChar === "{" || firstChar === "[") {
+            try {
+              const parsed = JSON.parse(trimmedContent);
+              if (
+                !snapshotId &&
+                typeof parsed?.snapshot === "string" &&
+                parsed.snapshot
+              ) {
+                snapshotId = parsed.snapshot;
+              }
+              if (
+                totalChunks === null &&
+                Number.isFinite(Number.parseInt(parsed?.totalChunks, 10))
+              ) {
+                totalChunks = Math.max(
+                  0,
+                  Math.floor(Number.parseInt(parsed.totalChunks, 10))
+                );
+              }
+            } catch (error) {
+              if (isDevMode) {
+                console.warn(
+                  "[nostr] Failed to parse watch history index payload:",
+                  error
+                );
+              }
+            }
+          } else if (!snapshotId) {
+            snapshotId = trimmedContent;
           }
         }
       }
