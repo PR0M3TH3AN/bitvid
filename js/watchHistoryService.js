@@ -1086,6 +1086,17 @@ function getAllQueues() {
   return summary;
 }
 
+function getSettings() {
+  const preference = getMetadataPreference();
+  return {
+    metadata: {
+      preference,
+      storeLocally: preference === true,
+      cacheSize: state.metadata.cache.size,
+    },
+  };
+}
+
 const watchHistoryService = {
   isEnabled: isFeatureEnabled,
   publishView,
@@ -1102,6 +1113,7 @@ const watchHistoryService = {
   setLocalMetadata,
   removeLocalMetadata,
   clearLocalMetadata,
+  getSettings,
   subscribe,
 };
 

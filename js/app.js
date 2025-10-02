@@ -1,7 +1,11 @@
 // js/app.js
 
 import { loadView } from "./viewManager.js";
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  normalizePointerInput,
+  pointerKey as derivePointerKey,
+} from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
 import { accessControl, normalizeNpub } from "./accessControl.js";
@@ -537,6 +541,8 @@ class bitvidApp {
     this.inFlightDiscussionCounts = new Map();
     this.activeIntervals = [];
     this.urlPlaybackWatchdogCleanup = null;
+    this.watchHistoryMetadataEnabled = null;
+    this.watchHistoryPreferenceUnsubscribe = null;
 
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
@@ -1298,6 +1304,8 @@ class bitvidApp {
 
       // 5. Setup general event listeners
       this.setupEventListeners();
+
+      await this.initWatchHistoryMetadataSync();
 
       // 6) Load the default view ONLY if there's no #view= already
       if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
@@ -4219,6 +4227,7 @@ class bitvidApp {
           metadataLabelSelector: "#profileHistoryMetadataLabel",
           metadataDescriptionSelector: "#profileHistoryMetadataDescription",
           emptyCopy: "You haven’t watched any videos yet.",
+          remove: (payload) => this.handleWatchHistoryRemoval(payload),
           getActor: async () => {
             if (this.pubkey) {
               return this.pubkey;
@@ -6075,6 +6084,7 @@ class bitvidApp {
         }
       }
     });
+
   }
 
   attachVideoListHandler() {
@@ -7084,6 +7094,373 @@ class bitvidApp {
     this.cancelPendingViewLogging();
     if (this.loggedViewPointerKeys.size > 0) {
       this.loggedViewPointerKeys.clear();
+    }
+  }
+
+  refreshWatchHistoryMetadataSettings() {
+    if (!watchHistoryService?.isEnabled?.()) {
+      this.watchHistoryMetadataEnabled = false;
+      return this.watchHistoryMetadataEnabled;
+    }
+
+    const previous = this.watchHistoryMetadataEnabled;
+    let enabled = true;
+
+    try {
+      if (typeof watchHistoryService.getSettings === "function") {
+        const settings = watchHistoryService.getSettings();
+        enabled = settings?.metadata?.storeLocally !== false;
+      } else if (typeof watchHistoryService.shouldStoreMetadata === "function") {
+        enabled = watchHistoryService.shouldStoreMetadata() !== false;
+      }
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[watchHistory] Failed to read metadata settings:",
+          error,
+        );
+      }
+      enabled = true;
+    }
+
+    this.watchHistoryMetadataEnabled = enabled;
+
+    if (enabled === false && previous !== false) {
+      try {
+        watchHistoryService?.clearLocalMetadata?.();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[watchHistory] Failed to purge metadata cache while preference disabled:",
+            error,
+          );
+        }
+      }
+    }
+
+    return this.watchHistoryMetadataEnabled;
+  }
+
+  async initWatchHistoryMetadataSync() {
+    if (!watchHistoryService?.isEnabled?.()) {
+      this.watchHistoryMetadataEnabled = false;
+      return;
+    }
+
+    this.refreshWatchHistoryMetadataSettings();
+
+    if (
+      typeof watchHistoryService.subscribe === "function" &&
+      !this.watchHistoryPreferenceUnsubscribe
+    ) {
+      try {
+        const unsubscribe = watchHistoryService.subscribe(
+          "metadata-preference",
+          (payload) => {
+            const previous = this.watchHistoryMetadataEnabled;
+            const enabled = payload?.enabled !== false;
+            this.watchHistoryMetadataEnabled = enabled;
+            if (previous === true && enabled === false) {
+              try {
+                watchHistoryService?.clearLocalMetadata?.();
+              } catch (error) {
+                if (isDevMode) {
+                  console.warn(
+                    "[watchHistory] Failed to clear cached metadata after toggle off:",
+                    error,
+                  );
+                }
+              }
+            }
+          },
+        );
+        if (typeof unsubscribe === "function") {
+          this.watchHistoryPreferenceUnsubscribe = unsubscribe;
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[watchHistory] Failed to subscribe to metadata preference changes:",
+            error,
+          );
+        }
+      }
+    }
+  }
+
+  persistWatchHistoryMetadataForVideo(video, pointerInfo) {
+    if (
+      !this.watchHistoryMetadataEnabled ||
+      !pointerInfo ||
+      !pointerInfo.key ||
+      typeof watchHistoryService?.setLocalMetadata !== "function"
+    ) {
+      return;
+    }
+
+    if (!video || typeof video !== "object") {
+      return;
+    }
+
+    const metadata = {
+      video: {
+        id: typeof video.id === "string" ? video.id : "",
+        title: typeof video.title === "string" ? video.title : "",
+        thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
+        pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+      },
+    };
+
+    try {
+      watchHistoryService.setLocalMetadata(pointerInfo.key, metadata);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[watchHistory] Failed to persist local metadata for pointer:",
+          pointerInfo.key,
+          error,
+        );
+      }
+    }
+  }
+
+  dropWatchHistoryMetadata(pointerKey) {
+    if (!pointerKey || typeof pointerKey !== "string") {
+      return;
+    }
+    if (typeof watchHistoryService?.removeLocalMetadata !== "function") {
+      return;
+    }
+    try {
+      watchHistoryService.removeLocalMetadata(pointerKey);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[watchHistory] Failed to remove cached metadata for pointer:",
+          pointerKey,
+          error,
+        );
+      }
+    }
+  }
+
+  buildPointerFromDataset(dataset = {}) {
+    if (!dataset || typeof dataset !== "object") {
+      return null;
+    }
+
+    const typeValue = typeof dataset.pointerType === "string" ? dataset.pointerType : "";
+    const normalizedType = typeValue === "a" ? "a" : typeValue === "e" ? "e" : "";
+    const value =
+      typeof dataset.pointerValue === "string" && dataset.pointerValue.trim()
+        ? dataset.pointerValue.trim()
+        : "";
+
+    if (!normalizedType || !value) {
+      return null;
+    }
+
+    const pointer = { type: normalizedType, value };
+
+    if (typeof dataset.pointerRelay === "string" && dataset.pointerRelay.trim()) {
+      pointer.relay = dataset.pointerRelay.trim();
+    }
+
+    if (typeof dataset.pointerWatchedAt === "string" && dataset.pointerWatchedAt) {
+      const parsed = Number.parseInt(dataset.pointerWatchedAt, 10);
+      if (Number.isFinite(parsed)) {
+        pointer.watchedAt = parsed;
+      }
+    }
+
+    if (dataset.pointerSession === "true") {
+      pointer.session = true;
+    }
+
+    return pointer;
+  }
+
+  async handleRemoveHistoryAction(dataset = {}, { trigger } = {}) {
+    const pointer = this.buildPointerFromDataset(dataset);
+    const pointerKeyValue =
+      typeof dataset.pointerKey === "string" && dataset.pointerKey.trim()
+        ? dataset.pointerKey.trim()
+        : pointer
+        ? derivePointerKey(normalizePointerInput(pointer)) || ""
+        : "";
+
+    if (!pointerKeyValue) {
+      this.showError("Unable to determine which history entry to remove.");
+      return;
+    }
+
+    const payload = {
+      removed: {
+        pointer,
+        pointerKey: pointerKeyValue,
+      },
+      reason: dataset.reason || "remove-item",
+    };
+
+    let card = null;
+    if (trigger instanceof HTMLElement) {
+      card = trigger.closest(".video-card");
+      if (card instanceof HTMLElement) {
+        card.dataset.historyRemovalPending = "true";
+        card.classList.add("opacity-60");
+        card.classList.add("pointer-events-none");
+      }
+    }
+
+    try {
+      await this.handleWatchHistoryRemoval(payload);
+    } catch (error) {
+      if (card instanceof HTMLElement) {
+        delete card.dataset.historyRemovalPending;
+        card.classList.remove("opacity-60", "pointer-events-none");
+      }
+      if (!error?.handled) {
+        this.showError("Failed to remove from history. Please try again.");
+      }
+      return;
+    }
+
+    if (card instanceof HTMLElement) {
+      delete card.dataset.historyRemovalPending;
+      card.classList.remove("opacity-60", "pointer-events-none");
+      if (dataset.removeCard === "true") {
+        card.remove();
+      }
+    }
+  }
+
+  async handleWatchHistoryRemoval(payload = {}) {
+    if (!watchHistoryService?.isEnabled?.()) {
+      const error = new Error("watch-history-disabled");
+      error.handled = true;
+      this.showError("Watch history sync is not available right now.");
+      throw error;
+    }
+
+    const reason =
+      typeof payload.reason === "string" && payload.reason.trim()
+        ? payload.reason.trim()
+        : "remove-item";
+
+    const actorCandidate =
+      typeof payload.actor === "string" && payload.actor.trim()
+        ? payload.actor.trim()
+        : typeof this.pubkey === "string" && this.pubkey.trim()
+        ? this.pubkey.trim()
+        : typeof nostrClient?.sessionActor?.pubkey === "string" &&
+          nostrClient.sessionActor.pubkey
+        ? nostrClient.sessionActor.pubkey
+        : "";
+
+    const removedPointerRaw =
+      payload?.removed?.pointer || payload?.removed?.raw || payload?.removed || null;
+    const removedPointerNormalized = normalizePointerInput(removedPointerRaw);
+    let removedPointerKey =
+      typeof payload?.removed?.pointerKey === "string"
+        ? payload.removed.pointerKey
+        : "";
+    if (!removedPointerKey && removedPointerNormalized) {
+      removedPointerKey = derivePointerKey(removedPointerNormalized) || "";
+    }
+
+    if (removedPointerKey) {
+      this.dropWatchHistoryMetadata(removedPointerKey);
+    }
+
+    const normalizeEntry = (entry) => {
+      if (!entry) {
+        return null;
+      }
+      const pointer = normalizePointerInput(entry.pointer || entry);
+      if (!pointer) {
+        return null;
+      }
+      if (Number.isFinite(entry.watchedAt)) {
+        pointer.watchedAt = Math.floor(entry.watchedAt);
+      } else if (Number.isFinite(entry.pointer?.watchedAt)) {
+        pointer.watchedAt = Math.floor(entry.pointer.watchedAt);
+      }
+      if (entry.pointer?.session === true || entry.session === true) {
+        pointer.session = true;
+      }
+      return pointer;
+    };
+
+    let normalizedItems = null;
+
+    if (Array.isArray(payload.items) && payload.items.length) {
+      normalizedItems = payload.items.map(normalizeEntry).filter(Boolean);
+    }
+
+    if (!normalizedItems) {
+      try {
+        const latest = await watchHistoryService.loadLatest(actorCandidate);
+        normalizedItems = Array.isArray(latest)
+          ? latest.map(normalizeEntry).filter(Boolean)
+          : [];
+      } catch (error) {
+        this.showError("Failed to load watch history. Please try again.");
+        if (error && typeof error === "object") {
+          error.handled = true;
+        }
+        throw error;
+      }
+    }
+
+    if (removedPointerKey) {
+      normalizedItems = normalizedItems.filter((entry) => {
+        try {
+          return derivePointerKey(entry) !== removedPointerKey;
+        } catch (error) {
+          return true;
+        }
+      });
+    }
+
+    this.showSuccess("Removing from history…");
+
+    try {
+      const snapshotResult = await watchHistoryService.snapshot(normalizedItems, {
+        actor: actorCandidate || undefined,
+        reason,
+      });
+
+      try {
+        await nostrClient.updateWatchHistoryList(normalizedItems, {
+          actorPubkey: actorCandidate || undefined,
+          replace: true,
+          source: reason,
+        });
+      } catch (updateError) {
+        if (isDevMode) {
+          console.warn(
+            "[watchHistory] Failed to update local watch history list:",
+            updateError,
+          );
+        }
+      }
+
+      this.showSuccess(
+        "Removed from encrypted history. Relay sync may take a moment.",
+      );
+
+      return { handledToasts: true, snapshot: snapshotResult };
+    } catch (error) {
+      let message = "Failed to remove from history. Please try again.";
+      if (error?.result?.retryable) {
+        message =
+          "Removal will retry once encrypted history is accepted by your relays.";
+      }
+      this.showError(message);
+      if (error && typeof error === "object") {
+        error.handled = true;
+      }
+      throw error;
     }
   }
 
@@ -8353,6 +8730,47 @@ class bitvidApp {
                 </button>`
         : "";
 
+      const pointerInfo = this.deriveVideoPointerInfo(video);
+      if (pointerInfo) {
+        this.persistWatchHistoryMetadataForVideo(video, pointerInfo);
+      }
+
+      const pointerKeyAttr = pointerInfo?.key
+        ? this.escapeHTML(pointerInfo.key)
+        : "";
+      const pointerTypeAttr =
+        pointerInfo?.pointer?.[0] === "a"
+          ? "a"
+          : pointerInfo?.pointer?.[0] === "e"
+          ? "e"
+          : "";
+      const pointerValueAttr = pointerInfo?.pointer?.[1]
+        ? this.escapeHTML(pointerInfo.pointer[1])
+        : "";
+      const pointerRelayAttr =
+        pointerInfo?.pointer?.length > 2 && pointerInfo.pointer[2]
+          ? this.escapeHTML(pointerInfo.pointer[2])
+          : "";
+      const relayAttr = pointerRelayAttr
+        ? ` data-pointer-relay="${pointerRelayAttr}"`
+        : "";
+      const removeHistoryMenuItem =
+        pointerKeyAttr && pointerTypeAttr && pointerValueAttr
+          ? `
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                  data-action="remove-history"
+                  data-pointer-key="${pointerKeyAttr}"
+                  data-pointer-type="${this.escapeHTML(pointerTypeAttr)}"
+                  data-pointer-value="${pointerValueAttr}"${relayAttr}
+                  data-reason="remove-item"
+                  title="Remove this entry from your encrypted history. Relay sync may take a moment."
+                  aria-label="Remove from history (updates encrypted history and may take a moment to sync to relays)"
+                >
+                  Remove from history
+                </button>`
+          : "";
+
       const moreMenu = `
           <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
             <button
@@ -8378,6 +8796,7 @@ class bitvidApp {
                 <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
                   Copy link
                 </button>
+                ${removeHistoryMenuItem}
                 ${blacklistMenuItem}
                 <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
                   Block creator
@@ -8499,7 +8918,6 @@ class bitvidApp {
         `alt=\"${this.escapeHTML(video.title)}\"`
       );
 
-      const pointerInfo = this.deriveVideoPointerInfo(video);
       const metadataPieces = [`<span>${timeAgo}</span>`];
       if (pointerInfo) {
         metadataPieces.push(
@@ -8574,6 +8992,36 @@ class bitvidApp {
       template.innerHTML = cardHtml.trim();
       const cardEl = template.content.firstElementChild;
       if (cardEl) {
+        if (pointerInfo && pointerInfo.key) {
+          cardEl.dataset.pointerKey = pointerInfo.key;
+          const pointerType = pointerInfo.pointer?.[0];
+          if (pointerType) {
+            cardEl.dataset.pointerType = pointerType;
+          } else if (cardEl.dataset.pointerType) {
+            delete cardEl.dataset.pointerType;
+          }
+          const pointerValue = pointerInfo.pointer?.[1];
+          if (pointerValue) {
+            cardEl.dataset.pointerValue = pointerValue;
+          } else if (cardEl.dataset.pointerValue) {
+            delete cardEl.dataset.pointerValue;
+          }
+          const pointerRelay =
+            pointerInfo.pointer?.length > 2 ? pointerInfo.pointer[2] : "";
+          if (pointerRelay) {
+            cardEl.dataset.pointerRelay = pointerRelay;
+          } else if (cardEl.dataset.pointerRelay) {
+            delete cardEl.dataset.pointerRelay;
+          }
+        } else {
+          delete cardEl.dataset.pointerKey;
+          delete cardEl.dataset.pointerType;
+          delete cardEl.dataset.pointerValue;
+          if (cardEl.dataset.pointerRelay) {
+            delete cardEl.dataset.pointerRelay;
+          }
+        }
+
         cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
         if (typeof video.pubkey === "string" && video.pubkey) {
           cardEl.dataset.ownerPubkey = video.pubkey;
@@ -9335,6 +9783,10 @@ class bitvidApp {
           .writeText(shareUrl)
           .then(() => this.showSuccess("Video link copied to clipboard!"))
           .catch(() => this.showError("Failed to copy the link."));
+        break;
+      }
+      case "remove-history": {
+        await this.handleRemoveHistoryAction(dataset);
         break;
       }
       case "copy-npub": {
