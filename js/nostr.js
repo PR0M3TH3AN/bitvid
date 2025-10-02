@@ -660,6 +660,48 @@ function deriveViewEventPointerScope(pointer) {
   return `${pointerType}:${pointerValue}`;
 }
 
+function generateViewEventEntropy() {
+  const cryptoRef =
+    (typeof globalThis !== "undefined" &&
+      /** @type {Crypto | undefined} */ (globalThis.crypto)) ||
+    null;
+
+  if (cryptoRef && typeof cryptoRef.getRandomValues === "function") {
+    try {
+      const buffer = new Uint32Array(2);
+      cryptoRef.getRandomValues(buffer);
+      return Array.from(buffer, (value) =>
+        value.toString(16).padStart(8, "0")
+      ).join("");
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to gather crypto entropy for view event:", error);
+      }
+    }
+  }
+
+  const fallbackA = Math.floor(Math.random() * 0xffffffff)
+    .toString(16)
+    .padStart(8, "0");
+  const fallbackB = Math.floor(Math.random() * 0xffffffff)
+    .toString(16)
+    .padStart(8, "0");
+  return `${fallbackA}${fallbackB}`;
+}
+
+function generateViewEventDedupeTag(actorPubkey, pointer, createdAtSeconds) {
+  const scope = deriveViewEventPointerScope(pointer) || "unknown";
+  const normalizedActor =
+    typeof actorPubkey === "string" && actorPubkey.trim()
+      ? actorPubkey.trim().toLowerCase()
+      : "anon";
+  const timestamp = Number.isFinite(createdAtSeconds)
+    ? Math.max(0, Math.floor(createdAtSeconds))
+    : Math.floor(Date.now() / 1000);
+  const entropy = generateViewEventEntropy();
+  return `${scope}:${normalizedActor}:${timestamp}:${entropy}`;
+}
+
 function hasRecentViewPublish(scope, bucketIndex) {
   if (!scope || !Number.isFinite(bucketIndex)) {
     return false;
@@ -2976,6 +3018,8 @@ class NostrClient {
       }
     }
 
+    const dedupeTag = generateViewEventDedupeTag(actorPubkey, pointer, createdAt);
+
     const event = buildViewEvent({
       pubkey: actorPubkey,
       created_at: createdAt,
@@ -2983,6 +3027,7 @@ class NostrClient {
       pointerTag,
       includeSessionTag: usingSessionActor,
       additionalTags,
+      dedupeTag,
       content,
     });
 
