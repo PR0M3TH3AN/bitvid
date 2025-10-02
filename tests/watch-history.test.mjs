@@ -3,7 +3,8 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 
-const { WATCH_HISTORY_PAYLOAD_MAX_BYTES } = await import("../js/config.js");
+const { WATCH_HISTORY_PAYLOAD_MAX_BYTES, WATCH_HISTORY_MAX_ITEMS } =
+  await import("../js/config.js");
 const {
   getWatchHistoryV2Enabled,
   setWatchHistoryV2Enabled,
@@ -604,6 +605,62 @@ async function testPublishSnapshotFailureRetry() {
   }
 }
 
+async function testResolveWatchHistoryBatchingWindow() {
+  const actor = "batch-window-actor";
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalPub = nostrClient.pubkey;
+  const originalFetch = nostrClient.fetchWatchHistory;
+  const originalCache = nostrClient.watchHistoryCache;
+  const originalStorage = nostrClient.watchHistoryStorage;
+
+  try {
+    nostrClient.pubkey = "";
+    nostrClient.ensureSessionActor = async () => actor;
+    nostrClient.watchHistoryCache = new Map();
+    nostrClient.watchHistoryStorage = { version: 2, actors: {} };
+
+    const syntheticItems = Array.from({ length: 24 }, (_, index) => ({
+      type: "e",
+      value: `pointer-${index}`,
+      watchedAt: 1_700_100_000 + index,
+    }));
+
+    nostrClient.fetchWatchHistory = async () => ({
+      items: syntheticItems.map((item) => ({ ...item })),
+      snapshotId: "batch-snapshot",
+      pointerEvent: null,
+    });
+
+    const resolved = await nostrClient.resolveWatchHistory(actor, {
+      forceRefresh: true,
+    });
+
+    assert.equal(
+      resolved.length,
+      Math.min(WATCH_HISTORY_MAX_ITEMS, syntheticItems.length),
+      "batched resolve should return the full window when no page size override is configured",
+    );
+    assert(resolved.length > 1, "resolved history should include multiple entries");
+    assert.equal(
+      resolved[0]?.value,
+      "pointer-23",
+      "resolved items should remain sorted by newest watchedAt value",
+    );
+    const uniqueValues = new Set(resolved.map((item) => item?.value));
+    assert.equal(
+      uniqueValues.size,
+      resolved.length,
+      "resolved history should retain all unique pointers",
+    );
+  } finally {
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.pubkey = originalPub;
+    nostrClient.fetchWatchHistory = originalFetch;
+    nostrClient.watchHistoryCache = originalCache;
+    nostrClient.watchHistoryStorage = originalStorage;
+  }
+}
+
 async function testWatchHistoryServiceIntegration() {
   poolHarness.reset();
   poolHarness.setResolver(() => ({ ok: true }));
@@ -719,6 +776,7 @@ async function testWatchHistoryServiceIntegration() {
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesExtensionCrypto();
 await testPublishSnapshotFailureRetry();
+await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
 
 console.log("watch-history.test.mjs completed successfully");

@@ -7,7 +7,10 @@ import {
   nostrClient,
   updateWatchHistoryList,
 } from "./nostr.js";
-import { WATCH_HISTORY_BATCH_RESOLVE } from "./config.js";
+import {
+  WATCH_HISTORY_BATCH_RESOLVE,
+  WATCH_HISTORY_BATCH_PAGE_SIZE,
+} from "./config.js";
 
 export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
@@ -19,7 +22,14 @@ const WATCH_HISTORY_METADATA_PREF_KEY =
   "bitvid:watch-history:metadata-preference";
 const WATCH_HISTORY_PRIVACY_DISMISSED_KEY =
   "bitvid:watch-history:privacy-banner-dismissed";
-const WATCH_HISTORY_BATCH_SIZE = 12;
+const DEFAULT_WATCH_HISTORY_BATCH_SIZE = 12;
+const WATCH_HISTORY_BATCH_SIZE = (() => {
+  const raw = Number(WATCH_HISTORY_BATCH_PAGE_SIZE);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return DEFAULT_WATCH_HISTORY_BATCH_SIZE;
+  }
+  return Math.floor(raw);
+})();
 const FALLBACK_THUMBNAIL = "assets/svg/default-thumbnail.svg";
 const FALLBACK_AVATAR = "assets/svg/default-profile.svg";
 const isDevEnv =

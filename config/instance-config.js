@@ -107,6 +107,17 @@ export const WATCH_HISTORY_MAX_ITEMS = 1500;
 export const WATCH_HISTORY_BATCH_RESOLVE = true;
 
 /**
+ * Maximum number of canonical items each batched watch-history response should
+ * include.
+ *
+ * Leave this as `null` (the default) to return the full
+ * `WATCH_HISTORY_MAX_ITEMS` window, even when batching is enabled. Deployments
+ * that page through histories in smaller slices can set a positive integer to
+ * cap the resolver output so pagination and API responses stay aligned.
+ */
+export const WATCH_HISTORY_BATCH_PAGE_SIZE = null;
+
+/**
  * Maximum size of the JSON payload for each watch-history chunk, measured
  * before encryption.
  *
