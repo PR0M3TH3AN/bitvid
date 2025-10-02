@@ -1778,6 +1778,9 @@ class NostrClient {
       delivered: previousEntry?.delivered instanceof Set
         ? new Set(previousEntry.delivered)
         : new Set(),
+      chunkNeedsSigner: previousEntry?.chunkNeedsSigner instanceof Set
+        ? new Set(previousEntry.chunkNeedsSigner)
+        : new Set(),
     };
 
     const validKeys = new Set(entry.items.map((item) => pointerKey(item)));
@@ -1799,6 +1802,11 @@ class NostrClient {
     for (const key of [...entry.delivered]) {
       if (!validKeys.has(key)) {
         entry.delivered.delete(key);
+      }
+    }
+    for (const key of [...entry.chunkNeedsSigner]) {
+      if (!validKeys.has(key)) {
+        entry.chunkNeedsSigner.delete(key);
       }
     }
 
@@ -2077,12 +2085,39 @@ class NostrClient {
     }
 
     const normalizedLogged =
-      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+      typeof this.pubkey === "string" && this.pubkey.trim()
+        ? this.pubkey.trim().toLowerCase()
+        : "";
+    const pointerAuthor =
+      typeof pointerEvent?.pubkey === "string" && pointerEvent.pubkey.trim()
+        ? pointerEvent.pubkey.trim().toLowerCase()
+        : "";
+    const hasExtensionDecrypt =
+      typeof window?.nostr?.nip04?.decrypt === "function";
+
+    const shouldDeferMissingSigner =
+      normalizedActor &&
+      normalizedActor === normalizedLogged &&
+      pointerAuthor &&
+      pointerAuthor === normalizedActor &&
+      !hasExtensionDecrypt;
+
+    if (shouldDeferMissingSigner) {
+      fallbackPayload.needsSignerRetry = true;
+      const warningMeta = {
+        actor: normalizedActor,
+      };
+      if (typeof pointerEvent?.id === "string" && pointerEvent.id) {
+        warningMeta.event = pointerEvent.id;
+      }
+      console.warn("[nostr] watch-history-decrypt-missing-signer", warningMeta);
+      return fallbackPayload;
+    }
 
     if (
       normalizedActor &&
       normalizedActor === normalizedLogged &&
-      window?.nostr?.nip04?.decrypt
+      hasExtensionDecrypt
     ) {
       try {
         const plaintext = await window.nostr.nip04.decrypt(
@@ -3932,7 +3967,11 @@ class NostrClient {
         indexEvent: null,
         chunkAddresses: new Set(),
         expectedChunkIdentifiers: new Set(),
+        needsSignerRetry: new Set(),
       };
+      if (!(bucket.needsSignerRetry instanceof Set)) {
+        bucket.needsSignerRetry = new Set();
+      }
 
       bucket.chunks.set(chunkIndex, {
         event,
@@ -3941,6 +3980,7 @@ class NostrClient {
           snapshot: snapshotId,
           chunkIndex,
           totalChunks,
+          needsSignerRetry: !!payload?.needsSignerRetry,
         },
         created_at: typeof event.created_at === "number" ? event.created_at : 0,
       });
@@ -3951,6 +3991,11 @@ class NostrClient {
         bucket.latestCreatedAt = createdAt;
       }
       bucket.version = Math.max(bucket.version, payload.version || 0);
+      if (payload?.needsSignerRetry) {
+        bucket.needsSignerRetry.add(chunkIndex);
+      } else {
+        bucket.needsSignerRetry.delete(chunkIndex);
+      }
       const chunkAddress = eventToAddressPointer(event);
       if (chunkAddress) {
         bucket.chunkAddresses.add(chunkAddress);
@@ -3971,7 +4016,11 @@ class NostrClient {
         indexEvent: null,
         chunkAddresses: new Set(),
         expectedChunkIdentifiers: new Set(),
+        needsSignerRetry: new Set(),
       };
+      if (!(bucket.needsSignerRetry instanceof Set)) {
+        bucket.needsSignerRetry = new Set();
+      }
 
       if (meta.event) {
         const createdAt =
@@ -4060,6 +4109,9 @@ class NostrClient {
         expectedChunkIdentifiers: bucket.expectedChunkIdentifiers instanceof Set
           ? new Set(bucket.expectedChunkIdentifiers)
           : new Set(),
+        needsSignerRetry: bucket.needsSignerRetry instanceof Set
+          ? new Set(bucket.needsSignerRetry)
+          : new Set(),
       };
 
       if (!fallbackSnapshot) {
@@ -4124,6 +4176,12 @@ class NostrClient {
       entry.chunkEvents.clear();
     }
 
+    if (!(entry.chunkNeedsSigner instanceof Set)) {
+      entry.chunkNeedsSigner = new Set();
+    } else {
+      entry.chunkNeedsSigner.clear();
+    }
+
     const chunkPointerItemsForEntry = [];
     const chunkPointerKeys = new Set();
     let indexPointerForEntry = null;
@@ -4178,8 +4236,22 @@ class NostrClient {
             continue;
           }
           const clonedChunkEvent = cloneEventForCache(chunk.event);
-          if (clonedChunkEvent) {
+          const chunkPayloadIndex = Number.isFinite(chunk.payload?.chunkIndex)
+            ? Math.max(0, Math.floor(chunk.payload.chunkIndex))
+            : null;
+          const flaggedBySnapshot =
+            chunkPayloadIndex !== null &&
+            effectiveSnapshot?.needsSignerRetry instanceof Set &&
+            effectiveSnapshot.needsSignerRetry.has(chunkPayloadIndex);
+          const needsSignerRetry =
+            !!chunk.payload?.needsSignerRetry || flaggedBySnapshot;
+          if (needsSignerRetry) {
+            entry.chunkNeedsSigner.add(key);
+            entry.resolved.delete(key);
+          } else if (clonedChunkEvent) {
             entry.chunkEvents.set(key, clonedChunkEvent);
+          } else {
+            entry.chunkEvents.set(key, chunk.event);
           }
           chunkPointerKeys.add(key);
           chunkPointerItemsForEntry.push(pointer);
