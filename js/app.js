@@ -6983,8 +6983,12 @@ class bitvidApp {
       return;
     }
 
-    if (state.timerId) {
-      clearTimeout(state.timerId);
+    if (state.viewTimerId) {
+      clearTimeout(state.viewTimerId);
+    }
+
+    if (state.historyTimerId) {
+      clearTimeout(state.historyTimerId);
     }
 
     if (Array.isArray(state.handlers) && state.videoEl) {
@@ -7080,24 +7084,41 @@ class bitvidApp {
       return;
     }
 
-    const THRESHOLD_SECONDS = 12;
+    const VIEW_THRESHOLD_SECONDS = 12;
+    const WATCH_HISTORY_THRESHOLD_SECONDS = 10;
     const state = {
       videoEl,
       pointer,
       pointerKey,
       viewerIdentityKey,
       handlers: [],
-      timerId: null,
-      fired: false,
+      viewTimerId: null,
+      historyTimerId: null,
+      viewFired: false,
+      historyFired: false,
     };
 
-    const finalize = () => {
-      if (state.fired) {
+    const maybeCleanup = () => {
+      if (state.viewFired && state.historyFired) {
+        this.cancelPendingViewLogging();
+      }
+    };
+
+    const clearTimer = (timerKey) => {
+      const property = `${timerKey}TimerId`;
+      if (state[property]) {
+        clearTimeout(state[property]);
+        state[property] = null;
+      }
+    };
+
+    const finalizeView = () => {
+      if (state.viewFired) {
         return;
       }
-      state.fired = true;
-      cancelTimer();
-      this.cancelPendingViewLogging();
+      state.viewFired = true;
+      clearTimer("view");
+      maybeCleanup();
 
       const { pointer: thresholdPointer, pointerKey: thresholdPointerKey } =
         state;
@@ -7140,7 +7161,27 @@ class bitvidApp {
             viewResult
           );
         }
+      })().catch((error) => {
+        if (isDevMode) {
+          console.warn(
+            "[playVideoWithFallback] Unexpected error while recording video view:",
+            error
+          );
+        }
+      });
+    };
 
+    const finalizeWatchHistory = () => {
+      if (state.historyFired) {
+        return;
+      }
+      state.historyFired = true;
+      clearTimer("history");
+      maybeCleanup();
+
+      const { pointer: thresholdPointer } = state;
+
+      (async () => {
         try {
           const historyResult = await updateWatchHistoryList(thresholdPointer);
           if (!historyResult?.ok && isDevMode) {
@@ -7160,22 +7201,17 @@ class bitvidApp {
       })().catch((error) => {
         if (isDevMode) {
           console.warn(
-            "[playVideoWithFallback] Unexpected error while recording video view:",
+            "[playVideoWithFallback] Unexpected error while updating watch history:",
             error
           );
         }
       });
     };
 
-    const cancelTimer = () => {
-      if (state.timerId) {
-        clearTimeout(state.timerId);
-        state.timerId = null;
-      }
-    };
-
-    const scheduleTimer = () => {
-      if (state.fired) {
+    const scheduleTimer = (timerKey, thresholdSeconds, callback) => {
+      const firedKey = `${timerKey}Fired`;
+      const idKey = `${timerKey}TimerId`;
+      if (state[firedKey] || state[idKey]) {
         return;
       }
       const currentSeconds = Number.isFinite(videoEl.currentTime)
@@ -7183,13 +7219,13 @@ class bitvidApp {
         : 0;
       const remainingMs = Math.max(
         0,
-        Math.ceil((THRESHOLD_SECONDS - currentSeconds) * 1000)
+        Math.ceil((thresholdSeconds - currentSeconds) * 1000)
       );
       if (remainingMs <= 0) {
-        finalize();
+        callback();
         return;
       }
-      state.timerId = window.setTimeout(finalize, remainingMs);
+      state[idKey] = window.setTimeout(callback, remainingMs);
     };
 
     const registerHandler = (eventName, handler) => {
@@ -7198,14 +7234,23 @@ class bitvidApp {
     };
 
     registerHandler("timeupdate", () => {
-      if (videoEl.currentTime >= THRESHOLD_SECONDS) {
-        finalize();
+      if (
+        !state.historyFired &&
+        videoEl.currentTime >= WATCH_HISTORY_THRESHOLD_SECONDS
+      ) {
+        finalizeWatchHistory();
+      }
+      if (!state.viewFired && videoEl.currentTime >= VIEW_THRESHOLD_SECONDS) {
+        finalizeView();
       }
     });
 
     const cancelOnPause = () => {
-      if (!state.fired) {
-        cancelTimer();
+      if (!state.viewFired) {
+        clearTimer("view");
+      }
+      if (!state.historyFired) {
+        clearTimer("history");
       }
     };
 
@@ -7214,9 +7259,15 @@ class bitvidApp {
     );
 
     const resumeIfNeeded = () => {
-      if (!state.fired && !state.timerId) {
-        scheduleTimer();
+      if (state.viewFired && state.historyFired) {
+        return;
       }
+      scheduleTimer(
+        "history",
+        WATCH_HISTORY_THRESHOLD_SECONDS,
+        finalizeWatchHistory
+      );
+      scheduleTimer("view", VIEW_THRESHOLD_SECONDS, finalizeView);
     };
 
     ["play", "playing"].forEach((event) =>
