@@ -12,6 +12,9 @@ import { WATCH_HISTORY_BATCH_RESOLVE } from "./config.js";
 export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
 
+export const WATCH_HISTORY_DISABLED_COPY =
+  "Encrypted watch history sync is disabled by this server. Local history stays on this device only.";
+
 const WATCH_HISTORY_METADATA_PREF_KEY =
   "bitvid:watch-history:metadata-preference";
 const WATCH_HISTORY_PRIVACY_DISMISSED_KEY =
@@ -716,6 +719,7 @@ export function createWatchHistoryRenderer(config = {}) {
     metadataLabelSelector = "#profileHistoryMetadataLabel",
     metadataDescriptionSelector = "#profileHistoryMetadataDescription",
     emptyCopy = WATCH_HISTORY_EMPTY_COPY,
+    disabledCopy = WATCH_HISTORY_DISABLED_COPY,
     batchSize = WATCH_HISTORY_BATCH_SIZE,
     remove = (payload) => {
       const app = getAppInstance();
@@ -750,6 +754,7 @@ export function createWatchHistoryRenderer(config = {}) {
         ? watchHistoryService.shouldStoreMetadata() !== false
         : true,
     sessionFallbackActive: false,
+    featureEnabled: watchHistoryService.isEnabled?.() === true,
   };
 
   let elements = {
@@ -881,10 +886,12 @@ export function createWatchHistoryRenderer(config = {}) {
   }
 
   function updateFeatureBanner() {
+    const enabled = watchHistoryService.isEnabled?.() === true;
+    state.featureEnabled = enabled;
     if (!(elements.featureBanner instanceof HTMLElement)) {
       return;
     }
-    if (watchHistoryService.isEnabled?.() === true) {
+    if (enabled) {
       elements.featureBanner.textContent = "";
       setHidden(elements.featureBanner, true);
       return;
@@ -1013,6 +1020,31 @@ export function createWatchHistoryRenderer(config = {}) {
       setHidden(elements.empty, false);
     }
     setHidden(elements.loadMore, true);
+    if (elements.sentinel) {
+      setHidden(elements.sentinel, true);
+    }
+  }
+
+  function showFeatureDisabledState() {
+    hideErrorBanner();
+    if (elements.loading) {
+      setHidden(elements.loading, true);
+    }
+    if (elements.status) {
+      setHidden(elements.status, true);
+    }
+    detachObserver();
+    if (elements.grid) {
+      elements.grid.innerHTML = "";
+      setHidden(elements.grid, true);
+    }
+    if (elements.empty) {
+      setTextContent(elements.empty, disabledCopy || emptyCopy);
+      setHidden(elements.empty, false);
+    }
+    if (elements.loadMore) {
+      setHidden(elements.loadMore, true);
+    }
     if (elements.sentinel) {
       setHidden(elements.sentinel, true);
     }
@@ -1553,6 +1585,17 @@ export function createWatchHistoryRenderer(config = {}) {
     if (state.isLoading) {
       return false;
     }
+    if (!state.featureEnabled) {
+      state.actor = null;
+      updateSessionFallbackWarning();
+      state.items = [];
+      state.fingerprint = "";
+      state.cursor = 0;
+      state.hasMore = false;
+      state.lastError = null;
+      showFeatureDisabledState();
+      return false;
+    }
     setLoadingState(true);
     const actor =
       typeof actorOverride === "string" && actorOverride.trim()
@@ -1642,6 +1685,15 @@ export function createWatchHistoryRenderer(config = {}) {
       ) === "true";
       updatePrivacyBanner();
       state.initialized = true;
+      if (!state.featureEnabled) {
+        state.items = [];
+        state.fingerprint = "";
+        state.cursor = 0;
+        state.hasMore = false;
+        state.lastError = null;
+        showFeatureDisabledState();
+        return;
+      }
       await this.refresh({ ...options, force: true });
     },
     async ensureInitialLoad(options = {}) {
@@ -1651,6 +1703,15 @@ export function createWatchHistoryRenderer(config = {}) {
       }
       refreshElements();
       updateFeatureBanner();
+      if (!state.featureEnabled) {
+        state.items = [];
+        state.fingerprint = "";
+        state.cursor = 0;
+        state.hasMore = false;
+        state.lastError = null;
+        showFeatureDisabledState();
+        return;
+      }
       bindMetadataToggle();
       state.metadataStorageEnabled =
         typeof watchHistoryService.shouldStoreMetadata === "function"
@@ -1659,6 +1720,16 @@ export function createWatchHistoryRenderer(config = {}) {
       updateMetadataToggle();
     },
     async refresh(options = {}) {
+      updateFeatureBanner();
+      if (!state.featureEnabled) {
+        state.items = [];
+        state.fingerprint = "";
+        state.cursor = 0;
+        state.hasMore = false;
+        state.lastError = null;
+        showFeatureDisabledState();
+        return;
+      }
       const { actor, force = true } = options;
       const changed = await loadHistory({
         force,
@@ -1671,6 +1742,9 @@ export function createWatchHistoryRenderer(config = {}) {
       await renderInitial();
     },
     async loadMore() {
+      if (!state.featureEnabled) {
+        return [];
+      }
       if (!state.items.length) {
         return [];
       }

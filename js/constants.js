@@ -1,6 +1,6 @@
 const DEFAULT_FLAGS = Object.freeze({
-  URL_FIRST_ENABLED: true,   // try URL before magnet in the player
-  ACCEPT_LEGACY_V1: true,    // accept v1 magnet-only notes
+  URL_FIRST_ENABLED: true, // try URL before magnet in the player
+  ACCEPT_LEGACY_V1: true, // accept v1 magnet-only notes
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
   FEATURE_WATCH_HISTORY_V2: false,
   WSS_TRACKERS: Object.freeze([
@@ -193,6 +193,10 @@ export function setAcceptLegacyV1(next) {
 export function setViewFilterIncludeLegacyVideo(next) {
   runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO = next;
   return VIEW_FILTER_INCLUDE_LEGACY_VIDEO;
+}
+
+export function getWatchHistoryV2Enabled() {
+  return FEATURE_WATCH_HISTORY_V2 === true;
 }
 
 export function setWssTrackers(next) {

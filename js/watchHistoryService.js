@@ -10,7 +10,10 @@ import {
   WATCH_HISTORY_CACHE_TTL_MS,
   WATCH_HISTORY_MAX_ITEMS,
 } from "./config.js";
-import { FEATURE_WATCH_HISTORY_V2 } from "./constants.js";
+import {
+  FEATURE_WATCH_HISTORY_V2,
+  getWatchHistoryV2Enabled,
+} from "./constants.js";
 import { isDevMode } from "./config.js";
 
 const SESSION_STORAGE_KEY = "bitvid:watch-history:session:v1";
@@ -34,6 +37,18 @@ const state = {
 };
 
 function isFeatureEnabled() {
+  try {
+    if (typeof getWatchHistoryV2Enabled === "function") {
+      return getWatchHistoryV2Enabled();
+    }
+  } catch (error) {
+    if (isDevMode) {
+      console.warn(
+        "[watchHistoryService] Failed to read FEATURE_WATCH_HISTORY_V2 flag:",
+        error,
+      );
+    }
+  }
   return FEATURE_WATCH_HISTORY_V2 === true;
 }
 
@@ -439,6 +454,9 @@ function getOrCreateQueue(actorKey) {
 }
 
 function restoreQueueState() {
+  if (!isFeatureEnabled()) {
+    return;
+  }
   if (state.restored) {
     return;
   }
@@ -549,6 +567,9 @@ function restoreQueueState() {
 }
 
 function ensureQueue(actorKey) {
+  if (!isFeatureEnabled()) {
+    return null;
+  }
   if (!actorKey) {
     return null;
   }
@@ -559,6 +580,9 @@ function ensureQueue(actorKey) {
 }
 
 function persistQueueState() {
+  if (!isFeatureEnabled()) {
+    return;
+  }
   const storage = getSessionStorage();
   if (!storage) {
     return;
@@ -623,6 +647,9 @@ function resolveActorKey(actorInput) {
 }
 
 function collectQueueItems(actorKey) {
+  if (!isFeatureEnabled()) {
+    return [];
+  }
   const queue = state.queues.get(actorKey);
   if (!queue) {
     return [];
@@ -648,6 +675,9 @@ function collectQueueItems(actorKey) {
 }
 
 function notifyQueueChange(actorKey) {
+  if (!isFeatureEnabled()) {
+    return;
+  }
   emit("queue-changed", {
     actor: actorKey,
     items: collectQueueItems(actorKey),
@@ -655,6 +685,9 @@ function notifyQueueChange(actorKey) {
 }
 
 function clearQueue(actorKey) {
+  if (!isFeatureEnabled()) {
+    return;
+  }
   const queue = state.queues.get(actorKey);
   if (!queue) {
     return;
@@ -687,6 +720,9 @@ function resolveWatchedAt(...candidates) {
 }
 
 function scheduleRepublishForQueue(actorKey) {
+  if (!isFeatureEnabled()) {
+    return;
+  }
   const queue = state.queues.get(actorKey);
   if (!queue || !queue.pendingSnapshotId || queue.republishScheduled) {
     return;
@@ -1045,6 +1081,9 @@ async function getFingerprint(actorInput) {
 }
 
 function resetProgress(actorInput) {
+  if (!isFeatureEnabled()) {
+    return;
+  }
   const actorKey = normalizeActorKey(actorInput);
   if (actorKey) {
     state.queues.delete(actorKey);
@@ -1062,6 +1101,9 @@ function resetProgress(actorInput) {
 }
 
 function getQueuedPointers(actorInput) {
+  if (!isFeatureEnabled()) {
+    return [];
+  }
   const actorKey = normalizeActorKey(actorInput);
   if (!actorKey) {
     return [];
@@ -1073,6 +1115,9 @@ function getQueuedPointers(actorInput) {
 }
 
 function getAllQueues() {
+  if (!isFeatureEnabled()) {
+    return {};
+  }
   if (!state.restored) {
     restoreQueueState();
   }
