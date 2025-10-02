@@ -48,6 +48,9 @@ const originalWatchHistoryCache = nostrClient.watchHistoryCache;
 const originalWatchHistoryStorage = nostrClient.watchHistoryStorage;
 const originalScheduleWatchHistoryRepublish =
   nostrClient.scheduleWatchHistoryRepublish;
+const originalResolveWatchHistory = nostrClient.resolveWatchHistory;
+const originalGetWatchHistoryFingerprint =
+  nostrClient.getWatchHistoryFingerprint;
 
 nostrClient.watchHistoryCache = new Map();
 nostrClient.watchHistoryStorage = {
@@ -628,7 +631,7 @@ async function testWatchHistoryPartialRelayRetry() {
   const originalRecordView = nostrClient.recordVideoView;
 
   try {
-    nostrClient.pubkey = "";
+    nostrClient.pubkey = actor;
     nostrClient.sessionActor = { pubkey: actor, privateKey: "partial-priv" };
     nostrClient.ensureSessionActor = async () => actor;
 
@@ -980,12 +983,226 @@ async function testWatchHistoryServiceIntegration() {
   }
 }
 
+async function testWatchHistoryLocalFallbackWhenDisabled() {
+  console.log("Running watch history local fallback test...");
+
+  const actor = "local-fallback-actor";
+  const originalRecordView = nostrClient.recordVideoView;
+  const originalPub = nostrClient.pubkey;
+  const originalSession = nostrClient.sessionActor;
+
+  try {
+    setWatchHistoryV2Enabled(false);
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = "";
+    nostrClient.sessionActor = { pubkey: actor, privateKey: "local-priv" };
+    nostrClient.recordVideoView = async (_pointer, options = {}) => ({
+      ok: true,
+      event: {
+        id: "local-view",
+        pubkey: actor,
+        created_at: options.created_at || 1_700_500_000,
+      },
+    });
+
+    const supported =
+      typeof watchHistoryService.supportsLocalHistory === "function"
+        ? watchHistoryService.supportsLocalHistory(actor)
+        : true;
+    const localOnly =
+      typeof watchHistoryService.isLocalOnly === "function"
+        ? watchHistoryService.isLocalOnly(actor)
+        : true;
+    const enabled =
+      typeof watchHistoryService.isEnabled === "function"
+        ? watchHistoryService.isEnabled(actor)
+        : false;
+    assert.equal(
+      supported,
+      true,
+      "service should report local history support while sync disabled",
+    );
+    assert.equal(localOnly, true, "guest session should be treated as local only");
+    assert.equal(
+      enabled,
+      false,
+      "sync should be disabled for session actors when feature flag is off",
+    );
+
+    const createdAt = 1_700_500_000;
+    await watchHistoryService.publishView(
+      { type: "e", value: "local-pointer" },
+      createdAt,
+      { actor },
+    );
+
+    const queued = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      queued.length,
+      1,
+      "local queue should retain pointer when sync is disabled",
+    );
+
+    const latest = await watchHistoryService.loadLatest(actor);
+    assert.equal(
+      latest.length,
+      1,
+      "loadLatest should surface session queue entries when sync disabled",
+    );
+    assert.equal(latest[0]?.value, "local-pointer");
+    assert.equal(latest[0]?.type, "e");
+    assert(
+      Number.isFinite(latest[0]?.watchedAt) && latest[0].watchedAt > 0,
+      "local fallback entries should carry watchedAt timestamps",
+    );
+  } finally {
+    setWatchHistoryV2Enabled(true);
+    watchHistoryService.resetProgress();
+    nostrClient.recordVideoView = originalRecordView;
+    nostrClient.pubkey = originalPub;
+    nostrClient.sessionActor = originalSession;
+  }
+}
+
+async function testWatchHistorySyncEnabledForLoggedInUsers() {
+  console.log("Running watch history logged-in sync override test...");
+
+  const actor = "npub-logged-sync";
+  const originalPub = nostrClient.pubkey;
+  const originalSession = nostrClient.sessionActor;
+  const originalResolve = nostrClient.resolveWatchHistory;
+  const originalFingerprint = nostrClient.getWatchHistoryFingerprint;
+
+  try {
+    setWatchHistoryV2Enabled(false);
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = actor;
+    nostrClient.sessionActor = null;
+
+    let resolveCalls = 0;
+    nostrClient.resolveWatchHistory = async (requestedActor, options = {}) => {
+      resolveCalls += 1;
+      assert.equal(
+        requestedActor,
+        actor,
+        "resolveWatchHistory should target the logged-in actor",
+      );
+      assert.equal(
+        options?.forceRefresh,
+        true,
+        "loadLatest should force a relay refresh for logged-in actors",
+      );
+      return [
+        {
+          type: "e",
+          value: "remote-pointer",
+          watchedAt: 1_700_600_000,
+        },
+      ];
+    };
+
+    let fingerprintCalls = 0;
+    nostrClient.getWatchHistoryFingerprint = async (requestedActor, items) => {
+      fingerprintCalls += 1;
+      assert.equal(
+        requestedActor,
+        actor,
+        "fingerprint lookup should use the logged-in actor",
+      );
+      assert(Array.isArray(items), "fingerprint helper expects item array input");
+      return "fingerprint-logged";
+    };
+
+    const enabled =
+      typeof watchHistoryService.isEnabled === "function"
+        ? watchHistoryService.isEnabled(actor)
+        : false;
+    assert.equal(
+      enabled,
+      true,
+      "sync should remain enabled for logged-in actors even when the flag is disabled",
+    );
+
+    const items = await watchHistoryService.loadLatest(actor);
+    assert.equal(
+      resolveCalls > 0,
+      true,
+      "loadLatest should fetch from relays for logged-in actors",
+    );
+    assert.equal(items.length, 1, "loadLatest should return relay data for logged-in actors");
+    assert.equal(items[0]?.value, "remote-pointer");
+    assert.equal(
+      fingerprintCalls > 0,
+      true,
+      "fingerprint cache should update for logged-in actors",
+    );
+  } finally {
+    setWatchHistoryV2Enabled(true);
+    watchHistoryService.resetProgress();
+    nostrClient.resolveWatchHistory = originalResolve;
+    nostrClient.getWatchHistoryFingerprint = originalFingerprint;
+    nostrClient.pubkey = originalPub;
+    nostrClient.sessionActor = originalSession;
+  }
+}
+
+async function testWatchHistoryAppLoginFallback() {
+  console.log("Running watch history app login fallback test...");
+
+  const actor = "f".repeat(64);
+  const originalPub = nostrClient.pubkey;
+  const originalSession = nostrClient.sessionActor;
+  const originalApp = typeof window.app === "undefined" ? undefined : window.app;
+
+  try {
+    setWatchHistoryV2Enabled(false);
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = "";
+    nostrClient.sessionActor = null;
+    window.app = {
+      pubkey: actor,
+      normalizeHexPubkey(value) {
+        if (typeof value === "string" && value.trim()) {
+          return value.trim().toLowerCase();
+        }
+        return null;
+      },
+    };
+
+    const enabled =
+      typeof watchHistoryService.isEnabled === "function"
+        ? watchHistoryService.isEnabled(actor)
+        : false;
+    assert.equal(
+      enabled,
+      true,
+      "sync should be enabled when the app reports a logged-in pubkey",
+    );
+  } finally {
+    setWatchHistoryV2Enabled(true);
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = originalPub;
+    nostrClient.sessionActor = originalSession;
+    if (typeof originalApp === "undefined") {
+      delete window.app;
+    } else {
+      window.app = originalApp;
+    }
+  }
+}
+
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesExtensionCrypto();
 await testPublishSnapshotFailureRetry();
 await testWatchHistoryPartialRelayRetry();
 await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
+await testWatchHistoryLocalFallbackWhenDisabled();
+await testWatchHistorySyncEnabledForLoggedInUsers();
+await testWatchHistoryAppLoginFallback();
 
 console.log("watch-history.test.mjs completed successfully");
 
@@ -1004,6 +1221,9 @@ nostrClient.watchHistoryCache = originalWatchHistoryCache;
 nostrClient.watchHistoryStorage = originalWatchHistoryStorage;
 nostrClient.scheduleWatchHistoryRepublish =
   originalScheduleWatchHistoryRepublish;
+nostrClient.resolveWatchHistory = originalResolveWatchHistory;
+nostrClient.getWatchHistoryFingerprint =
+  originalGetWatchHistoryFingerprint;
 
 if (!originalFlag) {
   setWatchHistoryV2Enabled(false);

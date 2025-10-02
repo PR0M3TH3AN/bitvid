@@ -36,10 +36,10 @@ const state = {
   },
 };
 
-function isFeatureEnabled() {
+function resolveFlagEnabled() {
   try {
     if (typeof getWatchHistoryV2Enabled === "function") {
-      return getWatchHistoryV2Enabled();
+      return getWatchHistoryV2Enabled() === true;
     }
   } catch (error) {
     if (isDevMode) {
@@ -50,6 +50,115 @@ function isFeatureEnabled() {
     }
   }
   return FEATURE_WATCH_HISTORY_V2 === true;
+}
+
+function getLoggedInActorKey() {
+  const direct = normalizeActorKey(nostrClient?.pubkey);
+  if (direct) {
+    return direct;
+  }
+
+  if (typeof window !== "undefined") {
+    const appCandidate =
+      (window.bitvid && window.bitvid.app) || window.app || null;
+    if (appCandidate && typeof appCandidate === "object") {
+      if (typeof appCandidate.normalizeHexPubkey === "function") {
+        try {
+          const normalized = appCandidate.normalizeHexPubkey(
+            appCandidate.pubkey
+          );
+          if (normalized) {
+            return normalizeActorKey(normalized);
+          }
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              "[watchHistoryService] Failed to normalize app login pubkey:",
+              error
+            );
+          }
+        }
+      }
+
+      if (typeof appCandidate.pubkey === "string" && appCandidate.pubkey) {
+        const fallback = normalizeActorKey(appCandidate.pubkey);
+        if (fallback) {
+          return fallback;
+        }
+      }
+    }
+  }
+
+  return "";
+}
+
+function getSessionActorKey() {
+  const logged = getLoggedInActorKey();
+  if (logged) {
+    return "";
+  }
+  return normalizeActorKey(nostrClient?.sessionActor?.pubkey);
+}
+
+function resolveEffectiveActorKey(actorInput) {
+  const supplied =
+    typeof actorInput === "string" && actorInput.trim()
+      ? normalizeActorKey(actorInput)
+      : "";
+  if (supplied) {
+    return supplied;
+  }
+  const logged = getLoggedInActorKey();
+  if (logged) {
+    return logged;
+  }
+  const session = getSessionActorKey();
+  if (session) {
+    return session;
+  }
+  return "";
+}
+
+function isFeatureEnabled(actorInput) {
+  const baseEnabled = resolveFlagEnabled();
+  const actorKey = resolveEffectiveActorKey(actorInput);
+  const logged = getLoggedInActorKey();
+  const session = getSessionActorKey();
+
+  if (actorKey && logged && actorKey === logged) {
+    return true;
+  }
+
+  if (actorKey && session && actorKey === session) {
+    return false;
+  }
+
+  if (!actorKey) {
+    if (logged) {
+      return true;
+    }
+    if (session) {
+      return false;
+    }
+  }
+
+  return baseEnabled;
+}
+
+function isLocalOnly(actorInput) {
+  const actorKey = resolveEffectiveActorKey(actorInput);
+  const session = getSessionActorKey();
+  if (!session) {
+    return false;
+  }
+  if (!actorKey) {
+    return true;
+  }
+  return actorKey === session;
+}
+
+function supportsLocalHistory(actorInput) {
+  return isLocalOnly(actorInput);
 }
 
 function getSessionStorage() {
@@ -454,9 +563,6 @@ function getOrCreateQueue(actorKey) {
 }
 
 function restoreQueueState() {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   if (state.restored) {
     return;
   }
@@ -560,16 +666,13 @@ function restoreQueueState() {
       queue.lastSnapshotReason = null;
     }
 
-    if (queue.pendingSnapshotId && isFeatureEnabled()) {
+    if (queue.pendingSnapshotId && isFeatureEnabled(actorKey)) {
       scheduleRepublishForQueue(actorKey);
     }
   }
 }
 
 function ensureQueue(actorKey) {
-  if (!isFeatureEnabled()) {
-    return null;
-  }
   if (!actorKey) {
     return null;
   }
@@ -580,9 +683,6 @@ function ensureQueue(actorKey) {
 }
 
 function persistQueueState() {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   const storage = getSessionStorage();
   if (!storage) {
     return;
@@ -647,9 +747,6 @@ function resolveActorKey(actorInput) {
 }
 
 function collectQueueItems(actorKey) {
-  if (!isFeatureEnabled()) {
-    return [];
-  }
   const queue = state.queues.get(actorKey);
   if (!queue) {
     return [];
@@ -675,9 +772,6 @@ function collectQueueItems(actorKey) {
 }
 
 function notifyQueueChange(actorKey) {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   emit("queue-changed", {
     actor: actorKey,
     items: collectQueueItems(actorKey),
@@ -685,9 +779,6 @@ function notifyQueueChange(actorKey) {
 }
 
 function clearQueue(actorKey) {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   const queue = state.queues.get(actorKey);
   if (!queue) {
     return;
@@ -720,7 +811,7 @@ function resolveWatchedAt(...candidates) {
 }
 
 function scheduleRepublishForQueue(actorKey) {
-  if (!isFeatureEnabled()) {
+  if (!isFeatureEnabled(actorKey)) {
     return;
   }
   const queue = state.queues.get(actorKey);
@@ -825,12 +916,21 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   const viewResult = await nostrClient.recordVideoView(pointerInput, recordOptions);
 
-  if (!isFeatureEnabled()) {
-    return viewResult;
-  }
+  console.info(
+    "[watchHistoryService] Video view recorded. Preparing watch list update.",
+    {
+      pointer: pointerInput,
+      createdAt,
+      hasMetadata: !!metadata,
+    }
+  );
 
   const pointer = normalizePointerInput(pointerInput);
   if (!pointer) {
+    console.warn(
+      "[watchHistoryService] Skipping watch list update because pointer normalization failed.",
+      { pointerInput }
+    );
     return viewResult;
   }
 
@@ -842,22 +942,48 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     "";
   const actorKey = normalizeActorKey(actorCandidate);
   if (!actorKey) {
+    console.warn(
+      "[watchHistoryService] Unable to resolve actor for watch list update.",
+      { actorCandidate }
+    );
     return viewResult;
   }
 
   const queue = ensureQueue(actorKey);
   if (!queue) {
+    console.warn(
+      "[watchHistoryService] Failed to resolve queue for actor.",
+      { actorKey }
+    );
     return viewResult;
   }
 
+  const remoteEnabled = isFeatureEnabled(actorKey);
+
   const normalizedPointer = normalizePointerInput(pointer);
   if (!normalizedPointer) {
+    console.warn(
+      "[watchHistoryService] Pointer normalization failed during queue preparation.",
+      { pointerInput }
+    );
     return viewResult;
   }
 
   normalizedPointer.watchedAt = resolveWatchedAt(
     createdAt,
     viewResult?.event?.created_at
+  );
+
+  const key = pointerKey(normalizedPointer);
+  console.info(
+    "[watchHistoryService] Watch list process triggered by video view.",
+    {
+      actor: actorKey,
+      pointerKey: key,
+      watchedAt: normalizedPointer.watchedAt,
+      sessionEvent: normalizedPointer.session === true,
+      remoteSyncEnabled: remoteEnabled,
+    }
   );
 
   const normalizedLogged = normalizeActorKey(nostrClient?.pubkey);
@@ -868,8 +994,11 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     normalizedPointer.session = true;
   }
 
-  const key = pointerKey(normalizedPointer);
   if (!key) {
+    console.warn(
+      "[watchHistoryService] Pointer key generation failed. Skipping queue update.",
+      { pointer: normalizedPointer }
+    );
     return viewResult;
   }
 
@@ -896,6 +1025,14 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     queue.throttle.set(key, now);
     persistQueueState();
     notifyQueueChange(actorKey);
+    console.info(
+      "[watchHistoryService] Updated existing watch list entry.",
+      {
+        actor: actorKey,
+        pointerKey: key,
+        watchedAt: existing.pointer.watchedAt,
+      }
+    );
     return viewResult;
   }
 
@@ -918,17 +1055,46 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   persistQueueState();
   notifyQueueChange(actorKey);
 
+  console.info(
+    "[watchHistoryService] Added pointer to pending watch list snapshot queue.",
+    {
+      actor: actorKey,
+      pointerKey: key,
+      queueSize: queue.items.size,
+    }
+  );
+
+  if (!remoteEnabled) {
+    console.info(
+      "[watchHistoryService] Watch history sync unavailable for this actor; retaining pointer in local session queue only.",
+      {
+        actor: actorKey,
+        pointerKey: key,
+        watchedAt: normalizedPointer.watchedAt,
+      }
+    );
+  }
+
   return viewResult;
 }
 
 async function snapshot(items, options = {}) {
-  if (!isFeatureEnabled()) {
-    return { ok: true, skipped: true, reason: "feature-disabled" };
-  }
   const reason = typeof options.reason === "string" ? options.reason : "manual";
   const actorKey = resolveActorKey(options.actor);
   if (!actorKey) {
     return { ok: false, error: "missing-actor" };
+  }
+
+  if (!isFeatureEnabled(actorKey)) {
+    console.info(
+      "[watchHistoryService] Snapshot skipped because watch history sync is unavailable for this actor.",
+      {
+        actor: actorKey,
+        requestedItems: Array.isArray(items) ? items.length : 0,
+        reason,
+      }
+    );
+    return { ok: true, skipped: true, reason: "feature-disabled" };
   }
 
   if (state.inflightSnapshots.has(actorKey)) {
@@ -952,6 +1118,16 @@ async function snapshot(items, options = {}) {
 
   const queue = ensureQueue(actorKey);
 
+  console.info(
+    "[watchHistoryService] Initiating watch list snapshot publish.",
+    {
+      actor: actorKey,
+      reason,
+      itemCount: payloadItems.length,
+      queued: queue?.items?.size ?? 0,
+    }
+  );
+
   const run = (async () => {
     emit("snapshot-start", { actor: actorKey, reason, items: payloadItems });
     const publishResult = await nostrClient.publishWatchHistorySnapshot(
@@ -959,6 +1135,17 @@ async function snapshot(items, options = {}) {
       {
         actorPubkey: actorKey,
         source: reason,
+      }
+    );
+
+    console.info(
+      "[watchHistoryService] Watch list snapshot publish completed.",
+      {
+        actor: actorKey,
+        reason,
+        success: !!publishResult?.ok,
+        snapshotId: publishResult?.snapshotId || null,
+        retryable: !!publishResult?.retryable,
       }
     );
 
@@ -988,6 +1175,14 @@ async function snapshot(items, options = {}) {
 
     await updateFingerprintCache(actorKey, publishResult.items || payloadItems);
     emit("snapshot-complete", { actor: actorKey, reason, result: publishResult });
+    console.info(
+      "[watchHistoryService] Watch list snapshot processed and fingerprint cache updated.",
+      {
+        actor: actorKey,
+        reason,
+        fingerprintUpdated: true,
+      }
+    );
     return publishResult;
   })()
     .catch((error) => {
@@ -1005,26 +1200,59 @@ async function snapshot(items, options = {}) {
 }
 
 async function loadLatest(actorInput) {
-  if (!isFeatureEnabled()) {
-    return [];
-  }
   const actorKey = resolveActorKey(actorInput);
   if (!actorKey) {
     return [];
   }
 
+  if (!isFeatureEnabled(actorKey)) {
+    if (!state.restored) {
+      restoreQueueState();
+    }
+    const items = collectQueueItems(actorKey);
+    console.info(
+      "[watchHistoryService] loadLatest returning local-only watch history queue.",
+      {
+        actor: actorKey,
+        itemCount: items.length,
+      }
+    );
+    return items;
+  }
+
   const now = Date.now();
   const cacheEntry = state.fingerprintCache.get(actorKey);
+  console.info(
+    "[watchHistoryService] loadLatest invoked.",
+    {
+      actor: actorKey,
+      cacheHasItems: Array.isArray(cacheEntry?.items),
+      cacheExpiresAt: cacheEntry?.expiresAt || null,
+    }
+  );
   if (
     cacheEntry?.items &&
     cacheEntry.expiresAt &&
     cacheEntry.expiresAt > now &&
     Array.isArray(cacheEntry.items)
   ) {
+    console.info(
+      "[watchHistoryService] Returning cached watch list items.",
+      {
+        actor: actorKey,
+        itemCount: cacheEntry.items.length,
+      }
+    );
     return cacheEntry.items;
   }
 
   if (cacheEntry?.promise) {
+    console.info(
+      "[watchHistoryService] Awaiting in-flight watch list refresh.",
+      {
+        actor: actorKey,
+      }
+    );
     return cacheEntry.promise;
   }
 
@@ -1048,6 +1276,13 @@ async function loadLatest(actorInput) {
       }
     });
 
+  console.info(
+    "[watchHistoryService] Triggered nostr watch list refresh.",
+    {
+      actor: actorKey,
+    }
+  );
+
   state.fingerprintCache.set(actorKey, {
     ...(cacheEntry || {}),
     promise,
@@ -1057,11 +1292,11 @@ async function loadLatest(actorInput) {
 }
 
 async function getFingerprint(actorInput) {
-  if (!isFeatureEnabled()) {
-    return "";
-  }
   const actorKey = resolveActorKey(actorInput);
   if (!actorKey) {
+    return "";
+  }
+  if (!isFeatureEnabled(actorKey)) {
     return "";
   }
   const now = Date.now();
@@ -1086,9 +1321,6 @@ async function getFingerprint(actorInput) {
 }
 
 function resetProgress(actorInput) {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   const actorKey = normalizeActorKey(actorInput);
   if (actorKey) {
     state.queues.delete(actorKey);
@@ -1106,9 +1338,6 @@ function resetProgress(actorInput) {
 }
 
 function getQueuedPointers(actorInput) {
-  if (!isFeatureEnabled()) {
-    return [];
-  }
   const actorKey = normalizeActorKey(actorInput);
   if (!actorKey) {
     return [];
@@ -1120,9 +1349,6 @@ function getQueuedPointers(actorInput) {
 }
 
 function getAllQueues() {
-  if (!isFeatureEnabled()) {
-    return {};
-  }
   if (!state.restored) {
     restoreQueueState();
   }
@@ -1149,6 +1375,8 @@ function getSettings() {
 
 const watchHistoryService = {
   isEnabled: isFeatureEnabled,
+  supportsLocalHistory,
+  isLocalOnly,
   publishView,
   snapshot,
   loadLatest,

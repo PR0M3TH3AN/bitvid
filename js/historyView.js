@@ -16,7 +16,7 @@ export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
 
 export const WATCH_HISTORY_DISABLED_COPY =
-  "Encrypted watch history sync is disabled by this server. Local history stays on this device only.";
+  "Watch history sync is unavailable. Connect a NIP-07 extension or log in to enable encrypted syncing.";
 
 const WATCH_HISTORY_METADATA_PREF_KEY =
   "bitvid:watch-history:metadata-preference";
@@ -739,6 +739,19 @@ export function createWatchHistoryRenderer(config = {}) {
     },
   } = config;
 
+  const syncEnabled =
+    typeof watchHistoryService.isEnabled === "function"
+      ? watchHistoryService.isEnabled() === true
+      : false;
+  const localSupported =
+    typeof watchHistoryService.supportsLocalHistory === "function"
+      ? watchHistoryService.supportsLocalHistory() === true
+      : false;
+  const localOnly =
+    typeof watchHistoryService.isLocalOnly === "function"
+      ? watchHistoryService.isLocalOnly() === true
+      : false;
+
   const state = {
     initialized: false,
     actor: null,
@@ -763,7 +776,10 @@ export function createWatchHistoryRenderer(config = {}) {
         ? watchHistoryService.shouldStoreMetadata() !== false
         : true,
     sessionFallbackActive: false,
-    featureEnabled: watchHistoryService.isEnabled?.() === true,
+    syncEnabled,
+    localSupported,
+    localOnly,
+    featureEnabled: syncEnabled || localSupported,
   };
 
   let elements = {
@@ -895,18 +911,44 @@ export function createWatchHistoryRenderer(config = {}) {
   }
 
   function updateFeatureBanner() {
-    const enabled = watchHistoryService.isEnabled?.() === true;
-    state.featureEnabled = enabled;
+    const actor = typeof state.actor === "string" ? state.actor : undefined;
+    const syncEnabled =
+      typeof watchHistoryService.isEnabled === "function"
+        ? watchHistoryService.isEnabled(actor) === true
+        : false;
+    const localSupported =
+      typeof watchHistoryService.supportsLocalHistory === "function"
+        ? watchHistoryService.supportsLocalHistory(actor) === true
+        : false;
+    const localOnly =
+      typeof watchHistoryService.isLocalOnly === "function"
+        ? watchHistoryService.isLocalOnly(actor) === true
+        : false;
+    state.syncEnabled = syncEnabled;
+    state.localSupported = localSupported;
+    state.localOnly = localOnly;
+    state.featureEnabled = syncEnabled || localSupported;
     if (!(elements.featureBanner instanceof HTMLElement)) {
       return;
     }
-    if (enabled) {
+    if (syncEnabled) {
       elements.featureBanner.textContent = "";
       setHidden(elements.featureBanner, true);
       return;
     }
-    elements.featureBanner.textContent =
-      "Watch history sync is disabled on this server. Local history only.";
+    if (localOnly) {
+      elements.featureBanner.textContent =
+        "Watch history sync requires a logged-in Nostr account. This guest session is stored locally only.";
+      setHidden(elements.featureBanner, false);
+      return;
+    }
+    if (localSupported) {
+      elements.featureBanner.textContent =
+        "Watch history sync is disabled right now. We'll keep a local copy on this device.";
+    } else {
+      elements.featureBanner.textContent =
+        "Watch history is disabled on this server.";
+    }
     setHidden(elements.featureBanner, false);
   }
 
