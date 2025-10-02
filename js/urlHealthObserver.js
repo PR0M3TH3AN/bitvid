@@ -1,18 +1,8 @@
 import { createCardObserver } from "./dom/cardObserver.js";
+import { safeDecodeURIComponent } from "./utils/safeDecode.js";
 
 const ROOT_MARGIN = "0px";
 const THRESHOLD = 0.25;
-
-function decodeUrl(value) {
-  if (typeof value !== "string" || !value) {
-    return "";
-  }
-  try {
-    return decodeURIComponent(value);
-  } catch (err) {
-    return value;
-  }
-}
 
 const urlCardObserver = createCardObserver({
   rootMargin: ROOT_MARGIN,
@@ -51,7 +41,7 @@ const urlCardObserver = createCardObserver({
       return;
     }
 
-    const url = decodeUrl(encodedUrl);
+    const url = safeDecodeURIComponent(encodedUrl);
     if (!url) {
       return;
     }

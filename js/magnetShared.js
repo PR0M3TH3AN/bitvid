@@ -1,24 +1,13 @@
 import { WSS_TRACKERS } from "./constants.js";
+import {
+  safeDecodeURIComponent,
+  safeDecodeURIComponentLoose,
+} from "./utils/safeDecode.js";
 
 const HEX_INFO_HASH = /^[0-9a-f]{40}$/i;
 const BTIH_PREFIX = "urn:btih:";
 const MAGNET_SCHEME = "magnet:";
 const ENCODED_BTih_PATTERN = /xt=urn%3Abtih%3A([0-9a-z]+)/gi;
-
-function decodeLoose(value) {
-  if (typeof value !== "string") {
-    return "";
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-  try {
-    return decodeURIComponent(trimmed);
-  } catch (err) {
-    return trimmed;
-  }
-}
 
 export function safeDecodeMagnet(value) {
   if (typeof value !== "string") {
@@ -35,15 +24,11 @@ export function safeDecodeMagnet(value) {
       break;
     }
 
-    try {
-      const candidate = decodeURIComponent(decoded);
-      if (!candidate || candidate === decoded) {
-        break;
-      }
-      decoded = candidate.trim();
-    } catch (err) {
+    const candidate = safeDecodeURIComponent(decoded);
+    if (!candidate || candidate === decoded) {
       break;
     }
+    decoded = candidate.trim();
   }
 
   return decoded;
@@ -73,7 +58,7 @@ export function normalizeForComparison(value) {
 
 function createParam(key, value) {
   const trimmedValue = typeof value === "string" ? value.trim() : "";
-  const decoded = decodeLoose(trimmedValue);
+  const decoded = safeDecodeURIComponentLoose(trimmedValue);
   const comparisonBasis = decoded || trimmedValue;
   return {
     key,
@@ -154,7 +139,7 @@ export function normalizeMagnetInput(rawValue) {
     const lowerKey = key.toLowerCase();
     let value = rawVal.trim();
     if (lowerKey === "xt" && value) {
-      const decoded = decodeLoose(value);
+      const decoded = safeDecodeURIComponentLoose(value);
       if (decoded && decoded !== value) {
         value = decoded;
         didMutate = true;

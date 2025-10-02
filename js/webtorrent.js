@@ -2,19 +2,9 @@
 
 import WebTorrent from "./webtorrent.min.js";
 import { WSS_TRACKERS } from "./constants.js";
+import { safeDecodeURIComponent } from "./utils/safeDecode.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
-
-function decodeComponentSafe(value) {
-  if (typeof value !== "string") {
-    return "";
-  }
-  try {
-    return decodeURIComponent(value);
-  } catch (err) {
-    return value;
-  }
-}
 
 function normalizeTrackerList(trackers) {
   const normalized = [];
@@ -73,7 +63,7 @@ function appendProbeTrackers(magnetURI, trackers) {
         if (!rawKey || rawKey.trim().toLowerCase() !== "tr") {
           return;
         }
-        const decoded = decodeComponentSafe(rawValue).trim().toLowerCase();
+        const decoded = safeDecodeURIComponent(rawValue).trim().toLowerCase();
         if (decoded) {
           trackerSet.add(decoded);
         }
