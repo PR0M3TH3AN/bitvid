@@ -116,9 +116,16 @@ export function publishEventToRelay(pool, url, event, options = {}) {
         handlerRegistered =
           registerHandler("ok", handleSuccess) || handlerRegistered;
         handlerRegistered =
-          registerHandler("seen", handleSuccess) || handlerRegistered;
-        handlerRegistered =
           registerHandler("failed", handleFailure) || handlerRegistered;
+
+        // nostr-tools@1.8 removed the optional "seen" callback from relay
+        // publish handles. Attempting to register it now produces an
+        // asynchronous TypeError that bubbles up as an unhandled rejection and
+        // prevents watch-history snapshots from ever resolving. We therefore
+        // skip registering a "seen" listener and rely on "ok" (per NIP-20) for
+        // success notifications. Legacy relays that only emit "seen" fall back
+        // to the optimistic success path below because no handlers end up
+        // registered.
 
         if (handlerRegistered) {
           return;
