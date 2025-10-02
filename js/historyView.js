@@ -20,6 +20,102 @@ export const WATCH_HISTORY_EMPTY_COPY =
 const WATCH_HISTORY_LOADING_STATUS = "Fetching watch history from relays…";
 const WATCH_HISTORY_EMPTY_STATUS = "No watch history yet.";
 
+const WATCH_HISTORY_SHARED_UI_CACHE = new Map();
+
+function normalizeActorCacheKey(actor) {
+  if (typeof actor !== "string") {
+    return "";
+  }
+
+  const trimmed = actor.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  return trimmed;
+}
+
+function cloneWatchHistoryVideosForCache(videos) {
+  if (!Array.isArray(videos)) {
+    return [];
+  }
+
+  if (typeof structuredClone === "function") {
+    try {
+      return structuredClone(videos);
+    } catch (error) {
+      // Fall back to a shallow clone below if structuredClone is unavailable
+      // or throws (for example, when encountering unsupported values).
+    }
+  }
+
+  return videos.map((video) => {
+    if (!video || typeof video !== "object") {
+      return video;
+    }
+
+    const clone = { ...video };
+
+    if (video.watchHistory && typeof video.watchHistory === "object") {
+      clone.watchHistory = { ...video.watchHistory };
+    }
+
+    if (Array.isArray(video.tags)) {
+      clone.tags = video.tags.map((tag) =>
+        Array.isArray(tag) ? tag.slice() : tag
+      );
+    }
+
+    return clone;
+  });
+}
+
+function getSharedUiSnapshot(actor) {
+  const key = normalizeActorCacheKey(actor);
+  if (!key) {
+    return null;
+  }
+
+  const entry = WATCH_HISTORY_SHARED_UI_CACHE.get(key);
+  if (!entry) {
+    return null;
+  }
+
+  return {
+    resolvedVideos: cloneWatchHistoryVideosForCache(entry.resolvedVideos),
+    hasMore: entry.hasMore !== false,
+    snapshotFingerprint:
+      typeof entry.snapshotFingerprint === "string" && entry.snapshotFingerprint
+        ? entry.snapshotFingerprint
+        : null,
+    updatedAt: entry.updatedAt || 0,
+  };
+}
+
+function setSharedUiSnapshot(actor, snapshot) {
+  const key = normalizeActorCacheKey(actor);
+  if (!key) {
+    return;
+  }
+
+  const normalized = {
+    resolvedVideos: cloneWatchHistoryVideosForCache(snapshot.resolvedVideos),
+    hasMore: snapshot.hasMore !== false,
+    snapshotFingerprint:
+      typeof snapshot.snapshotFingerprint === "string" &&
+      snapshot.snapshotFingerprint
+        ? snapshot.snapshotFingerprint
+        : null,
+    updatedAt: Date.now(),
+  };
+
+  WATCH_HISTORY_SHARED_UI_CACHE.set(key, normalized);
+}
+
 function getVideoAuthorIdentifiers(video) {
   if (!video || typeof video !== "object") {
     return { pubkey: "", npub: "" };
@@ -753,6 +849,7 @@ export function createWatchHistoryRenderer(config = {}) {
     state.hasMore = false;
     cleanupObservers();
     debugLog("showing empty state", { message });
+    persistSharedUiState();
   };
 
   const mergeResolvedVideos = (nextVideos) => {
@@ -808,6 +905,7 @@ export function createWatchHistoryRenderer(config = {}) {
       compareByWatchedAtDesc
     );
     applyAccessFilters();
+    persistSharedUiState();
   };
 
   const ensureGridEventHandlers = () => {
@@ -908,6 +1006,7 @@ export function createWatchHistoryRenderer(config = {}) {
 
           setLoadingVisible(false);
           renderResolvedVideos();
+          persistSharedUiState();
           window.app?.showSuccess?.("Removed from watch history.");
         } catch (error) {
           console.error(
@@ -1010,6 +1109,75 @@ export function createWatchHistoryRenderer(config = {}) {
     }
   };
 
+  const persistSharedUiState = () => {
+    if (!state.actor) {
+      return;
+    }
+
+    setSharedUiSnapshot(state.actor, {
+      resolvedVideos: state.resolvedVideos,
+      hasMore: state.hasMore,
+      snapshotFingerprint: state.snapshotFingerprint,
+    });
+  };
+
+  const hydrateFromSharedUiCache = () => {
+    if (!state.actor) {
+      return {
+        hydrated: false,
+        sharedHasMore: false,
+        fingerprintMatches: false,
+      };
+    }
+
+    const snapshot = getSharedUiSnapshot(state.actor);
+    if (!snapshot) {
+      return {
+        hydrated: false,
+        sharedHasMore: false,
+        fingerprintMatches: false,
+      };
+    }
+
+    state.resolvedVideos = Array.isArray(snapshot.resolvedVideos)
+      ? snapshot.resolvedVideos
+      : [];
+    state.hasMore = snapshot.hasMore !== false;
+
+    applyAccessFilters();
+
+    const nextFingerprint =
+      typeof snapshot.snapshotFingerprint === "string" &&
+      snapshot.snapshotFingerprint
+        ? snapshot.snapshotFingerprint
+        : null;
+
+    let fingerprintMatches = true;
+    if (
+      typeof state.snapshotFingerprint === "string" &&
+      state.snapshotFingerprint &&
+      nextFingerprint &&
+      nextFingerprint !== state.snapshotFingerprint
+    ) {
+      fingerprintMatches = false;
+    }
+
+    if (!state.snapshotFingerprint && nextFingerprint) {
+      state.snapshotFingerprint = nextFingerprint;
+    }
+
+    if (state.resolvedVideos.length) {
+      setLoadingVisible(false);
+      renderResolvedVideos();
+    }
+
+    return {
+      hydrated: true,
+      sharedHasMore: state.hasMore,
+      fingerprintMatches,
+    };
+  };
+
   const loadNextBatch = async ({ initial = false } = {}) => {
     if (state.isLoading || !state.hasMore) {
       debugLog("skipping loadNextBatch", {
@@ -1049,6 +1217,7 @@ export function createWatchHistoryRenderer(config = {}) {
             initial,
             resolvedCount: state.resolvedVideos.length,
           });
+          persistSharedUiState();
         }
         return;
       }
@@ -1056,6 +1225,7 @@ export function createWatchHistoryRenderer(config = {}) {
       mergeResolvedVideos(videos);
       renderResolvedVideos();
       setLoadingVisible(false);
+      persistSharedUiState();
       debugLog("rendered videos", {
         totalResolved: state.resolvedVideos.length,
         initial,
@@ -1247,6 +1417,17 @@ export function createWatchHistoryRenderer(config = {}) {
       state.snapshotFingerprint = fingerprint;
     } else {
       state.snapshotFingerprint = null;
+    }
+
+    let sharedHydration = null;
+    try {
+      sharedHydration = hydrateFromSharedUiCache();
+    } catch (error) {
+      debugLog("failed to hydrate shared watch history state", error);
+    }
+
+    if (sharedHydration?.hydrated) {
+      state.hasMore = true;
     }
 
     try {
