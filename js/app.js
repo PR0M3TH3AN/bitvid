@@ -7184,19 +7184,17 @@ class bitvidApp {
       (async () => {
         try {
           const historyResult = await updateWatchHistoryList(thresholdPointer);
-          if (!historyResult?.ok && isDevMode) {
+          if (!historyResult?.ok) {
             console.warn(
               "[playVideoWithFallback] Watch history update failed:",
               historyResult
             );
           }
         } catch (historyError) {
-          if (isDevMode) {
-            console.warn(
-              "[playVideoWithFallback] Exception while updating watch history:",
-              historyError
-            );
-          }
+          console.warn(
+            "[playVideoWithFallback] Exception while updating watch history:",
+            historyError
+          );
         }
       })().catch((error) => {
         if (isDevMode) {

@@ -2558,33 +2558,31 @@ class NostrClient {
       this.scheduleWatchHistoryRepublish(normalizedActor, persistedItems);
     }
 
-    if (isDevMode) {
-      const latestItem = persistedItems[0] || null;
-      const latestPointerKey = pointerKey(latestItem);
-      const latestPointerSummary = latestPointerKey
-        ? latestPointerKey.length > 32
-          ? `${latestPointerKey.slice(0, 32)}…`
-          : latestPointerKey
-        : null;
-      const actorPreview =
-        normalizedActor.length > 16
-          ? `${normalizedActor.slice(0, 8)}…${normalizedActor.slice(-4)}`
-          : normalizedActor;
-      const summary = {
-        actor: actorPreview,
-        itemCount: persistedItems.length,
-        snapshot: snapshotId,
-        latestPointer: latestPointerSummary,
-        latestWatchedAt: Number.isFinite(latestItem?.watchedAt)
-          ? new Date(Math.max(0, Math.floor(latestItem.watchedAt))).toISOString()
-          : null,
-      };
+    const latestItem = persistedItems[0] || null;
+    const latestPointerKey = pointerKey(latestItem);
+    const latestPointerSummary = latestPointerKey
+      ? latestPointerKey.length > 32
+        ? `${latestPointerKey.slice(0, 32)}…`
+        : latestPointerKey
+      : null;
+    const actorPreview =
+      normalizedActor.length > 16
+        ? `${normalizedActor.slice(0, 8)}…${normalizedActor.slice(-4)}`
+        : normalizedActor;
+    const summary = {
+      actor: actorPreview,
+      itemCount: persistedItems.length,
+      snapshot: snapshotId,
+      latestPointer: latestPointerSummary,
+      latestWatchedAt: Number.isFinite(latestItem?.watchedAt)
+        ? new Date(Math.max(0, Math.floor(latestItem.watchedAt))).toISOString()
+        : null,
+    };
 
-      if (overallSuccess) {
-        console.info("[nostr] Watch history snapshot updated:", summary);
-      } else {
-        console.warn("[nostr] Watch history snapshot publish incomplete:", summary);
-      }
+    if (overallSuccess) {
+      console.info("[nostr] Watch history snapshot updated:", summary);
+    } else {
+      console.warn("[nostr] Watch history snapshot publish incomplete:", summary);
     }
 
     const pointerEvent =
