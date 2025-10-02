@@ -27,6 +27,15 @@ chunkIndex, totalChunks, items[] }`. Items are pointer descriptors (`e` or `a`
 references plus optional relay hints) so that relays never learn which titles
 were played—only which events or addresses the client can dereference later.【F:js/nostr.js†L2337-L2364】
 
+## Batching configuration
+
+Operators can toggle grouped resolution with `WATCH_HISTORY_BATCH_RESOLVE` and
+optionally cap each response by defining `WATCH_HISTORY_BATCH_PAGE_SIZE` in
+`config/instance-config.js`. Leaving the page size unset returns the full
+`WATCH_HISTORY_MAX_ITEMS` window while still letting the UI paginate locally,
+but setting a positive integer keeps API payloads in lockstep with batched
+renderers like `historyView`.【F:config/instance-config.js†L101-L123】【F:js/nostr.js†L2987-L2998】【F:js/historyView.js†L1-L38】
+
 ## Snapshot cadence
 
 `WatchHistoryService.publishView` queues pointer entries while the feature flag

@@ -9,6 +9,7 @@ import {
   WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS,
   WATCH_HISTORY_MAX_ITEMS,
   WATCH_HISTORY_BATCH_RESOLVE,
+  WATCH_HISTORY_BATCH_PAGE_SIZE,
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
   WATCH_HISTORY_CACHE_TTL_MS,
@@ -2986,9 +2987,12 @@ class NostrClient {
       fallbackItems,
     );
 
-    const batchLimitRaw = Number(WATCH_HISTORY_BATCH_RESOLVE);
-    const batchLimit = Number.isFinite(batchLimitRaw) && batchLimitRaw > 0
-      ? Math.min(Math.floor(batchLimitRaw), WATCH_HISTORY_MAX_ITEMS)
+    const shouldBatch = Boolean(WATCH_HISTORY_BATCH_RESOLVE);
+    const batchPageSizeRaw = Number(WATCH_HISTORY_BATCH_PAGE_SIZE);
+    const hasCustomBatchSize =
+      Number.isFinite(batchPageSizeRaw) && batchPageSizeRaw > 0;
+    const batchLimit = shouldBatch && hasCustomBatchSize
+      ? Math.min(Math.floor(batchPageSizeRaw), WATCH_HISTORY_MAX_ITEMS)
       : WATCH_HISTORY_MAX_ITEMS;
 
     const canonicalItems = canonicalizeWatchHistoryItems(
