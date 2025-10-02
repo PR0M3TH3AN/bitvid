@@ -51,81 +51,93 @@ class AccessControl {
     this.hasLoaded = false;
     this.lastError = null;
     this._isRefreshing = false;
-    this._refreshPromise = this._performRefresh();
-    this._refreshPromise.catch((error) => {
-      console.error("Failed to load admin lists:", error);
-    });
+    this._refreshPromise = Promise.resolve();
   }
 
-  async _performRefresh() {
+  _performRefresh() {
     if (this._isRefreshing) {
       return this._refreshPromise;
     }
 
     this._isRefreshing = true;
-    try {
-      const state = await loadAdminState();
-      const editors = Array.isArray(state?.editors) ? state.editors : [];
-      const whitelist = Array.isArray(state?.whitelist)
-        ? state.whitelist
-        : [];
-      const blacklist = Array.isArray(state?.blacklist)
-        ? state.blacklist
-        : [];
 
-      this.editors = new Set(
-        dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
-      );
-      const normalizedWhitelist = dedupeNpubs(whitelist);
-      this.whitelist = new Set(normalizedWhitelist);
+    const operation = (async () => {
+      try {
+        const state = await loadAdminState();
+        const editors = Array.isArray(state?.editors) ? state.editors : [];
+        const whitelist = Array.isArray(state?.whitelist)
+          ? state.whitelist
+          : [];
+        const blacklist = Array.isArray(state?.blacklist)
+          ? state.blacklist
+          : [];
 
-      const blacklistDedupe = dedupeNpubs(blacklist);
-      const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
-      const adminGuardSet = new Set([
-        normalizeNpub(ADMIN_SUPER_NPUB),
-        ...Array.from(this.editors),
-      ]);
-      const sanitizedBlacklist = blacklistDedupe.filter((npub) => {
-        const normalized = normalizeNpub(npub);
-        if (!normalized) {
-          return false;
-        }
-        if (whitelistSet.has(normalized)) {
-          return false;
-        }
-        if (adminGuardSet.has(normalized)) {
-          return false;
-        }
-        return true;
-      });
-      this.blacklist = new Set(sanitizedBlacklist);
+        this.editors = new Set(
+          dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
+        );
+        const normalizedWhitelist = dedupeNpubs(whitelist);
+        this.whitelist = new Set(normalizedWhitelist);
 
-      this.whitelistEnabled = getWhitelistMode();
-      this.hasLoaded = true;
-      this.lastError = null;
-    } catch (error) {
-      this.lastError = error;
-      if (!this.hasLoaded) {
-        this.editors.clear();
-        this.whitelist.clear();
-        this.blacklist.clear();
+        const blacklistDedupe = dedupeNpubs(blacklist);
+        const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
+        const adminGuardSet = new Set([
+          normalizeNpub(ADMIN_SUPER_NPUB),
+          ...Array.from(this.editors),
+        ]);
+        const sanitizedBlacklist = blacklistDedupe.filter((npub) => {
+          const normalized = normalizeNpub(npub);
+          if (!normalized) {
+            return false;
+          }
+          if (whitelistSet.has(normalized)) {
+            return false;
+          }
+          if (adminGuardSet.has(normalized)) {
+            return false;
+          }
+          return true;
+        });
+        this.blacklist = new Set(sanitizedBlacklist);
+
+        this.whitelistEnabled = getWhitelistMode();
+        this.hasLoaded = true;
+        this.lastError = null;
+      } catch (error) {
+        this.lastError = error;
+        if (!this.hasLoaded) {
+          this.editors.clear();
+          this.whitelist.clear();
+          this.blacklist.clear();
+        }
+        throw error;
+      } finally {
+        this._isRefreshing = false;
       }
-      throw error;
-    } finally {
-      this._isRefreshing = false;
-    }
+    })();
+
+    this._refreshPromise = operation;
+    return operation;
   }
 
   refresh() {
-    const promise = this._performRefresh();
-    this._refreshPromise = promise;
-    promise.catch((error) => {
+    if (this._isRefreshing) {
+      return this._refreshPromise;
+    }
+
+    const operation = this._performRefresh();
+    const tracked = operation.catch((error) => {
       console.error("Failed to refresh admin lists:", error);
+      throw error;
     });
-    return promise;
+    this._refreshPromise = tracked;
+    return tracked;
   }
 
   async ensureReady() {
+    if (!this.hasLoaded && !this._isRefreshing) {
+      this.refresh();
+    }
+
     try {
       await this._refreshPromise;
     } catch (error) {
