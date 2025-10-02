@@ -1279,6 +1279,232 @@ class NostrClient {
     this.countUnsupportedRelays = new Set();
   }
 
+  restoreSessionActorFromStorage() {
+    if (typeof localStorage === "undefined") {
+      return null;
+    }
+
+    let raw = null;
+    try {
+      raw = localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to read session actor from storage:", error);
+      }
+      return null;
+    }
+
+    if (!raw || typeof raw !== "string") {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      const pubkey =
+        typeof parsed?.pubkey === "string" ? parsed.pubkey.trim() : "";
+      const privateKey =
+        typeof parsed?.privateKey === "string"
+          ? parsed.privateKey.trim()
+          : "";
+
+      if (!pubkey || !privateKey) {
+        return null;
+      }
+
+      return {
+        pubkey,
+        privateKey,
+        createdAt: Number.isFinite(parsed?.createdAt)
+          ? parsed.createdAt
+          : Date.now(),
+      };
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to parse stored session actor:", error);
+      }
+      try {
+        localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
+      } catch (cleanupError) {
+        if (isDevMode) {
+          console.warn(
+            "[nostr] Failed to clear corrupt session actor entry:",
+            cleanupError
+          );
+        }
+      }
+    }
+
+    return null;
+  }
+
+  persistSessionActor(actor) {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+
+    if (
+      !actor ||
+      typeof actor.pubkey !== "string" ||
+      !actor.pubkey ||
+      typeof actor.privateKey !== "string" ||
+      !actor.privateKey
+    ) {
+      return;
+    }
+
+    const payload = {
+      pubkey: actor.pubkey,
+      privateKey: actor.privateKey,
+      createdAt: Number.isFinite(actor.createdAt)
+        ? actor.createdAt
+        : Date.now(),
+    };
+
+    try {
+      localStorage.setItem(
+        SESSION_ACTOR_STORAGE_KEY,
+        JSON.stringify(payload)
+      );
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to persist session actor:", error);
+      }
+    }
+  }
+
+  clearStoredSessionActor() {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    try {
+      localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to clear stored session actor:", error);
+      }
+    }
+  }
+
+  mintSessionActor() {
+    const tools = window?.NostrTools || null;
+    if (!tools) {
+      if (isDevMode) {
+        console.warn("[nostr] Cannot mint session actor without NostrTools.");
+      }
+      return null;
+    }
+
+    const getPublicKey =
+      typeof tools.getPublicKey === "function" ? tools.getPublicKey : null;
+    if (!getPublicKey) {
+      if (isDevMode) {
+        console.warn(
+          "[nostr] Cannot mint session actor: missing getPublicKey helper."
+        );
+      }
+      return null;
+    }
+
+    let privateKey = "";
+    try {
+      if (typeof tools.generatePrivateKey === "function") {
+        privateKey = tools.generatePrivateKey();
+      } else if (window?.crypto?.getRandomValues) {
+        const randomBytes = new Uint8Array(32);
+        window.crypto.getRandomValues(randomBytes);
+        privateKey = Array.from(randomBytes)
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      }
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to mint session private key:", error);
+      }
+      privateKey = "";
+    }
+
+    if (!privateKey || typeof privateKey !== "string") {
+      return null;
+    }
+
+    const normalizedPrivateKey = privateKey.trim();
+    if (!normalizedPrivateKey) {
+      return null;
+    }
+
+    let pubkey = "";
+    try {
+      pubkey = getPublicKey(normalizedPrivateKey);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to derive session pubkey:", error);
+      }
+      return null;
+    }
+
+    const normalizedPubkey =
+      typeof pubkey === "string" ? pubkey.trim() : "";
+    if (!normalizedPubkey) {
+      return null;
+    }
+
+    return {
+      pubkey: normalizedPubkey,
+      privateKey: normalizedPrivateKey,
+      createdAt: Date.now(),
+    };
+  }
+
+  async ensureSessionActor(forceRenew = false) {
+    const normalizedLogged =
+      typeof this.pubkey === "string" && this.pubkey
+        ? this.pubkey.toLowerCase()
+        : "";
+    const extension = window?.nostr;
+    const canSignWithExtension =
+      !!normalizedLogged &&
+      extension &&
+      typeof extension.signEvent === "function";
+
+    if (!forceRenew && canSignWithExtension) {
+      return normalizedLogged;
+    }
+
+    if (forceRenew) {
+      this.sessionActor = null;
+      this.clearStoredSessionActor();
+    } else if (
+      this.sessionActor &&
+      typeof this.sessionActor.pubkey === "string" &&
+      this.sessionActor.pubkey &&
+      typeof this.sessionActor.privateKey === "string" &&
+      this.sessionActor.privateKey
+    ) {
+      return this.sessionActor.pubkey;
+    }
+
+    if (!forceRenew) {
+      const restored = this.restoreSessionActorFromStorage();
+      if (restored) {
+        this.sessionActor = restored;
+        return restored.pubkey;
+      }
+    }
+
+    const minted = this.mintSessionActor();
+    if (minted) {
+      this.sessionActor = minted;
+      this.persistSessionActor(minted);
+      return minted.pubkey;
+    }
+
+    if (canSignWithExtension) {
+      return normalizedLogged;
+    }
+
+    return null;
+  }
+
   makeCountUnsupportedError(relayUrl) {
     const normalizedUrl =
       typeof relayUrl === "string" && relayUrl.trim()
