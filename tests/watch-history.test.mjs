@@ -980,12 +980,78 @@ async function testWatchHistoryServiceIntegration() {
   }
 }
 
+async function testWatchHistoryLocalFallbackWhenDisabled() {
+  console.log("Running watch history local fallback test...");
+
+  const actor = "local-fallback-actor";
+  const originalRecordView = nostrClient.recordVideoView;
+  const originalPub = nostrClient.pubkey;
+
+  try {
+    setWatchHistoryV2Enabled(false);
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = "";
+    nostrClient.recordVideoView = async (_pointer, options = {}) => ({
+      ok: true,
+      event: {
+        id: "local-view",
+        pubkey: actor,
+        created_at: options.created_at || 1_700_500_000,
+      },
+    });
+
+    const supported =
+      typeof watchHistoryService.supportsLocalHistory === "function"
+        ? watchHistoryService.supportsLocalHistory()
+        : true;
+    assert.equal(
+      supported,
+      true,
+      "service should report local history support while sync disabled",
+    );
+
+    const createdAt = 1_700_500_000;
+    await watchHistoryService.publishView(
+      { type: "e", value: "local-pointer" },
+      createdAt,
+      { actor },
+    );
+
+    const queued = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      queued.length,
+      1,
+      "local queue should retain pointer when sync is disabled",
+    );
+
+    const latest = await watchHistoryService.loadLatest(actor);
+    assert.equal(
+      latest.length,
+      1,
+      "loadLatest should surface session queue entries when sync disabled",
+    );
+    assert.equal(latest[0]?.value, "local-pointer");
+    assert.equal(latest[0]?.type, "e");
+    assert(
+      Number.isFinite(latest[0]?.watchedAt) && latest[0].watchedAt > 0,
+      "local fallback entries should carry watchedAt timestamps",
+    );
+  } finally {
+    setWatchHistoryV2Enabled(true);
+    watchHistoryService.resetProgress();
+    nostrClient.recordVideoView = originalRecordView;
+    nostrClient.pubkey = originalPub;
+  }
+}
+
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesExtensionCrypto();
 await testPublishSnapshotFailureRetry();
 await testWatchHistoryPartialRelayRetry();
 await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
+await testWatchHistoryLocalFallbackWhenDisabled();
 
 console.log("watch-history.test.mjs completed successfully");
 

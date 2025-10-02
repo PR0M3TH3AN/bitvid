@@ -739,6 +739,12 @@ export function createWatchHistoryRenderer(config = {}) {
     },
   } = config;
 
+  const syncEnabled = watchHistoryService.isEnabled?.() === true;
+  const localSupported =
+    typeof watchHistoryService.supportsLocalHistory === "function"
+      ? watchHistoryService.supportsLocalHistory() !== false
+      : true;
+
   const state = {
     initialized: false,
     actor: null,
@@ -763,7 +769,9 @@ export function createWatchHistoryRenderer(config = {}) {
         ? watchHistoryService.shouldStoreMetadata() !== false
         : true,
     sessionFallbackActive: false,
-    featureEnabled: watchHistoryService.isEnabled?.() === true,
+    syncEnabled,
+    localSupported,
+    featureEnabled: syncEnabled || localSupported,
   };
 
   let elements = {
@@ -895,18 +903,29 @@ export function createWatchHistoryRenderer(config = {}) {
   }
 
   function updateFeatureBanner() {
-    const enabled = watchHistoryService.isEnabled?.() === true;
-    state.featureEnabled = enabled;
+    const syncEnabled = watchHistoryService.isEnabled?.() === true;
+    const localSupported =
+      typeof watchHistoryService.supportsLocalHistory === "function"
+        ? watchHistoryService.supportsLocalHistory() !== false
+        : true;
+    state.syncEnabled = syncEnabled;
+    state.localSupported = localSupported;
+    state.featureEnabled = syncEnabled || localSupported;
     if (!(elements.featureBanner instanceof HTMLElement)) {
       return;
     }
-    if (enabled) {
+    if (syncEnabled) {
       elements.featureBanner.textContent = "";
       setHidden(elements.featureBanner, true);
       return;
     }
-    elements.featureBanner.textContent =
-      "Watch history sync is disabled on this server. Local history only.";
+    if (localSupported) {
+      elements.featureBanner.textContent =
+        "Watch history sync is disabled on this server. Local history only.";
+    } else {
+      elements.featureBanner.textContent =
+        "Watch history is disabled on this server.";
+    }
     setHidden(elements.featureBanner, false);
   }
 

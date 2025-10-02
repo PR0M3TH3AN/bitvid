@@ -454,9 +454,6 @@ function getOrCreateQueue(actorKey) {
 }
 
 function restoreQueueState() {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   if (state.restored) {
     return;
   }
@@ -567,9 +564,6 @@ function restoreQueueState() {
 }
 
 function ensureQueue(actorKey) {
-  if (!isFeatureEnabled()) {
-    return null;
-  }
   if (!actorKey) {
     return null;
   }
@@ -580,9 +574,6 @@ function ensureQueue(actorKey) {
 }
 
 function persistQueueState() {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   const storage = getSessionStorage();
   if (!storage) {
     return;
@@ -647,9 +638,6 @@ function resolveActorKey(actorInput) {
 }
 
 function collectQueueItems(actorKey) {
-  if (!isFeatureEnabled()) {
-    return [];
-  }
   const queue = state.queues.get(actorKey);
   if (!queue) {
     return [];
@@ -675,9 +663,6 @@ function collectQueueItems(actorKey) {
 }
 
 function notifyQueueChange(actorKey) {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   emit("queue-changed", {
     actor: actorKey,
     items: collectQueueItems(actorKey),
@@ -685,9 +670,6 @@ function notifyQueueChange(actorKey) {
 }
 
 function clearQueue(actorKey) {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   const queue = state.queues.get(actorKey);
   if (!queue) {
     return;
@@ -834,17 +816,6 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     }
   );
 
-  if (!isFeatureEnabled()) {
-    console.info(
-      "[watchHistoryService] Watch history feature disabled; skipping queue update.",
-      {
-        pointer: pointerInput,
-        createdAt,
-      }
-    );
-    return viewResult;
-  }
-
   const pointer = normalizePointerInput(pointerInput);
   if (!pointer) {
     console.warn(
@@ -981,6 +952,17 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     }
   );
 
+  if (!isFeatureEnabled()) {
+    console.info(
+      "[watchHistoryService] Watch history sync disabled; retaining pointer in local session queue only.",
+      {
+        actor: actorKey,
+        pointerKey: key,
+        watchedAt: normalizedPointer.watchedAt,
+      }
+    );
+  }
+
   return viewResult;
 }
 
@@ -1104,16 +1086,24 @@ async function snapshot(items, options = {}) {
 }
 
 async function loadLatest(actorInput) {
-  if (!isFeatureEnabled()) {
-    console.info(
-      "[watchHistoryService] loadLatest skipped because watch history feature is disabled.",
-      { actor: resolveActorKey(actorInput) || null }
-    );
-    return [];
-  }
   const actorKey = resolveActorKey(actorInput);
   if (!actorKey) {
     return [];
+  }
+
+  if (!isFeatureEnabled()) {
+    if (!state.restored) {
+      restoreQueueState();
+    }
+    const items = collectQueueItems(actorKey);
+    console.info(
+      "[watchHistoryService] loadLatest returning session watch history queue.",
+      {
+        actor: actorKey,
+        itemCount: items.length,
+      }
+    );
+    return items;
   }
 
   const now = Date.now();
@@ -1217,9 +1207,6 @@ async function getFingerprint(actorInput) {
 }
 
 function resetProgress(actorInput) {
-  if (!isFeatureEnabled()) {
-    return;
-  }
   const actorKey = normalizeActorKey(actorInput);
   if (actorKey) {
     state.queues.delete(actorKey);
@@ -1237,9 +1224,6 @@ function resetProgress(actorInput) {
 }
 
 function getQueuedPointers(actorInput) {
-  if (!isFeatureEnabled()) {
-    return [];
-  }
   const actorKey = normalizeActorKey(actorInput);
   if (!actorKey) {
     return [];
@@ -1251,9 +1235,6 @@ function getQueuedPointers(actorInput) {
 }
 
 function getAllQueues() {
-  if (!isFeatureEnabled()) {
-    return {};
-  }
   if (!state.restored) {
     restoreQueueState();
   }
@@ -1280,6 +1261,7 @@ function getSettings() {
 
 const watchHistoryService = {
   isEnabled: isFeatureEnabled,
+  supportsLocalHistory: () => true,
   publishView,
   snapshot,
   loadLatest,
