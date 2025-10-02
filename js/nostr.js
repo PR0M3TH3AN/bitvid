@@ -4020,23 +4020,61 @@ class NostrClient {
         indexEvent: null,
         chunkAddresses: new Set(),
         expectedChunkIdentifiers: new Set(),
+        chunkIdentifiers: new Set(),
         needsSignerRetry: new Set(),
+        decryptedChunkCount: 0,
+        hadFallbackChunk: false,
       };
       if (!(bucket.needsSignerRetry instanceof Set)) {
         bucket.needsSignerRetry = new Set();
       }
+      if (!(bucket.chunkIdentifiers instanceof Set)) {
+        bucket.chunkIdentifiers = new Set();
+      }
+      if (!Number.isFinite(bucket.decryptedChunkCount)) {
+        bucket.decryptedChunkCount = 0;
+      }
+
+      const chunkPayload = {
+        ...payload,
+        snapshot: snapshotId,
+        chunkIndex,
+        totalChunks,
+        needsSignerRetry: !!payload?.needsSignerRetry,
+        chunkIdentifier: identifierTagValue || payload?.chunkIdentifier || null,
+      };
 
       bucket.chunks.set(chunkIndex, {
         event,
-        payload: {
-          ...payload,
-          snapshot: snapshotId,
-          chunkIndex,
-          totalChunks,
-          needsSignerRetry: !!payload?.needsSignerRetry,
-        },
+        payload: chunkPayload,
         created_at: typeof event.created_at === "number" ? event.created_at : 0,
       });
+      if (identifierTagValue) {
+        bucket.chunkIdentifiers.add(identifierTagValue);
+      }
+      const payloadVersion = Number.isFinite(chunkPayload.version)
+        ? chunkPayload.version
+        : 0;
+      const payloadItems = Array.isArray(chunkPayload.items)
+        ? chunkPayload.items
+        : [];
+      const payloadHasWatchedAt = payloadItems.every((item) =>
+        item && Number.isFinite(item.watchedAt)
+      );
+      const payloadMatchesSnapshot =
+        typeof chunkPayload.snapshot === "string"
+          ? chunkPayload.snapshot === snapshotId
+          : true;
+      const chunkComplete =
+        payloadVersion >= 2 &&
+        payloadMatchesSnapshot &&
+        !chunkPayload.needsSignerRetry &&
+        payloadHasWatchedAt;
+      if (chunkComplete) {
+        bucket.decryptedChunkCount += 1;
+      } else {
+        bucket.hadFallbackChunk = true;
+      }
       bucket.expectedChunks = Math.max(bucket.expectedChunks, totalChunks);
       const createdAt =
         typeof event.created_at === "number" ? event.created_at : 0;
@@ -4069,10 +4107,19 @@ class NostrClient {
         indexEvent: null,
         chunkAddresses: new Set(),
         expectedChunkIdentifiers: new Set(),
+        chunkIdentifiers: new Set(),
         needsSignerRetry: new Set(),
+        decryptedChunkCount: 0,
+        hadFallbackChunk: false,
       };
       if (!(bucket.needsSignerRetry instanceof Set)) {
         bucket.needsSignerRetry = new Set();
+      }
+      if (!(bucket.chunkIdentifiers instanceof Set)) {
+        bucket.chunkIdentifiers = new Set();
+      }
+      if (!Number.isFinite(bucket.decryptedChunkCount)) {
+        bucket.decryptedChunkCount = 0;
       }
 
       if (meta.event) {
@@ -4162,9 +4209,17 @@ class NostrClient {
         expectedChunkIdentifiers: bucket.expectedChunkIdentifiers instanceof Set
           ? new Set(bucket.expectedChunkIdentifiers)
           : new Set(),
+        chunkIdentifiers:
+          bucket.chunkIdentifiers instanceof Set
+            ? new Set(bucket.chunkIdentifiers)
+            : new Set(),
         needsSignerRetry: bucket.needsSignerRetry instanceof Set
           ? new Set(bucket.needsSignerRetry)
           : new Set(),
+        decryptedChunkCount: Number.isFinite(bucket.decryptedChunkCount)
+          ? Math.max(0, Math.floor(bucket.decryptedChunkCount))
+          : 0,
+        hadFallbackChunk: bucket.hadFallbackChunk === true,
       };
 
       if (!fallbackSnapshot) {
@@ -4189,31 +4244,161 @@ class NostrClient {
     const storedPointerEvent =
       !snapshotChanged && stored?.pointerEvent ? stored.pointerEvent : null;
 
+    const previousItems = Array.isArray(previousEntry?.items)
+      ? previousEntry.items
+      : [];
+    const fallbackCandidate = previousItems.length
+      ? {
+          source: "memory-cache",
+          items: previousItems,
+          pointer: previousEntry?.pointerEvent || null,
+        }
+      : storedItems.length
+        ? {
+            source: "storage-cache",
+            items: storedItems,
+            pointer: storedPointerEvent || null,
+          }
+        : null;
+
     const remoteItems = Array.isArray(effectiveSnapshot?.items)
       ? effectiveSnapshot.items
       : [];
 
-    let pointerForEntry = effectiveSnapshot?.pointerEvent || null;
-    if (!pointerForEntry) {
-      if (previousEntry?.pointerEvent) {
-        pointerForEntry = previousEntry.pointerEvent;
-      } else if (storedPointerEvent) {
-        pointerForEntry = storedPointerEvent;
-      }
-    }
+    const expectedChunks = Number.isFinite(effectiveSnapshot?.expectedChunks)
+      ? Math.max(1, Math.floor(effectiveSnapshot.expectedChunks))
+      : 1;
+    const chunkCount = Number.isFinite(effectiveSnapshot?.chunkCount)
+      ? Math.max(0, Math.floor(effectiveSnapshot.chunkCount))
+      : 0;
+    const chunkIdentifiersSet =
+      effectiveSnapshot?.chunkIdentifiers instanceof Set
+        ? effectiveSnapshot.chunkIdentifiers
+        : new Set();
+    const expectedChunkIdentifiersSet =
+      effectiveSnapshot?.expectedChunkIdentifiers instanceof Set
+        ? effectiveSnapshot.expectedChunkIdentifiers
+        : new Set();
+    const missingIdentifierList = Array.from(expectedChunkIdentifiersSet).filter(
+      (identifier) => !chunkIdentifiersSet.has(identifier)
+    );
+    const needsSignerRetryCount =
+      effectiveSnapshot?.needsSignerRetry instanceof Set
+        ? effectiveSnapshot.needsSignerRetry.size
+        : 0;
+    const decryptedChunkCount = Number.isFinite(
+      effectiveSnapshot?.decryptedChunkCount
+    )
+      ? Math.max(0, Math.floor(effectiveSnapshot.decryptedChunkCount))
+      : 0;
+    const expectedDecryptedTarget = Math.min(
+      expectedChunks,
+      chunkCount || expectedChunks
+    );
+    const remoteVersion = effectiveSnapshot?.version ?? 0;
+    const remoteComplete =
+      !!effectiveSnapshot &&
+      chunkCount >= expectedChunks &&
+      missingIdentifierList.length === 0 &&
+      needsSignerRetryCount === 0 &&
+      effectiveSnapshot.hadFallbackChunk !== true &&
+      decryptedChunkCount >= expectedDecryptedTarget;
 
     let items = remoteItems;
+    let pointerForEntry = effectiveSnapshot?.pointerEvent || null;
     let usedFallback = false;
-    const remoteVersion = effectiveSnapshot?.version ?? 0;
+    let remoteUsed = false;
+    let remoteIssues = null;
+    let fallbackSource = null;
 
-    if (!effectiveSnapshot || (remoteVersion === 0 && !remoteItems.length)) {
-      if (previousEntry?.items?.length) {
-        items = previousEntry.items;
-        usedFallback = true;
-      } else if (storedItems.length) {
-        items = storedItems;
-        usedFallback = true;
+    if (effectiveSnapshot) {
+      if (remoteComplete) {
+        remoteUsed = true;
+      } else {
+        remoteIssues = {
+          snapshotId: effectiveSnapshot.snapshotId || "",
+          chunkCount,
+          expectedChunks,
+          decryptedChunks: decryptedChunkCount,
+          missingChunkIdentifiers: missingIdentifierList.length,
+          needsSignerRetry: needsSignerRetryCount,
+          hadFallbackChunk: effectiveSnapshot.hadFallbackChunk === true,
+          version: remoteVersion,
+        };
+
+        if (fallbackCandidate && fallbackCandidate.items.length) {
+          items = fallbackCandidate.items;
+          pointerForEntry = fallbackCandidate.pointer || null;
+          usedFallback = true;
+          fallbackSource = fallbackCandidate.source;
+        } else if (!remoteItems.length && remoteVersion === 0) {
+          remoteUsed = true;
+        } else {
+          remoteUsed = true;
+        }
       }
+    } else if (fallbackCandidate && fallbackCandidate.items.length) {
+      items = fallbackCandidate.items;
+      pointerForEntry = fallbackCandidate.pointer || null;
+      usedFallback = true;
+      fallbackSource = fallbackCandidate.source;
+    }
+
+    if (!pointerForEntry && fallbackCandidate) {
+      pointerForEntry = fallbackCandidate.pointer || null;
+    }
+
+    if (!remoteUsed && effectiveSnapshot && !usedFallback && !items.length) {
+      remoteUsed = true;
+    }
+
+    const actorPreview =
+      typeof actor === "string" && actor.length > 16
+        ? `${actor.slice(0, 8)}…${actor.slice(-4)}`
+        : actor;
+
+    const logContext = {
+      actor: actorPreview || null,
+      snapshot: effectiveSnapshot?.snapshotId || null,
+      itemCount: Array.isArray(items) ? items.length : 0,
+      chunkCount,
+      expectedChunks,
+      decryptedChunks: decryptedChunkCount,
+      missingChunkIdentifiers: missingIdentifierList.length,
+      needsSignerRetry: needsSignerRetryCount,
+      hadFallbackChunk: effectiveSnapshot?.hadFallbackChunk === true,
+      fallbackSource: fallbackSource || null,
+    };
+
+    if (effectiveSnapshot && remoteUsed && remoteComplete) {
+      console.info("[nostr] Watch history snapshot rehydrated:", {
+        ...logContext,
+        remoteComplete: true,
+      });
+    } else if (effectiveSnapshot && !remoteComplete && usedFallback) {
+      console.warn("[nostr] Watch history snapshot incomplete; using cached copy:", {
+        ...logContext,
+        remoteComplete: false,
+        issues: remoteIssues,
+      });
+    } else if (effectiveSnapshot && !remoteComplete && remoteUsed) {
+      console.warn(
+        "[nostr] Watch history snapshot incomplete with no fallback:",
+        {
+          ...logContext,
+          remoteComplete: false,
+          issues: remoteIssues,
+        }
+      );
+    } else if (!effectiveSnapshot && usedFallback) {
+      console.info("[nostr] Watch history snapshot unavailable; using cached copy:", {
+        ...logContext,
+        remoteComplete: false,
+      });
+    } else if (!effectiveSnapshot && !items.length) {
+      console.info("[nostr] Watch history snapshot unavailable:", {
+        actor: actorPreview || null,
+      });
     }
 
     const entry = this.createWatchHistoryEntry(
@@ -4225,166 +4410,168 @@ class NostrClient {
 
     if (!(entry.chunkEvents instanceof Map)) {
       entry.chunkEvents = new Map();
-    } else {
+    } else if (remoteUsed) {
       entry.chunkEvents.clear();
     }
 
     if (!(entry.chunkNeedsSigner instanceof Set)) {
       entry.chunkNeedsSigner = new Set();
-    } else {
+    } else if (remoteUsed) {
       entry.chunkNeedsSigner.clear();
     }
 
-    const chunkPointerItemsForEntry = [];
-    const chunkPointerKeys = new Set();
-    let indexPointerForEntry = null;
-    let firstChunkPointer = null;
+    if (remoteUsed && effectiveSnapshot) {
+      const chunkPointerItemsForEntry = [];
+      const chunkPointerKeys = new Set();
+      let indexPointerForEntry = null;
+      let firstChunkPointer = null;
 
-    if (effectiveSnapshot?.pointerEvent) {
-      const indexAddress = eventToAddressPointer(effectiveSnapshot.pointerEvent);
-      if (indexAddress) {
-        const pointer = clonePointerItem({
-          type: "a",
-          value: indexAddress,
-          relay: null,
-        });
-        if (pointer) {
-          const key = pointerKey(pointer);
-          if (key) {
-            chunkPointerKeys.add(key);
-            const clonedIndex = cloneEventForCache(effectiveSnapshot.pointerEvent);
-            if (clonedIndex) {
-              entry.chunkEvents.set(key, clonedIndex);
+      const pointerEventForSnapshot = effectiveSnapshot.pointerEvent;
+      if (pointerEventForSnapshot) {
+        const indexAddress = eventToAddressPointer(pointerEventForSnapshot);
+        if (indexAddress) {
+          const pointer = clonePointerItem({
+            type: "a",
+            value: indexAddress,
+            relay: null,
+          });
+          if (pointer) {
+            const key = pointerKey(pointer);
+            if (key) {
+              chunkPointerKeys.add(key);
+              const clonedIndex = cloneEventForCache(pointerEventForSnapshot);
+              if (clonedIndex) {
+                entry.chunkEvents.set(key, clonedIndex);
+              }
+              indexPointerForEntry = pointer;
             }
-            indexPointerForEntry = pointer;
           }
         }
       }
-    }
 
-    if (effectiveSnapshot?.snapshotId) {
-      const bucketForEntry = snapshotMap.get(effectiveSnapshot.snapshotId);
-      if (bucketForEntry) {
-        const chunkEntries = Array.from(bucketForEntry.chunks.values()).sort(
-          (a, b) => a.payload.chunkIndex - b.payload.chunkIndex
-        );
-        for (const chunk of chunkEntries) {
-          if (!chunk?.event) {
-            continue;
+      if (effectiveSnapshot.snapshotId) {
+        const bucketForEntry = snapshotMap.get(effectiveSnapshot.snapshotId);
+        if (bucketForEntry) {
+          const chunkEntries = Array.from(bucketForEntry.chunks.values()).sort(
+            (a, b) => a.payload.chunkIndex - b.payload.chunkIndex
+          );
+          for (const chunk of chunkEntries) {
+            if (!chunk?.event) {
+              continue;
+            }
+            const addressValue = eventToAddressPointer(chunk.event);
+            if (!addressValue) {
+              continue;
+            }
+            const pointer = clonePointerItem({
+              type: "a",
+              value: addressValue,
+              relay: null,
+            });
+            if (!pointer) {
+              continue;
+            }
+            const key = pointerKey(pointer);
+            if (!key || chunkPointerKeys.has(key)) {
+              continue;
+            }
+            const clonedChunkEvent = cloneEventForCache(chunk.event);
+            const chunkPayloadIndex = Number.isFinite(chunk.payload?.chunkIndex)
+              ? Math.max(0, Math.floor(chunk.payload.chunkIndex))
+              : null;
+            const flaggedBySnapshot =
+              chunkPayloadIndex !== null &&
+              effectiveSnapshot.needsSignerRetry instanceof Set &&
+              effectiveSnapshot.needsSignerRetry.has(chunkPayloadIndex);
+            const needsSignerRetry =
+              !!chunk.payload?.needsSignerRetry || flaggedBySnapshot;
+            if (needsSignerRetry) {
+              entry.chunkNeedsSigner.add(key);
+              entry.resolved.delete(key);
+            } else if (clonedChunkEvent) {
+              entry.chunkEvents.set(key, clonedChunkEvent);
+            } else {
+              entry.chunkEvents.set(key, chunk.event);
+            }
+            chunkPointerKeys.add(key);
+            chunkPointerItemsForEntry.push(pointer);
+            if (!firstChunkPointer && chunkPayloadIndex === 0) {
+              firstChunkPointer = pointer;
+            }
           }
-          const addressValue = eventToAddressPointer(chunk.event);
-          if (!addressValue) {
-            continue;
-          }
+        }
+      }
+
+      if (effectiveSnapshot.chunkAddresses instanceof Set) {
+        effectiveSnapshot.chunkAddresses.forEach((address) => {
           const pointer = clonePointerItem({
             type: "a",
-            value: addressValue,
+            value: address,
             relay: null,
           });
           if (!pointer) {
-            continue;
+            return;
           }
           const key = pointerKey(pointer);
           if (!key || chunkPointerKeys.has(key)) {
-            continue;
-          }
-          const clonedChunkEvent = cloneEventForCache(chunk.event);
-          const chunkPayloadIndex = Number.isFinite(chunk.payload?.chunkIndex)
-            ? Math.max(0, Math.floor(chunk.payload.chunkIndex))
-            : null;
-          const flaggedBySnapshot =
-            chunkPayloadIndex !== null &&
-            effectiveSnapshot?.needsSignerRetry instanceof Set &&
-            effectiveSnapshot.needsSignerRetry.has(chunkPayloadIndex);
-          const needsSignerRetry =
-            !!chunk.payload?.needsSignerRetry || flaggedBySnapshot;
-          if (needsSignerRetry) {
-            entry.chunkNeedsSigner.add(key);
-            entry.resolved.delete(key);
-          } else if (clonedChunkEvent) {
-            entry.chunkEvents.set(key, clonedChunkEvent);
-          } else {
-            entry.chunkEvents.set(key, chunk.event);
+            return;
           }
           chunkPointerKeys.add(key);
           chunkPointerItemsForEntry.push(pointer);
-          if (chunk.payload?.chunkIndex === 0 && !firstChunkPointer) {
-            firstChunkPointer = pointer;
+        });
+      }
+
+      const headPointer = indexPointerForEntry || firstChunkPointer || null;
+      entry.chunkPointers = {
+        head: headPointer,
+        index: indexPointerForEntry,
+        chunks: chunkPointerItemsForEntry,
+      };
+
+      if (headPointer) {
+        const headPointerKey = pointerKey(headPointer);
+        if (headPointerKey) {
+          chunkPointerKeys.add(headPointerKey);
+          const indexPointerKey = indexPointerForEntry
+            ? pointerKey(indexPointerForEntry)
+            : "";
+          if (
+            entry.pointerEvent &&
+            indexPointerKey &&
+            headPointerKey === indexPointerKey
+          ) {
+            entry.chunkEvents.set(
+              headPointerKey,
+              cloneEventForCache(entry.pointerEvent)
+            );
           }
         }
       }
-    }
 
-    if (effectiveSnapshot?.chunkAddresses instanceof Set) {
-      effectiveSnapshot.chunkAddresses.forEach((address) => {
-        const pointer = clonePointerItem({
-          type: "a",
-          value: address,
-          relay: null,
-        });
-        if (!pointer) {
-          return;
+      for (const key of Array.from(entry.resolved.keys())) {
+        if (!key || !key.startsWith("a:")) {
+          continue;
         }
-        const key = pointerKey(pointer);
-        if (!key || chunkPointerKeys.has(key)) {
-          return;
+        const pointerValue = key.slice(2);
+        if (!pointerValue) {
+          continue;
         }
-        chunkPointerKeys.add(key);
-        chunkPointerItemsForEntry.push(pointer);
-      });
-    }
+        const pointerKind = Number.parseInt(pointerValue.split(":")[0], 10);
+        if (!Number.isFinite(pointerKind) || !isWatchHistoryKind(pointerKind)) {
+          continue;
+        }
+        if (!chunkPointerKeys.has(key)) {
+          entry.resolved.delete(key);
+        }
+      }
 
-    const headPointer = indexPointerForEntry || firstChunkPointer || null;
-    entry.chunkPointers = {
-      head: headPointer,
-      index: indexPointerForEntry,
-      chunks: chunkPointerItemsForEntry,
-    };
-
-    if (headPointer) {
-      const headPointerKey = pointerKey(headPointer);
-      if (headPointerKey) {
-        chunkPointerKeys.add(headPointerKey);
-        const indexPointerKey = indexPointerForEntry
-          ? pointerKey(indexPointerForEntry)
-          : "";
-        if (
-          entry.pointerEvent &&
-          indexPointerKey &&
-          headPointerKey === indexPointerKey
-        ) {
-          entry.chunkEvents.set(
-            headPointerKey,
-            cloneEventForCache(entry.pointerEvent)
-          );
+      for (const key of chunkPointerKeys) {
+        const eventForKey = entry.chunkEvents.get(key);
+        if (eventForKey) {
+          entry.resolved.set(key, cloneEventForCache(eventForKey));
         }
       }
     }
-
-    for (const key of Array.from(entry.resolved.keys())) {
-      if (!key || !key.startsWith("a:")) {
-        continue;
-      }
-      const pointerValue = key.slice(2);
-      if (!pointerValue) {
-        continue;
-      }
-      const pointerKind = Number.parseInt(pointerValue.split(":")[0], 10);
-      if (!Number.isFinite(pointerKind) || !isWatchHistoryKind(pointerKind)) {
-        continue;
-      }
-      if (!chunkPointerKeys.has(key)) {
-        entry.resolved.delete(key);
-      }
-    }
-
-    for (const key of chunkPointerKeys) {
-      const eventForKey = entry.chunkEvents.get(key);
-      if (eventForKey) {
-        entry.resolved.set(key, cloneEventForCache(eventForKey));
-      }
-    }
-
     this.watchHistoryCache.set(actor, entry);
     this.persistWatchHistoryEntry(actor, entry);
 
