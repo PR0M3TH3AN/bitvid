@@ -200,12 +200,23 @@ async function defaultRemoveHandler({
   items,
   snapshot,
   reason = "remove-item",
-}) {
+} = {}) {
   const sanitized = Array.isArray(items)
-    ? items.map((entry) => ({
-        ...entry.pointer,
-        watchedAt: entry.watchedAt,
-      }))
+    ? items
+        .map((entry) => {
+          const pointer = normalizePointerInput(entry?.pointer || entry);
+          if (!pointer) {
+            return null;
+          }
+          if (Number.isFinite(entry?.watchedAt)) {
+            pointer.watchedAt = entry.watchedAt;
+          }
+          if (entry?.pointer?.session === true || entry?.session === true) {
+            pointer.session = true;
+          }
+          return pointer;
+        })
+        .filter(Boolean)
     : [];
   if (typeof snapshot === "function") {
     await snapshot(sanitized, { actor, reason });
@@ -634,7 +645,27 @@ function buildHistoryCard({
   removeButton.dataset.historyAction = "remove";
   removeButton.dataset.pointerKey = item.pointerKey;
   removeButton.textContent = "Remove from history";
-  removeButton.setAttribute("aria-label", "Remove this entry from history");
+  if (item.pointer?.type) {
+    removeButton.dataset.pointerType = item.pointer.type;
+  }
+  if (item.pointer?.value) {
+    removeButton.dataset.pointerValue = item.pointer.value;
+  }
+  if (item.pointer?.relay) {
+    removeButton.dataset.pointerRelay = item.pointer.relay;
+  }
+  if (Number.isFinite(item.watchedAt)) {
+    removeButton.dataset.pointerWatchedAt = String(item.watchedAt);
+  }
+  if (item.pointer?.session === true) {
+    removeButton.dataset.pointerSession = "true";
+  }
+  removeButton.setAttribute(
+    "aria-label",
+    "Remove this encrypted history entry (sync may take a moment).",
+  );
+  removeButton.title =
+    "Removes this entry from encrypted history. Relay sync may take a moment.";
 
   actions.appendChild(playButton);
   actions.appendChild(channelButton);
@@ -686,6 +717,13 @@ export function createWatchHistoryRenderer(config = {}) {
     metadataDescriptionSelector = "#profileHistoryMetadataDescription",
     emptyCopy = WATCH_HISTORY_EMPTY_COPY,
     batchSize = WATCH_HISTORY_BATCH_SIZE,
+    remove = (payload) => {
+      const app = getAppInstance();
+      if (app?.handleWatchHistoryRemoval) {
+        return app.handleWatchHistoryRemoval(payload);
+      }
+      return defaultRemoveHandler(payload);
+    },
   } = config;
 
   const state = {
@@ -1744,18 +1782,24 @@ export function createWatchHistoryRenderer(config = {}) {
         const handler =
           typeof remove === "function"
             ? remove
-            : (payload) =>
-                defaultRemoveHandler({
-                  actor,
-                  items: payload,
-                  snapshot,
-                });
-        await handler(remainingItems);
+            : (payload) => defaultRemoveHandler(payload);
+        const result = await handler({
+          actor,
+          items: remainingItems,
+          removed,
+          pointerKey: pointerKeyValue,
+          snapshot,
+          reason: "remove-item",
+        });
         const app = getAppInstance();
-        app?.showSuccess?.("Removed from watch history.");
+        if (!result?.handledToasts) {
+          app?.showSuccess?.("Removed from watch history.");
+        }
       } catch (error) {
         const app = getAppInstance();
-        app?.showError?.("Failed to remove from history. Reloading list.");
+        if (!error?.handled) {
+          app?.showError?.("Failed to remove from history. Reloading list.");
+        }
         if (isDevEnv) {
           console.warn("[historyView] Removal failed:", error);
         }
