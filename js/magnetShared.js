@@ -1,0 +1,360 @@
+import { WSS_TRACKERS } from "./constants.js";
+
+const HEX_INFO_HASH = /^[0-9a-f]{40}$/i;
+const BTIH_PREFIX = "urn:btih:";
+const MAGNET_SCHEME = "magnet:";
+const ENCODED_BTih_PATTERN = /xt=urn%3Abtih%3A([0-9a-z]+)/gi;
+
+function decodeLoose(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    return decodeURIComponent(trimmed);
+  } catch (err) {
+    return trimmed;
+  }
+}
+
+export function safeDecodeMagnet(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  let decoded = value.trim();
+  if (!decoded) {
+    return "";
+  }
+
+  for (let i = 0; i < 2; i += 1) {
+    if (!decoded.includes("%")) {
+      break;
+    }
+
+    try {
+      const candidate = decodeURIComponent(decoded);
+      if (!candidate || candidate === decoded) {
+        break;
+      }
+      decoded = candidate.trim();
+    } catch (err) {
+      break;
+    }
+  }
+
+  return decoded;
+}
+
+export function normalizeForComparison(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname.replace(/\/?$/, "");
+    const normalizedPath = pathname ? pathname : "";
+    return (
+      `${parsed.protocol}//${parsed.host}${normalizedPath}${parsed.search}${parsed.hash}`
+        .trim()
+        .toLowerCase()
+    );
+  } catch (err) {
+    return trimmed.replace(/\/?$/, "").toLowerCase();
+  }
+}
+
+function createParam(key, value) {
+  const trimmedValue = typeof value === "string" ? value.trim() : "";
+  const decoded = decodeLoose(trimmedValue);
+  const comparisonBasis = decoded || trimmedValue;
+  return {
+    key,
+    value: trimmedValue,
+    lowerKey: key.toLowerCase(),
+    decoded,
+    comparison: normalizeForComparison(comparisonBasis),
+  };
+}
+
+export function normalizeMagnetInput(rawValue) {
+  const initial = typeof rawValue === "string" ? rawValue.trim() : "";
+  if (!initial) {
+    return {
+      initial,
+      canonicalValue: "",
+      didMutate: false,
+      isMagnet: false,
+      normalizedScheme: "",
+      fragment: "",
+      params: [],
+    };
+  }
+
+  let working = initial;
+  let didMutate = false;
+
+  if (HEX_INFO_HASH.test(working)) {
+    working = `${MAGNET_SCHEME}?xt=${BTIH_PREFIX}${working.toLowerCase()}`;
+    didMutate = true;
+  }
+
+  ENCODED_BTih_PATTERN.lastIndex = 0;
+  const decodedXt = working.replace(ENCODED_BTih_PATTERN, (_, hash) => {
+    didMutate = true;
+    return `xt=${BTIH_PREFIX}${hash}`;
+  });
+  working = decodedXt;
+
+  let fragment = "";
+  const hashIndex = working.indexOf("#");
+  if (hashIndex !== -1) {
+    fragment = working.slice(hashIndex);
+    working = working.slice(0, hashIndex);
+  }
+
+  const canonicalValue = working;
+  if (!/^magnet:/i.test(working)) {
+    return {
+      initial,
+      canonicalValue,
+      didMutate: didMutate || canonicalValue !== initial,
+      isMagnet: false,
+      normalizedScheme: "",
+      fragment: "",
+      params: [],
+    };
+  }
+
+  const [schemePart, queryPart = ""] = working.split("?", 2);
+  const normalizedScheme = MAGNET_SCHEME;
+  if (schemePart !== normalizedScheme) {
+    didMutate = true;
+  }
+
+  const rawParams = queryPart
+    .split("&")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const params = [];
+  for (const rawParam of rawParams) {
+    const [rawKey, rawVal = ""] = rawParam.split("=", 2);
+    const key = rawKey.trim();
+    if (!key) {
+      continue;
+    }
+    const lowerKey = key.toLowerCase();
+    let value = rawVal.trim();
+    if (lowerKey === "xt" && value) {
+      const decoded = decodeLoose(value);
+      if (decoded && decoded !== value) {
+        value = decoded;
+        didMutate = true;
+      }
+    }
+    params.push(createParam(key, value));
+  }
+
+  return {
+    initial,
+    canonicalValue,
+    didMutate,
+    isMagnet: true,
+    normalizedScheme,
+    fragment,
+    params,
+  };
+}
+
+export function buildMagnetUri(normalizedScheme, params, fragment) {
+  const queryString = params
+    .map(({ key, value }) => (value ? `${key}=${value}` : key))
+    .join("&");
+  return `${normalizedScheme}${queryString ? `?${queryString}` : ""}${fragment || ""}`;
+}
+
+export function appendUniqueParam(params, key, value) {
+  if (!Array.isArray(params)) {
+    return false;
+  }
+  const candidate = createParam(key, value);
+  if (!candidate.value && candidate.value !== "") {
+    return false;
+  }
+  if (candidate.comparison) {
+    const exists = params.some(
+      (param) => param.lowerKey === candidate.lowerKey && param.comparison === candidate.comparison
+    );
+    if (exists) {
+      return false;
+    }
+  } else {
+    const exists = params.some(
+      (param) => param.lowerKey === candidate.lowerKey && param.value === candidate.value
+    );
+    if (exists) {
+      return false;
+    }
+  }
+  params.push(candidate);
+  return true;
+}
+
+export function ensureTrackers(params, trackers = WSS_TRACKERS) {
+  let didMutate = false;
+  for (const tracker of trackers) {
+    if (typeof tracker !== "string") {
+      continue;
+    }
+    const trimmedTracker = tracker.trim();
+    if (!trimmedTracker) {
+      continue;
+    }
+    if (!/^wss:\/\//i.test(trimmedTracker)) {
+      continue;
+    }
+    if (appendUniqueParam(params, "tr", trimmedTracker)) {
+      didMutate = true;
+    }
+  }
+  return didMutate;
+}
+
+export function sanitizeHttpUrl(candidate) {
+  if (typeof candidate !== "string") {
+    return "";
+  }
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+  } catch (err) {
+    return "";
+  }
+  return "";
+}
+
+export function ensureTorrentHint(params, candidate, { requireHttp = true } = {}) {
+  if (requireHttp) {
+    const sanitized = sanitizeHttpUrl(candidate);
+    if (!sanitized) {
+      return false;
+    }
+    return appendUniqueParam(params, "xs", sanitized);
+  }
+
+  if (typeof candidate !== "string") {
+    return false;
+  }
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return appendUniqueParam(params, "xs", trimmed);
+}
+
+export function resolveAppProtocol(explicitProtocol) {
+  if (typeof explicitProtocol === "string" && explicitProtocol.trim()) {
+    return explicitProtocol.trim().toLowerCase();
+  }
+  if (typeof window !== "undefined" && window.location?.protocol) {
+    return window.location.protocol.toLowerCase();
+  }
+  return "https:";
+}
+
+export function ensureWebSeeds(
+  params,
+  seeds,
+  { allowHttp = false, allowUnparsed = false, logger } = {}
+) {
+  const list = Array.isArray(seeds)
+    ? seeds
+    : typeof seeds === "string"
+      ? [seeds]
+      : [];
+  let didMutate = false;
+  for (const seed of list) {
+    if (typeof seed !== "string") {
+      continue;
+    }
+    const trimmedSeed = seed.trim();
+    if (!trimmedSeed) {
+      continue;
+    }
+    let finalValue = trimmedSeed;
+    let parsed;
+    try {
+      parsed = new URL(trimmedSeed);
+      const protocol = parsed.protocol;
+      if (protocol === "https:") {
+        finalValue = parsed.toString();
+      } else if (protocol === "http:") {
+        if (!allowHttp) {
+          if (typeof logger === "function") {
+            logger(`[normalizeAndAugmentMagnet] Skipping insecure web seed: ${trimmedSeed}`);
+          }
+          continue;
+        }
+        finalValue = parsed.toString();
+      } else if (!allowUnparsed) {
+        continue;
+      }
+    } catch (err) {
+      if (!allowUnparsed) {
+        continue;
+      }
+    }
+
+    if (appendUniqueParam(params, "ws", finalValue)) {
+      didMutate = true;
+    }
+  }
+  return didMutate;
+}
+
+export function formatAbsoluteUrl(candidate) {
+  if (typeof candidate !== "string") {
+    return "";
+  }
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.toString();
+  } catch (err) {
+    return trimmed;
+  }
+}
+
+export function extractMagnetHints(rawValue) {
+  const { params } = normalizeMagnetInput(rawValue);
+  const hints = { ws: "", xs: "" };
+  for (const param of params) {
+    if (param.lowerKey === "ws" && !hints.ws) {
+      hints.ws = param.decoded || param.value;
+    } else if (param.lowerKey === "xs" && !hints.xs) {
+      hints.xs = param.decoded || param.value;
+    }
+    if (hints.ws && hints.xs) {
+      break;
+    }
+  }
+  return hints;
+}
+
