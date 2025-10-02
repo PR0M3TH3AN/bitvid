@@ -53,7 +53,43 @@ function resolveFlagEnabled() {
 }
 
 function getLoggedInActorKey() {
-  return normalizeActorKey(nostrClient?.pubkey);
+  const direct = normalizeActorKey(nostrClient?.pubkey);
+  if (direct) {
+    return direct;
+  }
+
+  if (typeof window !== "undefined") {
+    const appCandidate =
+      (window.bitvid && window.bitvid.app) || window.app || null;
+    if (appCandidate && typeof appCandidate === "object") {
+      if (typeof appCandidate.normalizeHexPubkey === "function") {
+        try {
+          const normalized = appCandidate.normalizeHexPubkey(
+            appCandidate.pubkey
+          );
+          if (normalized) {
+            return normalizeActorKey(normalized);
+          }
+        } catch (error) {
+          if (isDevMode) {
+            console.warn(
+              "[watchHistoryService] Failed to normalize app login pubkey:",
+              error
+            );
+          }
+        }
+      }
+
+      if (typeof appCandidate.pubkey === "string" && appCandidate.pubkey) {
+        const fallback = normalizeActorKey(appCandidate.pubkey);
+        if (fallback) {
+          return fallback;
+        }
+      }
+    }
+  }
+
+  return "";
 }
 
 function getSessionActorKey() {

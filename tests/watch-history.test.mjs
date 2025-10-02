@@ -1148,6 +1148,52 @@ async function testWatchHistorySyncEnabledForLoggedInUsers() {
   }
 }
 
+async function testWatchHistoryAppLoginFallback() {
+  console.log("Running watch history app login fallback test...");
+
+  const actor = "f".repeat(64);
+  const originalPub = nostrClient.pubkey;
+  const originalSession = nostrClient.sessionActor;
+  const originalApp = typeof window.app === "undefined" ? undefined : window.app;
+
+  try {
+    setWatchHistoryV2Enabled(false);
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = "";
+    nostrClient.sessionActor = null;
+    window.app = {
+      pubkey: actor,
+      normalizeHexPubkey(value) {
+        if (typeof value === "string" && value.trim()) {
+          return value.trim().toLowerCase();
+        }
+        return null;
+      },
+    };
+
+    const enabled =
+      typeof watchHistoryService.isEnabled === "function"
+        ? watchHistoryService.isEnabled(actor)
+        : false;
+    assert.equal(
+      enabled,
+      true,
+      "sync should be enabled when the app reports a logged-in pubkey",
+    );
+  } finally {
+    setWatchHistoryV2Enabled(true);
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = originalPub;
+    nostrClient.sessionActor = originalSession;
+    if (typeof originalApp === "undefined") {
+      delete window.app;
+    } else {
+      window.app = originalApp;
+    }
+  }
+}
+
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesExtensionCrypto();
 await testPublishSnapshotFailureRetry();
@@ -1156,6 +1202,7 @@ await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
 await testWatchHistoryLocalFallbackWhenDisabled();
 await testWatchHistorySyncEnabledForLoggedInUsers();
+await testWatchHistoryAppLoginFallback();
 
 console.log("watch-history.test.mjs completed successfully");
 

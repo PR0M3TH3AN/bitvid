@@ -6749,10 +6749,19 @@ class bitvidApp {
       this.resetViewLoggingState();
     }
 
+    const trimmedPubkey =
+      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
+
     if (normalizedPubkey) {
       this.pubkey = normalizedPubkey;
+      if (nostrClient && typeof nostrClient === "object") {
+        nostrClient.pubkey = normalizedPubkey;
+      }
     } else {
       this.pubkey = pubkey;
+      if (nostrClient && typeof nostrClient === "object") {
+        nostrClient.pubkey = trimmedPubkey ? trimmedPubkey.toLowerCase() : "";
+      }
     }
     this.currentUserNpub = this.safeEncodeNpub(this.pubkey);
 
@@ -7587,8 +7596,52 @@ class bitvidApp {
         try {
           const canUseWatchHistoryService =
             typeof watchHistoryService?.publishView === "function";
+          const resolveWatchActor = () => {
+            const normalizedUser = this.normalizeHexPubkey(this.pubkey);
+            if (normalizedUser) {
+              return normalizedUser;
+            }
+
+            const normalizedClient = this.normalizeHexPubkey(
+              nostrClient?.pubkey
+            );
+            if (normalizedClient) {
+              return normalizedClient;
+            }
+
+            const normalizedSession = this.normalizeHexPubkey(
+              nostrClient?.sessionActor?.pubkey
+            );
+            if (normalizedSession) {
+              return normalizedSession;
+            }
+
+            if (
+              typeof nostrClient?.pubkey === "string" &&
+              nostrClient.pubkey.trim()
+            ) {
+              return nostrClient.pubkey.trim().toLowerCase();
+            }
+
+            if (
+              typeof nostrClient?.sessionActor?.pubkey === "string" &&
+              nostrClient.sessionActor.pubkey.trim()
+            ) {
+              return nostrClient.sessionActor.pubkey.trim().toLowerCase();
+            }
+
+            return "";
+          };
+
+          const activeWatchActor = resolveWatchActor();
+          const watchMetadata = activeWatchActor ? { actor: activeWatchActor } : undefined;
+
           if (canUseWatchHistoryService) {
-            viewResult = await watchHistoryService.publishView(thresholdPointer);
+            viewResult = await watchHistoryService.publishView(
+              thresholdPointer,
+              undefined,
+              watchMetadata
+            );
           } else if (typeof nostrClient?.recordVideoView === "function") {
             viewResult = await nostrClient.recordVideoView(thresholdPointer);
           } else {
@@ -11640,5 +11693,11 @@ function dedupeToNewestByRoot(videos) {
 
 export const app = new bitvidApp();
 export const appReady = app.init();
-window.app = app;
-window.appReady = appReady;
+
+if (typeof window !== "undefined") {
+  window.app = app;
+  window.appReady = appReady;
+  window.bitvid = window.bitvid || {};
+  window.bitvid.app = app;
+  window.bitvid.appReady = appReady;
+}
