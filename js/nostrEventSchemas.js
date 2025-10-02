@@ -146,6 +146,7 @@ const BASE_SCHEMAS = {
     label: "View counter",
     kind: WATCH_HISTORY_KIND,
     topicTag: { name: "t", value: "view" },
+    identifierTag: { name: "d" },
     sessionTag: { name: "session", value: "true" },
     appendTags: DEFAULT_APPEND_TAGS,
     content: {

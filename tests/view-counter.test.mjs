@@ -59,8 +59,12 @@ const canonicalViewEvent = buildViewEvent({
 
 assert.deepEqual(
   canonicalViewEvent.tags,
-  [["t", "view"], [CACHE_TTL_TEST_POINTER.type, CACHE_TTL_TEST_POINTER.value]],
-  "view event should only include topic and supplied pointer tags by default"
+  [
+    ["t", "view"],
+    [CACHE_TTL_TEST_POINTER.type, CACHE_TTL_TEST_POINTER.value],
+    ["d", "ignore-dedupe"],
+  ],
+  "view event should include topic, pointer, and dedupe tags when provided"
 );
 
 const sessionViewEvent = buildViewEvent({
