@@ -2319,6 +2319,19 @@ class NostrClient {
       relays = Array.from(RELAY_URLS);
     }
 
+    console.info(
+      "[nostr] Preparing to publish watch history snapshot.",
+      {
+        actor: actorKey,
+        snapshotId,
+        itemCount: canonicalItems.length,
+        chunkCount: chunks.length,
+        relaysRequested: relays,
+        attempt: options.attempt || 0,
+        source: options.source || "unknown",
+      }
+    );
+
     const createdAtBase = Math.max(
       Math.floor(Date.now() / 1000),
       this.watchHistoryLastCreatedAt + 1,
@@ -2403,6 +2416,17 @@ class NostrClient {
         }
         return tag;
       });
+
+      console.info(
+        "[nostr] Publishing watch history chunk.",
+        {
+          actor: actorKey,
+          snapshotId,
+          chunkIndex: index,
+          chunkSize: chunkItems.length,
+          relays,
+        }
+      );
 
       const plaintext = JSON.stringify({
         version: 2,
@@ -2504,6 +2528,15 @@ class NostrClient {
       return { ok: false, error: "signing-failed", retryable: false };
     }
 
+    console.info(
+      "[nostr] Publishing watch history pointer event.",
+      {
+        actor: actorKey,
+        snapshotId,
+        relays,
+      }
+    );
+
     const pointerResults = await publishEventToRelays(
       this.pool,
       relays,
@@ -2588,6 +2621,16 @@ class NostrClient {
       result.error = errorCode;
     }
 
+    console.info("[nostr] Watch history snapshot publish result.", {
+      actor: actorKey,
+      snapshotId,
+      success,
+      partialAcceptance,
+      error: result.error || null,
+      pointerAcceptedCount,
+      chunkAcceptedCounts: chunkResults.map((entry) => entry.acceptedCount),
+    });
+
     return result;
   }
 
@@ -2628,6 +2671,13 @@ class NostrClient {
       canonicalItems,
     );
 
+    console.info("[nostr] Updating watch history list.", {
+      actor: resolvedActor,
+      incomingItemCount: incomingItems.length,
+      finalItemCount: canonicalItems.length,
+      replace: options.replace === true,
+    });
+
     const publishResult = await this.publishWatchHistorySnapshot(
       canonicalItems,
       {
@@ -2636,6 +2686,13 @@ class NostrClient {
         attempt: options.attempt || 0,
       },
     );
+
+    console.info("[nostr] Watch history list publish attempt finished.", {
+      actor: resolvedActor,
+      snapshotId: publishResult.snapshotId || null,
+      success: !!publishResult.ok,
+      retryable: !!publishResult.retryable,
+    });
 
     const metadata = sanitizeWatchHistoryMetadata(cachedEntry.metadata);
     metadata.updatedAt = Date.now();
@@ -2734,6 +2791,11 @@ class NostrClient {
       return { pointerEvent: null, items: [], snapshotId: "" };
     }
 
+    console.info("[nostr] Fetching watch history from relays.", {
+      actor: resolvedActor,
+      forceRefresh: options.forceRefresh === true,
+    });
+
     const extension = window?.nostr;
 
     const existingEntry = this.watchHistoryCache.get(actorKey);
@@ -2746,6 +2808,11 @@ class NostrClient {
       Number.isFinite(existingEntry.savedAt) &&
       now - existingEntry.savedAt < ttl
     ) {
+      console.info("[nostr] Using cached watch history entry.", {
+        actor: resolvedActor,
+        itemCount: Array.isArray(existingEntry.items) ? existingEntry.items.length : 0,
+        cacheAgeMs: now - existingEntry.savedAt,
+      });
       return {
         pointerEvent: existingEntry.pointerEvent || null,
         items: existingEntry.items || [],
@@ -2754,6 +2821,7 @@ class NostrClient {
     }
 
     if (!this.pool) {
+      console.warn("[nostr] Cannot fetch watch history because relay pool is unavailable. Returning cached values.");
       return {
         pointerEvent: existingEntry?.pointerEvent || null,
         items: existingEntry?.items || [],
@@ -2820,6 +2888,12 @@ class NostrClient {
     }, null);
 
     if (!pointerEvent) {
+      console.info(
+        "[nostr] No watch history pointer event found on relays. Falling back to storage.",
+        {
+          actor: resolvedActor,
+        }
+      );
       const storageEntry = this.getWatchHistoryStorage().actors?.[actorKey];
       const items = Array.isArray(storageEntry?.items)
         ? canonicalizeWatchHistoryItems(storageEntry.items, WATCH_HISTORY_MAX_ITEMS)
@@ -3080,6 +3154,11 @@ class NostrClient {
       return [];
     }
 
+    console.info("[nostr] Resolving watch history for actor.", {
+      actor: resolvedActor,
+      forceRefresh: options.forceRefresh === true,
+    });
+
     const storage = this.getWatchHistoryStorage();
     const fallbackItems = Array.isArray(storage.actors?.[actorKey]?.items)
       ? canonicalizeWatchHistoryItems(
@@ -3122,6 +3201,19 @@ class NostrClient {
       resolvedActor,
       canonicalItems,
     );
+
+    console.info("[nostr] Watch history fetch complete.", {
+      actor: resolvedActor,
+      snapshotId: fetchResult.snapshotId || null,
+      pointerFound: !!fetchResult.pointerEvent,
+      itemCount: canonicalItems.length,
+    });
+
+    console.info("[nostr] Watch history resolved and cached.", {
+      actor: resolvedActor,
+      itemCount: canonicalItems.length,
+      snapshotId: fetchResult.snapshotId || null,
+    });
 
     const entry = {
       actor: resolvedActor,
