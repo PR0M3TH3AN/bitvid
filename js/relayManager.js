@@ -1,6 +1,10 @@
 import { isDevMode } from "./config.js";
 import { DEFAULT_RELAY_URLS, nostrClient } from "./nostr.js";
 import { buildRelayListEvent } from "./nostrEventSchemas.js";
+import {
+  publishEventToRelays,
+  assertAnyRelayAccepted,
+} from "./nostrPublish.js";
 
 const MODE_SEQUENCE = ["both", "read", "write"];
 
@@ -497,28 +501,56 @@ class RelayPreferencesManager {
       throw error;
     }
 
-    const publishResults = await Promise.allSettled(
-      targets.map((url) => nostrClient.pool.publish([url], signedEvent))
+    const publishResults = await publishEventToRelays(
+      nostrClient.pool,
+      targets,
+      signedEvent
     );
 
-    const accepted = [];
-    const failed = [];
-
-    publishResults.forEach((result, index) => {
-      const url = targets[index];
-      if (result.status === "fulfilled") {
-        accepted.push(url);
-      } else {
-        failed.push({ url, reason: result.reason || null });
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, {
+        context: "relay preferences update",
+        message: "No relays accepted the update.",
+      });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
+            console.error(
+              `[RelayPreferencesManager] Relay ${url} rejected relay list: ${reason}`,
+              relayError || reason
+            );
+          }
+        );
       }
-    });
-
-    const ok = accepted.length > 0;
-    if (ok) {
-      this.lastEvent = signedEvent;
+      throw publishError;
     }
 
-    return { ok, event: signedEvent, accepted, failed, targets };
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        console.warn(
+          `[RelayPreferencesManager] Relay ${url} did not acknowledge relay list: ${reason}`,
+          relayError
+        );
+      });
+    }
+
+    const accepted = publishSummary.accepted.map(({ url }) => url);
+    const failed = publishSummary.failed.map(({ url, error: relayError }) => ({
+      url,
+      reason: relayError || null,
+    }));
+
+    this.lastEvent = signedEvent;
+
+    return { ok: true, event: signedEvent, accepted, failed, targets };
   }
 
   getLastLoadSource() {

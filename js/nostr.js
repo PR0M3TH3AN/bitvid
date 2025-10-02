@@ -28,6 +28,11 @@ import {
   buildWatchHistoryIndexEvent,
   buildWatchHistoryChunkEvent,
 } from "./nostrEventSchemas.js";
+import {
+  publishEventToRelay,
+  publishEventToRelays,
+  assertAnyRelayAccepted,
+} from "./nostrPublish.js";
 
 /**
  * The default relay set BitVid bootstraps with before loading a user's
@@ -1137,92 +1142,6 @@ function decodeNpubToHex(npub) {
     }
   }
   return "";
-}
-
-const DM_PUBLISH_TIMEOUT_MS = 10_000;
-
-function publishEventToRelay(pool, url, event) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finalize = (success, error = null) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      resolve({ url, success, error });
-    };
-
-    const timeoutId = setTimeout(() => {
-      finalize(false, new Error("publish timeout"));
-    }, DM_PUBLISH_TIMEOUT_MS);
-
-    try {
-      const pub = pool.publish([url], event);
-
-      if (pub && typeof pub.on === "function") {
-        const registerHandler = (eventName, handler) => {
-          try {
-            pub.on(eventName, handler);
-            return true;
-          } catch (error) {
-            if (isDevMode) {
-              console.warn(
-                `[nostr] Relay publish handle rejected ${eventName} listener:`,
-                error
-              );
-            }
-            return false;
-          }
-        };
-
-        const handleSuccess = () => {
-          clearTimeout(timeoutId);
-          finalize(true);
-        };
-
-        const handleFailure = (reason) => {
-          clearTimeout(timeoutId);
-          const err =
-            reason instanceof Error
-              ? reason
-              : new Error(String(reason || "publish failed"));
-          finalize(false, err);
-        };
-
-        let handlerRegistered = false;
-        handlerRegistered =
-          registerHandler("ok", handleSuccess) || handlerRegistered;
-        handlerRegistered =
-          registerHandler("seen", handleSuccess) || handlerRegistered;
-        handlerRegistered =
-          registerHandler("failed", handleFailure) || handlerRegistered;
-
-        if (handlerRegistered) {
-          return;
-        }
-      }
-
-      if (pub && typeof pub.then === "function") {
-        pub
-          .then(() => {
-            clearTimeout(timeoutId);
-            finalize(true);
-          })
-          .catch((error) => {
-            clearTimeout(timeoutId);
-            finalize(false, error);
-          });
-        return;
-      }
-    } catch (error) {
-      clearTimeout(timeoutId);
-      finalize(false, error);
-      return;
-    }
-
-    clearTimeout(timeoutId);
-    finalize(true);
-  });
 }
 
 const EXTENSION_MIME_MAP = {
@@ -5130,16 +5049,53 @@ class NostrClient {
       const signedEvent = await window.nostr.signEvent(event);
       if (isDevMode) console.log("Signed event:", signedEvent);
 
-      await Promise.all(
-        this.relays.map(async (url) => {
-          try {
-            await this.pool.publish([url], signedEvent);
-            if (isDevMode) console.log(`Video published to ${url}`);
-          } catch (err) {
-            if (isDevMode) console.error(`Failed to publish: ${url}`, err);
-          }
-        })
+      const publishResults = await publishEventToRelays(
+        this.pool,
+        this.relays,
+        signedEvent
       );
+
+      let publishSummary;
+      try {
+        publishSummary = assertAnyRelayAccepted(publishResults, {
+          context: "video note",
+        });
+      } catch (publishError) {
+        if (publishError?.relayFailures?.length) {
+          publishError.relayFailures.forEach(
+            ({ url, error: relayError, reason }) => {
+              console.error(
+                `[nostr] Video note rejected by ${url}: ${reason}`,
+                relayError || reason
+              );
+            }
+          );
+        }
+        throw publishError;
+      }
+
+      const { accepted: acceptedRelays, failed: failedRelays } = publishSummary;
+
+      if (isDevMode) {
+        acceptedRelays.forEach(({ url }) =>
+          console.log(`Video published to ${url}`)
+        );
+      }
+
+      if (failedRelays.length) {
+        failedRelays.forEach(({ url, error: relayError }) => {
+          const reason =
+            relayError instanceof Error
+              ? relayError.message
+              : relayError
+              ? String(relayError)
+              : "publish failed";
+          console.warn(
+            `[nostr] Video note not accepted by ${url}: ${reason}`,
+            relayError
+          );
+        });
+      }
 
       if (finalUrl) {
         const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
@@ -5181,23 +5137,54 @@ class NostrClient {
             console.log("Signed NIP-94 mirror event:", signedMirrorEvent);
           }
 
-          await Promise.all(
-            this.relays.map(async (url) => {
-              try {
-                await this.pool.publish([url], signedMirrorEvent);
-                if (isDevMode) {
-                  console.log(`NIP-94 mirror published to ${url}`);
-                }
-              } catch (mirrorErr) {
-                if (isDevMode) {
-                  console.error(
-                    `Failed to publish NIP-94 mirror to ${url}`,
-                    mirrorErr
+          const mirrorResults = await publishEventToRelays(
+            this.pool,
+            this.relays,
+            signedMirrorEvent
+          );
+
+          try {
+            const mirrorSummary = assertAnyRelayAccepted(mirrorResults, {
+              context: "NIP-94 mirror",
+            });
+
+            if (isDevMode) {
+              mirrorSummary.accepted.forEach(({ url }) =>
+                console.log(`NIP-94 mirror published to ${url}`)
+              );
+            }
+
+            if (mirrorSummary.failed.length) {
+              mirrorSummary.failed.forEach(({ url, error: relayError }) => {
+                const reason =
+                  relayError instanceof Error
+                    ? relayError.message
+                    : relayError
+                    ? String(relayError)
+                    : "publish failed";
+                console.warn(
+                  `[nostr] NIP-94 mirror not accepted by ${url}: ${reason}`,
+                  relayError
+                );
+              });
+            }
+          } catch (mirrorError) {
+            if (mirrorError?.relayFailures?.length) {
+              mirrorError.relayFailures.forEach(
+                ({ url, error: relayError, reason }) => {
+                  console.warn(
+                    `[nostr] NIP-94 mirror rejected by ${url}: ${reason}`,
+                    relayError || reason
                   );
                 }
-              }
-            })
-          );
+              );
+            } else if (isDevMode) {
+              console.warn(
+                "[nostr] NIP-94 mirror rejected by all relays:",
+                mirrorError
+              );
+            }
+          }
 
           if (isDevMode) {
             console.log(
@@ -5356,20 +5343,51 @@ class NostrClient {
         console.log("Signed edited event:", signedEvent);
       }
 
-      await Promise.all(
-        this.relays.map(async (url) => {
-          try {
-            await this.pool.publish([url], signedEvent);
-            if (isDevMode) {
-              console.log(`Edited video published to ${url}`);
-            }
-          } catch (err) {
-            if (isDevMode) {
-              console.error(`Publish failed to ${url}`, err);
-            }
-          }
-        })
+      const publishResults = await publishEventToRelays(
+        this.pool,
+        this.relays,
+        signedEvent
       );
+
+      let publishSummary;
+      try {
+        publishSummary = assertAnyRelayAccepted(publishResults, {
+          context: "edited video note",
+        });
+      } catch (publishError) {
+        if (publishError?.relayFailures?.length) {
+          publishError.relayFailures.forEach(
+            ({ url, error: relayError, reason }) => {
+              console.error(
+                `[nostr] Edited video rejected by ${url}: ${reason}`,
+                relayError || reason
+              );
+            }
+          );
+        }
+        throw publishError;
+      }
+
+      if (isDevMode) {
+        publishSummary.accepted.forEach(({ url }) =>
+          console.log(`Edited video published to ${url}`)
+        );
+      }
+
+      if (publishSummary.failed.length) {
+        publishSummary.failed.forEach(({ url, error: relayError }) => {
+          const reason =
+            relayError instanceof Error
+              ? relayError.message
+              : relayError
+              ? String(relayError)
+              : "publish failed";
+          console.warn(
+            `[nostr] Edited video not accepted by ${url}: ${reason}`,
+            relayError
+          );
+        });
+      }
 
       return signedEvent;
     } catch (err) {
@@ -5461,15 +5479,51 @@ class NostrClient {
     };
 
     const signedEvent = await window.nostr.signEvent(event);
-    await Promise.all(
-      this.relays.map(async (url) => {
-        try {
-          await this.pool.publish([url], signedEvent);
-        } catch (err) {
-          if (isDevMode) console.error(`Failed to revert on ${url}`, err);
-        }
-      })
+    const publishResults = await publishEventToRelays(
+      this.pool,
+      this.relays,
+      signedEvent
     );
+
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, {
+        context: "video revert",
+      });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
+            console.error(
+              `[nostr] Video revert rejected by ${url}: ${reason}`,
+              relayError || reason
+            );
+          }
+        );
+      }
+      throw publishError;
+    }
+
+    if (isDevMode) {
+      publishSummary.accepted.forEach(({ url }) =>
+        console.log(`Revert event published to ${url}`)
+      );
+    }
+
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        console.warn(
+          `[nostr] Video revert not accepted by ${url}: ${reason}`,
+          relayError
+        );
+      });
+    }
 
     return signedEvent;
   }
