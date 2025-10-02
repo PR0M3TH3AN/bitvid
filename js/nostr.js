@@ -2552,39 +2552,82 @@ class NostrClient {
       overallSuccess = false;
     }
 
+    const publishAttemptSummaries = [];
+    const acceptedRelaySet = new Set();
+
+    const recordPublishAttempt = (label, results) => {
+      if (!Array.isArray(results) || !results.length) {
+        return;
+      }
+      const accepted = results
+        .filter((result) => result && result.success)
+        .map((result) => result.url)
+        .filter((url) => typeof url === "string" && url);
+      if (accepted.length) {
+        accepted.forEach((url) => acceptedRelaySet.add(url));
+      }
+      publishAttemptSummaries.push({ label, accepted, results });
+    };
+
+    chunkResults.forEach((chunk) => {
+      recordPublishAttempt(`chunk#${chunk.chunkIndex}`, chunk.results);
+    });
+    recordPublishAttempt("index", indexPublishResults);
+
+    const failedAttempts = publishAttemptSummaries.filter(
+      (attempt) => !attempt.accepted.length
+    );
+
+    if (acceptedRelaySet.size) {
+      console.info(
+        `[nostr] Watch history publish accepted by ${acceptedRelaySet.size} relay(s):`,
+        Array.from(acceptedRelaySet).join(", ")
+      );
+    }
+
+    if (failedAttempts.length) {
+      console.warn(
+        "[nostr] Watch history publish rejected by relays:",
+        failedAttempts.map((attempt) => ({
+          label: attempt.label,
+          results: attempt.results,
+        }))
+      );
+    } else if (!acceptedRelaySet.size && publishAttemptSummaries.length) {
+      console.warn("[nostr] Watch history publish had no relay attempts.");
+    }
+
     if (overallSuccess) {
       this.cancelWatchHistoryRepublish(normalizedActor);
     } else if (allowRetry && persistedItems.length) {
       this.scheduleWatchHistoryRepublish(normalizedActor, persistedItems);
     }
 
-    if (isDevMode) {
-      const latestItem = persistedItems[0] || null;
-      const latestPointerKey = pointerKey(latestItem);
-      const latestPointerSummary = latestPointerKey
-        ? latestPointerKey.length > 32
-          ? `${latestPointerKey.slice(0, 32)}…`
-          : latestPointerKey
-        : null;
-      const actorPreview =
-        normalizedActor.length > 16
-          ? `${normalizedActor.slice(0, 8)}…${normalizedActor.slice(-4)}`
-          : normalizedActor;
-      const summary = {
-        actor: actorPreview,
-        itemCount: persistedItems.length,
-        snapshot: snapshotId,
-        latestPointer: latestPointerSummary,
-        latestWatchedAt: Number.isFinite(latestItem?.watchedAt)
-          ? new Date(Math.max(0, Math.floor(latestItem.watchedAt))).toISOString()
-          : null,
-      };
+    const latestItem = persistedItems[0] || null;
+    const latestPointerKey = pointerKey(latestItem);
+    const latestPointerSummary = latestPointerKey
+      ? latestPointerKey.length > 32
+        ? `${latestPointerKey.slice(0, 32)}…`
+        : latestPointerKey
+      : null;
+    const actorPreview =
+      normalizedActor.length > 16
+        ? `${normalizedActor.slice(0, 8)}…${normalizedActor.slice(-4)}`
+        : normalizedActor;
+    const summary = {
+      actor: actorPreview,
+      itemCount: persistedItems.length,
+      snapshot: snapshotId,
+      latestPointer: latestPointerSummary,
+      latestWatchedAt: Number.isFinite(latestItem?.watchedAt)
+        ? new Date(Math.max(0, Math.floor(latestItem.watchedAt))).toISOString()
+        : null,
+    };
 
-      if (overallSuccess) {
-        console.info("[nostr] Watch history snapshot updated:", summary);
-      } else {
-        console.warn("[nostr] Watch history snapshot publish incomplete:", summary);
-      }
+    if (overallSuccess) {
+      console.info("[nostr] Watch history snapshot updated:", summary);
+    } else {
+      console.warn("[nostr] Watch history snapshot publish incomplete:", summary);
     }
 
     const pointerEvent =
