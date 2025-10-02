@@ -36,10 +36,10 @@ const state = {
   },
 };
 
-function isFeatureEnabled() {
+function resolveFlagEnabled() {
   try {
     if (typeof getWatchHistoryV2Enabled === "function") {
-      return getWatchHistoryV2Enabled();
+      return getWatchHistoryV2Enabled() === true;
     }
   } catch (error) {
     if (isDevMode) {
@@ -50,6 +50,79 @@ function isFeatureEnabled() {
     }
   }
   return FEATURE_WATCH_HISTORY_V2 === true;
+}
+
+function getLoggedInActorKey() {
+  return normalizeActorKey(nostrClient?.pubkey);
+}
+
+function getSessionActorKey() {
+  const logged = getLoggedInActorKey();
+  if (logged) {
+    return "";
+  }
+  return normalizeActorKey(nostrClient?.sessionActor?.pubkey);
+}
+
+function resolveEffectiveActorKey(actorInput) {
+  const supplied =
+    typeof actorInput === "string" && actorInput.trim()
+      ? normalizeActorKey(actorInput)
+      : "";
+  if (supplied) {
+    return supplied;
+  }
+  const logged = getLoggedInActorKey();
+  if (logged) {
+    return logged;
+  }
+  const session = getSessionActorKey();
+  if (session) {
+    return session;
+  }
+  return "";
+}
+
+function isFeatureEnabled(actorInput) {
+  const baseEnabled = resolveFlagEnabled();
+  const actorKey = resolveEffectiveActorKey(actorInput);
+  const logged = getLoggedInActorKey();
+  const session = getSessionActorKey();
+
+  if (actorKey && logged && actorKey === logged) {
+    return true;
+  }
+
+  if (actorKey && session && actorKey === session) {
+    return false;
+  }
+
+  if (!actorKey) {
+    if (logged) {
+      return true;
+    }
+    if (session) {
+      return false;
+    }
+  }
+
+  return baseEnabled;
+}
+
+function isLocalOnly(actorInput) {
+  const actorKey = resolveEffectiveActorKey(actorInput);
+  const session = getSessionActorKey();
+  if (!session) {
+    return false;
+  }
+  if (!actorKey) {
+    return true;
+  }
+  return actorKey === session;
+}
+
+function supportsLocalHistory(actorInput) {
+  return isLocalOnly(actorInput);
 }
 
 function getSessionStorage() {
@@ -557,7 +630,7 @@ function restoreQueueState() {
       queue.lastSnapshotReason = null;
     }
 
-    if (queue.pendingSnapshotId && isFeatureEnabled()) {
+    if (queue.pendingSnapshotId && isFeatureEnabled(actorKey)) {
       scheduleRepublishForQueue(actorKey);
     }
   }
@@ -702,7 +775,7 @@ function resolveWatchedAt(...candidates) {
 }
 
 function scheduleRepublishForQueue(actorKey) {
-  if (!isFeatureEnabled()) {
+  if (!isFeatureEnabled(actorKey)) {
     return;
   }
   const queue = state.queues.get(actorKey);
@@ -849,6 +922,8 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     return viewResult;
   }
 
+  const remoteEnabled = isFeatureEnabled(actorKey);
+
   const normalizedPointer = normalizePointerInput(pointer);
   if (!normalizedPointer) {
     console.warn(
@@ -871,6 +946,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
       pointerKey: key,
       watchedAt: normalizedPointer.watchedAt,
       sessionEvent: normalizedPointer.session === true,
+      remoteSyncEnabled: remoteEnabled,
     }
   );
 
@@ -952,9 +1028,9 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     }
   );
 
-  if (!isFeatureEnabled()) {
+  if (!remoteEnabled) {
     console.info(
-      "[watchHistoryService] Watch history sync disabled; retaining pointer in local session queue only.",
+      "[watchHistoryService] Watch history sync unavailable for this actor; retaining pointer in local session queue only.",
       {
         actor: actorKey,
         pointerKey: key,
@@ -967,20 +1043,22 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 }
 
 async function snapshot(items, options = {}) {
-  if (!isFeatureEnabled()) {
-    console.info(
-      "[watchHistoryService] Snapshot skipped because watch history feature is disabled.",
-      {
-        requestedItems: Array.isArray(items) ? items.length : 0,
-        reason: typeof options.reason === "string" ? options.reason : "manual",
-      }
-    );
-    return { ok: true, skipped: true, reason: "feature-disabled" };
-  }
   const reason = typeof options.reason === "string" ? options.reason : "manual";
   const actorKey = resolveActorKey(options.actor);
   if (!actorKey) {
     return { ok: false, error: "missing-actor" };
+  }
+
+  if (!isFeatureEnabled(actorKey)) {
+    console.info(
+      "[watchHistoryService] Snapshot skipped because watch history sync is unavailable for this actor.",
+      {
+        actor: actorKey,
+        requestedItems: Array.isArray(items) ? items.length : 0,
+        reason,
+      }
+    );
+    return { ok: true, skipped: true, reason: "feature-disabled" };
   }
 
   if (state.inflightSnapshots.has(actorKey)) {
@@ -1091,13 +1169,13 @@ async function loadLatest(actorInput) {
     return [];
   }
 
-  if (!isFeatureEnabled()) {
+  if (!isFeatureEnabled(actorKey)) {
     if (!state.restored) {
       restoreQueueState();
     }
     const items = collectQueueItems(actorKey);
     console.info(
-      "[watchHistoryService] loadLatest returning session watch history queue.",
+      "[watchHistoryService] loadLatest returning local-only watch history queue.",
       {
         actor: actorKey,
         itemCount: items.length,
@@ -1178,11 +1256,11 @@ async function loadLatest(actorInput) {
 }
 
 async function getFingerprint(actorInput) {
-  if (!isFeatureEnabled()) {
-    return "";
-  }
   const actorKey = resolveActorKey(actorInput);
   if (!actorKey) {
+    return "";
+  }
+  if (!isFeatureEnabled(actorKey)) {
     return "";
   }
   const now = Date.now();
@@ -1261,7 +1339,8 @@ function getSettings() {
 
 const watchHistoryService = {
   isEnabled: isFeatureEnabled,
-  supportsLocalHistory: () => true,
+  supportsLocalHistory,
+  isLocalOnly,
   publishView,
   snapshot,
   loadLatest,
