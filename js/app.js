@@ -7585,7 +7585,16 @@ class bitvidApp {
       (async () => {
         let viewResult;
         try {
-          viewResult = await watchHistoryService.publishView(thresholdPointer);
+          const watchHistoryEnabled =
+            watchHistoryService?.isEnabled?.() === true &&
+            typeof watchHistoryService.publishView === "function";
+          if (watchHistoryEnabled) {
+            viewResult = await watchHistoryService.publishView(thresholdPointer);
+          } else if (typeof nostrClient?.recordVideoView === "function") {
+            viewResult = await nostrClient.recordVideoView(thresholdPointer);
+          } else {
+            viewResult = { ok: false, error: "view-logging-unavailable" };
+          }
         } catch (error) {
           if (isDevMode) {
             console.warn(

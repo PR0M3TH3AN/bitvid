@@ -77,6 +77,17 @@ export const WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS = Object.freeze([
 ]);
 
 /**
+ * Whether to enable the V2 encrypted watch-history service.
+ *
+ * The runtime flag that controls this feature defaults to `false` so that new
+ * deployments stick with the analytics-only view flow until operators opt in.
+ * To enable V2, set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_WATCH_HISTORY_V2 = true`
+ * in a bootstrap script (or override the value before the app loads). When the
+ * flag stays off, BitVid still emits legacy view events and will honor
+ * existing watch-history reads per plan §12, but the sync UI will surface a
+ * disabled banner instead of querying relays.
+ */
+/**
  * Maximum number of watch-history entries to retain per user.
  *
  * The roadmap targets a rolling window of 1,500 items so the UI can highlight
