@@ -35,7 +35,6 @@ import {
   publishEventToRelay,
   publishEventToRelays,
   assertAnyRelayAccepted,
-  summarizePublishResults,
 } from "./nostrPublish.js";
 
 /**
@@ -2346,6 +2345,54 @@ class NostrClient {
     const chunkResults = [];
     const chunkAddresses = [];
     let anyChunkRejected = false;
+    let anyChunkPartial = false;
+
+    const formatRelayStatus = (results = []) => {
+      const normalized = Array.isArray(results) ? results : [];
+      const statuses = [];
+      const byUrl = new Map();
+
+      for (const entry of normalized) {
+        const url = typeof entry?.url === "string" ? entry.url : "";
+        if (!url) {
+          continue;
+        }
+        const reasonValue = (() => {
+          const error = entry?.error;
+          if (!error) {
+            return null;
+          }
+          if (error instanceof Error) {
+            return error.message || "publish failed";
+          }
+          if (typeof error === "string" && error.trim()) {
+            return error.trim();
+          }
+          try {
+            return JSON.stringify(error);
+          } catch (_) {
+            return String(error);
+          }
+        })();
+
+        byUrl.set(url, {
+          url,
+          success: !!entry?.success,
+          reason: reasonValue,
+        });
+      }
+
+      for (const relayUrl of relays) {
+        const existing = byUrl.get(relayUrl);
+        if (existing) {
+          statuses.push(existing);
+        } else {
+          statuses.push({ url: relayUrl, success: false, reason: "no-result" });
+        }
+      }
+
+      return statuses;
+    };
 
     for (let index = 0; index < chunks.length; index += 1) {
       const chunkItems = Array.isArray(chunks[index]) ? chunks[index] : [];
@@ -2395,9 +2442,13 @@ class NostrClient {
         return { ok: false, error: "signing-failed", retryable: false };
       }
 
-      const publishResults = await publishEventToRelays(this.pool, relays, signedEvent);
-      const summary = summarizePublishResults(publishResults);
-      const acceptedCount = summary.accepted.length;
+      const publishResults = await publishEventToRelays(
+        this.pool,
+        relays,
+        signedEvent,
+      );
+      const relayStatus = formatRelayStatus(publishResults);
+      const acceptedCount = relayStatus.filter((entry) => entry.success).length;
 
       if (acceptedCount === 0) {
         anyChunkRejected = true;
@@ -2406,9 +2457,21 @@ class NostrClient {
           publishResults,
         );
       } else {
-        console.info(
-          `[nostr] Watch history chunk ${index} accepted by ${acceptedCount}/${relays.length} relay(s).`,
-        );
+        const logMessage =
+          acceptedCount === relays.length
+            ? "accepted"
+            : "partially accepted";
+        if (acceptedCount === relays.length) {
+          console.info(
+            `[nostr] Watch history chunk ${index} accepted by ${acceptedCount}/${relays.length} relay(s).`,
+          );
+        } else {
+          anyChunkPartial = true;
+          console.warn(
+            `[nostr] Watch history chunk ${index} ${logMessage} by ${acceptedCount}/${relays.length} relay(s).`,
+            publishResults,
+          );
+        }
       }
 
       const address = eventToAddressPointer(signedEvent);
@@ -2420,6 +2483,7 @@ class NostrClient {
         event: signedEvent,
         publishResults,
         acceptedCount,
+        relayStatus,
       });
     }
 
@@ -2440,23 +2504,66 @@ class NostrClient {
       return { ok: false, error: "signing-failed", retryable: false };
     }
 
-    const pointerResults = await publishEventToRelays(this.pool, relays, signedPointerEvent);
-    const pointerSummary = summarizePublishResults(pointerResults);
-    const pointerAccepted = pointerSummary.accepted.length > 0;
+    const pointerResults = await publishEventToRelays(
+      this.pool,
+      relays,
+      signedPointerEvent,
+    );
+    const pointerRelayStatus = formatRelayStatus(pointerResults);
+    const pointerAcceptedCount = pointerRelayStatus.filter((entry) => entry.success)
+      .length;
+    const pointerAccepted = pointerAcceptedCount > 0;
 
-    if (pointerAccepted) {
+    if (pointerAcceptedCount === relays.length) {
       console.info(
-        `[nostr] Watch history pointer accepted by ${pointerSummary.accepted.length}/${relays.length} relay(s).`,
+        `[nostr] Watch history pointer accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
+      );
+    } else if (pointerAccepted) {
+      console.warn(
+        `[nostr] Watch history pointer partially accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
+        pointerResults,
       );
     } else {
-      console.warn("[nostr] Watch history pointer rejected by all relays:", pointerResults);
+      console.warn(
+        "[nostr] Watch history pointer rejected by all relays:",
+        pointerResults,
+      );
     }
 
     this.watchHistoryLastCreatedAt = createdAtCursor;
 
-    const success = pointerAccepted && !anyChunkRejected;
+    const chunkStatuses = chunkResults.map((entry) => entry.relayStatus);
+    const chunkAcceptedEverywhere = chunkResults.every(
+      (entry) => entry.acceptedCount === relays.length,
+    );
+    const chunkRejectedEverywhere = chunkResults.some(
+      (entry) => entry.acceptedCount === 0,
+    );
+    const pointerRejectedEverywhere = pointerAcceptedCount === 0;
+    const pointerPartial =
+      pointerAccepted && pointerAcceptedCount < relays.length;
+    const partialAcceptance = pointerPartial || anyChunkPartial;
+    const success =
+      !pointerRejectedEverywhere && pointerAcceptedCount === relays.length &&
+      chunkAcceptedEverywhere &&
+      !anyChunkRejected;
 
-    return {
+    let errorCode = null;
+    if (!success) {
+      if (pointerRejectedEverywhere && chunkRejectedEverywhere) {
+        errorCode = "pointer-and-chunk-rejected";
+      } else if (pointerRejectedEverywhere) {
+        errorCode = "pointer-rejected";
+      } else if (chunkRejectedEverywhere || anyChunkRejected) {
+        errorCode = "chunk-rejected";
+      } else if (partialAcceptance) {
+        errorCode = "partial-relay-acceptance";
+      } else {
+        errorCode = "publish-rejected";
+      }
+    }
+
+    const result = {
       ok: success,
       retryable: !success,
       actor: actorPubkey,
@@ -2467,10 +2574,21 @@ class NostrClient {
       publishResults: {
         pointer: pointerResults,
         chunks: chunkResults.map((entry) => entry.publishResults),
+        relayStatus: {
+          pointer: pointerRelayStatus,
+          chunks: chunkStatuses,
+        },
       },
       skippedCount: skipped.length,
       source: options.source || "manual",
+      partial: partialAcceptance,
     };
+
+    if (!success && errorCode) {
+      result.error = errorCode;
+    }
+
+    return result;
   }
 
   async updateWatchHistoryList(rawItems = [], options = {}) {
