@@ -1,7 +1,7 @@
 // js/app.js
 
 import { loadView } from "./viewManager.js";
-import { nostrClient, recordVideoView } from "./nostr.js";
+import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
 import { accessControl, normalizeNpub } from "./accessControl.js";
@@ -15,6 +15,7 @@ import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
+import watchHistoryService from "./watchHistoryService.js";
 import {
   loadR2Settings,
   saveR2Settings,
@@ -5968,9 +5969,29 @@ class bitvidApp {
 
     // 7) Cleanup on page unload
     window.addEventListener("beforeunload", () => {
+      this.flushWatchHistory("session-end", "beforeunload").catch((error) => {
+        if (isDevMode) {
+          console.warn("[beforeunload] Watch history flush failed:", error);
+        }
+      });
       this.cleanup().catch((err) => {
         console.error("Cleanup before unload failed:", err);
       });
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        this.flushWatchHistory("session-end", "visibilitychange").catch(
+          (error) => {
+            if (isDevMode) {
+              console.warn(
+                "[visibilitychange] Watch history flush failed:",
+                error
+              );
+            }
+          }
+        );
+      }
     });
 
     // 8) Handle back/forward navigation => hide video modal
@@ -6846,6 +6867,15 @@ class bitvidApp {
       );
       try {
         this.cancelPendingViewLogging();
+        await this.flushWatchHistory("session-end", "cleanup").catch(
+          (error) => {
+            const message =
+              error && typeof error.message === "string"
+                ? error.message
+                : String(error ?? "unknown error");
+            this.log(`[cleanup] Watch history flush failed: ${message}`);
+          }
+        );
         this.clearActiveIntervals();
         this.cleanupUrlPlaybackWatchdog();
         this.teardownModalViewCountSubscription();
@@ -6976,12 +7006,44 @@ class bitvidApp {
     }
 
     this.playbackTelemetryState = null;
+
+    this.flushWatchHistory("session-end", "cancelPendingViewLogging").catch(
+      (error) => {
+        const message =
+          error && typeof error.message === "string"
+            ? error.message
+            : String(error ?? "unknown error");
+        this.log(
+          `[cancelPendingViewLogging] Watch history flush failed: ${message}`
+        );
+      }
+    );
   }
 
   resetViewLoggingState() {
     this.cancelPendingViewLogging();
     if (this.loggedViewPointerKeys.size > 0) {
       this.loggedViewPointerKeys.clear();
+    }
+  }
+
+  flushWatchHistory(reason = "session-end", context = "watch-history") {
+    if (!watchHistoryService?.isEnabled?.()) {
+      return Promise.resolve();
+    }
+    try {
+      const result = watchHistoryService.snapshot(undefined, { reason });
+      return Promise.resolve(result).catch((error) => {
+        if (isDevMode) {
+          console.warn(`[${context}] Watch history flush failed:`, error);
+        }
+        throw error;
+      });
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(`[${context}] Failed to queue watch history flush:`, error);
+      }
+      return Promise.reject(error);
     }
   }
 
@@ -7086,7 +7148,7 @@ class bitvidApp {
       (async () => {
         let viewResult;
         try {
-          viewResult = await recordVideoView(thresholdPointer);
+          viewResult = await watchHistoryService.publishView(thresholdPointer);
         } catch (error) {
           if (isDevMode) {
             console.warn(
