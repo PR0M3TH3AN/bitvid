@@ -507,6 +507,96 @@ assert.deepEqual(
   "republish scheduler should receive the remaining items"
 );
 
+const LOGGED_ACTOR = `${ACTOR}-logged`;
+const {
+  client: noSignerClient,
+  publishedEvents: noSignerPublishedEvents,
+  scheduledRepublishes: noSignerRepublishes,
+  persistedEntries: noSignerPersistedEntries,
+} = createPublishingClient(LOGGED_ACTOR);
+
+noSignerClient.pubkey = LOGGED_ACTOR;
+
+const noSignerItems = [
+  {
+    type: "e",
+    value: `${LOGGED_ACTOR}-event`,
+    watchedAt: baseWatchedAt + 123,
+  },
+  {
+    type: "a",
+    value: `30078:${LOGGED_ACTOR}:history`,
+    watchedAt: baseWatchedAt + 456,
+  },
+];
+
+const noSignerResult = await noSignerClient.publishWatchHistorySnapshot(
+  LOGGED_ACTOR,
+  noSignerItems
+);
+
+assert.equal(
+  noSignerResult.ok,
+  false,
+  "logged actor without signer should report failure"
+);
+assert.equal(
+  noSignerResult.error,
+  "signing-unavailable",
+  "missing signer failure should flag availability"
+);
+assert.equal(
+  noSignerPublishedEvents.length,
+  0,
+  "no events should publish when signer unavailable"
+);
+assert.equal(
+  noSignerRepublishes.length,
+  1,
+  "missing signer should schedule a retry"
+);
+assert.equal(
+  noSignerRepublishes[0].actor,
+  LOGGED_ACTOR,
+  "retry should target the logged actor"
+);
+
+const cachedLoggedEntry = noSignerClient.watchHistoryCache.get(LOGGED_ACTOR);
+assert(cachedLoggedEntry, "missing signer should keep snapshot cached");
+assert.equal(
+  cachedLoggedEntry.items.length,
+  noSignerItems.length,
+  "cached entry should retain merged items"
+);
+assert.equal(
+  noSignerPersistedEntries.length,
+  1,
+  "missing signer should persist cached payload"
+);
+assert.deepEqual(
+  cachedLoggedEntry.items.map((item) => ({
+    type: item.type,
+    value: item.value,
+  })),
+  noSignerResult.items.map((item) => ({
+    type: item.type,
+    value: item.value,
+  })),
+  "returned items should mirror cached payload"
+);
+
+const scheduledLoggedKeys = new Set(
+  noSignerRepublishes[0].items.map((item) => `${item.type}:${item.value}`)
+);
+const cachedLoggedKeys = new Set(
+  cachedLoggedEntry.items.map((item) => `${item.type}:${item.value}`)
+);
+assert.deepEqual(
+  scheduledLoggedKeys,
+  cachedLoggedKeys,
+  "scheduled retry should include cached items"
+);
+
 const NO_SEEN_ACTOR = `${ACTOR}-no-seen`;
 const {
   client: noSeenClient,
