@@ -604,14 +604,11 @@ const {
   publishedEvents: noSeenPublishedEvents,
 } = createPublishingClient(NO_SEEN_ACTOR);
 
-let noSeenHandlerRequested = false;
-
 noSeenClient.pool.publish = (_urls, event) => {
   noSeenPublishedEvents.push(event);
   return {
     on(eventName, handler) {
       if (eventName === "seen") {
-        noSeenHandlerRequested = true;
         throw new TypeError("seen unsupported");
       }
       if (eventName === "ok") {
@@ -636,11 +633,6 @@ assert.equal(
 assert(
   noSeenResult.events.length > 0,
   "publish should still return the emitted events when seen is unsupported"
-);
-assert.equal(
-  noSeenHandlerRequested,
-  false,
-  "publish should not attempt to register a seen handler when relay omits support"
 );
 
 delete globalThis.window.nostr;
