@@ -52,22 +52,20 @@ import {
   formatViewCount,
   ingestLocalViewEvent,
 } from "./viewCounter.js";
-
-function truncateMiddle(text, maxLength = 72) {
-  if (!text || typeof text !== "string") {
-    return "";
-  }
-
-  if (text.length <= maxLength) {
-    return text;
-  }
-
-  const ellipsis = "…";
-  const charsToShow = maxLength - ellipsis.length;
-  const front = Math.ceil(charsToShow / 2);
-  const back = Math.floor(charsToShow / 2);
-  return `${text.slice(0, front)}${ellipsis}${text.slice(text.length - back)}`;
-}
+import {
+  formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
+  formatTimeAgo as formatTimeAgoUtil,
+  truncateMiddle,
+} from "./utils/formatters.js";
+import {
+  escapeHTML as escapeHtml,
+  removeTrackingScripts,
+} from "./utils/domUtils.js";
+import {
+  readUrlHealthFromStorage,
+  removeUrlHealthFromStorage,
+  writeUrlHealthToStorage,
+} from "./utils/storage.js";
 
 function pointerArrayToKey(pointer) {
   if (!Array.isArray(pointer) || pointer.length < 2) {
@@ -109,7 +107,6 @@ const ADMIN_DM_IMAGE_URL =
 const BITVID_WEBSITE_URL = "https://bitvid.network/";
 const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
-const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 /**
  * Local storage keys for cached profile metadata and saved authentication
@@ -134,75 +131,8 @@ const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
 const URL_HEALTH_TIMEOUT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
 const URL_PROBE_TIMEOUT_MS = 8 * 1000; // 8 seconds
 const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
-const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
-
-function removeTrackingScripts(root) {
-  if (!root || typeof root.querySelectorAll !== "function") {
-    return;
-  }
-
-  root.querySelectorAll("script[src]").forEach((script) => {
-    const src = script.getAttribute("src") || "";
-    if (TRACKING_SCRIPT_PATTERN.test(src)) {
-      script.remove();
-    }
-  });
-}
-
-function getUrlHealthStorageKey(eventId) {
-  return `${URL_HEALTH_STORAGE_PREFIX}${eventId}`;
-}
-
-function readUrlHealthFromStorage(eventId) {
-  if (!eventId || typeof localStorage === "undefined") {
-    return null;
-  }
-
-  try {
-    const raw = localStorage.getItem(getUrlHealthStorageKey(eventId));
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      return parsed;
-    }
-  } catch (err) {
-    console.warn(`Failed to parse stored URL health for ${eventId}:`, err);
-  }
-
-  removeUrlHealthFromStorage(eventId);
-  return null;
-}
-
-function writeUrlHealthToStorage(eventId, entry) {
-  if (!eventId || typeof localStorage === "undefined") {
-    return;
-  }
-
-  try {
-    localStorage.setItem(
-      getUrlHealthStorageKey(eventId),
-      JSON.stringify(entry)
-    );
-  } catch (err) {
-    console.warn(`Failed to persist URL health for ${eventId}:`, err);
-  }
-}
-
-function removeUrlHealthFromStorage(eventId) {
-  if (!eventId || typeof localStorage === "undefined") {
-    return;
-  }
-
-  try {
-    localStorage.removeItem(getUrlHealthStorageKey(eventId));
-  } catch (err) {
-    console.warn(`Failed to remove URL health for ${eventId}:`, err);
-  }
-}
 
 function isUrlHealthEntryFresh(entry, url) {
   if (!entry || typeof entry !== "object") {
@@ -11528,58 +11458,15 @@ class bitvidApp {
    * Format "time ago" for a given timestamp (in seconds).
    */
   formatAbsoluteTimestamp(timestamp) {
-    if (!Number.isFinite(timestamp)) {
-      return "Unknown date";
-    }
-
-    const date = new Date(timestamp * 1000);
-    if (Number.isNaN(date.getTime())) {
-      return "Unknown date";
-    }
-
-    try {
-      return date.toLocaleString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch (err) {
-      return date.toISOString();
-    }
+    return formatAbsoluteTimestampUtil(timestamp);
   }
 
   formatTimeAgo(timestamp) {
-    const seconds = Math.floor(Date.now() / 1000 - timestamp);
-    const intervals = {
-      year: 31536000,
-      month: 2592000,
-      week: 604800,
-      day: 86400,
-      hour: 3600,
-      minute: 60,
-    };
-    for (const [unit, secInUnit] of Object.entries(intervals)) {
-      const int = Math.floor(seconds / secInUnit);
-      if (int >= 1) {
-        return `${int} ${unit}${int > 1 ? "s" : ""} ago`;
-      }
-    }
-    return "just now";
+    return formatTimeAgoUtil(timestamp);
   }
 
   escapeHTML(unsafe) {
-    if (unsafe === null || typeof unsafe === "undefined") {
-      return "";
-    }
-
-    return String(unsafe)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+    return escapeHtml(unsafe);
   }
 
   showError(msg) {
