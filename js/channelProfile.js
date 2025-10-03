@@ -9,6 +9,7 @@ import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
+import { escapeHTML } from "./utils/domUtils.js";
 
 let currentChannelHex = null;
 let currentChannelNpub = null;
@@ -912,14 +913,3 @@ function dedupeToNewestByRoot(videos) {
   return Array.from(map.values());
 }
 
-/**
- * Basic escaping to avoid XSS.
- */
-function escapeHTML(unsafe = "") {
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
