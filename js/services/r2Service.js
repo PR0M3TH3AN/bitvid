@@ -1,0 +1,746 @@
+import {
+  loadR2Settings,
+  saveR2Settings,
+  clearR2Settings,
+  buildR2Key,
+  buildPublicUrl,
+  mergeBucketEntry,
+  sanitizeBaseDomain,
+} from "../r2.js";
+import {
+  sanitizeBucketName,
+  ensureBucket,
+  putCors,
+  attachCustomDomainAndWait,
+  setManagedDomain,
+  deriveShortSubdomain,
+} from "../storage/r2-mgmt.js";
+import {
+  makeR2Client,
+  multipartUpload,
+  ensureBucketCors,
+} from "../storage/r2-s3.js";
+import { truncateMiddle } from "../utils/formatters.js";
+
+const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
+
+function createDefaultSettings() {
+  return {
+    accountId: "",
+    accessKeyId: "",
+    secretAccessKey: "",
+    apiToken: "",
+    zoneId: "",
+    baseDomain: "",
+    buckets: {},
+  };
+}
+
+class R2Service {
+  constructor() {
+    this.listeners = new Map();
+    this.cloudflareSettings = null;
+    this.cloudflareAdvancedVisible = false;
+  }
+
+  on(event, handler) {
+    if (typeof handler !== "function") {
+      return () => {};
+    }
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+    const handlers = this.listeners.get(event);
+    handlers.add(handler);
+    return () => {
+      handlers.delete(handler);
+      if (!handlers.size) {
+        this.listeners.delete(event);
+      }
+    };
+  }
+
+  emit(event, detail) {
+    const handlers = this.listeners.get(event);
+    if (!handlers) {
+      return;
+    }
+    for (const handler of handlers) {
+      try {
+        handler(detail);
+      } catch (err) {
+        console.error("[r2Service] Listener error for", event, err);
+      }
+    }
+  }
+
+  getSettings() {
+    return this.cloudflareSettings || createDefaultSettings();
+  }
+
+  setSettings(settings) {
+    this.cloudflareSettings = settings ? { ...settings } : null;
+    this.emit("settingsChanged", { settings: this.getSettings() });
+  }
+
+  getCloudflareAdvancedVisibility() {
+    return Boolean(this.cloudflareAdvancedVisible);
+  }
+
+  setCloudflareAdvancedVisibility(visible) {
+    const isVisible = Boolean(visible);
+    if (this.cloudflareAdvancedVisible === isVisible) {
+      return;
+    }
+    this.cloudflareAdvancedVisible = isVisible;
+    this.emit("advancedVisibilityChange", { visible: isVisible });
+  }
+
+  normalizeStatusVariant(variant) {
+    if (STATUS_VARIANTS.has(variant)) {
+      return variant;
+    }
+    return "info";
+  }
+
+  setCloudflareSettingsStatus(message = "", variant = "info") {
+    this.emit("settingsStatus", {
+      message: message || "",
+      variant: this.normalizeStatusVariant(variant),
+    });
+  }
+
+  setCloudflareUploadStatus(message = "", variant = "info") {
+    this.emit("uploadStatus", {
+      message: message || "",
+      variant: this.normalizeStatusVariant(variant),
+    });
+  }
+
+  setCloudflareUploading(isUploading) {
+    this.emit("uploadStateChange", { isUploading: Boolean(isUploading) });
+  }
+
+  updateCloudflareProgress(fraction) {
+    this.emit("uploadProgress", { fraction });
+  }
+
+  populateCloudflareSettingsInputs(settings) {
+    const data = {
+      accountId: settings?.accountId || "",
+      accessKeyId: settings?.accessKeyId || "",
+      secretAccessKey: settings?.secretAccessKey || "",
+      apiToken: settings?.apiToken || "",
+      zoneId: settings?.zoneId || "",
+      baseDomain: settings?.baseDomain || "",
+    };
+
+    const hasAdvancedValues = Boolean(
+      (data.apiToken && data.apiToken.length > 0) ||
+        (data.zoneId && data.zoneId.length > 0) ||
+        (data.baseDomain && data.baseDomain.length > 0)
+    );
+
+    if (hasAdvancedValues) {
+      this.setCloudflareAdvancedVisibility(true);
+    } else if (!this.cloudflareAdvancedVisible) {
+      this.setCloudflareAdvancedVisibility(false);
+    }
+
+    this.setCloudflareSettingsStatus("");
+    this.emit("settingsPopulated", { settings: data });
+  }
+
+  async loadSettings() {
+    try {
+      const settings = await loadR2Settings();
+      this.setSettings(settings);
+      this.populateCloudflareSettingsInputs(settings);
+      return settings;
+    } catch (err) {
+      console.error("Failed to load Cloudflare settings:", err);
+      this.setSettings(createDefaultSettings());
+      this.populateCloudflareSettingsInputs(this.getSettings());
+      this.setCloudflareSettingsStatus(
+        "Failed to load saved settings.",
+        "error"
+      );
+      throw err;
+    }
+  }
+
+  async handleCloudflareSettingsSubmit(formValues = {}, { quiet = false } = {}) {
+    const accountId = String(formValues.accountId || "").trim();
+    const accessKeyId = String(formValues.accessKeyId || "").trim();
+    const secretAccessKey = String(formValues.secretAccessKey || "").trim();
+    const apiToken = String(formValues.apiToken || "").trim();
+    const zoneId = String(formValues.zoneId || "").trim();
+    const baseDomain = sanitizeBaseDomain(formValues.baseDomain || "");
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "Account ID, Access Key ID, and Secret are required.",
+          "error"
+        );
+      }
+      return false;
+    }
+
+    let buckets = { ...(this.getSettings().buckets || {}) };
+    const previousAccount = this.getSettings().accountId || "";
+    const previousBaseDomain = this.getSettings().baseDomain || "";
+    const previousZoneId = this.getSettings().zoneId || "";
+    if (
+      previousAccount !== accountId ||
+      previousBaseDomain !== baseDomain ||
+      previousZoneId !== zoneId
+    ) {
+      buckets = {};
+    }
+
+    const updatedSettings = {
+      accountId,
+      accessKeyId,
+      secretAccessKey,
+      apiToken,
+      zoneId,
+      baseDomain,
+      buckets,
+    };
+
+    try {
+      const saved = await saveR2Settings(updatedSettings);
+      this.setSettings(saved);
+      this.populateCloudflareSettingsInputs(saved);
+      if (!quiet) {
+        this.setCloudflareSettingsStatus("Settings saved locally.", "success");
+      }
+      return true;
+    } catch (err) {
+      console.error("Failed to save Cloudflare settings:", err);
+      if (!quiet) {
+        this.setCloudflareSettingsStatus(
+          "Failed to save settings. Check console for details.",
+          "error"
+        );
+      }
+      return false;
+    }
+  }
+
+  async saveSettings(formValues = {}, options = {}) {
+    return this.handleCloudflareSettingsSubmit(formValues, options);
+  }
+
+  async handleCloudflareClearSettings() {
+    try {
+      await clearR2Settings();
+      const refreshed = await loadR2Settings();
+      this.setSettings(refreshed);
+      this.populateCloudflareSettingsInputs(refreshed);
+      this.setCloudflareAdvancedVisibility(false);
+      this.setCloudflareSettingsStatus("Settings cleared.", "success");
+      return true;
+    } catch (err) {
+      console.error("Failed to clear Cloudflare settings:", err);
+      this.setCloudflareSettingsStatus("Failed to clear settings.", "error");
+      return false;
+    }
+  }
+
+  async clearSettings() {
+    return this.handleCloudflareClearSettings();
+  }
+
+  getCorsOrigins() {
+    const origins = new Set();
+    if (typeof window !== "undefined" && window.location) {
+      const origin = window.location.origin;
+      if (origin && origin !== "null") {
+        origins.add(origin);
+      }
+      if (origin && origin.startsWith("http://localhost")) {
+        origins.add(origin.replace("http://", "https://"));
+      }
+    }
+    return Array.from(origins);
+  }
+
+  deriveSubdomainForNpub(npub) {
+    try {
+      return deriveShortSubdomain(npub);
+    } catch (err) {
+      console.warn("Failed to derive short subdomain, falling back:", err);
+    }
+
+    const base = String(npub || "user")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/^-+|[-]+$/g, "");
+    return base.slice(0, 32) || "user";
+  }
+
+  async ensureBucketConfigForNpub(npub) {
+    if (!npub || !this.cloudflareSettings) {
+      return null;
+    }
+
+    const accountId = (this.cloudflareSettings.accountId || "").trim();
+    const apiToken = (this.cloudflareSettings.apiToken || "").trim();
+    const zoneId = (this.cloudflareSettings.zoneId || "").trim();
+    const accessKeyId = (this.cloudflareSettings.accessKeyId || "").trim();
+    const secretAccessKey = (this.cloudflareSettings.secretAccessKey || "").trim();
+    const corsOrigins = this.getCorsOrigins();
+    const baseDomain = this.cloudflareSettings.baseDomain || "";
+
+    if (!accountId) {
+      throw new Error("Cloudflare account ID is missing.");
+    }
+
+    let entry = this.cloudflareSettings.buckets?.[npub] || null;
+
+    if (entry && entry.publicBaseUrl) {
+      if (apiToken) {
+        try {
+          await ensureBucket({
+            accountId,
+            bucket: entry.bucket,
+            token: apiToken,
+          });
+          await putCors({
+            accountId,
+            bucket: entry.bucket,
+            token: apiToken,
+            origins: corsOrigins,
+          });
+        } catch (err) {
+          console.warn("Failed to refresh bucket configuration:", err);
+        }
+      } else if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
+        try {
+          const s3 = makeR2Client({
+            accountId,
+            accessKeyId,
+            secretAccessKey,
+          });
+          await ensureBucketCors({
+            s3,
+            bucket: entry.bucket,
+            origins: corsOrigins,
+          });
+        } catch (err) {
+          console.warn("Failed to refresh bucket CORS via access keys:", err);
+        }
+      }
+      return {
+        entry,
+        usedManagedFallback: entry.domainType !== "custom",
+        customDomainStatus: entry.domainType === "custom" ? "active" : "skipped",
+      };
+    }
+
+    if (!apiToken) {
+      const bucketName = entry?.bucket || sanitizeBucketName(npub);
+      const manualCustomDomain = baseDomain
+        ? `https://${this.deriveSubdomainForNpub(npub)}.${baseDomain}`
+        : "";
+
+      let publicBaseUrl = entry?.publicBaseUrl || manualCustomDomain;
+      if (!publicBaseUrl) {
+        publicBaseUrl = `https://${bucketName}.${accountId}.r2.dev`;
+      }
+
+      if (!publicBaseUrl) {
+        throw new Error(
+          "No public bucket domain configured. Add an API token or configure the domain manually."
+        );
+      }
+
+      const manualEntry = {
+        bucket: bucketName,
+        publicBaseUrl,
+        domainType: publicBaseUrl.includes(".r2.dev") ? "managed" : "custom",
+        lastUpdated: Date.now(),
+      };
+
+      if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
+        try {
+          const s3 = makeR2Client({
+            accountId,
+            accessKeyId,
+            secretAccessKey,
+          });
+          await ensureBucketCors({
+            s3,
+            bucket: bucketName,
+            origins: corsOrigins,
+          });
+        } catch (corsErr) {
+          console.warn(
+            "Failed to ensure R2 CORS rules via access keys. Configure the bucket's CORS policy manually if uploads continue to fail.",
+            corsErr
+          );
+        }
+      }
+
+      let savedEntry = entry;
+      if (
+        !entry ||
+        entry.bucket !== manualEntry.bucket ||
+        entry.publicBaseUrl !== manualEntry.publicBaseUrl ||
+        entry.domainType !== manualEntry.domainType
+      ) {
+        const updatedSettings = await saveR2Settings(
+          mergeBucketEntry(this.getSettings(), npub, manualEntry)
+        );
+        this.setSettings(updatedSettings);
+        savedEntry = updatedSettings.buckets?.[npub] || manualEntry;
+      }
+
+      return {
+        entry: savedEntry,
+        usedManagedFallback: manualEntry.domainType !== "custom",
+        customDomainStatus:
+          manualEntry.domainType === "custom" ? "manual" : "managed",
+      };
+    }
+
+    const bucketName = entry?.bucket || sanitizeBucketName(npub);
+
+    await ensureBucket({ accountId, bucket: bucketName, token: apiToken });
+
+    try {
+      await putCors({
+        accountId,
+        bucket: bucketName,
+        token: apiToken,
+        origins: corsOrigins,
+      });
+    } catch (err) {
+      console.warn("Failed to apply R2 CORS rules:", err);
+    }
+
+    let publicBaseUrl = entry?.publicBaseUrl || "";
+    let domainType = entry?.domainType || "managed";
+    let usedManagedFallback = false;
+    let customDomainStatus = "skipped";
+
+    if (baseDomain && zoneId) {
+      const domain = `${this.deriveSubdomainForNpub(npub)}.${baseDomain}`;
+      try {
+        const custom = await attachCustomDomainAndWait({
+          accountId,
+          bucket: bucketName,
+          token: apiToken,
+          zoneId,
+          domain,
+          pollInterval: 2500,
+          timeoutMs: 120000,
+        });
+        customDomainStatus = custom?.status || "unknown";
+        if (custom?.active && custom?.url) {
+          publicBaseUrl = custom.url;
+          domainType = "custom";
+          try {
+            await setManagedDomain({
+              accountId,
+              bucket: bucketName,
+              token: apiToken,
+              enabled: false,
+            });
+          } catch (disableErr) {
+            console.warn("Failed to disable managed domain:", disableErr);
+          }
+        } else {
+          usedManagedFallback = true;
+        }
+      } catch (err) {
+        if (/already exists/i.test(err.message || "")) {
+          publicBaseUrl = `https://${domain}`;
+          domainType = "custom";
+          customDomainStatus = "active";
+          try {
+            await setManagedDomain({
+              accountId,
+              bucket: bucketName,
+              token: apiToken,
+              enabled: false,
+            });
+          } catch (disableErr) {
+            console.warn("Failed to disable managed domain:", disableErr);
+          }
+        } else {
+          console.warn("Failed to attach custom domain, falling back:", err);
+          usedManagedFallback = true;
+          customDomainStatus = "error";
+        }
+      }
+    }
+
+    if (!publicBaseUrl) {
+      const managed = await setManagedDomain({
+        accountId,
+        bucket: bucketName,
+        token: apiToken,
+        enabled: true,
+      });
+      publicBaseUrl = managed?.url || `https://${bucketName}.${accountId}.r2.dev`;
+      domainType = "managed";
+      usedManagedFallback = true;
+      customDomainStatus =
+        customDomainStatus === "skipped" ? "managed" : customDomainStatus;
+    }
+
+    const mergedEntry = {
+      bucket: bucketName,
+      publicBaseUrl,
+      domainType,
+      lastUpdated: Date.now(),
+    };
+    const updatedSettings = await saveR2Settings(
+      mergeBucketEntry(this.getSettings(), npub, mergedEntry)
+    );
+    this.setSettings(updatedSettings);
+    return { entry: mergedEntry, usedManagedFallback, customDomainStatus };
+  }
+
+  async updateCloudflareBucketPreview({ hasPubkey = false, npub = "" } = {}) {
+    if (!this.cloudflareSettings) {
+      const detail = {
+        text: "Save your credentials to configure R2.",
+        title: "",
+      };
+      this.emit("bucketPreview", detail);
+      return detail;
+    }
+
+    if (!hasPubkey) {
+      const detail = { text: "Login to preview your R2 bucket.", title: "" };
+      this.emit("bucketPreview", detail);
+      return detail;
+    }
+
+    if (!npub) {
+      const detail = { text: "Unable to encode npub.", title: "" };
+      this.emit("bucketPreview", detail);
+      return detail;
+    }
+
+    const entry = this.cloudflareSettings.buckets?.[npub];
+    if (!entry || !entry.publicBaseUrl) {
+      const detail = {
+        text: "Bucket will be auto-created on your next upload.",
+        title: "",
+      };
+      this.emit("bucketPreview", detail);
+      return detail;
+    }
+
+    const sampleKey = buildR2Key(npub, { name: "sample.mp4" });
+    const publicUrl = buildPublicUrl(entry.publicBaseUrl, sampleKey);
+    const fullPreview = `${entry.bucket} • ${publicUrl}`;
+
+    let displayHostAndPath = truncateMiddle(publicUrl, 72);
+    try {
+      const parsed = new URL(publicUrl);
+      const cleanPath = parsed.pathname.replace(/^\//, "");
+      const truncatedPath = truncateMiddle(cleanPath || sampleKey, 32);
+      displayHostAndPath = `${truncateMiddle(parsed.host, 32)}/${truncatedPath}`;
+    } catch (err) {
+      // ignore URL parse issues and fall back to the raw string
+    }
+
+    const truncatedBucket = truncateMiddle(entry.bucket, 28);
+    const detail = {
+      text: `${truncatedBucket} • ${displayHostAndPath}`,
+      title: fullPreview,
+    };
+    this.emit("bucketPreview", detail);
+    return detail;
+  }
+
+  async handleCloudflareUploadSubmit({
+    npub = "",
+    file = null,
+    metadata = {},
+    settingsInput = null,
+    publishVideoNote,
+    onReset,
+  } = {}) {
+    if (settingsInput) {
+      const saved = await this.handleCloudflareSettingsSubmit(settingsInput, {
+        quiet: true,
+      });
+      if (!saved) {
+        this.setCloudflareUploadStatus(
+          "Fix your R2 settings before uploading.",
+          "error"
+        );
+        return false;
+      }
+    }
+
+    if (!npub) {
+      this.setCloudflareUploadStatus("Unable to encode npub.", "error");
+      return false;
+    }
+
+    const title = String(metadata.title || "").trim();
+    if (!title) {
+      this.setCloudflareUploadStatus("Title is required.", "error");
+      return false;
+    }
+
+    if (!file) {
+      this.setCloudflareUploadStatus(
+        "Select a video or HLS file to upload.",
+        "error"
+      );
+      return false;
+    }
+
+    const description = String(metadata.description || "").trim();
+    const thumbnail = String(metadata.thumbnail || "").trim();
+    const magnet = String(metadata.magnet || "").trim();
+    const ws = String(metadata.ws || "").trim();
+    const xs = String(metadata.xs || "").trim();
+    const enableComments = metadata.enableComments !== false;
+
+    const accountId = (this.cloudflareSettings?.accountId || "").trim();
+    const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
+    const secretAccessKey = (this.cloudflareSettings?.secretAccessKey || "").trim();
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      this.setCloudflareUploadStatus(
+        "Missing R2 credentials. Save them before uploading.",
+        "error"
+      );
+      return false;
+    }
+
+    this.setCloudflareUploadStatus("Preparing Cloudflare R2…", "info");
+    this.updateCloudflareProgress(0);
+    this.setCloudflareUploading(true);
+
+    let bucketResult = null;
+    try {
+      bucketResult = await this.ensureBucketConfigForNpub(npub);
+    } catch (err) {
+      console.error("Failed to prepare R2 bucket:", err);
+      this.setCloudflareUploadStatus(
+        err?.message ? `Bucket setup failed: ${err.message}` : "Bucket setup failed.",
+        "error"
+      );
+      this.setCloudflareUploading(false);
+      this.updateCloudflareProgress(Number.NaN);
+      return false;
+    }
+
+    const bucketEntry =
+      bucketResult?.entry || this.cloudflareSettings?.buckets?.[npub];
+
+    if (!bucketEntry || !bucketEntry.publicBaseUrl) {
+      this.setCloudflareUploadStatus(
+        "Bucket is missing a public domain. Check your Cloudflare settings.",
+        "error"
+      );
+      this.setCloudflareUploading(false);
+      this.updateCloudflareProgress(Number.NaN);
+      return false;
+    }
+
+    let statusMessage = `Uploading to ${bucketEntry.bucket}…`;
+    if (bucketResult?.usedManagedFallback) {
+      const baseDomain = this.cloudflareSettings?.baseDomain || "";
+      if (baseDomain) {
+        const customStatus = bucketResult?.customDomainStatus
+          ? ` (custom domain status: ${bucketResult.customDomainStatus})`
+          : "";
+        statusMessage = `Using managed r2.dev domain for ${bucketEntry.bucket}. Verify your Cloudflare zone${customStatus}. Uploading…`;
+      } else {
+        statusMessage = `Using managed r2.dev domain for ${bucketEntry.bucket}. Uploading…`;
+      }
+    }
+
+    this.setCloudflareUploadStatus(
+      statusMessage,
+      bucketResult?.usedManagedFallback ? "warning" : "info"
+    );
+
+    const key = buildR2Key(npub, file);
+    const publicUrl = buildPublicUrl(bucketEntry.publicBaseUrl, key);
+
+    try {
+      const s3 = makeR2Client({ accountId, accessKeyId, secretAccessKey });
+
+      await multipartUpload({
+        s3,
+        bucket: bucketEntry.bucket,
+        key,
+        file,
+        contentType: file.type,
+        onProgress: (fraction) => {
+          this.updateCloudflareProgress(fraction);
+        },
+      });
+
+      let publishOutcome = true;
+
+      if (typeof publishVideoNote !== "function") {
+        console.warn(
+          "publishVideoNote handler missing; skipping publish step."
+        );
+        publishOutcome = false;
+      } else {
+        const payload = {
+          title,
+          url: publicUrl,
+          magnet,
+          thumbnail,
+          description,
+          ws,
+          xs,
+          enableComments,
+        };
+
+        const published = await publishVideoNote(payload, {
+          onSuccess: () => {
+            if (typeof onReset === "function") {
+              onReset();
+            }
+          },
+        });
+
+        publishOutcome = Boolean(published);
+        if (publishOutcome) {
+          this.setCloudflareUploadStatus(
+            `Published ${publicUrl}`,
+            "success"
+          );
+        }
+      }
+
+      return publishOutcome;
+    } catch (err) {
+      console.error("Cloudflare upload failed:", err);
+      this.setCloudflareUploadStatus(
+        err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
+        "error"
+      );
+      return false;
+    } finally {
+      this.setCloudflareUploading(false);
+      this.updateCloudflareProgress(Number.NaN);
+      await this.updateCloudflareBucketPreview({ hasPubkey: true, npub });
+    }
+  }
+
+  async uploadVideo(params = {}) {
+    return this.handleCloudflareUploadSubmit(params);
+  }
+}
+
+const r2Service = new R2Service();
+
+export default r2Service;
