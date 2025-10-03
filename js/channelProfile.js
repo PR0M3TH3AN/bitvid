@@ -795,7 +795,7 @@ async function loadUserVideos(pubkey) {
       app.handleUrlHealthBadge({ video, url, badgeEl });
     });
 
-    window.app.attachVideoListHandler();
+    window.app.mountVideoListView();
 
     // Lazy-load images
     const lazyEls = container.querySelectorAll("[data-lazy]");

@@ -53,9 +53,8 @@ export async function loadView(viewUrl) {
 export const viewInitRegistry = {
   "most-recent-videos": () => {
     if (window.app && window.app.loadVideos) {
-      window.app.videoList = document.getElementById("videoList");
-      if (window.app.attachVideoListHandler) {
-        window.app.attachVideoListHandler();
+      if (typeof window.app.mountVideoListView === "function") {
+        window.app.mountVideoListView();
       }
       window.app.loadVideos();
     }

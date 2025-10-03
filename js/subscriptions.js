@@ -704,7 +704,7 @@ class SubscriptionsManager {
       window.app.handleUrlHealthBadge({ video, url, badgeEl });
     });
 
-    window.app?.attachVideoListHandler?.();
+    window.app?.mountVideoListView?.();
 
     // Lazy-load
     const lazyEls = container.querySelectorAll("[data-lazy]");
