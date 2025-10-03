@@ -62,10 +62,35 @@ import {
   removeTrackingScripts,
 } from "./utils/domUtils.js";
 import {
-  readUrlHealthFromStorage,
-  removeUrlHealthFromStorage,
-  writeUrlHealthToStorage,
-} from "./utils/storage.js";
+  getPubkey as getStoredPubkey,
+  setPubkey as setStoredPubkey,
+  getCurrentUserNpub as getStoredCurrentUserNpub,
+  setCurrentUserNpub as setStoredCurrentUserNpub,
+  getCurrentVideo as getStoredCurrentVideo,
+  setCurrentVideo as setStoredCurrentVideo,
+  setModalState as setGlobalModalState,
+  subscribeToAppStateKey,
+} from "./state/appState.js";
+import {
+  getSavedProfiles,
+  getActiveProfilePubkey,
+  setActiveProfilePubkey as setStoredActiveProfilePubkey,
+  setSavedProfiles,
+  persistSavedProfiles,
+  loadSavedProfilesFromStorage as hydrateSavedProfilesFromStorage,
+  syncSavedProfileFromCache as syncSavedProfileFromCacheState,
+  loadProfileCacheFromStorage as hydrateProfileCacheFromStorage,
+  persistProfileCacheToStorage as persistProfileCacheState,
+  getProfileCacheEntry as getCachedProfileEntry,
+  setProfileCacheEntry as setCachedProfileEntry,
+  getProfileCacheMap,
+  getCachedUrlHealth as readCachedUrlHealth,
+  storeUrlHealth as persistUrlHealth,
+  setInFlightUrlProbe,
+  getInFlightUrlProbe,
+  URL_PROBE_TIMEOUT_MS,
+  urlHealthConstants,
+} from "./state/cache.js";
 
 function pointerArrayToKey(pointer) {
   if (!Array.isArray(pointer) || pointer.length < 2) {
@@ -108,147 +133,7 @@ const BITVID_WEBSITE_URL = "https://bitvid.network/";
 const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
-/**
- * Local storage keys for cached profile metadata and saved authentication
- * sessions. `SAVED_PROFILES_STORAGE_KEY` stores objects shaped like
- * `{ version: 1, entries: [{ pubkey, npub, name, picture, authType }],
- *   activePubkey?: string | null }`. `authType` currently supports `"nip07"`
- * and reserves `"nsec"` for future direct key flows. See docs/nostr-auth.md
- * for extension guidance.
- */
-const PROFILE_CACHE_STORAGE_KEY = "bitvid:profileCache:v1";
-const SAVED_PROFILES_STORAGE_KEY = "bitvid:savedProfiles:v1";
-const SAVED_PROFILES_STORAGE_VERSION = 1;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
-const PROFILE_CACHE_VERSION = 1;
-const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-// We probe hosted URLs often enough that a naive implementation would spam
-// remote CDNs. A medium-lived cache (roughly 45 minutes) keeps us from
-// hammering dead hosts while still giving the UI timely updates when a CDN
-// recovers. Results are stored both in-memory and in localStorage so other
-// views can reuse them without re-probing.
-const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
-const URL_HEALTH_TIMEOUT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
-const URL_PROBE_TIMEOUT_MS = 8 * 1000; // 8 seconds
-const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
-const urlHealthCache = new Map();
-const urlHealthInFlight = new Map();
-
-function isUrlHealthEntryFresh(entry, url) {
-  if (!entry || typeof entry !== "object") {
-    return false;
-  }
-
-  const now = Date.now();
-  if (typeof entry.expiresAt !== "number" || entry.expiresAt <= now) {
-    return false;
-  }
-
-  if (url && entry.url && entry.url !== url) {
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * Returns the cached health result for a given event ID when the entry is
- * still "fresh". Entries are evicted eagerly once their TTL expires or when
- * the associated URL changes (e.g. a user edits the post to point elsewhere).
- */
-function readUrlHealthFromCache(eventId, url) {
-  if (!eventId) {
-    return null;
-  }
-
-  const entry = urlHealthCache.get(eventId);
-  if (isUrlHealthEntryFresh(entry, url)) {
-    return entry;
-  }
-
-  if (entry) {
-    urlHealthCache.delete(eventId);
-  }
-
-  const stored = readUrlHealthFromStorage(eventId);
-  if (!isUrlHealthEntryFresh(stored, url)) {
-    if (stored) {
-      removeUrlHealthFromStorage(eventId);
-    }
-    return null;
-  }
-
-  urlHealthCache.set(eventId, stored);
-  return stored;
-}
-
-/**
- * Stores a health result and calculates the expiry moment. The TTL lasts for
- * roughly three quarters of an hour so we recover quickly when a CDN returns
- * while still avoiding redundant probes during render thrash.
-*/
-function writeUrlHealthToCache(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) {
-  if (!eventId) {
-    return null;
-  }
-
-  const ttl = typeof ttlMs === "number" && ttlMs > 0 ? ttlMs : URL_HEALTH_TTL_MS;
-  const now = Date.now();
-  const entry = {
-    status: result?.status || "checking",
-    message: result?.message || "Checking hosted URL…",
-    url: url || result?.url || "",
-    expiresAt: now + ttl,
-    lastCheckedAt: now,
-  };
-  urlHealthCache.set(eventId, entry);
-  writeUrlHealthToStorage(eventId, entry);
-  return entry;
-}
-
-/**
- * Tracks in-flight probe promises so that multiple cards rendering the same
- * event simultaneously do not all fire off duplicate requests. The stored
- * metadata includes the URL so edits invalidate the old request immediately.
- */
-function buildUrlProbeKey(url, options = {}) {
-  const trimmed = typeof url === "string" ? url : "";
-  const mode = options?.confirmPlayable ? "playable" : "basic";
-  return `${trimmed}::${mode}`;
-}
-
-function setInFlightUrlProbe(eventId, url, promise, options = {}) {
-  if (!eventId || !promise) {
-    return;
-  }
-
-  const key = buildUrlProbeKey(url, options);
-  urlHealthInFlight.set(eventId, { promise, key });
-  promise.finally(() => {
-    const current = urlHealthInFlight.get(eventId);
-    if (current && current.promise === promise) {
-      urlHealthInFlight.delete(eventId);
-    }
-  });
-}
-
-function getInFlightUrlProbe(eventId, url, options = {}) {
-  if (!eventId) {
-    return null;
-  }
-
-  const entry = urlHealthInFlight.get(eventId);
-  if (!entry) {
-    return null;
-  }
-
-  const key = buildUrlProbeKey(url, options);
-  if (entry.key && entry.key !== key) {
-    return null;
-  }
-
-  return entry.promise;
-}
 // NOTE: The modal uses a "please stand by" animated poster while the torrent
 // or direct URL boots up. We've regressed multiple times by forgetting to clear
 // that poster once playback starts, which leaves the loading GIF covering the
@@ -457,6 +342,30 @@ class MediaLoader {
 }
 
 class bitvidApp {
+  get pubkey() {
+    return getStoredPubkey();
+  }
+
+  set pubkey(value) {
+    setStoredPubkey(value ?? null);
+  }
+
+  get currentUserNpub() {
+    return getStoredCurrentUserNpub();
+  }
+
+  set currentUserNpub(value) {
+    setStoredCurrentUserNpub(value ?? null);
+  }
+
+  get currentVideo() {
+    return getStoredCurrentVideo();
+  }
+
+  set currentVideo(value) {
+    setStoredCurrentVideo(value ?? null);
+  }
+
   constructor() {
     // Basic auth/display elements
     this.loginButton = document.getElementById("loginButton") || null;
@@ -668,123 +577,39 @@ class bitvidApp {
     this.moreMenuGlobalHandlerBound = false;
     this.boundMoreMenuDocumentClick = null;
     this.boundMoreMenuDocumentKeydown = null;
-    // Simple cache for user profiles
-    this.profileCache = new Map();
-    this.savedProfiles = [];
-    this.activeProfilePubkey = null;
-    this.readSavedProfilesPayloadFromStorage = () => {
-      if (typeof localStorage === "undefined") {
-        return null;
-      }
+    Object.defineProperty(this, "savedProfiles", {
+      configurable: false,
+      enumerable: false,
+      get() {
+        return getSavedProfiles();
+      },
+      set(next) {
+        setSavedProfiles(Array.isArray(next) ? next : [], {
+          persist: false,
+          persistActive: false,
+        });
+      },
+    });
 
-      const raw = localStorage.getItem(SAVED_PROFILES_STORAGE_KEY);
-      if (!raw) {
-        return null;
-      }
+    Object.defineProperty(this, "activeProfilePubkey", {
+      configurable: false,
+      enumerable: false,
+      get() {
+        return getActiveProfilePubkey();
+      },
+      set(value) {
+        setStoredActiveProfilePubkey(value, { persist: false });
+      },
+    });
 
-      try {
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== "object") {
-          return null;
-        }
-        return parsed;
-      } catch (err) {
-        console.warn("[readSavedProfilesPayloadFromStorage] Failed to parse payload:", err);
-        return null;
-      }
-    };
-    this.writeSavedProfilesPayloadToStorage = (payload) => {
-      if (typeof localStorage === "undefined") {
-        return;
-      }
+    Object.defineProperty(this, "profileCache", {
+      configurable: false,
+      enumerable: false,
+      get() {
+        return getProfileCacheMap();
+      },
+    });
 
-      try {
-        localStorage.setItem(
-          SAVED_PROFILES_STORAGE_KEY,
-          JSON.stringify(payload)
-        );
-      } catch (err) {
-        const isQuotaError =
-          err &&
-          (err.name === "QuotaExceededError" ||
-            err.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
-            err.code === 22 ||
-            err.code === 1014);
-        if (isQuotaError) {
-          console.warn(
-            "[writeSavedProfilesPayloadToStorage] Storage quota exceeded while saving profiles; keeping in-memory copy only.",
-            err
-          );
-        } else {
-          console.warn(
-            "[writeSavedProfilesPayloadToStorage] Failed to persist saved profiles:",
-            err
-          );
-        }
-      }
-    };
-    this.persistSavedProfiles = ({ persistActive = true } = {}) => {
-      if (typeof localStorage === "undefined") {
-        return;
-      }
-
-      if (!this.savedProfiles.length && !this.activeProfilePubkey) {
-        try {
-          localStorage.removeItem(SAVED_PROFILES_STORAGE_KEY);
-        } catch (err) {
-          console.warn("[persistSavedProfiles] Failed to remove empty payload:", err);
-        }
-        return;
-      }
-
-      let activePubkeyToPersist = this.activeProfilePubkey || null;
-      if (!persistActive) {
-        const storedPayload = this.readSavedProfilesPayloadFromStorage();
-        if (storedPayload && typeof storedPayload === "object") {
-          const candidate =
-            typeof storedPayload.activePubkey === "string"
-              ? storedPayload.activePubkey
-              : typeof storedPayload.activePubKey === "string"
-              ? storedPayload.activePubKey
-              : null;
-          const normalizedStored = this.normalizeHexPubkey(candidate);
-          if (normalizedStored) {
-            activePubkeyToPersist = normalizedStored;
-          } else if (candidate === null) {
-            activePubkeyToPersist = null;
-          }
-        }
-      }
-
-      const payload = {
-        version: SAVED_PROFILES_STORAGE_VERSION,
-        entries: this.savedProfiles.map((entry) => ({
-          pubkey: entry.pubkey,
-          npub:
-            typeof entry.npub === "string" && entry.npub.trim()
-              ? entry.npub.trim()
-              : null,
-          name: typeof entry.name === "string" ? entry.name : "",
-          picture:
-            typeof entry.picture === "string" ? entry.picture : "",
-          authType: entry.authType === "nsec" ? "nsec" : "nip07",
-        })),
-        activePubkey: activePubkeyToPersist,
-      };
-
-      this.writeSavedProfilesPayloadToStorage(payload);
-    };
-    this.persistActiveProfileSelection = (
-      pubkey,
-      { persist = true } = {}
-    ) => {
-      const normalized = this.normalizeHexPubkey(pubkey);
-      this.activeProfilePubkey = normalized;
-      if (persist) {
-        this.persistSavedProfiles({ persistActive: true });
-      }
-      this.renderSavedProfiles();
-    };
     this.lastRenderedVideoSignature = null;
     this._lastRenderedVideoListElement = null;
     this.renderedVideoIds = new Set();
@@ -813,303 +638,61 @@ class bitvidApp {
         );
       }
     }
+
+    this.unsubscribeFromPubkeyState = subscribeToAppStateKey(
+      "pubkey",
+      (next, previous) => {
+        if (next !== previous) {
+          this.renderSavedProfiles();
+        }
+      }
+    );
+
+    this.unsubscribeFromCurrentUserState = subscribeToAppStateKey(
+      "currentUserNpub",
+      (next) => {
+        if (this.userPubKey) {
+          this.userPubKey.textContent = next || "";
+        }
+      }
+    );
   }
 
   loadSavedProfilesFromStorage() {
-    this.savedProfiles = [];
-    this.activeProfilePubkey = null;
-
-    if (typeof localStorage === "undefined") {
-      return;
+    const { profiles } = hydrateSavedProfilesFromStorage();
+    if (!getActiveProfilePubkey() && Array.isArray(profiles) && profiles.length) {
+      setStoredActiveProfilePubkey(profiles[0].pubkey, { persist: true });
     }
-
-    const seenPubkeys = new Set();
-    let needsRewrite = false;
-    let parsed = null;
-    const raw = localStorage.getItem(SAVED_PROFILES_STORAGE_KEY);
-    if (raw) {
-      try {
-        parsed = JSON.parse(raw);
-      } catch (err) {
-        console.warn("Failed to parse saved profiles payload:", err);
-        needsRewrite = true;
-      }
-    }
-
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      parsed.version === SAVED_PROFILES_STORAGE_VERSION &&
-      Array.isArray(parsed.entries)
-    ) {
-      for (const candidate of parsed.entries) {
-        if (!candidate || typeof candidate !== "object") {
-          needsRewrite = true;
-          continue;
-        }
-
-        const normalizedPubkey = this.normalizeHexPubkey(candidate.pubkey);
-        if (!normalizedPubkey) {
-          needsRewrite = true;
-          continue;
-        }
-
-        if (seenPubkeys.has(normalizedPubkey)) {
-          needsRewrite = true;
-          continue;
-        }
-
-        seenPubkeys.add(normalizedPubkey);
-
-        const storedAuthType =
-          candidate.authType === "nsec" ? "nsec" : "nip07";
-        if (candidate.authType !== storedAuthType) {
-          needsRewrite = true;
-        }
-
-        const entry = {
-          pubkey: normalizedPubkey,
-          npub:
-            typeof candidate.npub === "string" && candidate.npub.trim()
-              ? candidate.npub.trim()
-              : this.safeEncodeNpub(normalizedPubkey),
-          name:
-            typeof candidate.name === "string" ? candidate.name : "",
-          picture:
-            typeof candidate.picture === "string" ? candidate.picture : "",
-          authType: storedAuthType,
-        };
-
-        if (
-          typeof candidate.npub === "string" &&
-          candidate.npub.trim() !== candidate.npub
-        ) {
-          needsRewrite = true;
-        }
-
-        if (
-          entry.npub &&
-          typeof candidate.npub !== "string" &&
-          entry.npub !== candidate.npub
-        ) {
-          needsRewrite = true;
-        }
-
-        this.savedProfiles.push(entry);
-      }
-
-      const activeCandidate =
-        typeof parsed.activePubkey === "string"
-          ? parsed.activePubkey
-          : typeof parsed.activePubKey === "string"
-          ? parsed.activePubKey
-          : null;
-      const normalizedActive = this.normalizeHexPubkey(activeCandidate);
-      if (normalizedActive && seenPubkeys.has(normalizedActive)) {
-        this.activeProfilePubkey = normalizedActive;
-      } else if (activeCandidate) {
-        needsRewrite = true;
-      }
-    } else if (raw) {
-      needsRewrite = true;
-    }
-
-    if (!this.activeProfilePubkey && this.savedProfiles.length) {
-      this.activeProfilePubkey = this.savedProfiles[0].pubkey;
-      needsRewrite = true;
-    }
-
-    if (needsRewrite) {
-      this.persistSavedProfiles();
-    }
-
     this.renderSavedProfiles();
   }
 
   syncSavedProfileFromCache(pubkey, { persist = false } = {}) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    if (!normalized) {
-      return false;
+    const updated = syncSavedProfileFromCacheState(pubkey, { persist });
+    if (updated) {
+      this.renderSavedProfiles();
     }
-
-    const cacheEntry = this.profileCache.get(normalized);
-    if (!cacheEntry || typeof cacheEntry !== "object") {
-      return false;
-    }
-
-    const index = this.savedProfiles.findIndex(
-      (entry) => entry && entry.pubkey === normalized
-    );
-    if (index < 0) {
-      return false;
-    }
-
-    const existing = this.savedProfiles[index] || {};
-    const profile = cacheEntry.profile || {};
-    const nextEntry = {
-      ...existing,
-      name: profile.name || existing.name || "",
-      picture: profile.picture || existing.picture || "",
-    };
-
-    const changed =
-      existing.name !== nextEntry.name || existing.picture !== nextEntry.picture;
-
-    if (!changed) {
-      return false;
-    }
-
-    this.savedProfiles[index] = nextEntry;
-
-    if (persist) {
-      this.persistSavedProfiles({ persistActive: false });
-    }
-
-    this.renderSavedProfiles();
-    return true;
+    return updated;
   }
 
   loadProfileCacheFromStorage() {
-    if (typeof localStorage === "undefined") {
-      return;
-    }
-
-    const now = Date.now();
-    const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY);
-    if (!raw) {
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") {
-        return;
-      }
-
-      if (parsed.version !== PROFILE_CACHE_VERSION) {
-        return;
-      }
-
-      const entries = parsed.entries;
-      if (!entries || typeof entries !== "object") {
-        return;
-      }
-
-      for (const [pubkey, entry] of Object.entries(entries)) {
-        if (!pubkey || !entry || typeof entry !== "object") {
-          continue;
-        }
-
-        const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
-        if (!timestamp || now - timestamp > PROFILE_CACHE_TTL_MS) {
-          continue;
-        }
-
-        const profile = entry.profile;
-        if (!profile || typeof profile !== "object") {
-          continue;
-        }
-
-        const normalized = {
-          name: profile.name || profile.display_name || "Unknown",
-          picture: profile.picture || "assets/svg/default-profile.svg",
-        };
-
-        this.profileCache.set(pubkey, {
-          profile: normalized,
-          timestamp,
-        });
-      }
-    } catch (err) {
-      console.warn("Failed to parse stored profile cache:", err);
-    }
+    hydrateProfileCacheFromStorage();
   }
 
   persistProfileCacheToStorage() {
-    if (typeof localStorage === "undefined") {
-      return;
-    }
-
-    const now = Date.now();
-    const entries = {};
-
-    for (const [pubkey, entry] of this.profileCache.entries()) {
-      if (!entry || typeof entry !== "object") {
-        continue;
-      }
-      const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
-      if (!timestamp || now - timestamp > PROFILE_CACHE_TTL_MS) {
-        this.profileCache.delete(pubkey);
-        continue;
-      }
-
-      entries[pubkey] = {
-        profile: entry.profile,
-        timestamp,
-      };
-    }
-
-    const payload = {
-      version: PROFILE_CACHE_VERSION,
-      savedAt: now,
-      entries,
-    };
-
-    if (Object.keys(entries).length === 0) {
-      try {
-        localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY);
-      } catch (err) {
-        console.warn("Failed to clear profile cache storage:", err);
-      }
-      return;
-    }
-
-    try {
-      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(payload));
-    } catch (err) {
-      console.warn("Failed to persist profile cache:", err);
-    }
+    persistProfileCacheState();
   }
 
   getProfileCacheEntry(pubkey) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    if (!normalized) {
-      return null;
-    }
+    return getCachedProfileEntry(pubkey);
+  }
 
-    const entry = this.profileCache.get(normalized);
+  setProfileCacheEntry(pubkey, profile) {
+    const entry = setCachedProfileEntry(pubkey, profile);
     if (!entry) {
       return null;
     }
 
-    const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : 0;
-    if (!timestamp || Date.now() - timestamp > PROFILE_CACHE_TTL_MS) {
-      this.profileCache.delete(normalized);
-      this.persistProfileCacheToStorage();
-      return null;
-    }
-
-    return entry;
-  }
-
-  setProfileCacheEntry(pubkey, profile) {
     const normalizedPubkey = this.normalizeHexPubkey(pubkey);
-    if (!normalizedPubkey || !profile) {
-      return;
-    }
-
-    const normalized = {
-      name: profile.name || profile.display_name || "Unknown",
-      picture: profile.picture || "assets/svg/default-profile.svg",
-    };
-
-    const entry = {
-      profile: normalized,
-      timestamp: Date.now(),
-    };
-
-    this.profileCache.set(normalizedPubkey, entry);
-    this.persistProfileCacheToStorage();
     const didUpdateSavedProfile = this.syncSavedProfileFromCache(normalizedPubkey, {
       persist: true,
     });
@@ -1117,6 +700,11 @@ class bitvidApp {
       this.renderSavedProfiles();
     }
     return entry;
+  }
+
+  persistActiveProfileSelection(pubkey, { persist = true } = {}) {
+    setStoredActiveProfilePubkey(pubkey, { persist });
+    this.renderSavedProfiles();
   }
 
   prepareForViewLoad() {
@@ -1465,6 +1053,7 @@ class bitvidApp {
         this.playerModal;
       scrollRegion.scrollTop = 0;
     }
+    setGlobalModalState("player", true);
     this.applyModalLoadingPoster();
   }
 
@@ -1638,6 +1227,7 @@ class bitvidApp {
         this.closeUploadModalBtn.addEventListener("click", () => {
           if (this.uploadModal) {
             this.uploadModal.classList.add("hidden");
+            setGlobalModalState("upload", false);
           }
         });
       }
@@ -1831,6 +1421,7 @@ class bitvidApp {
   showEditVideoModal() {
     if (this.editVideoModal) {
       this.editVideoModal.classList.remove("hidden");
+      setGlobalModalState("editVideo", true);
     }
   }
 
@@ -1838,6 +1429,7 @@ class bitvidApp {
     if (this.editVideoModal) {
       this.editVideoModal.classList.add("hidden");
     }
+    setGlobalModalState("editVideo", false);
     this.resetEditVideoForm();
   }
 
@@ -2006,6 +1598,7 @@ class bitvidApp {
   showRevertVideoModal() {
     if (this.revertVideoModal) {
       this.revertVideoModal.classList.remove("hidden");
+      setGlobalModalState("revertVideo", true);
     }
   }
 
@@ -2013,6 +1606,7 @@ class bitvidApp {
     if (this.revertVideoModal) {
       this.revertVideoModal.classList.add("hidden");
     }
+    setGlobalModalState("revertVideo", false);
     this.resetRevertVideoModal();
   }
 
@@ -4493,6 +4087,7 @@ class bitvidApp {
 
     this.profileModal.classList.remove("hidden");
     this.profileModal.setAttribute("aria-hidden", "false");
+    setGlobalModalState("profile", true);
 
     this.lastFocusedBeforeProfileModal =
       document.activeElement instanceof HTMLElement
@@ -4591,6 +4186,7 @@ class bitvidApp {
       this.profileModal.classList.add("hidden");
     }
     this.profileModal.setAttribute("aria-hidden", "true");
+    setGlobalModalState("profile", false);
 
     if (this.boundProfileModalKeydown) {
       this.profileModal.removeEventListener(
@@ -5137,7 +4733,7 @@ class bitvidApp {
         authType: "nip07",
       });
 
-      this.persistSavedProfiles({ persistActive: false });
+      persistSavedProfiles({ persistActive: false });
       this.renderSavedProfiles();
 
       this.showSuccess("Profile added. Select it when you're ready to switch.");
@@ -5895,6 +5491,7 @@ class bitvidApp {
       this.uploadButton.addEventListener("click", () => {
         if (this.uploadModal) {
           this.uploadModal.classList.remove("hidden");
+          setGlobalModalState("upload", true);
         }
       });
     }
@@ -5906,6 +5503,7 @@ class bitvidApp {
         const loginModal = document.getElementById("loginModal");
         if (loginModal) {
           loginModal.classList.remove("hidden");
+          setGlobalModalState("login", true);
         }
       });
     }
@@ -5917,6 +5515,7 @@ class bitvidApp {
         const loginModal = document.getElementById("loginModal");
         if (loginModal) {
           loginModal.classList.add("hidden");
+          setGlobalModalState("login", false);
         }
       });
     }
@@ -5952,6 +5551,7 @@ class bitvidApp {
           const loginModal = document.getElementById("loginModal");
           if (loginModal) {
             loginModal.classList.add("hidden");
+            setGlobalModalState("login", false);
           }
         } catch (err) {
           console.error("[NIP-07 login error]", err);
@@ -6006,6 +5606,7 @@ class bitvidApp {
         const loginModal = document.getElementById("loginModal");
         if (loginModal) {
           loginModal.classList.add("hidden");
+          setGlobalModalState("login", false);
         }
         // Show the application modal
         const appModal = document.getElementById("nostrFormModal");
@@ -6311,6 +5912,7 @@ class bitvidApp {
       }
       if (suppressModalClose !== true && this.uploadModal) {
         this.uploadModal.classList.add("hidden");
+        setGlobalModalState("upload", false);
       }
       await this.loadVideos();
       this.showSuccess("Video shared successfully!");
@@ -6528,7 +6130,7 @@ class bitvidApp {
       this.activeProfilePubkey = null;
     }
 
-    this.persistSavedProfiles();
+    persistSavedProfiles();
     this.renderSavedProfiles();
   }
 
@@ -6584,7 +6186,7 @@ class bitvidApp {
     }
 
     if (reordered) {
-      this.persistSavedProfiles({ persistActive: true });
+      persistSavedProfiles({ persistActive: true });
     }
 
     this.renderSavedProfiles();
@@ -6749,7 +6351,7 @@ class bitvidApp {
       });
 
       if (!persistActive && savedProfilesMutated) {
-        this.persistSavedProfiles({ persistActive: false });
+        persistSavedProfiles({ persistActive: false });
       }
     } else {
       if (persistActive) {
@@ -6760,7 +6362,7 @@ class bitvidApp {
     }
 
     if (!normalizedPubkey && savedProfilesMutated) {
-      this.persistSavedProfiles({ persistActive: false });
+      persistSavedProfiles({ persistActive: false });
     }
 
     await this.applyPostLoginState();
@@ -8117,6 +7719,7 @@ class bitvidApp {
     }
     document.body.classList.remove("modal-open");
     document.documentElement.classList.remove("modal-open");
+    setGlobalModalState("player", false);
     if (typeof this.modalPosterCleanup === "function") {
       this.modalPosterCleanup();
       this.modalPosterCleanup = null;
@@ -8332,11 +7935,11 @@ class bitvidApp {
   }
 
   getCachedUrlHealth(eventId, url) {
-    return readUrlHealthFromCache(eventId, url);
+    return readCachedUrlHealth(eventId, url);
   }
 
   storeUrlHealth(eventId, url, result, ttlMs) {
-    return writeUrlHealthToCache(eventId, url, result, ttlMs);
+    return persistUrlHealth(eventId, url, result, ttlMs);
   }
 
   updateUrlHealthBadge(badgeEl, state, videoId) {
@@ -8498,7 +8101,7 @@ class bitvidApp {
 
         const ttlOverride =
           entry.status === "timeout" || entry.status === "unknown"
-            ? URL_HEALTH_TIMEOUT_RETRY_MS
+            ? urlHealthConstants.URL_HEALTH_TIMEOUT_RETRY_MS
             : undefined;
 
         return this.storeUrlHealth(eventId, trimmedUrl, entry, ttlOverride);
@@ -10397,10 +10000,12 @@ class bitvidApp {
       if (
         result &&
         result.outcome === "timeout" &&
-        Number.isFinite(URL_PROBE_TIMEOUT_RETRY_MS) &&
-        URL_PROBE_TIMEOUT_RETRY_MS > initialTimeout
+        Number.isFinite(urlHealthConstants.URL_PROBE_TIMEOUT_RETRY_MS) &&
+        urlHealthConstants.URL_PROBE_TIMEOUT_RETRY_MS > initialTimeout
       ) {
-        const retryResult = await attemptWithTimeout(URL_PROBE_TIMEOUT_RETRY_MS);
+        const retryResult = await attemptWithTimeout(
+          urlHealthConstants.URL_PROBE_TIMEOUT_RETRY_MS
+        );
         if (retryResult) {
           result = { ...retryResult, retriedAfterTimeout: true };
         }
