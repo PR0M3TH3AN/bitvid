@@ -3973,18 +3973,20 @@ class bitvidApp {
         if (this.videoElement) {
           this.videoElement = this.teardownVideoElement(this.videoElement);
         }
-        // If there's a modal video
-        if (this.modalVideo) {
-          if (typeof this.modalPosterCleanup === "function") {
-            try {
-              this.modalPosterCleanup();
-            } catch (err) {
-              console.warn("[cleanup] modal poster cleanup threw:", err);
-            } finally {
-              this.modalPosterCleanup = null;
-            }
+        if (
+          this.videoModal &&
+          typeof this.videoModal.clearPosterCleanup === "function"
+        ) {
+          try {
+            this.videoModal.clearPosterCleanup();
+          } catch (err) {
+            console.warn("[cleanup] video modal poster cleanup threw:", err);
           }
-          const refreshedModal = this.teardownVideoElement(this.modalVideo, {
+        }
+
+        const modalVideoEl = this.modalVideo;
+        if (modalVideoEl) {
+          const refreshedModal = this.teardownVideoElement(modalVideoEl, {
             replaceNode: true,
           });
           if (refreshedModal) {
@@ -6958,17 +6960,22 @@ class bitvidApp {
       throw new Error("Video element is not ready for playback.");
     }
 
-    if (typeof this.modalPosterCleanup === "function") {
+    if (
+      this.videoModal &&
+      typeof this.videoModal.clearPosterCleanup === "function"
+    ) {
       try {
-        this.modalPosterCleanup();
+        this.videoModal.clearPosterCleanup();
       } catch (err) {
-        console.warn("[playVideoWithFallback] modal poster cleanup threw:", err);
-      } finally {
-        this.modalPosterCleanup = null;
+        console.warn(
+          "[playVideoWithFallback] video modal poster cleanup threw:",
+          err
+        );
       }
     }
 
-    const refreshedModal = this.teardownVideoElement(this.modalVideo, {
+    const modalVideoEl = this.modalVideo;
+    const refreshedModal = this.teardownVideoElement(modalVideoEl, {
       replaceNode: true,
     });
     if (refreshedModal) {
