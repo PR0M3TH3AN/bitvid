@@ -46,6 +46,7 @@ import {
 import { VideoModal } from "./ui/components/VideoModal.js";
 import { UploadModal } from "./ui/components/UploadModal.js";
 import { EditModal } from "./ui/components/EditModal.js";
+import { RevertModal } from "./ui/components/RevertModal.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -530,26 +531,22 @@ class bitvidApp {
       this.showError("");
     });
 
-    // Revert video modal elements
-    this.revertVideoModal = null;
-    this.revertVideoOverlay = null;
-    this.revertVersionsList = null;
-    this.revertVersionDetails = null;
-    this.revertVersionPlaceholder = null;
-    this.revertVersionDetailsDefaultHTML = "";
-    this.revertHistoryCount = null;
-    this.revertSelectionStatus = null;
-    this.revertModalTitle = null;
-    this.revertModalSubtitle = null;
-    this.closeRevertVideoModalBtn = null;
-    this.cancelRevertVideoBtn = null;
-    this.confirmRevertVideoBtn = null;
-    this.activeRevertVideo = null;
-    this.revertHistory = [];
-    this.selectedRevertTarget = null;
-    this.revertModalBusy = false;
-    this.revertConfirmDefaultLabel = "Revert to selected version";
-    this.pendingRevertEntries = [];
+    this.revertModal = new RevertModal({
+      removeTrackingScripts,
+      setGlobalModalState,
+      formatAbsoluteTimestamp: (timestamp) =>
+        this.formatAbsoluteTimestamp(timestamp),
+      formatTimeAgo: (timestamp) => this.formatTimeAgo(timestamp),
+      escapeHTML: (value) => this.escapeHTML(value),
+      truncateMiddle,
+      fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
+      container: document.getElementById("modalContainer") || null,
+    });
+
+    this.revertModal.addEventListener("video:revert-confirm", (event) => {
+      this.handleRevertModalConfirm(event);
+    });
+
 
     // Optional small inline player stats
     this.status = document.getElementById("status") || null;
@@ -964,766 +961,6 @@ class bitvidApp {
       return false;
     }
     return this.videoModal.forceRemovePoster(reason);
-  }
-
-  async initRevertVideoModal() {
-    try {
-      let modal = document.getElementById("revertVideoModal");
-      if (!modal) {
-        const response = await fetch("components/revert-video-modal.html");
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const html = await response.text();
-        const modalContainer = document.getElementById("modalContainer");
-        if (!modalContainer) {
-          throw new Error("Modal container element not found!");
-        }
-
-        const wrapper = document.createElement("div");
-        wrapper.innerHTML = html;
-        removeTrackingScripts(wrapper);
-        modalContainer.appendChild(wrapper);
-
-        modal = wrapper.querySelector("#revertVideoModal");
-      }
-
-      if (!modal) {
-        throw new Error("Revert video modal markup missing after load.");
-      }
-
-      this.revertVideoModal = modal;
-      this.revertVideoOverlay =
-        modal.querySelector("#revertVideoModalOverlay") || null;
-      this.revertVersionsList =
-        modal.querySelector("#revertVersionsList") || null;
-      this.revertVersionDetails =
-        modal.querySelector("#revertVersionDetails") || null;
-      this.revertVersionPlaceholder =
-        modal.querySelector("#revertVersionPlaceholder") || null;
-      if (this.revertVersionDetails && !this.revertVersionDetailsDefaultHTML) {
-        this.revertVersionDetailsDefaultHTML = this.revertVersionDetails.innerHTML;
-      }
-      this.revertHistoryCount =
-        modal.querySelector("#revertHistoryCount") || null;
-      this.revertSelectionStatus =
-        modal.querySelector("#revertSelectionStatus") || null;
-      this.revertModalTitle =
-        modal.querySelector("#revertModalTitle") || null;
-      this.revertModalSubtitle =
-        modal.querySelector("#revertModalSubtitle") || null;
-      this.closeRevertVideoModalBtn =
-        modal.querySelector("#closeRevertVideoModal") || null;
-      this.cancelRevertVideoBtn =
-        modal.querySelector("#cancelRevertVideo") || null;
-      this.confirmRevertVideoBtn =
-        modal.querySelector("#confirmRevertVideo") || null;
-
-      if (
-        this.revertVersionsList &&
-        !this.revertVersionsList.dataset.listenerAttached
-      ) {
-        this.revertVersionsList.addEventListener("click", (event) => {
-          this.handleRevertVersionListClick(event);
-        });
-        this.revertVersionsList.dataset.listenerAttached = "true";
-      }
-
-      if (this.closeRevertVideoModalBtn && !this.closeRevertVideoModalBtn.dataset.listenerAttached) {
-        this.closeRevertVideoModalBtn.addEventListener("click", () => {
-          if (!this.revertModalBusy) {
-            this.hideRevertVideoModal();
-          }
-        });
-        this.closeRevertVideoModalBtn.dataset.listenerAttached = "true";
-      }
-
-      if (this.cancelRevertVideoBtn && !this.cancelRevertVideoBtn.dataset.listenerAttached) {
-        this.cancelRevertVideoBtn.addEventListener("click", () => {
-          if (!this.revertModalBusy) {
-            this.hideRevertVideoModal();
-          }
-        });
-        this.cancelRevertVideoBtn.dataset.listenerAttached = "true";
-      }
-
-      if (this.revertVideoOverlay && !this.revertVideoOverlay.dataset.listenerAttached) {
-        this.revertVideoOverlay.addEventListener("click", () => {
-          if (!this.revertModalBusy) {
-            this.hideRevertVideoModal();
-          }
-        });
-        this.revertVideoOverlay.dataset.listenerAttached = "true";
-      }
-
-      if (
-        this.confirmRevertVideoBtn &&
-        !this.confirmRevertVideoBtn.dataset.listenerAttached
-      ) {
-        this.confirmRevertVideoBtn.addEventListener("click", () => {
-          this.handleConfirmRevertSelection();
-        });
-        this.confirmRevertVideoBtn.dataset.listenerAttached = "true";
-      }
-
-      this.resetRevertVideoModal();
-
-      return true;
-    } catch (error) {
-      console.error("initRevertVideoModal failed:", error);
-      this.showError(`Failed to initialize revert modal: ${error.message}`);
-      return false;
-    }
-  }
-
-  resetRevertVideoModal() {
-    this.activeRevertVideo = null;
-    this.revertHistory = [];
-    this.selectedRevertTarget = null;
-    this.revertModalBusy = false;
-    this.pendingRevertEntries = [];
-
-    if (this.revertHistoryCount) {
-      this.revertHistoryCount.textContent = "";
-    }
-
-    if (this.revertSelectionStatus) {
-      this.revertSelectionStatus.textContent =
-        "Select an older revision to inspect its metadata before reverting.";
-    }
-
-    if (this.revertModalTitle) {
-      this.revertModalTitle.textContent = "Revert Video Note";
-    }
-
-    if (this.revertModalSubtitle) {
-      this.revertModalSubtitle.textContent =
-        "Review previous versions before restoring an older state.";
-    }
-
-    if (this.revertVersionsList) {
-      this.revertVersionsList.innerHTML = "";
-    }
-
-    if (this.revertVersionDetails && this.revertVersionDetailsDefaultHTML) {
-      this.revertVersionDetails.innerHTML = this.revertVersionDetailsDefaultHTML;
-      this.revertVersionPlaceholder =
-        this.revertVersionDetails.querySelector("#revertVersionPlaceholder");
-    }
-
-    if (this.confirmRevertVideoBtn) {
-      this.confirmRevertVideoBtn.disabled = true;
-      this.confirmRevertVideoBtn.textContent = this.revertConfirmDefaultLabel;
-      this.confirmRevertVideoBtn.classList.remove("cursor-wait");
-    }
-
-    if (this.cancelRevertVideoBtn) {
-      this.cancelRevertVideoBtn.disabled = false;
-      this.cancelRevertVideoBtn.classList.remove("opacity-60", "cursor-not-allowed");
-    }
-
-    if (this.closeRevertVideoModalBtn) {
-      this.closeRevertVideoModalBtn.disabled = false;
-      this.closeRevertVideoModalBtn.classList.remove("opacity-60", "cursor-not-allowed");
-    }
-  }
-
-  showRevertVideoModal() {
-    if (this.revertVideoModal) {
-      this.revertVideoModal.classList.remove("hidden");
-      setGlobalModalState("revertVideo", true);
-    }
-  }
-
-  hideRevertVideoModal() {
-    if (this.revertVideoModal) {
-      this.revertVideoModal.classList.add("hidden");
-    }
-    setGlobalModalState("revertVideo", false);
-    this.resetRevertVideoModal();
-  }
-
-  populateRevertVideoModal(video, history = []) {
-    if (!this.revertVideoModal) {
-      return;
-    }
-
-    this.resetRevertVideoModal();
-
-    if (!video || typeof video !== "object") {
-      if (this.revertSelectionStatus) {
-        this.revertSelectionStatus.textContent =
-          "Unable to load revision history for this note.";
-      }
-      return;
-    }
-
-    this.activeRevertVideo = video;
-
-    const merged = Array.isArray(history) ? history.slice() : [];
-    if (video.id && !merged.some((entry) => entry && entry.id === video.id)) {
-      merged.push(video);
-    }
-
-    const deduped = new Map();
-    for (const entry of merged) {
-      if (!entry || typeof entry !== "object" || !entry.id) {
-        continue;
-      }
-      deduped.set(entry.id, entry);
-    }
-
-    this.revertHistory = Array.from(deduped.values()).sort(
-      (a, b) => b.created_at - a.created_at
-    );
-
-    this.selectedRevertTarget = null;
-    if (this.revertHistory.length > 1 && video.created_at) {
-      // Auto-select the newest non-deleted revision that predates the active
-      // event so the confirmation button immediately conveys its effect.
-      const firstOlder = this.revertHistory.find(
-        (entry) =>
-          entry &&
-          entry.id !== video.id &&
-          entry.deleted !== true &&
-          typeof entry.created_at === "number" &&
-          entry.created_at < video.created_at
-      );
-      if (firstOlder) {
-        this.selectedRevertTarget = firstOlder;
-      }
-    }
-
-    if (this.revertHistoryCount) {
-      this.revertHistoryCount.textContent = `${this.revertHistory.length}`;
-    }
-
-    if (this.revertModalTitle) {
-      this.revertModalTitle.textContent = video.title
-        ? `Revert “${video.title}”`
-        : "Revert Video Note";
-    }
-
-    if (this.revertModalSubtitle) {
-      const subtitleParts = [];
-      const dTagValue = this.extractDTagValue(video.tags);
-      if (dTagValue) {
-        subtitleParts.push(`d=${dTagValue}`);
-      }
-      if (video.videoRootId) {
-        subtitleParts.push(`root=${truncateMiddle(video.videoRootId, 40)}`);
-      }
-      this.revertModalSubtitle.textContent = subtitleParts.length
-        ? `History grouped by ${subtitleParts.join(" • ")}`
-        : "Review previous versions before restoring an older state.";
-    }
-
-    this.renderRevertVersionsList();
-
-    if (this.selectedRevertTarget) {
-      this.renderRevertVersionDetails(this.selectedRevertTarget);
-    }
-
-    if (this.revertHistory.length <= 1) {
-      if (this.revertSelectionStatus) {
-        this.revertSelectionStatus.textContent =
-          "No earlier revisions are available for this note.";
-      }
-      this.updateRevertConfirmationState();
-      return;
-    }
-
-    this.updateRevertConfirmationState();
-  }
-
-  renderRevertVersionsList() {
-    if (!this.revertVersionsList) {
-      return;
-    }
-
-    const history = Array.isArray(this.revertHistory)
-      ? this.revertHistory
-      : [];
-    const selectedId = this.selectedRevertTarget?.id || "";
-    const currentId = this.activeRevertVideo?.id || "";
-
-    this.revertVersionsList.innerHTML = "";
-
-    if (!history.length) {
-      this.revertVersionsList.innerHTML =
-        '<p class="text-xs text-gray-500">No revisions found.</p>';
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    history.forEach((entry) => {
-      if (!entry || !entry.id) {
-        return;
-      }
-
-      const isCurrent = entry.id === currentId;
-      const isSelected = entry.id === selectedId;
-      const isDeleted = entry.deleted === true;
-
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.revertVersionId = entry.id;
-
-      const classes = [
-        "w-full",
-        "text-left",
-        "rounded-md",
-        "border",
-        "px-3",
-        "py-3",
-        "text-sm",
-        "transition",
-        "duration-150",
-        "focus:outline-none",
-        "focus:ring-2",
-        "focus:ring-offset-2",
-        "focus:ring-offset-gray-900",
-      ];
-
-      if (isSelected) {
-        classes.push(
-          "border-blue-500",
-          "bg-blue-500/20",
-          "text-blue-100",
-          "focus:ring-blue-500"
-        );
-      } else if (isCurrent) {
-        classes.push(
-          "border-green-500/60",
-          "bg-green-500/10",
-          "text-green-100",
-          "focus:ring-green-500/80"
-        );
-      } else if (isDeleted) {
-        classes.push(
-          "border-red-800/70",
-          "bg-red-900/30",
-          "text-red-200/90",
-          "hover:bg-red-900/40"
-        );
-      } else {
-        classes.push(
-          "border-gray-800",
-          "bg-gray-800/60",
-          "hover:bg-gray-700/70",
-          "text-gray-200"
-        );
-      }
-
-      button.className = classes.join(" ");
-      button.setAttribute("aria-pressed", isSelected ? "true" : "false");
-      if (isCurrent) {
-        button.setAttribute("aria-current", "true");
-      }
-
-      const relative = this.formatTimeAgo(entry.created_at);
-      const absolute = this.formatAbsoluteTimestamp(entry.created_at);
-      const versionLabel =
-        entry.version !== undefined ? `v${entry.version}` : "v?";
-
-      const metaParts = [];
-      if (isCurrent) {
-        metaParts.push("Current version");
-      }
-      if (entry.deleted) {
-        metaParts.push("Marked deleted");
-      }
-      if (entry.isPrivate) {
-        metaParts.push("Private");
-      }
-      const meta = metaParts.join(" • ");
-
-      const metaClass = entry.deleted
-        ? "text-red-200/80"
-        : "text-gray-400";
-
-      button.innerHTML = `
-        <div class="flex items-start justify-between gap-3">
-          <div class="space-y-1">
-            <p class="font-semibold">${this.escapeHTML(
-              entry.title || "Untitled"
-            )}</p>
-            <p class="text-xs text-gray-300">${this.escapeHTML(
-              relative
-            )} • ${this.escapeHTML(absolute)}</p>
-            ${
-              meta
-                ? `<p class="text-xs ${metaClass}">${this.escapeHTML(meta)}</p>`
-                : ""
-            }
-          </div>
-          <div class="text-xs uppercase tracking-wide text-gray-400">
-            ${this.escapeHTML(versionLabel)}
-          </div>
-        </div>
-      `;
-
-      fragment.appendChild(button);
-    });
-
-    this.revertVersionsList.appendChild(fragment);
-  }
-
-  handleRevertVersionListClick(event) {
-    const button = event?.target?.closest?.("[data-revert-version-id]");
-    if (!button || !button.dataset) {
-      return;
-    }
-
-    const versionId = button.dataset.revertVersionId;
-    if (!versionId) {
-      return;
-    }
-
-    const match = (this.revertHistory || []).find(
-      (entry) => entry && entry.id === versionId
-    );
-    if (!match) {
-      return;
-    }
-
-    this.selectedRevertTarget = match;
-    this.renderRevertVersionsList();
-    this.renderRevertVersionDetails(match);
-    this.updateRevertConfirmationState();
-  }
-
-  renderRevertVersionDetails(version) {
-    if (!this.revertVersionDetails) {
-      return;
-    }
-
-    if (!version) {
-      if (this.revertVersionDetailsDefaultHTML) {
-        this.revertVersionDetails.innerHTML =
-          this.revertVersionDetailsDefaultHTML;
-        this.revertVersionPlaceholder =
-          this.revertVersionDetails.querySelector("#revertVersionPlaceholder");
-      }
-      return;
-    }
-
-    const absolute = this.formatAbsoluteTimestamp(version.created_at);
-    const relative = this.formatTimeAgo(version.created_at);
-    const description =
-      typeof version.description === "string" ? version.description : "";
-    const thumbnail =
-      typeof version.thumbnail === "string" ? version.thumbnail.trim() : "";
-    const url = typeof version.url === "string" ? version.url.trim() : "";
-    const magnet =
-      typeof version.magnet === "string" ? version.magnet.trim() : "";
-    const rawMagnet =
-      typeof version.rawMagnet === "string" ? version.rawMagnet.trim() : "";
-    const displayMagnet = magnet || rawMagnet;
-    const isPrivate = version.isPrivate === true;
-    const dTagValue = this.extractDTagValue(version.tags);
-
-    const fallbackThumbnail = this.escapeHTML(FALLBACK_THUMBNAIL_SRC);
-    const thumbnailSrc = thumbnail
-      ? this.escapeHTML(thumbnail)
-      : fallbackThumbnail;
-    const thumbnailAlt = thumbnail
-      ? "Revision thumbnail"
-      : "Fallback thumbnail";
-
-    let urlHtml = '<span class="text-gray-500">None</span>';
-    if (url) {
-      const safeUrl = this.escapeHTML(url);
-      const displayUrl = this.escapeHTML(truncateMiddle(url, 72));
-      urlHtml = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 break-all">${displayUrl}</a>`;
-    }
-
-    let magnetHtml = '<span class="text-gray-500">None</span>';
-    if (displayMagnet) {
-      const label = this.escapeHTML(truncateMiddle(displayMagnet, 72));
-      const caption = isPrivate
-        ? '<span class="block text-xs text-purple-200/90 mt-1">Encrypted magnet (only decrypted locally for the owner).</span>'
-        : "";
-      magnetHtml = `<div class="break-all">${label}${caption}</div>`;
-    }
-
-    const chips = [];
-    if (version.deleted) {
-      chips.push(
-        '<span class="inline-flex items-center rounded-full border border-red-700/70 bg-red-900/40 px-2 py-0.5 text-xs text-red-200/90">Marked deleted</span>'
-      );
-    }
-    if (isPrivate) {
-      chips.push(
-        '<span class="inline-flex items-center rounded-full border border-purple-600/60 bg-purple-900/40 px-2 py-0.5 text-xs text-purple-200/90">Private</span>'
-      );
-    }
-    if (version.version !== undefined) {
-      chips.push(
-        `<span class="inline-flex items-center rounded-full border border-gray-700 bg-gray-800/80 px-2 py-0.5 text-xs text-gray-200">Schema v${this.escapeHTML(
-          String(version.version)
-        )}</span>`
-      );
-    }
-
-    const descriptionHtml = description
-      ? `<p class="whitespace-pre-wrap text-gray-200">${this.escapeHTML(
-          description
-        )}</p>`
-      : '<p class="text-gray-500">No description provided.</p>';
-
-    const rootId =
-      typeof version.videoRootId === "string" ? version.videoRootId : "";
-    const rootDisplay = rootId
-      ? this.escapeHTML(truncateMiddle(rootId, 64))
-      : "";
-    const eventDisplay = version.id
-      ? this.escapeHTML(truncateMiddle(version.id, 64))
-      : "";
-
-    this.revertVersionDetails.innerHTML = `
-      <div class="space-y-4">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <div class="overflow-hidden rounded-md border border-gray-800 bg-black/40 w-full max-w-sm">
-            <img
-              src="${thumbnailSrc}"
-              alt="${this.escapeHTML(thumbnailAlt)}"
-              class="w-full h-auto object-cover"
-              loading="lazy"
-            />
-          </div>
-          <div class="flex-1 space-y-3">
-            <div class="space-y-1">
-              <h3 class="text-lg font-semibold text-white">${this.escapeHTML(
-                version.title || "Untitled"
-              )}</h3>
-              <p class="text-xs text-gray-400">${this.escapeHTML(
-                absolute
-              )} (${this.escapeHTML(relative)})</p>
-            </div>
-            ${
-              chips.length
-                ? `<div class="flex flex-wrap gap-2">${chips.join("")}</div>`
-                : ""
-            }
-            <div class="space-y-2 text-sm text-gray-200">
-              <div>
-                <span class="font-medium text-gray-300">Hosted URL:</span>
-                <div class="mt-1">${urlHtml}</div>
-              </div>
-              <div>
-                <span class="font-medium text-gray-300">Magnet:</span>
-                <div class="mt-1">${magnetHtml}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <h4 class="text-sm font-semibold text-gray-200">Description</h4>
-          ${descriptionHtml}
-        </div>
-
-        <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
-          <div>
-            <dt class="font-semibold text-gray-200">Mode</dt>
-            <dd class="mt-1">${this.escapeHTML(version.mode || "live")}</dd>
-          </div>
-          <div>
-            <dt class="font-semibold text-gray-200">d tag</dt>
-            <dd class="mt-1">
-              ${dTagValue
-                ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5">${this.escapeHTML(
-                    dTagValue
-                  )}</code>`
-                : '<span class="text-gray-500">Not provided</span>'}
-            </dd>
-          </div>
-          <div>
-            <dt class="font-semibold text-gray-200">videoRootId</dt>
-            <dd class="mt-1">
-              ${rootDisplay
-                ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${this.escapeHTML(
-                    rootId
-                  )}">${rootDisplay}</code>`
-                : '<span class="text-gray-500">Not provided</span>'}
-            </dd>
-          </div>
-          <div>
-            <dt class="font-semibold text-gray-200">Event ID</dt>
-            <dd class="mt-1">
-              ${eventDisplay
-                ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${this.escapeHTML(
-                    version.id || ""
-                  )}">${eventDisplay}</code>`
-                : '<span class="text-gray-500">Unknown</span>'}
-            </dd>
-          </div>
-        </dl>
-      </div>
-    `;
-  }
-
-  updateRevertConfirmationState() {
-    if (!this.confirmRevertVideoBtn) {
-      return;
-    }
-
-    if (!this.selectedRevertTarget || !this.activeRevertVideo) {
-      this.pendingRevertEntries = [];
-      this.confirmRevertVideoBtn.disabled = true;
-      if (!this.revertModalBusy) {
-        this.confirmRevertVideoBtn.textContent = this.revertConfirmDefaultLabel;
-      }
-      if (this.revertSelectionStatus) {
-        if ((this.revertHistory || []).length > 1) {
-          this.revertSelectionStatus.textContent =
-            "Select an older revision to enable reverting.";
-        }
-      }
-      return;
-    }
-
-    const target = this.selectedRevertTarget;
-    const activePubkey =
-      typeof this.activeRevertVideo.pubkey === "string"
-        ? this.activeRevertVideo.pubkey.toLowerCase()
-        : "";
-
-    const revertCandidates = (this.revertHistory || []).filter((entry) => {
-      if (!entry || entry.id === target.id) {
-        return false;
-      }
-      if (entry.deleted) {
-        return false;
-      }
-      if (typeof entry.created_at !== "number") {
-        return false;
-      }
-      if (entry.created_at <= target.created_at) {
-        return false;
-      }
-      if (!entry.pubkey) {
-        return false;
-      }
-      const entryPubkey =
-        typeof entry.pubkey === "string" ? entry.pubkey.toLowerCase() : "";
-      if (activePubkey && entryPubkey !== activePubkey) {
-        return false;
-      }
-      return true;
-    });
-
-    this.pendingRevertEntries = revertCandidates;
-
-    const disable =
-      this.revertModalBusy ||
-      target.deleted === true ||
-      revertCandidates.length === 0;
-
-    this.confirmRevertVideoBtn.disabled = disable;
-    if (!this.revertModalBusy) {
-      this.confirmRevertVideoBtn.textContent = this.revertConfirmDefaultLabel;
-    }
-
-    if (this.revertSelectionStatus) {
-      if (target.deleted) {
-        this.revertSelectionStatus.textContent =
-          "This revision was previously marked as deleted and cannot become active.";
-      } else if (revertCandidates.length === 0) {
-        this.revertSelectionStatus.textContent =
-          "The selected revision is already the latest active version.";
-      } else {
-        const suffix = revertCandidates.length === 1 ? "revision" : "revisions";
-        this.revertSelectionStatus.textContent = `Reverting will mark ${revertCandidates.length} newer ${suffix} as reverted.`;
-      }
-    }
-  }
-
-  setRevertModalBusy(isBusy, label) {
-    this.revertModalBusy = Boolean(isBusy);
-
-    if (this.confirmRevertVideoBtn) {
-      const disableConfirm =
-        this.revertModalBusy ||
-        !this.selectedRevertTarget ||
-        !this.pendingRevertEntries ||
-        this.pendingRevertEntries.length === 0 ||
-        (this.selectedRevertTarget && this.selectedRevertTarget.deleted === true);
-      this.confirmRevertVideoBtn.disabled = disableConfirm;
-      this.confirmRevertVideoBtn.textContent = this.revertModalBusy
-        ? label || "Reverting…"
-        : this.revertConfirmDefaultLabel;
-      this.confirmRevertVideoBtn.classList.toggle(
-        "cursor-wait",
-        this.revertModalBusy
-      );
-    }
-
-    const toggleDisabledStyles = (button) => {
-      if (!button) {
-        return;
-      }
-      button.disabled = this.revertModalBusy;
-      button.classList.toggle("opacity-60", this.revertModalBusy);
-      button.classList.toggle("cursor-not-allowed", this.revertModalBusy);
-    };
-
-    toggleDisabledStyles(this.cancelRevertVideoBtn);
-    toggleDisabledStyles(this.closeRevertVideoModalBtn);
-
-    if (!this.revertModalBusy) {
-      this.updateRevertConfirmationState();
-    }
-  }
-
-  async handleConfirmRevertSelection() {
-    if (!this.selectedRevertTarget) {
-      return;
-    }
-    if (!this.pubkey) {
-      this.showError("Please login to revert.");
-      return;
-    }
-
-    const entries = Array.isArray(this.pendingRevertEntries)
-      ? this.pendingRevertEntries.slice()
-      : [];
-    if (!entries.length) {
-      this.updateRevertConfirmationState();
-      return;
-    }
-
-    this.setRevertModalBusy(true, "Reverting…");
-
-    try {
-      for (const entry of entries) {
-        await nostrClient.revertVideo(
-          {
-            id: entry.id,
-            pubkey: entry.pubkey,
-            tags: entry.tags,
-          },
-          this.pubkey
-        );
-      }
-
-      await this.loadVideos();
-
-      const timestampLabel = this.formatAbsoluteTimestamp(
-        this.selectedRevertTarget.created_at
-      );
-      this.showSuccess(`Reverted to revision from ${timestampLabel}.`);
-      this.hideRevertVideoModal();
-      this.forceRefreshAllProfiles();
-    } catch (err) {
-      console.error("Failed to revert video:", err);
-      this.showError("Failed to revert video. Please try again.");
-    } finally {
-      this.setRevertModalBusy(false);
-      this.pendingRevertEntries = [];
-    }
   }
 
   extractDTagValue(tags) {
@@ -7734,21 +6971,73 @@ class bitvidApp {
         return;
       }
 
-      if (!this.revertVideoModal) {
-        const initialized = await this.initRevertVideoModal();
-        if (!initialized || !this.revertVideoModal) {
-          this.showError("Revert modal is not available right now.");
-          return;
-        }
+      if (!this.revertModal) {
+        this.showError("Revert modal is not available right now.");
+        return;
+      }
+
+      const loaded = await this.revertModal.load();
+      if (!loaded) {
+        this.showError("Revert modal is not available right now.");
+        return;
       }
 
       const history = await nostrClient.hydrateVideoHistory(video);
 
-      this.populateRevertVideoModal(video, history);
-      this.showRevertVideoModal();
+      this.revertModal.setHistory(video, history);
+      this.revertModal.open({ video });
     } catch (err) {
       console.error("Failed to revert video:", err);
       this.showError("Failed to load revision history. Please try again.");
+    }
+  }
+
+  async handleRevertModalConfirm(event) {
+    const detail = event?.detail || {};
+    const target = detail.target;
+    const entries = Array.isArray(detail.entries)
+      ? detail.entries.slice()
+      : [];
+
+    if (!target || !entries.length) {
+      return;
+    }
+
+    if (!this.pubkey) {
+      this.showError("Please login to revert.");
+      return;
+    }
+
+    if (!this.revertModal) {
+      this.showError("Revert modal is not available right now.");
+      return;
+    }
+
+    this.revertModal.setBusy(true, "Reverting…");
+
+    try {
+      for (const entry of entries) {
+        await nostrClient.revertVideo(
+          {
+            id: entry.id,
+            pubkey: entry.pubkey,
+            tags: entry.tags,
+          },
+          this.pubkey
+        );
+      }
+
+      await this.loadVideos();
+
+      const timestampLabel = this.formatAbsoluteTimestamp(target.created_at);
+      this.showSuccess(`Reverted to revision from ${timestampLabel}.`);
+      this.revertModal.close();
+      this.forceRefreshAllProfiles();
+    } catch (err) {
+      console.error("Failed to revert video:", err);
+      this.showError("Failed to revert video. Please try again.");
+    } finally {
+      this.revertModal.setBusy(false);
     }
   }
 
