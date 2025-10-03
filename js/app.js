@@ -47,6 +47,7 @@ import { VideoModal } from "./ui/components/VideoModal.js";
 import { UploadModal } from "./ui/components/UploadModal.js";
 import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
+import { VideoCard } from "./ui/components/VideoCard.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -5412,6 +5413,7 @@ class bitvidApp {
     // 1) If no videos
     if (!dedupedVideos.length) {
       this.renderedVideoIds.clear();
+      this.videoCardInstances = [];
       if (this.lastRenderedVideoSignature === EMPTY_VIDEO_LIST_SIGNATURE) {
         return;
       }
@@ -5456,6 +5458,7 @@ class bitvidApp {
       `${window.location?.origin || ""}${window.location?.pathname || ""}` ||
       (window.location?.href ? window.location.href.split(/[?#]/)[0] : "");
     const canManageBlacklist = this.canCurrentUserManageBlacklist();
+    this.videoCardInstances = [];
 
     // 3) Build each card
     dedupedVideos.forEach((video, index) => {
@@ -5485,541 +5488,87 @@ class bitvidApp {
         hasOlder = this.hasOlderVersion(video, fullAllEventsArray);
       }
 
-      const revertButton = hasOlder
-        ? `
-          <button
-            class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-            data-revert-index="${index}"
-            data-revert-event-id="${video.id}"
-          >
-            Revert
-          </button>
-        `
-        : "";
-
-      const gearMenu = canEdit
-        ? `
-          <div class="relative inline-block ml-3 overflow-visible">
-            <button
-              type="button"
-              class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              data-settings-dropdown="${index}"
-            >
-              <img
-                src="assets/svg/video-settings-gear.svg"
-                alt="Settings"
-                class="w-5 h-5"
-              />
-            </button>
-            <div
-              id="settingsDropdown-${index}"
-              class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-            >
-              <div class="py-1">
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                  data-edit-index="${index}"
-                  data-edit-event-id="${video.id}"
-                >
-                  Edit
-                </button>
-                ${revertButton}
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                  data-delete-all-index="${index}"
-                  data-delete-all-event-id="${video.id}"
-                >
-                  Delete All
-                </button>
-              </div>
-            </div>
-          </div>
-        `
-        : "";
-
-      const blacklistMenuItem = canManageBlacklist
-        ? `
-                <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="blacklist-author" data-author="${video.pubkey || ""}">
-                  Blacklist creator
-                </button>`
-        : "";
-
       const pointerInfo = this.deriveVideoPointerInfo(video);
       if (pointerInfo) {
         this.persistWatchHistoryMetadataForVideo(video, pointerInfo);
       }
 
-      const pointerKeyAttr = pointerInfo?.key
-        ? this.escapeHTML(pointerInfo.key)
-        : "";
-      const pointerTypeAttr =
-        pointerInfo?.pointer?.[0] === "a"
-          ? "a"
-          : pointerInfo?.pointer?.[0] === "e"
-          ? "e"
-          : "";
-      const pointerValueAttr = pointerInfo?.pointer?.[1]
-        ? this.escapeHTML(pointerInfo.pointer[1])
-        : "";
-      const pointerRelayAttr =
-        pointerInfo?.pointer?.length > 2 && pointerInfo.pointer[2]
-          ? this.escapeHTML(pointerInfo.pointer[2])
-          : "";
-      const relayAttr = pointerRelayAttr
-        ? ` data-pointer-relay="${pointerRelayAttr}"`
-        : "";
-      const removeHistoryMenuItem =
-        pointerKeyAttr && pointerTypeAttr && pointerValueAttr
-          ? `
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                  data-action="remove-history"
-                  data-pointer-key="${pointerKeyAttr}"
-                  data-pointer-type="${this.escapeHTML(pointerTypeAttr)}"
-                  data-pointer-value="${pointerValueAttr}"${relayAttr}
-                  data-reason="remove-item"
-                  title="Remove this entry from your encrypted history. Relay sync may take a moment."
-                  aria-label="Remove from history (updates encrypted history and may take a moment to sync to relays)"
-                >
-                  Remove from history
-                </button>`
-          : "";
+      const videoCard = new VideoCard({
+        document,
+        video,
+        index,
+        shareUrl,
+        pointerInfo,
+        timeAgo,
+        highlightClass,
+        animationClass,
+        capabilities: {
+          canEdit,
+          canDelete: canEdit,
+          canRevert: hasOlder,
+          canManageBlacklist,
+        },
+        helpers: {
+          escapeHtml: (value) => this.escapeHTML(value),
+          isMagnetSupported: (magnet) => isValidMagnetUri(magnet),
+          toLocaleString: (value) =>
+            typeof value === "number" ? value.toLocaleString() : value,
+        },
+        assets: {
+          fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
+          unsupportedBtihMessage: UNSUPPORTED_BTITH_MESSAGE,
+        },
+        state: { loadedThumbnails: this.loadedThumbnails },
+        ensureGlobalMoreMenuHandlers: () => this.ensureGlobalMoreMenuHandlers(),
+        onRequestCloseAllMenus: () => this.closeAllMoreMenus(),
+      });
 
-      const moreMenu = `
-          <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
-            <button
-              type="button"
-              class="inline-flex items-center justify-center w-10 h-10 p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              data-more-dropdown="${index}"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-label="More options"
-            >
-              <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5 object-contain" />
-            </button>
-            <div
-              id="moreDropdown-${index}"
-              class="hidden absolute right-0 bottom-full mb-2 w-40 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-              role="menu"
-              data-more-menu="true"
-            >
-              <div class="py-1">
-                <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="open-channel" data-author="${video.pubkey || ""}">
-                  Open channel
-                </button>
-                <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
-                  Copy link
-                </button>
-                ${removeHistoryMenuItem}
-                ${blacklistMenuItem}
-                <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
-                  Block creator
-                </button>
-                <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="report" data-event-id="${video.id || ""}">
-                  Report
-                </button>
-              </div>
-            </div>
-          </div>
-        `;
-
-      const cardControls = `
-          <div class="flex items-center">
-            ${moreMenu}${gearMenu}
-          </div>
-        `;
-
-      const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
-      const trimmedMagnet =
-        typeof video.magnet === "string" ? video.magnet.trim() : "";
-      const legacyInfoHash =
-        typeof video.infoHash === "string" ? video.infoHash.trim() : "";
-      const magnetCandidate = trimmedMagnet || legacyInfoHash;
-      const magnetSupported = isValidMagnetUri(magnetCandidate);
-      const magnetProvided = magnetCandidate.length > 0;
-      const playbackUrl = trimmedUrl;
-      const playbackMagnet = magnetCandidate;
-      const showUnsupportedTorrentBadge =
-        !trimmedUrl && magnetProvided && !magnetSupported;
-      const torrentWarningHtml = showUnsupportedTorrentBadge
-        ? `
-          <p
-            class="mt-3 text-xs text-amber-300"
-            data-torrent-status="unsupported"
-            title="${UNSUPPORTED_BTITH_MESSAGE}"
-          >
-            WebTorrent fallback unavailable (magnet missing btih info hash)
-          </p>
-        `
-        : "";
-
-      const urlBadgeHtml = trimmedUrl
-        ? this.getUrlHealthPlaceholderMarkup({ includeMargin: false })
-        : "";
-      const torrentHealthBadgeHtml =
-        magnetSupported && magnetProvided
-          ? this.getTorrentHealthBadgeMarkup({ includeMargin: false })
-          : "";
-      const connectionBadgesHtml =
-        urlBadgeHtml || torrentHealthBadgeHtml
-          ? `
-            <div class="mt-3 flex flex-wrap items-center gap-2">
-              ${urlBadgeHtml}${torrentHealthBadgeHtml}
-            </div>
-          `
-          : "";
-
-      const showDiscussionCount = video.enableComments !== false;
-      let discussionCountHtml = "";
-      if (showDiscussionCount) {
-        let initialDiscussionCount = null;
-        if (typeof video.discussionCount === "number") {
-          initialDiscussionCount = video.discussionCount;
-        } else if (typeof video.discussionCount === "string") {
-          const trimmedCount = video.discussionCount.trim();
-          if (trimmedCount) {
-            const parsed = Number.parseInt(trimmedCount, 10);
-            if (Number.isFinite(parsed)) {
-              initialDiscussionCount = parsed;
-            }
-          }
-        }
-
-        if (
-          initialDiscussionCount !== null &&
-          Number.isFinite(initialDiscussionCount) &&
-          initialDiscussionCount >= 0
-        ) {
-          const safeDiscussionCount = Math.floor(initialDiscussionCount);
-          discussionCountHtml = `
-            <div class="flex items-center text-xs text-gray-500 mt-3" data-discussion-count="${video.id}" data-count-state="ready">
-              <span data-discussion-count-value>${safeDiscussionCount.toLocaleString()}</span>
-              <span class="ml-1">notes</span>
-            </div>
-          `;
-        }
-      }
-
-      const rawThumbnail =
-        typeof video.thumbnail === "string" ? video.thumbnail.trim() : "";
-      const escapedThumbnail = rawThumbnail
-        ? this.escapeHTML(rawThumbnail)
-        : "";
-      const previouslyLoadedThumbnail =
-        this.loadedThumbnails.get(video.id) || "";
-      const shouldLazyLoadThumbnail =
-        escapedThumbnail && previouslyLoadedThumbnail !== escapedThumbnail;
-      const shouldAnimateThumbnail =
-        !!escapedThumbnail && previouslyLoadedThumbnail !== escapedThumbnail;
-      const thumbnailAttrLines = ["data-video-thumbnail=\"true\""];
-      if (shouldLazyLoadThumbnail) {
-        thumbnailAttrLines.push(
-          `src=\"${FALLBACK_THUMBNAIL_SRC}\"`,
-          `data-fallback-src=\"${FALLBACK_THUMBNAIL_SRC}\"`,
-          `data-lazy=\"${escapedThumbnail}\"`,
-          'loading="lazy"',
-          'decoding="async"'
-        );
-      } else {
-        thumbnailAttrLines.push(
-          `src=\"${escapedThumbnail || FALLBACK_THUMBNAIL_SRC}\"`,
-          `data-fallback-src=\"${FALLBACK_THUMBNAIL_SRC}\"`,
-          'loading="lazy"',
-          'decoding="async"'
-        );
-      }
-      thumbnailAttrLines.push(
-        `alt=\"${this.escapeHTML(video.title)}\"`
-      );
-
-      const metadataPieces = [`<span>${timeAgo}</span>`];
-      if (pointerInfo) {
-        metadataPieces.push(
-          '<span class="mx-1 text-gray-600" aria-hidden="true">•</span>',
-          `<span class="view-count-text" data-view-count data-view-pointer="${this.escapeHTML(
-            pointerInfo.key
-          )}">– views</span>`
-        );
-      }
-      const metadataHtml = metadataPieces.join("");
-
-      const cardHtml = `
-        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass} ${animationClass}">
-          <!-- The clickable link to play video -->
-          <a
-            href="${shareUrl}"
-            data-video-id="${video.id}"
-            data-play-url=""
-            data-play-magnet=""
-            data-torrent-supported="${magnetSupported ? "true" : "false"}"
-            class="block cursor-pointer relative group"
-          >
-            <div class="ratio-16-9">
-              <img
-                ${thumbnailAttrLines.join("\n                ")}
-              />
-            </div>
-          </a>
-          <div class="p-4">
-            <!-- Title triggers the video modal as well -->
-            <h3
-              class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-              data-video-id="${video.id}"
-              data-play-url=""
-              data-play-magnet=""
-              data-torrent-supported="${magnetSupported ? "true" : "false"}"
-            >
-              ${this.escapeHTML(video.title)}
-            </h3>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center space-x-3">
-                <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
-                  <img
-                    class="author-pic"
-                    data-pubkey="${video.pubkey}"
-                    src="assets/svg/default-profile.svg"
-                    alt="Placeholder"
-                  />
-                </div>
-                <div class="min-w-0">
-                  <p
-                    class="text-sm text-gray-400 author-name"
-                    data-pubkey="${video.pubkey}"
-                  >
-                    Loading name...
-                  </p>
-                  <div class="flex items-center text-xs text-gray-500 mt-1">
-                    ${metadataHtml}
-                  </div>
-                </div>
-              </div>
-              ${cardControls}
-            </div>
-            ${connectionBadgesHtml}
-            ${discussionCountHtml}
-            ${torrentWarningHtml}
-          </div>
-        </div>
-      `;
-
-      const template = document.createElement("template");
-      template.innerHTML = cardHtml.trim();
-      const cardEl = template.content.firstElementChild;
-      if (cardEl) {
-        if (pointerInfo && pointerInfo.key) {
-          cardEl.dataset.pointerKey = pointerInfo.key;
-          const pointerType = pointerInfo.pointer?.[0];
-          if (pointerType) {
-            cardEl.dataset.pointerType = pointerType;
-          } else if (cardEl.dataset.pointerType) {
-            delete cardEl.dataset.pointerType;
-          }
-          const pointerValue = pointerInfo.pointer?.[1];
-          if (pointerValue) {
-            cardEl.dataset.pointerValue = pointerValue;
-          } else if (cardEl.dataset.pointerValue) {
-            delete cardEl.dataset.pointerValue;
-          }
-          const pointerRelay =
-            pointerInfo.pointer?.length > 2 ? pointerInfo.pointer[2] : "";
-          if (pointerRelay) {
-            cardEl.dataset.pointerRelay = pointerRelay;
-          } else if (cardEl.dataset.pointerRelay) {
-            delete cardEl.dataset.pointerRelay;
-          }
-        } else {
-          delete cardEl.dataset.pointerKey;
-          delete cardEl.dataset.pointerType;
-          delete cardEl.dataset.pointerValue;
-          if (cardEl.dataset.pointerRelay) {
-            delete cardEl.dataset.pointerRelay;
-          }
-        }
-
-        cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
-        if (typeof video.pubkey === "string" && video.pubkey) {
-          cardEl.dataset.ownerPubkey = video.pubkey;
-        } else if (cardEl.dataset.ownerPubkey) {
-          delete cardEl.dataset.ownerPubkey;
-        }
-
-        if (trimmedUrl) {
-          cardEl.dataset.urlHealthState = "checking";
-          if (cardEl.dataset.urlHealthReason) {
-            delete cardEl.dataset.urlHealthReason;
-          }
-          cardEl.dataset.urlHealthEventId = video.id || "";
-          cardEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
-        } else {
-          cardEl.dataset.urlHealthState = "offline";
-          cardEl.dataset.urlHealthReason = "missing-source";
-          if (cardEl.dataset.urlHealthEventId) {
-            delete cardEl.dataset.urlHealthEventId;
-          }
-          if (cardEl.dataset.urlHealthUrl) {
-            delete cardEl.dataset.urlHealthUrl;
-          }
-        }
-        if (magnetProvided && magnetSupported) {
-          cardEl.dataset.streamHealthState = "checking";
-          if (cardEl.dataset.streamHealthReason) {
-            delete cardEl.dataset.streamHealthReason;
-          }
-        } else {
-          cardEl.dataset.streamHealthState = "unhealthy";
-          cardEl.dataset.streamHealthReason = magnetProvided
-            ? "unsupported"
-            : "missing-source";
-        }
-
-        if (pointerInfo) {
-          this.registerVideoViewCountElement(cardEl, pointerInfo);
-        }
-
-        const thumbnailEl = cardEl.querySelector("[data-video-thumbnail]");
-        if (thumbnailEl) {
-          const markThumbnailAsLoaded = () => {
-            if (!escapedThumbnail) {
-              return;
-            }
-
-            if (shouldAnimateThumbnail) {
-              // Flag the element so CSS runs a one-time fade. js/index.js scrubs
-              // this attribute in the `animationend` handler so reusing the same
-              // DOM node later will not re-trigger the animation and flash.
-              if (thumbnailEl.dataset.thumbnailLoaded !== "true") {
-                thumbnailEl.dataset.thumbnailLoaded = "true";
-              }
-            } else if (thumbnailEl.dataset.thumbnailLoaded) {
-              delete thumbnailEl.dataset.thumbnailLoaded;
-            }
-
-            this.loadedThumbnails.set(video.id, escapedThumbnail);
-          };
-
-          const handleThumbnailLoad = () => {
-            if (thumbnailEl.dataset.thumbnailLoaded === "true") {
-              return;
-            }
-
-            const hasPendingLazySrc =
-              typeof thumbnailEl.dataset.lazy === "string" &&
-              thumbnailEl.dataset.lazy.trim().length > 0;
-
-            if (hasPendingLazySrc) {
-              return;
-            }
-
-            if (thumbnailEl.dataset.thumbnailFailed || !escapedThumbnail) {
-              return;
-            }
-
-            const fallbackAttr =
-              (typeof thumbnailEl.dataset.fallbackSrc === "string"
-                ? thumbnailEl.dataset.fallbackSrc.trim()
-                : "") ||
-              thumbnailEl.getAttribute("data-fallback-src") ||
-              "";
-
-            const currentSrc = thumbnailEl.currentSrc || thumbnailEl.src || "";
-            const isFallbackSrc =
-              !!fallbackAttr &&
-              !!currentSrc &&
-              (currentSrc === fallbackAttr || currentSrc.endsWith(fallbackAttr));
-
-            if (isFallbackSrc) {
-              return;
-            }
-
-            if (
-              (thumbnailEl.naturalWidth === 0 &&
-                thumbnailEl.naturalHeight === 0) ||
-              !currentSrc
-            ) {
-              return;
-            }
-
-            markThumbnailAsLoaded();
-
-            thumbnailEl.removeEventListener("load", handleThumbnailLoad);
-          };
-          const handleThumbnailError = () => {
-            if (
-              escapedThumbnail &&
-              this.loadedThumbnails.get(video.id) === escapedThumbnail
-            ) {
-              this.loadedThumbnails.delete(video.id);
-            }
-
-            if (thumbnailEl.dataset.thumbnailLoaded) {
-              delete thumbnailEl.dataset.thumbnailLoaded;
-            }
-
-            thumbnailEl.removeEventListener("load", handleThumbnailLoad);
-          };
-
-          thumbnailEl.addEventListener("load", handleThumbnailLoad);
-          thumbnailEl.addEventListener("error", handleThumbnailError, {
-            once: true,
-          });
-
-          if (thumbnailEl.complete) {
-            handleThumbnailLoad();
-          }
-        }
-
-        if (showUnsupportedTorrentBadge) {
-          cardEl.dataset.torrentSupported = "false";
-        } else if (magnetProvided && magnetSupported) {
-          cardEl.dataset.torrentSupported = "true";
-        }
-
-        if (magnetProvided) {
-          cardEl.dataset.magnet = playbackMagnet;
-        } else if (cardEl.dataset.magnet) {
-          delete cardEl.dataset.magnet;
-        }
-        const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
-        // We intentionally leave the data-play-* attributes blank in cardHtml and
-        // assign them after template parsing so the raw URL/magnet strings avoid
-        // HTML entity escaping in the literal markup and keep any sensitive
-        // magnet payloads out of the static DOM text.
-        // The play URL is stored URL-encoded to keep spaces and query params
-        // intact inside data-* attributes; attachVideoListHandler() decodes it
-        // before playback.
-        interactiveEls.forEach((el) => {
-          if (!el.dataset) return;
-          el.dataset.playUrl = encodeURIComponent(playbackUrl || "");
-          el.dataset.playMagnet = playbackMagnet || "";
-          if (magnetProvided) {
-            el.dataset.torrentSupported = magnetSupported ? "true" : "false";
-          }
+      videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
+        this.handleEditVideo({
+          eventId: editVideo.id,
+          index: Number.isFinite(editIndex) ? editIndex : null,
         });
+      };
 
-        if (trimmedUrl) {
-          const badgeEl = cardEl.querySelector("[data-url-health-state]");
-          if (badgeEl) {
-            badgeEl.dataset.urlHealthEventId = video.id || "";
-            badgeEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
-          }
-        } else {
-          const badgeEl = cardEl.querySelector("[data-url-health-state]");
-          if (badgeEl) {
-            if (badgeEl.dataset.urlHealthEventId) {
-              delete badgeEl.dataset.urlHealthEventId;
-            }
-            if (badgeEl.dataset.urlHealthUrl) {
-              delete badgeEl.dataset.urlHealthUrl;
-            }
-          }
-        }
+      videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
+        this.handleRevertVideo({
+          eventId: revertVideo.id,
+          index: Number.isFinite(revertIndex) ? revertIndex : null,
+        });
+      };
+
+      videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
+        this.handleFullDeleteVideo({
+          eventId: deleteVideo.id,
+          index: Number.isFinite(deleteIndex) ? deleteIndex : null,
+        });
+      };
+
+      videoCard.onMoreAction = ({ dataset }) => {
+        const action = dataset?.action || "";
+        this.handleMoreMenuAction(action, dataset || {});
+      };
+
+      videoCard.onAuthorNavigate = ({ pubkey }) => {
+        this.goToProfile(pubkey);
+      };
+
+      const cardEl = videoCard.getRoot();
+      if (!cardEl) {
+        return;
       }
+
+      if (pointerInfo) {
+        this.registerVideoViewCountElement(cardEl, pointerInfo);
+      }
+
       if (video && video.id) {
         this.videosMap.set(video.id, video);
       }
 
       fragment.appendChild(cardEl);
       this.renderedVideoIds.add(video.id);
+      this.videoCardInstances.push(videoCard);
     });
 
     // Clear old content, add new
@@ -6036,103 +5585,13 @@ class bitvidApp {
     // with HTTP 200 + empty body). We set up the listeners before kicking off
     // any lazy-loading observers so cached failures are covered as well.
     this.bindThumbnailFallbacks(this.videoList);
-    this.attachMoreMenuHandlers(this.videoList);
 
     // Lazy-load images
     const lazyEls = this.videoList.querySelectorAll("[data-lazy]");
     lazyEls.forEach((el) => this.mediaLoader.observe(el));
 
-    // GEAR MENU / button event listeners...
-    const gearButtons = this.videoList.querySelectorAll(
-      "[data-settings-dropdown]"
-    );
-    gearButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        const index = button.getAttribute("data-settings-dropdown");
-        const dropdown = document.getElementById(`settingsDropdown-${index}`);
-        if (dropdown) {
-          dropdown.classList.toggle("hidden");
-        }
-      });
-    });
-
-    // Edit button
-    const editButtons = this.videoList.querySelectorAll("[data-edit-index]");
-    editButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        const indexAttr = button.getAttribute("data-edit-index");
-        const eventId = button.getAttribute("data-edit-event-id") || "";
-        const index = Number.parseInt(indexAttr, 10);
-        const dropdown = document.getElementById(`settingsDropdown-${indexAttr}`);
-        if (dropdown) dropdown.classList.add("hidden");
-        this.handleEditVideo({
-          eventId,
-          index: Number.isNaN(index) ? null : index,
-        });
-      });
-    });
-
-    // Revert button
-    const revertButtons = this.videoList.querySelectorAll(
-      "[data-revert-index]"
-    );
-    revertButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        const indexAttr = button.getAttribute("data-revert-index");
-        const eventId = button.getAttribute("data-revert-event-id") || "";
-        const index = Number.parseInt(indexAttr, 10);
-        const dropdown = document.getElementById(`settingsDropdown-${indexAttr}`);
-        if (dropdown) dropdown.classList.add("hidden");
-        this.handleRevertVideo({
-          eventId,
-          index: Number.isNaN(index) ? null : index,
-        });
-      });
-    });
-
-    // Delete All button
-    const deleteAllButtons = this.videoList.querySelectorAll(
-      "[data-delete-all-index]"
-    );
-    deleteAllButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        const indexAttr = button.getAttribute("data-delete-all-index");
-        const eventId = button.getAttribute("data-delete-all-event-id") || "";
-        const index = Number.parseInt(indexAttr, 10);
-        const dropdown = document.getElementById(`settingsDropdown-${indexAttr}`);
-        if (dropdown) dropdown.classList.add("hidden");
-        this.handleFullDeleteVideo({
-          eventId,
-          index: Number.isNaN(index) ? null : index,
-        });
-      });
-    });
-
     // 2) After building cards, do one batch profile fetch
     this.batchFetchProfiles(authorSet);
-
-    // === NEW: attach click listeners to .author-pic and .author-name
-    const authorPics = this.videoList.querySelectorAll(".author-pic");
-    authorPics.forEach((pic) => {
-      pic.style.cursor = "pointer";
-      pic.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation(); // avoids playing the video
-        const pubkey = pic.getAttribute("data-pubkey");
-        this.goToProfile(pubkey);
-      });
-    });
-
-    const authorNames = this.videoList.querySelectorAll(".author-name");
-    authorNames.forEach((nameEl) => {
-      nameEl.style.cursor = "pointer";
-      nameEl.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation(); // avoids playing the video
-        const pubkey = nameEl.getAttribute("data-pubkey");
-        this.goToProfile(pubkey);
-      });
-    });
 
     this.refreshVideoDiscussionCounts(dedupedVideos);
     this.pruneDetachedViewCountElements();
@@ -6437,6 +5896,20 @@ class bitvidApp {
   }
 
   closeAllMoreMenus() {
+    if (Array.isArray(this.videoCardInstances) && this.videoCardInstances.length) {
+      this.videoCardInstances.forEach((card) => {
+        if (!card) {
+          return;
+        }
+        if (typeof card.closeMoreMenu === "function") {
+          card.closeMoreMenu();
+        }
+        if (typeof card.closeSettingsMenu === "function") {
+          card.closeSettingsMenu();
+        }
+      });
+    }
+
     const menus = document.querySelectorAll("[data-more-menu]");
     menus.forEach((menu) => {
       if (menu instanceof HTMLElement) {
