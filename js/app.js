@@ -43,6 +43,7 @@ import {
   escapeHTML as escapeHtml,
   removeTrackingScripts,
 } from "./utils/domUtils.js";
+import { VideoModal } from "./ui/components/VideoModal.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -110,13 +111,6 @@ const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
-// NOTE: The modal uses a "please stand by" animated poster while the torrent
-// or direct URL boots up. We've regressed multiple times by forgetting to clear
-// that poster once playback starts, which leaves the loading GIF covering the
-// video even though audio is playing. Centralising the cleanup logic makes it
-// easier to spot those regressions; see forceRemoveModalPoster() below.
-const MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
-
 /**
  * Basic validation for BitTorrent magnet URIs.
  *
@@ -543,28 +537,31 @@ class bitvidApp {
     this.speed = document.getElementById("speed") || null;
     this.downloaded = document.getElementById("downloaded") || null;
 
-    // Video player modal references (loaded via video-modal.html)
-    this.playerModal = null;
-    this.modalVideo = null;
-    this.modalStatus = null;
-    this.modalProgress = null;
-    this.modalPeers = null;
-    this.modalSpeed = null;
-    this.modalDownloaded = null;
-    this.closePlayerBtn = null;
-    this.videoTitle = null;
-    this.videoDescription = null;
-    this.videoTimestamp = null;
-    this.creatorAvatar = null;
-    this.creatorName = null;
-    this.creatorNpub = null;
-    this.copyMagnetBtn = null;
-    this.shareBtn = null;
-    this.modalZapBtn = null;
-    this.modalMoreBtn = null;
-    this.modalMoreMenu = null;
-    this.modalPosterCleanup = null;
     this.cleanupPromise = null;
+
+    this.videoModal = new VideoModal({
+      removeTrackingScripts,
+      setGlobalModalState,
+      document,
+      logger: {
+        log: (message, ...args) => this.log(message, ...args),
+      },
+    });
+    this.videoModal.addEventListener("modal:close", () => {
+      this.hideModal();
+    });
+    this.videoModal.addEventListener("video:copy-magnet", () => {
+      this.handleCopyMagnet();
+    });
+    this.videoModal.addEventListener("video:share", () => {
+      this.shareActiveVideo();
+    });
+    this.videoModal.addEventListener("creator:navigate", () => {
+      this.openCreatorChannel();
+    });
+    this.videoModal.addEventListener("video:zap", () => {
+      window.alert("Zaps coming soon.");
+    });
 
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
@@ -590,7 +587,6 @@ class bitvidApp {
     this._videoListClickHandler = null;
     this.viewCountSubscriptions = new Map();
     this.modalViewCountUnsub = null;
-    this.videoViewCountEl = null;
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = nostrService.getVideosMap();
@@ -679,6 +675,16 @@ class bitvidApp {
         }
       }
     );
+  }
+
+  get modalVideo() {
+    return this.videoModal ? this.videoModal.getVideoElement() : null;
+  }
+
+  set modalVideo(videoElement) {
+    if (this.videoModal) {
+      this.videoModal.setVideoElement(videoElement);
+    }
   }
 
   loadSavedProfilesFromStorage() {
@@ -770,8 +776,11 @@ class bitvidApp {
       this.renderSavedProfiles();
 
       // 1. Initialize the video modal (components/video-modal.html)
-      await this.initModal();
-      this.updateModalElements();
+      await this.videoModal.load();
+      const modalRoot = this.videoModal.getRoot();
+      if (modalRoot) {
+        this.attachMoreMenuHandlers(modalRoot);
+      }
 
       // 2. Initialize the upload modal (components/upload-modal.html)
       await this.initUploadModal();
@@ -866,154 +875,6 @@ class bitvidApp {
     }
   }
 
-  /**
-   * Initialize the main video modal (video-modal.html).
-   */
-  async initModal() {
-    try {
-      const existingModal = document.getElementById("playerModal");
-      if (existingModal) {
-        this.playerModal = existingModal;
-        return true;
-      }
-
-      const resp = await fetch("components/video-modal.html");
-      if (!resp.ok) {
-        throw new Error(`HTTP error! status: ${resp.status}`);
-      }
-      const html = await resp.text();
-
-      const modalContainer = document.getElementById("modalContainer");
-      if (!modalContainer) {
-        throw new Error("Modal container element not found!");
-      }
-
-      // Instead of overwriting, we append a new DIV with the fetched HTML
-      const wrapper = document.createElement("div");
-      wrapper.innerHTML = html; // set the markup
-      removeTrackingScripts(wrapper);
-      modalContainer.appendChild(wrapper); // append the markup
-
-      // Now we can safely find elements inside:
-      const closeButton = document.getElementById("closeModal");
-      if (!closeButton) {
-        throw new Error("Close button not found in video-modal!");
-      }
-      closeButton.addEventListener("click", () => {
-        this.hideModal();
-      });
-
-      // Setup scroll-based nav hide
-      const modalNav = document.getElementById("modalNav");
-      const playerModal = document.getElementById("playerModal");
-      if (!modalNav || !playerModal) {
-        throw new Error("Modal nav (#modalNav) or #playerModal not found!");
-      }
-      const scrollRegion =
-        playerModal.querySelector(".player-modal__content") || playerModal;
-      let lastScrollY = 0;
-      scrollRegion.addEventListener("scroll", () => {
-        const currentScrollY = scrollRegion.scrollTop;
-        const shouldShowNav =
-          currentScrollY <= lastScrollY || currentScrollY < 50;
-        modalNav.style.transform = shouldShowNav
-          ? "translateY(0)"
-          : "translateY(-100%)";
-        lastScrollY = currentScrollY;
-      });
-
-      this.videoViewCountEl =
-        document.getElementById("videoViewCount") || null;
-
-      console.log("Video modal initialization successful");
-      return true;
-    } catch (error) {
-      console.error("initModal failed:", error);
-      this.showError(`Failed to initialize video modal: ${error.message}`);
-      return false;
-    }
-  }
-
-  updateModalElements() {
-    // Existing references
-    this.playerModal = document.getElementById("playerModal") || null;
-    this.modalVideo = document.getElementById("modalVideo") || null;
-    this.modalStatus = document.getElementById("modalStatus") || null;
-    this.modalProgress = document.getElementById("modalProgress") || null;
-    this.modalPeers = document.getElementById("modalPeers") || null;
-    this.modalSpeed = document.getElementById("modalSpeed") || null;
-    this.modalDownloaded = document.getElementById("modalDownloaded") || null;
-    this.closePlayerBtn = document.getElementById("closeModal") || null;
-
-    this.videoTitle = document.getElementById("videoTitle") || null;
-    this.videoDescription = document.getElementById("videoDescription") || null;
-    this.videoTimestamp = document.getElementById("videoTimestamp") || null;
-    this.videoViewCountEl =
-      document.getElementById("videoViewCount") || null;
-
-    // The two elements we want to make clickable
-    this.creatorAvatar = document.getElementById("creatorAvatar") || null;
-    this.creatorName = document.getElementById("creatorName") || null;
-    this.creatorNpub = document.getElementById("creatorNpub") || null;
-
-    // Copy/Share buttons
-    this.copyMagnetBtn = document.getElementById("copyMagnetBtn") || null;
-    this.shareBtn = document.getElementById("shareBtn") || null;
-    this.modalZapBtn = document.getElementById("modalZapBtn") || null;
-    this.modalMoreBtn = document.getElementById("modalMoreBtn") || null;
-    this.modalMoreMenu = document.getElementById("moreDropdown-modal") || null;
-    this.setModalZapVisibility(false);
-
-    // Attach existing event listeners for copy/share
-    if (this.copyMagnetBtn) {
-      this.copyMagnetBtn.addEventListener("click", () => {
-        this.handleCopyMagnet();
-      });
-    }
-    if (this.shareBtn) {
-      this.shareBtn.addEventListener("click", () => {
-        if (!this.currentVideo || !this.currentVideo.id) {
-          this.showError("No shareable video is loaded.");
-          return;
-        }
-        const shareUrl = this.buildShareUrlFromEventId(this.currentVideo.id);
-        if (!shareUrl) {
-          this.showError("Could not generate link.");
-          return;
-        }
-        navigator.clipboard
-          .writeText(shareUrl)
-          .then(() => this.showSuccess("Video link copied to clipboard!"))
-          .catch(() => this.showError("Failed to copy the link."));
-      });
-    }
-    if (this.modalZapBtn) {
-      this.modalZapBtn.addEventListener("click", () => {
-        window.alert("Zaps coming soon.");
-      });
-    }
-
-    // Add click handlers for avatar and name => channel profile
-    if (this.creatorAvatar) {
-      this.creatorAvatar.style.cursor = "pointer";
-      this.creatorAvatar.addEventListener("click", () => {
-        this.openCreatorChannel();
-      });
-    }
-    if (this.creatorName) {
-      this.creatorName.style.cursor = "pointer";
-      this.creatorName.addEventListener("click", () => {
-        this.openCreatorChannel();
-      });
-    }
-
-    if (this.playerModal) {
-      this.attachMoreMenuHandlers(this.playerModal);
-    }
-
-    this.syncModalMoreMenuData();
-  }
-
   goToProfile(pubkey) {
     if (!pubkey) {
       this.showError("No creator info available.");
@@ -1053,95 +914,25 @@ class bitvidApp {
   /**
    * Show the modal and set the "Please stand by" poster on the video.
    */
-  showModalWithPoster() {
-    if (this.playerModal) {
-      this.playerModal.style.display = "flex";
-      this.playerModal.classList.remove("hidden");
-      document.body.classList.add("modal-open");
-      document.documentElement.classList.add("modal-open");
-      const scrollRegion =
-        this.playerModal.querySelector(".player-modal__content") ||
-        this.playerModal;
-      scrollRegion.scrollTop = 0;
+  showModalWithPoster(video = this.currentVideo) {
+    if (!this.videoModal) {
+      return;
     }
-    setGlobalModalState("player", true);
-    this.applyModalLoadingPoster();
+    this.videoModal.open(video || this.currentVideo);
   }
 
   applyModalLoadingPoster() {
-    if (!this.modalVideo) {
+    if (!this.videoModal) {
       return;
     }
-
-    if (typeof this.modalPosterCleanup === "function") {
-      this.modalPosterCleanup();
-      this.modalPosterCleanup = null;
-    }
-
-    const videoEl = this.modalVideo;
-
-    const clearPoster = () => {
-      // Delegate to the shared helper so every code path clears the GIF in the
-      // same way. If we ever change how the poster works we only need to update
-      // forceRemoveModalPoster().
-      this.forceRemoveModalPoster("playback-event");
-    };
-
-    videoEl.addEventListener("loadeddata", clearPoster);
-    videoEl.addEventListener("playing", clearPoster);
-
-    videoEl.poster = MODAL_LOADING_POSTER;
-
-    this.modalPosterCleanup = () => {
-      videoEl.removeEventListener("loadeddata", clearPoster);
-      videoEl.removeEventListener("playing", clearPoster);
-    };
+    this.videoModal.applyLoadingPoster();
   }
 
-  /**
-   * Forcefully strip the modal's loading poster.
-   *
-   * The video modal shows an animated "please stand by" GIF while we wait for a
-   * `loadeddata` or `playing` event. Historically, small refactors would remove
-   * the matching cleanup path which left the GIF covering real playback. By
-   * routing every caller through this helper we can add defensive clears (for
-   * example when WebTorrent reports progress) without duplicating poster logic
-   * all over the file.
-   *
-   * @param {string} reason A debugging hint that documents why the poster was
-   * cleared.
-   * @returns {boolean} `true` if a poster attribute/value was removed.
-   */
   forceRemoveModalPoster(reason = "manual-clear") {
-    if (!this.modalVideo) {
+    if (!this.videoModal) {
       return false;
     }
-
-    const videoEl = this.modalVideo;
-
-    if (typeof this.modalPosterCleanup === "function") {
-      this.modalPosterCleanup();
-      this.modalPosterCleanup = null;
-    }
-
-    const hadPoster =
-      videoEl.hasAttribute("poster") ||
-      (typeof videoEl.poster === "string" && videoEl.poster !== "");
-
-    if (!hadPoster) {
-      return false;
-    }
-
-    videoEl.poster = "";
-    if (videoEl.hasAttribute("poster")) {
-      videoEl.removeAttribute("poster");
-    }
-
-    console.debug(
-      `[bitvidApp] Cleared modal loading poster (${reason}).`
-    );
-
-    return true;
+    return this.videoModal.forceRemovePoster(reason);
   }
 
   /**
@@ -2512,16 +2303,15 @@ class bitvidApp {
       }
     }
     this.modalViewCountUnsub = null;
-    if (this.videoViewCountEl) {
-      this.videoViewCountEl.textContent = "– views";
-      if (this.videoViewCountEl.dataset?.viewPointer) {
-        delete this.videoViewCountEl.dataset.viewPointer;
-      }
+    if (this.videoModal) {
+      this.videoModal.updateViewCountLabel("– views");
+      this.videoModal.setViewCountPointer(null);
     }
   }
 
   subscribeModalViewCount(pointer, pointerKey) {
-    if (!this.videoViewCountEl) {
+    const viewEl = this.videoModal?.getViewCountElement() || null;
+    if (!viewEl) {
       return;
     }
 
@@ -2531,23 +2321,35 @@ class bitvidApp {
       return;
     }
 
-    this.videoViewCountEl.textContent = "Loading views…";
+    if (this.videoModal) {
+      this.videoModal.updateViewCountLabel("Loading views…");
+      this.videoModal.setViewCountPointer(pointerKey);
+    }
     try {
       const token = subscribeToVideoViewCount(pointer, ({ total, status }) => {
-        if (!this.videoViewCountEl) {
+        const latestViewEl = this.videoModal?.getViewCountElement() || null;
+        if (!latestViewEl) {
           return;
         }
 
         if (Number.isFinite(total)) {
           const numeric = Number(total);
-          this.videoViewCountEl.textContent = this.formatViewCountLabel(numeric);
+          if (this.videoModal) {
+            this.videoModal.updateViewCountLabel(
+              this.formatViewCountLabel(numeric)
+            );
+          }
           return;
         }
 
         if (status === "hydrating") {
-          this.videoViewCountEl.textContent = "Loading views…";
+          if (this.videoModal) {
+            this.videoModal.updateViewCountLabel("Loading views…");
+          }
         } else {
-          this.videoViewCountEl.textContent = "– views";
+          if (this.videoModal) {
+            this.videoModal.updateViewCountLabel("– views");
+          }
         }
       });
 
@@ -2563,10 +2365,12 @@ class bitvidApp {
           this.modalViewCountUnsub = null;
         }
       };
-      this.videoViewCountEl.dataset.viewPointer = pointerKey;
     } catch (error) {
       console.warn("[viewCount] Failed to subscribe modal view counter:", error);
-      this.videoViewCountEl.textContent = "– views";
+      if (this.videoModal) {
+        this.videoModal.updateViewCountLabel("– views");
+        this.videoModal.setViewCountPointer(null);
+      }
     }
   }
 
@@ -6741,53 +6545,26 @@ class bitvidApp {
   }
 
   resetTorrentStats() {
-    if (this.modalPeers) {
-      this.modalPeers.textContent = "";
-    }
-    if (this.modalSpeed) {
-      this.modalSpeed.textContent = "";
-    }
-    if (this.modalDownloaded) {
-      this.modalDownloaded.textContent = "";
-    }
-    if (this.modalProgress) {
-      this.modalProgress.style.width = "0%";
+    if (this.videoModal) {
+      this.videoModal.resetStats();
     }
   }
 
   setCopyMagnetState(enabled) {
-    if (!this.copyMagnetBtn) {
-      return;
+    if (this.videoModal) {
+      this.videoModal.setCopyEnabled(enabled);
     }
-    this.copyMagnetBtn.disabled = !enabled;
-    this.copyMagnetBtn.setAttribute("aria-disabled", (!enabled).toString());
-    this.copyMagnetBtn.classList.toggle("opacity-50", !enabled);
-    this.copyMagnetBtn.classList.toggle("cursor-not-allowed", !enabled);
   }
 
   setShareButtonState(enabled) {
-    if (!this.shareBtn) {
-      return;
+    if (this.videoModal) {
+      this.videoModal.setShareEnabled(enabled);
     }
-    this.shareBtn.disabled = !enabled;
-    this.shareBtn.setAttribute("aria-disabled", (!enabled).toString());
-    this.shareBtn.classList.toggle("opacity-50", !enabled);
-    this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
   }
 
   setModalZapVisibility(visible) {
-    if (!this.modalZapBtn) {
-      return;
-    }
-    const shouldShow = !!visible;
-    this.modalZapBtn.classList.toggle("hidden", !shouldShow);
-    this.modalZapBtn.disabled = !shouldShow;
-    this.modalZapBtn.setAttribute("aria-disabled", (!shouldShow).toString());
-    this.modalZapBtn.setAttribute("aria-hidden", (!shouldShow).toString());
-    if (shouldShow) {
-      this.modalZapBtn.removeAttribute("tabindex");
-    } else {
-      this.modalZapBtn.setAttribute("tabindex", "-1");
+    if (this.videoModal) {
+      this.videoModal.setZapVisibility(visible);
     }
   }
 
@@ -6883,20 +6660,22 @@ class bitvidApp {
       const peers = document.getElementById("peers");
       const speed = document.getElementById("speed");
       const downloaded = document.getElementById("downloaded");
-      if (status && this.modalStatus) {
-        this.modalStatus.textContent = status.textContent;
-      }
-      if (progress && this.modalProgress) {
-        this.modalProgress.style.width = progress.style.width;
-      }
-      if (peers && this.modalPeers) {
-        this.modalPeers.textContent = peers.textContent;
-      }
-      if (speed && this.modalSpeed) {
-        this.modalSpeed.textContent = speed.textContent;
-      }
-      if (downloaded && this.modalDownloaded) {
-        this.modalDownloaded.textContent = downloaded.textContent;
+      if (this.videoModal) {
+        if (status) {
+          this.videoModal.updateStatus(status.textContent);
+        }
+        if (progress) {
+          this.videoModal.updateProgress(progress.style.width);
+        }
+        if (peers) {
+          this.videoModal.updatePeers(peers.textContent);
+        }
+        if (speed) {
+          this.videoModal.updateSpeed(speed.textContent);
+        }
+        if (downloaded) {
+          this.videoModal.updateDownloaded(downloaded.textContent);
+        }
       }
     }, 3000);
     this.activeIntervals.push(mirrorInterval);
@@ -6921,21 +6700,8 @@ class bitvidApp {
       preserveObservers: true,
     });
 
-    // 2) Hide the modal
-    if (this.playerModal) {
-      this.playerModal.style.display = "none";
-      this.playerModal.classList.add("hidden");
-    }
-    document.body.classList.remove("modal-open");
-    document.documentElement.classList.remove("modal-open");
-    setGlobalModalState("player", false);
-    if (typeof this.modalPosterCleanup === "function") {
-      this.modalPosterCleanup();
-      this.modalPosterCleanup = null;
-    }
-    if (this.modalVideo) {
-      this.modalVideo.poster = "";
-      this.modalVideo.removeAttribute("poster");
+    if (this.videoModal) {
+      this.videoModal.close();
     }
     this.currentMagnetUri = null;
 
@@ -8445,46 +8211,13 @@ class bitvidApp {
   }
 
   syncModalMoreMenuData() {
-    if (!this.modalMoreMenu) {
+    if (!this.videoModal) {
       return;
     }
 
-    const buttons = this.modalMoreMenu.querySelectorAll("button[data-action]");
-    buttons.forEach((button) => {
-      if (!(button instanceof HTMLElement)) {
-        return;
-      }
-
-      const action = button.dataset.action || "";
-      if (action === "blacklist-author") {
-        const canShow = this.canCurrentUserManageBlacklist();
-        if (canShow && this.currentVideo && this.currentVideo.pubkey) {
-          button.dataset.author = this.currentVideo.pubkey;
-          button.classList.remove("hidden");
-          button.setAttribute("aria-hidden", "false");
-        } else {
-          delete button.dataset.author;
-          button.classList.add("hidden");
-          button.setAttribute("aria-hidden", "true");
-        }
-        return;
-      }
-
-      if (action === "open-channel" || action === "block-author") {
-        if (this.currentVideo && this.currentVideo.pubkey) {
-          button.dataset.author = this.currentVideo.pubkey;
-        } else {
-          delete button.dataset.author;
-        }
-      }
-
-      if (action === "copy-link" || action === "report") {
-        if (this.currentVideo && this.currentVideo.id) {
-          button.dataset.eventId = this.currentVideo.id;
-        } else {
-          delete button.dataset.eventId;
-        }
-      }
+    this.videoModal.syncMoreMenuData({
+      currentVideo: this.currentVideo,
+      canManageBlacklist: this.canCurrentUserManageBlacklist(),
     });
   }
 
@@ -8728,41 +8461,26 @@ class bitvidApp {
     console.log("[DEBUG] torrent.ready =", torrent.ready);
 
     // Use "Complete" vs. "Downloading" as the textual status.
-    if (this.modalStatus) {
+    if (this.videoModal) {
       const fullyDownloaded = torrent.progress >= 1;
-      this.modalStatus.textContent = fullyDownloaded
-        ? "Complete"
-        : "Downloading";
-    }
+      this.videoModal.updateStatus(fullyDownloaded ? "Complete" : "Downloading");
 
-    // Update the progress bar
-    if (this.modalProgress) {
       const percent = (torrent.progress * 100).toFixed(2);
-      this.modalProgress.style.width = `${percent}%`;
-    }
+      this.videoModal.updateProgress(`${percent}%`);
+      this.videoModal.updatePeers(`Peers: ${torrent.numPeers}`);
 
-    // Update peers count
-    if (this.modalPeers) {
-      this.modalPeers.textContent = `Peers: ${torrent.numPeers}`;
-    }
-
-    // Update speed in KB/s
-    if (this.modalSpeed) {
       const kb = (torrent.downloadSpeed / 1024).toFixed(2);
-      this.modalSpeed.textContent = `${kb} KB/s`;
-    }
+      this.videoModal.updateSpeed(`${kb} KB/s`);
 
-    // Update downloaded / total
-    if (this.modalDownloaded) {
       const downloadedMb = (torrent.downloaded / (1024 * 1024)).toFixed(2);
       const lengthMb = (torrent.length / (1024 * 1024)).toFixed(2);
-      this.modalDownloaded.textContent = `${downloadedMb} MB / ${lengthMb} MB`;
-    }
+      this.videoModal.updateDownloaded(
+        `${downloadedMb} MB / ${lengthMb} MB`
+      );
 
-    // If you want to show a different text at 100% or if "ready"
-    // you can do it here:
-    if (torrent.ready && this.modalStatus) {
-      this.modalStatus.textContent = "Ready to play";
+      if (torrent.ready) {
+        this.videoModal.updateStatus("Ready to play");
+      }
     }
   }
 
@@ -9316,8 +9034,8 @@ class bitvidApp {
         throw new Error("No magnet URI provided for torrent playback.");
       }
       if (!isValidMagnetUri(trimmedCandidate)) {
-        if (this.modalStatus) {
-          this.modalStatus.textContent = UNSUPPORTED_BTITH_MESSAGE;
+        if (this.videoModal) {
+          this.videoModal.updateStatus(UNSUPPORTED_BTITH_MESSAGE);
         }
         throw new Error(UNSUPPORTED_BTITH_MESSAGE);
       }
@@ -9345,8 +9063,8 @@ class bitvidApp {
       await torrentClient.cleanup();
       this.resetTorrentStats();
 
-      if (this.modalStatus) {
-        this.modalStatus.textContent = "Streaming via WebTorrent";
+      if (this.videoModal) {
+        this.videoModal.updateStatus("Streaming via WebTorrent");
       }
 
       const torrentInstance = await torrentClient.streamVideo(
@@ -9469,9 +9187,10 @@ class bitvidApp {
     };
 
     subscribe("status", ({ message } = {}) => {
-      if (this.modalStatus) {
-        this.modalStatus.textContent =
-          typeof message === "string" ? message : "";
+      if (this.videoModal) {
+        this.videoModal.updateStatus(
+          typeof message === "string" ? message : ""
+        );
       }
     });
 
@@ -9711,27 +9430,19 @@ class bitvidApp {
     }
 
     const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
-    if (this.videoTitle) {
-      this.videoTitle.textContent = video.title || "Untitled";
-    }
-    if (this.videoDescription) {
-      this.videoDescription.textContent =
-        video.description || "No description available.";
-    }
-    if (this.videoTimestamp) {
-      this.videoTimestamp.textContent = this.formatTimeAgo(video.created_at);
-    }
-    if (this.creatorName) {
-      this.creatorName.textContent = creatorProfile.name;
-    }
-    if (this.creatorNpub) {
-      this.creatorNpub.textContent = `${creatorNpub.slice(0, 8)}...${creatorNpub.slice(
-        -4
-      )}`;
-    }
-    if (this.creatorAvatar) {
-      this.creatorAvatar.src = creatorProfile.picture;
-      this.creatorAvatar.alt = creatorProfile.name;
+    if (this.videoModal) {
+      const formattedTimestamp = this.formatTimeAgo(video.created_at);
+      const displayNpub = `${creatorNpub.slice(0, 8)}...${creatorNpub.slice(-4)}`;
+      this.videoModal.updateMetadata({
+        title: video.title || "Untitled",
+        description: video.description || "No description available.",
+        timestamp: formattedTimestamp,
+        creator: {
+          name: creatorProfile.name,
+          avatarUrl: creatorProfile.picture,
+          npub: displayNpub,
+        },
+      });
     }
 
     await this.playVideoWithFallback({
@@ -9798,25 +9509,17 @@ class bitvidApp {
     this.setCopyMagnetState(!!sanitizedMagnet);
     this.setShareButtonState(false);
 
-    if (this.videoTitle) {
-      this.videoTitle.textContent = title || "Untitled";
-    }
-    if (this.videoDescription) {
-      this.videoDescription.textContent =
-        description || "No description available.";
-    }
-    if (this.videoTimestamp) {
-      this.videoTimestamp.textContent = "";
-    }
-    if (this.creatorName) {
-      this.creatorName.textContent = "Unknown";
-    }
-    if (this.creatorNpub) {
-      this.creatorNpub.textContent = "";
-    }
-    if (this.creatorAvatar) {
-      this.creatorAvatar.src = "assets/svg/default-profile.svg";
-      this.creatorAvatar.alt = "Unknown";
+    if (this.videoModal) {
+      this.videoModal.updateMetadata({
+        title: title || "Untitled",
+        description: description || "No description available.",
+        timestamp: "",
+        creator: {
+          name: "Unknown",
+          avatarUrl: "assets/svg/default-profile.svg",
+          npub: "",
+        },
+      });
     }
 
     const urlObj = new URL(window.location.href);
@@ -9981,6 +9684,24 @@ class bitvidApp {
 
   log(msg) {
     console.log(msg);
+  }
+
+  shareActiveVideo() {
+    if (!this.currentVideo || !this.currentVideo.id) {
+      this.showError("No shareable video is loaded.");
+      return;
+    }
+
+    const shareUrl = this.buildShareUrlFromEventId(this.currentVideo.id);
+    if (!shareUrl) {
+      this.showError("Could not generate link.");
+      return;
+    }
+
+    navigator.clipboard
+      .writeText(shareUrl)
+      .then(() => this.showSuccess("Video link copied to clipboard!"))
+      .catch(() => this.showError("Failed to copy the link."));
   }
 
   /**
