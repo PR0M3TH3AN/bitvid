@@ -44,6 +44,7 @@ import {
   removeTrackingScripts,
 } from "./utils/domUtils.js";
 import { VideoModal } from "./ui/components/VideoModal.js";
+import { UploadModal } from "./ui/components/UploadModal.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -456,48 +457,27 @@ class bitvidApp {
     this.profileSwitcherSelectionPubkey = null;
     this.currentUserNpub = null;
 
-    // Upload modal elements
+    // Upload modal component
     this.uploadButton = document.getElementById("uploadButton") || null;
-    this.uploadModal = document.getElementById("uploadModal") || null;
-    this.closeUploadModalBtn =
-      document.getElementById("closeUploadModal") || null;
-    this.uploadForm = document.getElementById("uploadForm") || null;
-    this.uploadEnableCommentsInput = null;
-    this.uploadModeToggleButtons = [];
-    this.customUploadSection = null;
-    this.cloudflareUploadSection = null;
-    this.activeUploadMode = "custom";
     this.r2Service = r2Service;
-    this.cloudflareSettings = this.r2Service.getSettings();
-    this.cloudflareSettingsForm = null;
-    this.cloudflareClearSettingsButton = null;
-    this.cloudflareSettingsStatus = null;
-    this.cloudflareBucketPreview = null;
-    this.cloudflareUploadForm = null;
-    this.cloudflareFileInput = null;
-    this.cloudflareUploadButton = null;
-    this.cloudflareUploadStatus = null;
-    this.cloudflareProgressBar = null;
-    this.cloudflareProgressFill = null;
-    this.cloudflareTitleInput = null;
-    this.cloudflareDescriptionInput = null;
-    this.cloudflareThumbnailInput = null;
-    this.cloudflareMagnetInput = null;
-    this.cloudflareWsInput = null;
-    this.cloudflareXsInput = null;
-    this.cloudflareEnableCommentsInput = null;
-    this.cloudflareAdvancedToggle = null;
-    this.cloudflareAdvancedToggleLabel = null;
-    this.cloudflareAdvancedToggleIcon = null;
-    this.cloudflareAdvancedFields = null;
-    this.cloudflareAdvancedVisible = this.r2Service.getCloudflareAdvancedVisibility();
-    this.r2AccountIdInput = null;
-    this.r2AccessKeyIdInput = null;
-    this.r2SecretAccessKeyInput = null;
-    this.r2ApiTokenInput = null;
-    this.r2ZoneIdInput = null;
-    this.r2BaseDomainInput = null;
-    this.r2ServiceUnsubscribes = [];
+    const uploadModalEvents = new EventTarget();
+    this.uploadModal = new UploadModal({
+      authService: this.authService,
+      r2Service: this.r2Service,
+      publishVideoNote: (payload, options) =>
+        this.publishVideoNote(payload, options),
+      removeTrackingScripts,
+      setGlobalModalState,
+      showError: (message) => this.showError(message),
+      showSuccess: (message) => this.showSuccess(message),
+      getCurrentPubkey: () => this.pubkey,
+      safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+      eventTarget: uploadModalEvents,
+      container: document.getElementById("modalContainer") || null,
+    });
+    this.uploadModal.addEventListener("upload:submit", (event) => {
+      this.handleUploadSubmitEvent(event);
+    });
 
     // Edit video modal elements
     this.editVideoModal = null;
@@ -783,7 +763,12 @@ class bitvidApp {
       }
 
       // 2. Initialize the upload modal (components/upload-modal.html)
-      await this.initUploadModal();
+      try {
+        await this.uploadModal.load();
+      } catch (error) {
+        console.error("initUploadModal failed:", error);
+        this.showError(`Failed to initialize upload modal: ${error.message}`);
+      }
       initQuickR2Upload(this);
 
       // 2.5 Initialize the edit modal (components/edit-video-modal.html)
@@ -933,294 +918,6 @@ class bitvidApp {
       return false;
     }
     return this.videoModal.forceRemovePoster(reason);
-  }
-
-  /**
-   * Initialize the upload modal (upload-modal.html).
-   */
-  async initUploadModal() {
-    try {
-      const resp = await fetch("components/upload-modal.html");
-      if (!resp.ok) {
-        throw new Error(`HTTP error! status: ${resp.status}`);
-      }
-      const html = await resp.text();
-
-      const modalContainer = document.getElementById("modalContainer");
-      if (!modalContainer) {
-        throw new Error("Modal container element not found!");
-      }
-      // Append the upload modal markup
-      const wrapper = document.createElement("div");
-      wrapper.innerHTML = html;
-      removeTrackingScripts(wrapper);
-      modalContainer.appendChild(wrapper);
-
-      // Grab references
-      this.uploadModal = document.getElementById("uploadModal") || null;
-      this.closeUploadModalBtn =
-        document.getElementById("closeUploadModal") || null;
-      this.uploadForm = document.getElementById("uploadForm") || null;
-      this.uploadEnableCommentsInput =
-        document.getElementById("uploadEnableComments") || null;
-      this.uploadModeToggleButtons = Array.from(
-        document.querySelectorAll(".upload-mode-toggle[data-upload-mode]")
-      );
-      this.customUploadSection =
-        document.getElementById("customUploadSection") || null;
-      this.cloudflareUploadSection =
-        document.getElementById("cloudflareUploadSection") || null;
-      this.cloudflareSettingsForm =
-        document.getElementById("cloudflareSettingsForm") || null;
-      this.cloudflareClearSettingsButton =
-        document.getElementById("cloudflareClearSettings") || null;
-      this.cloudflareSettingsStatus =
-        document.getElementById("cloudflareSettingsStatus") || null;
-      this.cloudflareBucketPreview =
-        document.getElementById("cloudflareBucketPreview") || null;
-      this.cloudflareUploadForm =
-        document.getElementById("cloudflareUploadForm") || null;
-      this.cloudflareFileInput =
-        document.getElementById("cloudflareFile") || null;
-      this.cloudflareUploadButton =
-        document.getElementById("cloudflareUploadButton") || null;
-      this.cloudflareUploadStatus =
-        document.getElementById("cloudflareUploadStatus") || null;
-      this.cloudflareProgressBar =
-        document.getElementById("cloudflareProgressBar") || null;
-      this.cloudflareProgressFill =
-        document.getElementById("cloudflareProgressFill") || null;
-      this.cloudflareTitleInput =
-        document.getElementById("cloudflareTitle") || null;
-      this.cloudflareDescriptionInput =
-        document.getElementById("cloudflareDescription") || null;
-      this.cloudflareThumbnailInput =
-        document.getElementById("cloudflareThumbnail") || null;
-      this.cloudflareMagnetInput =
-        document.getElementById("cloudflareMagnet") || null;
-      this.cloudflareWsInput =
-        document.getElementById("cloudflareWs") || null;
-      this.cloudflareXsInput =
-        document.getElementById("cloudflareXs") || null;
-      this.cloudflareEnableCommentsInput =
-        document.getElementById("cloudflareEnableComments") || null;
-      this.cloudflareAdvancedToggle =
-        document.getElementById("cloudflareAdvancedToggle") || null;
-      this.cloudflareAdvancedToggleLabel =
-        document.getElementById("cloudflareAdvancedToggleLabel") || null;
-      this.cloudflareAdvancedToggleIcon =
-        document.getElementById("cloudflareAdvancedToggleIcon") || null;
-      this.cloudflareAdvancedFields =
-        document.getElementById("cloudflareAdvancedFields") || null;
-      this.r2AccountIdInput =
-        document.getElementById("r2AccountId") || null;
-      this.r2AccessKeyIdInput =
-        document.getElementById("r2AccessKeyId") || null;
-      this.r2SecretAccessKeyInput =
-        document.getElementById("r2SecretAccessKey") || null;
-      this.r2ApiTokenInput =
-        document.getElementById("r2ApiToken") || null;
-      this.r2ZoneIdInput = document.getElementById("r2ZoneId") || null;
-      this.r2BaseDomainInput =
-        document.getElementById("r2BaseDomain") || null;
-
-      // Optional: if close button found, wire up
-      if (this.closeUploadModalBtn) {
-        this.closeUploadModalBtn.addEventListener("click", () => {
-          if (this.uploadModal) {
-            this.uploadModal.classList.add("hidden");
-            setGlobalModalState("upload", false);
-          }
-        });
-      }
-      // If the form is found, wire up
-      if (this.uploadForm) {
-        this.uploadForm.addEventListener("submit", (e) => {
-          e.preventDefault();
-          this.handleUploadSubmit();
-        });
-      }
-
-      if (Array.isArray(this.r2ServiceUnsubscribes)) {
-        this.r2ServiceUnsubscribes.forEach((fn) => {
-          try {
-            if (typeof fn === "function") {
-              fn();
-            }
-          } catch (err) {
-            console.warn("Failed to unsubscribe from R2 service event:", err);
-          }
-        });
-      }
-      this.r2ServiceUnsubscribes = [];
-
-      const registerSubscription = (unsubscribe) => {
-        if (typeof unsubscribe === "function") {
-          this.r2ServiceUnsubscribes.push(unsubscribe);
-        }
-      };
-
-      registerSubscription(
-        this.r2Service.on("advancedVisibilityChange", ({ visible } = {}) => {
-          this.renderCloudflareAdvancedVisibility(visible);
-        })
-      );
-
-      registerSubscription(
-        this.r2Service.on("settingsStatus", ({ message, variant } = {}) => {
-          this.applyCloudflareStatus(
-            this.cloudflareSettingsStatus,
-            message,
-            variant
-          );
-        })
-      );
-
-      registerSubscription(
-        this.r2Service.on("uploadStatus", ({ message, variant } = {}) => {
-          this.applyCloudflareStatus(
-            this.cloudflareUploadStatus,
-            message,
-            variant
-          );
-        })
-      );
-
-      registerSubscription(
-        this.r2Service.on("uploadStateChange", ({ isUploading } = {}) => {
-          this.renderCloudflareUploadingState(isUploading);
-        })
-      );
-
-      registerSubscription(
-        this.r2Service.on("uploadProgress", ({ fraction } = {}) => {
-          this.updateCloudflareProgress(fraction);
-        })
-      );
-
-      registerSubscription(
-        this.r2Service.on("settingsPopulated", ({ settings } = {}) => {
-          this.fillCloudflareSettingsInputs(settings);
-        })
-      );
-
-      registerSubscription(
-        this.r2Service.on("settingsChanged", ({ settings } = {}) => {
-          this.cloudflareSettings = settings || this.cloudflareSettings;
-        })
-      );
-
-      registerSubscription(
-        this.r2Service.on("bucketPreview", (detail = {}) => {
-          this.renderCloudflareBucketPreview(detail);
-        })
-      );
-
-      if (this.cloudflareSettingsForm) {
-        this.cloudflareSettingsForm.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          try {
-            const formValues = this.collectCloudflareSettingsFormValues();
-            const saved = await this.r2Service.saveSettings(formValues);
-            if (saved) {
-              await this.refreshCloudflareBucketPreview();
-            }
-          } catch (err) {
-            console.error("Failed to save Cloudflare settings:", err);
-          }
-        });
-      }
-
-      if (this.cloudflareClearSettingsButton) {
-        this.cloudflareClearSettingsButton.addEventListener("click", async () => {
-          try {
-            const cleared = await this.r2Service.clearSettings();
-            if (cleared) {
-              await this.refreshCloudflareBucketPreview();
-            }
-          } catch (err) {
-            console.error("Failed to clear Cloudflare settings:", err);
-          }
-        });
-      }
-
-      if (this.cloudflareUploadForm) {
-        this.cloudflareUploadForm.addEventListener("submit", async (event) => {
-          event.preventDefault();
-          if (!this.pubkey) {
-            this.showError("Please login to post a video.");
-            return;
-          }
-
-          const npub = this.safeEncodeNpub(this.pubkey) || "";
-          const file = this.cloudflareFileInput?.files?.[0] || null;
-          const metadata = {
-            title: (this.cloudflareTitleInput?.value || "").trim(),
-            description: (this.cloudflareDescriptionInput?.value || "").trim(),
-            thumbnail: (this.cloudflareThumbnailInput?.value || "").trim(),
-            magnet: (this.cloudflareMagnetInput?.value || "").trim(),
-            ws: (this.cloudflareWsInput?.value || "").trim(),
-            xs: (this.cloudflareXsInput?.value || "").trim(),
-            enableComments: this.cloudflareEnableCommentsInput
-              ? this.cloudflareEnableCommentsInput.checked
-              : true,
-          };
-
-          try {
-            await this.r2Service.uploadVideo({
-              npub,
-              file,
-              metadata,
-              settingsInput: this.collectCloudflareSettingsFormValues(),
-              publishVideoNote: (payload, options) =>
-                this.publishVideoNote(payload, options),
-              onReset: () => this.resetCloudflareUploadForm(),
-            });
-          } catch (err) {
-            console.error("Cloudflare upload failed:", err);
-          }
-        });
-      }
-
-      if (this.uploadModeToggleButtons.length > 0) {
-        this.uploadModeToggleButtons.forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const mode = btn.dataset.uploadMode || "custom";
-            this.setUploadMode(mode);
-          });
-        });
-      }
-
-      if (this.cloudflareAdvancedToggle) {
-        this.cloudflareAdvancedToggle.addEventListener("click", () => {
-          this.r2Service.setCloudflareAdvancedVisibility(
-            !this.r2Service.getCloudflareAdvancedVisibility()
-          );
-        });
-      }
-
-      this.cloudflareSettings = this.r2Service.getSettings();
-      this.renderCloudflareAdvancedVisibility(
-        this.r2Service.getCloudflareAdvancedVisibility()
-      );
-
-      try {
-        await this.r2Service.loadSettings();
-      } catch (err) {
-        // errors already reported by the service
-      }
-
-      await this.refreshCloudflareBucketPreview();
-
-      this.setUploadMode(this.activeUploadMode);
-
-      console.log("Upload modal initialization successful");
-      return true;
-    } catch (error) {
-      console.error("initUploadModal failed:", error);
-      this.showError(`Failed to initialize upload modal: ${error.message}`);
-      return false;
-    }
   }
 
   async initEditVideoModal() {
@@ -2538,214 +2235,6 @@ class bitvidApp {
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
     }
-  }
-
-  setUploadMode(mode) {
-    const normalized = mode === "cloudflare" ? "cloudflare" : "custom";
-    this.activeUploadMode = normalized;
-
-    if (this.customUploadSection) {
-      if (normalized === "custom") {
-        this.customUploadSection.classList.remove("hidden");
-      } else {
-        this.customUploadSection.classList.add("hidden");
-      }
-    }
-
-    if (this.cloudflareUploadSection) {
-      if (normalized === "cloudflare") {
-        this.cloudflareUploadSection.classList.remove("hidden");
-      } else {
-        this.cloudflareUploadSection.classList.add("hidden");
-      }
-    }
-
-    if (Array.isArray(this.uploadModeToggleButtons)) {
-      this.uploadModeToggleButtons.forEach((btn) => {
-        if (!btn || !btn.dataset) {
-          return;
-        }
-
-        const isActive = btn.dataset.uploadMode === normalized;
-        btn.classList.toggle("bg-blue-500", isActive);
-        btn.classList.toggle("text-white", isActive);
-        btn.classList.toggle("shadow", isActive);
-        btn.classList.toggle("text-gray-300", !isActive);
-        btn.setAttribute("aria-pressed", isActive ? "true" : "false");
-      });
-    }
-
-    if (normalized === "cloudflare") {
-      this.refreshCloudflareBucketPreview();
-    }
-  }
-
-  collectCloudflareSettingsFormValues() {
-    return {
-      accountId: (this.r2AccountIdInput?.value || "").trim(),
-      accessKeyId: (this.r2AccessKeyIdInput?.value || "").trim(),
-      secretAccessKey: (this.r2SecretAccessKeyInput?.value || "").trim(),
-      apiToken: (this.r2ApiTokenInput?.value || "").trim(),
-      zoneId: (this.r2ZoneIdInput?.value || "").trim(),
-      baseDomain: this.r2BaseDomainInput?.value || "",
-    };
-  }
-
-  applyCloudflareStatus(element, message = "", variant = "info") {
-    if (!element) {
-      return;
-    }
-
-    element.textContent = message || "";
-    element.classList.remove(
-      "text-green-400",
-      "text-red-400",
-      "text-yellow-400",
-      "text-gray-400"
-    );
-    if (!message) {
-      element.classList.add("text-gray-400");
-      return;
-    }
-
-    let cls = "text-gray-400";
-    if (variant === "success") {
-      cls = "text-green-400";
-    } else if (variant === "error") {
-      cls = "text-red-400";
-    } else if (variant === "warning") {
-      cls = "text-yellow-400";
-    }
-    element.classList.add(cls);
-  }
-
-  renderCloudflareAdvancedVisibility(visible) {
-    const isVisible = Boolean(visible);
-    this.cloudflareAdvancedVisible = isVisible;
-
-    if (this.cloudflareAdvancedFields) {
-      if (isVisible) {
-        this.cloudflareAdvancedFields.classList.remove("hidden");
-      } else {
-        this.cloudflareAdvancedFields.classList.add("hidden");
-      }
-    }
-
-    if (this.cloudflareAdvancedToggle) {
-      this.cloudflareAdvancedToggle.setAttribute(
-        "aria-expanded",
-        isVisible ? "true" : "false"
-      );
-    }
-
-    if (this.cloudflareAdvancedToggleLabel) {
-      this.cloudflareAdvancedToggleLabel.textContent = isVisible
-        ? "Hide advanced options"
-        : "Show advanced options";
-    }
-
-    if (this.cloudflareAdvancedToggleIcon) {
-      this.cloudflareAdvancedToggleIcon.classList.toggle("rotate-90", isVisible);
-    }
-  }
-
-  renderCloudflareUploadingState(isUploading) {
-    if (this.cloudflareUploadButton) {
-      this.cloudflareUploadButton.disabled = Boolean(isUploading);
-      this.cloudflareUploadButton.textContent = isUploading
-        ? "Uploading…"
-        : "Upload to R2 & publish";
-    }
-
-    if (this.cloudflareFileInput) {
-      this.cloudflareFileInput.disabled = Boolean(isUploading);
-    }
-
-    if (this.cloudflareEnableCommentsInput) {
-      this.cloudflareEnableCommentsInput.disabled = Boolean(isUploading);
-    }
-  }
-
-  fillCloudflareSettingsInputs(settings) {
-    const data = settings || {};
-
-    if (this.r2AccountIdInput) {
-      this.r2AccountIdInput.value = data.accountId || "";
-    }
-    if (this.r2AccessKeyIdInput) {
-      this.r2AccessKeyIdInput.value = data.accessKeyId || "";
-    }
-    if (this.r2SecretAccessKeyInput) {
-      this.r2SecretAccessKeyInput.value = data.secretAccessKey || "";
-    }
-    if (this.r2ApiTokenInput) {
-      this.r2ApiTokenInput.value = data.apiToken || "";
-    }
-    if (this.r2ZoneIdInput) {
-      this.r2ZoneIdInput.value = data.zoneId || "";
-    }
-    if (this.r2BaseDomainInput) {
-      this.r2BaseDomainInput.value = data.baseDomain || "";
-    }
-  }
-
-  renderCloudflareBucketPreview({ text = "", title = "" } = {}) {
-    if (!this.cloudflareBucketPreview) {
-      return;
-    }
-
-    this.cloudflareBucketPreview.textContent = text || "";
-    if (title) {
-      this.cloudflareBucketPreview.setAttribute("title", title);
-    } else {
-      this.cloudflareBucketPreview.removeAttribute("title");
-    }
-  }
-
-  async refreshCloudflareBucketPreview() {
-    if (!this.r2Service) {
-      return;
-    }
-    const hasPubkey = Boolean(this.pubkey);
-    const npub = hasPubkey ? this.safeEncodeNpub(this.pubkey) : "";
-    await this.r2Service.updateCloudflareBucketPreview({ hasPubkey, npub });
-  }
-
-  updateCloudflareProgress(fraction) {
-    if (!this.cloudflareProgressBar || !this.cloudflareProgressFill) {
-      return;
-    }
-
-    if (!Number.isFinite(fraction) || fraction < 0) {
-      this.cloudflareProgressBar.classList.add("hidden");
-      this.cloudflareProgressBar.setAttribute("aria-hidden", "true");
-      this.cloudflareProgressFill.style.width = "0%";
-      this.cloudflareProgressFill.setAttribute("aria-valuenow", "0");
-      return;
-    }
-
-    const clamped = Math.max(0, Math.min(1, fraction));
-    const percent = Math.round(clamped * 100);
-
-    this.cloudflareProgressBar.classList.remove("hidden");
-    this.cloudflareProgressBar.setAttribute("aria-hidden", "false");
-    this.cloudflareProgressFill.style.width = `${percent}%`;
-    this.cloudflareProgressFill.setAttribute("aria-valuenow", `${percent}`);
-  }
-
-  resetCloudflareUploadForm() {
-    if (this.cloudflareTitleInput) this.cloudflareTitleInput.value = "";
-    if (this.cloudflareDescriptionInput)
-      this.cloudflareDescriptionInput.value = "";
-    if (this.cloudflareThumbnailInput)
-      this.cloudflareThumbnailInput.value = "";
-    if (this.cloudflareMagnetInput) this.cloudflareMagnetInput.value = "";
-    if (this.cloudflareWsInput) this.cloudflareWsInput.value = "";
-    if (this.cloudflareXsInput) this.cloudflareXsInput.value = "";
-    if (this.cloudflareEnableCommentsInput)
-      this.cloudflareEnableCommentsInput.checked = true;
-    if (this.cloudflareFileInput) this.cloudflareFileInput.value = "";
-    this.updateCloudflareProgress(Number.NaN);
   }
 
   renderSavedProfiles() {
@@ -4862,8 +4351,7 @@ class bitvidApp {
     if (this.uploadButton) {
       this.uploadButton.addEventListener("click", () => {
         if (this.uploadModal) {
-          this.uploadModal.classList.remove("hidden");
-          setGlobalModalState("upload", true);
+          this.uploadModal.open();
         }
       });
     }
@@ -5207,8 +4695,7 @@ class bitvidApp {
         await onSuccess();
       }
       if (suppressModalClose !== true && this.uploadModal) {
-        this.uploadModal.classList.add("hidden");
-        setGlobalModalState("upload", false);
+        this.uploadModal.close();
       }
       await this.loadVideos();
       this.showSuccess("Video shared successfully!");
@@ -5359,42 +4846,17 @@ class bitvidApp {
   /**
    * Actually handle the upload form submission.
    */
-  async handleUploadSubmit() {
-    const titleEl = document.getElementById("uploadTitle");
-    const urlEl = document.getElementById("uploadUrl");
-    const magnetEl = document.getElementById("uploadMagnet");
-    const wsEl = document.getElementById("uploadWs");
-    const xsEl = document.getElementById("uploadXs");
-    const thumbEl = document.getElementById("uploadThumbnail");
-    const descEl = document.getElementById("uploadDescription");
-    const privEl = document.getElementById("uploadIsPrivate");
-    const commentsEl = document.getElementById("uploadEnableComments");
-
-    const payload = {
-      title: titleEl?.value.trim() || "",
-      url: urlEl?.value.trim() || "",
-      magnet: magnetEl?.value.trim() || "",
-      ws: wsEl?.value.trim() || "",
-      xs: xsEl?.value.trim() || "",
-      thumbnail: thumbEl?.value.trim() || "",
-      description: descEl?.value.trim() || "",
-      enableComments: commentsEl ? commentsEl.checked : true,
-    };
+  async handleUploadSubmitEvent(event) {
+    const payload = event?.detail?.payload || {};
 
     try {
       await this.authService.handleUploadSubmit(payload, {
         publish: (data) =>
           this.publishVideoNote(data, {
             onSuccess: () => {
-              if (titleEl) titleEl.value = "";
-              if (urlEl) urlEl.value = "";
-              if (magnetEl) magnetEl.value = "";
-              if (wsEl) wsEl.value = "";
-              if (xsEl) xsEl.value = "";
-              if (thumbEl) thumbEl.value = "";
-              if (descEl) descEl.value = "";
-              if (privEl) privEl.checked = false;
-              if (commentsEl) commentsEl.checked = true;
+              if (this.uploadModal?.resetCustomForm) {
+                this.uploadModal.resetCustomForm();
+              }
             },
           }),
       });
@@ -5528,7 +4990,9 @@ class bitvidApp {
 
     await this.loadVideos();
     this.forceRefreshAllProfiles();
-    await this.refreshCloudflareBucketPreview();
+    if (this.uploadModal?.refreshCloudflareBucketPreview) {
+      await this.uploadModal.refreshCloudflareBucketPreview();
+    }
   }
 
   async handleAuthLogout(detail = {}) {
@@ -5587,7 +5051,9 @@ class bitvidApp {
 
     await this.loadVideos();
     this.forceRefreshAllProfiles();
-    await this.refreshCloudflareBucketPreview();
+    if (this.uploadModal?.refreshCloudflareBucketPreview) {
+      await this.uploadModal.refreshCloudflareBucketPreview();
+    }
   }
 
   handleProfileUpdated(detail = {}) {
