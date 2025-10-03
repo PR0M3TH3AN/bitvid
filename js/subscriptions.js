@@ -3,8 +3,61 @@ import {
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
 } from "./nostr.js";
-import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
+import {
+  buildSubscriptionListEvent,
+  SUBSCRIPTION_LIST_IDENTIFIER,
+} from "./nostrEventSchemas.js";
+import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
+import {
+  publishEventToRelays,
+  assertAnyRelayAccepted,
+} from "./nostrPublish.js";
+
+let attachHealthBadgesLoader = null;
+let attachHealthBadgesErrorLogged = false;
+
+function scheduleAttachHealthBadges(container) {
+  if (!container) {
+    return;
+  }
+
+  if (!attachHealthBadgesLoader) {
+    attachHealthBadgesLoader = import("./gridHealth.js")
+      .then((module) => module?.attachHealthBadges || null)
+      .catch((error) => {
+        if (!attachHealthBadgesErrorLogged) {
+          attachHealthBadgesErrorLogged = true;
+          if (typeof console !== "undefined") {
+            console.warn(
+              "[SubscriptionsManager] Failed to load grid health helpers:",
+              error
+            );
+          }
+        }
+        return null;
+      });
+  }
+
+  attachHealthBadgesLoader
+    .then((fn) => {
+      if (typeof fn === "function") {
+        try {
+          fn(container);
+        } catch (error) {
+          if (typeof console !== "undefined") {
+            console.warn(
+              "[SubscriptionsManager] attachHealthBadges threw:",
+              error
+            );
+          }
+        }
+      }
+    })
+    .catch(() => {
+      // Errors are already logged above; no-op here to keep Promise chains quiet.
+    });
+}
 
 function getAbsoluteShareUrl(nevent) {
   if (!nevent) {
@@ -58,7 +111,7 @@ class SubscriptionsManager {
       const filter = {
         kinds: [30002],
         authors: [userPubkey],
-        "#d": ["subscriptions"],
+        "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
         limit: 1,
       };
 
@@ -168,33 +221,68 @@ class SubscriptionsManager {
       throw err;
     }
 
-    const evt = {
-      kind: 30002,
+    const evt = buildSubscriptionListEvent({
       pubkey: userPubkey,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [["d", "subscriptions"]],
       content: cipherText,
-    };
+    });
 
+    let signedEvent;
     try {
-      const signedEvent = await window.nostr.signEvent(evt);
-      await Promise.all(
-        nostrClient.relays.map(async (relay) => {
-          try {
-            await nostrClient.pool.publish([relay], signedEvent);
-          } catch (e) {
+      signedEvent = await window.nostr.signEvent(evt);
+    } catch (signErr) {
+      console.error("Failed to sign subscription list:", signErr);
+      throw signErr;
+    }
+
+    const publishResults = await publishEventToRelays(
+      nostrClient.pool,
+      nostrClient.relays,
+      signedEvent
+    );
+
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, {
+        context: "subscription list",
+      });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
             console.error(
-              `[SubscriptionsManager] Failed to publish to ${relay}`,
-              e
+              `[SubscriptionsManager] Subscription list rejected by ${url}: ${reason}`,
+              relayError || reason
             );
           }
-        })
-      );
-      this.subsEventId = signedEvent.id;
-      console.log("Subscription list published, event id:", signedEvent.id);
-    } catch (signErr) {
-      console.error("Failed to sign/publish subscription list:", signErr);
+        );
+      }
+      throw publishError;
     }
+
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        console.warn(
+          `[SubscriptionsManager] Subscription list not accepted by ${url}: ${reason}`,
+          relayError
+        );
+      });
+    }
+
+    this.subsEventId = signedEvent.id;
+    const acceptedUrls = publishSummary.accepted.map(({ url }) => url);
+    console.log(
+      "Subscription list published, event id:",
+      signedEvent.id,
+      "accepted relays:",
+      acceptedUrls
+    );
   }
 
   /**
@@ -223,6 +311,8 @@ class SubscriptionsManager {
         "<p class='text-gray-500'>No subscriptions found.</p>";
       return;
     }
+
+    container.innerHTML = getSidebarLoadingMarkup("Fetching subscriptions…");
 
     // Gather all videos
     const videos = await this.fetchSubscribedVideos(channelHexes);
@@ -604,7 +694,7 @@ class SubscriptionsManager {
     });
 
     container.appendChild(fragment);
-    attachHealthBadges(container);
+    scheduleAttachHealthBadges(container);
     attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
       if (!window.app?.handleUrlHealthBadge) {
         return;

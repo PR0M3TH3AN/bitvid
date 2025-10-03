@@ -1,53 +1,23 @@
-const containerState = new WeakMap();
+import { createCardObserver } from "./dom/cardObserver.js";
+import { safeDecodeURIComponent } from "./utils/safeDecode.js";
+
 const ROOT_MARGIN = "0px";
 const THRESHOLD = 0.25;
 
-function decodeUrl(value) {
-  if (typeof value !== "string" || !value) {
-    return "";
-  }
-  try {
-    return decodeURIComponent(value);
-  } catch (err) {
-    return value;
-  }
-}
-
-function ensureState(container) {
-  let state = containerState.get(container);
-  if (state) {
-    return state;
-  }
-
-  const observedCards = new WeakSet();
-  const observer = new IntersectionObserver(
-    (entries) => {
-      processEntries(entries, state);
-    },
-    { root: null, rootMargin: ROOT_MARGIN, threshold: THRESHOLD }
-  );
-
-  state = {
-    observer,
-    observedCards,
-    onCheck: null,
-  };
-  containerState.set(container, state);
-  return state;
-}
-
-function processEntries(entries, state) {
-  if (!state?.onCheck || !Array.isArray(entries) || !entries.length) {
-    return;
-  }
-
-  entries.forEach((entry) => {
-    if (!entry.isIntersecting || entry.intersectionRatio <= 0) {
-      return;
+const urlCardObserver = createCardObserver({
+  rootMargin: ROOT_MARGIN,
+  threshold: THRESHOLD,
+  isCardVisible: (entry) => {
+    if (!entry) {
+      return false;
     }
-
-    const card = entry.target;
-    if (!(card instanceof HTMLElement)) {
+    const isIntersecting = Boolean(entry.isIntersecting);
+    const ratio = typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
+    return isIntersecting && ratio > 0;
+  },
+  createState: () => ({ onCheck: null }),
+  onCardVisible: ({ card, state }) => {
+    if (!state || typeof state.onCheck !== "function") {
       return;
     }
 
@@ -71,7 +41,7 @@ function processEntries(entries, state) {
       return;
     }
 
-    const url = decodeUrl(encodedUrl);
+    const url = safeDecodeURIComponent(encodedUrl);
     if (!url) {
       return;
     }
@@ -81,44 +51,20 @@ function processEntries(entries, state) {
     } catch (err) {
       console.warn("[urlHealthObserver] onCheck handler failed", err);
     }
-  });
-}
+  },
+});
 
 export function attachUrlHealthBadges(container, onCheck) {
   if (!(container instanceof HTMLElement)) {
     return;
   }
 
-  const state = ensureState(container);
-  if (typeof onCheck === "function") {
+  const state = urlCardObserver.observe(container);
+  if (state && typeof onCheck === "function") {
     state.onCheck = onCheck;
-  }
-
-  const cards = container.querySelectorAll(".video-card");
-  cards.forEach((card) => {
-    if (!(card instanceof HTMLElement)) {
-      return;
-    }
-    if (state.observedCards.has(card)) {
-      return;
-    }
-    state.observedCards.add(card);
-    state.observer.observe(card);
-  });
-
-  const records = state.observer.takeRecords();
-  if (records.length) {
-    processEntries(records, state);
   }
 }
 
 export function refreshUrlHealthBadges(container) {
-  const state = containerState.get(container);
-  if (!state) {
-    return;
-  }
-  const records = state.observer.takeRecords();
-  if (records.length) {
-    processEntries(records, state);
-  }
+  urlCardObserver.refresh(container);
 }

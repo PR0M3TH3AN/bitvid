@@ -1,7 +1,10 @@
 // js/userBlocks.js
 import { nostrClient } from "./nostr.js";
-
-const BLOCK_LIST_IDENTIFIER = "user-blocks";
+import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
+import {
+  publishEventToRelays,
+  assertAnyRelayAccepted,
+} from "./nostrPublish.js";
 
 function normalizeHex(pubkey) {
   if (typeof pubkey !== "string") {
@@ -250,25 +253,53 @@ class UserBlockListManager {
       throw err;
     }
 
-    const event = {
-      kind: 30002,
+    const event = buildBlockListEvent({
       pubkey: normalized,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [["d", BLOCK_LIST_IDENTIFIER]],
       content: cipherText,
-    };
+    });
 
     const signedEvent = await window.nostr.signEvent(event);
 
-    await Promise.all(
-      nostrClient.relays.map(async (relay) => {
-        try {
-          await nostrClient.pool.publish([relay], signedEvent);
-        } catch (err) {
-          console.error(`[UserBlockList] Failed to publish to ${relay}:`, err);
-        }
-      })
+    const publishResults = await publishEventToRelays(
+      nostrClient.pool,
+      nostrClient.relays,
+      signedEvent
     );
+
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, {
+        context: "block list",
+      });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
+            console.error(
+              `[UserBlockList] Block list rejected by ${url}: ${reason}`,
+              relayError || reason
+            );
+          }
+        );
+      }
+      throw publishError;
+    }
+
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        console.warn(
+          `[UserBlockList] Block list not accepted by ${url}: ${reason}`,
+          relayError
+        );
+      });
+    }
 
     this.blockEventId = signedEvent.id;
     return signedEvent;

@@ -1,746 +1,1230 @@
+// Run with: node tests/watch-history.test.mjs
+
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 
+const { WATCH_HISTORY_PAYLOAD_MAX_BYTES, WATCH_HISTORY_MAX_ITEMS } =
+  await import("../js/config.js");
 const {
-  WATCH_HISTORY_LIST_IDENTIFIER,
-  WATCH_HISTORY_KIND,
-} = await import("../js/config.js");
+  getWatchHistoryV2Enabled,
+  setWatchHistoryV2Enabled,
+} = await import("../js/constants.js");
+const {
+  nostrClient,
+  chunkWatchHistoryPayloadItems,
+} = await import("../js/nostr.js");
+const { watchHistoryService } = await import("../js/watchHistoryService.js");
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
 }
 
-if (!globalThis.window.NostrTools) {
-  globalThis.window.NostrTools = {};
+if (!window.crypto || !window.crypto.subtle) {
+  const { webcrypto } = await import("node:crypto");
+  window.crypto = webcrypto;
 }
 
-globalThis.window.NostrTools.getEventHash = (event) => {
-  const payload = `${event.kind}:${event.pubkey}:${event.created_at}`;
-  return `hash-${Buffer.from(payload).toString("hex")}`;
+const originalFlag = getWatchHistoryV2Enabled();
+setWatchHistoryV2Enabled(true);
+
+const originalWindowNostr = window.nostr;
+const originalNostrTools = window.NostrTools || {};
+const originalPool = nostrClient.pool;
+const originalRelays = Array.isArray(nostrClient.relays)
+  ? [...nostrClient.relays]
+  : nostrClient.relays;
+const originalReadRelays = Array.isArray(nostrClient.readRelays)
+  ? [...nostrClient.readRelays]
+  : nostrClient.readRelays;
+const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+  ? [...nostrClient.writeRelays]
+  : nostrClient.writeRelays;
+const originalEnsureSessionActor = nostrClient.ensureSessionActor;
+const originalSessionActor = nostrClient.sessionActor;
+const originalPubkey = nostrClient.pubkey;
+const originalWatchHistoryLastCreatedAt = nostrClient.watchHistoryLastCreatedAt;
+const originalRecordVideoView = nostrClient.recordVideoView;
+const originalWatchHistoryCache = nostrClient.watchHistoryCache;
+const originalWatchHistoryStorage = nostrClient.watchHistoryStorage;
+const originalScheduleWatchHistoryRepublish =
+  nostrClient.scheduleWatchHistoryRepublish;
+const originalResolveWatchHistory = nostrClient.resolveWatchHistory;
+const originalGetWatchHistoryFingerprint =
+  nostrClient.getWatchHistoryFingerprint;
+
+nostrClient.watchHistoryCache = new Map();
+nostrClient.watchHistoryStorage = {
+  version: 2,
+  actors: {},
 };
 
-globalThis.window.NostrTools.signEvent = (event, privateKey) =>
-  `sig-${privateKey.slice(0, 8)}-${event.created_at}`;
+function cloneEvent(event) {
+  return JSON.parse(JSON.stringify(event));
+}
 
-delete globalThis.window.NostrTools.nip04;
-delete globalThis.window.nostr;
-
-const { nostrClient } = await import("../js/nostr.js");
-
-function createPublishingClient(actorPubkey) {
-  const client = new nostrClient.constructor();
+function createFakeSimplePool() {
+  let resolver = () => ({ ok: true });
   const publishedEvents = [];
-  const payloads = [];
-  client.pool = {
-    publish(urls, event) {
-      publishedEvents.push(event);
-      return {
-        on(eventName, handler) {
-          if (eventName === "ok" || eventName === "seen") {
-            setTimeout(handler, 0);
+  const publishLog = [];
+  let callIndex = 0;
+
+  const pool = {
+    publish(relays, event) {
+      const normalizedRelays = Array.isArray(relays) ? [...relays] : [];
+      const clonedEvent = cloneEvent(event);
+      const entry = {
+        index: callIndex += 1,
+        relays: normalizedRelays,
+        event: clonedEvent,
+        handlers: {},
+      };
+      publishLog.push(entry);
+
+      const handle = {
+        on(type, handler) {
+          if (typeof handler === "function") {
+            entry.handlers[type] = handler;
           }
+          return handle;
         },
       };
+
+      setTimeout(() => {
+        let outcome;
+        try {
+          outcome = resolver({
+            index: entry.index,
+            relays: normalizedRelays,
+            event: clonedEvent,
+          });
+        } catch (error) {
+          outcome = { ok: false, error };
+        }
+        if (outcome && outcome.ok) {
+          publishedEvents.push(cloneEvent(clonedEvent));
+          if (typeof entry.handlers.ok === "function") {
+            entry.handlers.ok();
+          }
+        } else if (typeof entry.handlers.failed === "function") {
+          entry.handlers.failed(
+            outcome?.error || new Error("publish failed"),
+          );
+        }
+      }, 0);
+
+      return handle;
     },
-    list: async () => [],
+
+    list(relays, filters) {
+      const matched = [];
+      const listFilters = Array.isArray(filters) ? filters : [];
+      for (const filter of listFilters) {
+        const matches = publishedEvents.filter((event) => {
+          if (
+            Array.isArray(filter?.kinds) &&
+            !filter.kinds.includes(event.kind)
+          ) {
+            return false;
+          }
+          if (
+            Array.isArray(filter?.authors) &&
+            !filter.authors.includes(event.pubkey)
+          ) {
+            return false;
+          }
+          if (Array.isArray(filter?.["#d"])) {
+            const dValues = (event.tags || [])
+              .filter(
+                (tag) =>
+                  Array.isArray(tag) &&
+                  tag[0] === "d" &&
+                  typeof tag[1] === "string",
+              )
+              .map((tag) => tag[1]);
+            if (!dValues.some((value) => filter["#d"].includes(value))) {
+              return false;
+            }
+          }
+          if (Array.isArray(filter?.["#snapshot"])) {
+            const snapshotValues = (event.tags || [])
+              .filter(
+                (tag) =>
+                  Array.isArray(tag) &&
+                  tag[0] === "snapshot" &&
+                  typeof tag[1] === "string",
+              )
+              .map((tag) => tag[1]);
+            if (
+              !snapshotValues.some((value) => filter["#snapshot"].includes(value))
+            ) {
+              return false;
+            }
+          }
+          return true;
+        });
+        const limited = Number.isFinite(filter?.limit)
+          ? matches.slice(0, Math.max(0, Math.floor(filter.limit)))
+          : matches;
+        matched.push(limited.map((event) => cloneEvent(event)));
+      }
+      return Promise.resolve(matched);
+    },
+
+    reset() {
+      publishedEvents.length = 0;
+      publishLog.length = 0;
+      callIndex = 0;
+    },
+
+    setResolver(fn) {
+      resolver = typeof fn === "function" ? fn : () => ({ ok: true });
+    },
+
+    getEvents() {
+      return publishedEvents.map((event) => cloneEvent(event));
+    },
+
+    getPublishLog() {
+      return publishLog.map((entry) => ({
+        index: entry.index,
+        relays: [...entry.relays],
+        event: cloneEvent(entry.event),
+      }));
+    },
   };
-  client.relays = ["wss://unit.test"];
-  client.pubkey = "";
-  client.sessionActor = { pubkey: actorPubkey, privateKey: "unit-secret" };
-  client.ensureSessionActor = async () => actorPubkey;
-  client.encryptWatchHistoryPayload = async (_actor, payload) => {
-    payloads.push(payload);
-    return { ok: true, ciphertext: JSON.stringify(payload) };
-  };
-  client.persistWatchHistoryEntry = () => {};
-  client.cancelWatchHistoryRepublish = () => {};
-  client.scheduleWatchHistoryRepublish = () => {};
-  return { client, publishedEvents, payloads };
+
+  return pool;
 }
 
-function createDecryptClient(actorPubkey) {
-  const client = new nostrClient.constructor();
-  client.sessionActor = { pubkey: actorPubkey, privateKey: "unit-secret" };
-  client.ensureSessionActor = async () => actorPubkey;
-  return client;
-}
+const poolHarness = createFakeSimplePool();
+nostrClient.pool = poolHarness;
+nostrClient.relays = ["wss://relay.test"];
+nostrClient.readRelays = ["wss://relay.test"];
+nostrClient.writeRelays = ["wss://relay.test"];
 
-const ACTOR = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-const { client: publishingClient, publishedEvents, payloads } =
-  createPublishingClient(ACTOR);
-
-publishingClient.watchHistoryPayloadMaxBytes = 400;
-publishingClient.watchHistoryFetchEventLimit = 10;
-
-const baseWatchedAt = 1_700_000_000_000;
-const longPointers = Array.from({ length: 8 }, (_, index) => {
-  const relay = index % 3 === 0 ? "wss://relay.unit" : null;
-  const watchedAt = baseWatchedAt + index * 60_000;
-  if (index % 2 === 0) {
-    return {
-      type: "e",
-      value: `event-${index}-${"x".repeat(90)}`,
-      relay,
-      watchedAt,
-    };
-  }
+function installSessionCrypto({ privateKey }) {
+  const original = window.NostrTools || {};
+  let encryptCalls = 0;
+  let decryptCalls = 0;
+  window.NostrTools = {
+    ...original,
+    getEventHash: (event) =>
+      `hash-${event.kind}-${event.created_at}-${event.tags?.length || 0}`,
+    signEvent: (event, key) => ({
+      ...event,
+      id: `signed-${event.kind}-${event.created_at}-${event.tags?.length || 0}`,
+      sig: `sig-${key}`,
+    }),
+    nip04: {
+      ...(original.nip04 || {}),
+      encrypt: async (secret, pub, plaintext) => {
+        encryptCalls += 1;
+        const payload = Buffer.from(plaintext, "utf8").toString("base64");
+        return `session:${secret}:${pub}:${payload}`;
+      },
+      decrypt: async (secret, pub, ciphertext) => {
+        decryptCalls += 1;
+        const prefix = `session:${secret}:${pub}:`;
+        if (!ciphertext.startsWith(prefix)) {
+          throw new Error("invalid-session-ciphertext");
+        }
+        const encoded = ciphertext.slice(prefix.length);
+        return Buffer.from(encoded, "base64").toString("utf8");
+      },
+    },
+  };
   return {
-    type: "a",
-    value: `30078:${ACTOR}:history-${index}-${"y".repeat(60)}`,
-    relay,
-    watchedAt,
+    restore() {
+      window.NostrTools = original;
+    },
+    getEncryptCalls: () => encryptCalls,
+    getDecryptCalls: () => decryptCalls,
   };
-});
-
-const publishResult = await publishingClient.publishWatchHistorySnapshot(
-  ACTOR,
-  longPointers
-);
-
-assert.equal(publishResult.ok, true, "publish should report success");
-assert(publishResult.events.length > 1, "snapshot should chunk into multiple events");
-assert.equal(
-  publishResult.events.length,
-  payloads.length,
-  "each chunk should produce an encryption payload"
-);
-
-payloads.forEach((payload) => {
-  const size = JSON.stringify(payload).length;
-  assert(
-    size <= publishingClient.watchHistoryPayloadMaxBytes,
-    `payload size ${size} should respect cap`
-  );
-  assert.equal(payload.version, 2, "chunk payload should use version 2");
-});
-
-const snapshotIds = new Set(
-  publishResult.events.map((event) =>
-    event.tags.find((tag) => Array.isArray(tag) && tag[0] === "snapshot")?.[1]
-  )
-);
-assert.equal(snapshotIds.size, 1, "all chunks should share a snapshot id");
-
-const headTag = publishResult.event.tags.find(
-  (tag) => Array.isArray(tag) && tag[0] === "head"
-);
-assert(headTag, "head chunk should include head tag");
-
-const chunkIdentifiers = publishResult.events.map((event) =>
-  event.tags.find((tag) => Array.isArray(tag) && tag[0] === "d")?.[1]
-);
-
-assert.equal(
-  chunkIdentifiers.length,
-  publishResult.events.length,
-  "each chunk should expose a d tag"
-);
-
-assert.equal(
-  chunkIdentifiers[0],
-  WATCH_HISTORY_LIST_IDENTIFIER,
-  "head chunk should retain canonical watch history identifier"
-);
-
-const uniqueChunkIdentifiers = new Set(chunkIdentifiers);
-assert.equal(
-  uniqueChunkIdentifiers.size,
-  publishResult.events.length,
-  "each chunk should have a unique d tag"
-);
-
-chunkIdentifiers.slice(1).forEach((identifier, index) => {
-  assert(
-    identifier && identifier.startsWith("watch-history:"),
-    `chunk ${index + 1} should use a watch-history namespace identifier`
-  );
-  assert.notEqual(
-    identifier,
-    WATCH_HISTORY_LIST_IDENTIFIER,
-    "only the head chunk should use the canonical identifier"
-  );
-});
-
-const headATags = publishResult.event.tags
-  .filter((tag) => Array.isArray(tag) && tag[0] === "a")
-  .map((tag) => tag[1]);
-
-const expectedChunkAddresses = publishResult.events.map((event) => {
-  const identifier = event.tags.find(
-    (tag) => Array.isArray(tag) && tag[0] === "d"
-  )?.[1];
-  assert(identifier, "chunk should include identifier tag");
-  return `${WATCH_HISTORY_KIND}:${ACTOR}:${identifier}`;
-});
-
-expectedChunkAddresses.forEach((address) => {
-  assert(
-    headATags.includes(address),
-    `head chunk should reference ${address}`
-  );
-});
-
-delete globalThis.window.nostr;
-
-if (!globalThis.window.NostrTools.nip04) {
-  globalThis.window.NostrTools.nip04 = {};
 }
 
-globalThis.window.NostrTools.nip04.decrypt = async (
-  _priv,
-  _pub,
-  ciphertext
-) => ciphertext;
-
-const decryptClient = createDecryptClient(ACTOR);
-decryptClient.relays = ["wss://unit.test"];
-decryptClient.watchHistoryFetchEventLimit = 10;
-decryptClient.pool = {
-  list: async () => publishedEvents,
-};
-
-const fetched = await decryptClient.fetchWatchHistory(ACTOR);
-
-assert.equal(
-  fetched.items.length,
-  longPointers.length,
-  "fetch should reassemble all chunked items"
-);
-
-assert.deepEqual(
-  fetched.items.map((item) => ({
-    type: item.type,
-    value: item.value,
-    relay: item.relay || null,
-    watchedAt: item.watchedAt,
-  })),
-  longPointers.map((item) => ({
-    type: item.type,
-    value: item.value,
-    relay: item.relay || null,
-    watchedAt: item.watchedAt,
-  })),
-  "chunked fetch should preserve pointer order and timestamps"
-);
-
-if (typeof localStorage !== "undefined") {
-  localStorage.clear();
+function installExtensionCrypto({ actor }) {
+  const originalNostr = window.nostr;
+  const originalTools = window.NostrTools || {};
+  let extensionEncrypts = 0;
+  let extensionDecrypts = 0;
+  let fallbackEncrypts = 0;
+  window.nostr = {
+    signEvent: async (event) => ({
+      ...event,
+      id: `ext-${event.kind}-${event.created_at}`,
+      sig: "ext-signature",
+    }),
+    nip04: {
+      encrypt: async (target, plaintext) => {
+        extensionEncrypts += 1;
+        const payload = Buffer.from(plaintext, "utf8").toString("base64");
+        return `extension:${target}:${payload}`;
+      },
+      decrypt: async (target, ciphertext) => {
+        extensionDecrypts += 1;
+        const prefix = `extension:${target}:`;
+        if (!ciphertext.startsWith(prefix)) {
+          throw new Error("invalid-extension-ciphertext");
+        }
+        const encoded = ciphertext.slice(prefix.length);
+        return Buffer.from(encoded, "base64").toString("utf8");
+      },
+    },
+  };
+  window.NostrTools = {
+    ...originalTools,
+    nip04: {
+      ...(originalTools.nip04 || {}),
+      encrypt: () => {
+        fallbackEncrypts += 1;
+        throw new Error("fallback-encrypt-used");
+      },
+      decrypt: async (secret, pub, ciphertext) => {
+        const prefix = `session:${secret}:${pub}:`;
+        if (!ciphertext.startsWith(prefix)) {
+          throw new Error("invalid-session-ciphertext");
+        }
+        const encoded = ciphertext.slice(prefix.length);
+        return Buffer.from(encoded, "base64").toString("utf8");
+      },
+    },
+  };
+  return {
+    restore() {
+      window.nostr = originalNostr;
+      window.NostrTools = originalTools;
+    },
+    getExtensionEncrypts: () => extensionEncrypts,
+    getExtensionDecrypts: () => extensionDecrypts,
+    getFallbackEncrypts: () => fallbackEncrypts,
+  };
 }
 
-const headEvent = publishResult.event;
-const chunkEvents = publishResult.events.filter(
-  (event) => event.id !== headEvent.id
-);
-
-const snapshotId = headEvent.tags.find(
-  (tag) => Array.isArray(tag) && tag[0] === "snapshot"
-)?.[1];
-
-const freshClient = createDecryptClient(ACTOR);
-freshClient.relays = ["wss://unit.test"];
-freshClient.watchHistoryFetchEventLimit = 10;
-
-const observedFilters = [];
-freshClient.pool = {
-  list: async (_relays, filters) => {
-    observedFilters.push(filters);
-
-    const firstFilter = filters[0] || {};
-    const dFilter = Array.isArray(firstFilter["#d"])
-      ? firstFilter["#d"]
-      : [];
-
-    if (filters.length === 1 && dFilter.includes(WATCH_HISTORY_LIST_IDENTIFIER)) {
-      return [headEvent];
-    }
-
-    const requestedIdentifiers = new Set();
-    const requestedSnapshots = new Set();
-
-    for (const filter of filters) {
-      if (Array.isArray(filter?.["#d"])) {
-        for (const identifier of filter["#d"]) {
-          requestedIdentifiers.add(identifier);
-        }
-      }
-      if (Array.isArray(filter?.["#snapshot"])) {
-        for (const value of filter["#snapshot"]) {
-          requestedSnapshots.add(value);
-        }
-      }
-    }
-
-    const responses = [];
-
-    for (const event of publishResult.events) {
-      const identifier = event.tags.find(
-        (tag) => Array.isArray(tag) && tag[0] === "d"
-      )?.[1];
-      const eventSnapshot = event.tags.find(
-        (tag) => Array.isArray(tag) && tag[0] === "snapshot"
-      )?.[1];
-
-      if (identifier && requestedIdentifiers.has(identifier)) {
-        responses.push(event);
-        continue;
-      }
-      if (eventSnapshot && requestedSnapshots.has(eventSnapshot)) {
-        responses.push(event);
-      }
-    }
-
-    return responses;
-  },
-};
-
-const rebuilt = await freshClient.fetchWatchHistory(ACTOR);
-
-assert.equal(
-  rebuilt.items.length,
-  longPointers.length,
-  "fresh client should rebuild full watch history list"
-);
-
-assert.deepEqual(
-  rebuilt.items.map((item) => ({
-    type: item.type,
-    value: item.value,
-    relay: item.relay || null,
-    watchedAt: item.watchedAt,
-  })),
-  longPointers.map((item) => ({
-    type: item.type,
-    value: item.value,
-    relay: item.relay || null,
-    watchedAt: item.watchedAt,
-  })),
-  "rebuilt snapshot should preserve timestamps"
-);
-
-assert(
-  observedFilters.length >= 2,
-  "fetch should include a follow-up query for chunk events"
-);
-
-const followUpFilters = observedFilters[observedFilters.length - 1];
-const identifiersRequested = new Set();
-let snapshotRequested = false;
-
-for (const filter of followUpFilters) {
-  if (Array.isArray(filter?.["#d"])) {
-    for (const identifier of filter["#d"]) {
-      identifiersRequested.add(identifier);
+function extractChunkIdentifier(event) {
+  const tags = Array.isArray(event?.tags) ? event.tags : [];
+  for (const tag of tags) {
+    if (Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string") {
+      return tag[1];
     }
   }
-  if (Array.isArray(filter?.["#snapshot"])) {
-    snapshotRequested = snapshotRequested || filter["#snapshot"].includes(snapshotId);
-  }
+  return "";
 }
 
-assert(
-  chunkEvents.every((event) => {
-    const identifier = event.tags.find(
-      (tag) => Array.isArray(tag) && tag[0] === "d"
-    )?.[1];
-    return (
-      identifiersRequested.has(identifier) ||
-      (snapshotId && snapshotRequested)
+function maxCreatedAt(events = []) {
+  return events.reduce((max, event) => {
+    if (!event || typeof event !== "object") {
+      return max;
+    }
+    const created = Number.isFinite(event.created_at) ? event.created_at : 0;
+    return created > max ? created : max;
+  }, 0);
+}
+
+async function testPublishSnapshotCanonicalizationAndChunking() {
+  poolHarness.reset();
+  poolHarness.setResolver(() => ({ ok: true }));
+
+  const actor = "session-pubkey";
+  const restoreCrypto = installSessionCrypto({ privateKey: "session-priv" });
+
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
+  const originalLastCreated = nostrClient.watchHistoryLastCreatedAt;
+  const originalDateNow = Date.now;
+
+  try {
+    nostrClient.pubkey = "";
+    nostrClient.sessionActor = { pubkey: actor, privateKey: "session-priv" };
+    nostrClient.ensureSessionActor = async () => actor;
+    nostrClient.watchHistoryLastCreatedAt = 0;
+
+    let nowValue = 1_700_000_000_000;
+    Date.now = () => nowValue;
+
+    const hugeValueA = `event-${"a".repeat(35000)}`;
+    const hugeValueB = `event-${"b".repeat(35000)}`;
+    const rawItems = [
+      { type: "e", value: hugeValueB, watchedAt: 210 },
+      { type: "e", value: hugeValueA, watchedAt: 200 },
+      { type: "e", value: "pointer-dup", watchedAt: 100 },
+      { type: "e", value: "pointer-dup", watchedAt: 150 },
+      { type: "a", value: "30023:pub:episode", relay: "wss://relay.one", watchedAt: 90 },
+      { tag: ["a", "30023:pub:episode", "wss://relay.two"] },
+      { type: "e", value: "pointer-small", watchedAt: 80 },
+    ];
+
+    const firstResult = await nostrClient.publishWatchHistorySnapshot(rawItems, {
+      actorPubkey: actor,
+      snapshotId: "session-snapshot",
+    });
+
+    assert.ok(firstResult.ok, "snapshot should succeed with session crypto");
+    assert.equal(
+      firstResult.items.length,
+      5,
+      "canonicalization should dedupe pointer entries by key",
     );
-  }),
-  "follow-up query should target chunk identifiers or snapshot"
-);
+    const dupMatches = firstResult.items.filter(
+      (item) => item.value === "pointer-dup",
+    );
+    assert.equal(
+      dupMatches.length,
+      1,
+      "duplicate pointer should be collapsed into a single canonical entry",
+    );
+    assert.equal(
+      dupMatches[0].watchedAt,
+      150,
+      "canonical pointer should retain the newest watchedAt timestamp",
+    );
+    const anchorPointer = firstResult.items.find(
+      (item) => item.value === "30023:pub:episode",
+    );
+    assert.ok(anchorPointer, "address pointer should survive normalization");
+    assert.equal(
+      anchorPointer.relay,
+      "wss://relay.one",
+      "existing relay metadata should persist when deduping",
+    );
 
-const MONOTONIC_ACTOR = `${ACTOR}-monotonic`;
-const { client: monotonicPublishingClient, publishedEvents: monotonicEvents } =
-  createPublishingClient(MONOTONIC_ACTOR);
+    assert.equal(
+      firstResult.chunkEvents.length,
+      2,
+      "large payload should be chunked across two encrypted events",
+    );
 
-const monotonicOriginalDateNow = Date.now;
-try {
-  const monotonicBaseSeconds = 1_700_123_456;
-  Date.now = () => monotonicBaseSeconds * 1000;
+    const decrypt = window.NostrTools?.nip04?.decrypt;
+    assert.equal(
+      typeof decrypt,
+      "function",
+      "session decrypt stub should be installed",
+    );
 
-  const firstMonotonicPointers = [
-    { type: "e", value: "event-monotonic-1", relay: null },
-    { type: "e", value: "event-monotonic-2", relay: null },
-  ];
+    for (const chunkEvent of firstResult.chunkEvents) {
+      assert.notEqual(
+        chunkEvent.content.trim()[0],
+        "{",
+        "chunk content must remain encrypted and avoid plaintext fallbacks",
+      );
+      const plaintext = await decrypt(
+        "session-priv",
+        actor,
+        chunkEvent.content,
+      );
+      const payload = JSON.parse(plaintext);
+      assert.equal(payload.snapshot, "session-snapshot");
+      assert(Array.isArray(payload.items), "chunk payload should include items");
+      const serializedLength = plaintext.length;
+      assert(
+        serializedLength <= WATCH_HISTORY_PAYLOAD_MAX_BYTES,
+        `chunk payload should respect WATCH_HISTORY_PAYLOAD_MAX_BYTES (observed ${serializedLength})`,
+      );
+    }
 
-  const firstSnapshot = await monotonicPublishingClient.publishWatchHistorySnapshot(
-    MONOTONIC_ACTOR,
-    firstMonotonicPointers
-  );
+    const pointerAddresses = firstResult.pointerEvent.tags.filter(
+      (tag) => Array.isArray(tag) && tag[0] === "a",
+    );
+    assert.equal(
+      pointerAddresses.length,
+      2,
+      "pointer event should reference each published chunk",
+    );
 
-  const baselineEntry = monotonicPublishingClient.createWatchHistoryEntry(
-    firstSnapshot.event,
-    firstMonotonicPointers,
-    Date.now()
-  );
-  monotonicPublishingClient.watchHistoryCache.set(
-    MONOTONIC_ACTOR,
-    baselineEntry
-  );
+    const firstCreatedMax = maxCreatedAt([
+      ...firstResult.chunkEvents,
+      firstResult.pointerEvent,
+    ]);
 
-  const secondMonotonicPointers = [
-    { type: "e", value: "event-monotonic-3", relay: null },
-    { type: "e", value: "event-monotonic-1", relay: null },
-  ];
+    const fingerprintOne = await nostrClient.getWatchHistoryFingerprint(
+      actor,
+      firstResult.items,
+    );
+    assert.equal(
+      typeof fingerprintOne,
+      "string",
+      "fingerprint generation should yield a deterministic digest",
+    );
 
-  const secondSnapshot = await monotonicPublishingClient.publishWatchHistorySnapshot(
-    MONOTONIC_ACTOR,
-    secondMonotonicPointers,
-    baselineEntry
-  );
+    nowValue -= 120_000;
+    const secondResult = await nostrClient.publishWatchHistorySnapshot(
+      [{ type: "e", value: "second-pointer", watchedAt: 50 }],
+      { actorPubkey: actor, snapshotId: "session-followup" },
+    );
+    assert.ok(
+      secondResult.ok,
+      "follow-up snapshot should succeed when time moves backwards",
+    );
+    const secondCreatedMin = maxCreatedAt([
+      ...secondResult.chunkEvents,
+      secondResult.pointerEvent,
+    ]);
+    assert(
+      secondCreatedMin > firstCreatedMax,
+      "created_at guard should enforce monotonic timestamps between snapshots",
+    );
+    const fingerprintTwo = await nostrClient.getWatchHistoryFingerprint(
+      actor,
+      secondResult.items,
+    );
+    assert.notEqual(
+      fingerprintOne,
+      fingerprintTwo,
+      "fingerprint should change when canonical items differ",
+    );
 
-  assert(
-    secondSnapshot.event.created_at > firstSnapshot.event.created_at,
-    "new snapshot should advance created_at when reusing the same second"
-  );
-
-  const monotonicDecryptClient = createDecryptClient(MONOTONIC_ACTOR);
-  monotonicDecryptClient.pool = { list: async () => monotonicEvents };
-
-  const monotonicFetched = await monotonicDecryptClient.fetchWatchHistory(
-    MONOTONIC_ACTOR
-  );
-
-  assert.deepEqual(
-    monotonicFetched.items.map((item) => ({
-      type: item.type,
-      value: item.value,
-      relay: item.relay || null,
-    })),
-    [
-      { type: "e", value: "event-monotonic-3", relay: null },
-      { type: "e", value: "event-monotonic-1", relay: null },
-    ],
-    "newer snapshot should win pointer ordering"
-  );
-} finally {
-  Date.now = monotonicOriginalDateNow;
+    const chunkingPreview = chunkWatchHistoryPayloadItems(
+      firstResult.items,
+      "preview",
+      40_000,
+    );
+    assert.equal(
+      chunkingPreview.chunks.length,
+      2,
+      "chunk helper should split payloads when the configured limit is smaller than the canonical snapshot",
+    );
+    assert.equal(
+      chunkingPreview.skipped.length,
+      0,
+      "no canonical entries should be skipped when the limit exceeds individual pointer size",
+    );
+  } finally {
+    restoreCrypto.restore();
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+    nostrClient.watchHistoryLastCreatedAt = originalLastCreated;
+    Date.now = originalDateNow;
+  }
 }
 
-localStorage.clear();
+async function testPublishSnapshotUsesExtensionCrypto() {
+  poolHarness.reset();
+  poolHarness.setResolver(() => ({ ok: true }));
 
-const UPDATE_ACTOR = `${ACTOR}-update`;
-const { client: updateClient } = createPublishingClient(UPDATE_ACTOR);
-const updateOriginalDateNow = Date.now;
-try {
-  const updateTimestamp = 1_701_111_111_111;
-  Date.now = () => updateTimestamp;
+  const actor = "ext-pubkey";
+  const sessionRestore = installSessionCrypto({ privateKey: "session-priv" });
+  const extension = installExtensionCrypto({ actor });
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
 
-  const updateResult = await updateClient.updateWatchHistoryList({
-    type: "e",
-    value: "update-pointer",
-    relay: null,
-  });
+  try {
+    nostrClient.pubkey = actor;
+    nostrClient.sessionActor = null;
+    nostrClient.ensureSessionActor = async () => actor;
 
-  assert.equal(
-    updateResult.ok,
-    true,
-    "updateWatchHistoryList should publish when adding a new pointer"
-  );
-  const updateEntry = updateClient.watchHistoryCache.get(UPDATE_ACTOR);
-  assert(updateEntry, "updateWatchHistoryList should cache the new entry");
-  assert.equal(
-    updateEntry.items[0].watchedAt,
-    updateTimestamp,
-    "cached entry should record watchedAt from Date.now()"
-  );
-  assert.equal(
-    updateResult.items[0].watchedAt,
-    updateTimestamp,
-    "returned publish result should include the watchedAt timestamp"
-  );
-} finally {
-  Date.now = updateOriginalDateNow;
+    const result = await nostrClient.publishWatchHistorySnapshot(
+      [
+        { type: "e", value: "ext-pointer-1", watchedAt: 100 },
+        { type: "e", value: "ext-pointer-2", watchedAt: 50 },
+      ],
+      { actorPubkey: actor, snapshotId: "extension" },
+    );
+
+    assert.ok(result.ok, "extension-driven snapshot should succeed");
+    assert.equal(
+      extension.getFallbackEncrypts(),
+      0,
+      "session fallback encryptor should remain unused when extension path is active",
+    );
+    assert(extension.getExtensionEncrypts() > 0, "extension encrypt should be invoked");
+
+    const decrypt = window.nostr?.nip04?.decrypt;
+    assert.equal(
+      typeof decrypt,
+      "function",
+      "extension decrypt helper should be available",
+    );
+
+    const decrypted = await decrypt(actor, result.chunkEvents[0].content);
+    const payload = JSON.parse(decrypted);
+    assert.equal(payload.snapshot, "extension");
+    assert.equal(
+      payload.items.length,
+      result.items.length,
+      "decrypted payload should match canonical item count",
+    );
+  } finally {
+    extension.restore();
+    sessionRestore.restore();
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+  }
 }
 
-const REMOVE_ACTOR = `${ACTOR}-remove`;
-const {
-  client: removalClient,
-  payloads: removalPayloads,
-} = createPublishingClient(REMOVE_ACTOR);
+async function testPublishSnapshotFailureRetry() {
+  poolHarness.reset();
+  nostrClient.watchHistoryLastCreatedAt = 0;
 
-const removalPointers = [
-  {
-    type: "e",
-    value: "remove-first",
-    relay: null,
-    watchedAt: 1_701_222_000_000,
-  },
-  {
-    type: "e",
-    value: "remove-second",
-    relay: null,
-    watchedAt: 1_701_222_100_000,
-  },
-];
+  const actor = "retry-actor";
+  const restoreCrypto = installSessionCrypto({ privateKey: "retry-priv" });
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
 
-await removalClient.publishWatchHistorySnapshot(
-  REMOVE_ACTOR,
-  removalPointers
-);
+  try {
+    nostrClient.pubkey = "";
+    nostrClient.sessionActor = { pubkey: actor, privateKey: "retry-priv" };
+    nostrClient.ensureSessionActor = async () => actor;
 
-const removalKey = `e:${removalPointers[1].value.trim().toLowerCase()}`;
-const removalResult = await removalClient.removeWatchHistoryItem(removalKey);
+    let failureCount = 0;
+    poolHarness.setResolver(({ event }) => {
+      const identifier = extractChunkIdentifier(event);
+      if (identifier.endsWith(":0")) {
+        failureCount += 1;
+        return { ok: false, error: new Error("relay-rejection") };
+      }
+      return { ok: true };
+    });
 
-assert.equal(removalResult.ok, true, "removeWatchHistoryItem should succeed");
-assert.equal(
-  removalResult.removedKey,
-  removalKey,
-  "removeWatchHistoryItem should echo the removed pointer key"
-);
+    const failed = await nostrClient.publishWatchHistorySnapshot(
+      [{ type: "e", value: "retry-pointer", watchedAt: 42 }],
+      { actorPubkey: actor, snapshotId: "retry" },
+    );
 
-const latestRemovalPayload = removalPayloads[removalPayloads.length - 1];
-assert.equal(
-  latestRemovalPayload.items.length,
-  1,
-  "removal republish should trim the pointer list"
-);
-assert.equal(
-  latestRemovalPayload.items[0].value,
-  removalPointers[0].value,
-  "republished payload should only include remaining pointer"
-);
-assert.equal(
-  latestRemovalPayload.items[0].watchedAt,
-  removalPointers[0].watchedAt,
-  "republished payload should preserve watchedAt"
-);
+    assert.equal(failed.ok, false, "snapshot should surface relay rejections");
+    assert.equal(failed.retryable, true, "chunk rejection should be retryable");
+    assert.equal(
+      failureCount,
+      1,
+      "resolver should be invoked for the failed chunk",
+    );
 
-const removalEntry = removalClient.watchHistoryCache.get(REMOVE_ACTOR);
-assert.equal(
-  removalEntry.items.length,
-  1,
-  "watch history cache should drop the removed pointer"
-);
-assert.equal(
-  removalEntry.items[0].value,
-  removalPointers[0].value,
-  "remaining cached pointer should match the survivor"
-);
-assert.equal(
-  removalEntry.items[0].watchedAt,
-  removalPointers[0].watchedAt,
-  "remaining cached pointer should retain watchedAt"
-);
-
-assert.equal(
-  removalResult.items.map((item) => item.value).join(","),
-  removalPointers.slice(0, 1).map((item) => item.value).join(","),
-  "removeWatchHistoryItem result should reflect updated items"
-);
-assert.equal(
-  removalResult.items[0].watchedAt,
-  removalPointers[0].watchedAt,
-  "removeWatchHistoryItem result should preserve watchedAt"
-);
-
-const VIDEO_POINTER_AUTHOR = `${ACTOR}-video-author`;
-const VIDEO_POINTER_IDENTIFIER = "pointer-video-identifier";
-const videoPointer = {
-  type: "a",
-  value: `${WATCH_HISTORY_KIND}:${VIDEO_POINTER_AUTHOR}:${VIDEO_POINTER_IDENTIFIER}`,
-  relay: null,
-};
-
-const pointerClient = createDecryptClient(ACTOR);
-const pointerEntry = pointerClient.createWatchHistoryEntry(
-  null,
-  [videoPointer],
-  Date.now()
-);
-pointerClient.watchHistoryCache.set(ACTOR, pointerEntry);
-pointerClient.fetchWatchHistory = async () => {};
-
-const observedResolveFilters = [];
-const videoEvent = {
-  id: "video-pointer-event",
-  kind: WATCH_HISTORY_KIND,
-  pubkey: VIDEO_POINTER_AUTHOR,
-  created_at: 1_700_555_000,
-  tags: [["d", VIDEO_POINTER_IDENTIFIER]],
-  content: JSON.stringify({
-    version: 3,
-    title: "Pointer Video",
-    url: "https://cdn.example.com/video.mp4",
-  }),
-};
-
-pointerClient.pool = {
-  list: async (_relays, filters) => {
-    observedResolveFilters.push(filters);
-    return [videoEvent];
-  },
-};
-
-const resolvedFromPointer = await pointerClient.resolveWatchHistory(1);
-
-const pointerKey = `a:${videoPointer.value.trim().toLowerCase()}`;
-
-assert.equal(
-  resolvedFromPointer.length,
-  1,
-  "resolveWatchHistory should return results for 'a' style video pointers"
-);
-assert.equal(
-  resolvedFromPointer[0].id,
-  videoEvent.id,
-  "resolved video should match the pointer event id"
-);
-assert.equal(
-  resolvedFromPointer[0].title,
-  "Pointer Video",
-  "resolved video should parse title from the event payload"
-);
-
-assert(resolvedFromPointer[0].watchHistory, "resolved video should include watchHistory metadata");
-assert.equal(
-  resolvedFromPointer[0].watchHistory.key,
-  pointerKey,
-  "watchHistory metadata should expose the pointer key"
-);
-assert.equal(
-  resolvedFromPointer[0].watchHistory.pointer.value,
-  videoPointer.value,
-  "watchHistory metadata should include the pointer payload"
-);
-assert.equal(
-  resolvedFromPointer[0].watchHistory.pointer.watchedAt,
-  pointerEntry.items[0].watchedAt,
-  "watchHistory metadata should preserve watchedAt"
-);
-
-const cachedEntry = pointerClient.watchHistoryCache.get(ACTOR);
-assert(
-  cachedEntry.resolvedVideos.has(pointerKey),
-  "resolved cache should retain the video"
-);
-assert.equal(
-  cachedEntry.resolvedVideos.get(pointerKey)?.id,
-  videoEvent.id,
-  "resolved cache should store the converted video result"
-);
-assert(
-  cachedEntry.delivered.has(pointerKey),
-  "delivery set should mark the pointer as delivered"
-);
-
-assert(
-  observedResolveFilters.some((filters) =>
-    filters.some((filter) =>
-      Array.isArray(filter?.["#d"]) &&
-      filter["#d"].includes(VIDEO_POINTER_IDENTIFIER)
-    )
-  ),
-  "resolveWatchHistory should request the video identifier instead of treating it as a chunk"
-);
-
-const secondResolve = await pointerClient.resolveWatchHistory(1);
-assert.equal(
-  secondResolve.length,
-  0,
-  "subsequent resolve calls should avoid refetching already delivered videos"
-);
-
-pointerClient.resetWatchHistoryProgress(ACTOR);
-assert.equal(
-  cachedEntry.delivered.size,
-  0,
-  "resetWatchHistoryProgress should clear delivered pointers"
-);
-
-pointerClient.pool = {
-  list: async () => {
-    throw new Error("cached resolve should not trigger network fetch");
-  },
-};
-
-const cachedResolve = await pointerClient.resolveWatchHistory(1);
-assert.equal(
-  cachedResolve.length,
-  1,
-  "reset should allow cached videos to be delivered again"
-);
-assert.equal(
-  cachedResolve[0].id,
-  videoEvent.id,
-  "cached resolve should reuse the stored video payload"
-);
-assert(
-  cachedResolve[0].watchHistory?.watchedAt === pointerEntry.items[0].watchedAt,
-  "cached resolve should retain watchHistory metadata"
-);
-
-const originalDateNow = Date.now;
-try {
-  const baseTime = 1_700_000_000_000;
-  const ttlActor = `${ACTOR}-ttl`;
-  const pointer = { type: "e", value: "event-ttl", relay: null };
-
-  const cachingClient = createDecryptClient(ttlActor);
-  cachingClient.watchHistoryCacheTtlMs = 24 * 60 * 60 * 1000;
-
-  Date.now = () => baseTime;
-
-  const entry = cachingClient.createWatchHistoryEntry(null, [pointer], baseTime);
-  cachingClient.watchHistoryCache.set(ttlActor, entry);
-  cachingClient.persistWatchHistoryEntry(ttlActor, entry);
-
-  const reloadClient = createDecryptClient(ttlActor);
-  reloadClient.watchHistoryCacheTtlMs = cachingClient.watchHistoryCacheTtlMs;
-
-  Date.now = () => baseTime + 60 * 60 * 1000;
-
-  const cachedSnapshot = await reloadClient.fetchWatchHistory(ttlActor);
-  assert.equal(
-    cachedSnapshot.items.length,
-    1,
-    "cached snapshot should survive within extended TTL"
-  );
-  assert.equal(
-    cachedSnapshot.items[0].value,
-    pointer.value,
-    "cached snapshot should preserve pointer"
-  );
-
-  localStorage.clear();
-
-  const expiryClient = createDecryptClient(ttlActor);
-  expiryClient.watchHistoryCacheTtlMs = 1_000;
-
-  Date.now = () => baseTime;
-
-  const expiringEntry = expiryClient.createWatchHistoryEntry(
-    null,
-    [pointer],
-    baseTime
-  );
-  expiryClient.watchHistoryCache.set(ttlActor, expiringEntry);
-  expiryClient.persistWatchHistoryEntry(ttlActor, expiringEntry);
-
-  Date.now = () => baseTime + 1_500;
-
-  const expiredSnapshot = await expiryClient.fetchWatchHistory(ttlActor);
-  assert.equal(
-    expiredSnapshot.items.length,
-    0,
-    "expired snapshot should be dropped"
-  );
-  const cachedFallback = expiryClient.watchHistoryCache.get(ttlActor);
-  assert.equal(
-    cachedFallback?.items?.length ?? 0,
-    0,
-    "expired snapshot should not preserve stale items in memory"
-  );
-  const storage = expiryClient.getWatchHistoryStorage();
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(storage.actors, ttlActor),
-    false,
-    "expired snapshot should be removed from localStorage"
-  );
-} finally {
-  Date.now = originalDateNow;
+    poolHarness.setResolver(() => ({ ok: true }));
+    const succeeded = await nostrClient.publishWatchHistorySnapshot(
+      [{ type: "e", value: "retry-pointer", watchedAt: 43 }],
+      { actorPubkey: actor, snapshotId: "retry" },
+    );
+    assert.ok(succeeded.ok, "subsequent snapshot should succeed after failure");
+    assert(
+      poolHarness.getPublishLog().length >= 3,
+      "publish harness should record chunk and pointer attempts",
+    );
+  } finally {
+    restoreCrypto.restore();
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+  }
 }
 
-console.log("watch history tests passed");
+async function testWatchHistoryPartialRelayRetry() {
+  poolHarness.reset();
+  watchHistoryService.resetProgress();
+  nostrClient.watchHistoryLastCreatedAt = 0;
+
+  const actor = "partial-actor";
+  const restoreCrypto = installSessionCrypto({ privateKey: "partial-priv" });
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : nostrClient.relays;
+  const originalWriteRelays = Array.isArray(nostrClient.writeRelays)
+    ? [...nostrClient.writeRelays]
+    : nostrClient.writeRelays;
+  const originalPublishSnapshot = nostrClient.publishWatchHistorySnapshot;
+  const originalSchedule = nostrClient.scheduleWatchHistoryRepublish;
+  const originalRecordView = nostrClient.recordVideoView;
+
+  try {
+    nostrClient.pubkey = actor;
+    nostrClient.sessionActor = { pubkey: actor, privateKey: "partial-priv" };
+    nostrClient.ensureSessionActor = async () => actor;
+
+    const relaySet = [
+      "wss://relay.one",
+      "wss://relay.two",
+      "wss://relay.three",
+    ];
+    nostrClient.relays = [...relaySet];
+    nostrClient.writeRelays = [...relaySet];
+
+    let attemptIndex = 0;
+    let currentAttempt = 0;
+    nostrClient.publishWatchHistorySnapshot = async function publishWithTracking(
+      ...args
+    ) {
+      attemptIndex += 1;
+      currentAttempt = attemptIndex;
+      return originalPublishSnapshot.apply(this, args);
+    };
+
+    nostrClient.recordVideoView = async () => ({
+      ok: true,
+      event: {
+        id: `view-${Date.now()}`,
+        pubkey: actor,
+        created_at: Math.floor(Date.now() / 1000),
+      },
+    });
+
+    await watchHistoryService.publishView(
+      { type: "e", value: "partial-pointer" },
+      Math.floor(Date.now() / 1000),
+      { actor },
+    );
+
+    const queuedBefore = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      queuedBefore.length,
+      1,
+      "queue should contain the partial pointer before snapshot",
+    );
+    assert.deepEqual(
+      nostrClient.writeRelays,
+      relaySet,
+      "write relays should include all configured endpoints",
+    );
+
+    const attemptPlans = [
+      {
+        "wss://relay.one": true,
+        "wss://relay.two": true,
+        "wss://relay.three": false,
+      },
+      {
+        "wss://relay.one": true,
+        "wss://relay.two": false,
+        "wss://relay.three": true,
+      },
+      {
+        "wss://relay.one": true,
+        "wss://relay.two": true,
+        "wss://relay.three": true,
+      },
+    ];
+
+    poolHarness.setResolver(({ relays }) => {
+      const relayUrl = Array.isArray(relays) && relays.length ? relays[0] : "";
+      const index = Math.min(
+        Math.max(currentAttempt, 1) - 1,
+        attemptPlans.length - 1,
+      );
+      const plan = attemptPlans[index] || {};
+      const accept = plan?.[relayUrl];
+      if (accept) {
+        return { ok: true };
+      }
+      return { ok: false, error: new Error(`reject-${relayUrl || "unknown"}`) };
+    });
+
+    const scheduledRuns = [];
+    nostrClient.scheduleWatchHistoryRepublish = (snapshotId, operation) => {
+      const promise = (async () => {
+        let attempt = 1;
+        let result = null;
+        for (; attempt <= attemptPlans.length + 1; attempt += 1) {
+          result = await operation(attempt);
+          if (result?.ok || !result?.retryable) {
+            break;
+          }
+        }
+        return result;
+      })();
+      scheduledRuns.push({ snapshotId, promise });
+      return { attempt: 1, delay: 0 };
+    };
+
+    let thrownError = null;
+    try {
+      await watchHistoryService.snapshot(null, { actor, reason: "partial-test" });
+    } catch (error) {
+      thrownError = error;
+    }
+
+    assert(thrownError, "snapshot should throw when partial acceptance occurs");
+    assert.equal(
+      thrownError?.result?.retryable,
+      true,
+      "partial failures should be marked retryable",
+    );
+    assert.equal(
+      thrownError?.result?.error,
+      "partial-relay-acceptance",
+      "partial failures should expose the partial acceptance error code",
+    );
+    assert(thrownError?.result?.partial, "result should report partial acceptance");
+
+    const initialPointerStatus =
+      thrownError?.result?.publishResults?.relayStatus?.pointer || [];
+    assert(
+      initialPointerStatus.some((entry) => entry && entry.success === false),
+      "initial relay status should capture pointer rejections",
+    );
+
+    assert(
+      attemptIndex >= 1,
+      "initial snapshot attempt should increment the attempt counter",
+    );
+    assert.equal(
+      scheduledRuns.length,
+      1,
+      "partial failure should schedule a republish operation",
+    );
+
+    const finalResult = await scheduledRuns[0].promise;
+    assert(finalResult?.ok, "republish attempts should converge to success");
+    assert.equal(
+      attemptIndex,
+      3,
+      "republish loop should retry until every relay accepts",
+    );
+    assert.equal(
+      finalResult?.partial,
+      false,
+      "final result should not mark the publish as partial",
+    );
+
+    const finalPointerStatus =
+      finalResult?.publishResults?.relayStatus?.pointer || [];
+    assert.equal(
+      finalPointerStatus.filter((entry) => entry?.success).length,
+      relaySet.length,
+      "final pointer publish should succeed on all relays",
+    );
+    for (const chunkStatus of finalResult?.publishResults?.relayStatus?.chunks || []) {
+      assert.equal(
+        chunkStatus.filter((entry) => entry?.success).length,
+        relaySet.length,
+        "final chunk publish should succeed on all relays",
+      );
+    }
+
+    const remainingQueue = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      remainingQueue.length,
+      0,
+      "queue should remain empty after successful retries",
+    );
+  } finally {
+    nostrClient.scheduleWatchHistoryRepublish = originalSchedule;
+    nostrClient.publishWatchHistorySnapshot = originalPublishSnapshot;
+    nostrClient.relays = originalRelays;
+    nostrClient.writeRelays = originalWriteRelays;
+    nostrClient.recordVideoView = originalRecordView;
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+    poolHarness.setResolver(() => ({ ok: true }));
+    watchHistoryService.resetProgress(actor);
+    restoreCrypto.restore();
+  }
+}
+
+async function testResolveWatchHistoryBatchingWindow() {
+  const actor = "batch-window-actor";
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalPub = nostrClient.pubkey;
+  const originalFetch = nostrClient.fetchWatchHistory;
+  const originalCache = nostrClient.watchHistoryCache;
+  const originalStorage = nostrClient.watchHistoryStorage;
+
+  try {
+    nostrClient.pubkey = "";
+    nostrClient.ensureSessionActor = async () => actor;
+    nostrClient.watchHistoryCache = new Map();
+    nostrClient.watchHistoryStorage = { version: 2, actors: {} };
+
+    const syntheticItems = Array.from({ length: 24 }, (_, index) => ({
+      type: "e",
+      value: `pointer-${index}`,
+      watchedAt: 1_700_100_000 + index,
+    }));
+
+    nostrClient.fetchWatchHistory = async () => ({
+      items: syntheticItems.map((item) => ({ ...item })),
+      snapshotId: "batch-snapshot",
+      pointerEvent: null,
+    });
+
+    const resolved = await nostrClient.resolveWatchHistory(actor, {
+      forceRefresh: true,
+    });
+
+    assert.equal(
+      resolved.length,
+      Math.min(WATCH_HISTORY_MAX_ITEMS, syntheticItems.length),
+      "batched resolve should return the full window when no page size override is configured",
+    );
+    assert(resolved.length > 1, "resolved history should include multiple entries");
+    assert.equal(
+      resolved[0]?.value,
+      "pointer-23",
+      "resolved items should remain sorted by newest watchedAt value",
+    );
+    const uniqueValues = new Set(resolved.map((item) => item?.value));
+    assert.equal(
+      uniqueValues.size,
+      resolved.length,
+      "resolved history should retain all unique pointers",
+    );
+  } finally {
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.pubkey = originalPub;
+    nostrClient.fetchWatchHistory = originalFetch;
+    nostrClient.watchHistoryCache = originalCache;
+    nostrClient.watchHistoryStorage = originalStorage;
+  }
+}
+
+async function testWatchHistoryServiceIntegration() {
+  poolHarness.reset();
+  poolHarness.setResolver(() => ({ ok: true }));
+
+  const actor = "service-actor";
+  const restoreCrypto = installSessionCrypto({ privateKey: "service-priv" });
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
+  const originalWatchHistoryCacheTtl = nostrClient.watchHistoryCacheTtlMs;
+
+  try {
+    nostrClient.pubkey = "npub-logged";
+    nostrClient.sessionActor = { pubkey: actor, privateKey: "service-priv" };
+    nostrClient.ensureSessionActor = async () => actor;
+    nostrClient.watchHistoryLastCreatedAt = 0;
+    nostrClient.watchHistoryCache.clear();
+    nostrClient.watchHistoryFingerprints = new Map();
+    nostrClient.watchHistoryCacheTtlMs = 60_000;
+
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+
+    let viewCreatedAt = 1_700_000_010;
+    nostrClient.recordVideoView = async (_pointer, options = {}) => ({
+      ok: true,
+      event: {
+        id: `view-${viewCreatedAt}`,
+        pubkey: actor,
+        created_at: options.created_at || viewCreatedAt,
+      },
+    });
+
+    const beforeFingerprint = await watchHistoryService.getFingerprint(actor);
+    assert.equal(
+      typeof beforeFingerprint,
+      "string",
+      "fingerprint lookup should always return a string value",
+    );
+
+    await watchHistoryService.publishView(
+      { type: "e", value: "video-one" },
+      viewCreatedAt,
+      { actor },
+    );
+    viewCreatedAt += 60;
+    await watchHistoryService.publishView(
+      { type: "e", value: "video-one" },
+      viewCreatedAt,
+      { actor },
+    );
+    viewCreatedAt += 30;
+    await watchHistoryService.publishView(
+      { type: "a", value: "30023:pub:episode" },
+      viewCreatedAt,
+      { actor },
+    );
+
+    const queued = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(queued.length, 2, "queue should dedupe repeated pointers");
+
+    const snapshotResult = await watchHistoryService.snapshot(null, {
+      actor,
+      reason: "integration",
+    });
+    assert.ok(snapshotResult.ok, "snapshot should publish queued pointers");
+    assert.equal(
+      watchHistoryService.getQueuedPointers(actor).length,
+      0,
+      "queue should be cleared after successful snapshot",
+    );
+
+    const resolvedItems = await watchHistoryService.loadLatest(actor);
+    assert.deepEqual(
+      resolvedItems,
+      snapshotResult.items,
+      "loadLatest should return decrypted canonical pointers",
+    );
+    assert(resolvedItems[0].watchedAt >= resolvedItems[1].watchedAt);
+    assert.equal(
+      resolvedItems[0].session,
+      true,
+      "session flag should persist through publish and load",
+    );
+
+    const afterFingerprint = await watchHistoryService.getFingerprint(actor);
+    assert.notEqual(
+      afterFingerprint,
+      beforeFingerprint,
+      "fingerprint should update after publishing a snapshot",
+    );
+
+    const latestFingerprint = await nostrClient.getWatchHistoryFingerprint(
+      actor,
+      resolvedItems,
+    );
+    assert.equal(
+      afterFingerprint,
+      latestFingerprint,
+      "service fingerprint cache should align with canonical digest",
+    );
+  } finally {
+    restoreCrypto.restore();
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+    nostrClient.watchHistoryCacheTtlMs = originalWatchHistoryCacheTtl;
+    nostrClient.watchHistoryCache.clear();
+    nostrClient.watchHistoryFingerprints = new Map();
+  }
+}
+
+async function testWatchHistoryLocalFallbackWhenDisabled() {
+  console.log("Running watch history local fallback test...");
+
+  const actor = "local-fallback-actor";
+  const originalRecordView = nostrClient.recordVideoView;
+  const originalPub = nostrClient.pubkey;
+  const originalSession = nostrClient.sessionActor;
+
+  try {
+    setWatchHistoryV2Enabled(false);
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = "";
+    nostrClient.sessionActor = { pubkey: actor, privateKey: "local-priv" };
+    nostrClient.recordVideoView = async (_pointer, options = {}) => ({
+      ok: true,
+      event: {
+        id: "local-view",
+        pubkey: actor,
+        created_at: options.created_at || 1_700_500_000,
+      },
+    });
+
+    const supported =
+      typeof watchHistoryService.supportsLocalHistory === "function"
+        ? watchHistoryService.supportsLocalHistory(actor)
+        : true;
+    const localOnly =
+      typeof watchHistoryService.isLocalOnly === "function"
+        ? watchHistoryService.isLocalOnly(actor)
+        : true;
+    const enabled =
+      typeof watchHistoryService.isEnabled === "function"
+        ? watchHistoryService.isEnabled(actor)
+        : false;
+    assert.equal(
+      supported,
+      true,
+      "service should report local history support while sync disabled",
+    );
+    assert.equal(localOnly, true, "guest session should be treated as local only");
+    assert.equal(
+      enabled,
+      false,
+      "sync should be disabled for session actors when feature flag is off",
+    );
+
+    const createdAt = 1_700_500_000;
+    await watchHistoryService.publishView(
+      { type: "e", value: "local-pointer" },
+      createdAt,
+      { actor },
+    );
+
+    const queued = watchHistoryService.getQueuedPointers(actor);
+    assert.equal(
+      queued.length,
+      1,
+      "local queue should retain pointer when sync is disabled",
+    );
+
+    const latest = await watchHistoryService.loadLatest(actor);
+    assert.equal(
+      latest.length,
+      1,
+      "loadLatest should surface session queue entries when sync disabled",
+    );
+    assert.equal(latest[0]?.value, "local-pointer");
+    assert.equal(latest[0]?.type, "e");
+    assert(
+      Number.isFinite(latest[0]?.watchedAt) && latest[0].watchedAt > 0,
+      "local fallback entries should carry watchedAt timestamps",
+    );
+  } finally {
+    setWatchHistoryV2Enabled(true);
+    watchHistoryService.resetProgress();
+    nostrClient.recordVideoView = originalRecordView;
+    nostrClient.pubkey = originalPub;
+    nostrClient.sessionActor = originalSession;
+  }
+}
+
+async function testWatchHistorySyncEnabledForLoggedInUsers() {
+  console.log("Running watch history logged-in sync override test...");
+
+  const actor = "npub-logged-sync";
+  const originalPub = nostrClient.pubkey;
+  const originalSession = nostrClient.sessionActor;
+  const originalResolve = nostrClient.resolveWatchHistory;
+  const originalFingerprint = nostrClient.getWatchHistoryFingerprint;
+
+  try {
+    setWatchHistoryV2Enabled(false);
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = actor;
+    nostrClient.sessionActor = null;
+
+    let resolveCalls = 0;
+    nostrClient.resolveWatchHistory = async (requestedActor, options = {}) => {
+      resolveCalls += 1;
+      assert.equal(
+        requestedActor,
+        actor,
+        "resolveWatchHistory should target the logged-in actor",
+      );
+      assert.equal(
+        options?.forceRefresh,
+        true,
+        "loadLatest should force a relay refresh for logged-in actors",
+      );
+      return [
+        {
+          type: "e",
+          value: "remote-pointer",
+          watchedAt: 1_700_600_000,
+        },
+      ];
+    };
+
+    let fingerprintCalls = 0;
+    nostrClient.getWatchHistoryFingerprint = async (requestedActor, items) => {
+      fingerprintCalls += 1;
+      assert.equal(
+        requestedActor,
+        actor,
+        "fingerprint lookup should use the logged-in actor",
+      );
+      assert(Array.isArray(items), "fingerprint helper expects item array input");
+      return "fingerprint-logged";
+    };
+
+    const enabled =
+      typeof watchHistoryService.isEnabled === "function"
+        ? watchHistoryService.isEnabled(actor)
+        : false;
+    assert.equal(
+      enabled,
+      true,
+      "sync should remain enabled for logged-in actors even when the flag is disabled",
+    );
+
+    const items = await watchHistoryService.loadLatest(actor);
+    assert.equal(
+      resolveCalls > 0,
+      true,
+      "loadLatest should fetch from relays for logged-in actors",
+    );
+    assert.equal(items.length, 1, "loadLatest should return relay data for logged-in actors");
+    assert.equal(items[0]?.value, "remote-pointer");
+    assert.equal(
+      fingerprintCalls > 0,
+      true,
+      "fingerprint cache should update for logged-in actors",
+    );
+  } finally {
+    setWatchHistoryV2Enabled(true);
+    watchHistoryService.resetProgress();
+    nostrClient.resolveWatchHistory = originalResolve;
+    nostrClient.getWatchHistoryFingerprint = originalFingerprint;
+    nostrClient.pubkey = originalPub;
+    nostrClient.sessionActor = originalSession;
+  }
+}
+
+async function testWatchHistoryAppLoginFallback() {
+  console.log("Running watch history app login fallback test...");
+
+  const actor = "f".repeat(64);
+  const originalPub = nostrClient.pubkey;
+  const originalSession = nostrClient.sessionActor;
+  const originalApp = typeof window.app === "undefined" ? undefined : window.app;
+
+  try {
+    setWatchHistoryV2Enabled(false);
+    localStorage.clear();
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = "";
+    nostrClient.sessionActor = null;
+    window.app = {
+      pubkey: actor,
+      normalizeHexPubkey(value) {
+        if (typeof value === "string" && value.trim()) {
+          return value.trim().toLowerCase();
+        }
+        return null;
+      },
+    };
+
+    const enabled =
+      typeof watchHistoryService.isEnabled === "function"
+        ? watchHistoryService.isEnabled(actor)
+        : false;
+    assert.equal(
+      enabled,
+      true,
+      "sync should be enabled when the app reports a logged-in pubkey",
+    );
+  } finally {
+    setWatchHistoryV2Enabled(true);
+    watchHistoryService.resetProgress();
+    nostrClient.pubkey = originalPub;
+    nostrClient.sessionActor = originalSession;
+    if (typeof originalApp === "undefined") {
+      delete window.app;
+    } else {
+      window.app = originalApp;
+    }
+  }
+}
+
+await testPublishSnapshotCanonicalizationAndChunking();
+await testPublishSnapshotUsesExtensionCrypto();
+await testPublishSnapshotFailureRetry();
+await testWatchHistoryPartialRelayRetry();
+await testResolveWatchHistoryBatchingWindow();
+await testWatchHistoryServiceIntegration();
+await testWatchHistoryLocalFallbackWhenDisabled();
+await testWatchHistorySyncEnabledForLoggedInUsers();
+await testWatchHistoryAppLoginFallback();
+
+console.log("watch-history.test.mjs completed successfully");
+
+window.nostr = originalWindowNostr;
+window.NostrTools = originalNostrTools;
+nostrClient.pool = originalPool;
+nostrClient.relays = originalRelays;
+nostrClient.readRelays = originalReadRelays;
+nostrClient.writeRelays = originalWriteRelays;
+nostrClient.ensureSessionActor = originalEnsureSessionActor;
+nostrClient.sessionActor = originalSessionActor;
+nostrClient.pubkey = originalPubkey;
+nostrClient.watchHistoryLastCreatedAt = originalWatchHistoryLastCreatedAt;
+nostrClient.recordVideoView = originalRecordVideoView;
+nostrClient.watchHistoryCache = originalWatchHistoryCache;
+nostrClient.watchHistoryStorage = originalWatchHistoryStorage;
+nostrClient.scheduleWatchHistoryRepublish =
+  originalScheduleWatchHistoryRepublish;
+nostrClient.resolveWatchHistory = originalResolveWatchHistory;
+nostrClient.getWatchHistoryFingerprint =
+  originalGetWatchHistoryFingerprint;
+
+if (!originalFlag) {
+  setWatchHistoryV2Enabled(false);
+}

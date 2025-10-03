@@ -48,12 +48,15 @@ export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 /**
  * Nostr kind used when persisting watch history events.
  *
- * BitVid’s roadmap standardizes on kind 30078 so that watch events, view logs,
- * and media metadata stay in the same family of documents. Operators that want
- * to experiment with a separate list kind (for example, a NIP-51 collection)
- * can flip this number so long as their relays accept the chosen kind.
+ * BitVid’s roadmap standardizes on kind 30079 so that watch events, view logs,
+ * and media metadata stay in the same family of documents. During the rollout
+ * from the legacy 30078 payloads, clients query both kinds so historical data
+ * keeps syncing; remove the compatibility fetch once all writers emit the new
+ * kind. Operators that want to experiment with a separate list kind (for
+ * example, a NIP-51 collection) can flip this number so long as their relays
+ * accept the chosen kind.
  */
-export const WATCH_HISTORY_KIND = 30078;
+export const WATCH_HISTORY_KIND = 30079;
 
 /**
  * Identifier applied to the watch-history list when storing it on relays.
@@ -65,6 +68,25 @@ export const WATCH_HISTORY_KIND = 30078;
  */
 export const WATCH_HISTORY_LIST_IDENTIFIER = "watch-history";
 
+/**
+ * Legacy identifiers that BitVid clients should continue honoring when
+ * fetching historical watch-history snapshots.
+ */
+export const WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS = Object.freeze([
+  "watch-history:v2:index",
+]);
+
+/**
+ * Whether to enable the V2 encrypted watch-history service.
+ *
+ * The runtime flag that controls this feature defaults to `false` so that new
+ * deployments stick with the analytics-only view flow until operators opt in.
+ * To enable V2, set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_WATCH_HISTORY_V2 = true`
+ * in a bootstrap script (or override the value before the app loads). When the
+ * flag stays off, BitVid still emits legacy view events and will honor
+ * existing watch-history reads per plan §12, but the sync UI will surface a
+ * disabled banner instead of querying relays.
+ */
 /**
  * Maximum number of watch-history entries to retain per user.
  *
@@ -85,6 +107,17 @@ export const WATCH_HISTORY_MAX_ITEMS = 1500;
 export const WATCH_HISTORY_BATCH_RESOLVE = true;
 
 /**
+ * Maximum number of canonical items each batched watch-history response should
+ * include.
+ *
+ * Leave this as `null` (the default) to return the full
+ * `WATCH_HISTORY_MAX_ITEMS` window, even when batching is enabled. Deployments
+ * that page through histories in smaller slices can set a positive integer to
+ * cap the resolver output so pagination and API responses stay aligned.
+ */
+export const WATCH_HISTORY_BATCH_PAGE_SIZE = null;
+
+/**
  * Maximum size of the JSON payload for each watch-history chunk, measured
  * before encryption.
  *
@@ -102,7 +135,7 @@ export const WATCH_HISTORY_PAYLOAD_MAX_BYTES = 60000;
  * the maximum number of chunks you expect a client to publish in one snapshot
  * so the UI can stitch the full list back together.
  */
-export const WATCH_HISTORY_FETCH_EVENT_LIMIT = 12;
+export const WATCH_HISTORY_FETCH_EVENT_LIMIT = 64;
 
 /**
  * How long clients should cache watch-history snapshots in localStorage.
@@ -113,3 +146,34 @@ export const WATCH_HISTORY_FETCH_EVENT_LIMIT = 12;
  * retention guarantees.
  */
 export const WATCH_HISTORY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long the view counter should treat repeat plays as duplicates.
+ *
+ * BitVid de-duplicates view events that occur within this rolling window so
+ * quick refreshes or stalled replays do not inflate the totals. The default of
+ * 24 hours mirrors common analytics tooling, but you can tighten or relax the
+ * window depending on how aggressively you want to filter repeat traffic.
+ */
+export const VIEW_COUNT_DEDUPE_WINDOW_SECONDS = 86_400;
+
+/**
+ * How far back the view counter should hydrate historical events during
+ * backfills.
+ *
+ * When a new analytics worker starts up, it can walk older Nostr events to
+ * reconstruct totals. Limiting the backfill horizon keeps catch-up jobs
+ * bounded—90 days covers recent trends without hammering relays for year-old
+ * history. Increase the number if you need deeper analytics or shrink it for
+ * lighter start-up workloads.
+ */
+export const VIEW_COUNT_BACKFILL_MAX_DAYS = 90;
+
+/**
+ * How long clients can trust cached view totals before re-fetching.
+ *
+ * Cached results smooth out traffic spikes and reduce relay load. Five minutes
+ * strikes a balance between responsiveness and efficiency; lower the TTL for
+ * fresher dashboards or raise it if your analytics traffic is heavy.
+ */
+export const VIEW_COUNT_CACHE_TTL_MS = 5 * 60 * 1000;

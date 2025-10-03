@@ -20,5 +20,8 @@ Run this checklist before publishing releases or merging changes that touch uplo
 6. **Saved Profile Metadata Refresh**
    - In the browser devtools console/storage panel, delete `bitvid:profileCache:v1` but keep `bitvid:savedProfiles:v1` populated with Nostr pubkeys that lack stored names/avatars.
    - Reload the page and open the profile switcher; confirm avatars and display names populate automatically without manual refresh.
+7. **View Logging Per Identity**
+   - Play the same video until a view event is logged, then log out (or switch to a different pubkey) and repeat the playback.
+   - Confirm two distinct view events appear (e.g., via relay logs or UI counters) and the aggregated view count increments twice.
 
 Document findings (pass/fail notes plus relevant screenshots or logs) so they can be attached to release or PR notes.

@@ -290,19 +290,106 @@
               <p class="text-sm text-gray-400">
                 Your recently watched videos appear here so you can jump back into favorites.
               </p>
+              <div
+                id="profileHistoryFeatureBanner"
+                class="hidden rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+                role="status"
+                aria-live="polite"
+              ></div>
               <div class="space-y-4">
-                <div
-                  id="profileHistoryLoading"
-                  class="flex items-center justify-center gap-3 py-6"
-                >
-                  <div class="h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                  <p
-                    id="profileHistoryStatus"
-                    class="text-sm text-gray-300 hidden"
-                    aria-live="polite"
-                    role="status"
-                  ></p>
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div
+                    class="flex flex-wrap gap-2"
+                    role="group"
+                    aria-label="Watch history actions"
+                  >
+                    <button
+                      id="profileHistoryClear"
+                      type="button"
+                      class="inline-flex items-center gap-2 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    >
+                      Clear local cache
+                    </button>
+                    <button
+                      id="profileHistoryRepublish"
+                      type="button"
+                      class="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    >
+                      Republish now
+                    </button>
+                  </div>
+                  <div class="flex items-start gap-3">
+                    <div class="flex flex-col">
+                      <span
+                        id="profileHistoryMetadataLabel"
+                        class="text-sm font-medium text-gray-200"
+                      >
+                        Store titles/thumbnails locally
+                      </span>
+                      <span
+                        id="profileHistoryMetadataDescription"
+                        class="text-xs text-gray-400"
+                      >
+                        When disabled, BitVid skips saving rich metadata to this device.
+                      </span>
+                    </div>
+                    <button
+                      id="profileHistoryMetadataToggle"
+                      type="button"
+                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center rounded-full border border-gray-600 bg-gray-700 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      role="switch"
+                      aria-checked="true"
+                      aria-labelledby="profileHistoryMetadataLabel"
+                      aria-describedby="profileHistoryMetadataDescription"
+                    >
+                      <span class="sr-only">Toggle local metadata storage</span>
+                      <span
+                        id="profileHistoryMetadataThumb"
+                        class="inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white transition"
+                        aria-hidden="true"
+                      ></span>
+                    </button>
+                  </div>
                 </div>
+                <div
+                  id="profileHistoryToastRegion"
+                  class="space-y-2"
+                  aria-live="polite"
+                  aria-atomic="false"
+                ></div>
+                <div
+                  id="profileHistorySessionWarning"
+                  class="hidden inline-flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-100"
+                  role="status"
+                  aria-live="polite"
+                >
+                  Session actor in use. Connect a NIP-07 extension to publish as your main profile.
+                </div>
+                <div id="profileHistoryLoading" class="py-6">
+                  <div id="profileHistoryStatus">
+                    <div
+                      class="sidebar-loading-wrapper"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <div class="sidebar-loading-indicator">
+                        <span
+                          class="status-spinner status-spinner--inline"
+                          aria-hidden="true"
+                        ></span>
+                        <span class="sidebar-loading-text"
+                          >Fetching watch history from relays…</span
+                        >
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  id="profileHistoryError"
+                  class="hidden rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100"
+                  role="alert"
+                  aria-live="assertive"
+                ></div>
                 <div
                   id="profileHistoryEmpty"
                   class="hidden rounded-lg border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"

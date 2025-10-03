@@ -257,6 +257,10 @@ export function setHashView(viewName) {
   url.searchParams.delete("v");
   const newUrl = url.pathname + url.search + `#view=${viewName}`;
   window.history.replaceState({}, "", newUrl);
+
+  if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
+  }
+
   handleHashChange();
 }
 
@@ -362,37 +366,58 @@ function handleQueryParams() {
   }
 }
 
-function handleHashChange() {
+async function waitForAppInitialization() {
+  const maybePromise = window.appReady;
+
+  if (!maybePromise || typeof maybePromise.then !== "function") {
+    return;
+  }
+
+  try {
+    await maybePromise;
+  } catch (error) {
+    console.warn(
+      "Proceeding with hash handling despite app initialization failure:",
+      error
+    );
+  }
+}
+
+async function handleHashChange() {
   console.log("handleHashChange called, current hash =", window.location.hash);
+
+  await waitForAppInitialization();
 
   const hash = window.location.hash || "";
   // Use a regex that captures up to the first ampersand or end of string.
   // E.g. "#view=channel-profile&npub=..." => viewName = "channel-profile"
   const match = hash.match(/^#view=([^&]+)/);
 
-  if (!match || !match[1]) {
-    // No valid "#view=..." => default to "most-recent-videos"
-    import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
-      loadView("views/most-recent-videos.html").then(() => {
-        const initFn = viewInitRegistry["most-recent-videos"];
-        if (typeof initFn === "function") {
-          initFn();
-        }
-      });
-    });
-    return;
+  try {
+    const { loadView, viewInitRegistry } = await import("./viewManager.js");
+
+    if (!match || !match[1]) {
+      // No valid "#view=..." => default to "most-recent-videos"
+      await loadView("views/most-recent-videos.html");
+      const initFn = viewInitRegistry["most-recent-videos"];
+      if (typeof initFn === "function") {
+        initFn();
+      }
+      return;
+    }
+
+    const viewName = match[1]; // only the chunk before any '&'
+    if (typeof viewName === "string" && viewName.toLowerCase() === "history") {
+    }
+    const viewUrl = `views/${viewName}.html`;
+
+    // Now dynamically load that partial, then call its init function
+    await loadView(viewUrl);
+    const initFn = viewInitRegistry[viewName];
+    if (typeof initFn === "function") {
+      initFn();
+    }
+  } catch (error) {
+    console.error("Failed to handle hash change:", error);
   }
-
-  const viewName = match[1]; // only the chunk before any '&'
-  const viewUrl = `views/${viewName}.html`;
-
-  // Now dynamically load that partial, then call its init function
-  import("./viewManager.js").then(({ loadView, viewInitRegistry }) => {
-      loadView(viewUrl).then(() => {
-        const initFn = viewInitRegistry[viewName];
-        if (typeof initFn === "function") {
-          initFn();
-        }
-      });
-  });
 }

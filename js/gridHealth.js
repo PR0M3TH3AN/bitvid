@@ -1,7 +1,7 @@
+import { createCardObserver } from "./dom/cardObserver.js";
 import { infoHashFromMagnet } from "./magnets.js";
 import { TorrentClient, torrentClient } from "./webtorrent.js";
 
-const containerState = new WeakMap();
 const ROOT_MARGIN = "200px 0px";
 
 function now() {
@@ -249,28 +249,6 @@ const probeQueue = new ProbeQueue(PROBE_CONCURRENCY);
 const probeCache = new Map();
 const probeInflight = new Map();
 
-function ensureState(container) {
-  let state = containerState.get(container);
-  if (state) {
-    return state;
-  }
-
-  const pendingByCard = new WeakMap();
-  const observedCards = new WeakSet();
-  state = { observer: null, pendingByCard, observedCards };
-
-  const observer = new IntersectionObserver(
-    (entries) => {
-      processObserverEntries(entries, state);
-    },
-    { root: null, rootMargin: ROOT_MARGIN, threshold: 0.01 }
-  );
-
-  state.observer = observer;
-  containerState.set(container, state);
-  return state;
-}
-
 function getViewportCenter() {
   if (typeof window === "undefined") {
     return null;
@@ -387,18 +365,6 @@ function prioritizeEntries(entries, viewportCenter) {
     entry: candidate.entry,
     priority: PRIORITY_BASELINE - index,
   }));
-}
-
-function processObserverEntries(entries, state) {
-  if (!state || !entries || entries.length === 0) {
-    return;
-  }
-  const viewportCenter = getViewportCenter();
-  const prioritized = prioritizeEntries(entries, viewportCenter);
-  prioritized.forEach(({ entry, priority }) => {
-    const card = entry.target;
-    handleCardVisible({ card, pendingByCard: state.pendingByCard, priority });
-  });
 }
 
 function getIntersectionRect(entry) {
@@ -539,6 +505,10 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
     return;
   }
 
+  if (!(pendingByCard instanceof WeakMap)) {
+    return;
+  }
+
   if (pendingByCard.has(card)) {
     return;
   }
@@ -590,36 +560,50 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
     });
 }
 
+const gridCardObserver = createCardObserver({
+  rootMargin: ROOT_MARGIN,
+  threshold: 0.01,
+  createState: () => ({ pendingByCard: new WeakMap() }),
+  prepareEntries: (entries) => {
+    const viewportCenter = getViewportCenter();
+    return prioritizeEntries(entries, viewportCenter);
+  },
+  isCardVisible: (entry) => {
+    if (!entry) {
+      return false;
+    }
+    const isIntersecting = Boolean(entry.isIntersecting);
+    const ratio = typeof entry.intersectionRatio === "number" ? entry.intersectionRatio : 0;
+    return isIntersecting && ratio > 0;
+  },
+  onCardRegister: ({ card }) => {
+    if (!card.dataset.magnet) {
+      setBadge(card, "unhealthy", { reason: "missing-source" });
+    }
+  },
+  onCardVisible: ({ card, meta, state }) => {
+    if (!state || !(state.pendingByCard instanceof WeakMap)) {
+      return;
+    }
+    const priority =
+      meta && typeof meta === "object" && Number.isFinite(meta.priority)
+        ? meta.priority
+        : PRIORITY_BASELINE;
+    handleCardVisible({
+      card,
+      pendingByCard: state.pendingByCard,
+      priority,
+    });
+  },
+});
+
 export function attachHealthBadges(container) {
   if (!(container instanceof HTMLElement)) {
     return;
   }
-  const state = ensureState(container);
-  const cards = container.querySelectorAll(".video-card");
-  cards.forEach((card) => {
-    if (!(card instanceof HTMLElement)) {
-      return;
-    }
-    if (state.observedCards.has(card)) {
-      return;
-    }
-    state.observedCards.add(card);
-    state.observer.observe(card);
-    if (!card.dataset.magnet) {
-      setBadge(card, "unhealthy", { reason: "missing-source" });
-    }
-  });
-  processObserverEntries(state.observer.takeRecords(), state);
+  gridCardObserver.observe(container);
 }
 
 export function refreshHealthBadges(container) {
-  if (!(container instanceof HTMLElement)) {
-    return;
-  }
-  const state = containerState.get(container);
-  if (!state) {
-    return;
-  }
-  const records = state.observer.takeRecords();
-  processObserverEntries(records, state);
+  gridCardObserver.refresh(container);
 }
