@@ -47,7 +47,7 @@ import { VideoModal } from "./ui/components/VideoModal.js";
 import { UploadModal } from "./ui/components/UploadModal.js";
 import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
-import { VideoCard } from "./ui/components/VideoCard.js";
+import { VideoListView } from "./ui/views/VideoListView.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -113,7 +113,6 @@ const ADMIN_DM_IMAGE_URL =
 const BITVID_WEBSITE_URL = "https://bitvid.network/";
 const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
-const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 /**
  * Basic validation for BitTorrent magnet URIs.
@@ -602,9 +601,6 @@ class bitvidApp {
     this.loggedViewPointerKeys = new Set();
     this.videoSubscription = nostrService.getVideoSubscription() || null;
     this.videoList = null;
-    this._videoListElement = null;
-    this._videoListClickHandler = null;
-    this.viewCountSubscriptions = new Map();
     this.modalViewCountUnsub = null;
 
     // Videos stored as a Map (key=event.id)
@@ -648,9 +644,120 @@ class bitvidApp {
       },
     });
 
-    this.lastRenderedVideoSignature = null;
-    this._lastRenderedVideoListElement = null;
-    this.renderedVideoIds = new Set();
+    this.videoListView = new VideoListView({
+      document,
+      mediaLoader: this.mediaLoader,
+      badgeHelpers: { attachHealthBadges, attachUrlHealthBadges },
+      formatters: {
+        formatTimeAgo: (timestamp) => this.formatTimeAgo(timestamp),
+        formatViewCountLabel: (total) => this.formatViewCountLabel(total),
+      },
+      helpers: {
+        escapeHtml: (value) => this.escapeHTML(value),
+        isMagnetSupported: (magnet) => isValidMagnetUri(magnet),
+        toLocaleString: (value) =>
+          typeof value === "number" ? value.toLocaleString() : value,
+      },
+      assets: {
+        fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
+        unsupportedBtihMessage: UNSUPPORTED_BTITH_MESSAGE,
+      },
+      state: {
+        loadedThumbnails: this.loadedThumbnails,
+        videosMap: this.videosMap,
+      },
+      utils: {
+        dedupeVideos: (videos) => this.dedupeVideosByRoot(videos),
+        getAllEvents: () => Array.from(nostrClient.allEvents.values()),
+        hasOlderVersion: (video, events) => this.hasOlderVersion(video, events),
+        derivePointerInfo: (video) => this.deriveVideoPointerInfo(video),
+        persistWatchHistoryMetadata: (video, pointerInfo) =>
+          this.persistWatchHistoryMetadataForVideo(video, pointerInfo),
+        getShareUrlBase: () => this.getShareUrlBase(),
+        buildShareUrlFromNevent: (nevent) => this.buildShareUrlFromNevent(nevent),
+        buildShareUrlFromEventId: (eventId) => this.buildShareUrlFromEventId(eventId),
+        canManageBlacklist: () => this.canCurrentUserManageBlacklist(),
+        canEditVideo: (video) => video?.pubkey === this.pubkey,
+        canDeleteVideo: (video) => video?.pubkey === this.pubkey,
+        batchFetchProfiles: (authorSet) => this.batchFetchProfiles(authorSet),
+        bindThumbnailFallbacks: (container) => this.bindThumbnailFallbacks(container),
+        handleUrlHealthBadge: (payload) => this.handleUrlHealthBadge(payload),
+        refreshDiscussionCounts: (videos) => this.refreshVideoDiscussionCounts(videos),
+        ensureGlobalMoreMenuHandlers: () => this.ensureGlobalMoreMenuHandlers(),
+        closeAllMenus: () => this.closeAllMoreMenus(),
+      },
+    });
+
+    this.videoListView.setPlaybackHandler(({ videoId, url, magnet }) => {
+      if (videoId) {
+        Promise.resolve(this.playVideoByEventId(videoId)).catch((error) => {
+          console.error("[VideoListView] Failed to play by event id:", error);
+        });
+        return;
+      }
+      Promise.resolve(this.playVideoWithFallback({ url, magnet })).catch(
+        (error) => {
+          console.error("[VideoListView] Failed to start playback:", error);
+        }
+      );
+    });
+
+    this.videoListView.setEditHandler(({ video, index }) => {
+      if (!video?.id) {
+        return;
+      }
+      this.handleEditVideo({
+        eventId: video.id,
+        index: Number.isFinite(index) ? index : null,
+      });
+    });
+
+    this.videoListView.setRevertHandler(({ video, index }) => {
+      if (!video?.id) {
+        return;
+      }
+      this.handleRevertVideo({
+        eventId: video.id,
+        index: Number.isFinite(index) ? index : null,
+      });
+    });
+
+    this.videoListView.setDeleteHandler(({ video, index }) => {
+      if (!video?.id) {
+        return;
+      }
+      this.handleFullDeleteVideo({
+        eventId: video.id,
+        index: Number.isFinite(index) ? index : null,
+      });
+    });
+
+    this.videoListView.setBlacklistHandler(({ video, dataset }) => {
+      const detail = {
+        ...(dataset || {}),
+        author: dataset?.author || video?.pubkey || "",
+      };
+      this.handleMoreMenuAction("blacklist-author", detail);
+    });
+
+    this.videoListView.addEventListener("video:share", (event) => {
+      const detail = event?.detail || {};
+      const dataset = {
+        ...(detail.dataset || {}),
+        eventId: detail.eventId || detail.dataset?.eventId || detail.video?.id || "",
+        context: detail.dataset?.context || "card",
+      };
+      this.handleMoreMenuAction(detail.action || "copy-link", dataset);
+    });
+
+    this.videoListView.addEventListener("video:context-action", (event) => {
+      const detail = event?.detail || {};
+      const dataset = {
+        ...(detail.dataset || {}),
+        eventId: detail.dataset?.eventId || detail.video?.id || "",
+      };
+      this.handleMoreMenuAction(detail.action, dataset);
+    });
 
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
@@ -744,25 +851,11 @@ class bitvidApp {
   }
 
   prepareForViewLoad() {
-    if (this._videoListElement && this._videoListClickHandler) {
-      try {
-        this._videoListElement.removeEventListener(
-          "click",
-          this._videoListClickHandler
-        );
-      } catch (err) {
-        console.warn("[prepareForViewLoad] Failed to detach video list handler:", err);
-      }
-      this._videoListElement = null;
-      this._videoListClickHandler = null;
+    if (this.videoListView) {
+      this.videoListView.destroy();
     }
 
     this.videoList = null;
-    this._lastRenderedVideoListElement = null;
-    this.lastRenderedVideoSignature = null;
-    if (this.renderedVideoIds) {
-      this.renderedVideoIds.clear();
-    }
 
     if (this.mediaLoader && typeof this.mediaLoader.disconnect === "function") {
       this.mediaLoader.disconnect();
@@ -890,7 +983,9 @@ class bitvidApp {
 
       // 7. Once loaded, get a reference to #videoList
       this.videoList = document.getElementById("videoList");
-      this.attachVideoListHandler();
+      if (this.videoListView) {
+        this.videoListView.setContainer(this.videoList);
+      }
 
       // 8. Subscribe or fetch videos
       await this.loadVideos();
@@ -1021,117 +1116,16 @@ class bitvidApp {
     return `${formatViewCount(value)} ${label}`;
   }
 
-  ensureViewCountSubscription(pointerInfo) {
-    if (!pointerInfo || !pointerInfo.key || !pointerInfo.pointer) {
-      return null;
-    }
-
-    const existing = this.viewCountSubscriptions.get(pointerInfo.key);
-    if (existing) {
-      return existing;
-    }
-
-    const entry = {
-      pointer: pointerInfo.pointer,
-      key: pointerInfo.key,
-      token: null,
-      elements: new Set(),
-      lastTotal: null,
-      lastStatus: "idle",
-      lastText: "– views",
-    };
-
-    try {
-      const token = subscribeToVideoViewCount(
-        pointerInfo.pointer,
-        ({ total, status }) => {
-          let text;
-          if (Number.isFinite(total)) {
-            const numeric = Number(total);
-            entry.lastTotal = numeric;
-            text = this.formatViewCountLabel(numeric);
-          } else if (status === "hydrating") {
-            text = "Loading views…";
-          } else {
-            text = "– views";
-          }
-
-          entry.lastStatus = status;
-          entry.lastText = text;
-
-          for (const el of Array.from(entry.elements)) {
-            if (!el || !el.isConnected) {
-              entry.elements.delete(el);
-              continue;
-            }
-            el.textContent = text;
-          }
-        }
-      );
-      entry.token = token;
-      this.viewCountSubscriptions.set(pointerInfo.key, entry);
-      return entry;
-    } catch (error) {
-      console.warn("[viewCount] Failed to subscribe to view counter:", error);
-      return null;
-    }
-  }
-
-  registerVideoViewCountElement(cardEl, pointerInfo) {
-    if (!cardEl || !pointerInfo) {
-      return;
-    }
-
-    const viewCountEl = cardEl.querySelector("[data-view-count]");
-    if (!viewCountEl) {
-      return;
-    }
-
-    if (!viewCountEl.textContent || !viewCountEl.textContent.trim()) {
-      viewCountEl.textContent = "– views";
-    }
-
-    const entry = this.ensureViewCountSubscription(pointerInfo);
-    if (!entry) {
-      return;
-    }
-
-    entry.elements.add(viewCountEl);
-    if (typeof pointerInfo.key === "string") {
-      viewCountEl.dataset.viewPointer = pointerInfo.key;
-    }
-    viewCountEl.textContent = entry.lastText;
-  }
-
   pruneDetachedViewCountElements() {
-    for (const entry of this.viewCountSubscriptions.values()) {
-      if (!entry || !(entry.elements instanceof Set)) {
-        continue;
-      }
-      for (const el of Array.from(entry.elements)) {
-        if (!el || !el.isConnected) {
-          entry.elements.delete(el);
-        }
-      }
+    if (this.videoListView) {
+      this.videoListView.pruneDetachedViewCountElements();
     }
   }
 
   teardownAllViewCountSubscriptions() {
-    const keys = Array.from(this.viewCountSubscriptions.keys());
-    keys.forEach((key) => {
-      const entry = this.viewCountSubscriptions.get(key);
-      if (entry && entry.token && entry.pointer) {
-        try {
-          unsubscribeFromVideoViewCount(entry.pointer, entry.token);
-        } catch (error) {
-          console.warn(
-            `[viewCount] Failed to unsubscribe from pointer ${key}:`,
-            error
-          );
-        }
-      }
-      this.viewCountSubscriptions.delete(key);
-    });
+    if (this.videoListView) {
+      this.videoListView.teardownAllViewCountSubscriptions();
+    }
   }
 
   teardownModalViewCountSubscription() {
@@ -3456,67 +3450,13 @@ class bitvidApp {
   }
 
   attachVideoListHandler() {
-    const nextTarget = document;
-
-    if (this._videoListElement === nextTarget && this._videoListClickHandler) {
+    if (!this.videoListView) {
       return;
     }
-
-    if (this._videoListElement && this._videoListClickHandler) {
-      this._videoListElement.removeEventListener(
-        "click",
-        this._videoListClickHandler
-      );
-      this._videoListElement = null;
-      this._videoListClickHandler = null;
+    if (!this.videoList) {
+      this.videoList = document.getElementById("videoList");
     }
-
-    const handler = async (event) => {
-      const trigger = event.target.closest(
-        "[data-play-magnet],[data-play-url]"
-      );
-      if (!trigger) {
-        return;
-      }
-
-      const isPrimaryClick =
-        typeof event.button !== "number" || event.button === 0;
-      if (isPrimaryClick && !event.ctrlKey && !event.metaKey) {
-        event.preventDefault();
-
-        const rawUrlValue =
-          (trigger.dataset && typeof trigger.dataset.playUrl === "string"
-            ? trigger.dataset.playUrl
-            : null) ?? trigger.getAttribute("data-play-url") ?? "";
-        const rawMagnetValue =
-          (trigger.dataset && typeof trigger.dataset.playMagnet === "string"
-            ? trigger.dataset.playMagnet
-            : null) ?? trigger.getAttribute("data-play-magnet") ?? "";
-
-        let url = "";
-        if (rawUrlValue) {
-          try {
-            url = decodeURIComponent(rawUrlValue);
-          } catch (err) {
-            console.warn("Failed to decode data-play-url attribute:", err);
-            url = rawUrlValue;
-          }
-        }
-
-        const magnet = typeof rawMagnetValue === "string" ? rawMagnetValue : "";
-        const eventId = trigger.getAttribute("data-video-id");
-
-        if (eventId) {
-          await this.playVideoByEventId(eventId);
-        } else {
-          await this.playVideoWithFallback({ url, magnet });
-        }
-      }
-    };
-
-    nextTarget.addEventListener("click", handler);
-    this._videoListElement = nextTarget;
-    this._videoListClickHandler = handler;
+    this.videoListView.setContainer(this.videoList || null);
   }
 
   /**
@@ -5028,7 +4968,6 @@ class bitvidApp {
     console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
     if (this.videoList) {
-      this.lastRenderedVideoSignature = null;
       this.videoList.innerHTML = getSidebarLoadingMarkup(
         "Fetching recent videos…"
       );
@@ -5047,6 +4986,9 @@ class bitvidApp {
 
     this.videoSubscription = nostrService.getVideoSubscription() || null;
     this.videosMap = nostrService.getVideosMap();
+    if (this.videoListView) {
+      this.videoListView.state.videosMap = this.videosMap;
+    }
   }
 
   async loadOlderVideos(lastTimestamp) {
@@ -5355,248 +5297,16 @@ class bitvidApp {
   }
 
   async renderVideoList(videos) {
-    if (!this.videoList) return;
-
-    if (this._lastRenderedVideoListElement !== this.videoList) {
-      this.lastRenderedVideoSignature = null;
-      this._lastRenderedVideoListElement = this.videoList;
-    }
-
-    const dedupedVideos = this.dedupeVideosByRoot(videos);
-
-    const activePointerKeys = new Set();
-    dedupedVideos.forEach((video) => {
-      const pointerInfo = this.deriveVideoPointerInfo(video);
-      if (pointerInfo) {
-        activePointerKeys.add(pointerInfo.key);
-      }
-    });
-
-    const keysToRemove = [];
-    for (const [key, entry] of this.viewCountSubscriptions.entries()) {
-      if (!activePointerKeys.has(key)) {
-        keysToRemove.push(key);
-        continue;
-      }
-      if (entry && entry.elements instanceof Set) {
-        entry.elements.clear();
-      }
-    }
-
-    keysToRemove.forEach((key) => {
-      const entry = this.viewCountSubscriptions.get(key);
-      if (entry && entry.pointer && entry.token) {
-        try {
-          unsubscribeFromVideoViewCount(entry.pointer, entry.token);
-        } catch (error) {
-          console.warn(
-            `[viewCount] Failed to unsubscribe from stale pointer ${key}:`,
-            error
-          );
-        }
-      }
-      this.viewCountSubscriptions.delete(key);
-    });
-
-    if (this.loadedThumbnails && this.loadedThumbnails.size) {
-      const activeIds = new Set();
-      dedupedVideos.forEach((video) => {
-        if (video && typeof video.id === "string" && video.id) {
-          activeIds.add(video.id);
-        }
-      });
-      Array.from(this.loadedThumbnails.keys()).forEach((videoId) => {
-        if (!activeIds.has(videoId)) {
-          this.loadedThumbnails.delete(videoId);
-        }
-      });
-    }
-
-    // 1) If no videos
-    if (!dedupedVideos.length) {
-      this.renderedVideoIds.clear();
-      this.videoCardInstances = [];
-      if (this.lastRenderedVideoSignature === EMPTY_VIDEO_LIST_SIGNATURE) {
-        return;
-      }
-      this.lastRenderedVideoSignature = EMPTY_VIDEO_LIST_SIGNATURE;
-      this.videoList.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
-          No public videos available yet. Be the first to upload one!
-        </p>`;
+    if (!this.videoListView) {
       return;
     }
 
-    // 2) Sort newest first
-    dedupedVideos.sort((a, b) => b.created_at - a.created_at);
-
-    const signaturePayload = dedupedVideos.map((video) => ({
-      id: typeof video.id === "string" ? video.id : "",
-      createdAt: Number.isFinite(video.created_at)
-        ? video.created_at
-        : Number(video.created_at) || 0,
-      deleted: Boolean(video.deleted),
-      isPrivate: Boolean(video.isPrivate),
-      thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
-      url: typeof video.url === "string" ? video.url : "",
-      magnet: typeof video.magnet === "string" ? video.magnet : "",
-      enableComments: video.enableComments === false ? false : true,
-    }));
-    const signature = JSON.stringify(signaturePayload);
-
-    if (signature === this.lastRenderedVideoSignature) {
-      return;
+    if (!this.videoList) {
+      this.videoList = document.getElementById("videoList");
+      this.videoListView.setContainer(this.videoList || null);
     }
-    this.lastRenderedVideoSignature = signature;
 
-    const previouslyRenderedIds = new Set(this.renderedVideoIds);
-    this.renderedVideoIds.clear();
-
-    const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
-    const fragment = document.createDocumentFragment();
-    const authorSet = new Set();
-    const defaultShareBase =
-      this.getShareUrlBase() ||
-      `${window.location?.origin || ""}${window.location?.pathname || ""}` ||
-      (window.location?.href ? window.location.href.split(/[?#]/)[0] : "");
-    const canManageBlacklist = this.canCurrentUserManageBlacklist();
-    this.videoCardInstances = [];
-
-    // 3) Build each card
-    dedupedVideos.forEach((video, index) => {
-      if (!video.id || !video.title) {
-        console.error("Video missing ID/title:", video);
-        return;
-      }
-
-      authorSet.add(video.pubkey);
-
-      const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
-      const shareUrl =
-        this.buildShareUrlFromNevent(nevent) ||
-        `${defaultShareBase}?v=${encodeURIComponent(nevent)}`;
-      const canEdit = video.pubkey === this.pubkey;
-      const highlightClass =
-        video.isPrivate && canEdit
-          ? "border-2 border-yellow-500"
-          : "border-none";
-      const isNewlyRendered = !previouslyRenderedIds.has(video.id);
-      const animationClass = isNewlyRendered ? "video-card--enter" : "";
-      const timeAgo = this.formatTimeAgo(video.created_at);
-
-      // Check if there's an older version
-      let hasOlder = false;
-      if (canEdit && video.videoRootId) {
-        hasOlder = this.hasOlderVersion(video, fullAllEventsArray);
-      }
-
-      const pointerInfo = this.deriveVideoPointerInfo(video);
-      if (pointerInfo) {
-        this.persistWatchHistoryMetadataForVideo(video, pointerInfo);
-      }
-
-      const videoCard = new VideoCard({
-        document,
-        video,
-        index,
-        shareUrl,
-        pointerInfo,
-        timeAgo,
-        highlightClass,
-        animationClass,
-        capabilities: {
-          canEdit,
-          canDelete: canEdit,
-          canRevert: hasOlder,
-          canManageBlacklist,
-        },
-        helpers: {
-          escapeHtml: (value) => this.escapeHTML(value),
-          isMagnetSupported: (magnet) => isValidMagnetUri(magnet),
-          toLocaleString: (value) =>
-            typeof value === "number" ? value.toLocaleString() : value,
-        },
-        assets: {
-          fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
-          unsupportedBtihMessage: UNSUPPORTED_BTITH_MESSAGE,
-        },
-        state: { loadedThumbnails: this.loadedThumbnails },
-        ensureGlobalMoreMenuHandlers: () => this.ensureGlobalMoreMenuHandlers(),
-        onRequestCloseAllMenus: () => this.closeAllMoreMenus(),
-      });
-
-      videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
-        this.handleEditVideo({
-          eventId: editVideo.id,
-          index: Number.isFinite(editIndex) ? editIndex : null,
-        });
-      };
-
-      videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
-        this.handleRevertVideo({
-          eventId: revertVideo.id,
-          index: Number.isFinite(revertIndex) ? revertIndex : null,
-        });
-      };
-
-      videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
-        this.handleFullDeleteVideo({
-          eventId: deleteVideo.id,
-          index: Number.isFinite(deleteIndex) ? deleteIndex : null,
-        });
-      };
-
-      videoCard.onMoreAction = ({ dataset }) => {
-        const action = dataset?.action || "";
-        this.handleMoreMenuAction(action, dataset || {});
-      };
-
-      videoCard.onAuthorNavigate = ({ pubkey }) => {
-        this.goToProfile(pubkey);
-      };
-
-      const cardEl = videoCard.getRoot();
-      if (!cardEl) {
-        return;
-      }
-
-      if (pointerInfo) {
-        this.registerVideoViewCountElement(cardEl, pointerInfo);
-      }
-
-      if (video && video.id) {
-        this.videosMap.set(video.id, video);
-      }
-
-      fragment.appendChild(cardEl);
-      this.renderedVideoIds.add(video.id);
-      this.videoCardInstances.push(videoCard);
-    });
-
-    // Clear old content, add new
-    this.videoList.innerHTML = "";
-    this.videoList.appendChild(fragment);
-    attachHealthBadges(this.videoList);
-    attachUrlHealthBadges(this.videoList, ({ badgeEl, url, eventId }) => {
-      const video = this.videosMap.get(eventId) || { id: eventId };
-      this.handleUrlHealthBadge({ video, url, badgeEl });
-    });
-
-    // Ensure every thumbnail can recover with a fallback image if the primary
-    // source fails to load or returns a zero-sized response (some CDNs error
-    // with HTTP 200 + empty body). We set up the listeners before kicking off
-    // any lazy-loading observers so cached failures are covered as well.
-    this.bindThumbnailFallbacks(this.videoList);
-
-    // Lazy-load images
-    const lazyEls = this.videoList.querySelectorAll("[data-lazy]");
-    lazyEls.forEach((el) => this.mediaLoader.observe(el));
-
-    // 2) After building cards, do one batch profile fetch
-    this.batchFetchProfiles(authorSet);
-
-    this.refreshVideoDiscussionCounts(dedupedVideos);
-    this.pruneDetachedViewCountElements();
+    this.videoListView.render(videos);
   }
 
   refreshVideoDiscussionCounts(videos = []) {
@@ -5898,18 +5608,8 @@ class bitvidApp {
   }
 
   closeAllMoreMenus() {
-    if (Array.isArray(this.videoCardInstances) && this.videoCardInstances.length) {
-      this.videoCardInstances.forEach((card) => {
-        if (!card) {
-          return;
-        }
-        if (typeof card.closeMoreMenu === "function") {
-          card.closeMoreMenu();
-        }
-        if (typeof card.closeSettingsMenu === "function") {
-          card.closeSettingsMenu();
-        }
-      });
+    if (this.videoListView) {
+      this.videoListView.closeAllMenus();
     }
 
     const menus = document.querySelectorAll("[data-more-menu]");
