@@ -3,6 +3,8 @@ const state = {
   currentUserNpub: null,
   currentVideo: null,
   modals: Object.create(null),
+  videosMap: null,
+  videoSubscription: null,
 };
 
 const globalSubscribers = new Set();
@@ -15,6 +17,8 @@ function createSnapshot() {
     currentUserNpub: state.currentUserNpub,
     currentVideo: state.currentVideo,
     modals: { ...state.modals },
+    videosMap: state.videosMap,
+    videoSubscription: state.videoSubscription,
   };
 }
 
@@ -118,6 +122,25 @@ export function setCurrentVideo(value) {
   return updateKey("currentVideo", value ?? null);
 }
 
+export function getVideosMap() {
+  return state.videosMap;
+}
+
+export function setVideosMap(value) {
+  if (value instanceof Map) {
+    return updateKey("videosMap", value);
+  }
+  return updateKey("videosMap", value ?? null);
+}
+
+export function getVideoSubscription() {
+  return state.videoSubscription;
+}
+
+export function setVideoSubscription(value) {
+  return updateKey("videoSubscription", value ?? null);
+}
+
 export function getModalState(name) {
   if (typeof name !== "string" || !name) {
     return false;
@@ -183,8 +206,16 @@ export function resetAppState() {
   state.currentUserNpub = null;
   state.currentVideo = null;
   state.modals = Object.create(null);
+  state.videosMap = null;
+  state.videoSubscription = null;
   notifyKey("pubkey", state.pubkey, previous.pubkey);
   notifyKey("currentUserNpub", state.currentUserNpub, previous.currentUserNpub);
   notifyKey("currentVideo", state.currentVideo, previous.currentVideo);
   notifyKey("modals", { ...state.modals }, previous.modals);
+  notifyKey("videosMap", state.videosMap, previous.videosMap);
+  notifyKey(
+    "videoSubscription",
+    state.videoSubscription,
+    previous.videoSubscription
+  );
 }
