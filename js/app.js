@@ -22,6 +22,7 @@ import { relayManager } from "./relayManager.js";
 import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import PlaybackService from "./services/playbackService.js";
+import AuthService from "./services/authService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
@@ -57,12 +58,6 @@ import {
   setActiveProfilePubkey as setStoredActiveProfilePubkey,
   setSavedProfiles,
   persistSavedProfiles,
-  loadSavedProfilesFromStorage as hydrateSavedProfilesFromStorage,
-  syncSavedProfileFromCache as syncSavedProfileFromCacheState,
-  loadProfileCacheFromStorage as hydrateProfileCacheFromStorage,
-  persistProfileCacheToStorage as persistProfileCacheState,
-  getProfileCacheEntry as getCachedProfileEntry,
-  setProfileCacheEntry as setCachedProfileEntry,
   getProfileCacheMap,
   getCachedUrlHealth as readCachedUrlHealth,
   storeUrlHealth as persistUrlHealth,
@@ -393,6 +388,18 @@ class bitvidApp {
     });
     this.activePlaybackSession = null;
 
+    this.authService = new AuthService({
+      nostrClient,
+      userBlocks,
+      relayManager,
+      logger: (message, ...args) => this.log(message, ...args),
+    });
+    this.authService.on("auth:login", (detail) => this.handleAuthLogin(detail));
+    this.authService.on("auth:logout", (detail) => this.handleAuthLogout(detail));
+    this.authService.on("profile:updated", (detail) =>
+      this.handleProfileUpdated(detail)
+    );
+
     // Optional: a "profile" button or avatar (if used)
     this.profileButton = document.getElementById("profileButton") || null;
     this.profileAvatar = document.getElementById("profileAvatar") || null;
@@ -671,15 +678,15 @@ class bitvidApp {
   }
 
   loadSavedProfilesFromStorage() {
-    const { profiles } = hydrateSavedProfilesFromStorage();
-    if (!getActiveProfilePubkey() && Array.isArray(profiles) && profiles.length) {
-      setStoredActiveProfilePubkey(profiles[0].pubkey, { persist: true });
-    }
+    const result = this.authService.loadSavedProfilesFromStorage();
     this.renderSavedProfiles();
+    return result;
   }
 
   syncSavedProfileFromCache(pubkey, { persist = false } = {}) {
-    const updated = syncSavedProfileFromCacheState(pubkey, { persist });
+    const updated = this.authService.syncSavedProfileFromCache(pubkey, {
+      persist,
+    });
     if (updated) {
       this.renderSavedProfiles();
     }
@@ -687,31 +694,19 @@ class bitvidApp {
   }
 
   loadProfileCacheFromStorage() {
-    hydrateProfileCacheFromStorage();
+    this.authService.loadProfileCacheFromStorage();
   }
 
   persistProfileCacheToStorage() {
-    persistProfileCacheState();
+    this.authService.persistProfileCache();
   }
 
   getProfileCacheEntry(pubkey) {
-    return getCachedProfileEntry(pubkey);
+    return this.authService.getProfileCacheEntry(pubkey);
   }
 
   setProfileCacheEntry(pubkey, profile) {
-    const entry = setCachedProfileEntry(pubkey, profile);
-    if (!entry) {
-      return null;
-    }
-
-    const normalizedPubkey = this.normalizeHexPubkey(pubkey);
-    const didUpdateSavedProfile = this.syncSavedProfileFromCache(normalizedPubkey, {
-      persist: true,
-    });
-    if (!didUpdateSavedProfile) {
-      this.renderSavedProfiles();
-    }
-    return entry;
+    return this.authService.setProfileCacheEntry(pubkey, profile);
   }
 
   persistActiveProfileSelection(pubkey, { persist = true } = {}) {
@@ -754,7 +749,7 @@ class bitvidApp {
 
     // 3) For each author, fetchAndRenderProfile with forceRefresh = true
     for (const authorPubkey of uniqueAuthors) {
-      this.fetchAndRenderProfile(authorPubkey, true);
+      this.authService.fetchAndRenderProfile(authorPubkey, true);
     }
   }
 
@@ -767,8 +762,8 @@ class bitvidApp {
         });
       }
 
-      this.loadProfileCacheFromStorage();
-      this.loadSavedProfilesFromStorage();
+      this.authService.hydrateFromStorage();
+      this.renderSavedProfiles();
 
       // 1. Initialize the video modal (components/video-modal.html)
       await this.initModal();
@@ -821,7 +816,7 @@ class bitvidApp {
       if (savedPubKey) {
         // Auto-login if a pubkey was saved
         try {
-          await this.login(savedPubKey, { persistActive: false });
+          await this.authService.login(savedPubKey, { persistActive: false });
         } catch (error) {
           console.error("Auto-login failed:", error);
         }
@@ -3364,8 +3359,13 @@ class bitvidApp {
       }
       if (this.profileLogoutBtn && !this.profileLogoutBtn.dataset.bound) {
         this.profileLogoutBtn.dataset.bound = "true";
-        this.profileLogoutBtn.addEventListener("click", () => {
-          this.logout();
+        this.profileLogoutBtn.addEventListener("click", async () => {
+          try {
+            await this.authService.logout();
+          } catch (error) {
+            console.error("Logout failed:", error);
+            this.showError("Failed to logout. Please try again.");
+          }
           this.hideProfileModal();
         });
       }
@@ -4251,8 +4251,9 @@ class bitvidApp {
     setLoadingState(true);
 
     try {
-      const pubkey = await nostrClient.login({
+      const { pubkey } = await this.authService.requestLogin({
         allowAccountSelection: true,
+        autoApply: false,
       });
 
       const normalizedPubkey = this.normalizeHexPubkey(pubkey);
@@ -4275,7 +4276,7 @@ class bitvidApp {
       let profileMeta = this.getProfileCacheEntry(normalizedPubkey)?.profile;
 
       if (!profileMeta) {
-        await this.loadOwnProfile(normalizedPubkey);
+        await this.authService.loadOwnProfile(normalizedPubkey);
         profileMeta = this.getProfileCacheEntry(normalizedPubkey)?.profile;
       }
 
@@ -5030,8 +5031,13 @@ class bitvidApp {
   setupEventListeners() {
     // 1) Logout button
     if (this.logoutButton) {
-      this.logoutButton.addEventListener("click", () => {
-        this.logout();
+      this.logoutButton.addEventListener("click", async () => {
+        try {
+          await this.authService.logout();
+        } catch (error) {
+          console.error("Logout failed:", error);
+          this.showError("Failed to logout. Please try again.");
+        }
       });
     }
 
@@ -5101,15 +5107,15 @@ class bitvidApp {
           "[app.js] loginNIP07 clicked! Attempting extension login..."
         );
         try {
-          const pubkey = await nostrClient.login(); // call the extension
+          const { pubkey } = await this.authService.requestLogin();
           console.log("[NIP-07] login returned pubkey:", pubkey);
-          await this.login(pubkey, { persistActive: true });
 
-          // Hide the login modal
-          const loginModal = document.getElementById("loginModal");
-          if (loginModal) {
-            loginModal.classList.add("hidden");
-            setGlobalModalState("login", false);
+          if (pubkey) {
+            const loginModal = document.getElementById("loginModal");
+            if (loginModal) {
+              loginModal.classList.add("hidden");
+              setGlobalModalState("login", false);
+            }
           }
         } catch (err) {
           console.error("[NIP-07 login error]", err);
@@ -5244,87 +5250,11 @@ class bitvidApp {
    * Attempt to load the user's own profile from Nostr (kind:0).
    */
   async loadOwnProfile(pubkey) {
-    try {
-      const events = await nostrClient.pool.list(nostrClient.relays, [
-        { kinds: [0], authors: [pubkey], limit: 1 },
-      ]);
-      let displayName = "User";
-      let picture = "assets/svg/default-profile.svg";
-
-      if (events.length && events[0].content) {
-        const data = JSON.parse(events[0].content);
-        displayName = data.name || data.display_name || "User";
-        picture = data.picture || "assets/svg/default-profile.svg";
-      }
-
-      this.setProfileCacheEntry(pubkey, {
-        name: displayName,
-        picture,
-      });
-
-      // If you have a top-bar avatar (profileAvatar)
-      if (this.profileAvatar) {
-        this.profileAvatar.src = picture;
-      }
-      // If you want to show name somewhere
-      if (this.profileModalName) {
-        this.profileModalName.textContent = displayName;
-      }
-      if (this.profileModalAvatar) {
-        this.profileModalAvatar.src = picture;
-      }
-      if (this.profileModalNpub) {
-        const encoded = this.safeEncodeNpub(pubkey);
-        this.profileModalNpub.textContent = encoded
-          ? truncateMiddle(encoded, 48)
-          : "Not signed in";
-      }
-      if (this.profileChannelLink) {
-        const targetNpub = this.safeEncodeNpub(pubkey);
-        if (targetNpub) {
-          this.profileChannelLink.href = `#view=channel-profile&npub=${targetNpub}`;
-          this.profileChannelLink.dataset.targetNpub = targetNpub;
-          this.profileChannelLink.classList.remove("hidden");
-        } else {
-          this.profileChannelLink.removeAttribute("href");
-          delete this.profileChannelLink.dataset.targetNpub;
-          this.profileChannelLink.classList.add("hidden");
-        }
-      }
-    } catch (error) {
-      console.error("loadOwnProfile error:", error);
-    }
+    return this.authService.loadOwnProfile(pubkey);
   }
 
   async fetchAndRenderProfile(pubkey, forceRefresh = false) {
-    const cacheEntry = this.getProfileCacheEntry(pubkey);
-    if (cacheEntry) {
-      this.updateProfileInDOM(pubkey, cacheEntry.profile);
-      if (!forceRefresh) {
-        return;
-      }
-    }
-
-    // 2) Otherwise, fetch from Nostr
-    try {
-      const userEvents = await nostrClient.pool.list(nostrClient.relays, [
-        { kinds: [0], authors: [pubkey], limit: 1 },
-      ]);
-      if (userEvents.length > 0 && userEvents[0].content) {
-        const data = JSON.parse(userEvents[0].content);
-        const profile = {
-          name: data.name || data.display_name || "Unknown",
-          picture: data.picture || "assets/svg/default-profile.svg",
-        };
-
-        // Cache it
-        this.setProfileCacheEntry(pubkey, profile);
-        // Update DOM
-        this.updateProfileInDOM(pubkey, profile);
-      }
-    } catch (err) {
-      console.error("Profile fetch error:", err);
-    }
+    return this.authService.fetchAndRenderProfile(pubkey, forceRefresh);
   }
 
   async batchFetchProfiles(authorSet) {
@@ -5628,39 +5558,41 @@ class bitvidApp {
     const privEl = document.getElementById("uploadIsPrivate");
     const commentsEl = document.getElementById("uploadEnableComments");
 
-    const title = titleEl?.value.trim() || "";
-    const url = urlEl?.value.trim() || "";
-    const magnet = magnetEl?.value.trim() || "";
-    const ws = wsEl?.value.trim() || "";
-    const xs = xsEl?.value.trim() || "";
-    const thumbnail = thumbEl?.value.trim() || "";
-    const description = descEl?.value.trim() || "";
-    const enableComments = commentsEl ? commentsEl.checked : true;
-
     const payload = {
-      title,
-      url,
-      magnet,
-      thumbnail,
-      description,
-      ws,
-      xs,
-      enableComments,
+      title: titleEl?.value.trim() || "",
+      url: urlEl?.value.trim() || "",
+      magnet: magnetEl?.value.trim() || "",
+      ws: wsEl?.value.trim() || "",
+      xs: xsEl?.value.trim() || "",
+      thumbnail: thumbEl?.value.trim() || "",
+      description: descEl?.value.trim() || "",
+      enableComments: commentsEl ? commentsEl.checked : true,
     };
 
-    await this.publishVideoNote(payload, {
-      onSuccess: () => {
-        if (titleEl) titleEl.value = "";
-        if (urlEl) urlEl.value = "";
-        if (magnetEl) magnetEl.value = "";
-        if (wsEl) wsEl.value = "";
-        if (xsEl) xsEl.value = "";
-        if (thumbEl) thumbEl.value = "";
-        if (descEl) descEl.value = "";
-        if (privEl) privEl.checked = false;
-        if (commentsEl) commentsEl.checked = true;
-      },
-    });
+    try {
+      await this.authService.handleUploadSubmit(payload, {
+        publish: (data) =>
+          this.publishVideoNote(data, {
+            onSuccess: () => {
+              if (titleEl) titleEl.value = "";
+              if (urlEl) urlEl.value = "";
+              if (magnetEl) magnetEl.value = "";
+              if (wsEl) wsEl.value = "";
+              if (xsEl) xsEl.value = "";
+              if (thumbEl) thumbEl.value = "";
+              if (descEl) descEl.value = "";
+              if (privEl) privEl.checked = false;
+              if (commentsEl) commentsEl.checked = true;
+            },
+          }),
+      });
+    } catch (error) {
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Login required to publish videos.";
+      this.showError(message);
+    }
   }
 
   /**
@@ -5669,60 +5601,21 @@ class bitvidApp {
    * accounts without touching cached avatars.
    */
   removeSavedProfile(pubkey) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    const target = normalized || (typeof pubkey === "string" ? pubkey.trim() : "");
-    if (!target) {
-      return;
+    const { removed } = this.authService.removeSavedProfile(pubkey);
+    if (removed) {
+      this.renderSavedProfiles();
     }
-
-    const nextProfiles = this.savedProfiles.filter(
-      (entry) => entry.pubkey !== target
-    );
-    if (nextProfiles.length === this.savedProfiles.length) {
-      return;
-    }
-
-    this.savedProfiles = nextProfiles;
-
-    if (this.activeProfilePubkey === target) {
-      this.activeProfilePubkey = null;
-    }
-
-    persistSavedProfiles();
-    this.renderSavedProfiles();
   }
 
   async switchProfile(pubkey) {
-    const normalizedTarget = this.normalizeHexPubkey(pubkey);
-    if (!normalizedTarget) {
-      this.showError("Unable to switch profiles: invalid account.");
-      return;
-    }
-
-    const normalizedActive = this.normalizeHexPubkey(this.activeProfilePubkey);
-    if (normalizedActive && normalizedActive === normalizedTarget) {
-      this.hideProfileModal();
-      return;
-    }
-
     try {
-      await nostrClient.login({
-        allowAccountSelection: true,
-        expectPubkey: normalizedTarget,
-      });
+      const result = await this.authService.switchProfile(pubkey);
+      if (!result?.switched) {
+        this.hideProfileModal();
+        return;
+      }
     } catch (error) {
-      const message =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : "Profile switch was cancelled.";
-      this.showError(message);
-      return;
-    }
-
-    try {
-      await this.login(normalizedTarget, { persistActive: true });
-    } catch (error) {
-      console.error("Failed to finalize profile switch:", error);
+      console.error("Failed to switch profiles:", error);
       const message =
         error && typeof error.message === "string" && error.message.trim()
           ? error.message.trim()
@@ -5732,42 +5625,58 @@ class bitvidApp {
     }
 
     this.profileSwitcherSelectionPubkey = null;
-
-    let reordered = false;
-    const currentIndex = this.savedProfiles.findIndex(
-      (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedTarget
-    );
-    if (currentIndex > 0) {
-      const [moved] = this.savedProfiles.splice(currentIndex, 1);
-      this.savedProfiles.unshift(moved);
-      reordered = true;
-    }
-
-    if (reordered) {
-      persistSavedProfiles({ persistActive: true });
-    }
-
     this.renderSavedProfiles();
     this.hideProfileModal();
   }
 
-  async applyPostLoginState() {
-    await this.refreshAdminPaneState();
+  updateActiveProfileUI(pubkey, profile = {}) {
+    const displayName = profile.name || "User";
+    const picture = profile.picture || "assets/svg/default-profile.svg";
+
+    if (this.profileAvatar) {
+      this.profileAvatar.src = picture;
+    }
+    if (this.profileModalName) {
+      this.profileModalName.textContent = displayName;
+    }
+    if (this.profileModalAvatar) {
+      this.profileModalAvatar.src = picture;
+    }
+    if (this.profileModalNpub) {
+      const encoded = this.safeEncodeNpub(pubkey);
+      this.profileModalNpub.textContent = encoded
+        ? truncateMiddle(encoded, 48)
+        : "Not signed in";
+    }
+
+    if (this.profileChannelLink) {
+      const targetNpub = this.safeEncodeNpub(pubkey);
+      if (targetNpub) {
+        this.profileChannelLink.href = `#view=channel-profile&npub=${targetNpub}`;
+        this.profileChannelLink.dataset.targetNpub = targetNpub;
+        this.profileChannelLink.classList.remove("hidden");
+      } else {
+        this.profileChannelLink.removeAttribute("href");
+        delete this.profileChannelLink.dataset.targetNpub;
+        this.profileChannelLink.classList.add("hidden");
+      }
+    }
+  }
+
+  async handleAuthLogin(detail = {}) {
+    if (detail?.identityChanged) {
+      this.resetViewLoggingState();
+    }
+
+    this.renderSavedProfiles();
 
     try {
-      await userBlocks.loadBlocks(this.pubkey);
+      await this.refreshAdminPaneState();
     } catch (error) {
-      console.warn("Failed to load personal block list:", error);
+      console.warn("Failed to refresh admin pane after login:", error);
     }
 
     this.populateBlockedList();
-
-    try {
-      await relayManager.loadRelayList(this.pubkey);
-    } catch (error) {
-      console.warn("Failed to load relay list:", error);
-    }
-
     this.populateProfileRelays();
 
     if (this.loginButton) {
@@ -5800,216 +5709,91 @@ class bitvidApp {
       this.subscriptionsLink.classList.remove("hidden");
     }
 
-    if (this.pubkey) {
-      this.loadOwnProfile(this.pubkey);
+    const activePubkey = detail?.pubkey || this.pubkey;
+    if (activePubkey && detail?.postLogin?.profile) {
+      this.updateActiveProfileUI(activePubkey, detail.postLogin.profile);
     }
 
     await this.loadVideos();
-
     this.forceRefreshAllProfiles();
-
     await this.refreshCloudflareBucketPreview();
   }
 
-  /**
-   * Called upon successful login.
-   */
-  async login(pubkey, options = {}) {
-    console.log("[app.js] login() called with pubkey =", pubkey);
-
-    let normalizedOptions = options;
-    if (typeof normalizedOptions === "boolean") {
-      normalizedOptions = { persistActive: normalizedOptions };
-    } else if (!normalizedOptions || typeof normalizedOptions !== "object") {
-      normalizedOptions = {};
-    }
-
-    const { persistActive = true } = normalizedOptions;
-
-    const previousActivePubkey =
-      this.normalizeHexPubkey(this.pubkey) ||
-      (typeof this.pubkey === "string" ? this.pubkey.trim() : "");
-
-    const normalizedPubkey = this.normalizeHexPubkey(pubkey);
-    const nextActivePubkey =
-      normalizedPubkey || (typeof pubkey === "string" ? pubkey.trim() : "");
-
-    const identityChanged = previousActivePubkey !== nextActivePubkey;
-    if (identityChanged) {
-      this.resetViewLoggingState();
-    }
-
-    const trimmedPubkey =
-      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
-
-    if (normalizedPubkey) {
-      this.pubkey = normalizedPubkey;
-      if (nostrClient && typeof nostrClient === "object") {
-        nostrClient.pubkey = normalizedPubkey;
-      }
-    } else {
-      this.pubkey = pubkey;
-      if (nostrClient && typeof nostrClient === "object") {
-        nostrClient.pubkey = trimmedPubkey ? trimmedPubkey.toLowerCase() : "";
-      }
-    }
-    this.currentUserNpub = this.safeEncodeNpub(this.pubkey);
-
-    if (
-      identityChanged &&
-      typeof window !== "undefined" &&
-      typeof window.dispatchEvent === "function"
-    ) {
-      window.dispatchEvent(
-        new CustomEvent("bitvid:auth-changed", {
-          detail: {
-            pubkey: nextActivePubkey || null,
-            previousPubkey: previousActivePubkey || null,
-          },
-        })
-      );
-    }
-
-    let savedProfilesMutated = false;
-    if (normalizedPubkey) {
-      const cacheEntry = this.profileCache.get(normalizedPubkey);
-      const cachedProfile = cacheEntry?.profile || {};
-      const existingIndex = this.savedProfiles.findIndex(
-        (candidate) => candidate.pubkey === normalizedPubkey
-      );
-      const existingEntry =
-        existingIndex >= 0 ? this.savedProfiles[existingIndex] : null;
-      const npub = this.safeEncodeNpub(normalizedPubkey);
-      const nextEntry = {
-        pubkey: normalizedPubkey,
-        npub: npub || existingEntry?.npub || null,
-        name: cachedProfile.name || existingEntry?.name || "",
-        picture: cachedProfile.picture || existingEntry?.picture || "",
-        authType: "nip07",
-      };
-
-      if (existingIndex >= 0) {
-        const currentEntry = this.savedProfiles[existingIndex];
-        const changed =
-          currentEntry.npub !== nextEntry.npub ||
-          currentEntry.name !== nextEntry.name ||
-          currentEntry.picture !== nextEntry.picture ||
-          currentEntry.authType !== nextEntry.authType;
-        if (changed) {
-          this.savedProfiles[existingIndex] = nextEntry;
-          savedProfilesMutated = true;
-        }
-      } else {
-        this.savedProfiles.push(nextEntry);
-        savedProfilesMutated = true;
-      }
-
-      this.persistActiveProfileSelection(normalizedPubkey, {
-        persist: persistActive,
-      });
-
-      if (!persistActive && savedProfilesMutated) {
-        persistSavedProfiles({ persistActive: false });
-      }
-    } else {
-      if (persistActive) {
-        console.warn(
-          "[app.js] login() requested storage persistence but pubkey was invalid; skipping saved profile update."
-        );
-      }
-    }
-
-    if (!normalizedPubkey && savedProfilesMutated) {
-      persistSavedProfiles({ persistActive: false });
-    }
-
-    await this.applyPostLoginState();
-  }
-
-  /**
-   * Logout logic
-   */
-  async logout() {
-    nostrClient.logout();
-    const previousPubkey =
-      this.normalizeHexPubkey(this.pubkey) ||
-      (typeof this.pubkey === "string" ? this.pubkey.trim() : "");
+  async handleAuthLogout(detail = {}) {
     this.resetViewLoggingState();
-    this.pubkey = null;
-    this.currentUserNpub = null;
 
-    if (
-      previousPubkey &&
-      typeof window !== "undefined" &&
-      typeof window.dispatchEvent === "function"
-    ) {
-      window.dispatchEvent(
-        new CustomEvent("bitvid:auth-changed", {
-          detail: {
-            pubkey: null,
-            previousPubkey,
-          },
-        })
-      );
-    }
+    this.renderSavedProfiles();
 
-    this.persistActiveProfileSelection(null, { persist: true });
-
-    userBlocks.reset();
-    this.populateBlockedList();
-
-    relayManager.reset();
-    this.populateProfileRelays();
-
-    // Show the login button again
     if (this.loginButton) {
       this.loginButton.classList.remove("hidden");
       this.loginButton.removeAttribute("hidden");
       this.loginButton.style.display = "";
     }
 
-    // Hide logout or userStatus
     if (this.logoutButton) {
       this.logoutButton.classList.add("hidden");
     }
+
     if (this.userStatus) {
       this.userStatus.classList.add("hidden");
     }
+
     if (this.userPubKey) {
       this.userPubKey.textContent = "";
     }
 
-    // Hide upload & profile
     if (this.uploadButton) {
       this.uploadButton.classList.add("hidden");
       this.uploadButton.setAttribute("hidden", "");
       this.uploadButton.style.display = "none";
     }
+
     if (this.profileButton) {
       this.profileButton.classList.add("hidden");
       this.profileButton.setAttribute("hidden", "");
       this.profileButton.style.display = "none";
     }
+
     if (this.profileChannelLink) {
       this.profileChannelLink.classList.add("hidden");
       this.profileChannelLink.removeAttribute("href");
       delete this.profileChannelLink.dataset.targetNpub;
     }
 
-    // Hide the Subscriptions link
     if (this.subscriptionsLink) {
       this.subscriptionsLink.classList.add("hidden");
     }
 
-    await this.refreshAdminPaneState();
+    try {
+      await this.refreshAdminPaneState();
+    } catch (error) {
+      console.warn("Failed to refresh admin pane after logout:", error);
+    }
 
-    // Refresh the video list so user sees only public videos again
+    this.populateBlockedList();
+    this.populateProfileRelays();
+
     await this.loadVideos();
-
-    // Force a fresh fetch of all profile pictures/names (public ones in this case)
     this.forceRefreshAllProfiles();
-
     await this.refreshCloudflareBucketPreview();
+  }
+
+  handleProfileUpdated(detail = {}) {
+    if (Array.isArray(detail?.savedProfiles)) {
+      this.renderSavedProfiles();
+    }
+
+    const normalizedPubkey = detail?.pubkey
+      ? this.normalizeHexPubkey(detail.pubkey)
+      : null;
+    const profile = detail?.profile;
+
+    if (normalizedPubkey && profile) {
+      this.updateProfileInDOM(normalizedPubkey, profile);
+      if (this.normalizeHexPubkey(this.pubkey) === normalizedPubkey) {
+        this.updateActiveProfileUI(normalizedPubkey, profile);
+      }
+    }
   }
 
   /**
