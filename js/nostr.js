@@ -4611,17 +4611,21 @@ class NostrClient {
    *
    * This version now asks for confirmation before proceeding.
    */
-  async deleteAllVersions(videoRootId, pubkey) {
+  async deleteAllVersions(videoRootId, pubkey, options = {}) {
     if (!pubkey) {
       throw new Error("Not logged in to delete all versions.");
     }
 
-    // Ask for confirmation before proceeding
-    if (
-      !window.confirm(
+    const shouldConfirm = options?.confirm !== false;
+    let confirmed = true;
+
+    if (shouldConfirm && typeof window?.confirm === "function") {
+      confirmed = window.confirm(
         "Are you sure you want to delete all versions of this video? This action cannot be undone."
-      )
-    ) {
+      );
+    }
+
+    if (!confirmed) {
       console.log("Deletion cancelled by user.");
       return null; // Cancel deletion if user clicks "Cancel"
     }

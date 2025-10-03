@@ -23,6 +23,7 @@ import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import PlaybackService from "./services/playbackService.js";
 import AuthService from "./services/authService.js";
+import nostrService from "./services/nostrService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
@@ -583,7 +584,7 @@ class bitvidApp {
     this.currentVideoPointerKey = null;
     this.playbackTelemetryState = null;
     this.loggedViewPointerKeys = new Set();
-    this.videoSubscription = null;
+    this.videoSubscription = nostrService.getVideoSubscription() || null;
     this.videoList = null;
     this._videoListElement = null;
     this._videoListClickHandler = null;
@@ -592,7 +593,10 @@ class bitvidApp {
     this.videoViewCountEl = null;
 
     // Videos stored as a Map (key=event.id)
-    this.videosMap = new Map();
+    this.videosMap = nostrService.getVideosMap();
+    nostrService.on("subscription:changed", ({ subscription }) => {
+      this.videoSubscription = subscription || null;
+    });
     this.moreMenuGlobalHandlerBound = false;
     this.boundMoreMenuDocumentClick = null;
     this.boundMoreMenuDocumentKeydown = null;
@@ -5394,7 +5398,7 @@ class bitvidApp {
     }
 
     try {
-      await nostrClient.publishVideo(formData, this.pubkey);
+      await nostrService.publishVideoNote(formData, this.pubkey);
       if (typeof onSuccess === "function") {
         await onSuccess();
       }
@@ -5532,7 +5536,11 @@ class bitvidApp {
     };
 
     try {
-      await nostrClient.editVideo(originalEvent, updatedData, this.pubkey);
+      await nostrService.handleEditVideoSubmit({
+        originalEvent,
+        updatedData,
+        pubkey: this.pubkey,
+      });
       await this.loadVideos();
       this.videosMap.clear();
       this.showSuccess("Video updated successfully!");
@@ -5845,16 +5853,9 @@ class bitvidApp {
           this.pruneDetachedViewCountElements();
         }
 
-        if (!preserveSubscriptions && this.videoSubscription) {
-          try {
-            if (typeof this.videoSubscription.unsub === "function") {
-              this.videoSubscription.unsub();
-            }
-          } catch (err) {
-            console.error("Failed to unsubscribe from video feed:", err);
-          } finally {
-            this.videoSubscription = null;
-          }
+        if (!preserveSubscriptions) {
+          nostrService.clearVideoSubscription();
+          this.videoSubscription = nostrService.getVideoSubscription() || null;
         }
 
         // If there's a small inline player
@@ -6951,104 +6952,43 @@ class bitvidApp {
   async loadVideos(forceFetch = false) {
     console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
-    try {
-      await accessControl.ensureReady();
-    } catch (error) {
-      console.warn("Failed to ensure admin lists were loaded before fetching videos:", error);
-    }
-
-    const shouldIncludeVideo = (video) => {
-      if (!video || typeof video !== "object") {
-        return false;
-      }
-
-      if (this.blacklistedEventIds.has(video.id)) {
-        return false;
-      }
-
-      if (this.isAuthorBlocked(video.pubkey)) {
-        return false;
-      }
-
-      if (!accessControl.canAccess(video)) {
-        return false;
-      }
-
-      return true;
-    };
-
-    // If forceFetch is true, unsubscribe from the old subscription to start fresh
-    if (forceFetch && this.videoSubscription) {
-      // Call unsubscribe on the subscription object directly.
-      this.videoSubscription.unsub();
-      this.videoSubscription = null;
-    }
-
     if (this.videoList) {
-      // Always reset the cached signature before showing the loading state so the
-      // next render isn't skipped when the incoming payload matches the last
-      // successful render. Without this, the spinner could remain visible for
-      // returning users who already have the latest list cached.
       this.lastRenderedVideoSignature = null;
       this.videoList.innerHTML = getSidebarLoadingMarkup(
         "Fetching recent videos…"
       );
     }
 
-    // The rest of your existing logic:
-    if (!this.videoSubscription) {
+    const videos = await nostrService.loadVideos({
+      forceFetch,
+      blacklistedEventIds: this.blacklistedEventIds,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      onVideos: (payload) => this.renderVideoList(payload),
+    });
 
-      // Create a new subscription
-      this.videoSubscription = nostrClient.subscribeVideos(() => {
-        const updatedAll = nostrClient.getActiveVideos();
-
-        // Filter out blacklisted authors & blacklisted event IDs
-        const filteredVideos = updatedAll.filter(shouldIncludeVideo);
-
-        this.renderVideoList(filteredVideos);
-      });
-
-      const cachedActiveVideos = nostrClient.getActiveVideos();
-      const cachedFiltered = cachedActiveVideos.filter(shouldIncludeVideo);
-      if (cachedFiltered.length) {
-        this.renderVideoList(cachedFiltered);
-      }
-
-      if (this.videoSubscription) {
-        console.log(
-          "[loadVideos] subscription remains open to get live updates."
-        );
-      }
-    } else {
-      // Already subscribed: just show what's cached
-      const allCached = nostrClient.getActiveVideos();
-
-      const filteredCached = allCached.filter(shouldIncludeVideo);
-
-      this.renderVideoList(filteredCached);
+    if (!Array.isArray(videos) || videos.length === 0) {
+      this.renderVideoList([]);
     }
+
+    this.videoSubscription = nostrService.getVideoSubscription() || null;
+    this.videosMap = nostrService.getVideosMap();
   }
 
   async loadOlderVideos(lastTimestamp) {
-    // 1) Use nostrClient to fetch older slices
-    const olderVideos = await nostrClient.fetchOlderVideos(lastTimestamp);
+    const olderVideos = await nostrService.loadOlderVideos(lastTimestamp, {
+      blacklistedEventIds: this.blacklistedEventIds,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+    });
 
-    if (!olderVideos || olderVideos.length === 0) {
+    if (!Array.isArray(olderVideos) || olderVideos.length === 0) {
       this.showSuccess("No more older videos found.");
       return;
     }
 
-    // 2) Merge them into the client’s allEvents / activeMap
-    for (const v of olderVideos) {
-      nostrClient.allEvents.set(v.id, v);
-      // If it’s the newest version for its root, update activeMap
-      const rootKey = v.videoRootId || v.id;
-      // You can call getActiveKey(v) if you want to match your code’s approach.
-      // Then re-check if this one is newer than what’s stored, etc.
-    }
-
-    // 3) Re-render
-    const all = nostrClient.getActiveVideos();
+    const all = nostrService.getFilteredActiveVideos({
+      blacklistedEventIds: this.blacklistedEventIds,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+    });
     this.renderVideoList(all);
   }
 
@@ -8943,7 +8883,10 @@ class bitvidApp {
   async handleEditVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
-      const latestVideos = await nostrClient.fetchVideos();
+      const latestVideos = await nostrService.fetchVideos({
+        blacklistedEventIds: this.blacklistedEventIds,
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      });
       const video = await this.resolveVideoActionTarget({
         ...normalizedTarget,
         preloadedList: latestVideos,
@@ -8981,7 +8924,10 @@ class bitvidApp {
   async handleRevertVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
-      const activeVideos = await nostrClient.fetchVideos();
+      const activeVideos = await nostrService.fetchVideos({
+        blacklistedEventIds: this.blacklistedEventIds,
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      });
       const video = await this.resolveVideoActionTarget({
         ...normalizedTarget,
         preloadedList: activeVideos,
@@ -9022,7 +8968,10 @@ class bitvidApp {
   async handleFullDeleteVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
-      const all = await nostrClient.fetchVideos();
+      const all = nostrService.getFilteredActiveVideos({
+        blacklistedEventIds: this.blacklistedEventIds,
+        isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+      });
       const video = await this.resolveVideoActionTarget({
         ...normalizedTarget,
         preloadedList: all,
@@ -9050,7 +8999,11 @@ class bitvidApp {
       // We assume video.videoRootId is not empty, or fallback to video.id if needed
       const rootId = video.videoRootId || video.id;
 
-      await nostrClient.deleteAllVersions(rootId, this.pubkey);
+      await nostrService.handleFullDeleteVideo({
+        videoRootId: rootId,
+        pubkey: this.pubkey,
+        confirm: false,
+      });
 
       // Reload
       await this.loadVideos();
@@ -9952,39 +9905,7 @@ class bitvidApp {
    * this.videosMap or from a bulk fetch. Uses nostrClient.getEventById.
    */
   async getOldEventById(eventId) {
-    // 1) Already in our local videosMap?
-    let video = this.videosMap.get(eventId);
-    if (video) {
-      return video;
-    }
-
-    // 2) Already in nostrClient.allEvents?
-    //    (assuming nostrClient.allEvents is a Map of id => video)
-    const fromAll = nostrClient.allEvents.get(eventId);
-    if (fromAll && !fromAll.deleted) {
-      this.videosMap.set(eventId, fromAll);
-      return fromAll;
-    }
-
-    // 3) Direct single-event fetch (fewer resources than full fetchVideos)
-    const single = await nostrClient.getEventById(eventId);
-    if (single && !single.deleted) {
-      this.videosMap.set(single.id, single);
-      return single;
-    }
-
-    // 4) If you wanted a final fallback, you could do it here:
-    //    But it's typically better to avoid repeated full fetches
-    // console.log("Falling back to full fetchVideos...");
-    // const allFetched = await nostrClient.fetchVideos();
-    // video = allFetched.find(v => v.id === eventId && !v.deleted);
-    // if (video) {
-    //   this.videosMap.set(video.id, video);
-    //   return video;
-    // }
-
-    // Not found or was deleted
-    return null;
+    return nostrService.getOldEventById(eventId);
   }
 
   /**

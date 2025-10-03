@@ -7,6 +7,7 @@ import {
   nostrClient,
   updateWatchHistoryList,
 } from "./nostr.js";
+import nostrService from "./services/nostrService.js";
 import {
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_BATCH_PAGE_SIZE,
@@ -409,11 +410,15 @@ async function resolveVideoFromPointer(pointer, caches) {
     }
   }
 
+  const filterOptions = {
+    blacklistedEventIds: app?.blacklistedEventIds,
+    isAuthorBlocked: (pubkey) =>
+      (typeof app?.isAuthorBlocked === "function" && app.isAuthorBlocked(pubkey)) || false,
+  };
+
   const activeVideos = Array.isArray(caches?.activeVideos)
     ? caches.activeVideos
-    : typeof nostrClient?.getActiveVideos === "function"
-    ? nostrClient.getActiveVideos()
-    : [];
+    : nostrService.getFilteredActiveVideos(filterOptions);
   for (const candidate of activeVideos) {
     if (compareAddress(candidate)) {
       const normalized = normalizeVideo(candidate);
@@ -423,13 +428,15 @@ async function resolveVideoFromPointer(pointer, caches) {
     }
   }
 
-  if (!caches?.catalogPromise && typeof nostrClient?.fetchVideos === "function") {
-    caches.catalogPromise = nostrClient.fetchVideos().catch((error) => {
-      if (isDevEnv) {
-        console.warn("[historyView] Failed to fetch video catalog:", error);
-      }
-      return [];
-    });
+  if (!caches?.catalogPromise) {
+    caches.catalogPromise = nostrService
+      .fetchVideos(filterOptions)
+      .catch((error) => {
+        if (isDevEnv) {
+          console.warn("[historyView] Failed to fetch video catalog:", error);
+        }
+        return [];
+      });
   }
   if (caches?.catalogPromise) {
     try {
