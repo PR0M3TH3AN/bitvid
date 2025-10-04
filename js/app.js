@@ -4838,31 +4838,69 @@ class Application {
    * Hide the video modal.
    */
   async hideModal() {
-    // 1) Clear intervals, cleanup, etc. (unchanged)
+    // 1) Clear timers/listeners immediately so playback stats stop updating
     this.cancelPendingViewLogging();
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
 
-    try {
-      await fetch("/webtorrent/cancel/", { mode: "no-cors" });
-    } catch (err) {
-      // ignore
+    // 2) Close the modal UI right away so the user gets instant feedback
+    const modalVideoElement =
+      (this.videoModal &&
+        typeof this.videoModal.getVideoElement === "function" &&
+        this.videoModal.getVideoElement()) ||
+      this.modalVideo ||
+      null;
+    if (modalVideoElement) {
+      try {
+        modalVideoElement.pause();
+        modalVideoElement.removeAttribute("src");
+        modalVideoElement.load();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[hideModal] Failed to reset modal video element:", error);
+        }
+      }
     }
-    await this.cleanup({
-      preserveSubscriptions: true,
-      preserveObservers: true,
-    });
 
     if (this.videoModal) {
-      this.videoModal.close();
+      try {
+        this.videoModal.close();
+      } catch (error) {
+        console.warn("[hideModal] Failed to close video modal immediately:", error);
+      }
     }
+
     this.currentMagnetUri = null;
 
-    // 3) Remove only `?v=` but **keep** the hash
+    // 3) Kick off heavy cleanup work asynchronously. We still await it so
+    // callers that depend on teardown finishing behave the same, but the
+    // user-visible UI is already closed.
+    const performCleanup = async () => {
+      try {
+        await fetch("/webtorrent/cancel/", { mode: "no-cors" });
+      } catch (err) {
+        if (isDevMode) {
+          console.warn("[hideModal] webtorrent cancel fetch failed:", err);
+        }
+      }
+
+      await this.cleanup({
+        preserveSubscriptions: true,
+        preserveObservers: true,
+      });
+    };
+
+    // 4) Remove only `?v=` but **keep** the hash
     const url = new URL(window.location.href);
     url.searchParams.delete("v"); // remove ?v= param
     const newUrl = url.pathname + url.search + url.hash;
     window.history.replaceState({}, "", newUrl);
+
+    try {
+      await performCleanup();
+    } catch (error) {
+      console.error("[hideModal] Cleanup failed:", error);
+    }
   }
 
   /**
