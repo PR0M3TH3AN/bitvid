@@ -137,19 +137,14 @@ function createWatchHistorySource({ service = watchHistoryService } = {}) {
       items = [];
     }
 
-    const map = new Map();
+    const results = [];
     for (const raw of Array.isArray(items) ? items : []) {
       const normalized = normalizeHistoryEntry(raw);
-      if (!normalized) {
-        continue;
-      }
-      const existing = map.get(normalized.pointerKey);
-      if (!existing || existing.watchedAt < normalized.watchedAt) {
-        map.set(normalized.pointerKey, normalized);
+      if (normalized) {
+        results.push(normalized);
       }
     }
 
-    const results = Array.from(map.values());
     results.sort((a, b) => {
       if (a.watchedAt !== b.watchedAt) {
         return b.watchedAt - a.watchedAt;
