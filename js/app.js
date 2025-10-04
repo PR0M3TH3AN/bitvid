@@ -18,6 +18,13 @@ import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
+import {
+  createFeedEngine,
+  createActiveNostrSource,
+  createBlacklistFilterStage,
+  createDedupeByRootStage,
+  createChronologicalSorter,
+} from "./feedEngine/index.js";
 import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import PlaybackService from "./services/playbackService.js";
@@ -163,9 +170,19 @@ class Application {
     this.videoListViewBlacklistHandler = null;
     this.boundVideoListShareListener = null;
     this.boundVideoListContextListener = null;
+    this.latestFeedMetadata = null;
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
+    this.feedEngine = services.feedEngine || createFeedEngine();
+    if (
+      this.feedEngine &&
+      typeof this.feedEngine.run !== "function" &&
+      typeof this.feedEngine.runFeed === "function"
+    ) {
+      this.feedEngine.run = (...args) => this.feedEngine.runFeed(...args);
+    }
+    this.registerRecentFeed();
 
     this.playbackService =
       services.playbackService ||
@@ -4904,6 +4921,111 @@ class Application {
   }
 
   /**
+   * Register the default "recent" feed pipeline.
+   */
+  registerRecentFeed() {
+    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
+      return null;
+    }
+
+    const existingDefinition =
+      typeof this.feedEngine.getFeedDefinition === "function"
+        ? this.feedEngine.getFeedDefinition("recent")
+        : null;
+    if (existingDefinition) {
+      return existingDefinition;
+    }
+
+    try {
+      return this.feedEngine.registerFeed("recent", {
+        source: createActiveNostrSource({ service: this.nostrService }),
+        stages: [
+          createBlacklistFilterStage({
+            shouldIncludeVideo: (video, options) =>
+              this.nostrService.shouldIncludeVideo(video, options),
+          }),
+          createDedupeByRootStage({
+            dedupe: (videos) => this.dedupeVideosByRoot(videos),
+          }),
+        ],
+        sorter: createChronologicalSorter(),
+      });
+    } catch (error) {
+      console.warn("[Application] Failed to register recent feed:", error);
+      return null;
+    }
+  }
+
+  buildRecentFeedRuntime() {
+    const blacklist =
+      this.blacklistedEventIds instanceof Set
+        ? new Set(this.blacklistedEventIds)
+        : new Set();
+
+    return {
+      blacklistedEventIds: blacklist,
+      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
+    };
+  }
+
+  refreshRecentFeed({ reason, fallbackVideos } = {}) {
+    const runtime = this.buildRecentFeedRuntime();
+    const normalizedReason = typeof reason === "string" ? reason : undefined;
+    const fallback = Array.isArray(fallbackVideos) ? fallbackVideos : [];
+
+    if (!this.feedEngine || typeof this.feedEngine.run !== "function") {
+      const metadata = {
+        reason: normalizedReason,
+        engine: "unavailable",
+      };
+      this.latestFeedMetadata = metadata;
+      this.videosMap = this.nostrService.getVideosMap();
+      if (this.videoListView) {
+        this.videoListView.state.videosMap = this.videosMap;
+      }
+      this.renderVideoList({ videos: fallback, metadata });
+      return Promise.resolve({ videos: fallback, metadata });
+    }
+
+    return this.feedEngine
+      .run("recent", { runtime })
+      .then((result) => {
+        const videos = Array.isArray(result?.videos) ? result.videos : [];
+        const metadata = {
+          ...(result?.metadata || {}),
+        };
+        if (normalizedReason) {
+          metadata.reason = normalizedReason;
+        }
+
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
+
+        const payload = { videos, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      })
+      .catch((error) => {
+        console.error("[Application] Failed to run recent feed:", error);
+        const metadata = {
+          reason: normalizedReason || "error:recent-feed",
+          error: true,
+        };
+        this.latestFeedMetadata = metadata;
+        this.videosMap = this.nostrService.getVideosMap();
+        if (this.videoListView) {
+          this.videoListView.state.videosMap = this.videosMap;
+        }
+        const payload = { videos: fallback, metadata };
+        this.renderVideoList(payload);
+        return payload;
+      });
+  }
+
+  /**
    * Subscribe to videos (older + new) and render them as they come in.
    */
   async loadVideos(forceFetch = false) {
@@ -4916,15 +5038,27 @@ class Application {
       container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
     }
 
+    let initialRefreshPromise = null;
+
     const videos = await this.nostrService.loadVideos({
       forceFetch,
       blacklistedEventIds: this.blacklistedEventIds,
       isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-      onVideos: (payload) => this.renderVideoList(payload),
+      onVideos: (payload, detail = {}) => {
+        const promise = this.refreshRecentFeed({
+          reason: detail?.reason,
+          fallbackVideos: payload,
+        });
+        if (!initialRefreshPromise) {
+          initialRefreshPromise = promise;
+        }
+      },
     });
 
-    if (!Array.isArray(videos) || videos.length === 0) {
-      this.renderVideoList([]);
+    if (initialRefreshPromise) {
+      await initialRefreshPromise;
+    } else if (!Array.isArray(videos) || videos.length === 0) {
+      await this.refreshRecentFeed({ reason: "initial", fallbackVideos: [] });
     }
 
     this.videoSubscription = this.nostrService.getVideoSubscription() || null;
@@ -4945,11 +5079,7 @@ class Application {
       return;
     }
 
-    const all = this.nostrService.getFilteredActiveVideos({
-      blacklistedEventIds: this.blacklistedEventIds,
-      isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
-    });
-    this.renderVideoList(all);
+    await this.refreshRecentFeed({ reason: "older-fetch" });
   }
 
   /**
@@ -5239,7 +5369,7 @@ class Application {
       });
   }
 
-  async renderVideoList(videos) {
+  async renderVideoList(payload) {
     if (!this.videoListView) {
       return;
     }
@@ -5249,7 +5379,26 @@ class Application {
       return;
     }
 
-    this.videoListView.render(videos);
+    let videos = [];
+    let metadata = null;
+
+    if (Array.isArray(payload)) {
+      videos = payload;
+    } else if (payload && typeof payload === "object") {
+      if (Array.isArray(payload.videos)) {
+        videos = payload.videos;
+      }
+      if (payload.metadata && typeof payload.metadata === "object") {
+        metadata = { ...payload.metadata };
+      }
+    }
+
+    this.latestFeedMetadata = metadata;
+    if (this.videoListView) {
+      this.videoListView.state.feedMetadata = metadata;
+    }
+
+    this.videoListView.render(videos, metadata);
   }
 
   refreshVideoDiscussionCounts(videos = []) {

@@ -54,6 +54,10 @@ export class VideoListView {
       loadedThumbnails:
         state.loadedThumbnails instanceof Map ? state.loadedThumbnails : new Map(),
       videosMap: state.videosMap instanceof Map ? state.videosMap : new Map(),
+      feedMetadata:
+        state.feedMetadata && typeof state.feedMetadata === "object"
+          ? { ...state.feedMetadata }
+          : null,
     };
 
     this.renderers = {
@@ -234,7 +238,7 @@ export class VideoListView {
     this.handlers.blacklist = typeof handler === "function" ? handler : null;
   }
 
-  render(videos) {
+  render(videos, metadata = null) {
     if (!this.container) {
       return [];
     }
@@ -243,6 +247,10 @@ export class VideoListView {
       this.lastRenderedVideoSignature = null;
       this._lastRenderedVideoListElement = this.container;
     }
+
+    const normalizedMetadata =
+      metadata && typeof metadata === "object" ? { ...metadata } : null;
+    this.state.feedMetadata = normalizedMetadata;
 
     const source = Array.isArray(videos) ? videos : [];
     const dedupedVideos = this.utils.dedupeVideos(source);
@@ -471,7 +479,7 @@ export class VideoListView {
 
     this.currentVideos[index] = next;
     this.state.videosMap.set(videoId, next);
-    this.render(this.currentVideos.slice());
+    this.render(this.currentVideos.slice(), this.state.feedMetadata);
     return next;
   }
 
