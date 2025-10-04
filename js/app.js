@@ -766,35 +766,40 @@ class Application {
       this.authService.hydrateFromStorage();
       this.renderSavedProfiles();
 
-      // 1. Initialize the video modal (components/video-modal.html)
-      await this.videoModal.load();
-      const modalRoot = this.videoModal.getRoot();
-      if (modalRoot) {
-        this.attachMoreMenuHandlers(modalRoot);
-      }
+      const videoModalPromise = this.videoModal.load().then(() => {
+        const modalRoot = this.videoModal.getRoot();
+        if (modalRoot) {
+          this.attachMoreMenuHandlers(modalRoot);
+        }
+      });
 
-      // 2. Initialize the upload modal (components/upload-modal.html)
-      try {
-        await this.uploadModal.load();
-      } catch (error) {
-        console.error("initUploadModal failed:", error);
-        this.showError(`Failed to initialize upload modal: ${error.message}`);
-      }
-      initQuickR2Upload(this);
+      const uploadModalPromise = this.uploadModal
+        .load()
+        .catch((error) => {
+          console.error("initUploadModal failed:", error);
+          this.showError(`Failed to initialize upload modal: ${error.message}`);
+        })
+        .finally(() => {
+          initQuickR2Upload(this);
+        });
 
-      // 2.5 Initialize the edit modal (components/edit-video-modal.html)
-      try {
-        await this.editModal.load();
-      } catch (error) {
+      const editModalPromise = this.editModal.load().catch((error) => {
         console.error("Failed to load edit modal:", error);
         this.showError(`Failed to initialize edit modal: ${error.message}`);
-      }
+      });
 
-      // 3. (Optional) Initialize the profile modal (components/profile-modal.html)
-      await this.initProfileModal();
+      const profileModalPromise = this.initProfileModal();
 
-      // 4. Connect to Nostr
-      await nostrClient.init();
+      const modalBootstrapPromise = Promise.all([
+        videoModalPromise,
+        uploadModalPromise,
+        editModalPromise,
+        profileModalPromise,
+      ]);
+
+      const nostrInitPromise = nostrClient.init();
+
+      await Promise.all([modalBootstrapPromise, nostrInitPromise]);
 
       try {
         initViewCounter({ nostrClient });
@@ -802,26 +807,31 @@ class Application {
         console.warn("Failed to initialize view counter:", error);
       }
 
-      try {
-        await accessControl.refresh();
-        console.assert(
-          !accessControl.lastError ||
-            accessControl.lastError?.code !== "nostr-unavailable",
-          "[app.init()] Access control refresh should not run before nostrClient.init()",
-          accessControl.lastError
-        );
-      } catch (error) {
-        console.warn("Failed to refresh admin lists after connecting to Nostr:", error);
-      }
+      const accessControlPromise = accessControl
+        .refresh()
+        .then(() => {
+          console.assert(
+            !accessControl.lastError ||
+              accessControl.lastError?.code !== "nostr-unavailable",
+            "[app.init()] Access control refresh should not run before nostrClient.init()",
+            accessControl.lastError
+          );
+        })
+        .catch((error) => {
+          console.warn(
+            "Failed to refresh admin lists after connecting to Nostr:",
+            error
+          );
+        });
 
-      try {
-        await this.refreshAdminPaneState();
-      } catch (error) {
+      const adminPanePromise = this.refreshAdminPaneState().catch((error) => {
         console.warn(
           "Failed to update admin pane after connecting to Nostr:",
           error
         );
-      }
+      });
+
+      await Promise.all([accessControlPromise, adminPanePromise]);
 
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
@@ -844,7 +854,16 @@ class Application {
       // 5. Setup general event listeners
       this.setupEventListeners();
 
-      await this.initWatchHistoryMetadataSync();
+      const watchHistoryInitPromise = this.initWatchHistoryMetadataSync().catch(
+        (error) => {
+          if (isDevMode) {
+            console.warn(
+              "[app.init()] Failed to initialize watch history metadata sync:",
+              error
+            );
+          }
+        }
+      );
 
       // 6) Load the default view ONLY if there's no #view= already
       if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
@@ -852,7 +871,12 @@ class Application {
           "[app.init()] No #view= in the URL, loading default home view"
         );
         if (typeof this.loadView === "function") {
-          await this.loadView("views/most-recent-videos.html");
+          await Promise.all([
+            this.loadView("views/most-recent-videos.html"),
+            watchHistoryInitPromise,
+          ]);
+        } else {
+          await watchHistoryInitPromise;
         }
       } else {
         console.log(
@@ -860,6 +884,7 @@ class Application {
           window.location.hash,
           "so skipping default load"
         );
+        await watchHistoryInitPromise;
       }
 
       // 7. Once loaded, get a reference to #videoList
