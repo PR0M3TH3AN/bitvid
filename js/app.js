@@ -25,6 +25,7 @@ import {
   createDedupeByRootStage,
   createChronologicalSorter,
   createSubscriptionAuthorsSource,
+  registerWatchHistoryFeed,
 } from "./feedEngine/index.js";
 import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
@@ -186,6 +187,7 @@ class Application {
     }
     this.registerRecentFeed();
     this.registerSubscriptionsFeed();
+    this.registerWatchHistoryFeed();
 
     this.playbackService =
       services.playbackService ||
@@ -4993,6 +4995,30 @@ class Application {
       });
     } catch (error) {
       console.warn("[Application] Failed to register subscriptions feed:", error);
+      return null;
+    }
+  }
+
+  registerWatchHistoryFeed() {
+    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
+      return null;
+    }
+
+    const existingDefinition =
+      typeof this.feedEngine.getFeedDefinition === "function"
+        ? this.feedEngine.getFeedDefinition("watch-history")
+        : null;
+    if (existingDefinition) {
+      return existingDefinition;
+    }
+
+    try {
+      return registerWatchHistoryFeed(this.feedEngine, {
+        service: watchHistoryService,
+        nostr: this.nostrService,
+      });
+    } catch (error) {
+      console.warn("[Application] Failed to register watch history feed:", error);
       return null;
     }
   }

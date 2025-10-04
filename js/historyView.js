@@ -7,7 +7,6 @@ import {
   nostrClient,
   updateWatchHistoryList,
 } from "./nostr.js";
-import nostrService from "./services/nostrService.js";
 import {
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_BATCH_PAGE_SIZE,
@@ -81,6 +80,34 @@ function setTextContent(element, text) {
 
 function getAppInstance() {
   return getApplication();
+}
+
+function buildWatchHistoryFeedRuntime({ actor, cursor = 0 } = {}) {
+  const app = getAppInstance();
+  const normalizedActor =
+    typeof actor === "string" && actor.trim() ? actor.trim() : "";
+
+  const blacklist =
+    app?.blacklistedEventIds instanceof Set
+      ? new Set(app.blacklistedEventIds)
+      : new Set();
+
+  const runtime = {
+    blacklistedEventIds: blacklist,
+    isAuthorBlocked: (pubkey) =>
+      (typeof app?.isAuthorBlocked === "function" && app.isAuthorBlocked(pubkey)) ||
+      false,
+    watchHistory: {
+      actor: normalizedActor,
+      cursor: Number.isFinite(cursor) ? cursor : 0,
+    },
+  };
+
+  if (normalizedActor) {
+    runtime.actor = normalizedActor;
+  }
+
+  return runtime;
 }
 
 function safeLocaleDate(date) {
@@ -311,171 +338,6 @@ function getPointerVideoId(video, pointer) {
   return "";
 }
 
-async function resolveVideoFromPointer(pointer, caches) {
-  if (!pointer) {
-    return null;
-  }
-  const app = getAppInstance();
-  const type = pointer.type === "a" ? "a" : "e";
-  const value = typeof pointer.value === "string" ? pointer.value.trim() : "";
-  if (!value) {
-    return null;
-  }
-
-  const normalizeVideo = (video) => {
-    if (!video || typeof video !== "object") {
-      return null;
-    }
-    if (video.deleted) {
-      return null;
-    }
-    return video;
-  };
-
-  if (type === "e") {
-    const fromCache = app?.videosMap?.get(value);
-    if (fromCache) {
-      const normalized = normalizeVideo(fromCache);
-      if (normalized) {
-        return normalized;
-      }
-    }
-    if (nostrClient?.allEvents instanceof Map) {
-      const event = nostrClient.allEvents.get(value);
-      if (event) {
-        const normalized = normalizeVideo(event);
-        if (normalized) {
-          return normalized;
-        }
-      }
-    }
-    if (typeof app?.getOldEventById === "function") {
-      try {
-        const fetched = await app.getOldEventById(value);
-        if (fetched) {
-          const normalized = normalizeVideo(fetched);
-          if (normalized) {
-            return normalized;
-          }
-        }
-      } catch (error) {
-        if (isDevEnv) {
-          console.warn("[historyView] Failed to load video via app cache:", error);
-        }
-      }
-    }
-    if (typeof nostrClient?.getEventById === "function") {
-      try {
-        const fetched = await nostrClient.getEventById(value);
-        const normalized = normalizeVideo(fetched);
-        if (normalized) {
-          return normalized;
-        }
-      } catch (error) {
-        if (isDevEnv) {
-          console.warn("[historyView] Failed to fetch event by id:", error);
-        }
-      }
-    }
-    return null;
-  }
-
-  const compareAddress = (video) => {
-    if (!video || typeof video !== "object") {
-      return false;
-    }
-    if (typeof app?.getVideoAddressPointer !== "function") {
-      return false;
-    }
-    const address = app.getVideoAddressPointer(video);
-    return typeof address === "string" && address.trim() === value;
-  };
-
-  if (app?.videosMap instanceof Map) {
-    for (const cached of app.videosMap.values()) {
-      if (compareAddress(cached)) {
-        const normalized = normalizeVideo(cached);
-        if (normalized) {
-          return normalized;
-        }
-      }
-    }
-  }
-
-  const filterOptions = {
-    blacklistedEventIds: app?.blacklistedEventIds,
-    isAuthorBlocked: (pubkey) =>
-      (typeof app?.isAuthorBlocked === "function" && app.isAuthorBlocked(pubkey)) || false,
-  };
-
-  const activeVideos = Array.isArray(caches?.activeVideos)
-    ? caches.activeVideos
-    : nostrService.getFilteredActiveVideos(filterOptions);
-  for (const candidate of activeVideos) {
-    if (compareAddress(candidate)) {
-      const normalized = normalizeVideo(candidate);
-      if (normalized) {
-        return normalized;
-      }
-    }
-  }
-
-  if (!caches?.catalogPromise) {
-    caches.catalogPromise = nostrService
-      .fetchVideos(filterOptions)
-      .catch((error) => {
-        if (isDevEnv) {
-          console.warn("[historyView] Failed to fetch video catalog:", error);
-        }
-        return [];
-      });
-  }
-  if (caches?.catalogPromise) {
-    try {
-      const catalog = await caches.catalogPromise;
-      if (Array.isArray(catalog)) {
-        for (const candidate of catalog) {
-          if (compareAddress(candidate)) {
-            const normalized = normalizeVideo(candidate);
-            if (normalized) {
-              return normalized;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      if (isDevEnv) {
-        console.warn("[historyView] Failed to search catalog for pointer:", error);
-      }
-    }
-  }
-
-  return null;
-}
-
-function resolveProfileForPubkey(pubkey) {
-  if (typeof pubkey !== "string" || !pubkey.trim()) {
-    return null;
-  }
-  const app = getAppInstance();
-  if (!app) {
-    return null;
-  }
-  try {
-    const cacheEntry = app.getProfileCacheEntry
-      ? app.getProfileCacheEntry(pubkey)
-      : null;
-    if (cacheEntry && typeof cacheEntry === "object") {
-      return cacheEntry.profile || null;
-    }
-  } catch (error) {
-    if (isDevEnv) {
-      console.warn("[historyView] Failed to read profile cache:", error);
-    }
-  }
-  return null;
-}
-
 function buildHistoryCard({
   item,
   video,
@@ -700,7 +562,20 @@ function buildHistoryCard({
 
 export function createWatchHistoryRenderer(config = {}) {
   const {
-    fetchHistory = watchHistoryService.loadLatest.bind(watchHistoryService),
+    fetchHistory = async (actorInput, { cursor = 0 } = {}) => {
+      const app = getAppInstance();
+      const engine = app?.feedEngine;
+      if (engine && typeof engine.run === "function") {
+        const runtime = buildWatchHistoryFeedRuntime({
+          actor: actorInput,
+          cursor,
+        });
+        return engine.run("watch-history", { runtime });
+      }
+      const items = await watchHistoryService.loadLatest(actorInput);
+      const normalized = normalizeHistoryItems(items);
+      return { items: normalized, metadata: { engine: "service-fallback" } };
+    },
     snapshot = watchHistoryService.snapshot.bind(watchHistoryService),
     getActor,
     viewSelector = "#watchHistoryView",
@@ -766,10 +641,7 @@ export function createWatchHistoryRenderer(config = {}) {
     metadataPreference: "encrypted-only",
     privacyDismissed: false,
     metadataCache: new Map(),
-    catalogCaches: {
-      activeVideos: null,
-      catalogPromise: null,
-    },
+    feedMetadata: null,
     metadataStorageEnabled:
       typeof watchHistoryService.shouldStoreMetadata === "function"
         ? watchHistoryService.shouldStoreMetadata() !== false
@@ -1225,31 +1097,21 @@ export function createWatchHistoryRenderer(config = {}) {
 
   async function hydrateBatch(batch) {
     const hydrated = [];
-    const caches = state.catalogCaches;
-    if (!caches.activeVideos && typeof nostrClient?.getActiveVideos === "function") {
-      caches.activeVideos = nostrClient.getActiveVideos();
-    }
     for (const item of batch) {
       if (!item) {
         continue;
       }
-      if (state.metadataCache.has(item.pointerKey)) {
-        hydrated.push({ ...item, metadata: state.metadataCache.get(item.pointerKey) });
-        continue;
-      }
-      const pointerKeyValue = item.pointerKey;
-      let video = null;
-      let profile = null;
-      if (
-        pointerKeyValue &&
-        typeof watchHistoryService.getLocalMetadata === "function"
-      ) {
+
+      const pointerKeyValue = item.pointerKey || null;
+      const baseMetadata =
+        item && typeof item === "object" && item.metadata && typeof item.metadata === "object"
+          ? { ...item.metadata }
+          : {};
+
+      let cached = pointerKeyValue ? state.metadataCache.get(pointerKeyValue) : null;
+      if (!cached && pointerKeyValue && typeof watchHistoryService.getLocalMetadata === "function") {
         try {
-          const stored = watchHistoryService.getLocalMetadata(pointerKeyValue);
-          if (stored) {
-            video = stored.video || null;
-            profile = stored.profile || null;
-          }
+          cached = watchHistoryService.getLocalMetadata(pointerKeyValue) || null;
         } catch (error) {
           if (isDevEnv) {
             console.warn(
@@ -1260,28 +1122,32 @@ export function createWatchHistoryRenderer(config = {}) {
           }
         }
       }
-      try {
-        const resolvedVideo = await resolveVideoFromPointer(item.pointer, caches);
-        if (resolvedVideo) {
-          video = resolvedVideo;
-        }
-      } catch (error) {
-        if (isDevEnv) {
-          console.warn(
-            "[historyView] Failed to resolve video for pointer:",
-            error,
-          );
-        }
+
+      let video = item.video || baseMetadata.video || null;
+      let profile = baseMetadata.profile || null;
+
+      if (cached) {
+        video = video || cached.video || null;
+        profile = profile || cached.profile || null;
       }
-      if (video?.pubkey) {
-        profile = resolveProfileForPubkey(video.pubkey) || profile;
-      }
-      const metadata = { video: video || null, profile: profile || null };
-      state.metadataCache.set(pointerKeyValue, metadata);
+
+      const metadata = {
+        ...baseMetadata,
+        video: video || null,
+        profile: profile || null,
+      };
+
       if (pointerKeyValue) {
+        state.metadataCache.set(pointerKeyValue, {
+          video: metadata.video,
+          profile: metadata.profile,
+        });
         if (state.metadataStorageEnabled) {
           try {
-            watchHistoryService.setLocalMetadata?.(pointerKeyValue, metadata);
+            watchHistoryService.setLocalMetadata?.(pointerKeyValue, {
+              video: metadata.video,
+              profile: metadata.profile,
+            });
           } catch (error) {
             if (isDevEnv) {
               console.warn(
@@ -1291,9 +1157,9 @@ export function createWatchHistoryRenderer(config = {}) {
               );
             }
           }
-        } else {
+        } else if (typeof watchHistoryService.removeLocalMetadata === "function") {
           try {
-            watchHistoryService.removeLocalMetadata?.(pointerKeyValue);
+            watchHistoryService.removeLocalMetadata(pointerKeyValue);
           } catch (error) {
             if (isDevEnv) {
               console.warn(
@@ -1305,7 +1171,8 @@ export function createWatchHistoryRenderer(config = {}) {
           }
         }
       }
-      hydrated.push({ ...item, metadata });
+
+      hydrated.push({ ...item, video: metadata.video, metadata });
     }
     return hydrated;
   }
@@ -1653,9 +1520,9 @@ export function createWatchHistoryRenderer(config = {}) {
         : await resolveActorKey();
     state.actor = actor;
     updateSessionFallbackWarning();
-    let items = [];
+    let result = null;
     try {
-      items = await fetchHistory(actor);
+      result = await fetchHistory(actor, { cursor: 0 });
       state.lastError = null;
       hideErrorBanner();
     } catch (error) {
@@ -1665,21 +1532,70 @@ export function createWatchHistoryRenderer(config = {}) {
           ? error.message
           : "Failed to load watch history from relays.";
       showErrorBanner(message);
-      items = [];
+      result = null;
     }
     setLoadingState(false);
-    const normalized = normalizeHistoryItems(items);
+    const feedItems = Array.isArray(result?.items) ? result.items : [];
+    const normalized = [];
+    state.metadataCache.clear();
+    for (const entry of feedItems) {
+      const pointer = normalizePointerInput(entry?.pointer || entry);
+      if (!pointer) {
+        continue;
+      }
+      const pointerKeyValue =
+        typeof entry?.pointerKey === "string" && entry.pointerKey
+          ? entry.pointerKey
+          : pointerKey(pointer);
+      if (!pointerKeyValue) {
+        continue;
+      }
+      const watchedAtRaw = Number.isFinite(entry?.watchedAt)
+        ? entry.watchedAt
+        : Number.isFinite(entry?.metadata?.watchedAt)
+        ? entry.metadata.watchedAt
+        : 0;
+      const watchedAt = Math.max(0, Math.floor(Number(watchedAtRaw) || 0));
+      const baseMetadata =
+        entry && typeof entry === "object" && entry.metadata && typeof entry.metadata === "object"
+          ? { ...entry.metadata }
+          : {};
+      const video = entry?.video || baseMetadata.video || null;
+      const profile = baseMetadata.profile || null;
+      const metadata = {
+        ...baseMetadata,
+        pointerKey: pointerKeyValue,
+        watchedAt: Number.isFinite(baseMetadata.watchedAt)
+          ? baseMetadata.watchedAt
+          : watchedAt || null,
+        video: video || null,
+        profile: profile || null,
+      };
+      state.metadataCache.set(pointerKeyValue, {
+        video: metadata.video,
+        profile: metadata.profile,
+      });
+      normalized.push({
+        pointer,
+        pointerKey: pointerKeyValue,
+        watchedAt,
+        video: metadata.video,
+        metadata,
+      });
+    }
+
     const fingerprint = computeFingerprint(normalized);
     if (!force && fingerprint && fingerprint === state.fingerprint) {
       return false;
     }
     state.items = normalized;
+    state.feedMetadata =
+      result && typeof result.metadata === "object" && result.metadata
+        ? { ...result.metadata }
+        : null;
     state.fingerprint = fingerprint;
     state.cursor = 0;
     state.hasMore = state.items.length > 0;
-    state.metadataCache.clear();
-    state.catalogCaches.catalogPromise = null;
-    state.catalogCaches.activeVideos = null;
     return true;
   }
 
@@ -1902,6 +1818,7 @@ export function createWatchHistoryRenderer(config = {}) {
       }
       const remainingItems = state.items.slice();
       const actor = await resolveActorKey();
+      let refreshNeeded = true;
       try {
         const handler =
           typeof remove === "function"
@@ -1927,10 +1844,21 @@ export function createWatchHistoryRenderer(config = {}) {
         if (isDevEnv) {
           console.warn("[historyView] Removal failed:", error);
         }
-        await this.refresh();
       } finally {
         if (parentDay instanceof HTMLElement) {
           removeEmptyDayContainers(elements.grid);
+        }
+        if (refreshNeeded) {
+          try {
+            await this.refresh({ force: true });
+          } catch (error) {
+            if (isDevEnv) {
+              console.warn(
+                "[historyView] Failed to refresh watch history after removal:",
+                error,
+              );
+            }
+          }
         }
       }
     },

@@ -16,3 +16,4 @@ export {
   createSubscriptionAuthorsSource,
   createWatchHistoryPointerSource,
 } from "./sources.js";
+export { createWatchHistoryFeedDefinition, registerWatchHistoryFeed } from "./watchHistoryFeed.js";
