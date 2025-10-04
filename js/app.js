@@ -1,6 +1,5 @@
 // js/app.js
 
-import { loadView } from "./viewManager.js";
 import {
   nostrClient,
   normalizePointerInput,
@@ -48,6 +47,11 @@ import { UploadModal } from "./ui/components/UploadModal.js";
 import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
+import { MediaLoader } from "./utils/mediaLoader.js";
+import { pointerArrayToKey } from "./utils/pointer.js";
+import { fakeDecrypt } from "./utils/fakeDecrypt.js";
+import { isValidMagnetUri } from "./utils/magnetValidators.js";
+import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -73,37 +77,6 @@ import {
   urlHealthConstants,
 } from "./state/cache.js";
 
-function pointerArrayToKey(pointer) {
-  if (!Array.isArray(pointer) || pointer.length < 2) {
-    return "";
-  }
-
-  const type = pointer[0] === "a" ? "a" : pointer[0] === "e" ? "e" : "";
-  if (!type) {
-    return "";
-  }
-
-  const value =
-    typeof pointer[1] === "string" ? pointer[1].trim().toLowerCase() : "";
-  if (!value) {
-    return "";
-  }
-
-  const relay =
-    pointer.length > 2 && typeof pointer[2] === "string"
-      ? pointer[2].trim()
-      : "";
-
-  return relay ? `${type}:${value}:${relay}` : `${type}:${value}`;
-}
-
-/**
- * Simple "decryption" placeholder for private videos.
- */
-function fakeDecrypt(str) {
-  return str.split("").reverse().join("");
-}
-
 const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
@@ -115,60 +88,6 @@ const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 /**
- * Basic validation for BitTorrent magnet URIs.
- *
- * Returns `true` only when the value looks like a magnet link that WebTorrent
- * understands (`magnet:` scheme with at least one `xt=urn:btih:<info-hash>`
- * entry, where `<info-hash>` is either a 40-character hex digest or a
- * 32-character base32 digest). Magnets that only contain BitTorrent v2 hashes
- * (e.g. `btmh`) are treated as unsupported.
- */
-function isValidMagnetUri(magnet) {
-  const trimmed = typeof magnet === "string" ? magnet.trim() : "";
-  if (!trimmed) {
-    return false;
-  }
-
-  const decoded = safeDecodeMagnet(trimmed);
-  const candidate = decoded || trimmed;
-
-  if (/^[0-9a-f]{40}$/i.test(candidate)) {
-    return true;
-  }
-
-  try {
-    const parsed = new URL(candidate);
-    if (parsed.protocol.toLowerCase() !== "magnet:") {
-      return false;
-    }
-
-    const xtValues = parsed.searchParams.getAll("xt");
-    if (!xtValues.length) {
-      return false;
-    }
-
-    const hexPattern = /^[0-9a-f]{40}$/i;
-    const base32Pattern = /^[A-Z2-7]{32}$/;
-
-    return xtValues.some((value) => {
-      if (typeof value !== "string") return false;
-      const match = value.trim().match(/^urn:btih:([a-z0-9]+)$/i);
-      if (!match) return false;
-
-      const infoHash = match[1];
-      if (hexPattern.test(infoHash)) {
-        return true;
-      }
-
-      const upperHash = infoHash.toUpperCase();
-      return infoHash.length === 32 && base32Pattern.test(upperHash);
-    });
-  } catch (err) {
-    return false;
-  }
-}
-
-/**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
  * Usage:
@@ -178,143 +97,7 @@ function isValidMagnetUri(magnet) {
  * This will load the real image source from `imgElement.dataset.lazy`
  * once the image enters the viewport.
  */
-class MediaLoader {
-  constructor(rootMargin = "50px") {
-    this.observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const el = entry.target;
-            const lazySrc =
-              typeof el.dataset.lazy === "string"
-                ? el.dataset.lazy.trim()
-                : "";
-
-            if (lazySrc) {
-              const fallbackSrc =
-                (typeof el.dataset.fallbackSrc === "string"
-                  ? el.dataset.fallbackSrc.trim()
-                  : "") ||
-                el.getAttribute("data-fallback-src") ||
-                "";
-
-              const applyFallback = () => {
-                const resolvedFallback =
-                  fallbackSrc && fallbackSrc.trim()
-                    ? fallbackSrc.trim()
-                    : FALLBACK_THUMBNAIL_SRC;
-
-                if (!resolvedFallback) {
-                  return;
-                }
-
-                if (el.src !== resolvedFallback) {
-                  el.src = resolvedFallback;
-                }
-
-                if (!el.dataset.fallbackSrc) {
-                  el.dataset.fallbackSrc = resolvedFallback;
-                }
-
-                if (!el.getAttribute("data-fallback-src")) {
-                  el.setAttribute("data-fallback-src", resolvedFallback);
-                }
-
-                el.dataset.thumbnailFailed = "true";
-              };
-
-              const cleanupListeners = () => {
-                el.removeEventListener("error", handleError);
-                el.removeEventListener("load", handleLoad);
-              };
-
-              const handleError = () => {
-                cleanupListeners();
-                applyFallback();
-              };
-
-              const handleLoad = () => {
-                cleanupListeners();
-                if (
-                  (el.naturalWidth === 0 && el.naturalHeight === 0) ||
-                  !el.currentSrc
-                ) {
-                  applyFallback();
-                } else {
-                  delete el.dataset.thumbnailFailed;
-                }
-              };
-
-              el.addEventListener("error", handleError);
-              el.addEventListener("load", handleLoad);
-
-              if (fallbackSrc && lazySrc === fallbackSrc) {
-                cleanupListeners();
-                delete el.dataset.thumbnailFailed;
-              } else {
-                el.src = lazySrc;
-
-                if (el.complete) {
-                  // Handle cached results synchronously
-                  if (el.naturalWidth === 0 && el.naturalHeight === 0) {
-                    handleError();
-                  } else {
-                    handleLoad();
-                  }
-                }
-              }
-            }
-
-            delete el.dataset.lazy;
-            // Stop observing once loaded
-            this.observer.unobserve(el);
-          }
-        }
-      },
-      { rootMargin }
-    );
-  }
-
-  observe(el) {
-    if (!el || typeof el.dataset === "undefined") {
-      return;
-    }
-
-    if (!el.dataset.fallbackSrc) {
-      const fallbackAttr =
-        el.getAttribute("data-fallback-src") || el.getAttribute("src") || "";
-      if (fallbackAttr) {
-        el.dataset.fallbackSrc = fallbackAttr;
-      } else if (el.tagName === "IMG") {
-        el.dataset.fallbackSrc = FALLBACK_THUMBNAIL_SRC;
-        el.setAttribute("data-fallback-src", FALLBACK_THUMBNAIL_SRC);
-      }
-    }
-
-    if (
-      el.tagName === "IMG" &&
-      typeof HTMLImageElement !== "undefined" &&
-      "loading" in HTMLImageElement.prototype
-    ) {
-      el.loading = el.loading || "lazy";
-      if ("decoding" in HTMLImageElement.prototype) {
-        el.decoding = el.decoding || "async";
-      }
-    }
-
-    const lazySrc =
-      typeof el.dataset.lazy === "string" ? el.dataset.lazy.trim() : "";
-    if (lazySrc) {
-      this.observer.observe(el);
-    }
-  }
-
-  disconnect() {
-    this.observer.disconnect();
-  }
-}
-
-class bitvidApp {
+class Application {
   get pubkey() {
     return getStoredPubkey();
   }
@@ -339,15 +122,23 @@ class bitvidApp {
     setStoredCurrentVideo(value ?? null);
   }
 
-  constructor() {
+  constructor({ services = {}, ui = {}, helpers = {}, loadView: viewLoader } = {}) {
+    this.loadView = typeof viewLoader === "function" ? viewLoader : null;
+
     // Basic auth/display elements
     this.loginButton = document.getElementById("loginButton") || null;
     this.logoutButton = document.getElementById("logoutButton") || null;
     this.userStatus = document.getElementById("userStatus") || null;
     this.userPubKey = document.getElementById("userPubKey") || null;
 
-    // Lazy-loading helper for images
-    this.mediaLoader = new MediaLoader();
+    const mediaLoaderFactory =
+      typeof helpers.mediaLoaderFactory === "function"
+        ? helpers.mediaLoaderFactory
+        : () => new MediaLoader();
+    this.mediaLoader =
+      helpers.mediaLoader instanceof MediaLoader
+        ? helpers.mediaLoader
+        : mediaLoaderFactory();
     this.loadedThumbnails = new Map();
     this.videoDiscussionCountCache = new Map();
     this.inFlightDiscussionCounts = new Map();
@@ -373,12 +164,17 @@ class bitvidApp {
     this.boundVideoListShareListener = null;
     this.boundVideoListContextListener = null;
 
-    this.playbackService = new PlaybackService({
-      logger: (message, ...args) => this.log(message, ...args),
-      torrentClient,
-      deriveTorrentPlaybackConfig,
-      isValidMagnetUri,
-      urlFirstEnabled: URL_FIRST_ENABLED,
+    this.nostrService = services.nostrService || nostrService;
+    this.r2Service = services.r2Service || r2Service;
+
+    this.playbackService =
+      services.playbackService ||
+      new PlaybackService({
+        logger: (message, ...args) => this.log(message, ...args),
+        torrentClient,
+        deriveTorrentPlaybackConfig,
+        isValidMagnetUri,
+        urlFirstEnabled: URL_FIRST_ENABLED,
       analyticsCallbacks: {
         "session-start": (detail) => {
           const urlProvided = detail?.urlProvided ? "true" : "false";
@@ -401,15 +197,17 @@ class bitvidApp {
           }
         },
       },
-    });
+      });
     this.activePlaybackSession = null;
 
-    this.authService = new AuthService({
-      nostrClient,
-      userBlocks,
-      relayManager,
-      logger: (message, ...args) => this.log(message, ...args),
-    });
+    this.authService =
+      services.authService ||
+      new AuthService({
+        nostrClient,
+        userBlocks,
+        relayManager,
+        logger: (message, ...args) => this.log(message, ...args),
+      });
     this.authEventUnsubscribes.push(
       this.authService.on("auth:login", (detail) => this.handleAuthLogin(detail))
     );
@@ -487,22 +285,25 @@ class bitvidApp {
 
     // Upload modal component
     this.uploadButton = document.getElementById("uploadButton") || null;
-    this.r2Service = r2Service;
     const uploadModalEvents = new EventTarget();
-    this.uploadModal = new UploadModal({
-      authService: this.authService,
-      r2Service: this.r2Service,
-      publishVideoNote: (payload, options) =>
-        this.publishVideoNote(payload, options),
-      removeTrackingScripts,
-      setGlobalModalState,
-      showError: (message) => this.showError(message),
-      showSuccess: (message) => this.showSuccess(message),
-      getCurrentPubkey: () => this.pubkey,
-      safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
-      eventTarget: uploadModalEvents,
-      container: document.getElementById("modalContainer") || null,
-    });
+    this.uploadModal =
+      (typeof ui.uploadModal === "function"
+        ? ui.uploadModal({ app: this, eventTarget: uploadModalEvents })
+        : ui.uploadModal) ||
+      new UploadModal({
+        authService: this.authService,
+        r2Service: this.r2Service,
+        publishVideoNote: (payload, options) =>
+          this.publishVideoNote(payload, options),
+        removeTrackingScripts,
+        setGlobalModalState,
+        showError: (message) => this.showError(message),
+        showSuccess: (message) => this.showSuccess(message),
+        getCurrentPubkey: () => this.pubkey,
+        safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+        eventTarget: uploadModalEvents,
+        container: document.getElementById("modalContainer") || null,
+      });
     this.boundUploadSubmitHandler = (event) => {
       this.handleUploadSubmitEvent(event);
     };
@@ -512,21 +313,25 @@ class bitvidApp {
     );
 
     const editModalEvents = new EventTarget();
-    this.editModal = new EditModal({
-      removeTrackingScripts,
-      setGlobalModalState,
-      showError: (message) => this.showError(message),
-      getMode: () => (isDevMode ? "dev" : "live"),
-      sanitizers: {
-        text: (value) => (typeof value === "string" ? value.trim() : ""),
-        url: (value) => (typeof value === "string" ? value.trim() : ""),
-        magnet: (value) => (typeof value === "string" ? value.trim() : ""),
-        checkbox: (value) => !!value,
-      },
-      escapeHtml: (value) => escapeHtml(value),
-      eventTarget: editModalEvents,
-      container: document.getElementById("modalContainer") || null,
-    });
+    this.editModal =
+      (typeof ui.editModal === "function"
+        ? ui.editModal({ app: this, eventTarget: editModalEvents })
+        : ui.editModal) ||
+      new EditModal({
+        removeTrackingScripts,
+        setGlobalModalState,
+        showError: (message) => this.showError(message),
+        getMode: () => (isDevMode ? "dev" : "live"),
+        sanitizers: {
+          text: (value) => (typeof value === "string" ? value.trim() : ""),
+          url: (value) => (typeof value === "string" ? value.trim() : ""),
+          magnet: (value) => (typeof value === "string" ? value.trim() : ""),
+          checkbox: (value) => !!value,
+        },
+        escapeHtml: (value) => escapeHtml(value),
+        eventTarget: editModalEvents,
+        container: document.getElementById("modalContainer") || null,
+      });
 
     this.boundEditModalSubmitHandler = (event) => {
       this.handleEditModalSubmit(event);
@@ -544,17 +349,21 @@ class bitvidApp {
       this.boundEditModalCancelHandler
     );
 
-    this.revertModal = new RevertModal({
-      removeTrackingScripts,
-      setGlobalModalState,
-      formatAbsoluteTimestamp: (timestamp) =>
-        this.formatAbsoluteTimestamp(timestamp),
-      formatTimeAgo: (timestamp) => this.formatTimeAgo(timestamp),
-      escapeHTML: (value) => this.escapeHTML(value),
-      truncateMiddle,
-      fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
-      container: document.getElementById("modalContainer") || null,
-    });
+    this.revertModal =
+      (typeof ui.revertModal === "function"
+        ? ui.revertModal({ app: this })
+        : ui.revertModal) ||
+      new RevertModal({
+        removeTrackingScripts,
+        setGlobalModalState,
+        formatAbsoluteTimestamp: (timestamp) =>
+          this.formatAbsoluteTimestamp(timestamp),
+        formatTimeAgo: (timestamp) => this.formatTimeAgo(timestamp),
+        escapeHTML: (value) => this.escapeHTML(value),
+        truncateMiddle,
+        fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
+        container: document.getElementById("modalContainer") || null,
+      });
 
     this.boundRevertConfirmHandler = (event) => {
       this.handleRevertModalConfirm(event);
@@ -574,14 +383,18 @@ class bitvidApp {
 
     this.cleanupPromise = null;
 
-    this.videoModal = new VideoModal({
-      removeTrackingScripts,
-      setGlobalModalState,
-      document,
-      logger: {
-        log: (message, ...args) => this.log(message, ...args),
-      },
-    });
+    this.videoModal =
+      (typeof ui.videoModal === "function"
+        ? ui.videoModal({ app: this })
+        : ui.videoModal) ||
+      new VideoModal({
+        removeTrackingScripts,
+        setGlobalModalState,
+        document,
+        logger: {
+          log: (message, ...args) => this.log(message, ...args),
+        },
+      });
     this.boundVideoModalCloseHandler = () => {
       this.hideModal();
     };
@@ -636,13 +449,13 @@ class bitvidApp {
     this.currentVideoPointerKey = null;
     this.playbackTelemetryState = null;
     this.loggedViewPointerKeys = new Set();
-    this.videoSubscription = nostrService.getVideoSubscription() || null;
+    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
     this.videoList = null;
     this.modalViewCountUnsub = null;
 
     // Videos stored as a Map (key=event.id)
-    this.videosMap = nostrService.getVideosMap();
-    this.unsubscribeFromNostrService = nostrService.on(
+    this.videosMap = this.nostrService.getVideosMap();
+    this.unsubscribeFromNostrService = this.nostrService.on(
       "subscription:changed",
       ({ subscription }) => {
         this.videoSubscription = subscription || null;
@@ -684,7 +497,7 @@ class bitvidApp {
       },
     });
 
-    this.videoListView = new VideoListView({
+    const videoListViewConfig = {
       document,
       mediaLoader: this.mediaLoader,
       badgeHelpers: { attachHealthBadges, attachUrlHealthBadges },
@@ -729,7 +542,12 @@ class bitvidApp {
       renderers: {
         getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
       },
-    });
+    };
+    this.videoListView =
+      (typeof ui.videoListView === "function"
+        ? ui.videoListView({ app: this, config: videoListViewConfig })
+        : ui.videoListView) ||
+      new VideoListView(videoListViewConfig);
 
     this.videoListViewPlaybackHandler = ({ videoId, url, magnet }) => {
       if (videoId) {
@@ -833,7 +651,7 @@ class bitvidApp {
         }
       } catch (err) {
         console.error(
-          "[bitvidApp] Invalid nevent in blacklist:",
+          "[Application] Invalid nevent in blacklist:",
           neventStr,
           err
         );
@@ -933,6 +751,11 @@ class bitvidApp {
 
   async init() {
     try {
+      if (typeof this.loadView !== "function") {
+        const module = await import("./viewManager.js");
+        this.loadView = module?.loadView || null;
+      }
+
       // Force update of any registered service workers to ensure latest code is used.
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.getRegistrations().then((registrations) => {
@@ -943,35 +766,40 @@ class bitvidApp {
       this.authService.hydrateFromStorage();
       this.renderSavedProfiles();
 
-      // 1. Initialize the video modal (components/video-modal.html)
-      await this.videoModal.load();
-      const modalRoot = this.videoModal.getRoot();
-      if (modalRoot) {
-        this.attachMoreMenuHandlers(modalRoot);
-      }
+      const videoModalPromise = this.videoModal.load().then(() => {
+        const modalRoot = this.videoModal.getRoot();
+        if (modalRoot) {
+          this.attachMoreMenuHandlers(modalRoot);
+        }
+      });
 
-      // 2. Initialize the upload modal (components/upload-modal.html)
-      try {
-        await this.uploadModal.load();
-      } catch (error) {
-        console.error("initUploadModal failed:", error);
-        this.showError(`Failed to initialize upload modal: ${error.message}`);
-      }
-      initQuickR2Upload(this);
+      const uploadModalPromise = this.uploadModal
+        .load()
+        .catch((error) => {
+          console.error("initUploadModal failed:", error);
+          this.showError(`Failed to initialize upload modal: ${error.message}`);
+        })
+        .finally(() => {
+          initQuickR2Upload(this);
+        });
 
-      // 2.5 Initialize the edit modal (components/edit-video-modal.html)
-      try {
-        await this.editModal.load();
-      } catch (error) {
+      const editModalPromise = this.editModal.load().catch((error) => {
         console.error("Failed to load edit modal:", error);
         this.showError(`Failed to initialize edit modal: ${error.message}`);
-      }
+      });
 
-      // 3. (Optional) Initialize the profile modal (components/profile-modal.html)
-      await this.initProfileModal();
+      const profileModalPromise = this.initProfileModal();
 
-      // 4. Connect to Nostr
-      await nostrClient.init();
+      const modalBootstrapPromise = Promise.all([
+        videoModalPromise,
+        uploadModalPromise,
+        editModalPromise,
+        profileModalPromise,
+      ]);
+
+      const nostrInitPromise = nostrClient.init();
+
+      await Promise.all([modalBootstrapPromise, nostrInitPromise]);
 
       try {
         initViewCounter({ nostrClient });
@@ -979,26 +807,31 @@ class bitvidApp {
         console.warn("Failed to initialize view counter:", error);
       }
 
-      try {
-        await accessControl.refresh();
-        console.assert(
-          !accessControl.lastError ||
-            accessControl.lastError?.code !== "nostr-unavailable",
-          "[app.init()] Access control refresh should not run before nostrClient.init()",
-          accessControl.lastError
-        );
-      } catch (error) {
-        console.warn("Failed to refresh admin lists after connecting to Nostr:", error);
-      }
+      const accessControlPromise = accessControl
+        .refresh()
+        .then(() => {
+          console.assert(
+            !accessControl.lastError ||
+              accessControl.lastError?.code !== "nostr-unavailable",
+            "[app.init()] Access control refresh should not run before nostrClient.init()",
+            accessControl.lastError
+          );
+        })
+        .catch((error) => {
+          console.warn(
+            "Failed to refresh admin lists after connecting to Nostr:",
+            error
+          );
+        });
 
-      try {
-        await this.refreshAdminPaneState();
-      } catch (error) {
+      const adminPanePromise = this.refreshAdminPaneState().catch((error) => {
         console.warn(
           "Failed to update admin pane after connecting to Nostr:",
           error
         );
-      }
+      });
+
+      await Promise.all([accessControlPromise, adminPanePromise]);
 
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
@@ -1021,20 +854,37 @@ class bitvidApp {
       // 5. Setup general event listeners
       this.setupEventListeners();
 
-      await this.initWatchHistoryMetadataSync();
+      const watchHistoryInitPromise = this.initWatchHistoryMetadataSync().catch(
+        (error) => {
+          if (isDevMode) {
+            console.warn(
+              "[app.init()] Failed to initialize watch history metadata sync:",
+              error
+            );
+          }
+        }
+      );
 
       // 6) Load the default view ONLY if there's no #view= already
       if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
         console.log(
           "[app.init()] No #view= in the URL, loading default home view"
         );
-        await loadView("views/most-recent-videos.html");
+        if (typeof this.loadView === "function") {
+          await Promise.all([
+            this.loadView("views/most-recent-videos.html"),
+            watchHistoryInitPromise,
+          ]);
+        } else {
+          await watchHistoryInitPromise;
+        }
       } else {
         console.log(
           "[app.init()] Found hash:",
           window.location.hash,
           "so skipping default load"
         );
+        await watchHistoryInitPromise;
       }
 
       // 7. Once loaded, get a reference to #videoList
@@ -1636,7 +1486,7 @@ class bitvidApp {
             ) {
               return nostrClient.sessionActor.pubkey;
             }
-            return window.app?.pubkey || undefined;
+            return this.pubkey || undefined;
           },
         });
       }
@@ -3661,7 +3511,7 @@ class bitvidApp {
     }
 
     try {
-      await nostrService.publishVideoNote(formData, this.pubkey);
+      await this.nostrService.publishVideoNote(formData, this.pubkey);
       if (typeof onSuccess === "function") {
         await onSuccess();
       }
@@ -3959,8 +3809,8 @@ class bitvidApp {
         }
 
         if (!preserveSubscriptions) {
-          nostrService.clearVideoSubscription();
-          this.videoSubscription = nostrService.getVideoSubscription() || null;
+          this.nostrService.clearVideoSubscription();
+          this.videoSubscription = this.nostrService.getVideoSubscription() || null;
         }
 
         // If there's a small inline player
@@ -5028,7 +4878,7 @@ class bitvidApp {
       container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
     }
 
-    const videos = await nostrService.loadVideos({
+    const videos = await this.nostrService.loadVideos({
       forceFetch,
       blacklistedEventIds: this.blacklistedEventIds,
       isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
@@ -5039,15 +4889,15 @@ class bitvidApp {
       this.renderVideoList([]);
     }
 
-    this.videoSubscription = nostrService.getVideoSubscription() || null;
-    this.videosMap = nostrService.getVideosMap();
+    this.videoSubscription = this.nostrService.getVideoSubscription() || null;
+    this.videosMap = this.nostrService.getVideosMap();
     if (this.videoListView) {
       this.videoListView.state.videosMap = this.videosMap;
     }
   }
 
   async loadOlderVideos(lastTimestamp) {
-    const olderVideos = await nostrService.loadOlderVideos(lastTimestamp, {
+    const olderVideos = await this.nostrService.loadOlderVideos(lastTimestamp, {
       blacklistedEventIds: this.blacklistedEventIds,
       isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
     });
@@ -5057,7 +4907,7 @@ class bitvidApp {
       return;
     }
 
-    const all = nostrService.getFilteredActiveVideos({
+    const all = this.nostrService.getFilteredActiveVideos({
       blacklistedEventIds: this.blacklistedEventIds,
       isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
     });
@@ -6147,7 +5997,7 @@ class bitvidApp {
     }
 
     try {
-      await nostrService.handleEditVideoSubmit({
+      await this.nostrService.handleEditVideoSubmit({
         originalEvent,
         updatedData,
         pubkey: this.pubkey,
@@ -6166,7 +6016,7 @@ class bitvidApp {
   async handleEditVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
-      const latestVideos = await nostrService.fetchVideos({
+      const latestVideos = await this.nostrService.fetchVideos({
         blacklistedEventIds: this.blacklistedEventIds,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
       });
@@ -6210,7 +6060,7 @@ class bitvidApp {
   async handleRevertVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
-      const activeVideos = await nostrService.fetchVideos({
+      const activeVideos = await this.nostrService.fetchVideos({
         blacklistedEventIds: this.blacklistedEventIds,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
       });
@@ -6306,7 +6156,7 @@ class bitvidApp {
   async handleFullDeleteVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
-      const all = nostrService.getFilteredActiveVideos({
+      const all = this.nostrService.getFilteredActiveVideos({
         blacklistedEventIds: this.blacklistedEventIds,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
       });
@@ -6337,7 +6187,7 @@ class bitvidApp {
       // We assume video.videoRootId is not empty, or fallback to video.id if needed
       const rootId = video.videoRootId || video.id;
 
-      await nostrService.handleFullDeleteVideo({
+      await this.nostrService.handleFullDeleteVideo({
         videoRootId: rootId,
         pubkey: this.pubkey,
         confirm: false,
@@ -7233,7 +7083,7 @@ class bitvidApp {
    * this.videosMap or from a bulk fetch. Uses nostrClient.getEventById.
    */
   async getOldEventById(eventId) {
-    return nostrService.getOldEventById(eventId);
+    return this.nostrService.getOldEventById(eventId);
   }
 
   /**
@@ -7319,7 +7169,7 @@ class bitvidApp {
       try {
         this.unsubscribeFromPubkeyState();
       } catch (error) {
-        console.warn("[bitvidApp] Failed to unsubscribe pubkey state:", error);
+        console.warn("[Application] Failed to unsubscribe pubkey state:", error);
       }
       this.unsubscribeFromPubkeyState = null;
     }
@@ -7329,7 +7179,7 @@ class bitvidApp {
         this.unsubscribeFromCurrentUserState();
       } catch (error) {
         console.warn(
-          "[bitvidApp] Failed to unsubscribe current user state:",
+          "[Application] Failed to unsubscribe current user state:",
           error
         );
       }
@@ -7341,7 +7191,7 @@ class bitvidApp {
         this.watchHistoryPreferenceUnsubscribe();
       } catch (error) {
         console.warn(
-          "[bitvidApp] Failed to unsubscribe watch history preference:",
+          "[Application] Failed to unsubscribe watch history preference:",
           error
         );
       }
@@ -7353,7 +7203,7 @@ class bitvidApp {
         try {
           unsubscribe();
         } catch (error) {
-          console.warn("[bitvidApp] Auth listener unsubscribe failed:", error);
+          console.warn("[Application] Auth listener unsubscribe failed:", error);
         }
       }
     });
@@ -7363,7 +7213,7 @@ class bitvidApp {
       try {
         this.unsubscribeFromNostrService();
       } catch (error) {
-        console.warn("[bitvidApp] Failed to unsubscribe nostr service:", error);
+        console.warn("[Application] Failed to unsubscribe nostr service:", error);
       }
       this.unsubscribeFromNostrService = null;
     }
@@ -7379,7 +7229,7 @@ class bitvidApp {
       try {
         this.uploadModal.destroy();
       } catch (error) {
-        console.warn("[bitvidApp] Failed to destroy upload modal:", error);
+        console.warn("[Application] Failed to destroy upload modal:", error);
       }
     }
 
@@ -7402,7 +7252,7 @@ class bitvidApp {
         try {
           this.editModal.destroy();
         } catch (error) {
-          console.warn("[bitvidApp] Failed to destroy edit modal:", error);
+          console.warn("[Application] Failed to destroy edit modal:", error);
         }
       }
     }
@@ -7418,7 +7268,7 @@ class bitvidApp {
       try {
         this.revertModal.destroy();
       } catch (error) {
-        console.warn("[bitvidApp] Failed to destroy revert modal:", error);
+        console.warn("[Application] Failed to destroy revert modal:", error);
       }
     }
 
@@ -7462,7 +7312,7 @@ class bitvidApp {
         try {
           this.videoModal.destroy();
         } catch (error) {
-          console.warn("[bitvidApp] Failed to destroy video modal:", error);
+          console.warn("[Application] Failed to destroy video modal:", error);
         }
       }
     }
@@ -7495,7 +7345,7 @@ class bitvidApp {
       try {
         this.videoListView.destroy();
       } catch (error) {
-        console.warn("[bitvidApp] Failed to destroy VideoListView:", error);
+        console.warn("[Application] Failed to destroy VideoListView:", error);
       }
     }
 
@@ -7552,30 +7402,5 @@ class bitvidApp {
  * return only the newest (by created_at) for each videoRootId.
  * If no videoRootId is present, treat the video’s own ID as its root.
  */
-function dedupeToNewestByRoot(videos) {
-  const map = new Map(); // key = rootId, value = newest video for that root
-
-  for (const vid of videos) {
-    // If there's no videoRootId, fall back to vid.id (treat it as its own "root")
-    const rootId = vid.videoRootId || vid.id;
-
-    const existing = map.get(rootId);
-    if (!existing || vid.created_at > existing.created_at) {
-      map.set(rootId, vid);
-    }
-  }
-
-  // Return just the newest from each group
-  return Array.from(map.values());
-}
-
-export const app = new bitvidApp();
-export const appReady = app.init();
-
-if (typeof window !== "undefined") {
-  window.app = app;
-  window.appReady = appReady;
-  window.bitvid = window.bitvid || {};
-  window.bitvid.app = app;
-  window.bitvid.appReady = appReady;
-}
+export { Application };
+export default Application;

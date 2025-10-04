@@ -15,6 +15,7 @@ import {
   getWatchHistoryV2Enabled,
 } from "./constants.js";
 import { isDevMode } from "./config.js";
+import { getApplication } from "./applicationContext.js";
 
 const SESSION_STORAGE_KEY = "bitvid:watch-history:session:v1";
 const SESSION_STORAGE_VERSION = 1;
@@ -60,7 +61,7 @@ function getLoggedInActorKey() {
 
   if (typeof window !== "undefined") {
     const appCandidate =
-      (window.bitvid && window.bitvid.app) || window.app || null;
+      getApplication() || null;
     if (appCandidate && typeof appCandidate === "object") {
       if (typeof appCandidate.normalizeHexPubkey === "function") {
         try {

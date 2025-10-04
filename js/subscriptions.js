@@ -13,6 +13,9 @@ import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+import { getApplication } from "./applicationContext.js";
+
+const getApp = () => getApplication();
 
 let attachHealthBadgesLoader = null;
 let attachHealthBadgesErrorLogged = false;
@@ -64,8 +67,9 @@ function getAbsoluteShareUrl(nevent) {
     return "";
   }
 
-  if (window.app?.buildShareUrlFromNevent) {
-    const candidate = window.app.buildShareUrlFromNevent(nevent);
+  const app = getApp();
+  if (app?.buildShareUrlFromNevent) {
+    const candidate = app.buildShareUrlFromNevent(nevent);
     if (candidate) {
       return candidate;
     }
@@ -364,9 +368,11 @@ class SubscriptionsManager {
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    const app = getApp();
+
     const safeVideos = Array.isArray(videos) ? videos : [];
     const dedupedVideos =
-      window.app?.dedupeVideosByRoot?.(safeVideos) ??
+      app?.dedupeVideosByRoot?.(safeVideos) ??
       this.dedupeToNewestByRoot(safeVideos);
 
     const filteredVideos = dedupedVideos.filter((video) => {
@@ -374,10 +380,7 @@ class SubscriptionsManager {
         return false;
       }
 
-      if (
-        window.app?.isAuthorBlocked &&
-        window.app.isAuthorBlocked(video.pubkey)
-      ) {
+      if (app?.isAuthorBlocked && app.isAuthorBlocked(video.pubkey)) {
         return false;
       }
 
@@ -408,26 +411,26 @@ class SubscriptionsManager {
 
       // Keep the global videos map up to date so delegated playback handlers
       // can reuse the already fetched metadata for this event.
-      window.app?.videosMap?.set(video.id, video);
+      app?.videosMap?.set(video.id, video);
 
       localAuthorSet.add(video.pubkey);
 
       const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
       const shareUrl = getAbsoluteShareUrl(nevent);
-      const canEdit = window.app?.pubkey === video.pubkey;
+      const canEdit = app?.pubkey === video.pubkey;
 
       const highlightClass =
         video.isPrivate && canEdit
           ? "border-2 border-yellow-500"
           : "border-none";
 
-      const timeAgo = window.app?.formatTimeAgo
-        ? window.app.formatTimeAgo(video.created_at)
+      const timeAgo = app?.formatTimeAgo
+        ? app.formatTimeAgo(video.created_at)
         : new Date(video.created_at * 1000).toLocaleString();
 
       let hasOlder = false;
-      if (canEdit && video.videoRootId && window.app?.hasOlderVersion) {
-        hasOlder = window.app.hasOlderVersion(video, fullAllEventsArray);
+      if (canEdit && video.videoRootId && app?.hasOlderVersion) {
+        hasOlder = app.hasOlderVersion(video, fullAllEventsArray);
       }
 
       const revertButton = hasOlder
@@ -524,8 +527,8 @@ class SubscriptionsManager {
         </div>
       `;
 
-      const safeTitle = window.app?.escapeHTML(video.title) || "Untitled";
-      const safeThumb = window.app?.escapeHTML(video.thumbnail) || "";
+      const safeTitle = app?.escapeHTML?.(video.title) || "Untitled";
+      const safeThumb = app?.escapeHTML?.(video.thumbnail) || "";
       const playbackUrl =
         typeof video.url === "string" ? video.url : "";
       const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
@@ -537,14 +540,14 @@ class SubscriptionsManager {
       const playbackMagnet = magnetCandidate;
       const magnetProvided = magnetCandidate.length > 0;
       const magnetSupported =
-        window.app?.isMagnetUriSupported?.(magnetCandidate) ?? false;
+        app?.isMagnetUriSupported?.(magnetCandidate) ?? false;
       const urlBadgeHtml = trimmedUrl
-        ? window.app?.getUrlHealthPlaceholderMarkup?.({ includeMargin: false }) ??
-          ""
+        ? app?.getUrlHealthPlaceholderMarkup?.({ includeMargin: false }) ??
+            ""
         : "";
       const torrentHealthBadgeHtml =
         magnetProvided && magnetSupported
-          ? window.app?.getTorrentHealthBadgeMarkup?.({
+          ? app?.getTorrentHealthBadgeMarkup?.({
               includeMargin: false,
             }) ?? ""
           : "";
@@ -696,21 +699,20 @@ class SubscriptionsManager {
     container.appendChild(fragment);
     scheduleAttachHealthBadges(container);
     attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
-      if (!window.app?.handleUrlHealthBadge) {
+      if (!app?.handleUrlHealthBadge) {
         return;
       }
-      const video =
-        window.app.videosMap?.get?.(eventId) || { id: eventId };
-      window.app.handleUrlHealthBadge({ video, url, badgeEl });
+      const video = app.videosMap?.get?.(eventId) || { id: eventId };
+      app.handleUrlHealthBadge({ video, url, badgeEl });
     });
 
-    window.app?.mountVideoListView?.();
+    app?.mountVideoListView?.();
 
     // Lazy-load
     const lazyEls = container.querySelectorAll("[data-lazy]");
-    lazyEls.forEach((el) => window.app?.mediaLoader.observe(el));
+    lazyEls.forEach((el) => app?.mediaLoader?.observe?.(el));
 
-    window.app?.attachMoreMenuHandlers?.(container);
+    app?.attachMoreMenuHandlers?.(container);
 
     // Gear menus
     const gearButtons = container.querySelectorAll("[data-settings-dropdown]");
@@ -733,7 +735,7 @@ class SubscriptionsManager {
         const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
         const eventId = btn.getAttribute("data-edit-event-id") || "";
-        window.app?.handleEditVideo({
+        app?.handleEditVideo?.({
           eventId,
           index: Number.isNaN(idx) ? null : idx,
         });
@@ -750,7 +752,7 @@ class SubscriptionsManager {
         const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
         const eventId = btn.getAttribute("data-revert-event-id") || "";
-        window.app?.handleRevertVideo({
+        app?.handleRevertVideo?.({
           eventId,
           index: Number.isNaN(idx) ? null : idx,
         });
@@ -769,7 +771,7 @@ class SubscriptionsManager {
         const dd = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dd) dd.classList.add("hidden");
         const eventId = btn.getAttribute("data-delete-all-event-id") || "";
-        window.app?.handleFullDeleteVideo({
+        app?.handleFullDeleteVideo?.({
           eventId,
           index: Number.isNaN(idx) ? null : idx,
         });
@@ -789,8 +791,8 @@ class SubscriptionsManager {
       localAuthorSet.add(nameEl.getAttribute("data-pubkey"));
     });
 
-    if (window.app?.batchFetchProfiles && localAuthorSet.size > 0) {
-      window.app.batchFetchProfiles(localAuthorSet);
+    if (app?.batchFetchProfiles && localAuthorSet.size > 0) {
+      app.batchFetchProfiles(localAuthorSet);
     }
 
     // Make author name/pic clickable => open channel
@@ -800,7 +802,7 @@ class SubscriptionsManager {
         ev.preventDefault();
         ev.stopPropagation();
         const pubkey = pic.getAttribute("data-pubkey");
-        window.app?.goToProfile(pubkey);
+        app?.goToProfile?.(pubkey);
       });
     });
 
@@ -810,7 +812,7 @@ class SubscriptionsManager {
         ev.preventDefault();
         ev.stopPropagation();
         const pubkey = nameEl.getAttribute("data-pubkey");
-        window.app?.goToProfile(pubkey);
+        app?.goToProfile?.(pubkey);
       });
     });
   }

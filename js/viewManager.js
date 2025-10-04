@@ -1,6 +1,7 @@
 // js/viewManager.js
 import { initChannelProfileView } from "./channelProfile.js";
 import { subscriptions } from "./subscriptions.js";
+import { getApplication } from "./applicationContext.js";
 
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 
@@ -9,8 +10,9 @@ const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
  */
 export async function loadView(viewUrl) {
   try {
-    if (window.app && typeof window.app.prepareForViewLoad === "function") {
-      window.app.prepareForViewLoad();
+    const app = getApplication();
+    if (app && typeof app.prepareForViewLoad === "function") {
+      app.prepareForViewLoad();
     }
 
     const res = await fetch(viewUrl);
@@ -52,15 +54,17 @@ export async function loadView(viewUrl) {
  */
 export const viewInitRegistry = {
   "most-recent-videos": () => {
-    if (window.app && window.app.loadVideos) {
-      if (typeof window.app.mountVideoListView === "function") {
-        window.app.mountVideoListView();
+    const app = getApplication();
+    if (app && typeof app.loadVideos === "function") {
+      if (typeof app.mountVideoListView === "function") {
+        app.mountVideoListView();
       }
-      window.app.loadVideos();
+      app.loadVideos();
     }
     // Force profile updates after the new view is in place.
-    if (window.app && window.app.forceRefreshAllProfiles) {
-      window.app.forceRefreshAllProfiles();
+    const refreshApp = getApplication();
+    if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
+      refreshApp.forceRefreshAllProfiles();
     }
   },
   explore: () => {
@@ -85,7 +89,8 @@ export const viewInitRegistry = {
   subscriptions: async () => {
     console.log("Subscriptions view loaded.");
 
-    if (!window.app.pubkey) {
+    const app = getApplication();
+    if (!app?.pubkey) {
       const container = document.getElementById("subscriptionsVideoList");
       if (container) {
         container.innerHTML =
@@ -96,7 +101,7 @@ export const viewInitRegistry = {
 
     // If user is logged in, let the SubscriptionsManager do everything:
     await subscriptions.showSubscriptionVideos(
-      window.app.pubkey,
+      app.pubkey,
       "subscriptionsVideoList"
     );
   },
