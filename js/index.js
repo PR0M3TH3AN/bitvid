@@ -1,8 +1,46 @@
 // js/index.js
 
 import "./bufferPolyfill.js";
-import { trackPageView } from "./analytics.js";
-import { appReady } from "./bootstrap.js";
+import Application from "./app.js";
+import { setApplication, setApplicationReady } from "./applicationContext.js";
+import nostrService from "./services/nostrService.js";
+import r2Service from "./services/r2Service.js";
+import { loadView, viewInitRegistry } from "./viewManager.js";
+
+let application = null;
+let applicationReadyPromise = Promise.resolve();
+
+function startApplication() {
+  if (application) {
+    return applicationReadyPromise;
+  }
+
+  application = new Application({
+    services: {
+      nostrService,
+      r2Service,
+    },
+    loadView,
+  });
+
+  setApplication(application);
+
+  const startupPromise = (async () => {
+    await application.init();
+    if (typeof application.start === "function") {
+      await application.start();
+    }
+  })();
+
+  applicationReadyPromise = startupPromise;
+  setApplicationReady(startupPromise);
+
+  startupPromise.catch((error) => {
+    console.error("Application failed to initialize:", error);
+  });
+
+  return startupPromise;
+}
 
 const INTERFACE_FADE_IN_ANIMATION = "interface-fade-in";
 const VIDEO_THUMBNAIL_FADE_IN_ANIMATION = "video-thumbnail-fade-in";
@@ -112,137 +150,139 @@ async function loadDisclaimer(url, containerId) {
   }
 }
 
-// 4) Load everything: modals, sidebar, disclaimers
-Promise.all([
-  // Existing modals
-  loadModal("components/login-modal.html"),
-  loadModal("components/application-form.html"),
-  loadModal("components/content-appeals-form.html"),
+async function bootstrapInterface() {
+  await Promise.all([
+    loadModal("components/login-modal.html"),
+    loadModal("components/application-form.html"),
+    loadModal("components/content-appeals-form.html"),
+    loadModal("components/general-feedback-form.html"),
+    loadModal("components/feature-request-form.html"),
+    loadModal("components/bug-fix-form.html"),
+  ]);
 
-  // New forms
-  loadModal("components/general-feedback-form.html"),
-  loadModal("components/feature-request-form.html"),
-  loadModal("components/bug-fix-form.html"),
-])
-  .then(() => {
-    console.log("Modals loaded.");
-    return loadSidebar("components/sidebar.html", "sidebarContainer");
-  })
-  .then(() => {
-    console.log("Sidebar loaded.");
+  console.log("Modals loaded.");
 
-    // Attach mobile menu button toggle logic (for sidebar)
-    const mobileMenuBtn = document.getElementById("mobileMenuBtn");
-    const sidebar = document.getElementById("sidebar");
-    const app = document.getElementById("app");
-    if (mobileMenuBtn && sidebar && app) {
-      mobileMenuBtn.addEventListener("click", () => {
-        sidebar.classList.toggle("sidebar-open");
-        app.classList.toggle("sidebar-open");
-      });
-    }
+  await loadSidebar("components/sidebar.html", "sidebarContainer");
+  console.log("Sidebar loaded.");
 
-    // Attach "More" button toggle logic for footer links
-    const footerDropdownButton = document.getElementById(
-      "footerDropdownButton"
-    );
-    if (footerDropdownButton) {
-      footerDropdownButton.addEventListener("click", () => {
-        const footerLinksContainer = document.getElementById(
-          "footerLinksContainer"
-        );
-        if (!footerLinksContainer) return;
-        footerLinksContainer.classList.toggle("hidden");
-        if (footerLinksContainer.classList.contains("hidden")) {
-          footerDropdownButton.innerHTML = "More &#9660;";
-        } else {
-          footerDropdownButton.innerHTML = "Less &#9650;";
-        }
-      });
-    }
-
-    // Load and set up sidebar navigation
-    return import("./sidebar.js").then((module) => {
-      module.setupSidebarNavigation();
+  const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+  const sidebar = document.getElementById("sidebar");
+  const appElement = document.getElementById("app");
+  if (mobileMenuBtn && sidebar && appElement) {
+    mobileMenuBtn.addEventListener("click", () => {
+      sidebar.classList.toggle("sidebar-open");
+      appElement.classList.toggle("sidebar-open");
     });
-  })
-  .then(() => {
-    // Now load the disclaimer
-    return loadDisclaimer("components/disclaimer.html", "modalContainer");
-  })
-  .then(() => {
-    console.log("Disclaimer loaded.");
+  }
 
-    // 1) Login button => open login modal
-    const loginNavBtn = document.getElementById("loginButton");
-    if (loginNavBtn) {
-      loginNavBtn.addEventListener("click", () => {
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.remove("hidden");
-        }
-      });
+  const footerDropdownButton = document.getElementById("footerDropdownButton");
+  if (footerDropdownButton) {
+    footerDropdownButton.addEventListener("click", () => {
+      const footerLinksContainer = document.getElementById("footerLinksContainer");
+      if (!footerLinksContainer) return;
+      footerLinksContainer.classList.toggle("hidden");
+      if (footerLinksContainer.classList.contains("hidden")) {
+        footerDropdownButton.innerHTML = "More &#9660;";
+      } else {
+        footerDropdownButton.innerHTML = "Less &#9650;";
+      }
+    });
+  }
+
+  try {
+    const sidebarModule = await import("./sidebar.js");
+    if (typeof sidebarModule.setupSidebarNavigation === "function") {
+      sidebarModule.setupSidebarNavigation();
     }
+  } catch (error) {
+    console.error("Failed to set up sidebar navigation:", error);
+  }
 
-    // 2) Close login modal
-    const closeLoginBtn = document.getElementById("closeLoginModal");
-    if (closeLoginBtn) {
-      closeLoginBtn.addEventListener("click", () => {
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.add("hidden");
+  await loadDisclaimer("components/disclaimer.html", "modalContainer");
+  console.log("Disclaimer loaded.");
+
+  const loginNavBtn = document.getElementById("loginButton");
+  if (loginNavBtn) {
+    loginNavBtn.addEventListener("click", () => {
+      const loginModal = document.getElementById("loginModal");
+      if (loginModal) {
+        loginModal.classList.remove("hidden");
+      }
+    });
+  }
+
+  const closeLoginBtn = document.getElementById("closeLoginModal");
+  if (closeLoginBtn) {
+    closeLoginBtn.addEventListener("click", () => {
+      const loginModal = document.getElementById("loginModal");
+      if (loginModal) {
+        loginModal.classList.add("hidden");
+      }
+    });
+  }
+
+  const openAppFormBtn = document.getElementById("openApplicationModal");
+  if (openAppFormBtn) {
+    openAppFormBtn.addEventListener("click", () => {
+      const loginModal = document.getElementById("loginModal");
+      if (loginModal) {
+        loginModal.classList.add("hidden");
+      }
+      const appModal = document.getElementById("nostrFormModal");
+      if (appModal) {
+        appModal.classList.remove("hidden");
+      }
+    });
+  }
+
+  const closeNostrFormBtn = document.getElementById("closeNostrFormModal");
+  if (closeNostrFormBtn) {
+    closeNostrFormBtn.addEventListener("click", () => {
+      const appModal = document.getElementById("nostrFormModal");
+      if (appModal) {
+        appModal.classList.add("hidden");
+      }
+      if (!localStorage.getItem("hasSeenDisclaimer")) {
+        const disclaimerModal = document.getElementById("disclaimerModal");
+        if (disclaimerModal) {
+          disclaimerModal.classList.remove("hidden");
         }
-      });
-    }
+      }
+    });
+  }
 
-    // 3) "Application Form" => open application form
-    const openAppFormBtn = document.getElementById("openApplicationModal");
-    if (openAppFormBtn) {
-      openAppFormBtn.addEventListener("click", () => {
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.add("hidden");
-        }
-        const appModal = document.getElementById("nostrFormModal");
-        if (appModal) {
-          appModal.classList.remove("hidden");
-        }
-      });
-    }
+  handleQueryParams();
 
-    // 4) Close application form
-    const closeNostrFormBtn = document.getElementById("closeNostrFormModal");
-    if (closeNostrFormBtn) {
-      closeNostrFormBtn.addEventListener("click", () => {
-        const appModal = document.getElementById("nostrFormModal");
-        if (appModal) {
-          appModal.classList.add("hidden");
-        }
-        // If user hasn't seen disclaimer, show it
-        if (!localStorage.getItem("hasSeenDisclaimer")) {
-          const disclaimerModal = document.getElementById("disclaimerModal");
-          if (disclaimerModal) {
-            disclaimerModal.classList.remove("hidden");
-          }
-        }
-      });
-    }
+  window.addEventListener("hashchange", handleHashChange);
 
-    // Once everything is loaded, handle the query params (modal? v?) & disclaimers
-    handleQueryParams();
+  await handleHashChange();
 
-    // Listen for hash changes
-    window.addEventListener("hashchange", handleHashChange);
+  const { default: disclaimerModal } = await import("./disclaimer.js");
+  disclaimerModal.init();
+  disclaimerModal.show();
+}
 
-    // Also run once on initial load
-    handleHashChange();
+async function initializeInterface() {
+  startApplication();
 
-    return import("./disclaimer.js");
-  })
-  .then(({ default: disclaimerModal }) => {
-    disclaimerModal.init();
-    disclaimerModal.show();
+  try {
+    await bootstrapInterface();
+  } catch (error) {
+    console.error("Failed to bootstrap Bitvid interface:", error);
+  }
+}
+
+function onDomReady() {
+  initializeInterface().catch((error) => {
+    console.error("Unhandled error during Bitvid initialization:", error);
   });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", onDomReady, { once: true });
+} else {
+  onDomReady();
+}
 
 /* -------------------------------------------
    HELPER FUNCTIONS FOR QUERY AND HASH
@@ -367,27 +407,17 @@ function handleQueryParams() {
   }
 }
 
-async function waitForAppInitialization() {
-  const maybePromise = appReady;
-
-  if (!maybePromise || typeof maybePromise.then !== "function") {
-    return;
-  }
-
-  try {
-    await maybePromise;
-  } catch (error) {
-    console.warn(
-      "Proceeding with hash handling despite app initialization failure:",
-      error
-    );
-  }
-}
-
 async function handleHashChange() {
   console.log("handleHashChange called, current hash =", window.location.hash);
 
-  await waitForAppInitialization();
+  try {
+    await applicationReadyPromise;
+  } catch (error) {
+    console.warn(
+      "Proceeding with hash handling despite application initialization failure:",
+      error
+    );
+  }
 
   const hash = window.location.hash || "";
   // Use a regex that captures up to the first ampersand or end of string.
@@ -395,14 +425,12 @@ async function handleHashChange() {
   const match = hash.match(/^#view=([^&]+)/);
 
   try {
-    const { loadView, viewInitRegistry } = await import("./viewManager.js");
-
     if (!match || !match[1]) {
       // No valid "#view=..." => default to "most-recent-videos"
       await loadView("views/most-recent-videos.html");
       const initFn = viewInitRegistry["most-recent-videos"];
       if (typeof initFn === "function") {
-        initFn();
+        await initFn();
       }
       return;
     }
@@ -416,7 +444,7 @@ async function handleHashChange() {
     await loadView(viewUrl);
     const initFn = viewInitRegistry[viewName];
     if (typeof initFn === "function") {
-      initFn();
+      await initFn();
     }
   } catch (error) {
     console.error("Failed to handle hash change:", error);
