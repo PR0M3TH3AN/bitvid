@@ -14,6 +14,9 @@ const {
   chunkWatchHistoryPayloadItems,
 } = await import("../js/nostr.js");
 const { watchHistoryService } = await import("../js/watchHistoryService.js");
+const { getApplication, setApplication } = await import(
+  "../js/applicationContext.js"
+);
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -1154,7 +1157,7 @@ async function testWatchHistoryAppLoginFallback() {
   const actor = "f".repeat(64);
   const originalPub = nostrClient.pubkey;
   const originalSession = nostrClient.sessionActor;
-  const originalApp = typeof window.app === "undefined" ? undefined : window.app;
+  const originalApp = getApplication();
 
   try {
     setWatchHistoryV2Enabled(false);
@@ -1162,7 +1165,7 @@ async function testWatchHistoryAppLoginFallback() {
     watchHistoryService.resetProgress();
     nostrClient.pubkey = "";
     nostrClient.sessionActor = null;
-    window.app = {
+    setApplication({
       pubkey: actor,
       normalizeHexPubkey(value) {
         if (typeof value === "string" && value.trim()) {
@@ -1170,7 +1173,7 @@ async function testWatchHistoryAppLoginFallback() {
         }
         return null;
       },
-    };
+    });
 
     const enabled =
       typeof watchHistoryService.isEnabled === "function"
@@ -1186,11 +1189,7 @@ async function testWatchHistoryAppLoginFallback() {
     watchHistoryService.resetProgress();
     nostrClient.pubkey = originalPub;
     nostrClient.sessionActor = originalSession;
-    if (typeof originalApp === "undefined") {
-      delete window.app;
-    } else {
-      window.app = originalApp;
-    }
+    setApplication(originalApp || null);
   }
 }
 

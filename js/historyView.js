@@ -12,6 +12,7 @@ import {
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_BATCH_PAGE_SIZE,
 } from "./config.js";
+import { getApplication } from "./applicationContext.js";
 
 export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
@@ -79,16 +80,7 @@ function setTextContent(element, text) {
 }
 
 function getAppInstance() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  if (window.app) {
-    return window.app;
-  }
-  if (window.bitvid && window.bitvid.app) {
-    return window.bitvid.app;
-  }
-  return null;
+  return getApplication();
 }
 
 function safeLocaleDate(date) {

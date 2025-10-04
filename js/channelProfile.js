@@ -4,12 +4,14 @@ import {
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
 } from "./nostr.js";
-import { app } from "./app.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
 import { escapeHTML } from "./utils/domUtils.js";
+import { getApplication } from "./applicationContext.js";
+
+const getApp = () => getApplication();
 
 let currentChannelHex = null;
 let currentChannelNpub = null;
@@ -70,7 +72,9 @@ function buildChannelShareUrl() {
     return "";
   }
 
-  const base = typeof app.getShareUrlBase === "function" ? app.getShareUrlBase() : "";
+  const app = getApp();
+  const base =
+    typeof app?.getShareUrlBase === "function" ? app.getShareUrlBase() : "";
   if (base) {
     return `${base}#view=channel-profile&npub=${encodeURIComponent(currentChannelNpub)}`;
   }
@@ -109,6 +113,8 @@ function setupChannelShareButton() {
     return;
   }
 
+  const app = getApp();
+
   syncChannelShareButtonState();
 
   if (shareBtn.dataset.initialized === "true") {
@@ -118,14 +124,14 @@ function setupChannelShareButton() {
   shareBtn.addEventListener("click", () => {
     const shareUrl = buildChannelShareUrl();
     if (!shareUrl) {
-      app.showError("Could not generate channel link.");
+      app?.showError?.("Could not generate channel link.");
       return;
     }
 
     navigator.clipboard
       .writeText(shareUrl)
-      .then(() => app.showSuccess("Channel link copied to clipboard!"))
-      .catch(() => app.showError("Failed to copy the link."));
+      .then(() => app?.showSuccess?.("Channel link copied to clipboard!"))
+      .catch(() => app?.showError?.("Failed to copy the link."));
   });
 
   shareBtn.dataset.initialized = "true";
@@ -136,7 +142,8 @@ function setupChannelMoreMenu() {
   if (!container) {
     return;
   }
-  app.attachMoreMenuHandlers(container);
+  const app = getApp();
+  app?.attachMoreMenuHandlers?.(container);
 }
 
 async function updateChannelMenuState() {
@@ -145,6 +152,8 @@ async function updateChannelMenuState() {
     return;
   }
 
+  const app = getApp();
+
   try {
     await accessControl.ensureReady();
   } catch (error) {
@@ -152,7 +161,7 @@ async function updateChannelMenuState() {
   }
 
   const canBlacklist =
-    typeof app.canCurrentUserManageBlacklist === "function"
+    typeof app?.canCurrentUserManageBlacklist === "function"
       ? app.canCurrentUserManageBlacklist()
       : false;
 
@@ -244,12 +253,14 @@ export async function initChannelProfileView() {
   currentChannelHex = hexPub;
   currentChannelNpub = npub;
 
+  const app = getApp();
+
   setupChannelShareButton();
   setupChannelMoreMenu();
   await updateChannelMenuState();
 
   // 3) If user is logged in, load subscriptions and show sub/unsub button
-  if (app.pubkey) {
+  if (app?.pubkey) {
     await subscriptions.loadSubscriptions(app.pubkey);
     renderSubscribeButton(hexPub);
   } else {
@@ -295,6 +306,8 @@ function renderSubscribeButton(channelHex) {
   const container = document.getElementById("subscribeBtnArea");
   if (!container) return;
 
+  const app = getApp();
+
   container.classList.remove("hidden");
   const alreadySubscribed = subscriptions.isSubscribed(channelHex);
 
@@ -319,7 +332,7 @@ function renderSubscribeButton(channelHex) {
   const toggleBtn = document.getElementById("subscribeToggleBtn");
   if (toggleBtn) {
     toggleBtn.addEventListener("click", async () => {
-      if (!app.pubkey) {
+      if (!app?.pubkey) {
         console.error("Not logged in => cannot subscribe/unsubscribe.");
         return;
       }
@@ -424,6 +437,7 @@ async function loadUserProfile(pubkey) {
  * Filters out older overshadowed notes, blacklisted, etc.
  */
 async function loadUserVideos(pubkey) {
+  const app = getApp();
   try {
     try {
       await accessControl.ensureReady();
@@ -502,7 +516,7 @@ async function loadUserVideos(pubkey) {
 
       // Ensure the global videos map is kept up to date so delegated handlers
       // have the freshest metadata for this event.
-      window.app?.videosMap?.set(video.id, video);
+      app?.videosMap?.set(video.id, video);
 
       // Check if user can edit
       const canEdit = video.pubkey === app.pubkey;
@@ -791,17 +805,17 @@ async function loadUserVideos(pubkey) {
 
     attachHealthBadges(container);
     attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
-      const video = app.videosMap.get(eventId) || { id: eventId };
-      app.handleUrlHealthBadge({ video, url, badgeEl });
+      const video = app?.videosMap?.get(eventId) || { id: eventId };
+      app?.handleUrlHealthBadge?.({ video, url, badgeEl });
     });
 
-    window.app.mountVideoListView();
+    app?.mountVideoListView?.();
 
     // Lazy-load images
     const lazyEls = container.querySelectorAll("[data-lazy]");
-    lazyEls.forEach((el) => app.mediaLoader.observe(el));
+    lazyEls.forEach((el) => app?.mediaLoader?.observe?.(el));
 
-    app.attachMoreMenuHandlers(container);
+    app?.attachMoreMenuHandlers?.(container);
 
     // Gear menu toggles
     const gearButtons = container.querySelectorAll("[data-settings-dropdown]");
@@ -826,7 +840,7 @@ async function loadUserVideos(pubkey) {
         const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
         const eventId = btn.getAttribute("data-edit-event-id") || "";
-        app.handleEditVideo({
+        app?.handleEditVideo?.({
           eventId,
           index: Number.isNaN(idx) ? null : idx,
         });
@@ -843,7 +857,7 @@ async function loadUserVideos(pubkey) {
         const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
         const eventId = btn.getAttribute("data-revert-event-id") || "";
-        app.handleRevertVideo({
+        app?.handleRevertVideo?.({
           eventId,
           index: Number.isNaN(idx) ? null : idx,
         });
@@ -860,7 +874,7 @@ async function loadUserVideos(pubkey) {
         const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
         if (dropdown) dropdown.classList.add("hidden");
         const eventId = btn.getAttribute("data-delete-all-event-id") || "";
-        app.handleFullDeleteVideo({
+        app?.handleFullDeleteVideo?.({
           eventId,
           index: Number.isNaN(idx) ? null : idx,
         });

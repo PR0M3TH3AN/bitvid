@@ -2,6 +2,7 @@
 
 import "./bufferPolyfill.js";
 import { trackPageView } from "./analytics.js";
+import { appReady } from "./bootstrap.js";
 
 const INTERFACE_FADE_IN_ANIMATION = "interface-fade-in";
 const VIDEO_THUMBNAIL_FADE_IN_ANIMATION = "video-thumbnail-fade-in";
@@ -367,7 +368,7 @@ function handleQueryParams() {
 }
 
 async function waitForAppInitialization() {
-  const maybePromise = window.appReady;
+  const maybePromise = appReady;
 
   if (!maybePromise || typeof maybePromise.then !== "function") {
     return;
