@@ -4048,11 +4048,36 @@ class NostrClient {
   /**
    * Publish a new video using the v3 content schema.
    */
-  async publishVideo(videoData, pubkey) {
+  async publishVideo(videoPayload, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
+
+    let nip71Metadata = null;
+    let videoData = videoPayload;
+
+    if (
+      videoPayload &&
+      typeof videoPayload === "object" &&
+      (Object.prototype.hasOwnProperty.call(videoPayload, "legacyFormData") ||
+        Object.prototype.hasOwnProperty.call(videoPayload, "nip71"))
+    ) {
+      if (videoPayload.nip71 && typeof videoPayload.nip71 === "object") {
+        nip71Metadata = videoPayload.nip71;
+      }
+      if (
+        videoPayload.legacyFormData &&
+        typeof videoPayload.legacyFormData === "object"
+      ) {
+        videoData = videoPayload.legacyFormData;
+      } else {
+        videoData = {};
+      }
+    }
 
     if (isDevMode) {
       console.log("Publishing new video with data:", videoData);
+      if (nip71Metadata) {
+        console.log("Including NIP-71 metadata:", nip71Metadata);
+      }
     }
 
     const rawMagnet = typeof videoData.magnet === "string" ? videoData.magnet : "";

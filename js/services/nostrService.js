@@ -356,9 +356,21 @@ export class NostrService {
     return filtered;
   }
 
-  async publishVideoNote(formData, pubkey) {
-    const result = await this.nostrClient.publishVideo(formData, pubkey);
-    this.emit("videos:published", { formData, pubkey, result });
+  async publishVideoNote(publishPayload, pubkey) {
+    const result = await this.nostrClient.publishVideo(publishPayload, pubkey);
+    const detail = { pubkey, result };
+    if (publishPayload && typeof publishPayload === "object") {
+      detail.payload = publishPayload;
+      if (publishPayload.legacyFormData) {
+        detail.legacyFormData = publishPayload.legacyFormData;
+      }
+      if (publishPayload.nip71) {
+        detail.nip71 = publishPayload.nip71;
+      }
+    } else {
+      detail.formData = publishPayload;
+    }
+    this.emit("videos:published", detail);
     return result;
   }
 
