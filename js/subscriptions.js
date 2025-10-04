@@ -3,7 +3,6 @@ import {
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
 } from "./nostr.js";
-import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import {
   buildSubscriptionListEvent,
   SUBSCRIPTION_LIST_IDENTIFIER,
@@ -14,81 +13,9 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 import { getApplication } from "./applicationContext.js";
+import { VideoListView } from "./ui/views/VideoListView.js";
 
 const getApp = () => getApplication();
-
-let attachHealthBadgesLoader = null;
-let attachHealthBadgesErrorLogged = false;
-
-function scheduleAttachHealthBadges(container) {
-  if (!container) {
-    return;
-  }
-
-  if (!attachHealthBadgesLoader) {
-    attachHealthBadgesLoader = import("./gridHealth.js")
-      .then((module) => module?.attachHealthBadges || null)
-      .catch((error) => {
-        if (!attachHealthBadgesErrorLogged) {
-          attachHealthBadgesErrorLogged = true;
-          if (typeof console !== "undefined") {
-            console.warn(
-              "[SubscriptionsManager] Failed to load grid health helpers:",
-              error
-            );
-          }
-        }
-        return null;
-      });
-  }
-
-  attachHealthBadgesLoader
-    .then((fn) => {
-      if (typeof fn === "function") {
-        try {
-          fn(container);
-        } catch (error) {
-          if (typeof console !== "undefined") {
-            console.warn(
-              "[SubscriptionsManager] attachHealthBadges threw:",
-              error
-            );
-          }
-        }
-      }
-    })
-    .catch(() => {
-      // Errors are already logged above; no-op here to keep Promise chains quiet.
-    });
-}
-
-function getAbsoluteShareUrl(nevent) {
-  if (!nevent) {
-    return "";
-  }
-
-  const app = getApp();
-  if (app?.buildShareUrlFromNevent) {
-    const candidate = app.buildShareUrlFromNevent(nevent);
-    if (candidate) {
-      return candidate;
-    }
-  }
-
-  const origin = window.location?.origin || "";
-  const pathname = window.location?.pathname || "";
-  let base = origin || pathname ? `${origin}${pathname}` : "";
-  if (!base) {
-    const href = window.location?.href || "";
-    base = href ? href.split(/[?#]/)[0] : "";
-  }
-
-  if (!base) {
-    return `?v=${encodeURIComponent(nevent)}`;
-  }
-
-  return `${base}?v=${encodeURIComponent(nevent)}`;
-}
 
 /**
  * Manages the user's subscription list (kind=30002) *privately*,
@@ -101,6 +28,10 @@ class SubscriptionsManager {
     this.subscribedPubkeys = new Set();
     this.subsEventId = null;
     this.loaded = false;
+    this.subscriptionListView = null;
+    this.lastRunOptions = null;
+    this.lastResult = null;
+    this.lastContainerId = null;
   }
 
   /**
@@ -173,6 +104,10 @@ class SubscriptionsManager {
     return this.subscribedPubkeys.has(channelHex);
   }
 
+  getSubscribedAuthors() {
+    return Array.from(this.subscribedPubkeys);
+  }
+
   async addChannel(channelHex, userPubkey) {
     if (!userPubkey) {
       throw new Error("No user pubkey => cannot addChannel.");
@@ -183,6 +118,14 @@ class SubscriptionsManager {
     }
     this.subscribedPubkeys.add(channelHex);
     await this.publishSubscriptionList(userPubkey);
+    this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[SubscriptionsManager] Failed to refresh after adding subscription:",
+          error
+        );
+      }
+    });
   }
 
   async removeChannel(channelHex, userPubkey) {
@@ -195,6 +138,14 @@ class SubscriptionsManager {
     }
     this.subscribedPubkeys.delete(channelHex);
     await this.publishSubscriptionList(userPubkey);
+    this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[SubscriptionsManager] Failed to refresh after removing subscription:",
+          error
+        );
+      }
+    });
   }
 
   /**
@@ -295,99 +246,187 @@ class SubscriptionsManager {
    */
   async showSubscriptionVideos(
     userPubkey,
-    containerId = "subscriptionsVideoList"
+    containerId = "subscriptionsVideoList",
+    options = {}
   ) {
+    const limitCandidate = Number(options?.limit);
+    const limit = Number.isFinite(limitCandidate) && limitCandidate > 0
+      ? Math.floor(limitCandidate)
+      : null;
+    const reason =
+      typeof options?.reason === "string" && options.reason.trim()
+        ? options.reason.trim()
+        : undefined;
+
+    this.lastContainerId = containerId;
+
+    const container = document.getElementById(containerId);
     if (!userPubkey) {
-      const c = document.getElementById(containerId);
-      if (c) c.innerHTML = "<p class='text-gray-500'>Please log in first.</p>";
-      return;
+      if (container) {
+        container.innerHTML =
+          "<p class='text-gray-500'>Please log in first.</p>";
+      }
+      this.lastRunOptions = null;
+      this.lastResult = null;
+      return null;
     }
+
     if (!this.loaded) {
       await this.loadSubscriptions(userPubkey);
     }
 
-    const channelHexes = Array.from(this.subscribedPubkeys);
-    const container = document.getElementById(containerId);
-    if (!container) return;
+    const channelHexes = this.getSubscribedAuthors();
+    if (!container) {
+      this.lastRunOptions = {
+        actorPubkey: userPubkey,
+        limit,
+        containerId,
+      };
+      return null;
+    }
 
     if (!channelHexes.length) {
       container.innerHTML =
         "<p class='text-gray-500'>No subscriptions found.</p>";
-      return;
+      this.lastRunOptions = {
+        actorPubkey: userPubkey,
+        limit,
+        containerId,
+      };
+      this.lastResult = { items: [], metadata: { reason: "no-subscriptions" } };
+      return this.lastResult;
     }
 
     container.innerHTML = getSidebarLoadingMarkup("Fetching subscriptions…");
 
-    // Gather all videos
-    const videos = await this.fetchSubscribedVideos(channelHexes);
-    this.renderSameGridStyle(videos, containerId);
+    this.lastRunOptions = {
+      actorPubkey: userPubkey,
+      limit,
+      containerId,
+      reason,
+    };
+
+    this.ensureFeedRegistered();
+    const engine = this.getFeedEngine();
+    if (!engine || typeof engine.run !== "function") {
+      container.innerHTML =
+        "<p class='text-gray-500'>Subscriptions are unavailable right now.</p>";
+      return null;
+    }
+
+    const app = getApp();
+    const runtime = this.buildFeedRuntime({ app, authors: channelHexes });
+    const runOptions = {
+      actorPubkey: userPubkey,
+      limit,
+      runtime,
+      hooks: {
+        subscriptions: {
+          resolveAuthors: () => this.getSubscribedAuthors(),
+        },
+      },
+    };
+
+    try {
+      const result = await engine.run("subscriptions", runOptions);
+
+      const videos = Array.isArray(result?.items)
+        ? result.items.map((item) => item?.video).filter(Boolean)
+        : [];
+
+      if (app?.videosMap instanceof Map) {
+        videos.forEach((video) => {
+          if (video && typeof video.id === "string" && video.id) {
+            app.videosMap.set(video.id, video);
+          }
+        });
+      }
+
+      this.lastResult = result;
+      this.renderSameGridStyle(result, containerId, { limit, reason });
+      return result;
+    } catch (error) {
+      console.error(
+        "[SubscriptionsManager] Failed to run subscriptions feed:",
+        error
+      );
+      container.innerHTML =
+        "<p class='text-gray-500'>Unable to load subscriptions right now.</p>";
+      this.lastResult = null;
+      return null;
+    }
   }
 
-  /**
-   * Pull all events from subscribed authors, convert, dedupe => newest
-   */
-  async fetchSubscribedVideos(authorPubkeys) {
-    try {
-      const filter = {
-        kinds: [30078],
-        "#t": ["video"],
-        authors: authorPubkeys,
-        limit: 500,
-      };
-
-      const allEvents = [];
-      for (const relay of nostrClient.relays) {
-        try {
-          const res = await nostrClient.pool.list([relay], [filter]);
-          allEvents.push(...res);
-        } catch (rErr) {
-          console.error(`[SubscriptionsManager] Error at ${relay}`, rErr);
-        }
+  ensureFeedRegistered() {
+    const app = getApp();
+    if (typeof app?.registerSubscriptionsFeed === "function") {
+      try {
+        app.registerSubscriptionsFeed();
+      } catch (error) {
+        console.warn(
+          "[SubscriptionsManager] Failed to register subscriptions feed:",
+          error
+        );
       }
-
-      const videos = [];
-      for (const evt of allEvents) {
-        const vid = this.convertEventToVideo(evt);
-        if (!vid.invalid && !vid.deleted) videos.push(vid);
-      }
-
-      const deduped = this.dedupeToNewestByRoot(videos);
-      deduped.sort((a, b) => b.created_at - a.created_at);
-      return deduped;
-    } catch (err) {
-      console.error("fetchSubscribedVideos error:", err);
-      return [];
     }
+  }
+
+  getFeedEngine() {
+    const app = getApp();
+    return app?.feedEngine || null;
+  }
+
+  buildFeedRuntime({ app, authors = [] } = {}) {
+    const normalizedAuthors = Array.isArray(authors)
+      ? authors.filter((author) => typeof author === "string" && author)
+      : [];
+
+    const blacklist =
+      app?.blacklistedEventIds instanceof Set
+        ? new Set(app.blacklistedEventIds)
+        : new Set();
+
+    const isAuthorBlocked =
+      typeof app?.isAuthorBlocked === "function"
+        ? (pubkey) => app.isAuthorBlocked(pubkey)
+        : () => false;
+
+    return {
+      subscriptionAuthors: normalizedAuthors,
+      authors: normalizedAuthors,
+      blacklistedEventIds: blacklist,
+      isAuthorBlocked,
+    };
   }
 
   /**
    * Renders the feed in the same style as home.
    * This includes gear menu, time-ago, lazy load, clickable authors, etc.
    */
-  renderSameGridStyle(videos, containerId) {
+  renderSameGridStyle(result, containerId, options = {}) {
     const container = document.getElementById(containerId);
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     const app = getApp();
+    const items = Array.isArray(result?.items) ? result.items : [];
+    const metadata =
+      result && typeof result.metadata === "object"
+        ? { ...result.metadata }
+        : {};
 
-    const safeVideos = Array.isArray(videos) ? videos : [];
-    const dedupedVideos =
-      app?.dedupeVideosByRoot?.(safeVideos) ??
-      this.dedupeToNewestByRoot(safeVideos);
+    const limitCandidate = Number(options?.limit);
+    const limit = Number.isFinite(limitCandidate) && limitCandidate > 0
+      ? Math.floor(limitCandidate)
+      : null;
 
-    const filteredVideos = dedupedVideos.filter((video) => {
-      if (!video || typeof video !== "object") {
-        return false;
-      }
+    const limitedItems = limit ? items.slice(0, limit) : items;
+    const videos = limitedItems
+      .map((item) => (item && typeof item === "object" ? item.video : null))
+      .filter((video) => video && typeof video === "object");
 
-      if (app?.isAuthorBlocked && app.isAuthorBlocked(video.pubkey)) {
-        return false;
-      }
-
-      return true;
-    });
-
-    if (!filteredVideos.length) {
+    if (!videos.length) {
       container.innerHTML = `
         <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
           No videos available yet.
@@ -395,425 +434,258 @@ class SubscriptionsManager {
       return;
     }
 
-    // Sort newest first
-    filteredVideos.sort((a, b) => b.created_at - a.created_at);
-
-    const fullAllEventsArray = Array.from(nostrClient.allEvents.values());
-    const fragment = document.createDocumentFragment();
-    // Only declare localAuthorSet once
-    const localAuthorSet = new Set();
-
-    filteredVideos.forEach((video, index) => {
-      if (!video.id || !video.title) {
-        console.error("Missing ID or title:", video);
-        return;
-      }
-
-      // Keep the global videos map up to date so delegated playback handlers
-      // can reuse the already fetched metadata for this event.
-      app?.videosMap?.set(video.id, video);
-
-      localAuthorSet.add(video.pubkey);
-
-      const nevent = window.NostrTools.nip19.neventEncode({ id: video.id });
-      const shareUrl = getAbsoluteShareUrl(nevent);
-      const canEdit = app?.pubkey === video.pubkey;
-
-      const highlightClass =
-        video.isPrivate && canEdit
-          ? "border-2 border-yellow-500"
-          : "border-none";
-
-      const timeAgo = app?.formatTimeAgo
-        ? app.formatTimeAgo(video.created_at)
-        : new Date(video.created_at * 1000).toLocaleString();
-
-      let hasOlder = false;
-      if (canEdit && video.videoRootId && app?.hasOlderVersion) {
-        hasOlder = app.hasOlderVersion(video, fullAllEventsArray);
-      }
-
-      const revertButton = hasOlder
-        ? `
-          <button
-            class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-            data-revert-index="${index}"
-            data-revert-event-id="${video.id}"
-          >
-            Revert
-          </button>
-        `
-        : "";
-
-      const gearMenu = canEdit
-        ? `
-          <div class="relative inline-block ml-3 overflow-visible">
-            <button
-              type="button"
-              class="inline-flex items-center p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              data-settings-dropdown="${index}"
-            >
-              <img
-                src="assets/svg/video-settings-gear.svg"
-                alt="Settings"
-                class="w-5 h-5"
-              />
-            </button>
-            <div
-              id="settingsDropdown-${index}"
-              class="hidden absolute right-0 bottom-full mb-2 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-            >
-              <div class="py-1">
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                  data-edit-index="${index}"
-                  data-edit-event-id="${video.id}"
-                >
-                  Edit
-                </button>
-                ${revertButton}
-                <button
-                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                  data-delete-all-index="${index}"
-                  data-delete-all-event-id="${video.id}"
-                >
-                  Delete All
-                </button>
-              </div>
-            </div>
-          </div>
-        `
-        : "";
-
-      const moreMenu = `
-        <div class="relative inline-block ml-1 overflow-visible" data-more-menu-wrapper="true">
-          <button
-            type="button"
-            class="inline-flex items-center justify-center w-10 h-10 p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            data-more-dropdown="${index}"
-            aria-haspopup="true"
-            aria-expanded="false"
-            aria-label="More options"
-          >
-            <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5 object-contain" />
-          </button>
-          <div
-            id="moreDropdown-${index}"
-            class="hidden absolute right-0 bottom-full mb-2 w-40 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-            role="menu"
-            data-more-menu="true"
-          >
-            <div class="py-1">
-              <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="open-channel" data-author="${video.pubkey || ""}">
-                Open channel
-              </button>
-              <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="copy-link" data-event-id="${video.id || ""}">
-                Copy link
-              </button>
-              <button class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white" data-action="block-author" data-author="${video.pubkey || ""}">
-                Block creator
-              </button>
-              <button class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700" data-action="report" data-event-id="${video.id || ""}">
-                Report
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
-
-      const cardControls = `
-        <div class="flex items-center">
-          ${moreMenu}${gearMenu}
-        </div>
-      `;
-
-      const safeTitle = app?.escapeHTML?.(video.title) || "Untitled";
-      const safeThumb = app?.escapeHTML?.(video.thumbnail) || "";
-      const playbackUrl =
-        typeof video.url === "string" ? video.url : "";
-      const trimmedUrl = playbackUrl ? playbackUrl.trim() : "";
-      const trimmedMagnet =
-        typeof video.magnet === "string" ? video.magnet.trim() : "";
-      const legacyInfoHash =
-        typeof video.infoHash === "string" ? video.infoHash.trim() : "";
-      const magnetCandidate = trimmedMagnet || legacyInfoHash;
-      const playbackMagnet = magnetCandidate;
-      const magnetProvided = magnetCandidate.length > 0;
-      const magnetSupported =
-        app?.isMagnetUriSupported?.(magnetCandidate) ?? false;
-      const urlBadgeHtml = trimmedUrl
-        ? app?.getUrlHealthPlaceholderMarkup?.({ includeMargin: false }) ??
-            ""
-        : "";
-      const torrentHealthBadgeHtml =
-        magnetProvided && magnetSupported
-          ? app?.getTorrentHealthBadgeMarkup?.({
-              includeMargin: false,
-            }) ?? ""
-          : "";
-      const connectionBadgesHtml =
-        urlBadgeHtml || torrentHealthBadgeHtml
-          ? `
-            <div class="mt-3 flex flex-wrap items-center gap-2">
-              ${urlBadgeHtml}${torrentHealthBadgeHtml}
-            </div>
-          `
-          : "";
-      const cardHtml = `
-        <div class="video-card bg-gray-900 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 ${highlightClass}">
-          <a
-            href="${shareUrl}"
-            data-video-id="${video.id}"
-            data-play-url=""
-            data-play-magnet=""
-            class="block cursor-pointer relative group"
-          >
-            <div class="ratio-16-9">
-              <img
-                src="assets/jpg/video-thumbnail-fallback.jpg"
-                data-lazy="${safeThumb}"
-                alt="${safeTitle}"
-              />
-            </div>
-          </a>
-          <div class="p-4">
-            <h3
-              class="text-lg font-bold text-white line-clamp-2 hover:text-blue-400 cursor-pointer mb-3"
-              data-video-id="${video.id}"
-              data-play-url=""
-              data-play-magnet=""
-            >
-              ${safeTitle}
-            </h3>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center space-x-3">
-                <div class="w-8 h-8 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
-                  <img
-                    class="author-pic"
-                    data-pubkey="${video.pubkey}"
-                    src="assets/svg/default-profile.svg"
-                    alt="Placeholder"
-                  />
-                </div>
-                <div class="min-w-0">
-                  <p
-                    class="text-sm text-gray-400 author-name"
-                    data-pubkey="${video.pubkey}"
-                  >
-                    Loading name...
-                  </p>
-                  <div class="flex items-center text-xs text-gray-500 mt-1">
-                    <span>${timeAgo}</span>
-                  </div>
-                </div>
-              </div>
-              ${cardControls}
-            </div>
-            ${connectionBadgesHtml}
-          </div>
-        </div>
-      `;
-
-      const t = document.createElement("template");
-      t.innerHTML = cardHtml.trim();
-      const cardEl = t.content.firstElementChild;
-      if (cardEl) {
-        cardEl.dataset.ownerIsViewer = canEdit ? "true" : "false";
-        if (typeof video.pubkey === "string" && video.pubkey) {
-          cardEl.dataset.ownerPubkey = video.pubkey;
-        } else if (cardEl.dataset.ownerPubkey) {
-          delete cardEl.dataset.ownerPubkey;
-        }
-
-        if (trimmedUrl) {
-          cardEl.dataset.urlHealthState = "checking";
-          if (cardEl.dataset.urlHealthReason) {
-            delete cardEl.dataset.urlHealthReason;
-          }
-          cardEl.dataset.urlHealthEventId = video.id || "";
-          cardEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
-        } else {
-          cardEl.dataset.urlHealthState = "offline";
-          cardEl.dataset.urlHealthReason = "missing-source";
-          if (cardEl.dataset.urlHealthEventId) {
-            delete cardEl.dataset.urlHealthEventId;
-          }
-          if (cardEl.dataset.urlHealthUrl) {
-            delete cardEl.dataset.urlHealthUrl;
-          }
-        }
-        if (magnetProvided && magnetSupported) {
-          cardEl.dataset.streamHealthState = "checking";
-          if (cardEl.dataset.streamHealthReason) {
-            delete cardEl.dataset.streamHealthReason;
-          }
-        } else {
-          cardEl.dataset.streamHealthState = "unhealthy";
-          cardEl.dataset.streamHealthReason = magnetProvided
-            ? "unsupported"
-            : "missing-source";
-        }
-
-        // Leave the data-play-* attributes empty in the literal markup so we can
-        // assign the raw URL/magnet strings post-parsing without HTML entity
-        // escaping, mirroring the approach in app.js. The URL is encoded so that
-        // special characters survive storage in data-* attributes; the click
-        // handler decodes it right before playback while keeping the magnet raw.
-        const interactiveEls = cardEl.querySelectorAll("[data-video-id]");
-        interactiveEls.forEach((el) => {
-          if (!el.dataset) return;
-
-          if (trimmedUrl) {
-            el.dataset.playUrl = encodeURIComponent(trimmedUrl);
-          } else {
-            delete el.dataset.playUrl;
-          }
-
-          el.dataset.playMagnet = playbackMagnet || "";
-        });
-
-        if (magnetProvided) {
-          cardEl.dataset.magnet = playbackMagnet;
-        } else if (cardEl.dataset.magnet) {
-          delete cardEl.dataset.magnet;
-        }
-
-        const badgeEl = cardEl.querySelector("[data-url-health-state]");
-        if (badgeEl) {
-          if (trimmedUrl) {
-            badgeEl.dataset.urlHealthEventId = video.id || "";
-            badgeEl.dataset.urlHealthUrl = encodeURIComponent(trimmedUrl);
-          } else {
-            if (badgeEl.dataset.urlHealthEventId) {
-              delete badgeEl.dataset.urlHealthEventId;
-            }
-            if (badgeEl.dataset.urlHealthUrl) {
-              delete badgeEl.dataset.urlHealthUrl;
-            }
-          }
-        }
-      }
-      fragment.appendChild(cardEl);
-    });
-
-    container.appendChild(fragment);
-    scheduleAttachHealthBadges(container);
-    attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
-      if (!app?.handleUrlHealthBadge) {
-        return;
-      }
-      const video = app.videosMap?.get?.(eventId) || { id: eventId };
-      app.handleUrlHealthBadge({ video, url, badgeEl });
-    });
-
-    app?.mountVideoListView?.();
-
-    // Lazy-load
-    const lazyEls = container.querySelectorAll("[data-lazy]");
-    lazyEls.forEach((el) => app?.mediaLoader?.observe?.(el));
-
-    app?.attachMoreMenuHandlers?.(container);
-
-    // Gear menus
-    const gearButtons = container.querySelectorAll("[data-settings-dropdown]");
-    gearButtons.forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const idx = btn.getAttribute("data-settings-dropdown");
-        const dropdown = document.getElementById(`settingsDropdown-${idx}`);
-        if (dropdown) dropdown.classList.toggle("hidden");
-      });
-    });
-
-    // Edit button
-    const editButtons = container.querySelectorAll("[data-edit-index]");
-    editButtons.forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const idxAttr = btn.getAttribute("data-edit-index");
-        const idx = Number.parseInt(idxAttr, 10);
-        const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
-        if (dropdown) dropdown.classList.add("hidden");
-        const eventId = btn.getAttribute("data-edit-event-id") || "";
-        app?.handleEditVideo?.({
-          eventId,
-          index: Number.isNaN(idx) ? null : idx,
-        });
-      });
-    });
-
-    // Revert
-    const revertButtons = container.querySelectorAll("[data-revert-index]");
-    revertButtons.forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const idxAttr = btn.getAttribute("data-revert-index");
-        const idx = Number.parseInt(idxAttr, 10);
-        const dropdown = document.getElementById(`settingsDropdown-${idxAttr}`);
-        if (dropdown) dropdown.classList.add("hidden");
-        const eventId = btn.getAttribute("data-revert-event-id") || "";
-        app?.handleRevertVideo?.({
-          eventId,
-          index: Number.isNaN(idx) ? null : idx,
-        });
-      });
-    });
-
-    // Delete All
-    const deleteAllButtons = container.querySelectorAll(
-      "[data-delete-all-index]"
-    );
-    deleteAllButtons.forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const idxAttr = btn.getAttribute("data-delete-all-index");
-        const idx = Number.parseInt(idxAttr, 10);
-        const dd = document.getElementById(`settingsDropdown-${idxAttr}`);
-        if (dd) dd.classList.add("hidden");
-        const eventId = btn.getAttribute("data-delete-all-event-id") || "";
-        app?.handleFullDeleteVideo?.({
-          eventId,
-          index: Number.isNaN(idx) ? null : idx,
-        });
-      });
-    });
-
-    // Now fetch author profiles
-    const authorPics = container.querySelectorAll(".author-pic");
-    const authorNames = container.querySelectorAll(".author-name");
-
-    // We only declare localAuthorSet once at the top
-    // so we don't cause a "duplicate" variable error.
-    authorPics.forEach((pic) => {
-      localAuthorSet.add(pic.getAttribute("data-pubkey"));
-    });
-    authorNames.forEach((nameEl) => {
-      localAuthorSet.add(nameEl.getAttribute("data-pubkey"));
-    });
-
-    if (app?.batchFetchProfiles && localAuthorSet.size > 0) {
-      app.batchFetchProfiles(localAuthorSet);
+    const listView = this.getListView(container, app);
+    if (!listView) {
+      container.innerHTML = `
+        <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
+          Unable to render subscriptions feed.
+        </p>`;
+      return;
     }
 
-    // Make author name/pic clickable => open channel
-    authorPics.forEach((pic) => {
-      pic.style.cursor = "pointer";
-      pic.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const pubkey = pic.getAttribute("data-pubkey");
-        app?.goToProfile?.(pubkey);
+    listView.mount(container);
+
+    if (app?.videosMap instanceof Map) {
+      listView.state.videosMap = app.videosMap;
+    }
+
+    const enrichedMetadata = {
+      ...metadata,
+      feed: "subscriptions",
+    };
+    if (limit) {
+      enrichedMetadata.limit = limit;
+    }
+    if (typeof options?.reason === "string" && options.reason) {
+      enrichedMetadata.reason = options.reason;
+    }
+
+    listView.state.feedMetadata = enrichedMetadata;
+    listView.render(videos, enrichedMetadata);
+  }
+
+  getListView(container, app) {
+    if (this.subscriptionListView) {
+      return this.subscriptionListView;
+    }
+
+    if (!container) {
+      return null;
+    }
+
+    const doc = container.ownerDocument || document;
+    const baseView = app?.videoListView || null;
+
+    const badgeHelpers = baseView?.badgeHelpers || {
+      attachHealthBadges: () => {},
+      attachUrlHealthBadges: () => {},
+    };
+
+    const formatTimeAgo = (timestamp) => {
+      if (typeof app?.formatTimeAgo === "function") {
+        return app.formatTimeAgo(timestamp);
+      }
+      if (typeof baseView?.formatters?.formatTimeAgo === "function") {
+        return baseView.formatters.formatTimeAgo(timestamp);
+      }
+      return timestamp;
+    };
+
+    const formatViewCountLabel = (total) => {
+      if (typeof baseView?.formatters?.formatViewCountLabel === "function") {
+        return baseView.formatters.formatViewCountLabel(total);
+      }
+      return typeof total === "number" ? total.toLocaleString() : `${total}`;
+    };
+
+    const assets = baseView?.assets || {
+      fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
+      unsupportedBtihMessage:
+        "This magnet link is missing a compatible BitTorrent v1 info hash.",
+    };
+
+    const loadedThumbnails =
+      app?.loadedThumbnails instanceof Map
+        ? app.loadedThumbnails
+        : baseView?.state?.loadedThumbnails instanceof Map
+        ? baseView.state.loadedThumbnails
+        : new Map();
+
+    const videosMap =
+      app?.videosMap instanceof Map
+        ? app.videosMap
+        : baseView?.state?.videosMap instanceof Map
+        ? baseView.state.videosMap
+        : new Map();
+
+    const listViewConfig = {
+      document: doc,
+      container,
+      mediaLoader: app?.mediaLoader || baseView?.mediaLoader || null,
+      badgeHelpers,
+      formatters: {
+        formatTimeAgo,
+        formatViewCountLabel,
+      },
+      helpers: {
+        escapeHtml: (value) => app?.escapeHTML?.(value) ?? value,
+        isMagnetSupported: (magnet) =>
+          app?.isMagnetUriSupported?.(magnet) ?? false,
+        toLocaleString: (value) =>
+          typeof value === "number" ? value.toLocaleString() : value,
+      },
+      assets,
+      state: {
+        loadedThumbnails,
+        videosMap,
+      },
+      utils: {
+        dedupeVideos: (videos) => (Array.isArray(videos) ? [...videos] : []),
+        getAllEvents: () => Array.from(nostrClient.allEvents.values()),
+        hasOlderVersion: (video, events) =>
+          app?.hasOlderVersion?.(video, events) ?? false,
+        derivePointerInfo: (video) =>
+          app?.deriveVideoPointerInfo?.(video) ?? null,
+        persistWatchHistoryMetadata: (video, pointerInfo) =>
+          app?.persistWatchHistoryMetadataForVideo?.(video, pointerInfo),
+        getShareUrlBase: () => app?.getShareUrlBase?.() ?? "",
+        buildShareUrlFromNevent: (nevent) =>
+          app?.buildShareUrlFromNevent?.(nevent) ?? "",
+        buildShareUrlFromEventId: (eventId) =>
+          app?.buildShareUrlFromEventId?.(eventId) ?? "",
+        canManageBlacklist: () =>
+          app?.canCurrentUserManageBlacklist?.() ?? false,
+        canEditVideo: (video) => video?.pubkey === app?.pubkey,
+        canDeleteVideo: (video) => video?.pubkey === app?.pubkey,
+        batchFetchProfiles: (authorSet) =>
+          app?.batchFetchProfiles?.(authorSet),
+        bindThumbnailFallbacks: (target) =>
+          app?.bindThumbnailFallbacks?.(target),
+        handleUrlHealthBadge: (payload) =>
+          app?.handleUrlHealthBadge?.(payload),
+        refreshDiscussionCounts: (videosList) =>
+          app?.refreshVideoDiscussionCounts?.(videosList),
+        ensureGlobalMoreMenuHandlers: () =>
+          app?.ensureGlobalMoreMenuHandlers?.(),
+        closeAllMenus: () => app?.closeAllMoreMenus?.(),
+      },
+      renderers: {
+        getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
+      },
+    };
+
+    const listView = new VideoListView(listViewConfig);
+
+    listView.setPlaybackHandler((detail) => {
+      if (!detail) {
+        return;
+      }
+      if (detail.videoId) {
+        Promise.resolve(app?.playVideoByEventId?.(detail.videoId)).catch(
+          (error) => {
+            console.error(
+              "[SubscriptionsManager] Failed to play by event id:",
+              error
+            );
+          }
+        );
+        return;
+      }
+      Promise.resolve(
+        app?.playVideoWithFallback?.({ url: detail.url, magnet: detail.magnet })
+      ).catch((error) => {
+        console.error(
+          "[SubscriptionsManager] Failed to start playback:",
+          error
+        );
       });
     });
 
-    authorNames.forEach((nameEl) => {
-      nameEl.style.cursor = "pointer";
-      nameEl.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const pubkey = nameEl.getAttribute("data-pubkey");
-        app?.goToProfile?.(pubkey);
+    listView.setEditHandler(({ video, index }) => {
+      if (!video?.id) {
+        return;
+      }
+      app?.handleEditVideo?.({
+        eventId: video.id,
+        index: Number.isFinite(index) ? index : null,
       });
+    });
+
+    listView.setRevertHandler(({ video, index }) => {
+      if (!video?.id) {
+        return;
+      }
+      app?.handleRevertVideo?.({
+        eventId: video.id,
+        index: Number.isFinite(index) ? index : null,
+      });
+    });
+
+    listView.setDeleteHandler(({ video, index }) => {
+      if (!video?.id) {
+        return;
+      }
+      app?.handleFullDeleteVideo?.({
+        eventId: video.id,
+        index: Number.isFinite(index) ? index : null,
+      });
+    });
+
+    listView.setBlacklistHandler(({ video, dataset }) => {
+      const detail = {
+        ...(dataset || {}),
+        author: dataset?.author || video?.pubkey || "",
+        context: dataset?.context || "subscriptions",
+      };
+      app?.handleMoreMenuAction?.("blacklist-author", detail);
+    });
+
+    listView.addEventListener("video:share", (event) => {
+      const detail = event?.detail || {};
+      const dataset = {
+        ...(detail.dataset || {}),
+        eventId:
+          detail.eventId ||
+          detail.dataset?.eventId ||
+          detail.video?.id ||
+          "",
+        context: detail.dataset?.context || "subscriptions",
+      };
+      app?.handleMoreMenuAction?.(detail.action || "copy-link", dataset);
+    });
+
+    listView.addEventListener("video:context-action", (event) => {
+      const detail = event?.detail || {};
+      const dataset = {
+        ...(detail.dataset || {}),
+        eventId: detail.dataset?.eventId || detail.video?.id || "",
+        context: detail.dataset?.context || "subscriptions",
+      };
+      app?.handleMoreMenuAction?.(detail.action, dataset);
+    });
+
+    this.subscriptionListView = listView;
+    return this.subscriptionListView;
+  }
+
+  async refreshActiveFeed(options = {}) {
+    if (!this.lastRunOptions) {
+      return null;
+    }
+
+    const { actorPubkey, containerId, limit } = this.lastRunOptions;
+    if (!actorPubkey || !containerId) {
+      return null;
+    }
+
+    const reason =
+      typeof options?.reason === "string" && options.reason.trim()
+        ? options.reason.trim()
+        : this.lastRunOptions.reason;
+
+    return this.showSubscriptionVideos(actorPubkey, containerId, {
+      limit,
+      reason,
     });
   }
 
@@ -821,17 +693,6 @@ class SubscriptionsManager {
     return sharedConvertEventToVideo(evt);
   }
 
-  dedupeToNewestByRoot(videos) {
-    const map = new Map();
-    for (const v of videos) {
-      const rootId = v.videoRootId || v.id;
-      const existing = map.get(rootId);
-      if (!existing || v.created_at > existing.created_at) {
-        map.set(rootId, v);
-      }
-    }
-    return Array.from(map.values());
-  }
 }
 
 export const subscriptions = new SubscriptionsManager();

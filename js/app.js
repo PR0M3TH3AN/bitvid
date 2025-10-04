@@ -24,6 +24,7 @@ import {
   createBlacklistFilterStage,
   createDedupeByRootStage,
   createChronologicalSorter,
+  createSubscriptionAuthorsSource,
 } from "./feedEngine/index.js";
 import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
@@ -33,6 +34,7 @@ import nostrService from "./services/nostrService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
+import { subscriptions } from "./subscriptions.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -183,6 +185,7 @@ class Application {
       this.feedEngine.run = (...args) => this.feedEngine.runFeed(...args);
     }
     this.registerRecentFeed();
+    this.registerSubscriptionsFeed();
 
     this.playbackService =
       services.playbackService ||
@@ -4956,6 +4959,44 @@ class Application {
     }
   }
 
+  registerSubscriptionsFeed() {
+    if (!this.feedEngine || typeof this.feedEngine.registerFeed !== "function") {
+      return null;
+    }
+
+    const existingDefinition =
+      typeof this.feedEngine.getFeedDefinition === "function"
+        ? this.feedEngine.getFeedDefinition("subscriptions")
+        : null;
+    if (existingDefinition) {
+      return existingDefinition;
+    }
+
+    try {
+      return this.feedEngine.registerFeed("subscriptions", {
+        source: createSubscriptionAuthorsSource({ service: this.nostrService }),
+        stages: [
+          createBlacklistFilterStage({
+            shouldIncludeVideo: (video, options) =>
+              this.nostrService.shouldIncludeVideo(video, options),
+          }),
+          createDedupeByRootStage({
+            dedupe: (videos) => this.dedupeVideosByRoot(videos),
+          }),
+        ],
+        sorter: createChronologicalSorter(),
+        hooks: {
+          subscriptions: {
+            resolveAuthors: () => subscriptions.getSubscribedAuthors(),
+          },
+        },
+      });
+    } catch (error) {
+      console.warn("[Application] Failed to register subscriptions feed:", error);
+      return null;
+    }
+  }
+
   buildRecentFeedRuntime() {
     const blacklist =
       this.blacklistedEventIds instanceof Set
@@ -5905,6 +5946,16 @@ class Application {
 
           if (result?.ok) {
             this.showSuccess("Creator added to the blacklist.");
+            subscriptions
+              .refreshActiveFeed({ reason: "admin-blacklist-update" })
+              .catch((error) => {
+                if (isDevMode) {
+                  console.warn(
+                    "[Subscriptions] Failed to refresh after blacklist update:",
+                    error
+                  );
+                }
+              });
           } else {
             const code = result?.error || "unknown";
             switch (code) {
@@ -5984,6 +6035,16 @@ class Application {
 
           this.populateBlockedList();
           await this.loadVideos();
+          subscriptions
+            .refreshActiveFeed({ reason: "user-block-update" })
+            .catch((error) => {
+              if (isDevMode) {
+                console.warn(
+                  "[Subscriptions] Failed to refresh after user block update:",
+                  error
+                );
+              }
+            });
         } catch (error) {
           console.error("Failed to update personal block list:", error);
           const message =
