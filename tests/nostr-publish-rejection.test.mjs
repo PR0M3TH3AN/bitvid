@@ -87,9 +87,19 @@ try {
       await assert.rejects(
         nostrClient.publishVideo(
           {
-            title: "Test video",
-            magnet: "magnet:?xt=urn:btih:TESTVIDEO1234567890",
-            mode: "live",
+            legacyFormData: {
+              title: "Test video",
+              magnet: "magnet:?xt=urn:btih:TESTVIDEO1234567890",
+              mode: "live",
+            },
+            nip71: {
+              imeta: [
+                {
+                  m: "video/mp4",
+                  url: "https://cdn.example/test.mp4",
+                },
+              ],
+            },
           },
           "f".repeat(64)
         ),
