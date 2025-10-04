@@ -171,8 +171,52 @@ async function testWatchHistoryHookIsolation() {
   assert.equal(whyA.videoId, "x1");
 }
 
+async function testBlacklistOrderingWithRuntimeChanges() {
+  const engine = createFeedEngine();
+  const feedName = "runtime-order";
+
+  engine.registerFeed(feedName, {
+    source: async () => [
+      { video: { id: "v1", created_at: 100 } },
+      { video: { id: "v2", created_at: 200 } },
+      { video: { id: "v3", created_at: 300 } },
+    ],
+    stages: [
+      createBlacklistFilterStage({
+        shouldIncludeVideo(video, { blacklistedEventIds }) {
+          return !blacklistedEventIds.has(video.id);
+        },
+      }),
+    ],
+    sorter: createChronologicalSorter(),
+  });
+
+  const baseline = await engine.runFeed(feedName, {
+    runtime: { blacklistedEventIds: new Set() },
+  });
+  assert.deepEqual(baseline.videos.map((video) => video.id), [
+    "v3",
+    "v2",
+    "v1",
+  ]);
+
+  const withoutTop = await engine.runFeed(feedName, {
+    runtime: { blacklistedEventIds: new Set(["v3"]) },
+  });
+  assert.deepEqual(withoutTop.videos.map((video) => video.id), ["v2", "v1"]);
+
+  const withoutMiddle = await engine.runFeed(feedName, {
+    runtime: { blacklistedEventIds: new Set(["v2"]) },
+  });
+  assert.deepEqual(withoutMiddle.videos.map((video) => video.id), [
+    "v3",
+    "v1",
+  ]);
+}
+
 await testDedupeOrdering();
 await testBlacklistFiltering();
 await testWatchHistoryHookIsolation();
+await testBlacklistOrderingWithRuntimeChanges();
 
 console.log("All feed engine tests passed");
