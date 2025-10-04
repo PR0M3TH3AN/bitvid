@@ -4,20 +4,27 @@ import Application from "./app.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView } from "./viewManager.js";
-import { setApplication, setApplicationReady } from "./applicationContext.js";
 
-const app = new Application({
-  services: {
-    nostrService,
-    r2Service,
-  },
-  loadView,
-});
+function mergeServices(overrides = {}) {
+  const merged = { nostrService, r2Service };
 
-setApplication(app);
+  if (overrides && typeof overrides === "object") {
+    if (overrides.nostrService) {
+      merged.nostrService = overrides.nostrService;
+    }
+    if (overrides.r2Service) {
+      merged.r2Service = overrides.r2Service;
+    }
+  }
 
-const appReady = app.init();
-setApplicationReady(appReady);
+  return merged;
+}
 
-export { app, appReady };
-export default app;
+export function createApplication({ services, loadView: loadViewOverride } = {}) {
+  return new Application({
+    services: mergeServices(services),
+    loadView: typeof loadViewOverride === "function" ? loadViewOverride : loadView,
+  });
+}
+
+export default createApplication;
