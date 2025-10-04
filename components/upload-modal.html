@@ -77,137 +77,665 @@
         </div>
 
         <div id="customUploadSection">
-          <form id="uploadForm" class="space-y-4">
-          <p class="text-sm text-gray-400">
-            Share a title plus either a hosted video URL or a magnet link. Providing both helps Bitvid fall back gracefully.
-          </p>
-          <div>
-            <label
-              for="uploadTitle"
-              class="block text-sm font-medium text-gray-200"
-              >Title</label
-            >
-            <input
-              type="text"
-              id="uploadTitle"
-              required
-              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          <!-- Hosted video URL -->
-          <div class="form-group">
-            <label
-              for="uploadUrl"
-              class="block text-sm font-medium text-gray-200"
-              >Hosted video URL (https)</label
-            >
-            <input
-              id="uploadUrl"
-              type="url"
-              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
-              placeholder="https://cdn.example.com/video.mp4"
-            />
-            <small class="mt-1 block text-xs text-gray-400"
-              >Optional but preferred. We will play this first and fall back to
-              P2P.</small
-            >
-          </div>
-
-          <!-- Optional: seed bootstraps for magnet -->
-          <div class="grid grid-cols-1 gap-3 mb-2 text-xs">
-            <input
-              id="uploadWs"
-              type="url"
-              class="w-full p-2 rounded"
-              placeholder="Web seed (ws=) e.g., https://cdn.example.com/video.mp4"
-            >
-            <input
-              id="uploadXs"
-              type="url"
-              class="w-full p-2 rounded"
-              placeholder=".torrent URL (xs=) e.g., https://cdn.example.com/video.torrent"
-            >
-          </div>
-
-          <div>
-            <label
-              for="uploadMagnet"
-              class="block text-sm font-medium text-gray-200"
-              >Magnet link (optional if URL provided)</label
-            >
-            <input
-              type="text"
-              id="uploadMagnet"
-              placeholder="magnet:?xt=urn:btih:..."
-              class="mt-1 block w-full rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
-            />
-            <p class="mt-1 text-xs text-gray-400">
-              Provide a hosted URL for instant playback. Add a magnet for P2P
-              cost control.
+          <form id="uploadForm" class="space-y-6">
+            <p class="text-sm text-gray-400">
+              Share a title plus either a hosted video URL or a magnet link. Providing both helps Bitvid fall back gracefully.
             </p>
-          </div>
-          <div>
-            <label
-              for="uploadThumbnail"
-              class="block text-sm font-medium text-gray-200"
-              >Thumbnail URL (optional)</label
-            >
-            <input
-              type="url"
-              id="uploadThumbnail"
-              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label
-              for="uploadDescription"
-              class="block text-sm font-medium text-gray-200"
-              >Description (optional)</label
-            >
-            <textarea
-              id="uploadDescription"
-              rows="3"
-              class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
-            ></textarea>
-          </div>
-
-          <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
-            <input
-              type="checkbox"
-              id="uploadEnableComments"
-              class="mt-1 h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
-              checked
-            />
             <div>
-              <label for="uploadEnableComments" class="text-sm font-medium text-gray-200"
-                >Enable comments</label
+              <label
+                for="uploadTitle"
+                class="block text-sm font-medium text-gray-200"
+                >Title</label
               >
+              <input
+                type="text"
+                id="uploadTitle"
+                required
+                class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+
+            <div class="space-y-4 rounded-lg border border-gray-800 bg-black/30 p-4" id="nip71EventDetails" data-nip71-section="event-details">
+              <fieldset id="nip71KindFieldset" class="space-y-2" data-nip71-fieldset="kind">
+                <legend class="text-sm font-semibold text-gray-200">NIP-71 event type</legend>
+                <p class="text-xs text-gray-400">
+                  Choose the video format. <span class="font-medium text-gray-300">Kind 21</span> is a full video, while
+                  <span class="font-medium text-gray-300">Kind 22</span> is a short.
+                </p>
+                <div class="flex flex-wrap gap-4" role="radiogroup" aria-labelledby="nip71KindFieldset">
+                  <label class="flex items-center gap-2 text-sm text-gray-200">
+                    <input
+                      type="radio"
+                      name="nip71Kind"
+                      id="nip71KindLong"
+                      value="21"
+                      checked
+                      data-nip71-input="kind"
+                      class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                    />
+                    Normal video (kind 21)
+                  </label>
+                  <label class="flex items-center gap-2 text-sm text-gray-200">
+                    <input
+                      type="radio"
+                      name="nip71Kind"
+                      id="nip71KindShort"
+                      value="22"
+                      data-nip71-input="kind"
+                      class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                    />
+                    Short video (kind 22)
+                  </label>
+                </div>
+              </fieldset>
+
+              <div class="grid gap-4 md:grid-cols-2" data-nip71-grid="metadata">
+                <div>
+                  <label for="nip71PublishedAt" class="block text-sm font-medium text-gray-200">Published at</label>
+                  <input
+                    type="datetime-local"
+                    id="nip71PublishedAt"
+                    data-nip71-input="published_at"
+                    class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">Set the canonical publish time for cross-client ordering.</p>
+                </div>
+                <div>
+                  <label for="nip71AltText" class="block text-sm font-medium text-gray-200">Alt text</label>
+                  <input
+                    type="text"
+                    id="nip71AltText"
+                    data-nip71-input="alt"
+                    placeholder="Describe the visuals for screen readers"
+                    class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">Plain-language fallback shown when the media cannot load.</p>
+                </div>
+                <div>
+                  <label for="nip71Duration" class="block text-sm font-medium text-gray-200">Duration (seconds)</label>
+                  <input
+                    type="number"
+                    id="nip71Duration"
+                    min="0"
+                    step="1"
+                    data-nip71-input="duration"
+                    class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">Provide the runtime in whole seconds for timeline scrubbing.</p>
+                </div>
+                <div>
+                  <label for="nip71ContentWarning" class="block text-sm font-medium text-gray-200">Content warning</label>
+                  <input
+                    type="text"
+                    id="nip71ContentWarning"
+                    data-nip71-input="content-warning"
+                    placeholder="e.g., Flashing lights"
+                    class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">Leave blank if the video is safe for all audiences.</p>
+                </div>
+              </div>
+
+              <div>
+                <label for="nip71Summary" class="block text-sm font-medium text-gray-200">Summary</label>
+                <textarea
+                  id="nip71Summary"
+                  rows="3"
+                  data-nip71-input="summary"
+                  class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                  placeholder="Short synopsis used as the Nostr content field"
+                ></textarea>
+                <p class="mt-1 text-xs text-gray-400">This becomes the event content. Keep it concise for Nostr readers.</p>
+              </div>
+            </div>
+
+            <!-- Hosted video URL -->
+            <div class="form-group">
+              <label
+                for="uploadUrl"
+                class="block text-sm font-medium text-gray-200"
+                >Hosted video URL (https)</label
+              >
+              <input
+                id="uploadUrl"
+                type="url"
+                class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                placeholder="https://cdn.example.com/video.mp4"
+              />
+              <small class="mt-1 block text-xs text-gray-400"
+                >Optional but preferred. We will play this first and fall back to
+                P2P.</small
+              >
+            </div>
+
+            <!-- Optional: seed bootstraps for magnet -->
+            <div class="grid grid-cols-1 gap-3 mb-2 text-xs">
+              <input
+                id="uploadWs"
+                type="url"
+                class="w-full p-2 rounded"
+                placeholder="Web seed (ws=) e.g., https://cdn.example.com/video.mp4"
+              >
+              <input
+                id="uploadXs"
+                type="url"
+                class="w-full p-2 rounded"
+                placeholder=".torrent URL (xs=) e.g., https://cdn.example.com/video.torrent"
+              >
+            </div>
+
+            <div>
+              <label
+                for="uploadMagnet"
+                class="block text-sm font-medium text-gray-200"
+                >Magnet link (optional if URL provided)</label
+              >
+              <input
+                type="text"
+                id="uploadMagnet"
+                placeholder="magnet:?xt=urn:btih:..."
+                class="mt-1 block w-full rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+              />
               <p class="mt-1 text-xs text-gray-400">
-                Keep this on to let viewers discuss the video once comment threads launch.
+                Provide a hosted URL for instant playback. Add a magnet for P2P
+                cost control.
               </p>
             </div>
-          </div>
-          <!--
-          <div class="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="uploadIsPrivate"
-              class="form-checkbox h-5 w-5 text-blue-500"
-            />
-            <span class="text-sm font-medium text-gray-200"
-              >Private Listing (Encrypt Magnet)</span
+            <div>
+              <label
+                for="uploadThumbnail"
+                class="block text-sm font-medium text-gray-200"
+                >Thumbnail URL (optional)</label
+              >
+              <input
+                type="url"
+                id="uploadThumbnail"
+                class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label
+                for="uploadDescription"
+                class="block text-sm font-medium text-gray-200"
+                >Legacy description (optional)</label
+              >
+              <textarea
+                id="uploadDescription"
+                rows="3"
+                class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+              ></textarea>
+              <p class="mt-1 text-xs text-gray-400">Kept for older clients that rely on the legacy description tag.</p>
+            </div>
+
+            <fieldset
+              id="nip71TagsFieldset"
+              class="space-y-6 rounded-lg border border-gray-800 bg-black/30 p-4"
+              data-nip71-section="tags"
             >
-          </div>
-          -->
-          <button
-            type="submit"
-            class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            Publish
-          </button>
-        </form>
+              <legend class="text-sm font-semibold text-gray-200">NIP-71 tags</legend>
+              <p class="text-xs text-gray-400">
+                Use the controls below to describe media variants, captions, chapters, participants, and references.
+              </p>
+
+              <section class="space-y-4" aria-labelledby="nip71ImetaLabel" data-nip71-repeater="imeta">
+                <div class="flex items-center justify-between">
+                  <h3 id="nip71ImetaLabel" class="text-sm font-medium text-gray-200">Image metadata (imeta)</h3>
+                  <button
+                    type="button"
+                    class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                    data-nip71-add="imeta"
+                    aria-describedby="nip71ImetaHelp"
+                  >
+                    Add variant
+                  </button>
+                </div>
+                <p id="nip71ImetaHelp" class="text-xs text-gray-400">
+                  Provide dimensions, MIME type, and resource links for each variant. Nested repeaters let you attach multiple
+                  <code>image</code>, <code>fallback</code>, or <code>service</code> values.
+                </p>
+                <div id="nip71ImetaList" class="space-y-4" data-nip71-list="imeta"></div>
+                <template id="nip71ImetaTemplate" data-nip71-template="imeta">
+                  <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="imeta">
+                    <div class="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">
+                          MIME type (<code>m</code>)
+                        </label>
+                        <input
+                          type="text"
+                          data-nip71-field="m"
+                          placeholder="video/mp4"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">
+                          Pixel dimensions (<code>dim</code>)
+                        </label>
+                        <input
+                          type="text"
+                          data-nip71-field="dim"
+                          placeholder="1920x1080"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">Formatted as widthxheight.</p>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">
+                          Streaming URL (<code>url</code>)
+                        </label>
+                        <input
+                          type="url"
+                          data-nip71-field="url"
+                          placeholder="https://cdn.example.com/variant.m3u8"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">
+                          Magnet (<code>x</code>)
+                        </label>
+                        <input
+                          type="text"
+                          data-nip71-field="x"
+                          placeholder="magnet:?xt=urn:btih:..."
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
+                      </div>
+                    </div>
+
+                    <div class="space-y-3" data-nip71-nested="image">
+                      <div class="flex items-center justify-between">
+                        <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Image values</h4>
+                        <button
+                          type="button"
+                          class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
+                          data-nip71-nested-add="image"
+                        >
+                          Add image URL
+                        </button>
+                      </div>
+                      <div class="space-y-2" data-nip71-nested-list="image"></div>
+                      <template data-nip71-nested-template="image">
+                        <div class="flex items-center gap-2" data-nip71-nested-entry="image">
+                          <input
+                            type="url"
+                            placeholder="https://cdn.example.com/poster.jpg"
+                            data-nip71-nested-field="image"
+                            class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                          />
+                          <button
+                            type="button"
+                            class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                            data-nip71-remove="nested"
+                            aria-label="Remove image URL"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </template>
+                    </div>
+
+                    <div class="space-y-3" data-nip71-nested="fallback">
+                      <div class="flex items-center justify-between">
+                        <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Fallback URLs</h4>
+                        <button
+                          type="button"
+                          class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
+                          data-nip71-nested-add="fallback"
+                        >
+                          Add fallback
+                        </button>
+                      </div>
+                      <div class="space-y-2" data-nip71-nested-list="fallback"></div>
+                      <template data-nip71-nested-template="fallback">
+                        <div class="flex items-center gap-2" data-nip71-nested-entry="fallback">
+                          <input
+                            type="url"
+                            placeholder="https://cdn.backup.net/video.mp4"
+                            data-nip71-nested-field="fallback"
+                            class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                          />
+                          <button
+                            type="button"
+                            class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                            data-nip71-remove="nested"
+                            aria-label="Remove fallback URL"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </template>
+                    </div>
+
+                    <div class="space-y-3" data-nip71-nested="service">
+                      <div class="flex items-center justify-between">
+                        <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Services</h4>
+                        <button
+                          type="button"
+                          class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
+                          data-nip71-nested-add="service"
+                        >
+                          Add service hint
+                        </button>
+                      </div>
+                      <div class="space-y-2" data-nip71-nested-list="service"></div>
+                      <template data-nip71-nested-template="service">
+                        <div class="flex items-center gap-2" data-nip71-nested-entry="service">
+                          <input
+                            type="text"
+                            placeholder="streaming-provider-id"
+                            data-nip71-nested-field="service"
+                            class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                          />
+                          <button
+                            type="button"
+                            class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                            data-nip71-remove="nested"
+                            aria-label="Remove service hint"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </template>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="rounded-md border border-red-500/50 px-3 py-1 text-xs font-semibold text-red-300 hover:border-red-400 hover:text-red-200"
+                      data-nip71-remove="imeta"
+                    >
+                      Remove variant
+                    </button>
+                  </article>
+                </template>
+              </section>
+
+              <section class="space-y-4" aria-labelledby="nip71TextTracksLabel" data-nip71-repeater="text-track">
+                <div class="flex items-center justify-between">
+                  <h3 id="nip71TextTracksLabel" class="text-sm font-medium text-gray-200">Caption &amp; subtitle tracks (text-track)</h3>
+                  <button
+                    type="button"
+                    class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                    data-nip71-add="text-track"
+                    aria-describedby="nip71TextTracksHelp"
+                  >
+                    Add track
+                  </button>
+                </div>
+                <p id="nip71TextTracksHelp" class="text-xs text-gray-400">
+                  Point to VTT/SRT caption files and optionally declare the language code (BCP-47).
+                </p>
+                <div id="nip71TextTrackList" class="space-y-4" data-nip71-list="text-track"></div>
+                <template id="nip71TextTrackTemplate" data-nip71-template="text-track">
+                  <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="text-track">
+                    <div class="grid gap-3 md:grid-cols-3">
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">Resource URL</label>
+                        <input
+                          type="url"
+                          data-nip71-field="url"
+                          placeholder="https://cdn.example.com/captions.en.vtt"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">Direct link to the caption file.</p>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">Track type</label>
+                        <input
+                          type="text"
+                          data-nip71-field="type"
+                          placeholder="subtitles"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">Use values like captions, subtitles, or descriptions.</p>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">Language (optional)</label>
+                        <input
+                          type="text"
+                          data-nip71-field="language"
+                          placeholder="en-US"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">BCP-47 locale code.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      class="rounded-md border border-red-500/50 px-3 py-1 text-xs font-semibold text-red-300 hover:border-red-400 hover:text-red-200"
+                      data-nip71-remove="text-track"
+                    >
+                      Remove track
+                    </button>
+                  </article>
+                </template>
+              </section>
+
+              <section class="space-y-4" aria-labelledby="nip71SegmentsLabel" data-nip71-repeater="segment">
+                <div class="flex items-center justify-between">
+                  <h3 id="nip71SegmentsLabel" class="text-sm font-medium text-gray-200">Chapters &amp; segments (segment)</h3>
+                  <button
+                    type="button"
+                    class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                    data-nip71-add="segment"
+                    aria-describedby="nip71SegmentsHelp"
+                  >
+                    Add segment
+                  </button>
+                </div>
+                <p id="nip71SegmentsHelp" class="text-xs text-gray-400">
+                  Outline the timeline using HH:MM:SS timestamps. Thumbnail URLs are optional.
+                </p>
+                <div id="nip71SegmentList" class="space-y-4" data-nip71-list="segment"></div>
+                <template id="nip71SegmentTemplate" data-nip71-template="segment">
+                  <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="segment">
+                    <div class="grid gap-3 md:grid-cols-4">
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">Start</label>
+                        <input
+                          type="text"
+                          data-nip71-field="start"
+                          placeholder="00:00:00"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">HH:MM:SS</p>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">End</label>
+                        <input
+                          type="text"
+                          data-nip71-field="end"
+                          placeholder="00:03:30"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">Leave blank for open-ended segments.</p>
+                      </div>
+                      <div class="md:col-span-2">
+                        <label class="block text-xs font-medium text-gray-300">Chapter title</label>
+                        <input
+                          type="text"
+                          data-nip71-field="title"
+                          placeholder="Introduction"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div class="md:col-span-2">
+                        <label class="block text-xs font-medium text-gray-300">Thumbnail URL</label>
+                        <input
+                          type="url"
+                          data-nip71-field="thumbnail"
+                          placeholder="https://cdn.example.com/segment.jpg"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">Optional still image for this moment.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      class="rounded-md border border-red-500/50 px-3 py-1 text-xs font-semibold text-red-300 hover:border-red-400 hover:text-red-200"
+                      data-nip71-remove="segment"
+                    >
+                      Remove segment
+                    </button>
+                  </article>
+                </template>
+              </section>
+
+              <section class="space-y-4" aria-labelledby="nip71HashtagsLabel" data-nip71-repeater="t">
+                <div class="flex items-center justify-between">
+                  <h3 id="nip71HashtagsLabel" class="text-sm font-medium text-gray-200">Hashtags (<code>t</code>)</h3>
+                  <button
+                    type="button"
+                    class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                    data-nip71-add="t"
+                  >
+                    Add hashtag
+                  </button>
+                </div>
+                <p class="text-xs text-gray-400">Enter bare keywords without the <code>#</code> prefix.</p>
+                <div id="nip71HashtagList" class="space-y-2" data-nip71-list="t"></div>
+                <template id="nip71HashtagTemplate" data-nip71-template="t">
+                  <div class="flex items-center gap-2" data-nip71-entry="t">
+                    <input
+                      type="text"
+                      data-nip71-field="value"
+                      placeholder="nostr"
+                      class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      class="rounded border border-red-500/50 px-2 py-1 text-[11px] text-red-300 hover:border-red-400 hover:text-red-200"
+                      data-nip71-remove="t"
+                      aria-label="Remove hashtag"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </template>
+              </section>
+
+              <section class="space-y-4" aria-labelledby="nip71ParticipantsLabel" data-nip71-repeater="p">
+                <div class="flex items-center justify-between">
+                  <h3 id="nip71ParticipantsLabel" class="text-sm font-medium text-gray-200">Participants (<code>p</code>)</h3>
+                  <button
+                    type="button"
+                    class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                    data-nip71-add="p"
+                  >
+                    Add participant
+                  </button>
+                </div>
+                <p class="text-xs text-gray-400">Paste the participant npub or hex pubkey. Optionally provide a preferred relay URL.</p>
+                <div id="nip71ParticipantList" class="space-y-3" data-nip71-list="p"></div>
+                <template id="nip71ParticipantTemplate" data-nip71-template="p">
+                  <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="p">
+                    <div class="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">Pubkey</label>
+                        <input
+                          type="text"
+                          data-nip71-field="pubkey"
+                          placeholder="npub1..."
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">Accepts npub or hex.</p>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-300">Relay URL (optional)</label>
+                        <input
+                          type="url"
+                          data-nip71-field="relay"
+                          placeholder="wss://relay.example.com"
+                          class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                        <p class="mt-1 text-[11px] text-gray-500">Relay hint for discovering the participant.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      class="rounded-md border border-red-500/50 px-3 py-1 text-xs font-semibold text-red-300 hover:border-red-400 hover:text-red-200"
+                      data-nip71-remove="p"
+                    >
+                      Remove participant
+                    </button>
+                  </article>
+                </template>
+              </section>
+
+              <section class="space-y-4" aria-labelledby="nip71ReferencesLabel" data-nip71-repeater="r">
+                <div class="flex items-center justify-between">
+                  <h3 id="nip71ReferencesLabel" class="text-sm font-medium text-gray-200">Reference links (<code>r</code>)</h3>
+                  <button
+                    type="button"
+                    class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                    data-nip71-add="r"
+                  >
+                    Add reference
+                  </button>
+                </div>
+                <p class="text-xs text-gray-400">Link to transcripts, source repositories, or related resources.</p>
+                <div id="nip71ReferenceList" class="space-y-2" data-nip71-list="r"></div>
+                <template id="nip71ReferenceTemplate" data-nip71-template="r">
+                  <div class="flex items-center gap-2" data-nip71-entry="r">
+                    <input
+                      type="url"
+                      data-nip71-field="url"
+                      placeholder="https://example.com/article"
+                      class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      class="rounded border border-red-500/50 px-2 py-1 text-[11px] text-red-300 hover:border-red-400 hover:text-red-200"
+                      data-nip71-remove="r"
+                      aria-label="Remove reference"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </template>
+              </section>
+            </fieldset>
+
+            <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
+              <input
+                type="checkbox"
+                id="uploadEnableComments"
+                class="mt-1 h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                checked
+              />
+              <div>
+                <label for="uploadEnableComments" class="text-sm font-medium text-gray-200"
+                  >Enable comments</label
+                >
+                <p class="mt-1 text-xs text-gray-400">
+                  Keep this on to let viewers discuss the video once comment threads launch.
+                </p>
+              </div>
+            </div>
+            <!--
+            <div class="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="uploadIsPrivate"
+                class="form-checkbox h-5 w-5 text-blue-500"
+              />
+              <span class="text-sm font-medium text-gray-200"
+                >Private Listing (Encrypt Magnet)</span
+              >
+            </div>
+            -->
+            <button
+              type="submit"
+              class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              Publish
+            </button>
+          </form>
         </div>
 
         <div id="cloudflareUploadSection" class="hidden">
