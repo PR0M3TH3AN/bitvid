@@ -354,6 +354,24 @@ class bitvidApp {
     this.activeIntervals = [];
     this.watchHistoryMetadataEnabled = null;
     this.watchHistoryPreferenceUnsubscribe = null;
+    this.authEventUnsubscribes = [];
+    this.unsubscribeFromNostrService = null;
+    this.boundUploadSubmitHandler = null;
+    this.boundEditModalSubmitHandler = null;
+    this.boundEditModalCancelHandler = null;
+    this.boundRevertConfirmHandler = null;
+    this.boundVideoModalCloseHandler = null;
+    this.boundVideoModalCopyHandler = null;
+    this.boundVideoModalShareHandler = null;
+    this.boundVideoModalCreatorHandler = null;
+    this.boundVideoModalZapHandler = null;
+    this.videoListViewPlaybackHandler = null;
+    this.videoListViewEditHandler = null;
+    this.videoListViewRevertHandler = null;
+    this.videoListViewDeleteHandler = null;
+    this.videoListViewBlacklistHandler = null;
+    this.boundVideoListShareListener = null;
+    this.boundVideoListContextListener = null;
 
     this.playbackService = new PlaybackService({
       logger: (message, ...args) => this.log(message, ...args),
@@ -392,10 +410,18 @@ class bitvidApp {
       relayManager,
       logger: (message, ...args) => this.log(message, ...args),
     });
-    this.authService.on("auth:login", (detail) => this.handleAuthLogin(detail));
-    this.authService.on("auth:logout", (detail) => this.handleAuthLogout(detail));
-    this.authService.on("profile:updated", (detail) =>
-      this.handleProfileUpdated(detail)
+    this.authEventUnsubscribes.push(
+      this.authService.on("auth:login", (detail) => this.handleAuthLogin(detail))
+    );
+    this.authEventUnsubscribes.push(
+      this.authService.on("auth:logout", (detail) =>
+        this.handleAuthLogout(detail)
+      )
+    );
+    this.authEventUnsubscribes.push(
+      this.authService.on("profile:updated", (detail) =>
+        this.handleProfileUpdated(detail)
+      )
     );
 
     // Optional: a "profile" button or avatar (if used)
@@ -477,9 +503,13 @@ class bitvidApp {
       eventTarget: uploadModalEvents,
       container: document.getElementById("modalContainer") || null,
     });
-    this.uploadModal.addEventListener("upload:submit", (event) => {
+    this.boundUploadSubmitHandler = (event) => {
       this.handleUploadSubmitEvent(event);
-    });
+    };
+    this.uploadModal.addEventListener(
+      "upload:submit",
+      this.boundUploadSubmitHandler
+    );
 
     const editModalEvents = new EventTarget();
     this.editModal = new EditModal({
@@ -498,38 +528,21 @@ class bitvidApp {
       container: document.getElementById("modalContainer") || null,
     });
 
-    this.editModal.addEventListener("video:edit-submit", async (event) => {
-      const detail = event?.detail || {};
-      const { originalEvent, updatedData } = detail;
-      if (!originalEvent || !updatedData) {
-        return;
-      }
+    this.boundEditModalSubmitHandler = (event) => {
+      this.handleEditModalSubmit(event);
+    };
+    this.editModal.addEventListener(
+      "video:edit-submit",
+      this.boundEditModalSubmitHandler
+    );
 
-      if (!this.pubkey) {
-        this.showError("Please login to edit videos.");
-        return;
-      }
-
-      try {
-        await nostrService.handleEditVideoSubmit({
-          originalEvent,
-          updatedData,
-          pubkey: this.pubkey,
-        });
-        await this.loadVideos();
-        this.videosMap.clear();
-        this.showSuccess("Video updated successfully!");
-        this.editModal.close();
-        this.forceRefreshAllProfiles();
-      } catch (error) {
-        console.error("Failed to edit video:", error);
-        this.showError("Failed to edit video. Please try again.");
-      }
-    });
-
-    this.editModal.addEventListener("video:edit-cancel", () => {
+    this.boundEditModalCancelHandler = () => {
       this.showError("");
-    });
+    };
+    this.editModal.addEventListener(
+      "video:edit-cancel",
+      this.boundEditModalCancelHandler
+    );
 
     this.revertModal = new RevertModal({
       removeTrackingScripts,
@@ -543,9 +556,13 @@ class bitvidApp {
       container: document.getElementById("modalContainer") || null,
     });
 
-    this.revertModal.addEventListener("video:revert-confirm", (event) => {
+    this.boundRevertConfirmHandler = (event) => {
       this.handleRevertModalConfirm(event);
-    });
+    };
+    this.revertModal.addEventListener(
+      "video:revert-confirm",
+      this.boundRevertConfirmHandler
+    );
 
 
     // Optional small inline player stats
@@ -565,21 +582,41 @@ class bitvidApp {
         log: (message, ...args) => this.log(message, ...args),
       },
     });
-    this.videoModal.addEventListener("modal:close", () => {
+    this.boundVideoModalCloseHandler = () => {
       this.hideModal();
-    });
-    this.videoModal.addEventListener("video:copy-magnet", () => {
+    };
+    this.videoModal.addEventListener(
+      "modal:close",
+      this.boundVideoModalCloseHandler
+    );
+    this.boundVideoModalCopyHandler = () => {
       this.handleCopyMagnet();
-    });
-    this.videoModal.addEventListener("video:share", () => {
+    };
+    this.videoModal.addEventListener(
+      "video:copy-magnet",
+      this.boundVideoModalCopyHandler
+    );
+    this.boundVideoModalShareHandler = () => {
       this.shareActiveVideo();
-    });
-    this.videoModal.addEventListener("creator:navigate", () => {
+    };
+    this.videoModal.addEventListener(
+      "video:share",
+      this.boundVideoModalShareHandler
+    );
+    this.boundVideoModalCreatorHandler = () => {
       this.openCreatorChannel();
-    });
-    this.videoModal.addEventListener("video:zap", () => {
+    };
+    this.videoModal.addEventListener(
+      "creator:navigate",
+      this.boundVideoModalCreatorHandler
+    );
+    this.boundVideoModalZapHandler = () => {
       window.alert("Zaps coming soon.");
-    });
+    };
+    this.videoModal.addEventListener(
+      "video:zap",
+      this.boundVideoModalZapHandler
+    );
 
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
@@ -605,9 +642,12 @@ class bitvidApp {
 
     // Videos stored as a Map (key=event.id)
     this.videosMap = nostrService.getVideosMap();
-    nostrService.on("subscription:changed", ({ subscription }) => {
-      this.videoSubscription = subscription || null;
-    });
+    this.unsubscribeFromNostrService = nostrService.on(
+      "subscription:changed",
+      ({ subscription }) => {
+        this.videoSubscription = subscription || null;
+      }
+    );
     this.moreMenuGlobalHandlerBound = false;
     this.boundMoreMenuDocumentClick = null;
     this.boundMoreMenuDocumentKeydown = null;
@@ -686,9 +726,12 @@ class bitvidApp {
         ensureGlobalMoreMenuHandlers: () => this.ensureGlobalMoreMenuHandlers(),
         closeAllMenus: () => this.closeAllMoreMenus(),
       },
+      renderers: {
+        getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
+      },
     });
 
-    this.videoListView.setPlaybackHandler(({ videoId, url, magnet }) => {
+    this.videoListViewPlaybackHandler = ({ videoId, url, magnet }) => {
       if (videoId) {
         Promise.resolve(this.playVideoByEventId(videoId)).catch((error) => {
           console.error("[VideoListView] Failed to play by event id:", error);
@@ -700,9 +743,10 @@ class bitvidApp {
           console.error("[VideoListView] Failed to start playback:", error);
         }
       );
-    });
+    };
+    this.videoListView.setPlaybackHandler(this.videoListViewPlaybackHandler);
 
-    this.videoListView.setEditHandler(({ video, index }) => {
+    this.videoListViewEditHandler = ({ video, index }) => {
       if (!video?.id) {
         return;
       }
@@ -710,9 +754,10 @@ class bitvidApp {
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
       });
-    });
+    };
+    this.videoListView.setEditHandler(this.videoListViewEditHandler);
 
-    this.videoListView.setRevertHandler(({ video, index }) => {
+    this.videoListViewRevertHandler = ({ video, index }) => {
       if (!video?.id) {
         return;
       }
@@ -720,9 +765,10 @@ class bitvidApp {
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
       });
-    });
+    };
+    this.videoListView.setRevertHandler(this.videoListViewRevertHandler);
 
-    this.videoListView.setDeleteHandler(({ video, index }) => {
+    this.videoListViewDeleteHandler = ({ video, index }) => {
       if (!video?.id) {
         return;
       }
@@ -730,17 +776,19 @@ class bitvidApp {
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
       });
-    });
+    };
+    this.videoListView.setDeleteHandler(this.videoListViewDeleteHandler);
 
-    this.videoListView.setBlacklistHandler(({ video, dataset }) => {
+    this.videoListViewBlacklistHandler = ({ video, dataset }) => {
       const detail = {
         ...(dataset || {}),
         author: dataset?.author || video?.pubkey || "",
       };
       this.handleMoreMenuAction("blacklist-author", detail);
-    });
+    };
+    this.videoListView.setBlacklistHandler(this.videoListViewBlacklistHandler);
 
-    this.videoListView.addEventListener("video:share", (event) => {
+    this.boundVideoListShareListener = (event) => {
       const detail = event?.detail || {};
       const dataset = {
         ...(detail.dataset || {}),
@@ -748,16 +796,24 @@ class bitvidApp {
         context: detail.dataset?.context || "card",
       };
       this.handleMoreMenuAction(detail.action || "copy-link", dataset);
-    });
+    };
+    this.videoListView.addEventListener(
+      "video:share",
+      this.boundVideoListShareListener
+    );
 
-    this.videoListView.addEventListener("video:context-action", (event) => {
+    this.boundVideoListContextListener = (event) => {
       const detail = event?.detail || {};
       const dataset = {
         ...(detail.dataset || {}),
         eventId: detail.dataset?.eventId || detail.video?.id || "",
       };
       this.handleMoreMenuAction(detail.action, dataset);
-    });
+    };
+    this.videoListView.addEventListener(
+      "video:context-action",
+      this.boundVideoListContextListener
+    );
 
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
@@ -982,10 +1038,7 @@ class bitvidApp {
       }
 
       // 7. Once loaded, get a reference to #videoList
-      this.videoList = document.getElementById("videoList");
-      if (this.videoListView) {
-        this.videoListView.setContainer(this.videoList);
-      }
+      this.mountVideoListView();
 
       // 8. Subscribe or fetch videos
       await this.loadVideos();
@@ -3449,14 +3502,15 @@ class bitvidApp {
 
   }
 
-  attachVideoListHandler() {
+  mountVideoListView(container = null) {
     if (!this.videoListView) {
-      return;
+      return null;
     }
-    if (!this.videoList) {
-      this.videoList = document.getElementById("videoList");
-    }
-    this.videoListView.setContainer(this.videoList || null);
+
+    const target = container || document.getElementById("videoList");
+    this.videoList = target || null;
+    this.videoListView.mount(this.videoList || null);
+    return this.videoList;
   }
 
   /**
@@ -4967,10 +5021,11 @@ class bitvidApp {
   async loadVideos(forceFetch = false) {
     console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
-    if (this.videoList) {
-      this.videoList.innerHTML = getSidebarLoadingMarkup(
-        "Fetching recent videos…"
-      );
+    const container = this.mountVideoListView();
+    if (this.videoListView && container) {
+      this.videoListView.showLoading("Fetching recent videos…");
+    } else if (container) {
+      container.innerHTML = getSidebarLoadingMarkup("Fetching recent videos…");
     }
 
     const videos = await nostrService.loadVideos({
@@ -5301,9 +5356,9 @@ class bitvidApp {
       return;
     }
 
-    if (!this.videoList) {
-      this.videoList = document.getElementById("videoList");
-      this.videoListView.setContainer(this.videoList || null);
+    const container = this.mountVideoListView();
+    if (!container) {
+      return;
     }
 
     this.videoListView.render(videos);
@@ -6079,6 +6134,35 @@ class bitvidApp {
   /**
    * Handle "Edit Video" from gear menu.
    */
+  async handleEditModalSubmit(event) {
+    const detail = event?.detail || {};
+    const { originalEvent, updatedData } = detail;
+    if (!originalEvent || !updatedData) {
+      return;
+    }
+
+    if (!this.pubkey) {
+      this.showError("Please login to edit videos.");
+      return;
+    }
+
+    try {
+      await nostrService.handleEditVideoSubmit({
+        originalEvent,
+        updatedData,
+        pubkey: this.pubkey,
+      });
+      await this.loadVideos();
+      this.videosMap.clear();
+      this.showSuccess("Video updated successfully!");
+      this.editModal.close();
+      this.forceRefreshAllProfiles();
+    } catch (error) {
+      console.error("Failed to edit video:", error);
+      this.showError("Failed to edit video. Please try again.");
+    }
+  }
+
   async handleEditVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
@@ -7225,6 +7309,197 @@ class bitvidApp {
 
   log(msg) {
     console.log(msg);
+  }
+
+  destroy() {
+    this.clearActiveIntervals();
+    this.teardownModalViewCountSubscription();
+
+    if (typeof this.unsubscribeFromPubkeyState === "function") {
+      try {
+        this.unsubscribeFromPubkeyState();
+      } catch (error) {
+        console.warn("[bitvidApp] Failed to unsubscribe pubkey state:", error);
+      }
+      this.unsubscribeFromPubkeyState = null;
+    }
+
+    if (typeof this.unsubscribeFromCurrentUserState === "function") {
+      try {
+        this.unsubscribeFromCurrentUserState();
+      } catch (error) {
+        console.warn(
+          "[bitvidApp] Failed to unsubscribe current user state:",
+          error
+        );
+      }
+      this.unsubscribeFromCurrentUserState = null;
+    }
+
+    if (typeof this.watchHistoryPreferenceUnsubscribe === "function") {
+      try {
+        this.watchHistoryPreferenceUnsubscribe();
+      } catch (error) {
+        console.warn(
+          "[bitvidApp] Failed to unsubscribe watch history preference:",
+          error
+        );
+      }
+      this.watchHistoryPreferenceUnsubscribe = null;
+    }
+
+    this.authEventUnsubscribes.forEach((unsubscribe) => {
+      if (typeof unsubscribe === "function") {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.warn("[bitvidApp] Auth listener unsubscribe failed:", error);
+        }
+      }
+    });
+    this.authEventUnsubscribes = [];
+
+    if (typeof this.unsubscribeFromNostrService === "function") {
+      try {
+        this.unsubscribeFromNostrService();
+      } catch (error) {
+        console.warn("[bitvidApp] Failed to unsubscribe nostr service:", error);
+      }
+      this.unsubscribeFromNostrService = null;
+    }
+
+    if (this.uploadModal && this.boundUploadSubmitHandler) {
+      this.uploadModal.removeEventListener(
+        "upload:submit",
+        this.boundUploadSubmitHandler
+      );
+      this.boundUploadSubmitHandler = null;
+    }
+    if (typeof this.uploadModal?.destroy === "function") {
+      try {
+        this.uploadModal.destroy();
+      } catch (error) {
+        console.warn("[bitvidApp] Failed to destroy upload modal:", error);
+      }
+    }
+
+    if (this.editModal) {
+      if (this.boundEditModalSubmitHandler) {
+        this.editModal.removeEventListener(
+          "video:edit-submit",
+          this.boundEditModalSubmitHandler
+        );
+        this.boundEditModalSubmitHandler = null;
+      }
+      if (this.boundEditModalCancelHandler) {
+        this.editModal.removeEventListener(
+          "video:edit-cancel",
+          this.boundEditModalCancelHandler
+        );
+        this.boundEditModalCancelHandler = null;
+      }
+      if (typeof this.editModal.destroy === "function") {
+        try {
+          this.editModal.destroy();
+        } catch (error) {
+          console.warn("[bitvidApp] Failed to destroy edit modal:", error);
+        }
+      }
+    }
+
+    if (this.revertModal && this.boundRevertConfirmHandler) {
+      this.revertModal.removeEventListener(
+        "video:revert-confirm",
+        this.boundRevertConfirmHandler
+      );
+      this.boundRevertConfirmHandler = null;
+    }
+    if (typeof this.revertModal?.destroy === "function") {
+      try {
+        this.revertModal.destroy();
+      } catch (error) {
+        console.warn("[bitvidApp] Failed to destroy revert modal:", error);
+      }
+    }
+
+    if (this.videoModal) {
+      if (this.boundVideoModalCloseHandler) {
+        this.videoModal.removeEventListener(
+          "modal:close",
+          this.boundVideoModalCloseHandler
+        );
+        this.boundVideoModalCloseHandler = null;
+      }
+      if (this.boundVideoModalCopyHandler) {
+        this.videoModal.removeEventListener(
+          "video:copy-magnet",
+          this.boundVideoModalCopyHandler
+        );
+        this.boundVideoModalCopyHandler = null;
+      }
+      if (this.boundVideoModalShareHandler) {
+        this.videoModal.removeEventListener(
+          "video:share",
+          this.boundVideoModalShareHandler
+        );
+        this.boundVideoModalShareHandler = null;
+      }
+      if (this.boundVideoModalCreatorHandler) {
+        this.videoModal.removeEventListener(
+          "creator:navigate",
+          this.boundVideoModalCreatorHandler
+        );
+        this.boundVideoModalCreatorHandler = null;
+      }
+      if (this.boundVideoModalZapHandler) {
+        this.videoModal.removeEventListener(
+          "video:zap",
+          this.boundVideoModalZapHandler
+        );
+        this.boundVideoModalZapHandler = null;
+      }
+      if (typeof this.videoModal.destroy === "function") {
+        try {
+          this.videoModal.destroy();
+        } catch (error) {
+          console.warn("[bitvidApp] Failed to destroy video modal:", error);
+        }
+      }
+    }
+
+    if (this.videoListView) {
+      if (this.boundVideoListShareListener) {
+        this.videoListView.removeEventListener(
+          "video:share",
+          this.boundVideoListShareListener
+        );
+        this.boundVideoListShareListener = null;
+      }
+      if (this.boundVideoListContextListener) {
+        this.videoListView.removeEventListener(
+          "video:context-action",
+          this.boundVideoListContextListener
+        );
+        this.boundVideoListContextListener = null;
+      }
+      this.videoListView.setPlaybackHandler(null);
+      this.videoListView.setEditHandler(null);
+      this.videoListView.setRevertHandler(null);
+      this.videoListView.setDeleteHandler(null);
+      this.videoListView.setBlacklistHandler(null);
+      this.videoListViewPlaybackHandler = null;
+      this.videoListViewEditHandler = null;
+      this.videoListViewRevertHandler = null;
+      this.videoListViewDeleteHandler = null;
+      this.videoListViewBlacklistHandler = null;
+      try {
+        this.videoListView.destroy();
+      } catch (error) {
+        console.warn("[bitvidApp] Failed to destroy VideoListView:", error);
+      }
+    }
+
+    this.videoList = null;
   }
 
   shareActiveVideo() {

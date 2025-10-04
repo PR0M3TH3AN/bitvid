@@ -18,6 +18,7 @@ export class VideoListView {
       assets = {},
       state = {},
       utils = {},
+      renderers = {},
     } = options;
 
     this.document = doc;
@@ -53,6 +54,13 @@ export class VideoListView {
       loadedThumbnails:
         state.loadedThumbnails instanceof Map ? state.loadedThumbnails : new Map(),
       videosMap: state.videosMap instanceof Map ? state.videosMap : new Map(),
+    };
+
+    this.renderers = {
+      getLoadingMarkup:
+        typeof renderers.getLoadingMarkup === "function"
+          ? renderers.getLoadingMarkup
+          : () => "",
     };
 
     this.utils = {
@@ -176,8 +184,28 @@ export class VideoListView {
     }
   }
 
-  destroy() {
+  mount(container) {
+    this.setContainer(container);
+    return this.container;
+  }
+
+  unmount() {
     this.setContainer(null);
+  }
+
+  showLoading(message = "") {
+    if (!this.container) {
+      return;
+    }
+
+    const markup = this.renderers.getLoadingMarkup(message);
+    if (typeof markup === "string") {
+      this.container.innerHTML = markup;
+    }
+  }
+
+  destroy() {
+    this.unmount();
     this.teardownAllViewCountSubscriptions();
     this.renderedVideoIds.clear();
     this.videoCardInstances = [];
