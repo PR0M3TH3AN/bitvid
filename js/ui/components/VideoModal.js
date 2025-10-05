@@ -54,6 +54,8 @@ export class VideoModal {
     this.modalZapReceipts = null;
     this.modalZapSendBtn = null;
     this.modalZapCloseBtn = null;
+    this.modalZapWalletPrompt = null;
+    this.modalZapWalletLink = null;
     this.modalZapDialogOpen = false;
     this.modalZapPending = false;
 
@@ -208,6 +210,10 @@ export class VideoModal {
       playerModal.querySelector("#modalZapSendBtn") || null;
     this.modalZapCloseBtn =
       playerModal.querySelector("#modalZapCloseBtn") || null;
+    this.modalZapWalletPrompt =
+      playerModal.querySelector("#modalZapWalletPrompt") || null;
+    this.modalZapWalletLink =
+      playerModal.querySelector("#modalZapWalletLink") || null;
 
     const closeButton = playerModal.querySelector("#closeModal");
     if (closeButton) {
@@ -304,6 +310,13 @@ export class VideoModal {
       this.modalZapCloseBtn.addEventListener("click", (event) => {
         event?.preventDefault?.();
         this.closeZapDialog();
+      });
+    }
+
+    if (this.modalZapWalletLink) {
+      this.modalZapWalletLink.addEventListener("click", (event) => {
+        event?.preventDefault?.();
+        this.dispatch("zap:wallet-link", { video: this.activeVideo });
       });
     }
 
@@ -539,6 +552,7 @@ export class VideoModal {
       this.modalZapBtn.disabled = disableButton;
       this.modalZapBtn.setAttribute("aria-disabled", (!shouldShow).toString());
       this.modalZapBtn.setAttribute("aria-hidden", (!shouldShow).toString());
+      this.modalZapBtn.setAttribute("aria-expanded", "false");
       if (shouldShow) {
         this.modalZapBtn.removeAttribute("tabindex");
       } else {
@@ -558,6 +572,18 @@ export class VideoModal {
     }
   }
 
+  setWalletPromptVisible(visible) {
+    if (!this.modalZapWalletPrompt) {
+      return;
+    }
+    const shouldShow = !!visible;
+    this.modalZapWalletPrompt.classList.toggle("hidden", !shouldShow);
+    this.modalZapWalletPrompt.setAttribute(
+      "aria-hidden",
+      (!shouldShow).toString()
+    );
+  }
+
   openZapDialog() {
     if (!this.modalZapDialog) {
       return;
@@ -565,6 +591,9 @@ export class VideoModal {
     this.modalZapDialog.classList.remove("hidden");
     this.modalZapDialogOpen = true;
     this.modalZapDialog.setAttribute("aria-hidden", "false");
+    if (this.modalZapBtn) {
+      this.modalZapBtn.setAttribute("aria-expanded", "true");
+    }
     this.focusZapAmount();
   }
 
@@ -576,6 +605,9 @@ export class VideoModal {
       this.modalZapDialog.classList.add("hidden");
       this.modalZapDialog.setAttribute("aria-hidden", "true");
       this.modalZapDialogOpen = false;
+      if (this.modalZapBtn) {
+        this.modalZapBtn.setAttribute("aria-expanded", "false");
+      }
       if (!silent) {
         this.dispatch("zap:close", { video: this.activeVideo });
       }
@@ -825,7 +857,7 @@ export class VideoModal {
 
     if (pending) {
       this.modalZapSendBtn.dataset.retryPending = "true";
-      this.modalZapSendBtn.textContent = "Retry zap";
+      this.modalZapSendBtn.textContent = "Retry";
       this.modalZapSendBtn.setAttribute(
         "aria-label",
         "Retry failed zap shares"
@@ -835,7 +867,7 @@ export class VideoModal {
       }
     } else {
       delete this.modalZapSendBtn.dataset.retryPending;
-      this.modalZapSendBtn.textContent = "Send zap";
+      this.modalZapSendBtn.textContent = "Send";
       this.modalZapSendBtn.setAttribute("aria-label", "Send a zap");
       this.modalZapSendBtn.removeAttribute("title");
     }

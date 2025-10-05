@@ -35,18 +35,124 @@
                 class="icon-image"
               />
             </button>
-            <button
-              id="modalZapBtn"
-              type="button"
-              class="icon-button"
-              aria-label="Send a zap"
-            >
-              <img
-                src="assets/svg/lightning-bolt.svg"
-                alt="Zap"
-                class="icon-image"
-              />
-            </button>
+            <div class="relative" data-modal-zap-wrapper>
+              <button
+                id="modalZapBtn"
+                type="button"
+                class="icon-button"
+                aria-label="Send a zap"
+                aria-haspopup="dialog"
+                aria-expanded="false"
+                aria-controls="modalZapDialog"
+              >
+                <img
+                  src="assets/svg/lightning-bolt.svg"
+                  alt="Zap"
+                  class="icon-image"
+                />
+              </button>
+              <div
+                id="modalZapDialog"
+                class="zap-popover hidden"
+                role="dialog"
+                aria-hidden="true"
+              >
+                <div
+                class="zap-popover__content w-72 max-w-[calc(100vw-2rem)] rounded-lg p-4 shadow-lg"
+                >
+                  <div class="mb-3 flex items-center justify-between gap-4">
+                    <h3
+                      class="text-xs font-semibold uppercase tracking-wide text-gray-300"
+                    >
+                      Send a zap
+                    </h3>
+                    <button
+                      type="button"
+                      id="modalZapCloseBtn"
+                      class="text-gray-400 transition-colors hover:text-gray-200"
+                      aria-label="Close zap dialog"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <p
+                    id="modalZapWalletPrompt"
+                    class="mb-3 hidden text-sm text-gray-200"
+                    aria-hidden="true"
+                  >
+                    Connect a wallet in
+                    <button
+                      type="button"
+                      id="modalZapWalletLink"
+                      class="font-semibold text-blue-300 underline decoration-dotted transition-colors hover:text-blue-200"
+                    >
+                      Wallet Connect settings
+                    </button>
+                    to send zaps.
+                  </p>
+                  <form id="modalZapForm" class="space-y-3">
+                    <div>
+                      <label
+                        for="modalZapAmountInput"
+                        class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-300"
+                      >
+                        Zap amount (sats)
+                      </label>
+                      <input
+                        id="modalZapAmountInput"
+                        type="number"
+                        min="1"
+                        step="1"
+                        inputmode="numeric"
+                        class="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        placeholder="Enter sats"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        for="modalZapCommentInput"
+                        class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-300"
+                      >
+                        Comment (optional)
+                      </label>
+                      <textarea
+                        id="modalZapCommentInput"
+                        rows="2"
+                        maxlength="280"
+                        class="w-full resize-y rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        placeholder="Include a note with your zap"
+                      ></textarea>
+                    </div>
+                    <p
+                      id="modalZapSplitSummary"
+                      class="text-sm text-gray-300"
+                      aria-live="polite"
+                    >
+                      Enter an amount to view the split.
+                    </p>
+                    <p
+                      id="modalZapStatus"
+                      class="text-xs text-gray-400"
+                      role="status"
+                      aria-live="polite"
+                    ></p>
+                    <ul
+                      id="modalZapReceipts"
+                      class="space-y-2 text-xs text-gray-300"
+                    ></ul>
+                    <div class="flex items-center justify-end gap-2">
+                      <button
+                        type="submit"
+                        id="modalZapSendBtn"
+                        class="rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
             <button id="shareBtn" class="icon-button">
               <img
                 src="assets/svg/share-video.svg"
@@ -165,89 +271,6 @@
           <p id="videoDescription" class="text-gray-300 whitespace-pre-wrap">
             No description available.
           </p>
-        </div>
-
-        <!-- Zap dialog -->
-        <div id="modalZapDialog" class="hidden mt-4" aria-hidden="true">
-          <div
-            class="w-full rounded-lg bg-gray-900 bg-opacity-70 p-4 shadow-lg backdrop-blur"
-          >
-            <div class="flex items-center justify-between mb-3">
-              <h3
-                class="text-xs font-semibold uppercase tracking-wide text-gray-300"
-              >
-                Send a zap
-              </h3>
-              <button
-                type="button"
-                id="modalZapCloseBtn"
-                class="text-gray-400 hover:text-gray-200 transition-colors"
-                aria-label="Close zap dialog"
-              >
-                ✕
-              </button>
-            </div>
-            <form id="modalZapForm" class="space-y-3">
-              <div>
-                <label
-                  for="modalZapAmountInput"
-                  class="block text-xs font-semibold uppercase tracking-wide text-gray-300 mb-2"
-                >
-                  Zap amount (sats)
-                </label>
-                <input
-                  id="modalZapAmountInput"
-                  type="number"
-                  min="1"
-                  step="1"
-                  inputmode="numeric"
-                  class="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  placeholder="Enter sats"
-                />
-              </div>
-              <div>
-                <label
-                  for="modalZapCommentInput"
-                  class="block text-xs font-semibold uppercase tracking-wide text-gray-300 mb-2"
-                >
-                  Comment (optional)
-                </label>
-                <textarea
-                  id="modalZapCommentInput"
-                  rows="2"
-                  maxlength="280"
-                  class="w-full resize-y rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  placeholder="Include a note with your zap"
-                ></textarea>
-              </div>
-              <p
-                id="modalZapSplitSummary"
-                class="text-sm text-gray-300"
-                aria-live="polite"
-              >
-                Enter an amount to view the split.
-              </p>
-              <p
-                id="modalZapStatus"
-                class="text-xs text-gray-400"
-                role="status"
-                aria-live="polite"
-              ></p>
-              <ul
-                id="modalZapReceipts"
-                class="space-y-2 text-xs text-gray-300"
-              ></ul>
-              <div class="flex items-center justify-end gap-2">
-                <button
-                  type="submit"
-                  id="modalZapSendBtn"
-                  class="rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
-                >
-                  Send zap
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
 
         <!-- Torrent stats -->
