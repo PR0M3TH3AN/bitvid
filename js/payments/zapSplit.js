@@ -81,12 +81,30 @@ function mergeDependencies(overrides = {}) {
 }
 
 function getNostrTools() {
-  if (typeof window !== "undefined" && window?.NostrTools) {
-    return window.NostrTools;
+  const scope = typeof window !== "undefined" ? window : globalThis;
+  const tools = scope?.NostrTools || null;
+  const canonical = scope?.__BITVID_CANONICAL_NOSTR_TOOLS__ || null;
+
+  if (tools && canonical && !tools.nip04 && canonical.nip04) {
+    try {
+      tools.nip04 = canonical.nip04;
+    } catch (error) {
+      return { ...canonical, ...tools, nip04: canonical.nip04 };
+    }
   }
+
+  if (tools) {
+    return tools;
+  }
+
+  if (canonical) {
+    return canonical;
+  }
+
   if (typeof globalThis !== "undefined" && globalThis?.NostrTools) {
     return globalThis.NostrTools;
   }
+
   return null;
 }
 

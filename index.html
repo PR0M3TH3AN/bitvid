@@ -268,25 +268,27 @@
       if (nostrTools && typeof nostrTools === "object") {
         toolSources.push(nostrTools);
       }
-      const globalTools =
-        typeof window !== "undefined" && window?.NostrTools
-          ? window.NostrTools
+      const globalScope =
+        typeof window !== "undefined" ? window : typeof globalThis !== "undefined" ? globalThis : null;
+      const existingTools =
+        globalScope && typeof globalScope.NostrTools === "object"
+          ? globalScope.NostrTools
           : null;
-      if (globalTools && globalTools !== nostrTools) {
-        toolSources.push(globalTools);
+      if (existingTools && existingTools !== nostrTools) {
+        toolSources.push(existingTools);
       }
 
-      const toolsBundle = Object.assign({}, ...toolSources);
+      const canonicalTools = Object.assign({}, ...toolSources);
 
       if (normalizedGeneratePrivateKey) {
-        toolsBundle.generatePrivateKey = normalizedGeneratePrivateKey;
+        canonicalTools.generatePrivateKey = normalizedGeneratePrivateKey;
       }
       if (normalizedGenerateSecretKey) {
-        toolsBundle.generateSecretKey = normalizedGenerateSecretKey;
+        canonicalTools.generateSecretKey = normalizedGenerateSecretKey;
       }
 
       if (resolvedNip04) {
-        toolsBundle.nip04 = resolvedNip04;
+        canonicalTools.nip04 = resolvedNip04;
         console.info(
           `[bitvid] Initialized nostr nip04 helpers using ${nip04Source}.`,
         );
@@ -296,7 +298,55 @@
         );
       }
 
-      window.NostrTools = toolsBundle;
+      if (globalScope) {
+        try {
+          Object.defineProperty(globalScope, "__BITVID_CANONICAL_NOSTR_TOOLS__", {
+            value: Object.freeze({ ...canonicalTools }),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+          });
+        } catch (error) {
+          globalScope.__BITVID_CANONICAL_NOSTR_TOOLS__ = Object.freeze({
+            ...canonicalTools,
+          });
+        }
+
+        let activeTools = canonicalTools;
+        const mergeWithCanonical = (candidate) => {
+          if (!candidate || typeof candidate !== "object") {
+            return canonicalTools;
+          }
+          const merged = Object.assign({}, canonicalTools, candidate);
+          if (!merged.nip04 && canonicalTools.nip04) {
+            merged.nip04 = canonicalTools.nip04;
+          }
+          return merged;
+        };
+
+        const applyActive = (candidate) => {
+          activeTools = mergeWithCanonical(candidate);
+          return activeTools;
+        };
+
+        try {
+          Object.defineProperty(globalScope, "NostrTools", {
+            configurable: true,
+            enumerable: true,
+            get() {
+              return activeTools;
+            },
+            set(value) {
+              applyActive(value);
+            },
+          });
+        } catch (error) {
+          console.warn("[bitvid] Failed to install NostrTools guard.", error);
+        }
+
+        applyActive(existingTools);
+        globalScope.NostrTools = canonicalTools;
+      }
     </script>
     <script type="module" src="js/config.js"></script>
     <script type="module" src="js/lists.js"></script>
