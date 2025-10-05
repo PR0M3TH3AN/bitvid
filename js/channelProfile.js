@@ -556,7 +556,7 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
       },
       sendPayment: async (bolt11, params) => {
         const shareType = activeShare || "unknown";
-        const amount =
+        const shareAmount =
           shareType === "platform"
             ? shares.platformShare
             : shares.creatorShare;
@@ -570,7 +570,7 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
             shareTracker.push({
               type: shareType,
               status: "success",
-              amount,
+              amount: shareAmount,
               address,
               payment,
             });
@@ -581,7 +581,7 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
             shareTracker.push({
               type: shareType,
               status: "error",
-              amount,
+              amount: shareAmount,
               address,
               error,
             });
@@ -590,7 +590,7 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
             "wallet.sendPayment",
             {
               shareType,
-              amount,
+              amount: shareAmount,
               address,
               tracker: shareTracker,
               context: { shares },
