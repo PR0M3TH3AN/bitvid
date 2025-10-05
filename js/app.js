@@ -6041,7 +6041,22 @@ class Application {
         requestInvoice,
       },
       wallet: {
-        ensureWallet: (options) => ensureWalletFn(options),
+        ensureWallet: async (options) => {
+          try {
+            return await ensureWalletFn(options);
+          } catch (error) {
+            logZapError(
+              "wallet.ensureWallet",
+              {
+                tracker: shareTracker,
+                context: { shares },
+                walletSettings: options?.settings,
+              },
+              error
+            );
+            throw error;
+          }
+        },
         sendPayment: async (bolt11, params) => {
           try {
             const payment = await sendPaymentFn(bolt11, params);

@@ -538,7 +538,22 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
       requestInvoice,
     },
     wallet: {
-      ensureWallet: (options) => ensureWallet(options),
+      ensureWallet: async (options) => {
+        try {
+          return await ensureWallet(options);
+        } catch (error) {
+          logZapError(
+            "wallet.ensureWallet",
+            {
+              tracker: shareTracker,
+              context: { shares },
+              walletSettings: options?.settings,
+            },
+            error
+          );
+          throw error;
+        }
+      },
       sendPayment: async (bolt11, params) => {
         try {
           const payment = await sendPayment(bolt11, params);

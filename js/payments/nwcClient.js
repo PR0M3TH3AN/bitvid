@@ -42,6 +42,23 @@ function assertNostrTools(methods = []) {
     const isCallable = typeof candidate === "function";
     const isNamespace = candidate && typeof candidate === "object";
     if (!isCallable && !isNamespace) {
+      try {
+        const available = Array.isArray(Object.keys(tools))
+          ? Object.keys(tools)
+          : [];
+        console.error(
+          "[nwcClient] Required NostrTools capability is missing.",
+          {
+            missingMethod: method,
+            availableMethods: available,
+          }
+        );
+      } catch (loggingError) {
+        console.error(
+          "[nwcClient] Failed to enumerate available NostrTools methods.",
+          loggingError
+        );
+      }
       throw new Error(`NostrTools.${method} is unavailable.`);
     }
   }
