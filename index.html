@@ -223,6 +223,7 @@
       let resolvedNip04 = hasWorkingNip04(nostrTools?.nip04)
         ? nostrTools.nip04
         : null;
+      let nip04Source = resolvedNip04 ? "esm-main" : "";
 
       if (!resolvedNip04) {
         try {
@@ -231,20 +232,68 @@
           );
           if (hasWorkingNip04(fallbackModule?.nip04)) {
             resolvedNip04 = fallbackModule.nip04;
+            nip04Source = "esm-nip04-export";
           }
         } catch (error) {
           console.warn("[bitvid] Failed to load nostr nip04 helper", error);
         }
       }
 
-      const toolsBundle = {
-        ...nostrTools,
-        generatePrivateKey: normalizedGeneratePrivateKey,
-        generateSecretKey: normalizedGenerateSecretKey,
-      };
+      if (!resolvedNip04) {
+        try {
+          const bundleNip04 = await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src =
+              "https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js";
+            script.async = true;
+            script.onload = () =>
+              resolve(window?.NostrTools?.nip04 ? window.NostrTools.nip04 : null);
+            script.onerror = () =>
+              reject(new Error("nostr-tools bundle failed to load"));
+            document.head.appendChild(script);
+          });
+          if (hasWorkingNip04(bundleNip04)) {
+            resolvedNip04 = bundleNip04;
+            nip04Source = "cdn-bundle";
+          }
+        } catch (error) {
+          console.warn(
+            "[bitvid] Failed to load nostr nip04 bundle fallback",
+            error,
+          );
+        }
+      }
+
+      const toolSources = [];
+      if (nostrTools && typeof nostrTools === "object") {
+        toolSources.push(nostrTools);
+      }
+      const globalTools =
+        typeof window !== "undefined" && window?.NostrTools
+          ? window.NostrTools
+          : null;
+      if (globalTools && globalTools !== nostrTools) {
+        toolSources.push(globalTools);
+      }
+
+      const toolsBundle = Object.assign({}, ...toolSources);
+
+      if (normalizedGeneratePrivateKey) {
+        toolsBundle.generatePrivateKey = normalizedGeneratePrivateKey;
+      }
+      if (normalizedGenerateSecretKey) {
+        toolsBundle.generateSecretKey = normalizedGenerateSecretKey;
+      }
 
       if (resolvedNip04) {
         toolsBundle.nip04 = resolvedNip04;
+        console.info(
+          `[bitvid] Initialized nostr nip04 helpers using ${nip04Source}.`,
+        );
+      } else {
+        console.warn(
+          "[bitvid] NIP-04 helpers remain unavailable after fallback attempts.",
+        );
       }
 
       window.NostrTools = toolsBundle;
