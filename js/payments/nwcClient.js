@@ -138,10 +138,37 @@ function parseNwcUri(uri) {
   const walletPubkey = decodePubkey(identifierPart);
 
   const params = new URLSearchParams(queryPart || "");
-  const relay = params.get("relay") || params.get("r");
-  const secret = params.get("secret") || params.get("s");
+  const relays = [];
+  const additionalParams = new Map();
+  let secret = "";
 
-  if (!relay) {
+  for (const [rawKey, rawValue] of params.entries()) {
+    const key = typeof rawKey === "string" ? rawKey.trim() : "";
+    const value = typeof rawValue === "string" ? rawValue.trim() : "";
+    if (!key || !value) {
+      continue;
+    }
+
+    const lowerKey = key.toLowerCase();
+    if (lowerKey === "relay" || lowerKey === "r") {
+      relays.push(value);
+      continue;
+    }
+
+    if (lowerKey === "secret" || lowerKey === "s") {
+      if (!secret) {
+        secret = value;
+      }
+      continue;
+    }
+
+    if (!additionalParams.has(key)) {
+      additionalParams.set(key, []);
+    }
+    additionalParams.get(key).push(value);
+  }
+
+  if (!relays.length) {
     throw new Error("NWC URI is missing a relay parameter.");
   }
 
@@ -149,20 +176,42 @@ function parseNwcUri(uri) {
     throw new Error("NWC URI secret must be a 64 character hex string.");
   }
 
-  const relayUrl = decodeURIComponent(relay);
+  const normalizedParams = new URLSearchParams();
+  for (const relayUrl of relays) {
+    normalizedParams.append("relay", relayUrl);
+  }
+
   const secretKey = secret.toLowerCase();
+  normalizedParams.set("secret", secretKey);
+
+  for (const [key, values] of additionalParams.entries()) {
+    for (const value of values) {
+      normalizedParams.append(key, value);
+    }
+  }
 
   const tools = assertNostrTools(["getPublicKey"]);
   const clientPubkey = tools.getPublicKey(secretKey);
 
+  const queryParams = {};
+  for (const [key, values] of additionalParams.entries()) {
+    if (!values || !values.length) {
+      continue;
+    }
+    if (values.length === 1) {
+      queryParams[key] = values[0];
+    } else {
+      queryParams[key] = values.slice();
+    }
+  }
+
   return {
-    normalizedUri: `nostr+walletconnect://${walletPubkey}?relay=${encodeURIComponent(
-      relayUrl
-    )}&secret=${secretKey}`,
-    relayUrl,
+    normalizedUri: `nostr+walletconnect://${walletPubkey}?${normalizedParams.toString()}`,
+    relays,
     walletPubkey,
     secretKey,
     clientPubkey,
+    queryParams,
   };
 }
 
@@ -741,6 +790,12 @@ function ensureActiveState(settings) {
   const parsed = parseNwcUri(uri);
   if (activeState && activeState.normalizedUri === parsed.normalizedUri) {
     activeState.settings = { ...settings, nwcUri: parsed.normalizedUri };
+    if (activeState.context) {
+      activeState.context.relayUrl = parsed.relays[0];
+      activeState.context.relayUrls = parsed.relays.slice();
+      activeState.context.relays = parsed.relays.slice();
+      activeState.context.queryParams = parsed.queryParams;
+    }
     return activeState.context;
   }
 
@@ -750,11 +805,14 @@ function ensureActiveState(settings) {
     normalizedUri: parsed.normalizedUri,
     settings: { ...settings, nwcUri: parsed.normalizedUri },
     context: {
-      relayUrl: parsed.relayUrl,
+      relayUrl: parsed.relays[0],
+      relayUrls: parsed.relays.slice(),
+      relays: parsed.relays.slice(),
       walletPubkey: parsed.walletPubkey,
       secretKey: parsed.secretKey,
       clientPubkey: parsed.clientPubkey,
       uri: parsed.normalizedUri,
+      queryParams: parsed.queryParams,
       infoEvent: null,
       encryption: null,
       encryptionState: { unsupported: new Set() },
@@ -924,4 +982,5 @@ export const __TESTING__ = Object.freeze({
   pendingRequests,
   ensureActiveState,
   buildPayInvoiceParams,
+  getActiveState: () => activeState,
 });
