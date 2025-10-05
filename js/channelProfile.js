@@ -105,6 +105,7 @@ let cachedZapButton = null;
 let cachedChannelShareButton = null;
 let cachedChannelMenu = null;
 let cachedZapControls = null;
+let cachedZapForm = null;
 let cachedZapAmountInput = null;
 let cachedZapSplitSummary = null;
 let cachedZapStatus = null;
@@ -112,6 +113,7 @@ let cachedZapReceipts = null;
 let cachedZapWalletPrompt = null;
 let cachedZapWalletLink = null;
 let cachedZapCloseBtn = null;
+let cachedZapSendBtn = null;
 
 let pendingZapRetry = null;
 let zapInFlight = false;
@@ -131,6 +133,7 @@ function setChannelZapVisibility(visible) {
   const zapButton = getChannelZapButton();
   const controls = getZapControlsContainer();
   const amountInput = getZapAmountInput();
+  const sendButton = getZapSendButton();
   if (!zapButton) {
     return;
   }
@@ -160,6 +163,17 @@ function setChannelZapVisibility(visible) {
   }
   if (amountInput) {
     amountInput.disabled = !shouldShow;
+  }
+  if (sendButton) {
+    sendButton.disabled = !shouldShow;
+    sendButton.setAttribute("aria-hidden", (!shouldShow).toString());
+    if (shouldShow) {
+      sendButton.removeAttribute("tabindex");
+      sendButton.removeAttribute("aria-busy");
+      sendButton.classList.remove("opacity-50", "pointer-events-none");
+    } else {
+      sendButton.setAttribute("tabindex", "-1");
+    }
   }
 
   const hasWallet =
@@ -210,6 +224,16 @@ function getZapControlsContainer() {
   return cachedZapControls;
 }
 
+function getZapFormElement() {
+  if (cachedZapForm && !document.body.contains(cachedZapForm)) {
+    cachedZapForm = null;
+  }
+  if (!cachedZapForm) {
+    cachedZapForm = document.getElementById("zapForm");
+  }
+  return cachedZapForm;
+}
+
 function getZapAmountInput() {
   if (cachedZapAmountInput && !document.body.contains(cachedZapAmountInput)) {
     cachedZapAmountInput = null;
@@ -248,6 +272,16 @@ function getZapReceiptsList() {
     cachedZapReceipts = document.getElementById("zapReceipts");
   }
   return cachedZapReceipts;
+}
+
+function getZapSendButton() {
+  if (cachedZapSendBtn && !document.body.contains(cachedZapSendBtn)) {
+    cachedZapSendBtn = null;
+  }
+  if (!cachedZapSendBtn) {
+    cachedZapSendBtn = document.getElementById("zapSendBtn");
+  }
+  return cachedZapSendBtn;
 }
 
 function getZapWalletPrompt() {
@@ -528,6 +562,13 @@ function resetZapRetryState() {
     zapButton.setAttribute("aria-label", "Open zap dialog");
     zapButton.title = "Open zap dialog";
   }
+  const sendButton = getZapSendButton();
+  if (sendButton) {
+    delete sendButton.dataset.retryPending;
+    sendButton.textContent = "Send";
+    sendButton.setAttribute("aria-label", "Send a zap");
+    sendButton.removeAttribute("title");
+  }
 }
 
 function markZapRetryPending(shares) {
@@ -545,6 +586,13 @@ function markZapRetryPending(shares) {
     zapButton.dataset.retryPending = "true";
     zapButton.setAttribute("aria-label", "Retry failed zap shares");
     zapButton.title = "Retry failed zap shares";
+  }
+  const sendButton = getZapSendButton();
+  if (sendButton) {
+    sendButton.dataset.retryPending = "true";
+    sendButton.textContent = "Retry";
+    sendButton.setAttribute("aria-label", "Retry failed zap shares");
+    sendButton.title = "Retry failed zap shares";
   }
 }
 
@@ -947,16 +995,39 @@ async function executePendingRetry({ walletSettings }) {
   resetZapRetryState();
 }
 
-async function handleZapButtonClick(event) {
+function handleZapButtonClick(event) {
   if (event) {
     event.preventDefault();
   }
 
   const zapButton = getChannelZapButton();
+  if (!zapButton) {
+    return;
+  }
+
+  if (!isZapControlsOpen()) {
+    openZapControls({ focus: true });
+    return;
+  }
+
+  if (zapInFlight) {
+    return;
+  }
+
+  closeZapControls({ focusButton: true });
+}
+
+async function handleZapSend(event) {
+  if (event?.preventDefault) {
+    event.preventDefault();
+  }
+
+  const zapButton = getChannelZapButton();
   const amountInput = getZapAmountInput();
+  const sendButton = getZapSendButton();
   const app = getApp();
 
-  if (!zapButton || !amountInput) {
+  if (!amountInput || !sendButton) {
     return;
   }
 
@@ -966,8 +1037,9 @@ async function handleZapButtonClick(event) {
   }
 
   if (!currentChannelLightningAddress) {
-    setZapStatus("This creator has not configured a Lightning address yet.", "error");
-    app?.showError?.("This creator has not configured a Lightning address yet.");
+    const message = "This creator has not configured a Lightning address yet.";
+    setZapStatus(message, "error");
+    app?.showError?.(message);
     return;
   }
 
@@ -981,9 +1053,13 @@ async function handleZapButtonClick(event) {
   }
 
   zapInFlight = true;
-  zapButton.disabled = true;
-  zapButton.setAttribute("aria-busy", "true");
-  zapButton.classList.add("opacity-50", "pointer-events-none");
+  if (zapButton) {
+    zapButton.disabled = true;
+    zapButton.setAttribute("aria-disabled", "true");
+  }
+  sendButton.disabled = true;
+  sendButton.setAttribute("aria-busy", "true");
+  sendButton.classList.add("opacity-50", "pointer-events-none");
   amountInput.disabled = true;
 
   let attemptedAmount = null;
@@ -1028,7 +1104,7 @@ async function handleZapButtonClick(event) {
       ? error.__zapShareTracker
       : [];
     logZapError(
-      "handleZapButtonClick",
+      "handleZapSend",
       {
         amount: attemptedAmount,
         walletSettings,
@@ -1055,8 +1131,8 @@ async function handleZapButtonClick(event) {
       const tone = tracker.length > failureShares.length ? "warning" : "error";
       const statusMessage =
         tracker.length > failureShares.length
-          ? `Partial zap failure. Tap zap again to retry: ${summary}.`
-          : `Zap failed. Tap zap again to retry: ${summary}.`;
+          ? `Partial zap failure. Press Send again to retry: ${summary}.`
+          : `Zap failed. Press Send again to retry: ${summary}.`;
       setZapStatus(statusMessage, tone);
       app?.showError?.(error?.message || statusMessage);
     } else {
@@ -1067,9 +1143,13 @@ async function handleZapButtonClick(event) {
     }
   } finally {
     zapInFlight = false;
-    zapButton.disabled = false;
-    zapButton.removeAttribute("aria-busy");
-    zapButton.classList.remove("opacity-50", "pointer-events-none");
+    if (zapButton) {
+      zapButton.disabled = false;
+      zapButton.removeAttribute("aria-disabled");
+    }
+    sendButton.disabled = false;
+    sendButton.removeAttribute("aria-busy");
+    sendButton.classList.remove("opacity-50", "pointer-events-none");
     amountInput.disabled = false;
   }
 }
@@ -1297,7 +1377,8 @@ function setupZapButton() {
   const zapButton = getChannelZapButton();
   const amountInput = getZapAmountInput();
   const controls = getZapControlsContainer();
-  if (!zapButton || !amountInput || !controls) {
+  const zapForm = getZapFormElement();
+  if (!zapButton || !amountInput || !controls || !zapForm || !getZapSendButton()) {
     return;
   }
 
@@ -1332,6 +1413,10 @@ function setupZapButton() {
   updateZapSplitSummary();
   amountInput.addEventListener("input", handleZapAmountChange);
   amountInput.addEventListener("change", handleZapAmountChange);
+  if (zapForm.dataset.initialized !== "true") {
+    zapForm.addEventListener("submit", handleZapSend);
+    zapForm.dataset.initialized = "true";
+  }
   zapButton.addEventListener("click", handleZapButtonClick);
   zapButton.dataset.initialized = "true";
 }

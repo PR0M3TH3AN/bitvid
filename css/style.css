@@ -1027,6 +1027,12 @@ body.modal-open #app {
 .zap-popover__content {
   width: 18rem;
   max-width: calc(100vw - 2rem);
+  background: rgba(11, 17, 32, 0.96);
+  color: #e5e7eb;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 22px 48px -18px rgba(8, 14, 28, 0.7);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .modal-actions__overflow {

@@ -857,7 +857,7 @@ export class VideoModal {
 
     if (pending) {
       this.modalZapSendBtn.dataset.retryPending = "true";
-      this.modalZapSendBtn.textContent = "Retry zap";
+      this.modalZapSendBtn.textContent = "Retry";
       this.modalZapSendBtn.setAttribute(
         "aria-label",
         "Retry failed zap shares"
@@ -867,7 +867,7 @@ export class VideoModal {
       }
     } else {
       delete this.modalZapSendBtn.dataset.retryPending;
-      this.modalZapSendBtn.textContent = "Send zap";
+      this.modalZapSendBtn.textContent = "Send";
       this.modalZapSendBtn.setAttribute("aria-label", "Send a zap");
       this.modalZapSendBtn.removeAttribute("title");
     }

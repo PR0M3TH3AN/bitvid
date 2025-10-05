@@ -6603,8 +6603,8 @@ class Application {
         const tone = tracker.length > failureShares.length ? "warning" : "error";
         const statusMessage =
           tracker.length > failureShares.length
-            ? `Partial zap failure. Tap zap again to retry: ${summary}.`
-            : `Zap failed. Tap zap again to retry: ${summary}.`;
+            ? `Partial zap failure. Press Send again to retry: ${summary}.`
+            : `Zap failed. Press Send again to retry: ${summary}.`;
         this.videoModal?.setZapStatus(statusMessage, tone);
         this.showError(error?.message || statusMessage);
       } else {
