@@ -44,6 +44,12 @@ import {
   ingestLocalViewEvent,
 } from "./viewCounter.js";
 import {
+  loadNwcSettings,
+  saveNwcSettings,
+  clearNwcSettings,
+  createDefaultNwcSettings,
+} from "./nwcSettings.js";
+import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatTimeAgo as formatTimeAgoUtil,
   truncateMiddle,
@@ -486,6 +492,8 @@ class Application {
     this.moreMenuGlobalHandlerBound = false;
     this.boundMoreMenuDocumentClick = null;
     this.boundMoreMenuDocumentKeydown = null;
+    this.nwcSettings = new Map();
+    this.boundNwcSettingsToastHandler = null;
     Object.defineProperty(this, "savedProfiles", {
       configurable: false,
       enumerable: false,
@@ -518,6 +526,30 @@ class Application {
         return getProfileCacheMap();
       },
     });
+
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      this.boundNwcSettingsToastHandler = (event) => {
+        const detail = event?.detail || {};
+        if (detail.source !== "nwc-settings") {
+          return;
+        }
+        const rawMessage =
+          typeof detail.message === "string" ? detail.message.trim() : "";
+        const message = rawMessage || "Wallet settings storage issue detected.";
+        this.log(`[nwcSettings] ${message}`);
+        if (detail.variant === "warning") {
+          this.showStatus(message);
+          if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
+            window.setTimeout(() => {
+              this.showStatus("");
+            }, 5000);
+          }
+        } else {
+          this.showError(message);
+        }
+      };
+      window.addEventListener("bitvid:toast", this.boundNwcSettingsToastHandler);
+    }
 
     const videoListViewConfig = {
       document,
@@ -3934,9 +3966,118 @@ class Application {
     }
   }
 
+  async hydrateNwcSettingsForPubkey(pubkey) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return createDefaultNwcSettings();
+    }
+
+    try {
+      const settings = await loadNwcSettings(normalized);
+      const record =
+        settings && typeof settings === "object"
+          ? { ...settings }
+          : createDefaultNwcSettings();
+      this.nwcSettings.set(normalized, record);
+      return { ...record };
+    } catch (error) {
+      console.warn(
+        `[nwcSettings] Failed to load settings for ${normalized}:`,
+        error
+      );
+      const fallback = createDefaultNwcSettings();
+      this.nwcSettings.set(normalized, fallback);
+      return { ...fallback };
+    }
+  }
+
+  getActiveNwcSettings() {
+    const normalized = this.normalizeHexPubkey(this.pubkey);
+    if (!normalized) {
+      return createDefaultNwcSettings();
+    }
+    const cached = this.nwcSettings.get(normalized);
+    return cached ? { ...cached } : createDefaultNwcSettings();
+  }
+
+  async updateActiveNwcSettings(partial = {}) {
+    const normalized = this.normalizeHexPubkey(this.pubkey);
+    if (!normalized) {
+      console.warn(
+        "[nwcSettings] Cannot update settings without an active pubkey."
+      );
+      return createDefaultNwcSettings();
+    }
+
+    try {
+      const updated = await saveNwcSettings(normalized, partial);
+      const record =
+        updated && typeof updated === "object"
+          ? { ...updated }
+          : createDefaultNwcSettings();
+      this.nwcSettings.set(normalized, record);
+      return { ...record };
+    } catch (error) {
+      console.warn(
+        `[nwcSettings] Failed to save settings for ${normalized}:`,
+        error
+      );
+      return this.getActiveNwcSettings();
+    }
+  }
+
+  async clearStoredNwcSettings(pubkey, { silent = false } = {}) {
+    const normalized = this.normalizeHexPubkey(pubkey);
+    if (!normalized) {
+      return false;
+    }
+
+    try {
+      await clearNwcSettings(normalized);
+    } catch (error) {
+      console.warn(
+        `[nwcSettings] Failed to clear settings for ${normalized}:`,
+        error
+      );
+      if (!silent) {
+        this.showError("Failed to clear wallet settings for this account.");
+      }
+      try {
+        await saveNwcSettings(normalized, createDefaultNwcSettings());
+      } catch (persistError) {
+        console.warn(
+          `[nwcSettings] Failed to overwrite settings for ${normalized}:`,
+          persistError
+        );
+      }
+      this.nwcSettings.delete(normalized);
+      return false;
+    }
+
+    this.nwcSettings.delete(normalized);
+    return true;
+  }
+
   async handleAuthLogin(detail = {}) {
+    const normalizedActive = this.normalizeHexPubkey(
+      detail?.pubkey || this.pubkey
+    );
+    const normalizedPrevious = this.normalizeHexPubkey(detail?.previousPubkey);
+
     if (detail?.identityChanged) {
       this.resetViewLoggingState();
+      this.nwcSettings.clear();
+    }
+
+    if (
+      normalizedPrevious &&
+      (!normalizedActive || normalizedPrevious !== normalizedActive)
+    ) {
+      await this.clearStoredNwcSettings(normalizedPrevious, { silent: true });
+    }
+
+    if (normalizedActive) {
+      await this.hydrateNwcSettingsForPubkey(normalizedActive);
     }
 
     this.renderSavedProfiles();
@@ -3994,6 +4135,14 @@ class Application {
 
   async handleAuthLogout(detail = {}) {
     this.resetViewLoggingState();
+
+    const normalizedPrevious = this.normalizeHexPubkey(
+      detail?.previousPubkey || detail?.pubkey || this.pubkey
+    );
+    if (normalizedPrevious) {
+      await this.clearStoredNwcSettings(normalizedPrevious, { silent: false });
+    }
+    this.nwcSettings.clear();
 
     this.renderSavedProfiles();
 
@@ -7748,6 +7897,22 @@ class Application {
         );
       }
       this.unsubscribeFromCurrentUserState = null;
+    }
+
+    if (
+      this.boundNwcSettingsToastHandler &&
+      typeof window !== "undefined" &&
+      typeof window.removeEventListener === "function"
+    ) {
+      window.removeEventListener(
+        "bitvid:toast",
+        this.boundNwcSettingsToastHandler
+      );
+      this.boundNwcSettingsToastHandler = null;
+    }
+
+    if (this.nwcSettings instanceof Map) {
+      this.nwcSettings.clear();
     }
 
     if (typeof this.watchHistoryPreferenceUnsubscribe === "function") {
