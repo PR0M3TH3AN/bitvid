@@ -3,6 +3,7 @@ const DEFAULT_FLAGS = Object.freeze({
   ACCEPT_LEGACY_V1: true, // accept v1 magnet-only notes
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
   FEATURE_WATCH_HISTORY_V2: false,
+  FEATURE_PUBLISH_NIP71: false,
   WSS_TRACKERS: Object.freeze([
     "wss://tracker.openwebtorrent.com",
     "wss://tracker.fastcast.nz",
@@ -23,6 +24,7 @@ const runtimeFlags = (() => {
     VIEW_FILTER_INCLUDE_LEGACY_VIDEO:
       DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
     FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
+    FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
     WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
   };
   if (globalScope) {
@@ -108,6 +110,11 @@ export let FEATURE_WATCH_HISTORY_V2 = coerceBoolean(
   DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2
 );
 
+export let FEATURE_PUBLISH_NIP71 = coerceBoolean(
+  runtimeFlags.FEATURE_PUBLISH_NIP71,
+  DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71
+);
+
 export let WSS_TRACKERS = freezeTrackers(
   sanitizeTrackerList(runtimeFlags.WSS_TRACKERS)
 );
@@ -162,6 +169,20 @@ Object.defineProperty(runtimeFlags, "FEATURE_WATCH_HISTORY_V2", {
   },
 });
 
+Object.defineProperty(runtimeFlags, "FEATURE_PUBLISH_NIP71", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return FEATURE_PUBLISH_NIP71;
+  },
+  set(next) {
+    FEATURE_PUBLISH_NIP71 = coerceBoolean(
+      next,
+      DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71
+    );
+  },
+});
+
 Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
   configurable: true,
   enumerable: true,
@@ -178,6 +199,7 @@ runtimeFlags.URL_FIRST_ENABLED = URL_FIRST_ENABLED;
 runtimeFlags.ACCEPT_LEGACY_V1 = ACCEPT_LEGACY_V1;
 runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO = VIEW_FILTER_INCLUDE_LEGACY_VIDEO;
 runtimeFlags.FEATURE_WATCH_HISTORY_V2 = FEATURE_WATCH_HISTORY_V2;
+runtimeFlags.FEATURE_PUBLISH_NIP71 = FEATURE_PUBLISH_NIP71;
 runtimeFlags.WSS_TRACKERS = WSS_TRACKERS;
 
 export function setUrlFirstEnabled(next) {

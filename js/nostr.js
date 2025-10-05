@@ -16,6 +16,7 @@ import {
 } from "./config.js";
 import {
   ACCEPT_LEGACY_V1,
+  FEATURE_PUBLISH_NIP71,
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
@@ -192,6 +193,329 @@ function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request ti
         reject(error);
       });
   });
+}
+
+function stringFromInput(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "";
+  }
+  return String(value).trim();
+}
+
+function normalizeUnixSeconds(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const normalized = value > 1e12 ? value / 1000 : value;
+    return String(Math.floor(normalized));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      const normalized = numeric > 1e12 ? numeric / 1000 : numeric;
+      return String(Math.floor(normalized));
+    }
+    const parsed = Date.parse(trimmed);
+    if (!Number.isNaN(parsed)) {
+      return String(Math.floor(parsed / 1000));
+    }
+  }
+  return "";
+}
+
+function normalizeDurationSeconds(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.max(0, Math.floor(value)));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      return String(Math.max(0, Math.floor(numeric)));
+    }
+  }
+  return "";
+}
+
+function normalizeNip71Kind(value) {
+  const numeric =
+    typeof value === "string"
+      ? Number(value.trim())
+      : typeof value === "number"
+        ? value
+        : Number.NaN;
+  if (numeric === 22) {
+    return 22;
+  }
+  return 21;
+}
+
+function trimTrailingEmpty(values) {
+  const trimmed = [...values];
+  while (trimmed.length && !trimmed[trimmed.length - 1]) {
+    trimmed.pop();
+  }
+  return trimmed;
+}
+
+function buildImetaTags(variants) {
+  if (!Array.isArray(variants)) {
+    return [];
+  }
+  const tags = [];
+  for (const variant of variants) {
+    if (!variant || typeof variant !== "object") {
+      continue;
+    }
+    const entries = ["imeta"];
+    const dim = stringFromInput(variant.dim);
+    if (dim) {
+      entries.push(`dim ${dim}`);
+    }
+    const url = stringFromInput(variant.url);
+    if (url) {
+      entries.push(`url ${url}`);
+    }
+    const x = stringFromInput(variant.x);
+    if (x) {
+      entries.push(`x ${x}`);
+    }
+    const mime = stringFromInput(variant.m);
+    if (mime) {
+      entries.push(`m ${mime}`);
+    }
+    if (Array.isArray(variant.image)) {
+      variant.image
+        .map(stringFromInput)
+        .filter(Boolean)
+        .forEach((imageUrl) => {
+          entries.push(`image ${imageUrl}`);
+        });
+    }
+    if (Array.isArray(variant.fallback)) {
+      variant.fallback
+        .map(stringFromInput)
+        .filter(Boolean)
+        .forEach((fallbackUrl) => {
+          entries.push(`fallback ${fallbackUrl}`);
+        });
+    }
+    if (Array.isArray(variant.service)) {
+      variant.service
+        .map(stringFromInput)
+        .filter(Boolean)
+        .forEach((service) => {
+          entries.push(`service ${service}`);
+        });
+    }
+    if (entries.length > 1) {
+      tags.push(entries);
+    }
+  }
+  return tags;
+}
+
+function buildTextTrackTag(track) {
+  if (!track || typeof track !== "object") {
+    return null;
+  }
+  const url = stringFromInput(track.url);
+  const type = stringFromInput(track.type);
+  const language = stringFromInput(track.language);
+  if (!url && !type && !language) {
+    return null;
+  }
+  const values = trimTrailingEmpty([url, type, language]);
+  return ["text-track", ...values];
+}
+
+function buildSegmentTag(segment) {
+  if (!segment || typeof segment !== "object") {
+    return null;
+  }
+  const start = stringFromInput(segment.start);
+  const end = stringFromInput(segment.end);
+  const title = stringFromInput(segment.title);
+  const thumbnail = stringFromInput(segment.thumbnail);
+  if (!start && !end && !title && !thumbnail) {
+    return null;
+  }
+  const values = trimTrailingEmpty([start, end, title, thumbnail]);
+  return ["segment", ...values];
+}
+
+function buildParticipantTag(participant) {
+  if (!participant || typeof participant !== "object") {
+    return null;
+  }
+  const pubkey = stringFromInput(participant.pubkey);
+  if (!pubkey) {
+    return null;
+  }
+  const relay = stringFromInput(participant.relay);
+  const values = ["p", pubkey];
+  if (relay) {
+    values.push(relay);
+  }
+  return values;
+}
+
+function extractVideoPublishPayload(rawPayload) {
+  let videoData = rawPayload;
+  let nip71Metadata = null;
+
+  if (rawPayload && typeof rawPayload === "object") {
+    if (rawPayload.nip71 && typeof rawPayload.nip71 === "object") {
+      nip71Metadata = rawPayload.nip71;
+    }
+    if (
+      rawPayload.legacyFormData &&
+      typeof rawPayload.legacyFormData === "object"
+    ) {
+      videoData = rawPayload.legacyFormData;
+    } else if (
+      Object.prototype.hasOwnProperty.call(rawPayload, "legacyFormData")
+    ) {
+      videoData = rawPayload.legacyFormData || {};
+    }
+  }
+
+  if (!videoData || typeof videoData !== "object") {
+    videoData = {};
+  }
+
+  return { videoData, nip71Metadata };
+}
+
+export function buildNip71VideoEvent({
+  metadata,
+  pubkey = "",
+  title,
+  summaryFallback = "",
+  createdAt = Math.floor(Date.now() / 1000),
+} = {}) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const normalizedTitle = stringFromInput(title);
+  if (!normalizedTitle) {
+    return null;
+  }
+
+  const summaryCandidates = [
+    stringFromInput(metadata.summary),
+    stringFromInput(summaryFallback),
+    normalizedTitle,
+  ];
+  const summary = summaryCandidates.find((value) => Boolean(value)) || "";
+
+  const tags = [];
+  tags.push(["title", normalizedTitle]);
+
+  const publishedAt = normalizeUnixSeconds(metadata.publishedAt);
+  if (publishedAt) {
+    tags.push(["published_at", publishedAt]);
+  }
+
+  const alt = stringFromInput(metadata.alt);
+  if (alt) {
+    tags.push(["alt", alt]);
+  }
+
+  const imetaTags = buildImetaTags(metadata.imeta);
+  if (imetaTags.length) {
+    tags.push(...imetaTags);
+  }
+
+  const duration = normalizeDurationSeconds(metadata.duration);
+  if (duration) {
+    tags.push(["duration", duration]);
+  }
+
+  if (Array.isArray(metadata.textTracks)) {
+    metadata.textTracks.forEach((track) => {
+      const tag = buildTextTrackTag(track);
+      if (tag) {
+        tags.push(tag);
+      }
+    });
+  }
+
+  const contentWarning = stringFromInput(metadata.contentWarning);
+  if (contentWarning) {
+    tags.push(["content-warning", contentWarning]);
+  }
+
+  if (Array.isArray(metadata.segments)) {
+    metadata.segments.forEach((segment) => {
+      const tag = buildSegmentTag(segment);
+      if (tag) {
+        tags.push(tag);
+      }
+    });
+  }
+
+  if (Array.isArray(metadata.hashtags)) {
+    metadata.hashtags
+      .map(stringFromInput)
+      .filter(Boolean)
+      .forEach((value) => {
+        tags.push(["t", value]);
+      });
+  }
+
+  if (Array.isArray(metadata.participants)) {
+    metadata.participants.forEach((participant) => {
+      const tag = buildParticipantTag(participant);
+      if (tag) {
+        tags.push(tag);
+      }
+    });
+  }
+
+  if (Array.isArray(metadata.references)) {
+    metadata.references
+      .map(stringFromInput)
+      .filter(Boolean)
+      .forEach((url) => {
+        tags.push(["r", url]);
+      });
+  }
+
+  if (!tags.length) {
+    return null;
+  }
+
+  const normalizedPubkey = stringFromInput(pubkey);
+  const timestamp = Number.isFinite(createdAt)
+    ? Math.floor(createdAt)
+    : Math.floor(Date.now() / 1000);
+
+  return {
+    kind: normalizeNip71Kind(metadata.kind),
+    pubkey: normalizedPubkey,
+    created_at: timestamp,
+    tags,
+    content: summary,
+  };
 }
 
 function sanitizeRelayList(list) {
@@ -4048,30 +4372,72 @@ class NostrClient {
   /**
    * Publish a new video using the v3 content schema.
    */
+  async signAndPublishEvent(
+    event,
+    {
+      context = "event",
+      logName = context,
+      devLogLabel = logName,
+      rejectionLogLevel = "error",
+    } = {}
+  ) {
+    const signedEvent = await window.nostr.signEvent(event);
+    if (isDevMode) {
+      console.log(`Signed ${devLogLabel} event:`, signedEvent);
+    }
+
+    const publishResults = await publishEventToRelays(
+      this.pool,
+      this.relays,
+      signedEvent
+    );
+
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, { context });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        const logLevel = rejectionLogLevel === "warn" ? "warn" : "error";
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
+            console[logLevel](
+              `[nostr] ${logName} rejected by ${url}: ${reason}`,
+              relayError || reason
+            );
+          }
+        );
+      }
+      throw publishError;
+    }
+
+    if (isDevMode) {
+      publishSummary.accepted.forEach(({ url }) => {
+        console.log(`${logName} published to ${url}`);
+      });
+    }
+
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        console.warn(
+          `[nostr] ${logName} not accepted by ${url}: ${reason}`,
+          relayError
+        );
+      });
+    }
+
+    return { signedEvent, summary: publishSummary };
+  }
+
   async publishVideo(videoPayload, pubkey) {
     if (!pubkey) throw new Error("Not logged in to publish video.");
 
-    let nip71Metadata = null;
-    let videoData = videoPayload;
-
-    if (
-      videoPayload &&
-      typeof videoPayload === "object" &&
-      (Object.prototype.hasOwnProperty.call(videoPayload, "legacyFormData") ||
-        Object.prototype.hasOwnProperty.call(videoPayload, "nip71"))
-    ) {
-      if (videoPayload.nip71 && typeof videoPayload.nip71 === "object") {
-        nip71Metadata = videoPayload.nip71;
-      }
-      if (
-        videoPayload.legacyFormData &&
-        typeof videoPayload.legacyFormData === "object"
-      ) {
-        videoData = videoPayload.legacyFormData;
-      } else {
-        videoData = {};
-      }
-    }
+    const { videoData, nip71Metadata } = extractVideoPublishPayload(videoPayload);
 
     if (isDevMode) {
       console.log("Publishing new video with data:", videoData);
@@ -4148,56 +4514,11 @@ class NostrClient {
     }
 
     try {
-      const signedEvent = await window.nostr.signEvent(event);
-      if (isDevMode) console.log("Signed event:", signedEvent);
-
-      const publishResults = await publishEventToRelays(
-        this.pool,
-        this.relays,
-        signedEvent
-      );
-
-      let publishSummary;
-      try {
-        publishSummary = assertAnyRelayAccepted(publishResults, {
-          context: "video note",
-        });
-      } catch (publishError) {
-        if (publishError?.relayFailures?.length) {
-          publishError.relayFailures.forEach(
-            ({ url, error: relayError, reason }) => {
-              console.error(
-                `[nostr] Video note rejected by ${url}: ${reason}`,
-                relayError || reason
-              );
-            }
-          );
-        }
-        throw publishError;
-      }
-
-      const { accepted: acceptedRelays, failed: failedRelays } = publishSummary;
-
-      if (isDevMode) {
-        acceptedRelays.forEach(({ url }) =>
-          console.log(`Video published to ${url}`)
-        );
-      }
-
-      if (failedRelays.length) {
-        failedRelays.forEach(({ url, error: relayError }) => {
-          const reason =
-            relayError instanceof Error
-              ? relayError.message
-              : relayError
-              ? String(relayError)
-              : "publish failed";
-          console.warn(
-            `[nostr] Video note not accepted by ${url}: ${reason}`,
-            relayError
-          );
-        });
-      }
+      const { signedEvent } = await this.signAndPublishEvent(event, {
+        context: "video note",
+        logName: "Video note",
+        devLogLabel: "video note",
+      });
 
       if (finalUrl) {
         const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
@@ -4234,59 +4555,12 @@ class NostrClient {
         }
 
         try {
-          const signedMirrorEvent = await window.nostr.signEvent(mirrorEvent);
-          if (isDevMode) {
-            console.log("Signed NIP-94 mirror event:", signedMirrorEvent);
-          }
-
-          const mirrorResults = await publishEventToRelays(
-            this.pool,
-            this.relays,
-            signedMirrorEvent
-          );
-
-          try {
-            const mirrorSummary = assertAnyRelayAccepted(mirrorResults, {
-              context: "NIP-94 mirror",
-            });
-
-            if (isDevMode) {
-              mirrorSummary.accepted.forEach(({ url }) =>
-                console.log(`NIP-94 mirror published to ${url}`)
-              );
-            }
-
-            if (mirrorSummary.failed.length) {
-              mirrorSummary.failed.forEach(({ url, error: relayError }) => {
-                const reason =
-                  relayError instanceof Error
-                    ? relayError.message
-                    : relayError
-                    ? String(relayError)
-                    : "publish failed";
-                console.warn(
-                  `[nostr] NIP-94 mirror not accepted by ${url}: ${reason}`,
-                  relayError
-                );
-              });
-            }
-          } catch (mirrorError) {
-            if (mirrorError?.relayFailures?.length) {
-              mirrorError.relayFailures.forEach(
-                ({ url, error: relayError, reason }) => {
-                  console.warn(
-                    `[nostr] NIP-94 mirror rejected by ${url}: ${reason}`,
-                    relayError || reason
-                  );
-                }
-              );
-            } else if (isDevMode) {
-              console.warn(
-                "[nostr] NIP-94 mirror rejected by all relays:",
-                mirrorError
-              );
-            }
-          }
+          await this.signAndPublishEvent(mirrorEvent, {
+            context: "NIP-94 mirror",
+            logName: "NIP-94 mirror",
+            devLogLabel: "NIP-94 mirror",
+            rejectionLogLevel: "warn",
+          });
 
           if (isDevMode) {
             console.log(
@@ -4296,8 +4570,8 @@ class NostrClient {
           }
         } catch (mirrorError) {
           if (isDevMode) {
-            console.error(
-              "Failed to sign/publish NIP-94 mirror event:",
+            console.warn(
+              "[nostr] NIP-94 mirror rejected by all relays:",
               mirrorError
             );
           }
@@ -4310,6 +4584,56 @@ class NostrClient {
       if (isDevMode) console.error("Failed to sign/publish:", err);
       throw err;
     }
+  }
+
+  async publishNip71Video(videoPayload, pubkey) {
+    if (!FEATURE_PUBLISH_NIP71) {
+      return null;
+    }
+
+    if (!pubkey) {
+      throw new Error("Not logged in to publish video.");
+    }
+
+    const { videoData, nip71Metadata } = extractVideoPublishPayload(videoPayload);
+
+    if (!nip71Metadata || typeof nip71Metadata !== "object") {
+      if (isDevMode) {
+        console.log("[nostr] Skipping NIP-71 publish: metadata missing.");
+      }
+      return null;
+    }
+
+    const title = stringFromInput(videoData?.title);
+    const description = stringFromInput(videoData?.description);
+
+    const event = buildNip71VideoEvent({
+      metadata: nip71Metadata,
+      pubkey,
+      title,
+      summaryFallback: description,
+      createdAt: Math.floor(Date.now() / 1000),
+    });
+
+    if (!event) {
+      if (isDevMode) {
+        console.warn("[nostr] Skipping NIP-71 publish: builder produced no event.");
+      }
+      return null;
+    }
+
+    if (isDevMode) {
+      console.log("Prepared NIP-71 video event:", event);
+    }
+
+    const { signedEvent } = await this.signAndPublishEvent(event, {
+      context: "NIP-71 video",
+      logName: "NIP-71 video",
+      devLogLabel: "NIP-71 video",
+      rejectionLogLevel: "warn",
+    });
+
+    return signedEvent;
   }
 
   /**

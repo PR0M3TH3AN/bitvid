@@ -357,8 +357,7 @@ export class NostrService {
   }
 
   async publishVideoNote(publishPayload, pubkey) {
-    const result = await this.nostrClient.publishVideo(publishPayload, pubkey);
-    const detail = { pubkey, result };
+    const detail = { pubkey };
     if (publishPayload && typeof publishPayload === "object") {
       detail.payload = publishPayload;
       if (publishPayload.legacyFormData) {
@@ -370,6 +369,26 @@ export class NostrService {
     } else {
       detail.formData = publishPayload;
     }
+
+    let nip71Result = null;
+    let legacyResult = null;
+
+    try {
+      nip71Result = await this.nostrClient.publishNip71Video(
+        publishPayload,
+        pubkey
+      );
+      legacyResult = await this.nostrClient.publishVideo(
+        publishPayload,
+        pubkey
+      );
+    } catch (error) {
+      detail.error = error;
+      throw error;
+    }
+
+    const result = { legacy: legacyResult, nip71: nip71Result };
+    detail.result = result;
     this.emit("videos:published", detail);
     return result;
   }

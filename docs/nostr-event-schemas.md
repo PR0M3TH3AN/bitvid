@@ -47,6 +47,8 @@ read/write split.
 | --- | --- | --- | --- |
 | Video post (`NOTE_TYPES.VIDEO_POST`) | `30078` | `['t','video']`, `['d', <stable video identifier>]` plus optional schema append tags | JSON payload using Content Schema v3 (`version`, `title`, optional `url`, `magnet`, `thumbnail`, `description`, `mode`, `videoRootId`, `deleted`, `isPrivate`, `enableComments`, `ws`, `xs`) |
 | NIP-94 mirror (`NOTE_TYPES.VIDEO_MIRROR`) | `1063` | Tags forwarded from `publishVideo` (URL, mime type, thumbnail, alt text, magnet) | Plain text alt description |
+| NIP-71 video (`NOTE_TYPES.NIP71_VIDEO`) | `21` | `['title', <title>]`, optional `['published_at', <unix seconds>]`, optional `['alt', <text>]`, repeated `['imeta', ...]` entries describing NIP-92 media variants, optional `['duration', <seconds>]`, repeated `['text-track', <url>, <kind>, <language>]`, optional `['content-warning', <reason>]`, repeated `['segment', <start>, <end>, <title>, <thumbnail>]`, repeated hashtags `['t', <tag>]`, repeated participants `['p', <pubkey>, <relay?>]`, repeated references `['r', <url>]` | Plain text summary carried in the content field. Publishing is gated by the `FEATURE_PUBLISH_NIP71` runtime flag while the rollout stabilizes. |
+| NIP-71 short video (`NOTE_TYPES.NIP71_SHORT_VIDEO`) | `22` | Same as `NOTE_TYPES.NIP71_VIDEO`; the kind differentiates short-form presentations. | Plain text summary; gated by `FEATURE_PUBLISH_NIP71`. |
 | Relay list (`NOTE_TYPES.RELAY_LIST`) | `10002` | Repeating `['r', <relay url>]` tags, optionally with a marker of `'read'` or `'write'` to scope the relay; marker omitted for read/write relays | Empty content |
 | View counter (`NOTE_TYPES.VIEW_EVENT`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | Canonical tag set: `['t','view']`, a pointer tag (`['e', <eventId>]` or `['a', <address>]`), and a stable dedupe tag `['d', <view identifier>]`, with optional `['session','true']` when a session actor signs; schema overrides may append extra tags. `['video', ...]` is supported for legacy overrides only. | Optional plaintext message |
 | Watch history index (`NOTE_TYPES.WATCH_HISTORY_INDEX`) | `WATCH_HISTORY_KIND` (default `30079`, clients also read legacy `30078`) | `['d', WATCH_HISTORY_LIST_IDENTIFIER]`, `['snapshot', <id>]`, `['chunks', <total>]`, repeated `['a', <chunk address>]` pointers plus schema append tags | JSON payload `{ snapshot, totalChunks }` (may be empty when using tags only) |
@@ -60,6 +62,16 @@ read/write split.
 If you introduce a new Nostr feature, add its schema to
 `js/nostrEventSchemas.js` so that the catalogue stays complete and so existing
 builders inherit the same debugging knobs.
+
+### NIP-71 rollout
+
+BitVid now emits a paired NIP-71 event (kind `21` for long-form, `22` for short
+form) whenever the `FEATURE_PUBLISH_NIP71` flag is enabled. The builder converts
+structured upload metadata—image variants, captions, segments, hashtags, and
+participant pointers—into canonical tags so other clients can discover the same
+video. The legacy kind `30078` post remains the source of truth during the
+transition, and schema overrides can adjust either kind if relays need
+experimentation.
 
 ### Watch history identifiers
 

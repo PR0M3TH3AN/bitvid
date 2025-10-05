@@ -8,6 +8,8 @@ import {
 export const NOTE_TYPES = Object.freeze({
   VIDEO_POST: "videoPost",
   VIDEO_MIRROR: "videoMirror",
+  NIP71_VIDEO: "nip71Video",
+  NIP71_SHORT_VIDEO: "nip71ShortVideo",
   RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
   WATCH_HISTORY_INDEX: "watchHistoryIndex",
@@ -129,6 +131,30 @@ const BASE_SCHEMAS = {
     content: {
       format: "text",
       description: "Optional alt text carried alongside hosted URL metadata.",
+    },
+  },
+  [NOTE_TYPES.NIP71_VIDEO]: {
+    type: NOTE_TYPES.NIP71_VIDEO,
+    label: "NIP-71 video (normal)",
+    kind: 21,
+    featureFlag: "FEATURE_PUBLISH_NIP71",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Summary or description for the video body; tags carry structured metadata.",
+    },
+  },
+  [NOTE_TYPES.NIP71_SHORT_VIDEO]: {
+    type: NOTE_TYPES.NIP71_SHORT_VIDEO,
+    label: "NIP-71 video (short)",
+    kind: 22,
+    featureFlag: "FEATURE_PUBLISH_NIP71",
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "text",
+      description:
+        "Summary or description for the short-form video; structured fields live in tags.",
     },
   },
   [NOTE_TYPES.RELAY_LIST]: {
