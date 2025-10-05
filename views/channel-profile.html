@@ -27,83 +27,115 @@
           <p id="channelNpub" class="text-sm opacity-80">npub...</p>
         </div>
       </div>
-      <div class="flex items-center gap-2 self-start sm:self-end">
-        <button
-          id="zapButton"
-          type="button"
-          class="icon-button"
-          aria-label="Send a zap"
-        >
-          <img
-            src="assets/svg/lightning-bolt.svg"
-            alt="Zap"
-            class="icon-image"
-          />
-        </button>
-        <button
-          id="channelShareBtn"
-          type="button"
-          class="icon-button"
-          aria-label="Share channel"
-        >
-          <img
-            src="assets/svg/share-video.svg"
-            alt="Share channel"
-            class="icon-image"
-          />
-        </button>
-        <div
-          class="relative inline-block overflow-visible"
-          data-more-menu-wrapper="true"
-        >
+      <div class="flex flex-col items-end gap-3 self-start sm:self-end">
+        <div class="flex items-center gap-2">
           <button
-            id="channelMoreBtn"
+            id="zapButton"
             type="button"
             class="icon-button"
-            aria-haspopup="true"
-            aria-expanded="false"
-            aria-label="Channel options"
-            data-more-dropdown="channel-profile"
+            aria-label="Send a zap"
           >
-            <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5" />
+            <img
+              src="assets/svg/lightning-bolt.svg"
+              alt="Zap"
+              class="icon-image"
+            />
+          </button>
+          <button
+            id="channelShareBtn"
+            type="button"
+            class="icon-button"
+            aria-label="Share channel"
+          >
+            <img
+              src="assets/svg/share-video.svg"
+              alt="Share channel"
+              class="icon-image"
+            />
           </button>
           <div
-            id="moreDropdown-channel-profile"
-            class="hidden absolute right-0 top-12 w-48 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
-            role="menu"
-            data-more-menu="true"
+            class="relative inline-block overflow-visible"
+            data-more-menu-wrapper="true"
           >
-            <div class="py-1">
-              <button
-                class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                data-action="copy-npub"
-                data-context="channel-profile"
-              >
-                Copy npub
-              </button>
-              <button
-                class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                data-action="blacklist-author"
-                data-context="channel-profile"
-                data-blacklist-menu="true"
-              >
-                Blacklist channel
-              </button>
-              <button
-                class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
-                data-action="block-author"
-                data-context="channel-profile"
-              >
-                Block channel
-              </button>
-              <button
-                class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
-                data-action="report"
-                data-context="channel-profile"
-              >
-                Report
-              </button>
+            <button
+              id="channelMoreBtn"
+              type="button"
+              class="icon-button"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-label="Channel options"
+              data-more-dropdown="channel-profile"
+            >
+              <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5" />
+            </button>
+            <div
+              id="moreDropdown-channel-profile"
+              class="hidden absolute right-0 top-12 w-48 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+              role="menu"
+              data-more-menu="true"
+            >
+              <div class="py-1">
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                  data-action="copy-npub"
+                  data-context="channel-profile"
+                >
+                  Copy npub
+                </button>
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                  data-action="blacklist-author"
+                  data-context="channel-profile"
+                  data-blacklist-menu="true"
+                >
+                  Blacklist channel
+                </button>
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                  data-action="block-author"
+                  data-context="channel-profile"
+                >
+                  Block channel
+                </button>
+                <button
+                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                  data-action="report"
+                  data-context="channel-profile"
+                >
+                  Report
+                </button>
+              </div>
             </div>
+          </div>
+        </div>
+        <div id="zapControls" class="hidden w-full max-w-xs sm:max-w-sm">
+          <div class="w-full rounded-lg bg-gray-900 bg-opacity-70 p-4 shadow-lg backdrop-blur">
+            <label for="zapAmountInput" class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-300">
+              Zap amount (sats)
+            </label>
+            <input
+              id="zapAmountInput"
+              type="number"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              class="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              placeholder="Enter sats"
+            />
+            <p
+              id="zapSplitSummary"
+              class="mt-3 text-sm text-gray-300"
+              aria-live="polite"
+            >
+              Enter an amount to view the split.
+            </p>
+            <p
+              id="zapStatus"
+              class="mt-2 text-xs text-gray-400"
+              role="status"
+              aria-live="polite"
+            ></p>
+            <ul id="zapReceipts" class="mt-3 space-y-2 text-xs text-gray-300"></ul>
           </div>
         </div>
       </div>

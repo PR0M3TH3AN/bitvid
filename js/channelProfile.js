@@ -10,15 +10,40 @@ import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
 import { escapeHTML } from "./utils/domUtils.js";
 import { getApplication } from "./applicationContext.js";
+import { PLATFORM_FEE_PERCENT } from "./config.js";
+import {
+  resolveLightningAddress,
+  fetchPayServiceData,
+  validateInvoiceAmount,
+  requestInvoice,
+} from "./payments/lnurl.js";
+import { splitAndZap } from "./payments/zapSplit.js";
+import { getPlatformLightningAddress } from "./payments/platformAddress.js";
+import { ensureWallet, sendPayment } from "./payments/nwcClient.js";
 
 const getApp = () => getApplication();
 
 let currentChannelHex = null;
 let currentChannelNpub = null;
+let currentChannelLightningAddress = "";
+let currentChannelProfileEvent = null;
 
 let cachedZapButton = null;
 let cachedChannelShareButton = null;
 let cachedChannelMenu = null;
+let cachedZapControls = null;
+let cachedZapAmountInput = null;
+let cachedZapSplitSummary = null;
+let cachedZapStatus = null;
+let cachedZapReceipts = null;
+
+const METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
+const lightningMetadataCache = new Map();
+const lightningMetadataByUrl = new Map();
+
+let pendingZapRetry = null;
+let zapInFlight = false;
+let cachedPlatformLightningAddress = "";
 
 function getChannelZapButton() {
   if (cachedZapButton && !document.body.contains(cachedZapButton)) {
@@ -32,6 +57,7 @@ function getChannelZapButton() {
 
 function setChannelZapVisibility(visible) {
   const zapButton = getChannelZapButton();
+  const controls = getZapControlsContainer();
   if (!zapButton) {
     return;
   }
@@ -44,6 +70,16 @@ function setChannelZapVisibility(visible) {
     zapButton.removeAttribute("tabindex");
   } else {
     zapButton.setAttribute("tabindex", "-1");
+    if (controls) {
+      controls.classList.add("hidden");
+    }
+    resetZapRetryState();
+    zapInFlight = false;
+    clearZapReceipts();
+    setZapStatus("", "neutral");
+  }
+  if (controls) {
+    controls.classList.toggle("hidden", !shouldShow);
   }
 }
 
@@ -65,6 +101,811 @@ function getChannelMenuElement() {
     cachedChannelMenu = document.getElementById("moreDropdown-channel-profile");
   }
   return cachedChannelMenu;
+}
+
+function getZapControlsContainer() {
+  if (cachedZapControls && !document.body.contains(cachedZapControls)) {
+    cachedZapControls = null;
+  }
+  if (!cachedZapControls) {
+    cachedZapControls = document.getElementById("zapControls");
+  }
+  return cachedZapControls;
+}
+
+function getZapAmountInput() {
+  if (cachedZapAmountInput && !document.body.contains(cachedZapAmountInput)) {
+    cachedZapAmountInput = null;
+  }
+  if (!cachedZapAmountInput) {
+    cachedZapAmountInput = document.getElementById("zapAmountInput");
+  }
+  return cachedZapAmountInput;
+}
+
+function getZapSplitSummaryElement() {
+  if (cachedZapSplitSummary && !document.body.contains(cachedZapSplitSummary)) {
+    cachedZapSplitSummary = null;
+  }
+  if (!cachedZapSplitSummary) {
+    cachedZapSplitSummary = document.getElementById("zapSplitSummary");
+  }
+  return cachedZapSplitSummary;
+}
+
+function getZapStatusElement() {
+  if (cachedZapStatus && !document.body.contains(cachedZapStatus)) {
+    cachedZapStatus = null;
+  }
+  if (!cachedZapStatus) {
+    cachedZapStatus = document.getElementById("zapStatus");
+  }
+  return cachedZapStatus;
+}
+
+function getZapReceiptsList() {
+  if (cachedZapReceipts && !document.body.contains(cachedZapReceipts)) {
+    cachedZapReceipts = null;
+  }
+  if (!cachedZapReceipts) {
+    cachedZapReceipts = document.getElementById("zapReceipts");
+  }
+  return cachedZapReceipts;
+}
+
+function normalizeLightningAddressKey(address) {
+  return typeof address === "string" ? address.trim().toLowerCase() : "";
+}
+
+function isMetadataEntryFresh(entry) {
+  if (!entry || typeof entry.fetchedAt !== "number") {
+    return false;
+  }
+  return Date.now() - entry.fetchedAt < METADATA_CACHE_TTL_MS;
+}
+
+function rememberLightningMetadata(entry) {
+  if (!entry || !entry.key) {
+    return entry;
+  }
+  lightningMetadataCache.set(entry.key, entry);
+  if (entry.resolved?.url) {
+    lightningMetadataByUrl.set(entry.resolved.url, entry);
+  }
+  return entry;
+}
+
+function getCachedLightningEntry(address) {
+  const key = normalizeLightningAddressKey(address);
+  if (!key) {
+    return null;
+  }
+  const entry = lightningMetadataCache.get(key);
+  if (!entry) {
+    return null;
+  }
+  if (entry.metadata && isMetadataEntryFresh(entry)) {
+    return entry;
+  }
+  if (entry.metadata && !entry.promise) {
+    return entry;
+  }
+  return entry.metadata ? entry : null;
+}
+
+function getCachedMetadataByUrl(url) {
+  if (!url) {
+    return null;
+  }
+  return lightningMetadataByUrl.get(url) || null;
+}
+
+async function fetchLightningMetadata(address) {
+  const key = normalizeLightningAddressKey(address);
+  if (!key) {
+    throw new Error("Lightning address is required.");
+  }
+
+  const cached = lightningMetadataCache.get(key);
+  if (cached && cached.metadata && isMetadataEntryFresh(cached)) {
+    return cached;
+  }
+
+  if (cached?.promise) {
+    return cached.promise;
+  }
+
+  const fetchPromise = (async () => {
+    const resolved = cached?.resolved || resolveLightningAddress(address);
+    const metadata = await fetchPayServiceData(resolved.url);
+    const entry = {
+      key,
+      address: resolved.address || address,
+      resolved,
+      metadata,
+      fetchedAt: Date.now(),
+    };
+    return rememberLightningMetadata(entry);
+  })();
+
+  lightningMetadataCache.set(key, {
+    ...(cached || {}),
+    key,
+    promise: fetchPromise,
+  });
+
+  try {
+    const result = await fetchPromise;
+    rememberLightningMetadata(result);
+    return result;
+  } catch (error) {
+    const current = lightningMetadataCache.get(key);
+    if (current?.promise === fetchPromise) {
+      lightningMetadataCache.delete(key);
+    }
+    throw error;
+  }
+}
+
+function calculateZapShares(amount, overrideFee = null) {
+  const numericAmount = Math.max(0, Math.round(Number(amount) || 0));
+  const percentSource =
+    typeof overrideFee === "number" && Number.isFinite(overrideFee)
+      ? overrideFee
+      : PLATFORM_FEE_PERCENT;
+  const feePercent = Math.min(100, Math.max(0, Math.round(percentSource)));
+  const platformShare = Math.floor((numericAmount * feePercent) / 100);
+  const creatorShare = numericAmount - platformShare;
+  return {
+    total: numericAmount,
+    creatorShare,
+    platformShare,
+    feePercent,
+  };
+}
+
+function describeShareType(type) {
+  if (type === "platform") {
+    return "Platform";
+  }
+  if (type === "creator") {
+    return "Creator";
+  }
+  return "Lightning";
+}
+
+function formatMinRequirement(metadata) {
+  if (!metadata || typeof metadata.minSendable !== "number") {
+    return null;
+  }
+  if (metadata.minSendable <= 0) {
+    return null;
+  }
+  return Math.ceil(metadata.minSendable / 1000);
+}
+
+function updateZapSplitSummary({ overrideFee = null } = {}) {
+  const summaryEl = getZapSplitSummaryElement();
+  if (!summaryEl) {
+    return;
+  }
+
+  const amountInput = getZapAmountInput();
+  const numeric = Math.max(0, Math.round(Number(amountInput?.value || 0)));
+  if (!numeric) {
+    summaryEl.textContent = "Enter an amount to view the split.";
+    return;
+  }
+
+  const shares = calculateZapShares(numeric, overrideFee);
+
+  const parts = [];
+  const creatorEntry = getCachedLightningEntry(currentChannelLightningAddress);
+  const creatorMin = formatMinRequirement(creatorEntry?.metadata);
+  let creatorText = `Creator: ${shares.creatorShare} sats`;
+  if (Number.isFinite(creatorMin) && creatorMin > 0) {
+    creatorText += ` (min ${creatorMin})`;
+  }
+  parts.push(creatorText);
+
+  if (shares.platformShare > 0) {
+    const platformEntry = getCachedLightningEntry(cachedPlatformLightningAddress);
+    const platformMin = formatMinRequirement(platformEntry?.metadata);
+    let platformText = `Platform: ${shares.platformShare} sats`;
+    if (Number.isFinite(platformMin) && platformMin > 0) {
+      platformText += ` (min ${platformMin})`;
+    }
+    parts.push(platformText);
+  }
+
+  summaryEl.textContent = parts.join(" • ");
+}
+
+function setZapStatus(message, tone = "neutral") {
+  const statusEl = getZapStatusElement();
+  if (!statusEl) {
+    return;
+  }
+
+  const normalizedTone = typeof tone === "string" ? tone : "neutral";
+  statusEl.textContent = message || "";
+  statusEl.classList.remove(
+    "text-gray-300",
+    "text-gray-400",
+    "text-green-300",
+    "text-red-300",
+    "text-yellow-300"
+  );
+
+  if (!message) {
+    statusEl.classList.add("text-gray-400");
+    return;
+  }
+
+  switch (normalizedTone) {
+    case "success":
+      statusEl.classList.add("text-green-300");
+      break;
+    case "error":
+      statusEl.classList.add("text-red-300");
+      break;
+    case "warning":
+      statusEl.classList.add("text-yellow-300");
+      break;
+    default:
+      statusEl.classList.add("text-gray-300");
+      break;
+  }
+}
+
+function clearZapReceipts() {
+  const list = getZapReceiptsList();
+  if (!list) {
+    return;
+  }
+  list.innerHTML = "";
+}
+
+function renderZapReceipts(receipts, { partial = false } = {}) {
+  const list = getZapReceiptsList();
+  if (!list) {
+    return;
+  }
+
+  list.innerHTML = "";
+
+  if (!Array.isArray(receipts) || receipts.length === 0) {
+    if (partial) {
+      const emptyItem = document.createElement("li");
+      emptyItem.className = "rounded border border-gray-700 bg-gray-800/70 p-3 text-gray-300";
+      emptyItem.textContent = "No receipts were returned for this attempt.";
+      list.appendChild(emptyItem);
+    }
+    return;
+  }
+
+  receipts.forEach((receipt) => {
+    if (!receipt) {
+      return;
+    }
+
+    const li = document.createElement("li");
+    li.className = "rounded border border-gray-700 bg-gray-800/70 p-3";
+
+    const header = document.createElement("div");
+    header.className = "flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-200";
+
+    const shareType = receipt.recipientType || receipt.type || "creator";
+    const shareLabel = document.createElement("span");
+    shareLabel.textContent = `${describeShareType(shareType)} • ${Math.max(
+      0,
+      Math.round(Number(receipt.amount || 0))
+    )} sats`;
+
+    const status = document.createElement("span");
+    const isSuccess = receipt.status
+      ? receipt.status === "success"
+      : !receipt.error;
+    status.textContent = isSuccess ? "Success" : "Failed";
+    status.className = isSuccess ? "text-green-300" : "text-red-300";
+
+    header.appendChild(shareLabel);
+    header.appendChild(status);
+    li.appendChild(header);
+
+    const address = document.createElement("p");
+    address.className = "mt-1 text-xs text-gray-300 break-all";
+    const addressValue = receipt.address || "";
+    if (addressValue) {
+      address.textContent = addressValue;
+      li.appendChild(address);
+    }
+
+    const detail = document.createElement("p");
+    detail.className = "mt-2 text-xs text-gray-400";
+    if (isSuccess) {
+      let detailMessage = "Invoice settled.";
+      const preimage = receipt.payment?.result?.preimage;
+      if (typeof preimage === "string" && preimage) {
+        detailMessage = `Preimage: ${preimage.slice(0, 18)}${
+          preimage.length > 18 ? "…" : ""
+        }`;
+      }
+      detail.textContent = detailMessage;
+    } else {
+      const errorMessage =
+        (receipt.error && receipt.error.message) ||
+        (typeof receipt.error === "string" ? receipt.error : "Payment failed.");
+      detail.textContent = errorMessage;
+    }
+    li.appendChild(detail);
+
+    list.appendChild(li);
+  });
+}
+
+function resetZapRetryState() {
+  pendingZapRetry = null;
+  const zapButton = getChannelZapButton();
+  if (zapButton) {
+    delete zapButton.dataset.retryPending;
+    zapButton.setAttribute("aria-label", "Send a zap");
+    zapButton.title = "Send a zap";
+  }
+}
+
+function markZapRetryPending(shares) {
+  const validShares = Array.isArray(shares)
+    ? shares.filter((share) => share && share.amount > 0)
+    : [];
+  if (!validShares.length) {
+    resetZapRetryState();
+    return;
+  }
+
+  pendingZapRetry = { shares: validShares, createdAt: Date.now() };
+  const zapButton = getChannelZapButton();
+  if (zapButton) {
+    zapButton.dataset.retryPending = "true";
+    zapButton.setAttribute("aria-label", "Retry failed zap shares");
+    zapButton.title = "Retry failed zap shares";
+  }
+}
+
+function getZapVideoEvent() {
+  const lightningAddress = currentChannelLightningAddress || "";
+  const baseEvent =
+    currentChannelProfileEvent && typeof currentChannelProfileEvent === "object"
+      ? { ...currentChannelProfileEvent }
+      : {};
+  return {
+    kind: typeof baseEvent.kind === "number" ? baseEvent.kind : 0,
+    id: baseEvent.id || currentChannelHex || "",
+    pubkey: baseEvent.pubkey || currentChannelHex || "",
+    tags: Array.isArray(baseEvent.tags) ? [...baseEvent.tags] : [],
+    content: typeof baseEvent.content === "string" ? baseEvent.content : "",
+    created_at: baseEvent.created_at || Math.floor(Date.now() / 1000),
+    lightningAddress,
+  };
+}
+
+async function prepareLightningContext({ amount, overrideFee = null }) {
+  if (!currentChannelLightningAddress) {
+    throw new Error("This creator has not configured a Lightning address yet.");
+  }
+
+  const shares = calculateZapShares(amount, overrideFee);
+  if (!shares.total) {
+    throw new Error("Enter a zap amount greater than zero.");
+  }
+
+  const creatorEntry = await fetchLightningMetadata(currentChannelLightningAddress);
+  if (shares.creatorShare > 0) {
+    try {
+      validateInvoiceAmount(creatorEntry.metadata, shares.creatorShare);
+    } catch (error) {
+      const detail = error?.message || "Unable to validate creator share.";
+      throw new Error(`Creator share error: ${detail}`);
+    }
+  }
+
+  let platformEntry = null;
+  let platformAddress = "";
+  if (shares.platformShare > 0) {
+    platformAddress = cachedPlatformLightningAddress;
+    if (!platformAddress) {
+      platformAddress = await getPlatformLightningAddress({ forceRefresh: false });
+      cachedPlatformLightningAddress = platformAddress || "";
+    }
+    if (!platformAddress) {
+      throw new Error("Platform Lightning address is unavailable.");
+    }
+
+    platformEntry = await fetchLightningMetadata(platformAddress);
+    try {
+      validateInvoiceAmount(platformEntry.metadata, shares.platformShare);
+    } catch (error) {
+      const detail = error?.message || "Unable to validate platform share.";
+      throw new Error(`Platform share error: ${detail}`);
+    }
+  }
+
+  updateZapSplitSummary();
+
+  return {
+    shares,
+    creatorEntry,
+    platformEntry,
+    platformAddress,
+  };
+}
+
+function createZapDependencies({ creatorEntry, platformEntry, shares, shareTracker }) {
+  const creatorKey = normalizeLightningAddressKey(
+    creatorEntry?.address || currentChannelLightningAddress
+  );
+  const platformKey = normalizeLightningAddressKey(
+    platformEntry?.address || cachedPlatformLightningAddress
+  );
+
+  let activeShare = null;
+
+  return {
+    lnurl: {
+      resolveLightningAddress: (value) => {
+        const normalized = normalizeLightningAddressKey(value);
+        if (normalized && normalized === creatorKey) {
+          activeShare = "creator";
+          if (creatorEntry?.resolved) {
+            return { ...creatorEntry.resolved };
+          }
+        } else if (normalized && normalized === platformKey) {
+          activeShare = "platform";
+          if (platformEntry?.resolved) {
+            return { ...platformEntry.resolved };
+          }
+        } else {
+          activeShare = null;
+        }
+
+        const resolved = resolveLightningAddress(value);
+        if (normalized) {
+          rememberLightningMetadata({
+            key: normalized,
+            address: resolved.address || value,
+            resolved,
+            fetchedAt: Date.now(),
+          });
+        }
+        return resolved;
+      },
+      fetchPayServiceData: async (url) => {
+        const cached = getCachedMetadataByUrl(url);
+        if (cached?.metadata && isMetadataEntryFresh(cached)) {
+          return cached.metadata;
+        }
+
+        const metadata = await fetchPayServiceData(url);
+        if (cached) {
+          rememberLightningMetadata({
+            ...cached,
+            metadata,
+            fetchedAt: Date.now(),
+          });
+        }
+        return metadata;
+      },
+      validateInvoiceAmount,
+      requestInvoice,
+    },
+    wallet: {
+      ensureWallet: (options) => ensureWallet(options),
+      sendPayment: async (bolt11, params) => {
+        try {
+          const payment = await sendPayment(bolt11, params);
+          if (Array.isArray(shareTracker)) {
+            const shareType = activeShare || "unknown";
+            const amount =
+              shareType === "platform"
+                ? shares.platformShare
+                : shares.creatorShare;
+            const address =
+              shareType === "platform"
+                ? platformEntry?.address || cachedPlatformLightningAddress
+                : creatorEntry?.address || currentChannelLightningAddress;
+            shareTracker.push({
+              type: shareType,
+              status: "success",
+              amount,
+              address,
+              payment,
+            });
+          }
+          return payment;
+        } catch (error) {
+          if (Array.isArray(shareTracker)) {
+            const shareType = activeShare || "unknown";
+            const amount =
+              shareType === "platform"
+                ? shares.platformShare
+                : shares.creatorShare;
+            const address =
+              shareType === "platform"
+                ? platformEntry?.address || cachedPlatformLightningAddress
+                : creatorEntry?.address || currentChannelLightningAddress;
+            shareTracker.push({
+              type: shareType,
+              status: "error",
+              amount,
+              address,
+              error,
+            });
+          }
+          throw error;
+        } finally {
+          activeShare = null;
+        }
+      },
+    },
+    platformAddress: {
+      getPlatformLightningAddress: async () => {
+        if (platformEntry?.address) {
+          return platformEntry.address;
+        }
+        if (cachedPlatformLightningAddress) {
+          return cachedPlatformLightningAddress;
+        }
+        const fallback = await getPlatformLightningAddress({ forceRefresh: false });
+        cachedPlatformLightningAddress = fallback || "";
+        return fallback;
+      },
+    },
+  };
+}
+
+function getWalletSettingsOrPrompt() {
+  const app = getApp();
+  const settings =
+    typeof app?.getActiveNwcSettings === "function"
+      ? app.getActiveNwcSettings()
+      : {};
+  const normalizedUri =
+    typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
+  if (!normalizedUri) {
+    app?.showError?.("Connect a Lightning wallet to send zaps.");
+    if (typeof app?.openWalletPane === "function") {
+      app.openWalletPane();
+    }
+    return null;
+  }
+  return {
+    ...settings,
+    nwcUri: normalizedUri,
+  };
+}
+
+async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
+  const settings = walletSettings || getWalletSettingsOrPrompt();
+  if (!settings) {
+    return null;
+  }
+
+  const context = await prepareLightningContext({ amount, overrideFee });
+  const shareTracker = [];
+  const dependencies = createZapDependencies({
+    ...context,
+    shareTracker,
+  });
+  const videoEvent = getZapVideoEvent();
+
+  let previousOverride;
+  const hasGlobal = typeof globalThis !== "undefined";
+  if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
+    previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+    globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = overrideFee;
+  }
+
+  try {
+    const result = await splitAndZap(
+      {
+        videoEvent,
+        amountSats: context.shares.total,
+        walletSettings: settings,
+      },
+      dependencies
+    );
+    return { context, result, shareTracker };
+  } catch (error) {
+    if (Array.isArray(shareTracker) && shareTracker.length) {
+      error.__zapShareTracker = shareTracker;
+    }
+    throw error;
+  } finally {
+    if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
+      if (typeof previousOverride === "number") {
+        globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
+      } else if (globalThis && "__BITVID_PLATFORM_FEE_OVERRIDE__" in globalThis) {
+        delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+      }
+    }
+  }
+}
+
+function handleZapAmountChange() {
+  resetZapRetryState();
+  updateZapSplitSummary();
+}
+
+async function executePendingRetry({ walletSettings }) {
+  const retryState = pendingZapRetry;
+  const shares = Array.isArray(retryState?.shares) ? retryState.shares : [];
+  if (!shares.length) {
+    resetZapRetryState();
+    return;
+  }
+
+  const app = getApp();
+  const summary = shares
+    .map((share) => `${describeShareType(share.type)} ${share.amount} sats`)
+    .join(", ");
+  setZapStatus(`Retrying failed share(s): ${summary}`, "warning");
+  clearZapReceipts();
+
+  const aggregatedReceipts = [];
+  const aggregatedTracker = [];
+
+  for (const share of shares) {
+    const overrideFee = share.type === "platform" ? 100 : 0;
+    try {
+      const attempt = await runZapAttempt({
+        amount: share.amount,
+        overrideFee,
+        walletSettings,
+      });
+      if (!attempt) {
+        setZapStatus("", "neutral");
+        return;
+      }
+      if (attempt?.result?.receipts) {
+        aggregatedReceipts.push(...attempt.result.receipts);
+      } else if (Array.isArray(attempt?.shareTracker)) {
+        aggregatedTracker.push(...attempt.shareTracker);
+      }
+    } catch (error) {
+      const tracker = Array.isArray(error?.__zapShareTracker)
+        ? error.__zapShareTracker
+        : [];
+      if (tracker.length) {
+        aggregatedTracker.push(...tracker);
+      }
+      const failureShares = tracker.filter(
+        (entry) => entry && entry.status !== "success" && entry.amount > 0
+      );
+      markZapRetryPending(failureShares.length ? failureShares : [share]);
+      const message = error?.message || "Retry failed.";
+      setZapStatus(message, "error");
+      app?.showError?.(message);
+      renderZapReceipts(aggregatedTracker.length ? aggregatedTracker : tracker, {
+        partial: true,
+      });
+      return;
+    }
+  }
+
+  renderZapReceipts(
+    aggregatedReceipts.length ? aggregatedReceipts : aggregatedTracker,
+    { partial: false }
+  );
+  setZapStatus("Retry completed successfully.", "success");
+  app?.showSuccess?.("Failed shares retried successfully.");
+  resetZapRetryState();
+}
+
+async function handleZapButtonClick(event) {
+  if (event) {
+    event.preventDefault();
+  }
+
+  const zapButton = getChannelZapButton();
+  const amountInput = getZapAmountInput();
+  const app = getApp();
+
+  if (!zapButton || !amountInput) {
+    return;
+  }
+
+  if (!currentChannelLightningAddress) {
+    setZapStatus("This creator has not configured a Lightning address yet.", "error");
+    app?.showError?.("This creator has not configured a Lightning address yet.");
+    return;
+  }
+
+  if (zapInFlight) {
+    return;
+  }
+
+  const walletSettings = getWalletSettingsOrPrompt();
+  if (!walletSettings) {
+    return;
+  }
+
+  zapInFlight = true;
+  zapButton.disabled = true;
+  zapButton.setAttribute("aria-busy", "true");
+  zapButton.classList.add("opacity-50", "pointer-events-none");
+  amountInput.disabled = true;
+
+  try {
+    if (pendingZapRetry?.shares?.length) {
+      await executePendingRetry({ walletSettings });
+      return;
+    }
+
+    const amount = Math.max(0, Math.round(Number(amountInput.value || 0)));
+    if (!amount) {
+      const message = "Enter a zap amount greater than zero.";
+      setZapStatus(message, "error");
+      app?.showError?.(message);
+      return;
+    }
+
+    clearZapReceipts();
+    setZapStatus(`Sending ${amount} sats…`, "warning");
+
+    const attempt = await runZapAttempt({ amount, walletSettings });
+    if (!attempt) {
+      setZapStatus("", "neutral");
+      return;
+    }
+
+    const { context, result } = attempt;
+    const receipts = Array.isArray(result?.receipts) ? result.receipts : [];
+    renderZapReceipts(receipts, { partial: false });
+
+    const creatorShare = context.shares.creatorShare;
+    const platformShare = context.shares.platformShare;
+    const summary = platformShare
+      ? `Sent ${context.shares.total} sats (creator ${creatorShare}, platform ${platformShare}).`
+      : `Sent ${context.shares.total} sats to the creator.`;
+    setZapStatus(summary, "success");
+    app?.showSuccess?.("Zap sent successfully!");
+    resetZapRetryState();
+  } catch (error) {
+    const tracker = Array.isArray(error?.__zapShareTracker)
+      ? error.__zapShareTracker
+      : [];
+    if (tracker.length) {
+      renderZapReceipts(tracker, { partial: true });
+    }
+
+    const failureShares = tracker.filter(
+      (entry) => entry && entry.status !== "success" && entry.amount > 0
+    );
+    if (failureShares.length) {
+      markZapRetryPending(failureShares);
+      const summary = failureShares
+        .map((share) => `${describeShareType(share.type)} ${share.amount} sats`)
+        .join(", ");
+      const tone = tracker.length > failureShares.length ? "warning" : "error";
+      const statusMessage =
+        tracker.length > failureShares.length
+          ? `Partial zap failure. Tap zap again to retry: ${summary}.`
+          : `Zap failed. Tap zap again to retry: ${summary}.`;
+      setZapStatus(statusMessage, tone);
+      app?.showError?.(error?.message || statusMessage);
+    } else {
+      resetZapRetryState();
+      const message = error?.message || "Zap failed. Please try again.";
+      setZapStatus(message, "error");
+      app?.showError?.(message);
+    }
+  } finally {
+    zapInFlight = false;
+    zapButton.disabled = false;
+    zapButton.removeAttribute("aria-busy");
+    zapButton.classList.remove("opacity-50", "pointer-events-none");
+    amountInput.disabled = false;
+  }
 }
 
 function buildChannelShareUrl() {
@@ -235,6 +1076,12 @@ export async function initChannelProfileView() {
 
   currentChannelHex = null;
   currentChannelNpub = null;
+  currentChannelLightningAddress = "";
+  currentChannelProfileEvent = null;
+  cachedPlatformLightningAddress = "";
+  resetZapRetryState();
+  clearZapReceipts();
+  setZapStatus("", "neutral");
 
   // 2) Decode npub => hex pubkey
   let hexPub;
@@ -282,19 +1129,32 @@ export async function initChannelProfileView() {
 
 function setupZapButton() {
   const zapButton = getChannelZapButton();
-  if (!zapButton) {
+  const amountInput = getZapAmountInput();
+  const controls = getZapControlsContainer();
+  if (!zapButton || !amountInput || !controls) {
     return;
   }
 
   setChannelZapVisibility(false);
 
   if (zapButton.dataset.initialized === "true") {
+    updateZapSplitSummary();
     return;
   }
 
-  zapButton.addEventListener("click", () => {
-    window.alert("Zaps coming soon.");
-  });
+  const app = getApp();
+  const activeSettings =
+    typeof app?.getActiveNwcSettings === "function"
+      ? app.getActiveNwcSettings()
+      : {};
+  if (Number.isFinite(activeSettings?.defaultZap) && activeSettings.defaultZap > 0) {
+    amountInput.value = Math.max(0, Math.round(activeSettings.defaultZap));
+  }
+
+  updateZapSplitSummary();
+  amountInput.addEventListener("input", handleZapAmountChange);
+  amountInput.addEventListener("change", handleZapAmountChange);
+  zapButton.addEventListener("click", handleZapButtonClick);
   zapButton.dataset.initialized = "true";
 }
 
@@ -360,8 +1220,19 @@ async function loadUserProfile(pubkey) {
       { kinds: [0], authors: [pubkey], limit: 1 },
     ]);
 
-    if (events.length && events[0].content) {
-      const meta = JSON.parse(events[0].content);
+    let newestEvent = null;
+    for (const event of events) {
+      if (!event || !event.content) {
+        continue;
+      }
+      if (!newestEvent || event.created_at > newestEvent.created_at) {
+        newestEvent = event;
+      }
+    }
+
+    if (newestEvent?.content) {
+      currentChannelProfileEvent = { ...newestEvent };
+      const meta = JSON.parse(newestEvent.content);
 
       // Banner
       const bannerEl = document.getElementById("channelBanner");
@@ -409,9 +1280,17 @@ async function loadUserProfile(pubkey) {
       // Lightning Address
       const lnEl = document.getElementById("channelLightning");
       const lightningAddress = (meta.lud16 || meta.lud06 || "").trim();
+      currentChannelLightningAddress = lightningAddress;
       if (lnEl) {
         lnEl.textContent =
           lightningAddress || "No lightning address found.";
+      }
+      if (lightningAddress) {
+        fetchLightningMetadata(lightningAddress)
+          .then(() => updateZapSplitSummary())
+          .catch(() => {});
+      } else {
+        updateZapSplitSummary();
       }
       setChannelZapVisibility(!!lightningAddress);
     } else {
@@ -421,6 +1300,8 @@ async function loadUserProfile(pubkey) {
       if (lnEl) {
         lnEl.textContent = "No lightning address found.";
       }
+      currentChannelLightningAddress = "";
+      currentChannelProfileEvent = null;
     }
   } catch (err) {
     console.error("Failed to fetch user profile data:", err);
@@ -429,6 +1310,8 @@ async function loadUserProfile(pubkey) {
     if (lnEl) {
       lnEl.textContent = "No lightning address found.";
     }
+    currentChannelLightningAddress = "";
+    currentChannelProfileEvent = null;
   }
 }
 
