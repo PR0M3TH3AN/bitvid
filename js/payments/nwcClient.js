@@ -6,9 +6,11 @@ const URI_SCHEMES = [
   "walletconnect://",
   "nwc://",
 ];
+const INFO_KIND = 13194;
 const REQUEST_KIND = 23194;
 const RESPONSE_KIND = 23195;
 const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
+const INFO_REQUEST_TIMEOUT_MS = 7_500;
 
 let activeState = null;
 let pendingRequests = new Map();
@@ -17,6 +19,8 @@ let socket = null;
 let subscriptionId = null;
 let connectionPromise = null;
 let requestCounter = 0;
+let infoSubscriptionId = null;
+let infoRequestState = null;
 
 function getGlobalWindow() {
   if (typeof window !== "undefined") {
@@ -162,6 +166,306 @@ function parseNwcUri(uri) {
   };
 }
 
+function normalizeSpaceSeparatedValues(value) {
+  if (typeof value !== "string") {
+    return [];
+  }
+  return value
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function hexToBytesCompat(hex) {
+  const tools = getNostrTools();
+  const candidate = tools?.utils?.hexToBytes;
+  if (typeof candidate === "function") {
+    return candidate(hex);
+  }
+
+  const normalized = typeof hex === "string" ? hex.trim() : "";
+  if (!normalized || normalized.length % 2 !== 0) {
+    throw new Error("Invalid hex value provided for conversion.");
+  }
+
+  const bytes = new Uint8Array(normalized.length / 2);
+  for (let i = 0; i < normalized.length; i += 2) {
+    const byte = Number.parseInt(normalized.slice(i, i + 2), 16);
+    if (Number.isNaN(byte)) {
+      throw new Error("Invalid hex value provided for conversion.");
+    }
+    bytes[i / 2] = byte;
+  }
+  return bytes;
+}
+
+function createNip04Encryption(context) {
+  const tools = getNostrTools();
+  const nip04 = tools?.nip04 || null;
+  if (!nip04 || typeof nip04.encrypt !== "function" || typeof nip04.decrypt !== "function") {
+    return null;
+  }
+
+  return {
+    scheme: "nip04",
+    tagValue: "nip04",
+    async encrypt(plaintext) {
+      return nip04.encrypt(context.secretKey, context.walletPubkey, plaintext);
+    },
+    async decrypt(ciphertext) {
+      return nip04.decrypt(context.secretKey, context.walletPubkey, ciphertext);
+    },
+  };
+}
+
+function resolveNip44Exports(tools) {
+  const nip44 = tools?.nip44 || null;
+  if (!nip44 || typeof nip44 !== "object") {
+    return null;
+  }
+
+  const directEncrypt = typeof nip44.encrypt === "function" ? nip44.encrypt : null;
+  const directDecrypt = typeof nip44.decrypt === "function" ? nip44.decrypt : null;
+  const directGetKey = typeof nip44.getConversationKey === "function" ? nip44.getConversationKey : null;
+
+  const v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+  const v2Encrypt = v2 && typeof v2.encrypt === "function" ? v2.encrypt : null;
+  const v2Decrypt = v2 && typeof v2.decrypt === "function" ? v2.decrypt : null;
+  const v2GetKey =
+    v2?.utils && typeof v2.utils.getConversationKey === "function"
+      ? v2.utils.getConversationKey
+      : null;
+
+  const utilsGetKey =
+    nip44.utils && typeof nip44.utils.getConversationKey === "function"
+      ? nip44.utils.getConversationKey
+      : null;
+
+  const encrypt = directEncrypt || v2Encrypt || null;
+  const decrypt = directDecrypt || v2Decrypt || null;
+  const getConversationKey = directGetKey || v2GetKey || utilsGetKey || null;
+
+  if (!encrypt || !decrypt || !getConversationKey) {
+    return null;
+  }
+
+  return {
+    encrypt,
+    decrypt,
+    getConversationKey,
+  };
+}
+
+function createNip44Encryption(context) {
+  const tools = getNostrTools();
+  const resolved = resolveNip44Exports(tools);
+  if (!resolved) {
+    return null;
+  }
+
+  let cachedKey = null;
+
+  const getKey = () => {
+    if (!cachedKey) {
+      try {
+        const secretBytes = hexToBytesCompat(context.secretKey);
+        cachedKey = resolved.getConversationKey(secretBytes, context.walletPubkey);
+      } catch (error) {
+        console.warn("[nwcClient] Failed to derive nip44 conversation key", error);
+        throw error;
+      }
+    }
+    return cachedKey;
+  };
+
+  return {
+    scheme: "nip44_v2",
+    tagValue: "nip44_v2",
+    async encrypt(plaintext) {
+      return resolved.encrypt(plaintext, getKey());
+    },
+    async decrypt(ciphertext) {
+      return resolved.decrypt(ciphertext, getKey());
+    },
+  };
+}
+
+function getWalletSupportedEncryption(infoEvent) {
+  if (!infoEvent || !Array.isArray(infoEvent.tags)) {
+    return ["nip04"];
+  }
+
+  const tag = infoEvent.tags.find((entry) => Array.isArray(entry) && entry[0] === "encryption");
+  if (!tag || typeof tag[1] !== "string") {
+    return ["nip04"];
+  }
+
+  const values = normalizeSpaceSeparatedValues(tag[1]);
+  return values.length ? values : ["nip04"];
+}
+
+function getEncryptionCandidates(context) {
+  const candidates = [];
+  const nip44 = createNip44Encryption(context);
+  if (nip44) {
+    candidates.push(nip44);
+  }
+  const nip04 = createNip04Encryption(context);
+  if (nip04) {
+    candidates.push(nip04);
+  }
+  return candidates;
+}
+
+function settleInfoRequest(result) {
+  if (!infoRequestState) {
+    return;
+  }
+
+  const resolver = typeof infoRequestState.resolve === "function" ? infoRequestState.resolve : null;
+  try {
+    if (infoRequestState.timeoutId) {
+      clearTimeout(infoRequestState.timeoutId);
+    }
+  } catch (error) {
+    // ignore
+  }
+
+  closeInfoSubscription();
+  infoRequestState = null;
+  infoSubscriptionId = null;
+
+  if (resolver) {
+    try {
+      resolver(result || null);
+    } catch (error) {
+      console.warn("[nwcClient] Failed to resolve wallet info request", error);
+    }
+  }
+}
+
+function requestInfoEvent(context) {
+  if (!context) {
+    return Promise.resolve(null);
+  }
+
+  if (context.infoEvent) {
+    return Promise.resolve(context.infoEvent);
+  }
+
+  if (infoRequestState?.promise) {
+    return infoRequestState.promise;
+  }
+
+  if (!socket || socket.readyState !== socket.OPEN) {
+    return Promise.resolve(null);
+  }
+
+  infoSubscriptionId = `nwc-info-${Math.random().toString(36).slice(2, 10)}`;
+  const filters = {
+    kinds: [INFO_KIND],
+    authors: [context.walletPubkey],
+    limit: 1,
+  };
+
+  const promise = new Promise((resolve) => {
+    infoRequestState = {
+      resolve,
+      timeoutId: setTimeout(() => {
+        settleInfoRequest(null);
+      }, INFO_REQUEST_TIMEOUT_MS),
+      promise: null,
+    };
+  });
+
+  infoRequestState.promise = promise;
+
+  try {
+    socket.send(JSON.stringify(["REQ", infoSubscriptionId, filters]));
+  } catch (error) {
+    console.warn("[nwcClient] Failed to request wallet info event", error);
+    settleInfoRequest(null);
+    return Promise.resolve(null);
+  }
+
+  return promise;
+}
+
+function ensureEncryptionState(context) {
+  if (!context.encryptionState || typeof context.encryptionState !== "object") {
+    context.encryptionState = { unsupported: new Set() };
+    return context.encryptionState;
+  }
+
+  if (!(context.encryptionState.unsupported instanceof Set)) {
+    context.encryptionState.unsupported = new Set();
+  }
+
+  return context.encryptionState;
+}
+
+function rememberUnsupportedEncryption(context, scheme) {
+  if (!context || !scheme) {
+    return;
+  }
+  const state = ensureEncryptionState(context);
+  state.unsupported.add(scheme);
+  if (context.encryption && context.encryption.scheme === scheme) {
+    context.encryption = null;
+  }
+}
+
+async function ensureEncryption(context) {
+  if (!context || typeof context !== "object") {
+    throw new Error("Wallet context is unavailable for encryption.");
+  }
+
+  if (context.encryption && typeof context.encryption.encrypt === "function") {
+    return context.encryption;
+  }
+
+  const state = ensureEncryptionState(context);
+
+  let infoEvent = context.infoEvent || null;
+  if (!infoEvent) {
+    try {
+      infoEvent = await requestInfoEvent(context);
+    } catch (error) {
+      console.warn("[nwcClient] Failed to load wallet info event", error);
+    }
+    if (infoEvent) {
+      context.infoEvent = infoEvent;
+    }
+  }
+
+  const walletSchemes = getWalletSupportedEncryption(infoEvent);
+  const candidates = getEncryptionCandidates(context).filter((candidate) => {
+    return !state.unsupported.has(candidate.scheme);
+  });
+
+  for (const candidate of candidates) {
+    if (walletSchemes.includes(candidate.scheme)) {
+      context.encryption = candidate;
+      return candidate;
+    }
+  }
+
+  const fallback = candidates.find((candidate) => candidate.scheme === "nip04");
+  if (fallback) {
+    console.warn(
+      "[nwcClient] Falling back to nip04 encryption despite wallet not advertising support."
+    );
+    context.encryption = fallback;
+    return fallback;
+  }
+
+  if (walletSchemes.includes("nip04")) {
+    throw new Error("NostrTools.nip04.encrypt is not available.");
+  }
+
+  throw new Error("No compatible wallet encryption scheme available.");
+}
+
 function finalizePendingRequest(entry) {
   if (!entry || typeof entry !== "object") {
     return;
@@ -183,6 +487,24 @@ function finalizePendingRequest(entry) {
   }
 }
 
+function closeInfoSubscription() {
+  if (infoSubscriptionId && socket && socket.readyState === socket.OPEN) {
+    try {
+      socket.send(JSON.stringify(["CLOSE", infoSubscriptionId]));
+    } catch (error) {
+      // ignore
+    }
+  }
+}
+
+function resetInfoRequestState() {
+  if (infoRequestState) {
+    settleInfoRequest(null);
+    return;
+  }
+  infoSubscriptionId = null;
+}
+
 function closeSocket({ keepState = false } = {}) {
   if (socket) {
     try {
@@ -194,6 +516,7 @@ function closeSocket({ keepState = false } = {}) {
   socket = null;
   connectionPromise = null;
   subscriptionId = null;
+  resetInfoRequestState();
 
   if (!keepState) {
     activeState = null;
@@ -253,19 +576,12 @@ function subscribeToResponses(context) {
 }
 
 async function decryptResponse(event) {
-  const tools = assertNostrTools(["nip04"]);
-  if (typeof tools.nip04?.decrypt !== "function") {
-    throw new Error("NostrTools.nip04.decrypt is not available.");
-  }
   const context = activeState?.context;
   if (!context) {
     throw new Error("Wallet context is unavailable for decrypting responses.");
   }
-  const plaintext = await tools.nip04.decrypt(
-    context.secretKey,
-    context.walletPubkey,
-    event.content
-  );
+  const encryption = await ensureEncryption(context);
+  const plaintext = await encryption.decrypt(event.content);
   return JSON.parse(plaintext);
 }
 
@@ -282,10 +598,16 @@ async function handleSocketMessage(messageEvent) {
     return;
   }
 
-  const [type] = payload;
+  const [type, subscription] = payload;
   if (type === "EVENT" && payload.length >= 3) {
     const event = payload[2];
-    if (event?.kind !== RESPONSE_KIND || !Array.isArray(event.tags)) {
+
+    if (subscription && subscription === infoSubscriptionId && event?.kind === INFO_KIND) {
+      settleInfoRequest(event);
+      return;
+    }
+
+    if (subscription !== subscriptionId || event?.kind !== RESPONSE_KIND || !Array.isArray(event.tags)) {
       return;
     }
 
@@ -337,6 +659,11 @@ async function handleSocketMessage(messageEvent) {
       response,
       event,
     });
+    return;
+  }
+
+  if (type === "EOSE" && subscription === infoSubscriptionId) {
+    settleInfoRequest(null);
     return;
   }
 
@@ -428,6 +755,9 @@ function ensureActiveState(settings) {
       secretKey: parsed.secretKey,
       clientPubkey: parsed.clientPubkey,
       uri: parsed.normalizedUri,
+      infoEvent: null,
+      encryption: null,
+      encryptionState: { unsupported: new Set() },
     },
   };
 
@@ -446,32 +776,32 @@ export async function ensureWallet({ settings } = {}) {
     await connectSocket(context);
   }
 
+  await ensureEncryption(context);
+
   return context;
 }
 
 async function encryptRequestPayload(context, payload) {
-  const tools = assertNostrTools(["nip04", "getEventHash", "signEvent"]);
-  if (typeof tools.nip04?.encrypt !== "function") {
-    throw new Error("NostrTools.nip04.encrypt is not available.");
-  }
+  const tools = assertNostrTools(["getEventHash", "signEvent"]);
+  const encryption = await ensureEncryption(context);
 
   const plaintext = JSON.stringify(payload);
-  const encrypted = await tools.nip04.encrypt(
-    context.secretKey,
-    context.walletPubkey,
-    plaintext
-  );
+  const encrypted = await encryption.encrypt(plaintext);
+
+  const tags = [["p", context.walletPubkey]];
+  if (encryption?.tagValue) {
+    tags.push(["encryption", encryption.tagValue]);
+  }
 
   const event = {
     kind: REQUEST_KIND,
     created_at: Math.floor(Date.now() / 1000),
     content: encrypted,
     pubkey: context.clientPubkey,
-    tags: [["p", context.walletPubkey]],
+    tags,
   };
 
   event.id = tools.getEventHash(event);
-  event.tags.push(["e", event.id]);
   event.sig = tools.signEvent(event, context.secretKey);
 
   return event;
@@ -500,7 +830,7 @@ function registerPendingRequest(eventId, payloadId, { resolve, reject, timeoutMs
   }
 }
 
-async function sendWalletRequest(context, payload, { timeoutMs } = {}) {
+async function dispatchWalletRequest(context, payload, { timeoutMs } = {}) {
   if (!isSocketOpen()) {
     await connectSocket(context);
   }
@@ -513,6 +843,26 @@ async function sendWalletRequest(context, payload, { timeoutMs } = {}) {
 
   socket.send(JSON.stringify(["EVENT", event]));
   return promise;
+}
+
+async function sendWalletRequest(context, payload, { timeoutMs, __internalRetry = false } = {}) {
+  try {
+    return await dispatchWalletRequest(context, payload, { timeoutMs });
+  } catch (error) {
+    const encryption = context?.encryption || null;
+    if (
+      !__internalRetry &&
+      encryption &&
+      error &&
+      typeof error === "object" &&
+      (error.code === "UNSUPPORTED_ENCRYPTION" || error.code === "unsupported_encryption")
+    ) {
+      rememberUnsupportedEncryption(context, encryption.scheme);
+      context.encryption = null;
+      return sendWalletRequest(context, payload, { timeoutMs, __internalRetry: true });
+    }
+    throw error;
+  }
 }
 
 function sanitizeInvoice(value) {
