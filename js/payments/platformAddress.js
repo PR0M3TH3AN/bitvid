@@ -21,7 +21,18 @@ function getGlobalWindow() {
 
 function getNostrTools() {
   const win = getGlobalWindow();
-  return win?.NostrTools || null;
+  const tools = win?.NostrTools || null;
+  const canonical = win?.__BITVID_CANONICAL_NOSTR_TOOLS__ || null;
+
+  if (tools && canonical && !tools.nip04 && canonical.nip04) {
+    try {
+      tools.nip04 = canonical.nip04;
+    } catch (error) {
+      return { ...canonical, ...tools, nip04: canonical.nip04 };
+    }
+  }
+
+  return tools || canonical || null;
 }
 
 function decodeAdminPubkey() {
