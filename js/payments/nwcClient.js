@@ -881,25 +881,30 @@ function sanitizeAmount(amount) {
   return Math.max(0, rounded);
 }
 
-export async function sendPayment(bolt11, { settings, amountSats, zapRequest, timeoutMs } = {}) {
-  const context = await ensureWallet({ settings });
-  const invoice = sanitizeInvoice(bolt11);
-  const payload = {
-    id: `req-${Date.now()}-${++requestCounter}`,
-    method: "pay_invoice",
-    params: {
-      invoice,
-    },
-  };
+function buildPayInvoiceParams({ invoice, amountSats, zapRequest }) {
+  const params = { invoice };
 
   const amount = sanitizeAmount(amountSats);
   if (amount && amount > 0) {
-    payload.params.amount = amount;
+    params.amount = amount * 1000;
   }
 
   if (zapRequest) {
-    payload.params.zap_request = zapRequest;
+    params.zap_request = zapRequest;
   }
+
+  return params;
+}
+
+export async function sendPayment(bolt11, { settings, amountSats, zapRequest, timeoutMs } = {}) {
+  const context = await ensureWallet({ settings });
+  const invoice = sanitizeInvoice(bolt11);
+  const params = buildPayInvoiceParams({ invoice, amountSats, zapRequest });
+  const payload = {
+    id: `req-${Date.now()}-${++requestCounter}`,
+    method: "pay_invoice",
+    params,
+  };
 
   const response = await sendWalletRequest(context, payload, { timeoutMs });
   return response;
@@ -918,4 +923,5 @@ export const __TESTING__ = Object.freeze({
   closeSocket,
   pendingRequests,
   ensureActiveState,
+  buildPayInvoiceParams,
 });
