@@ -31,7 +31,7 @@ import {
   requestInvoice,
 } from "./payments/lnurl.js";
 import { getPlatformLightningAddress } from "./payments/platformAddress.js";
-import { ensureWallet, sendPayment } from "./payments/nwcClient.js";
+import { ensureWallet, sendPayment as sendWalletPayment } from "./payments/nwcClient.js";
 
 const getApp = () => getApplication();
 
@@ -479,7 +479,13 @@ async function prepareLightningContext({ amount, overrideFee = null }) {
   };
 }
 
-function createZapDependencies({ creatorEntry, platformEntry, shares, shareTracker }) {
+function createZapDependencies({
+  creatorEntry,
+  platformEntry,
+  shares,
+  shareTracker,
+  walletSettings,
+}) {
   const creatorKey = normalizeLightningAddressKey(
     creatorEntry?.address || currentChannelLightningAddress
   );
@@ -564,8 +570,17 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
           shareType === "platform"
             ? platformEntry?.address || getCachedPlatformLightningAddress()
             : creatorEntry?.address || currentChannelLightningAddress;
+        const normalizedParams = {
+          ...(params || {}),
+        };
+        if (!Number.isFinite(normalizedParams.amountSats) && Number.isFinite(shareAmount)) {
+          normalizedParams.amountSats = shareAmount;
+        }
+        if (!normalizedParams.settings && walletSettings) {
+          normalizedParams.settings = walletSettings;
+        }
         try {
-          const payment = await sendPayment(bolt11, params);
+          const payment = await sendWalletPayment(bolt11, normalizedParams);
           if (Array.isArray(shareTracker)) {
             shareTracker.push({
               type: shareType,
@@ -666,6 +681,7 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
   const dependencies = createZapDependencies({
     ...context,
     shareTracker,
+    walletSettings: settings,
   });
   const videoEvent = getZapVideoEvent();
 
