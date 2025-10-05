@@ -127,8 +127,36 @@
         scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
       }
     </style>
-    <!-- Load nostr‑tools v2.10.4 -->
-    <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js"></script>
+    <!-- Load nostr‑tools v2.10.4 and expose nip04 for legacy consumers -->
+    <script type="module">
+      const NOSTR_TOOLS_VERSION = "2.10.4";
+
+      const loadNostrTools = async () => {
+        const nostrModule = await import(`https://esm.sh/nostr-tools@${NOSTR_TOOLS_VERSION}`);
+        const { nip04 } = await import(`https://esm.sh/nostr-tools@${NOSTR_TOOLS_VERSION}/nip04`);
+
+        const toolsBundle = {
+          ...nostrModule,
+          nip04,
+        };
+
+        window.NostrTools = toolsBundle;
+        window.dispatchEvent(
+          new CustomEvent("bitvid:nostr-tools-ready", {
+            detail: { nostrTools: toolsBundle },
+          })
+        );
+
+        return toolsBundle;
+      };
+
+      const nostrToolsPromise = loadNostrTools().catch((error) => {
+        console.error("[bitvid] Failed to load nostr-tools", error);
+        throw error;
+      });
+
+      window.NostrToolsReady = nostrToolsPromise;
+    </script>
   </head>
   <body>
     <div class="container">
@@ -319,241 +347,280 @@
     </div>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
-        // Logging functions for both on-page and console output.
-        function log(msg, type = "info") {
-          const div = document.createElement("div");
-          div.classList.add("status-line");
-          if (type === "error") div.classList.add("error");
-          if (type === "success") div.classList.add("success");
-          if (type === "warn") div.classList.add("warn");
-          div.textContent = msg;
-          document.getElementById("status").appendChild(div);
-          console.log(`[${type.toUpperCase()}] ${msg}`);
-        }
-        function clear() {
-          document.getElementById("status").innerHTML = "";
-        }
-        if (!window.NostrTools) {
-          log("NostrTools not loaded. Check console or ad-blockers.", "error");
+        let initialized = false;
+
+        const reportFailure = (error) => {
+          console.error("[bitvid] Failed to initialize application form", error);
+          const status = document.getElementById("status");
+          if (status) {
+            const div = document.createElement("div");
+            div.classList.add("status-line", "error");
+            div.textContent = "Failed to load Nostr tools. Please disable blockers and try again.";
+            status.appendChild(div);
+          }
+        };
+
+        const start = () => {
+          if (initialized) {
+            return;
+          }
+          if (!window.NostrTools) {
+            reportFailure(new Error("NostrTools not loaded."));
+            return;
+          }
+
+          initialized = true;
+
+          // Logging functions for both on-page and console output.
+          function log(msg, type = "info") {
+            const div = document.createElement("div");
+            div.classList.add("status-line");
+            if (type === "error") div.classList.add("error");
+            if (type === "success") div.classList.add("success");
+            if (type === "warn") div.classList.add("warn");
+            div.textContent = msg;
+            document.getElementById("status").appendChild(div);
+            console.log(`[${type.toUpperCase()}] ${msg}`);
+          }
+          function clear() {
+            document.getElementById("status").innerHTML = "";
+          }
+          const {
+            generateSecretKey,
+            getPublicKey,
+            finalizeEvent,
+            nip04,
+            nip19,
+            SimplePool,
+            Relay,
+          } = window.NostrTools;
+          
+          // Set the recipient's NPUB (your personal NPUB) here.
+          const recipientNpub =
+            "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+          const RELAYS = [
+            "wss://relay.snort.social",
+            "wss://relay.damus.io",
+            "wss://relay.primal.net",
+          ];
+          const pool = new SimplePool();
+          
+          document
+            .getElementById("wl-form")
+            .addEventListener("submit", async (ev) => {
+              ev.preventDefault();
+              clear();
+              try {
+                // Retrieve applicant-provided input.
+                const applicantNpub = document
+                  .getElementById("applicantNpub")
+                  .value.trim();
+                const contactMethod = document
+                  .getElementById("contactMethod")
+                  .value.trim();
+                const username = document.getElementById("username").value.trim();
+          
+                // Section 2: Content Intent
+                // Get all checked content types
+                const contentTypeNodes = document.querySelectorAll(
+                  'input[name="contentType"]:checked'
+                );
+                let contentTypes = [];
+                contentTypeNodes.forEach((node) => {
+                  contentTypes.push(node.value);
+                });
+                const otherContent = document
+                  .getElementById("otherContent")
+                  .value.trim();
+                const whyJoin = document.getElementById("whyJoin").value.trim();
+                const priorExperience = document
+                  .getElementById("priorExperience")
+                  .value.trim();
+                const experienceLinks = document
+                  .getElementById("experienceLinks")
+                  .value.trim();
+          
+                // Section 3: Community Engagement
+                const familiarGuidelines = document
+                  .getElementById("familiarGuidelines")
+                  .value.trim();
+                const agreeGuidelines = document
+                  .getElementById("agreeGuidelines")
+                  .value.trim();
+                const communityContribution = document
+                  .getElementById("communityContribution")
+                  .value.trim();
+          
+                // Section 4: Additional Information
+                const specialSkills = document
+                  .getElementById("specialSkills")
+                  .value.trim();
+                const testFeatures = document
+                  .getElementById("testFeatures")
+                  .value.trim();
+          
+                // Section 5: Declaration
+                const signature = document
+                  .getElementById("signature")
+                  .value.trim();
+                const declarationDate = document
+                  .getElementById("declarationDate")
+                  .value.trim();
+          
+                // Construct the whitelist application content.
+                const applicationContent = `
+          # **bitvid Whitelist Application Form**
+          
+          **1. Applicant Information**
+          - **Nostr Public Key (npub):** ${applicantNpub}
+          - **Preferred Contact Method:** ${contactMethod || "N/A"}
+          - **Username or Alias:** ${username || "N/A"}
+          
+          **2. Content Intent**
+          - **Planned Content Types:** ${contentTypes.join(", ") || "N/A"}
+          - **Other (if applicable):** ${otherContent || "N/A"}
+          - **Why do you want to join bitvid?**  
+            ${whyJoin || "N/A"}
+          - **Have you created content on other platforms before?** ${
+                  priorExperience || "N/A"
+                }
+          - **Links or references to your previous work:**  
+            ${experienceLinks || "N/A"}
+          
+          **3. Community Engagement**
+          - **Familiar with bitvid’s Community Guidelines?** ${
+                  familiarGuidelines || "N/A"
+                }
+          - **Agree to follow guidelines and respect moderation?** ${
+                  agreeGuidelines || "N/A"
+                }
+          - **How do you plan to contribute to the community?**  
+            ${communityContribution || "N/A"}
+          
+          **4. Additional Information**
+          - **Special skills or interests:**  
+            ${specialSkills || "N/A"}
+          - **Interested in testing new features?** ${testFeatures || "N/A"}
+          
+          **5. Declaration**
+          By submitting this application, you confirm that:
+          - The information provided is accurate.
+          - You understand that approval is based on community alignment and available capacity.
+          - You acknowledge that whitelist status may be revoked if guidelines are violated.
+          
+          **Signature (Digital or Written):** ${signature || "N/A"}
+          **Date:** ${declarationDate || "N/A"}
+          
+          ---
+          
+          **Processing Time:** Applications will be reviewed within **7-14 days**. If approved, you will receive a confirmation via your provided contact method. If additional information is needed, we will reach out.
+          
+          For further questions, contact us through bitvid’s Nostr support channels.
+              `.trim();
+          
+                log(
+                  "[DEBUG] Constructed application content:
+" +
+                    applicationContent
+                );
+          
+                // Decode the recipient NPUB to get the public key.
+                log("Decoding recipient npub...");
+                const decoded = nip19.decode(recipientNpub);
+                log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
+                if (decoded.type !== "npub") {
+                  throw new Error("Decoded type is not npub.");
+                }
+                const targetPubHex = decoded.data;
+                log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
+          
+                // Generate an ephemeral key pair.
+                log("Generating ephemeral key...");
+                const ephemeralPriv = generateSecretKey();
+                const ephemeralPubHex = getPublicKey(ephemeralPriv);
+                log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
+          
+                // Encrypt the application content.
+                log("Encrypting application content (nip04)...");
+                const ciphertext = await nip04.encrypt(
+                  ephemeralPriv,
+                  targetPubHex,
+                  applicationContent
+                );
+                log("[DEBUG] Ciphertext: " + ciphertext);
+                log("Encryption done.");
+          
+                // Build the Nostr event template.
+                const now = Math.floor(Date.now() / 1000);
+                const eventTemplate = {
+                  kind: 4,
+                  created_at: now,
+                  tags: [["p", targetPubHex]],
+                  content: ciphertext,
+                };
+                log(
+                  "[DEBUG] Event template before finalizing: " +
+                    JSON.stringify(eventTemplate)
+                );
+          
+                // Finalize the event (computing the id and signature).
+                const event = finalizeEvent(eventTemplate, ephemeralPriv);
+                log("[DEBUG] Final event: " + JSON.stringify(event));
+          
+                // Publish the event to all relays.
+                log("Publishing the application to relays...");
+                await Promise.any(pool.publish(RELAYS, event));
+                log("At least one relay accepted the event.", "success");
+          
+                // For each relay, subscribe to verify the event appears.
+                for (const url of RELAYS) {
+                  log("Connecting to " + url + " for subscription...");
+                  const relay = await Relay.connect(url);
+                  relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                    onEvent(foundEvent) {
+                      if (foundEvent.id === event.id) {
+                        log(
+                          "[" +
+                            url +
+                            "] => Found our application in storage! ID: " +
+                            foundEvent.id.slice(0, 8) +
+                            "...",
+                          "success"
+                        );
+                      }
+                    },
+                    onEose() {
+                      relay.close();
+                    },
+                  });
+                }
+          
+                log(
+                  "Done. If the logs show that at least one relay accepted the event and the application was found in storage, a moderator will review your application within 7-14 days."
+                );
+              } catch (err) {
+                log("Error: " + err.message, "error");
+                console.error(err);
+              }
+            });
+
+        };
+
+        if (window.NostrTools) {
+          start();
           return;
         }
-        const {
-          generateSecretKey,
-          getPublicKey,
-          finalizeEvent,
-          nip04,
-          nip19,
-          SimplePool,
-          Relay,
-        } = window.NostrTools;
 
-        // Set the recipient's NPUB (your personal NPUB) here.
-        const recipientNpub =
-          "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
-        const RELAYS = [
-          "wss://relay.snort.social",
-          "wss://relay.damus.io",
-          "wss://relay.primal.net",
-        ];
-        const pool = new SimplePool();
-
-        document
-          .getElementById("wl-form")
-          .addEventListener("submit", async (ev) => {
-            ev.preventDefault();
-            clear();
-            try {
-              // Retrieve applicant-provided input.
-              const applicantNpub = document
-                .getElementById("applicantNpub")
-                .value.trim();
-              const contactMethod = document
-                .getElementById("contactMethod")
-                .value.trim();
-              const username = document.getElementById("username").value.trim();
-
-              // Section 2: Content Intent
-              // Get all checked content types
-              const contentTypeNodes = document.querySelectorAll(
-                'input[name="contentType"]:checked'
-              );
-              let contentTypes = [];
-              contentTypeNodes.forEach((node) => {
-                contentTypes.push(node.value);
-              });
-              const otherContent = document
-                .getElementById("otherContent")
-                .value.trim();
-              const whyJoin = document.getElementById("whyJoin").value.trim();
-              const priorExperience = document
-                .getElementById("priorExperience")
-                .value.trim();
-              const experienceLinks = document
-                .getElementById("experienceLinks")
-                .value.trim();
-
-              // Section 3: Community Engagement
-              const familiarGuidelines = document
-                .getElementById("familiarGuidelines")
-                .value.trim();
-              const agreeGuidelines = document
-                .getElementById("agreeGuidelines")
-                .value.trim();
-              const communityContribution = document
-                .getElementById("communityContribution")
-                .value.trim();
-
-              // Section 4: Additional Information
-              const specialSkills = document
-                .getElementById("specialSkills")
-                .value.trim();
-              const testFeatures = document
-                .getElementById("testFeatures")
-                .value.trim();
-
-              // Section 5: Declaration
-              const signature = document
-                .getElementById("signature")
-                .value.trim();
-              const declarationDate = document
-                .getElementById("declarationDate")
-                .value.trim();
-
-              // Construct the whitelist application content.
-              const applicationContent = `
-# **bitvid Whitelist Application Form**
-
-**1. Applicant Information**
-- **Nostr Public Key (npub):** ${applicantNpub}
-- **Preferred Contact Method:** ${contactMethod || "N/A"}
-- **Username or Alias:** ${username || "N/A"}
-
-**2. Content Intent**
-- **Planned Content Types:** ${contentTypes.join(", ") || "N/A"}
-- **Other (if applicable):** ${otherContent || "N/A"}
-- **Why do you want to join bitvid?**  
-  ${whyJoin || "N/A"}
-- **Have you created content on other platforms before?** ${
-                priorExperience || "N/A"
-              }
-- **Links or references to your previous work:**  
-  ${experienceLinks || "N/A"}
-
-**3. Community Engagement**
-- **Familiar with bitvid’s Community Guidelines?** ${
-                familiarGuidelines || "N/A"
-              }
-- **Agree to follow guidelines and respect moderation?** ${
-                agreeGuidelines || "N/A"
-              }
-- **How do you plan to contribute to the community?**  
-  ${communityContribution || "N/A"}
-
-**4. Additional Information**
-- **Special skills or interests:**  
-  ${specialSkills || "N/A"}
-- **Interested in testing new features?** ${testFeatures || "N/A"}
-
-**5. Declaration**
-By submitting this application, you confirm that:
-- The information provided is accurate.
-- You understand that approval is based on community alignment and available capacity.
-- You acknowledge that whitelist status may be revoked if guidelines are violated.
-
-**Signature (Digital or Written):** ${signature || "N/A"}
-**Date:** ${declarationDate || "N/A"}
-
----
-
-**Processing Time:** Applications will be reviewed within **7-14 days**. If approved, you will receive a confirmation via your provided contact method. If additional information is needed, we will reach out.
-
-For further questions, contact us through bitvid’s Nostr support channels.
-            `.trim();
-
-              log(
-                "[DEBUG] Constructed application content:\n" +
-                  applicationContent
-              );
-
-              // Decode the recipient NPUB to get the public key.
-              log("Decoding recipient npub...");
-              const decoded = nip19.decode(recipientNpub);
-              log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
-              if (decoded.type !== "npub") {
-                throw new Error("Decoded type is not npub.");
-              }
-              const targetPubHex = decoded.data;
-              log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
-
-              // Generate an ephemeral key pair.
-              log("Generating ephemeral key...");
-              const ephemeralPriv = generateSecretKey();
-              const ephemeralPubHex = getPublicKey(ephemeralPriv);
-              log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
-
-              // Encrypt the application content.
-              log("Encrypting application content (nip04)...");
-              const ciphertext = await nip04.encrypt(
-                ephemeralPriv,
-                targetPubHex,
-                applicationContent
-              );
-              log("[DEBUG] Ciphertext: " + ciphertext);
-              log("Encryption done.");
-
-              // Build the Nostr event template.
-              const now = Math.floor(Date.now() / 1000);
-              const eventTemplate = {
-                kind: 4,
-                created_at: now,
-                tags: [["p", targetPubHex]],
-                content: ciphertext,
-              };
-              log(
-                "[DEBUG] Event template before finalizing: " +
-                  JSON.stringify(eventTemplate)
-              );
-
-              // Finalize the event (computing the id and signature).
-              const event = finalizeEvent(eventTemplate, ephemeralPriv);
-              log("[DEBUG] Final event: " + JSON.stringify(event));
-
-              // Publish the event to all relays.
-              log("Publishing the application to relays...");
-              await Promise.any(pool.publish(RELAYS, event));
-              log("At least one relay accepted the event.", "success");
-
-              // For each relay, subscribe to verify the event appears.
-              for (const url of RELAYS) {
-                log("Connecting to " + url + " for subscription...");
-                const relay = await Relay.connect(url);
-                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
-                  onEvent(foundEvent) {
-                    if (foundEvent.id === event.id) {
-                      log(
-                        "[" +
-                          url +
-                          "] => Found our application in storage! ID: " +
-                          foundEvent.id.slice(0, 8) +
-                          "...",
-                        "success"
-                      );
-                    }
-                  },
-                  onEose() {
-                    relay.close();
-                  },
-                });
-              }
-
-              log(
-                "Done. If the logs show that at least one relay accepted the event and the application was found in storage, a moderator will review your application within 7-14 days."
-              );
-            } catch (err) {
-              log("Error: " + err.message, "error");
-              console.error(err);
-            }
-          });
+        const ready = window.NostrToolsReady;
+        if (ready && typeof ready.then === "function") {
+          ready.then(() => start()).catch(reportFailure);
+        } else {
+          window.addEventListener(
+            "bitvid:nostr-tools-ready",
+            () => start(),
+            { once: true }
+          );
+        }
       });
     </script>
   </body>

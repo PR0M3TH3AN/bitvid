@@ -126,8 +126,36 @@
         scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
       }
     </style>
-    <!-- Load nostr‑tools v2.10.4 -->
-    <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js"></script>
+    <!-- Load nostr‑tools v2.10.4 and expose nip04 for legacy consumers -->
+    <script type="module">
+      const NOSTR_TOOLS_VERSION = "2.10.4";
+
+      const loadNostrTools = async () => {
+        const nostrModule = await import(`https://esm.sh/nostr-tools@${NOSTR_TOOLS_VERSION}`);
+        const { nip04 } = await import(`https://esm.sh/nostr-tools@${NOSTR_TOOLS_VERSION}/nip04`);
+
+        const toolsBundle = {
+          ...nostrModule,
+          nip04,
+        };
+
+        window.NostrTools = toolsBundle;
+        window.dispatchEvent(
+          new CustomEvent("bitvid:nostr-tools-ready", {
+            detail: { nostrTools: toolsBundle },
+          })
+        );
+
+        return toolsBundle;
+      };
+
+      const nostrToolsPromise = loadNostrTools().catch((error) => {
+        console.error("[bitvid] Failed to load nostr-tools", error);
+        throw error;
+      });
+
+      window.NostrToolsReady = nostrToolsPromise;
+    </script>
   </head>
   <body>
     <div class="container">
@@ -253,221 +281,260 @@
     </div>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
-        // Logging function
-        function log(msg, type = "info") {
-          const div = document.createElement("div");
-          div.classList.add("status-line");
-          if (type === "error") div.classList.add("error");
-          if (type === "success") div.classList.add("success");
-          if (type === "warn") div.classList.add("warn");
-          div.textContent = msg;
-          document.getElementById("status").appendChild(div);
-          console.log(`[${type.toUpperCase()}] ${msg}`);
-        }
-        function clear() {
-          document.getElementById("status").innerHTML = "";
-        }
-        if (!window.NostrTools) {
-          log("NostrTools not loaded. Check console or ad-blockers.", "error");
+        let initialized = false;
+
+        const reportFailure = (error) => {
+          console.error("[bitvid] Failed to initialize feature request form", error);
+          const status = document.getElementById("status");
+          if (status) {
+            const div = document.createElement("div");
+            div.classList.add("status-line", "error");
+            div.textContent = "Failed to load Nostr tools. Please disable blockers and try again.";
+            status.appendChild(div);
+          }
+        };
+
+        const start = () => {
+          if (initialized) {
+            return;
+          }
+          if (!window.NostrTools) {
+            reportFailure(new Error("NostrTools not loaded."));
+            return;
+          }
+
+          initialized = true;
+
+          // Logging function
+          function log(msg, type = "info") {
+            const div = document.createElement("div");
+            div.classList.add("status-line");
+            if (type === "error") div.classList.add("error");
+            if (type === "success") div.classList.add("success");
+            if (type === "warn") div.classList.add("warn");
+            div.textContent = msg;
+            document.getElementById("status").appendChild(div);
+            console.log(`[${type.toUpperCase()}] ${msg}`);
+          }
+          function clear() {
+            document.getElementById("status").innerHTML = "";
+          }
+          const {
+            generateSecretKey,
+            getPublicKey,
+            finalizeEvent,
+            nip04,
+            nip19,
+            SimplePool,
+            Relay,
+          } = window.NostrTools;
+          
+          // Set the recipient's NPUB (your personal NPUB)
+          const recipientNpub =
+            "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+          const RELAYS = [
+            "wss://relay.snort.social",
+            "wss://relay.damus.io",
+            "wss://relay.primal.net",
+          ];
+          const pool = new SimplePool();
+          
+          document
+            .getElementById("feature-form")
+            .addEventListener("submit", async (ev) => {
+              ev.preventDefault();
+              clear();
+              try {
+                // Section 1: User Information
+                const userNpub = document.getElementById("userNpub").value.trim();
+                const roleNodes = document.querySelectorAll(
+                  'input[name="userRole"]:checked'
+                );
+                let userRoles = [];
+                roleNodes.forEach((node) => {
+                  userRoles.push(node.value);
+                });
+          
+                // Section 2: Feature Request Details
+                const featureName = document
+                  .getElementById("featureName")
+                  .value.trim();
+                const featureDescription = document
+                  .getElementById("featureDescription")
+                  .value.trim();
+                const featureImportance = document
+                  .getElementById("featureImportance")
+                  .value.trim();
+                const beneficiary = document
+                  .getElementById("beneficiary")
+                  .value.trim();
+          
+                // Section 3: Additional Information
+                const existingPlatforms = document
+                  .getElementById("existingPlatforms")
+                  .value.trim();
+                const mockups = document.getElementById("mockups").value.trim();
+                const willingToTest = document
+                  .getElementById("willingToTest")
+                  .value.trim();
+          
+                // Section 4: Priority & Impact
+                const priorityNodes = document.querySelectorAll(
+                  'input[name="featurePriority"]:checked'
+                );
+                let featurePriorities = [];
+                priorityNodes.forEach((node) => {
+                  featurePriorities.push(node.value);
+                });
+                const techChallenges = document
+                  .getElementById("techChallenges")
+                  .value.trim();
+          
+                // Construct Markdown feature request
+                const featureRequestContent = `
+          # **bitvid Feature Request Form**
+          
+          Have an idea for improving bitvid? We’d love to hear it! Please use this form to request new features or enhancements. Your feedback helps shape the future of bitvid.
+          
+          ## **1. User Information**
+          - **Nostr Public Key (npub) (optional):** ${userNpub || "N/A"}
+          - **Roles:** ${userRoles.length > 0 ? userRoles.join(", ") : "N/A"}
+          
+          ## **2. Feature Request Details**
+          - **Feature Name:** ${featureName || "N/A"}
+          - **Describe the feature:**  
+            ${featureDescription || "N/A"}
+          - **Why is this feature important?**  
+            ${featureImportance || "N/A"}
+          - **Who would benefit from this feature?**  
+            ${beneficiary || "N/A"}
+          
+          ## **3. Additional Information**
+          - **Are there existing platforms that have this feature?**  
+            ${existingPlatforms || "N/A"}
+          - **Do you have any mockups or examples?**  
+            ${mockups || "N/A"}
+          - **Would you be willing to help test this feature if implemented?** ${
+                  willingToTest || "N/A"
+                }
+          
+          ## **4. Priority & Impact**
+          - **How urgent is this feature?**  
+            ${featurePriorities.length > 0 ? featurePriorities.join(", ") : "N/A"}
+          - **Does this feature require technical expertise to implement?**  
+            ${techChallenges || "N/A"}
+          
+          ---
+          
+          ### **Processing & Consideration**
+          All feature requests are reviewed, but not all may be implemented. We prioritize based on user demand, feasibility, and impact on bitvid. Thank you for helping us improve!
+          
+          For further discussions, reach out through bitvid’s Nostr support channels.
+              `.trim();
+          
+                log(
+                  "[DEBUG] Constructed feature request content:
+" +
+                    featureRequestContent
+                );
+          
+                // Decode the recipient NPUB
+                log("Decoding recipient npub...");
+                const decoded = nip19.decode(recipientNpub);
+                log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
+                if (decoded.type !== "npub") {
+                  throw new Error("Decoded type is not npub.");
+                }
+                const targetPubHex = decoded.data;
+                log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
+          
+                // Generate an ephemeral key pair
+                log("Generating ephemeral key...");
+                const ephemeralPriv = generateSecretKey();
+                const ephemeralPubHex = getPublicKey(ephemeralPriv);
+                log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
+          
+                // Encrypt the feature request content
+                log("Encrypting feature request content (nip04)...");
+                const ciphertext = await nip04.encrypt(
+                  ephemeralPriv,
+                  targetPubHex,
+                  featureRequestContent
+                );
+                log("[DEBUG] Ciphertext: " + ciphertext);
+                log("Encryption done.");
+          
+                // Build the event template
+                const now = Math.floor(Date.now() / 1000);
+                const eventTemplate = {
+                  kind: 4,
+                  created_at: now,
+                  tags: [["p", targetPubHex]],
+                  content: ciphertext,
+                };
+                log(
+                  "[DEBUG] Event template before finalizing: " +
+                    JSON.stringify(eventTemplate)
+                );
+          
+                // Finalize the event
+                const event = finalizeEvent(eventTemplate, ephemeralPriv);
+                log("[DEBUG] Final event: " + JSON.stringify(event));
+          
+                // Publish to relays
+                log("Publishing the feature request to relays...");
+                await Promise.any(pool.publish(RELAYS, event));
+                log("At least one relay accepted the event.", "success");
+          
+                // Subscribe to verify event storage
+                for (const url of RELAYS) {
+                  log("Connecting to " + url + " for subscription...");
+                  const relay = await Relay.connect(url);
+                  relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                    onEvent(foundEvent) {
+                      if (foundEvent.id === event.id) {
+                        log(
+                          "[" +
+                            url +
+                            "] => Found our feature request in storage! ID: " +
+                            foundEvent.id.slice(0, 8) +
+                            "...",
+                          "success"
+                        );
+                      }
+                    },
+                    onEose() {
+                      relay.close();
+                    },
+                  });
+                }
+          
+                log(
+                  "Done. If the logs show that at least one relay accepted the event and the feature request was stored, it will be reviewed accordingly."
+                );
+              } catch (err) {
+                log("Error: " + err.message, "error");
+                console.error(err);
+              }
+            });
+
+        };
+
+        if (window.NostrTools) {
+          start();
           return;
         }
-        const {
-          generateSecretKey,
-          getPublicKey,
-          finalizeEvent,
-          nip04,
-          nip19,
-          SimplePool,
-          Relay,
-        } = window.NostrTools;
 
-        // Set the recipient's NPUB (your personal NPUB)
-        const recipientNpub =
-          "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
-        const RELAYS = [
-          "wss://relay.snort.social",
-          "wss://relay.damus.io",
-          "wss://relay.primal.net",
-        ];
-        const pool = new SimplePool();
-
-        document
-          .getElementById("feature-form")
-          .addEventListener("submit", async (ev) => {
-            ev.preventDefault();
-            clear();
-            try {
-              // Section 1: User Information
-              const userNpub = document.getElementById("userNpub").value.trim();
-              const roleNodes = document.querySelectorAll(
-                'input[name="userRole"]:checked'
-              );
-              let userRoles = [];
-              roleNodes.forEach((node) => {
-                userRoles.push(node.value);
-              });
-
-              // Section 2: Feature Request Details
-              const featureName = document
-                .getElementById("featureName")
-                .value.trim();
-              const featureDescription = document
-                .getElementById("featureDescription")
-                .value.trim();
-              const featureImportance = document
-                .getElementById("featureImportance")
-                .value.trim();
-              const beneficiary = document
-                .getElementById("beneficiary")
-                .value.trim();
-
-              // Section 3: Additional Information
-              const existingPlatforms = document
-                .getElementById("existingPlatforms")
-                .value.trim();
-              const mockups = document.getElementById("mockups").value.trim();
-              const willingToTest = document
-                .getElementById("willingToTest")
-                .value.trim();
-
-              // Section 4: Priority & Impact
-              const priorityNodes = document.querySelectorAll(
-                'input[name="featurePriority"]:checked'
-              );
-              let featurePriorities = [];
-              priorityNodes.forEach((node) => {
-                featurePriorities.push(node.value);
-              });
-              const techChallenges = document
-                .getElementById("techChallenges")
-                .value.trim();
-
-              // Construct Markdown feature request
-              const featureRequestContent = `
-# **bitvid Feature Request Form**
-
-Have an idea for improving bitvid? We’d love to hear it! Please use this form to request new features or enhancements. Your feedback helps shape the future of bitvid.
-
-## **1. User Information**
-- **Nostr Public Key (npub) (optional):** ${userNpub || "N/A"}
-- **Roles:** ${userRoles.length > 0 ? userRoles.join(", ") : "N/A"}
-
-## **2. Feature Request Details**
-- **Feature Name:** ${featureName || "N/A"}
-- **Describe the feature:**  
-  ${featureDescription || "N/A"}
-- **Why is this feature important?**  
-  ${featureImportance || "N/A"}
-- **Who would benefit from this feature?**  
-  ${beneficiary || "N/A"}
-
-## **3. Additional Information**
-- **Are there existing platforms that have this feature?**  
-  ${existingPlatforms || "N/A"}
-- **Do you have any mockups or examples?**  
-  ${mockups || "N/A"}
-- **Would you be willing to help test this feature if implemented?** ${
-                willingToTest || "N/A"
-              }
-
-## **4. Priority & Impact**
-- **How urgent is this feature?**  
-  ${featurePriorities.length > 0 ? featurePriorities.join(", ") : "N/A"}
-- **Does this feature require technical expertise to implement?**  
-  ${techChallenges || "N/A"}
-
----
-
-### **Processing & Consideration**
-All feature requests are reviewed, but not all may be implemented. We prioritize based on user demand, feasibility, and impact on bitvid. Thank you for helping us improve!
-
-For further discussions, reach out through bitvid’s Nostr support channels.
-            `.trim();
-
-              log(
-                "[DEBUG] Constructed feature request content:\n" +
-                  featureRequestContent
-              );
-
-              // Decode the recipient NPUB
-              log("Decoding recipient npub...");
-              const decoded = nip19.decode(recipientNpub);
-              log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
-              if (decoded.type !== "npub") {
-                throw new Error("Decoded type is not npub.");
-              }
-              const targetPubHex = decoded.data;
-              log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
-
-              // Generate an ephemeral key pair
-              log("Generating ephemeral key...");
-              const ephemeralPriv = generateSecretKey();
-              const ephemeralPubHex = getPublicKey(ephemeralPriv);
-              log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
-
-              // Encrypt the feature request content
-              log("Encrypting feature request content (nip04)...");
-              const ciphertext = await nip04.encrypt(
-                ephemeralPriv,
-                targetPubHex,
-                featureRequestContent
-              );
-              log("[DEBUG] Ciphertext: " + ciphertext);
-              log("Encryption done.");
-
-              // Build the event template
-              const now = Math.floor(Date.now() / 1000);
-              const eventTemplate = {
-                kind: 4,
-                created_at: now,
-                tags: [["p", targetPubHex]],
-                content: ciphertext,
-              };
-              log(
-                "[DEBUG] Event template before finalizing: " +
-                  JSON.stringify(eventTemplate)
-              );
-
-              // Finalize the event
-              const event = finalizeEvent(eventTemplate, ephemeralPriv);
-              log("[DEBUG] Final event: " + JSON.stringify(event));
-
-              // Publish to relays
-              log("Publishing the feature request to relays...");
-              await Promise.any(pool.publish(RELAYS, event));
-              log("At least one relay accepted the event.", "success");
-
-              // Subscribe to verify event storage
-              for (const url of RELAYS) {
-                log("Connecting to " + url + " for subscription...");
-                const relay = await Relay.connect(url);
-                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
-                  onEvent(foundEvent) {
-                    if (foundEvent.id === event.id) {
-                      log(
-                        "[" +
-                          url +
-                          "] => Found our feature request in storage! ID: " +
-                          foundEvent.id.slice(0, 8) +
-                          "...",
-                        "success"
-                      );
-                    }
-                  },
-                  onEose() {
-                    relay.close();
-                  },
-                });
-              }
-
-              log(
-                "Done. If the logs show that at least one relay accepted the event and the feature request was stored, it will be reviewed accordingly."
-              );
-            } catch (err) {
-              log("Error: " + err.message, "error");
-              console.error(err);
-            }
-          });
+        const ready = window.NostrToolsReady;
+        if (ready && typeof ready.then === "function") {
+          ready.then(() => start()).catch(reportFailure);
+        } else {
+          window.addEventListener(
+            "bitvid:nostr-tools-ready",
+            () => start(),
+            { once: true }
+          );
+        }
       });
     </script>
   </body>

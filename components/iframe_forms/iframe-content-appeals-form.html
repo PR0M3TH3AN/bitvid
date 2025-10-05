@@ -120,8 +120,36 @@
         scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
       }
     </style>
-    <!-- Load nostr‑tools v2.10.4 -->
-    <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js"></script>
+    <!-- Load nostr‑tools v2.10.4 and expose nip04 for legacy consumers -->
+    <script type="module">
+      const NOSTR_TOOLS_VERSION = "2.10.4";
+
+      const loadNostrTools = async () => {
+        const nostrModule = await import(`https://esm.sh/nostr-tools@${NOSTR_TOOLS_VERSION}`);
+        const { nip04 } = await import(`https://esm.sh/nostr-tools@${NOSTR_TOOLS_VERSION}/nip04`);
+
+        const toolsBundle = {
+          ...nostrModule,
+          nip04,
+        };
+
+        window.NostrTools = toolsBundle;
+        window.dispatchEvent(
+          new CustomEvent("bitvid:nostr-tools-ready", {
+            detail: { nostrTools: toolsBundle },
+          })
+        );
+
+        return toolsBundle;
+      };
+
+      const nostrToolsPromise = loadNostrTools().catch((error) => {
+        console.error("[bitvid] Failed to load nostr-tools", error);
+        throw error;
+      });
+
+      window.NostrToolsReady = nostrToolsPromise;
+    </script>
   </head>
   <body>
     <div class="container">
@@ -243,221 +271,260 @@
     </div>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
-        // Logging functions for both on-page and console output.
-        function log(msg, type = "info") {
-          const div = document.createElement("div");
-          div.classList.add("status-line");
-          if (type === "error") div.classList.add("error");
-          if (type === "success") div.classList.add("success");
-          if (type === "warn") div.classList.add("warn");
-          div.textContent = msg;
-          document.getElementById("status").appendChild(div);
-          console.log(`[${type.toUpperCase()}] ${msg}`);
-        }
-        function clear() {
-          document.getElementById("status").innerHTML = "";
-        }
-        if (!window.NostrTools) {
-          log("NostrTools not loaded. Check console or ad-blockers.", "error");
+        let initialized = false;
+
+        const reportFailure = (error) => {
+          console.error("[bitvid] Failed to initialize content appeals form", error);
+          const status = document.getElementById("status");
+          if (status) {
+            const div = document.createElement("div");
+            div.classList.add("status-line", "error");
+            div.textContent = "Failed to load Nostr tools. Please disable blockers and try again.";
+            status.appendChild(div);
+          }
+        };
+
+        const start = () => {
+          if (initialized) {
+            return;
+          }
+          if (!window.NostrTools) {
+            reportFailure(new Error("NostrTools not loaded."));
+            return;
+          }
+
+          initialized = true;
+
+          // Logging functions for both on-page and console output.
+          function log(msg, type = "info") {
+            const div = document.createElement("div");
+            div.classList.add("status-line");
+            if (type === "error") div.classList.add("error");
+            if (type === "success") div.classList.add("success");
+            if (type === "warn") div.classList.add("warn");
+            div.textContent = msg;
+            document.getElementById("status").appendChild(div);
+            console.log(`[${type.toUpperCase()}] ${msg}`);
+          }
+          function clear() {
+            document.getElementById("status").innerHTML = "";
+          }
+          const {
+            generateSecretKey,
+            getPublicKey,
+            finalizeEvent,
+            nip04,
+            nip19,
+            SimplePool,
+            Relay,
+          } = window.NostrTools;
+          
+          // Set the recipient's NPUB (your personal NPUB) here.
+          const recipientNpub =
+            "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+          
+          const RELAYS = [
+            "wss://relay.snort.social",
+            "wss://relay.damus.io",
+            "wss://relay.primal.net",
+          ];
+          const pool = new SimplePool();
+          
+          document
+            .getElementById("dm-form")
+            .addEventListener("submit", async (ev) => {
+              ev.preventDefault();
+              clear();
+              try {
+                // Note: The customer's NPUB input is removed.
+                // Use the recipientNpub constant to get the public key.
+          
+                const contactMethod = document
+                  .getElementById("contactMethod")
+                  .value.trim();
+                const videoTitle = document
+                  .getElementById("videoTitle")
+                  .value.trim();
+                const magnetLink = document
+                  .getElementById("magnetLink")
+                  .value.trim();
+                const submissionDate = document
+                  .getElementById("submissionDate")
+                  .value.trim();
+                const reasonBlocked = document
+                  .getElementById("reasonBlocked")
+                  .value.trim();
+                const fitsGuidelines = document
+                  .getElementById("fitsGuidelines")
+                  .value.trim();
+                const guidelinesCited = document
+                  .getElementById("guidelinesCited")
+                  .value.trim();
+                const editedContent = document
+                  .getElementById("editedContent")
+                  .value.trim();
+                const changesMade = document
+                  .getElementById("changesMade")
+                  .value.trim();
+                const misunderstanding = document
+                  .getElementById("misunderstanding")
+                  .value.trim();
+                const externalReferences = document
+                  .getElementById("externalReferences")
+                  .value.trim();
+                const signature = document
+                  .getElementById("signature")
+                  .value.trim();
+                const declarationDate = document
+                  .getElementById("declarationDate")
+                  .value.trim();
+          
+                // Construct the appeal content.
+                const appealContent = `
+          # **bitvid Content Appeals Form**
+            
+          **1. User Information**
+          - **Contact Method:** ${contactMethod || "N/A"}
+            
+          **2. Content Details**
+          - **Title of the Video:** ${videoTitle}
+          - **Magnet Link:** ${magnetLink}
+          - **Date of Content Submission:** ${submissionDate}
+            
+          **3. Reason for Appeal**
+          - **Why do you believe your content was unfairly blocked?**  
+            ${reasonBlocked}
+          - **Does your content fit within bitvid's Community Guidelines?**  
+            ${fitsGuidelines}
+          - **If yes, which guideline(s) support your appeal?**  
+            ${guidelinesCited}
+          - **Was this content edited after being blocked?**  
+            ${editedContent}
+          - **If yes, what changes were made?**  
+            ${changesMade}
+            
+          **4. Additional Context**
+          - **Was there any misunderstanding or misclassification?**  
+            ${misunderstanding}
+          - **Are there external references that validate your appeal?**  
+            ${externalReferences}
+            
+          **5. Declaration**
+          By submitting this appeal, you confirm that:
+          - You are the original creator or an authorized representative of the content.
+          - Your appeal is submitted in good faith and aligns with bitvid’s policies.
+          - You understand that final decisions are at the discretion of bitvid’s moderation process.
+            
+          **Signature (Digital or Written):** ${signature}
+          **Date:** ${declarationDate}
+            
+          ---
+            
+          **Processing Time:** Appeals will be reviewed within **7-14 days**. If additional information is required, you will be contacted via your provided contact method.
+            
+          For further questions, reach out through bitvid’s Nostr support channels.
+              `.trim();
+          
+                log("[DEBUG] Constructed appeal content:
+" + appealContent);
+          
+                // Decode the recipient NPUB to get the public key.
+                log("Decoding recipient npub...");
+                const decoded = nip19.decode(recipientNpub);
+                log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
+                if (decoded.type !== "npub") {
+                  throw new Error("Decoded type is not npub.");
+                }
+                const targetPubHex = decoded.data;
+                log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
+          
+                // Generate an ephemeral key pair.
+                log("Generating ephemeral key...");
+                const ephemeralPriv = generateSecretKey();
+                const ephemeralPubHex = getPublicKey(ephemeralPriv);
+                log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
+          
+                // Encrypt the appeal content.
+                log("Encrypting appeal content (nip04)...");
+                const ciphertext = await nip04.encrypt(
+                  ephemeralPriv,
+                  targetPubHex,
+                  appealContent
+                );
+                log("[DEBUG] Ciphertext: " + ciphertext);
+                log("Encryption done.");
+          
+                // Build the event template.
+                const now = Math.floor(Date.now() / 1000);
+                const eventTemplate = {
+                  kind: 4,
+                  created_at: now,
+                  tags: [["p", targetPubHex]],
+                  content: ciphertext,
+                };
+                log(
+                  "[DEBUG] Event template before finalizing: " +
+                    JSON.stringify(eventTemplate)
+                );
+          
+                // Finalize the event.
+                const event = finalizeEvent(eventTemplate, ephemeralPriv);
+                log("[DEBUG] Final event: " + JSON.stringify(event));
+          
+                // Publish the event to all relays.
+                log("Publishing the appeal to relays...");
+                await Promise.any(pool.publish(RELAYS, event));
+                log("At least one relay accepted the event.", "success");
+          
+                // Subscribe to each relay.
+                for (const url of RELAYS) {
+                  log("Connecting to " + url + " for subscription...");
+                  const relay = await Relay.connect(url);
+                  relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
+                    onEvent(foundEvent) {
+                      if (foundEvent.id === event.id) {
+                        log(
+                          "[" +
+                            url +
+                            "] => Found our appeal in storage! ID: " +
+                            foundEvent.id.slice(0, 8) +
+                            "...",
+                          "success"
+                        );
+                      }
+                    },
+                    onEose() {
+                      relay.close();
+                    },
+                  });
+                }
+          
+                log(
+                  "Done. If the logs show that at least one relay accepted the event and the appeal was found in storage, a moderator will review your appeal within 7-14 days."
+                );
+              } catch (err) {
+                log("Error: " + err.message, "error");
+                console.error(err);
+              }
+            });
+
+        };
+
+        if (window.NostrTools) {
+          start();
           return;
         }
-        const {
-          generateSecretKey,
-          getPublicKey,
-          finalizeEvent,
-          nip04,
-          nip19,
-          SimplePool,
-          Relay,
-        } = window.NostrTools;
 
-        // Set the recipient's NPUB (your personal NPUB) here.
-        const recipientNpub =
-          "npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
-
-        const RELAYS = [
-          "wss://relay.snort.social",
-          "wss://relay.damus.io",
-          "wss://relay.primal.net",
-        ];
-        const pool = new SimplePool();
-
-        document
-          .getElementById("dm-form")
-          .addEventListener("submit", async (ev) => {
-            ev.preventDefault();
-            clear();
-            try {
-              // Note: The customer's NPUB input is removed.
-              // Use the recipientNpub constant to get the public key.
-
-              const contactMethod = document
-                .getElementById("contactMethod")
-                .value.trim();
-              const videoTitle = document
-                .getElementById("videoTitle")
-                .value.trim();
-              const magnetLink = document
-                .getElementById("magnetLink")
-                .value.trim();
-              const submissionDate = document
-                .getElementById("submissionDate")
-                .value.trim();
-              const reasonBlocked = document
-                .getElementById("reasonBlocked")
-                .value.trim();
-              const fitsGuidelines = document
-                .getElementById("fitsGuidelines")
-                .value.trim();
-              const guidelinesCited = document
-                .getElementById("guidelinesCited")
-                .value.trim();
-              const editedContent = document
-                .getElementById("editedContent")
-                .value.trim();
-              const changesMade = document
-                .getElementById("changesMade")
-                .value.trim();
-              const misunderstanding = document
-                .getElementById("misunderstanding")
-                .value.trim();
-              const externalReferences = document
-                .getElementById("externalReferences")
-                .value.trim();
-              const signature = document
-                .getElementById("signature")
-                .value.trim();
-              const declarationDate = document
-                .getElementById("declarationDate")
-                .value.trim();
-
-              // Construct the appeal content.
-              const appealContent = `
-# **bitvid Content Appeals Form**
-  
-**1. User Information**
-- **Contact Method:** ${contactMethod || "N/A"}
-  
-**2. Content Details**
-- **Title of the Video:** ${videoTitle}
-- **Magnet Link:** ${magnetLink}
-- **Date of Content Submission:** ${submissionDate}
-  
-**3. Reason for Appeal**
-- **Why do you believe your content was unfairly blocked?**  
-  ${reasonBlocked}
-- **Does your content fit within bitvid's Community Guidelines?**  
-  ${fitsGuidelines}
-- **If yes, which guideline(s) support your appeal?**  
-  ${guidelinesCited}
-- **Was this content edited after being blocked?**  
-  ${editedContent}
-- **If yes, what changes were made?**  
-  ${changesMade}
-  
-**4. Additional Context**
-- **Was there any misunderstanding or misclassification?**  
-  ${misunderstanding}
-- **Are there external references that validate your appeal?**  
-  ${externalReferences}
-  
-**5. Declaration**
-By submitting this appeal, you confirm that:
-- You are the original creator or an authorized representative of the content.
-- Your appeal is submitted in good faith and aligns with bitvid’s policies.
-- You understand that final decisions are at the discretion of bitvid’s moderation process.
-  
-**Signature (Digital or Written):** ${signature}
-**Date:** ${declarationDate}
-  
----
-  
-**Processing Time:** Appeals will be reviewed within **7-14 days**. If additional information is required, you will be contacted via your provided contact method.
-  
-For further questions, reach out through bitvid’s Nostr support channels.
-            `.trim();
-
-              log("[DEBUG] Constructed appeal content:\n" + appealContent);
-
-              // Decode the recipient NPUB to get the public key.
-              log("Decoding recipient npub...");
-              const decoded = nip19.decode(recipientNpub);
-              log("[DEBUG] Decoded npub: " + JSON.stringify(decoded));
-              if (decoded.type !== "npub") {
-                throw new Error("Decoded type is not npub.");
-              }
-              const targetPubHex = decoded.data;
-              log("Recipient pubkey: " + targetPubHex.slice(0, 16) + "...");
-
-              // Generate an ephemeral key pair.
-              log("Generating ephemeral key...");
-              const ephemeralPriv = generateSecretKey();
-              const ephemeralPubHex = getPublicKey(ephemeralPriv);
-              log("Ephemeral pubkey: " + ephemeralPubHex.slice(0, 16) + "...");
-
-              // Encrypt the appeal content.
-              log("Encrypting appeal content (nip04)...");
-              const ciphertext = await nip04.encrypt(
-                ephemeralPriv,
-                targetPubHex,
-                appealContent
-              );
-              log("[DEBUG] Ciphertext: " + ciphertext);
-              log("Encryption done.");
-
-              // Build the event template.
-              const now = Math.floor(Date.now() / 1000);
-              const eventTemplate = {
-                kind: 4,
-                created_at: now,
-                tags: [["p", targetPubHex]],
-                content: ciphertext,
-              };
-              log(
-                "[DEBUG] Event template before finalizing: " +
-                  JSON.stringify(eventTemplate)
-              );
-
-              // Finalize the event.
-              const event = finalizeEvent(eventTemplate, ephemeralPriv);
-              log("[DEBUG] Final event: " + JSON.stringify(event));
-
-              // Publish the event to all relays.
-              log("Publishing the appeal to relays...");
-              await Promise.any(pool.publish(RELAYS, event));
-              log("At least one relay accepted the event.", "success");
-
-              // Subscribe to each relay.
-              for (const url of RELAYS) {
-                log("Connecting to " + url + " for subscription...");
-                const relay = await Relay.connect(url);
-                relay.subscribe([{ authors: [ephemeralPubHex], kinds: [4] }], {
-                  onEvent(foundEvent) {
-                    if (foundEvent.id === event.id) {
-                      log(
-                        "[" +
-                          url +
-                          "] => Found our appeal in storage! ID: " +
-                          foundEvent.id.slice(0, 8) +
-                          "...",
-                        "success"
-                      );
-                    }
-                  },
-                  onEose() {
-                    relay.close();
-                  },
-                });
-              }
-
-              log(
-                "Done. If the logs show that at least one relay accepted the event and the appeal was found in storage, a moderator will review your appeal within 7-14 days."
-              );
-            } catch (err) {
-              log("Error: " + err.message, "error");
-              console.error(err);
-            }
-          });
+        const ready = window.NostrToolsReady;
+        if (ready && typeof ready.then === "function") {
+          ready.then(() => start()).catch(reportFailure);
+        } else {
+          window.addEventListener(
+            "bitvid:nostr-tools-ready",
+            () => start(),
+            { once: true }
+          );
+        }
       });
     </script>
   </body>

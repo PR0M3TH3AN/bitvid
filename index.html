@@ -199,55 +199,53 @@
 
     <!-- Additional Scripts -->
     <script type="module">
-      import * as nostrTools from "https://esm.sh/nostr-tools@1.8.3";
+      const NOSTR_TOOLS_VERSION = "2.10.4";
 
-      const normalizedGeneratePrivateKey =
-        typeof nostrTools.generatePrivateKey === "function"
-          ? nostrTools.generatePrivateKey
-          : typeof nostrTools.generateSecretKey === "function"
-          ? nostrTools.generateSecretKey
-          : undefined;
+      const loadNostrTools = async () => {
+        const nostrModule = await import(
+          `https://esm.sh/nostr-tools@${NOSTR_TOOLS_VERSION}`
+        );
+        const { nip04 } = await import(
+          `https://esm.sh/nostr-tools@${NOSTR_TOOLS_VERSION}/nip04`
+        );
 
-      const normalizedGenerateSecretKey =
-        typeof nostrTools.generateSecretKey === "function"
-          ? nostrTools.generateSecretKey
-          : typeof nostrTools.generatePrivateKey === "function"
-          ? nostrTools.generatePrivateKey
-          : undefined;
+        const normalizedGeneratePrivateKey =
+          typeof nostrModule.generatePrivateKey === "function"
+            ? nostrModule.generatePrivateKey
+            : typeof nostrModule.generateSecretKey === "function"
+            ? nostrModule.generateSecretKey
+            : undefined;
 
-      const hasWorkingNip04 = (candidate) =>
-        candidate &&
-        typeof candidate.encrypt === "function" &&
-        typeof candidate.decrypt === "function";
+        const normalizedGenerateSecretKey =
+          typeof nostrModule.generateSecretKey === "function"
+            ? nostrModule.generateSecretKey
+            : typeof nostrModule.generatePrivateKey === "function"
+            ? nostrModule.generatePrivateKey
+            : undefined;
 
-      let resolvedNip04 = hasWorkingNip04(nostrTools?.nip04)
-        ? nostrTools.nip04
-        : null;
+        const toolsBundle = {
+          ...nostrModule,
+          generatePrivateKey: normalizedGeneratePrivateKey,
+          generateSecretKey: normalizedGenerateSecretKey,
+          nip04,
+        };
 
-      if (!resolvedNip04) {
-        try {
-          const fallbackModule = await import(
-            "https://esm.sh/nostr-tools@1.8.3?target=es2022&exports=nip04"
-          );
-          if (hasWorkingNip04(fallbackModule?.nip04)) {
-            resolvedNip04 = fallbackModule.nip04;
-          }
-        } catch (error) {
-          console.warn("[bitvid] Failed to load nostr nip04 helper", error);
-        }
-      }
+        window.NostrTools = toolsBundle;
+        window.dispatchEvent(
+          new CustomEvent("bitvid:nostr-tools-ready", {
+            detail: { nostrTools: toolsBundle },
+          })
+        );
 
-      const toolsBundle = {
-        ...nostrTools,
-        generatePrivateKey: normalizedGeneratePrivateKey,
-        generateSecretKey: normalizedGenerateSecretKey,
+        return toolsBundle;
       };
 
-      if (resolvedNip04) {
-        toolsBundle.nip04 = resolvedNip04;
-      }
+      const nostrToolsPromise = loadNostrTools().catch((error) => {
+        console.error("[bitvid] Failed to load nostr-tools", error);
+        throw error;
+      });
 
-      window.NostrTools = toolsBundle;
+      window.NostrToolsReady = nostrToolsPromise;
     </script>
     <script type="module" src="js/config.js"></script>
     <script type="module" src="js/lists.js"></script>
