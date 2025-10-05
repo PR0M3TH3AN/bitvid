@@ -215,11 +215,39 @@
           ? nostrTools.generatePrivateKey
           : undefined;
 
-      window.NostrTools = {
+      const hasWorkingNip04 = (candidate) =>
+        candidate &&
+        typeof candidate.encrypt === "function" &&
+        typeof candidate.decrypt === "function";
+
+      let resolvedNip04 = hasWorkingNip04(nostrTools?.nip04)
+        ? nostrTools.nip04
+        : null;
+
+      if (!resolvedNip04) {
+        try {
+          const fallbackModule = await import(
+            "https://esm.sh/nostr-tools@1.8.3?target=es2022&exports=nip04"
+          );
+          if (hasWorkingNip04(fallbackModule?.nip04)) {
+            resolvedNip04 = fallbackModule.nip04;
+          }
+        } catch (error) {
+          console.warn("[bitvid] Failed to load nostr nip04 helper", error);
+        }
+      }
+
+      const toolsBundle = {
         ...nostrTools,
         generatePrivateKey: normalizedGeneratePrivateKey,
         generateSecretKey: normalizedGenerateSecretKey,
       };
+
+      if (resolvedNip04) {
+        toolsBundle.nip04 = resolvedNip04;
+      }
+
+      window.NostrTools = toolsBundle;
     </script>
     <script type="module" src="js/config.js"></script>
     <script type="module" src="js/lists.js"></script>
