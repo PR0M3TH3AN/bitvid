@@ -80,6 +80,15 @@
               Relays
             </button>
             <button
+              id="profileNavWallet"
+              type="button"
+              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              aria-controls="profilePaneWallet"
+              aria-selected="false"
+            >
+              Wallet
+            </button>
+            <button
               id="profileNavBlocked"
               type="button"
               class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
@@ -241,6 +250,71 @@
                 </div>
               </div>
               <ul id="relayList" class="space-y-3"></ul>
+            </section>
+
+            <section
+              id="profilePaneWallet"
+              class="profile-pane hidden space-y-6"
+              role="tabpanel"
+              aria-labelledby="profileNavWallet"
+            >
+              <div class="space-y-4">
+                <p class="text-sm text-gray-400">
+                  Connect a Nostr Wallet Connect (NWC) compatible wallet to zap creators directly from BitVid.
+                </p>
+                <div class="space-y-4">
+                  <label class="block text-sm text-gray-300" for="profileWalletUri">
+                    <span class="mb-2 block font-medium">Wallet Connect URI</span>
+                    <input
+                      id="profileWalletUri"
+                      type="url"
+                      placeholder="nostr+walletconnect://<public-key>?relay=wss://relay.example.com"
+                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </label>
+                  <label class="block text-sm text-gray-300" for="profileWalletDefaultZap">
+                    <span class="mb-2 block font-medium">Default zap amount (sats)</span>
+                    <input
+                      id="profileWalletDefaultZap"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      placeholder="500"
+                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </label>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <button
+                    id="profileWalletSave"
+                    type="button"
+                    class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  >
+                    Save wallet
+                  </button>
+                  <button
+                    id="profileWalletTest"
+                    type="button"
+                    class="inline-flex items-center justify-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  >
+                    Test connection
+                  </button>
+                  <button
+                    id="profileWalletDisconnect"
+                    type="button"
+                    class="inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  >
+                    Disconnect wallet
+                  </button>
+                </div>
+                <p
+                  id="profileWalletStatus"
+                  class="text-sm text-gray-400"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
             </section>
 
             <section

@@ -103,6 +103,8 @@ const BITVID_WEBSITE_URL = "https://bitvid.network/";
 const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+const NWC_URI_SCHEME = "nostr+walletconnect://";
+const MAX_WALLET_DEFAULT_ZAP = 100000000;
 /**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
@@ -265,6 +267,7 @@ class Application {
     this.profileNavButtons = {
       account: null,
       relays: null,
+      wallet: null,
       blocked: null,
       history: null,
       admin: null,
@@ -272,6 +275,7 @@ class Application {
     this.profilePaneElements = {
       account: null,
       relays: null,
+      wallet: null,
       blocked: null,
       history: null,
       admin: null,
@@ -286,6 +290,13 @@ class Application {
     this.profileRestoreRelaysBtn = null;
     this.profileHistoryRenderer = null;
     this.activeProfilePane = null;
+    this.profileWalletUriInput = null;
+    this.profileWalletDefaultZapInput = null;
+    this.profileWalletSaveButton = null;
+    this.profileWalletTestButton = null;
+    this.profileWalletDisconnectButton = null;
+    this.profileWalletStatusText = null;
+    this.isWalletPaneBusy = false;
     this.adminModeratorInput = null;
     this.adminAddModeratorBtn = null;
     this.adminModeratorList = null;
@@ -493,6 +504,7 @@ class Application {
     this.boundMoreMenuDocumentClick = null;
     this.boundMoreMenuDocumentKeydown = null;
     this.nwcSettings = new Map();
+    this.payments = null;
     this.boundNwcSettingsToastHandler = null;
     Object.defineProperty(this, "savedProfiles", {
       configurable: false,
@@ -1481,6 +1493,8 @@ class Application {
         document.getElementById("profileNavAccount") || null;
       this.profileNavButtons.relays =
         document.getElementById("profileNavRelays") || null;
+      this.profileNavButtons.wallet =
+        document.getElementById("profileNavWallet") || null;
       this.profileNavButtons.blocked =
         document.getElementById("profileNavBlocked") || null;
       this.profileNavButtons.history =
@@ -1491,6 +1505,8 @@ class Application {
         document.getElementById("profilePaneAccount") || null;
       this.profilePaneElements.relays =
         document.getElementById("profilePaneRelays") || null;
+      this.profilePaneElements.wallet =
+        document.getElementById("profilePaneWallet") || null;
       this.profilePaneElements.blocked =
         document.getElementById("profilePaneBlocked") || null;
       this.profilePaneElements.history =
@@ -1509,6 +1525,18 @@ class Application {
       this.profileAddRelayBtn = document.getElementById("addRelayBtn") || null;
       this.profileRestoreRelaysBtn =
         document.getElementById("restoreRelaysBtn") || null;
+      this.profileWalletUriInput =
+        document.getElementById("profileWalletUri") || null;
+      this.profileWalletDefaultZapInput =
+        document.getElementById("profileWalletDefaultZap") || null;
+      this.profileWalletSaveButton =
+        document.getElementById("profileWalletSave") || null;
+      this.profileWalletTestButton =
+        document.getElementById("profileWalletTest") || null;
+      this.profileWalletDisconnectButton =
+        document.getElementById("profileWalletDisconnect") || null;
+      this.profileWalletStatusText =
+        document.getElementById("profileWalletStatus") || null;
       if (!this.profileHistoryRenderer) {
         this.profileHistoryRenderer = createWatchHistoryRenderer({
           viewSelector: "#profilePaneHistory",
@@ -1679,6 +1707,52 @@ class Application {
       }
 
       if (
+        this.profileWalletUriInput &&
+        this.profileWalletUriInput.dataset.bound !== "true"
+      ) {
+        this.profileWalletUriInput.dataset.bound = "true";
+        this.profileWalletUriInput.addEventListener("input", () => {
+          this.applyWalletControlState();
+        });
+      }
+      if (
+        this.profileWalletDefaultZapInput &&
+        this.profileWalletDefaultZapInput.dataset.bound !== "true"
+      ) {
+        this.profileWalletDefaultZapInput.dataset.bound = "true";
+        this.profileWalletDefaultZapInput.addEventListener("input", () => {
+          this.applyWalletControlState();
+        });
+      }
+      if (
+        this.profileWalletSaveButton &&
+        this.profileWalletSaveButton.dataset.bound !== "true"
+      ) {
+        this.profileWalletSaveButton.dataset.bound = "true";
+        this.profileWalletSaveButton.addEventListener("click", () => {
+          this.handleWalletSave();
+        });
+      }
+      if (
+        this.profileWalletTestButton &&
+        this.profileWalletTestButton.dataset.bound !== "true"
+      ) {
+        this.profileWalletTestButton.dataset.bound = "true";
+        this.profileWalletTestButton.addEventListener("click", () => {
+          this.handleWalletTest();
+        });
+      }
+      if (
+        this.profileWalletDisconnectButton &&
+        this.profileWalletDisconnectButton.dataset.bound !== "true"
+      ) {
+        this.profileWalletDisconnectButton.dataset.bound = "true";
+        this.profileWalletDisconnectButton.addEventListener("click", () => {
+          this.handleWalletDisconnect();
+        });
+      }
+
+      if (
         this.adminAddModeratorBtn &&
         this.adminAddModeratorBtn.dataset.bound !== "true"
       ) {
@@ -1747,6 +1821,7 @@ class Application {
       this.selectProfilePane("account");
       this.populateProfileRelays();
       this.populateBlockedList();
+      this.refreshWalletPaneState();
       await this.refreshAdminPaneState();
 
       this.renderSavedProfiles();
@@ -1815,6 +1890,364 @@ class Application {
 
     if (target === "history") {
       void this.populateProfileWatchHistory();
+    } else if (target === "wallet") {
+      this.refreshWalletPaneState();
+    }
+  }
+
+  setWalletPaneBusy(isBusy = false) {
+    this.isWalletPaneBusy = Boolean(isBusy);
+    if (this.profilePaneElements.wallet instanceof HTMLElement) {
+      this.profilePaneElements.wallet.setAttribute(
+        "aria-busy",
+        this.isWalletPaneBusy ? "true" : "false"
+      );
+    }
+    this.applyWalletControlState();
+  }
+
+  applyWalletControlState() {
+    const hasActive = Boolean(this.normalizeHexPubkey(this.pubkey));
+    const busy = this.isWalletPaneBusy;
+    const uriValue =
+      typeof this.profileWalletUriInput?.value === "string"
+        ? this.profileWalletUriInput.value.trim()
+        : "";
+    const hasUri = uriValue.length > 0;
+
+    const applyDisabledState = (element, disabled) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      if ("disabled" in element) {
+        element.disabled = disabled;
+      }
+      if (disabled) {
+        element.setAttribute("aria-disabled", "true");
+      } else {
+        element.removeAttribute("aria-disabled");
+      }
+    };
+
+    applyDisabledState(
+      this.profileWalletUriInput,
+      busy || !hasActive
+    );
+    applyDisabledState(
+      this.profileWalletDefaultZapInput,
+      busy || !hasActive
+    );
+    applyDisabledState(
+      this.profileWalletSaveButton,
+      busy || !hasActive
+    );
+
+    const testDisabled = busy || !hasActive || !hasUri;
+    applyDisabledState(this.profileWalletTestButton, testDisabled);
+
+    const disconnectDisabled = busy || !hasActive || !hasUri;
+    applyDisabledState(
+      this.profileWalletDisconnectButton,
+      disconnectDisabled
+    );
+    if (this.profileWalletDisconnectButton instanceof HTMLElement) {
+      this.profileWalletDisconnectButton.classList.toggle("hidden", !hasUri);
+      if (!hasUri) {
+        this.profileWalletDisconnectButton.setAttribute("aria-hidden", "true");
+      } else {
+        this.profileWalletDisconnectButton.removeAttribute("aria-hidden");
+      }
+    }
+  }
+
+  updateWalletStatus(message, variant = "info") {
+    if (!(this.profileWalletStatusText instanceof HTMLElement)) {
+      return;
+    }
+
+    const element = this.profileWalletStatusText;
+    const variants = {
+      success: "text-green-400",
+      error: "text-red-400",
+      info: "text-gray-400",
+    };
+
+    element.classList.remove("text-gray-400", "text-green-400", "text-red-400");
+    const variantClass = variants[variant] || variants.info;
+    element.classList.add(variantClass);
+    element.textContent = message || "";
+  }
+
+  refreshWalletPaneState() {
+    const hasActive = Boolean(this.normalizeHexPubkey(this.pubkey));
+    const setInputValue = (element, value) => {
+      if (element && typeof element === "object" && "value" in element) {
+        try {
+          element.value = value;
+        } catch (error) {
+          if (element instanceof HTMLElement) {
+            element.setAttribute("data-value", value);
+          }
+        }
+      }
+    };
+    if (!hasActive) {
+      setInputValue(this.profileWalletUriInput, "");
+      setInputValue(this.profileWalletDefaultZapInput, "");
+      this.updateWalletStatus("Sign in to connect a wallet.", "info");
+      this.applyWalletControlState();
+      return;
+    }
+
+    const settings = this.getActiveNwcSettings();
+    setInputValue(this.profileWalletUriInput, settings.nwcUri || "");
+    setInputValue(
+      this.profileWalletDefaultZapInput,
+      settings.defaultZap === null || settings.defaultZap === undefined
+        ? ""
+        : String(settings.defaultZap)
+    );
+
+    if (settings.nwcUri) {
+      this.updateWalletStatus(
+        "Wallet connected via Nostr Wallet Connect.",
+        "success"
+      );
+    } else {
+      this.updateWalletStatus("No wallet connected yet.", "info");
+    }
+
+    this.applyWalletControlState();
+  }
+
+  getWalletFormValues() {
+    const uri =
+      typeof this.profileWalletUriInput?.value === "string"
+        ? this.profileWalletUriInput.value.trim()
+        : "";
+    const defaultZapRaw =
+      typeof this.profileWalletDefaultZapInput?.value === "string"
+        ? this.profileWalletDefaultZapInput.value.trim()
+        : "";
+
+    if (defaultZapRaw) {
+      const numeric = Number(defaultZapRaw);
+      if (!Number.isFinite(numeric)) {
+        return { uri, error: "Default zap amount must be a number." };
+      }
+      const rounded = Math.round(numeric);
+      if (!Number.isFinite(rounded) || rounded < 0) {
+        return {
+          uri,
+          error: "Default zap amount must be a positive whole number.",
+        };
+      }
+      const clamped = Math.min(MAX_WALLET_DEFAULT_ZAP, rounded);
+      return { uri, defaultZap: clamped };
+    }
+
+    return { uri, defaultZap: null };
+  }
+
+  validateWalletUri(uri, { requireValue = false } = {}) {
+    const value = typeof uri === "string" ? uri.trim() : "";
+    if (!value) {
+      if (requireValue) {
+        return {
+          valid: false,
+          sanitized: "",
+          message: "Enter a wallet connect URI before continuing.",
+        };
+      }
+      return { valid: true, sanitized: "" };
+    }
+
+    if (!value.toLowerCase().startsWith(NWC_URI_SCHEME)) {
+      return {
+        valid: false,
+        sanitized: value,
+        message: `Wallet URI must start with ${NWC_URI_SCHEME}.`,
+      };
+    }
+
+    return { valid: true, sanitized: value };
+  }
+
+  async handleWalletSave() {
+    if (this.isWalletPaneBusy) {
+      return;
+    }
+
+    const { uri, defaultZap, error } = this.getWalletFormValues();
+    if (error) {
+      this.updateWalletStatus(error, "error");
+      this.showError(error);
+      if (this.profileWalletDefaultZapInput instanceof HTMLElement) {
+        this.profileWalletDefaultZapInput.focus();
+      }
+      return;
+    }
+
+    const { valid, sanitized, message } = this.validateWalletUri(uri);
+    if (!valid) {
+      this.updateWalletStatus(message, "error");
+      this.showError(message);
+      if (this.profileWalletUriInput instanceof HTMLElement) {
+        this.profileWalletUriInput.focus();
+      }
+      return;
+    }
+
+    const normalizedActive = this.normalizeHexPubkey(this.pubkey);
+    if (!normalizedActive) {
+      const loginMessage = "Sign in to save wallet settings.";
+      this.updateWalletStatus(loginMessage, "error");
+      this.showError(loginMessage);
+      return;
+    }
+
+    this.setWalletPaneBusy(true);
+    let finalStatus = null;
+    let finalVariant = "info";
+    try {
+      await this.updateActiveNwcSettings({
+        nwcUri: sanitized,
+        defaultZap,
+      });
+
+      if (sanitized) {
+        finalStatus = "Wallet settings saved.";
+        finalVariant = "success";
+        this.showSuccess("Wallet settings saved.");
+      } else {
+        finalStatus = "Wallet connection removed.";
+        finalVariant = "info";
+        this.showStatus("Wallet connection removed.");
+      }
+    } catch (error) {
+      const fallbackMessage = "Failed to save wallet settings.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      finalStatus = detail;
+      finalVariant = "error";
+      this.showError(detail);
+    } finally {
+      this.setWalletPaneBusy(false);
+      this.refreshWalletPaneState();
+      if (finalStatus) {
+        this.updateWalletStatus(finalStatus, finalVariant);
+      }
+    }
+  }
+
+  async handleWalletTest() {
+    if (this.isWalletPaneBusy) {
+      return;
+    }
+
+    const { uri, defaultZap, error } = this.getWalletFormValues();
+    if (error) {
+      this.updateWalletStatus(error, "error");
+      this.showError(error);
+      if (this.profileWalletDefaultZapInput instanceof HTMLElement) {
+        this.profileWalletDefaultZapInput.focus();
+      }
+      return;
+    }
+
+    const { valid, sanitized, message } = this.validateWalletUri(uri, {
+      requireValue: true,
+    });
+    if (!valid) {
+      this.updateWalletStatus(message, "error");
+      this.showError(message);
+      if (this.profileWalletUriInput instanceof HTMLElement) {
+        this.profileWalletUriInput.focus();
+      }
+      return;
+    }
+
+    const normalizedActive = this.normalizeHexPubkey(this.pubkey);
+    if (!normalizedActive) {
+      const loginMessage = "Sign in to test your wallet connection.";
+      this.updateWalletStatus(loginMessage, "error");
+      this.showError(loginMessage);
+      return;
+    }
+
+    this.setWalletPaneBusy(true);
+    let finalStatus = null;
+    let finalVariant = "info";
+    try {
+      const result = await this.ensureWallet({
+        nwcUri: sanitized,
+        defaultZap,
+      });
+      finalStatus = "Wallet connection confirmed.";
+      finalVariant = "success";
+      this.showSuccess("Wallet connection confirmed.");
+
+      const currentSettings = this.getActiveNwcSettings();
+      if (currentSettings.nwcUri === sanitized) {
+        await this.updateActiveNwcSettings({ lastChecked: Date.now() });
+      }
+      return result;
+    } catch (error) {
+      const fallbackMessage = "Failed to reach wallet.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      finalStatus = detail;
+      finalVariant = "error";
+      this.showError(detail);
+      return null;
+    } finally {
+      this.setWalletPaneBusy(false);
+      this.refreshWalletPaneState();
+      if (finalStatus) {
+        this.updateWalletStatus(finalStatus, finalVariant);
+      }
+    }
+  }
+
+  async handleWalletDisconnect() {
+    if (this.isWalletPaneBusy) {
+      return;
+    }
+
+    const normalizedActive = this.normalizeHexPubkey(this.pubkey);
+    if (!normalizedActive) {
+      const loginMessage = "Sign in to disconnect your wallet.";
+      this.updateWalletStatus(loginMessage, "error");
+      this.showError(loginMessage);
+      return;
+    }
+
+    this.setWalletPaneBusy(true);
+    let finalStatus = null;
+    let finalVariant = "info";
+    try {
+      await this.updateActiveNwcSettings(createDefaultNwcSettings());
+      finalStatus = "Wallet disconnected.";
+      this.showStatus("Wallet disconnected.");
+    } catch (error) {
+      const fallbackMessage = "Failed to disconnect wallet.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      finalStatus = detail;
+      finalVariant = "error";
+      this.showError(detail);
+    } finally {
+      this.setWalletPaneBusy(false);
+      this.refreshWalletPaneState();
+      if (finalStatus) {
+        this.updateWalletStatus(finalStatus, finalVariant);
+      }
     }
   }
 
@@ -1847,7 +2280,7 @@ class Application {
     });
   }
 
-  async openProfileModal() {
+  async openProfileModal(targetPane = "account") {
     if (!this.profileModal) {
       return;
     }
@@ -1859,7 +2292,8 @@ class Application {
     }
 
     this.activeProfilePane = null;
-    this.selectProfilePane("account");
+    this.refreshWalletPaneState();
+    this.selectProfilePane(targetPane);
     this.populateProfileRelays();
     try {
       await userBlocks.ensureLoaded(this.pubkey);
@@ -1879,10 +2313,12 @@ class Application {
 
     this.updateProfileModalFocusables();
 
+    const targetButton =
+      this.profileNavButtons[targetPane] instanceof HTMLElement
+        ? this.profileNavButtons[targetPane]
+        : this.profileNavButtons.account;
     const initialTarget =
-      this.profileNavButtons.account instanceof HTMLElement
-        ? this.profileNavButtons.account
-        : this.profileModal;
+      targetButton instanceof HTMLElement ? targetButton : this.profileModal;
 
     window.requestAnimationFrame(() => {
       if (initialTarget && typeof initialTarget.focus === "function") {
@@ -1958,6 +2394,23 @@ class Application {
 
     this.profileModal.addEventListener("keydown", this.boundProfileModalKeydown);
     document.addEventListener("focusin", this.boundProfileModalFocusIn);
+  }
+
+  async openWalletPane() {
+    await this.openProfileModal("wallet");
+    if (
+      this.profileWalletUriInput instanceof HTMLElement &&
+      typeof window !== "undefined" &&
+      typeof window.requestAnimationFrame === "function"
+    ) {
+      window.requestAnimationFrame(() => {
+        if (this.profileWalletUriInput instanceof HTMLElement) {
+          this.profileWalletUriInput.focus();
+        }
+      });
+    } else if (this.profileWalletUriInput instanceof HTMLElement) {
+      this.profileWalletUriInput.focus();
+    }
   }
 
   hideProfileModal() {
@@ -4026,6 +4479,41 @@ class Application {
     }
   }
 
+  async ensureWallet({ nwcUri, defaultZap } = {}) {
+    const activeSettings = this.getActiveNwcSettings();
+    const candidateUri =
+      typeof nwcUri === "string" && nwcUri.trim()
+        ? nwcUri.trim()
+        : activeSettings.nwcUri || "";
+    const { valid, sanitized, message } = this.validateWalletUri(candidateUri, {
+      requireValue: true,
+    });
+    if (!valid) {
+      throw new Error(message || "Invalid wallet URI provided.");
+    }
+
+    const merged = {
+      ...activeSettings,
+      nwcUri: sanitized,
+    };
+
+    if (typeof defaultZap === "number" && Number.isFinite(defaultZap)) {
+      const rounded = Math.max(0, Math.round(defaultZap));
+      merged.defaultZap = Math.min(MAX_WALLET_DEFAULT_ZAP, rounded);
+    } else if (defaultZap === null) {
+      merged.defaultZap = null;
+    }
+
+    if (this.payments && typeof this.payments.ensureWallet === "function") {
+      return this.payments.ensureWallet({ settings: merged });
+    }
+
+    console.warn(
+      "[wallet] Falling back to stub ensureWallet implementation. Returning settings without performing a connection test."
+    );
+    return merged;
+  }
+
   async clearStoredNwcSettings(pubkey, { silent = false } = {}) {
     const normalized = this.normalizeHexPubkey(pubkey);
     if (!normalized) {
@@ -4090,6 +4578,7 @@ class Application {
 
     this.populateBlockedList();
     this.populateProfileRelays();
+    this.refreshWalletPaneState();
 
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
@@ -4194,6 +4683,7 @@ class Application {
 
     this.populateBlockedList();
     this.populateProfileRelays();
+    this.refreshWalletPaneState();
 
     await this.loadVideos();
     this.forceRefreshAllProfiles();
