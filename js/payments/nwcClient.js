@@ -12,6 +12,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
 
 let activeState = null;
 let pendingRequests = new Map();
+let pendingRequestsByPayloadId = new Map();
 let socket = null;
 let subscriptionId = null;
 let connectionPromise = null;
@@ -161,6 +162,27 @@ function parseNwcUri(uri) {
   };
 }
 
+function finalizePendingRequest(entry) {
+  if (!entry || typeof entry !== "object") {
+    return;
+  }
+
+  if (entry.timeoutId) {
+    clearTimeout(entry.timeoutId);
+  }
+
+  if (entry.eventId && pendingRequests.get(entry.eventId) === entry) {
+    pendingRequests.delete(entry.eventId);
+  }
+
+  if (entry.payloadId) {
+    const stored = pendingRequestsByPayloadId.get(entry.payloadId);
+    if (stored === entry) {
+      pendingRequestsByPayloadId.delete(entry.payloadId);
+    }
+  }
+}
+
 function closeSocket({ keepState = false } = {}) {
   if (socket) {
     try {
@@ -177,14 +199,20 @@ function closeSocket({ keepState = false } = {}) {
     activeState = null;
   }
 
-  for (const [, entry] of pendingRequests.entries()) {
+  const pendingEntries = Array.from(pendingRequests.values());
+  pendingRequests.clear();
+  pendingRequestsByPayloadId.clear();
+
+  for (const entry of pendingEntries) {
     try {
+      if (entry.timeoutId) {
+        clearTimeout(entry.timeoutId);
+      }
       entry.reject(new Error("Wallet connection closed."));
     } catch (error) {
       // ignore
     }
   }
-  pendingRequests.clear();
 }
 
 function isSocketOpen() {
@@ -262,36 +290,53 @@ async function handleSocketMessage(messageEvent) {
     }
 
     const eTag = event.tags.find((tag) => Array.isArray(tag) && tag[0] === "e");
-    const requestId = eTag?.[1];
-    if (!requestId || !pendingRequests.has(requestId)) {
+    const requestId = typeof eTag?.[1] === "string" ? eTag[1] : null;
+    let pending = requestId ? pendingRequests.get(requestId) || null : null;
+
+    let response;
+    try {
+      response = await decryptResponse(event);
+    } catch (error) {
+      if (pending) {
+        finalizePendingRequest(pending);
+        pending.reject(error);
+      } else {
+        console.warn("[nwcClient] Failed to decrypt wallet response", error);
+      }
       return;
     }
 
-    const pending = pendingRequests.get(requestId);
-    pendingRequests.delete(requestId);
-    clearTimeout(pending.timeoutId);
-
-    try {
-      const response = await decryptResponse(event);
-      if (response?.error) {
-        const message =
-          typeof response.error.message === "string" && response.error.message.trim()
-            ? response.error.message.trim()
-            : "Wallet reported an error.";
-        const error = new Error(message);
-        error.code = response.error.code || null;
-        pending.reject(error);
-        return;
+    if (!pending) {
+      const payloadId =
+        typeof response?.id === "string" && response.id.trim() ? response.id.trim() : null;
+      if (payloadId) {
+        pending = pendingRequestsByPayloadId.get(payloadId) || null;
       }
-      pending.resolve({
-        requestId,
-        result: response?.result || null,
-        response,
-        event,
-      });
-    } catch (error) {
-      pending.reject(error);
     }
+
+    if (!pending) {
+      return;
+    }
+
+    finalizePendingRequest(pending);
+
+    if (response?.error) {
+      const message =
+        typeof response.error.message === "string" && response.error.message.trim()
+          ? response.error.message.trim()
+          : "Wallet reported an error.";
+      const error = new Error(message);
+      error.code = response.error.code || null;
+      pending.reject(error);
+      return;
+    }
+
+    pending.resolve({
+      requestId: pending.eventId || requestId || null,
+      result: response?.result || null,
+      response,
+      event,
+    });
     return;
   }
 
@@ -387,6 +432,7 @@ function ensureActiveState(settings) {
   };
 
   pendingRequests = new Map();
+  pendingRequestsByPayloadId = new Map();
   return activeState.context;
 }
 
@@ -431,15 +477,27 @@ async function encryptRequestPayload(context, payload) {
   return event;
 }
 
-function registerPendingRequest(eventId, { resolve, reject, timeoutMs }) {
-  const timeoutId = setTimeout(() => {
-    if (pendingRequests.has(eventId)) {
-      pendingRequests.delete(eventId);
+function registerPendingRequest(eventId, payloadId, { resolve, reject, timeoutMs }) {
+  const entry = {
+    eventId,
+    payloadId: typeof payloadId === "string" ? payloadId : null,
+    resolve,
+    reject,
+    timeoutId: null,
+  };
+
+  entry.timeoutId = setTimeout(() => {
+    const existing = pendingRequests.get(eventId);
+    if (existing === entry) {
+      finalizePendingRequest(entry);
       reject(new Error("Wallet request timed out."));
     }
   }, timeoutMs || DEFAULT_REQUEST_TIMEOUT_MS);
 
-  pendingRequests.set(eventId, { resolve, reject, timeoutId });
+  pendingRequests.set(eventId, entry);
+  if (entry.payloadId) {
+    pendingRequestsByPayloadId.set(entry.payloadId, entry);
+  }
 }
 
 async function sendWalletRequest(context, payload, { timeoutMs } = {}) {
@@ -450,7 +508,7 @@ async function sendWalletRequest(context, payload, { timeoutMs } = {}) {
   const event = await encryptRequestPayload(context, payload);
 
   const promise = new Promise((resolve, reject) => {
-    registerPendingRequest(event.id, { resolve, reject, timeoutMs });
+    registerPendingRequest(event.id, payload?.id || null, { resolve, reject, timeoutMs });
   });
 
   socket.send(JSON.stringify(["EVENT", event]));
