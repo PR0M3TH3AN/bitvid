@@ -5910,6 +5910,69 @@ class Application {
     shares,
     shareTracker,
   }) {
+    const summarizeTracker = (tracker) =>
+      Array.isArray(tracker)
+        ? tracker.map((entry) => ({
+            type: entry?.type || "unknown",
+            status: entry?.status || "unknown",
+            amount:
+              Number.isFinite(entry?.amount) && entry.amount >= 0
+                ? entry.amount
+                : undefined,
+            address: entry?.address || undefined,
+            hasPayment: Boolean(entry?.payment),
+            errorMessage:
+              typeof entry?.error?.message === "string"
+                ? entry.error.message
+                : entry?.error
+                ? String(entry.error)
+                : undefined,
+          }))
+        : undefined;
+    const logZapError = (stage, details, error) => {
+      const summary = {
+        stage,
+        shareType: details?.shareType,
+        address: details?.address,
+        amount:
+          Number.isFinite(details?.amount) && details.amount >= 0
+            ? details.amount
+            : undefined,
+        overrideFee:
+          typeof details?.overrideFee === "number"
+            ? details.overrideFee
+            : undefined,
+        commentLength:
+          typeof details?.comment === "string"
+            ? details.comment.length
+            : undefined,
+        wallet:
+          details?.walletSettings
+            ? {
+                hasUri: Boolean(details.walletSettings.nwcUri),
+                type:
+                  details.walletSettings.type ||
+                  details.walletSettings.name ||
+                  details.walletSettings.client ||
+                  undefined,
+              }
+            : undefined,
+        shares: details?.context?.shares
+          ? {
+              total: details.context.shares.total,
+              creator: details.context.shares.creatorShare,
+              platform: details.context.shares.platformShare,
+            }
+          : undefined,
+        tracker: summarizeTracker(details?.tracker),
+        retryAttempt:
+          Number.isInteger(details?.retryAttempt) && details.retryAttempt >= 0
+            ? details.retryAttempt
+            : undefined,
+      };
+      console.error("[zap] Modal zap failure", summary, error);
+    };
+
     const lightningAddress = this.currentVideo?.lightningAddress || "";
     const creatorKey = normalizeLightningAddressKey(
       creatorEntry?.address || lightningAddress
@@ -6020,6 +6083,17 @@ class Application {
                 error,
               });
             }
+            logZapError(
+              "wallet.sendPayment",
+              {
+                shareType: activeShare || "unknown",
+                amount,
+                address,
+                tracker: shareTracker,
+                context: { shares },
+              },
+              error
+            );
             throw error;
           } finally {
             activeShare = null;
@@ -6126,10 +6200,29 @@ class Application {
       return null;
     }
 
-    const context = await this.prepareModalLightningContext({
-      amount,
-      overrideFee,
-    });
+    let context;
+    try {
+      context = await this.prepareModalLightningContext({
+        amount,
+        overrideFee,
+      });
+    } catch (error) {
+      console.error(
+        "[zap] Modal lightning context failed",
+        {
+          amount,
+          overrideFee,
+          commentLength: typeof comment === "string" ? comment.length : undefined,
+          wallet: {
+            hasUri: Boolean(settings?.nwcUri),
+            type:
+              settings?.type || settings?.name || settings?.client || undefined,
+          },
+        },
+        error
+      );
+      throw error;
+    }
     const shareTracker = [];
     const dependencies = this.createModalZapDependencies({
       ...context,
@@ -6159,6 +6252,39 @@ class Application {
       if (Array.isArray(shareTracker) && shareTracker.length) {
         error.__zapShareTracker = shareTracker;
       }
+      console.error(
+        "[zap] splitAndZap failed",
+        {
+          amount,
+          overrideFee,
+          commentLength: typeof comment === "string" ? comment.length : undefined,
+          wallet: {
+            hasUri: Boolean(settings?.nwcUri),
+            type:
+              settings?.type || settings?.name || settings?.client || undefined,
+          },
+          shares: {
+            total: context?.shares?.total,
+            creator: context?.shares?.creatorShare,
+            platform: context?.shares?.platformShare,
+          },
+          tracker: Array.isArray(shareTracker)
+            ? shareTracker.map((entry) => ({
+                type: entry?.type || "unknown",
+                status: entry?.status || "unknown",
+                amount: entry?.amount,
+                address: entry?.address,
+                errorMessage:
+                  typeof entry?.error?.message === "string"
+                    ? entry.error.message
+                    : entry?.error
+                    ? String(entry.error)
+                    : undefined,
+              }))
+            : undefined,
+        },
+        error
+      );
       throw error;
     } finally {
       if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
@@ -6224,6 +6350,31 @@ class Application {
         const tracker = Array.isArray(error?.__zapShareTracker)
           ? error.__zapShareTracker
           : [];
+        console.error(
+          "[zap] Modal zap retry failed",
+          {
+            shareType: share?.type || "unknown",
+            amount: share?.amount,
+            address: share?.address,
+            commentLength:
+              typeof (retryState?.comment || comment) === "string"
+                ? (retryState?.comment || comment).length
+                : undefined,
+            tracker: tracker.map((entry) => ({
+              type: entry?.type || "unknown",
+              status: entry?.status || "unknown",
+              amount: entry?.amount,
+              address: entry?.address,
+              errorMessage:
+                typeof entry?.error?.message === "string"
+                  ? entry.error.message
+                  : entry?.error
+                  ? String(entry.error)
+                  : undefined,
+            })),
+          },
+          error
+        );
         if (tracker.length) {
           aggregatedTracker.push(...tracker);
         }
@@ -6358,6 +6509,37 @@ class Application {
       const tracker = Array.isArray(error?.__zapShareTracker)
         ? error.__zapShareTracker
         : [];
+      console.error(
+        "[zap] Modal zap attempt failed",
+        {
+          amount,
+          commentLength: typeof comment === "string" ? comment.length : undefined,
+          wallet: {
+            hasUri: Boolean(walletSettings?.nwcUri),
+            type:
+              walletSettings?.type ||
+              walletSettings?.name ||
+              walletSettings?.client ||
+              undefined,
+          },
+          tracker: tracker.map((entry) => ({
+            type: entry?.type || "unknown",
+            status: entry?.status || "unknown",
+            amount: entry?.amount,
+            address: entry?.address,
+            errorMessage:
+              typeof entry?.error?.message === "string"
+                ? entry.error.message
+                : entry?.error
+                ? String(entry.error)
+                : undefined,
+          })),
+          retryPending: Array.isArray(this.modalZapRetryState?.shares)
+            ? this.modalZapRetryState.shares.length
+            : 0,
+        },
+        error
+      );
       if (tracker.length) {
         this.videoModal?.renderZapReceipts(tracker, { partial: true });
       }
