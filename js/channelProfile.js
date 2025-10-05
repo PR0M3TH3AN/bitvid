@@ -10,14 +10,26 @@ import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
 import { escapeHTML } from "./utils/domUtils.js";
 import { getApplication } from "./applicationContext.js";
-import { PLATFORM_FEE_PERCENT } from "./config.js";
+import {
+  calculateZapShares,
+  describeShareType,
+  fetchLightningMetadata,
+  formatMinRequirement,
+  getCachedLightningEntry,
+  getCachedMetadataByUrl,
+  getCachedPlatformLightningAddress,
+  isMetadataEntryFresh,
+  normalizeLightningAddressKey,
+  rememberLightningMetadata,
+  setCachedPlatformLightningAddress,
+  validateInvoiceAmount,
+} from "./payments/zapSharedState.js";
+import { splitAndZap } from "./payments/zapSplit.js";
 import {
   resolveLightningAddress,
   fetchPayServiceData,
-  validateInvoiceAmount,
   requestInvoice,
 } from "./payments/lnurl.js";
-import { splitAndZap } from "./payments/zapSplit.js";
 import { getPlatformLightningAddress } from "./payments/platformAddress.js";
 import { ensureWallet, sendPayment } from "./payments/nwcClient.js";
 
@@ -37,13 +49,8 @@ let cachedZapSplitSummary = null;
 let cachedZapStatus = null;
 let cachedZapReceipts = null;
 
-const METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
-const lightningMetadataCache = new Map();
-const lightningMetadataByUrl = new Map();
-
 let pendingZapRetry = null;
 let zapInFlight = false;
-let cachedPlatformLightningAddress = "";
 
 function getChannelZapButton() {
   if (cachedZapButton && !document.body.contains(cachedZapButton)) {
@@ -153,137 +160,6 @@ function getZapReceiptsList() {
   return cachedZapReceipts;
 }
 
-function normalizeLightningAddressKey(address) {
-  return typeof address === "string" ? address.trim().toLowerCase() : "";
-}
-
-function isMetadataEntryFresh(entry) {
-  if (!entry || typeof entry.fetchedAt !== "number") {
-    return false;
-  }
-  return Date.now() - entry.fetchedAt < METADATA_CACHE_TTL_MS;
-}
-
-function rememberLightningMetadata(entry) {
-  if (!entry || !entry.key) {
-    return entry;
-  }
-  lightningMetadataCache.set(entry.key, entry);
-  if (entry.resolved?.url) {
-    lightningMetadataByUrl.set(entry.resolved.url, entry);
-  }
-  return entry;
-}
-
-function getCachedLightningEntry(address) {
-  const key = normalizeLightningAddressKey(address);
-  if (!key) {
-    return null;
-  }
-  const entry = lightningMetadataCache.get(key);
-  if (!entry) {
-    return null;
-  }
-  if (entry.metadata && isMetadataEntryFresh(entry)) {
-    return entry;
-  }
-  if (entry.metadata && !entry.promise) {
-    return entry;
-  }
-  return entry.metadata ? entry : null;
-}
-
-function getCachedMetadataByUrl(url) {
-  if (!url) {
-    return null;
-  }
-  return lightningMetadataByUrl.get(url) || null;
-}
-
-async function fetchLightningMetadata(address) {
-  const key = normalizeLightningAddressKey(address);
-  if (!key) {
-    throw new Error("Lightning address is required.");
-  }
-
-  const cached = lightningMetadataCache.get(key);
-  if (cached && cached.metadata && isMetadataEntryFresh(cached)) {
-    return cached;
-  }
-
-  if (cached?.promise) {
-    return cached.promise;
-  }
-
-  const fetchPromise = (async () => {
-    const resolved = cached?.resolved || resolveLightningAddress(address);
-    const metadata = await fetchPayServiceData(resolved.url);
-    const entry = {
-      key,
-      address: resolved.address || address,
-      resolved,
-      metadata,
-      fetchedAt: Date.now(),
-    };
-    return rememberLightningMetadata(entry);
-  })();
-
-  lightningMetadataCache.set(key, {
-    ...(cached || {}),
-    key,
-    promise: fetchPromise,
-  });
-
-  try {
-    const result = await fetchPromise;
-    rememberLightningMetadata(result);
-    return result;
-  } catch (error) {
-    const current = lightningMetadataCache.get(key);
-    if (current?.promise === fetchPromise) {
-      lightningMetadataCache.delete(key);
-    }
-    throw error;
-  }
-}
-
-function calculateZapShares(amount, overrideFee = null) {
-  const numericAmount = Math.max(0, Math.round(Number(amount) || 0));
-  const percentSource =
-    typeof overrideFee === "number" && Number.isFinite(overrideFee)
-      ? overrideFee
-      : PLATFORM_FEE_PERCENT;
-  const feePercent = Math.min(100, Math.max(0, Math.round(percentSource)));
-  const platformShare = Math.floor((numericAmount * feePercent) / 100);
-  const creatorShare = numericAmount - platformShare;
-  return {
-    total: numericAmount,
-    creatorShare,
-    platformShare,
-    feePercent,
-  };
-}
-
-function describeShareType(type) {
-  if (type === "platform") {
-    return "Platform";
-  }
-  if (type === "creator") {
-    return "Creator";
-  }
-  return "Lightning";
-}
-
-function formatMinRequirement(metadata) {
-  if (!metadata || typeof metadata.minSendable !== "number") {
-    return null;
-  }
-  if (metadata.minSendable <= 0) {
-    return null;
-  }
-  return Math.ceil(metadata.minSendable / 1000);
-}
-
 function updateZapSplitSummary({ overrideFee = null } = {}) {
   const summaryEl = getZapSplitSummaryElement();
   if (!summaryEl) {
@@ -309,7 +185,9 @@ function updateZapSplitSummary({ overrideFee = null } = {}) {
   parts.push(creatorText);
 
   if (shares.platformShare > 0) {
-    const platformEntry = getCachedLightningEntry(cachedPlatformLightningAddress);
+    const platformEntry = getCachedLightningEntry(
+      getCachedPlatformLightningAddress()
+    );
     const platformMin = formatMinRequirement(platformEntry?.metadata);
     let platformText = `Platform: ${shares.platformShare} sats`;
     if (Number.isFinite(platformMin) && platformMin > 0) {
@@ -512,10 +390,10 @@ async function prepareLightningContext({ amount, overrideFee = null }) {
   let platformEntry = null;
   let platformAddress = "";
   if (shares.platformShare > 0) {
-    platformAddress = cachedPlatformLightningAddress;
+    platformAddress = getCachedPlatformLightningAddress();
     if (!platformAddress) {
       platformAddress = await getPlatformLightningAddress({ forceRefresh: false });
-      cachedPlatformLightningAddress = platformAddress || "";
+      setCachedPlatformLightningAddress(platformAddress || "");
     }
     if (!platformAddress) {
       throw new Error("Platform Lightning address is unavailable.");
@@ -545,7 +423,7 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
     creatorEntry?.address || currentChannelLightningAddress
   );
   const platformKey = normalizeLightningAddressKey(
-    platformEntry?.address || cachedPlatformLightningAddress
+    platformEntry?.address || getCachedPlatformLightningAddress()
   );
 
   let activeShare = null;
@@ -611,7 +489,7 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
                 : shares.creatorShare;
             const address =
               shareType === "platform"
-                ? platformEntry?.address || cachedPlatformLightningAddress
+                ? platformEntry?.address || getCachedPlatformLightningAddress()
                 : creatorEntry?.address || currentChannelLightningAddress;
             shareTracker.push({
               type: shareType,
@@ -631,7 +509,7 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
                 : shares.creatorShare;
             const address =
               shareType === "platform"
-                ? platformEntry?.address || cachedPlatformLightningAddress
+                ? platformEntry?.address || getCachedPlatformLightningAddress()
                 : creatorEntry?.address || currentChannelLightningAddress;
             shareTracker.push({
               type: shareType,
@@ -652,11 +530,12 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
         if (platformEntry?.address) {
           return platformEntry.address;
         }
-        if (cachedPlatformLightningAddress) {
-          return cachedPlatformLightningAddress;
+        const cachedAddress = getCachedPlatformLightningAddress();
+        if (cachedAddress) {
+          return cachedAddress;
         }
         const fallback = await getPlatformLightningAddress({ forceRefresh: false });
-        cachedPlatformLightningAddress = fallback || "";
+        setCachedPlatformLightningAddress(fallback || "");
         return fallback;
       },
     },
@@ -1078,7 +957,7 @@ export async function initChannelProfileView() {
   currentChannelNpub = null;
   currentChannelLightningAddress = "";
   currentChannelProfileEvent = null;
-  cachedPlatformLightningAddress = "";
+  setCachedPlatformLightningAddress("");
   resetZapRetryState();
   clearZapReceipts();
   setZapStatus("", "neutral");

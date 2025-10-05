@@ -49,6 +49,30 @@ import {
   clearNwcSettings,
   createDefaultNwcSettings,
 } from "./nwcSettings.js";
+import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
+import {
+  calculateZapShares,
+  fetchLightningMetadata,
+  formatMinRequirement,
+  getCachedLightningEntry,
+  getCachedMetadataByUrl,
+  getCachedPlatformLightningAddress,
+  isMetadataEntryFresh,
+  normalizeLightningAddressKey,
+  rememberLightningMetadata,
+  setCachedPlatformLightningAddress,
+  validateInvoiceAmount,
+} from "./payments/zapSharedState.js";
+import {
+  resolveLightningAddress,
+  fetchPayServiceData,
+  requestInvoice,
+} from "./payments/lnurl.js";
+import { getPlatformLightningAddress } from "./payments/platformAddress.js";
+import {
+  ensureWallet as ensureWalletDefault,
+  sendPayment as sendPaymentDefault,
+} from "./payments/nwcClient.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatTimeAgo as formatTimeAgoUtil,
@@ -186,6 +210,10 @@ class Application {
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
     this.feedEngine = services.feedEngine || createFeedEngine();
+    this.payments = services.payments || null;
+    this.splitAndZap =
+      (services.payments && services.payments.splitAndZap) ||
+      splitAndZapDefault;
     if (
       this.feedEngine &&
       typeof this.feedEngine.run !== "function" &&
@@ -421,6 +449,10 @@ class Application {
     this.downloaded = document.getElementById("downloaded") || null;
 
     this.cleanupPromise = null;
+    this.modalZapInFlight = false;
+    this.modalZapRetryState = null;
+    this.modalZapAmountValue = 0;
+    this.modalZapCommentValue = "";
 
     this.videoModal =
       (typeof ui.videoModal === "function"
@@ -462,12 +494,40 @@ class Application {
       "creator:navigate",
       this.boundVideoModalCreatorHandler
     );
-    this.boundVideoModalZapHandler = () => {
-      window.alert("Zaps coming soon.");
+    this.boundVideoModalZapHandler = (event) => {
+      this.handleVideoModalZap(event);
+    };
+    this.boundVideoModalZapOpenHandler = (event) => {
+      this.handleVideoModalZapOpen(event);
+    };
+    this.boundVideoModalZapCloseHandler = (event) => {
+      this.handleVideoModalZapClose(event);
+    };
+    this.boundVideoModalZapAmountHandler = (event) => {
+      this.handleVideoModalZapAmountChange(event);
+    };
+    this.boundVideoModalZapCommentHandler = (event) => {
+      this.handleVideoModalZapCommentChange(event);
     };
     this.videoModal.addEventListener(
       "video:zap",
       this.boundVideoModalZapHandler
+    );
+    this.videoModal.addEventListener(
+      "zap:open",
+      this.boundVideoModalZapOpenHandler
+    );
+    this.videoModal.addEventListener(
+      "zap:close",
+      this.boundVideoModalZapCloseHandler
+    );
+    this.videoModal.addEventListener(
+      "zap:amount-change",
+      this.boundVideoModalZapAmountHandler
+    );
+    this.videoModal.addEventListener(
+      "zap:comment-change",
+      this.boundVideoModalZapCommentHandler
     );
 
     // Hide/Show Subscriptions Link
@@ -504,7 +564,6 @@ class Application {
     this.boundMoreMenuDocumentClick = null;
     this.boundMoreMenuDocumentKeydown = null;
     this.nwcSettings = new Map();
-    this.payments = null;
     this.boundNwcSettingsToastHandler = null;
     Object.defineProperty(this, "savedProfiles", {
       configurable: false,
@@ -5672,6 +5731,672 @@ class Application {
     }
   }
 
+  resetModalZapState({ preserveAmount = false } = {}) {
+    if (!preserveAmount) {
+      this.modalZapAmountValue = 0;
+    }
+    this.modalZapCommentValue = "";
+    this.modalZapInFlight = false;
+    this.resetModalZapRetryState();
+    if (this.videoModal) {
+      this.videoModal.resetZapForm({
+        amount: preserveAmount ? this.modalZapAmountValue || "" : "",
+        comment: "",
+      });
+      this.videoModal.setZapPending(false);
+      this.videoModal.setZapSplitSummary("Enter an amount to view the split.");
+    }
+  }
+
+  resetModalZapFeedback() {
+    if (!this.videoModal) {
+      return;
+    }
+    this.videoModal.setZapStatus("", "neutral");
+    this.videoModal.clearZapReceipts();
+    this.videoModal.setZapRetryPending(false);
+    this.videoModal.setZapPending(false);
+  }
+
+  applyModalDefaultZapAmount() {
+    const settings = this.getActiveNwcSettings();
+    let defaultAmount = 0;
+    if (Number.isFinite(settings?.defaultZap) && settings.defaultZap > 0) {
+      defaultAmount = Math.max(0, Math.round(settings.defaultZap));
+    }
+    this.modalZapAmountValue = defaultAmount;
+    if (this.videoModal) {
+      this.videoModal.setZapAmount(defaultAmount || "");
+    }
+    this.updateModalZapSplitSummary();
+  }
+
+  updateModalZapSplitSummary() {
+    if (!this.videoModal) {
+      return;
+    }
+
+    const amount = Math.max(0, Math.round(Number(this.modalZapAmountValue || 0)));
+    if (!amount) {
+      this.videoModal.setZapSplitSummary("Enter an amount to view the split.");
+      return;
+    }
+
+    const shares = calculateZapShares(amount);
+    const parts = [];
+    const lightningAddress = this.currentVideo?.lightningAddress || "";
+    const creatorEntry = getCachedLightningEntry(lightningAddress);
+    const creatorMin = formatMinRequirement(creatorEntry?.metadata);
+    let creatorText = `Creator: ${shares.creatorShare} sats`;
+    if (Number.isFinite(creatorMin) && creatorMin > 0) {
+      creatorText += ` (min ${creatorMin})`;
+    }
+    parts.push(creatorText);
+
+    if (shares.platformShare > 0) {
+      const platformEntry = getCachedLightningEntry(
+        getCachedPlatformLightningAddress()
+      );
+      const platformMin = formatMinRequirement(platformEntry?.metadata);
+      let platformText = `Platform: ${shares.platformShare} sats`;
+      if (Number.isFinite(platformMin) && platformMin > 0) {
+        platformText += ` (min ${platformMin})`;
+      }
+      parts.push(platformText);
+    }
+
+    this.videoModal.setZapSplitSummary(parts.join(" • "));
+  }
+
+  async preloadModalLightningMetadata() {
+    const lightningAddress = this.currentVideo?.lightningAddress || "";
+    if (lightningAddress) {
+      try {
+        await fetchLightningMetadata(lightningAddress);
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[zap] Failed to preload creator metadata:", error);
+        }
+      }
+    }
+
+    const amount = Math.max(0, Math.round(Number(this.modalZapAmountValue || 0)));
+    if (!amount) {
+      return;
+    }
+
+    const shares = calculateZapShares(amount);
+    if (shares.platformShare > 0) {
+      let platformAddress = getCachedPlatformLightningAddress();
+      if (!platformAddress) {
+        try {
+          platformAddress = await getPlatformLightningAddress({
+            forceRefresh: false,
+          });
+          setCachedPlatformLightningAddress(platformAddress || "");
+        } catch (error) {
+          if (isDevMode) {
+            console.warn("[zap] Failed to load platform Lightning address:", error);
+          }
+        }
+      }
+      if (platformAddress) {
+        try {
+          await fetchLightningMetadata(platformAddress);
+        } catch (error) {
+          if (isDevMode) {
+            console.warn("[zap] Failed to preload platform metadata:", error);
+          }
+        }
+      }
+    }
+  }
+
+  handleVideoModalZapOpen() {
+    this.resetModalZapFeedback();
+    this.applyModalDefaultZapAmount();
+    this.preloadModalLightningMetadata().catch((error) => {
+      if (isDevMode) {
+        console.warn("[zap] Preload metadata error:", error);
+      }
+    });
+  }
+
+  handleVideoModalZapClose() {
+    this.resetModalZapFeedback();
+  }
+
+  handleVideoModalZapAmountChange(event) {
+    const detail = event?.detail || {};
+    const rawAmount = Number(detail.amount);
+    const amount = Number.isFinite(rawAmount)
+      ? rawAmount
+      : this.videoModal?.getZapAmountValue?.() || 0;
+    this.modalZapAmountValue = Math.max(0, Math.round(amount || 0));
+    this.resetModalZapFeedback();
+    this.updateModalZapSplitSummary();
+  }
+
+  handleVideoModalZapCommentChange(event) {
+    const detail = event?.detail || {};
+    if (typeof detail.comment === "string") {
+      this.modalZapCommentValue = detail.comment.trim();
+      return;
+    }
+    const fallback = this.videoModal?.getZapCommentValue?.();
+    this.modalZapCommentValue = typeof fallback === "string" ? fallback : "";
+  }
+
+  getModalWalletSettingsOrPrompt() {
+    const settings = this.getActiveNwcSettings();
+    const normalizedUri =
+      typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
+    if (!normalizedUri) {
+      this.showError("Connect a Lightning wallet to send zaps.");
+      if (typeof this.openWalletPane === "function") {
+        this.openWalletPane();
+      }
+      return null;
+    }
+    return {
+      ...settings,
+      nwcUri: normalizedUri,
+    };
+  }
+
+  createModalZapDependencies({
+    creatorEntry,
+    platformEntry,
+    shares,
+    shareTracker,
+  }) {
+    const lightningAddress = this.currentVideo?.lightningAddress || "";
+    const creatorKey = normalizeLightningAddressKey(
+      creatorEntry?.address || lightningAddress
+    );
+    const platformKey = normalizeLightningAddressKey(
+      platformEntry?.address || getCachedPlatformLightningAddress()
+    );
+
+    const ensureWalletFn =
+      typeof this.payments?.ensureWallet === "function"
+        ? (options) => this.payments.ensureWallet(options)
+        : (options) => ensureWalletDefault(options);
+    const sendPaymentFn =
+      typeof this.payments?.sendPayment === "function"
+        ? (bolt11, params) => this.payments.sendPayment(bolt11, params)
+        : (bolt11, params) => sendPaymentDefault(bolt11, params);
+
+    let activeShare = null;
+
+    return {
+      lnurl: {
+        resolveLightningAddress: (value) => {
+          const normalized = normalizeLightningAddressKey(value);
+          if (normalized && normalized === creatorKey) {
+            activeShare = "creator";
+            if (creatorEntry?.resolved) {
+              return { ...creatorEntry.resolved };
+            }
+          } else if (normalized && normalized === platformKey) {
+            activeShare = "platform";
+            if (platformEntry?.resolved) {
+              return { ...platformEntry.resolved };
+            }
+          } else {
+            activeShare = null;
+          }
+
+          const resolved = resolveLightningAddress(value);
+          if (normalized) {
+            rememberLightningMetadata({
+              key: normalized,
+              address: resolved.address || value,
+              resolved,
+              fetchedAt: Date.now(),
+            });
+          }
+          return resolved;
+        },
+        fetchPayServiceData: async (url) => {
+          const cached = getCachedMetadataByUrl(url);
+          if (cached?.metadata && isMetadataEntryFresh(cached)) {
+            return cached.metadata;
+          }
+
+          const metadata = await fetchPayServiceData(url);
+          if (cached) {
+            rememberLightningMetadata({
+              ...cached,
+              metadata,
+              fetchedAt: Date.now(),
+            });
+          }
+          return metadata;
+        },
+        validateInvoiceAmount,
+        requestInvoice,
+      },
+      wallet: {
+        ensureWallet: (options) => ensureWalletFn(options),
+        sendPayment: async (bolt11, params) => {
+          try {
+            const payment = await sendPaymentFn(bolt11, params);
+            if (Array.isArray(shareTracker)) {
+              const shareType = activeShare || "unknown";
+              const amount =
+                shareType === "platform"
+                  ? shares.platformShare
+                  : shares.creatorShare;
+              const address =
+                shareType === "platform"
+                  ? platformEntry?.address || getCachedPlatformLightningAddress()
+                  : creatorEntry?.address || lightningAddress;
+              shareTracker.push({
+                type: shareType,
+                status: "success",
+                amount,
+                address,
+                payment,
+              });
+            }
+            return payment;
+          } catch (error) {
+            if (Array.isArray(shareTracker)) {
+              const shareType = activeShare || "unknown";
+              const amount =
+                shareType === "platform"
+                  ? shares.platformShare
+                  : shares.creatorShare;
+              const address =
+                shareType === "platform"
+                  ? platformEntry?.address || getCachedPlatformLightningAddress()
+                  : creatorEntry?.address || lightningAddress;
+              shareTracker.push({
+                type: shareType,
+                status: "error",
+                amount,
+                address,
+                error,
+              });
+            }
+            throw error;
+          } finally {
+            activeShare = null;
+          }
+        },
+      },
+      platformAddress: {
+        getPlatformLightningAddress: async () => {
+          if (platformEntry?.address) {
+            return platformEntry.address;
+          }
+          const cachedAddress = getCachedPlatformLightningAddress();
+          if (cachedAddress) {
+            return cachedAddress;
+          }
+          const fallback = await getPlatformLightningAddress({
+            forceRefresh: false,
+          });
+          setCachedPlatformLightningAddress(fallback || "");
+          return fallback;
+        },
+      },
+    };
+  }
+
+  async prepareModalLightningContext({ amount, overrideFee = null }) {
+    const lightningAddress = this.currentVideo?.lightningAddress || "";
+    if (!lightningAddress) {
+      throw new Error("This creator has not configured a Lightning address yet.");
+    }
+
+    const shares = calculateZapShares(amount, overrideFee);
+    if (!shares.total) {
+      throw new Error("Enter a zap amount greater than zero.");
+    }
+
+    const creatorEntry = await fetchLightningMetadata(lightningAddress);
+    if (shares.creatorShare > 0) {
+      try {
+        validateInvoiceAmount(creatorEntry.metadata, shares.creatorShare);
+      } catch (error) {
+        const detail = error?.message || "Unable to validate creator share.";
+        throw new Error(`Creator share error: ${detail}`);
+      }
+    }
+
+    let platformEntry = null;
+    let platformAddress = "";
+    if (shares.platformShare > 0) {
+      platformAddress = getCachedPlatformLightningAddress();
+      if (!platformAddress) {
+        platformAddress = await getPlatformLightningAddress({
+          forceRefresh: false,
+        });
+        setCachedPlatformLightningAddress(platformAddress || "");
+      }
+      if (!platformAddress) {
+        throw new Error("Platform Lightning address is unavailable.");
+      }
+
+      platformEntry = await fetchLightningMetadata(platformAddress);
+      try {
+        validateInvoiceAmount(platformEntry.metadata, shares.platformShare);
+      } catch (error) {
+        const detail = error?.message || "Unable to validate platform share.";
+        throw new Error(`Platform share error: ${detail}`);
+      }
+    }
+
+    this.updateModalZapSplitSummary();
+
+    return {
+      shares,
+      creatorEntry,
+      platformEntry,
+      platformAddress,
+    };
+  }
+
+  getActiveModalVideoEvent() {
+    const video = this.currentVideo || {};
+    const lightningAddress = video.lightningAddress || "";
+    return {
+      kind: typeof video.kind === "number" ? video.kind : 0,
+      id: typeof video.id === "string" ? video.id : "",
+      pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+      tags: Array.isArray(video.tags) ? [...video.tags] : [],
+      content: typeof video.content === "string" ? video.content : "",
+      created_at: Number.isFinite(video.created_at)
+        ? video.created_at
+        : Math.floor(Date.now() / 1000),
+      lightningAddress,
+    };
+  }
+
+  async runModalZapAttempt({
+    amount,
+    overrideFee = null,
+    walletSettings,
+    comment,
+  }) {
+    const settings = walletSettings || this.getModalWalletSettingsOrPrompt();
+    if (!settings) {
+      return null;
+    }
+
+    const context = await this.prepareModalLightningContext({
+      amount,
+      overrideFee,
+    });
+    const shareTracker = [];
+    const dependencies = this.createModalZapDependencies({
+      ...context,
+      shareTracker,
+    });
+    const videoEvent = this.getActiveModalVideoEvent();
+
+    let previousOverride;
+    const hasGlobal = typeof globalThis !== "undefined";
+    if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
+      previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+      globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = overrideFee;
+    }
+
+    try {
+      const result = await this.splitAndZap(
+        {
+          videoEvent,
+          amountSats: context.shares.total,
+          comment: typeof comment === "string" ? comment : "",
+          walletSettings: settings,
+        },
+        dependencies
+      );
+      return { context, result, shareTracker };
+    } catch (error) {
+      if (Array.isArray(shareTracker) && shareTracker.length) {
+        error.__zapShareTracker = shareTracker;
+      }
+      throw error;
+    } finally {
+      if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
+        if (typeof previousOverride === "number") {
+          globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
+        } else if (
+          globalThis &&
+          Object.prototype.hasOwnProperty.call(globalThis, "__BITVID_PLATFORM_FEE_OVERRIDE__")
+        ) {
+          delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+        }
+      }
+    }
+  }
+
+  async executeModalZapRetry({ walletSettings, comment }) {
+    const retryState = this.modalZapRetryState;
+    const shares = Array.isArray(retryState?.shares) ? retryState.shares : [];
+    if (!shares.length) {
+      this.resetModalZapRetryState();
+      return null;
+    }
+
+    const summary = shares
+      .map((share) => {
+        const label =
+          share.type === "platform"
+            ? "Platform"
+            : share.type === "creator"
+            ? "Creator"
+            : "Lightning";
+        return `${label} ${share.amount} sats`;
+      })
+      .join(", ");
+    this.videoModal?.setZapStatus(
+      `Retrying failed share(s): ${summary}`,
+      "warning"
+    );
+    this.videoModal?.clearZapReceipts();
+
+    const aggregatedReceipts = [];
+    const aggregatedTracker = [];
+
+    for (const share of shares) {
+      const overrideFee = share.type === "platform" ? 100 : 0;
+      try {
+        const attempt = await this.runModalZapAttempt({
+          amount: share.amount,
+          overrideFee,
+          walletSettings,
+          comment: retryState?.comment || comment || "",
+        });
+        if (!attempt) {
+          this.videoModal?.setZapStatus("", "neutral");
+          return null;
+        }
+        if (Array.isArray(attempt?.result?.receipts)) {
+          aggregatedReceipts.push(...attempt.result.receipts);
+        } else if (Array.isArray(attempt?.shareTracker)) {
+          aggregatedTracker.push(...attempt.shareTracker);
+        }
+      } catch (error) {
+        const tracker = Array.isArray(error?.__zapShareTracker)
+          ? error.__zapShareTracker
+          : [];
+        if (tracker.length) {
+          aggregatedTracker.push(...tracker);
+        }
+        throw error;
+      }
+    }
+
+    if (aggregatedReceipts.length) {
+      this.videoModal?.renderZapReceipts(aggregatedReceipts, { partial: false });
+    } else if (aggregatedTracker.length) {
+      this.videoModal?.renderZapReceipts(aggregatedTracker, { partial: true });
+    }
+
+    const total = shares.reduce((sum, share) => {
+      const value = Math.max(0, Math.round(Number(share.amount) || 0));
+      return sum + value;
+    }, 0);
+    const successMessage =
+      total > 0
+        ? `Retried ${total} sats successfully.`
+        : "Retried zap shares successfully.";
+    this.videoModal?.setZapStatus(successMessage, "success");
+    this.showSuccess("Zap shares retried successfully!");
+    this.resetModalZapRetryState();
+    return true;
+  }
+
+  markModalZapRetryPending(shares, comment = "") {
+    const validShares = Array.isArray(shares)
+      ? shares.filter((share) => share && share.amount > 0)
+      : [];
+    if (!validShares.length) {
+      this.resetModalZapRetryState();
+      return;
+    }
+
+    this.modalZapRetryState = {
+      shares: validShares,
+      comment: typeof comment === "string" ? comment : this.modalZapCommentValue,
+      createdAt: Date.now(),
+    };
+
+    const summary = validShares
+      .map((share) => {
+        const label =
+          share.type === "platform"
+            ? "Platform"
+            : share.type === "creator"
+            ? "Creator"
+            : "Lightning";
+        return `${label} ${share.amount} sats`;
+      })
+      .join(", ");
+    this.videoModal?.setZapRetryPending(true, { summary });
+  }
+
+  resetModalZapRetryState() {
+    this.modalZapRetryState = null;
+    this.videoModal?.setZapRetryPending(false);
+  }
+
+  async handleVideoModalZap(event) {
+    if (this.modalZapInFlight) {
+      return;
+    }
+
+    const detail = event?.detail || {};
+    const eventAmount = Number(detail.amount);
+    let amount = Number.isFinite(eventAmount)
+      ? eventAmount
+      : this.modalZapAmountValue;
+    amount = Math.max(0, Math.round(amount || 0));
+    this.modalZapAmountValue = amount;
+
+    const comment =
+      typeof detail.comment === "string"
+        ? detail.comment.trim()
+        : this.modalZapCommentValue;
+    this.modalZapCommentValue = comment;
+
+    if (!amount) {
+      const message = "Enter a zap amount greater than zero.";
+      this.videoModal?.setZapStatus(message, "error");
+      this.showError(message);
+      return;
+    }
+
+    const walletSettings = this.getModalWalletSettingsOrPrompt();
+    if (!walletSettings) {
+      return;
+    }
+
+    this.modalZapInFlight = true;
+    this.videoModal?.setZapPending(true);
+    this.videoModal?.setZapStatus(`Sending ${amount} sats…`, "warning");
+    this.videoModal?.clearZapReceipts();
+
+    try {
+      if (Array.isArray(this.modalZapRetryState?.shares) && this.modalZapRetryState.shares.length) {
+        await this.executeModalZapRetry({ walletSettings, comment });
+        this.applyModalDefaultZapAmount();
+        return;
+      }
+
+      const attempt = await this.runModalZapAttempt({
+        amount,
+        walletSettings,
+        comment,
+      });
+      if (!attempt) {
+        this.videoModal?.setZapStatus("", "neutral");
+        return;
+      }
+
+      const { context, result } = attempt;
+      const receipts = Array.isArray(result?.receipts) ? result.receipts : [];
+      this.videoModal?.renderZapReceipts(receipts, { partial: false });
+
+      const creatorShare = context.shares.creatorShare;
+      const platformShare = context.shares.platformShare;
+      const summary = platformShare
+        ? `Sent ${context.shares.total} sats (creator ${creatorShare}, platform ${platformShare}).`
+        : `Sent ${context.shares.total} sats to the creator.`;
+      this.videoModal?.setZapStatus(summary, "success");
+      this.showSuccess("Zap sent successfully!");
+
+      this.resetModalZapRetryState();
+      this.modalZapCommentValue = "";
+      this.videoModal?.resetZapForm({ amount: "", comment: "" });
+      this.applyModalDefaultZapAmount();
+    } catch (error) {
+      const tracker = Array.isArray(error?.__zapShareTracker)
+        ? error.__zapShareTracker
+        : [];
+      if (tracker.length) {
+        this.videoModal?.renderZapReceipts(tracker, { partial: true });
+      }
+
+      const failureShares = tracker.filter(
+        (entry) => entry && entry.status !== "success" && entry.amount > 0
+      );
+      if (failureShares.length) {
+        this.markModalZapRetryPending(failureShares, comment);
+        const summary = failureShares
+          .map((share) => {
+            const label =
+              share.type === "platform"
+                ? "Platform"
+                : share.type === "creator"
+                ? "Creator"
+                : "Lightning";
+            return `${label} ${share.amount} sats`;
+          })
+          .join(", ");
+        const tone = tracker.length > failureShares.length ? "warning" : "error";
+        const statusMessage =
+          tracker.length > failureShares.length
+            ? `Partial zap failure. Tap zap again to retry: ${summary}.`
+            : `Zap failed. Tap zap again to retry: ${summary}.`;
+        this.videoModal?.setZapStatus(statusMessage, tone);
+        this.showError(error?.message || statusMessage);
+      } else {
+        this.resetModalZapRetryState();
+        const message = error?.message || "Zap failed. Please try again.";
+        this.videoModal?.setZapStatus(message, "error");
+        this.showError(message);
+      }
+    } finally {
+      this.modalZapInFlight = false;
+      this.videoModal?.setZapPending(false);
+    }
+  }
+
   getShareUrlBase() {
     try {
       const current = new URL(window.location.href);
@@ -8081,6 +8806,7 @@ class Application {
     window.history.pushState({}, "", pushUrl);
 
     this.setModalZapVisibility(false);
+    this.resetModalZapState();
     let lightningAddress = "";
     let creatorProfile = {
       name: "Unknown",
@@ -8147,6 +8873,7 @@ class Application {
     const sanitizedMagnet = magnetSupported ? usableMagnet : "";
 
     this.setModalZapVisibility(false);
+    this.resetModalZapState();
 
     trackVideoView({
       videoId:
@@ -8526,6 +9253,34 @@ class Application {
           this.boundVideoModalZapHandler
         );
         this.boundVideoModalZapHandler = null;
+      }
+      if (this.boundVideoModalZapOpenHandler) {
+        this.videoModal.removeEventListener(
+          "zap:open",
+          this.boundVideoModalZapOpenHandler
+        );
+        this.boundVideoModalZapOpenHandler = null;
+      }
+      if (this.boundVideoModalZapCloseHandler) {
+        this.videoModal.removeEventListener(
+          "zap:close",
+          this.boundVideoModalZapCloseHandler
+        );
+        this.boundVideoModalZapCloseHandler = null;
+      }
+      if (this.boundVideoModalZapAmountHandler) {
+        this.videoModal.removeEventListener(
+          "zap:amount-change",
+          this.boundVideoModalZapAmountHandler
+        );
+        this.boundVideoModalZapAmountHandler = null;
+      }
+      if (this.boundVideoModalZapCommentHandler) {
+        this.videoModal.removeEventListener(
+          "zap:comment-change",
+          this.boundVideoModalZapCommentHandler
+        );
+        this.boundVideoModalZapCommentHandler = null;
       }
       if (typeof this.videoModal.destroy === "function") {
         try {
