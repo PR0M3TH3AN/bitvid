@@ -38,6 +38,67 @@ const getApp = () => getApplication();
 let currentChannelHex = null;
 let currentChannelNpub = null;
 let currentChannelLightningAddress = "";
+
+const summarizeZapTracker = (tracker) =>
+  Array.isArray(tracker)
+    ? tracker.map((entry) => ({
+        type: entry?.type || "unknown",
+        status: entry?.status || "unknown",
+        amount:
+          Number.isFinite(entry?.amount) && entry.amount >= 0
+            ? entry.amount
+            : undefined,
+        address: entry?.address || undefined,
+        hasPayment: Boolean(entry?.payment),
+        errorMessage:
+          typeof entry?.error?.message === "string"
+            ? entry.error.message
+            : entry?.error
+            ? String(entry.error)
+            : undefined,
+      }))
+    : undefined;
+
+function logZapError(stage, details = {}, error) {
+  const summary = {
+    stage,
+    shareType: details?.shareType,
+    address: details?.address,
+    amount:
+      Number.isFinite(details?.amount) && details.amount >= 0
+        ? details.amount
+        : undefined,
+    overrideFee:
+      typeof details?.overrideFee === "number"
+        ? details.overrideFee
+        : undefined,
+    commentLength:
+      typeof details?.comment === "string" ? details.comment.length : undefined,
+    wallet: details?.walletSettings
+      ? {
+          hasUri: Boolean(details.walletSettings.nwcUri),
+          type:
+            details.walletSettings.type ||
+            details.walletSettings.name ||
+            details.walletSettings.client ||
+            undefined,
+        }
+      : undefined,
+    shares: details?.context?.shares
+      ? {
+          total: details.context.shares.total,
+          creator: details.context.shares.creatorShare,
+          platform: details.context.shares.platformShare,
+        }
+      : undefined,
+    tracker: summarizeZapTracker(details?.tracker),
+    retryAttempt:
+      Number.isInteger(details?.retryAttempt) && details.retryAttempt >= 0
+        ? details.retryAttempt
+        : undefined,
+  };
+  console.error("[zap] Channel zap failure", summary, error);
+}
 let currentChannelProfileEvent = null;
 
 let cachedZapButton = null;
@@ -477,7 +538,22 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
       requestInvoice,
     },
     wallet: {
-      ensureWallet: (options) => ensureWallet(options),
+      ensureWallet: async (options) => {
+        try {
+          return await ensureWallet(options);
+        } catch (error) {
+          logZapError(
+            "wallet.ensureWallet",
+            {
+              tracker: shareTracker,
+              context: { shares },
+              walletSettings: options?.settings,
+            },
+            error
+          );
+          throw error;
+        }
+      },
       sendPayment: async (bolt11, params) => {
         try {
           const payment = await sendPayment(bolt11, params);
@@ -519,6 +595,17 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
               error,
             });
           }
+          logZapError(
+            "wallet.sendPayment",
+            {
+              shareType: activeShare || "unknown",
+              amount,
+              address,
+              tracker: shareTracker,
+              context: { shares },
+            },
+            error
+          );
           throw error;
         } finally {
           activeShare = null;
@@ -569,7 +656,21 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
     return null;
   }
 
-  const context = await prepareLightningContext({ amount, overrideFee });
+  let context;
+  try {
+    context = await prepareLightningContext({ amount, overrideFee });
+  } catch (error) {
+    logZapError(
+      "prepareLightningContext",
+      {
+        amount,
+        overrideFee,
+        walletSettings: settings,
+      },
+      error
+    );
+    throw error;
+  }
   const shareTracker = [];
   const dependencies = createZapDependencies({
     ...context,
@@ -598,6 +699,17 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
     if (Array.isArray(shareTracker) && shareTracker.length) {
       error.__zapShareTracker = shareTracker;
     }
+    logZapError(
+      "splitAndZap",
+      {
+        amount,
+        overrideFee,
+        walletSettings: settings,
+        context,
+        tracker: shareTracker,
+      },
+      error
+    );
     throw error;
   } finally {
     if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
@@ -654,6 +766,17 @@ async function executePendingRetry({ walletSettings }) {
       const tracker = Array.isArray(error?.__zapShareTracker)
         ? error.__zapShareTracker
         : [];
+      logZapError(
+        "retry.share",
+        {
+          shareType: share?.type || "unknown",
+          amount: share?.amount,
+          address: share?.address,
+          walletSettings,
+          tracker,
+        },
+        error
+      );
       if (tracker.length) {
         aggregatedTracker.push(...tracker);
       }
@@ -714,6 +837,7 @@ async function handleZapButtonClick(event) {
   zapButton.classList.add("opacity-50", "pointer-events-none");
   amountInput.disabled = true;
 
+  let attemptedAmount = null;
   try {
     if (pendingZapRetry?.shares?.length) {
       await executePendingRetry({ walletSettings });
@@ -721,6 +845,7 @@ async function handleZapButtonClick(event) {
     }
 
     const amount = Math.max(0, Math.round(Number(amountInput.value || 0)));
+    attemptedAmount = amount;
     if (!amount) {
       const message = "Enter a zap amount greater than zero.";
       setZapStatus(message, "error");
@@ -753,6 +878,19 @@ async function handleZapButtonClick(event) {
     const tracker = Array.isArray(error?.__zapShareTracker)
       ? error.__zapShareTracker
       : [];
+    logZapError(
+      "handleZapButtonClick",
+      {
+        amount: attemptedAmount,
+        walletSettings,
+        tracker,
+        retryAttempt:
+          Array.isArray(pendingZapRetry?.shares) && pendingZapRetry.shares.length
+            ? pendingZapRetry.shares.length
+            : undefined,
+      },
+      error
+    );
     if (tracker.length) {
       renderZapReceipts(tracker, { partial: true });
     }
