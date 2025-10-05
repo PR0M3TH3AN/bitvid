@@ -26,6 +26,36 @@ export const ADMIN_SUPER_NPUB =
   "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
 
 /**
+ * Percentage of every Lightning payment the platform retains as a fee.
+ *
+ * Accepts numbers between 0 and 100 (inclusive). Decimals are supported when
+ * you want to keep a fractional cut—e.g., `2.5` represents a 2.5% fee. The
+ * default of `0` disables the fee so creators receive the full payment.
+ */
+export const PLATFORM_FEE_PERCENT = 0;
+
+/**
+ * Lightning address to fall back to when authors omit their own `lud16`.
+ *
+ * Supply a string like `"tips@example.com"` to force a deployment-wide
+ * fallback Lightning address, or leave the value as `null` to respect the
+ * creator’s configured profile metadata.
+ */
+export const PLATFORM_LUD16_OVERRIDE = null;
+
+/**
+ * Optional list of relays to seed new sessions with instead of the defaults.
+ *
+ * Provide WSS URLs (e.g., `"wss://relay.example.com"`). Leave the array empty
+ * to keep BitVid’s bundled defaults. Operators that need a custom bootstrap set
+ * should list the relays in priority order; entries later in the list are used
+ * as fallbacks when earlier relays fail.
+ */
+export const DEFAULT_RELAY_URLS_OVERRIDE = Object.freeze([
+  // "wss://relay.example.com",
+]);
+
+/**
  * Storage key used to persist whitelist-only mode in the browser.
  *
  * You usually do not need to change this, but the export lives here so that all

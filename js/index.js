@@ -1,11 +1,14 @@
 // js/index.js
 
+import { validateInstanceConfig } from "../config/validate-config.js";
 import "./bufferPolyfill.js";
 import Application from "./app.js";
 import { setApplication, setApplicationReady } from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
+
+validateInstanceConfig();
 
 let application = null;
 let applicationReadyPromise = Promise.resolve();
