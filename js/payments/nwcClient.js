@@ -38,7 +38,10 @@ function assertNostrTools(methods = []) {
     throw new Error("NostrTools is required for NWC operations.");
   }
   for (const method of methods) {
-    if (typeof tools?.[method] !== "function") {
+    const candidate = tools?.[method];
+    const isCallable = typeof candidate === "function";
+    const isNamespace = candidate && typeof candidate === "object";
+    if (!isCallable && !isNamespace) {
       throw new Error(`NostrTools.${method} is unavailable.`);
     }
   }
