@@ -2,6 +2,9 @@
 
 import {
   ADMIN_SUPER_NPUB,
+  PLATFORM_FEE_PERCENT,
+  PLATFORM_LUD16_OVERRIDE,
+  DEFAULT_RELAY_URLS_OVERRIDE,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
   DEFAULT_WHITELIST_MODE_ENABLED,
   WATCH_HISTORY_KIND,
@@ -26,6 +29,9 @@ export const isDevMode = true; // Set to false for production
 
 export const ADMIN_LIST_MODE = "nostr";
 export { ADMIN_SUPER_NPUB };
+export { PLATFORM_FEE_PERCENT };
+export { PLATFORM_LUD16_OVERRIDE };
+export { DEFAULT_RELAY_URLS_OVERRIDE };
 export const ADMIN_EDITORS_NPUBS = []; // Default moderators (optional)
 export const ADMIN_LIST_NAMESPACE = "bitvid:admin"; // Reserved for Nostr lists
 
