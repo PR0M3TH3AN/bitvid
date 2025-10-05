@@ -1,14 +1,97 @@
 // js/storage/r2-s3.js
-import {
-  S3Client,
-  CreateBucketCommand,
-  CreateMultipartUploadCommand,
-  UploadPartCommand,
-  CompleteMultipartUploadCommand,
-  AbortMultipartUploadCommand,
-  HeadBucketCommand,
-  PutBucketCorsCommand,
-} from "https://esm.sh/@aws-sdk/client-s3@3.637.0?target=es2022&bundle";
+
+const AWS_SDK_SPECIFIER =
+  "https://esm.sh/@aws-sdk/client-s3@3.637.0?target=es2022&bundle";
+
+const disableNetworkImports = Boolean(
+  globalThis?.__BITVID_DISABLE_NETWORK_IMPORTS__
+);
+
+let awsSdk = null;
+let awsSdkLoadError = null;
+let awsSdkLoadPromise = null;
+
+function assignAwsSdk(module) {
+  if (!module) {
+    return;
+  }
+
+  awsSdk = {
+    S3Client: module.S3Client,
+    CreateBucketCommand: module.CreateBucketCommand,
+    CreateMultipartUploadCommand: module.CreateMultipartUploadCommand,
+    UploadPartCommand: module.UploadPartCommand,
+    CompleteMultipartUploadCommand: module.CompleteMultipartUploadCommand,
+    AbortMultipartUploadCommand: module.AbortMultipartUploadCommand,
+    HeadBucketCommand: module.HeadBucketCommand,
+    PutBucketCorsCommand: module.PutBucketCorsCommand,
+  };
+}
+
+async function loadAwsSdkModule() {
+  if (awsSdk || awsSdkLoadError) {
+    return awsSdk;
+  }
+
+  if (!awsSdkLoadPromise) {
+    if (disableNetworkImports) {
+      awsSdkLoadError = new Error(
+        "Cloudflare R2 SDK network import has been disabled."
+      );
+      return null;
+    }
+
+    awsSdkLoadPromise = import(AWS_SDK_SPECIFIER)
+      .then((module) => {
+        assignAwsSdk(module);
+        return awsSdk;
+      })
+      .catch((error) => {
+        awsSdkLoadError = error || new Error("Failed to load R2 SDK module");
+        throw awsSdkLoadError;
+      });
+  }
+
+  try {
+    return await awsSdkLoadPromise;
+  } catch (error) {
+    awsSdkLoadError = error;
+    throw error;
+  }
+}
+
+function requireAwsSdk() {
+  if (awsSdk) {
+    return awsSdk;
+  }
+
+  if (awsSdkLoadError) {
+    throw awsSdkLoadError;
+  }
+
+  throw new Error(
+    "Cloudflare R2 SDK has not finished loading. Call ensureR2SdkLoaded() first."
+  );
+}
+
+export function ensureR2SdkLoaded() {
+  return loadAwsSdkModule();
+}
+
+export function getR2SdkLoadError() {
+  return awsSdkLoadError;
+}
+
+export function isR2SdkAvailable() {
+  return Boolean(awsSdk);
+}
+
+if (!disableNetworkImports) {
+  // Begin loading immediately in environments that support network imports.
+  loadAwsSdkModule().catch(() => {
+    // Errors are captured for later inspection by getR2SdkLoadError().
+  });
+}
 
 function computeCacheControl(key) {
   if (!key) {
@@ -36,6 +119,8 @@ export function makeR2Client({ accountId, accessKeyId, secretAccessKey }) {
     throw new Error("Missing Cloudflare R2 credentials");
   }
 
+  const { S3Client } = requireAwsSdk();
+
   return new S3Client({
     region: "auto",
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
@@ -45,6 +130,8 @@ export function makeR2Client({ accountId, accessKeyId, secretAccessKey }) {
 }
 
 async function ensureBucketExists({ s3, bucket }) {
+  const { CreateBucketCommand, HeadBucketCommand } = requireAwsSdk();
+
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }));
     return;
@@ -79,6 +166,8 @@ export async function ensureBucketCors({ s3, bucket, origins }) {
   if (!bucket) {
     throw new Error("Bucket name is required to configure CORS");
   }
+
+  const { PutBucketCorsCommand } = requireAwsSdk();
 
   const allowedOrigins = (origins || []).filter(Boolean);
   if (allowedOrigins.length === 0) {
@@ -130,6 +219,13 @@ export async function multipartUpload({
   if (!file) {
     throw new Error("File is required");
   }
+
+  const {
+    CreateMultipartUploadCommand,
+    UploadPartCommand,
+    CompleteMultipartUploadCommand,
+    AbortMultipartUploadCommand,
+  } = requireAwsSdk();
 
   const createCommand = new CreateMultipartUploadCommand({
     Bucket: bucket,

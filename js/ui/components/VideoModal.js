@@ -45,6 +45,18 @@ export class VideoModal {
     this.modalMoreBtn = null;
     this.modalMoreMenu = null;
 
+    this.modalZapDialog = null;
+    this.modalZapForm = null;
+    this.modalZapAmountInput = null;
+    this.modalZapCommentInput = null;
+    this.modalZapSplitSummary = null;
+    this.modalZapStatusEl = null;
+    this.modalZapReceipts = null;
+    this.modalZapSendBtn = null;
+    this.modalZapCloseBtn = null;
+    this.modalZapDialogOpen = false;
+    this.modalZapPending = false;
+
     this.modalPosterCleanup = null;
     this.videoEventCleanup = null;
 
@@ -179,6 +191,24 @@ export class VideoModal {
     this.modalMoreMenu =
       playerModal.querySelector("#moreDropdown-modal") || null;
 
+    this.modalZapDialog =
+      playerModal.querySelector("#modalZapDialog") || null;
+    this.modalZapForm = playerModal.querySelector("#modalZapForm") || null;
+    this.modalZapAmountInput =
+      playerModal.querySelector("#modalZapAmountInput") || null;
+    this.modalZapCommentInput =
+      playerModal.querySelector("#modalZapCommentInput") || null;
+    this.modalZapSplitSummary =
+      playerModal.querySelector("#modalZapSplitSummary") || null;
+    this.modalZapStatusEl =
+      playerModal.querySelector("#modalZapStatus") || null;
+    this.modalZapReceipts =
+      playerModal.querySelector("#modalZapReceipts") || null;
+    this.modalZapSendBtn =
+      playerModal.querySelector("#modalZapSendBtn") || null;
+    this.modalZapCloseBtn =
+      playerModal.querySelector("#modalZapCloseBtn") || null;
+
     const closeButton = playerModal.querySelector("#closeModal");
     if (closeButton) {
       closeButton.addEventListener("click", () => {
@@ -262,8 +292,54 @@ export class VideoModal {
     if (this.modalZapBtn) {
       this.modalZapBtn.addEventListener("click", (event) => {
         event?.preventDefault?.();
-        this.dispatch("video:zap", { video: this.activeVideo });
+        if (this.modalZapBtn?.disabled) {
+          return;
+        }
+        this.openZapDialog();
+        this.dispatch("zap:open", { video: this.activeVideo });
       });
+    }
+
+    if (this.modalZapCloseBtn) {
+      this.modalZapCloseBtn.addEventListener("click", (event) => {
+        event?.preventDefault?.();
+        this.closeZapDialog();
+      });
+    }
+
+    if (this.modalZapForm) {
+      this.modalZapForm.addEventListener("submit", (event) => {
+        event?.preventDefault?.();
+        if (this.modalZapSendBtn?.disabled) {
+          return;
+        }
+        this.dispatch("video:zap", {
+          video: this.activeVideo,
+          amount: this.getZapAmountValue(),
+          comment: this.getZapCommentValue(),
+        });
+      });
+    }
+
+    if (this.modalZapAmountInput) {
+      const amountHandler = () => {
+        this.dispatch("zap:amount-change", {
+          video: this.activeVideo,
+          amount: this.getZapAmountValue(),
+        });
+      };
+      this.modalZapAmountInput.addEventListener("input", amountHandler);
+      this.modalZapAmountInput.addEventListener("change", amountHandler);
+    }
+
+    if (this.modalZapCommentInput) {
+      const commentHandler = () => {
+        this.dispatch("zap:comment-change", {
+          video: this.activeVideo,
+          comment: this.getZapCommentValue(),
+        });
+      };
+      this.modalZapCommentInput.addEventListener("input", commentHandler);
     }
 
     if (this.creatorAvatar) {
@@ -456,17 +532,312 @@ export class VideoModal {
   }
 
   setZapVisibility(visible) {
-    if (!this.modalZapBtn) {
+    const shouldShow = !!visible;
+    if (this.modalZapBtn) {
+      this.modalZapBtn.classList.toggle("hidden", !shouldShow);
+      const disableButton = !shouldShow || this.modalZapPending;
+      this.modalZapBtn.disabled = disableButton;
+      this.modalZapBtn.setAttribute("aria-disabled", (!shouldShow).toString());
+      this.modalZapBtn.setAttribute("aria-hidden", (!shouldShow).toString());
+      if (shouldShow) {
+        this.modalZapBtn.removeAttribute("tabindex");
+      } else {
+        this.modalZapBtn.setAttribute("tabindex", "-1");
+      }
+      if (this.modalZapPending) {
+        this.modalZapBtn.setAttribute("aria-busy", "true");
+        this.modalZapBtn.classList.add("opacity-50", "pointer-events-none");
+      } else {
+        this.modalZapBtn.removeAttribute("aria-busy");
+        this.modalZapBtn.classList.remove("opacity-50", "pointer-events-none");
+      }
+    }
+
+    if (!shouldShow) {
+      this.closeZapDialog({ silent: true });
+    }
+  }
+
+  openZapDialog() {
+    if (!this.modalZapDialog) {
       return;
     }
-    this.modalZapBtn.classList.toggle("hidden", !visible);
-    this.modalZapBtn.disabled = !visible;
-    this.modalZapBtn.setAttribute("aria-disabled", (!visible).toString());
-    this.modalZapBtn.setAttribute("aria-hidden", (!visible).toString());
-    if (visible) {
-      this.modalZapBtn.removeAttribute("tabindex");
+    this.modalZapDialog.classList.remove("hidden");
+    this.modalZapDialogOpen = true;
+    this.modalZapDialog.setAttribute("aria-hidden", "false");
+    this.focusZapAmount();
+  }
+
+  closeZapDialog({ silent = false } = {}) {
+    if (!this.modalZapDialog) {
+      return;
+    }
+    if (this.modalZapDialogOpen) {
+      this.modalZapDialog.classList.add("hidden");
+      this.modalZapDialog.setAttribute("aria-hidden", "true");
+      this.modalZapDialogOpen = false;
+      if (!silent) {
+        this.dispatch("zap:close", { video: this.activeVideo });
+      }
+    }
+  }
+
+  isZapDialogOpen() {
+    return !!this.modalZapDialogOpen;
+  }
+
+  focusZapAmount() {
+    if (
+      this.modalZapAmountInput &&
+      typeof this.modalZapAmountInput.focus === "function"
+    ) {
+      this.modalZapAmountInput.focus();
+    }
+  }
+
+  getZapAmountValue() {
+    if (!this.modalZapAmountInput) {
+      return 0;
+    }
+    const numeric = Number(this.modalZapAmountInput.value);
+    if (!Number.isFinite(numeric)) {
+      return 0;
+    }
+    return Math.max(0, Math.round(numeric));
+  }
+
+  setZapAmount(value) {
+    if (!this.modalZapAmountInput) {
+      return;
+    }
+    if (value === null || value === undefined || value === "") {
+      this.modalZapAmountInput.value = "";
+      return;
+    }
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      this.modalZapAmountInput.value = Math.max(0, Math.round(numeric));
+      return;
+    }
+    this.modalZapAmountInput.value = value;
+  }
+
+  getZapCommentValue() {
+    if (!this.modalZapCommentInput) {
+      return "";
+    }
+    return (this.modalZapCommentInput.value || "").trim();
+  }
+
+  setZapComment(value) {
+    if (!this.modalZapCommentInput) {
+      return;
+    }
+    this.modalZapCommentInput.value = typeof value === "string" ? value : "";
+  }
+
+  resetZapForm({ amount = "", comment = "" } = {}) {
+    this.setZapAmount(amount);
+    this.setZapComment(comment);
+    this.setZapStatus("", "neutral");
+    this.clearZapReceipts();
+    this.setZapRetryPending(false);
+  }
+
+  setZapSplitSummary(text) {
+    if (!this.modalZapSplitSummary) {
+      return;
+    }
+    const message = typeof text === "string" ? text : "";
+    this.modalZapSplitSummary.textContent = message || "Enter an amount to view the split.";
+  }
+
+  setZapStatus(message, tone = "neutral") {
+    if (!this.modalZapStatusEl) {
+      return;
+    }
+
+    const normalizedTone = typeof tone === "string" ? tone : "neutral";
+    const text = typeof message === "string" ? message : "";
+    this.modalZapStatusEl.textContent = text;
+    this.modalZapStatusEl.classList.remove(
+      "text-gray-300",
+      "text-gray-400",
+      "text-green-300",
+      "text-red-300",
+      "text-yellow-300"
+    );
+
+    if (!text) {
+      this.modalZapStatusEl.classList.add("text-gray-400");
+      return;
+    }
+
+    if (normalizedTone === "success") {
+      this.modalZapStatusEl.classList.add("text-green-300");
+    } else if (normalizedTone === "error") {
+      this.modalZapStatusEl.classList.add("text-red-300");
+    } else if (normalizedTone === "warning") {
+      this.modalZapStatusEl.classList.add("text-yellow-300");
     } else {
-      this.modalZapBtn.setAttribute("tabindex", "-1");
+      this.modalZapStatusEl.classList.add("text-gray-300");
+    }
+  }
+
+  clearZapReceipts() {
+    if (!this.modalZapReceipts) {
+      return;
+    }
+    while (this.modalZapReceipts.firstChild) {
+      this.modalZapReceipts.removeChild(this.modalZapReceipts.firstChild);
+    }
+  }
+
+  renderZapReceipts(receipts = [], { partial = false } = {}) {
+    if (!this.modalZapReceipts || !this.document) {
+      return;
+    }
+
+    this.clearZapReceipts();
+
+    if (!Array.isArray(receipts) || receipts.length === 0) {
+      if (partial) {
+        const empty = this.document.createElement("li");
+        empty.className = "text-sm text-gray-300";
+        empty.textContent = "No zap receipts available.";
+        this.modalZapReceipts.appendChild(empty);
+      }
+      return;
+    }
+
+    receipts.forEach((receipt) => {
+      const li = this.document.createElement("li");
+      li.className = "rounded border border-gray-700 p-3 bg-gray-800/70";
+
+      const header = this.document.createElement("div");
+      header.className = "flex items-center justify-between gap-2 text-xs text-gray-300";
+
+      const shareType = receipt.recipientType || receipt.type || "creator";
+      const shareLabel = this.document.createElement("span");
+      const label =
+        shareType === "platform"
+          ? "Platform"
+          : shareType === "creator"
+          ? "Creator"
+          : "Lightning";
+      shareLabel.textContent = `${label} • ${Math.max(
+        0,
+        Math.round(Number(receipt.amount || 0))
+      )} sats`;
+
+      const status = this.document.createElement("span");
+      const isSuccess = receipt.status
+        ? receipt.status === "success"
+        : !receipt.error;
+      status.textContent = isSuccess ? "Success" : "Failed";
+      status.className = isSuccess ? "text-green-300" : "text-red-300";
+
+      header.appendChild(shareLabel);
+      header.appendChild(status);
+      li.appendChild(header);
+
+      const address = this.document.createElement("p");
+      address.className = "mt-1 text-xs text-gray-300 break-all";
+      if (receipt.address) {
+        address.textContent = receipt.address;
+        li.appendChild(address);
+      }
+
+      const detail = this.document.createElement("p");
+      detail.className = "mt-2 text-xs text-gray-400";
+      if (isSuccess) {
+        let detailMessage = "Invoice settled.";
+        const preimage = receipt.payment?.result?.preimage;
+        if (typeof preimage === "string" && preimage) {
+          detailMessage = `Preimage: ${preimage.slice(0, 18)}${
+            preimage.length > 18 ? "…" : ""
+          }`;
+        }
+        detail.textContent = detailMessage;
+      } else {
+        const errorMessage =
+          (receipt.error && receipt.error.message) ||
+          (typeof receipt.error === "string"
+            ? receipt.error
+            : "Payment failed.");
+        detail.textContent = errorMessage;
+      }
+      li.appendChild(detail);
+
+      this.modalZapReceipts.appendChild(li);
+    });
+  }
+
+  setZapPending(pending) {
+    const isPending = !!pending;
+    this.modalZapPending = isPending;
+
+    if (this.modalZapSendBtn) {
+      this.modalZapSendBtn.disabled = isPending;
+      this.modalZapSendBtn.setAttribute(
+        "aria-busy",
+        isPending ? "true" : "false"
+      );
+      this.modalZapSendBtn.classList.toggle("opacity-50", isPending);
+      this.modalZapSendBtn.classList.toggle("pointer-events-none", isPending);
+    }
+
+    if (this.modalZapAmountInput) {
+      this.modalZapAmountInput.disabled = isPending;
+    }
+
+    if (this.modalZapCommentInput) {
+      this.modalZapCommentInput.disabled = isPending;
+    }
+
+    if (this.modalZapCloseBtn) {
+      this.modalZapCloseBtn.disabled = isPending;
+      this.modalZapCloseBtn.classList.toggle("opacity-50", isPending);
+      this.modalZapCloseBtn.classList.toggle("pointer-events-none", isPending);
+    }
+
+    if (this.modalZapBtn) {
+      if (isPending) {
+        this.modalZapBtn.disabled = true;
+        this.modalZapBtn.setAttribute("aria-busy", "true");
+        this.modalZapBtn.classList.add("opacity-50", "pointer-events-none");
+      } else if (!this.modalZapBtn.classList.contains("hidden")) {
+        this.modalZapBtn.disabled = false;
+        this.modalZapBtn.removeAttribute("aria-busy");
+        this.modalZapBtn.classList.remove("opacity-50", "pointer-events-none");
+      } else {
+        this.modalZapBtn.removeAttribute("aria-busy");
+        this.modalZapBtn.classList.remove("opacity-50", "pointer-events-none");
+        this.modalZapBtn.disabled = true;
+      }
+    }
+  }
+
+  setZapRetryPending(pending, { summary = "" } = {}) {
+    if (!this.modalZapSendBtn) {
+      return;
+    }
+
+    if (pending) {
+      this.modalZapSendBtn.dataset.retryPending = "true";
+      this.modalZapSendBtn.textContent = "Retry zap";
+      this.modalZapSendBtn.setAttribute(
+        "aria-label",
+        "Retry failed zap shares"
+      );
+      if (summary) {
+        this.modalZapSendBtn.title = summary;
+      }
+    } else {
+      delete this.modalZapSendBtn.dataset.retryPending;
+      this.modalZapSendBtn.textContent = "Send zap";
+      this.modalZapSendBtn.setAttribute("aria-label", "Send a zap");
+      this.modalZapSendBtn.removeAttribute("title");
     }
   }
 
