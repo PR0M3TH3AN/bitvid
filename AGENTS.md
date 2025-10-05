@@ -72,6 +72,21 @@ Document the run in PR descriptions so QA can cross-reference results.
 
 ---
 
+## Moderation Quickstart (Bitvid)
+
+1. Read `docs/moderation/README.md` for the policy overview.
+2. Parse NIP-56 reports and compute `trustedReportCount` using **only F1 followers**.
+3. Apply defaults: blur thumbnail at ≥3 F1 `nudity` reports; block autoplay at ≥2.
+4. Wire NIP-51 lists — `10000` mute (downrank/hide) and `30000` admin lists (opt-in hard-hide/whitelist).
+5. Add a reason chip plus “show anyway” control to every blurred item.
+6. Use NIP-45 COUNT when available; render graceful fallbacks when relays omit it.
+7. Keep reputation gating out of Home; allow it in Discovery behind a toggle.
+8. Run the scenarios in `docs/moderation/testing.md` before shipping.
+9. Log moderation decisions locally for debugging without leaking PII.
+10. Record a ≤90s demo showing blur/hide/override flows when submitting major moderation work.
+
+---
+
 ## 7. Content Schema v3 & Playback Rules
 
 * **Event payloads:** New video notes serialize as version `3` with the JSON shape:
