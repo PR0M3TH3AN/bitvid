@@ -198,6 +198,7 @@ class Application {
     this.boundVideoModalShareHandler = null;
     this.boundVideoModalCreatorHandler = null;
     this.boundVideoModalZapHandler = null;
+    this.boundVideoModalZapWalletHandler = null;
     this.videoListViewPlaybackHandler = null;
     this.videoListViewEditHandler = null;
     this.videoListViewRevertHandler = null;
@@ -528,6 +529,15 @@ class Application {
     this.videoModal.addEventListener(
       "zap:comment-change",
       this.boundVideoModalZapCommentHandler
+    );
+    this.boundVideoModalZapWalletHandler = () => {
+      if (typeof this.openWalletPane === "function") {
+        this.openWalletPane();
+      }
+    };
+    this.videoModal.addEventListener(
+      "zap:wallet-link",
+      this.boundVideoModalZapWalletHandler
     );
 
     // Hide/Show Subscriptions Link
@@ -4512,6 +4522,17 @@ class Application {
     return cached ? { ...cached } : createDefaultNwcSettings();
   }
 
+  hasActiveWalletConnection() {
+    const settings = this.getActiveNwcSettings();
+    const candidate =
+      typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
+    return candidate.length > 0;
+  }
+
+  isUserLoggedIn() {
+    return Boolean(this.normalizeHexPubkey(this.pubkey));
+  }
+
   async updateActiveNwcSettings(partial = {}) {
     const normalized = this.normalizeHexPubkey(this.pubkey);
     if (!normalized) {
@@ -5726,8 +5747,12 @@ class Application {
   }
 
   setModalZapVisibility(visible) {
+    const lightningVisible = !!visible;
+    const shouldShow = lightningVisible && this.isUserLoggedIn();
+    const hasWallet = this.hasActiveWalletConnection();
     if (this.videoModal) {
-      this.videoModal.setZapVisibility(visible);
+      this.videoModal.setZapVisibility(shouldShow);
+      this.videoModal.setWalletPromptVisible(shouldShow && !hasWallet);
     }
   }
 
@@ -9478,6 +9503,13 @@ class Application {
           this.boundVideoModalZapCommentHandler
         );
         this.boundVideoModalZapCommentHandler = null;
+      }
+      if (this.boundVideoModalZapWalletHandler) {
+        this.videoModal.removeEventListener(
+          "zap:wallet-link",
+          this.boundVideoModalZapWalletHandler
+        );
+        this.boundVideoModalZapWalletHandler = null;
       }
       if (typeof this.videoModal.destroy === "function") {
         try {

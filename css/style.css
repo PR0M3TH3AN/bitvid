@@ -1016,6 +1016,19 @@ body.modal-open #app {
   flex-wrap: nowrap;
 }
 
+.zap-popover {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 80;
+  width: max-content;
+}
+
+.zap-popover__content {
+  width: 18rem;
+  max-width: calc(100vw - 2rem);
+}
+
 .modal-actions__overflow {
   position: relative;
   overflow: visible;

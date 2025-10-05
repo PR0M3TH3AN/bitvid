@@ -109,9 +109,13 @@ let cachedZapAmountInput = null;
 let cachedZapSplitSummary = null;
 let cachedZapStatus = null;
 let cachedZapReceipts = null;
+let cachedZapWalletPrompt = null;
+let cachedZapWalletLink = null;
+let cachedZapCloseBtn = null;
 
 let pendingZapRetry = null;
 let zapInFlight = false;
+let zapControlsOpen = false;
 
 function getChannelZapButton() {
   if (cachedZapButton && !document.body.contains(cachedZapButton)) {
@@ -126,28 +130,53 @@ function getChannelZapButton() {
 function setChannelZapVisibility(visible) {
   const zapButton = getChannelZapButton();
   const controls = getZapControlsContainer();
+  const amountInput = getZapAmountInput();
   if (!zapButton) {
     return;
   }
-  const shouldShow = !!visible;
+  const app = getApp();
+  const isLoggedIn =
+    typeof app?.isUserLoggedIn === "function"
+      ? app.isUserLoggedIn()
+      : Boolean(app?.normalizeHexPubkey?.(app?.pubkey));
+  const shouldShow = !!visible && isLoggedIn;
   zapButton.classList.toggle("hidden", !shouldShow);
   zapButton.disabled = !shouldShow;
   zapButton.setAttribute("aria-disabled", (!shouldShow).toString());
   zapButton.setAttribute("aria-hidden", (!shouldShow).toString());
+  zapButton.setAttribute("aria-expanded", "false");
   if (shouldShow) {
     zapButton.removeAttribute("tabindex");
   } else {
     zapButton.setAttribute("tabindex", "-1");
-    if (controls) {
-      controls.classList.add("hidden");
-    }
     resetZapRetryState();
     zapInFlight = false;
     clearZapReceipts();
     setZapStatus("", "neutral");
   }
+  closeZapControls();
   if (controls) {
-    controls.classList.toggle("hidden", !shouldShow);
+    controls.setAttribute("aria-hidden", "true");
+  }
+  if (amountInput) {
+    amountInput.disabled = !shouldShow;
+  }
+
+  const hasWallet =
+    typeof app?.hasActiveWalletConnection === "function"
+      ? app.hasActiveWalletConnection()
+      : (() => {
+          const settings =
+            typeof app?.getActiveNwcSettings === "function"
+              ? app.getActiveNwcSettings()
+              : {};
+          const uri =
+            typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
+          return uri.length > 0;
+        })();
+  setZapWalletPromptVisible(shouldShow && !hasWallet);
+  if (shouldShow) {
+    setupZapWalletLink();
   }
 }
 
@@ -219,6 +248,114 @@ function getZapReceiptsList() {
     cachedZapReceipts = document.getElementById("zapReceipts");
   }
   return cachedZapReceipts;
+}
+
+function getZapWalletPrompt() {
+  if (cachedZapWalletPrompt && !document.body.contains(cachedZapWalletPrompt)) {
+    cachedZapWalletPrompt = null;
+  }
+  if (!cachedZapWalletPrompt) {
+    cachedZapWalletPrompt = document.getElementById("zapWalletPrompt");
+  }
+  return cachedZapWalletPrompt;
+}
+
+function getZapWalletLink() {
+  if (cachedZapWalletLink && !document.body.contains(cachedZapWalletLink)) {
+    cachedZapWalletLink = null;
+  }
+  if (!cachedZapWalletLink) {
+    cachedZapWalletLink = document.getElementById("zapWalletLink");
+  }
+  return cachedZapWalletLink;
+}
+
+function getZapCloseButton() {
+  if (cachedZapCloseBtn && !document.body.contains(cachedZapCloseBtn)) {
+    cachedZapCloseBtn = null;
+  }
+  if (!cachedZapCloseBtn) {
+    cachedZapCloseBtn = document.getElementById("zapCloseBtn");
+  }
+  return cachedZapCloseBtn;
+}
+
+function setZapWalletPromptVisible(visible) {
+  const prompt = getZapWalletPrompt();
+  if (!prompt) {
+    return;
+  }
+  const shouldShow = !!visible;
+  prompt.classList.toggle("hidden", !shouldShow);
+  prompt.setAttribute("aria-hidden", (!shouldShow).toString());
+}
+
+function setupZapWalletLink() {
+  const link = getZapWalletLink();
+  if (!link) {
+    return;
+  }
+  if (link.dataset.initialized === "true") {
+    return;
+  }
+  link.addEventListener("click", (event) => {
+    event?.preventDefault?.();
+    const app = getApp();
+    if (typeof app?.openWalletPane === "function") {
+      app.openWalletPane();
+    }
+  });
+  link.dataset.initialized = "true";
+}
+
+function focusZapAmountField() {
+  const amountInput = getZapAmountInput();
+  if (amountInput && typeof amountInput.focus === "function") {
+    try {
+      amountInput.focus({ preventScroll: true });
+    } catch (error) {
+      amountInput.focus();
+    }
+  }
+}
+
+function isZapControlsOpen() {
+  return zapControlsOpen;
+}
+
+function openZapControls({ focus = false } = {}) {
+  const controls = getZapControlsContainer();
+  const zapButton = getChannelZapButton();
+  if (!controls || !zapButton) {
+    return false;
+  }
+  if (!zapControlsOpen) {
+    controls.classList.remove("hidden");
+    controls.setAttribute("aria-hidden", "false");
+    zapButton.setAttribute("aria-expanded", "true");
+    zapControlsOpen = true;
+  }
+  if (focus) {
+    focusZapAmountField();
+  }
+  return true;
+}
+
+function closeZapControls({ focusButton = false } = {}) {
+  const controls = getZapControlsContainer();
+  const zapButton = getChannelZapButton();
+  if (controls) {
+    controls.classList.add("hidden");
+    controls.setAttribute("aria-hidden", "true");
+  }
+  if (zapButton) {
+    zapButton.setAttribute("aria-expanded", "false");
+    if (focusButton && typeof zapButton.focus === "function") {
+      zapButton.focus();
+    }
+  }
+  zapControlsOpen = false;
+  return Boolean(controls && zapButton);
 }
 
 function updateZapSplitSummary({ overrideFee = null } = {}) {
@@ -388,8 +525,8 @@ function resetZapRetryState() {
   const zapButton = getChannelZapButton();
   if (zapButton) {
     delete zapButton.dataset.retryPending;
-    zapButton.setAttribute("aria-label", "Send a zap");
-    zapButton.title = "Send a zap";
+    zapButton.setAttribute("aria-label", "Open zap dialog");
+    zapButton.title = "Open zap dialog";
   }
 }
 
@@ -823,6 +960,11 @@ async function handleZapButtonClick(event) {
     return;
   }
 
+  if (!isZapControlsOpen()) {
+    openZapControls({ focus: true });
+    return;
+  }
+
   if (!currentChannelLightningAddress) {
     setZapStatus("This creator has not configured a Lightning address yet.", "error");
     app?.showError?.("This creator has not configured a Lightning address yet.");
@@ -1160,6 +1302,18 @@ function setupZapButton() {
   }
 
   setChannelZapVisibility(false);
+  controls.classList.add("hidden");
+  controls.setAttribute("aria-hidden", "true");
+  zapButton.setAttribute("aria-expanded", "false");
+  setupZapWalletLink();
+  const closeBtn = getZapCloseButton();
+  if (closeBtn && closeBtn.dataset.initialized !== "true") {
+    closeBtn.addEventListener("click", (event) => {
+      event?.preventDefault?.();
+      closeZapControls({ focusButton: true });
+    });
+    closeBtn.dataset.initialized = "true";
+  }
 
   if (zapButton.dataset.initialized === "true") {
     updateZapSplitSummary();
