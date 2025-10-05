@@ -555,18 +555,18 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
         }
       },
       sendPayment: async (bolt11, params) => {
+        const shareType = activeShare || "unknown";
+        const amount =
+          shareType === "platform"
+            ? shares.platformShare
+            : shares.creatorShare;
+        const address =
+          shareType === "platform"
+            ? platformEntry?.address || getCachedPlatformLightningAddress()
+            : creatorEntry?.address || currentChannelLightningAddress;
         try {
           const payment = await sendPayment(bolt11, params);
           if (Array.isArray(shareTracker)) {
-            const shareType = activeShare || "unknown";
-            const amount =
-              shareType === "platform"
-                ? shares.platformShare
-                : shares.creatorShare;
-            const address =
-              shareType === "platform"
-                ? platformEntry?.address || getCachedPlatformLightningAddress()
-                : creatorEntry?.address || currentChannelLightningAddress;
             shareTracker.push({
               type: shareType,
               status: "success",
@@ -578,15 +578,6 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
           return payment;
         } catch (error) {
           if (Array.isArray(shareTracker)) {
-            const shareType = activeShare || "unknown";
-            const amount =
-              shareType === "platform"
-                ? shares.platformShare
-                : shares.creatorShare;
-            const address =
-              shareType === "platform"
-                ? platformEntry?.address || getCachedPlatformLightningAddress()
-                : creatorEntry?.address || currentChannelLightningAddress;
             shareTracker.push({
               type: shareType,
               status: "error",
@@ -598,7 +589,7 @@ function createZapDependencies({ creatorEntry, platformEntry, shares, shareTrack
           logZapError(
             "wallet.sendPayment",
             {
-              shareType: activeShare || "unknown",
+              shareType,
               amount,
               address,
               tracker: shareTracker,
