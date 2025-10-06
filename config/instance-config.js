@@ -44,7 +44,7 @@ export const PLATFORM_FEE_PERCENT = 30;
  * Super Admin profile publishing a `lud16` so BitVid still knows where to route
  * fees when they are enabled.
  */
-export const PLATFORM_LUD16_OVERRIDE = adammalin@strike.me;
+export const PLATFORM_LUD16_OVERRIDE = "adammalin@strike.me";
 
 /**
  * Optional list of relays to seed new sessions with instead of the defaults.
