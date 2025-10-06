@@ -176,6 +176,9 @@ async function bootstrapInterface() {
 
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");
+  if (sidebar && !sidebar.hasAttribute("data-footer-state")) {
+    sidebar.setAttribute("data-footer-state", "collapsed");
+  }
   if (!collapseToggle) {
     console.warn("Sidebar collapse toggle not found; skipping density controls.");
   }
@@ -357,10 +360,16 @@ async function bootstrapInterface() {
   const footerDropdownIcon = document.getElementById("footerDropdownIcon");
 
   if (footerDropdownButton && footerLinksContainer) {
+    const sidebarFooter = footerDropdownButton.closest(".sidebar-footer");
+
     const syncFooterDropup = (expanded) => {
+      const nextState = expanded ? "expanded" : "collapsed";
+      const actionLabel = expanded ? "Show fewer sidebar links" : "Show more sidebar links";
+
       footerDropdownButton.setAttribute("aria-expanded", expanded ? "true" : "false");
-      footerDropdownButton.dataset.state = expanded ? "expanded" : "collapsed";
-      footerLinksContainer.classList.toggle("hidden", !expanded);
+      footerDropdownButton.dataset.state = nextState;
+      footerDropdownButton.setAttribute("aria-label", actionLabel);
+      footerDropdownButton.setAttribute("title", actionLabel);
 
       if (footerDropdownLabel) {
         footerDropdownLabel.textContent = expanded ? "Less" : "More";
@@ -369,11 +378,31 @@ async function bootstrapInterface() {
       if (footerDropdownIcon) {
         footerDropdownIcon.classList.toggle("is-rotated", expanded);
       }
+
+      footerLinksContainer.classList.remove("hidden");
+      footerLinksContainer.setAttribute("aria-hidden", expanded ? "false" : "true");
+      footerLinksContainer.dataset.state = nextState;
+
+      if (sidebar) {
+        sidebar.setAttribute("data-footer-state", nextState);
+      }
+
+      if (sidebarFooter instanceof HTMLElement) {
+        sidebarFooter.dataset.footerState = nextState;
+      }
     };
 
     footerDropdownButton.addEventListener("click", (event) => {
       event.preventDefault();
       const expanded = footerDropdownButton.getAttribute("aria-expanded") === "true";
+
+      if (isSidebarCollapsed && !expanded) {
+        const nextCollapsed = false;
+        isSidebarCollapsed = nextCollapsed;
+        applySidebarDensity(nextCollapsed);
+        persistSidebarCollapsed(nextCollapsed);
+      }
+
       syncFooterDropup(!expanded);
     });
 

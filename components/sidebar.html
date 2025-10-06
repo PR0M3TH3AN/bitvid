@@ -79,7 +79,7 @@
     </section>
 
     <!-- Footer Links Toggle -->
-    <footer class="sidebar-footer">
+    <footer class="sidebar-footer" data-footer-state="collapsed">
       <button
         id="footerDropdownButton"
         type="button"
@@ -111,7 +111,12 @@
       </button>
 
       <!-- Footer Links Container -->
-      <div id="footerLinksContainer" class="sidebar-dropup-panel hidden">
+      <div
+        id="footerLinksContainer"
+        class="sidebar-dropup-panel"
+        aria-hidden="true"
+        data-state="collapsed"
+      >
         <nav class="sidebar-dropup-panel__inner" aria-label="Secondary">
           <a href="#view=about" class="sidebar-nav-link sidebar-nav-link--sub" title="About">
             <img

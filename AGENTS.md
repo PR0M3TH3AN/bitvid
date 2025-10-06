@@ -71,6 +71,7 @@ Document the run in PR descriptions so QA can cross-reference results.
 * **Extensibility:** Future work (live streams, NIP-96 uploads, analytics) should preserve the URL-first strategy and magnet safety rules above.
 * **Sidebar layering:** Keep the fixed sidebar below every modal and overlay. Respect the `--z-sidebar*` tokens so dialogs always render on top of the navigation.
 * **Static asset cache busting:** The CDN aggressively caches `components/sidebar.html` and CSS/JS bundles. Update `config/asset-version.js` and keep the `?v=` query strings in `index.html` (and iframe form shells) in sync whenever you change sidebar markup, scripts, or styles. The fetch helpers in `js/index.js` already append `cache: "no-store"`; reuse them for new partials so desktop collapses ship immediately without waiting on manual cache clears.
+* **Sidebar overflow styling:** Desktop media queries in `css/style.css` used to force `overflow-x: hidden` on `#sidebar`, which clipped the navigation panel’s drop shadow. When adjusting rail dimensions, update both the base `#sidebar` rule and the desktop override so the gradient card can bleed over the white canvas. `#sidebarContainer` now keeps overflow visible while `.sidebar__inner` handles scrolling; stick with that division when extending the layout.
 
 ---
 

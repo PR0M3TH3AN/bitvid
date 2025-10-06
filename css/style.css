@@ -1468,6 +1468,11 @@ footer a:hover {
 }
 
 /* Sidebar default states */
+#sidebarContainer {
+  position: relative;
+  overflow: visible;
+}
+
 #sidebar {
   position: fixed;
   top: 0;
@@ -1475,14 +1480,9 @@ footer a:hover {
   width: var(--sidebar-width);
   height: 100vh;
   height: 100dvh;
-  /*
-    Keep the rail container aligned with the primary page background so the
-    dark navigation panel feels like it floats above a neutral canvas.
-  */
-  background-color: var(--color-page);
+  background-color: transparent;
   color: var(--color-text);
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: visible;
   transition: width 200ms ease, transform 0.3s ease, box-shadow 0.3s ease;
   /* Keep below modal stacks so dialogs overlay the drawer. */
   z-index: var(--z-sidebar);
@@ -1495,6 +1495,12 @@ footer a:hover {
   gap: 1.5rem;
   height: 100%;
   padding: 1.5rem 1.25rem 1.75rem;
+  position: relative;
+  overflow-x: visible;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
 }
 
 .sidebar-panel {
@@ -1532,6 +1538,7 @@ footer a:hover {
   color: inherit;
   cursor: pointer;
   transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+  flex-shrink: 0;
 }
 
 .sidebar-collapse-toggle:hover {
@@ -1555,6 +1562,8 @@ footer a:hover {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  opacity: 1;
+  transition: opacity 160ms ease;
 }
 
 .sidebar-nav-link {
@@ -1591,6 +1600,8 @@ footer a:hover {
   /* Lock icon sizing so the glyphs remain steady during collapse/expand. */
   width: 1.5rem;
   height: 1.5rem;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
   flex-shrink: 0;
   display: block;
 }
@@ -1599,6 +1610,8 @@ footer a:hover {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  position: relative;
+  z-index: 2;
 }
 
 .sidebar-dropup-trigger {
@@ -1616,6 +1629,7 @@ footer a:hover {
   font-weight: 600;
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  flex-shrink: 0;
 }
 
 .sidebar-dropup-trigger:hover {
@@ -1652,12 +1666,38 @@ footer a:hover {
   border-radius: 0.875rem;
   box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.4);
   padding: 0.75rem 0.5rem;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.75rem);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(0.5rem);
+  transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+  z-index: 5;
+}
+
+.sidebar-dropup-panel[data-state="expanded"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .sidebar-dropup-panel__inner {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+#sidebar[data-footer-state="expanded"] .sidebar-nav {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#sidebar[data-footer-state="collapsed"] .sidebar-nav {
+  opacity: 1;
 }
 
 #sidebar.sidebar-open {
@@ -1712,7 +1752,7 @@ body.sidebar-open #sidebarOverlay {
   #sidebar {
     transform: translateX(0) !important;
     width: var(--sidebar-width);
-    overflow-x: hidden;
+    overflow: visible;
   }
 
   #sidebar.sidebar-open {
