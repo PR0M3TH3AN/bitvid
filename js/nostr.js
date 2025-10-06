@@ -1731,6 +1731,7 @@ export { convertEventToVideo };
 class NostrClient {
   constructor() {
     this.pool = null;
+    this.poolPromise = null;
     this.pubkey = null;
     this.relays = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
     this.readRelays = Array.from(this.relays);
@@ -4096,7 +4097,7 @@ class NostrClient {
     this.restoreLocalData();
 
     try {
-      this.pool = new window.NostrTools.SimplePool();
+      await this.ensurePool();
       const results = await this.connectToRelays();
       const successfulRelays = results
         .filter((r) => r.success)
@@ -4111,6 +4112,54 @@ class NostrClient {
       console.error("Nostr init failed:", err);
       throw err;
     }
+  }
+
+  ensurePool() {
+    if (this.pool) {
+      return Promise.resolve(this.pool);
+    }
+
+    if (this.poolPromise) {
+      return this.poolPromise;
+    }
+
+    const scope =
+      typeof window !== "undefined"
+        ? window
+        : typeof globalThis !== "undefined"
+        ? globalThis
+        : null;
+
+    const tools =
+      scope?.NostrTools ||
+      scope?.__BITVID_CANONICAL_NOSTR_TOOLS__ ||
+      (typeof globalThis !== "undefined" ? globalThis?.NostrTools : null);
+
+    const SimplePool = tools?.SimplePool;
+    if (typeof SimplePool !== "function") {
+      const error = new Error("NostrTools SimplePool is unavailable.");
+      error.code = "nostr-simplepool-unavailable";
+      return Promise.reject(error);
+    }
+
+    const creation = Promise.resolve().then(() => {
+      const instance = new SimplePool();
+      this.pool = instance;
+      return instance;
+    });
+
+    const shared = creation
+      .then((instance) => {
+        this.poolPromise = Promise.resolve(instance);
+        return instance;
+      })
+      .catch((error) => {
+        this.poolPromise = null;
+        throw error;
+      });
+
+    this.poolPromise = shared;
+    return shared;
   }
 
   // We subscribe to kind `0` purely as a liveness probe because almost every

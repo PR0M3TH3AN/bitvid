@@ -88,13 +88,28 @@ async function fetchAdminMetadata(adminPubkey) {
     return null;
   }
 
-  if (!nostrClient?.pool || !Array.isArray(nostrClient?.relays)) {
+  let pool;
+  try {
+    pool = await nostrClient.ensurePool();
+  } catch (error) {
+    console.warn("[platformAddress] Failed to initialize Nostr pool", error);
+    return null;
+  }
+
+  if (!pool) {
+    return null;
+  }
+
+  const relayUrls = Array.isArray(nostrClient?.relays)
+    ? nostrClient.relays
+    : [];
+  if (relayUrls.length === 0) {
     console.warn("[platformAddress] Nostr client is not ready.");
     return null;
   }
 
   try {
-    const events = await nostrClient.pool.list(nostrClient.relays, [
+    const events = await pool.list(relayUrls, [
       { kinds: [0], authors: [adminPubkey], limit: 1 },
     ]);
 

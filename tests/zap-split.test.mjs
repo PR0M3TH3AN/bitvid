@@ -49,6 +49,23 @@ const nostrToolsStub = {
       return null;
     },
   },
+  SimplePool: class {
+    async list() {
+      return [];
+    }
+    sub() {
+      return {
+        on() {},
+        unsub() {},
+      };
+    }
+    async get() {
+      return null;
+    }
+    async ensureRelay() {
+      return { close() {}, url: "" };
+    }
+  },
 };
 
 window.NostrTools = nostrToolsStub;
@@ -59,6 +76,9 @@ globalThis.fetch = async () => {
 };
 
 const { splitAndZap } = await import("../js/payments/zapSplit.js");
+const platformAddressModule = await import("../js/payments/platformAddress.js");
+const { __resetPlatformAddressCache } = platformAddressModule;
+const { nostrClient } = await import("../js/nostr.js");
 
 function createDeps({
   commentAllowed = 120,
@@ -180,6 +200,93 @@ async function testSplitMath() {
   delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
 }
 
+async function testWaitsForPoolBeforePlatformLookup() {
+  const previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 10;
+
+  __resetPlatformAddressCache();
+
+  const originalEnsurePool = nostrClient.ensurePool;
+  const originalPool = nostrClient.pool;
+  const originalPoolPromise = nostrClient.poolPromise;
+
+  nostrClient.pool = null;
+  nostrClient.poolPromise = null;
+
+  let poolReady = false;
+  let listCalls = 0;
+  let ensureCalls = 0;
+
+  const poolStub = {
+    async list(relays, filters) {
+      assert(poolReady, "should wait for ensurePool to resolve before listing metadata");
+      listCalls += 1;
+      return [
+        {
+          pubkey: "f".repeat(64),
+          content: JSON.stringify({ lud16: "platform@example.com" }),
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      ];
+    },
+  };
+
+  nostrClient.ensurePool = () => {
+    ensureCalls += 1;
+    if (nostrClient.poolPromise) {
+      return nostrClient.poolPromise;
+    }
+    const promise = new Promise((resolve) => {
+      setTimeout(() => {
+        poolReady = true;
+        nostrClient.pool = poolStub;
+        nostrClient.poolPromise = Promise.resolve(poolStub);
+        resolve(poolStub);
+      }, 10);
+    });
+    nostrClient.poolPromise = promise;
+    return promise;
+  };
+
+  const { deps: baseDeps } = createDeps();
+  const deps = {
+    lnurl: baseDeps.lnurl,
+    wallet: baseDeps.wallet,
+    platformAddress: platformAddressModule,
+  };
+
+  const videoEvent = {
+    id: "event-id",
+    pubkey: "c".repeat(64),
+    lightningAddress: "creator@example.com",
+    tags: [["d", "pointer"]],
+    kind: 30078,
+  };
+
+  try {
+    const result = await splitAndZap(
+      { videoEvent, amountSats: 1000, comment: "Delayed pool" },
+      deps
+    );
+
+    assert.equal(ensureCalls, 1, "should initialize the pool once");
+    assert.equal(listCalls, 1, "should fetch platform metadata once the pool is ready");
+    assert.equal(result.platformShare, 100);
+    assert.equal(result.receipts.length, 2);
+  } finally {
+    nostrClient.ensurePool = originalEnsurePool;
+    nostrClient.pool = originalPool;
+    nostrClient.poolPromise = originalPoolPromise;
+    __resetPlatformAddressCache();
+
+    if (previousOverride === undefined) {
+      delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+    } else {
+      globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
+    }
+  }
+}
+
 async function testStringFeeOverride() {
   const videoEvent = {
     id: "event-id",
@@ -298,6 +405,7 @@ async function testWalletFailure() {
 }
 
 await testSplitMath();
+await testWaitsForPoolBeforePlatformLookup();
 await testLnurlBounds();
 await testMissingAddress();
 await testWalletFailure();
