@@ -70,6 +70,7 @@ Document the run in PR descriptions so QA can cross-reference results.
 * **Probing:** Lightweight `HEAD`/`GET` requests should back `probeUrl()` so dead URLs can be hidden or flagged without blocking the UI.
 * **Extensibility:** Future work (live streams, NIP-96 uploads, analytics) should preserve the URL-first strategy and magnet safety rules above.
 * **Sidebar layering:** Keep the fixed sidebar below every modal and overlay. Respect the `--z-sidebar*` tokens so dialogs always render on top of the navigation.
+* **Static asset cache busting:** The CDN aggressively caches `components/sidebar.html` and CSS/JS bundles. Update `config/asset-version.js` and keep the `?v=` query strings in `index.html` (and iframe form shells) in sync whenever you change sidebar markup, scripts, or styles. The fetch helpers in `js/index.js` already append `cache: "no-store"`; reuse them for new partials so desktop collapses ship immediately without waiting on manual cache clears.
 
 ---
 

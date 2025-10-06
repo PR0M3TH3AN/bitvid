@@ -45,10 +45,15 @@
     <meta name="theme-color" content="#0f172a" />
 
     <!-- Styles -->
-    <script src="js/tracking.js" defer></script>
-    <link href="css/tailwind.generated.css" rel="stylesheet" />
-    <link href="css/style.css" rel="stylesheet" />
-    <link href="css/markdown.css" rel="stylesheet" />
+    <!--
+      Cache busting: keep these query strings in sync with config/asset-version.js
+      so browsers pick up the latest sidebar markup and styling without
+      hard-refreshing around CDN caches.
+    -->
+    <script src="js/tracking.js?v=2024.10.11" defer></script>
+    <link href="css/tailwind.generated.css?v=2024.10.11" rel="stylesheet" />
+    <link href="css/style.css?v=2024.10.11" rel="stylesheet" />
+    <link href="css/markdown.css?v=2024.10.11" rel="stylesheet" />
   </head>
   <body>
     <!--
@@ -206,16 +211,16 @@
 
     <!-- Additional Scripts -->
     <!-- Bootstraps nostr-tools before other modules rely on nostrToolsReady -->
-    <script type="module" src="js/nostrToolsBootstrap.js"></script>
-    <script type="module" src="js/config.js"></script>
-    <script type="module" src="js/lists.js"></script>
-    <script type="module" src="js/accessControl.js"></script>
-    <script type="module" src="js/webtorrent.js"></script>
-    <script type="module" src="js/nostr.js"></script>
-    <script type="module" src="js/viewManager.js"></script>
-    <script type="module" src="js/bootstrap.js"></script>
-    <script type="module" src="js/disclaimer.js"></script>
-    <script type="module" src="js/index.js"></script>
+      <script type="module" src="js/nostrToolsBootstrap.js?v=2024.10.11"></script>
+      <script type="module" src="js/config.js?v=2024.10.11"></script>
+      <script type="module" src="js/lists.js?v=2024.10.11"></script>
+      <script type="module" src="js/accessControl.js?v=2024.10.11"></script>
+      <script type="module" src="js/webtorrent.js?v=2024.10.11"></script>
+      <script type="module" src="js/nostr.js?v=2024.10.11"></script>
+    <script type="module" src="js/viewManager.js?v=2024.10.11"></script>
+    <script type="module" src="js/bootstrap.js?v=2024.10.11"></script>
+    <script type="module" src="js/disclaimer.js?v=2024.10.11"></script>
+    <script type="module" src="js/index.js?v=2024.10.11"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
   </body>

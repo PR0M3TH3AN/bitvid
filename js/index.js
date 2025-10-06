@@ -1,6 +1,7 @@
 // js/index.js
 
 import { validateInstanceConfig } from "../config/validate-config.js";
+import { ASSET_VERSION } from "../config/asset-version.js";
 import "./bufferPolyfill.js";
 import Application from "./app.js";
 import { setApplication, setApplicationReady } from "./applicationContext.js";
@@ -102,13 +103,26 @@ document.addEventListener("animationend", handleFadeInAnimationComplete, true);
 document.addEventListener("animationcancel", handleFadeInAnimationComplete, true);
 
 // 1) Load modals (login, application, etc.)
+const withAssetVersion = (url) => {
+  if (typeof url !== "string" || url.length === 0) {
+    return url;
+  }
+
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${encodeURIComponent(ASSET_VERSION)}`;
+};
+
+const fetchPartial = async (url) => {
+  const response = await fetch(withAssetVersion(url), { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to load " + url);
+  }
+  return response.text();
+};
+
 async function loadModal(url) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to load " + url);
-    }
-    const html = await response.text();
+    const html = await fetchPartial(url);
     // Remove analytics loader tags from modal partials to avoid duplicate pageview events.
     const sanitizedHtml = html.replace(
       /<script\b[^>]*src=["'][^"']*tracking\.js[^"']*["'][^>]*>\s*<\/script>/gi,
@@ -126,11 +140,7 @@ async function loadModal(url) {
 // 2) Load sidebar
 async function loadSidebar(url, containerId) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to load " + url);
-    }
-    const html = await response.text();
+    const html = await fetchPartial(url);
     document.getElementById(containerId).innerHTML = html;
     console.log(url, "loaded into", containerId);
   } catch (err) {
@@ -141,11 +151,7 @@ async function loadSidebar(url, containerId) {
 // 3) Load the disclaimer (now separate)
 async function loadDisclaimer(url, containerId) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to load " + url);
-    }
-    const html = await response.text();
+    const html = await fetchPartial(url);
     document.getElementById(containerId).insertAdjacentHTML("beforeend", html);
     console.log(url, "disclaimer loaded into", containerId);
   } catch (err) {
