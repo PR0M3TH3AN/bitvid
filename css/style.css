@@ -1451,6 +1451,38 @@ footer a:hover {
 }
 
 /* Sidebar default states */
+#sidebar .sidebar-desktop-toggle-row {
+  display: none;
+}
+
+.sidebar-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: inherit;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.sidebar-collapse-toggle:focus-visible {
+  outline: 0.125rem solid var(--color-secondary);
+  outline-offset: 0.25rem;
+}
+
+.sidebar-collapse-toggle:hover {
+  color: var(--color-secondary);
+}
+
+.sidebar-collapse-toggle svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 #sidebar {
   position: fixed;
   top: 0;
@@ -1509,6 +1541,12 @@ body.sidebar-open #sidebarOverlay {
 
 /* Desktop (min-width: 768px): Always show the sidebar */
 @media (min-width: 768px) {
+  #sidebar .sidebar-desktop-toggle-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.5rem;
+  }
+
   #sidebar {
     transform: translateX(0) !important;
     width: var(--sidebar-width);
