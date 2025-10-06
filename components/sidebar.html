@@ -11,6 +11,31 @@
     <!-- Top Navigation Links -->
     <div class="flex-1 overflow-y-auto px-4">
       <div class="bg-gray-800 rounded-lg shadow-md mt-4 p-4">
+        <div class="hidden md:flex justify-end mb-2">
+          <button
+            id="sidebarCollapseToggle"
+            type="button"
+            class="flex items-center space-x-2 text-sm font-semibold text-gray-100"
+            aria-controls="sidebar"
+            aria-expanded="true"
+          >
+            <span class="sr-only">Toggle sidebar</span>
+            <span class="sidebar-toggle-label">Collapse</span>
+            <svg
+              data-sidebar-chevron
+              class="w-4 h-4 transform transition-transform duration-300"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M10 6l6 6-6 6" />
+            </svg>
+          </button>
+        </div>
         <nav class="flex flex-col space-y-2">
           <a
             href="#view=most-recent-videos"
