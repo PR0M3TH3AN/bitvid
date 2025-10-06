@@ -1,6 +1,7 @@
 // js/payments/zapSplit.js
 
 import { ADMIN_SUPER_NPUB } from "../config.js";
+import { nostrToolsReady } from "../nostrToolsBootstrap.js";
 import {
   resolveLightningAddress,
   fetchPayServiceData,
@@ -27,6 +28,140 @@ const DEFAULT_DEPS = Object.freeze({
   wallet: Object.freeze({ ensureWallet, sendPayment }),
   platformAddress: Object.freeze({ getPlatformLightningAddress }),
 });
+
+const globalScope =
+  typeof window !== "undefined"
+    ? window
+    : typeof globalThis !== "undefined"
+    ? globalThis
+    : null;
+
+const nostrToolsReadySource =
+  globalScope &&
+  globalScope.nostrToolsReady &&
+  typeof globalScope.nostrToolsReady.then === "function"
+    ? globalScope.nostrToolsReady
+    : nostrToolsReady;
+
+function normalizeToolkitCandidate(candidate) {
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    candidate.ok !== false &&
+    typeof candidate.then !== "function"
+  ) {
+    return candidate;
+  }
+  return null;
+}
+
+function readToolkitFromScope(scope = globalScope) {
+  if (!scope || typeof scope !== "object") {
+    return null;
+  }
+
+  const candidates = [];
+
+  const canonical = scope.__BITVID_CANONICAL_NOSTR_TOOLS__;
+  if (canonical) {
+    candidates.push(canonical);
+  }
+
+  const direct = scope.NostrTools;
+  if (direct) {
+    candidates.push(direct);
+  }
+
+  const nestedWindow =
+    scope.window && scope.window !== scope && typeof scope.window === "object"
+      ? scope.window
+      : null;
+  if (nestedWindow) {
+    if (nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__) {
+      candidates.push(nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__);
+    }
+    if (nestedWindow.NostrTools) {
+      candidates.push(nestedWindow.NostrTools);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const normalized = normalizeToolkitCandidate(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+const __zapNostrToolsBootstrap = await (async () => {
+  try {
+    const result = await nostrToolsReadySource;
+    if (result && typeof result === "object" && result.ok === false) {
+      return {
+        toolkit: normalizeToolkitCandidate(readToolkitFromScope()),
+        failure: result,
+      };
+    }
+    const normalized = normalizeToolkitCandidate(result);
+    if (normalized) {
+      return { toolkit: normalized, failure: null };
+    }
+    return {
+      toolkit: normalizeToolkitCandidate(readToolkitFromScope()),
+      failure: null,
+    };
+  } catch (error) {
+    return {
+      toolkit: normalizeToolkitCandidate(readToolkitFromScope()),
+      failure: error,
+    };
+  }
+})();
+
+let cachedNostrTools = __zapNostrToolsBootstrap.toolkit || null;
+const nostrToolsInitializationFailure = __zapNostrToolsBootstrap.failure || null;
+
+if (!cachedNostrTools && nostrToolsInitializationFailure) {
+  console.warn(
+    "[zapSplit] nostr-tools helpers unavailable after bootstrap.",
+    nostrToolsInitializationFailure
+  );
+}
+
+function rememberNostrTools(candidate) {
+  const normalized = normalizeToolkitCandidate(candidate);
+  if (normalized) {
+    cachedNostrTools = normalized;
+  }
+}
+
+function getCachedNostrTools() {
+  const fallback = readToolkitFromScope();
+  if (cachedNostrTools && fallback && fallback !== cachedNostrTools) {
+    rememberNostrTools(fallback);
+  } else if (!cachedNostrTools && fallback) {
+    rememberNostrTools(fallback);
+  }
+  return cachedNostrTools || fallback || null;
+}
+
+async function ensureNostrTools() {
+  if (cachedNostrTools) {
+    return cachedNostrTools;
+  }
+  try {
+    const result = await nostrToolsReadySource;
+    rememberNostrTools(result);
+  } catch (error) {
+    console.warn("[zapSplit] Failed to resolve nostr-tools helpers.", error);
+  }
+  if (!cachedNostrTools) {
+    rememberNostrTools(readToolkitFromScope());
+  }
+  return cachedNostrTools || null;
+}
 
 function getOverridePlatformFee() {
   return resolvePlatformFeePercent(globalThis?.__BITVID_PLATFORM_FEE_OVERRIDE__);
@@ -74,31 +209,21 @@ function mergeDependencies(overrides = {}) {
 }
 
 function getNostrTools() {
-  const scope = typeof window !== "undefined" ? window : globalThis;
-  const tools = scope?.NostrTools || null;
+  const tools = getCachedNostrTools();
+  if (tools?.nip04) {
+    return tools;
+  }
+  const scope = globalScope || (typeof window !== "undefined" ? window : globalThis);
   const canonical = scope?.__BITVID_CANONICAL_NOSTR_TOOLS__ || null;
-
-  if (tools && canonical && !tools.nip04 && canonical.nip04) {
+  if (canonical && tools && !tools.nip04 && canonical.nip04) {
     try {
       tools.nip04 = canonical.nip04;
+      return tools;
     } catch (error) {
       return { ...canonical, ...tools, nip04: canonical.nip04 };
     }
   }
-
-  if (tools) {
-    return tools;
-  }
-
-  if (canonical) {
-    return canonical;
-  }
-
-  if (typeof globalThis !== "undefined" && globalThis?.NostrTools) {
-    return globalThis.NostrTools;
-  }
-
-  return null;
+  return tools || canonical || null;
 }
 
 function decodeAdminPubkey() {
