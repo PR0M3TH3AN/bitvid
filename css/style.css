@@ -14,8 +14,9 @@
   --scrollbar-track: rgba(255, 255, 255, 0.1);
   --scrollbar-thumb: rgba(255, 255, 255, 0.3);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.4);
-  --z-sidebar: 40;
-  --z-sidebar-overlay: 30;
+  /* Sidebar stack must remain below modal overlays. */
+  --z-sidebar: 30;
+  --z-sidebar-overlay: 20;
   --z-modal-root: 80;
   --z-modal-overlay: 70;
   --z-modal-content: 90;
