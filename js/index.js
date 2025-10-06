@@ -173,8 +173,6 @@ async function bootstrapInterface() {
   if (!collapseToggle) {
     console.warn("Sidebar collapse toggle not found; skipping density controls.");
   }
-  const collapseLabel = collapseToggle?.querySelector(".sidebar-toggle-label");
-  const appContainer = document.getElementById("app");
 
   const mobileMenuBtn = document.getElementById("mobileMenuBtn");
   const sidebarOverlay = document.getElementById("sidebarOverlay");
@@ -205,12 +203,12 @@ async function bootstrapInterface() {
   };
 
   const applySidebarDensity = (collapsed) => {
-    const widthTargets = [
-      document.documentElement,
-      document.body,
-      sidebar,
-      appContainer,
-    ].filter((element) => element instanceof HTMLElement);
+    const widthTargets = [document.documentElement, document.body].filter(
+      (element) => element instanceof HTMLElement,
+    );
+    if (sidebar instanceof HTMLElement) {
+      widthTargets.push(sidebar);
+    }
     const state = collapsed ? "collapsed" : "expanded";
     const nextWidth = collapsed
       ? SIDEBAR_WIDTH_COLLAPSED
@@ -235,10 +233,6 @@ async function bootstrapInterface() {
         "aria-label",
         collapsed ? "Expand sidebar" : "Collapse sidebar",
       );
-    }
-
-    if (collapseLabel) {
-      collapseLabel.textContent = collapsed ? "Expand" : "Collapse";
     }
   };
 
@@ -349,17 +343,33 @@ async function bootstrapInterface() {
   }
 
   const footerDropdownButton = document.getElementById("footerDropdownButton");
-  if (footerDropdownButton) {
-    footerDropdownButton.addEventListener("click", () => {
-      const footerLinksContainer = document.getElementById("footerLinksContainer");
-      if (!footerLinksContainer) return;
-      footerLinksContainer.classList.toggle("hidden");
-      if (footerLinksContainer.classList.contains("hidden")) {
-        footerDropdownButton.innerHTML = "More &#9660;";
-      } else {
-        footerDropdownButton.innerHTML = "Less &#9650;";
+  const footerLinksContainer = document.getElementById("footerLinksContainer");
+  const footerDropdownLabel = document.getElementById("footerDropdownText");
+  const footerDropdownIcon = document.getElementById("footerDropdownIcon");
+
+  if (footerDropdownButton && footerLinksContainer) {
+    const syncFooterDropup = (expanded) => {
+      footerDropdownButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+      footerDropdownButton.dataset.state = expanded ? "expanded" : "collapsed";
+      footerLinksContainer.classList.toggle("hidden", !expanded);
+
+      if (footerDropdownLabel) {
+        footerDropdownLabel.textContent = expanded ? "Less" : "More";
       }
+
+      if (footerDropdownIcon) {
+        footerDropdownIcon.classList.toggle("is-rotated", expanded);
+      }
+    };
+
+    footerDropdownButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      const expanded = footerDropdownButton.getAttribute("aria-expanded") === "true";
+      syncFooterDropup(!expanded);
     });
+
+    const initialExpanded = footerDropdownButton.getAttribute("aria-expanded") === "true";
+    syncFooterDropup(initialExpanded);
   }
 
   try {
