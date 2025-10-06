@@ -37,6 +37,7 @@ import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+import { nostrToolsReady } from "./nostrToolsBootstrap.js";
 
 /**
  * The default relay set BitVid bootstraps with before loading a user's
@@ -74,6 +75,147 @@ const VIEW_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIEW_EVENT);
 const VIEW_EVENT_KIND = Number.isFinite(VIEW_EVENT_SCHEMA?.kind)
   ? VIEW_EVENT_SCHEMA.kind
   : 30079;
+
+const globalScope =
+  typeof window !== "undefined"
+    ? window
+    : typeof globalThis !== "undefined"
+    ? globalThis
+    : null;
+
+const nostrToolsReadySource =
+  globalScope &&
+  globalScope.nostrToolsReady &&
+  typeof globalScope.nostrToolsReady.then === "function"
+    ? globalScope.nostrToolsReady
+    : nostrToolsReady;
+
+function normalizeToolkitCandidate(candidate) {
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    candidate.ok !== false &&
+    typeof candidate.then !== "function"
+  ) {
+    return candidate;
+  }
+  return null;
+}
+
+function readToolkitFromScope(scope = globalScope) {
+  if (!scope || typeof scope !== "object") {
+    return null;
+  }
+
+  const candidates = [];
+
+  const canonical = scope.__BITVID_CANONICAL_NOSTR_TOOLS__;
+  if (canonical) {
+    candidates.push(canonical);
+  }
+
+  const direct = scope.NostrTools;
+  if (direct) {
+    candidates.push(direct);
+  }
+
+  const nestedWindow =
+    scope.window && scope.window !== scope && typeof scope.window === "object"
+      ? scope.window
+      : null;
+  if (nestedWindow) {
+    if (nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__) {
+      candidates.push(nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__);
+    }
+    if (nestedWindow.NostrTools) {
+      candidates.push(nestedWindow.NostrTools);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const normalized = normalizeToolkitCandidate(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+const __nostrToolsBootstrapResult = await (async () => {
+  try {
+    const result = await nostrToolsReadySource;
+    if (result && typeof result === "object" && result.ok === false) {
+      return {
+        toolkit: normalizeToolkitCandidate(readToolkitFromScope()),
+        failure: result,
+      };
+    }
+
+    const normalized = normalizeToolkitCandidate(result);
+    if (normalized) {
+      return { toolkit: normalized, failure: null };
+    }
+
+    return {
+      toolkit: normalizeToolkitCandidate(readToolkitFromScope()),
+      failure: null,
+    };
+  } catch (error) {
+    return {
+      toolkit: normalizeToolkitCandidate(readToolkitFromScope()),
+      failure: error,
+    };
+  }
+})();
+
+let cachedNostrTools = __nostrToolsBootstrapResult.toolkit || null;
+const nostrToolsBootstrapFailure = __nostrToolsBootstrapResult.failure || null;
+
+if (!cachedNostrTools && nostrToolsBootstrapFailure && isDevMode) {
+  console.warn(
+    "[nostr] nostr-tools helpers unavailable after bootstrap.",
+    nostrToolsBootstrapFailure
+  );
+}
+
+function rememberNostrTools(candidate) {
+  const normalized = normalizeToolkitCandidate(candidate);
+  if (normalized) {
+    cachedNostrTools = normalized;
+  }
+}
+
+function getCachedNostrTools() {
+  const fallback = readToolkitFromScope();
+  if (cachedNostrTools && fallback && fallback !== cachedNostrTools) {
+    rememberNostrTools(fallback);
+  } else if (!cachedNostrTools && fallback) {
+    rememberNostrTools(fallback);
+  }
+  return cachedNostrTools || fallback || null;
+}
+
+async function ensureNostrTools() {
+  if (cachedNostrTools) {
+    return cachedNostrTools;
+  }
+
+  try {
+    const result = await nostrToolsReadySource;
+    rememberNostrTools(result);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to resolve nostr-tools helpers.", error);
+    }
+  }
+
+  if (!cachedNostrTools) {
+    rememberNostrTools(readToolkitFromScope());
+  }
+
+  return cachedNostrTools || null;
+}
 
 let ingestLocalViewEventRef = null;
 
@@ -649,7 +791,7 @@ function normalizePointerInput(pointer) {
 
   if (trimmed.startsWith("naddr") || trimmed.startsWith("nevent")) {
     try {
-      const decoder = window?.NostrTools?.nip19?.decode;
+      const decoder = getCachedNostrTools()?.nip19?.decode;
       if (typeof decoder === "function") {
         const decoded = decoder(trimmed);
         if (decoded?.type === "naddr" && decoded.data) {
@@ -1368,11 +1510,12 @@ function eventToAddressPointer(event) {
 }
 
 function signEventWithPrivateKey(event, privateKey) {
+  const tools = getCachedNostrTools();
   if (
     !privateKey ||
     typeof privateKey !== "string" ||
-    !window?.NostrTools?.getEventHash ||
-    typeof window.NostrTools.signEvent !== "function"
+    !tools?.getEventHash ||
+    typeof tools.signEvent !== "function"
   ) {
     throw new Error("Missing signing primitives");
   }
@@ -1388,9 +1531,8 @@ function signEventWithPrivateKey(event, privateKey) {
     tags,
     content: typeof event.content === "string" ? event.content : "",
   };
-
-  const id = window.NostrTools.getEventHash(prepared);
-  const sig = window.NostrTools.signEvent(prepared, privateKey);
+  const id = tools.getEventHash(prepared);
+  const sig = tools.signEvent(prepared, privateKey);
 
   return { ...prepared, id, sig };
 }
@@ -1426,15 +1568,13 @@ function decodeNpubToHex(npub) {
     return "";
   }
 
-  if (
-    !window?.NostrTools?.nip19 ||
-    typeof window.NostrTools.nip19.decode !== "function"
-  ) {
+  const tools = getCachedNostrTools();
+  if (!tools?.nip19 || typeof tools.nip19.decode !== "function") {
     return "";
   }
 
   try {
-    const decoded = window.NostrTools.nip19.decode(npub.trim());
+    const decoded = tools.nip19.decode(npub.trim());
     if (decoded?.type === "npub" && typeof decoded.data === "string") {
       return decoded.data;
     }
@@ -1864,7 +2004,7 @@ class NostrClient {
   }
 
   mintSessionActor() {
-    const tools = window?.NostrTools || null;
+    const tools = getCachedNostrTools();
     if (!tools) {
       if (isDevMode) {
         console.warn("[nostr] Cannot mint session actor without NostrTools.");
@@ -2662,14 +2802,28 @@ class NostrClient {
       this.watchHistoryLastCreatedAt + 1,
     );
 
+    let cachedNip04Tools = null;
+    const ensureNip04Tools = async () => {
+      if (cachedNip04Tools) {
+        return cachedNip04Tools;
+      }
+      const tools = await ensureNostrTools();
+      if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
+        cachedNip04Tools = tools;
+        return cachedNip04Tools;
+      }
+      return null;
+    };
+
     const encryptChunk = async (plaintext) => {
       if (useExtensionEncrypt) {
         return extension.nip04.encrypt(actorPubkey, plaintext);
       }
-      if (!window?.NostrTools?.nip04?.encrypt) {
+      const tools = await ensureNip04Tools();
+      if (!tools?.nip04 || typeof tools.nip04.encrypt !== "function") {
         throw new Error("nip04-unavailable");
       }
-      return window.NostrTools.nip04.encrypt(privateKey, actorPubkey, plaintext);
+      return tools.nip04.encrypt(privateKey, actorPubkey, plaintext);
     };
 
     const signEvent = async (event) => {
@@ -3347,6 +3501,19 @@ class NostrClient {
     const decryptErrors = [];
     const collectedItems = [];
 
+    let cachedDecryptTools = null;
+    const ensureDecryptTools = async () => {
+      if (cachedDecryptTools) {
+        return cachedDecryptTools;
+      }
+      const tools = await ensureNostrTools();
+      if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
+        cachedDecryptTools = tools;
+        return cachedDecryptTools;
+      }
+      return null;
+    };
+
     const decryptChunk = async (ciphertext) => {
       if (!ciphertext || typeof ciphertext !== "string") {
         throw new Error("empty-ciphertext");
@@ -3364,10 +3531,11 @@ class NostrClient {
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
         throw new Error("missing-session-key");
       }
-      if (!window?.NostrTools?.nip04?.decrypt) {
+      const tools = await ensureDecryptTools();
+      if (!tools?.nip04 || typeof tools.nip04.decrypt !== "function") {
         throw new Error("nip04-unavailable");
       }
-      return window.NostrTools.nip04.decrypt(
+      return tools.nip04.decrypt(
         this.sessionActor.privateKey,
         resolvedActor,
         ciphertext,
@@ -4114,32 +4282,22 @@ class NostrClient {
     }
   }
 
-  ensurePool() {
+  async ensurePool() {
     if (this.pool) {
-      return Promise.resolve(this.pool);
+      return this.pool;
     }
 
     if (this.poolPromise) {
       return this.poolPromise;
     }
 
-    const scope =
-      typeof window !== "undefined"
-        ? window
-        : typeof globalThis !== "undefined"
-        ? globalThis
-        : null;
-
-    const tools =
-      scope?.NostrTools ||
-      scope?.__BITVID_CANONICAL_NOSTR_TOOLS__ ||
-      (typeof globalThis !== "undefined" ? globalThis?.NostrTools : null);
-
+    const tools = await ensureNostrTools();
     const SimplePool = tools?.SimplePool;
     if (typeof SimplePool !== "function") {
       const error = new Error("NostrTools SimplePool is unavailable.");
       error.code = "nostr-simplepool-unavailable";
-      return Promise.reject(error);
+      this.poolPromise = null;
+      throw error;
     }
 
     const creation = Promise.resolve().then(() => {
@@ -4269,7 +4427,12 @@ class NostrClient {
           "The selected account doesn't match the expected profile. Please try again."
         );
       }
-      const npub = window.NostrTools.nip19.npubEncode(pubkey);
+      const nip19Tools = await ensureNostrTools();
+      const npubEncode = nip19Tools?.nip19?.npubEncode;
+      if (typeof npubEncode !== "function") {
+        throw new Error("NostrTools nip19 encoder is unavailable.");
+      }
+      const npub = npubEncode(pubkey);
 
       if (isDevMode) {
         console.log("Got pubkey:", pubkey);
