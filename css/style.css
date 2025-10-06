@@ -1419,26 +1419,50 @@ footer a:hover {
   left: 0;
   width: 16rem; /* Tailwind's w-64 */
   height: 100vh;
+  height: 100dvh;
   background-color: #0f172a;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  z-index: 60;
+  box-shadow: none;
+}
+
+#sidebar.sidebar-open {
+  box-shadow: 0 0.75rem 1.5rem rgba(15, 23, 42, 0.45);
+}
+
+#sidebarOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 50;
+}
+
+body.sidebar-open #sidebarOverlay {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Mobile (max-width: 767px): Hide sidebar by default */
 @media (max-width: 767px) {
   #sidebar {
-    transform: translateX(-100%);
+    transform: translate3d(-100%, 0, 0);
+    width: min(16rem, calc(100vw - 3rem));
   }
   /* When the sidebar-open class is added, slide the sidebar in */
   #sidebar.sidebar-open {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
 
-  /* Optionally shift main content when sidebar is open */
-  #app.sidebar-open {
-    transform: translateX(16rem);
-    transition: transform 0.3s ease;
+  body.sidebar-open {
+    overflow: hidden;
   }
 }
 
@@ -1446,6 +1470,14 @@ footer a:hover {
 @media (min-width: 768px) {
   #sidebar {
     transform: translateX(0) !important;
+  }
+
+  #sidebar.sidebar-open {
+    box-shadow: none;
+  }
+
+  #sidebarOverlay {
+    display: none;
   }
 }
 
