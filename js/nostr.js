@@ -4363,6 +4363,7 @@ class NostrClient {
 
     const tools = await ensureNostrTools();
     const SimplePool = resolveSimplePoolConstructor(tools);
+
     if (typeof SimplePool !== "function") {
       if (isDevMode) {
         if (tools && typeof tools === "object") {
@@ -4386,6 +4387,7 @@ class NostrClient {
       const error = new Error(
         "NostrTools SimplePool is unavailable. Verify that nostr-tools resources can load on this domain."
       );
+
       error.code = "nostr-simplepool-unavailable";
       if (nostrToolsBootstrapFailure) {
         error.bootstrapFailure = nostrToolsBootstrapFailure;
