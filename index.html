@@ -51,19 +51,21 @@
     <link href="css/markdown.css" rel="stylesheet" />
   </head>
   <body class="bg-gray-100">
-    <!-- 
+    <!--
       SIDEBAR CONTAINER:
-      The <aside id="sidebar"> inside handles visibility. 
+      The <aside id="sidebar"> inside handles visibility.
       By default, no special position or z-index on #sidebarContainer.
     -->
     <div id="sidebarContainer">
       <!-- components/sidebar.html gets injected here -->
     </div>
 
-    <!-- 
+    <div id="sidebarOverlay" class="md:hidden" aria-hidden="true"></div>
+
+    <!--
       MAIN CONTENT:
       md:ml-64 ensures content is shifted on desktop so the pinned sidebar doesn't overlap.
-      On mobile, we also toggle .sidebar-open to shift the entire content.
+      On mobile we float the sidebar over the content and dim the background overlay.
     -->
     <!--
       `fade-in` is scrubbed by js/index.js after the first animation so that
@@ -84,6 +86,10 @@
         <button
           id="mobileMenuBtn"
           class="md:hidden ml-2 mr-4 flex items-center justify-center w-10 h-10 rounded-full bg-transparent hover:bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f172a] z-[60] fade-in"
+          type="button"
+          aria-expanded="false"
+          aria-controls="sidebar"
+          aria-label="Toggle navigation menu"
         >
           <img
             src="assets/svg/mobile-sidebar-menu-icon.svg"

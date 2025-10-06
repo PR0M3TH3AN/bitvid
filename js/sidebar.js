@@ -1,7 +1,7 @@
 // sidebar.js
 import { setHashView } from "./index.js";
 
-export function setupSidebarNavigation() {
+export function setupSidebarNavigation({ closeSidebar } = {}) {
   const sidebarLinks = document.querySelectorAll('#sidebar a[href^="#view="]');
   sidebarLinks.forEach((link) => {
     link.addEventListener("click", (e) => {
@@ -16,13 +16,21 @@ export function setupSidebarNavigation() {
       setHashView(viewName); // This changes the hash and loads the view.
 
       // --- NEW: if on mobile, close the sidebar automatically. ---
-      if (window.innerWidth < 768) {
-        const sidebar = document.getElementById("sidebar");
-        const app = document.getElementById("app");
-        if (sidebar && app) {
-          sidebar.classList.remove("sidebar-open");
-          app.classList.remove("sidebar-open");
+      const isMobile =
+        typeof window.matchMedia === "function"
+          ? window.matchMedia("(max-width: 767px)").matches
+          : window.innerWidth < 768;
+      if (isMobile) {
+        if (typeof closeSidebar === "function") {
+          closeSidebar();
+          return;
         }
+
+        const sidebar = document.getElementById("sidebar");
+        if (sidebar) {
+          sidebar.classList.remove("sidebar-open");
+        }
+        document.body.classList.remove("sidebar-open");
       }
     });
   });

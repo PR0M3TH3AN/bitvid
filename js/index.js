@@ -170,12 +170,61 @@ async function bootstrapInterface() {
 
   const mobileMenuBtn = document.getElementById("mobileMenuBtn");
   const sidebar = document.getElementById("sidebar");
-  const appElement = document.getElementById("app");
-  if (mobileMenuBtn && sidebar && appElement) {
-    mobileMenuBtn.addEventListener("click", () => {
-      sidebar.classList.toggle("sidebar-open");
-      appElement.classList.toggle("sidebar-open");
-    });
+  const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+  const setSidebarState = (isOpen) => {
+    if (sidebar) {
+      sidebar.classList.toggle("sidebar-open", isOpen);
+    }
+    document.body.classList.toggle("sidebar-open", isOpen);
+    if (mobileMenuBtn) {
+      mobileMenuBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    }
+  };
+
+  const closeSidebar = () => setSidebarState(false);
+  const isMobileViewport = () => {
+    if (typeof window.matchMedia === "function") {
+      return window.matchMedia("(max-width: 767px)").matches;
+    }
+    return window.innerWidth < 768;
+  };
+
+  const toggleSidebar = () => {
+    if (!sidebar) return;
+    const isMobile = isMobileViewport();
+    if (!isMobile) return;
+    const shouldOpen = !sidebar.classList.contains("sidebar-open");
+    setSidebarState(shouldOpen);
+  };
+
+  if (mobileMenuBtn && sidebar) {
+    mobileMenuBtn.addEventListener("click", toggleSidebar);
+  }
+
+  if (sidebarOverlay) {
+    sidebarOverlay.addEventListener("click", closeSidebar);
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && sidebar && sidebar.classList.contains("sidebar-open")) {
+      closeSidebar();
+    }
+  });
+
+  if (typeof window.matchMedia === "function") {
+    const desktopQuery = window.matchMedia("(min-width: 768px)");
+    const onDesktopChange = (event) => {
+      if (event.matches) {
+        closeSidebar();
+      }
+    };
+
+    if (typeof desktopQuery.addEventListener === "function") {
+      desktopQuery.addEventListener("change", onDesktopChange);
+    } else if (typeof desktopQuery.addListener === "function") {
+      desktopQuery.addListener(onDesktopChange);
+    }
   }
 
   const footerDropdownButton = document.getElementById("footerDropdownButton");
@@ -195,7 +244,7 @@ async function bootstrapInterface() {
   try {
     const sidebarModule = await import("./sidebar.js");
     if (typeof sidebarModule.setupSidebarNavigation === "function") {
-      sidebarModule.setupSidebarNavigation();
+      sidebarModule.setupSidebarNavigation({ closeSidebar });
     }
   } catch (error) {
     console.error("Failed to set up sidebar navigation:", error);
