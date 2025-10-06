@@ -69,6 +69,7 @@ Document the run in PR descriptions so QA can cross-reference results.
 * **Nostr interoperability:** Keep kind `30078` events as the source of truth and optionally mirror to kind `1063` so external clients see the hosted URL.
 * **Probing:** Lightweight `HEAD`/`GET` requests should back `probeUrl()` so dead URLs can be hidden or flagged without blocking the UI.
 * **Extensibility:** Future work (live streams, NIP-96 uploads, analytics) should preserve the URL-first strategy and magnet safety rules above.
+* **Sidebar layering:** Keep the fixed sidebar below every modal and overlay. Respect the `--z-sidebar*` tokens so dialogs always render on top of the navigation.
 
 ---
 
