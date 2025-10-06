@@ -217,6 +217,76 @@ async function ensureNostrTools() {
   return cachedNostrTools || null;
 }
 
+function isSimplePoolConstructor(candidate) {
+  if (typeof candidate !== "function") {
+    return false;
+  }
+
+  const prototype = candidate.prototype;
+  if (!prototype || typeof prototype !== "object") {
+    return false;
+  }
+
+  return typeof prototype.sub === "function" && typeof prototype.close === "function";
+}
+
+function unwrapSimplePool(candidate) {
+  if (!candidate) {
+    return null;
+  }
+
+  if (isSimplePoolConstructor(candidate)) {
+    return candidate;
+  }
+
+  if (typeof candidate === "object") {
+    if (isSimplePoolConstructor(candidate.SimplePool)) {
+      return candidate.SimplePool;
+    }
+    if (isSimplePoolConstructor(candidate.default)) {
+      return candidate.default;
+    }
+  }
+
+  return null;
+}
+
+function resolveSimplePoolConstructor(tools, scope = globalScope) {
+  const candidates = [
+    tools?.SimplePool,
+    tools?.pool?.SimplePool,
+    tools?.pool,
+    tools?.SimplePool?.SimplePool,
+    tools?.SimplePool?.default,
+    tools?.pool?.default,
+    tools?.default?.SimplePool,
+    tools?.default?.pool?.SimplePool,
+    tools?.default?.pool,
+  ];
+
+  if (scope && typeof scope === "object") {
+    candidates.push(scope?.SimplePool);
+    candidates.push(scope?.pool?.SimplePool);
+    candidates.push(scope?.pool);
+    const scopedTools =
+      scope?.NostrTools && scope.NostrTools !== tools ? scope.NostrTools : null;
+    if (scopedTools) {
+      candidates.push(scopedTools.SimplePool);
+      candidates.push(scopedTools.pool?.SimplePool);
+      candidates.push(scopedTools.pool);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const resolved = unwrapSimplePool(candidate);
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return null;
+}
+
 let ingestLocalViewEventRef = null;
 
 async function loadIngestLocalViewEvent() {
@@ -4292,10 +4362,34 @@ class NostrClient {
     }
 
     const tools = await ensureNostrTools();
-    const SimplePool = tools?.SimplePool;
+    const SimplePool = resolveSimplePoolConstructor(tools);
     if (typeof SimplePool !== "function") {
-      const error = new Error("NostrTools SimplePool is unavailable.");
+      if (isDevMode) {
+        if (tools && typeof tools === "object") {
+          const availableKeys = Object.keys(tools).join(", ");
+          console.warn(
+            "[nostr] NostrTools helpers did not expose SimplePool. Available keys:",
+            availableKeys
+          );
+        } else {
+          console.warn(
+            "[nostr] NostrTools helpers were unavailable. Check that nostr-tools bundles can load on this domain."
+          );
+        }
+        if (nostrToolsBootstrapFailure) {
+          console.warn(
+            "[nostr] nostr-tools bootstrap failure details:",
+            nostrToolsBootstrapFailure
+          );
+        }
+      }
+      const error = new Error(
+        "NostrTools SimplePool is unavailable. Verify that nostr-tools resources can load on this domain."
+      );
       error.code = "nostr-simplepool-unavailable";
+      if (nostrToolsBootstrapFailure) {
+        error.bootstrapFailure = nostrToolsBootstrapFailure;
+      }
       this.poolPromise = null;
       throw error;
     }

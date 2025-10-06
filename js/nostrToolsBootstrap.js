@@ -1,7 +1,38 @@
 const REMOTE_IMPORT_TIMEOUT = 4500;
 const LOCAL_IMPORT_TIMEOUT = 2500;
 const SCRIPT_FALLBACK_TIMEOUT = 6000;
-const CDN_BUNDLE_URL = "https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js";
+const CDN_BUNDLE_URL =
+  "https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js";
+const LOCAL_BUNDLE_RELATIVE_URL = "../vendor/nostr-tools.bundle.min.js";
+
+const moduleUrl =
+  typeof import.meta !== "undefined" && import.meta?.url ? import.meta.url : null;
+
+const resolveRelativeUrl = (relativePath) => {
+  if (!relativePath) {
+    return relativePath;
+  }
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(relativePath)) {
+    return relativePath;
+  }
+  if (moduleUrl) {
+    try {
+      return new URL(relativePath, moduleUrl).href;
+    } catch (error) {
+      // Fall through to other resolution strategies
+    }
+  }
+  if (typeof window !== "undefined" && window?.location?.href) {
+    try {
+      return new URL(relativePath, window.location.href).href;
+    } catch (error) {
+      return relativePath;
+    }
+  }
+  return relativePath;
+};
+
+const LOCAL_BUNDLE_URL = resolveRelativeUrl(LOCAL_BUNDLE_RELATIVE_URL);
 
 let bootstrapPromise = null;
 
@@ -137,6 +168,60 @@ const ensureGlobalReadyPromise = (scope, promise) => {
   }
 };
 
+const loadScriptBundle = (scope, url, label) => {
+  if (!scope?.document) {
+    return Promise.resolve({
+      label,
+      ok: false,
+      timedOut: false,
+      duration: 0,
+      error: new Error("Document is unavailable for script loading."),
+    });
+  }
+
+  return withTimeout(
+    () =>
+      new Promise((resolve, reject) => {
+        const { document } = scope;
+        const target = document.head || document.body || document.documentElement;
+        if (!target) {
+          reject(new Error("Unable to locate a DOM target for script injection."));
+          return;
+        }
+
+        const script = document.createElement("script");
+        script.async = true;
+        script.src = url;
+        script.crossOrigin = "anonymous";
+
+        const cleanup = () => {
+          script.onload = null;
+          script.onerror = null;
+          if (script.parentNode) {
+            script.parentNode.removeChild(script);
+          }
+        };
+
+        script.onload = () => {
+          cleanup();
+          resolve(scope?.NostrTools || null);
+        };
+        script.onerror = (event) => {
+          cleanup();
+          if (event?.error instanceof Error) {
+            reject(event.error);
+          } else {
+            reject(new Error(`nostr-tools bundle failed to load: ${url}`));
+          }
+        };
+
+        target.appendChild(script);
+      }),
+    SCRIPT_FALLBACK_TIMEOUT,
+    label
+  );
+};
+
 export function bootstrapNostrTools() {
   if (bootstrapPromise) {
     return bootstrapPromise;
@@ -256,38 +341,41 @@ export function bootstrapNostrTools() {
       !!scope.document && (resolvedModules.length === 0 || allDynamicTimedOut);
 
     if (shouldAttemptScriptFallback) {
-      const scriptLoadResult = await withTimeout(
-        () =>
-          new Promise((resolve, reject) => {
-            const script = scope.document.createElement("script");
-            script.src = CDN_BUNDLE_URL;
-            script.async = true;
-            script.onload = () => resolve(scope?.NostrTools || null);
-            script.onerror = () =>
-              reject(new Error("nostr-tools CDN bundle failed to load"));
-            scope.document.head.appendChild(script);
-          }),
-        SCRIPT_FALLBACK_TIMEOUT,
-        "cdn-bundle"
-      );
+      const scriptSources = [
+        LOCAL_BUNDLE_URL
+          ? { url: LOCAL_BUNDLE_URL, label: "local-bundle" }
+          : null,
+        { url: CDN_BUNDLE_URL, label: "cdn-bundle" },
+      ].filter(Boolean);
 
-      attempts.push({
-        target: scriptLoadResult.label,
-        ok: scriptLoadResult.ok,
-        timedOut: !!scriptLoadResult.timedOut,
-        duration: scriptLoadResult.duration,
-        error: scriptLoadResult.ok
-          ? null
-          : toSerializableError(scriptLoadResult.error),
-      });
+      for (const source of scriptSources) {
+        const scriptLoadResult = await loadScriptBundle(
+          scope,
+          source.url,
+          source.label
+        );
 
-      if (scriptLoadResult.ok) {
+        attempts.push({
+          target: scriptLoadResult.label,
+          ok: scriptLoadResult.ok,
+          timedOut: !!scriptLoadResult.timedOut,
+          duration: scriptLoadResult.duration,
+          error: scriptLoadResult.ok
+            ? null
+            : toSerializableError(scriptLoadResult.error),
+        });
+
+        if (!scriptLoadResult.ok) {
+          continue;
+        }
+
         const extracted = extractToolsFromModule(scriptLoadResult.value);
         if (extracted && Object.keys(extracted).length > 0) {
-          resolvedModules.push({ source: "cdn-bundle", tools: extracted });
+          resolvedModules.push({ source: source.label, tools: extracted });
           if (!resolvedNip04 && hasWorkingNip04(extracted?.nip04)) {
             resolvedNip04 = extracted.nip04;
           }
+          break;
         }
       }
     }
