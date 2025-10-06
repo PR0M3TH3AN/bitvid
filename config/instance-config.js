@@ -32,7 +32,7 @@ export const ADMIN_SUPER_NPUB =
  * you want to keep a fractional cut—e.g., `2.5` represents a 2.5% fee. The
  * default of `0` disables the fee so creators receive the full payment.
  */
-export const PLATFORM_FEE_PERCENT = 0;
+export const PLATFORM_FEE_PERCENT = 30;
 
 /**
  * Lightning address to fall back to when authors omit their own `lud16`.
