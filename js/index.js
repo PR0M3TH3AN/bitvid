@@ -168,9 +168,84 @@ async function bootstrapInterface() {
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   console.log("Sidebar loaded.");
 
-  const mobileMenuBtn = document.getElementById("mobileMenuBtn");
   const sidebar = document.getElementById("sidebar");
+  const collapseToggle = document.getElementById("sidebarCollapseToggle");
+  if (!collapseToggle) {
+    console.warn("Sidebar collapse toggle not found; skipping density controls.");
+  }
+  const collapseChevron = collapseToggle?.querySelector("[data-sidebar-chevron]");
+  const collapseLabel = collapseToggle?.querySelector(".sidebar-toggle-label");
+
+  const mobileMenuBtn = document.getElementById("mobileMenuBtn");
   const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+  const SIDEBAR_COLLAPSED_STORAGE_KEY = "sidebarCollapsed";
+  let isSidebarCollapsed = false;
+
+  const readStoredSidebarCollapsed = () => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+    } catch (error) {
+      console.warn("Unable to read sidebar collapse state from storage:", error);
+      return false;
+    }
+  };
+
+  const persistSidebarCollapsed = (collapsed) => {
+    try {
+      localStorage.setItem(
+        SIDEBAR_COLLAPSED_STORAGE_KEY,
+        collapsed ? "true" : "false",
+      );
+    } catch (error) {
+      console.warn("Unable to persist sidebar collapse state:", error);
+    }
+  };
+
+  const applySidebarDensity = (collapsed) => {
+    const targets = [sidebar, document.body].filter(
+      (element) => element instanceof HTMLElement,
+    );
+    const state = collapsed ? "collapsed" : "expanded";
+
+    targets.forEach((element) => {
+      element.classList.toggle("sidebar-collapsed", collapsed);
+      element.classList.toggle("sidebar-expanded", !collapsed);
+      element.setAttribute("data-state", state);
+    });
+
+    if (collapseToggle) {
+      collapseToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      collapseToggle.setAttribute("data-state", state);
+    }
+
+    if (collapseChevron instanceof HTMLElement) {
+      collapseChevron.classList.toggle("rotate-180", collapsed);
+    }
+
+    if (collapseLabel) {
+      collapseLabel.textContent = collapsed ? "Expand" : "Collapse";
+    }
+  };
+
+  const syncSidebarDensityToViewport = (isDesktopViewport) => {
+    if (!collapseToggle) {
+      applySidebarDensity(false);
+      return;
+    }
+
+    if (isDesktopViewport) {
+      isSidebarCollapsed = readStoredSidebarCollapsed();
+      applySidebarDensity(isSidebarCollapsed);
+      return;
+    }
+
+    applySidebarDensity(false);
+  };
+
+  if (collapseToggle) {
+    isSidebarCollapsed = readStoredSidebarCollapsed();
+  }
 
   const setSidebarState = (isOpen) => {
     if (sidebar) {
@@ -198,6 +273,30 @@ async function bootstrapInterface() {
     setSidebarState(shouldOpen);
   };
 
+  let desktopQuery = null;
+  const isDesktopViewport = () => {
+    if (desktopQuery) {
+      return desktopQuery.matches;
+    }
+    return window.innerWidth >= 768;
+  };
+
+  if (collapseToggle) {
+    collapseToggle.addEventListener("click", (event) => {
+      const desktop = isDesktopViewport();
+      if (!desktop) {
+        event.preventDefault();
+        return;
+      }
+
+      event.preventDefault();
+      const nextCollapsed = !isSidebarCollapsed;
+      isSidebarCollapsed = nextCollapsed;
+      applySidebarDensity(nextCollapsed);
+      persistSidebarCollapsed(nextCollapsed);
+    });
+  }
+
   if (mobileMenuBtn && sidebar) {
     mobileMenuBtn.addEventListener("click", toggleSidebar);
   }
@@ -213,11 +312,17 @@ async function bootstrapInterface() {
   });
 
   if (typeof window.matchMedia === "function") {
-    const desktopQuery = window.matchMedia("(min-width: 768px)");
+    desktopQuery = window.matchMedia("(min-width: 768px)");
+    syncSidebarDensityToViewport(desktopQuery.matches);
+
     const onDesktopChange = (event) => {
       if (event.matches) {
         closeSidebar();
+        syncSidebarDensityToViewport(true);
+        return;
       }
+
+      syncSidebarDensityToViewport(false);
     };
 
     if (typeof desktopQuery.addEventListener === "function") {
@@ -225,6 +330,8 @@ async function bootstrapInterface() {
     } else if (typeof desktopQuery.addListener === "function") {
       desktopQuery.addListener(onDesktopChange);
     }
+  } else {
+    syncSidebarDensityToViewport(window.innerWidth >= 768);
   }
 
   const footerDropdownButton = document.getElementById("footerDropdownButton");
