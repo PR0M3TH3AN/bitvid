@@ -173,13 +173,14 @@ async function bootstrapInterface() {
   if (!collapseToggle) {
     console.warn("Sidebar collapse toggle not found; skipping density controls.");
   }
-  const collapseChevron = collapseToggle?.querySelector("[data-sidebar-chevron]");
   const collapseLabel = collapseToggle?.querySelector(".sidebar-toggle-label");
 
   const mobileMenuBtn = document.getElementById("mobileMenuBtn");
   const sidebarOverlay = document.getElementById("sidebarOverlay");
 
   const SIDEBAR_COLLAPSED_STORAGE_KEY = "sidebarCollapsed";
+  const SIDEBAR_WIDTH_EXPANDED = "16rem";
+  const SIDEBAR_WIDTH_COLLAPSED = "4rem";
   let isSidebarCollapsed = false;
 
   const readStoredSidebarCollapsed = () => {
@@ -207,20 +208,24 @@ async function bootstrapInterface() {
       (element) => element instanceof HTMLElement,
     );
     const state = collapsed ? "collapsed" : "expanded";
+    const nextWidth = collapsed
+      ? SIDEBAR_WIDTH_COLLAPSED
+      : SIDEBAR_WIDTH_EXPANDED;
 
     targets.forEach((element) => {
       element.classList.toggle("sidebar-collapsed", collapsed);
       element.classList.toggle("sidebar-expanded", !collapsed);
       element.setAttribute("data-state", state);
+      element.style.setProperty("--sidebar-width", nextWidth);
     });
 
     if (collapseToggle) {
       collapseToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
       collapseToggle.setAttribute("data-state", state);
-    }
-
-    if (collapseChevron instanceof HTMLElement) {
-      collapseChevron.classList.toggle("rotate-180", collapsed);
+      collapseToggle.setAttribute(
+        "aria-label",
+        collapsed ? "Expand sidebar" : "Collapse sidebar",
+      );
     }
 
     if (collapseLabel) {

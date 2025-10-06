@@ -64,8 +64,9 @@
 
     <!--
       MAIN CONTENT:
-      md:ml-64 ensures content is shifted on desktop so the pinned sidebar doesn't overlap.
-      On mobile we float the sidebar over the content and dim the background overlay.
+      Desktop spacing now follows the --sidebar-width custom property so the layout stays in
+      sync with the collapsible rail. On mobile we float the sidebar over the content and dim
+      the background overlay.
     -->
     <!--
       `fade-in` is scrubbed by js/index.js after the first animation so that
@@ -73,7 +74,7 @@
       elements that should animate exactly once on initial paint.
     -->
 
-    <div id="app" class="md:ml-64 px-4 py-8 min-h-screen flex flex-col fade-in">
+    <div id="app" class="px-4 py-8 min-h-screen flex flex-col fade-in">
       <!-- Header -->
       <header class="mb-8 flex items-center w-full">
         <!-- Mobile hamburger button (hidden on md+) -->

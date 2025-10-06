@@ -21,6 +21,8 @@
   --z-modal-overlay: 70;
   --z-modal-content: 90;
   --z-modal-player: 120;
+  --sidebar-width-expanded: 16rem;
+  --sidebar-width-collapsed: 4rem;
 }
 
 html {
@@ -66,6 +68,7 @@ body {
   margin: 0;
   padding: 0;
   overflow-x: hidden; /* Disable horizontal scrolling */
+  --sidebar-width: var(--sidebar-width-expanded);
 }
 
 header {
@@ -1507,7 +1510,7 @@ body.sidebar-open #sidebarOverlay {
 @media (min-width: 768px) {
   #sidebar {
     transform: translateX(0) !important;
-    width: 16rem;
+    width: var(--sidebar-width);
     overflow-x: hidden;
     transition: width 200ms ease, transform 0.3s ease, box-shadow 0.3s ease;
   }
@@ -1520,14 +1523,19 @@ body.sidebar-open #sidebarOverlay {
     display: none;
   }
 
-  body.sidebar-collapsed #sidebar,
-  #sidebar.sidebar-collapsed {
-    width: 4rem;
+  #app {
+    margin-left: var(--sidebar-width);
+    transition: margin-left 200ms ease;
   }
 
-  body.sidebar-expanded #sidebar,
+  body.sidebar-collapsed,
+  #sidebar.sidebar-collapsed {
+    --sidebar-width: var(--sidebar-width-collapsed);
+  }
+
+  body.sidebar-expanded,
   #sidebar.sidebar-expanded {
-    width: 16rem;
+    --sidebar-width: var(--sidebar-width-expanded);
   }
 
   body.sidebar-collapsed #sidebar a,
@@ -1569,23 +1577,15 @@ body.sidebar-open #sidebarOverlay {
     display: inline;
   }
 
+  #sidebar .sidebar-toggle-icon--rotated {
+    transform: rotate(180deg);
+  }
+
   body.sidebar-collapsed #sidebar .sidebar-toggle-icon--rotated,
   #sidebar.sidebar-collapsed .sidebar-toggle-icon--rotated {
     transform: rotate(0deg);
   }
 
-  body.sidebar-expanded #sidebar .sidebar-toggle-icon--rotated,
-  #sidebar.sidebar-expanded .sidebar-toggle-icon--rotated {
-    transform: rotate(180deg);
-  }
-
-  body.sidebar-collapsed #app {
-    margin-left: 4rem !important;
-  }
-
-  body.sidebar-expanded #app {
-    margin-left: 16rem !important;
-  }
 }
 
 /* Example: customizing the border & background in the sidebar */
