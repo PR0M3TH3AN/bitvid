@@ -341,16 +341,21 @@ function createNip44Encryption(context) {
 
 function getWalletSupportedEncryption(infoEvent) {
   if (!infoEvent || !Array.isArray(infoEvent.tags)) {
-    return ["nip04"];
+    return { schemes: [], explicit: false };
   }
 
   const tag = infoEvent.tags.find((entry) => Array.isArray(entry) && entry[0] === "encryption");
   if (!tag || typeof tag[1] !== "string") {
-    return ["nip04"];
+    return { schemes: [], explicit: false };
   }
 
   const values = normalizeSpaceSeparatedValues(tag[1]);
-  return values.length ? values : ["nip04"];
+  if (!values.length) {
+    return { schemes: [], explicit: false };
+  }
+
+  const schemes = Array.from(new Set(values));
+  return { schemes, explicit: true };
 }
 
 function getEncryptionCandidates(context) {
@@ -487,29 +492,33 @@ async function ensureEncryption(context) {
     }
   }
 
-  const walletSchemes = getWalletSupportedEncryption(infoEvent);
+  const { schemes: walletSchemes } = getWalletSupportedEncryption(infoEvent);
   const candidates = getEncryptionCandidates(context).filter((candidate) => {
     return !state.unsupported.has(candidate.scheme);
   });
 
-  for (const candidate of candidates) {
-    if (walletSchemes.includes(candidate.scheme)) {
-      context.encryption = candidate;
-      return candidate;
-    }
+  const compatibleCandidates = walletSchemes.length
+    ? candidates.filter((candidate) => walletSchemes.includes(candidate.scheme))
+    : candidates;
+
+  if (compatibleCandidates.length) {
+    const selected = compatibleCandidates[0];
+    context.encryption = selected;
+    return selected;
   }
 
-  const fallback = candidates.find((candidate) => candidate.scheme === "nip04");
-  if (fallback) {
-    console.warn(
-      "[nwcClient] Falling back to nip04 encryption despite wallet not advertising support."
-    );
-    context.encryption = fallback;
-    return fallback;
-  }
-
-  if (walletSchemes.includes("nip04")) {
+  if (
+    walletSchemes.includes("nip04") &&
+    !candidates.some((candidate) => candidate.scheme === "nip04")
+  ) {
     throw new Error("NostrTools.nip04.encrypt is not available.");
+  }
+
+  if (walletSchemes.length) {
+    const message = `Wallet advertises unsupported encryption schemes: ${walletSchemes.join(", ")}.`;
+    const error = new Error(message);
+    error.code = "UNSUPPORTED_ENCRYPTION";
+    throw error;
   }
 
   throw new Error("No compatible wallet encryption scheme available.");
@@ -983,4 +992,5 @@ export const __TESTING__ = Object.freeze({
   ensureActiveState,
   buildPayInvoiceParams,
   getActiveState: () => activeState,
+  ensureEncryptionForContext: ensureEncryption,
 });
