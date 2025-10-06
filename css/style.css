@@ -1424,7 +1424,8 @@ footer a:hover {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
-  z-index: 60;
+  /* Keep below modal stacks (z-50+) so dialogs overlay the drawer. */
+  z-index: 40;
   box-shadow: none;
 }
 
@@ -1442,7 +1443,8 @@ footer a:hover {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
-  z-index: 50;
+  /* Sits above page chrome but below modals and the sidebar itself. */
+  z-index: 30;
 }
 
 body.sidebar-open #sidebarOverlay {
