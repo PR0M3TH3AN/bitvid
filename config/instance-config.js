@@ -44,7 +44,7 @@ export const PLATFORM_FEE_PERCENT = 30;
  * Super Admin profile publishing a `lud16` so BitVid still knows where to route
  * fees when they are enabled.
  */
-export const PLATFORM_LUD16_OVERRIDE = null;
+export const PLATFORM_LUD16_OVERRIDE = adammalin@strike.me;
 
 /**
  * Optional list of relays to seed new sessions with instead of the defaults.
@@ -148,7 +148,7 @@ export const WATCH_HISTORY_BATCH_RESOLVE = true;
  * that page through histories in smaller slices can set a positive integer to
  * cap the resolver output so pagination and API responses stay aligned.
  */
-export const WATCH_HISTORY_BATCH_PAGE_SIZE = null;
+export const WATCH_HISTORY_BATCH_PAGE_SIZE = 10;
 
 /**
  * Maximum size of the JSON payload for each watch-history chunk, measured
