@@ -1506,6 +1506,9 @@ body.sidebar-open #sidebarOverlay {
 @media (min-width: 768px) {
   #sidebar {
     transform: translateX(0) !important;
+    width: 16rem;
+    overflow-x: hidden;
+    transition: width 200ms ease, transform 0.3s ease, box-shadow 0.3s ease;
   }
 
   #sidebar.sidebar-open {
@@ -1515,17 +1518,73 @@ body.sidebar-open #sidebarOverlay {
   #sidebarOverlay {
     display: none;
   }
-}
 
-/* Collapsed/expanded classes if needed on desktop */
-.sidebar-collapsed {
-  width: 4rem;
-}
-.sidebar-expanded {
-  width: 16rem;
-}
-.sidebar-collapsed .sidebar-text {
-  display: none;
+  body.sidebar-collapsed #sidebar,
+  #sidebar.sidebar-collapsed {
+    width: 4rem;
+  }
+
+  body.sidebar-expanded #sidebar,
+  #sidebar.sidebar-expanded {
+    width: 16rem;
+  }
+
+  body.sidebar-collapsed #sidebar a,
+  #sidebar.sidebar-collapsed a {
+    justify-content: center;
+    padding-inline: 1rem;
+  }
+
+  body.sidebar-expanded #sidebar a,
+  #sidebar.sidebar-expanded a {
+    justify-content: flex-start;
+    padding-inline: 1rem;
+  }
+
+  body.sidebar-collapsed #sidebar a > img,
+  body.sidebar-collapsed #sidebar a svg,
+  #sidebar.sidebar-collapsed a > img,
+  #sidebar.sidebar-collapsed a svg {
+    margin-right: 0;
+    margin-inline-end: 0;
+  }
+
+  body.sidebar-expanded #sidebar a > img,
+  body.sidebar-expanded #sidebar a svg,
+  #sidebar.sidebar-expanded a > img,
+  #sidebar.sidebar-expanded a svg {
+    margin-right: 0.75rem;
+    margin-inline-end: 0.75rem;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-text,
+  body.sidebar-collapsed #sidebar .sidebar-toggle-label,
+  #sidebar.sidebar-collapsed .sidebar-text,
+  #sidebar.sidebar-collapsed .sidebar-toggle-label {
+    display: none;
+  }
+
+  #sidebar.sidebar-expanded .sidebar-toggle-label {
+    display: inline;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-toggle-icon--rotated,
+  #sidebar.sidebar-collapsed .sidebar-toggle-icon--rotated {
+    transform: rotate(0deg);
+  }
+
+  body.sidebar-expanded #sidebar .sidebar-toggle-icon--rotated,
+  #sidebar.sidebar-expanded .sidebar-toggle-icon--rotated {
+    transform: rotate(180deg);
+  }
+
+  body.sidebar-collapsed #app {
+    margin-left: 4rem !important;
+  }
+
+  body.sidebar-expanded #app {
+    margin-left: 16rem !important;
+  }
 }
 
 /* Example: customizing the border & background in the sidebar */
