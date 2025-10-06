@@ -4292,7 +4292,14 @@ class NostrClient {
     }
 
     const tools = await ensureNostrTools();
-    const SimplePool = tools?.SimplePool;
+    const SimplePool =
+      typeof tools?.SimplePool === "function"
+        ? tools.SimplePool
+        : typeof tools?.pool?.SimplePool === "function"
+        ? tools.pool.SimplePool
+        : typeof tools?.SimplePool?.SimplePool === "function"
+        ? tools.SimplePool.SimplePool
+        : null;
     if (typeof SimplePool !== "function") {
       const error = new Error("NostrTools SimplePool is unavailable.");
       error.code = "nostr-simplepool-unavailable";
