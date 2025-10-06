@@ -100,9 +100,11 @@ latest styles.
   - Central place for instance-specific values like the Super Admin npub and the
     default whitelist-only mode setting. Update the documented exports here when
     preparing a new deployment.
-  - Tune `PLATFORM_FEE_PERCENT` (0–100) to keep a percentage of Lightning tips
-    and set `PLATFORM_LUD16_OVERRIDE` when you need a deployment-wide fallback
-    Lightning address. Leave the fee at `0` to pass through every satoshi.
+  - Tune `PLATFORM_FEE_PERCENT` (0–100) to keep a percentage of Lightning tips.
+    When the fee is positive, BitVid routes the platform’s split to
+    `PLATFORM_LUD16_OVERRIDE`, so set it to the Lightning address that should
+    receive the sats (or publish a `lud16` on the Super Admin profile). Leave
+    the fee at `0` to pass through every satoshi.
   - Populate `DEFAULT_RELAY_URLS_OVERRIDE` with WSS URLs to replace the bundled
     relay bootstrap list. Keep it empty to stick with the upstream defaults.
 - **`config.js`**:

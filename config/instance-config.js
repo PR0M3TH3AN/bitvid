@@ -38,8 +38,11 @@ export const PLATFORM_FEE_PERCENT = 0;
  * Lightning address to fall back to when authors omit their own `lud16`.
  *
  * Supply a string like `"tips@example.com"` to force a deployment-wide
- * fallback Lightning address, or leave the value as `null` to respect the
- * creator’s configured profile metadata.
+ * fallback Lightning address. When `PLATFORM_FEE_PERCENT` is greater than 0,
+ * this override also acts as the Lightning target for the platform’s split.
+ * Leave the value as `null` to respect the creator’s metadata and rely on the
+ * Super Admin profile publishing a `lud16` so BitVid still knows where to route
+ * fees when they are enabled.
  */
 export const PLATFORM_LUD16_OVERRIDE = null;
 
