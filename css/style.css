@@ -1781,10 +1781,10 @@ body.sidebar-open #sidebarOverlay {
   body.sidebar-collapsed #sidebar .sidebar-nav-link,
   #sidebar.sidebar-collapsed .sidebar-nav-link {
     /*
-      Center the icon rail in collapsed mode without altering icon sizing so
-      the glyphs remain consistent between states.
+      Keep icons centered in the collapsed rail without resizing them.
     */
     justify-content: center;
+    padding-inline: 0.5rem;
   }
 
   body.sidebar-expanded #sidebar .sidebar-nav-link,
@@ -1800,19 +1800,19 @@ body.sidebar-open #sidebarOverlay {
   body.sidebar-collapsed #sidebar .sidebar__inner,
   #sidebar.sidebar-collapsed .sidebar__inner {
     /*
-      Trim horizontal padding aggressively enough for the icon rail to remain
-      visible inside the 4rem track while still giving the panel breathing room.
+      Keep enough breathing room for the panel shadow while widening the
+      interior track so 2.75rem controls stay perfectly round.
     */
-    padding-inline: 0.625rem;
+    padding-inline: 0.25rem;
   }
 
   body.sidebar-collapsed #sidebar .sidebar-panel,
   #sidebar.sidebar-collapsed .sidebar-panel {
     /*
-      Match the outer adjustment while keeping the rounded gradient card
-      intact. This spacing ensures 1.5rem icons can render without being clipped.
+      Mirror the outer adjustment so the gradient card retains its rounded
+      edges without squeezing the icon rail.
     */
-    padding-inline: 0.375rem;
+    padding-inline: 0.25rem;
   }
 
   #sidebar .sidebar-toggle-icon--rotated {
