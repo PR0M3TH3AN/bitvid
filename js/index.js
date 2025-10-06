@@ -209,6 +209,10 @@ async function bootstrapInterface() {
     if (sidebar instanceof HTMLElement) {
       widthTargets.push(sidebar);
     }
+    const appShell = document.getElementById("app");
+    if (appShell instanceof HTMLElement) {
+      widthTargets.push(appShell);
+    }
     const state = collapsed ? "collapsed" : "expanded";
     const nextWidth = collapsed
       ? SIDEBAR_WIDTH_COLLAPSED
@@ -227,12 +231,11 @@ async function bootstrapInterface() {
       });
 
     if (collapseToggle) {
+      const actionLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
       collapseToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
       collapseToggle.setAttribute("data-state", state);
-      collapseToggle.setAttribute(
-        "aria-label",
-        collapsed ? "Expand sidebar" : "Collapse sidebar",
-      );
+      collapseToggle.setAttribute("aria-label", actionLabel);
+      collapseToggle.setAttribute("title", actionLabel);
     }
   };
 

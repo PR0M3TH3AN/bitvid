@@ -1,10 +1,18 @@
 :root {
-  --color-bg: #0f172a;
+  /*
+    Core palette tokens used across the application.
+    --color-page keeps the primary content surface neutral while --color-surface
+    powers the dark shells (sidebar, dialogs, cards).
+  */
+  --color-page: #f8fafc;
+  --color-surface: #0f172a;
+  --color-bg: var(--color-surface);
   --color-card: #1e293b;
   --color-primary: #fe0032;
   --color-secondary: #ff93a5;
   --color-card-critical: #3f0b13;
   --color-text: #f8fafc;
+  --color-text-strong: #0f172a;
   --color-muted: #94a3b8;
   --shadow-sm: 0 0.0625rem 0.125rem 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 0.25rem 0.375rem -0.0625rem rgb(0 0 0 / 0.1);
@@ -63,12 +71,21 @@ html {
 /* Core Styles */
 body {
   font-family: system-ui, -apple-system, sans-serif;
-  background-color: var(--color-bg);
-  color: var(--color-text);
+  background-color: var(--color-page);
+  color: var(--color-text-strong);
   line-height: 1.5;
   margin: 0;
   padding: 0;
   overflow-x: hidden; /* Disable horizontal scrolling */
+}
+
+#app {
+  /*
+    Keep the primary content surface aligned with the page background so the
+    sidebar styling does not bleed into the video grid.
+  */
+  background-color: var(--color-page);
+  color: inherit;
 }
 
 header {
@@ -1458,7 +1475,7 @@ footer a:hover {
   width: var(--sidebar-width);
   height: 100vh;
   height: 100dvh;
-  background-color: #0f172a;
+  background-color: var(--color-surface);
   color: var(--color-text);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -1570,6 +1587,7 @@ footer a:hover {
   width: 1.5rem;
   height: 1.5rem;
   flex-shrink: 0;
+  display: block;
 }
 
 .sidebar-footer {
@@ -1719,6 +1737,7 @@ body.sidebar-open #sidebarOverlay {
   #sidebar.sidebar-collapsed .sidebar-nav-link {
     justify-content: center;
     padding-inline: 0.5rem;
+    gap: 0.25rem;
   }
 
   body.sidebar-expanded #sidebar .sidebar-nav-link,
@@ -1744,6 +1763,20 @@ body.sidebar-open #sidebarOverlay {
     display: none;
   }
 
+  body.sidebar-collapsed #sidebar .sidebar__inner,
+  #sidebar.sidebar-collapsed .sidebar__inner {
+    /*
+      Reduce horizontal padding when collapsed so icon rails remain visible
+      instead of being clipped by the fixed 4rem rail width.
+    */
+    padding-inline: 0.75rem;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-panel,
+  #sidebar.sidebar-collapsed .sidebar-panel {
+    padding-inline: 0.5rem;
+  }
+
   #sidebar .sidebar-toggle-icon--rotated {
     transform: rotate(180deg);
   }
@@ -1756,6 +1789,11 @@ body.sidebar-open #sidebarOverlay {
   body.sidebar-collapsed #sidebar .sidebar-dropup-trigger {
     justify-content: center;
     padding-inline: 0.5rem;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-dropup-trigger .sidebar-text,
+  #sidebar.sidebar-collapsed .sidebar-dropup-trigger .sidebar-text {
+    display: none;
   }
 
   body.sidebar-collapsed #sidebar .sidebar-dropup-trigger__chevron {
