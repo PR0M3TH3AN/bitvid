@@ -1,6 +1,6 @@
 // js/payments/zapSplit.js
 
-import { PLATFORM_FEE_PERCENT, ADMIN_SUPER_NPUB } from "../config.js";
+import { ADMIN_SUPER_NPUB } from "../config.js";
 import {
   resolveLightningAddress,
   fetchPayServiceData,
@@ -9,6 +9,11 @@ import {
 } from "./lnurl.js";
 import { ensureWallet, sendPayment } from "./nwcClient.js";
 import { getPlatformLightningAddress } from "./platformAddress.js";
+import {
+  clampPercent,
+  parsePercentValue,
+  resolvePlatformFeePercent,
+} from "./platformFee.js";
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const ZAP_KIND = 9734;
@@ -24,19 +29,7 @@ const DEFAULT_DEPS = Object.freeze({
 });
 
 function getOverridePlatformFee() {
-  const override = globalThis?.__BITVID_PLATFORM_FEE_OVERRIDE__;
-  if (Number.isFinite(override)) {
-    return override;
-  }
-  return PLATFORM_FEE_PERCENT;
-}
-
-function clampPercent(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return 0;
-  }
-  return Math.min(100, Math.max(0, numeric));
+  return resolvePlatformFeePercent(globalThis?.__BITVID_PLATFORM_FEE_OVERRIDE__);
 }
 
 function sanitizeAmount(amount) {
@@ -341,4 +334,6 @@ export const __TESTING__ = Object.freeze({
   determineRecipientPubkey,
   derivePointerTag,
   mergeDependencies,
+  parsePercentValue,
+  clampPercent,
 });

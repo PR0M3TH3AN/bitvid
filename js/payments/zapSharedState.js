@@ -1,4 +1,4 @@
-import { PLATFORM_FEE_PERCENT } from "../config.js";
+import { resolvePlatformFeePercent } from "./platformFee.js";
 import {
   resolveLightningAddress as defaultResolveLightningAddress,
   fetchPayServiceData as defaultFetchPayServiceData,
@@ -112,11 +112,9 @@ export async function fetchLightningMetadata(
 
 export function calculateZapShares(amount, overrideFee = null) {
   const numericAmount = Math.max(0, Math.round(Number(amount) || 0));
-  const percentSource =
-    typeof overrideFee === "number" && Number.isFinite(overrideFee)
-      ? overrideFee
-      : PLATFORM_FEE_PERCENT;
-  const feePercent = Math.min(100, Math.max(0, Math.round(percentSource)));
+  const feePercent = resolvePlatformFeePercent(
+    typeof overrideFee === "undefined" ? null : overrideFee
+  );
   const platformShare = Math.floor((numericAmount * feePercent) / 100);
   const creatorShare = numericAmount - platformShare;
   return {
