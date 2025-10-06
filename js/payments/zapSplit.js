@@ -23,8 +23,57 @@ const DEFAULT_DEPS = Object.freeze({
   platformAddress: Object.freeze({ getPlatformLightningAddress }),
 });
 
+function parsePercentValue(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : NaN;
+  }
+
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return NaN;
+    }
+
+    if (trimmed.includes("/")) {
+      const [firstRaw, secondRaw] = trimmed.split("/").map((part) => part.trim());
+      if (firstRaw && secondRaw) {
+        const first = Number(firstRaw);
+        const second = Number(secondRaw);
+        if (Number.isFinite(first) && Number.isFinite(second) && first >= 0 && second >= 0) {
+          const total = first + second;
+          if (total > 0) {
+            return (second / total) * 100;
+          }
+        }
+      }
+    }
+
+    const percentStripped = trimmed.endsWith("%")
+      ? trimmed.slice(0, -1).trim()
+      : trimmed;
+    const directNumeric = Number(percentStripped);
+    if (Number.isFinite(directNumeric)) {
+      return directNumeric;
+    }
+
+    const match = percentStripped.match(/-?\d+(?:\.\d+)?/);
+    if (match) {
+      const fallback = Number(match[0]);
+      return Number.isFinite(fallback) ? fallback : NaN;
+    }
+
+    return NaN;
+  }
+
+  return Number.isFinite(value) ? Number(value) : NaN;
+}
+
 function getOverridePlatformFee() {
-  const override = globalThis?.__BITVID_PLATFORM_FEE_OVERRIDE__;
+  const override = parsePercentValue(globalThis?.__BITVID_PLATFORM_FEE_OVERRIDE__);
   if (Number.isFinite(override)) {
     return override;
   }
@@ -32,7 +81,7 @@ function getOverridePlatformFee() {
 }
 
 function clampPercent(value) {
-  const numeric = Number(value);
+  const numeric = parsePercentValue(value);
   if (!Number.isFinite(numeric)) {
     return 0;
   }
@@ -341,4 +390,6 @@ export const __TESTING__ = Object.freeze({
   determineRecipientPubkey,
   derivePointerTag,
   mergeDependencies,
+  parsePercentValue,
+  clampPercent,
 });

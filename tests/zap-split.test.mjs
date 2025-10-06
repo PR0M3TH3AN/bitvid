@@ -180,6 +180,42 @@ async function testSplitMath() {
   delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
 }
 
+async function testStringFeeOverride() {
+  const videoEvent = {
+    id: "event-id",
+    pubkey: "c".repeat(64),
+    lightningAddress: "creator@example.com",
+    tags: [["d", "pointer"]],
+    kind: 30078,
+  };
+
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = "70/30";
+  const seventyThirty = createDeps();
+  const ratioResult = await splitAndZap(
+    { videoEvent, amountSats: 1000, comment: "Great video!" },
+    seventyThirty.deps
+  );
+
+  assert.equal(ratioResult.creatorShare, 700);
+  assert.equal(ratioResult.platformShare, 300);
+  const ratioSendCalls = seventyThirty.getSendCalls();
+  assert.equal(ratioSendCalls.length, 2, "should send two payments for ratio");
+  assert.equal(ratioSendCalls[0].amountSats, 700);
+  assert.equal(ratioSendCalls[1].amountSats, 300);
+
+  globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = "30%";
+  const percentOverride = createDeps();
+  const percentResult = await splitAndZap(
+    { videoEvent, amountSats: 200, comment: "Another zap" },
+    percentOverride.deps
+  );
+
+  assert.equal(percentResult.creatorShare, 140);
+  assert.equal(percentResult.platformShare, 60);
+
+  delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
+}
+
 async function testLnurlBounds() {
   globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = 0;
   const depsWrapper = createDeps({ minSendable: 5_000 });
@@ -265,5 +301,6 @@ await testSplitMath();
 await testLnurlBounds();
 await testMissingAddress();
 await testWalletFailure();
+await testStringFeeOverride();
 
 console.log("zap-split tests passed");
