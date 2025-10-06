@@ -71,8 +71,10 @@ Document the run in PR descriptions so QA can cross-reference results.
 * **Extensibility:** Future work (live streams, NIP-96 uploads, analytics) should preserve the URL-first strategy and magnet safety rules above.
 * **Sidebar layering:** Keep the fixed sidebar below every modal and overlay. Respect the `--z-sidebar*` tokens so dialogs always render on top of the navigation.
 * **Static asset cache busting:** The CDN aggressively caches `components/sidebar.html` and CSS/JS bundles. Update `config/asset-version.js` and keep the `?v=` query strings in `index.html` (and iframe form shells) in sync whenever you change sidebar markup, scripts, or styles. The fetch helpers in `js/index.js` already append `cache: "no-store"`; reuse them for new partials so desktop collapses ship immediately without waiting on manual cache clears.
+* **View partial cache busting:** The `views/*.html` files are served from the same CDN tier and require the asset version suffix as well. `js/viewManager.js` now appends `?v=<ASSET_VERSION>` when loading views—keep that helper in place so layout or styling updates propagate on the first refresh.
 * **Sidebar overflow styling:** Desktop media queries in `css/style.css` used to force `overflow-x: hidden` on `#sidebar`, which clipped the navigation panel’s drop shadow. When adjusting rail dimensions, update both the base `#sidebar` rule and the desktop override so the gradient card can bleed over the white canvas. `#sidebarContainer` now keeps overflow visible while `.sidebar__inner` handles scrolling; stick with that division when extending the layout.
 * **Collapsed rail padding:** The collapsed rail keeps icons full-size by pairing reduced padding on `.sidebar__inner`, `.sidebar-panel`, and `.sidebar-nav-link`. Update the trio together so 4 rem still fits the 2.75 rem toggle button and 1.5 rem glyphs without squishing the gradients.
+* **Collapsed nav width:** Links in the collapsed state must keep `width: 100%` so the icons sit on the gradient card instead of drifting over the page background. If you tweak the sidebar spacing, preserve the explicit width on `.sidebar-nav` and `.sidebar-nav-link`.
 
 ---
 

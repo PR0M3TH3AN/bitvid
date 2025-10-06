@@ -1478,6 +1478,7 @@ footer a:hover {
   top: 0;
   left: 0;
   width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
   height: 100vh;
   height: 100dvh;
   background-color: transparent;
@@ -1496,6 +1497,7 @@ footer a:hover {
   height: 100%;
   padding: 1.5rem 1.25rem 1.75rem;
   position: relative;
+  width: 100%;
   overflow-x: visible;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -1513,6 +1515,8 @@ footer a:hover {
   border-radius: 1rem;
   box-shadow: 0 1.25rem 2.5rem rgba(15, 23, 42, 0.35);
   padding: 1.25rem 1rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .sidebar-panel--primary {
@@ -1539,6 +1543,7 @@ footer a:hover {
   cursor: pointer;
   transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .sidebar-collapse-toggle:hover {
@@ -1564,6 +1569,7 @@ footer a:hover {
   gap: 0.25rem;
   opacity: 1;
   transition: opacity 160ms ease;
+  width: 100%;
 }
 
 .sidebar-nav-link {
@@ -1577,6 +1583,8 @@ footer a:hover {
   color: rgba(226, 232, 240, 0.94);
   text-decoration: none;
   transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .sidebar-nav-link:hover {
@@ -1629,6 +1637,7 @@ footer a:hover {
   font-weight: 600;
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  box-sizing: border-box;
   flex-shrink: 0;
 }
 
@@ -1785,6 +1794,7 @@ body.sidebar-open #sidebarOverlay {
     */
     justify-content: center;
     padding-inline: 0.5rem;
+    min-height: 2.75rem;
   }
 
   body.sidebar-expanded #sidebar .sidebar-nav-link,
@@ -1803,7 +1813,7 @@ body.sidebar-open #sidebarOverlay {
       Keep enough breathing room for the panel shadow while widening the
       interior track so 2.75rem controls stay perfectly round.
     */
-    padding-inline: 0.25rem;
+    padding-inline: 0.5rem;
   }
 
   body.sidebar-collapsed #sidebar .sidebar-panel,
@@ -1812,7 +1822,17 @@ body.sidebar-open #sidebarOverlay {
       Mirror the outer adjustment so the gradient card retains its rounded
       edges without squeezing the icon rail.
     */
-    padding-inline: 0.25rem;
+    padding-inline: 0.75rem;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-panel__header,
+  #sidebar.sidebar-collapsed .sidebar-panel__header {
+    justify-content: center;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-collapse-toggle,
+  #sidebar.sidebar-collapsed .sidebar-collapse-toggle {
+    margin-inline: auto;
   }
 
   #sidebar .sidebar-toggle-icon--rotated {
@@ -1830,7 +1850,10 @@ body.sidebar-open #sidebarOverlay {
       padding consistent so the glyph does not scale between states.
     */
     justify-content: center;
-    padding-inline: 0.875rem;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border-radius: 9999px;
   }
 
   body.sidebar-collapsed #sidebar .sidebar-dropup-trigger .sidebar-text,
@@ -1840,6 +1863,11 @@ body.sidebar-open #sidebarOverlay {
 
   body.sidebar-collapsed #sidebar .sidebar-dropup-trigger__chevron {
     display: none;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-dropup-trigger__glyph,
+  #sidebar.sidebar-collapsed .sidebar-dropup-trigger__glyph {
+    margin: 0;
   }
 }
 

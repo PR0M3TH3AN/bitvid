@@ -1,1 +1,1 @@
-export const ASSET_VERSION = "2024.10.13";
+export const ASSET_VERSION = "2024.10.17";
