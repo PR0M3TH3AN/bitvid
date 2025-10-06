@@ -4365,15 +4365,33 @@ class NostrClient {
     const SimplePool = resolveSimplePoolConstructor(tools);
 
     if (typeof SimplePool !== "function") {
-      if (isDevMode && tools && typeof tools === "object") {
-        const availableKeys = Object.keys(tools).join(", ");
-        console.warn(
-          "[nostr] NostrTools helpers did not expose SimplePool. Available keys:",
-          availableKeys
-        );
+      if (isDevMode) {
+        if (tools && typeof tools === "object") {
+          const availableKeys = Object.keys(tools).join(", ");
+          console.warn(
+            "[nostr] NostrTools helpers did not expose SimplePool. Available keys:",
+            availableKeys
+          );
+        } else {
+          console.warn(
+            "[nostr] NostrTools helpers were unavailable. Check that nostr-tools bundles can load on this domain."
+          );
+        }
+        if (nostrToolsBootstrapFailure) {
+          console.warn(
+            "[nostr] nostr-tools bootstrap failure details:",
+            nostrToolsBootstrapFailure
+          );
+        }
       }
-      const error = new Error("NostrTools SimplePool is unavailable.");
+      const error = new Error(
+        "NostrTools SimplePool is unavailable. Verify that nostr-tools resources can load on this domain."
+      );
+
       error.code = "nostr-simplepool-unavailable";
+      if (nostrToolsBootstrapFailure) {
+        error.bootstrapFailure = nostrToolsBootstrapFailure;
+      }
       this.poolPromise = null;
       throw error;
     }
