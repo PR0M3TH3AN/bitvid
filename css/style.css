@@ -14,6 +14,12 @@
   --scrollbar-track: rgba(255, 255, 255, 0.1);
   --scrollbar-thumb: rgba(255, 255, 255, 0.3);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.4);
+  --z-sidebar: 40;
+  --z-sidebar-overlay: 30;
+  --z-modal-root: 80;
+  --z-modal-overlay: 70;
+  --z-modal-content: 90;
+  --z-modal-player: 120;
 }
 
 html {
@@ -511,11 +517,39 @@ header img {
   margin-bottom: 0.75rem;
 }
 
+/* Ensure modal portals always sit above the sidebar stack */
+#modalContainer {
+  position: relative;
+  z-index: var(--z-modal-root);
+}
+
+#modalContainer > [id$="Modal"]:not(#playerModal) {
+  z-index: var(--z-modal-root);
+}
+
+#modalContainer > [id$="Modal"]:not(#playerModal) > .absolute {
+  z-index: var(--z-modal-overlay);
+}
+
+#modalContainer > [id$="Modal"]:not(#playerModal) .modal-container,
+#modalContainer > [id$="Modal"]:not(#playerModal) .modal-content {
+  z-index: var(--z-modal-content);
+}
+
+#modalContainer > #playerModal {
+  z-index: var(--z-modal-player);
+}
+
+#modalContainer > #playerModal .player-modal__container,
+#modalContainer > #playerModal .player-modal__content {
+  z-index: var(--z-modal-content);
+}
+
 /* Modal Player */
 #playerModal {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: var(--z-modal-player);
   display: none;
   flex-direction: column;
   align-items: stretch;
@@ -1424,8 +1458,8 @@ footer a:hover {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
-  /* Keep below modal stacks (z-50+) so dialogs overlay the drawer. */
-  z-index: 40;
+  /* Keep below modal stacks so dialogs overlay the drawer. */
+  z-index: var(--z-sidebar);
   box-shadow: none;
 }
 
@@ -1444,7 +1478,7 @@ footer a:hover {
   pointer-events: none;
   transition: opacity 0.3s ease;
   /* Sits above page chrome but below modals and the sidebar itself. */
-  z-index: 30;
+  z-index: var(--z-sidebar-overlay);
 }
 
 body.sidebar-open #sidebarOverlay {
