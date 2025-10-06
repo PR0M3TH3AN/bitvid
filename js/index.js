@@ -174,6 +174,7 @@ async function bootstrapInterface() {
     console.warn("Sidebar collapse toggle not found; skipping density controls.");
   }
   const collapseLabel = collapseToggle?.querySelector(".sidebar-toggle-label");
+  const appContainer = document.getElementById("app");
 
   const mobileMenuBtn = document.getElementById("mobileMenuBtn");
   const sidebarOverlay = document.getElementById("sidebarOverlay");
@@ -204,20 +205,28 @@ async function bootstrapInterface() {
   };
 
   const applySidebarDensity = (collapsed) => {
-    const targets = [sidebar, document.body].filter(
-      (element) => element instanceof HTMLElement,
-    );
+    const widthTargets = [
+      document.documentElement,
+      document.body,
+      sidebar,
+      appContainer,
+    ].filter((element) => element instanceof HTMLElement);
     const state = collapsed ? "collapsed" : "expanded";
     const nextWidth = collapsed
       ? SIDEBAR_WIDTH_COLLAPSED
       : SIDEBAR_WIDTH_EXPANDED;
 
-    targets.forEach((element) => {
-      element.classList.toggle("sidebar-collapsed", collapsed);
-      element.classList.toggle("sidebar-expanded", !collapsed);
-      element.setAttribute("data-state", state);
+    widthTargets.forEach((element) => {
       element.style.setProperty("--sidebar-width", nextWidth);
     });
+
+    [sidebar, document.body]
+      .filter((element) => element instanceof HTMLElement)
+      .forEach((element) => {
+        element.classList.toggle("sidebar-collapsed", collapsed);
+        element.classList.toggle("sidebar-expanded", !collapsed);
+        element.setAttribute("data-state", state);
+      });
 
     if (collapseToggle) {
       collapseToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");

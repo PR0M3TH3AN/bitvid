@@ -23,6 +23,7 @@
   --z-modal-player: 120;
   --sidebar-width-expanded: 16rem;
   --sidebar-width-collapsed: 4rem;
+  --sidebar-width: var(--sidebar-width-expanded);
 }
 
 html {
@@ -68,7 +69,6 @@ body {
   margin: 0;
   padding: 0;
   overflow-x: hidden; /* Disable horizontal scrolling */
-  --sidebar-width: var(--sidebar-width-expanded);
 }
 
 header {
@@ -1455,13 +1455,14 @@ footer a:hover {
   position: fixed;
   top: 0;
   left: 0;
-  width: 16rem; /* Tailwind's w-64 */
+  width: var(--sidebar-width);
   height: 100vh;
   height: 100dvh;
   background-color: #0f172a;
+  color: var(--color-text);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition: width 200ms ease, transform 0.3s ease, box-shadow 0.3s ease;
   /* Keep below modal stacks so dialogs overlay the drawer. */
   z-index: var(--z-sidebar);
   box-shadow: none;
@@ -1494,7 +1495,7 @@ body.sidebar-open #sidebarOverlay {
 @media (max-width: 767px) {
   #sidebar {
     transform: translate3d(-100%, 0, 0);
-    width: min(16rem, calc(100vw - 3rem));
+    width: min(var(--sidebar-width-expanded), calc(100vw - 3rem));
   }
   /* When the sidebar-open class is added, slide the sidebar in */
   #sidebar.sidebar-open {
@@ -1512,7 +1513,6 @@ body.sidebar-open #sidebarOverlay {
     transform: translateX(0) !important;
     width: var(--sidebar-width);
     overflow-x: hidden;
-    transition: width 200ms ease, transform 0.3s ease, box-shadow 0.3s ease;
   }
 
   #sidebar.sidebar-open {
