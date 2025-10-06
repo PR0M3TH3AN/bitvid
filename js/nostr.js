@@ -4363,6 +4363,7 @@ class NostrClient {
 
     const tools = await ensureNostrTools();
     const SimplePool = resolveSimplePoolConstructor(tools);
+
     if (typeof SimplePool !== "function") {
       if (isDevMode && tools && typeof tools === "object") {
         const availableKeys = Object.keys(tools).join(", ");
