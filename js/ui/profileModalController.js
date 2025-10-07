@@ -53,6 +53,12 @@ const SERVICE_CONTRACT = [
       "Switches the active application profile to the provided pubkey and updates state accordingly.",
   },
   {
+    key: "removeSavedProfile",
+    type: "function",
+    description:
+      "Removes a saved profile entry and persists the updated collection to storage.",
+  },
+  {
     key: "relayManager",
     type: "object",
     description:
@@ -474,6 +480,7 @@ export class ProfileModalController {
     this.boundFocusIn = null;
     this.focusableElements = [];
     this.profileSwitcherSelectionPubkey = null;
+    this.previouslyFocusedElement = null;
     this.setActivePane(this.getActivePane());
     this.setWalletPaneBusy(this.isWalletBusy());
     this.adminEmptyMessages = new Map();
@@ -667,7 +674,6 @@ export class ProfileModalController {
     if (this.closeButton instanceof HTMLElement) {
       this.closeButton.addEventListener("click", () => {
         this.hide();
-        this.callbacks.onClose(this);
       });
     }
 
@@ -3331,7 +3337,6 @@ export class ProfileModalController {
         if (event.key === "Escape") {
           event.preventDefault();
           this.hide();
-          this.callbacks.onClose(this);
           return;
         }
 
@@ -3391,6 +3396,65 @@ export class ProfileModalController {
     document.addEventListener("focusin", this.boundFocusIn);
   }
 
+  async show(targetPane = "account") {
+    const pane =
+      typeof targetPane === "string" && targetPane.trim()
+        ? targetPane.trim()
+        : "account";
+
+    const activeElement =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    if (
+      activeElement &&
+      this.profileModal instanceof HTMLElement &&
+      this.profileModal.contains(activeElement)
+    ) {
+      this.previouslyFocusedElement = null;
+    } else {
+      this.previouslyFocusedElement = activeElement;
+    }
+
+    this.renderSavedProfiles();
+
+    try {
+      await this.refreshAdminPaneState();
+    } catch (error) {
+      console.error(
+        "Failed to refresh admin pane while opening profile modal:",
+        error,
+      );
+    }
+
+    this.refreshWalletPaneState();
+    this.populateProfileRelays();
+
+    if (
+      this.services.userBlocks &&
+      typeof this.services.userBlocks.ensureLoaded === "function"
+    ) {
+      try {
+        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+        await this.services.userBlocks.ensureLoaded(activeHex);
+      } catch (error) {
+        console.warn(
+          "Failed to refresh user block list while opening profile modal:",
+          error,
+        );
+      }
+    }
+
+    this.populateBlockedList();
+
+    this.open(pane);
+    return true;
+  }
+
+  showWalletPane() {
+    return this.show("wallet");
+  }
+
   open(pane = "account") {
     if (!(this.profileModal instanceof HTMLElement)) {
       return;
@@ -3409,21 +3473,223 @@ export class ProfileModalController {
     });
   }
 
-  hide() {
-    if (!(this.profileModal instanceof HTMLElement)) {
-      return;
+  hide(options = {}) {
+    const { silent = false } =
+      options && typeof options === "object" ? options : {};
+
+    const modalElement =
+      this.profileModal instanceof HTMLElement ? this.profileModal : null;
+
+    if (modalElement) {
+      modalElement.classList.add("hidden");
+      modalElement.setAttribute("aria-hidden", "true");
+      this.setGlobalModalState("profile", false);
+
+      if (this.boundKeydown) {
+        modalElement.removeEventListener("keydown", this.boundKeydown);
+      }
     }
 
-    this.profileModal.classList.add("hidden");
-    this.profileModal.setAttribute("aria-hidden", "true");
-    this.setGlobalModalState("profile", false);
-
-    if (this.boundKeydown) {
-      this.profileModal.removeEventListener("keydown", this.boundKeydown);
-    }
     if (this.boundFocusIn) {
       document.removeEventListener("focusin", this.boundFocusIn);
     }
+
+    const previous = this.previouslyFocusedElement;
+    this.previouslyFocusedElement = null;
+
+    if (
+      previous &&
+      typeof previous.focus === "function" &&
+      (!modalElement || !modalElement.contains(previous))
+    ) {
+      const shouldRestore =
+        "isConnected" in previous ? previous.isConnected !== false : true;
+      if (shouldRestore) {
+        window.requestAnimationFrame(() => {
+          try {
+            previous.focus();
+          } catch (error) {
+            console.warn(
+              "[profileModal] Failed to restore focus after closing modal:",
+              error,
+            );
+          }
+        });
+      }
+    }
+
+    if (!silent) {
+      try {
+        this.callbacks.onClose(this);
+      } catch (error) {
+        console.warn(
+          "[profileModal] onClose callback threw while hiding modal:",
+          error,
+        );
+      }
+    }
+  }
+
+  async handleAuthLogin(detail = {}) {
+    const savedProfiles = Array.isArray(detail?.savedProfiles)
+      ? detail.savedProfiles
+      : null;
+    if (savedProfiles) {
+      try {
+        this.setSavedProfiles(savedProfiles, {
+          persist: false,
+          persistActive: false,
+        });
+      } catch (error) {
+        console.warn(
+          "[profileModal] Failed to sync saved profiles during login:",
+          error,
+        );
+      }
+    }
+
+    const activePubkey =
+      detail?.activeProfilePubkey ?? detail?.pubkey ?? undefined;
+    if (activePubkey !== undefined) {
+      this.setActivePubkey(activePubkey);
+    }
+
+    this.renderSavedProfiles();
+
+    try {
+      await this.refreshAdminPaneState();
+    } catch (error) {
+      console.warn("Failed to refresh admin pane after login:", error);
+    }
+
+    this.populateBlockedList();
+    this.populateProfileRelays();
+    this.refreshWalletPaneState();
+
+    return true;
+  }
+
+  async handleAuthLogout(detail = {}) {
+    const savedProfiles = Array.isArray(detail?.savedProfiles)
+      ? detail.savedProfiles
+      : null;
+    if (savedProfiles) {
+      try {
+        this.setSavedProfiles(savedProfiles, {
+          persist: false,
+          persistActive: false,
+        });
+      } catch (error) {
+        console.warn(
+          "[profileModal] Failed to sync saved profiles during logout:",
+          error,
+        );
+      }
+    }
+
+    if (detail?.activeProfilePubkey !== undefined) {
+      this.setActivePubkey(detail.activeProfilePubkey);
+    } else {
+      this.setActivePubkey(null);
+    }
+
+    this.profileSwitcherSelectionPubkey = null;
+    this.renderSavedProfiles();
+
+    try {
+      await this.refreshAdminPaneState();
+    } catch (error) {
+      console.warn("Failed to refresh admin pane after logout:", error);
+    }
+
+    this.populateBlockedList();
+    this.populateProfileRelays();
+    this.refreshWalletPaneState();
+
+    return true;
+  }
+
+  handleProfileUpdated(detail = {}) {
+    if (Array.isArray(detail?.savedProfiles)) {
+      try {
+        this.setSavedProfiles(detail.savedProfiles, {
+          persist: false,
+          persistActive: false,
+        });
+      } catch (error) {
+        console.warn(
+          "[profileModal] Failed to sync saved profiles after profile update:",
+          error,
+        );
+      }
+    }
+
+    if (detail?.activeProfilePubkey !== undefined) {
+      this.setActivePubkey(detail.activeProfilePubkey);
+    } else if (detail?.pubkey) {
+      this.setActivePubkey(detail.pubkey);
+    }
+
+    this.renderSavedProfiles();
+  }
+
+  removeSavedProfile(pubkey) {
+    if (!pubkey) {
+      return { removed: false };
+    }
+
+    let result;
+    try {
+      result = this.services.removeSavedProfile(pubkey) || { removed: false };
+    } catch (error) {
+      console.error("Failed to remove saved profile:", error);
+      result = { removed: false, error };
+    }
+
+    if (result?.removed) {
+      if (
+        this.normalizeHexPubkey(pubkey) ===
+        this.normalizeHexPubkey(this.getActivePubkey())
+      ) {
+        this.setActivePubkey(null);
+      }
+      this.renderSavedProfiles();
+    }
+
+    return result;
+  }
+
+  async switchProfile(pubkey) {
+    if (!pubkey) {
+      return { switched: false, reason: "missing-pubkey" };
+    }
+
+    let result;
+    try {
+      result = await this.services.switchProfile(pubkey);
+    } catch (error) {
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Failed to switch profiles. Please try again.";
+      this.showError(message);
+      return {
+        switched: false,
+        error,
+        reason: error?.code || "switch-error",
+      };
+    }
+
+    if (!result?.switched) {
+      this.hide();
+      return result || { switched: false };
+    }
+
+    this.profileSwitcherSelectionPubkey = null;
+    this.renderSavedProfiles();
+    this.hide();
+
+    return result;
   }
 
   getSavedProfiles() {
