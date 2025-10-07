@@ -3,7 +3,11 @@
   helper classes after the initial animation to avoid flashes each time we
   re-render navigation links.
 -->
-<aside id="sidebar" class="fade-in fade-in-delay-100" data-state="expanded">
+<aside
+  id="sidebar"
+  class="fade-in fade-in-delay-100 sidebar-collapsed"
+  data-state="collapsed"
+>
   <div class="sidebar__inner">
     <div class="sidebar-scroll">
       <!-- Primary navigation -->
@@ -14,9 +18,9 @@
             type="button"
             class="sidebar-collapse-toggle"
             aria-controls="sidebar"
-            aria-expanded="true"
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar"
+            aria-expanded="false"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
           >
             <svg
               data-sidebar-chevron

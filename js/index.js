@@ -189,14 +189,21 @@ async function bootstrapInterface() {
   const SIDEBAR_COLLAPSED_STORAGE_KEY = "sidebarCollapsed";
   const SIDEBAR_WIDTH_EXPANDED = "16rem";
   const SIDEBAR_WIDTH_COLLAPSED = "4rem";
-  let isSidebarCollapsed = false;
+  const DEFAULT_SIDEBAR_COLLAPSED = true;
+  let isSidebarCollapsed = DEFAULT_SIDEBAR_COLLAPSED;
+  let isFooterDropupExpanded = false;
+  let syncFooterDropupFn = null;
 
   const readStoredSidebarCollapsed = () => {
     try {
-      return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+      const storedValue = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+      if (storedValue === null) {
+        return DEFAULT_SIDEBAR_COLLAPSED;
+      }
+      return storedValue === "true";
     } catch (error) {
       console.warn("Unable to read sidebar collapse state from storage:", error);
-      return false;
+      return DEFAULT_SIDEBAR_COLLAPSED;
     }
   };
 
@@ -245,6 +252,14 @@ async function bootstrapInterface() {
       collapseToggle.setAttribute("data-state", state);
       collapseToggle.setAttribute("aria-label", actionLabel);
       collapseToggle.setAttribute("title", actionLabel);
+    }
+
+    if (
+      collapsed &&
+      isFooterDropupExpanded &&
+      typeof syncFooterDropupFn === "function"
+    ) {
+      syncFooterDropupFn(false);
     }
   };
 
@@ -362,7 +377,7 @@ async function bootstrapInterface() {
   if (footerDropdownButton && footerLinksContainer) {
     const sidebarFooter = footerDropdownButton.closest(".sidebar-footer");
 
-    const syncFooterDropup = (expanded) => {
+    syncFooterDropupFn = (expanded) => {
       const nextState = expanded ? "expanded" : "collapsed";
       const actionLabel = expanded ? "Show fewer sidebar links" : "Show more sidebar links";
 
@@ -390,6 +405,7 @@ async function bootstrapInterface() {
       if (sidebarFooter instanceof HTMLElement) {
         sidebarFooter.dataset.footerState = nextState;
       }
+      isFooterDropupExpanded = expanded;
     };
 
     footerDropdownButton.addEventListener("click", (event) => {
@@ -403,11 +419,15 @@ async function bootstrapInterface() {
         persistSidebarCollapsed(nextCollapsed);
       }
 
-      syncFooterDropup(!expanded);
+      if (typeof syncFooterDropupFn === "function") {
+        syncFooterDropupFn(!expanded);
+      }
     });
 
     const initialExpanded = footerDropdownButton.getAttribute("aria-expanded") === "true";
-    syncFooterDropup(initialExpanded);
+    if (typeof syncFooterDropupFn === "function") {
+      syncFooterDropupFn(initialExpanded);
+    }
   }
 
   try {
