@@ -8876,8 +8876,31 @@ class Application {
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
 
-    if (!this.modalVideo) {
-      throw new Error("Video element is not ready for playback.");
+    let modalVideoEl = this.modalVideo;
+    if (!modalVideoEl && this.videoModal) {
+      const maybeLoader = this.videoModal.load;
+      if (typeof maybeLoader === "function") {
+        try {
+          await maybeLoader.call(this.videoModal);
+        } catch (error) {
+          this.log(
+            "[playVideoWithFallback] Failed to load video modal before playback:",
+            error
+          );
+          this.showError("Could not prepare the video player. Please try again.");
+          return { source: null, error };
+        }
+        modalVideoEl = this.modalVideo;
+      }
+    }
+
+    if (!modalVideoEl) {
+      const error = new Error("Video element is not ready for playback.");
+      this.log(
+        "[playVideoWithFallback] Video element missing after modal load attempt."
+      );
+      this.showError("Video player is not ready yet. Please try again.");
+      return { source: null, error };
     }
 
     if (
@@ -8894,12 +8917,12 @@ class Application {
       }
     }
 
-    const modalVideoEl = this.modalVideo;
     const refreshedModal = this.teardownVideoElement(modalVideoEl, {
       replaceNode: true,
     });
     if (refreshedModal) {
       this.modalVideo = refreshedModal;
+      modalVideoEl = this.modalVideo;
     }
 
     const session = this.playbackService.createSession({
