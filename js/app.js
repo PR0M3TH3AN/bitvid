@@ -6,7 +6,13 @@ import {
   pointerKey as derivePointerKey,
 } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
-import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
+import {
+  isDevMode,
+  ADMIN_SUPER_NPUB,
+  ADMIN_DM_IMAGE_URL,
+  BITVID_WEBSITE_URL,
+  MAX_WALLET_DEFAULT_ZAP,
+} from "./config.js";
 import { accessControl } from "./accessControl.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
@@ -126,7 +132,6 @@ const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const NWC_URI_SCHEME = "nostr+walletconnect://";
-const MAX_WALLET_DEFAULT_ZAP = 100000000;
 /**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
@@ -1337,6 +1342,12 @@ class Application {
           showError: (message) => this.showError(message),
           showSuccess: (message) => this.showSuccess(message),
           showStatus: (message) => this.showStatus(message),
+          constants: {
+            MAX_WALLET_DEFAULT_ZAP,
+            ADMIN_SUPER_NPUB,
+            ADMIN_DM_IMAGE_URL,
+            BITVID_WEBSITE_URL,
+          },
           services: profileModalServices,
           state: profileModalState,
           callbacks: profileModalCallbacks,

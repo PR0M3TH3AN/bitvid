@@ -26,6 +26,34 @@ export const ADMIN_SUPER_NPUB =
   "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
 
 /**
+ * Canonical URL for the public BitVid site.
+ *
+ * Surfaces in admin outreach copy and moderation DMs so that recipients can
+ * quickly jump back to the primary destination. Update this if your
+ * deployment relies on a different canonical hostname.
+ */
+export const BITVID_WEBSITE_URL = "https://bitvid.network/";
+
+/**
+ * Default image included in automated moderation DMs.
+ *
+ * BitVid embeds this media asset at the top of notification messages so the
+ * payload renders with a recognizable preview. Provide a fully qualified URL
+ * that points to a hosted image accessible by the intended recipients.
+ */
+export const ADMIN_DM_IMAGE_URL =
+  "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
+
+/**
+ * Maximum satoshi value allowed when storing the default zap amount.
+ *
+ * Wallet settings clamp user input to this value before persistence to guard
+ * against accidental overpayment. Tune the ceiling to match your instance's
+ * risk tolerance.
+ */
+export const MAX_WALLET_DEFAULT_ZAP = 100000000;
+
+/**
  * Percentage of every Lightning payment the platform retains as a fee.
  *
  * Accepts numbers between 0 and 100 (inclusive). Decimals are supported when

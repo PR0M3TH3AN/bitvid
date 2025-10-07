@@ -2,6 +2,9 @@
 
 import {
   ADMIN_SUPER_NPUB,
+  ADMIN_DM_IMAGE_URL,
+  BITVID_WEBSITE_URL,
+  MAX_WALLET_DEFAULT_ZAP,
   PLATFORM_FEE_PERCENT,
   PLATFORM_LUD16_OVERRIDE,
   DEFAULT_RELAY_URLS_OVERRIDE,
@@ -29,6 +32,9 @@ export const isDevMode = true; // Set to false for production
 
 export const ADMIN_LIST_MODE = "nostr";
 export { ADMIN_SUPER_NPUB };
+export { ADMIN_DM_IMAGE_URL };
+export { BITVID_WEBSITE_URL };
+export { MAX_WALLET_DEFAULT_ZAP };
 export { PLATFORM_FEE_PERCENT };
 export { PLATFORM_LUD16_OVERRIDE };
 export { DEFAULT_RELAY_URLS_OVERRIDE };
