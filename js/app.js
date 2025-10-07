@@ -7,7 +7,7 @@ import {
 } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import { isDevMode, ADMIN_SUPER_NPUB } from "./config.js";
-import { accessControl, normalizeNpub } from "./accessControl.js";
+import { accessControl } from "./accessControl.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
@@ -122,9 +122,6 @@ const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
-const ADMIN_DM_IMAGE_URL =
-  "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
-const BITVID_WEBSITE_URL = "https://bitvid.network/";
 const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
@@ -884,6 +881,22 @@ class Application {
     }
   }
 
+  getCurrentUserNpub() {
+    return this.currentUserNpub;
+  }
+
+  isAuthorBlocked(pubkey) {
+    try {
+      if (userBlocks && typeof userBlocks.isBlocked === "function") {
+        return userBlocks.isBlocked(pubkey);
+      }
+    } catch (error) {
+      console.warn("[Application] Failed to evaluate block status:", error);
+    }
+
+    return false;
+  }
+
   async init() {
     try {
       if (typeof this.loadView !== "function") {
@@ -1273,8 +1286,6 @@ class Application {
           createDefaultNwcSettings: () => createDefaultNwcSettings(),
           ensureWallet: (options) => this.ensureWallet(options),
           loadVideos: (forceFetch) => this.loadVideos(forceFetch),
-          sendAdminListNotification: (payload) =>
-            this.sendAdminListNotification(payload),
           describeAdminError: (code) => this.describeAdminError(code),
           describeNotificationError: (code) =>
             this.describeNotificationError(code),
@@ -1780,54 +1791,6 @@ class Application {
       default:
         return "List updated, but the DM notification could not be sent.";
     }
-  }
-
-  async sendAdminListNotification({ listType, actorNpub, targetNpub }) {
-    const normalizedTarget = normalizeNpub(targetNpub);
-    if (!normalizedTarget) {
-      return { ok: false, error: "invalid-target" };
-    }
-
-    if (!this.pubkey) {
-      return { ok: false, error: "missing-actor-pubkey" };
-    }
-
-    const actorHex = this.pubkey;
-    const fallbackActor = this.safeEncodeNpub(actorHex) || "a BitVid moderator";
-    const actorDisplay = normalizeNpub(actorNpub) || fallbackActor;
-    const isWhitelist = listType === "whitelist";
-
-    const introLine = isWhitelist
-      ? `Great news—your npub ${normalizedTarget} has been added to the BitVid whitelist by ${actorDisplay}.`
-      : `We wanted to let you know that your npub ${normalizedTarget} has been placed on the BitVid blacklist by ${actorDisplay}.`;
-
-    const statusLine = isWhitelist
-      ? `You now have full creator access across BitVid (${BITVID_WEBSITE_URL}).`
-      : `This hides your channel and prevents uploads across BitVid (${BITVID_WEBSITE_URL}) for now.`;
-
-    const followUpLine = isWhitelist
-      ? "Please take a moment to review our community guidelines (https://bitvid.network/#view=community-guidelines), and reply to this DM if you have any questions."
-      : "Please review our community guidelines (https://bitvid.network/#view=community-guidelines). If you believe this was a mistake, you can submit an appeal at https://bitvid.network/?modal=appeals to request reinstatement, or reply to this DM with any questions.";
-
-    const messageBody = [
-      "Hi there,",
-      "",
-      introLine,
-      "",
-      statusLine,
-      "",
-      followUpLine,
-      "",
-      "— The BitVid Team",
-    ].join("\n");
-
-    const message = `![BitVid status update](${ADMIN_DM_IMAGE_URL})\n\n${messageBody}`;
-
-    return nostrClient.sendDirectMessage(
-      normalizedTarget,
-      message,
-      actorHex
-    );
   }
 
   async onAccessControlUpdated() {
