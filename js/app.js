@@ -1284,6 +1284,11 @@ class Application {
             return pane;
           },
           setActivePane: (pane) => {
+            if (pane === null) {
+              this.activeProfilePane = null;
+              return this.activeProfilePane;
+            }
+
             const normalized =
               typeof pane === "string" && pane.trim()
                 ? pane.trim().toLowerCase()

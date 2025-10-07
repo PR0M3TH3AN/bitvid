@@ -3761,6 +3761,7 @@ export class ProfileModalController {
         );
       }
       this.profileHistoryRenderer = null;
+      this.profileHistoryRendererConfig = null;
     }
 
     this.setActivePane(null);
