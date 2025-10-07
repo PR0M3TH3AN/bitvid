@@ -33,6 +33,7 @@
   --sidebar-width-collapsed: 4rem;
   --sidebar-width: var(--sidebar-width-expanded);
   --sidebar-control-size: 2.75rem;
+  --sidebar-content-gap: 1rem;
 }
 
 html {
@@ -1798,8 +1799,20 @@ body.sidebar-open #sidebarOverlay {
   }
 
   #app {
-    margin-left: var(--sidebar-width);
-    transition: margin-left 200ms ease;
+    box-sizing: border-box;
+    transition: margin-left 200ms ease, width 200ms ease, max-width 200ms ease;
+  }
+
+  #app[data-sidebar-state="collapsed"] {
+    margin-left: calc(var(--sidebar-width-collapsed) + var(--sidebar-content-gap));
+    width: calc(100vw - var(--sidebar-width-collapsed) - var(--sidebar-content-gap));
+    max-width: calc(100vw - var(--sidebar-width-collapsed) - var(--sidebar-content-gap));
+  }
+
+  #app[data-sidebar-state="expanded"] {
+    margin-left: calc(var(--sidebar-width-expanded) + var(--sidebar-content-gap));
+    width: calc(100vw - var(--sidebar-width-expanded) - var(--sidebar-content-gap));
+    max-width: calc(100vw - var(--sidebar-width-expanded) - var(--sidebar-content-gap));
   }
 
   body.sidebar-collapsed,
