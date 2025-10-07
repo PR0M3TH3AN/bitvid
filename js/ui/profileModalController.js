@@ -530,10 +530,6 @@ export class ProfileModalController {
     this.profileName = null;
     this.profileNpub = null;
     this.switcherList = null;
-    this.profileModalAvatar = null;
-    this.profileModalName = null;
-    this.profileModalNpub = null;
-    this.profileSwitcherList = null;
     this.globalProfileAvatar = null;
     this.closeButton = null;
     this.logoutButton = null;
@@ -559,54 +555,31 @@ export class ProfileModalController {
     this.relayInput = null;
     this.addRelayButton = null;
     this.restoreRelaysButton = null;
-    this.profileRelayList = null;
-    this.profileRelayInput = null;
-    this.profileAddRelayBtn = null;
-    this.profileRestoreRelaysBtn = null;
     this.blockList = null;
     this.blockListEmpty = null;
     this.blockInput = null;
     this.addBlockedButton = null;
-    this.profileBlockedList = null;
-    this.profileBlockedEmpty = null;
-    this.profileBlockedInput = null;
-    this.profileAddBlockedBtn = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
     this.walletSaveButton = null;
     this.walletTestButton = null;
     this.walletDisconnectButton = null;
     this.walletStatusText = null;
-    this.profileWalletStatusText = null;
     this.moderatorSection = null;
     this.moderatorEmpty = null;
     this.adminModeratorList = null;
     this.addModeratorButton = null;
     this.moderatorInput = null;
-    this.adminModeratorsSection = null;
-    this.adminModeratorsEmpty = null;
-    this.adminAddModeratorButton = null;
-    this.adminModeratorInput = null;
     this.whitelistSection = null;
     this.whitelistEmpty = null;
     this.whitelistList = null;
     this.addWhitelistButton = null;
     this.whitelistInput = null;
-    this.adminWhitelistSection = null;
-    this.adminWhitelistEmpty = null;
-    this.adminWhitelistList = null;
-    this.adminAddWhitelistButton = null;
-    this.adminWhitelistInput = null;
     this.blacklistSection = null;
     this.blacklistEmpty = null;
     this.blacklistList = null;
     this.addBlacklistButton = null;
     this.blacklistInput = null;
-    this.adminBlacklistSection = null;
-    this.adminBlacklistEmpty = null;
-    this.adminBlacklistList = null;
-    this.adminAddBlacklistButton = null;
-    this.adminBlacklistInput = null;
 
     this.profileHistoryRenderer = null;
     this.boundProfileHistoryVisibility = null;
@@ -663,11 +636,6 @@ export class ProfileModalController {
     this.profileNpub = document.getElementById("profileModalNpub") || null;
     this.switcherList = document.getElementById("profileSwitcherList") || null;
 
-    this.profileModalAvatar = this.profileAvatar;
-    this.profileModalName = this.profileName;
-    this.profileModalNpub = this.profileNpub;
-    this.profileSwitcherList = this.switcherList;
-
     const topLevelProfileAvatar =
       document.getElementById("profileAvatar") || null;
     if (topLevelProfileAvatar) {
@@ -714,16 +682,6 @@ export class ProfileModalController {
     this.walletStatusText =
       document.getElementById("profileWalletStatus") || null;
 
-    this.profileRelayList = this.relayList;
-    this.profileRelayInput = this.relayInput;
-    this.profileAddRelayBtn = this.addRelayButton;
-    this.profileRestoreRelaysBtn = this.restoreRelaysButton;
-    this.profileBlockedList = this.blockList;
-    this.profileBlockedEmpty = this.blockListEmpty;
-    this.profileBlockedInput = this.blockInput;
-    this.profileAddBlockedBtn = this.addBlockedButton;
-    this.profileWalletStatusText = this.walletStatusText;
-
     this.moderatorSection =
       document.getElementById("adminModeratorsSection") || null;
     this.moderatorEmpty =
@@ -734,14 +692,6 @@ export class ProfileModalController {
       document.getElementById("adminAddModeratorBtn") || null;
     this.moderatorInput =
       document.getElementById("adminModeratorInput") || null;
-
-    // Backwards-compatible aliases retained for application code that still
-    // mirrors DOM references from the controller. These should be removed once
-    // the application stops reaching through the controller.
-    this.adminModeratorsSection = this.moderatorSection;
-    this.adminModeratorsEmpty = this.moderatorEmpty;
-    this.adminAddModeratorButton = this.addModeratorButton;
-    this.adminModeratorInput = this.moderatorInput;
     this.whitelistSection =
       document.getElementById("adminWhitelistSection") || null;
     this.whitelistEmpty =
@@ -762,17 +712,6 @@ export class ProfileModalController {
       document.getElementById("adminAddBlacklistBtn") || null;
     this.blacklistInput =
       document.getElementById("adminBlacklistInput") || null;
-
-    this.adminWhitelistSection = this.whitelistSection;
-    this.adminWhitelistEmpty = this.whitelistEmpty;
-    this.adminWhitelistList = this.whitelistList;
-    this.adminAddWhitelistButton = this.addWhitelistButton;
-    this.adminWhitelistInput = this.whitelistInput;
-    this.adminBlacklistSection = this.blacklistSection;
-    this.adminBlacklistEmpty = this.blacklistEmpty;
-    this.adminBlacklistList = this.blacklistList;
-    this.adminAddBlacklistButton = this.addBlacklistButton;
-    this.adminBlacklistInput = this.blacklistInput;
 
     if (!this.profileHistoryRenderer && this.createWatchHistoryRenderer) {
       this.profileHistoryRenderer = this.createWatchHistoryRenderer({
