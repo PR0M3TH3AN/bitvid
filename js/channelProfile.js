@@ -118,6 +118,7 @@ let cachedZapSendBtn = null;
 let pendingZapRetry = null;
 let zapInFlight = false;
 let zapControlsOpen = false;
+let currentVideoLoadToken = 0;
 
 function getChannelZapButton() {
   if (cachedZapButton && !document.body.contains(cachedZapButton)) {
@@ -1584,13 +1585,32 @@ async function loadUserProfile(pubkey) {
  */
 async function loadUserVideos(pubkey) {
   const app = getApp();
-  try {
-    try {
-      await accessControl.ensureReady();
-    } catch (error) {
-      console.warn("Failed to ensure admin lists were loaded before channel fetch:", error);
-    }
+  const container = document.getElementById("channelVideoList");
+  const loadToken = ++currentVideoLoadToken;
+  const hadExistingContent =
+    !!container && container.querySelector("[data-video-id]");
 
+  if (container) {
+    container.dataset.loading = "true";
+    if (!hadExistingContent) {
+      container.innerHTML = `
+        <div class="py-16 flex justify-center">
+          <span class="text-gray-400 animate-pulse">Loading videos…</span>
+        </div>
+      `;
+    }
+  }
+
+  const ensureAccessPromise = accessControl
+    .ensureReady()
+    .catch((error) => {
+      console.warn(
+        "Failed to ensure admin lists were loaded before channel fetch:",
+        error
+      );
+    });
+
+  try {
     // 1) Build filter for videos from this pubkey
     const filter = {
       kinds: [30078],
@@ -1638,6 +1658,17 @@ async function loadUserVideos(pubkey) {
       });
     }
 
+    await ensureAccessPromise;
+
+    if (loadToken !== currentVideoLoadToken) {
+      return;
+    }
+
+    if (!container) {
+      console.warn("channelVideoList element not found in DOM.");
+      return;
+    }
+
     // 3) Convert to "video" objects and keep everything (including tombstones)
     const convertedVideos = events
       .map((evt) => sharedConvertEventToVideo(evt))
@@ -1663,17 +1694,14 @@ async function loadUserVideos(pubkey) {
     videos.sort((a, b) => b.created_at - a.created_at);
 
     // 7) Render them
-    const container = document.getElementById("channelVideoList");
-    if (!container) {
-      console.warn("channelVideoList element not found in DOM.");
-      return;
-    }
     container.innerHTML = "";
     if (!videos.length) {
+      container.dataset.hasChannelVideos = "false";
       container.innerHTML = `<p class="text-gray-500">No videos to display.</p>`;
       return;
     }
 
+    container.dataset.hasChannelVideos = "true";
     const fragment = document.createDocumentFragment();
     const allKnownEventsArray = Array.from(nostrClient.allEvents.values());
 
@@ -2134,7 +2162,18 @@ async function loadUserVideos(pubkey) {
       });
     });
   } catch (err) {
+    if (loadToken === currentVideoLoadToken && container) {
+      container.dataset.hasChannelVideos = "false";
+      container.innerHTML = `
+        <p class="text-red-400">Failed to load videos. Please try again.</p>
+      `;
+    }
     console.error("Error loading user videos:", err);
+  } finally {
+    await ensureAccessPromise;
+    if (loadToken === currentVideoLoadToken && container) {
+      delete container.dataset.loading;
+    }
   }
 }
 
