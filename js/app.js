@@ -1236,13 +1236,17 @@ class Application {
           getActiveNwcSettings: () => this.getActiveNwcSettings(),
           updateActiveNwcSettings: (partial) =>
             this.updateActiveNwcSettings(partial),
+          hydrateNwcSettingsForPubkey: (pubkey) =>
+            this.hydrateNwcSettingsForPubkey(pubkey),
           createDefaultNwcSettings: () => createDefaultNwcSettings(),
           ensureWallet: (options) => this.ensureWallet(options),
           loadVideos: (forceFetch) => this.loadVideos(forceFetch),
+          onVideosShouldRefresh: (context) => this.onVideosShouldRefresh(context),
           describeAdminError: (code) => this.describeAdminError(code),
           describeNotificationError: (code) =>
             this.describeNotificationError(code),
           onAccessControlUpdated: () => this.onAccessControlUpdated(),
+          persistSavedProfiles: (options) => persistSavedProfiles(options),
         };
 
         const profileModalState = {
@@ -1622,6 +1626,15 @@ class Application {
     window.dispatchEvent(new CustomEvent("bitvid:access-control-updated"));
   }
 
+  async onVideosShouldRefresh({ reason } = {}) {
+    try {
+      await this.loadVideos(true);
+    } catch (error) {
+      const context = reason ? ` after ${reason}` : "";
+      console.error(`Failed to refresh videos${context}:`, error);
+    }
+  }
+
   /**
    * Setup general event listeners for logout, modals, etc.
    */
@@ -1709,10 +1722,25 @@ class Application {
           "[app.js] loginNIP07 clicked! Attempting extension login..."
         );
         try {
-          const { pubkey } = await this.authService.requestLogin();
+          const { pubkey, detail } = await this.authService.requestLogin();
           console.log("[NIP-07] login returned pubkey:", pubkey);
 
           if (pubkey) {
+            if (
+              detail &&
+              typeof detail === "object" &&
+              detail.__handled !== true
+            ) {
+              try {
+                await this.handleAuthLogin(detail);
+              } catch (error) {
+                console.error(
+                  "[NIP-07] handleAuthLogin fallback failed:",
+                  error,
+                );
+              }
+            }
+
             const loginModal = document.getElementById("loginModal");
             if (loginModal) {
               loginModal.classList.add("hidden");
@@ -2503,6 +2531,14 @@ class Application {
   }
 
   async handleAuthLogin(detail = {}) {
+    if (detail && typeof detail === "object") {
+      try {
+        detail.__handled = true;
+      } catch (error) {
+        // Ignore attempts to mutate read-only descriptors.
+      }
+    }
+
     const normalizedActive = this.normalizeHexPubkey(
       detail?.pubkey || this.pubkey
     );

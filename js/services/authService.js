@@ -251,11 +251,11 @@ export default class AuthService {
       return { pubkey: trimmed };
     }
 
-    await this.login(trimmed, {
+    const detail = await this.login(trimmed, {
       persistActive: options?.persistActive !== false,
     });
 
-    return { pubkey: trimmed };
+    return { pubkey: trimmed, detail };
   }
 
   async handleUploadSubmit(payload, { publish } = {}) {
@@ -371,6 +371,18 @@ export default class AuthService {
       activeProfilePubkey: getActiveProfilePubkey(),
       postLogin,
     };
+
+    try {
+      Object.defineProperty(detail, "__handled", {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: false,
+      });
+    } catch (error) {
+      // Ignore descriptor errors (e.g., frozen objects) and fall back to direct assignment.
+      detail.__handled = false;
+    }
 
     this.emit("auth:login", detail);
     return detail;
