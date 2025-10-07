@@ -446,10 +446,17 @@ export class ProfileModalController {
     }
 
     const html = await response.text();
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = html;
-    this.removeTrackingScripts(wrapper);
-    this.modalContainer.appendChild(wrapper);
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    this.removeTrackingScripts(template.content);
+
+    const modalRoot = template.content.querySelector("#profileModal");
+    if (!(modalRoot instanceof HTMLElement)) {
+      throw new Error("profile modal markup missing expected #profileModal root");
+    }
+
+    this.modalContainer.appendChild(template.content);
+    this.profileModal = modalRoot;
 
     this.cacheDomReferences();
     this.registerEventListeners();
