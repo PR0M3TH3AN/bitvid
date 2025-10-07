@@ -638,7 +638,9 @@ class Application {
 
     this.videoListViewPlaybackHandler = ({ videoId, url, magnet }) => {
       if (videoId) {
-        Promise.resolve(this.playVideoByEventId(videoId)).catch((error) => {
+        Promise.resolve(
+          this.playVideoByEventId(videoId, { url, magnet })
+        ).catch((error) => {
           console.error("[VideoListView] Failed to play by event id:", error);
         });
         return;
@@ -7174,10 +7176,28 @@ class Application {
   }
 
 
-  async playVideoByEventId(eventId) {
+  async playVideoByEventId(eventId, playbackHint = {}) {
     if (!eventId) {
       this.showError("No video identifier provided.");
       return;
+    }
+
+    const fallbackUrl =
+      typeof playbackHint?.url === "string" ? playbackHint.url.trim() : "";
+    const fallbackTitle =
+      typeof playbackHint?.title === "string" ? playbackHint.title : "";
+    const fallbackDescription =
+      typeof playbackHint?.description === "string"
+        ? playbackHint.description
+        : "";
+    const fallbackMagnetRaw =
+      typeof playbackHint?.magnet === "string"
+        ? playbackHint.magnet.trim()
+        : "";
+    let fallbackMagnetCandidate = "";
+    if (fallbackMagnetRaw) {
+      const decoded = safeDecodeMagnet(fallbackMagnetRaw);
+      fallbackMagnetCandidate = decoded || fallbackMagnetRaw;
     }
 
     this.currentVideoPointer = null;
@@ -7193,6 +7213,14 @@ class Application {
       video = await this.getOldEventById(eventId);
     }
     if (!video) {
+      if (fallbackUrl || fallbackMagnetCandidate) {
+        return this.playVideoWithoutEvent({
+          url: fallbackUrl,
+          magnet: fallbackMagnetCandidate,
+          title: fallbackTitle || "Untitled",
+          description: fallbackDescription || "",
+        });
+      }
       this.showError("Video not found or has been removed.");
       return;
     }
@@ -7223,15 +7251,35 @@ class Application {
       video.alreadyDecrypted = true;
     }
 
-    const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
+    let trimmedUrl =
+      typeof video.url === "string" ? video.url.trim() : "";
+    if (!trimmedUrl && fallbackUrl) {
+      trimmedUrl = fallbackUrl;
+    }
     const rawMagnet =
       typeof video.magnet === "string" ? video.magnet.trim() : "";
-    const legacyInfoHash =
+    let legacyInfoHash =
       typeof video.infoHash === "string" ? video.infoHash.trim().toLowerCase() : "";
-    const magnetCandidate = rawMagnet || legacyInfoHash;
-    const decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
-    const usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
-    const magnetSupported = isValidMagnetUri(usableMagnetCandidate);
+    const fallbackMagnetForCandidate = fallbackMagnetCandidate || "";
+    if (!legacyInfoHash && fallbackMagnetForCandidate) {
+      const match = fallbackMagnetForCandidate.match(/xt=urn:btih:([0-9a-z]+)/i);
+      if (match && match[1]) {
+        legacyInfoHash = match[1].toLowerCase();
+      }
+    }
+
+    let magnetCandidate = rawMagnet || legacyInfoHash || "";
+    let decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
+    let usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
+    let magnetSupported = isValidMagnetUri(usableMagnetCandidate);
+
+    if (!magnetSupported && fallbackMagnetForCandidate) {
+      magnetCandidate = fallbackMagnetForCandidate;
+      decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
+      usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
+      magnetSupported = isValidMagnetUri(usableMagnetCandidate);
+    }
+
     const sanitizedMagnet = magnetSupported ? usableMagnetCandidate : "";
 
     trackVideoView({
@@ -7246,7 +7294,8 @@ class Application {
       ...video,
       url: trimmedUrl,
       magnet: sanitizedMagnet,
-      originalMagnet: magnetCandidate,
+      originalMagnet:
+        magnetCandidate || fallbackMagnetForCandidate || legacyInfoHash || "",
       torrentSupported: magnetSupported,
       legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
       lightningAddress: null,
@@ -7371,6 +7420,7 @@ class Application {
       sanitizedMagnet ||
       decodedMagnetCandidate ||
       magnetCandidate ||
+      fallbackMagnetForCandidate ||
       legacyInfoHash ||
       "";
 

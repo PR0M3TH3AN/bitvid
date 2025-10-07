@@ -2079,7 +2079,10 @@ async function loadUserVideos(pubkey) {
 
         if (videoId && typeof app?.playVideoByEventId === "function") {
           try {
-            const result = await app.playVideoByEventId(videoId);
+            const result = await app.playVideoByEventId(videoId, {
+              url,
+              magnet,
+            });
             if (!result || result.error) {
               playWithUrlAndMagnet();
             }
