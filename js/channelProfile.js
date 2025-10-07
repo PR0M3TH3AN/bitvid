@@ -1988,11 +1988,6 @@ async function loadUserVideos(pubkey) {
 
         const dataset = trigger.dataset || {};
         const videoId = dataset.videoId || trigger.getAttribute("data-video-id") || "";
-        if (videoId && typeof app?.playVideoByEventId === "function") {
-          app.playVideoByEventId(videoId);
-          return;
-        }
-
         const rawUrl = dataset.playUrl || trigger.getAttribute("data-play-url") || "";
         let url = "";
         if (typeof rawUrl === "string" && rawUrl) {
@@ -2007,9 +2002,35 @@ async function loadUserVideos(pubkey) {
           dataset.playMagnet || trigger.getAttribute("data-play-magnet") || "";
         const magnet = typeof magnetValue === "string" ? magnetValue : "";
 
-        if (typeof app?.playVideoWithFallback === "function") {
-          app.playVideoWithFallback({ url, magnet });
+        const playWithUrlAndMagnet = () => {
+          if (typeof app?.playVideoWithFallback === "function") {
+            app.playVideoWithFallback({ url, magnet });
+          }
+        };
+
+        if (videoId && typeof app?.playVideoByEventId === "function") {
+          try {
+            const maybePromise = app.playVideoByEventId(videoId);
+            if (maybePromise && typeof maybePromise.then === "function") {
+              maybePromise.catch((error) => {
+                console.error(
+                  "Failed to play via event id from channel grid:",
+                  error
+                );
+                playWithUrlAndMagnet();
+              });
+            }
+          } catch (error) {
+            console.error(
+              "Failed to play via event id from channel grid:",
+              error
+            );
+            playWithUrlAndMagnet();
+          }
+          return;
         }
+
+        playWithUrlAndMagnet();
       });
       container.dataset.playHandlerBound = "true";
     }
