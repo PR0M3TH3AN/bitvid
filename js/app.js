@@ -1354,6 +1354,7 @@ class Application {
         this.profileModalController.cacheDomReferences();
       }
 
+      this.syncProfileModalState();
       this.renderSavedProfiles();
       return true;
     } catch (error) {
@@ -1362,26 +1363,76 @@ class Application {
     }
   }
 
+  syncProfileModalState({
+    includeSavedProfiles = true,
+    includeActivePubkey = true,
+  } = {}) {
+    if (!this.profileModalController) {
+      return;
+    }
+
+    if (includeSavedProfiles) {
+      try {
+        const entries = Array.isArray(this.savedProfiles)
+          ? this.savedProfiles.slice()
+          : [];
+        this.profileModalController.setSavedProfiles(entries, {
+          persist: false,
+          persistActive: false,
+        });
+      } catch (error) {
+        console.warn(
+          "[profileModal] Failed to synchronize saved profiles with controller:",
+          error,
+        );
+      }
+    }
+
+    if (includeActivePubkey) {
+      try {
+        this.profileModalController.setActivePubkey(
+          this.activeProfilePubkey || null,
+          { persist: false },
+        );
+      } catch (error) {
+        console.warn(
+          "[profileModal] Failed to synchronize active profile with controller:",
+          error,
+        );
+      }
+    }
+  }
+
   renderSavedProfiles() {
-    this.profileModalController?.renderSavedProfiles();
+    if (!this.profileModalController) {
+      return;
+    }
+    this.syncProfileModalState();
+    this.profileModalController.renderSavedProfiles();
   }
 
   selectProfilePane(name = "account") {
-    if (this.profileModalController) {
-      this.profileModalController.selectPane(name);
+    if (!this.profileModalController) {
+      return;
     }
+    this.syncProfileModalState();
+    this.profileModalController.selectPane(name);
   }
 
   setWalletPaneBusy(isBusy = false) {
+    this.isWalletPaneBusy = Boolean(isBusy);
     if (!this.profileModalController) {
-      this.isWalletPaneBusy = Boolean(isBusy);
       return;
     }
-    this.profileModalController.setWalletPaneBusy(isBusy);
+    this.profileModalController.setWalletPaneBusy(this.isWalletPaneBusy);
   }
 
   refreshWalletPaneState() {
-    this.profileModalController?.refreshWalletPaneState();
+    if (!this.profileModalController) {
+      return;
+    }
+    this.syncProfileModalState({ includeSavedProfiles: false });
+    this.profileModalController.refreshWalletPaneState();
   }
 
   updateWalletStatus(message, variant = "info") {
@@ -1413,35 +1464,67 @@ class Application {
   }
 
   populateProfileRelays(relayEntries = null) {
-    this.profileModalController?.populateProfileRelays(relayEntries);
+    if (!this.profileModalController) {
+      return;
+    }
+    this.syncProfileModalState({ includeSavedProfiles: false });
+    this.profileModalController.populateProfileRelays(relayEntries);
   }
 
   populateBlockedList(blocked = null) {
-    this.profileModalController?.populateBlockedList(blocked);
+    if (!this.profileModalController) {
+      return;
+    }
+    this.syncProfileModalState({ includeSavedProfiles: false });
+    this.profileModalController.populateBlockedList(blocked);
   }
 
   refreshAdminPaneState() {
-    return this.profileModalController?.refreshAdminPaneState();
+    if (!this.profileModalController) {
+      return null;
+    }
+    this.syncProfileModalState();
+    return this.profileModalController.refreshAdminPaneState();
   }
 
   populateAdminLists() {
-    this.profileModalController?.populateAdminLists();
+    if (!this.profileModalController) {
+      return;
+    }
+    this.syncProfileModalState();
+    this.profileModalController.populateAdminLists();
   }
 
   renderAdminList(...args) {
-    return this.profileModalController?.renderAdminList(...args);
+    if (!this.profileModalController) {
+      return null;
+    }
+    this.syncProfileModalState();
+    return this.profileModalController.renderAdminList(...args);
   }
 
   handleAdminListMutation(...args) {
-    return this.profileModalController?.handleAdminListMutation(...args);
+    if (!this.profileModalController) {
+      return null;
+    }
+    this.syncProfileModalState();
+    return this.profileModalController.handleAdminListMutation(...args);
   }
 
   handleAddModerator(...args) {
-    return this.profileModalController?.handleAddModerator(...args);
+    if (!this.profileModalController) {
+      return null;
+    }
+    this.syncProfileModalState();
+    return this.profileModalController.handleAddModerator(...args);
   }
 
   handleRemoveModerator(...args) {
-    return this.profileModalController?.handleRemoveModerator(...args);
+    if (!this.profileModalController) {
+      return null;
+    }
+    this.syncProfileModalState();
+    return this.profileModalController.handleRemoveModerator(...args);
   }
 
   async handleAddProfile(controller) {
