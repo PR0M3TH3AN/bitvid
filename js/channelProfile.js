@@ -1824,6 +1824,11 @@ async function loadUserVideos(pubkey) {
       } else if (cardEl.dataset.ownerPubkey) {
         delete cardEl.dataset.ownerPubkey;
       }
+      if (typeof video.id === "string" && video.id) {
+        cardEl.dataset.videoId = video.id;
+      } else if (cardEl.dataset.videoId) {
+        delete cardEl.dataset.videoId;
+      }
 
       const rawMagnet =
         typeof video.magnet === "string" ? video.magnet : "";
@@ -1932,6 +1937,14 @@ async function loadUserVideos(pubkey) {
       } else if (cardEl.dataset.magnet) {
         delete cardEl.dataset.magnet;
       }
+
+      if (trimmedUrl) {
+        cardEl.dataset.playUrl = encodeURIComponent(trimmedUrl);
+      } else if (cardEl.dataset.playUrl) {
+        delete cardEl.dataset.playUrl;
+      }
+
+      cardEl.dataset.playMagnet = playbackMagnet || "";
 
       // Leave the data-play-* attributes empty in the template markup so the raw
       // URL/magnet strings can be assigned after parsing without HTML entity
