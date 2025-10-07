@@ -1,13 +1,19 @@
-import { isDevMode, ADMIN_SUPER_NPUB } from "../config.js";
+import {
+  isDevMode,
+  ADMIN_SUPER_NPUB as CONFIG_ADMIN_SUPER_NPUB,
+  ADMIN_DM_IMAGE_URL as CONFIG_ADMIN_DM_IMAGE_URL,
+  BITVID_WEBSITE_URL as CONFIG_BITVID_WEBSITE_URL,
+  MAX_WALLET_DEFAULT_ZAP as CONFIG_MAX_WALLET_DEFAULT_ZAP,
+} from "../config.js";
 
 const noop = () => {};
 
 const FALLBACK_PROFILE_AVATAR = "assets/svg/default-profile.svg";
-const ADMIN_DM_IMAGE_URL =
+const DEFAULT_ADMIN_DM_IMAGE_URL =
   "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
-const BITVID_WEBSITE_URL = "https://bitvid.network/";
+const DEFAULT_BITVID_WEBSITE_URL = "https://bitvid.network/";
 const NWC_URI_SCHEME = "nostr+walletconnect://";
-const MAX_WALLET_DEFAULT_ZAP = 100000000;
+const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 
 const DEFAULT_INTERNAL_NWC_SETTINGS = Object.freeze({
   nwcUri: "",
@@ -458,6 +464,7 @@ export class ProfileModalController {
       callbacks = {},
       services = {},
       state = {},
+      constants: providedConstants = {},
     } = options;
 
     this.modalContainer = modalContainer;
@@ -467,6 +474,65 @@ export class ProfileModalController {
     this.showError = showError;
     this.showSuccess = showSuccess;
     this.showStatus = showStatus;
+
+    const resolvedMaxWalletDefaultZap =
+      typeof providedConstants.MAX_WALLET_DEFAULT_ZAP === "number" &&
+      Number.isFinite(providedConstants.MAX_WALLET_DEFAULT_ZAP)
+        ? providedConstants.MAX_WALLET_DEFAULT_ZAP
+        : typeof CONFIG_MAX_WALLET_DEFAULT_ZAP === "number" &&
+          Number.isFinite(CONFIG_MAX_WALLET_DEFAULT_ZAP)
+        ? CONFIG_MAX_WALLET_DEFAULT_ZAP
+        : DEFAULT_MAX_WALLET_DEFAULT_ZAP;
+
+    const resolvedAdminSuperNpub = (() => {
+      const fromOptions =
+        typeof providedConstants.ADMIN_SUPER_NPUB === "string"
+          ? providedConstants.ADMIN_SUPER_NPUB.trim()
+          : "";
+      if (fromOptions) {
+        return fromOptions;
+      }
+      const fromConfig =
+        typeof CONFIG_ADMIN_SUPER_NPUB === "string"
+          ? CONFIG_ADMIN_SUPER_NPUB.trim()
+          : "";
+      return fromConfig || null;
+    })();
+
+    const resolvedAdminDmImageUrl = (() => {
+      const fromOptions =
+        typeof providedConstants.ADMIN_DM_IMAGE_URL === "string"
+          ? providedConstants.ADMIN_DM_IMAGE_URL.trim()
+          : "";
+      if (fromOptions) {
+        return fromOptions;
+      }
+      const fromConfig =
+        typeof CONFIG_ADMIN_DM_IMAGE_URL === "string"
+          ? CONFIG_ADMIN_DM_IMAGE_URL.trim()
+          : "";
+      return fromConfig || DEFAULT_ADMIN_DM_IMAGE_URL;
+    })();
+
+    const resolvedBitvidWebsiteUrl = (() => {
+      const fromOptions =
+        typeof providedConstants.BITVID_WEBSITE_URL === "string"
+          ? providedConstants.BITVID_WEBSITE_URL.trim()
+          : "";
+      if (fromOptions) {
+        return fromOptions;
+      }
+      const fromConfig =
+        typeof CONFIG_BITVID_WEBSITE_URL === "string"
+          ? CONFIG_BITVID_WEBSITE_URL.trim()
+          : "";
+      return fromConfig || DEFAULT_BITVID_WEBSITE_URL;
+    })();
+
+    this.maxWalletDefaultZap = resolvedMaxWalletDefaultZap;
+    this.adminSuperNpub = resolvedAdminSuperNpub;
+    this.adminDmImageUrl = resolvedAdminDmImageUrl;
+    this.bitvidWebsiteUrl = resolvedBitvidWebsiteUrl;
 
     this.internalState = {
       savedProfiles: [],
@@ -2057,7 +2123,7 @@ export class ProfileModalController {
           error: "Default zap amount must be a positive whole number.",
         };
       }
-      const clamped = Math.min(MAX_WALLET_DEFAULT_ZAP, rounded);
+      const clamped = Math.min(this.maxWalletDefaultZap, rounded);
       return { uri, defaultZap: clamped };
     }
 
@@ -2494,7 +2560,7 @@ export class ProfileModalController {
     const isSuperAdmin = this.services.accessControl.isSuperAdmin(actorNpub);
     const editors = this.services.accessControl
       .getEditors()
-      .filter((npub) => npub && npub !== ADMIN_SUPER_NPUB);
+      .filter((npub) => npub && npub !== this.adminSuperNpub);
     const whitelist = this.services.accessControl.getWhitelist();
     const blacklist = this.services.accessControl.getBlacklist();
 
@@ -3094,8 +3160,8 @@ export class ProfileModalController {
       : `We wanted to let you know that your npub ${normalizedTarget} has been placed on the BitVid blacklist by ${actorDisplay}.`;
 
     const statusLine = isWhitelist
-      ? `You now have full creator access across BitVid (${BITVID_WEBSITE_URL}).`
-      : `This hides your channel and prevents uploads across BitVid (${BITVID_WEBSITE_URL}) for now.`;
+      ? `You now have full creator access across BitVid (${this.bitvidWebsiteUrl}).`
+      : `This hides your channel and prevents uploads across BitVid (${this.bitvidWebsiteUrl}) for now.`;
 
     const followUpLine = isWhitelist
       ? "Please take a moment to review our community guidelines (https://bitvid.network/#view=community-guidelines), and reply to this DM if you have any questions."
@@ -3113,7 +3179,7 @@ export class ProfileModalController {
       "— The BitVid Team",
     ].join("\n");
 
-    const message = `![BitVid status update](${ADMIN_DM_IMAGE_URL})\n\n${messageBody}`;
+    const message = `![BitVid status update](${this.adminDmImageUrl})\n\n${messageBody}`;
 
     return this.services.nostrClient.sendDirectMessage(
       normalizedTarget,
