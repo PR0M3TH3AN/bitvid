@@ -284,68 +284,13 @@ class Application {
     this.profileButton = document.getElementById("profileButton") || null;
     this.profileAvatar = document.getElementById("profileAvatar") || null;
 
-    // Profile modal references (if used in profile-modal.html)
-    this.profileModal = null;
-    this.closeProfileModal = null;
-    this.profileLogoutBtn = null;
-    this.profileModalAvatar = null;
-    this.profileModalName = null;
-    this.profileModalNpub = null;
-    this.profileChannelLink = null;
-    this.profileNavButtons = {
-      account: null,
-      relays: null,
-      wallet: null,
-      blocked: null,
-      history: null,
-      admin: null,
-    };
-    this.profilePaneElements = {
-      account: null,
-      relays: null,
-      wallet: null,
-      blocked: null,
-      history: null,
-      admin: null,
-    };
-    this.profileRelayList = null;
-    this.profileBlockedList = null;
-    this.profileBlockedEmpty = null;
-    this.profileBlockedInput = null;
-    this.profileAddBlockedBtn = null;
-    this.profileRelayInput = null;
-    this.profileAddRelayBtn = null;
-    this.profileRestoreRelaysBtn = null;
-    this.profileHistoryRenderer = null;
+    // Profile modal controller state
     this.activeProfilePane = null;
-    this.profileWalletUriInput = null;
-    this.profileWalletDefaultZapInput = null;
-    this.profileWalletSaveButton = null;
-    this.profileWalletTestButton = null;
-    this.profileWalletDisconnectButton = null;
-    this.profileWalletStatusText = null;
     this.isWalletPaneBusy = false;
     this.profileModalCachedSelection = null;
     this.profileModalController = null;
-    this.adminModeratorInput = null;
-    this.adminAddModeratorBtn = null;
-    this.adminModeratorList = null;
-    this.adminModeratorsEmpty = null;
-    this.adminModeratorsSection = null;
-    this.adminWhitelistInput = null;
-    this.adminAddWhitelistBtn = null;
-    this.adminWhitelistList = null;
-    this.adminWhitelistEmpty = null;
-    this.adminWhitelistSection = null;
-    this.adminBlacklistInput = null;
-    this.adminAddBlacklistBtn = null;
-    this.adminBlacklistList = null;
-    this.adminBlacklistEmpty = null;
-    this.adminBlacklistSection = null;
     this.lastFocusedBeforeProfileModal = null;
     this.boundProfileHistoryVisibility = null;
-    this.profileSwitcherList = null;
-    this.profileAddAccountBtn = null;
     this.profileSwitcherSelectionPubkey = null;
     this.currentUserNpub = null;
 
@@ -1342,7 +1287,7 @@ class Application {
           onClose: () => this.handleProfileModalClosed(),
           onLogout: async () => this.authService.logout(),
           onChannelLink: (element) => this.handleProfileChannelLink(element),
-          onAddAccount: () => this.handleAddProfile(),
+          onAddAccount: (controller) => this.handleAddProfile(controller),
           onSelectPane: (pane) => {
             this.activeProfilePane = pane;
           },
@@ -1398,89 +1343,7 @@ class Application {
         this.profileModalController.cacheDomReferences();
       }
 
-      this.profileModal = this.profileModalController.profileModal;
-      this.closeProfileModal = this.profileModalController.closeButton;
-      this.profileLogoutBtn = this.profileModalController.logoutButton;
-      this.profileChannelLink = this.profileModalController.channelLink;
-      this.profileModalAvatar = this.profileModalController.profileModalAvatar;
-      this.profileModalName = this.profileModalController.profileModalName;
-      this.profileModalNpub = this.profileModalController.profileModalNpub;
-      this.profileSwitcherList = this.profileModalController.profileSwitcherList;
-      this.profileAddAccountBtn = this.profileModalController.addAccountButton;
-      this.profileAvatar = this.profileModalController.profileAvatar;
-
-      Object.entries(this.profileNavButtons).forEach(([key]) => {
-        this.profileNavButtons[key] =
-          this.profileModalController.navButtons[key] || null;
-      });
-
-      Object.entries(this.profilePaneElements).forEach(([key]) => {
-        this.profilePaneElements[key] =
-          this.profileModalController.panes[key] || null;
-      });
-
-      this.profileRelayList = this.profileModalController.profileRelayList;
-      this.profileRelayInput = this.profileModalController.profileRelayInput;
-      this.profileAddRelayBtn = this.profileModalController.profileAddRelayBtn;
-      this.profileRestoreRelaysBtn =
-        this.profileModalController.profileRestoreRelaysBtn;
-
-      this.profileBlockedList = this.profileModalController.profileBlockedList;
-      this.profileBlockedEmpty =
-        this.profileModalController.profileBlockedEmpty;
-      this.profileBlockedInput =
-        this.profileModalController.profileBlockedInput;
-      this.profileAddBlockedBtn =
-        this.profileModalController.profileAddBlockedBtn;
-
-      this.profileWalletUriInput = this.profileModalController.walletUriInput;
-      this.profileWalletDefaultZapInput =
-        this.profileModalController.walletDefaultZapInput;
-      this.profileWalletSaveButton =
-        this.profileModalController.walletSaveButton;
-      this.profileWalletTestButton =
-        this.profileModalController.walletTestButton;
-      this.profileWalletDisconnectButton =
-        this.profileModalController.walletDisconnectButton;
-      this.profileWalletStatusText =
-        this.profileModalController.profileWalletStatusText;
-
-      this.profileHistoryRenderer =
-        this.profileModalController.profileHistoryRenderer;
-
-      this.adminModeratorsSection =
-        this.profileModalController.adminModeratorsSection;
-      this.adminModeratorsEmpty =
-        this.profileModalController.adminModeratorsEmpty;
-      this.adminModeratorList =
-        this.profileModalController.adminModeratorList;
-      this.adminModeratorInput =
-        this.profileModalController.adminModeratorInput;
-      this.adminAddModeratorBtn =
-        this.profileModalController.adminAddModeratorButton;
-
-      this.adminWhitelistSection =
-        this.profileModalController.adminWhitelistSection;
-      this.adminWhitelistEmpty =
-        this.profileModalController.adminWhitelistEmpty;
-      this.adminWhitelistList =
-        this.profileModalController.adminWhitelistList;
-      this.adminWhitelistInput =
-        this.profileModalController.adminWhitelistInput;
-      this.adminAddWhitelistBtn =
-        this.profileModalController.adminAddWhitelistButton;
-
-      this.adminBlacklistSection =
-        this.profileModalController.adminBlacklistSection;
-      this.adminBlacklistEmpty =
-        this.profileModalController.adminBlacklistEmpty;
-      this.adminBlacklistList =
-        this.profileModalController.adminBlacklistList;
-      this.adminBlacklistInput =
-        this.profileModalController.adminBlacklistInput;
-      this.adminAddBlacklistBtn =
-        this.profileModalController.adminAddBlacklistButton;
-
+      this.renderSavedProfiles();
       return true;
     } catch (error) {
       console.error("initProfileModal failed:", error);
@@ -1552,19 +1415,6 @@ class Application {
 
   async openWalletPane() {
     await this.openProfileModal("wallet");
-    if (
-      this.profileWalletUriInput instanceof HTMLElement &&
-      typeof window !== "undefined" &&
-      typeof window.requestAnimationFrame === "function"
-    ) {
-      window.requestAnimationFrame(() => {
-        if (this.profileWalletUriInput instanceof HTMLElement) {
-          this.profileWalletUriInput.focus();
-        }
-      });
-    } else if (this.profileWalletUriInput instanceof HTMLElement) {
-      this.profileWalletUriInput.focus();
-    }
   }
 
   hideProfileModal() {
@@ -1639,12 +1489,14 @@ class Application {
     return this.profileModalController?.handleRemoveModerator(...args);
   }
 
-  async handleAddProfile() {
-    if (!this.profileAddAccountBtn) {
+  async handleAddProfile(controller) {
+    const button =
+      (controller && controller.addAccountButton) ||
+      this.profileModalController?.addAccountButton ||
+      null;
+    if (!(button instanceof HTMLElement)) {
       return;
     }
-
-    const button = this.profileAddAccountBtn;
     if (button.dataset.loading === "true") {
       return;
     }
@@ -2748,35 +2600,30 @@ class Application {
   }
 
   updateActiveProfileUI(pubkey, profile = {}) {
-    const displayName = profile.name || "User";
+    if (this.profileModalController) {
+      this.renderSavedProfiles();
+      return;
+    }
+
     const picture = profile.picture || "assets/svg/default-profile.svg";
 
     if (this.profileAvatar) {
       this.profileAvatar.src = picture;
     }
-    if (this.profileModalName) {
-      this.profileModalName.textContent = displayName;
-    }
-    if (this.profileModalAvatar) {
-      this.profileModalAvatar.src = picture;
-    }
-    if (this.profileModalNpub) {
-      const encoded = this.safeEncodeNpub(pubkey);
-      this.profileModalNpub.textContent = encoded
-        ? truncateMiddle(encoded, 48)
-        : "Not signed in";
-    }
 
-    if (this.profileChannelLink) {
+    const channelLink = document.getElementById("profileChannelLink");
+    if (channelLink instanceof HTMLElement) {
       const targetNpub = this.safeEncodeNpub(pubkey);
       if (targetNpub) {
-        this.profileChannelLink.href = `#view=channel-profile&npub=${targetNpub}`;
-        this.profileChannelLink.dataset.targetNpub = targetNpub;
-        this.profileChannelLink.classList.remove("hidden");
+        channelLink.href = `#view=channel-profile&npub=${targetNpub}`;
+        channelLink.dataset.targetNpub = targetNpub;
+        channelLink.classList.remove("hidden");
       } else {
-        this.profileChannelLink.removeAttribute("href");
-        delete this.profileChannelLink.dataset.targetNpub;
-        this.profileChannelLink.classList.add("hidden");
+        channelLink.removeAttribute("href");
+        if (channelLink.dataset) {
+          delete channelLink.dataset.targetNpub;
+        }
+        channelLink.classList.add("hidden");
       }
     }
   }
