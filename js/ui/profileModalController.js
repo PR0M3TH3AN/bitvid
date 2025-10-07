@@ -340,25 +340,11 @@ export class ProfileModalController {
     this.safeEncodeNpub = this.services.safeEncodeNpub;
     this.safeDecodeNpub = this.services.safeDecodeNpub;
     this.truncateMiddle = this.services.truncateMiddle;
-    this.getProfileCacheEntry = this.services.getProfileCacheEntry;
-    this.batchFetchProfiles = this.services.batchFetchProfiles;
-    this.switchProfile = this.services.switchProfile;
-    this.relayManager = this.services.relayManager;
-    this.userBlocks = this.services.userBlocks;
-    this.nostrClient = this.services.nostrClient;
-    this.accessControl = this.services.accessControl;
-    this.getCurrentUserNpub = this.services.getCurrentUserNpub;
-    this.getActiveNwcSettings = this.services.getActiveNwcSettings;
-    this.updateActiveNwcSettings = this.services.updateActiveNwcSettings;
-    this.createDefaultNwcSettings = this.services.createDefaultNwcSettings;
-    this.ensureWallet = this.services.ensureWallet;
-    this.loadVideos = this.services.loadVideos;
     this.sendAdminListNotificationService =
       this.services.sendAdminListNotification;
     this.describeAdminErrorService = this.services.describeAdminError;
     this.describeNotificationErrorService =
       this.services.describeNotificationError;
-    this.onAccessControlUpdated = this.services.onAccessControlUpdated;
 
     this.callbacks = {
       onClose: callbacks.onClose || noop,
@@ -756,7 +742,7 @@ export class ProfileModalController {
       const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
       let cacheEntry = null;
       if (normalizedPubkey) {
-        cacheEntry = this.getProfileCacheEntry(normalizedPubkey);
+        cacheEntry = this.services.getProfileCacheEntry(normalizedPubkey);
       }
       const cachedProfile = cacheEntry?.profile || {};
 
@@ -977,7 +963,7 @@ export class ProfileModalController {
             button.setAttribute("aria-busy", "true");
 
           try {
-            await this.switchProfile(entry.pubkey);
+            await this.services.switchProfile(entry.pubkey);
           } catch (error) {
             console.error("Failed to switch profile:", error);
           } finally {
@@ -1004,7 +990,7 @@ export class ProfileModalController {
     }
 
     if (entriesNeedingFetch.size) {
-      this.batchFetchProfiles(entriesNeedingFetch);
+      this.services.batchFetchProfiles(entriesNeedingFetch);
     }
   }
 
@@ -1080,7 +1066,7 @@ export class ProfileModalController {
 
     const sourceEntries = Array.isArray(relayEntries)
       ? relayEntries
-      : this.relayManager.getEntries();
+      : this.services.relayManager.getEntries();
 
     const relays = sourceEntries
       .map((entry) => {
@@ -1190,7 +1176,7 @@ export class ProfileModalController {
       return;
     }
 
-    const previous = this.relayManager.snapshot();
+    const previous = this.services.relayManager.snapshot();
     let result;
     try {
       result = operation();
@@ -1217,7 +1203,9 @@ export class ProfileModalController {
     this.populateProfileRelays();
 
     try {
-      const publishResult = await this.relayManager.publishRelayList(activePubkey);
+      const publishResult = await this.services.relayManager.publishRelayList(
+        activePubkey,
+      );
       if (!publishResult?.ok) {
         throw new Error("No relays accepted the update.");
       }
@@ -1225,7 +1213,7 @@ export class ProfileModalController {
         this.showSuccess(successMessage);
       }
     } catch (error) {
-      this.relayManager.setEntries(previous, { allowEmpty: false });
+      this.services.relayManager.setEntries(previous, { allowEmpty: false });
       this.populateProfileRelays();
       const message =
         error && typeof error.message === "string" && error.message.trim()
@@ -1253,7 +1241,7 @@ export class ProfileModalController {
     }
 
     await this.handleRelayOperation(
-      () => this.relayManager.addRelay(trimmed),
+      () => this.services.relayManager.addRelay(trimmed),
       {
         successMessage: "Relay saved.",
         unchangedMessage: "Relay is already configured.",
@@ -1280,7 +1268,7 @@ export class ProfileModalController {
     }
 
     await this.handleRelayOperation(
-      () => this.relayManager.restoreDefaults(),
+      () => this.services.relayManager.restoreDefaults(),
       {
         successMessage: "Relay defaults restored.",
         unchangedMessage: "Relay defaults are already in use.",
@@ -1295,7 +1283,7 @@ export class ProfileModalController {
       return;
     }
     await this.handleRelayOperation(
-      () => this.relayManager.cycleRelayMode(url),
+      () => this.services.relayManager.cycleRelayMode(url),
       { successMessage: "Relay mode updated." },
     );
   }
@@ -1313,7 +1301,7 @@ export class ProfileModalController {
     }
 
     await this.handleRelayOperation(
-      () => this.relayManager.removeRelay(url),
+      () => this.services.relayManager.removeRelay(url),
       { successMessage: "Relay removed." },
     );
   }
@@ -1326,7 +1314,7 @@ export class ProfileModalController {
     const sourceEntries =
       Array.isArray(blocked) && blocked.length
         ? blocked
-        : this.userBlocks.getBlockedPubkeys();
+        : this.services.userBlocks.getBlockedPubkeys();
 
     const normalizedEntries = [];
     const pushEntry = (hex, label) => {
@@ -1480,12 +1468,12 @@ export class ProfileModalController {
     }
 
     try {
-      await this.userBlocks.ensureLoaded(actorHex);
+      await this.services.userBlocks.ensureLoaded(actorHex);
 
-      if (this.userBlocks.isBlocked(targetHex)) {
+      if (this.services.userBlocks.isBlocked(targetHex)) {
         this.showSuccess("You already blocked this creator.");
       } else {
-        await this.userBlocks.addBlock(targetHex, actorHex);
+        await this.services.userBlocks.addBlock(targetHex, actorHex);
         this.showSuccess(
           "Creator blocked. You won't see their videos anymore.",
         );
@@ -1493,7 +1481,7 @@ export class ProfileModalController {
 
       this.profileBlockedInput.value = "";
       this.populateBlockedList();
-      await this.loadVideos();
+      await this.services.loadVideos();
     } catch (error) {
       console.error("Failed to add creator to personal block list:", error);
       const message =
@@ -1533,17 +1521,17 @@ export class ProfileModalController {
     }
 
     try {
-      await this.userBlocks.ensureLoaded(activePubkey);
+      await this.services.userBlocks.ensureLoaded(activePubkey);
 
-      if (!this.userBlocks.isBlocked(targetHex)) {
+      if (!this.services.userBlocks.isBlocked(targetHex)) {
         this.showSuccess("Creator already removed from your block list.");
       } else {
-        await this.userBlocks.removeBlock(targetHex, activePubkey);
+        await this.services.userBlocks.removeBlock(targetHex, activePubkey);
         this.showSuccess("Creator removed from your block list.");
       }
 
       this.populateBlockedList();
-      await this.loadVideos();
+      await this.services.loadVideos();
     } catch (error) {
       console.error(
         "Failed to remove creator from personal block list:",
@@ -1563,8 +1551,8 @@ export class ProfileModalController {
     }
 
     let primaryActor = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!primaryActor && this.nostrClient?.sessionActor?.pubkey) {
-      const candidate = this.nostrClient.sessionActor.pubkey;
+    if (!primaryActor && this.services.nostrClient?.sessionActor?.pubkey) {
+      const candidate = this.services.nostrClient.sessionActor.pubkey;
       if (typeof candidate === "string" && candidate) {
         primaryActor = candidate;
       }
@@ -1688,7 +1676,7 @@ export class ProfileModalController {
       return;
     }
 
-    const settings = this.getActiveNwcSettings();
+    const settings = this.services.getActiveNwcSettings();
     setInputValue(this.walletUriInput, settings.nwcUri || "");
     setInputValue(
       this.walletDefaultZapInput,
@@ -1799,7 +1787,7 @@ export class ProfileModalController {
     let finalStatus = null;
     let finalVariant = "info";
     try {
-      await this.updateActiveNwcSettings({
+      await this.services.updateActiveNwcSettings({
         nwcUri: sanitized,
         defaultZap,
       });
@@ -1870,7 +1858,7 @@ export class ProfileModalController {
     let finalStatus = null;
     let finalVariant = "info";
     try {
-      const result = await this.ensureWallet({
+      const result = await this.services.ensureWallet({
         nwcUri: sanitized,
         defaultZap,
       });
@@ -1878,9 +1866,9 @@ export class ProfileModalController {
       finalVariant = "success";
       this.showSuccess("Wallet connection confirmed.");
 
-      const currentSettings = this.getActiveNwcSettings();
+      const currentSettings = this.services.getActiveNwcSettings();
       if (currentSettings.nwcUri === sanitized) {
-        await this.updateActiveNwcSettings({ lastChecked: Date.now() });
+        await this.services.updateActiveNwcSettings({ lastChecked: Date.now() });
       }
       return result;
     } catch (error) {
@@ -1919,7 +1907,9 @@ export class ProfileModalController {
     let finalStatus = null;
     let finalVariant = "info";
     try {
-      await this.updateActiveNwcSettings(this.createDefaultNwcSettings());
+      await this.services.updateActiveNwcSettings(
+        this.services.createDefaultNwcSettings(),
+      );
       finalStatus = "Wallet disconnected.";
       this.showStatus("Wallet disconnected.");
     } catch (error) {
@@ -2062,18 +2052,18 @@ export class ProfileModalController {
   }
 
   populateAdminLists() {
-    const actorNpub = this.getCurrentUserNpub();
-    if (!actorNpub || !this.accessControl.canEditAdminLists(actorNpub)) {
+    const actorNpub = this.services.getCurrentUserNpub();
+    if (!actorNpub || !this.services.accessControl.canEditAdminLists(actorNpub)) {
       this.clearAdminLists();
       return;
     }
 
-    const isSuperAdmin = this.accessControl.isSuperAdmin(actorNpub);
-    const editors = this.accessControl
+    const isSuperAdmin = this.services.accessControl.isSuperAdmin(actorNpub);
+    const editors = this.services.accessControl
       .getEditors()
       .filter((npub) => npub && npub !== ADMIN_SUPER_NPUB);
-    const whitelist = this.accessControl.getWhitelist();
-    const blacklist = this.accessControl.getBlacklist();
+    const whitelist = this.services.accessControl.getWhitelist();
+    const blacklist = this.services.accessControl.getBlacklist();
 
     this.renderAdminList(
       this.adminModeratorList,
@@ -2123,14 +2113,16 @@ export class ProfileModalController {
     this.setAdminLoading(true);
     this.showStatus("Fetching moderation filters…");
     try {
-      await this.accessControl.ensureReady();
+      await this.services.accessControl.ensureReady();
     } catch (error) {
       loadError = error;
     }
 
-    const actorNpub = this.getCurrentUserNpub();
-    const canEdit = !!actorNpub && this.accessControl.canEditAdminLists(actorNpub);
-    const isSuperAdmin = !!actorNpub && this.accessControl.isSuperAdmin(actorNpub);
+    const actorNpub = this.services.getCurrentUserNpub();
+    const canEdit =
+      !!actorNpub && this.services.accessControl.canEditAdminLists(actorNpub);
+    const isSuperAdmin =
+      !!actorNpub && this.services.accessControl.isSuperAdmin(actorNpub);
 
     if (adminNav instanceof HTMLElement) {
       adminNav.classList.toggle("hidden", !canEdit);
@@ -2202,16 +2194,16 @@ export class ProfileModalController {
   }
 
   ensureAdminActor(requireSuperAdmin = false) {
-    const actorNpub = this.getCurrentUserNpub();
+    const actorNpub = this.services.getCurrentUserNpub();
     if (!actorNpub) {
       this.showError("Please login with a Nostr account to manage admin settings.");
       return null;
     }
-    if (!this.accessControl.canEditAdminLists(actorNpub)) {
+    if (!this.services.accessControl.canEditAdminLists(actorNpub)) {
       this.showError("You do not have permission to manage BitVid moderation lists.");
       return null;
     }
-    if (requireSuperAdmin && !this.accessControl.isSuperAdmin(actorNpub)) {
+    if (requireSuperAdmin && !this.services.accessControl.isSuperAdmin(actorNpub)) {
       this.showError("Only the Super Admin can manage moderators or whitelist mode.");
       return null;
     }
@@ -2221,7 +2213,7 @@ export class ProfileModalController {
   async handleAddModerator() {
     let preloadError = null;
     try {
-      await this.accessControl.ensureReady();
+      await this.services.accessControl.ensureReady();
     } catch (error) {
       preloadError = error;
       console.error("Failed to load admin lists before adding moderator:", error);
@@ -2249,7 +2241,7 @@ export class ProfileModalController {
     }
 
     try {
-      const result = await this.accessControl.addModerator(actorNpub, value);
+      const result = await this.services.accessControl.addModerator(actorNpub, value);
       if (!result.ok) {
         this.showError(this.describeAdminError(result.error));
         return;
@@ -2257,7 +2249,7 @@ export class ProfileModalController {
 
       this.adminModeratorInput.value = "";
       this.showSuccess("Moderator added successfully.");
-      await this.onAccessControlUpdated();
+      await this.services.onAccessControlUpdated();
     } finally {
       if (this.adminAddModeratorButton) {
         this.adminAddModeratorButton.disabled = false;
@@ -2269,7 +2261,7 @@ export class ProfileModalController {
   async handleRemoveModerator(npub, button) {
     let preloadError = null;
     try {
-      await this.accessControl.ensureReady();
+      await this.services.accessControl.ensureReady();
     } catch (error) {
       preloadError = error;
       console.error("Failed to load admin lists before removing moderator:", error);
@@ -2293,7 +2285,10 @@ export class ProfileModalController {
       return;
     }
 
-    const result = await this.accessControl.removeModerator(actorNpub, npub);
+    const result = await this.services.accessControl.removeModerator(
+      actorNpub,
+      npub,
+    );
     if (!result.ok) {
       this.showError(this.describeAdminError(result.error));
       if (button instanceof HTMLElement) {
@@ -2304,13 +2299,13 @@ export class ProfileModalController {
     }
 
     this.showSuccess("Moderator removed.");
-    await this.onAccessControlUpdated();
+    await this.services.onAccessControlUpdated();
   }
 
   async handleAdminListMutation(listType, action, explicitNpub = null, sourceButton = null) {
     let preloadError = null;
     try {
-      await this.accessControl.ensureReady();
+      await this.services.accessControl.ensureReady();
     } catch (error) {
       preloadError = error;
       console.error("Failed to load admin lists before updating entries:", error);
@@ -2362,12 +2357,12 @@ export class ProfileModalController {
     let result;
     if (isWhitelist) {
       result = isAdd
-        ? await this.accessControl.addToWhitelist(actorNpub, target)
-        : await this.accessControl.removeFromWhitelist(actorNpub, target);
+        ? await this.services.accessControl.addToWhitelist(actorNpub, target)
+        : await this.services.accessControl.removeFromWhitelist(actorNpub, target);
     } else {
       result = isAdd
-        ? await this.accessControl.addToBlacklist(actorNpub, target)
-        : await this.accessControl.removeFromBlacklist(actorNpub, target);
+        ? await this.services.accessControl.addToBlacklist(actorNpub, target)
+        : await this.services.accessControl.removeFromBlacklist(actorNpub, target);
     }
 
     if (!result.ok) {
@@ -2391,7 +2386,7 @@ export class ProfileModalController {
       ? "Added to the blacklist."
       : "Removed from the blacklist.";
     this.showSuccess(successMessage);
-    await this.onAccessControlUpdated();
+    await this.services.onAccessControlUpdated();
 
     if (buttonToToggle instanceof HTMLElement) {
       buttonToToggle.disabled = false;
@@ -2538,7 +2533,7 @@ export class ProfileModalController {
 
     const message = `![BitVid status update](${ADMIN_DM_IMAGE_URL})\n\n${messageBody}`;
 
-    return this.nostrClient.sendDirectMessage(
+    return this.services.nostrClient.sendDirectMessage(
       normalizedTarget,
       message,
       activeHex,
