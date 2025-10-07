@@ -87,6 +87,7 @@ import { UploadModal } from "./ui/components/UploadModal.js";
 import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
+import ProfileModalController from "./ui/profileModalController.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
 import { fakeDecrypt } from "./utils/fakeDecrypt.js";
@@ -326,6 +327,18 @@ class Application {
     this.profileWalletDisconnectButton = null;
     this.profileWalletStatusText = null;
     this.isWalletPaneBusy = false;
+    this.profileModalCachedSelection = null;
+    this.profileModalController = null;
+    this.profileModalStateCache = {
+      activePane:
+        typeof this.activeProfilePane === "string" && this.activeProfilePane
+          ? this.activeProfilePane
+          : "account",
+      cachedSelection: null,
+      walletBusy: Boolean(this.isWalletPaneBusy),
+    };
+    this.profileModalStateAdapter = null;
+    this.profileModalServiceAdapter = null;
     this.adminModeratorInput = null;
     this.adminAddModeratorBtn = null;
     this.adminModeratorList = null;
@@ -1529,6 +1542,19 @@ class Application {
       const modalContainer = document.getElementById("modalContainer");
       if (!modalContainer) {
         throw new Error("Modal container element not found!");
+      }
+      if (!this.profileModalController) {
+        this.profileModalController = new ProfileModalController({
+          modalContainer,
+          removeTrackingScripts,
+          createWatchHistoryRenderer,
+          setGlobalModalState,
+          showError: (message) => this.showError(message),
+          showSuccess: (message) => this.showSuccess(message),
+          showStatus: (message) => this.showStatus(message),
+          services: this.getProfileModalServices(),
+          state: this.getProfileModalStateBridge(),
+        });
       }
       const wrapper = document.createElement("div");
       wrapper.innerHTML = html;
@@ -3415,6 +3441,116 @@ class Application {
       this.currentUserNpub = encoded;
     }
     return this.currentUserNpub;
+  }
+
+  getProfileModalServices() {
+    if (!this.profileModalServiceAdapter) {
+      this.profileModalServiceAdapter = {
+        normalizeHexPubkey: (value) => this.normalizeHexPubkey(value),
+        safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+        safeDecodeNpub: (npub) => this.safeDecodeNpub(npub),
+        truncateMiddle: (value, maxLength) => truncateMiddle(value, maxLength),
+        getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+        batchFetchProfiles: (authorSet) => this.batchFetchProfiles(authorSet),
+        switchProfile: (pubkey) => this.switchProfile(pubkey),
+        relayManager,
+        userBlocks,
+        nostrClient,
+        accessControl,
+        getCurrentUserNpub: () => this.getCurrentUserNpub(),
+        getActiveNwcSettings: () => this.getActiveNwcSettings(),
+        updateActiveNwcSettings: (partial) =>
+          this.updateActiveNwcSettings(partial),
+        createDefaultNwcSettings: () => createDefaultNwcSettings(),
+        ensureWallet: (options) => this.ensureWallet(options),
+        loadVideos: (forceFetch) => this.loadVideos(forceFetch),
+        sendAdminListNotification: (payload) =>
+          this.sendAdminListNotification(payload),
+        describeAdminError: (code) => this.describeAdminError(code),
+        describeNotificationError: (code) =>
+          this.describeNotificationError(code),
+        onAccessControlUpdated: () => this.onAccessControlUpdated(),
+      };
+    }
+
+    return this.profileModalServiceAdapter;
+  }
+
+  getProfileModalStateBridge() {
+    if (!this.profileModalStateCache) {
+      this.profileModalStateCache = {
+        activePane:
+          typeof this.activeProfilePane === "string" && this.activeProfilePane
+            ? this.activeProfilePane
+            : "account",
+        cachedSelection: this.profileModalCachedSelection || null,
+        walletBusy: Boolean(this.isWalletPaneBusy),
+      };
+    } else {
+      this.profileModalStateCache.activePane =
+        typeof this.activeProfilePane === "string" && this.activeProfilePane
+          ? this.activeProfilePane
+          : "account";
+      this.profileModalStateCache.walletBusy = Boolean(this.isWalletPaneBusy);
+      this.profileModalStateCache.cachedSelection =
+        this.profileModalCachedSelection || null;
+    }
+
+    if (!this.profileModalStateAdapter) {
+      const cache = this.profileModalStateCache;
+      this.profileModalStateAdapter = {
+        getSavedProfiles: () => getSavedProfiles(),
+        setSavedProfiles: (profiles, options) =>
+          setSavedProfiles(Array.isArray(profiles) ? profiles : [], options),
+        persistSavedProfiles: (options) => persistSavedProfiles(options),
+        getActivePubkey: () => this.activeProfilePubkey,
+        setActivePubkey: (pubkey, options) => {
+          this.activeProfilePubkey =
+            typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : null;
+          setStoredActiveProfilePubkey(this.activeProfilePubkey, options);
+          return this.activeProfilePubkey;
+        },
+        getCachedSelection: () => cache.cachedSelection,
+        setCachedSelection: (value) => {
+          const normalized =
+            typeof value === "string" && value.trim()
+              ? value.trim()
+              : null;
+          cache.cachedSelection = normalized;
+          this.profileModalCachedSelection = normalized;
+          return cache.cachedSelection;
+        },
+        getActivePane: () => {
+          const pane =
+            typeof this.activeProfilePane === "string" && this.activeProfilePane
+              ? this.activeProfilePane
+              : "account";
+          cache.activePane = pane;
+          return pane;
+        },
+        setActivePane: (pane) => {
+          const normalized =
+            typeof pane === "string" && pane.trim()
+              ? pane.trim().toLowerCase()
+              : "account";
+          this.activeProfilePane = normalized;
+          cache.activePane = normalized;
+          return this.activeProfilePane;
+        },
+        getWalletBusy: () => {
+          const busy = Boolean(this.isWalletPaneBusy);
+          cache.walletBusy = busy;
+          return busy;
+        },
+        setWalletBusy: (flag) => {
+          this.isWalletPaneBusy = Boolean(flag);
+          cache.walletBusy = this.isWalletPaneBusy;
+          return cache.walletBusy;
+        },
+      };
+    }
+
+    return this.profileModalStateAdapter;
   }
 
   canCurrentUserManageBlacklist() {
@@ -9071,9 +9207,16 @@ class Application {
       });
     }
 
+    const magnetInput =
+      sanitizedMagnet ||
+      decodedMagnetCandidate ||
+      magnetCandidate ||
+      legacyInfoHash ||
+      "";
+
     await this.playVideoWithFallback({
       url: trimmedUrl,
-      magnet: usableMagnetCandidate,
+      magnet: magnetInput,
     });
   }
 

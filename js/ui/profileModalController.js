@@ -1,5 +1,298 @@
 const noop = () => {};
 
+const SERVICE_CONTRACT = [
+  {
+    key: "normalizeHexPubkey",
+    type: "function",
+    description:
+      "Normalizes a provided pubkey (hex or npub) so profile lookups are stable.",
+  },
+  {
+    key: "safeEncodeNpub",
+    type: "function",
+    description:
+      "Encodes a hex pubkey as an npub for display. Expected to be resilient to bad input.",
+  },
+  {
+    key: "safeDecodeNpub",
+    type: "function",
+    description:
+      "Decodes an npub back to its hex form. Should return null/undefined for invalid payloads.",
+  },
+  {
+    key: "truncateMiddle",
+    type: "function",
+    description:
+      "Utility used for shortening long identifiers in the modal without losing context.",
+  },
+  {
+    key: "getProfileCacheEntry",
+    type: "function",
+    description:
+      "Returns the cached profile metadata for a normalized pubkey (if available).",
+  },
+  {
+    key: "batchFetchProfiles",
+    type: "function",
+    description:
+      "Fetches and caches profile metadata for a set of pubkeys so the modal can hydrate avatars/names in bulk.",
+  },
+  {
+    key: "switchProfile",
+    type: "function",
+    description:
+      "Switches the active application profile to the provided pubkey and updates state accordingly.",
+  },
+  {
+    key: "relayManager",
+    type: "object",
+    description:
+      "Shared relay manager instance responsible for the user\'s relay configuration.",
+  },
+  {
+    key: "userBlocks",
+    type: "object",
+    description: "User blocks helper used to read and mutate the local block list.",
+  },
+  {
+    key: "nostrClient",
+    type: "object",
+    description: "Reference to the nostr client powering subscriptions and profile fetches.",
+  },
+  {
+    key: "accessControl",
+    type: "object",
+    description:
+      "Access control module required for admin list permission checks and updates.",
+  },
+  {
+    key: "getCurrentUserNpub",
+    type: "function",
+    description: "Returns the active user\'s npub so UI actions can target the correct actor.",
+  },
+  {
+    key: "getActiveNwcSettings",
+    type: "function",
+    description:
+      "Reads the active Nostr Wallet Connect settings (uri/default zap) for the logged in profile.",
+  },
+  {
+    key: "updateActiveNwcSettings",
+    type: "function",
+    description: "Persists updates to the active wallet settings and returns the new state.",
+  },
+  {
+    key: "createDefaultNwcSettings",
+    type: "function",
+    description: "Creates a baseline wallet settings object when none exists.",
+  },
+  {
+    key: "ensureWallet",
+    type: "function",
+    description:
+      "Guarantees a wallet connection exists before issuing wallet related operations (connect/test).",
+  },
+  {
+    key: "loadVideos",
+    type: "function",
+    description: "Triggers a video reload so UI reflects profile or permission changes.",
+  },
+  {
+    key: "sendAdminListNotification",
+    type: "function",
+    description:
+      "Sends an administrative notification when moderators/whitelist/blacklist entries change.",
+  },
+  {
+    key: "describeAdminError",
+    type: "function",
+    description:
+      "Maps low-level admin errors to readable copy for surfaced error messages.",
+  },
+  {
+    key: "describeNotificationError",
+    type: "function",
+    description:
+      "Maps notification send errors to human readable descriptions for toast/banner messaging.",
+  },
+  {
+    key: "onAccessControlUpdated",
+    type: "function",
+    description:
+      "Callback invoked after access control mutations so the app can refresh dependent UI.",
+  },
+];
+
+const STATE_CONTRACT = [
+  {
+    key: "getSavedProfiles",
+    type: "function",
+    description:
+      "Returns the saved profile entries that populate the account switcher UI.",
+    fallback: (internal) => () => internal.savedProfiles.slice(),
+  },
+  {
+    key: "setSavedProfiles",
+    type: "function",
+    description:
+      "Replaces the saved profile entries and returns the newly stored collection.",
+    fallback: (internal) => (profiles = []) => {
+      internal.savedProfiles = Array.isArray(profiles)
+        ? profiles.slice()
+        : [];
+      return internal.savedProfiles;
+    },
+  },
+  {
+    key: "persistSavedProfiles",
+    type: "function",
+    description:
+      "Persists the saved profile collection (and optionally the active profile) to storage.",
+    fallback: () => noop,
+  },
+  {
+    key: "getActivePubkey",
+    type: "function",
+    description: "Returns the currently active profile pubkey.",
+    fallback: (internal) => () => internal.activePubkey,
+  },
+  {
+    key: "setActivePubkey",
+    type: "function",
+    description: "Updates the active profile pubkey and returns the stored value.",
+    fallback: (internal) => (pubkey) => {
+      if (typeof pubkey === "string") {
+        const trimmed = pubkey.trim();
+        internal.activePubkey = trimmed ? trimmed : null;
+      } else {
+        internal.activePubkey = null;
+      }
+      return internal.activePubkey;
+    },
+  },
+  {
+    key: "getCachedSelection",
+    type: "function",
+    description:
+      "Reads the cached profile selection used to restore switcher focus after reloads.",
+    fallback: (internal) => () => internal.cachedSelection,
+  },
+  {
+    key: "setCachedSelection",
+    type: "function",
+    description:
+      "Caches the last selected profile identifier and returns the stored value.",
+    fallback: (internal) => (value) => {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        internal.cachedSelection = trimmed || null;
+      } else {
+        internal.cachedSelection = null;
+      }
+      return internal.cachedSelection;
+    },
+  },
+  {
+    key: "getActivePane",
+    type: "function",
+    description: "Returns the identifier for the currently visible profile modal pane.",
+    fallback: (internal) => () => internal.activePane,
+  },
+  {
+    key: "setActivePane",
+    type: "function",
+    description: "Updates the active pane identifier and returns the stored value.",
+    fallback: (internal) => (pane) => {
+      if (typeof pane === "string") {
+        const trimmed = pane.trim().toLowerCase();
+        internal.activePane = trimmed || "account";
+      } else {
+        internal.activePane = "account";
+      }
+      return internal.activePane;
+    },
+  },
+  {
+    key: "getWalletBusy",
+    type: "function",
+    description:
+      "Indicates whether wallet-related actions are currently in-flight (disables UI as needed).",
+    fallback: (internal) => () => internal.walletBusy,
+  },
+  {
+    key: "setWalletBusy",
+    type: "function",
+    description: "Updates the wallet busy flag and returns the new boolean state.",
+    fallback: (internal) => (isBusy) => {
+      internal.walletBusy = Boolean(isBusy);
+      return internal.walletBusy;
+    },
+  },
+];
+
+function buildServicesContract(services = {}) {
+  const resolved = {};
+  const missing = [];
+
+  SERVICE_CONTRACT.forEach((definition) => {
+    const value = services[definition.key];
+    if (value == null) {
+      missing.push(`- ${definition.key}: ${definition.description}`);
+      return;
+    }
+
+    if (definition.type === "function" && typeof value !== "function") {
+      throw new TypeError(
+        `Expected service \"${definition.key}\" to be a function. Received ${typeof value}.`,
+      );
+    }
+    if (definition.type === "object" && (typeof value !== "object" || value === null)) {
+      throw new TypeError(
+        `Expected service \"${definition.key}\" to be an object. Received ${typeof value}.`,
+      );
+    }
+
+    resolved[definition.key] = value;
+  });
+
+  if (missing.length) {
+    throw new Error(
+      [
+        "[ProfileModalController] Missing required services for profile modal controller:",
+        ...missing,
+      ].join("\n"),
+    );
+  }
+
+  return Object.freeze({ ...services, ...resolved });
+}
+
+function buildStateContract(state = {}, internalState) {
+  const resolved = {};
+
+  STATE_CONTRACT.forEach((definition) => {
+    const value = state[definition.key];
+    if (typeof value === definition.type) {
+      resolved[definition.key] = value;
+      return;
+    }
+
+    if (definition.fallback) {
+      const fallback = definition.fallback(internalState);
+      if (typeof fallback === definition.type) {
+        resolved[definition.key] = fallback;
+        return;
+      }
+    }
+
+    throw new Error(
+      `[ProfileModalController] Missing state handler \"${definition.key}\" (${definition.description}).`,
+    );
+  });
+
+  return { ...state, ...resolved };
+}
+
 export class ProfileModalController {
   constructor(options = {}) {
     const {
@@ -11,6 +304,8 @@ export class ProfileModalController {
       showSuccess = noop,
       showStatus = noop,
       callbacks = {},
+      services = {},
+      state = {},
     } = options;
 
     this.modalContainer = modalContainer;
@@ -20,6 +315,39 @@ export class ProfileModalController {
     this.showError = showError;
     this.showSuccess = showSuccess;
     this.showStatus = showStatus;
+
+    this.internalState = {
+      savedProfiles: [],
+      activePubkey: null,
+      cachedSelection: null,
+      activePane: "account",
+      walletBusy: false,
+    };
+
+    this.services = buildServicesContract(services);
+    this.state = buildStateContract(state, this.internalState);
+
+    this.normalizeHexPubkey = this.services.normalizeHexPubkey;
+    this.safeEncodeNpub = this.services.safeEncodeNpub;
+    this.safeDecodeNpub = this.services.safeDecodeNpub;
+    this.truncateMiddle = this.services.truncateMiddle;
+    this.getProfileCacheEntry = this.services.getProfileCacheEntry;
+    this.batchFetchProfiles = this.services.batchFetchProfiles;
+    this.switchProfile = this.services.switchProfile;
+    this.relayManager = this.services.relayManager;
+    this.userBlocks = this.services.userBlocks;
+    this.nostrClient = this.services.nostrClient;
+    this.accessControl = this.services.accessControl;
+    this.getCurrentUserNpub = this.services.getCurrentUserNpub;
+    this.getActiveNwcSettings = this.services.getActiveNwcSettings;
+    this.updateActiveNwcSettings = this.services.updateActiveNwcSettings;
+    this.createDefaultNwcSettings = this.services.createDefaultNwcSettings;
+    this.ensureWallet = this.services.ensureWallet;
+    this.loadVideos = this.services.loadVideos;
+    this.sendAdminListNotification = this.services.sendAdminListNotification;
+    this.describeAdminError = this.services.describeAdminError;
+    this.describeNotificationError = this.services.describeNotificationError;
+    this.onAccessControlUpdated = this.services.onAccessControlUpdated;
 
     this.callbacks = {
       onClose: callbacks.onClose || noop,
@@ -87,8 +415,8 @@ export class ProfileModalController {
     this.boundKeydown = null;
     this.boundFocusIn = null;
     this.focusableElements = [];
-    this.activeProfilePane = "account";
-    this.isWalletPaneBusy = false;
+    this.setActivePane(this.getActivePane());
+    this.setWalletPaneBusy(this.isWalletBusy());
     this.adminEmptyMessages = new Map();
   }
 
@@ -111,7 +439,7 @@ export class ProfileModalController {
     this.cacheDomReferences();
     this.registerEventListeners();
     this.updateFocusTrap();
-    this.callbacks.onPaneShown(this.activeProfilePane, { controller: this });
+    this.callbacks.onPaneShown(this.getActivePane(), { controller: this });
 
     return true;
   }
@@ -334,7 +662,7 @@ export class ProfileModalController {
 
   selectPane(name = "account") {
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";
-    if (this.activeProfilePane === normalized) {
+    if (this.getActivePane() === normalized) {
       this.callbacks.onSelectPane(normalized, { controller: this });
       return;
     }
@@ -357,7 +685,7 @@ export class ProfileModalController {
       }
     });
 
-    this.activeProfilePane = normalized;
+    this.setActivePane(normalized);
     this.updateFocusTrap();
     this.callbacks.onSelectPane(normalized, { controller: this });
     this.callbacks.onPaneShown(normalized, { controller: this });
@@ -497,6 +825,50 @@ export class ProfileModalController {
     if (this.boundFocusIn) {
       document.removeEventListener("focusin", this.boundFocusIn);
     }
+  }
+
+  getSavedProfiles() {
+    return this.state.getSavedProfiles();
+  }
+
+  setSavedProfiles(...args) {
+    return this.state.setSavedProfiles(...args);
+  }
+
+  persistSavedProfiles(...args) {
+    return this.state.persistSavedProfiles(...args);
+  }
+
+  getActivePubkey() {
+    return this.state.getActivePubkey();
+  }
+
+  setActivePubkey(...args) {
+    return this.state.setActivePubkey(...args);
+  }
+
+  getCachedProfileSelection() {
+    return this.state.getCachedSelection();
+  }
+
+  setCachedProfileSelection(...args) {
+    return this.state.setCachedSelection(...args);
+  }
+
+  getActivePane() {
+    return this.state.getActivePane();
+  }
+
+  setActivePane(...args) {
+    return this.state.setActivePane(...args);
+  }
+
+  isWalletBusy() {
+    return Boolean(this.state.getWalletBusy());
+  }
+
+  setWalletPaneBusy(isBusy) {
+    return this.state.setWalletBusy(Boolean(isBusy));
   }
 }
 

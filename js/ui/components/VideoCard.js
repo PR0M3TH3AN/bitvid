@@ -995,6 +995,7 @@ export class VideoCard {
     if (this.settingsButton && this.settingsDropdown) {
       this.settingsButton.addEventListener("click", (event) => {
         event.preventDefault();
+        event.stopPropagation();
         const willOpen = this.settingsDropdown.classList.contains("hidden");
         if (this.onRequestCloseAllMenus) {
           this.onRequestCloseAllMenus(this);
