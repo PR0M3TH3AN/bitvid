@@ -2,8 +2,18 @@
 import { initChannelProfileView } from "./channelProfile.js";
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
+import { ASSET_VERSION } from "../config/asset-version.js";
 
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
+
+const withAssetVersion = (url) => {
+  if (typeof url !== "string" || url.length === 0) {
+    return url;
+  }
+
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${encodeURIComponent(ASSET_VERSION)}`;
+};
 
 /**
  * Load a partial view by URL into the #viewContainer.
@@ -15,7 +25,7 @@ export async function loadView(viewUrl) {
       app.prepareForViewLoad();
     }
 
-    const res = await fetch(viewUrl);
+    const res = await fetch(withAssetVersion(viewUrl), { cache: "no-store" });
     if (!res.ok) {
       throw new Error(`Failed to load view: ${res.status}`);
     }

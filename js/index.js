@@ -1,6 +1,7 @@
 // js/index.js
 
 import { validateInstanceConfig } from "../config/validate-config.js";
+import { ASSET_VERSION } from "../config/asset-version.js";
 import "./bufferPolyfill.js";
 import Application from "./app.js";
 import { setApplication, setApplicationReady } from "./applicationContext.js";
@@ -102,13 +103,26 @@ document.addEventListener("animationend", handleFadeInAnimationComplete, true);
 document.addEventListener("animationcancel", handleFadeInAnimationComplete, true);
 
 // 1) Load modals (login, application, etc.)
+const withAssetVersion = (url) => {
+  if (typeof url !== "string" || url.length === 0) {
+    return url;
+  }
+
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${encodeURIComponent(ASSET_VERSION)}`;
+};
+
+const fetchPartial = async (url) => {
+  const response = await fetch(withAssetVersion(url), { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to load " + url);
+  }
+  return response.text();
+};
+
 async function loadModal(url) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to load " + url);
-    }
-    const html = await response.text();
+    const html = await fetchPartial(url);
     // Remove analytics loader tags from modal partials to avoid duplicate pageview events.
     const sanitizedHtml = html.replace(
       /<script\b[^>]*src=["'][^"']*tracking\.js[^"']*["'][^>]*>\s*<\/script>/gi,
@@ -126,11 +140,7 @@ async function loadModal(url) {
 // 2) Load sidebar
 async function loadSidebar(url, containerId) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to load " + url);
-    }
-    const html = await response.text();
+    const html = await fetchPartial(url);
     document.getElementById(containerId).innerHTML = html;
     console.log(url, "loaded into", containerId);
   } catch (err) {
@@ -141,11 +151,7 @@ async function loadSidebar(url, containerId) {
 // 3) Load the disclaimer (now separate)
 async function loadDisclaimer(url, containerId) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to load " + url);
-    }
-    const html = await response.text();
+    const html = await fetchPartial(url);
     document.getElementById(containerId).insertAdjacentHTML("beforeend", html);
     console.log(url, "disclaimer loaded into", containerId);
   } catch (err) {
@@ -170,24 +176,34 @@ async function bootstrapInterface() {
 
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");
+  if (sidebar && !sidebar.hasAttribute("data-footer-state")) {
+    sidebar.setAttribute("data-footer-state", "collapsed");
+  }
   if (!collapseToggle) {
     console.warn("Sidebar collapse toggle not found; skipping density controls.");
   }
-  const collapseChevron = collapseToggle?.querySelector("[data-sidebar-chevron]");
-  const collapseLabel = collapseToggle?.querySelector(".sidebar-toggle-label");
 
   const mobileMenuBtn = document.getElementById("mobileMenuBtn");
   const sidebarOverlay = document.getElementById("sidebarOverlay");
 
   const SIDEBAR_COLLAPSED_STORAGE_KEY = "sidebarCollapsed";
-  let isSidebarCollapsed = false;
+  const SIDEBAR_WIDTH_EXPANDED = "16rem";
+  const SIDEBAR_WIDTH_COLLAPSED = "4rem";
+  const DEFAULT_SIDEBAR_COLLAPSED = true;
+  let isSidebarCollapsed = DEFAULT_SIDEBAR_COLLAPSED;
+  let isFooterDropupExpanded = false;
+  let syncFooterDropupFn = null;
 
   const readStoredSidebarCollapsed = () => {
     try {
-      return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+      const storedValue = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+      if (storedValue === null) {
+        return DEFAULT_SIDEBAR_COLLAPSED;
+      }
+      return storedValue === "true";
     } catch (error) {
       console.warn("Unable to read sidebar collapse state from storage:", error);
-      return false;
+      return DEFAULT_SIDEBAR_COLLAPSED;
     }
   };
 
@@ -203,28 +219,47 @@ async function bootstrapInterface() {
   };
 
   const applySidebarDensity = (collapsed) => {
-    const targets = [sidebar, document.body].filter(
+    const widthTargets = [document.documentElement, document.body].filter(
       (element) => element instanceof HTMLElement,
     );
+    if (sidebar instanceof HTMLElement) {
+      widthTargets.push(sidebar);
+    }
+    const appShell = document.getElementById("app");
+    if (appShell instanceof HTMLElement) {
+      widthTargets.push(appShell);
+    }
     const state = collapsed ? "collapsed" : "expanded";
+    const nextWidth = collapsed
+      ? SIDEBAR_WIDTH_COLLAPSED
+      : SIDEBAR_WIDTH_EXPANDED;
 
-    targets.forEach((element) => {
-      element.classList.toggle("sidebar-collapsed", collapsed);
-      element.classList.toggle("sidebar-expanded", !collapsed);
-      element.setAttribute("data-state", state);
+    widthTargets.forEach((element) => {
+      element.style.setProperty("--sidebar-width", nextWidth);
     });
 
+    [sidebar, document.body]
+      .filter((element) => element instanceof HTMLElement)
+      .forEach((element) => {
+        element.classList.toggle("sidebar-collapsed", collapsed);
+        element.classList.toggle("sidebar-expanded", !collapsed);
+        element.setAttribute("data-state", state);
+      });
+
     if (collapseToggle) {
+      const actionLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
       collapseToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
       collapseToggle.setAttribute("data-state", state);
+      collapseToggle.setAttribute("aria-label", actionLabel);
+      collapseToggle.setAttribute("title", actionLabel);
     }
 
-    if (collapseChevron instanceof HTMLElement) {
-      collapseChevron.classList.toggle("rotate-180", collapsed);
-    }
-
-    if (collapseLabel) {
-      collapseLabel.textContent = collapsed ? "Expand" : "Collapse";
+    if (
+      collapsed &&
+      isFooterDropupExpanded &&
+      typeof syncFooterDropupFn === "function"
+    ) {
+      syncFooterDropupFn(false);
     }
   };
 
@@ -335,17 +370,64 @@ async function bootstrapInterface() {
   }
 
   const footerDropdownButton = document.getElementById("footerDropdownButton");
-  if (footerDropdownButton) {
-    footerDropdownButton.addEventListener("click", () => {
-      const footerLinksContainer = document.getElementById("footerLinksContainer");
-      if (!footerLinksContainer) return;
-      footerLinksContainer.classList.toggle("hidden");
-      if (footerLinksContainer.classList.contains("hidden")) {
-        footerDropdownButton.innerHTML = "More &#9660;";
-      } else {
-        footerDropdownButton.innerHTML = "Less &#9650;";
+  const footerLinksContainer = document.getElementById("footerLinksContainer");
+  const footerDropdownLabel = document.getElementById("footerDropdownText");
+  const footerDropdownIcon = document.getElementById("footerDropdownIcon");
+
+  if (footerDropdownButton && footerLinksContainer) {
+    const sidebarFooter = footerDropdownButton.closest(".sidebar-footer");
+
+    syncFooterDropupFn = (expanded) => {
+      const nextState = expanded ? "expanded" : "collapsed";
+      const actionLabel = expanded ? "Show fewer sidebar links" : "Show more sidebar links";
+
+      footerDropdownButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+      footerDropdownButton.dataset.state = nextState;
+      footerDropdownButton.setAttribute("aria-label", actionLabel);
+      footerDropdownButton.setAttribute("title", actionLabel);
+
+      if (footerDropdownLabel) {
+        footerDropdownLabel.textContent = expanded ? "Less" : "More";
+      }
+
+      if (footerDropdownIcon) {
+        footerDropdownIcon.classList.toggle("is-rotated", expanded);
+      }
+
+      footerLinksContainer.classList.remove("hidden");
+      footerLinksContainer.setAttribute("aria-hidden", expanded ? "false" : "true");
+      footerLinksContainer.dataset.state = nextState;
+
+      if (sidebar) {
+        sidebar.setAttribute("data-footer-state", nextState);
+      }
+
+      if (sidebarFooter instanceof HTMLElement) {
+        sidebarFooter.dataset.footerState = nextState;
+      }
+      isFooterDropupExpanded = expanded;
+    };
+
+    footerDropdownButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      const expanded = footerDropdownButton.getAttribute("aria-expanded") === "true";
+
+      if (isSidebarCollapsed && !expanded) {
+        const nextCollapsed = false;
+        isSidebarCollapsed = nextCollapsed;
+        applySidebarDensity(nextCollapsed);
+        persistSidebarCollapsed(nextCollapsed);
+      }
+
+      if (typeof syncFooterDropupFn === "function") {
+        syncFooterDropupFn(!expanded);
       }
     });
+
+    const initialExpanded = footerDropdownButton.getAttribute("aria-expanded") === "true";
+    if (typeof syncFooterDropupFn === "function") {
+      syncFooterDropupFn(initialExpanded);
+    }
   }
 
   try {

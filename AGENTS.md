@@ -70,6 +70,11 @@ Document the run in PR descriptions so QA can cross-reference results.
 * **Probing:** Lightweight `HEAD`/`GET` requests should back `probeUrl()` so dead URLs can be hidden or flagged without blocking the UI.
 * **Extensibility:** Future work (live streams, NIP-96 uploads, analytics) should preserve the URL-first strategy and magnet safety rules above.
 * **Sidebar layering:** Keep the fixed sidebar below every modal and overlay. Respect the `--z-sidebar*` tokens so dialogs always render on top of the navigation.
+* **Static asset cache busting:** The CDN aggressively caches `components/sidebar.html` and CSS/JS bundles. Update `config/asset-version.js` and keep the `?v=` query strings in `index.html` (and iframe form shells) in sync whenever you change sidebar markup, scripts, or styles. The fetch helpers in `js/index.js` already append `cache: "no-store"`; reuse them for new partials so desktop collapses ship immediately without waiting on manual cache clears.
+* **View partial cache busting:** The `views/*.html` files are served from the same CDN tier and require the asset version suffix as well. `js/viewManager.js` now appends `?v=<ASSET_VERSION>` when loading views—keep that helper in place so layout or styling updates propagate on the first refresh.
+* **Sidebar overflow styling:** `#sidebar` now owns vertical scrolling with `overflow-y: auto` while keeping `overflow-x: visible` so the gradient panel’s drop shadow can spill onto the page. The nested `.sidebar-scroll` wrapper must remain `overflow: visible`; do not reintroduce hidden overflow on any ancestor or the shadow will clip again.
+* **Collapsed rail padding:** The collapsed rail keeps icons full-size by pairing reduced padding on `.sidebar__inner` and `.sidebar-panel` with the shared `--sidebar-control-size` (2.75 rem). Update the trio together so the 4 rem rail still fits the circular toggle/dropup buttons without squishing the gradients.
+* **Collapsed nav width:** Collapsed links rely on `width: var(--sidebar-control-size)` plus `margin-inline: auto` to keep every glyph aligned with the circular toggle and footer trigger. Preserve that sizing or the icons will drift off the gradient panel.
 
 ---
 

@@ -1,10 +1,18 @@
 :root {
-  --color-bg: #0f172a;
+  /*
+    Core palette tokens used across the application.
+    --color-page keeps the primary content surface neutral while --color-surface
+    powers the dark shells (sidebar, dialogs, cards).
+  */
+  --color-page: #ffffff;
+  --color-surface: #0f172a;
+  --color-bg: var(--color-surface);
   --color-card: #1e293b;
   --color-primary: #fe0032;
   --color-secondary: #ff93a5;
   --color-card-critical: #3f0b13;
   --color-text: #f8fafc;
+  --color-text-strong: #0f172a;
   --color-muted: #94a3b8;
   --shadow-sm: 0 0.0625rem 0.125rem 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 0.25rem 0.375rem -0.0625rem rgb(0 0 0 / 0.1);
@@ -21,6 +29,10 @@
   --z-modal-overlay: 70;
   --z-modal-content: 90;
   --z-modal-player: 120;
+  --sidebar-width-expanded: 16rem;
+  --sidebar-width-collapsed: 4rem;
+  --sidebar-width: var(--sidebar-width-expanded);
+  --sidebar-control-size: 2.75rem;
 }
 
 html {
@@ -60,12 +72,21 @@ html {
 /* Core Styles */
 body {
   font-family: system-ui, -apple-system, sans-serif;
-  background-color: var(--color-bg);
-  color: var(--color-text);
+  background-color: var(--color-page);
+  color: var(--color-text-strong);
   line-height: 1.5;
   margin: 0;
   padding: 0;
   overflow-x: hidden; /* Disable horizontal scrolling */
+}
+
+#app {
+  /*
+    Keep the primary content surface aligned with the page background so the
+    sidebar styling does not bleed into the video grid.
+  */
+  background-color: var(--color-page);
+  color: inherit;
 }
 
 header {
@@ -1448,20 +1469,269 @@ footer a:hover {
 }
 
 /* Sidebar default states */
+#sidebarContainer {
+  position: relative;
+  overflow: visible;
+}
+
 #sidebar {
   position: fixed;
   top: 0;
   left: 0;
-  width: 16rem; /* Tailwind's w-64 */
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
   height: 100vh;
   height: 100dvh;
-  background-color: #0f172a;
+  background-color: transparent;
+  color: var(--color-text);
+  overflow-x: visible;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  transition: width 200ms ease, transform 0.3s ease, box-shadow 0.3s ease;
   /* Keep below modal stacks so dialogs overlay the drawer. */
   z-index: var(--z-sidebar);
   box-shadow: none;
+}
+
+#sidebar .sidebar__inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1.5rem 1.25rem 1.75rem;
+  position: relative;
+  width: 100%;
+  /*
+    Allow the gradient panel shadow to breathe outside the rail while a nested
+    scroll container handles overflow.
+  */
+  overflow: visible;
+}
+
+/*
+  The scroll wrapper keeps nav + footer together while leaving overflow
+  visible so the gradient card shadow is never clipped.
+*/
+.sidebar-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: visible;
+}
+
+.sidebar-panel {
+  background: linear-gradient(
+    160deg,
+    rgba(30, 41, 59, 0.92) 0%,
+    rgba(15, 23, 42, 0.92) 100%
+  );
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 1rem;
+  box-shadow: 0 1.25rem 2.5rem rgba(15, 23, 42, 0.35);
+  padding: 1.25rem 1rem;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.sidebar-panel--primary {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sidebar-panel__header {
+  display: none;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.sidebar-collapse-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--sidebar-control-size);
+  height: var(--sidebar-control-size);
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(148, 163, 184, 0.08);
+  color: inherit;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.sidebar-collapse-toggle:hover {
+  background: rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #f8fafc;
+}
+
+.sidebar-collapse-toggle:focus-visible {
+  outline: 0.125rem solid var(--color-secondary);
+  outline-offset: 0.25rem;
+}
+
+.sidebar-collapse-toggle__icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  transition: transform 200ms ease;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  opacity: 1;
+  transition: opacity 160ms ease;
+  width: 100%;
+}
+
+.sidebar-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  min-height: var(--sidebar-control-size);
+  border-radius: 0.875rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.94);
+  text-decoration: none;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sidebar-nav-link:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: #f8fafc;
+}
+
+.sidebar-nav-link:focus-visible {
+  outline: 0.125rem solid var(--color-secondary);
+  outline-offset: 0.25rem;
+}
+
+.sidebar-nav-link--sub {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(226, 232, 240, 0.82);
+  padding-block: 0.55rem;
+}
+
+.sidebar-icon {
+  /* Lock icon sizing so the glyphs remain steady during collapse/expand. */
+  width: 1.5rem;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  flex-shrink: 0;
+  display: block;
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar-dropup-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+  min-height: var(--sidebar-control-size);
+  border-radius: 0.875rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(30, 41, 59, 0.85);
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.sidebar-dropup-trigger:hover {
+  background: rgba(51, 65, 85, 0.95);
+  border-color: rgba(148, 163, 184, 0.32);
+  color: #f8fafc;
+}
+
+.sidebar-dropup-trigger:focus-visible {
+  outline: 0.125rem solid var(--color-secondary);
+  outline-offset: 0.25rem;
+}
+
+.sidebar-dropup-trigger__glyph {
+  width: 1.25rem;
+  height: 1.25rem;
+  opacity: 0.9;
+}
+
+.sidebar-dropup-trigger__chevron {
+  width: 1.125rem;
+  height: 1.125rem;
+  transition: transform 180ms ease;
+}
+
+.sidebar-dropup-trigger__chevron.is-rotated,
+.sidebar-dropup-trigger[aria-expanded="true"] .sidebar-dropup-trigger__chevron {
+  transform: rotate(180deg);
+}
+
+.sidebar-dropup-panel {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 0.875rem;
+  box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.4);
+  padding: 0.75rem 0.5rem;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.75rem);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(0.5rem);
+  transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+  z-index: 5;
+}
+
+.sidebar-dropup-panel[data-state="expanded"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.sidebar-dropup-panel__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+#sidebar[data-footer-state="expanded"] .sidebar-nav {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#sidebar[data-footer-state="collapsed"] .sidebar-nav {
+  opacity: 1;
 }
 
 #sidebar.sidebar-open {
@@ -1491,7 +1761,7 @@ body.sidebar-open #sidebarOverlay {
 @media (max-width: 767px) {
   #sidebar {
     transform: translate3d(-100%, 0, 0);
-    width: min(16rem, calc(100vw - 3rem));
+    width: min(var(--sidebar-width-expanded), calc(100vw - 3rem));
   }
   /* When the sidebar-open class is added, slide the sidebar in */
   #sidebar.sidebar-open {
@@ -1505,11 +1775,18 @@ body.sidebar-open #sidebarOverlay {
 
 /* Desktop (min-width: 768px): Always show the sidebar */
 @media (min-width: 768px) {
+  .sidebar-panel__header {
+    display: flex;
+  }
+
+  .sidebar-collapse-toggle {
+    display: inline-flex;
+  }
+
   #sidebar {
     transform: translateX(0) !important;
-    width: 16rem;
-    overflow-x: hidden;
-    transition: width 200ms ease, transform 0.3s ease, box-shadow 0.3s ease;
+    width: var(--sidebar-width);
+    overflow: visible;
   }
 
   #sidebar.sidebar-open {
@@ -1520,53 +1797,74 @@ body.sidebar-open #sidebarOverlay {
     display: none;
   }
 
-  body.sidebar-collapsed #sidebar,
+  #app {
+    margin-left: var(--sidebar-width);
+    transition: margin-left 200ms ease;
+  }
+
+  body.sidebar-collapsed,
   #sidebar.sidebar-collapsed {
-    width: 4rem;
+    --sidebar-width: var(--sidebar-width-collapsed);
   }
 
-  body.sidebar-expanded #sidebar,
+  body.sidebar-expanded,
   #sidebar.sidebar-expanded {
-    width: 16rem;
+    --sidebar-width: var(--sidebar-width-expanded);
   }
 
-  body.sidebar-collapsed #sidebar a,
-  #sidebar.sidebar-collapsed a {
+  body.sidebar-collapsed #sidebar .sidebar-nav-link,
+  #sidebar.sidebar-collapsed .sidebar-nav-link {
+    /*
+      Keep icons centered in the collapsed rail without resizing them.
+    */
     justify-content: center;
-    padding-inline: 1rem;
+    width: var(--sidebar-control-size);
+    padding: 0;
+    margin-inline: auto;
+    border-radius: 9999px;
   }
 
-  body.sidebar-expanded #sidebar a,
-  #sidebar.sidebar-expanded a {
+  body.sidebar-expanded #sidebar .sidebar-nav-link,
+  #sidebar.sidebar-expanded .sidebar-nav-link {
     justify-content: flex-start;
-    padding-inline: 1rem;
-  }
-
-  body.sidebar-collapsed #sidebar a > img,
-  body.sidebar-collapsed #sidebar a svg,
-  #sidebar.sidebar-collapsed a > img,
-  #sidebar.sidebar-collapsed a svg {
-    margin-right: 0;
-    margin-inline-end: 0;
-  }
-
-  body.sidebar-expanded #sidebar a > img,
-  body.sidebar-expanded #sidebar a svg,
-  #sidebar.sidebar-expanded a > img,
-  #sidebar.sidebar-expanded a svg {
-    margin-right: 0.75rem;
-    margin-inline-end: 0.75rem;
   }
 
   body.sidebar-collapsed #sidebar .sidebar-text,
-  body.sidebar-collapsed #sidebar .sidebar-toggle-label,
-  #sidebar.sidebar-collapsed .sidebar-text,
-  #sidebar.sidebar-collapsed .sidebar-toggle-label {
+  #sidebar.sidebar-collapsed .sidebar-text {
     display: none;
   }
 
-  #sidebar.sidebar-expanded .sidebar-toggle-label {
-    display: inline;
+  body.sidebar-collapsed #sidebar .sidebar__inner,
+  #sidebar.sidebar-collapsed .sidebar__inner {
+    /*
+      Keep enough breathing room for the panel shadow while widening the
+      interior track so var(--sidebar-control-size) controls stay perfectly
+      round.
+    */
+    padding-inline: 0.25rem;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-panel,
+  #sidebar.sidebar-collapsed .sidebar-panel {
+    /*
+      Mirror the outer adjustment so the gradient card retains its rounded
+      edges without squeezing the icon rail or clipping the control diameter.
+    */
+    padding-inline: 0.375rem;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-panel__header,
+  #sidebar.sidebar-collapsed .sidebar-panel__header {
+    justify-content: center;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-collapse-toggle,
+  #sidebar.sidebar-collapsed .sidebar-collapse-toggle {
+    margin-inline: auto;
+  }
+
+  #sidebar .sidebar-toggle-icon--rotated {
+    transform: rotate(180deg);
   }
 
   body.sidebar-collapsed #sidebar .sidebar-toggle-icon--rotated,
@@ -1574,81 +1872,34 @@ body.sidebar-open #sidebarOverlay {
     transform: rotate(0deg);
   }
 
-  body.sidebar-expanded #sidebar .sidebar-toggle-icon--rotated,
-  #sidebar.sidebar-expanded .sidebar-toggle-icon--rotated {
-    transform: rotate(180deg);
+  body.sidebar-collapsed #sidebar .sidebar-dropup-trigger {
+    /*
+      Align the "More" control with the centered icon rail while keeping its
+      padding consistent so the glyph does not scale between states.
+    */
+    justify-content: center;
+    width: var(--sidebar-control-size);
+    height: var(--sidebar-control-size);
+    padding: 0;
+    margin-inline: auto;
+    border-radius: 9999px;
   }
 
-  body.sidebar-collapsed #app {
-    margin-left: 4rem !important;
+  body.sidebar-collapsed #sidebar .sidebar-dropup-trigger .sidebar-text,
+  #sidebar.sidebar-collapsed .sidebar-dropup-trigger .sidebar-text {
+    display: none;
   }
 
-  body.sidebar-expanded #app {
-    margin-left: 16rem !important;
+  body.sidebar-collapsed #sidebar .sidebar-dropup-trigger__chevron {
+    display: none;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-dropup-trigger__glyph,
+  #sidebar.sidebar-collapsed .sidebar-dropup-trigger__glyph {
+    margin: 0;
   }
 }
 
-/* Example: customizing the border & background in the sidebar */
-#sidebar hr {
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-/* Sidebar drop-up menu styling */
-.sidebar-dropup {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 0.75rem;
-}
-
-.sidebar-dropup-panel {
-  background-color: #1f2937; /* gray-800 */
-  border: 0.0625rem solid rgba(148, 163, 184, 0.25);
-  border-radius: 0.75rem;
-  box-shadow: 0 1.125rem 2.1875rem rgba(15, 23, 42, 0.45);
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  pointer-events: none;
-  transform: translateY(1rem);
-  transition: max-height 0.35s ease, opacity 0.25s ease, transform 0.35s ease;
-}
-
-.sidebar-dropup-panel__inner {
-  padding: 1.25rem;
-}
-
-.sidebar-dropup-panel--expanded {
-  max-height: 40rem;
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-}
-
-.sidebar-dropup-trigger {
-  align-items: center;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(14, 116, 144, 0.35));
-  border: 0.0625rem solid rgba(148, 163, 184, 0.35);
-  border-radius: 9999px;
-  color: #f8fafc;
-  display: flex;
-  justify-content: space-between;
-  padding: 0.75rem 1.25rem;
-  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
-  width: 100%;
-}
-
-.sidebar-dropup-trigger:hover,
-.sidebar-dropup-trigger:focus {
-  border-color: rgba(148, 163, 184, 0.6);
-  box-shadow: 0 0.75rem 1.875rem rgba(37, 99, 235, 0.25);
-  outline: none;
-  transform: translateY(-0.0625rem);
-}
-
-.sidebar-dropup-trigger__content {
-  align-items: center;
-  display: flex;
-}
 .edit-field-button {
   align-items: center;
   background-color: #1f2937;
