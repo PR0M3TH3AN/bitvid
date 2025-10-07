@@ -1184,10 +1184,7 @@ export class ProfileModalController {
             button.setAttribute("aria-busy", "true");
 
           try {
-            await this.requestSwitchProfile({
-              entry,
-              pubkey: entry.pubkey,
-            });
+            await this.switchProfile(entry.pubkey, { entry });
           } catch (error) {
             console.error("Failed to switch profile:", error);
           } finally {
@@ -3829,14 +3826,14 @@ export class ProfileModalController {
     }
   }
 
-  async switchProfile(pubkey) {
+  async switchProfile(pubkey, { entry } = {}) {
     if (!pubkey) {
       return { switched: false, reason: "missing-pubkey" };
     }
 
     let result;
     try {
-      result = await this.services.switchProfile(pubkey);
+      result = await this.requestSwitchProfile({ pubkey, entry });
     } catch (error) {
       const message =
         error && typeof error.message === "string" && error.message.trim()

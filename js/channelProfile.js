@@ -1601,13 +1601,41 @@ async function loadUserVideos(pubkey) {
 
     // 2) Collect raw events from all relays
     const events = [];
-    for (const url of nostrClient.relays) {
+    const relayList = Array.isArray(nostrClient.relays)
+      ? nostrClient.relays
+      : Array.from(nostrClient.relays || []);
+
+    if (relayList.length === 0) {
       try {
-        const result = await nostrClient.pool.list([url], [filter]);
-        events.push(...result);
-      } catch (relayErr) {
-        console.error(`Relay error (${url}):`, relayErr);
+        const fallbackEvents = await nostrClient.pool.list(
+          nostrClient.relays,
+          [filter]
+        );
+        if (Array.isArray(fallbackEvents)) {
+          events.push(...fallbackEvents);
+        }
+      } catch (error) {
+        console.error("Relay error (default pool):", error);
       }
+    } else {
+      const relayPromises = relayList.map((url) =>
+        nostrClient.pool.list([url], [filter])
+      );
+
+      const settled = await Promise.allSettled(relayPromises);
+      settled.forEach((result, index) => {
+        const relayUrl = relayList[index];
+
+        if (result.status === "fulfilled") {
+          const relayEvents = Array.isArray(result.value) ? result.value : [];
+          events.push(...relayEvents);
+          return;
+        }
+
+        if (result.reason) {
+          console.error(`Relay error (${relayUrl}):`, result.reason);
+        }
+      });
     }
 
     // 3) Convert to "video" objects and keep everything (including tombstones)
@@ -1964,7 +1992,7 @@ async function loadUserVideos(pubkey) {
     app?.attachMoreMenuHandlers?.(container);
 
     if (!container.dataset.playHandlerBound) {
-      container.addEventListener("click", (event) => {
+      container.addEventListener("click", async (event) => {
         if (!event || !(event.target instanceof HTMLElement)) {
           return;
         }
@@ -2010,15 +2038,9 @@ async function loadUserVideos(pubkey) {
 
         if (videoId && typeof app?.playVideoByEventId === "function") {
           try {
-            const maybePromise = app.playVideoByEventId(videoId);
-            if (maybePromise && typeof maybePromise.then === "function") {
-              maybePromise.catch((error) => {
-                console.error(
-                  "Failed to play via event id from channel grid:",
-                  error
-                );
-                playWithUrlAndMagnet();
-              });
+            const result = await app.playVideoByEventId(videoId);
+            if (!result || result.error) {
+              playWithUrlAndMagnet();
             }
           } catch (error) {
             console.error(
