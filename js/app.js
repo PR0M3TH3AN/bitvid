@@ -180,6 +180,7 @@ class Application {
         ? helpers.mediaLoader
         : mediaLoaderFactory();
     this.loadedThumbnails = new Map();
+    this.relayManager = relayManager;
     this.videoDiscussionCountCache = new Map();
     this.inFlightDiscussionCounts = new Map();
     this.activeIntervals = [];
@@ -1348,6 +1349,28 @@ class Application {
           onPaneShown: (pane) => {
             this.activeProfilePane = pane;
           },
+          onRequestSwitchProfile: (payload) =>
+            this.handleProfileSwitchRequest(payload),
+          onRelayOperation: (payload) =>
+            this.handleProfileRelayOperation(payload),
+          onRelayModeToggle: (payload) =>
+            this.handleProfileRelayModeToggle(payload),
+          onRelayRestore: (payload) =>
+            this.handleProfileRelayRestore(payload),
+          onBlocklistMutation: (payload) =>
+            this.handleProfileBlocklistMutation(payload),
+          onWalletPersist: (payload) =>
+            this.handleProfileWalletPersist(payload),
+          onWalletTestRequest: (payload) =>
+            this.handleProfileWalletTest(payload),
+          onWalletDisconnectRequest: (payload) =>
+            this.handleProfileWalletDisconnect(payload),
+          onAdminMutation: (payload) =>
+            this.handleProfileAdminMutation(payload),
+          onAdminNotifyError: (payload) =>
+            this.handleProfileAdminNotifyError(payload),
+          onHistoryReady: (payload) =>
+            this.handleProfileHistoryEvent(payload),
         };
 
         this.profileModalController = new ProfileModalController({
@@ -2486,6 +2509,242 @@ class Application {
     this.profileSwitcherSelectionPubkey = null;
     this.renderSavedProfiles();
     this.hideProfileModal();
+  }
+
+  async handleProfileSwitchRequest({ pubkey } = {}) {
+    if (!pubkey) {
+      throw new Error("Missing pubkey for profile switch request.");
+    }
+
+    await this.switchProfile(pubkey);
+    await this.loadVideos(true);
+    return true;
+  }
+
+  async handleProfileRelayOperation({
+    action,
+    url,
+    activePubkey,
+    skipPublishIfUnchanged = true,
+  } = {}) {
+    const context = {
+      ok: false,
+      changed: false,
+      reason: null,
+      error: null,
+      publishResult: null,
+      operationResult: null,
+    };
+
+    if (!activePubkey) {
+      context.reason = "no-active-pubkey";
+      return context;
+    }
+
+    const previous = this.relayManager.snapshot();
+
+    const runOperation = () => {
+      switch (action) {
+        case "add":
+          return this.relayManager.addRelay(url);
+        case "remove":
+          return this.relayManager.removeRelay(url);
+        case "restore":
+          return this.relayManager.restoreDefaults();
+        case "mode-toggle":
+          return this.relayManager.cycleRelayMode(url);
+        default:
+          throw Object.assign(new Error("Unknown relay operation."), {
+            code: "invalid-operation",
+          });
+      }
+    };
+
+    let operationResult;
+    try {
+      operationResult = runOperation();
+      context.operationResult = operationResult;
+    } catch (error) {
+      context.error = error;
+      context.reason = error?.code || "operation-error";
+      return context;
+    }
+
+    context.changed = Boolean(operationResult?.changed);
+    if (!context.changed && skipPublishIfUnchanged) {
+      context.reason = operationResult?.reason || "unchanged";
+      return context;
+    }
+
+    try {
+      const publishResult = await this.relayManager.publishRelayList(activePubkey);
+      if (!publishResult?.ok) {
+        throw new Error("No relays accepted the update.");
+      }
+      context.ok = true;
+      context.publishResult = publishResult;
+      return context;
+    } catch (error) {
+      this.relayManager.setEntries(previous, { allowEmpty: false });
+      context.error = error;
+      context.reason = error?.code || "publish-failed";
+      return context;
+    }
+  }
+
+  handleProfileRelayModeToggle() {
+    return null;
+  }
+
+  handleProfileRelayRestore() {
+    return null;
+  }
+
+  async handleProfileBlocklistMutation({ action, actorHex, targetHex } = {}) {
+    const context = { ok: false, reason: null, error: null };
+    if (!actorHex || !targetHex) {
+      context.reason = "invalid-target";
+      return context;
+    }
+
+    try {
+      await userBlocks.ensureLoaded(actorHex);
+      const isBlocked = userBlocks.isBlocked(targetHex);
+
+      if (action === "add") {
+        if (isBlocked) {
+          context.reason = "already-blocked";
+          return context;
+        }
+        await userBlocks.addBlock(targetHex, actorHex);
+        context.ok = true;
+        context.reason = "blocked";
+      } else if (action === "remove") {
+        if (!isBlocked) {
+          context.reason = "not-blocked";
+          return context;
+        }
+        await userBlocks.removeBlock(targetHex, actorHex);
+        context.ok = true;
+        context.reason = "unblocked";
+      } else {
+        context.reason = "invalid-action";
+        return context;
+      }
+
+      if (context.ok) {
+        await this.loadVideos(true);
+      }
+
+      return context;
+    } catch (error) {
+      context.error = error;
+      context.reason = error?.code || "service-error";
+      return context;
+    }
+  }
+
+  async handleProfileWalletPersist({
+    nwcUri,
+    defaultZap,
+    lastChecked,
+  } = {}) {
+    const partial = {};
+    if (nwcUri !== undefined) {
+      partial.nwcUri = nwcUri;
+    }
+    if (defaultZap !== undefined) {
+      partial.defaultZap = defaultZap;
+    }
+    if (lastChecked !== undefined) {
+      partial.lastChecked = lastChecked;
+    }
+
+    if (!Object.keys(partial).length) {
+      return this.getActiveNwcSettings();
+    }
+
+    return this.updateActiveNwcSettings(partial);
+  }
+
+  async handleProfileWalletTest({ nwcUri, defaultZap } = {}) {
+    return this.ensureWallet({ nwcUri, defaultZap });
+  }
+
+  async handleProfileWalletDisconnect() {
+    return this.updateActiveNwcSettings(createDefaultNwcSettings());
+  }
+
+  async handleProfileAdminMutation(payload = {}) {
+    const action = payload?.action;
+    const resultContext = { ok: false, result: null, error: null };
+
+    try {
+      switch (action) {
+        case "ensure-ready":
+          await accessControl.ensureReady();
+          resultContext.ok = true;
+          break;
+        case "add-moderator":
+          resultContext.result = await accessControl.addModerator(
+            payload.actorNpub,
+            payload.targetNpub,
+          );
+          resultContext.ok = !!resultContext.result?.ok;
+          break;
+        case "remove-moderator":
+          resultContext.result = await accessControl.removeModerator(
+            payload.actorNpub,
+            payload.targetNpub,
+          );
+          resultContext.ok = !!resultContext.result?.ok;
+          break;
+        case "list-mutation":
+          if (payload.listType === "whitelist") {
+            resultContext.result = payload.mode === "add"
+              ? await accessControl.addToWhitelist(
+                  payload.actorNpub,
+                  payload.targetNpub,
+                )
+              : await accessControl.removeFromWhitelist(
+                  payload.actorNpub,
+                  payload.targetNpub,
+                );
+          } else {
+            resultContext.result = payload.mode === "add"
+              ? await accessControl.addToBlacklist(
+                  payload.actorNpub,
+                  payload.targetNpub,
+                )
+              : await accessControl.removeFromBlacklist(
+                  payload.actorNpub,
+                  payload.targetNpub,
+                );
+          }
+          resultContext.ok = !!resultContext.result?.ok;
+          break;
+        default:
+          resultContext.error = Object.assign(
+            new Error("Unknown admin mutation."),
+            { code: "invalid-action" },
+          );
+      }
+    } catch (error) {
+      resultContext.error = error;
+    }
+
+    return resultContext;
+  }
+
+  handleProfileAdminNotifyError({ error } = {}) {
+    if (!error) {
+      return;
+    }
+    console.warn("[admin] Notification dispatch issue:", error);
+  }
+
+  handleProfileHistoryEvent() {
+    return null;
   }
 
   updateActiveProfileUI(pubkey, profile = {}) {

@@ -372,6 +372,17 @@ export class ProfileModalController {
       onAdminRemoveWhitelist: callbacks.onAdminRemoveWhitelist || noop,
       onAdminRemoveBlacklist: callbacks.onAdminRemoveBlacklist || noop,
       onHistoryReady: callbacks.onHistoryReady || noop,
+      onRequestSwitchProfile: callbacks.onRequestSwitchProfile || noop,
+      onRelayOperation: callbacks.onRelayOperation || noop,
+      onRelayModeToggle: callbacks.onRelayModeToggle || noop,
+      onRelayRestore: callbacks.onRelayRestore || noop,
+      onBlocklistMutation: callbacks.onBlocklistMutation || noop,
+      onWalletPersist: callbacks.onWalletPersist || noop,
+      onWalletTestRequest: callbacks.onWalletTestRequest || callbacks.onWalletTest || noop,
+      onWalletDisconnectRequest:
+        callbacks.onWalletDisconnectRequest || callbacks.onWalletDisconnect || noop,
+      onAdminMutation: callbacks.onAdminMutation || noop,
+      onAdminNotifyError: callbacks.onAdminNotifyError || noop,
     };
 
     this.profileModal = null;
@@ -590,7 +601,12 @@ export class ProfileModalController {
         metadataLabelSelector: "#profileHistoryMetadataLabel",
         metadataDescriptionSelector: "#profileHistoryMetadataDescription",
         emptyCopy: "You haven’t watched any videos yet.",
-        remove: (payload) => this.callbacks.onHistoryReady(payload, this),
+        remove: (payload) =>
+          this.callbacks.onHistoryReady({
+            ...(typeof payload === "object" && payload ? payload : {}),
+            controller: this,
+            renderer: this.profileHistoryRenderer,
+          }),
       });
     }
   }
@@ -976,7 +992,10 @@ export class ProfileModalController {
             button.setAttribute("aria-busy", "true");
 
           try {
-            await this.services.switchProfile(entry.pubkey);
+            await this.requestSwitchProfile({
+              entry,
+              pubkey: entry.pubkey,
+            });
           } catch (error) {
             console.error("Failed to switch profile:", error);
           } finally {
@@ -1174,12 +1193,13 @@ export class ProfileModalController {
     });
   }
 
-  async handleRelayOperation(operation, {
+  async handleRelayOperation(meta = {}, {
     successMessage = "Relay preferences updated.",
     skipPublishIfUnchanged = true,
     unchangedMessage = null,
   } = {}) {
     const operationContext = {
+      ...meta,
       ok: false,
       changed: false,
       reason: null,
@@ -1195,33 +1215,40 @@ export class ProfileModalController {
       return operationContext;
     }
 
-    if (typeof operation !== "function") {
-      operationContext.reason = "invalid-operation";
-      return operationContext;
-    }
-
-    const previous = this.services.relayManager.snapshot();
     let result;
     try {
-      result = operation();
-      operationContext.operationResult = result;
+      result = await this.runRelayOperation({
+        ...meta,
+        activePubkey,
+        skipPublishIfUnchanged,
+      });
     } catch (error) {
       const message =
         error && typeof error.message === "string" && error.message.trim()
           ? error.message.trim()
           : "Failed to update relay preferences.";
-      operationContext.reason = "operation-error";
+      operationContext.reason = error?.code || "callback-error";
       operationContext.error = error;
       this.showError(message);
       return operationContext;
     }
 
-    const changed = !!result?.changed;
-    operationContext.changed = changed;
-    if (!changed && skipPublishIfUnchanged) {
-      const reason = result?.reason || "unchanged";
+    if (result && typeof result === "object") {
+      operationContext.ok = Boolean(result.ok);
+      operationContext.changed = Boolean(result.changed);
+      operationContext.reason =
+        typeof result.reason === "string" ? result.reason : operationContext.reason;
+      operationContext.error = result.error ?? operationContext.error;
+      operationContext.publishResult =
+        result.publishResult ?? operationContext.publishResult;
+      operationContext.operationResult =
+        result.operationResult ?? operationContext.operationResult;
+    }
+
+    if (!operationContext.changed && skipPublishIfUnchanged) {
+      const reason = operationContext.reason || "unchanged";
       operationContext.reason = reason;
-      if (result?.reason === "duplicate") {
+      if (reason === "duplicate") {
         this.showSuccess("Relay is already configured.");
       } else if (typeof unchangedMessage === "string" && unchangedMessage) {
         this.showSuccess(unchangedMessage);
@@ -1232,31 +1259,25 @@ export class ProfileModalController {
 
     this.populateProfileRelays();
 
-    try {
-      const publishResult = await this.services.relayManager.publishRelayList(
-        activePubkey,
-      );
-      if (!publishResult?.ok) {
-        throw new Error("No relays accepted the update.");
-      }
-      operationContext.ok = true;
-      operationContext.publishResult = publishResult;
+    if (operationContext.ok) {
       if (successMessage) {
         this.showSuccess(successMessage);
       }
       return operationContext;
-    } catch (error) {
-      this.services.relayManager.setEntries(previous, { allowEmpty: false });
-      this.populateProfileRelays();
-      const message =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : "Failed to publish relay configuration. Please try again.";
-      operationContext.reason = "publish-failed";
-      operationContext.error = error;
-      this.showError(message);
-      return operationContext;
     }
+
+    const message =
+      operationContext.error &&
+      typeof operationContext.error.message === "string" &&
+      operationContext.error.message.trim()
+        ? operationContext.error.message.trim()
+        : "Failed to publish relay configuration. Please try again.";
+
+    if (operationContext.reason !== "no-active-pubkey") {
+      this.showError(message);
+    }
+
+    return operationContext;
   }
 
   async handleAddRelay() {
@@ -1283,7 +1304,7 @@ export class ProfileModalController {
     }
 
     const operationResult = await this.handleRelayOperation(
-      () => this.services.relayManager.addRelay(trimmed),
+      { action: "add", url: trimmed },
       {
         successMessage: "Relay saved.",
         unchangedMessage: "Relay is already configured.",
@@ -1319,7 +1340,7 @@ export class ProfileModalController {
     }
 
     const operationResult = await this.handleRelayOperation(
-      () => this.services.relayManager.restoreDefaults(),
+      { action: "restore" },
       {
         successMessage: "Relay defaults restored.",
         unchangedMessage: "Relay defaults are already in use.",
@@ -1331,6 +1352,10 @@ export class ProfileModalController {
     context.reason = operationResult?.reason || null;
 
     this.callbacks.onRestoreRelays(context, this);
+    this.callbacks.onRelayRestore({
+      controller: this,
+      context,
+    });
     return context;
   }
 
@@ -1338,10 +1363,15 @@ export class ProfileModalController {
     if (!url) {
       return;
     }
-    await this.handleRelayOperation(
-      () => this.services.relayManager.cycleRelayMode(url),
+    const context = await this.handleRelayOperation(
+      { action: "mode-toggle", url },
       { successMessage: "Relay mode updated." },
     );
+    this.callbacks.onRelayModeToggle({
+      controller: this,
+      url,
+      context,
+    });
   }
 
   async handleRemoveRelay(url) {
@@ -1357,7 +1387,7 @@ export class ProfileModalController {
     }
 
     await this.handleRelayOperation(
-      () => this.services.relayManager.removeRelay(url),
+      { action: "remove", url },
       { successMessage: "Relay removed." },
     );
   }
@@ -1548,23 +1578,41 @@ export class ProfileModalController {
     context.targetHex = targetHex;
 
     try {
-      await this.services.userBlocks.ensureLoaded(actorHex);
+      const mutationResult = await this.mutateBlocklist({
+        action: "add",
+        actorHex,
+        targetHex,
+        controller: this,
+      });
 
-      if (this.services.userBlocks.isBlocked(targetHex)) {
-        this.showSuccess("You already blocked this creator.");
-        context.reason = "already-blocked";
-      } else {
-        await this.services.userBlocks.addBlock(targetHex, actorHex);
+      context.result = mutationResult;
+
+      if (mutationResult?.ok) {
         this.showSuccess(
           "Creator blocked. You won't see their videos anymore.",
         );
         context.success = true;
-        context.reason = "blocked";
+        context.reason = mutationResult.reason || "blocked";
+      } else if (mutationResult?.reason === "already-blocked") {
+        this.showSuccess("You already blocked this creator.");
+        context.reason = "already-blocked";
+      } else {
+        const message =
+          mutationResult?.error?.code === "nip04-missing"
+            ? "Your Nostr extension must support NIP-04 to manage private lists."
+            : mutationResult?.error?.message ||
+              "Failed to update your block list. Please try again.";
+        context.error = mutationResult?.error || null;
+        context.reason = mutationResult?.reason || "service-error";
+        if (message) {
+          this.showError(message);
+        }
       }
 
-      this.profileBlockedInput.value = "";
+      if (this.profileBlockedInput) {
+        this.profileBlockedInput.value = "";
+      }
       this.populateBlockedList();
-      await this.services.loadVideos();
     } catch (error) {
       console.error("Failed to add creator to personal block list:", error);
       context.error = error;
@@ -1607,17 +1655,29 @@ export class ProfileModalController {
     }
 
     try {
-      await this.services.userBlocks.ensureLoaded(activePubkey);
+      const mutationResult = await this.mutateBlocklist({
+        action: "remove",
+        actorHex: activePubkey,
+        targetHex,
+        controller: this,
+      });
 
-      if (!this.services.userBlocks.isBlocked(targetHex)) {
-        this.showSuccess("Creator already removed from your block list.");
-      } else {
-        await this.services.userBlocks.removeBlock(targetHex, activePubkey);
+      if (mutationResult?.ok) {
         this.showSuccess("Creator removed from your block list.");
+      } else if (mutationResult?.reason === "not-blocked") {
+        this.showSuccess("Creator already removed from your block list.");
+      } else if (mutationResult?.error) {
+        const message =
+          mutationResult.error.code === "nip04-missing"
+            ? "Your Nostr extension must support NIP-04 to manage private lists."
+            : mutationResult.error.message ||
+              "Failed to update your block list. Please try again.";
+        if (message) {
+          this.showError(message);
+        }
       }
 
       this.populateBlockedList();
-      await this.services.loadVideos();
     } catch (error) {
       console.error(
         "Failed to remove creator from personal block list:",
@@ -1895,10 +1955,12 @@ export class ProfileModalController {
     let finalStatus = null;
     let finalVariant = "info";
     try {
-      await this.services.updateActiveNwcSettings({
+      const persistResult = await this.persistWalletSettings({
         nwcUri: sanitized,
         defaultZap,
+        activePubkey: normalizedActive,
       });
+      context.persistResult = persistResult || null;
 
       if (sanitized) {
         finalStatus = "Wallet settings saved.";
@@ -1999,9 +2061,10 @@ export class ProfileModalController {
     let finalStatus = null;
     let finalVariant = "info";
     try {
-      const result = await this.services.ensureWallet({
+      const result = await this.testWalletConnection({
         nwcUri: sanitized,
         defaultZap,
+        activePubkey: normalizedActive,
       });
       finalStatus = "Wallet connection confirmed.";
       finalVariant = "success";
@@ -2012,7 +2075,10 @@ export class ProfileModalController {
 
       const currentSettings = this.services.getActiveNwcSettings();
       if (currentSettings.nwcUri === sanitized) {
-        await this.services.updateActiveNwcSettings({ lastChecked: Date.now() });
+        await this.persistWalletSettings({
+          lastChecked: Date.now(),
+          activePubkey: normalizedActive,
+        });
       }
     } catch (error) {
       const fallbackMessage = "Failed to reach wallet.";
@@ -2069,9 +2135,10 @@ export class ProfileModalController {
     let finalStatus = null;
     let finalVariant = "info";
     try {
-      await this.services.updateActiveNwcSettings(
-        this.services.createDefaultNwcSettings(),
-      );
+      const disconnectResult = await this.disconnectWallet({
+        activePubkey: normalizedActive,
+      });
+      context.result = disconnectResult || null;
       finalStatus = "Wallet disconnected.";
       this.showStatus("Wallet disconnected.");
       context.success = true;
@@ -2284,7 +2351,12 @@ export class ProfileModalController {
     this.setAdminLoading(true);
     this.showStatus("Fetching moderation filters…");
     try {
-      await this.services.accessControl.ensureReady();
+      const ensureResult = await this.runAdminMutation({
+        action: "ensure-ready",
+      });
+      if (ensureResult?.error && ensureResult.ok === false) {
+        loadError = ensureResult.error;
+      }
     } catch (error) {
       loadError = error;
     }
@@ -2398,7 +2470,10 @@ export class ProfileModalController {
 
     let preloadError = null;
     try {
-      await this.services.accessControl.ensureReady();
+      const ensureResult = await this.runAdminMutation({ action: "ensure-ready" });
+      if (ensureResult?.error && ensureResult.ok === false) {
+        preloadError = ensureResult.error;
+      }
     } catch (error) {
       preloadError = error;
       console.error("Failed to load admin lists before adding moderator:", error);
@@ -2433,14 +2508,17 @@ export class ProfileModalController {
     }
 
     try {
-      const result = await this.services.accessControl.addModerator(
+      const mutationResult = await this.runAdminMutation({
+        action: "add-moderator",
         actorNpub,
-        trimmed,
-      );
-      context.result = result;
-      if (!result.ok) {
-        this.showError(this.describeAdminError(result.error));
-        context.reason = result.error || "service-error";
+        targetNpub: trimmed,
+      });
+      context.result = mutationResult?.result || null;
+      if (!mutationResult?.ok) {
+        const errorCode = mutationResult?.result?.error || mutationResult?.error?.code;
+        this.showError(this.describeAdminError(errorCode || "service-error"));
+        context.reason = errorCode || "service-error";
+        context.error = mutationResult?.error || mutationResult?.result || null;
         return context;
       }
 
@@ -2480,7 +2558,10 @@ export class ProfileModalController {
 
     let preloadError = null;
     try {
-      await this.services.accessControl.ensureReady();
+      const ensureResult = await this.runAdminMutation({ action: "ensure-ready" });
+      if (ensureResult?.error && ensureResult.ok === false) {
+        preloadError = ensureResult.error;
+      }
     } catch (error) {
       preloadError = error;
       console.error("Failed to load admin lists before removing moderator:", error);
@@ -2504,14 +2585,17 @@ export class ProfileModalController {
       return context;
     }
 
-    const result = await this.services.accessControl.removeModerator(
+    const mutationResult = await this.runAdminMutation({
+      action: "remove-moderator",
       actorNpub,
-      npub,
-    );
-    context.result = result;
-    if (!result.ok) {
-      this.showError(this.describeAdminError(result.error));
-      context.reason = result.error || "service-error";
+      targetNpub: npub,
+    });
+    context.result = mutationResult?.result || null;
+    if (!mutationResult?.ok) {
+      const errorCode = mutationResult?.result?.error || mutationResult?.error?.code;
+      this.showError(this.describeAdminError(errorCode || "service-error"));
+      context.reason = errorCode || "service-error";
+      context.error = mutationResult?.error || mutationResult?.result || null;
       releaseButton();
       this.callbacks.onAdminRemoveModerator(context, this);
       return context;
@@ -2581,7 +2665,10 @@ export class ProfileModalController {
 
     let preloadError = null;
     try {
-      await this.services.accessControl.ensureReady();
+      const ensureResult = await this.runAdminMutation({ action: "ensure-ready" });
+      if (ensureResult?.error && ensureResult.ok === false) {
+        preloadError = ensureResult.error;
+      }
     } catch (error) {
       preloadError = error;
       console.error("Failed to load admin lists before updating entries:", error);
@@ -2619,22 +2706,21 @@ export class ProfileModalController {
     buttonToToggle = buttonToToggle || (isAdd ? addButton : null);
     setBusy(buttonToToggle, true);
 
-    let result;
-    if (isWhitelist) {
-      result = isAdd
-        ? await this.services.accessControl.addToWhitelist(actorNpub, target)
-        : await this.services.accessControl.removeFromWhitelist(actorNpub, target);
-    } else {
-      result = isAdd
-        ? await this.services.accessControl.addToBlacklist(actorNpub, target)
-        : await this.services.accessControl.removeFromBlacklist(actorNpub, target);
-    }
+    const mutationResult = await this.runAdminMutation({
+      action: "list-mutation",
+      listType,
+      mode: action,
+      actorNpub,
+      targetNpub: target,
+    });
 
-    context.result = result;
+    context.result = mutationResult?.result || null;
 
-    if (!result.ok) {
-      this.showError(this.describeAdminError(result.error));
-      context.reason = result.error || "service-error";
+    if (!mutationResult?.ok) {
+      const errorCode = mutationResult?.result?.error || mutationResult?.error?.code;
+      this.showError(this.describeAdminError(errorCode || "service-error"));
+      context.reason = errorCode || "service-error";
+      context.error = mutationResult?.error || mutationResult?.result || null;
       finalize();
       return context;
     }
@@ -2675,6 +2761,14 @@ export class ProfileModalController {
               notifyResult,
             );
           }
+          this.notifyAdminError({
+            listType,
+            action,
+            actorNpub,
+            targetNpub: target,
+            error: notifyResult?.error || null,
+            result: notifyResult,
+          });
         }
       } catch (error) {
         context.notificationError = error;
@@ -2685,6 +2779,13 @@ export class ProfileModalController {
             error,
           );
         }
+        this.notifyAdminError({
+          listType,
+          action,
+          actorNpub,
+          targetNpub: target,
+          error,
+        });
       }
     }
 
@@ -2806,6 +2907,310 @@ export class ProfileModalController {
       message,
       activeHex,
     );
+  }
+
+  async requestSwitchProfile({ pubkey, entry } = {}) {
+    const callback = this.callbacks.onRequestSwitchProfile;
+    if (callback && callback !== noop) {
+      return callback({ controller: this, pubkey, entry });
+    }
+
+    if (!pubkey) {
+      throw new Error("Missing target pubkey for switch request.");
+    }
+
+    return this.services.switchProfile(pubkey);
+  }
+
+  async runRelayOperation({
+    action,
+    url,
+    activePubkey,
+    skipPublishIfUnchanged = true,
+  } = {}) {
+    const callback = this.callbacks.onRelayOperation;
+    if (callback && callback !== noop) {
+      const result = await callback({
+        controller: this,
+        action,
+        url,
+        activePubkey,
+        skipPublishIfUnchanged,
+      });
+      if (result !== undefined) {
+        return result;
+      }
+    }
+
+    const context = {
+      ok: false,
+      changed: false,
+      reason: null,
+      error: null,
+      publishResult: null,
+      operationResult: null,
+    };
+
+    if (!activePubkey) {
+      context.reason = "no-active-pubkey";
+      return context;
+    }
+
+    const previous = this.services.relayManager.snapshot();
+
+    const runOperation = () => {
+      switch (action) {
+        case "add":
+          return this.services.relayManager.addRelay(url);
+        case "remove":
+          return this.services.relayManager.removeRelay(url);
+        case "restore":
+          return this.services.relayManager.restoreDefaults();
+        case "mode-toggle":
+          return this.services.relayManager.cycleRelayMode(url);
+        default:
+          throw Object.assign(new Error("Unknown relay operation."), {
+            code: "invalid-operation",
+          });
+      }
+    };
+
+    let operationResult;
+    try {
+      operationResult = runOperation();
+      context.operationResult = operationResult;
+    } catch (error) {
+      context.reason = error?.code || "operation-error";
+      context.error = error;
+      return context;
+    }
+
+    context.changed = Boolean(operationResult?.changed);
+    if (!context.changed && skipPublishIfUnchanged) {
+      context.reason = operationResult?.reason || "unchanged";
+      return context;
+    }
+
+    try {
+      const publishResult = await this.services.relayManager.publishRelayList(
+        activePubkey,
+      );
+      if (!publishResult?.ok) {
+        throw new Error("No relays accepted the update.");
+      }
+      context.ok = true;
+      context.publishResult = publishResult;
+      return context;
+    } catch (error) {
+      this.services.relayManager.setEntries(previous, { allowEmpty: false });
+      context.reason = error?.code || "publish-failed";
+      context.error = error;
+      return context;
+    }
+  }
+
+  async mutateBlocklist({ action, actorHex, targetHex } = {}) {
+    const callback = this.callbacks.onBlocklistMutation;
+    if (callback && callback !== noop) {
+      const result = await callback({
+        controller: this,
+        action,
+        actorHex,
+        targetHex,
+      });
+      if (result !== undefined) {
+        return result;
+      }
+    }
+
+    const context = { ok: false, reason: null, error: null };
+    if (!actorHex || !targetHex) {
+      context.reason = "invalid-target";
+      return context;
+    }
+
+    try {
+      await this.services.userBlocks.ensureLoaded(actorHex);
+      const isBlocked = this.services.userBlocks.isBlocked(targetHex);
+
+      if (action === "add") {
+        if (isBlocked) {
+          context.reason = "already-blocked";
+          return context;
+        }
+        await this.services.userBlocks.addBlock(targetHex, actorHex);
+        context.ok = true;
+        context.reason = "blocked";
+      } else if (action === "remove") {
+        if (!isBlocked) {
+          context.reason = "not-blocked";
+          return context;
+        }
+        await this.services.userBlocks.removeBlock(targetHex, actorHex);
+        context.ok = true;
+        context.reason = "unblocked";
+      } else {
+        context.reason = "invalid-action";
+        return context;
+      }
+
+      if (context.ok) {
+        await this.services.loadVideos();
+      }
+
+      return context;
+    } catch (error) {
+      context.error = error;
+      context.reason = error?.code || "service-error";
+      return context;
+    }
+  }
+
+  async persistWalletSettings({
+    nwcUri,
+    defaultZap,
+    lastChecked,
+    activePubkey,
+  } = {}) {
+    const callback = this.callbacks.onWalletPersist;
+    if (callback && callback !== noop) {
+      const result = await callback({
+        controller: this,
+        nwcUri,
+        defaultZap,
+        lastChecked,
+        activePubkey,
+      });
+      if (result !== undefined) {
+        return result;
+      }
+    }
+
+    const partial = {};
+    if (nwcUri !== undefined) {
+      partial.nwcUri = nwcUri;
+    }
+    if (defaultZap !== undefined) {
+      partial.defaultZap = defaultZap;
+    }
+    if (lastChecked !== undefined) {
+      partial.lastChecked = lastChecked;
+    }
+
+    if (!Object.keys(partial).length) {
+      return this.services.getActiveNwcSettings();
+    }
+
+    return this.services.updateActiveNwcSettings(partial);
+  }
+
+  async testWalletConnection({ nwcUri, defaultZap, activePubkey } = {}) {
+    const callback = this.callbacks.onWalletTestRequest;
+    if (callback && callback !== noop) {
+      const result = await callback({
+        controller: this,
+        nwcUri,
+        defaultZap,
+        activePubkey,
+      });
+      if (result !== undefined) {
+        return result;
+      }
+    }
+
+    return this.services.ensureWallet({ nwcUri, defaultZap });
+  }
+
+  async disconnectWallet({ activePubkey } = {}) {
+    const callback = this.callbacks.onWalletDisconnectRequest;
+    if (callback && callback !== noop) {
+      const result = await callback({ controller: this, activePubkey });
+      if (result !== undefined) {
+        return result;
+      }
+    }
+
+    return this.services.updateActiveNwcSettings(
+      this.services.createDefaultNwcSettings(),
+    );
+  }
+
+  async runAdminMutation(payload = {}) {
+    const callback = this.callbacks.onAdminMutation;
+    if (callback && callback !== noop) {
+      const result = await callback({ ...payload, controller: this });
+      if (result !== undefined) {
+        return result;
+      }
+    }
+
+    const action = payload?.action;
+    const resultContext = { ok: false, error: null, result: null };
+
+    try {
+      switch (action) {
+        case "ensure-ready":
+          await this.services.accessControl.ensureReady();
+          resultContext.ok = true;
+          break;
+        case "add-moderator":
+          resultContext.result = await this.services.accessControl.addModerator(
+            payload.actorNpub,
+            payload.targetNpub,
+          );
+          resultContext.ok = !!resultContext.result?.ok;
+          break;
+        case "remove-moderator":
+          resultContext.result =
+            await this.services.accessControl.removeModerator(
+              payload.actorNpub,
+              payload.targetNpub,
+            );
+          resultContext.ok = !!resultContext.result?.ok;
+          break;
+        case "list-mutation":
+          if (payload.listType === "whitelist") {
+            resultContext.result = payload.mode === "add"
+              ? await this.services.accessControl.addToWhitelist(
+                  payload.actorNpub,
+                  payload.targetNpub,
+                )
+              : await this.services.accessControl.removeFromWhitelist(
+                  payload.actorNpub,
+                  payload.targetNpub,
+                );
+          } else {
+            resultContext.result = payload.mode === "add"
+              ? await this.services.accessControl.addToBlacklist(
+                  payload.actorNpub,
+                  payload.targetNpub,
+                )
+              : await this.services.accessControl.removeFromBlacklist(
+                  payload.actorNpub,
+                  payload.targetNpub,
+                );
+          }
+          resultContext.ok = !!resultContext.result?.ok;
+          break;
+        default:
+          resultContext.error = Object.assign(
+            new Error("Unknown admin mutation."),
+            { code: "invalid-action" },
+          );
+      }
+    } catch (error) {
+      resultContext.error = error;
+      return resultContext;
+    }
+
+    return resultContext;
+  }
+
+  notifyAdminError(payload = {}) {
+    const callback = this.callbacks.onAdminNotifyError;
+    if (callback && callback !== noop) {
+      callback({ ...payload, controller: this });
+    }
   }
 
   updateFocusTrap() {
