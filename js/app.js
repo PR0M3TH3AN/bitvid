@@ -2855,7 +2855,11 @@ class Application {
       this.updateActiveProfileUI(activePubkey, detail.postLogin.profile);
     }
 
-    await this.loadVideos();
+    try {
+      await this.loadVideos(true);
+    } catch (error) {
+      console.error("Failed to refresh videos after login:", error);
+    }
     this.forceRefreshAllProfiles();
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
       await this.uploadModal.refreshCloudflareBucketPreview();
@@ -2923,7 +2927,11 @@ class Application {
       this.subscriptionsLink.classList.add("hidden");
     }
 
-    await this.loadVideos();
+    try {
+      await this.loadVideos(true);
+    } catch (error) {
+      console.error("Failed to refresh videos after logout:", error);
+    }
     this.forceRefreshAllProfiles();
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
       await this.uploadModal.refreshCloudflareBucketPreview();
