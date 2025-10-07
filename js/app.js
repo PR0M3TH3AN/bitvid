@@ -7424,7 +7424,7 @@ class Application {
       legacyInfoHash ||
       "";
 
-    await this.playVideoWithFallback({
+    return this.playVideoWithFallback({
       url: trimmedUrl,
       magnet: magnetInput,
     });
@@ -7507,7 +7507,7 @@ class Application {
     const cleaned = `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
     window.history.replaceState({}, "", cleaned);
 
-    await this.playVideoWithFallback({
+    return this.playVideoWithFallback({
       url: sanitizedUrl,
       magnet: usableMagnet,
     });
