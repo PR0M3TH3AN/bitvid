@@ -238,29 +238,30 @@ class Application {
         deriveTorrentPlaybackConfig,
         isValidMagnetUri,
         urlFirstEnabled: URL_FIRST_ENABLED,
-      analyticsCallbacks: {
-        "session-start": (detail) => {
-          const urlProvided = detail?.urlProvided ? "true" : "false";
-          const magnetProvided = detail?.magnetProvided ? "true" : "false";
-          const magnetUsable = detail?.magnetUsable ? "true" : "false";
-          this.log(
-            `[playVideoWithFallback] Session start urlProvided=${urlProvided} magnetProvided=${magnetProvided} magnetUsable=${magnetUsable}`
-          );
-        },
-        fallback: (detail) => {
-          if (detail?.reason) {
+        analyticsCallbacks: {
+          "session-start": (detail) => {
+            const urlProvided = detail?.urlProvided ? "true" : "false";
+            const magnetProvided = detail?.magnetProvided ? "true" : "false";
+            const magnetUsable = detail?.magnetUsable ? "true" : "false";
             this.log(
-              `[playVideoWithFallback] Falling back to WebTorrent (${detail.reason}).`
+              `[playVideoWithFallback] Session start urlProvided=${urlProvided} magnetProvided=${magnetProvided} magnetUsable=${magnetUsable}`
             );
-          }
+          },
+          fallback: (detail) => {
+            if (detail?.reason) {
+              this.log(
+                `[playVideoWithFallback] Falling back to WebTorrent (${detail.reason}).`
+              );
+            }
+          },
+          error: (detail) => {
+            if (detail?.error) {
+              this.log("[playVideoWithFallback] Playback error observed", detail.error);
+            }
+          },
         },
-        error: (detail) => {
-          if (detail?.error) {
-            this.log("[playVideoWithFallback] Playback error observed", detail.error);
-          }
-        },
-      },
       });
+    this.activePlaybackResultPromise = null;
     this.activePlaybackSession = null;
 
     this.authService =
@@ -7009,11 +7010,32 @@ class Application {
    * and falls back to WebTorrent when needed.
    */
   async playVideoWithFallback({ url = "", magnet = "" } = {}) {
-    await this.waitForCleanup();
-    this.cancelPendingViewLogging();
-
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const requestSignature = JSON.stringify({
+      url: sanitizedUrl,
+      magnet: trimmedMagnet,
+    });
+
+    if (
+      this.activePlaybackSession &&
+      typeof this.activePlaybackSession.matchesRequestSignature === "function" &&
+      this.activePlaybackSession.matchesRequestSignature(requestSignature)
+    ) {
+      this.log(
+        "[playVideoWithFallback] Duplicate playback request detected; reusing active session."
+      );
+      if (this.activePlaybackResultPromise) {
+        return this.activePlaybackResultPromise;
+      }
+      if (typeof this.activePlaybackSession.getResult === "function") {
+        return this.activePlaybackSession.getResult();
+      }
+      return { source: null };
+    }
+
+    await this.waitForCleanup();
+    this.cancelPendingViewLogging();
 
     let modalVideoEl = this.modalVideo;
     if (!modalVideoEl && this.videoModal) {
@@ -7062,11 +7084,15 @@ class Application {
     if (refreshedModal) {
       this.modalVideo = refreshedModal;
       modalVideoEl = this.modalVideo;
+      this.applyModalLoadingPoster();
+    } else {
+      this.applyModalLoadingPoster();
     }
 
     const session = this.playbackService.createSession({
       url: sanitizedUrl,
       magnet: trimmedMagnet,
+      requestSignature,
       videoElement: this.modalVideo,
       waitForCleanup: () => this.waitForCleanup(),
       cancelPendingViewLogging: () => this.cancelPendingViewLogging(),
@@ -7082,6 +7108,7 @@ class Application {
     });
 
     this.activePlaybackSession = session;
+    this.activePlaybackResultPromise = null;
 
     this.resetTorrentStats();
     this.playSource = null;
@@ -7150,6 +7177,7 @@ class Application {
     subscribe("finished", () => {
       if (this.activePlaybackSession === session) {
         this.activePlaybackSession = null;
+        this.activePlaybackResultPromise = null;
       }
       while (unsubscribers.length) {
         const off = unsubscribers.pop();
@@ -7166,7 +7194,9 @@ class Application {
       }
     });
 
-    const result = await session.start();
+    const startPromise = session.start();
+    this.activePlaybackResultPromise = startPromise;
+    const result = await startPromise;
 
     if (!result || result.error) {
       return result;

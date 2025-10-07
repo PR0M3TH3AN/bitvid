@@ -234,11 +234,20 @@ class PlaybackSession extends SimpleEventEmitter {
     this.options = options;
     this.watchdogCleanup = null;
     this.result = { source: null };
+    this.finished = false;
+    this.startPromise = null;
 
     this.sanitizedUrl =
       typeof options.url === "string" ? options.url.trim() : "";
     this.trimmedMagnet =
       typeof options.magnet === "string" ? options.magnet.trim() : "";
+    this.requestSignature =
+      typeof options.requestSignature === "string"
+        ? options.requestSignature
+        : JSON.stringify({
+            url: this.sanitizedUrl,
+            magnet: this.trimmedMagnet,
+          });
 
     if (typeof service.deriveTorrentPlaybackConfig === "function") {
       this.playbackConfig = service.deriveTorrentPlaybackConfig({
@@ -271,6 +280,24 @@ class PlaybackSession extends SimpleEventEmitter {
       ? this.playbackConfig.fallbackMagnet
       : "";
     this.magnetProvided = !!this.playbackConfig.provided;
+  }
+
+  isActive() {
+    return !this.finished;
+  }
+
+  matchesRequestSignature(signature) {
+    if (!this.isActive()) {
+      return false;
+    }
+    if (typeof signature !== "string" || !signature) {
+      return false;
+    }
+    return signature === this.requestSignature;
+  }
+
+  getResult() {
+    return this.result;
   }
 
   getPlaybackConfig() {
@@ -362,6 +389,14 @@ class PlaybackSession extends SimpleEventEmitter {
   }
 
   async start() {
+    if (this.startPromise) {
+      return this.startPromise;
+    }
+    this.startPromise = this.execute();
+    return this.startPromise;
+  }
+
+  async execute() {
     const {
       videoElement,
       waitForCleanup,
@@ -376,6 +411,7 @@ class PlaybackSession extends SimpleEventEmitter {
     } = this.options;
 
     this.result = { source: null };
+    this.finished = false;
 
     const detail = {
       urlProvided: !!this.sanitizedUrl,
@@ -721,6 +757,7 @@ class PlaybackSession extends SimpleEventEmitter {
       return this.result;
     } finally {
       this.cleanupWatchdog();
+      this.finished = true;
       if (this.result) {
         this.emit("finished", this.result);
       }
