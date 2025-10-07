@@ -1799,7 +1799,10 @@ body.sidebar-open #sidebarOverlay {
 
   #app {
     margin-left: var(--sidebar-width);
-    transition: margin-left 200ms ease;
+    width: calc(100vw - var(--sidebar-width));
+    max-width: calc(100vw - var(--sidebar-width));
+    box-sizing: border-box;
+    transition: margin-left 200ms ease, width 200ms ease;
   }
 
   body.sidebar-collapsed,
