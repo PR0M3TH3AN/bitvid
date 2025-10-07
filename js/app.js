@@ -3505,7 +3505,9 @@ class Application {
         persistSavedProfiles: (options) => persistSavedProfiles(options),
         getActivePubkey: () => this.activeProfilePubkey,
         setActivePubkey: (pubkey, options) => {
-          setStoredActiveProfilePubkey(pubkey, options);
+          this.activeProfilePubkey =
+            typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : null;
+          setStoredActiveProfilePubkey(this.activeProfilePubkey, options);
           return this.activeProfilePubkey;
         },
         getCachedSelection: () => cache.cachedSelection,
@@ -9205,9 +9207,16 @@ class Application {
       });
     }
 
+    const magnetInput =
+      sanitizedMagnet ||
+      decodedMagnetCandidate ||
+      magnetCandidate ||
+      legacyInfoHash ||
+      "";
+
     await this.playVideoWithFallback({
       url: trimmedUrl,
-      magnet: usableMagnetCandidate,
+      magnet: magnetInput,
     });
   }
 
