@@ -1,4 +1,13 @@
+import { isDevMode, ADMIN_SUPER_NPUB } from "../config.js";
+
 const noop = () => {};
+
+const FALLBACK_PROFILE_AVATAR = "assets/svg/default-profile.svg";
+const ADMIN_DM_IMAGE_URL =
+  "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
+const BITVID_WEBSITE_URL = "https://bitvid.network/";
+const NWC_URI_SCHEME = "nostr+walletconnect://";
+const MAX_WALLET_DEFAULT_ZAP = 100000000;
 
 const SERVICE_CONTRACT = [
   {
@@ -344,9 +353,11 @@ export class ProfileModalController {
     this.createDefaultNwcSettings = this.services.createDefaultNwcSettings;
     this.ensureWallet = this.services.ensureWallet;
     this.loadVideos = this.services.loadVideos;
-    this.sendAdminListNotification = this.services.sendAdminListNotification;
-    this.describeAdminError = this.services.describeAdminError;
-    this.describeNotificationError = this.services.describeNotificationError;
+    this.sendAdminListNotificationService =
+      this.services.sendAdminListNotification;
+    this.describeAdminErrorService = this.services.describeAdminError;
+    this.describeNotificationErrorService =
+      this.services.describeNotificationError;
     this.onAccessControlUpdated = this.services.onAccessControlUpdated;
 
     this.callbacks = {
@@ -372,6 +383,11 @@ export class ProfileModalController {
     };
 
     this.profileModal = null;
+    this.profileModalAvatar = null;
+    this.profileModalName = null;
+    this.profileModalNpub = null;
+    this.profileSwitcherList = null;
+    this.profileAvatar = null;
     this.closeButton = null;
     this.logoutButton = null;
     this.channelLink = null;
@@ -392,29 +408,42 @@ export class ProfileModalController {
       history: null,
       admin: null,
     };
-    this.relayList = null;
-    this.relayInput = null;
-    this.relayAddButton = null;
-    this.relayRestoreButton = null;
-    this.blockList = null;
-    this.blockInput = null;
-    this.blockAddButton = null;
+    this.profileRelayList = null;
+    this.profileRelayInput = null;
+    this.profileAddRelayBtn = null;
+    this.profileRestoreRelaysBtn = null;
+    this.profileBlockedList = null;
+    this.profileBlockedEmpty = null;
+    this.profileBlockedInput = null;
+    this.profileAddBlockedBtn = null;
     this.walletUriInput = null;
     this.walletDefaultZapInput = null;
     this.walletSaveButton = null;
     this.walletTestButton = null;
     this.walletDisconnectButton = null;
+    this.profileWalletStatusText = null;
+    this.adminModeratorsSection = null;
+    this.adminModeratorsEmpty = null;
+    this.adminModeratorList = null;
     this.adminAddModeratorButton = null;
     this.adminModeratorInput = null;
+    this.adminWhitelistSection = null;
+    this.adminWhitelistEmpty = null;
+    this.adminWhitelistList = null;
     this.adminAddWhitelistButton = null;
     this.adminWhitelistInput = null;
+    this.adminBlacklistSection = null;
+    this.adminBlacklistEmpty = null;
+    this.adminBlacklistList = null;
     this.adminAddBlacklistButton = null;
     this.adminBlacklistInput = null;
 
     this.profileHistoryRenderer = null;
+    this.boundProfileHistoryVisibility = null;
     this.boundKeydown = null;
     this.boundFocusIn = null;
     this.focusableElements = [];
+    this.profileSwitcherSelectionPubkey = null;
     this.setActivePane(this.getActivePane());
     this.setWalletPaneBusy(this.isWalletBusy());
     this.adminEmptyMessages = new Map();
@@ -451,6 +480,20 @@ export class ProfileModalController {
     this.channelLink = document.getElementById("profileChannelLink") || null;
     this.addAccountButton =
       document.getElementById("profileAddAccountBtn") || null;
+    this.profileModalAvatar =
+      document.getElementById("profileModalAvatar") || null;
+    this.profileModalName =
+      document.getElementById("profileModalName") || null;
+    this.profileModalNpub =
+      document.getElementById("profileModalNpub") || null;
+    this.profileSwitcherList =
+      document.getElementById("profileSwitcherList") || null;
+
+    const topLevelProfileAvatar =
+      document.getElementById("profileAvatar") || null;
+    if (topLevelProfileAvatar) {
+      this.profileAvatar = topLevelProfileAvatar;
+    }
 
     this.navButtons.account =
       document.getElementById("profileNavAccount") || null;
@@ -469,15 +512,21 @@ export class ProfileModalController {
     this.panes.history = document.getElementById("profilePaneHistory") || null;
     this.panes.admin = document.getElementById("profilePaneAdmin") || null;
 
-    this.relayList = document.getElementById("relayList") || null;
-    this.relayInput = document.getElementById("relayInput") || null;
-    this.relayAddButton = document.getElementById("addRelayBtn") || null;
-    this.relayRestoreButton =
+    this.profileRelayList = document.getElementById("relayList") || null;
+    this.profileRelayInput = document.getElementById("relayInput") || null;
+    this.profileAddRelayBtn =
+      document.getElementById("addRelayBtn") || null;
+    this.profileRestoreRelaysBtn =
       document.getElementById("restoreRelaysBtn") || null;
 
-    this.blockList = document.getElementById("blockedList") || null;
-    this.blockInput = document.getElementById("blockedInput") || null;
-    this.blockAddButton = document.getElementById("addBlockedBtn") || null;
+    this.profileBlockedList =
+      document.getElementById("blockedList") || null;
+    this.profileBlockedEmpty =
+      document.getElementById("blockedEmpty") || null;
+    this.profileBlockedInput =
+      document.getElementById("blockedInput") || null;
+    this.profileAddBlockedBtn =
+      document.getElementById("addBlockedBtn") || null;
 
     this.walletUriInput = document.getElementById("profileWalletUri") || null;
     this.walletDefaultZapInput =
@@ -488,15 +537,35 @@ export class ProfileModalController {
       document.getElementById("profileWalletTest") || null;
     this.walletDisconnectButton =
       document.getElementById("profileWalletDisconnect") || null;
+    this.profileWalletStatusText =
+      document.getElementById("profileWalletStatus") || null;
 
+    this.adminModeratorsSection =
+      document.getElementById("adminModeratorsSection") || null;
+    this.adminModeratorsEmpty =
+      document.getElementById("adminModeratorsEmpty") || null;
+    this.adminModeratorList =
+      document.getElementById("adminModeratorList") || null;
     this.adminAddModeratorButton =
       document.getElementById("adminAddModeratorBtn") || null;
     this.adminModeratorInput =
       document.getElementById("adminModeratorInput") || null;
+    this.adminWhitelistSection =
+      document.getElementById("adminWhitelistSection") || null;
+    this.adminWhitelistEmpty =
+      document.getElementById("adminWhitelistEmpty") || null;
+    this.adminWhitelistList =
+      document.getElementById("adminWhitelistList") || null;
     this.adminAddWhitelistButton =
       document.getElementById("adminAddWhitelistBtn") || null;
     this.adminWhitelistInput =
       document.getElementById("adminWhitelistInput") || null;
+    this.adminBlacklistSection =
+      document.getElementById("adminBlacklistSection") || null;
+    this.adminBlacklistEmpty =
+      document.getElementById("adminBlacklistEmpty") || null;
+    this.adminBlacklistList =
+      document.getElementById("adminBlacklistList") || null;
     this.adminAddBlacklistButton =
       document.getElementById("adminAddBlacklistBtn") || null;
     this.adminBlacklistInput =
@@ -521,6 +590,7 @@ export class ProfileModalController {
         metadataThumbSelector: "#profileHistoryMetadataThumb",
         metadataLabelSelector: "#profileHistoryMetadataLabel",
         metadataDescriptionSelector: "#profileHistoryMetadataDescription",
+        emptyCopy: "You haven’t watched any videos yet.",
         remove: (payload) => this.callbacks.onHistoryReady(payload, this),
       });
     }
@@ -566,57 +636,66 @@ export class ProfileModalController {
       }
     });
 
-    if (this.relayAddButton instanceof HTMLElement) {
-      this.relayAddButton.addEventListener("click", () => {
-        this.callbacks.onAddRelay(this.relayInput, this);
+    if (this.profileAddRelayBtn instanceof HTMLElement) {
+      this.profileAddRelayBtn.addEventListener("click", () => {
+        void this.handleAddRelay();
       });
     }
 
-    if (this.relayRestoreButton instanceof HTMLElement) {
-      this.relayRestoreButton.addEventListener("click", () => {
-        this.callbacks.onRestoreRelays(this);
+    if (this.profileRestoreRelaysBtn instanceof HTMLElement) {
+      this.profileRestoreRelaysBtn.addEventListener("click", () => {
+        void this.handleRestoreRelays();
       });
     }
 
-    if (this.blockAddButton instanceof HTMLElement) {
-      this.blockAddButton.addEventListener("click", () => {
-        this.callbacks.onAddBlocked(this.blockInput, this);
+    if (this.profileAddBlockedBtn instanceof HTMLElement) {
+      this.profileAddBlockedBtn.addEventListener("click", () => {
+        void this.handleAddBlockedCreator();
+      });
+    }
+
+    if (this.profileBlockedInput instanceof HTMLElement) {
+      this.profileBlockedInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void this.handleAddBlockedCreator();
+        }
       });
     }
 
     if (this.walletUriInput instanceof HTMLElement) {
       this.walletUriInput.addEventListener("input", () => {
-        this.callbacks.onWalletInputChange?.(this.walletUriInput, this);
+        this.applyWalletControlState();
       });
     }
 
     if (this.walletDefaultZapInput instanceof HTMLElement) {
       this.walletDefaultZapInput.addEventListener("input", () => {
-        this.callbacks.onWalletInputChange?.(this.walletDefaultZapInput, this);
+        this.applyWalletControlState();
       });
     }
 
     if (this.walletSaveButton instanceof HTMLElement) {
       this.walletSaveButton.addEventListener("click", () => {
-        this.callbacks.onWalletSave(this);
+        void this.handleWalletSave();
       });
     }
 
     if (this.walletTestButton instanceof HTMLElement) {
       this.walletTestButton.addEventListener("click", () => {
-        this.callbacks.onWalletTest(this);
+        void this.handleWalletTest();
       });
     }
 
     if (this.walletDisconnectButton instanceof HTMLElement) {
       this.walletDisconnectButton.addEventListener("click", () => {
-        this.callbacks.onWalletDisconnect(this);
+        void this.handleWalletDisconnect();
       });
     }
 
     if (this.adminAddModeratorButton instanceof HTMLElement) {
       this.adminAddModeratorButton.addEventListener("click", () => {
-        this.callbacks.onAdminAddModerator(this.adminModeratorInput, this);
+        void this.handleAddModerator();
       });
     }
 
@@ -624,14 +703,14 @@ export class ProfileModalController {
       this.adminModeratorInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
-          this.callbacks.onAdminAddModerator(this.adminModeratorInput, this);
+          void this.handleAddModerator();
         }
       });
     }
 
     if (this.adminAddWhitelistButton instanceof HTMLElement) {
       this.adminAddWhitelistButton.addEventListener("click", () => {
-        this.callbacks.onAdminAddWhitelist(this.adminWhitelistInput, this);
+        void this.handleAdminListMutation("whitelist", "add");
       });
     }
 
@@ -639,14 +718,14 @@ export class ProfileModalController {
       this.adminWhitelistInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
-          this.callbacks.onAdminAddWhitelist(this.adminWhitelistInput, this);
+          void this.handleAdminListMutation("whitelist", "add");
         }
       });
     }
 
     if (this.adminAddBlacklistButton instanceof HTMLElement) {
       this.adminAddBlacklistButton.addEventListener("click", () => {
-        this.callbacks.onAdminAddBlacklist(this.adminBlacklistInput, this);
+        void this.handleAdminListMutation("blacklist", "add");
       });
     }
 
@@ -654,41 +733,1816 @@ export class ProfileModalController {
       this.adminBlacklistInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
-          this.callbacks.onAdminAddBlacklist(this.adminBlacklistInput, this);
+          void this.handleAdminListMutation("blacklist", "add");
         }
       });
     }
   }
 
+  renderSavedProfiles() {
+    const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
+    const entriesNeedingFetch = new Set();
+    const savedProfiles = this.getSavedProfiles();
+
+    const resolveMeta = (entry) => {
+      if (!entry || typeof entry !== "object") {
+        return {
+          name: "",
+          picture: FALLBACK_PROFILE_AVATAR,
+          npub: null,
+        };
+      }
+
+      const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
+      let cacheEntry = null;
+      if (normalizedPubkey) {
+        cacheEntry = this.getProfileCacheEntry(normalizedPubkey);
+      }
+      const cachedProfile = cacheEntry?.profile || {};
+
+      const hasStoredName =
+        typeof entry.name === "string" && entry.name.trim().length > 0;
+      const hasStoredPicture =
+        typeof entry.picture === "string" && entry.picture.trim().length > 0;
+
+      if (
+        !cacheEntry &&
+        normalizedPubkey &&
+        (!hasStoredName || !hasStoredPicture)
+      ) {
+        entriesNeedingFetch.add(normalizedPubkey);
+      }
+
+      let resolvedNpub =
+        typeof entry.npub === "string" && entry.npub.trim()
+          ? entry.npub.trim()
+          : null;
+      if (!resolvedNpub && entry.pubkey) {
+        resolvedNpub = this.safeEncodeNpub(entry.pubkey);
+      }
+
+      return {
+        name: cachedProfile.name || entry.name || "",
+        picture: cachedProfile.picture || entry.picture || FALLBACK_PROFILE_AVATAR,
+        npub: resolvedNpub,
+      };
+    };
+
+    const savedEntries = Array.isArray(savedProfiles)
+      ? savedProfiles.filter((entry) => entry && entry.pubkey)
+      : [];
+
+    let activeEntry = null;
+    if (normalizedActive) {
+      activeEntry = savedEntries.find(
+        (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedActive,
+      );
+    }
+    if (!activeEntry && savedEntries.length) {
+      activeEntry = savedEntries[0];
+    }
+
+    const activeMeta = activeEntry ? resolveMeta(activeEntry) : null;
+    const hasActiveProfile = Boolean(activeEntry && activeMeta);
+    const truncate = this.truncateMiddle || ((value) => value);
+    const activeNameFallback = activeMeta?.npub
+      ? truncate(activeMeta.npub, 32)
+      : "Saved profile";
+    const activeDisplayName = hasActiveProfile
+      ? activeMeta?.name?.trim() || activeNameFallback
+      : "No active profile";
+    const activeAvatarSrc = hasActiveProfile
+      ? activeMeta?.picture || FALLBACK_PROFILE_AVATAR
+      : FALLBACK_PROFILE_AVATAR;
+
+    if (this.profileModalName) {
+      this.profileModalName.textContent = activeDisplayName;
+    }
+
+    if (this.profileModalAvatar instanceof HTMLImageElement) {
+      if (this.profileModalAvatar.src !== activeAvatarSrc) {
+        this.profileModalAvatar.src = activeAvatarSrc;
+      }
+      this.profileModalAvatar.alt = hasActiveProfile
+        ? `${activeDisplayName} avatar`
+        : "Default profile avatar";
+    } else if (this.profileModalAvatar instanceof HTMLElement) {
+      this.profileModalAvatar.setAttribute("data-avatar-src", activeAvatarSrc);
+    }
+
+    if (this.profileModalNpub) {
+      if (hasActiveProfile && activeMeta?.npub) {
+        this.profileModalNpub.textContent = truncate(activeMeta.npub, 48);
+      } else if (hasActiveProfile) {
+        this.profileModalNpub.textContent = "npub unavailable";
+      } else {
+        this.profileModalNpub.textContent = "Link a profile to get started";
+      }
+    }
+
+    if (this.channelLink instanceof HTMLElement) {
+      if (hasActiveProfile && activeMeta?.npub) {
+        const encodedNpub = activeMeta.npub;
+        this.channelLink.href = `#view=channel-profile&npub=${encodeURIComponent(
+          encodedNpub,
+        )}`;
+        this.channelLink.dataset.targetNpub = encodedNpub;
+        this.channelLink.classList.remove("hidden");
+        this.channelLink.setAttribute("aria-hidden", "false");
+      } else {
+        this.channelLink.classList.add("hidden");
+        this.channelLink.removeAttribute("href");
+        if (this.channelLink.dataset) {
+          delete this.channelLink.dataset.targetNpub;
+        }
+        this.channelLink.setAttribute("aria-hidden", "true");
+      }
+    }
+
+    if (this.profileAvatar instanceof HTMLImageElement) {
+      if (this.profileAvatar.src !== activeAvatarSrc) {
+        this.profileAvatar.src = activeAvatarSrc;
+      }
+      this.profileAvatar.alt = hasActiveProfile
+        ? `${activeDisplayName} avatar`
+        : this.profileAvatar.alt || "Profile avatar";
+    }
+
+    const listEl = this.profileSwitcherList;
+    if (listEl instanceof HTMLElement) {
+      listEl.innerHTML = "";
+      let normalizedSelection = this.normalizeHexPubkey(
+        this.profileSwitcherSelectionPubkey,
+      );
+      if (normalizedSelection && normalizedSelection === normalizedActive) {
+        normalizedSelection = null;
+        this.profileSwitcherSelectionPubkey = null;
+      }
+
+      const entriesToRender = savedEntries.filter((entry) => {
+        const normalized = this.normalizeHexPubkey(entry.pubkey);
+        return normalized && normalized !== normalizedActive;
+      });
+
+      if (!entriesToRender.length) {
+        listEl.setAttribute("data-profile-switcher-empty", "true");
+        const helper = document.createElement("p");
+        helper.className = "profile-switcher__empty text-sm text-gray-400";
+        helper.textContent = "No other profiles saved yet.";
+        helper.setAttribute("role", "note");
+        listEl.appendChild(helper);
+      } else {
+        listEl.removeAttribute("data-profile-switcher-empty");
+
+        entriesToRender.forEach((entry) => {
+          const meta = resolveMeta(entry);
+          const button = document.createElement("button");
+          button.type = "button";
+          button.classList.add("profile-card");
+          button.dataset.pubkey = entry.pubkey;
+          if (meta.npub) {
+            button.dataset.npub = meta.npub;
+          }
+          if (entry.authType) {
+            button.dataset.authType = entry.authType;
+          }
+
+          const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
+          const isSelected =
+            normalizedSelection && normalizedPubkey === normalizedSelection;
+          if (isSelected) {
+            button.classList.add("profile-card--active");
+            button.setAttribute("aria-pressed", "true");
+          } else {
+            button.setAttribute("aria-pressed", "false");
+          }
+
+          const avatarSpan = document.createElement("span");
+          avatarSpan.className = "profile-card__avatar";
+          const avatarImg = document.createElement("img");
+          avatarImg.src = meta.picture || FALLBACK_PROFILE_AVATAR;
+          const cardDisplayName =
+            meta.name?.trim() ||
+            (meta.npub ? truncate(meta.npub, 32) : "Saved profile");
+          avatarImg.alt = `${cardDisplayName} avatar`;
+          avatarSpan.appendChild(avatarImg);
+
+          const metaSpan = document.createElement("span");
+          metaSpan.className = "profile-card__meta";
+
+          const topLine = document.createElement("span");
+          topLine.className = "profile-card__topline";
+
+          const label = document.createElement("span");
+          label.className = "profile-card__label";
+          label.textContent =
+            entry.authType === "nsec" ? "Direct key" : "Saved profile";
+
+          const action = document.createElement("span");
+          action.className = "profile-card__action";
+          action.setAttribute("aria-hidden", "true");
+          action.textContent = isSelected ? "Selected" : "Switch";
+
+          topLine.append(label, action);
+
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "profile-card__name";
+          nameSpan.textContent = cardDisplayName;
+
+          const npubSpan = document.createElement("span");
+          npubSpan.className = "profile-card__npub";
+          npubSpan.textContent = meta.npub
+            ? truncate(meta.npub, 48)
+            : "npub unavailable";
+
+          metaSpan.append(topLine, nameSpan, npubSpan);
+          button.append(avatarSpan, metaSpan);
+
+          const ariaLabel = isSelected
+            ? `${cardDisplayName} selected`
+            : `Switch to ${cardDisplayName}`;
+          button.setAttribute("aria-label", ariaLabel);
+
+          const activateProfile = async (event) => {
+            if (event) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+
+            if (button.dataset.loading === "true") {
+              return;
+            }
+
+            button.dataset.loading = "true";
+            button.setAttribute("aria-busy", "true");
+
+          try {
+            await this.switchProfile(entry.pubkey);
+          } catch (error) {
+            console.error("Failed to switch profile:", error);
+          } finally {
+            button.dataset.loading = "false";
+            button.setAttribute("aria-busy", "false");
+            }
+          };
+
+          button.addEventListener("click", activateProfile);
+          button.addEventListener("keydown", (event) => {
+            const key = event?.key;
+            if (key === "Enter" || key === " " || key === "Spacebar") {
+              activateProfile(event);
+            }
+          });
+
+          listEl.appendChild(button);
+        });
+      }
+
+      this.updateFocusTrap();
+    } else {
+      this.updateFocusTrap();
+    }
+
+    if (entriesNeedingFetch.size) {
+      this.batchFetchProfiles(entriesNeedingFetch);
+    }
+  }
+
   selectPane(name = "account") {
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";
-    if (this.getActivePane() === normalized) {
-      this.callbacks.onSelectPane(normalized, { controller: this });
-      return;
+    const previous = this.getActivePane();
+    const availableKeys = Object.keys(this.panes).filter((key) => {
+      const pane = this.panes[key];
+      if (!(pane instanceof HTMLElement)) {
+        return false;
+      }
+      const button = this.navButtons[key];
+      if (button instanceof HTMLElement && button.classList.contains("hidden")) {
+        return false;
+      }
+      return true;
+    });
+
+    const fallbackTarget = availableKeys.includes("account")
+      ? "account"
+      : availableKeys[0] || "account";
+    const target = availableKeys.includes(normalized)
+      ? normalized
+      : fallbackTarget;
+
+    if (previous === "history" && target !== "history") {
+      try {
+        this.profileHistoryRenderer?.pause();
+      } catch (error) {
+        console.warn("[profileModal] Failed to pause history renderer:", error);
+      }
     }
 
     Object.entries(this.panes).forEach(([key, pane]) => {
-      if (pane instanceof HTMLElement) {
-        const isActive = key === normalized;
-        pane.classList.toggle("hidden", !isActive);
-        pane.setAttribute("aria-hidden", String(!isActive));
+      if (!(pane instanceof HTMLElement)) {
+        return;
       }
+      const isActive = key === target;
+      pane.classList.toggle("hidden", !isActive);
+      pane.setAttribute("aria-hidden", (!isActive).toString());
     });
 
     Object.entries(this.navButtons).forEach(([key, button]) => {
-      if (button instanceof HTMLElement) {
-        const isActive = key === normalized;
-        button.setAttribute("aria-selected", isActive ? "true" : "false");
-        button.classList.toggle("bg-gray-800", isActive);
-        button.classList.toggle("text-white", isActive);
-        button.classList.toggle("text-gray-400", !isActive);
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      const isActive = key === target;
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+      button.classList.toggle("bg-gray-800", isActive);
+      button.classList.toggle("text-white", isActive);
+      button.classList.toggle("text-gray-400", !isActive);
+    });
+
+    this.setActivePane(target);
+    this.updateFocusTrap();
+
+    if (target === "history") {
+      void this.populateProfileWatchHistory();
+    } else if (target === "wallet") {
+      this.refreshWalletPaneState();
+    } else if (target === "blocked") {
+      this.populateBlockedList();
+    }
+
+    this.callbacks.onSelectPane(target, { controller: this });
+    this.callbacks.onPaneShown(target, { controller: this });
+  }
+
+  populateProfileRelays(relayEntries = null) {
+    if (!this.profileRelayList) {
+      return;
+    }
+
+    const sourceEntries = Array.isArray(relayEntries)
+      ? relayEntries
+      : this.relayManager.getEntries();
+
+    const relays = sourceEntries
+      .map((entry) => {
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          return trimmed ? { url: trimmed, mode: "both" } : null;
+        }
+        if (entry && typeof entry === "object") {
+          const url = typeof entry.url === "string" ? entry.url.trim() : "";
+          if (!url) {
+            return null;
+          }
+          const mode = typeof entry.mode === "string" ? entry.mode : "both";
+          const normalizedMode =
+            mode === "read" || mode === "write" ? mode : "both";
+          return {
+            url,
+            mode: normalizedMode,
+            read: entry.read !== false,
+            write: entry.write !== false,
+          };
+        }
+        return null;
+      })
+      .filter((entry) => entry && typeof entry.url === "string");
+
+    this.profileRelayList.innerHTML = "";
+
+    if (!relays.length) {
+      const emptyState = document.createElement("li");
+      emptyState.className =
+        "rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400";
+      emptyState.textContent = "No relays configured.";
+      this.profileRelayList.appendChild(emptyState);
+      return;
+    }
+
+    relays.forEach((entry) => {
+      const item = document.createElement("li");
+      item.className =
+        "flex items-start justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+
+      const info = document.createElement("div");
+      info.className = "flex-1 min-w-0";
+
+      const urlEl = document.createElement("p");
+      urlEl.className = "text-sm font-medium text-gray-100 break-all";
+      urlEl.textContent = entry.url;
+
+      const statusEl = document.createElement("p");
+      statusEl.className = "mt-1 text-xs text-gray-400";
+      let modeLabel = "Read & write";
+      if (entry.mode === "read") {
+        modeLabel = "Read only";
+      } else if (entry.mode === "write") {
+        modeLabel = "Write only";
+      }
+      statusEl.textContent = modeLabel;
+
+      info.appendChild(urlEl);
+      info.appendChild(statusEl);
+
+      const actions = document.createElement("div");
+      actions.className = "flex items-center gap-2";
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className =
+        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      editBtn.textContent = "Change mode";
+      editBtn.title = "Cycle between read-only, write-only, or read/write modes.";
+      editBtn.addEventListener("click", () => {
+        void this.handleRelayModeToggle(entry.url);
+      });
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className =
+        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", () => {
+        void this.handleRemoveRelay(entry.url);
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(removeBtn);
+
+      item.appendChild(info);
+      item.appendChild(actions);
+
+      this.profileRelayList.appendChild(item);
+    });
+  }
+
+  async handleRelayOperation(operation, {
+    successMessage = "Relay preferences updated.",
+    skipPublishIfUnchanged = true,
+    unchangedMessage = null,
+  } = {}) {
+    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activePubkey) {
+      this.showError("Please login to manage your relays.");
+      return;
+    }
+
+    if (typeof operation !== "function") {
+      return;
+    }
+
+    const previous = this.relayManager.snapshot();
+    let result;
+    try {
+      result = operation();
+    } catch (error) {
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Failed to update relay preferences.";
+      this.showError(message);
+      return;
+    }
+
+    const changed = !!result?.changed;
+    if (!changed && skipPublishIfUnchanged) {
+      if (result?.reason === "duplicate") {
+        this.showSuccess("Relay is already configured.");
+      } else if (typeof unchangedMessage === "string" && unchangedMessage) {
+        this.showSuccess(unchangedMessage);
+      }
+      this.populateProfileRelays();
+      return;
+    }
+
+    this.populateProfileRelays();
+
+    try {
+      const publishResult = await this.relayManager.publishRelayList(activePubkey);
+      if (!publishResult?.ok) {
+        throw new Error("No relays accepted the update.");
+      }
+      if (successMessage) {
+        this.showSuccess(successMessage);
+      }
+    } catch (error) {
+      this.relayManager.setEntries(previous, { allowEmpty: false });
+      this.populateProfileRelays();
+      const message =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : "Failed to publish relay configuration. Please try again.";
+      this.showError(message);
+    }
+  }
+
+  async handleAddRelay() {
+    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activePubkey) {
+      this.showError("Please login to manage your relays.");
+      return;
+    }
+
+    const rawValue =
+      typeof this.profileRelayInput?.value === "string"
+        ? this.profileRelayInput.value
+        : "";
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      this.showError("Enter a relay URL to add.");
+      return;
+    }
+
+    await this.handleRelayOperation(
+      () => this.relayManager.addRelay(trimmed),
+      {
+        successMessage: "Relay saved.",
+        unchangedMessage: "Relay is already configured.",
+      },
+    );
+
+    if (this.profileRelayInput) {
+      this.profileRelayInput.value = "";
+    }
+
+    this.callbacks.onAddRelay(this.profileRelayInput, this);
+  }
+
+  async handleRestoreRelays() {
+    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activePubkey) {
+      this.showError("Please login to manage your relays.");
+      return;
+    }
+
+    const confirmed = window.confirm("Restore the recommended relay defaults?");
+    if (!confirmed) {
+      return;
+    }
+
+    await this.handleRelayOperation(
+      () => this.relayManager.restoreDefaults(),
+      {
+        successMessage: "Relay defaults restored.",
+        unchangedMessage: "Relay defaults are already in use.",
+      },
+    );
+
+    this.callbacks.onRestoreRelays(this);
+  }
+
+  async handleRelayModeToggle(url) {
+    if (!url) {
+      return;
+    }
+    await this.handleRelayOperation(
+      () => this.relayManager.cycleRelayMode(url),
+      { successMessage: "Relay mode updated." },
+    );
+  }
+
+  async handleRemoveRelay(url) {
+    if (!url) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove ${url} from your relay list?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await this.handleRelayOperation(
+      () => this.relayManager.removeRelay(url),
+      { successMessage: "Relay removed." },
+    );
+  }
+
+  populateBlockedList(blocked = null) {
+    if (!this.profileBlockedList || !this.profileBlockedEmpty) {
+      return;
+    }
+
+    const sourceEntries =
+      Array.isArray(blocked) && blocked.length
+        ? blocked
+        : this.userBlocks.getBlockedPubkeys();
+
+    const normalizedEntries = [];
+    const pushEntry = (hex, label) => {
+      if (!hex || !label) {
+        return;
+      }
+      normalizedEntries.push({ hex, label });
+    };
+
+    sourceEntries.forEach((entry) => {
+      if (typeof entry === "string") {
+        const trimmed = entry.trim();
+        if (!trimmed) {
+          return;
+        }
+
+        if (trimmed.startsWith("npub1")) {
+          const decoded = this.safeDecodeNpub(trimmed);
+          if (!decoded) {
+            return;
+          }
+          const label = this.safeEncodeNpub(decoded) || trimmed;
+          pushEntry(decoded, label);
+          return;
+        }
+
+        if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+          const hex = trimmed.toLowerCase();
+          const label = this.safeEncodeNpub(hex) || hex;
+          pushEntry(hex, label);
+        }
+        return;
+      }
+
+      if (entry && typeof entry === "object") {
+        const candidateNpub =
+          typeof entry.npub === "string" ? entry.npub.trim() : "";
+        const candidateHex =
+          typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
+
+        if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
+          const normalizedHex = candidateHex.toLowerCase();
+          const label =
+            candidateNpub && candidateNpub.startsWith("npub1")
+              ? candidateNpub
+              : this.safeEncodeNpub(normalizedHex) || normalizedHex;
+          pushEntry(normalizedHex, label);
+          return;
+        }
+
+        if (candidateNpub && candidateNpub.startsWith("npub1")) {
+          const decoded = this.safeDecodeNpub(candidateNpub);
+          if (!decoded) {
+            return;
+          }
+          const label = this.safeEncodeNpub(decoded) || candidateNpub;
+          pushEntry(decoded, label);
+        }
       }
     });
 
-    this.setActivePane(normalized);
-    this.updateFocusTrap();
-    this.callbacks.onSelectPane(normalized, { controller: this });
-    this.callbacks.onPaneShown(normalized, { controller: this });
+    const deduped = [];
+    const seenHex = new Set();
+    normalizedEntries.forEach((entry) => {
+      if (!seenHex.has(entry.hex)) {
+        seenHex.add(entry.hex);
+        deduped.push(entry);
+      }
+    });
+
+    this.profileBlockedList.innerHTML = "";
+
+    if (!deduped.length) {
+      this.profileBlockedEmpty.classList.remove("hidden");
+      this.profileBlockedList.classList.add("hidden");
+      return;
+    }
+
+    this.profileBlockedEmpty.classList.add("hidden");
+    this.profileBlockedList.classList.remove("hidden");
+
+    deduped.forEach(({ hex, label }) => {
+      const item = document.createElement("li");
+      item.className =
+        "flex items-center justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+
+      const info = document.createElement("div");
+      info.className = "min-w-0";
+
+      const title = document.createElement("p");
+      title.className = "text-sm font-medium text-gray-100 break-all";
+      title.textContent = label;
+
+      info.appendChild(title);
+
+      const actionBtn = document.createElement("button");
+      actionBtn.type = "button";
+      actionBtn.className =
+        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      actionBtn.textContent = "Remove";
+      actionBtn.dataset.blockedHex = hex;
+      actionBtn.addEventListener("click", () => {
+        void this.handleRemoveBlockedCreator(hex);
+      });
+
+      item.appendChild(info);
+      item.appendChild(actionBtn);
+
+      this.profileBlockedList.appendChild(item);
+    });
+  }
+
+  async handleAddBlockedCreator() {
+    if (!this.profileBlockedInput) {
+      return;
+    }
+
+    const rawValue = this.profileBlockedInput.value;
+    const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";
+
+    if (!trimmed) {
+      this.showError("Enter an npub to block.");
+      return;
+    }
+
+    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activePubkey) {
+      this.showError("Please login to manage your block list.");
+      return;
+    }
+
+    const actorHex = activePubkey;
+    let targetHex = "";
+
+    if (trimmed.startsWith("npub1")) {
+      targetHex = this.safeDecodeNpub(trimmed) || "";
+      if (!targetHex) {
+        this.showError("Invalid npub. Please double-check and try again.");
+        return;
+      }
+    } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+      targetHex = trimmed.toLowerCase();
+    } else {
+      this.showError("Enter a valid npub or hex pubkey.");
+      return;
+    }
+
+    if (targetHex === actorHex) {
+      this.showError("You cannot block yourself.");
+      return;
+    }
+
+    try {
+      await this.userBlocks.ensureLoaded(actorHex);
+
+      if (this.userBlocks.isBlocked(targetHex)) {
+        this.showSuccess("You already blocked this creator.");
+      } else {
+        await this.userBlocks.addBlock(targetHex, actorHex);
+        this.showSuccess(
+          "Creator blocked. You won't see their videos anymore.",
+        );
+      }
+
+      this.profileBlockedInput.value = "";
+      this.populateBlockedList();
+      await this.loadVideos();
+    } catch (error) {
+      console.error("Failed to add creator to personal block list:", error);
+      const message =
+        error?.code === "nip04-missing"
+          ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : "Failed to update your block list. Please try again.";
+      this.showError(message);
+    }
+
+    this.callbacks.onAddBlocked(this.profileBlockedInput, this);
+  }
+
+  async handleRemoveBlockedCreator(candidate) {
+    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activePubkey) {
+      this.showError("Please login to manage your block list.");
+      return;
+    }
+
+    let targetHex = "";
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        return;
+      }
+
+      if (trimmed.startsWith("npub1")) {
+        targetHex = this.safeDecodeNpub(trimmed) || "";
+      } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+        targetHex = trimmed.toLowerCase();
+      }
+    }
+
+    if (!targetHex) {
+      console.warn("No valid pubkey to remove from block list:", candidate);
+      return;
+    }
+
+    try {
+      await this.userBlocks.ensureLoaded(activePubkey);
+
+      if (!this.userBlocks.isBlocked(targetHex)) {
+        this.showSuccess("Creator already removed from your block list.");
+      } else {
+        await this.userBlocks.removeBlock(targetHex, activePubkey);
+        this.showSuccess("Creator removed from your block list.");
+      }
+
+      this.populateBlockedList();
+      await this.loadVideos();
+    } catch (error) {
+      console.error(
+        "Failed to remove creator from personal block list:",
+        error,
+      );
+      const message =
+        error?.code === "nip04-missing"
+          ? "Your Nostr extension must support NIP-04 to manage private lists."
+          : "Failed to update your block list. Please try again.";
+      this.showError(message);
+    }
+  }
+
+  async populateProfileWatchHistory() {
+    if (!this.profileHistoryRenderer) {
+      return;
+    }
+
+    let primaryActor = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!primaryActor && this.nostrClient?.sessionActor?.pubkey) {
+      const candidate = this.nostrClient.sessionActor.pubkey;
+      if (typeof candidate === "string" && candidate) {
+        primaryActor = candidate;
+      }
+    }
+
+    try {
+      await this.profileHistoryRenderer.ensureInitialLoad({ actor: primaryActor });
+      await this.profileHistoryRenderer.refresh({
+        actor: primaryActor,
+        force: true,
+      });
+
+      if (!this.boundProfileHistoryVisibility) {
+        this.boundProfileHistoryVisibility = () => {
+          if (!this.profileHistoryRenderer) {
+            return;
+          }
+          if (document.visibilityState === "visible") {
+            this.profileHistoryRenderer.resume();
+          } else {
+            this.profileHistoryRenderer.pause();
+          }
+        };
+        document.addEventListener(
+          "visibilitychange",
+          this.boundProfileHistoryVisibility,
+        );
+      }
+
+      if (document.visibilityState === "hidden") {
+        this.profileHistoryRenderer.pause();
+      } else {
+        this.profileHistoryRenderer.resume();
+      }
+    } catch (error) {
+      console.error(
+        "[profileModal] Failed to populate watch history pane:",
+        error,
+      );
+    }
+  }
+
+  applyWalletControlState() {
+    const hasActive = Boolean(this.normalizeHexPubkey(this.getActivePubkey()));
+    const busy = this.isWalletBusy();
+    const uriValue =
+      typeof this.walletUriInput?.value === "string"
+        ? this.walletUriInput.value.trim()
+        : "";
+    const hasUri = uriValue.length > 0;
+
+    const applyDisabledState = (element, disabled) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      if ("disabled" in element) {
+        element.disabled = disabled;
+      }
+      if (disabled) {
+        element.setAttribute("aria-disabled", "true");
+      } else {
+        element.removeAttribute("aria-disabled");
+      }
+    };
+
+    applyDisabledState(this.walletUriInput, busy || !hasActive);
+    applyDisabledState(this.walletDefaultZapInput, busy || !hasActive);
+    applyDisabledState(this.walletSaveButton, busy || !hasActive);
+
+    const testDisabled = busy || !hasActive || !hasUri;
+    applyDisabledState(this.walletTestButton, testDisabled);
+
+    const disconnectDisabled = busy || !hasActive || !hasUri;
+    applyDisabledState(this.walletDisconnectButton, disconnectDisabled);
+    if (this.walletDisconnectButton instanceof HTMLElement) {
+      this.walletDisconnectButton.classList.toggle("hidden", !hasUri);
+      if (!hasUri) {
+        this.walletDisconnectButton.setAttribute("aria-hidden", "true");
+      } else {
+        this.walletDisconnectButton.removeAttribute("aria-hidden");
+      }
+    }
+  }
+
+  updateWalletStatus(message, variant = "info") {
+    if (!(this.profileWalletStatusText instanceof HTMLElement)) {
+      return;
+    }
+
+    const element = this.profileWalletStatusText;
+    const variants = {
+      success: "text-green-400",
+      error: "text-red-400",
+      info: "text-gray-400",
+    };
+
+    element.classList.remove("text-gray-400", "text-green-400", "text-red-400");
+    const variantClass = variants[variant] || variants.info;
+    element.classList.add(variantClass);
+    element.textContent = message || "";
+  }
+
+  refreshWalletPaneState() {
+    const hasActive = Boolean(this.normalizeHexPubkey(this.getActivePubkey()));
+    const setInputValue = (element, value) => {
+      if (element && typeof element === "object" && "value" in element) {
+        try {
+          element.value = value;
+        } catch (error) {
+          if (element instanceof HTMLElement) {
+            element.setAttribute("data-value", value);
+          }
+        }
+      }
+    };
+    if (!hasActive) {
+      setInputValue(this.walletUriInput, "");
+      setInputValue(this.walletDefaultZapInput, "");
+      this.updateWalletStatus("Sign in to connect a wallet.", "info");
+      this.applyWalletControlState();
+      return;
+    }
+
+    const settings = this.getActiveNwcSettings();
+    setInputValue(this.walletUriInput, settings.nwcUri || "");
+    setInputValue(
+      this.walletDefaultZapInput,
+      settings.defaultZap === null || settings.defaultZap === undefined
+        ? ""
+        : String(settings.defaultZap),
+    );
+
+    if (settings.nwcUri) {
+      this.updateWalletStatus(
+        "Wallet connected via Nostr Wallet Connect.",
+        "success",
+      );
+    } else {
+      this.updateWalletStatus("No wallet connected yet.", "info");
+    }
+
+    this.applyWalletControlState();
+  }
+
+  getWalletFormValues() {
+    const uri =
+      typeof this.walletUriInput?.value === "string"
+        ? this.walletUriInput.value.trim()
+        : "";
+    const defaultZapRaw =
+      typeof this.walletDefaultZapInput?.value === "string"
+        ? this.walletDefaultZapInput.value.trim()
+        : "";
+
+    if (defaultZapRaw) {
+      const numeric = Number(defaultZapRaw);
+      if (!Number.isFinite(numeric)) {
+        return { uri, error: "Default zap amount must be a number." };
+      }
+      const rounded = Math.round(numeric);
+      if (!Number.isFinite(rounded) || rounded < 0) {
+        return {
+          uri,
+          error: "Default zap amount must be a positive whole number.",
+        };
+      }
+      const clamped = Math.min(MAX_WALLET_DEFAULT_ZAP, rounded);
+      return { uri, defaultZap: clamped };
+    }
+
+    return { uri, defaultZap: null };
+  }
+
+  validateWalletUri(uri, { requireValue = false } = {}) {
+    const value = typeof uri === "string" ? uri.trim() : "";
+    if (!value) {
+      if (requireValue) {
+        return {
+          valid: false,
+          sanitized: "",
+          message: "Enter a wallet connect URI before continuing.",
+        };
+      }
+      return { valid: true, sanitized: "" };
+    }
+
+    if (!value.toLowerCase().startsWith(NWC_URI_SCHEME)) {
+      return {
+        valid: false,
+        sanitized: value,
+        message: `Wallet URI must start with ${NWC_URI_SCHEME}.`,
+      };
+    }
+
+    return { valid: true, sanitized: value };
+  }
+
+  async handleWalletSave() {
+    if (this.isWalletBusy()) {
+      return;
+    }
+
+    const { uri, defaultZap, error } = this.getWalletFormValues();
+    if (error) {
+      this.updateWalletStatus(error, "error");
+      this.showError(error);
+      if (this.walletDefaultZapInput instanceof HTMLElement) {
+        this.walletDefaultZapInput.focus();
+      }
+      return;
+    }
+
+    const { valid, sanitized, message } = this.validateWalletUri(uri);
+    if (!valid) {
+      this.updateWalletStatus(message, "error");
+      this.showError(message);
+      if (this.walletUriInput instanceof HTMLElement) {
+        this.walletUriInput.focus();
+      }
+      return;
+    }
+
+    const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!normalizedActive) {
+      const loginMessage = "Sign in to save wallet settings.";
+      this.updateWalletStatus(loginMessage, "error");
+      this.showError(loginMessage);
+      return;
+    }
+
+    this.setWalletPaneBusy(true);
+    let finalStatus = null;
+    let finalVariant = "info";
+    try {
+      await this.updateActiveNwcSettings({
+        nwcUri: sanitized,
+        defaultZap,
+      });
+
+      if (sanitized) {
+        finalStatus = "Wallet settings saved.";
+        finalVariant = "success";
+        this.showSuccess("Wallet settings saved.");
+      } else {
+        finalStatus = "Wallet connection removed.";
+        finalVariant = "info";
+        this.showStatus("Wallet connection removed.");
+      }
+    } catch (error) {
+      const fallbackMessage = "Failed to save wallet settings.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      finalStatus = detail;
+      finalVariant = "error";
+      this.showError(detail);
+    } finally {
+      this.setWalletPaneBusy(false);
+      this.refreshWalletPaneState();
+      if (finalStatus) {
+        this.updateWalletStatus(finalStatus, finalVariant);
+      }
+    }
+  }
+
+  async handleWalletTest() {
+    if (this.isWalletBusy()) {
+      return;
+    }
+
+    const { uri, defaultZap, error } = this.getWalletFormValues();
+    if (error) {
+      this.updateWalletStatus(error, "error");
+      this.showError(error);
+      if (this.walletDefaultZapInput instanceof HTMLElement) {
+        this.walletDefaultZapInput.focus();
+      }
+      return;
+    }
+
+    const { valid, sanitized, message } = this.validateWalletUri(uri, {
+      requireValue: true,
+    });
+    if (!valid) {
+      this.updateWalletStatus(message, "error");
+      this.showError(message);
+      if (this.walletUriInput instanceof HTMLElement) {
+        this.walletUriInput.focus();
+      }
+      return;
+    }
+
+    const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!normalizedActive) {
+      const loginMessage = "Sign in to test your wallet connection.";
+      this.updateWalletStatus(loginMessage, "error");
+      this.showError(loginMessage);
+      return;
+    }
+
+    this.setWalletPaneBusy(true);
+    let finalStatus = null;
+    let finalVariant = "info";
+    try {
+      const result = await this.ensureWallet({
+        nwcUri: sanitized,
+        defaultZap,
+      });
+      finalStatus = "Wallet connection confirmed.";
+      finalVariant = "success";
+      this.showSuccess("Wallet connection confirmed.");
+
+      const currentSettings = this.getActiveNwcSettings();
+      if (currentSettings.nwcUri === sanitized) {
+        await this.updateActiveNwcSettings({ lastChecked: Date.now() });
+      }
+      return result;
+    } catch (error) {
+      const fallbackMessage = "Failed to reach wallet.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      finalStatus = detail;
+      finalVariant = "error";
+      this.showError(detail);
+      return null;
+    } finally {
+      this.setWalletPaneBusy(false);
+      this.refreshWalletPaneState();
+      if (finalStatus) {
+        this.updateWalletStatus(finalStatus, finalVariant);
+      }
+    }
+  }
+
+  async handleWalletDisconnect() {
+    if (this.isWalletBusy()) {
+      return;
+    }
+
+    const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!normalizedActive) {
+      const loginMessage = "Sign in to disconnect your wallet.";
+      this.updateWalletStatus(loginMessage, "error");
+      this.showError(loginMessage);
+      return;
+    }
+
+    this.setWalletPaneBusy(true);
+    let finalStatus = null;
+    let finalVariant = "info";
+    try {
+      await this.updateActiveNwcSettings(this.createDefaultNwcSettings());
+      finalStatus = "Wallet disconnected.";
+      this.showStatus("Wallet disconnected.");
+    } catch (error) {
+      const fallbackMessage = "Failed to disconnect wallet.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      finalStatus = detail;
+      finalVariant = "error";
+      this.showError(detail);
+    } finally {
+      this.setWalletPaneBusy(false);
+      this.refreshWalletPaneState();
+      if (finalStatus) {
+        this.updateWalletStatus(finalStatus, finalVariant);
+      }
+    }
+  }
+
+  storeAdminEmptyMessages() {
+    const capture = (element) => {
+      if (element instanceof HTMLElement && !element.dataset.defaultMessage) {
+        element.dataset.defaultMessage = element.textContent || "";
+      }
+    };
+
+    capture(this.adminModeratorsEmpty);
+    capture(this.adminWhitelistEmpty);
+    capture(this.adminBlacklistEmpty);
+  }
+
+  setAdminLoading(isLoading) {
+    this.storeAdminEmptyMessages();
+    if (this.panes.admin instanceof HTMLElement) {
+      this.panes.admin.setAttribute("aria-busy", isLoading ? "true" : "false");
+    }
+
+    const toggleMessage = (element, message) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      if (isLoading) {
+        element.textContent = message;
+        element.classList.remove("hidden");
+      } else {
+        element.textContent = element.dataset.defaultMessage || element.textContent;
+      }
+    };
+
+    toggleMessage(this.adminModeratorsEmpty, "Loading moderators…");
+    toggleMessage(this.adminWhitelistEmpty, "Loading whitelist…");
+    toggleMessage(this.adminBlacklistEmpty, "Loading blacklist…");
+  }
+
+  clearAdminLists() {
+    this.storeAdminEmptyMessages();
+    if (this.adminModeratorList) {
+      this.adminModeratorList.innerHTML = "";
+    }
+    if (this.adminWhitelistList) {
+      this.adminWhitelistList.innerHTML = "";
+    }
+    if (this.adminBlacklistList) {
+      this.adminBlacklistList.innerHTML = "";
+    }
+    if (this.adminModeratorsEmpty instanceof HTMLElement) {
+      this.adminModeratorsEmpty.textContent =
+        this.adminModeratorsEmpty.dataset.defaultMessage ||
+        this.adminModeratorsEmpty.textContent;
+      this.adminModeratorsEmpty.classList.remove("hidden");
+    }
+    if (this.adminWhitelistEmpty instanceof HTMLElement) {
+      this.adminWhitelistEmpty.textContent =
+        this.adminWhitelistEmpty.dataset.defaultMessage ||
+        this.adminWhitelistEmpty.textContent;
+      this.adminWhitelistEmpty.classList.remove("hidden");
+    }
+    if (this.adminBlacklistEmpty instanceof HTMLElement) {
+      this.adminBlacklistEmpty.textContent =
+        this.adminBlacklistEmpty.dataset.defaultMessage ||
+        this.adminBlacklistEmpty.textContent;
+      this.adminBlacklistEmpty.classList.remove("hidden");
+    }
+  }
+
+  renderAdminList(listEl, emptyEl, entries, options = {}) {
+    if (!(listEl instanceof HTMLElement) || !(emptyEl instanceof HTMLElement)) {
+      return;
+    }
+
+    const { onRemove, removeLabel = "Remove", confirmMessage, removable = true } =
+      options;
+
+    listEl.innerHTML = "";
+    const values = Array.isArray(entries) ? [...entries] : [];
+    values.sort((a, b) => a.localeCompare(b));
+
+    if (!values.length) {
+      emptyEl.classList.remove("hidden");
+      listEl.classList.add("hidden");
+      return;
+    }
+
+    emptyEl.classList.add("hidden");
+    listEl.classList.remove("hidden");
+
+    values.forEach((npub) => {
+      const item = document.createElement("li");
+      item.className =
+        "flex flex-col gap-2 rounded-lg bg-gray-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between";
+
+      const label = document.createElement("p");
+      label.className = "text-sm font-medium text-gray-100 break-all";
+      label.textContent = npub;
+      item.appendChild(label);
+
+      if (removable && typeof onRemove === "function") {
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className =
+          "self-start rounded-md bg-gray-700 px-3 py-1 text-xs font-medium text-gray-100 transition hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+        removeBtn.textContent = removeLabel;
+        removeBtn.addEventListener("click", () => {
+          if (confirmMessage) {
+            const message = confirmMessage.replace("{npub}", npub);
+            if (!window.confirm(message)) {
+              return;
+            }
+          }
+          removeBtn.disabled = true;
+          removeBtn.setAttribute("aria-busy", "true");
+          onRemove(npub, removeBtn);
+        });
+        item.appendChild(removeBtn);
+      }
+
+      listEl.appendChild(item);
+    });
+  }
+
+  populateAdminLists() {
+    const actorNpub = this.getCurrentUserNpub();
+    if (!actorNpub || !this.accessControl.canEditAdminLists(actorNpub)) {
+      this.clearAdminLists();
+      return;
+    }
+
+    const isSuperAdmin = this.accessControl.isSuperAdmin(actorNpub);
+    const editors = this.accessControl
+      .getEditors()
+      .filter((npub) => npub && npub !== ADMIN_SUPER_NPUB);
+    const whitelist = this.accessControl.getWhitelist();
+    const blacklist = this.accessControl.getBlacklist();
+
+    this.renderAdminList(
+      this.adminModeratorList,
+      this.adminModeratorsEmpty,
+      editors,
+      {
+        onRemove: (npub, button) => this.handleRemoveModerator(npub, button),
+        removeLabel: "Remove",
+        confirmMessage:
+          "Remove moderator {npub}? They will immediately lose access to the admin panel.",
+        removable: isSuperAdmin,
+      },
+    );
+
+    this.renderAdminList(
+      this.adminWhitelistList,
+      this.adminWhitelistEmpty,
+      whitelist,
+      {
+        onRemove: (npub, button) =>
+          this.handleAdminListMutation("whitelist", "remove", npub, button),
+        removeLabel: "Remove",
+        confirmMessage: "Remove {npub} from the whitelist?",
+        removable: true,
+      },
+    );
+
+    this.renderAdminList(
+      this.adminBlacklistList,
+      this.adminBlacklistEmpty,
+      blacklist,
+      {
+        onRemove: (npub, button) =>
+          this.handleAdminListMutation("blacklist", "remove", npub, button),
+        removeLabel: "Unblock",
+        confirmMessage: "Remove {npub} from the blacklist?",
+        removable: true,
+      },
+    );
+  }
+
+  async refreshAdminPaneState() {
+    const adminNav = this.navButtons.admin;
+    const adminPane = this.panes.admin;
+
+    let loadError = null;
+    this.setAdminLoading(true);
+    this.showStatus("Fetching moderation filters…");
+    try {
+      await this.accessControl.ensureReady();
+    } catch (error) {
+      loadError = error;
+    }
+
+    const actorNpub = this.getCurrentUserNpub();
+    const canEdit = !!actorNpub && this.accessControl.canEditAdminLists(actorNpub);
+    const isSuperAdmin = !!actorNpub && this.accessControl.isSuperAdmin(actorNpub);
+
+    if (adminNav instanceof HTMLElement) {
+      adminNav.classList.toggle("hidden", !canEdit);
+      if (!canEdit) {
+        adminNav.setAttribute("aria-selected", "false");
+      }
+    }
+
+    if (adminPane instanceof HTMLElement) {
+      adminPane.classList.toggle("hidden", !canEdit);
+      adminPane.setAttribute("aria-hidden", (!canEdit).toString());
+    }
+
+    if (loadError) {
+      if (loadError?.code === "nostr-unavailable") {
+        console.info("Moderation lists are still syncing with relays.");
+        return;
+      }
+
+      console.error("Failed to load admin lists:", loadError);
+      this.showStatus(null);
+      this.showError("Unable to load moderation lists. Please try again.");
+      this.clearAdminLists();
+      this.setAdminLoading(false);
+      return;
+    }
+
+    if (!canEdit) {
+      this.clearAdminLists();
+      this.showStatus(null);
+      this.setAdminLoading(false);
+      if (
+        adminNav instanceof HTMLElement &&
+        adminNav.classList.contains("bg-gray-800")
+      ) {
+        this.selectPane("account");
+      }
+      return;
+    }
+
+    if (this.adminModeratorsSection instanceof HTMLElement) {
+      this.adminModeratorsSection.classList.toggle("hidden", !isSuperAdmin);
+      this.adminModeratorsSection.setAttribute(
+        "aria-hidden",
+        (!isSuperAdmin).toString(),
+      );
+    }
+    this.populateAdminLists();
+    this.showStatus(null);
+    this.setAdminLoading(false);
+  }
+
+  normalizeNpubValue(value) {
+    if (typeof value !== "string") {
+      return null;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (trimmed.startsWith("npub1")) {
+      return trimmed;
+    }
+    const normalizedHex = this.normalizeHexPubkey(trimmed);
+    if (!normalizedHex) {
+      return null;
+    }
+    return this.safeEncodeNpub(normalizedHex);
+  }
+
+  ensureAdminActor(requireSuperAdmin = false) {
+    const actorNpub = this.getCurrentUserNpub();
+    if (!actorNpub) {
+      this.showError("Please login with a Nostr account to manage admin settings.");
+      return null;
+    }
+    if (!this.accessControl.canEditAdminLists(actorNpub)) {
+      this.showError("You do not have permission to manage BitVid moderation lists.");
+      return null;
+    }
+    if (requireSuperAdmin && !this.accessControl.isSuperAdmin(actorNpub)) {
+      this.showError("Only the Super Admin can manage moderators or whitelist mode.");
+      return null;
+    }
+    return actorNpub;
+  }
+
+  async handleAddModerator() {
+    let preloadError = null;
+    try {
+      await this.accessControl.ensureReady();
+    } catch (error) {
+      preloadError = error;
+      console.error("Failed to load admin lists before adding moderator:", error);
+    }
+
+    if (preloadError) {
+      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
+      return;
+    }
+
+    const actorNpub = this.ensureAdminActor(true);
+    if (!actorNpub || !this.adminModeratorInput) {
+      return;
+    }
+
+    const value = this.adminModeratorInput.value.trim();
+    if (!value) {
+      this.showError("Enter an npub to add as a moderator.");
+      return;
+    }
+
+    if (this.adminAddModeratorButton) {
+      this.adminAddModeratorButton.disabled = true;
+      this.adminAddModeratorButton.setAttribute("aria-busy", "true");
+    }
+
+    try {
+      const result = await this.accessControl.addModerator(actorNpub, value);
+      if (!result.ok) {
+        this.showError(this.describeAdminError(result.error));
+        return;
+      }
+
+      this.adminModeratorInput.value = "";
+      this.showSuccess("Moderator added successfully.");
+      await this.onAccessControlUpdated();
+    } finally {
+      if (this.adminAddModeratorButton) {
+        this.adminAddModeratorButton.disabled = false;
+        this.adminAddModeratorButton.removeAttribute("aria-busy");
+      }
+    }
+  }
+
+  async handleRemoveModerator(npub, button) {
+    let preloadError = null;
+    try {
+      await this.accessControl.ensureReady();
+    } catch (error) {
+      preloadError = error;
+      console.error("Failed to load admin lists before removing moderator:", error);
+    }
+
+    if (preloadError) {
+      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const actorNpub = this.ensureAdminActor(true);
+    if (!actorNpub) {
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const result = await this.accessControl.removeModerator(actorNpub, npub);
+    if (!result.ok) {
+      this.showError(this.describeAdminError(result.error));
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    this.showSuccess("Moderator removed.");
+    await this.onAccessControlUpdated();
+  }
+
+  async handleAdminListMutation(listType, action, explicitNpub = null, sourceButton = null) {
+    let preloadError = null;
+    try {
+      await this.accessControl.ensureReady();
+    } catch (error) {
+      preloadError = error;
+      console.error("Failed to load admin lists before updating entries:", error);
+    }
+
+    if (preloadError) {
+      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
+      if (sourceButton instanceof HTMLElement) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const actorNpub = this.ensureAdminActor(false);
+    if (!actorNpub) {
+      if (sourceButton instanceof HTMLElement) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const isWhitelist = listType === "whitelist";
+    const input = isWhitelist ? this.adminWhitelistInput : this.adminBlacklistInput;
+    const addButton = isWhitelist ? this.adminAddWhitelistButton : this.adminAddBlacklistButton;
+    const isAdd = action === "add";
+
+    let target = typeof explicitNpub === "string" ? explicitNpub.trim() : "";
+    if (!target && input instanceof HTMLInputElement) {
+      target = input.value.trim();
+    }
+
+    if (isAdd && !target) {
+      this.showError("Enter an npub before adding it to the list.");
+      if (sourceButton instanceof HTMLElement) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    const buttonToToggle = sourceButton || (isAdd ? addButton : null);
+    if (buttonToToggle instanceof HTMLElement) {
+      buttonToToggle.disabled = true;
+      buttonToToggle.setAttribute("aria-busy", "true");
+    }
+
+    let result;
+    if (isWhitelist) {
+      result = isAdd
+        ? await this.accessControl.addToWhitelist(actorNpub, target)
+        : await this.accessControl.removeFromWhitelist(actorNpub, target);
+    } else {
+      result = isAdd
+        ? await this.accessControl.addToBlacklist(actorNpub, target)
+        : await this.accessControl.removeFromBlacklist(actorNpub, target);
+    }
+
+    if (!result.ok) {
+      this.showError(this.describeAdminError(result.error));
+      if (buttonToToggle instanceof HTMLElement) {
+        buttonToToggle.disabled = false;
+        buttonToToggle.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    if (isAdd && input instanceof HTMLInputElement) {
+      input.value = "";
+    }
+
+    const successMessage = isWhitelist
+      ? isAdd
+        ? "Added to the whitelist."
+        : "Removed from the whitelist."
+      : isAdd
+      ? "Added to the blacklist."
+      : "Removed from the blacklist.";
+    this.showSuccess(successMessage);
+    await this.onAccessControlUpdated();
+
+    if (buttonToToggle instanceof HTMLElement) {
+      buttonToToggle.disabled = false;
+      buttonToToggle.removeAttribute("aria-busy");
+    }
+
+    if (isAdd) {
+      try {
+        const notifyResult = await this.sendAdminListNotification({
+          listType,
+          actorNpub,
+          targetNpub: target,
+        });
+        if (!notifyResult?.ok) {
+          const errorMessage = this.describeNotificationError(notifyResult?.error);
+          if (errorMessage) {
+            this.showError(errorMessage);
+          }
+          if (isDevMode && notifyResult?.error) {
+            console.warn(
+              "[admin] Failed to send list notification DM:",
+              notifyResult,
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to send list notification DM:", error);
+        if (isDevMode) {
+          console.warn(
+            "List update succeeded, but DM notification threw an unexpected error.",
+            error,
+          );
+        }
+      }
+    }
+  }
+
+  describeAdminError(code) {
+    if (typeof this.describeAdminErrorService === "function") {
+      const result = this.describeAdminErrorService(code);
+      if (typeof result === "string" && result) {
+        return result;
+      }
+    }
+
+    switch (code) {
+      case "invalid npub":
+        return "Please provide a valid npub address.";
+      case "immutable":
+        return "That account cannot be modified.";
+      case "self":
+        return "You cannot blacklist yourself.";
+      case "forbidden":
+        return "You do not have permission to perform that action.";
+      case "nostr-unavailable":
+        return "Unable to reach the configured Nostr relays. Please retry once your connection is restored.";
+      case "nostr-extension-missing":
+        return "Connect a Nostr extension before editing moderation lists.";
+      case "signature-failed":
+        return "We couldn’t sign the update with your Nostr key. Please reconnect your extension and try again.";
+      case "publish-failed":
+        return "Failed to publish the update to Nostr relays. Please try again.";
+      case "storage-error":
+        return "Unable to update moderation settings. Please try again.";
+      default:
+        return "Unable to update moderation settings. Please try again.";
+    }
+  }
+
+  describeNotificationError(code) {
+    if (typeof this.describeNotificationErrorService === "function") {
+      const result = this.describeNotificationErrorService(code);
+      if (typeof result === "string") {
+        return result;
+      }
+    }
+
+    switch (code) {
+      case "nostr-extension-missing":
+        return "List updated, but the DM notification failed because no Nostr extension is connected.";
+      case "nostr-uninitialized":
+        return "List updated, but the DM notification system is still connecting to Nostr relays. Please try again in a moment.";
+      case "nip04-unavailable":
+        return "List updated, but your Nostr extension does not support NIP-04 encryption, so the DM notification was not sent.";
+      case "sign-event-unavailable":
+        return "List updated, but your Nostr extension could not sign the DM notification.";
+      case "missing-actor-pubkey":
+        return "List updated, but we could not determine your public key to send the DM notification.";
+      case "publish-failed":
+        return "List updated, but the DM notification could not be delivered to any relay.";
+      case "encryption-failed":
+      case "signature-failed":
+        return "List updated, but the DM notification failed while preparing the encrypted message.";
+      case "invalid-target":
+      case "empty-message":
+        return "";
+      default:
+        return "List updated, but the DM notification could not be sent.";
+    }
+  }
+
+  async sendAdminListNotification({ listType, actorNpub, targetNpub }) {
+    if (typeof this.sendAdminListNotificationService === "function") {
+      return this.sendAdminListNotificationService({ listType, actorNpub, targetNpub });
+    }
+
+    const normalizedTarget = this.normalizeNpubValue(targetNpub);
+    if (!normalizedTarget) {
+      return { ok: false, error: "invalid-target" };
+    }
+
+    const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+    if (!activeHex) {
+      return { ok: false, error: "missing-actor-pubkey" };
+    }
+
+    const fallbackActor = this.safeEncodeNpub(activeHex) || "a BitVid moderator";
+    const actorDisplay = this.normalizeNpubValue(actorNpub) || fallbackActor;
+    const isWhitelist = listType === "whitelist";
+
+    const introLine = isWhitelist
+      ? `Great news—your npub ${normalizedTarget} has been added to the BitVid whitelist by ${actorDisplay}.`
+      : `We wanted to let you know that your npub ${normalizedTarget} has been placed on the BitVid blacklist by ${actorDisplay}.`;
+
+    const statusLine = isWhitelist
+      ? `You now have full creator access across BitVid (${BITVID_WEBSITE_URL}).`
+      : `This hides your channel and prevents uploads across BitVid (${BITVID_WEBSITE_URL}) for now.`;
+
+    const followUpLine = isWhitelist
+      ? "Please take a moment to review our community guidelines (https://bitvid.network/#view=community-guidelines), and reply to this DM if you have any questions."
+      : "Please review our community guidelines (https://bitvid.network/#view=community-guidelines). If you believe this was a mistake, you can submit an appeal at https://bitvid.network/?modal=appeals to request reinstatement, or reply to this DM with any questions.";
+
+    const messageBody = [
+      "Hi there,",
+      "",
+      introLine,
+      "",
+      statusLine,
+      "",
+      followUpLine,
+      "",
+      "— The BitVid Team",
+    ].join("\n");
+
+    const message = `![BitVid status update](${ADMIN_DM_IMAGE_URL})\n\n${messageBody}`;
+
+    return this.nostrClient.sendDirectMessage(
+      normalizedTarget,
+      message,
+      activeHex,
+    );
   }
 
   updateFocusTrap() {
@@ -868,7 +2722,15 @@ export class ProfileModalController {
   }
 
   setWalletPaneBusy(isBusy) {
-    return this.state.setWalletBusy(Boolean(isBusy));
+    const result = this.state.setWalletBusy(Boolean(isBusy));
+    if (this.panes.wallet instanceof HTMLElement) {
+      this.panes.wallet.setAttribute(
+        "aria-busy",
+        this.isWalletBusy() ? "true" : "false",
+      );
+    }
+    this.applyWalletControlState();
+    return result;
   }
 }
 
