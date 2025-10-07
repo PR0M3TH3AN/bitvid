@@ -386,11 +386,15 @@ export class ProfileModalController {
     };
 
     this.profileModal = null;
+    this.profileAvatar = null;
+    this.profileName = null;
+    this.profileNpub = null;
+    this.switcherList = null;
     this.profileModalAvatar = null;
     this.profileModalName = null;
     this.profileModalNpub = null;
     this.profileSwitcherList = null;
-    this.profileAvatar = null;
+    this.globalProfileAvatar = null;
     this.closeButton = null;
     this.logoutButton = null;
     this.channelLink = null;
@@ -411,10 +415,18 @@ export class ProfileModalController {
       history: null,
       admin: null,
     };
+    this.relayList = null;
+    this.relayInput = null;
+    this.addRelayButton = null;
+    this.restoreRelaysButton = null;
     this.profileRelayList = null;
     this.profileRelayInput = null;
     this.profileAddRelayBtn = null;
     this.profileRestoreRelaysBtn = null;
+    this.blockList = null;
+    this.blockListEmpty = null;
+    this.blockInput = null;
+    this.addBlockedButton = null;
     this.profileBlockedList = null;
     this.profileBlockedEmpty = null;
     this.profileBlockedInput = null;
@@ -424,17 +436,32 @@ export class ProfileModalController {
     this.walletSaveButton = null;
     this.walletTestButton = null;
     this.walletDisconnectButton = null;
+    this.walletStatusText = null;
     this.profileWalletStatusText = null;
+    this.moderatorSection = null;
+    this.moderatorEmpty = null;
+    this.adminModeratorList = null;
+    this.addModeratorButton = null;
+    this.moderatorInput = null;
     this.adminModeratorsSection = null;
     this.adminModeratorsEmpty = null;
-    this.adminModeratorList = null;
     this.adminAddModeratorButton = null;
     this.adminModeratorInput = null;
+    this.whitelistSection = null;
+    this.whitelistEmpty = null;
+    this.whitelistList = null;
+    this.addWhitelistButton = null;
+    this.whitelistInput = null;
     this.adminWhitelistSection = null;
     this.adminWhitelistEmpty = null;
     this.adminWhitelistList = null;
     this.adminAddWhitelistButton = null;
     this.adminWhitelistInput = null;
+    this.blacklistSection = null;
+    this.blacklistEmpty = null;
+    this.blacklistList = null;
+    this.addBlacklistButton = null;
+    this.blacklistInput = null;
     this.adminBlacklistSection = null;
     this.adminBlacklistEmpty = null;
     this.adminBlacklistList = null;
@@ -490,19 +517,20 @@ export class ProfileModalController {
     this.channelLink = document.getElementById("profileChannelLink") || null;
     this.addAccountButton =
       document.getElementById("profileAddAccountBtn") || null;
-    this.profileModalAvatar =
-      document.getElementById("profileModalAvatar") || null;
-    this.profileModalName =
-      document.getElementById("profileModalName") || null;
-    this.profileModalNpub =
-      document.getElementById("profileModalNpub") || null;
-    this.profileSwitcherList =
-      document.getElementById("profileSwitcherList") || null;
+    this.profileAvatar = document.getElementById("profileModalAvatar") || null;
+    this.profileName = document.getElementById("profileModalName") || null;
+    this.profileNpub = document.getElementById("profileModalNpub") || null;
+    this.switcherList = document.getElementById("profileSwitcherList") || null;
+
+    this.profileModalAvatar = this.profileAvatar;
+    this.profileModalName = this.profileName;
+    this.profileModalNpub = this.profileNpub;
+    this.profileSwitcherList = this.switcherList;
 
     const topLevelProfileAvatar =
       document.getElementById("profileAvatar") || null;
     if (topLevelProfileAvatar) {
-      this.profileAvatar = topLevelProfileAvatar;
+      this.globalProfileAvatar = topLevelProfileAvatar;
     }
 
     this.navButtons.account =
@@ -522,21 +550,16 @@ export class ProfileModalController {
     this.panes.history = document.getElementById("profilePaneHistory") || null;
     this.panes.admin = document.getElementById("profilePaneAdmin") || null;
 
-    this.profileRelayList = document.getElementById("relayList") || null;
-    this.profileRelayInput = document.getElementById("relayInput") || null;
-    this.profileAddRelayBtn =
-      document.getElementById("addRelayBtn") || null;
-    this.profileRestoreRelaysBtn =
+    this.relayList = document.getElementById("relayList") || null;
+    this.relayInput = document.getElementById("relayInput") || null;
+    this.addRelayButton = document.getElementById("addRelayBtn") || null;
+    this.restoreRelaysButton =
       document.getElementById("restoreRelaysBtn") || null;
 
-    this.profileBlockedList =
-      document.getElementById("blockedList") || null;
-    this.profileBlockedEmpty =
-      document.getElementById("blockedEmpty") || null;
-    this.profileBlockedInput =
-      document.getElementById("blockedInput") || null;
-    this.profileAddBlockedBtn =
-      document.getElementById("addBlockedBtn") || null;
+    this.blockList = document.getElementById("blockedList") || null;
+    this.blockListEmpty = document.getElementById("blockedEmpty") || null;
+    this.blockInput = document.getElementById("blockedInput") || null;
+    this.addBlockedButton = document.getElementById("addBlockedBtn") || null;
 
     this.walletUriInput = document.getElementById("profileWalletUri") || null;
     this.walletDefaultZapInput =
@@ -547,39 +570,68 @@ export class ProfileModalController {
       document.getElementById("profileWalletTest") || null;
     this.walletDisconnectButton =
       document.getElementById("profileWalletDisconnect") || null;
-    this.profileWalletStatusText =
+    this.walletStatusText =
       document.getElementById("profileWalletStatus") || null;
 
-    this.adminModeratorsSection =
+    this.profileRelayList = this.relayList;
+    this.profileRelayInput = this.relayInput;
+    this.profileAddRelayBtn = this.addRelayButton;
+    this.profileRestoreRelaysBtn = this.restoreRelaysButton;
+    this.profileBlockedList = this.blockList;
+    this.profileBlockedEmpty = this.blockListEmpty;
+    this.profileBlockedInput = this.blockInput;
+    this.profileAddBlockedBtn = this.addBlockedButton;
+    this.profileWalletStatusText = this.walletStatusText;
+
+    this.moderatorSection =
       document.getElementById("adminModeratorsSection") || null;
-    this.adminModeratorsEmpty =
+    this.moderatorEmpty =
       document.getElementById("adminModeratorsEmpty") || null;
     this.adminModeratorList =
       document.getElementById("adminModeratorList") || null;
-    this.adminAddModeratorButton =
+    this.addModeratorButton =
       document.getElementById("adminAddModeratorBtn") || null;
-    this.adminModeratorInput =
+    this.moderatorInput =
       document.getElementById("adminModeratorInput") || null;
-    this.adminWhitelistSection =
+
+    // Backwards-compatible aliases retained for application code that still
+    // mirrors DOM references from the controller. These should be removed once
+    // the application stops reaching through the controller.
+    this.adminModeratorsSection = this.moderatorSection;
+    this.adminModeratorsEmpty = this.moderatorEmpty;
+    this.adminAddModeratorButton = this.addModeratorButton;
+    this.adminModeratorInput = this.moderatorInput;
+    this.whitelistSection =
       document.getElementById("adminWhitelistSection") || null;
-    this.adminWhitelistEmpty =
+    this.whitelistEmpty =
       document.getElementById("adminWhitelistEmpty") || null;
-    this.adminWhitelistList =
+    this.whitelistList =
       document.getElementById("adminWhitelistList") || null;
-    this.adminAddWhitelistButton =
+    this.addWhitelistButton =
       document.getElementById("adminAddWhitelistBtn") || null;
-    this.adminWhitelistInput =
+    this.whitelistInput =
       document.getElementById("adminWhitelistInput") || null;
-    this.adminBlacklistSection =
+    this.blacklistSection =
       document.getElementById("adminBlacklistSection") || null;
-    this.adminBlacklistEmpty =
+    this.blacklistEmpty =
       document.getElementById("adminBlacklistEmpty") || null;
-    this.adminBlacklistList =
+    this.blacklistList =
       document.getElementById("adminBlacklistList") || null;
-    this.adminAddBlacklistButton =
+    this.addBlacklistButton =
       document.getElementById("adminAddBlacklistBtn") || null;
-    this.adminBlacklistInput =
+    this.blacklistInput =
       document.getElementById("adminBlacklistInput") || null;
+
+    this.adminWhitelistSection = this.whitelistSection;
+    this.adminWhitelistEmpty = this.whitelistEmpty;
+    this.adminWhitelistList = this.whitelistList;
+    this.adminAddWhitelistButton = this.addWhitelistButton;
+    this.adminWhitelistInput = this.whitelistInput;
+    this.adminBlacklistSection = this.blacklistSection;
+    this.adminBlacklistEmpty = this.blacklistEmpty;
+    this.adminBlacklistList = this.blacklistList;
+    this.adminAddBlacklistButton = this.addBlacklistButton;
+    this.adminBlacklistInput = this.blacklistInput;
 
     if (!this.profileHistoryRenderer && this.createWatchHistoryRenderer) {
       this.profileHistoryRenderer = this.createWatchHistoryRenderer({
@@ -651,26 +703,26 @@ export class ProfileModalController {
       }
     });
 
-    if (this.profileAddRelayBtn instanceof HTMLElement) {
-      this.profileAddRelayBtn.addEventListener("click", () => {
+    if (this.addRelayButton instanceof HTMLElement) {
+      this.addRelayButton.addEventListener("click", () => {
         void this.handleAddRelay();
       });
     }
 
-    if (this.profileRestoreRelaysBtn instanceof HTMLElement) {
-      this.profileRestoreRelaysBtn.addEventListener("click", () => {
+    if (this.restoreRelaysButton instanceof HTMLElement) {
+      this.restoreRelaysButton.addEventListener("click", () => {
         void this.handleRestoreRelays();
       });
     }
 
-    if (this.profileAddBlockedBtn instanceof HTMLElement) {
-      this.profileAddBlockedBtn.addEventListener("click", () => {
+    if (this.addBlockedButton instanceof HTMLElement) {
+      this.addBlockedButton.addEventListener("click", () => {
         void this.handleAddBlockedCreator();
       });
     }
 
-    if (this.profileBlockedInput instanceof HTMLElement) {
-      this.profileBlockedInput.addEventListener("keydown", (event) => {
+    if (this.blockInput instanceof HTMLElement) {
+      this.blockInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
           void this.handleAddBlockedCreator();
@@ -708,14 +760,14 @@ export class ProfileModalController {
       });
     }
 
-    if (this.adminAddModeratorButton instanceof HTMLElement) {
-      this.adminAddModeratorButton.addEventListener("click", () => {
+    if (this.addModeratorButton instanceof HTMLElement) {
+      this.addModeratorButton.addEventListener("click", () => {
         void this.handleAddModerator();
       });
     }
 
-    if (this.adminModeratorInput instanceof HTMLElement) {
-      this.adminModeratorInput.addEventListener("keydown", (event) => {
+    if (this.moderatorInput instanceof HTMLElement) {
+      this.moderatorInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
           void this.handleAddModerator();
@@ -723,14 +775,14 @@ export class ProfileModalController {
       });
     }
 
-    if (this.adminAddWhitelistButton instanceof HTMLElement) {
-      this.adminAddWhitelistButton.addEventListener("click", () => {
+    if (this.addWhitelistButton instanceof HTMLElement) {
+      this.addWhitelistButton.addEventListener("click", () => {
         void this.handleAdminListMutation("whitelist", "add");
       });
     }
 
-    if (this.adminWhitelistInput instanceof HTMLElement) {
-      this.adminWhitelistInput.addEventListener("keydown", (event) => {
+    if (this.whitelistInput instanceof HTMLElement) {
+      this.whitelistInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
           void this.handleAdminListMutation("whitelist", "add");
@@ -738,14 +790,14 @@ export class ProfileModalController {
       });
     }
 
-    if (this.adminAddBlacklistButton instanceof HTMLElement) {
-      this.adminAddBlacklistButton.addEventListener("click", () => {
+    if (this.addBlacklistButton instanceof HTMLElement) {
+      this.addBlacklistButton.addEventListener("click", () => {
         void this.handleAdminListMutation("blacklist", "add");
       });
     }
 
-    if (this.adminBlacklistInput instanceof HTMLElement) {
-      this.adminBlacklistInput.addEventListener("keydown", (event) => {
+    if (this.blacklistInput instanceof HTMLElement) {
+      this.blacklistInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
           void this.handleAdminListMutation("blacklist", "add");
@@ -830,28 +882,28 @@ export class ProfileModalController {
       ? activeMeta?.picture || FALLBACK_PROFILE_AVATAR
       : FALLBACK_PROFILE_AVATAR;
 
-    if (this.profileModalName) {
-      this.profileModalName.textContent = activeDisplayName;
+    if (this.profileName) {
+      this.profileName.textContent = activeDisplayName;
     }
 
-    if (this.profileModalAvatar instanceof HTMLImageElement) {
-      if (this.profileModalAvatar.src !== activeAvatarSrc) {
-        this.profileModalAvatar.src = activeAvatarSrc;
+    if (this.profileAvatar instanceof HTMLImageElement) {
+      if (this.profileAvatar.src !== activeAvatarSrc) {
+        this.profileAvatar.src = activeAvatarSrc;
       }
-      this.profileModalAvatar.alt = hasActiveProfile
+      this.profileAvatar.alt = hasActiveProfile
         ? `${activeDisplayName} avatar`
         : "Default profile avatar";
-    } else if (this.profileModalAvatar instanceof HTMLElement) {
-      this.profileModalAvatar.setAttribute("data-avatar-src", activeAvatarSrc);
+    } else if (this.profileAvatar instanceof HTMLElement) {
+      this.profileAvatar.setAttribute("data-avatar-src", activeAvatarSrc);
     }
 
-    if (this.profileModalNpub) {
+    if (this.profileNpub) {
       if (hasActiveProfile && activeMeta?.npub) {
-        this.profileModalNpub.textContent = truncate(activeMeta.npub, 48);
+        this.profileNpub.textContent = truncate(activeMeta.npub, 48);
       } else if (hasActiveProfile) {
-        this.profileModalNpub.textContent = "npub unavailable";
+        this.profileNpub.textContent = "npub unavailable";
       } else {
-        this.profileModalNpub.textContent = "Link a profile to get started";
+        this.profileNpub.textContent = "Link a profile to get started";
       }
     }
 
@@ -874,16 +926,16 @@ export class ProfileModalController {
       }
     }
 
-    if (this.profileAvatar instanceof HTMLImageElement) {
-      if (this.profileAvatar.src !== activeAvatarSrc) {
-        this.profileAvatar.src = activeAvatarSrc;
+    if (this.globalProfileAvatar instanceof HTMLImageElement) {
+      if (this.globalProfileAvatar.src !== activeAvatarSrc) {
+        this.globalProfileAvatar.src = activeAvatarSrc;
       }
-      this.profileAvatar.alt = hasActiveProfile
+      this.globalProfileAvatar.alt = hasActiveProfile
         ? `${activeDisplayName} avatar`
-        : this.profileAvatar.alt || "Profile avatar";
+        : this.globalProfileAvatar.alt || "Profile avatar";
     }
 
-    const listEl = this.profileSwitcherList;
+    const listEl = this.switcherList;
     if (listEl instanceof HTMLElement) {
       listEl.innerHTML = "";
       let normalizedSelection = this.normalizeHexPubkey(
@@ -1092,7 +1144,7 @@ export class ProfileModalController {
   }
 
   populateProfileRelays(relayEntries = null) {
-    if (!this.profileRelayList) {
+    if (!this.relayList) {
       return;
     }
 
@@ -1125,14 +1177,14 @@ export class ProfileModalController {
       })
       .filter((entry) => entry && typeof entry.url === "string");
 
-    this.profileRelayList.innerHTML = "";
+    this.relayList.innerHTML = "";
 
     if (!relays.length) {
       const emptyState = document.createElement("li");
       emptyState.className =
         "rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400";
       emptyState.textContent = "No relays configured.";
-      this.profileRelayList.appendChild(emptyState);
+      this.relayList.appendChild(emptyState);
       return;
     }
 
@@ -1189,7 +1241,7 @@ export class ProfileModalController {
       item.appendChild(info);
       item.appendChild(actions);
 
-      this.profileRelayList.appendChild(item);
+      this.relayList.appendChild(item);
     });
   }
 
@@ -1282,13 +1334,13 @@ export class ProfileModalController {
 
   async handleAddRelay() {
     const rawValue =
-      typeof this.profileRelayInput?.value === "string"
-        ? this.profileRelayInput.value
+      typeof this.relayInput?.value === "string"
+        ? this.relayInput.value
         : "";
     const trimmed = rawValue.trim();
 
     const context = {
-      input: this.profileRelayInput,
+      input: this.relayInput,
       rawValue,
       url: trimmed,
       result: null,
@@ -1311,8 +1363,8 @@ export class ProfileModalController {
       },
     );
 
-    if (this.profileRelayInput) {
-      this.profileRelayInput.value = "";
+    if (this.relayInput) {
+      this.relayInput.value = "";
     }
 
     context.result = operationResult;
@@ -1393,7 +1445,7 @@ export class ProfileModalController {
   }
 
   populateBlockedList(blocked = null) {
-    if (!this.profileBlockedList || !this.profileBlockedEmpty) {
+    if (!this.blockList || !this.blockListEmpty) {
       return;
     }
 
@@ -1471,16 +1523,16 @@ export class ProfileModalController {
       }
     });
 
-    this.profileBlockedList.innerHTML = "";
+    this.blockList.innerHTML = "";
 
     if (!deduped.length) {
-      this.profileBlockedEmpty.classList.remove("hidden");
-      this.profileBlockedList.classList.add("hidden");
+      this.blockListEmpty.classList.remove("hidden");
+      this.blockList.classList.add("hidden");
       return;
     }
 
-    this.profileBlockedEmpty.classList.add("hidden");
-    this.profileBlockedList.classList.remove("hidden");
+    this.blockListEmpty.classList.add("hidden");
+    this.blockList.classList.remove("hidden");
 
     deduped.forEach(({ hex, label }) => {
       const item = document.createElement("li");
@@ -1509,12 +1561,12 @@ export class ProfileModalController {
       item.appendChild(info);
       item.appendChild(actionBtn);
 
-      this.profileBlockedList.appendChild(item);
+      this.blockList.appendChild(item);
     });
   }
 
   async handleAddBlockedCreator() {
-    const input = this.profileBlockedInput || null;
+    const input = this.blockInput || null;
     const rawValue = typeof input?.value === "string" ? input.value : "";
     const trimmed = rawValue.trim();
 
@@ -1609,8 +1661,8 @@ export class ProfileModalController {
         }
       }
 
-      if (this.profileBlockedInput) {
-        this.profileBlockedInput.value = "";
+      if (this.blockInput) {
+        this.blockInput.value = "";
       }
       this.populateBlockedList();
     } catch (error) {
@@ -1784,11 +1836,11 @@ export class ProfileModalController {
   }
 
   updateWalletStatus(message, variant = "info") {
-    if (!(this.profileWalletStatusText instanceof HTMLElement)) {
+    if (!(this.walletStatusText instanceof HTMLElement)) {
       return;
     }
 
-    const element = this.profileWalletStatusText;
+    const element = this.walletStatusText;
     const variants = {
       success: "text-green-400",
       error: "text-red-400",
@@ -2175,9 +2227,9 @@ export class ProfileModalController {
       }
     };
 
-    capture(this.adminModeratorsEmpty);
-    capture(this.adminWhitelistEmpty);
-    capture(this.adminBlacklistEmpty);
+    capture(this.moderatorEmpty);
+    capture(this.whitelistEmpty);
+    capture(this.blacklistEmpty);
   }
 
   setAdminLoading(isLoading) {
@@ -2198,9 +2250,9 @@ export class ProfileModalController {
       }
     };
 
-    toggleMessage(this.adminModeratorsEmpty, "Loading moderators…");
-    toggleMessage(this.adminWhitelistEmpty, "Loading whitelist…");
-    toggleMessage(this.adminBlacklistEmpty, "Loading blacklist…");
+    toggleMessage(this.moderatorEmpty, "Loading moderators…");
+    toggleMessage(this.whitelistEmpty, "Loading whitelist…");
+    toggleMessage(this.blacklistEmpty, "Loading blacklist…");
   }
 
   clearAdminLists() {
@@ -2208,29 +2260,29 @@ export class ProfileModalController {
     if (this.adminModeratorList) {
       this.adminModeratorList.innerHTML = "";
     }
-    if (this.adminWhitelistList) {
-      this.adminWhitelistList.innerHTML = "";
+    if (this.whitelistList) {
+      this.whitelistList.innerHTML = "";
     }
-    if (this.adminBlacklistList) {
-      this.adminBlacklistList.innerHTML = "";
+    if (this.blacklistList) {
+      this.blacklistList.innerHTML = "";
     }
-    if (this.adminModeratorsEmpty instanceof HTMLElement) {
-      this.adminModeratorsEmpty.textContent =
-        this.adminModeratorsEmpty.dataset.defaultMessage ||
-        this.adminModeratorsEmpty.textContent;
-      this.adminModeratorsEmpty.classList.remove("hidden");
+    if (this.moderatorEmpty instanceof HTMLElement) {
+      this.moderatorEmpty.textContent =
+        this.moderatorEmpty.dataset.defaultMessage ||
+        this.moderatorEmpty.textContent;
+      this.moderatorEmpty.classList.remove("hidden");
     }
-    if (this.adminWhitelistEmpty instanceof HTMLElement) {
-      this.adminWhitelistEmpty.textContent =
-        this.adminWhitelistEmpty.dataset.defaultMessage ||
-        this.adminWhitelistEmpty.textContent;
-      this.adminWhitelistEmpty.classList.remove("hidden");
+    if (this.whitelistEmpty instanceof HTMLElement) {
+      this.whitelistEmpty.textContent =
+        this.whitelistEmpty.dataset.defaultMessage ||
+        this.whitelistEmpty.textContent;
+      this.whitelistEmpty.classList.remove("hidden");
     }
-    if (this.adminBlacklistEmpty instanceof HTMLElement) {
-      this.adminBlacklistEmpty.textContent =
-        this.adminBlacklistEmpty.dataset.defaultMessage ||
-        this.adminBlacklistEmpty.textContent;
-      this.adminBlacklistEmpty.classList.remove("hidden");
+    if (this.blacklistEmpty instanceof HTMLElement) {
+      this.blacklistEmpty.textContent =
+        this.blacklistEmpty.dataset.defaultMessage ||
+        this.blacklistEmpty.textContent;
+      this.blacklistEmpty.classList.remove("hidden");
     }
   }
 
@@ -2305,7 +2357,7 @@ export class ProfileModalController {
 
     this.renderAdminList(
       this.adminModeratorList,
-      this.adminModeratorsEmpty,
+      this.moderatorEmpty,
       editors,
       {
         onRemove: (npub, button) => this.handleRemoveModerator(npub, button),
@@ -2317,8 +2369,8 @@ export class ProfileModalController {
     );
 
     this.renderAdminList(
-      this.adminWhitelistList,
-      this.adminWhitelistEmpty,
+      this.whitelistList,
+      this.whitelistEmpty,
       whitelist,
       {
         onRemove: (npub, button) =>
@@ -2330,8 +2382,8 @@ export class ProfileModalController {
     );
 
     this.renderAdminList(
-      this.adminBlacklistList,
-      this.adminBlacklistEmpty,
+      this.blacklistList,
+      this.blacklistEmpty,
       blacklist,
       {
         onRemove: (npub, button) =>
@@ -2406,9 +2458,9 @@ export class ProfileModalController {
       return;
     }
 
-    if (this.adminModeratorsSection instanceof HTMLElement) {
-      this.adminModeratorsSection.classList.toggle("hidden", !isSuperAdmin);
-      this.adminModeratorsSection.setAttribute(
+    if (this.moderatorSection instanceof HTMLElement) {
+      this.moderatorSection.classList.toggle("hidden", !isSuperAdmin);
+      this.moderatorSection.setAttribute(
         "aria-hidden",
         (!isSuperAdmin).toString(),
       );
@@ -2454,13 +2506,15 @@ export class ProfileModalController {
   }
 
   async handleAddModerator() {
-    const input = this.adminModeratorInput || null;
+    const input = this.moderatorInput || null;
     const rawValue = typeof input?.value === "string" ? input.value : "";
     const trimmed = rawValue.trim();
+    const normalizedValue = this.normalizeNpubValue(trimmed);
     const context = {
       input,
       rawValue,
       value: trimmed,
+      normalizedValue,
       actorNpub: null,
       success: false,
       reason: null,
@@ -2502,16 +2556,23 @@ export class ProfileModalController {
       return context;
     }
 
-    if (this.adminAddModeratorButton) {
-      this.adminAddModeratorButton.disabled = true;
-      this.adminAddModeratorButton.setAttribute("aria-busy", "true");
+    if (!normalizedValue) {
+      this.showError("Enter a valid npub before adding it as a moderator.");
+      context.reason = "invalid";
+      this.callbacks.onAdminAddModerator(context, this);
+      return context;
+    }
+
+    if (this.addModeratorButton) {
+      this.addModeratorButton.disabled = true;
+      this.addModeratorButton.setAttribute("aria-busy", "true");
     }
 
     try {
       const mutationResult = await this.runAdminMutation({
         action: "add-moderator",
         actorNpub,
-        targetNpub: trimmed,
+        targetNpub: normalizedValue,
       });
       context.result = mutationResult?.result || null;
       if (!mutationResult?.ok) {
@@ -2522,15 +2583,15 @@ export class ProfileModalController {
         return context;
       }
 
-      this.adminModeratorInput.value = "";
+      this.moderatorInput.value = "";
       this.showSuccess("Moderator added successfully.");
       await this.services.onAccessControlUpdated();
       context.success = true;
       context.reason = "added";
     } finally {
-      if (this.adminAddModeratorButton) {
-        this.adminAddModeratorButton.disabled = false;
-        this.adminAddModeratorButton.removeAttribute("aria-busy");
+      if (this.addModeratorButton) {
+        this.addModeratorButton.disabled = false;
+        this.addModeratorButton.removeAttribute("aria-busy");
       }
       this.callbacks.onAdminAddModerator(context, this);
     }
@@ -2541,6 +2602,7 @@ export class ProfileModalController {
   async handleRemoveModerator(npub, button) {
     const context = {
       npub,
+      normalizedNpub: this.normalizeNpubValue(npub),
       button,
       actorNpub: null,
       success: false,
@@ -2555,6 +2617,14 @@ export class ProfileModalController {
         button.removeAttribute("aria-busy");
       }
     };
+
+    if (!context.normalizedNpub) {
+      this.showError("Unable to remove moderator: invalid npub.");
+      context.reason = "invalid";
+      releaseButton();
+      this.callbacks.onAdminRemoveModerator(context, this);
+      return context;
+    }
 
     let preloadError = null;
     try {
@@ -2588,7 +2658,7 @@ export class ProfileModalController {
     const mutationResult = await this.runAdminMutation({
       action: "remove-moderator",
       actorNpub,
-      targetNpub: npub,
+      targetNpub: context.normalizedNpub,
     });
     context.result = mutationResult?.result || null;
     if (!mutationResult?.ok) {
@@ -2613,8 +2683,8 @@ export class ProfileModalController {
 
   async handleAdminListMutation(listType, action, explicitNpub = null, sourceButton = null) {
     const isWhitelist = listType === "whitelist";
-    const input = isWhitelist ? this.adminWhitelistInput : this.adminBlacklistInput;
-    const addButton = isWhitelist ? this.adminAddWhitelistButton : this.adminAddBlacklistButton;
+    const input = isWhitelist ? this.whitelistInput : this.blacklistInput;
+    const addButton = isWhitelist ? this.addWhitelistButton : this.addBlacklistButton;
     const isAdd = action === "add";
     let buttonToToggle = sourceButton || (isAdd ? addButton : null);
 
