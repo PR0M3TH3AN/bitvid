@@ -9,54 +9,105 @@ const BITVID_WEBSITE_URL = "https://bitvid.network/";
 const NWC_URI_SCHEME = "nostr+walletconnect://";
 const MAX_WALLET_DEFAULT_ZAP = 100000000;
 
+const DEFAULT_INTERNAL_NWC_SETTINGS = Object.freeze({
+  nwcUri: "",
+  defaultZap: null,
+  lastChecked: null,
+});
+
+function createInternalDefaultNwcSettings() {
+  return { ...DEFAULT_INTERNAL_NWC_SETTINGS };
+}
+
+function ensureInternalWalletSettings(internalState) {
+  if (!internalState || typeof internalState !== "object") {
+    return createInternalDefaultNwcSettings();
+  }
+
+  if (
+    !internalState.walletSettings ||
+    typeof internalState.walletSettings !== "object" ||
+    internalState.walletSettings === null
+  ) {
+    internalState.walletSettings = createInternalDefaultNwcSettings();
+  }
+
+  return internalState.walletSettings;
+}
+
 const SERVICE_CONTRACT = [
   {
     key: "normalizeHexPubkey",
     type: "function",
     description:
       "Normalizes a provided pubkey (hex or npub) so profile lookups are stable.",
+    fallback: () => (value) => {
+      if (typeof value !== "string") {
+        return null;
+      }
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+        return trimmed.toLowerCase();
+      }
+      return trimmed;
+    },
   },
   {
     key: "safeEncodeNpub",
     type: "function",
     description:
       "Encodes a hex pubkey as an npub for display. Expected to be resilient to bad input.",
+    fallback: () => (pubkey) => {
+      if (typeof pubkey === "string" && pubkey.trim()) {
+        return pubkey.trim();
+      }
+      return null;
+    },
   },
   {
     key: "safeDecodeNpub",
     type: "function",
     description:
       "Decodes an npub back to its hex form. Should return null/undefined for invalid payloads.",
+    fallback: () => () => null,
   },
   {
     key: "truncateMiddle",
     type: "function",
     description:
       "Utility used for shortening long identifiers in the modal without losing context.",
+    fallback: () => (value) => value,
   },
   {
     key: "getProfileCacheEntry",
     type: "function",
     description:
       "Returns the cached profile metadata for a normalized pubkey (if available).",
+    fallback: () => () => null,
   },
   {
     key: "batchFetchProfiles",
     type: "function",
     description:
       "Fetches and caches profile metadata for a set of pubkeys so the modal can hydrate avatars/names in bulk.",
+    fallback: () => async () => [],
   },
   {
     key: "switchProfile",
     type: "function",
     description:
       "Switches the active application profile to the provided pubkey and updates state accordingly.",
+    fallback: () => async () => ({ switched: false }),
   },
   {
     key: "removeSavedProfile",
     type: "function",
     description:
       "Removes a saved profile entry and persists the updated collection to storage.",
+    fallback: () => () => ({ removed: false }),
   },
   {
     key: "relayManager",
@@ -84,33 +135,78 @@ const SERVICE_CONTRACT = [
     key: "getCurrentUserNpub",
     type: "function",
     description: "Returns the active user\'s npub so UI actions can target the correct actor.",
+    fallback: () => () => null,
   },
   {
     key: "getActiveNwcSettings",
     type: "function",
     description:
       "Reads the active Nostr Wallet Connect settings (uri/default zap) for the logged in profile.",
+    fallback: ({ internalState }) => () => {
+      const current = ensureInternalWalletSettings(internalState);
+      return { ...current };
+    },
   },
   {
     key: "updateActiveNwcSettings",
     type: "function",
     description: "Persists updates to the active wallet settings and returns the new state.",
+    fallback: ({ internalState }) => (partial = {}) => {
+      const current = ensureInternalWalletSettings(internalState);
+      const next = {
+        ...current,
+        ...(partial && typeof partial === "object" ? partial : {}),
+      };
+      internalState.walletSettings = next;
+      return { ...next };
+    },
+  },
+  {
+    key: "hydrateNwcSettingsForPubkey",
+    type: "function",
+    description:
+      "Ensures wallet settings are loaded for a given pubkey before the pane renders.",
+    fallback: ({ internalState }) => async () => {
+      const current = ensureInternalWalletSettings(internalState);
+      return { ...current };
+    },
   },
   {
     key: "createDefaultNwcSettings",
     type: "function",
     description: "Creates a baseline wallet settings object when none exists.",
+    fallback: () => () => createInternalDefaultNwcSettings(),
   },
   {
     key: "ensureWallet",
     type: "function",
     description:
       "Guarantees a wallet connection exists before issuing wallet related operations (connect/test).",
+    fallback: () => async () => ({ ok: false, reason: "not-implemented" }),
   },
   {
     key: "loadVideos",
     type: "function",
     description: "Triggers a video reload so UI reflects profile or permission changes.",
+    fallback: () => async () => undefined,
+  },
+  {
+    key: "onVideosShouldRefresh",
+    type: "function",
+    description:
+      "Signals that video listings should be refreshed after a profile-driven mutation.",
+    fallback: ({ services, resolved }) => async (context = {}) => {
+      const loader =
+        typeof services.loadVideos === "function"
+          ? services.loadVideos
+          : typeof resolved.loadVideos === "function"
+          ? resolved.loadVideos
+          : null;
+      if (loader) {
+        return loader(true, context);
+      }
+      return undefined;
+    },
   },
   {
     key: "sendAdminListNotification",
@@ -124,18 +220,28 @@ const SERVICE_CONTRACT = [
     type: "function",
     description:
       "Maps low-level admin errors to readable copy for surfaced error messages.",
+    fallback: () => () => "",
   },
   {
     key: "describeNotificationError",
     type: "function",
     description:
       "Maps notification send errors to human readable descriptions for toast/banner messaging.",
+    fallback: () => () => "",
   },
   {
     key: "onAccessControlUpdated",
     type: "function",
     description:
       "Callback invoked after access control mutations so the app can refresh dependent UI.",
+    fallback: () => async () => undefined,
+  },
+  {
+    key: "persistSavedProfiles",
+    type: "function",
+    description:
+      "Persists the saved profile collection (and optionally the active profile) to storage.",
+    fallback: () => () => undefined,
   },
 ];
 
@@ -246,32 +352,59 @@ const STATE_CONTRACT = [
   },
 ];
 
-function buildServicesContract(services = {}) {
+function buildServicesContract(services = {}, internalState) {
   const resolved = {};
   const missing = [];
 
   SERVICE_CONTRACT.forEach((definition) => {
-    const value = services[definition.key];
-    if (value == null) {
+    const provided = services[definition.key];
+
+    if (provided == null) {
+      if (typeof definition.fallback === "function") {
+        const fallbackValue = definition.fallback({
+          services,
+          resolved,
+          internalState,
+          definition,
+        });
+
+        if (definition.type === "function" && typeof fallbackValue === "function") {
+          resolved[definition.key] = fallbackValue;
+          return;
+        }
+        if (
+          definition.type === "object" &&
+          typeof fallbackValue === "object" &&
+          fallbackValue !== null
+        ) {
+          resolved[definition.key] = fallbackValue;
+          return;
+        }
+      }
+
       if (definition.optional) {
         return;
       }
+
       missing.push(`- ${definition.key}: ${definition.description}`);
       return;
     }
 
-    if (definition.type === "function" && typeof value !== "function") {
+    if (definition.type === "function" && typeof provided !== "function") {
       throw new TypeError(
-        `Expected service \"${definition.key}\" to be a function. Received ${typeof value}.`,
+        `Expected service \"${definition.key}\" to be a function. Received ${typeof provided}.`,
       );
     }
-    if (definition.type === "object" && (typeof value !== "object" || value === null)) {
+    if (
+      definition.type === "object" &&
+      (typeof provided !== "object" || provided === null)
+    ) {
       throw new TypeError(
-        `Expected service \"${definition.key}\" to be an object. Received ${typeof value}.`,
+        `Expected service \"${definition.key}\" to be an object. Received ${typeof provided}.`,
       );
     }
 
-    resolved[definition.key] = value;
+    resolved[definition.key] = provided;
   });
 
   if (missing.length) {
@@ -341,9 +474,10 @@ export class ProfileModalController {
       cachedSelection: null,
       activePane: "account",
       walletBusy: false,
+      walletSettings: createInternalDefaultNwcSettings(),
     };
 
-    this.services = buildServicesContract(services);
+    this.services = buildServicesContract(services, this.internalState);
     this.state = buildStateContract(state, this.internalState);
 
     this.normalizeHexPubkey = this.services.normalizeHexPubkey;
@@ -1880,7 +2014,10 @@ export class ProfileModalController {
       return;
     }
 
-    const settings = this.services.getActiveNwcSettings();
+    let settings = this.services.getActiveNwcSettings();
+    if (!settings || typeof settings !== "object") {
+      settings = this.services.createDefaultNwcSettings();
+    }
     setInputValue(this.walletUriInput, settings.nwcUri || "");
     setInputValue(
       this.walletDefaultZapInput,
@@ -2131,7 +2268,10 @@ export class ProfileModalController {
       context.success = true;
       context.reason = "tested";
 
-      const currentSettings = this.services.getActiveNwcSettings();
+      let currentSettings = this.services.getActiveNwcSettings();
+      if (!currentSettings || typeof currentSettings !== "object") {
+        currentSettings = this.services.createDefaultNwcSettings();
+      }
       if (currentSettings.nwcUri === sanitized) {
         await this.persistWalletSettings({
           lastChecked: Date.now(),
@@ -3132,7 +3272,11 @@ export class ProfileModalController {
 
       if (context.ok) {
         try {
-          await this.services.loadVideos(true);
+          await this.services.onVideosShouldRefresh({
+            reason: `blocklist-${action}`,
+            actorHex,
+            targetHex,
+          });
         } catch (refreshError) {
           console.warn(
             "[ProfileModalController] Failed to refresh videos after blocklist mutation:",
@@ -3554,6 +3698,8 @@ export class ProfileModalController {
       this.setActivePubkey(activePubkey);
     }
 
+    await this.hydrateActiveWalletSettings(activePubkey);
+
     this.renderSavedProfiles();
 
     try {
@@ -3659,6 +3805,30 @@ export class ProfileModalController {
     return result;
   }
 
+  async hydrateActiveWalletSettings(pubkey) {
+    const hydrate = this.services.hydrateNwcSettingsForPubkey;
+    if (typeof hydrate !== "function") {
+      return null;
+    }
+
+    const normalized = this.normalizeHexPubkey(
+      pubkey !== undefined ? pubkey : this.getActivePubkey(),
+    );
+    if (!normalized) {
+      return null;
+    }
+
+    try {
+      return await hydrate(normalized);
+    } catch (error) {
+      console.warn(
+        `[ProfileModalController] Failed to hydrate wallet settings for ${normalized}:`,
+        error,
+      );
+      return null;
+    }
+  }
+
   async switchProfile(pubkey) {
     if (!pubkey) {
       return { switched: false, reason: "missing-pubkey" };
@@ -3685,6 +3855,8 @@ export class ProfileModalController {
       return result || { switched: false };
     }
 
+    await this.hydrateActiveWalletSettings(pubkey);
+
     this.profileSwitcherSelectionPubkey = null;
     this.renderSavedProfiles();
     this.hide();
@@ -3701,6 +3873,16 @@ export class ProfileModalController {
   }
 
   persistSavedProfiles(...args) {
+    if (typeof this.services.persistSavedProfiles === "function") {
+      try {
+        return this.services.persistSavedProfiles(...args);
+      } catch (error) {
+        console.warn(
+          "[ProfileModalController] Persist saved profiles service threw:",
+          error,
+        );
+      }
+    }
     return this.state.persistSavedProfiles(...args);
   }
 

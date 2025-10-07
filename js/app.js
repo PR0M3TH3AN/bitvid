@@ -1236,13 +1236,17 @@ class Application {
           getActiveNwcSettings: () => this.getActiveNwcSettings(),
           updateActiveNwcSettings: (partial) =>
             this.updateActiveNwcSettings(partial),
+          hydrateNwcSettingsForPubkey: (pubkey) =>
+            this.hydrateNwcSettingsForPubkey(pubkey),
           createDefaultNwcSettings: () => createDefaultNwcSettings(),
           ensureWallet: (options) => this.ensureWallet(options),
           loadVideos: (forceFetch) => this.loadVideos(forceFetch),
+          onVideosShouldRefresh: (context) => this.onVideosShouldRefresh(context),
           describeAdminError: (code) => this.describeAdminError(code),
           describeNotificationError: (code) =>
             this.describeNotificationError(code),
           onAccessControlUpdated: () => this.onAccessControlUpdated(),
+          persistSavedProfiles: (options) => persistSavedProfiles(options),
         };
 
         const profileModalState = {
@@ -1620,6 +1624,15 @@ class Application {
       console.error("Failed to refresh videos after admin update:", error);
     });
     window.dispatchEvent(new CustomEvent("bitvid:access-control-updated"));
+  }
+
+  async onVideosShouldRefresh({ reason } = {}) {
+    try {
+      await this.loadVideos(true);
+    } catch (error) {
+      const context = reason ? ` after ${reason}` : "";
+      console.error(`Failed to refresh videos${context}:`, error);
+    }
   }
 
   /**
