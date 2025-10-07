@@ -1307,12 +1307,22 @@ class Application {
           },
           onRequestSwitchProfile: (payload) =>
             this.handleProfileSwitchRequest(payload),
+          onRelayOperation: (payload) =>
+            this.handleProfileRelayOperation(payload),
+          onRelayModeToggle: (payload) =>
+            this.handleProfileRelayModeToggle(payload),
+          onRelayRestore: (payload) =>
+            this.handleProfileRelayRestore(payload),
+          onBlocklistMutation: (payload) =>
+            this.handleProfileBlocklistMutation(payload),
           onWalletPersist: (payload) =>
             this.handleProfileWalletPersist(payload),
           onWalletTestRequest: (payload) =>
             this.handleProfileWalletTest(payload),
           onWalletDisconnectRequest: (payload) =>
             this.handleProfileWalletDisconnect(payload),
+          onAdminMutation: (payload) =>
+            this.handleProfileAdminMutation(payload),
           onAdminNotifyError: (payload) =>
             this.handleProfileAdminNotifyError(payload),
           onHistoryReady: (payload) =>
@@ -2309,13 +2319,247 @@ class Application {
       throw new Error("Missing pubkey for profile switch request.");
     }
 
-    if (!this.profileModalController) {
-      throw new Error("Profile modal controller unavailable for switch.");
+    const result = await this.authService.switchProfile(pubkey);
+
+    if (result?.switched) {
+      try {
+        await this.loadVideos(true);
+      } catch (error) {
+        console.error("Failed to refresh videos after switching profiles:", error);
+      }
     }
 
-    await this.profileModalController.switchProfile(pubkey);
-    await this.loadVideos(true);
-    return true;
+    return result;
+  }
+
+  async handleProfileRelayOperation({
+    action,
+    url,
+    activePubkey,
+    skipPublishIfUnchanged = true,
+  } = {}) {
+    const context = {
+      action,
+      url,
+      ok: false,
+      changed: false,
+      reason: null,
+      error: null,
+      publishResult: null,
+      operationResult: null,
+    };
+
+    if (!activePubkey) {
+      context.reason = "no-active-pubkey";
+      return context;
+    }
+
+    const previous = relayManager.snapshot();
+
+    let operationResult;
+    try {
+      switch (action) {
+        case "add":
+          operationResult = relayManager.addRelay(url);
+          break;
+        case "remove":
+          operationResult = relayManager.removeRelay(url);
+          break;
+        case "restore":
+          operationResult = relayManager.restoreDefaults();
+          break;
+        case "mode-toggle":
+          operationResult = relayManager.cycleRelayMode(url);
+          break;
+        default: {
+          const error = Object.assign(new Error("Unknown relay operation."), {
+            code: "invalid-operation",
+          });
+          throw error;
+        }
+      }
+    } catch (error) {
+      context.reason = error?.code || "operation-error";
+      context.error = error;
+      return context;
+    }
+
+    context.operationResult = operationResult;
+    context.changed = Boolean(operationResult?.changed);
+
+    if (!context.changed && skipPublishIfUnchanged) {
+      context.reason = operationResult?.reason || "unchanged";
+      return context;
+    }
+
+    try {
+      const publishResult = await relayManager.publishRelayList(activePubkey);
+      if (!publishResult?.ok) {
+        throw Object.assign(new Error("No relays accepted the update."), {
+          code: "publish-failed",
+        });
+      }
+      context.ok = true;
+      context.publishResult = publishResult;
+
+      const refreshReason = `relay-${action || "update"}`;
+      try {
+        await this.onVideosShouldRefresh({ reason: refreshReason });
+      } catch (refreshError) {
+        if (isDevMode) {
+          console.warn(
+            "[Profile] Failed to refresh videos after relay update:",
+            refreshError,
+          );
+        }
+      }
+
+      return context;
+    } catch (error) {
+      context.reason = error?.code || "publish-failed";
+      context.error = error;
+      try {
+        if (Array.isArray(previous)) {
+          relayManager.setEntries(previous, { allowEmpty: false });
+        }
+      } catch (restoreError) {
+        if (isDevMode) {
+          console.warn(
+            "[Profile] Failed to restore relay preferences after publish error:",
+            restoreError,
+          );
+        }
+      }
+      return context;
+    }
+  }
+
+  handleProfileRelayModeToggle(payload = {}) {
+    return payload?.context || null;
+  }
+
+  handleProfileRelayRestore(payload = {}) {
+    return payload?.context || null;
+  }
+
+  async handleProfileBlocklistMutation({
+    action,
+    actorHex,
+    targetHex,
+  } = {}) {
+    const context = { ok: false, reason: null, error: null };
+
+    if (!actorHex || !targetHex) {
+      context.reason = "invalid-target";
+      return context;
+    }
+
+    try {
+      await userBlocks.ensureLoaded(actorHex);
+      const isBlocked = userBlocks.isBlocked(targetHex);
+
+      if (action === "add") {
+        if (isBlocked) {
+          context.reason = "already-blocked";
+          return context;
+        }
+        await userBlocks.addBlock(targetHex, actorHex);
+        context.ok = true;
+        context.reason = "blocked";
+      } else if (action === "remove") {
+        if (!isBlocked) {
+          context.reason = "not-blocked";
+          return context;
+        }
+        await userBlocks.removeBlock(targetHex, actorHex);
+        context.ok = true;
+        context.reason = "unblocked";
+      } else {
+        context.reason = "invalid-action";
+        return context;
+      }
+
+      if (context.ok) {
+        try {
+          await this.onVideosShouldRefresh({ reason: `blocklist-${action}` });
+        } catch (refreshError) {
+          console.error(
+            "Failed to refresh videos after blocklist mutation:",
+            refreshError,
+          );
+        }
+      }
+
+      return context;
+    } catch (error) {
+      context.error = error;
+      context.reason = error?.code || "service-error";
+      return context;
+    }
+  }
+
+  async handleProfileAdminMutation(payload = {}) {
+    const action = payload?.action;
+    const context = { ok: false, error: null, result: null };
+
+    try {
+      switch (action) {
+        case "ensure-ready":
+          await accessControl.ensureReady();
+          context.ok = true;
+          break;
+        case "add-moderator":
+          context.result = await accessControl.addModerator(
+            payload.actorNpub,
+            payload.targetNpub,
+          );
+          context.ok = !!context.result?.ok;
+          break;
+        case "remove-moderator":
+          context.result = await accessControl.removeModerator(
+            payload.actorNpub,
+            payload.targetNpub,
+          );
+          context.ok = !!context.result?.ok;
+          break;
+        case "list-mutation":
+          if (payload.listType === "whitelist") {
+            context.result =
+              payload.mode === "add"
+                ? await accessControl.addToWhitelist(
+                    payload.actorNpub,
+                    payload.targetNpub,
+                  )
+                : await accessControl.removeFromWhitelist(
+                    payload.actorNpub,
+                    payload.targetNpub,
+                  );
+          } else {
+            context.result =
+              payload.mode === "add"
+                ? await accessControl.addToBlacklist(
+                    payload.actorNpub,
+                    payload.targetNpub,
+                  )
+                : await accessControl.removeFromBlacklist(
+                    payload.actorNpub,
+                    payload.targetNpub,
+                  );
+          }
+          context.ok = !!context.result?.ok;
+          break;
+        default:
+          context.error = Object.assign(
+            new Error("Unknown admin mutation."),
+            { code: "invalid-action" },
+          );
+      }
+    } catch (error) {
+      context.error = error;
+      return context;
+    }
+
+    return context;
   }
 
   async handleProfileWalletPersist({
@@ -2611,7 +2855,11 @@ class Application {
       this.updateActiveProfileUI(activePubkey, detail.postLogin.profile);
     }
 
-    await this.loadVideos();
+    try {
+      await this.loadVideos(true);
+    } catch (error) {
+      console.error("Failed to refresh videos after login:", error);
+    }
     this.forceRefreshAllProfiles();
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
       await this.uploadModal.refreshCloudflareBucketPreview();
@@ -2679,7 +2927,11 @@ class Application {
       this.subscriptionsLink.classList.add("hidden");
     }
 
-    await this.loadVideos();
+    try {
+      await this.loadVideos(true);
+    } catch (error) {
+      console.error("Failed to refresh videos after logout:", error);
+    }
     this.forceRefreshAllProfiles();
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
       await this.uploadModal.refreshCloudflareBucketPreview();
