@@ -294,7 +294,6 @@ class Application {
     this.isWalletPaneBusy = false;
     this.profileModalCachedSelection = null;
     this.profileModalController = null;
-    this.boundProfileHistoryVisibility = null;
     this.profileSwitcherSelectionPubkey = null;
     this.currentUserNpub = null;
 

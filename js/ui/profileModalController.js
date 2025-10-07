@@ -675,6 +675,7 @@ export class ProfileModalController {
     this.adminBlacklistInput = null;
 
     this.profileHistoryRenderer = null;
+    this.profileHistoryRendererConfig = null;
     this.boundProfileHistoryVisibility = null;
     this.boundKeydown = null;
     this.boundFocusIn = null;
@@ -840,34 +841,68 @@ export class ProfileModalController {
     this.adminAddBlacklistButton = this.addBlacklistButton;
     this.adminBlacklistInput = this.blacklistInput;
 
-    if (!this.profileHistoryRenderer && this.createWatchHistoryRenderer) {
-      this.profileHistoryRenderer = this.createWatchHistoryRenderer({
-        viewSelector: "#profilePaneHistory",
-        gridSelector: "#profileHistoryGrid",
-        loadingSelector: "#profileHistoryLoading",
-        statusSelector: "#profileHistoryStatus",
-        emptySelector: "#profileHistoryEmpty",
-        sentinelSelector: "#profileHistorySentinel",
-        scrollContainerSelector: "#profileHistoryScroll",
-        errorBannerSelector: "#profileHistoryError",
-        clearButtonSelector: "#profileHistoryClear",
-        republishButtonSelector: "#profileHistoryRepublish",
-        featureBannerSelector: "#profileHistoryFeatureBanner",
-        toastRegionSelector: "#profileHistoryToastRegion",
-        sessionWarningSelector: "#profileHistorySessionWarning",
-        metadataToggleSelector: "#profileHistoryMetadataToggle",
-        metadataThumbSelector: "#profileHistoryMetadataThumb",
-        metadataLabelSelector: "#profileHistoryMetadataLabel",
-        metadataDescriptionSelector: "#profileHistoryMetadataDescription",
-        emptyCopy: "You haven’t watched any videos yet.",
-        remove: (payload) =>
-          this.callbacks.onHistoryReady({
-            ...(typeof payload === "object" && payload ? payload : {}),
-            controller: this,
-            renderer: this.profileHistoryRenderer,
-          }),
-      });
+    if (this.createWatchHistoryRenderer) {
+      this.ensureProfileHistoryRenderer();
     }
+  }
+
+  ensureProfileHistoryRenderer() {
+    if (this.profileHistoryRenderer) {
+      return this.profileHistoryRenderer;
+    }
+
+    if (!this.createWatchHistoryRenderer) {
+      return null;
+    }
+
+    const config = this.getProfileHistoryRendererConfig();
+
+    try {
+      this.profileHistoryRenderer = this.createWatchHistoryRenderer(config);
+    } catch (error) {
+      console.error(
+        "[profileModal] Failed to create watch history renderer:",
+        error,
+      );
+      this.profileHistoryRenderer = null;
+    }
+
+    return this.profileHistoryRenderer;
+  }
+
+  getProfileHistoryRendererConfig() {
+    if (this.profileHistoryRendererConfig) {
+      return this.profileHistoryRendererConfig;
+    }
+
+    this.profileHistoryRendererConfig = {
+      viewSelector: "#profilePaneHistory",
+      gridSelector: "#profileHistoryGrid",
+      loadingSelector: "#profileHistoryLoading",
+      statusSelector: "#profileHistoryStatus",
+      emptySelector: "#profileHistoryEmpty",
+      sentinelSelector: "#profileHistorySentinel",
+      scrollContainerSelector: "#profileHistoryScroll",
+      errorBannerSelector: "#profileHistoryError",
+      clearButtonSelector: "#profileHistoryClear",
+      republishButtonSelector: "#profileHistoryRepublish",
+      featureBannerSelector: "#profileHistoryFeatureBanner",
+      toastRegionSelector: "#profileHistoryToastRegion",
+      sessionWarningSelector: "#profileHistorySessionWarning",
+      metadataToggleSelector: "#profileHistoryMetadataToggle",
+      metadataThumbSelector: "#profileHistoryMetadataThumb",
+      metadataLabelSelector: "#profileHistoryMetadataLabel",
+      metadataDescriptionSelector: "#profileHistoryMetadataDescription",
+      emptyCopy: "You haven’t watched any videos yet.",
+      remove: (payload) =>
+        this.callbacks.onHistoryReady({
+          ...(typeof payload === "object" && payload ? payload : {}),
+          controller: this,
+          renderer: this.profileHistoryRenderer,
+        }),
+    };
+
+    return this.profileHistoryRendererConfig;
   }
 
   registerEventListeners() {
@@ -1947,7 +1982,8 @@ export class ProfileModalController {
   }
 
   async populateProfileWatchHistory() {
-    if (!this.profileHistoryRenderer) {
+    const renderer = this.ensureProfileHistoryRenderer();
+    if (!renderer) {
       return;
     }
 
@@ -1960,8 +1996,8 @@ export class ProfileModalController {
     }
 
     try {
-      await this.profileHistoryRenderer.ensureInitialLoad({ actor: primaryActor });
-      await this.profileHistoryRenderer.refresh({
+      await renderer.ensureInitialLoad({ actor: primaryActor });
+      await renderer.refresh({
         actor: primaryActor,
         force: true,
       });
@@ -1984,9 +2020,9 @@ export class ProfileModalController {
       }
 
       if (document.visibilityState === "hidden") {
-        this.profileHistoryRenderer.pause();
+        renderer.pause();
       } else {
-        this.profileHistoryRenderer.resume();
+        renderer.resume();
       }
     } catch (error) {
       console.error(
@@ -3700,6 +3736,35 @@ export class ProfileModalController {
     if (this.boundFocusIn) {
       document.removeEventListener("focusin", this.boundFocusIn);
     }
+
+    if (
+      this.boundProfileHistoryVisibility &&
+      typeof document !== "undefined" &&
+      typeof document.removeEventListener === "function"
+    ) {
+      document.removeEventListener(
+        "visibilitychange",
+        this.boundProfileHistoryVisibility,
+      );
+      this.boundProfileHistoryVisibility = null;
+    }
+
+    if (this.profileHistoryRenderer) {
+      try {
+        if (typeof this.profileHistoryRenderer.destroy === "function") {
+          this.profileHistoryRenderer.destroy();
+        }
+      } catch (error) {
+        console.warn(
+          "[profileModal] Failed to reset watch history renderer on close:",
+          error,
+        );
+      }
+      this.profileHistoryRenderer = null;
+    }
+
+    this.setActivePane(null);
+    this.setWalletPaneBusy(false);
 
     const previous = this.previouslyFocusedElement;
     this.previouslyFocusedElement = null;
