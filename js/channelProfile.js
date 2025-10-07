@@ -1963,6 +1963,57 @@ async function loadUserVideos(pubkey) {
 
     app?.attachMoreMenuHandlers?.(container);
 
+    if (!container.dataset.playHandlerBound) {
+      container.addEventListener("click", (event) => {
+        if (!event || !(event.target instanceof HTMLElement)) {
+          return;
+        }
+
+        const trigger = event.target.closest("[data-play-url],[data-play-magnet]");
+        if (!trigger || !(trigger instanceof HTMLElement)) {
+          return;
+        }
+
+        const isPrimaryClick =
+          typeof event.button !== "number" || event.button === 0;
+        if (!isPrimaryClick || event.ctrlKey || event.metaKey) {
+          return;
+        }
+
+        if (!container.contains(trigger)) {
+          return;
+        }
+
+        event.preventDefault();
+
+        const dataset = trigger.dataset || {};
+        const videoId = dataset.videoId || trigger.getAttribute("data-video-id") || "";
+        if (videoId && typeof app?.playVideoByEventId === "function") {
+          app.playVideoByEventId(videoId);
+          return;
+        }
+
+        const rawUrl = dataset.playUrl || trigger.getAttribute("data-play-url") || "";
+        let url = "";
+        if (typeof rawUrl === "string" && rawUrl) {
+          try {
+            url = decodeURIComponent(rawUrl);
+          } catch (error) {
+            url = rawUrl;
+          }
+        }
+
+        const magnetValue =
+          dataset.playMagnet || trigger.getAttribute("data-play-magnet") || "";
+        const magnet = typeof magnetValue === "string" ? magnetValue : "";
+
+        if (typeof app?.playVideoWithFallback === "function") {
+          app.playVideoWithFallback({ url, magnet });
+        }
+      });
+      container.dataset.playHandlerBound = "true";
+    }
+
     // Gear menu toggles
     const gearButtons = container.querySelectorAll("[data-settings-dropdown]");
     gearButtons.forEach((btn) => {
