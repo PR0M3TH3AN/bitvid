@@ -238,6 +238,10 @@ async function bootstrapInterface() {
       element.style.setProperty("--sidebar-width", nextWidth);
     });
 
+    if (appShell instanceof HTMLElement) {
+      appShell.dataset.sidebarState = state;
+    }
+
     [sidebar, document.body]
       .filter((element) => element instanceof HTMLElement)
       .forEach((element) => {
