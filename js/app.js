@@ -1722,10 +1722,25 @@ class Application {
           "[app.js] loginNIP07 clicked! Attempting extension login..."
         );
         try {
-          const { pubkey } = await this.authService.requestLogin();
+          const { pubkey, detail } = await this.authService.requestLogin();
           console.log("[NIP-07] login returned pubkey:", pubkey);
 
           if (pubkey) {
+            if (
+              detail &&
+              typeof detail === "object" &&
+              detail.__handled !== true
+            ) {
+              try {
+                await this.handleAuthLogin(detail);
+              } catch (error) {
+                console.error(
+                  "[NIP-07] handleAuthLogin fallback failed:",
+                  error,
+                );
+              }
+            }
+
             const loginModal = document.getElementById("loginModal");
             if (loginModal) {
               loginModal.classList.add("hidden");
@@ -2516,6 +2531,14 @@ class Application {
   }
 
   async handleAuthLogin(detail = {}) {
+    if (detail && typeof detail === "object") {
+      try {
+        detail.__handled = true;
+      } catch (error) {
+        // Ignore attempts to mutate read-only descriptors.
+      }
+    }
+
     const normalizedActive = this.normalizeHexPubkey(
       detail?.pubkey || this.pubkey
     );
