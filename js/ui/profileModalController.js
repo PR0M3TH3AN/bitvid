@@ -3125,7 +3125,14 @@ export class ProfileModalController {
       }
 
       if (context.ok) {
-        await this.services.loadVideos();
+        try {
+          await this.services.loadVideos(true);
+        } catch (refreshError) {
+          console.warn(
+            "[ProfileModalController] Failed to refresh videos after blocklist mutation:",
+            refreshError,
+          );
+        }
       }
 
       return context;
