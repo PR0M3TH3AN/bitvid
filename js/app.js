@@ -881,6 +881,22 @@ class Application {
     }
   }
 
+  getCurrentUserNpub() {
+    return this.currentUserNpub;
+  }
+
+  isAuthorBlocked(pubkey) {
+    try {
+      if (userBlocks && typeof userBlocks.isBlocked === "function") {
+        return userBlocks.isBlocked(pubkey);
+      }
+    } catch (error) {
+      console.warn("[Application] Failed to evaluate block status:", error);
+    }
+
+    return false;
+  }
+
   async init() {
     try {
       if (typeof this.loadView !== "function") {
