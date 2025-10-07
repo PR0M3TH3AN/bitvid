@@ -328,12 +328,24 @@ function logErrorOnce(message, eventContent = null) {
   }
 }
 
-function withNip07Timeout(operation) {
+function withNip07Timeout(
+  operation,
+  {
+    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
+    message = NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+  } = {},
+) {
+  const numericTimeout = Number(timeoutMs);
+  const effectiveTimeout =
+    Number.isFinite(numericTimeout) && numericTimeout > 0
+      ? numericTimeout
+      : NIP07_LOGIN_TIMEOUT_MS;
+
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE));
-    }, NIP07_LOGIN_TIMEOUT_MS);
+      reject(new Error(message));
+    }, effectiveTimeout);
   });
 
   let operationResult;
@@ -353,6 +365,46 @@ function withNip07Timeout(operation) {
       clearTimeout(timeoutId);
     }
   });
+}
+
+async function runNip07WithRetry(
+  operation,
+  {
+    label = "NIP-07 operation",
+    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
+    retryMultiplier = 2,
+  } = {},
+) {
+  try {
+    return await withNip07Timeout(operation, {
+      timeoutMs,
+      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+    });
+  } catch (error) {
+    const isTimeoutError =
+      error instanceof Error &&
+      error.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
+
+    if (!isTimeoutError || retryMultiplier <= 1) {
+      throw error;
+    }
+
+    const extendedTimeout = Math.max(
+      timeoutMs,
+      Math.round(timeoutMs * retryMultiplier),
+    );
+
+    if (isDevMode) {
+      console.warn(
+        `[nostr] ${label} timed out after ${timeoutMs}ms. Retrying once with ${extendedTimeout}ms timeout.`,
+      );
+    }
+
+    return withNip07Timeout(operation, {
+      timeoutMs: extendedTimeout,
+      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+    });
+  }
 }
 
 function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
@@ -4475,7 +4527,9 @@ class NostrClient {
           console.log("Requesting permissions from NIP-07 extension...");
         }
         try {
-          await withNip07Timeout(() => extension.enable());
+          await runNip07WithRetry(() => extension.enable(), {
+            label: "extension.enable",
+          });
         } catch (enableErr) {
           throw new Error(
             enableErr && enableErr.message
@@ -4487,8 +4541,9 @@ class NostrClient {
 
       if (allowAccountSelection && typeof extension.selectAccounts === "function") {
         try {
-          const selection = await withNip07Timeout(() =>
-            extension.selectAccounts(expectPubkey ? [expectPubkey] : undefined)
+          const selection = await runNip07WithRetry(
+            () => extension.selectAccounts(expectPubkey ? [expectPubkey] : undefined),
+            { label: "extension.selectAccounts" }
           );
 
           const didCancelSelection =
@@ -4508,7 +4563,9 @@ class NostrClient {
           throw new Error(message);
         }
       }
-      const pubkey = await withNip07Timeout(() => extension.getPublicKey());
+      const pubkey = await runNip07WithRetry(() => extension.getPublicKey(), {
+        label: "extension.getPublicKey",
+      });
       if (!pubkey || typeof pubkey !== "string") {
         throw new Error(
           "The NIP-07 extension did not return a public key. Please try again."

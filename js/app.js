@@ -289,7 +289,6 @@ class Application {
     this.isWalletPaneBusy = false;
     this.profileModalCachedSelection = null;
     this.profileModalController = null;
-    this.lastFocusedBeforeProfileModal = null;
     this.boundProfileHistoryVisibility = null;
     this.profileSwitcherSelectionPubkey = null;
     this.currentUserNpub = null;
@@ -474,9 +473,15 @@ class Application {
       this.boundVideoModalZapCommentHandler
     );
     this.boundVideoModalZapWalletHandler = () => {
-      if (typeof this.openWalletPane === "function") {
-        this.openWalletPane();
+      if (!this.profileModalController) {
+        return;
       }
+
+      this.profileModalController
+        .showWalletPane()
+        .catch((error) => {
+          console.error("Failed to open wallet pane:", error);
+        });
     };
     this.videoModal.addEventListener(
       "zap:wallet-link",
@@ -1220,7 +1225,9 @@ class Application {
           truncateMiddle: (value, maxLength) => truncateMiddle(value, maxLength),
           getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
           batchFetchProfiles: (authorSet) => this.batchFetchProfiles(authorSet),
-          switchProfile: (pubkey) => this.switchProfile(pubkey),
+          switchProfile: (pubkey) => this.authService.switchProfile(pubkey),
+          removeSavedProfile: (pubkey) =>
+            this.authService.removeSavedProfile(pubkey),
           relayManager,
           userBlocks,
           nostrClient,
@@ -1367,67 +1374,9 @@ class Application {
     this.profileModalController?.updateWalletStatus(message, variant);
   }
 
-  async openProfileModal(targetPane = "account") {
-    if (!this.profileModalController) {
-      return;
-    }
-
-    try {
-      await this.refreshAdminPaneState();
-    } catch (error) {
-      console.error(
-        "Failed to refresh admin pane while opening profile modal:",
-        error,
-      );
-    }
-
-    this.activeProfilePane = null;
-    this.refreshWalletPaneState();
-    this.populateProfileRelays();
-
-    try {
-      await userBlocks.ensureLoaded(this.pubkey);
-    } catch (error) {
-      console.warn(
-        "Failed to refresh user block list while opening profile modal:",
-        error,
-      );
-    }
-    this.populateBlockedList();
-
-    this.lastFocusedBeforeProfileModal =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-
-    this.profileModalController.open(targetPane);
-  }
-
-  async openWalletPane() {
-    await this.openProfileModal("wallet");
-  }
-
-  hideProfileModal() {
-    if (!this.profileModalController) {
-      return;
-    }
-
-    this.profileModalController.hide();
-    this.handleProfileModalClosed();
-  }
-
   handleProfileModalClosed() {
     this.closeAllMoreMenus();
     this.activeProfilePane = null;
-
-    const previouslyFocused = this.lastFocusedBeforeProfileModal;
-    this.lastFocusedBeforeProfileModal = null;
-    if (
-      previouslyFocused &&
-      typeof previouslyFocused.focus === "function"
-    ) {
-      previouslyFocused.focus();
-    }
   }
 
   handleProfileChannelLink(element) {
@@ -1439,7 +1388,9 @@ class Application {
       typeof element.dataset.targetNpub === "string"
         ? element.dataset.targetNpub
         : "";
-    this.hideProfileModal();
+    if (this.profileModalController) {
+      this.profileModalController.hide();
+    }
     if (targetNpub) {
       window.location.hash = `#view=channel-profile&npub=${encodeURIComponent(
         targetNpub,
@@ -1690,9 +1641,15 @@ class Application {
     // 2) Profile button
     if (this.profileButton) {
       this.profileButton.addEventListener("click", () => {
-        this.openProfileModal().catch((error) => {
-          console.error("Failed to open profile modal:", error);
-        });
+        if (!this.profileModalController) {
+          return;
+        }
+
+        this.profileModalController
+          .show()
+          .catch((error) => {
+            console.error("Failed to open profile modal:", error);
+          });
       });
     }
 
@@ -2319,46 +2276,16 @@ class Application {
     }
   }
 
-  /**
-   * Removes a saved profile entry and clears the active pointer when it matches
-   * the removed pubkey. Intended for the profile-switcher UI to prune old
-   * accounts without touching cached avatars.
-   */
-  removeSavedProfile(pubkey) {
-    const { removed } = this.authService.removeSavedProfile(pubkey);
-    if (removed) {
-      this.renderSavedProfiles();
-    }
-  }
-
-  async switchProfile(pubkey) {
-    try {
-      const result = await this.authService.switchProfile(pubkey);
-      if (!result?.switched) {
-        this.hideProfileModal();
-        return;
-      }
-    } catch (error) {
-      console.error("Failed to switch profiles:", error);
-      const message =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : "Failed to switch profiles. Please try again.";
-      this.showError(message);
-      return;
-    }
-
-    this.profileSwitcherSelectionPubkey = null;
-    this.renderSavedProfiles();
-    this.hideProfileModal();
-  }
-
   async handleProfileSwitchRequest({ pubkey } = {}) {
     if (!pubkey) {
       throw new Error("Missing pubkey for profile switch request.");
     }
 
-    await this.switchProfile(pubkey);
+    if (!this.profileModalController) {
+      throw new Error("Profile modal controller unavailable for switch.");
+    }
+
+    await this.profileModalController.switchProfile(pubkey);
     await this.loadVideos(true);
     return true;
   }
@@ -2407,7 +2334,10 @@ class Application {
 
   updateActiveProfileUI(pubkey, profile = {}) {
     if (this.profileModalController) {
-      this.renderSavedProfiles();
+      this.profileModalController.handleProfileUpdated({
+        pubkey,
+        profile,
+      });
       return;
     }
 
@@ -2594,17 +2524,21 @@ class Application {
       await this.hydrateNwcSettingsForPubkey(normalizedActive);
     }
 
-    this.renderSavedProfiles();
+    if (this.profileModalController) {
+      await this.profileModalController.handleAuthLogin(detail);
+    } else {
+      this.renderSavedProfiles();
 
-    try {
-      await this.refreshAdminPaneState();
-    } catch (error) {
-      console.warn("Failed to refresh admin pane after login:", error);
+      try {
+        await this.refreshAdminPaneState();
+      } catch (error) {
+        console.warn("Failed to refresh admin pane after login:", error);
+      }
+
+      this.populateBlockedList();
+      this.populateProfileRelays();
+      this.refreshWalletPaneState();
     }
-
-    this.populateBlockedList();
-    this.populateProfileRelays();
-    this.refreshWalletPaneState();
 
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
@@ -2659,7 +2593,21 @@ class Application {
     }
     this.nwcSettings.clear();
 
-    this.renderSavedProfiles();
+    if (this.profileModalController) {
+      await this.profileModalController.handleAuthLogout(detail);
+    } else {
+      this.renderSavedProfiles();
+
+      try {
+        await this.refreshAdminPaneState();
+      } catch (error) {
+        console.warn("Failed to refresh admin pane after logout:", error);
+      }
+
+      this.populateBlockedList();
+      this.populateProfileRelays();
+      this.refreshWalletPaneState();
+    }
 
     if (this.loginButton) {
       this.loginButton.classList.remove("hidden");
@@ -2691,25 +2639,9 @@ class Application {
       this.profileButton.style.display = "none";
     }
 
-    if (this.profileChannelLink) {
-      this.profileChannelLink.classList.add("hidden");
-      this.profileChannelLink.removeAttribute("href");
-      delete this.profileChannelLink.dataset.targetNpub;
-    }
-
     if (this.subscriptionsLink) {
       this.subscriptionsLink.classList.add("hidden");
     }
-
-    try {
-      await this.refreshAdminPaneState();
-    } catch (error) {
-      console.warn("Failed to refresh admin pane after logout:", error);
-    }
-
-    this.populateBlockedList();
-    this.populateProfileRelays();
-    this.refreshWalletPaneState();
 
     await this.loadVideos();
     this.forceRefreshAllProfiles();
@@ -2719,7 +2651,9 @@ class Application {
   }
 
   handleProfileUpdated(detail = {}) {
-    if (Array.isArray(detail?.savedProfiles)) {
+    if (this.profileModalController) {
+      this.profileModalController.handleProfileUpdated(detail);
+    } else if (Array.isArray(detail?.savedProfiles)) {
       this.renderSavedProfiles();
     }
 
@@ -2730,7 +2664,10 @@ class Application {
 
     if (normalizedPubkey && profile) {
       this.updateProfileInDOM(normalizedPubkey, profile);
-      if (this.normalizeHexPubkey(this.pubkey) === normalizedPubkey) {
+      if (
+        !this.profileModalController &&
+        this.normalizeHexPubkey(this.pubkey) === normalizedPubkey
+      ) {
         this.updateActiveProfileUI(normalizedPubkey, profile);
       }
     }
@@ -3864,8 +3801,12 @@ class Application {
       typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
     if (!normalizedUri) {
       this.showError("Connect a Lightning wallet to send zaps.");
-      if (typeof this.openWalletPane === "function") {
-        this.openWalletPane();
+      if (this.profileModalController) {
+        this.profileModalController
+          .showWalletPane()
+          .catch((error) => {
+            console.error("Failed to open wallet pane:", error);
+          });
       }
       return null;
     }
