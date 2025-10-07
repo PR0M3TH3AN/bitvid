@@ -329,16 +329,6 @@ class Application {
     this.isWalletPaneBusy = false;
     this.profileModalCachedSelection = null;
     this.profileModalController = null;
-    this.profileModalStateCache = {
-      activePane:
-        typeof this.activeProfilePane === "string" && this.activeProfilePane
-          ? this.activeProfilePane
-          : "account",
-      cachedSelection: null,
-      walletBusy: Boolean(this.isWalletPaneBusy),
-    };
-    this.profileModalStateAdapter = null;
-    this.profileModalServiceAdapter = null;
     this.adminModeratorInput = null;
     this.adminAddModeratorBtn = null;
     this.adminModeratorList = null;
@@ -355,10 +345,7 @@ class Application {
     this.adminBlacklistEmpty = null;
     this.adminBlacklistSection = null;
     this.lastFocusedBeforeProfileModal = null;
-    this.boundProfileModalKeydown = null;
-    this.boundProfileModalFocusIn = null;
     this.boundProfileHistoryVisibility = null;
-    this.profileModalFocusables = [];
     this.profileSwitcherList = null;
     this.profileAddAccountBtn = null;
     this.profileSwitcherSelectionPubkey = null;
@@ -1259,276 +1246,6 @@ class Application {
     }
   }
 
-  renderSavedProfiles() {
-    const fallbackAvatar = "assets/svg/default-profile.svg";
-    const normalizedActive = this.normalizeHexPubkey(
-      this.activeProfilePubkey
-    );
-    const entriesNeedingFetch = new Set();
-
-    const resolveMeta = (entry) => {
-      if (!entry || typeof entry !== "object") {
-        return {
-          name: "",
-          picture: fallbackAvatar,
-          npub: null,
-        };
-      }
-
-      const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
-      let cacheEntry = null;
-      if (normalizedPubkey) {
-        cacheEntry = this.getProfileCacheEntry(normalizedPubkey);
-      }
-      const cachedProfile = cacheEntry?.profile || {};
-
-      const hasStoredName =
-        typeof entry.name === "string" && entry.name.trim().length > 0;
-      const hasStoredPicture =
-        typeof entry.picture === "string" && entry.picture.trim().length > 0;
-
-      if (
-        !cacheEntry &&
-        normalizedPubkey &&
-        (!hasStoredName || !hasStoredPicture)
-      ) {
-        entriesNeedingFetch.add(normalizedPubkey);
-      }
-
-      let resolvedNpub =
-        typeof entry.npub === "string" && entry.npub.trim()
-          ? entry.npub.trim()
-          : null;
-      if (!resolvedNpub && entry.pubkey) {
-        resolvedNpub = this.safeEncodeNpub(entry.pubkey);
-      }
-
-      return {
-        name: cachedProfile.name || entry.name || "",
-        picture: cachedProfile.picture || entry.picture || fallbackAvatar,
-        npub: resolvedNpub,
-      };
-    };
-
-    const savedEntries = Array.isArray(this.savedProfiles)
-      ? this.savedProfiles.filter((entry) => entry && entry.pubkey)
-      : [];
-
-    let activeEntry = null;
-    if (normalizedActive) {
-      activeEntry = savedEntries.find(
-        (entry) => this.normalizeHexPubkey(entry.pubkey) === normalizedActive
-      );
-    }
-    if (!activeEntry && savedEntries.length) {
-      activeEntry = savedEntries[0];
-    }
-
-    const activeMeta = activeEntry ? resolveMeta(activeEntry) : null;
-    const hasActiveProfile = Boolean(activeEntry && activeMeta);
-    const activeNameFallback = activeMeta?.npub
-      ? truncateMiddle(activeMeta.npub, 32)
-      : "Saved profile";
-    const activeDisplayName = hasActiveProfile
-      ? activeMeta.name?.trim() || activeNameFallback
-      : "No active profile";
-    const activeAvatarSrc = hasActiveProfile
-      ? activeMeta.picture || fallbackAvatar
-      : fallbackAvatar;
-
-    if (this.profileModalName) {
-      this.profileModalName.textContent = activeDisplayName;
-    }
-
-    if (this.profileModalAvatar instanceof HTMLImageElement) {
-      if (this.profileModalAvatar.src !== activeAvatarSrc) {
-        this.profileModalAvatar.src = activeAvatarSrc;
-      }
-      this.profileModalAvatar.alt = hasActiveProfile
-        ? `${activeDisplayName} avatar`
-        : "Default profile avatar";
-    } else if (this.profileModalAvatar) {
-      this.profileModalAvatar.setAttribute("data-avatar-src", activeAvatarSrc);
-    }
-
-    if (this.profileModalNpub) {
-      if (hasActiveProfile && activeMeta?.npub) {
-        this.profileModalNpub.textContent = truncateMiddle(activeMeta.npub, 48);
-      } else if (hasActiveProfile) {
-        this.profileModalNpub.textContent = "npub unavailable";
-      } else {
-        this.profileModalNpub.textContent = "Link a profile to get started";
-      }
-    }
-
-    if (this.profileChannelLink) {
-      if (hasActiveProfile && activeMeta?.npub) {
-        const encodedNpub = activeMeta.npub;
-        this.profileChannelLink.href = `#view=channel-profile&npub=${encodeURIComponent(
-          encodedNpub
-        )}`;
-        this.profileChannelLink.dataset.targetNpub = encodedNpub;
-        this.profileChannelLink.classList.remove("hidden");
-        this.profileChannelLink.setAttribute("aria-hidden", "false");
-      } else {
-        this.profileChannelLink.classList.add("hidden");
-        this.profileChannelLink.removeAttribute("href");
-        delete this.profileChannelLink.dataset.targetNpub;
-        this.profileChannelLink.setAttribute("aria-hidden", "true");
-      }
-    }
-
-    if (this.profileAvatar instanceof HTMLImageElement) {
-      if (this.profileAvatar.src !== activeAvatarSrc) {
-        this.profileAvatar.src = activeAvatarSrc;
-      }
-      this.profileAvatar.alt = hasActiveProfile
-        ? `${activeDisplayName} avatar`
-        : this.profileAvatar.alt || "Profile avatar";
-    }
-
-    const listEl = this.profileSwitcherList;
-    if (listEl instanceof HTMLElement) {
-      listEl.innerHTML = "";
-      let normalizedSelection = this.normalizeHexPubkey(
-        this.profileSwitcherSelectionPubkey
-      );
-      if (normalizedSelection && normalizedSelection === normalizedActive) {
-        normalizedSelection = null;
-        this.profileSwitcherSelectionPubkey = null;
-      }
-      const entriesToRender = savedEntries.filter((entry) => {
-        const normalized = this.normalizeHexPubkey(entry.pubkey);
-        return normalized && normalized !== normalizedActive;
-      });
-
-      if (!entriesToRender.length) {
-        listEl.setAttribute("data-profile-switcher-empty", "true");
-        const helper = document.createElement("p");
-        helper.className = "profile-switcher__empty text-sm text-gray-400";
-        helper.textContent = "No other profiles saved yet.";
-        helper.setAttribute("role", "note");
-        listEl.appendChild(helper);
-      } else {
-        listEl.removeAttribute("data-profile-switcher-empty");
-
-        entriesToRender.forEach((entry) => {
-          const meta = resolveMeta(entry);
-          const button = document.createElement("button");
-          button.type = "button";
-          button.classList.add("profile-card");
-          button.dataset.pubkey = entry.pubkey;
-          if (meta.npub) {
-            button.dataset.npub = meta.npub;
-          }
-          if (entry.authType) {
-            button.dataset.authType = entry.authType;
-          }
-
-          const normalizedPubkey = this.normalizeHexPubkey(entry.pubkey);
-          const isSelected =
-            normalizedSelection && normalizedPubkey === normalizedSelection;
-          if (isSelected) {
-            button.classList.add("profile-card--active");
-            button.setAttribute("aria-pressed", "true");
-          } else {
-            button.setAttribute("aria-pressed", "false");
-          }
-
-          const avatarSpan = document.createElement("span");
-          avatarSpan.className = "profile-card__avatar";
-          const avatarImg = document.createElement("img");
-          avatarImg.src = meta.picture || fallbackAvatar;
-          const cardDisplayName =
-            meta.name?.trim() ||
-            (meta.npub ? truncateMiddle(meta.npub, 32) : "Saved profile");
-          avatarImg.alt = `${cardDisplayName} avatar`;
-          avatarSpan.appendChild(avatarImg);
-
-          const metaSpan = document.createElement("span");
-          metaSpan.className = "profile-card__meta";
-
-          const topLine = document.createElement("span");
-          topLine.className = "profile-card__topline";
-
-          const label = document.createElement("span");
-          label.className = "profile-card__label";
-          label.textContent =
-            entry.authType === "nsec" ? "Direct key" : "Saved profile";
-
-          const action = document.createElement("span");
-          action.className = "profile-card__action";
-          action.setAttribute("aria-hidden", "true");
-          action.textContent = isSelected ? "Selected" : "Switch";
-
-          topLine.append(label, action);
-
-          const nameSpan = document.createElement("span");
-          nameSpan.className = "profile-card__name";
-          nameSpan.textContent = cardDisplayName;
-
-          const npubSpan = document.createElement("span");
-          npubSpan.className = "profile-card__npub";
-          npubSpan.textContent = meta.npub
-            ? truncateMiddle(meta.npub, 48)
-            : "npub unavailable";
-
-          metaSpan.append(topLine, nameSpan, npubSpan);
-          button.append(avatarSpan, metaSpan);
-
-          const ariaLabel = isSelected
-            ? `${cardDisplayName} selected`
-            : `Switch to ${cardDisplayName}`;
-          button.setAttribute("aria-label", ariaLabel);
-
-          const activateProfile = async (event) => {
-            if (event) {
-              event.preventDefault();
-              event.stopPropagation();
-            }
-
-            if (button.dataset.loading === "true") {
-              return;
-            }
-
-            button.dataset.loading = "true";
-            button.setAttribute("aria-busy", "true");
-
-            try {
-              await this.switchProfile(entry.pubkey);
-            } catch (error) {
-              console.error("Failed to switch profile:", error);
-            } finally {
-              button.dataset.loading = "false";
-              button.setAttribute("aria-busy", "false");
-            }
-          };
-
-          button.addEventListener("click", activateProfile);
-          button.addEventListener("keydown", (event) => {
-            const key = event?.key;
-            if (key === "Enter" || key === " " || key === "Spacebar") {
-              activateProfile(event);
-            }
-          });
-
-          listEl.appendChild(button);
-        });
-      }
-
-      this.updateProfileModalFocusables();
-    } else {
-      this.updateProfileModalFocusables();
-    }
-
-    if (entriesNeedingFetch.size) {
-      this.batchFetchProfiles(entriesNeedingFetch);
-    }
-  }
-
-  /**
-   * (Optional) Initialize a separate profile modal (profile-modal.html).
-   */
   async initProfileModal() {
     try {
       const modalContainer = document.getElementById("modalContainer");
@@ -1537,6 +1254,91 @@ class Application {
       }
 
       if (!this.profileModalController) {
+        const profileModalServices = {
+          normalizeHexPubkey: (value) => this.normalizeHexPubkey(value),
+          safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+          safeDecodeNpub: (npub) => this.safeDecodeNpub(npub),
+          truncateMiddle: (value, maxLength) => truncateMiddle(value, maxLength),
+          getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+          batchFetchProfiles: (authorSet) => this.batchFetchProfiles(authorSet),
+          switchProfile: (pubkey) => this.switchProfile(pubkey),
+          relayManager,
+          userBlocks,
+          nostrClient,
+          accessControl,
+          getCurrentUserNpub: () => this.getCurrentUserNpub(),
+          getActiveNwcSettings: () => this.getActiveNwcSettings(),
+          updateActiveNwcSettings: (partial) =>
+            this.updateActiveNwcSettings(partial),
+          createDefaultNwcSettings: () => createDefaultNwcSettings(),
+          ensureWallet: (options) => this.ensureWallet(options),
+          loadVideos: (forceFetch) => this.loadVideos(forceFetch),
+          sendAdminListNotification: (payload) =>
+            this.sendAdminListNotification(payload),
+          describeAdminError: (code) => this.describeAdminError(code),
+          describeNotificationError: (code) =>
+            this.describeNotificationError(code),
+          onAccessControlUpdated: () => this.onAccessControlUpdated(),
+        };
+
+        const profileModalState = {
+          getSavedProfiles: () => getSavedProfiles(),
+          setSavedProfiles: (profiles, options) =>
+            setSavedProfiles(Array.isArray(profiles) ? profiles : [], options),
+          persistSavedProfiles: (options) => persistSavedProfiles(options),
+          getActivePubkey: () => this.activeProfilePubkey,
+          setActivePubkey: (pubkey, options) => {
+            this.activeProfilePubkey =
+              typeof pubkey === "string" && pubkey.trim()
+                ? pubkey.trim()
+                : null;
+            setStoredActiveProfilePubkey(this.activeProfilePubkey, options);
+            return this.activeProfilePubkey;
+          },
+          getCachedSelection: () => this.profileModalCachedSelection || null,
+          setCachedSelection: (value) => {
+            const normalized =
+              typeof value === "string" && value.trim()
+                ? value.trim()
+                : null;
+            this.profileModalCachedSelection = normalized;
+            return this.profileModalCachedSelection;
+          },
+          getActivePane: () => {
+            const pane =
+              typeof this.activeProfilePane === "string" && this.activeProfilePane
+                ? this.activeProfilePane
+                : "account";
+            return pane;
+          },
+          setActivePane: (pane) => {
+            const normalized =
+              typeof pane === "string" && pane.trim()
+                ? pane.trim().toLowerCase()
+                : "account";
+            this.activeProfilePane = normalized;
+            return this.activeProfilePane;
+          },
+          getWalletBusy: () => Boolean(this.isWalletPaneBusy),
+          setWalletBusy: (flag) => {
+            this.isWalletPaneBusy = Boolean(flag);
+            return this.isWalletPaneBusy;
+          },
+        };
+
+        const profileModalCallbacks = {
+          onClose: () => this.handleProfileModalClosed(),
+          onLogout: async () => this.authService.logout(),
+          onChannelLink: (element) => this.handleProfileChannelLink(element),
+          onAddAccount: () => this.handleAddProfile(),
+          onSelectPane: (pane) => {
+            this.activeProfilePane = pane;
+          },
+          onPaneShown: (pane) => {
+            this.activeProfilePane = pane;
+          },
+        };
+
         this.profileModalController = new ProfileModalController({
           modalContainer,
           removeTrackingScripts,
@@ -1545,8 +1347,9 @@ class Application {
           showError: (message) => this.showError(message),
           showSuccess: (message) => this.showSuccess(message),
           showStatus: (message) => this.showStatus(message),
-          services: this.getProfileModalServices(),
-          state: this.getProfileModalStateBridge(),
+          services: profileModalServices,
+          state: profileModalState,
+          callbacks: profileModalCallbacks,
         });
       }
 
@@ -1589,15 +1392,20 @@ class Application {
         this.profileModalController.profileRestoreRelaysBtn;
 
       this.profileBlockedList = this.profileModalController.profileBlockedList;
-      this.profileBlockedEmpty = this.profileModalController.profileBlockedEmpty;
-      this.profileBlockedInput = this.profileModalController.profileBlockedInput;
-      this.profileAddBlockedBtn = this.profileModalController.profileAddBlockedBtn;
+      this.profileBlockedEmpty =
+        this.profileModalController.profileBlockedEmpty;
+      this.profileBlockedInput =
+        this.profileModalController.profileBlockedInput;
+      this.profileAddBlockedBtn =
+        this.profileModalController.profileAddBlockedBtn;
 
       this.profileWalletUriInput = this.profileModalController.walletUriInput;
       this.profileWalletDefaultZapInput =
         this.profileModalController.walletDefaultZapInput;
-      this.profileWalletSaveButton = this.profileModalController.walletSaveButton;
-      this.profileWalletTestButton = this.profileModalController.walletTestButton;
+      this.profileWalletSaveButton =
+        this.profileModalController.walletSaveButton;
+      this.profileWalletTestButton =
+        this.profileModalController.walletTestButton;
       this.profileWalletDisconnectButton =
         this.profileModalController.walletDisconnectButton;
       this.profileWalletStatusText =
@@ -1646,565 +1454,66 @@ class Application {
     }
   }
 
+  renderSavedProfiles() {
+    this.profileModalController?.renderSavedProfiles();
+  }
+
   selectProfilePane(name = "account") {
-    const normalized = typeof name === "string" ? name.toLowerCase() : "account";
-    const previous = this.activeProfilePane;
-    const availableKeys = Object.keys(this.profilePaneElements).filter((key) => {
-      const pane = this.profilePaneElements[key];
-      if (!(pane instanceof HTMLElement)) {
-        return false;
-      }
-      const button = this.profileNavButtons[key];
-      if (button instanceof HTMLElement && button.classList.contains("hidden")) {
-        return false;
-      }
-      return true;
-    });
-
-    const fallbackTarget = availableKeys.includes("account")
-      ? "account"
-      : availableKeys[0] || "account";
-    const target = availableKeys.includes(normalized)
-      ? normalized
-      : fallbackTarget;
-
-    if (previous === "history" && target !== "history") {
-      try {
-        this.profileHistoryRenderer?.pause();
-      } catch (error) {
-        console.warn("[profileModal] Failed to pause history renderer:", error);
-      }
-    }
-
-    Object.entries(this.profilePaneElements).forEach(([key, pane]) => {
-      if (!(pane instanceof HTMLElement)) {
-        return;
-      }
-      const isActive = key === target;
-      pane.classList.toggle("hidden", !isActive);
-      pane.setAttribute("aria-hidden", (!isActive).toString());
-    });
-
-    Object.entries(this.profileNavButtons).forEach(([key, button]) => {
-      if (!(button instanceof HTMLElement)) {
-        return;
-      }
-      const isActive = key === target;
-      button.setAttribute("aria-selected", isActive ? "true" : "false");
-      button.classList.toggle("bg-gray-800", isActive);
-      button.classList.toggle("text-white", isActive);
-      button.classList.toggle("text-gray-400", !isActive);
-    });
-
-    this.updateProfileModalFocusables();
-    this.activeProfilePane = target;
-
-    if (target === "history") {
-      void this.populateProfileWatchHistory();
-    } else if (target === "wallet") {
-      this.refreshWalletPaneState();
+    if (this.profileModalController) {
+      this.profileModalController.selectPane(name);
     }
   }
 
   setWalletPaneBusy(isBusy = false) {
-    this.isWalletPaneBusy = Boolean(isBusy);
-    if (this.profilePaneElements.wallet instanceof HTMLElement) {
-      this.profilePaneElements.wallet.setAttribute(
-        "aria-busy",
-        this.isWalletPaneBusy ? "true" : "false"
-      );
-    }
-    this.applyWalletControlState();
-  }
-
-  applyWalletControlState() {
-    const hasActive = Boolean(this.normalizeHexPubkey(this.pubkey));
-    const busy = this.isWalletPaneBusy;
-    const uriValue =
-      typeof this.profileWalletUriInput?.value === "string"
-        ? this.profileWalletUriInput.value.trim()
-        : "";
-    const hasUri = uriValue.length > 0;
-
-    const applyDisabledState = (element, disabled) => {
-      if (!(element instanceof HTMLElement)) {
-        return;
-      }
-      if ("disabled" in element) {
-        element.disabled = disabled;
-      }
-      if (disabled) {
-        element.setAttribute("aria-disabled", "true");
-      } else {
-        element.removeAttribute("aria-disabled");
-      }
-    };
-
-    applyDisabledState(
-      this.profileWalletUriInput,
-      busy || !hasActive
-    );
-    applyDisabledState(
-      this.profileWalletDefaultZapInput,
-      busy || !hasActive
-    );
-    applyDisabledState(
-      this.profileWalletSaveButton,
-      busy || !hasActive
-    );
-
-    const testDisabled = busy || !hasActive || !hasUri;
-    applyDisabledState(this.profileWalletTestButton, testDisabled);
-
-    const disconnectDisabled = busy || !hasActive || !hasUri;
-    applyDisabledState(
-      this.profileWalletDisconnectButton,
-      disconnectDisabled
-    );
-    if (this.profileWalletDisconnectButton instanceof HTMLElement) {
-      this.profileWalletDisconnectButton.classList.toggle("hidden", !hasUri);
-      if (!hasUri) {
-        this.profileWalletDisconnectButton.setAttribute("aria-hidden", "true");
-      } else {
-        this.profileWalletDisconnectButton.removeAttribute("aria-hidden");
-      }
-    }
-  }
-
-  updateWalletStatus(message, variant = "info") {
-    if (!(this.profileWalletStatusText instanceof HTMLElement)) {
+    if (!this.profileModalController) {
+      this.isWalletPaneBusy = Boolean(isBusy);
       return;
     }
-
-    const element = this.profileWalletStatusText;
-    const variants = {
-      success: "text-green-400",
-      error: "text-red-400",
-      info: "text-gray-400",
-    };
-
-    element.classList.remove("text-gray-400", "text-green-400", "text-red-400");
-    const variantClass = variants[variant] || variants.info;
-    element.classList.add(variantClass);
-    element.textContent = message || "";
+    this.profileModalController.setWalletPaneBusy(isBusy);
   }
 
   refreshWalletPaneState() {
-    const hasActive = Boolean(this.normalizeHexPubkey(this.pubkey));
-    const setInputValue = (element, value) => {
-      if (element && typeof element === "object" && "value" in element) {
-        try {
-          element.value = value;
-        } catch (error) {
-          if (element instanceof HTMLElement) {
-            element.setAttribute("data-value", value);
-          }
-        }
-      }
-    };
-    if (!hasActive) {
-      setInputValue(this.profileWalletUriInput, "");
-      setInputValue(this.profileWalletDefaultZapInput, "");
-      this.updateWalletStatus("Sign in to connect a wallet.", "info");
-      this.applyWalletControlState();
-      return;
-    }
-
-    const settings = this.getActiveNwcSettings();
-    setInputValue(this.profileWalletUriInput, settings.nwcUri || "");
-    setInputValue(
-      this.profileWalletDefaultZapInput,
-      settings.defaultZap === null || settings.defaultZap === undefined
-        ? ""
-        : String(settings.defaultZap)
-    );
-
-    if (settings.nwcUri) {
-      this.updateWalletStatus(
-        "Wallet connected via Nostr Wallet Connect.",
-        "success"
-      );
-    } else {
-      this.updateWalletStatus("No wallet connected yet.", "info");
-    }
-
-    this.applyWalletControlState();
+    this.profileModalController?.refreshWalletPaneState();
   }
 
-  getWalletFormValues() {
-    const uri =
-      typeof this.profileWalletUriInput?.value === "string"
-        ? this.profileWalletUriInput.value.trim()
-        : "";
-    const defaultZapRaw =
-      typeof this.profileWalletDefaultZapInput?.value === "string"
-        ? this.profileWalletDefaultZapInput.value.trim()
-        : "";
-
-    if (defaultZapRaw) {
-      const numeric = Number(defaultZapRaw);
-      if (!Number.isFinite(numeric)) {
-        return { uri, error: "Default zap amount must be a number." };
-      }
-      const rounded = Math.round(numeric);
-      if (!Number.isFinite(rounded) || rounded < 0) {
-        return {
-          uri,
-          error: "Default zap amount must be a positive whole number.",
-        };
-      }
-      const clamped = Math.min(MAX_WALLET_DEFAULT_ZAP, rounded);
-      return { uri, defaultZap: clamped };
-    }
-
-    return { uri, defaultZap: null };
-  }
-
-  validateWalletUri(uri, { requireValue = false } = {}) {
-    const value = typeof uri === "string" ? uri.trim() : "";
-    if (!value) {
-      if (requireValue) {
-        return {
-          valid: false,
-          sanitized: "",
-          message: "Enter a wallet connect URI before continuing.",
-        };
-      }
-      return { valid: true, sanitized: "" };
-    }
-
-    if (!value.toLowerCase().startsWith(NWC_URI_SCHEME)) {
-      return {
-        valid: false,
-        sanitized: value,
-        message: `Wallet URI must start with ${NWC_URI_SCHEME}.`,
-      };
-    }
-
-    return { valid: true, sanitized: value };
-  }
-
-  async handleWalletSave() {
-    if (this.isWalletPaneBusy) {
-      return;
-    }
-
-    const { uri, defaultZap, error } = this.getWalletFormValues();
-    if (error) {
-      this.updateWalletStatus(error, "error");
-      this.showError(error);
-      if (this.profileWalletDefaultZapInput instanceof HTMLElement) {
-        this.profileWalletDefaultZapInput.focus();
-      }
-      return;
-    }
-
-    const { valid, sanitized, message } = this.validateWalletUri(uri);
-    if (!valid) {
-      this.updateWalletStatus(message, "error");
-      this.showError(message);
-      if (this.profileWalletUriInput instanceof HTMLElement) {
-        this.profileWalletUriInput.focus();
-      }
-      return;
-    }
-
-    const normalizedActive = this.normalizeHexPubkey(this.pubkey);
-    if (!normalizedActive) {
-      const loginMessage = "Sign in to save wallet settings.";
-      this.updateWalletStatus(loginMessage, "error");
-      this.showError(loginMessage);
-      return;
-    }
-
-    this.setWalletPaneBusy(true);
-    let finalStatus = null;
-    let finalVariant = "info";
-    try {
-      await this.updateActiveNwcSettings({
-        nwcUri: sanitized,
-        defaultZap,
-      });
-
-      if (sanitized) {
-        finalStatus = "Wallet settings saved.";
-        finalVariant = "success";
-        this.showSuccess("Wallet settings saved.");
-      } else {
-        finalStatus = "Wallet connection removed.";
-        finalVariant = "info";
-        this.showStatus("Wallet connection removed.");
-      }
-    } catch (error) {
-      const fallbackMessage = "Failed to save wallet settings.";
-      const detail =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : fallbackMessage;
-      finalStatus = detail;
-      finalVariant = "error";
-      this.showError(detail);
-    } finally {
-      this.setWalletPaneBusy(false);
-      this.refreshWalletPaneState();
-      if (finalStatus) {
-        this.updateWalletStatus(finalStatus, finalVariant);
-      }
-    }
-  }
-
-  async handleWalletTest() {
-    if (this.isWalletPaneBusy) {
-      return;
-    }
-
-    const { uri, defaultZap, error } = this.getWalletFormValues();
-    if (error) {
-      this.updateWalletStatus(error, "error");
-      this.showError(error);
-      if (this.profileWalletDefaultZapInput instanceof HTMLElement) {
-        this.profileWalletDefaultZapInput.focus();
-      }
-      return;
-    }
-
-    const { valid, sanitized, message } = this.validateWalletUri(uri, {
-      requireValue: true,
-    });
-    if (!valid) {
-      this.updateWalletStatus(message, "error");
-      this.showError(message);
-      if (this.profileWalletUriInput instanceof HTMLElement) {
-        this.profileWalletUriInput.focus();
-      }
-      return;
-    }
-
-    const normalizedActive = this.normalizeHexPubkey(this.pubkey);
-    if (!normalizedActive) {
-      const loginMessage = "Sign in to test your wallet connection.";
-      this.updateWalletStatus(loginMessage, "error");
-      this.showError(loginMessage);
-      return;
-    }
-
-    this.setWalletPaneBusy(true);
-    let finalStatus = null;
-    let finalVariant = "info";
-    try {
-      const result = await this.ensureWallet({
-        nwcUri: sanitized,
-        defaultZap,
-      });
-      finalStatus = "Wallet connection confirmed.";
-      finalVariant = "success";
-      this.showSuccess("Wallet connection confirmed.");
-
-      const currentSettings = this.getActiveNwcSettings();
-      if (currentSettings.nwcUri === sanitized) {
-        await this.updateActiveNwcSettings({ lastChecked: Date.now() });
-      }
-      return result;
-    } catch (error) {
-      const fallbackMessage = "Failed to reach wallet.";
-      const detail =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : fallbackMessage;
-      finalStatus = detail;
-      finalVariant = "error";
-      this.showError(detail);
-      return null;
-    } finally {
-      this.setWalletPaneBusy(false);
-      this.refreshWalletPaneState();
-      if (finalStatus) {
-        this.updateWalletStatus(finalStatus, finalVariant);
-      }
-    }
-  }
-
-  async handleWalletDisconnect() {
-    if (this.isWalletPaneBusy) {
-      return;
-    }
-
-    const normalizedActive = this.normalizeHexPubkey(this.pubkey);
-    if (!normalizedActive) {
-      const loginMessage = "Sign in to disconnect your wallet.";
-      this.updateWalletStatus(loginMessage, "error");
-      this.showError(loginMessage);
-      return;
-    }
-
-    this.setWalletPaneBusy(true);
-    let finalStatus = null;
-    let finalVariant = "info";
-    try {
-      await this.updateActiveNwcSettings(createDefaultNwcSettings());
-      finalStatus = "Wallet disconnected.";
-      this.showStatus("Wallet disconnected.");
-    } catch (error) {
-      const fallbackMessage = "Failed to disconnect wallet.";
-      const detail =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : fallbackMessage;
-      finalStatus = detail;
-      finalVariant = "error";
-      this.showError(detail);
-    } finally {
-      this.setWalletPaneBusy(false);
-      this.refreshWalletPaneState();
-      if (finalStatus) {
-        this.updateWalletStatus(finalStatus, finalVariant);
-      }
-    }
-  }
-
-  updateProfileModalFocusables() {
-    if (!this.profileModal) {
-      this.profileModalFocusables = [];
-      return;
-    }
-
-    const focusableSelectors =
-      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-    const candidates = Array.from(
-      this.profileModal.querySelectorAll(focusableSelectors)
-    );
-
-    this.profileModalFocusables = candidates.filter((el) => {
-      if (!(el instanceof HTMLElement)) {
-        return false;
-      }
-      if (el.hasAttribute("disabled")) {
-        return false;
-      }
-      if (el.getAttribute("aria-hidden") === "true") {
-        return false;
-      }
-      if (el.offsetParent === null && el !== document.activeElement) {
-        return false;
-      }
-      return true;
-    });
+  updateWalletStatus(message, variant = "info") {
+    this.profileModalController?.updateWalletStatus(message, variant);
   }
 
   async openProfileModal(targetPane = "account") {
-    if (!this.profileModal) {
+    if (!this.profileModalController) {
       return;
     }
 
     try {
       await this.refreshAdminPaneState();
     } catch (error) {
-      console.error("Failed to refresh admin pane while opening profile modal:", error);
+      console.error(
+        "Failed to refresh admin pane while opening profile modal:",
+        error,
+      );
     }
 
     this.activeProfilePane = null;
     this.refreshWalletPaneState();
-    this.selectProfilePane(targetPane);
     this.populateProfileRelays();
+
     try {
       await userBlocks.ensureLoaded(this.pubkey);
     } catch (error) {
-      console.warn("Failed to refresh user block list while opening profile modal:", error);
+      console.warn(
+        "Failed to refresh user block list while opening profile modal:",
+        error,
+      );
     }
     this.populateBlockedList();
-
-    this.profileModal.classList.remove("hidden");
-    this.profileModal.setAttribute("aria-hidden", "false");
-    setGlobalModalState("profile", true);
 
     this.lastFocusedBeforeProfileModal =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
 
-    this.updateProfileModalFocusables();
-
-    const targetButton =
-      this.profileNavButtons[targetPane] instanceof HTMLElement
-        ? this.profileNavButtons[targetPane]
-        : this.profileNavButtons.account;
-    const initialTarget =
-      targetButton instanceof HTMLElement ? targetButton : this.profileModal;
-
-    window.requestAnimationFrame(() => {
-      if (initialTarget && typeof initialTarget.focus === "function") {
-        initialTarget.focus();
-      }
-    });
-
-    if (!this.boundProfileModalKeydown) {
-      this.boundProfileModalKeydown = (event) => {
-        if (!this.profileModal || this.profileModal.classList.contains("hidden")) {
-          return;
-        }
-
-        if (event.key === "Escape") {
-          event.preventDefault();
-          this.hideProfileModal();
-          return;
-        }
-
-        if (event.key !== "Tab") {
-          return;
-        }
-
-        this.updateProfileModalFocusables();
-        if (!this.profileModalFocusables.length) {
-          event.preventDefault();
-          if (typeof this.profileModal.focus === "function") {
-            this.profileModal.focus();
-          }
-          return;
-        }
-
-        const first = this.profileModalFocusables[0];
-        const last = this.profileModalFocusables[this.profileModalFocusables.length - 1];
-        const active = document.activeElement;
-
-        if (event.shiftKey) {
-          if (active === first || !this.profileModal.contains(active)) {
-            event.preventDefault();
-            if (last && typeof last.focus === "function") {
-              last.focus();
-            }
-          }
-          return;
-        }
-
-        if (active === last) {
-          event.preventDefault();
-          if (first && typeof first.focus === "function") {
-            first.focus();
-          }
-        }
-      };
-    }
-
-    if (!this.boundProfileModalFocusIn) {
-      this.boundProfileModalFocusIn = (event) => {
-        if (
-          !this.profileModal ||
-          this.profileModal.classList.contains("hidden") ||
-          this.profileModal.contains(event.target)
-        ) {
-          return;
-        }
-
-        this.updateProfileModalFocusables();
-        const fallback = this.profileModalFocusables[0] || this.profileModal;
-        if (fallback && typeof fallback.focus === "function") {
-          fallback.focus();
-        }
-      };
-    }
-
-    this.profileModal.addEventListener("keydown", this.boundProfileModalKeydown);
-    document.addEventListener("focusin", this.boundProfileModalFocusIn);
+    this.profileModalController.open(targetPane);
   }
 
   async openWalletPane() {
@@ -2225,462 +1534,75 @@ class Application {
   }
 
   hideProfileModal() {
-    if (!this.profileModal) {
+    if (!this.profileModalController) {
       return;
     }
 
-    if (!this.profileModal.classList.contains("hidden")) {
-      this.profileModal.classList.add("hidden");
-    }
-    this.profileModal.setAttribute("aria-hidden", "true");
-    setGlobalModalState("profile", false);
+    this.profileModalController.hide();
+    this.handleProfileModalClosed();
+  }
 
-    if (this.boundProfileModalKeydown) {
-      this.profileModal.removeEventListener(
-        "keydown",
-        this.boundProfileModalKeydown
-      );
-    }
-    if (this.boundProfileModalFocusIn) {
-      document.removeEventListener("focusin", this.boundProfileModalFocusIn);
-    }
-    if (this.boundProfileHistoryVisibility) {
-      document.removeEventListener(
-        "visibilitychange",
-        this.boundProfileHistoryVisibility
-      );
-      this.boundProfileHistoryVisibility = null;
-    }
-
+  handleProfileModalClosed() {
     this.closeAllMoreMenus();
-
-    try {
-      this.profileHistoryRenderer?.destroy();
-    } catch (error) {
-      console.warn(
-        "[profileModal] Failed to reset watch history renderer on close:",
-        error
-      );
-    }
-
     this.activeProfilePane = null;
 
-    if (
-      this.lastFocusedBeforeProfileModal &&
-      typeof this.lastFocusedBeforeProfileModal.focus === "function"
-    ) {
-      this.lastFocusedBeforeProfileModal.focus();
-    }
+    const previouslyFocused = this.lastFocusedBeforeProfileModal;
     this.lastFocusedBeforeProfileModal = null;
+    if (
+      previouslyFocused &&
+      typeof previouslyFocused.focus === "function"
+    ) {
+      previouslyFocused.focus();
+    }
+  }
+
+  handleProfileChannelLink(element) {
+    if (!(element instanceof HTMLElement)) {
+      return;
+    }
+
+    const targetNpub =
+      typeof element.dataset.targetNpub === "string"
+        ? element.dataset.targetNpub
+        : "";
+    this.hideProfileModal();
+    if (targetNpub) {
+      window.location.hash = `#view=channel-profile&npub=${encodeURIComponent(
+        targetNpub,
+      )}`;
+    }
   }
 
   populateProfileRelays(relayEntries = null) {
-    if (!this.profileRelayList) {
-      return;
-    }
-
-    const sourceEntries = Array.isArray(relayEntries)
-      ? relayEntries
-      : relayManager.getEntries();
-
-    const relays = sourceEntries
-      .map((entry) => {
-        if (typeof entry === "string") {
-          const trimmed = entry.trim();
-          return trimmed ? { url: trimmed, mode: "both" } : null;
-        }
-        if (entry && typeof entry === "object") {
-          const url =
-            typeof entry.url === "string" ? entry.url.trim() : "";
-          if (!url) {
-            return null;
-          }
-          const mode = typeof entry.mode === "string" ? entry.mode : "both";
-          const normalizedMode =
-            mode === "read" || mode === "write" ? mode : "both";
-          return {
-            url,
-            mode: normalizedMode,
-            read: entry.read !== false,
-            write: entry.write !== false,
-          };
-        }
-        return null;
-      })
-      .filter((entry) => entry && typeof entry.url === "string");
-
-    this.profileRelayList.innerHTML = "";
-
-    if (!relays.length) {
-      const emptyState = document.createElement("li");
-      emptyState.className =
-        "rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400";
-      emptyState.textContent = "No relays configured.";
-      this.profileRelayList.appendChild(emptyState);
-      return;
-    }
-
-    relays.forEach((entry) => {
-      const item = document.createElement("li");
-      item.className =
-        "flex items-start justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
-
-      const info = document.createElement("div");
-      info.className = "flex-1 min-w-0";
-
-      const urlEl = document.createElement("p");
-      urlEl.className = "text-sm font-medium text-gray-100 break-all";
-      urlEl.textContent = entry.url;
-
-      const statusEl = document.createElement("p");
-      statusEl.className = "mt-1 text-xs text-gray-400";
-      let modeLabel = "Read & write";
-      if (entry.mode === "read") {
-        modeLabel = "Read only";
-      } else if (entry.mode === "write") {
-        modeLabel = "Write only";
-      }
-      statusEl.textContent = modeLabel;
-
-      info.appendChild(urlEl);
-      info.appendChild(statusEl);
-
-      const actions = document.createElement("div");
-      actions.className = "flex items-center gap-2";
-
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className =
-        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
-      editBtn.textContent = "Change mode";
-      editBtn.title = "Cycle between read-only, write-only, or read/write modes.";
-      editBtn.addEventListener("click", () => {
-        this.handleRelayModeToggle(entry.url);
-      });
-
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className =
-        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
-      removeBtn.textContent = "Remove";
-      removeBtn.addEventListener("click", () => {
-        this.handleRemoveRelay(entry.url);
-      });
-
-      actions.appendChild(editBtn);
-      actions.appendChild(removeBtn);
-
-      item.appendChild(info);
-      item.appendChild(actions);
-
-      this.profileRelayList.appendChild(item);
-    });
-  }
-
-  async handleRelayOperation(operation, {
-    successMessage = "Relay preferences updated.",
-    skipPublishIfUnchanged = true,
-    unchangedMessage = null,
-  } = {}) {
-    if (!this.pubkey) {
-      this.showError("Please login to manage your relays.");
-      return;
-    }
-
-    if (typeof operation !== "function") {
-      return;
-    }
-
-    const previous = relayManager.snapshot();
-    let result;
-    try {
-      result = operation();
-    } catch (error) {
-      const message =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : "Failed to update relay preferences.";
-      this.showError(message);
-      return;
-    }
-
-    const changed = !!result?.changed;
-    if (!changed && skipPublishIfUnchanged) {
-      if (result?.reason === "duplicate") {
-        this.showSuccess("Relay is already configured.");
-      } else if (typeof unchangedMessage === "string" && unchangedMessage) {
-        this.showSuccess(unchangedMessage);
-      }
-      this.populateProfileRelays();
-      return;
-    }
-
-    this.populateProfileRelays();
-
-    try {
-      const publishResult = await relayManager.publishRelayList(this.pubkey);
-      if (!publishResult?.ok) {
-        throw new Error("No relays accepted the update.");
-      }
-      if (successMessage) {
-        this.showSuccess(successMessage);
-      }
-    } catch (error) {
-      relayManager.setEntries(previous, { allowEmpty: false });
-      this.populateProfileRelays();
-      const message =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : "Failed to publish relay configuration. Please try again.";
-      this.showError(message);
-    }
-  }
-
-  async handleAddRelay() {
-    if (!this.pubkey) {
-      this.showError("Please login to manage your relays.");
-      return;
-    }
-
-    const rawValue =
-      typeof this.profileRelayInput?.value === "string"
-        ? this.profileRelayInput.value
-        : "";
-    const trimmed = rawValue.trim();
-    if (!trimmed) {
-      this.showError("Enter a relay URL to add.");
-      return;
-    }
-
-    await this.handleRelayOperation(
-      () => relayManager.addRelay(trimmed),
-      {
-        successMessage: "Relay saved.",
-        unchangedMessage: "Relay is already configured.",
-      }
-    );
-
-    if (this.profileRelayInput) {
-      this.profileRelayInput.value = "";
-    }
-  }
-
-  async handleRestoreRelays() {
-    if (!this.pubkey) {
-      this.showError("Please login to manage your relays.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Restore the recommended relay defaults?"
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    await this.handleRelayOperation(
-      () => relayManager.restoreDefaults(),
-      {
-        successMessage: "Relay defaults restored.",
-        unchangedMessage: "Relay defaults are already in use.",
-      }
-    );
-  }
-
-  async handleRelayModeToggle(url) {
-    if (!url) {
-      return;
-    }
-    await this.handleRelayOperation(
-      () => relayManager.cycleRelayMode(url),
-      { successMessage: "Relay mode updated." }
-    );
-  }
-
-  async handleRemoveRelay(url) {
-    if (!url) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Remove ${url} from your relay list?`
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    await this.handleRelayOperation(
-      () => relayManager.removeRelay(url),
-      { successMessage: "Relay removed." }
-    );
+    this.profileModalController?.populateProfileRelays(relayEntries);
   }
 
   populateBlockedList(blocked = null) {
-    if (!this.profileBlockedList || !this.profileBlockedEmpty) {
-      return;
-    }
-
-    const sourceEntries =
-      Array.isArray(blocked) && blocked.length
-        ? blocked
-        : userBlocks.getBlockedPubkeys();
-
-    const normalizedEntries = [];
-    const pushEntry = (hex, label) => {
-      if (!hex || !label) {
-        return;
-      }
-      normalizedEntries.push({ hex, label });
-    };
-
-    sourceEntries.forEach((entry) => {
-      if (typeof entry === "string") {
-        const trimmed = entry.trim();
-        if (!trimmed) {
-          return;
-        }
-
-        if (trimmed.startsWith("npub1")) {
-          const decoded = this.safeDecodeNpub(trimmed);
-          if (!decoded) {
-            return;
-          }
-          const label = this.safeEncodeNpub(decoded) || trimmed;
-          pushEntry(decoded, label);
-          return;
-        }
-
-        if (/^[0-9a-f]{64}$/i.test(trimmed)) {
-          const hex = trimmed.toLowerCase();
-          const label = this.safeEncodeNpub(hex) || hex;
-          pushEntry(hex, label);
-        }
-        return;
-      }
-
-      if (entry && typeof entry === "object") {
-        const candidateNpub =
-          typeof entry.npub === "string" ? entry.npub.trim() : "";
-        const candidateHex =
-          typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
-
-        if (candidateHex && /^[0-9a-f]{64}$/i.test(candidateHex)) {
-          const normalizedHex = candidateHex.toLowerCase();
-          const label =
-            candidateNpub && candidateNpub.startsWith("npub1")
-              ? candidateNpub
-              : this.safeEncodeNpub(normalizedHex) || normalizedHex;
-          pushEntry(normalizedHex, label);
-          return;
-        }
-
-        if (candidateNpub && candidateNpub.startsWith("npub1")) {
-          const decoded = this.safeDecodeNpub(candidateNpub);
-          if (!decoded) {
-            return;
-          }
-          const label = this.safeEncodeNpub(decoded) || candidateNpub;
-          pushEntry(decoded, label);
-        }
-      }
-    });
-
-    const deduped = [];
-    const seenHex = new Set();
-    normalizedEntries.forEach((entry) => {
-      if (!seenHex.has(entry.hex)) {
-        seenHex.add(entry.hex);
-        deduped.push(entry);
-      }
-    });
-
-    this.profileBlockedList.innerHTML = "";
-
-    if (!deduped.length) {
-      this.profileBlockedEmpty.classList.remove("hidden");
-      this.profileBlockedList.classList.add("hidden");
-      return;
-    }
-
-    this.profileBlockedEmpty.classList.add("hidden");
-    this.profileBlockedList.classList.remove("hidden");
-
-    deduped.forEach(({ hex, label }) => {
-      const item = document.createElement("li");
-      item.className =
-        "flex items-center justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
-
-      const info = document.createElement("div");
-      info.className = "min-w-0";
-
-      const title = document.createElement("p");
-      title.className = "text-sm font-medium text-gray-100 break-all";
-      title.textContent = label;
-
-      info.appendChild(title);
-
-      const actionBtn = document.createElement("button");
-      actionBtn.type = "button";
-      actionBtn.className =
-        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
-      actionBtn.textContent = "Remove";
-      actionBtn.dataset.blockedHex = hex;
-      actionBtn.addEventListener("click", () => {
-        this.handleRemoveBlockedCreator(hex);
-      });
-
-      item.appendChild(info);
-      item.appendChild(actionBtn);
-
-      this.profileBlockedList.appendChild(item);
-    });
+    this.profileModalController?.populateBlockedList(blocked);
   }
 
-  async populateProfileWatchHistory() {
-    if (!this.profileHistoryRenderer) {
-      return;
-    }
+  refreshAdminPaneState() {
+    return this.profileModalController?.refreshAdminPaneState();
+  }
 
-    let primaryActor =
-      typeof this.pubkey === "string" && this.pubkey ? this.pubkey : undefined;
-    if (
-      !primaryActor &&
-      typeof nostrClient?.sessionActor?.pubkey === "string" &&
-      nostrClient.sessionActor.pubkey
-    ) {
-      primaryActor = nostrClient.sessionActor.pubkey;
-    }
+  populateAdminLists() {
+    this.profileModalController?.populateAdminLists();
+  }
 
-    try {
-      await this.profileHistoryRenderer.ensureInitialLoad({ actor: primaryActor });
-      await this.profileHistoryRenderer.refresh({ actor: primaryActor, force: true });
-      if (!this.boundProfileHistoryVisibility) {
-        this.boundProfileHistoryVisibility = () => {
-          if (!this.profileHistoryRenderer) {
-            return;
-          }
-          if (document.visibilityState === "visible") {
-            this.profileHistoryRenderer.resume();
-          } else {
-            this.profileHistoryRenderer.pause();
-          }
-        };
-        document.addEventListener(
-          "visibilitychange",
-          this.boundProfileHistoryVisibility
-        );
-      }
-      if (document.visibilityState === "hidden") {
-        this.profileHistoryRenderer.pause();
-      } else {
-        this.profileHistoryRenderer.resume();
-      }
-    } catch (error) {
-      console.error(
-        "[profileModal] Failed to populate watch history pane:",
-        error
-      );
-    }
+  renderAdminList(...args) {
+    return this.profileModalController?.renderAdminList(...args);
+  }
+
+  handleAdminListMutation(...args) {
+    return this.profileModalController?.handleAdminListMutation(...args);
+  }
+
+  handleAddModerator(...args) {
+    return this.profileModalController?.handleAddModerator(...args);
+  }
+
+  handleRemoveModerator(...args) {
+    return this.profileModalController?.handleRemoveModerator(...args);
   }
 
   async handleAddProfile() {
@@ -2720,7 +1642,7 @@ class Application {
         }
         button.setAttribute(
           "aria-label",
-          "Connecting to your Nostr extension"
+          "Connecting to your Nostr extension",
         );
       } else {
         if (titleEl) {
@@ -2748,13 +1670,13 @@ class Application {
       const normalizedPubkey = this.normalizeHexPubkey(pubkey);
       if (!normalizedPubkey) {
         throw new Error(
-          "Received an invalid public key from the Nostr extension."
+          "Received an invalid public key from the Nostr extension.",
         );
       }
 
       const alreadySaved = this.savedProfiles.some(
         (entry) =>
-          this.normalizeHexPubkey(entry.pubkey) === normalizedPubkey
+          this.normalizeHexPubkey(entry.pubkey) === normalizedPubkey,
       );
       if (alreadySaved) {
         this.showSuccess("That profile is already saved on this device.");
@@ -2796,479 +1718,6 @@ class Application {
       setLoadingState(false);
     }
   }
-
-  async handleAddBlockedCreator() {
-    if (!this.profileBlockedInput) {
-      return;
-    }
-
-    const rawValue = this.profileBlockedInput.value;
-    const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";
-
-    if (!trimmed) {
-      this.showError("Enter an npub to block.");
-      return;
-    }
-
-    if (!this.pubkey) {
-      this.showError("Please login to manage your block list.");
-      return;
-    }
-
-    const actorHex = this.pubkey;
-    let targetHex = "";
-
-    if (trimmed.startsWith("npub1")) {
-      targetHex = this.safeDecodeNpub(trimmed) || "";
-      if (!targetHex) {
-        this.showError("Invalid npub. Please double-check and try again.");
-        return;
-      }
-    } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
-      targetHex = trimmed.toLowerCase();
-    } else {
-      this.showError("Enter a valid npub or hex pubkey.");
-      return;
-    }
-
-    if (targetHex === actorHex) {
-      this.showError("You cannot block yourself.");
-      return;
-    }
-
-    try {
-      await userBlocks.ensureLoaded(actorHex);
-
-      if (userBlocks.isBlocked(targetHex)) {
-        this.showSuccess("You already blocked this creator.");
-      } else {
-        await userBlocks.addBlock(targetHex, actorHex);
-        this.showSuccess(
-          "Creator blocked. You won't see their videos anymore."
-        );
-      }
-
-      this.profileBlockedInput.value = "";
-      this.populateBlockedList();
-      await this.loadVideos();
-    } catch (error) {
-      console.error("Failed to add creator to personal block list:", error);
-      const message =
-        error?.code === "nip04-missing"
-          ? "Your Nostr extension must support NIP-04 to manage private lists."
-          : "Failed to update your block list. Please try again.";
-      this.showError(message);
-    }
-  }
-
-  async handleRemoveBlockedCreator(candidate) {
-    if (!this.pubkey) {
-      this.showError("Please login to manage your block list.");
-      return;
-    }
-
-    let targetHex = "";
-    if (typeof candidate === "string") {
-      const trimmed = candidate.trim();
-      if (!trimmed) {
-        return;
-      }
-
-      if (trimmed.startsWith("npub1")) {
-        targetHex = this.safeDecodeNpub(trimmed) || "";
-      } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
-        targetHex = trimmed.toLowerCase();
-      }
-    }
-
-    if (!targetHex) {
-      console.warn("No valid pubkey to remove from block list:", candidate);
-      return;
-    }
-
-    try {
-      await userBlocks.ensureLoaded(this.pubkey);
-
-      if (!userBlocks.isBlocked(targetHex)) {
-        this.showSuccess("Creator already removed from your block list.");
-      } else {
-        await userBlocks.removeBlock(targetHex, this.pubkey);
-        this.showSuccess("Creator removed from your block list.");
-      }
-
-      this.populateBlockedList();
-      await this.loadVideos();
-    } catch (error) {
-      console.error(
-        "Failed to remove creator from personal block list:",
-        error
-      );
-      const message =
-        error?.code === "nip04-missing"
-          ? "Your Nostr extension must support NIP-04 to manage private lists."
-          : "Failed to update your block list. Please try again.";
-      this.showError(message);
-    }
-  }
-
-  isAuthorBlocked(pubkey) {
-    return userBlocks.isBlocked(pubkey);
-  }
-
-  async refreshAdminPaneState() {
-    const adminNav = this.profileNavButtons.admin;
-    const adminPane = this.profilePaneElements.admin;
-
-    let loadError = null;
-    this.setAdminLoading(true);
-    this.showStatus("Fetching moderation filters…");
-    try {
-      await accessControl.ensureReady();
-    } catch (error) {
-      loadError = error;
-    }
-
-    const actorNpub = this.getCurrentUserNpub();
-    const canEdit = !!actorNpub && accessControl.canEditAdminLists(actorNpub);
-    const isSuperAdmin = !!actorNpub && accessControl.isSuperAdmin(actorNpub);
-
-    if (adminNav instanceof HTMLElement) {
-      adminNav.classList.toggle("hidden", !canEdit);
-      if (!canEdit) {
-        adminNav.setAttribute("aria-selected", "false");
-      }
-    }
-
-    if (adminPane instanceof HTMLElement) {
-      adminPane.classList.toggle("hidden", !canEdit);
-      adminPane.setAttribute("aria-hidden", (!canEdit).toString());
-    }
-
-    if (loadError) {
-      if (loadError?.code === "nostr-unavailable") {
-        console.info("Moderation lists are still syncing with relays.");
-        return;
-      }
-
-      console.error("Failed to load admin lists:", loadError);
-      this.showStatus(null);
-      this.showError("Unable to load moderation lists. Please try again.");
-      this.clearAdminLists();
-      this.setAdminLoading(false);
-      return;
-    }
-
-    if (!canEdit) {
-      this.clearAdminLists();
-      if (typeof actorNpub !== "string" || !actorNpub) {
-        this.currentUserNpub = null;
-      }
-      if (adminNav instanceof HTMLElement && adminNav.classList.contains("bg-gray-800")) {
-        this.selectProfilePane("account");
-      }
-      this.showStatus(null);
-      this.setAdminLoading(false);
-      return;
-    }
-
-    if (this.adminModeratorsSection instanceof HTMLElement) {
-      this.adminModeratorsSection.classList.toggle("hidden", !isSuperAdmin);
-      this.adminModeratorsSection.setAttribute("aria-hidden", (!isSuperAdmin).toString());
-    }
-    this.populateAdminLists();
-    this.showStatus(null);
-    this.setAdminLoading(false);
-  }
-
-  storeAdminEmptyMessages() {
-    const capture = (element) => {
-      if (element instanceof HTMLElement && !element.dataset.defaultMessage) {
-        element.dataset.defaultMessage = element.textContent || "";
-      }
-    };
-
-    capture(this.adminModeratorsEmpty);
-    capture(this.adminWhitelistEmpty);
-    capture(this.adminBlacklistEmpty);
-  }
-
-  setAdminLoading(isLoading) {
-    this.storeAdminEmptyMessages();
-    if (this.profilePaneElements.admin instanceof HTMLElement) {
-      this.profilePaneElements.admin.setAttribute(
-        "aria-busy",
-        isLoading ? "true" : "false"
-      );
-    }
-
-    const toggleMessage = (element, message) => {
-      if (!(element instanceof HTMLElement)) {
-        return;
-      }
-      if (isLoading) {
-        element.textContent = message;
-        element.classList.remove("hidden");
-      } else {
-        element.textContent = element.dataset.defaultMessage || element.textContent;
-      }
-    };
-
-    toggleMessage(this.adminModeratorsEmpty, "Loading moderators…");
-    toggleMessage(this.adminWhitelistEmpty, "Loading whitelist…");
-    toggleMessage(this.adminBlacklistEmpty, "Loading blacklist…");
-  }
-
-  clearAdminLists() {
-    this.storeAdminEmptyMessages();
-    if (this.adminModeratorList) {
-      this.adminModeratorList.innerHTML = "";
-    }
-    if (this.adminWhitelistList) {
-      this.adminWhitelistList.innerHTML = "";
-    }
-    if (this.adminBlacklistList) {
-      this.adminBlacklistList.innerHTML = "";
-    }
-    if (this.adminModeratorsEmpty instanceof HTMLElement) {
-      this.adminModeratorsEmpty.textContent =
-        this.adminModeratorsEmpty.dataset.defaultMessage ||
-        this.adminModeratorsEmpty.textContent;
-      this.adminModeratorsEmpty.classList.remove("hidden");
-    }
-    if (this.adminWhitelistEmpty instanceof HTMLElement) {
-      this.adminWhitelistEmpty.textContent =
-        this.adminWhitelistEmpty.dataset.defaultMessage ||
-        this.adminWhitelistEmpty.textContent;
-      this.adminWhitelistEmpty.classList.remove("hidden");
-    }
-    if (this.adminBlacklistEmpty instanceof HTMLElement) {
-      this.adminBlacklistEmpty.textContent =
-        this.adminBlacklistEmpty.dataset.defaultMessage ||
-        this.adminBlacklistEmpty.textContent;
-      this.adminBlacklistEmpty.classList.remove("hidden");
-    }
-  }
-
-  renderAdminList(listEl, emptyEl, entries, options = {}) {
-    if (!(listEl instanceof HTMLElement) || !(emptyEl instanceof HTMLElement)) {
-      return;
-    }
-
-    const { onRemove, removeLabel = "Remove", confirmMessage, removable = true } =
-      options;
-
-    listEl.innerHTML = "";
-    const values = Array.isArray(entries) ? [...entries] : [];
-    values.sort((a, b) => a.localeCompare(b));
-
-    if (!values.length) {
-      emptyEl.classList.remove("hidden");
-      listEl.classList.add("hidden");
-      return;
-    }
-
-    emptyEl.classList.add("hidden");
-    listEl.classList.remove("hidden");
-
-    values.forEach((npub) => {
-      const item = document.createElement("li");
-      item.className =
-        "flex flex-col gap-2 rounded-lg bg-gray-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between";
-
-      const label = document.createElement("p");
-      label.className = "text-sm font-medium text-gray-100 break-all";
-      label.textContent = npub;
-      item.appendChild(label);
-
-      if (removable && typeof onRemove === "function") {
-        const removeBtn = document.createElement("button");
-        removeBtn.type = "button";
-        removeBtn.className =
-          "self-start rounded-md bg-gray-700 px-3 py-1 text-xs font-medium text-gray-100 transition hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
-        removeBtn.textContent = removeLabel;
-        removeBtn.addEventListener("click", () => {
-          if (confirmMessage) {
-            const message = confirmMessage.replace("{npub}", npub);
-            if (!window.confirm(message)) {
-              return;
-            }
-          }
-          removeBtn.disabled = true;
-          removeBtn.setAttribute("aria-busy", "true");
-          onRemove(npub, removeBtn);
-        });
-        item.appendChild(removeBtn);
-      }
-
-      listEl.appendChild(item);
-    });
-  }
-
-  populateAdminLists() {
-    const actorNpub = this.getCurrentUserNpub();
-    if (!actorNpub || !accessControl.canEditAdminLists(actorNpub)) {
-      this.clearAdminLists();
-      return;
-    }
-
-    const isSuperAdmin = accessControl.isSuperAdmin(actorNpub);
-    const editors = accessControl
-      .getEditors()
-      .filter((npub) => npub && npub !== ADMIN_SUPER_NPUB);
-    const whitelist = accessControl.getWhitelist();
-    const blacklist = accessControl.getBlacklist();
-
-    this.renderAdminList(this.adminModeratorList, this.adminModeratorsEmpty, editors, {
-      onRemove: (npub, button) => this.handleRemoveModerator(npub, button),
-      removeLabel: "Remove",
-      confirmMessage:
-        "Remove moderator {npub}? They will immediately lose access to the admin panel.",
-      removable: isSuperAdmin,
-    });
-
-    this.renderAdminList(this.adminWhitelistList, this.adminWhitelistEmpty, whitelist, {
-      onRemove: (npub, button) =>
-        this.handleAdminListMutation("whitelist", "remove", npub, button),
-      removeLabel: "Remove",
-      confirmMessage: "Remove {npub} from the whitelist?",
-      removable: true,
-    });
-
-    this.renderAdminList(this.adminBlacklistList, this.adminBlacklistEmpty, blacklist, {
-      onRemove: (npub, button) =>
-        this.handleAdminListMutation("blacklist", "remove", npub, button),
-      removeLabel: "Unblock",
-      confirmMessage: "Remove {npub} from the blacklist?",
-      removable: true,
-    });
-  }
-
-  getCurrentUserNpub() {
-    if (typeof this.currentUserNpub === "string" && this.currentUserNpub) {
-      return this.currentUserNpub;
-    }
-
-    if (!this.pubkey) {
-      return null;
-    }
-
-    const encoded = this.safeEncodeNpub(this.pubkey);
-    if (encoded) {
-      this.currentUserNpub = encoded;
-    }
-    return this.currentUserNpub;
-  }
-
-  getProfileModalServices() {
-    if (!this.profileModalServiceAdapter) {
-      this.profileModalServiceAdapter = {
-        normalizeHexPubkey: (value) => this.normalizeHexPubkey(value),
-        safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
-        safeDecodeNpub: (npub) => this.safeDecodeNpub(npub),
-        truncateMiddle: (value, maxLength) => truncateMiddle(value, maxLength),
-        getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
-        batchFetchProfiles: (authorSet) => this.batchFetchProfiles(authorSet),
-        switchProfile: (pubkey) => this.switchProfile(pubkey),
-        relayManager,
-        userBlocks,
-        nostrClient,
-        accessControl,
-        getCurrentUserNpub: () => this.getCurrentUserNpub(),
-        getActiveNwcSettings: () => this.getActiveNwcSettings(),
-        updateActiveNwcSettings: (partial) =>
-          this.updateActiveNwcSettings(partial),
-        createDefaultNwcSettings: () => createDefaultNwcSettings(),
-        ensureWallet: (options) => this.ensureWallet(options),
-        loadVideos: (forceFetch) => this.loadVideos(forceFetch),
-        sendAdminListNotification: (payload) =>
-          this.sendAdminListNotification(payload),
-        describeAdminError: (code) => this.describeAdminError(code),
-        describeNotificationError: (code) =>
-          this.describeNotificationError(code),
-        onAccessControlUpdated: () => this.onAccessControlUpdated(),
-      };
-    }
-
-    return this.profileModalServiceAdapter;
-  }
-
-  getProfileModalStateBridge() {
-    if (!this.profileModalStateCache) {
-      this.profileModalStateCache = {
-        activePane:
-          typeof this.activeProfilePane === "string" && this.activeProfilePane
-            ? this.activeProfilePane
-            : "account",
-        cachedSelection: this.profileModalCachedSelection || null,
-        walletBusy: Boolean(this.isWalletPaneBusy),
-      };
-    } else {
-      this.profileModalStateCache.activePane =
-        typeof this.activeProfilePane === "string" && this.activeProfilePane
-          ? this.activeProfilePane
-          : "account";
-      this.profileModalStateCache.walletBusy = Boolean(this.isWalletPaneBusy);
-      this.profileModalStateCache.cachedSelection =
-        this.profileModalCachedSelection || null;
-    }
-
-    if (!this.profileModalStateAdapter) {
-      const cache = this.profileModalStateCache;
-      this.profileModalStateAdapter = {
-        getSavedProfiles: () => getSavedProfiles(),
-        setSavedProfiles: (profiles, options) =>
-          setSavedProfiles(Array.isArray(profiles) ? profiles : [], options),
-        persistSavedProfiles: (options) => persistSavedProfiles(options),
-        getActivePubkey: () => this.activeProfilePubkey,
-        setActivePubkey: (pubkey, options) => {
-          this.activeProfilePubkey =
-            typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : null;
-          setStoredActiveProfilePubkey(this.activeProfilePubkey, options);
-          return this.activeProfilePubkey;
-        },
-        getCachedSelection: () => cache.cachedSelection,
-        setCachedSelection: (value) => {
-          const normalized =
-            typeof value === "string" && value.trim()
-              ? value.trim()
-              : null;
-          cache.cachedSelection = normalized;
-          this.profileModalCachedSelection = normalized;
-          return cache.cachedSelection;
-        },
-        getActivePane: () => {
-          const pane =
-            typeof this.activeProfilePane === "string" && this.activeProfilePane
-              ? this.activeProfilePane
-              : "account";
-          cache.activePane = pane;
-          return pane;
-        },
-        setActivePane: (pane) => {
-          const normalized =
-            typeof pane === "string" && pane.trim()
-              ? pane.trim().toLowerCase()
-              : "account";
-          this.activeProfilePane = normalized;
-          cache.activePane = normalized;
-          return this.activeProfilePane;
-        },
-        getWalletBusy: () => {
-          const busy = Boolean(this.isWalletPaneBusy);
-          cache.walletBusy = busy;
-          return busy;
-        },
-        setWalletBusy: (flag) => {
-          this.isWalletPaneBusy = Boolean(flag);
-          cache.walletBusy = this.isWalletPaneBusy;
-          return cache.walletBusy;
-        },
-      };
-    }
-
-    return this.profileModalStateAdapter;
-  }
-
   canCurrentUserManageBlacklist() {
     const actorNpub = this.getCurrentUserNpub();
     if (!actorNpub) {
@@ -3280,236 +1729,6 @@ class Application {
     } catch (error) {
       console.warn("Unable to verify blacklist permissions:", error);
       return false;
-    }
-  }
-
-  ensureAdminActor(requireSuperAdmin = false) {
-    const actorNpub = this.getCurrentUserNpub();
-    if (!actorNpub) {
-      this.showError("Please login with a Nostr account to manage admin settings.");
-      return null;
-    }
-    if (!accessControl.canEditAdminLists(actorNpub)) {
-      this.showError("You do not have permission to manage BitVid moderation lists.");
-      return null;
-    }
-    if (requireSuperAdmin && !accessControl.isSuperAdmin(actorNpub)) {
-      this.showError("Only the Super Admin can manage moderators or whitelist mode.");
-      return null;
-    }
-    return actorNpub;
-  }
-
-  async handleAddModerator() {
-    let preloadError = null;
-    try {
-      await accessControl.ensureReady();
-    } catch (error) {
-      preloadError = error;
-      console.error("Failed to load admin lists before adding moderator:", error);
-    }
-
-    if (preloadError) {
-      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
-      return;
-    }
-
-    const actorNpub = this.ensureAdminActor(true);
-    if (!actorNpub || !this.adminModeratorInput) {
-      return;
-    }
-
-    const value = this.adminModeratorInput.value.trim();
-    if (!value) {
-      this.showError("Enter an npub to add as a moderator.");
-      return;
-    }
-
-    if (this.adminAddModeratorBtn) {
-      this.adminAddModeratorBtn.disabled = true;
-      this.adminAddModeratorBtn.setAttribute("aria-busy", "true");
-    }
-
-    try {
-      const result = await accessControl.addModerator(actorNpub, value);
-      if (!result.ok) {
-        this.showError(this.describeAdminError(result.error));
-        return;
-      }
-
-      this.adminModeratorInput.value = "";
-      this.showSuccess("Moderator added successfully.");
-      await this.onAccessControlUpdated();
-    } finally {
-      if (this.adminAddModeratorBtn) {
-        this.adminAddModeratorBtn.disabled = false;
-        this.adminAddModeratorBtn.removeAttribute("aria-busy");
-      }
-    }
-  }
-
-  async handleRemoveModerator(npub, button) {
-    let preloadError = null;
-    try {
-      await accessControl.ensureReady();
-    } catch (error) {
-      preloadError = error;
-      console.error("Failed to load admin lists before removing moderator:", error);
-    }
-
-    if (preloadError) {
-      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
-      if (button instanceof HTMLElement) {
-        button.disabled = false;
-        button.removeAttribute("aria-busy");
-      }
-      return;
-    }
-
-    const actorNpub = this.ensureAdminActor(true);
-    if (!actorNpub) {
-      if (button instanceof HTMLElement) {
-        button.disabled = false;
-        button.removeAttribute("aria-busy");
-      }
-      return;
-    }
-
-    const result = await accessControl.removeModerator(actorNpub, npub);
-    if (!result.ok) {
-      this.showError(this.describeAdminError(result.error));
-      if (button instanceof HTMLElement) {
-        button.disabled = false;
-        button.removeAttribute("aria-busy");
-      }
-      return;
-    }
-
-    this.showSuccess("Moderator removed.");
-    await this.onAccessControlUpdated();
-  }
-
-  async handleAdminListMutation(listType, action, explicitNpub = null, sourceButton = null) {
-    let preloadError = null;
-    try {
-      await accessControl.ensureReady();
-    } catch (error) {
-      preloadError = error;
-      console.error("Failed to load admin lists before updating entries:", error);
-    }
-
-    if (preloadError) {
-      this.showError(this.describeAdminError(preloadError.code || "storage-error"));
-      if (sourceButton instanceof HTMLElement) {
-        sourceButton.disabled = false;
-        sourceButton.removeAttribute("aria-busy");
-      }
-      return;
-    }
-
-    const actorNpub = this.ensureAdminActor(false);
-    if (!actorNpub) {
-      if (sourceButton instanceof HTMLElement) {
-        sourceButton.disabled = false;
-        sourceButton.removeAttribute("aria-busy");
-      }
-      return;
-    }
-
-    const isWhitelist = listType === "whitelist";
-    const input = isWhitelist ? this.adminWhitelistInput : this.adminBlacklistInput;
-    const addButton = isWhitelist ? this.adminAddWhitelistBtn : this.adminAddBlacklistBtn;
-    const isAdd = action === "add";
-
-    let target = typeof explicitNpub === "string" ? explicitNpub.trim() : "";
-    if (!target && input instanceof HTMLInputElement) {
-      target = input.value.trim();
-    }
-
-    if (isAdd && !target) {
-      this.showError("Enter an npub before adding it to the list.");
-      if (sourceButton instanceof HTMLElement) {
-        sourceButton.disabled = false;
-        sourceButton.removeAttribute("aria-busy");
-      }
-      return;
-    }
-
-    const buttonToToggle = sourceButton || (isAdd ? addButton : null);
-    if (buttonToToggle instanceof HTMLElement) {
-      buttonToToggle.disabled = true;
-      buttonToToggle.setAttribute("aria-busy", "true");
-    }
-
-    let result;
-    if (isWhitelist) {
-      result = isAdd
-        ? await accessControl.addToWhitelist(actorNpub, target)
-        : await accessControl.removeFromWhitelist(actorNpub, target);
-    } else {
-      result = isAdd
-        ? await accessControl.addToBlacklist(actorNpub, target)
-        : await accessControl.removeFromBlacklist(actorNpub, target);
-    }
-
-    if (!result.ok) {
-      this.showError(this.describeAdminError(result.error));
-      if (buttonToToggle instanceof HTMLElement) {
-        buttonToToggle.disabled = false;
-        buttonToToggle.removeAttribute("aria-busy");
-      }
-      return;
-    }
-
-    if (isAdd && input instanceof HTMLInputElement) {
-      input.value = "";
-    }
-
-    const successMessage = isWhitelist
-      ? isAdd
-        ? "Added to the whitelist."
-        : "Removed from the whitelist."
-      : isAdd
-      ? "Added to the blacklist."
-      : "Removed from the blacklist.";
-    this.showSuccess(successMessage);
-    await this.onAccessControlUpdated();
-
-    if (buttonToToggle instanceof HTMLElement) {
-      buttonToToggle.disabled = false;
-      buttonToToggle.removeAttribute("aria-busy");
-    }
-
-    if (isAdd) {
-      try {
-        const notifyResult = await this.sendAdminListNotification({
-          listType,
-          actorNpub,
-          targetNpub: target,
-        });
-        if (!notifyResult?.ok) {
-          const errorMessage = this.describeNotificationError(
-            notifyResult?.error
-          );
-          if (errorMessage) {
-            this.showError(errorMessage);
-          }
-          if (isDevMode && notifyResult?.error) {
-            console.warn(
-              "[admin] Failed to send list notification DM:",
-              notifyResult
-            );
-          }
-        }
-      } catch (error) {
-        console.error("Failed to send list notification DM:", error);
-        if (isDevMode) {
-          console.warn(
-            "List update succeeded, but DM notification threw an unexpected error.",
-            error
-          );
-        }
-      }
     }
   }
 
