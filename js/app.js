@@ -7258,7 +7258,10 @@ class Application {
     try {
       await accessControl.ensureReady();
     } catch (error) {
-      console.warn("Failed to ensure admin lists were loaded before playback:", error);
+      console.warn(
+        "Failed to ensure admin lists were loaded before playback:",
+        error
+      );
     }
     const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
     if (!accessControl.canAccess(authorNpub)) {
@@ -7281,8 +7284,7 @@ class Application {
       video.alreadyDecrypted = true;
     }
 
-    let trimmedUrl =
-      typeof video.url === "string" ? video.url.trim() : "";
+    let trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
     if (!trimmedUrl && fallbackUrl) {
       trimmedUrl = fallbackUrl;
     }
@@ -7404,6 +7406,23 @@ class Application {
 
     this.setModalZapVisibility(false);
     this.resetModalZapState();
+
+    const magnetInput =
+      sanitizedMagnet ||
+      decodedMagnetCandidate ||
+      magnetCandidate ||
+      fallbackMagnetForCandidate ||
+      legacyInfoHash ||
+      "";
+
+    this.showModalWithPoster(this.currentVideo);
+    this.applyModalLoadingPoster();
+
+    const playbackPromise = this.playVideoWithFallback({
+      url: trimmedUrl,
+      magnet: magnetInput,
+    });
+
     let lightningAddress = "";
     let creatorProfile = {
       name: "Unknown",
@@ -7446,18 +7465,12 @@ class Application {
       });
     }
 
-    const magnetInput =
-      sanitizedMagnet ||
-      decodedMagnetCandidate ||
-      magnetCandidate ||
-      fallbackMagnetForCandidate ||
-      legacyInfoHash ||
-      "";
+    const playbackResult =
+      playbackPromise && typeof playbackPromise.then === "function"
+        ? await playbackPromise
+        : playbackPromise;
 
-    return this.playVideoWithFallback({
-      url: trimmedUrl,
-      magnet: magnetInput,
-    });
+    return playbackResult;
   }
 
   async playVideoWithoutEvent({
