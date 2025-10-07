@@ -111,6 +111,7 @@ const SERVICE_CONTRACT = [
     type: "function",
     description:
       "Sends an administrative notification when moderators/whitelist/blacklist entries change.",
+    optional: true,
   },
   {
     key: "describeAdminError",
@@ -246,6 +247,9 @@ function buildServicesContract(services = {}) {
   SERVICE_CONTRACT.forEach((definition) => {
     const value = services[definition.key];
     if (value == null) {
+      if (definition.optional) {
+        return;
+      }
       missing.push(`- ${definition.key}: ${definition.description}`);
       return;
     }
@@ -341,7 +345,9 @@ export class ProfileModalController {
     this.safeDecodeNpub = this.services.safeDecodeNpub;
     this.truncateMiddle = this.services.truncateMiddle;
     this.sendAdminListNotificationService =
-      this.services.sendAdminListNotification;
+      typeof this.services.sendAdminListNotification === "function"
+        ? this.services.sendAdminListNotification
+        : null;
     this.describeAdminErrorService = this.services.describeAdminError;
     this.describeNotificationErrorService =
       this.services.describeNotificationError;
