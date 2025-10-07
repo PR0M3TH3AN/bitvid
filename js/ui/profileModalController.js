@@ -1166,38 +1166,55 @@ export class ProfileModalController {
     skipPublishIfUnchanged = true,
     unchangedMessage = null,
   } = {}) {
+    const operationContext = {
+      ok: false,
+      changed: false,
+      reason: null,
+      error: null,
+      publishResult: null,
+      operationResult: null,
+    };
+
     const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
     if (!activePubkey) {
       this.showError("Please login to manage your relays.");
-      return;
+      operationContext.reason = "no-active-pubkey";
+      return operationContext;
     }
 
     if (typeof operation !== "function") {
-      return;
+      operationContext.reason = "invalid-operation";
+      return operationContext;
     }
 
     const previous = this.services.relayManager.snapshot();
     let result;
     try {
       result = operation();
+      operationContext.operationResult = result;
     } catch (error) {
       const message =
         error && typeof error.message === "string" && error.message.trim()
           ? error.message.trim()
           : "Failed to update relay preferences.";
+      operationContext.reason = "operation-error";
+      operationContext.error = error;
       this.showError(message);
-      return;
+      return operationContext;
     }
 
     const changed = !!result?.changed;
+    operationContext.changed = changed;
     if (!changed && skipPublishIfUnchanged) {
+      const reason = result?.reason || "unchanged";
+      operationContext.reason = reason;
       if (result?.reason === "duplicate") {
         this.showSuccess("Relay is already configured.");
       } else if (typeof unchangedMessage === "string" && unchangedMessage) {
         this.showSuccess(unchangedMessage);
       }
       this.populateProfileRelays();
-      return;
+      return operationContext;
     }
 
     this.populateProfileRelays();
@@ -1209,9 +1226,12 @@ export class ProfileModalController {
       if (!publishResult?.ok) {
         throw new Error("No relays accepted the update.");
       }
+      operationContext.ok = true;
+      operationContext.publishResult = publishResult;
       if (successMessage) {
         this.showSuccess(successMessage);
       }
+      return operationContext;
     } catch (error) {
       this.services.relayManager.setEntries(previous, { allowEmpty: false });
       this.populateProfileRelays();
@@ -1219,28 +1239,37 @@ export class ProfileModalController {
         error && typeof error.message === "string" && error.message.trim()
           ? error.message.trim()
           : "Failed to publish relay configuration. Please try again.";
+      operationContext.reason = "publish-failed";
+      operationContext.error = error;
       this.showError(message);
+      return operationContext;
     }
   }
 
   async handleAddRelay() {
-    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!activePubkey) {
-      this.showError("Please login to manage your relays.");
-      return;
-    }
-
     const rawValue =
       typeof this.profileRelayInput?.value === "string"
         ? this.profileRelayInput.value
         : "";
     const trimmed = rawValue.trim();
+
+    const context = {
+      input: this.profileRelayInput,
+      rawValue,
+      url: trimmed,
+      result: null,
+      success: false,
+      reason: null,
+    };
+
     if (!trimmed) {
       this.showError("Enter a relay URL to add.");
-      return;
+      context.reason = "empty";
+      this.callbacks.onAddRelay(context, this);
+      return context;
     }
 
-    await this.handleRelayOperation(
+    const operationResult = await this.handleRelayOperation(
       () => this.services.relayManager.addRelay(trimmed),
       {
         successMessage: "Relay saved.",
@@ -1252,22 +1281,31 @@ export class ProfileModalController {
       this.profileRelayInput.value = "";
     }
 
-    this.callbacks.onAddRelay(this.profileRelayInput, this);
+    context.result = operationResult;
+    context.success = !!operationResult?.ok;
+    context.reason = operationResult?.reason || null;
+
+    this.callbacks.onAddRelay(context, this);
+    return context;
   }
 
   async handleRestoreRelays() {
-    const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
-    if (!activePubkey) {
-      this.showError("Please login to manage your relays.");
-      return;
-    }
+    const context = {
+      confirmed: false,
+      result: null,
+      success: false,
+      reason: null,
+    };
 
     const confirmed = window.confirm("Restore the recommended relay defaults?");
+    context.confirmed = confirmed;
     if (!confirmed) {
-      return;
+      context.reason = "cancelled";
+      this.callbacks.onRestoreRelays(context, this);
+      return context;
     }
 
-    await this.handleRelayOperation(
+    const operationResult = await this.handleRelayOperation(
       () => this.services.relayManager.restoreDefaults(),
       {
         successMessage: "Relay defaults restored.",
@@ -1275,7 +1313,12 @@ export class ProfileModalController {
       },
     );
 
-    this.callbacks.onRestoreRelays(this);
+    context.result = operationResult;
+    context.success = !!operationResult?.ok;
+    context.reason = operationResult?.reason || null;
+
+    this.callbacks.onRestoreRelays(context, this);
+    return context;
   }
 
   async handleRelayModeToggle(url) {
@@ -1428,22 +1471,38 @@ export class ProfileModalController {
   }
 
   async handleAddBlockedCreator() {
-    if (!this.profileBlockedInput) {
-      return;
-    }
+    const input = this.profileBlockedInput || null;
+    const rawValue = typeof input?.value === "string" ? input.value : "";
+    const trimmed = rawValue.trim();
 
-    const rawValue = this.profileBlockedInput.value;
-    const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";
+    const context = {
+      input,
+      rawValue,
+      value: trimmed,
+      success: false,
+      reason: null,
+      error: null,
+    };
+
+    if (!input) {
+      context.reason = "missing-input";
+      this.callbacks.onAddBlocked(context, this);
+      return context;
+    }
 
     if (!trimmed) {
       this.showError("Enter an npub to block.");
-      return;
+      context.reason = "empty";
+      this.callbacks.onAddBlocked(context, this);
+      return context;
     }
 
     const activePubkey = this.normalizeHexPubkey(this.getActivePubkey());
     if (!activePubkey) {
       this.showError("Please login to manage your block list.");
-      return;
+      context.reason = "no-active-pubkey";
+      this.callbacks.onAddBlocked(context, this);
+      return context;
     }
 
     const actorHex = activePubkey;
@@ -1453,30 +1512,41 @@ export class ProfileModalController {
       targetHex = this.safeDecodeNpub(trimmed) || "";
       if (!targetHex) {
         this.showError("Invalid npub. Please double-check and try again.");
-        return;
+        context.reason = "invalid-npub";
+        this.callbacks.onAddBlocked(context, this);
+        return context;
       }
     } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
       targetHex = trimmed.toLowerCase();
     } else {
       this.showError("Enter a valid npub or hex pubkey.");
-      return;
+      context.reason = "invalid-value";
+      this.callbacks.onAddBlocked(context, this);
+      return context;
     }
 
     if (targetHex === actorHex) {
       this.showError("You cannot block yourself.");
-      return;
+      context.reason = "self";
+      this.callbacks.onAddBlocked(context, this);
+      return context;
     }
+
+    context.targetHex = targetHex;
 
     try {
       await this.services.userBlocks.ensureLoaded(actorHex);
 
       if (this.services.userBlocks.isBlocked(targetHex)) {
         this.showSuccess("You already blocked this creator.");
+        context.reason = "already-blocked";
       } else {
         await this.services.userBlocks.addBlock(targetHex, actorHex);
         this.showSuccess(
           "Creator blocked. You won't see their videos anymore.",
         );
+        context.success = true;
+        context.reason = "blocked";
       }
 
       this.profileBlockedInput.value = "";
@@ -1484,6 +1554,8 @@ export class ProfileModalController {
       await this.services.loadVideos();
     } catch (error) {
       console.error("Failed to add creator to personal block list:", error);
+      context.error = error;
+      context.reason = error?.code || "service-error";
       const message =
         error?.code === "nip04-missing"
           ? "Your Nostr extension must support NIP-04 to manage private lists."
@@ -1491,7 +1563,8 @@ export class ProfileModalController {
       this.showError(message);
     }
 
-    this.callbacks.onAddBlocked(this.profileBlockedInput, this);
+    this.callbacks.onAddBlocked(context, this);
+    return context;
   }
 
   async handleRemoveBlockedCreator(candidate) {
@@ -1751,28 +1824,47 @@ export class ProfileModalController {
   }
 
   async handleWalletSave() {
+    const { uri, defaultZap, error } = this.getWalletFormValues();
+    const context = {
+      uri,
+      defaultZap: defaultZap ?? null,
+      sanitizedUri: null,
+      success: false,
+      reason: null,
+      error: error || null,
+      status: null,
+      variant: null,
+    };
+
     if (this.isWalletBusy()) {
-      return;
+      context.reason = "busy";
+      this.callbacks.onWalletSave(context, this);
+      return context;
     }
 
-    const { uri, defaultZap, error } = this.getWalletFormValues();
     if (error) {
       this.updateWalletStatus(error, "error");
       this.showError(error);
+      context.reason = "invalid-default-zap";
       if (this.walletDefaultZapInput instanceof HTMLElement) {
         this.walletDefaultZapInput.focus();
       }
-      return;
+      this.callbacks.onWalletSave(context, this);
+      return context;
     }
 
     const { valid, sanitized, message } = this.validateWalletUri(uri);
+    context.sanitizedUri = sanitized;
     if (!valid) {
       this.updateWalletStatus(message, "error");
       this.showError(message);
+      context.reason = "invalid-uri";
+      context.error = message;
       if (this.walletUriInput instanceof HTMLElement) {
         this.walletUriInput.focus();
       }
-      return;
+      this.callbacks.onWalletSave(context, this);
+      return context;
     }
 
     const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
@@ -1780,7 +1872,10 @@ export class ProfileModalController {
       const loginMessage = "Sign in to save wallet settings.";
       this.updateWalletStatus(loginMessage, "error");
       this.showError(loginMessage);
-      return;
+      context.reason = "no-active-pubkey";
+      context.error = loginMessage;
+      this.callbacks.onWalletSave(context, this);
+      return context;
     }
 
     this.setWalletPaneBusy(true);
@@ -1796,11 +1891,14 @@ export class ProfileModalController {
         finalStatus = "Wallet settings saved.";
         finalVariant = "success";
         this.showSuccess("Wallet settings saved.");
+        context.reason = "saved";
       } else {
         finalStatus = "Wallet connection removed.";
         finalVariant = "info";
         this.showStatus("Wallet connection removed.");
+        context.reason = "cleared";
       }
+      context.success = true;
     } catch (error) {
       const fallbackMessage = "Failed to save wallet settings.";
       const detail =
@@ -1809,6 +1907,8 @@ export class ProfileModalController {
           : fallbackMessage;
       finalStatus = detail;
       finalVariant = "error";
+      context.error = detail;
+      context.reason = error?.code || "service-error";
       this.showError(detail);
     } finally {
       this.setWalletPaneBusy(false);
@@ -1816,34 +1916,59 @@ export class ProfileModalController {
       if (finalStatus) {
         this.updateWalletStatus(finalStatus, finalVariant);
       }
+      context.status = finalStatus;
+      context.variant = finalVariant;
+      this.callbacks.onWalletSave(context, this);
     }
+
+    return context;
   }
 
   async handleWalletTest() {
+    const { uri, defaultZap, error } = this.getWalletFormValues();
+    const context = {
+      uri,
+      defaultZap: defaultZap ?? null,
+      sanitizedUri: null,
+      success: false,
+      reason: null,
+      error: error || null,
+      status: null,
+      variant: null,
+      result: null,
+    };
+
     if (this.isWalletBusy()) {
-      return;
+      context.reason = "busy";
+      this.callbacks.onWalletTest(context, this);
+      return context.result;
     }
 
-    const { uri, defaultZap, error } = this.getWalletFormValues();
     if (error) {
       this.updateWalletStatus(error, "error");
       this.showError(error);
+      context.reason = "invalid-default-zap";
       if (this.walletDefaultZapInput instanceof HTMLElement) {
         this.walletDefaultZapInput.focus();
       }
-      return;
+      this.callbacks.onWalletTest(context, this);
+      return context.result;
     }
 
     const { valid, sanitized, message } = this.validateWalletUri(uri, {
       requireValue: true,
     });
+    context.sanitizedUri = sanitized;
     if (!valid) {
       this.updateWalletStatus(message, "error");
       this.showError(message);
+      context.reason = "invalid-uri";
+      context.error = message;
       if (this.walletUriInput instanceof HTMLElement) {
         this.walletUriInput.focus();
       }
-      return;
+      this.callbacks.onWalletTest(context, this);
+      return context.result;
     }
 
     const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
@@ -1851,7 +1976,10 @@ export class ProfileModalController {
       const loginMessage = "Sign in to test your wallet connection.";
       this.updateWalletStatus(loginMessage, "error");
       this.showError(loginMessage);
-      return;
+      context.reason = "no-active-pubkey";
+      context.error = loginMessage;
+      this.callbacks.onWalletTest(context, this);
+      return context.result;
     }
 
     this.setWalletPaneBusy(true);
@@ -1865,12 +1993,14 @@ export class ProfileModalController {
       finalStatus = "Wallet connection confirmed.";
       finalVariant = "success";
       this.showSuccess("Wallet connection confirmed.");
+      context.result = result;
+      context.success = true;
+      context.reason = "tested";
 
       const currentSettings = this.services.getActiveNwcSettings();
       if (currentSettings.nwcUri === sanitized) {
         await this.services.updateActiveNwcSettings({ lastChecked: Date.now() });
       }
-      return result;
     } catch (error) {
       const fallbackMessage = "Failed to reach wallet.";
       const detail =
@@ -1879,20 +2009,36 @@ export class ProfileModalController {
           : fallbackMessage;
       finalStatus = detail;
       finalVariant = "error";
+      context.error = detail;
+      context.reason = error?.code || "service-error";
       this.showError(detail);
-      return null;
     } finally {
       this.setWalletPaneBusy(false);
       this.refreshWalletPaneState();
       if (finalStatus) {
         this.updateWalletStatus(finalStatus, finalVariant);
       }
+      context.status = finalStatus;
+      context.variant = finalVariant;
+      this.callbacks.onWalletTest(context, this);
     }
+
+    return context.result;
   }
 
   async handleWalletDisconnect() {
+    const context = {
+      success: false,
+      reason: null,
+      error: null,
+      status: null,
+      variant: null,
+    };
+
     if (this.isWalletBusy()) {
-      return;
+      context.reason = "busy";
+      this.callbacks.onWalletDisconnect(context, this);
+      return context;
     }
 
     const normalizedActive = this.normalizeHexPubkey(this.getActivePubkey());
@@ -1900,7 +2046,10 @@ export class ProfileModalController {
       const loginMessage = "Sign in to disconnect your wallet.";
       this.updateWalletStatus(loginMessage, "error");
       this.showError(loginMessage);
-      return;
+      context.reason = "no-active-pubkey";
+      context.error = loginMessage;
+      this.callbacks.onWalletDisconnect(context, this);
+      return context;
     }
 
     this.setWalletPaneBusy(true);
@@ -1912,6 +2061,8 @@ export class ProfileModalController {
       );
       finalStatus = "Wallet disconnected.";
       this.showStatus("Wallet disconnected.");
+      context.success = true;
+      context.reason = "disconnected";
     } catch (error) {
       const fallbackMessage = "Failed to disconnect wallet.";
       const detail =
@@ -1920,6 +2071,8 @@ export class ProfileModalController {
           : fallbackMessage;
       finalStatus = detail;
       finalVariant = "error";
+      context.error = detail;
+      context.reason = error?.code || "service-error";
       this.showError(detail);
     } finally {
       this.setWalletPaneBusy(false);
@@ -1927,7 +2080,12 @@ export class ProfileModalController {
       if (finalStatus) {
         this.updateWalletStatus(finalStatus, finalVariant);
       }
+      context.status = finalStatus;
+      context.variant = finalVariant;
+      this.callbacks.onWalletDisconnect(context, this);
     }
+
+    return context;
   }
 
   storeAdminEmptyMessages() {
@@ -2211,6 +2369,20 @@ export class ProfileModalController {
   }
 
   async handleAddModerator() {
+    const input = this.adminModeratorInput || null;
+    const rawValue = typeof input?.value === "string" ? input.value : "";
+    const trimmed = rawValue.trim();
+    const context = {
+      input,
+      rawValue,
+      value: trimmed,
+      actorNpub: null,
+      success: false,
+      reason: null,
+      error: null,
+      result: null,
+    };
+
     let preloadError = null;
     try {
       await this.services.accessControl.ensureReady();
@@ -2221,18 +2393,25 @@ export class ProfileModalController {
 
     if (preloadError) {
       this.showError(this.describeAdminError(preloadError.code || "storage-error"));
-      return;
+      context.reason = preloadError.code || "storage-error";
+      context.error = preloadError;
+      this.callbacks.onAdminAddModerator(context, this);
+      return context;
     }
 
     const actorNpub = this.ensureAdminActor(true);
-    if (!actorNpub || !this.adminModeratorInput) {
-      return;
+    context.actorNpub = actorNpub;
+    if (!actorNpub || !input) {
+      context.reason = actorNpub ? "missing-input" : "unauthorized";
+      this.callbacks.onAdminAddModerator(context, this);
+      return context;
     }
 
-    const value = this.adminModeratorInput.value.trim();
-    if (!value) {
+    if (!trimmed) {
       this.showError("Enter an npub to add as a moderator.");
-      return;
+      context.reason = "empty";
+      this.callbacks.onAdminAddModerator(context, this);
+      return context;
     }
 
     if (this.adminAddModeratorButton) {
@@ -2241,24 +2420,51 @@ export class ProfileModalController {
     }
 
     try {
-      const result = await this.services.accessControl.addModerator(actorNpub, value);
+      const result = await this.services.accessControl.addModerator(
+        actorNpub,
+        trimmed,
+      );
+      context.result = result;
       if (!result.ok) {
         this.showError(this.describeAdminError(result.error));
-        return;
+        context.reason = result.error || "service-error";
+        return context;
       }
 
       this.adminModeratorInput.value = "";
       this.showSuccess("Moderator added successfully.");
       await this.services.onAccessControlUpdated();
+      context.success = true;
+      context.reason = "added";
     } finally {
       if (this.adminAddModeratorButton) {
         this.adminAddModeratorButton.disabled = false;
         this.adminAddModeratorButton.removeAttribute("aria-busy");
       }
+      this.callbacks.onAdminAddModerator(context, this);
     }
+
+    return context;
   }
 
   async handleRemoveModerator(npub, button) {
+    const context = {
+      npub,
+      button,
+      actorNpub: null,
+      success: false,
+      reason: null,
+      error: null,
+      result: null,
+    };
+
+    const releaseButton = () => {
+      if (button instanceof HTMLElement) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    };
+
     let preloadError = null;
     try {
       await this.services.accessControl.ensureReady();
@@ -2269,40 +2475,97 @@ export class ProfileModalController {
 
     if (preloadError) {
       this.showError(this.describeAdminError(preloadError.code || "storage-error"));
-      if (button instanceof HTMLElement) {
-        button.disabled = false;
-        button.removeAttribute("aria-busy");
-      }
-      return;
+      context.reason = preloadError.code || "storage-error";
+      context.error = preloadError;
+      releaseButton();
+      this.callbacks.onAdminRemoveModerator(context, this);
+      return context;
     }
 
     const actorNpub = this.ensureAdminActor(true);
+    context.actorNpub = actorNpub;
     if (!actorNpub) {
-      if (button instanceof HTMLElement) {
-        button.disabled = false;
-        button.removeAttribute("aria-busy");
-      }
-      return;
+      context.reason = "unauthorized";
+      releaseButton();
+      this.callbacks.onAdminRemoveModerator(context, this);
+      return context;
     }
 
     const result = await this.services.accessControl.removeModerator(
       actorNpub,
       npub,
     );
+    context.result = result;
     if (!result.ok) {
       this.showError(this.describeAdminError(result.error));
-      if (button instanceof HTMLElement) {
-        button.disabled = false;
-        button.removeAttribute("aria-busy");
-      }
-      return;
+      context.reason = result.error || "service-error";
+      releaseButton();
+      this.callbacks.onAdminRemoveModerator(context, this);
+      return context;
     }
 
     this.showSuccess("Moderator removed.");
     await this.services.onAccessControlUpdated();
+    context.success = true;
+    context.reason = "removed";
+
+    releaseButton();
+    this.callbacks.onAdminRemoveModerator(context, this);
+    return context;
   }
 
   async handleAdminListMutation(listType, action, explicitNpub = null, sourceButton = null) {
+    const isWhitelist = listType === "whitelist";
+    const input = isWhitelist ? this.adminWhitelistInput : this.adminBlacklistInput;
+    const addButton = isWhitelist ? this.adminAddWhitelistButton : this.adminAddBlacklistButton;
+    const isAdd = action === "add";
+    let buttonToToggle = sourceButton || (isAdd ? addButton : null);
+
+    const context = {
+      listType,
+      action,
+      explicitNpub,
+      sourceButton,
+      actorNpub: null,
+      targetNpub: null,
+      success: false,
+      reason: null,
+      error: null,
+      result: null,
+      notificationResult: null,
+      notificationError: null,
+    };
+
+    const callbackMap = {
+      whitelist: {
+        add: this.callbacks.onAdminAddWhitelist,
+        remove: this.callbacks.onAdminRemoveWhitelist,
+      },
+      blacklist: {
+        add: this.callbacks.onAdminAddBlacklist,
+        remove: this.callbacks.onAdminRemoveBlacklist,
+      },
+    };
+
+    const adminCallback = callbackMap[listType]?.[action] || noop;
+
+    const setBusy = (element, busy) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      element.disabled = !!busy;
+      if (busy) {
+        element.setAttribute("aria-busy", "true");
+      } else {
+        element.removeAttribute("aria-busy");
+      }
+    };
+
+    const finalize = () => {
+      setBusy(buttonToToggle, false);
+      adminCallback(context, this);
+    };
+
     let preloadError = null;
     try {
       await this.services.accessControl.ensureReady();
@@ -2313,46 +2576,35 @@ export class ProfileModalController {
 
     if (preloadError) {
       this.showError(this.describeAdminError(preloadError.code || "storage-error"));
-      if (sourceButton instanceof HTMLElement) {
-        sourceButton.disabled = false;
-        sourceButton.removeAttribute("aria-busy");
-      }
-      return;
+      context.reason = preloadError.code || "storage-error";
+      context.error = preloadError;
+      finalize();
+      return context;
     }
 
     const actorNpub = this.ensureAdminActor(false);
+    context.actorNpub = actorNpub;
     if (!actorNpub) {
-      if (sourceButton instanceof HTMLElement) {
-        sourceButton.disabled = false;
-        sourceButton.removeAttribute("aria-busy");
-      }
-      return;
+      context.reason = "unauthorized";
+      finalize();
+      return context;
     }
-
-    const isWhitelist = listType === "whitelist";
-    const input = isWhitelist ? this.adminWhitelistInput : this.adminBlacklistInput;
-    const addButton = isWhitelist ? this.adminAddWhitelistButton : this.adminAddBlacklistButton;
-    const isAdd = action === "add";
 
     let target = typeof explicitNpub === "string" ? explicitNpub.trim() : "";
     if (!target && input instanceof HTMLInputElement) {
       target = input.value.trim();
     }
+    context.targetNpub = target;
 
     if (isAdd && !target) {
       this.showError("Enter an npub before adding it to the list.");
-      if (sourceButton instanceof HTMLElement) {
-        sourceButton.disabled = false;
-        sourceButton.removeAttribute("aria-busy");
-      }
-      return;
+      context.reason = "empty";
+      finalize();
+      return context;
     }
 
-    const buttonToToggle = sourceButton || (isAdd ? addButton : null);
-    if (buttonToToggle instanceof HTMLElement) {
-      buttonToToggle.disabled = true;
-      buttonToToggle.setAttribute("aria-busy", "true");
-    }
+    buttonToToggle = buttonToToggle || (isAdd ? addButton : null);
+    setBusy(buttonToToggle, true);
 
     let result;
     if (isWhitelist) {
@@ -2365,13 +2617,13 @@ export class ProfileModalController {
         : await this.services.accessControl.removeFromBlacklist(actorNpub, target);
     }
 
+    context.result = result;
+
     if (!result.ok) {
       this.showError(this.describeAdminError(result.error));
-      if (buttonToToggle instanceof HTMLElement) {
-        buttonToToggle.disabled = false;
-        buttonToToggle.removeAttribute("aria-busy");
-      }
-      return;
+      context.reason = result.error || "service-error";
+      finalize();
+      return context;
     }
 
     if (isAdd && input instanceof HTMLInputElement) {
@@ -2388,10 +2640,8 @@ export class ProfileModalController {
     this.showSuccess(successMessage);
     await this.services.onAccessControlUpdated();
 
-    if (buttonToToggle instanceof HTMLElement) {
-      buttonToToggle.disabled = false;
-      buttonToToggle.removeAttribute("aria-busy");
-    }
+    context.success = true;
+    context.reason = isAdd ? "added" : "removed";
 
     if (isAdd) {
       try {
@@ -2400,6 +2650,7 @@ export class ProfileModalController {
           actorNpub,
           targetNpub: target,
         });
+        context.notificationResult = notifyResult;
         if (!notifyResult?.ok) {
           const errorMessage = this.describeNotificationError(notifyResult?.error);
           if (errorMessage) {
@@ -2413,6 +2664,7 @@ export class ProfileModalController {
           }
         }
       } catch (error) {
+        context.notificationError = error;
         console.error("Failed to send list notification DM:", error);
         if (isDevMode) {
           console.warn(
@@ -2422,6 +2674,9 @@ export class ProfileModalController {
         }
       }
     }
+
+    finalize();
+    return context;
   }
 
   describeAdminError(code) {
