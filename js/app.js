@@ -1531,18 +1531,11 @@ class Application {
    */
   async initProfileModal() {
     try {
-      console.log("Starting profile modal initialization...");
-      const resp = await fetch("components/profile-modal.html");
-      if (!resp.ok) {
-        // If you don't have a profile modal, comment this entire method out.
-        throw new Error(`HTTP error! status: ${resp.status}`);
-      }
-      const html = await resp.text();
-
       const modalContainer = document.getElementById("modalContainer");
       if (!modalContainer) {
         throw new Error("Modal container element not found!");
       }
+
       if (!this.profileModalController) {
         this.profileModalController = new ProfileModalController({
           modalContainer,
@@ -1556,376 +1549,99 @@ class Application {
           state: this.getProfileModalStateBridge(),
         });
       }
-      const wrapper = document.createElement("div");
-      wrapper.innerHTML = html;
-      removeTrackingScripts(wrapper);
-      modalContainer.appendChild(wrapper);
 
-      // Now references
-      this.profileModal = document.getElementById("profileModal") || null;
-      this.closeProfileModal =
-        document.getElementById("closeProfileModal") || null;
-      this.profileLogoutBtn =
-        document.getElementById("profileLogoutBtn") || null;
-      this.profileModalAvatar =
-        document.getElementById("profileModalAvatar") || null;
-      this.profileModalName =
-        document.getElementById("profileModalName") || null;
-      this.profileModalNpub =
-        document.getElementById("profileModalNpub") || null;
-      this.profileChannelLink =
-        document.getElementById("profileChannelLink") || null;
-      this.profileSwitcherList =
-        document.getElementById("profileSwitcherList") || null;
-      this.profileAddAccountBtn =
-        document.getElementById("profileAddAccountBtn") || null;
-      const topLevelProfileAvatar =
-        document.getElementById("profileAvatar") || null;
-      if (topLevelProfileAvatar) {
-        this.profileAvatar = topLevelProfileAvatar;
-      }
-      this.profileNavButtons.account =
-        document.getElementById("profileNavAccount") || null;
-      this.profileNavButtons.relays =
-        document.getElementById("profileNavRelays") || null;
-      this.profileNavButtons.wallet =
-        document.getElementById("profileNavWallet") || null;
-      this.profileNavButtons.blocked =
-        document.getElementById("profileNavBlocked") || null;
-      this.profileNavButtons.history =
-        document.getElementById("profileNavHistory") || null;
-      this.profileNavButtons.admin =
-        document.getElementById("profileNavAdmin") || null;
-      this.profilePaneElements.account =
-        document.getElementById("profilePaneAccount") || null;
-      this.profilePaneElements.relays =
-        document.getElementById("profilePaneRelays") || null;
-      this.profilePaneElements.wallet =
-        document.getElementById("profilePaneWallet") || null;
-      this.profilePaneElements.blocked =
-        document.getElementById("profilePaneBlocked") || null;
-      this.profilePaneElements.history =
-        document.getElementById("profilePaneHistory") || null;
-      this.profilePaneElements.admin =
-        document.getElementById("profilePaneAdmin") || null;
-      this.profileRelayList = document.getElementById("relayList") || null;
-      this.profileBlockedList = document.getElementById("blockedList") || null;
-      this.profileBlockedEmpty =
-        document.getElementById("blockedEmpty") || null;
-      this.profileBlockedInput =
-        document.getElementById("blockedInput") || null;
-      this.profileAddBlockedBtn =
-        document.getElementById("addBlockedBtn") || null;
-      this.profileRelayInput = document.getElementById("relayInput") || null;
-      this.profileAddRelayBtn = document.getElementById("addRelayBtn") || null;
-      this.profileRestoreRelaysBtn =
-        document.getElementById("restoreRelaysBtn") || null;
-      this.profileWalletUriInput =
-        document.getElementById("profileWalletUri") || null;
-      this.profileWalletDefaultZapInput =
-        document.getElementById("profileWalletDefaultZap") || null;
-      this.profileWalletSaveButton =
-        document.getElementById("profileWalletSave") || null;
-      this.profileWalletTestButton =
-        document.getElementById("profileWalletTest") || null;
-      this.profileWalletDisconnectButton =
-        document.getElementById("profileWalletDisconnect") || null;
-      this.profileWalletStatusText =
-        document.getElementById("profileWalletStatus") || null;
-      if (!this.profileHistoryRenderer) {
-        this.profileHistoryRenderer = createWatchHistoryRenderer({
-          viewSelector: "#profilePaneHistory",
-          gridSelector: "#profileHistoryGrid",
-          loadingSelector: "#profileHistoryLoading",
-          statusSelector: "#profileHistoryStatus",
-          emptySelector: "#profileHistoryEmpty",
-          sentinelSelector: "#profileHistorySentinel",
-          scrollContainerSelector: "#profileHistoryScroll",
-          errorBannerSelector: "#profileHistoryError",
-          clearButtonSelector: "#profileHistoryClear",
-          republishButtonSelector: "#profileHistoryRepublish",
-          featureBannerSelector: "#profileHistoryFeatureBanner",
-          toastRegionSelector: "#profileHistoryToastRegion",
-          sessionWarningSelector: "#profileHistorySessionWarning",
-          metadataToggleSelector: "#profileHistoryMetadataToggle",
-          metadataThumbSelector: "#profileHistoryMetadataThumb",
-          metadataLabelSelector: "#profileHistoryMetadataLabel",
-          metadataDescriptionSelector: "#profileHistoryMetadataDescription",
-          emptyCopy: "You haven’t watched any videos yet.",
-          remove: (payload) => this.handleWatchHistoryRemoval(payload),
-          getActor: async () => {
-            if (this.pubkey) {
-              return this.pubkey;
-            }
-            if (
-              typeof nostrClient?.sessionActor?.pubkey === "string" &&
-              nostrClient.sessionActor.pubkey
-            ) {
-              return nostrClient.sessionActor.pubkey;
-            }
-            return this.pubkey || undefined;
-          },
-        });
-      }
-      this.adminModeratorsSection =
-        document.getElementById("adminModeratorsSection") || null;
-      this.adminModeratorsEmpty =
-        document.getElementById("adminModeratorsEmpty") || null;
-      this.adminModeratorList =
-        document.getElementById("adminModeratorList") || null;
-      this.adminModeratorInput =
-        document.getElementById("adminModeratorInput") || null;
-      this.adminAddModeratorBtn =
-        document.getElementById("adminAddModeratorBtn") || null;
-      this.adminWhitelistSection =
-        document.getElementById("adminWhitelistSection") || null;
-      this.adminWhitelistEmpty =
-        document.getElementById("adminWhitelistEmpty") || null;
-      this.adminWhitelistList =
-        document.getElementById("adminWhitelistList") || null;
-      this.adminWhitelistInput =
-        document.getElementById("adminWhitelistInput") || null;
-      this.adminAddWhitelistBtn =
-        document.getElementById("adminAddWhitelistBtn") || null;
-      this.adminBlacklistSection =
-        document.getElementById("adminBlacklistSection") || null;
-      this.adminBlacklistEmpty =
-        document.getElementById("adminBlacklistEmpty") || null;
-      this.adminBlacklistList =
-        document.getElementById("adminBlacklistList") || null;
-      this.adminBlacklistInput =
-        document.getElementById("adminBlacklistInput") || null;
-      this.adminAddBlacklistBtn =
-        document.getElementById("adminAddBlacklistBtn") || null;
-
-      // Wire up
-      if (this.closeProfileModal && !this.closeProfileModal.dataset.bound) {
-        this.closeProfileModal.dataset.bound = "true";
-        this.closeProfileModal.addEventListener("click", () => {
-          this.hideProfileModal();
-        });
-      }
-      if (this.profileLogoutBtn && !this.profileLogoutBtn.dataset.bound) {
-        this.profileLogoutBtn.dataset.bound = "true";
-        this.profileLogoutBtn.addEventListener("click", async () => {
-          try {
-            await this.authService.logout();
-          } catch (error) {
-            console.error("Logout failed:", error);
-            this.showError("Failed to logout. Please try again.");
-          }
-          this.hideProfileModal();
-        });
-      }
-
-      if (this.profileChannelLink && !this.profileChannelLink.dataset.bound) {
-        this.profileChannelLink.dataset.bound = "true";
-        this.profileChannelLink.addEventListener("click", (event) => {
-          event.preventDefault();
-          const targetNpub = this.profileChannelLink?.dataset?.targetNpub;
-          if (!targetNpub) {
-            return;
-          }
-          this.hideProfileModal();
-          window.location.hash = `#view=channel-profile&npub=${targetNpub}`;
-        });
-      }
-
-      if (
-        this.profileAddAccountBtn &&
-        this.profileAddAccountBtn.dataset.bound !== "true"
-      ) {
-        this.profileAddAccountBtn.dataset.bound = "true";
-        this.profileAddAccountBtn.addEventListener("click", () => {
-          this.handleAddProfile();
-        });
-      }
-
-      Object.entries(this.profileNavButtons).forEach(([name, button]) => {
-        if (!button || button.dataset.navBound === "true") {
-          return;
+      const alreadyLoaded =
+        this.profileModalController.profileModal instanceof HTMLElement;
+      if (!alreadyLoaded) {
+        const loaded = await this.profileModalController.load();
+        if (!loaded) {
+          return false;
         }
-        button.dataset.navBound = "true";
-        button.addEventListener("click", () => {
-          this.selectProfilePane(name);
-        });
+      } else {
+        this.profileModalController.cacheDomReferences();
+      }
+
+      this.profileModal = this.profileModalController.profileModal;
+      this.closeProfileModal = this.profileModalController.closeButton;
+      this.profileLogoutBtn = this.profileModalController.logoutButton;
+      this.profileChannelLink = this.profileModalController.channelLink;
+      this.profileModalAvatar = this.profileModalController.profileModalAvatar;
+      this.profileModalName = this.profileModalController.profileModalName;
+      this.profileModalNpub = this.profileModalController.profileModalNpub;
+      this.profileSwitcherList = this.profileModalController.profileSwitcherList;
+      this.profileAddAccountBtn = this.profileModalController.addAccountButton;
+      this.profileAvatar = this.profileModalController.profileAvatar;
+
+      Object.entries(this.profileNavButtons).forEach(([key]) => {
+        this.profileNavButtons[key] =
+          this.profileModalController.navButtons[key] || null;
       });
 
-      if (this.profileAddRelayBtn && !this.profileAddRelayBtn.dataset.bound) {
-        this.profileAddRelayBtn.dataset.bound = "true";
-        this.profileAddRelayBtn.addEventListener("click", () => {
-          this.handleAddRelay();
-        });
-      }
-      if (
-        this.profileRestoreRelaysBtn &&
-        this.profileRestoreRelaysBtn.dataset.bound !== "true"
-      ) {
-        this.profileRestoreRelaysBtn.dataset.bound = "true";
-        this.profileRestoreRelaysBtn.addEventListener("click", () => {
-          this.handleRestoreRelays();
-        });
-      }
-      if (
-        this.profileRelayInput &&
-        this.profileRelayInput.dataset.bound !== "true"
-      ) {
-        this.profileRelayInput.dataset.bound = "true";
-        this.profileRelayInput.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            this.handleAddRelay();
-          }
-        });
-      }
+      Object.entries(this.profilePaneElements).forEach(([key]) => {
+        this.profilePaneElements[key] =
+          this.profileModalController.panes[key] || null;
+      });
 
-      if (
-        this.profileAddBlockedBtn &&
-        this.profileAddBlockedBtn.dataset.bound !== "true"
-      ) {
-        this.profileAddBlockedBtn.dataset.bound = "true";
-        this.profileAddBlockedBtn.addEventListener("click", () => {
-          this.handleAddBlockedCreator();
-        });
-      }
-      if (
-        this.profileBlockedInput &&
-        this.profileBlockedInput.dataset.bound !== "true"
-      ) {
-        this.profileBlockedInput.dataset.bound = "true";
-        this.profileBlockedInput.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            this.handleAddBlockedCreator();
-          }
-        });
-      }
+      this.profileRelayList = this.profileModalController.profileRelayList;
+      this.profileRelayInput = this.profileModalController.profileRelayInput;
+      this.profileAddRelayBtn = this.profileModalController.profileAddRelayBtn;
+      this.profileRestoreRelaysBtn =
+        this.profileModalController.profileRestoreRelaysBtn;
 
-      if (
-        this.profileWalletUriInput &&
-        this.profileWalletUriInput.dataset.bound !== "true"
-      ) {
-        this.profileWalletUriInput.dataset.bound = "true";
-        this.profileWalletUriInput.addEventListener("input", () => {
-          this.applyWalletControlState();
-        });
-      }
-      if (
-        this.profileWalletDefaultZapInput &&
-        this.profileWalletDefaultZapInput.dataset.bound !== "true"
-      ) {
-        this.profileWalletDefaultZapInput.dataset.bound = "true";
-        this.profileWalletDefaultZapInput.addEventListener("input", () => {
-          this.applyWalletControlState();
-        });
-      }
-      if (
-        this.profileWalletSaveButton &&
-        this.profileWalletSaveButton.dataset.bound !== "true"
-      ) {
-        this.profileWalletSaveButton.dataset.bound = "true";
-        this.profileWalletSaveButton.addEventListener("click", () => {
-          this.handleWalletSave();
-        });
-      }
-      if (
-        this.profileWalletTestButton &&
-        this.profileWalletTestButton.dataset.bound !== "true"
-      ) {
-        this.profileWalletTestButton.dataset.bound = "true";
-        this.profileWalletTestButton.addEventListener("click", () => {
-          this.handleWalletTest();
-        });
-      }
-      if (
-        this.profileWalletDisconnectButton &&
-        this.profileWalletDisconnectButton.dataset.bound !== "true"
-      ) {
-        this.profileWalletDisconnectButton.dataset.bound = "true";
-        this.profileWalletDisconnectButton.addEventListener("click", () => {
-          this.handleWalletDisconnect();
-        });
-      }
+      this.profileBlockedList = this.profileModalController.profileBlockedList;
+      this.profileBlockedEmpty = this.profileModalController.profileBlockedEmpty;
+      this.profileBlockedInput = this.profileModalController.profileBlockedInput;
+      this.profileAddBlockedBtn = this.profileModalController.profileAddBlockedBtn;
 
-      if (
-        this.adminAddModeratorBtn &&
-        this.adminAddModeratorBtn.dataset.bound !== "true"
-      ) {
-        this.adminAddModeratorBtn.dataset.bound = "true";
-        this.adminAddModeratorBtn.addEventListener("click", () => {
-          this.handleAddModerator();
-        });
-      }
-      if (
-        this.adminModeratorInput &&
-        this.adminModeratorInput.dataset.bound !== "true"
-      ) {
-        this.adminModeratorInput.dataset.bound = "true";
-        this.adminModeratorInput.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            this.handleAddModerator();
-          }
-        });
-      }
+      this.profileWalletUriInput = this.profileModalController.walletUriInput;
+      this.profileWalletDefaultZapInput =
+        this.profileModalController.walletDefaultZapInput;
+      this.profileWalletSaveButton = this.profileModalController.walletSaveButton;
+      this.profileWalletTestButton = this.profileModalController.walletTestButton;
+      this.profileWalletDisconnectButton =
+        this.profileModalController.walletDisconnectButton;
+      this.profileWalletStatusText =
+        this.profileModalController.profileWalletStatusText;
 
-      if (
-        this.adminAddWhitelistBtn &&
-        this.adminAddWhitelistBtn.dataset.bound !== "true"
-      ) {
-        this.adminAddWhitelistBtn.dataset.bound = "true";
-        this.adminAddWhitelistBtn.addEventListener("click", () => {
-          this.handleAdminListMutation("whitelist", "add");
-        });
-      }
-      if (
-        this.adminWhitelistInput &&
-        this.adminWhitelistInput.dataset.bound !== "true"
-      ) {
-        this.adminWhitelistInput.dataset.bound = "true";
-        this.adminWhitelistInput.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            this.handleAdminListMutation("whitelist", "add");
-          }
-        });
-      }
+      this.profileHistoryRenderer =
+        this.profileModalController.profileHistoryRenderer;
 
-      if (
-        this.adminAddBlacklistBtn &&
-        this.adminAddBlacklistBtn.dataset.bound !== "true"
-      ) {
-        this.adminAddBlacklistBtn.dataset.bound = "true";
-        this.adminAddBlacklistBtn.addEventListener("click", () => {
-          this.handleAdminListMutation("blacklist", "add");
-        });
-      }
-      if (
-        this.adminBlacklistInput &&
-        this.adminBlacklistInput.dataset.bound !== "true"
-      ) {
-        this.adminBlacklistInput.dataset.bound = "true";
-        this.adminBlacklistInput.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            this.handleAdminListMutation("blacklist", "add");
-          }
-        });
-      }
+      this.adminModeratorsSection =
+        this.profileModalController.adminModeratorsSection;
+      this.adminModeratorsEmpty =
+        this.profileModalController.adminModeratorsEmpty;
+      this.adminModeratorList =
+        this.profileModalController.adminModeratorList;
+      this.adminModeratorInput =
+        this.profileModalController.adminModeratorInput;
+      this.adminAddModeratorBtn =
+        this.profileModalController.adminAddModeratorButton;
 
-      this.selectProfilePane("account");
-      this.populateProfileRelays();
-      this.populateBlockedList();
-      this.refreshWalletPaneState();
-      await this.refreshAdminPaneState();
+      this.adminWhitelistSection =
+        this.profileModalController.adminWhitelistSection;
+      this.adminWhitelistEmpty =
+        this.profileModalController.adminWhitelistEmpty;
+      this.adminWhitelistList =
+        this.profileModalController.adminWhitelistList;
+      this.adminWhitelistInput =
+        this.profileModalController.adminWhitelistInput;
+      this.adminAddWhitelistBtn =
+        this.profileModalController.adminAddWhitelistButton;
 
-      this.renderSavedProfiles();
+      this.adminBlacklistSection =
+        this.profileModalController.adminBlacklistSection;
+      this.adminBlacklistEmpty =
+        this.profileModalController.adminBlacklistEmpty;
+      this.adminBlacklistList =
+        this.profileModalController.adminBlacklistList;
+      this.adminBlacklistInput =
+        this.profileModalController.adminBlacklistInput;
+      this.adminAddBlacklistBtn =
+        this.profileModalController.adminAddBlacklistButton;
 
-      console.log("Profile modal initialization successful");
       return true;
     } catch (error) {
       console.error("initProfileModal failed:", error);
-      // Not critical if missing
       return false;
     }
   }
