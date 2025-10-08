@@ -1689,6 +1689,17 @@ function renderChannelVideosFromList({
       ? app.getUnsupportedBtihMessage()
       : "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
+  const fallbackNormalizePubkey = (value) =>
+    typeof value === "string" && value
+      ? value.trim().toLowerCase()
+      : "";
+  const normalizePubkey =
+    typeof app?.normalizeHexPubkey === "function"
+      ? (value) => app.normalizeHexPubkey(value) || fallbackNormalizePubkey(value)
+      : fallbackNormalizePubkey;
+  const normalizedViewerPubkey = normalizePubkey(app?.pubkey);
+  let renderIndex = 0;
+
   const extractPlaybackDetail = (trigger, video) => {
     if (
       app?.videoListView &&
@@ -1768,10 +1779,24 @@ function renderChannelVideosFromList({
     }
   };
 
-  videos.forEach((video, index) => {
+  videos.forEach((video) => {
+    if (!video || !video.id || !video.title) {
+      return;
+    }
+
+    const normalizedVideoPubkey = normalizePubkey(video.pubkey);
+    const canEdit =
+      Boolean(normalizedVideoPubkey) &&
+      Boolean(normalizedViewerPubkey) &&
+      normalizedVideoPubkey === normalizedViewerPubkey;
+
+    if (video.isPrivate && !canEdit) {
+      return;
+    }
+
     app?.videosMap?.set(video.id, video);
 
-    const canEdit = video.pubkey === app?.pubkey;
+    const index = renderIndex++;
     let hasOlder = false;
     if (canEdit && video.videoRootId) {
       hasOlder = app?.hasOlderVersion?.(video, allKnownEventsArray) || false;
@@ -1881,6 +1906,15 @@ function renderChannelVideosFromList({
       fragment.appendChild(cardEl);
     }
   });
+
+  if (renderIndex === 0) {
+    if (allowEmptyMessage) {
+      container.dataset.hasChannelVideos = "false";
+      container.innerHTML = `<p class="text-gray-500">No videos to display.</p>`;
+      return true;
+    }
+    return false;
+  }
 
   container.appendChild(fragment);
 
