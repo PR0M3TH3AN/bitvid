@@ -987,6 +987,19 @@ body.modal-open #app {
   overflow: hidden;
 }
 
+body.modal-open #sidebar,
+body.modal-open #sidebarOverlay {
+  pointer-events: none;
+}
+
+body.modal-open #sidebar {
+  z-index: var(--z-sidebar-overlay);
+}
+
+body.modal-open #sidebarOverlay {
+  z-index: calc(var(--z-sidebar-overlay) - 1);
+}
+
 /* Modal Content Container */
 .modal-content {
   width: 100%;
