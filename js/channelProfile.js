@@ -1769,15 +1769,6 @@ function renderChannelVideosFromList({
   };
 
   videos.forEach((video, index) => {
-    if (
-      video.isPrivate &&
-      video.pubkey === nostrClient.pubkey &&
-      !video.alreadyDecrypted
-    ) {
-      video.magnet = fakeDecrypt(video.magnet);
-      video.alreadyDecrypted = true;
-    }
-
     app?.videosMap?.set(video.id, video);
 
     const canEdit = video.pubkey === app?.pubkey;
@@ -2280,13 +2271,6 @@ window.addEventListener("bitvid:access-control-updated", () => {
     console.error("Failed to refresh channel videos after admin update:", error);
   });
 });
-
-/**
- * Minimal placeholder for private video decryption.
- */
-function fakeDecrypt(str) {
-  return str.split("").reverse().join("");
-}
 
 /**
  * Keep only the newest version of each video root.

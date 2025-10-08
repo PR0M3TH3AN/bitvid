@@ -1689,17 +1689,6 @@ function cloneEventForCache(event) {
   return cloned;
 }
 
-/**
- * Example "encryption" that just reverses strings.
- * In real usage, replace with actual crypto.
- */
-function fakeEncrypt(magnet) {
-  return magnet.split("").reverse().join("");
-}
-function fakeDecrypt(encrypted) {
-  return encrypted.split("").reverse().join("");
-}
-
 function decodeNpubToHex(npub) {
   if (typeof npub !== "string" || !npub.trim()) {
     return "";
@@ -4827,10 +4816,7 @@ class NostrClient {
     }
 
     const rawMagnet = typeof videoData.magnet === "string" ? videoData.magnet : "";
-    let finalMagnet = rawMagnet.trim();
-    if (videoData.isPrivate && finalMagnet) {
-      finalMagnet = fakeEncrypt(finalMagnet);
-    }
+    const finalMagnet = rawMagnet.trim();
     const finalUrl =
       typeof videoData.url === "string" ? videoData.url.trim() : "";
     const finalThumbnail =
@@ -5052,12 +5038,12 @@ class NostrClient {
       throw new Error("You do not own this video (pubkey mismatch).");
     }
 
-    // Decrypt the old magnet if the note is private
-    let oldPlainMagnet = baseEvent.magnet || "";
-    if (baseEvent.isPrivate && oldPlainMagnet) {
-      oldPlainMagnet = fakeDecrypt(oldPlainMagnet);
-    }
-
+    const oldMagnet =
+      typeof baseEvent.rawMagnet === "string" && baseEvent.rawMagnet.trim()
+        ? baseEvent.rawMagnet.trim()
+        : typeof baseEvent.magnet === "string"
+        ? baseEvent.magnet.trim()
+        : "";
     const oldUrl = baseEvent.url || "";
 
     // Determine if the updated note should be private
@@ -5067,11 +5053,7 @@ class NostrClient {
     const magnetEdited = updatedData.magnetEdited === true;
     const newMagnetValue =
       typeof updatedData.magnet === "string" ? updatedData.magnet.trim() : "";
-    let finalPlainMagnet = magnetEdited ? newMagnetValue : oldPlainMagnet;
-    let finalMagnet =
-      wantPrivate && finalPlainMagnet
-        ? fakeEncrypt(finalPlainMagnet)
-        : finalPlainMagnet;
+    const finalMagnet = magnetEdited ? newMagnetValue : oldMagnet;
 
     const urlEdited = updatedData.urlEdited === true;
     const newUrlValue =

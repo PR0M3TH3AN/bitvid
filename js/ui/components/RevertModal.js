@@ -562,7 +562,7 @@ export class RevertModal {
         ? escape(this.truncateMiddle(displayMagnet, 72))
         : escape(displayMagnet);
       const caption = isPrivate
-        ? '<span class="block text-xs text-purple-200/90 mt-1">Encrypted magnet (only decrypted locally for the owner).</span>'
+        ? '<span class="block text-xs text-purple-200/90 mt-1">Magnet stays visible only to you — private notes keep the raw string local.</span>'
         : "";
       magnetHtml = `<div class="break-all">${label}${caption}</div>`;
     }
