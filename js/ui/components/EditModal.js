@@ -235,11 +235,13 @@ export class EditModal {
         input.checked = defaultChecked;
         input.disabled = false;
         input.removeAttribute("disabled");
+        delete input.dataset.isEditing;
       } else {
         input.value = "";
         input.readOnly = false;
         input.removeAttribute("readonly");
         input.classList.remove("locked-input");
+        delete input.dataset.isEditing;
       }
       delete input.dataset.originalValue;
     });
@@ -343,6 +345,7 @@ export class EditModal {
           input.removeAttribute("disabled");
         }
         input.dataset.originalValue = boolValue ? "true" : "false";
+        input.dataset.isEditing = hasValue ? "false" : "true";
         if (button) {
           if (hasValue) {
             button.classList.remove("hidden");
@@ -362,6 +365,7 @@ export class EditModal {
 
       input.value = value;
       input.dataset.originalValue = value;
+      input.dataset.isEditing = hasValue ? "false" : "true";
       if (hasValue) {
         input.readOnly = true;
         input.setAttribute("readonly", "readonly");
@@ -453,10 +457,13 @@ export class EditModal {
       if (isCheckbox) {
         input.disabled = false;
         input.removeAttribute("disabled");
+        input.dataset.isEditing = "true";
       } else {
+        input.disabled = false;
         input.readOnly = false;
         input.removeAttribute("readonly");
         input.classList.remove("locked-input");
+        input.dataset.isEditing = "true";
       }
       button.dataset.mode = "editing";
       button.textContent = "Restore original";
@@ -483,6 +490,7 @@ export class EditModal {
       input.checked = originalValue === "true";
       input.disabled = true;
       input.setAttribute("disabled", "disabled");
+      input.dataset.isEditing = "false";
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
       if (input === this.fields.isPrivate) {
@@ -497,12 +505,14 @@ export class EditModal {
       input.readOnly = true;
       input.setAttribute("readonly", "readonly");
       input.classList.add("locked-input");
+      input.dataset.isEditing = "false";
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
     } else {
       input.readOnly = false;
       input.removeAttribute("readonly");
       input.classList.remove("locked-input");
+      input.dataset.isEditing = "true";
       button.classList.add("hidden");
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
@@ -648,7 +658,18 @@ export class EditModal {
     const newThumbnail = fieldValue("thumbnail");
     const newDescription = fieldValue("description");
 
-    const isEditing = (input) => !input || input.readOnly === false;
+    const isEditing = (input) => {
+      if (!input) {
+        return true;
+      }
+      if (input.dataset?.isEditing === "true") {
+        return true;
+      }
+      if (input.type === "checkbox") {
+        return input.disabled === false;
+      }
+      return input.readOnly === false;
+    };
 
     const titleWasEdited = isEditing(titleInput);
     const urlWasEdited = isEditing(urlInput);
