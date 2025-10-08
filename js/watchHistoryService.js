@@ -1200,11 +1200,60 @@ async function snapshot(items, options = {}) {
   return run;
 }
 
-async function loadLatest(actorInput) {
+function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
+  if (!actorKey) {
+    return Promise.resolve([]);
+  }
+
+  if (cacheEntry && typeof cacheEntry === "object" && cacheEntry.promise) {
+    return cacheEntry.promise;
+  }
+
+  const promise = nostrClient
+    .resolveWatchHistory(actorKey, { forceRefresh: true })
+    .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
+    .then(() => {
+      const latest = state.fingerprintCache.get(actorKey);
+      return latest?.items || [];
+    })
+    .catch((error) => {
+      if (isDevMode) {
+        console.warn("[watchHistoryService] Failed to load watch history:", error);
+      }
+      throw error;
+    })
+    .finally(() => {
+      const entry = state.fingerprintCache.get(actorKey);
+      if (entry) {
+        delete entry.promise;
+      }
+    });
+
+  console.info("[watchHistoryService] Triggered nostr watch list refresh.", {
+    actor: actorKey,
+  });
+
+  const baseEntry = cacheEntry && typeof cacheEntry === "object" ? cacheEntry : {};
+  state.fingerprintCache.set(actorKey, {
+    ...baseEntry,
+    promise,
+  });
+
+  return promise;
+}
+
+async function loadLatest(actorInput, options = {}) {
   const actorKey = resolveActorKey(actorInput);
   if (!actorKey) {
     return [];
   }
+
+  const normalizedOptions =
+    options && typeof options === "object" ? options : {};
+  // Only callers that can react to a later fingerprint update should opt into
+  // stale cache reads; everyone else waits for the fresh list so they do not
+  // miss entries.
+  const allowStale = normalizedOptions.allowStale === true;
 
   if (!isFeatureEnabled(actorKey)) {
     if (!state.restored) {
@@ -1231,12 +1280,13 @@ async function loadLatest(actorInput) {
       cacheExpiresAt: cacheEntry?.expiresAt || null,
     }
   );
-  if (
-    cacheEntry?.items &&
-    cacheEntry.expiresAt &&
-    cacheEntry.expiresAt > now &&
-    Array.isArray(cacheEntry.items)
-  ) {
+  const hasCachedItems = Array.isArray(cacheEntry?.items);
+  const cacheIsFresh =
+    hasCachedItems &&
+    cacheEntry?.expiresAt &&
+    cacheEntry.expiresAt > now;
+
+  if (cacheIsFresh) {
     console.info(
       "[watchHistoryService] Returning cached watch list items.",
       {
@@ -1254,42 +1304,35 @@ async function loadLatest(actorInput) {
         actor: actorKey,
       }
     );
+    if (allowStale && hasCachedItems) {
+      console.info(
+        "[watchHistoryService] Returning stale watch list items while refresh completes.",
+        {
+          actor: actorKey,
+          itemCount: cacheEntry.items.length,
+        }
+      );
+      return cacheEntry.items;
+    }
     return cacheEntry.promise;
   }
 
-  const promise = nostrClient
-    .resolveWatchHistory(actorKey, { forceRefresh: true })
-    .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
-    .then(() => {
-      const latest = state.fingerprintCache.get(actorKey);
-      return latest?.items || [];
-    })
-    .catch((error) => {
-      if (isDevMode) {
-        console.warn("[watchHistoryService] Failed to load watch history:", error);
-      }
-      throw error;
-    })
-    .finally(() => {
-      const entry = state.fingerprintCache.get(actorKey);
-      if (entry) {
-        delete entry.promise;
-      }
-    });
+  if (!allowStale || !hasCachedItems) {
+    return scheduleWatchHistoryRefresh(actorKey, cacheEntry);
+  }
+
+  const refreshPromise = scheduleWatchHistoryRefresh(actorKey, cacheEntry);
+  refreshPromise.catch(() => {});
 
   console.info(
-    "[watchHistoryService] Triggered nostr watch list refresh.",
+    "[watchHistoryService] Returning stale watch list items while refresh is pending.",
     {
       actor: actorKey,
+      itemCount: cacheEntry?.items?.length || 0,
     }
   );
 
-  state.fingerprintCache.set(actorKey, {
-    ...(cacheEntry || {}),
-    promise,
-  });
-
-  return promise;
+  return cacheEntry.items || [];
 }
 
 async function getFingerprint(actorInput) {

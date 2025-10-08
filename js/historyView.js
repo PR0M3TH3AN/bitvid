@@ -572,7 +572,9 @@ export function createWatchHistoryRenderer(config = {}) {
         });
         return engine.run("watch-history", { runtime });
       }
-      const items = await watchHistoryService.loadLatest(actorInput);
+      const items = await watchHistoryService.loadLatest(actorInput, {
+        allowStale: true,
+      });
       const normalized = normalizeHistoryItems(items);
       return { items: normalized, metadata: { engine: "service-fallback" } };
     },
@@ -606,8 +608,9 @@ export function createWatchHistoryRenderer(config = {}) {
     batchSize = WATCH_HISTORY_BATCH_SIZE,
     remove = (payload) => {
       const app = getAppInstance();
-      if (app?.handleWatchHistoryRemoval) {
-        return app.handleWatchHistoryRemoval(payload);
+      const controller = app?.watchHistoryController;
+      if (controller?.handleWatchHistoryRemoval) {
+        return controller.handleWatchHistoryRemoval(payload);
       }
       return defaultRemoveHandler(payload);
     },
@@ -653,6 +656,12 @@ export function createWatchHistoryRenderer(config = {}) {
     featureEnabled: syncEnabled || localSupported,
   };
 
+  let rendererRef = null;
+  let fingerprintRefreshQueued = false;
+  const scheduleTask =
+    typeof queueMicrotask === "function"
+      ? queueMicrotask
+      : (callback) => Promise.resolve().then(callback);
   let elements = {
     view: null,
     grid: null,
@@ -732,6 +741,7 @@ export function createWatchHistoryRenderer(config = {}) {
       }
     }
     subscriptions.clear();
+    fingerprintRefreshQueued = false;
   }
 
   function clearToasts() {
@@ -899,6 +909,50 @@ export function createWatchHistoryRenderer(config = {}) {
           message = `Republish retry scheduled in about ${seconds} second${suffix}.`;
         }
         pushToast({ message, variant: "warning" });
+      }
+    );
+    if (typeof unsubscribe === "function") {
+      subscriptions.add(unsubscribe);
+    }
+  }
+
+  function queueFingerprintRefresh() {
+    if (!fingerprintRefreshQueued) {
+      return;
+    }
+    if (state.isLoading) {
+      return;
+    }
+    if (!rendererRef) {
+      return;
+    }
+    fingerprintRefreshQueued = false;
+    void rendererRef.refresh({ force: false });
+  }
+
+  function subscribeToFingerprintUpdates() {
+    if (typeof watchHistoryService.subscribe !== "function") {
+      return;
+    }
+    const unsubscribe = watchHistoryService.subscribe(
+      "fingerprint",
+      (payload) => {
+        if (!payload) {
+          return;
+        }
+        if (
+          payload.actor &&
+          state.actor &&
+          payload.actor !== state.actor
+        ) {
+          return;
+        }
+        fingerprintRefreshQueued = true;
+        if (!state.isLoading) {
+          scheduleTask(() => {
+            queueFingerprintRefresh();
+          });
+        }
       }
     );
     if (typeof unsubscribe === "function") {
@@ -1545,6 +1599,11 @@ export function createWatchHistoryRenderer(config = {}) {
       result = null;
     }
     setLoadingState(false);
+    if (fingerprintRefreshQueued) {
+      scheduleTask(() => {
+        queueFingerprintRefresh();
+      });
+    }
     const feedItems = Array.isArray(result?.items) ? result.items : [];
     const normalized = [];
     state.metadataCache.clear();
@@ -1643,6 +1702,7 @@ export function createWatchHistoryRenderer(config = {}) {
       bindMetadataToggle();
       subscribeToMetadataPreference();
       subscribeToRepublishEvents();
+      subscribeToFingerprintUpdates();
       updateInfoCallout();
       state.metadataStorageEnabled =
         typeof watchHistoryService.shouldStoreMetadata === "function"
@@ -1786,6 +1846,8 @@ export function createWatchHistoryRenderer(config = {}) {
       state.cursor = 0;
       state.hasMore = false;
       state.metadataCache.clear();
+      rendererRef = null;
+      fingerprintRefreshQueued = false;
     },
     async handleRemove(pointerKeyValue) {
       if (!pointerKeyValue) {
@@ -1883,6 +1945,7 @@ export function createWatchHistoryRenderer(config = {}) {
     },
   };
 
+  rendererRef = renderer;
   return renderer;
 }
 

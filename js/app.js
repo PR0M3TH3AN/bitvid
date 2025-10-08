@@ -1,10 +1,6 @@
 // js/app.js
 
-import {
-  nostrClient,
-  normalizePointerInput,
-  pointerKey as derivePointerKey,
-} from "./nostr.js";
+import { nostrClient } from "./nostr.js";
 import { torrentClient } from "./webtorrent.js";
 import {
   isDevMode,
@@ -40,6 +36,7 @@ import AuthService from "./services/authService.js";
 import nostrService from "./services/nostrService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
+import WatchHistoryController from "./ui/watchHistoryController.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
 import {
@@ -208,6 +205,17 @@ class Application {
     this.registerRecentFeed();
     this.registerSubscriptionsFeed();
     this.registerWatchHistoryFeed();
+
+    this.watchHistoryController = new WatchHistoryController({
+      watchHistoryService,
+      nostrClient,
+      showError: (message) => this.showError(message),
+      showSuccess: (message) => this.showSuccess(message),
+      dropWatchHistoryMetadata: (pointerKey) =>
+        this.dropWatchHistoryMetadata(pointerKey),
+      getActivePubkey: () =>
+        typeof this.pubkey === "string" && this.pubkey ? this.pubkey : "",
+    });
 
     this.playbackService =
       services.playbackService ||
@@ -3366,244 +3374,41 @@ class Application {
     }
   }
 
-  buildPointerFromDataset(dataset = {}) {
-    if (!dataset || typeof dataset !== "object") {
-      return null;
-    }
-
-    const typeValue = typeof dataset.pointerType === "string" ? dataset.pointerType : "";
-    const normalizedType = typeValue === "a" ? "a" : typeValue === "e" ? "e" : "";
-    const value =
-      typeof dataset.pointerValue === "string" && dataset.pointerValue.trim()
-        ? dataset.pointerValue.trim()
-        : "";
-
-    if (!normalizedType || !value) {
-      return null;
-    }
-
-    const pointer = { type: normalizedType, value };
-
-    if (typeof dataset.pointerRelay === "string" && dataset.pointerRelay.trim()) {
-      pointer.relay = dataset.pointerRelay.trim();
-    }
-
-    if (typeof dataset.pointerWatchedAt === "string" && dataset.pointerWatchedAt) {
-      const parsed = Number.parseInt(dataset.pointerWatchedAt, 10);
-      if (Number.isFinite(parsed)) {
-        pointer.watchedAt = parsed;
-      }
-    }
-
-    if (dataset.pointerSession === "true") {
-      pointer.session = true;
-    }
-
-    return pointer;
-  }
-
   async handleRemoveHistoryAction(dataset = {}, { trigger } = {}) {
-    const pointer = this.buildPointerFromDataset(dataset);
-    const pointerKeyValue =
-      typeof dataset.pointerKey === "string" && dataset.pointerKey.trim()
-        ? dataset.pointerKey.trim()
-        : pointer
-        ? derivePointerKey(normalizePointerInput(pointer)) || ""
-        : "";
-
-    if (!pointerKeyValue) {
-      this.showError("Unable to determine which history entry to remove.");
+    if (!this.watchHistoryController) {
+      this.showError("Watch history sync is not available right now.");
       return;
-    }
-
-    const payload = {
-      removed: {
-        pointer,
-        pointerKey: pointerKeyValue,
-      },
-      reason: dataset.reason || "remove-item",
-    };
-
-    let card = null;
-    if (trigger instanceof HTMLElement) {
-      card = trigger.closest(".video-card");
-      if (card instanceof HTMLElement) {
-        card.dataset.historyRemovalPending = "true";
-        card.classList.add("opacity-60");
-        card.classList.add("pointer-events-none");
-      }
     }
 
     try {
-      await this.handleWatchHistoryRemoval(payload);
+      await this.watchHistoryController.removeEntry({
+        dataset,
+        trigger,
+        removeCard: dataset.removeCard === "true",
+        reason: dataset.reason || "remove-item",
+      });
     } catch (error) {
-      if (card instanceof HTMLElement) {
-        delete card.dataset.historyRemovalPending;
-        card.classList.remove("opacity-60", "pointer-events-none");
-      }
       if (!error?.handled) {
         this.showError("Failed to remove from history. Please try again.");
-      }
-      return;
-    }
-
-    if (card instanceof HTMLElement) {
-      delete card.dataset.historyRemovalPending;
-      card.classList.remove("opacity-60", "pointer-events-none");
-      if (dataset.removeCard === "true") {
-        card.remove();
       }
     }
   }
 
   async handleWatchHistoryRemoval(payload = {}) {
-    if (!watchHistoryService?.isEnabled?.()) {
+    if (!this.watchHistoryController) {
+      this.showError("Watch history sync is not available right now.");
       const error = new Error("watch-history-disabled");
       error.handled = true;
-      this.showError("Watch history sync is not available right now.");
       throw error;
     }
-
-    const reason =
-      typeof payload.reason === "string" && payload.reason.trim()
-        ? payload.reason.trim()
-        : "remove-item";
-
-    const actorCandidate =
-      typeof payload.actor === "string" && payload.actor.trim()
-        ? payload.actor.trim()
-        : typeof this.pubkey === "string" && this.pubkey.trim()
-        ? this.pubkey.trim()
-        : typeof nostrClient?.sessionActor?.pubkey === "string" &&
-          nostrClient.sessionActor.pubkey
-        ? nostrClient.sessionActor.pubkey
-        : "";
-
-    const removedPointerRaw =
-      payload?.removed?.pointer || payload?.removed?.raw || payload?.removed || null;
-    const removedPointerNormalized = normalizePointerInput(removedPointerRaw);
-    let removedPointerKey =
-      typeof payload?.removed?.pointerKey === "string"
-        ? payload.removed.pointerKey
-        : "";
-    if (!removedPointerKey && removedPointerNormalized) {
-      removedPointerKey = derivePointerKey(removedPointerNormalized) || "";
-    }
-
-    if (removedPointerKey) {
-      this.dropWatchHistoryMetadata(removedPointerKey);
-    }
-
-    const normalizeEntry = (entry) => {
-      if (!entry) {
-        return null;
-      }
-      const pointer = normalizePointerInput(entry.pointer || entry);
-      if (!pointer) {
-        return null;
-      }
-      if (Number.isFinite(entry.watchedAt)) {
-        pointer.watchedAt = Math.floor(entry.watchedAt);
-      } else if (Number.isFinite(entry.pointer?.watchedAt)) {
-        pointer.watchedAt = Math.floor(entry.pointer.watchedAt);
-      }
-      if (entry.pointer?.session === true || entry.session === true) {
-        pointer.session = true;
-      }
-      return pointer;
-    };
-
-    let normalizedItems = null;
-
-    if (Array.isArray(payload.items) && payload.items.length) {
-      normalizedItems = payload.items.map(normalizeEntry).filter(Boolean);
-    }
-
-    if (!normalizedItems) {
-      try {
-        const latest = await watchHistoryService.loadLatest(actorCandidate);
-        normalizedItems = Array.isArray(latest)
-          ? latest.map(normalizeEntry).filter(Boolean)
-          : [];
-      } catch (error) {
-        this.showError("Failed to load watch history. Please try again.");
-        if (error && typeof error === "object") {
-          error.handled = true;
-        }
-        throw error;
-      }
-    }
-
-    if (removedPointerKey) {
-      normalizedItems = normalizedItems.filter((entry) => {
-        try {
-          return derivePointerKey(entry) !== removedPointerKey;
-        } catch (error) {
-          return true;
-        }
-      });
-    }
-
-    this.showSuccess("Removing from history…");
-
-    try {
-      const snapshotResult = await watchHistoryService.snapshot(normalizedItems, {
-        actor: actorCandidate || undefined,
-        reason,
-      });
-
-      try {
-        await nostrClient.updateWatchHistoryList(normalizedItems, {
-          actorPubkey: actorCandidate || undefined,
-          replace: true,
-          source: reason,
-        });
-      } catch (updateError) {
-        if (isDevMode) {
-          console.warn(
-            "[watchHistory] Failed to update local watch history list:",
-            updateError,
-          );
-        }
-      }
-
-      this.showSuccess(
-        "Removed from encrypted history. Relay sync may take a moment.",
-      );
-
-      return { handledToasts: true, snapshot: snapshotResult };
-    } catch (error) {
-      let message = "Failed to remove from history. Please try again.";
-      if (error?.result?.retryable) {
-        message =
-          "Removal will retry once encrypted history is accepted by your relays.";
-      }
-      this.showError(message);
-      if (error && typeof error === "object") {
-        error.handled = true;
-      }
-      throw error;
-    }
+    return this.watchHistoryController.handleWatchHistoryRemoval(payload);
   }
 
   flushWatchHistory(reason = "session-end", context = "watch-history") {
-    if (!watchHistoryService?.isEnabled?.()) {
+    if (!this.watchHistoryController) {
       return Promise.resolve();
     }
-    try {
-      const result = watchHistoryService.snapshot(undefined, { reason });
-      return Promise.resolve(result).catch((error) => {
-        if (isDevMode) {
-          console.warn(`[${context}] Watch history flush failed:`, error);
-        }
-        throw error;
-      });
-    } catch (error) {
-      if (isDevMode) {
-        console.warn(`[${context}] Failed to queue watch history flush:`, error);
-      }
-      return Promise.reject(error);
-    }
+    return this.watchHistoryController.flush(reason, context);
   }
 
   getActiveViewIdentityKey() {
