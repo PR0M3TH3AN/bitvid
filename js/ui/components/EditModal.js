@@ -234,9 +234,11 @@ export class EditModal {
             : input.defaultChecked;
         input.checked = defaultChecked;
         input.disabled = false;
+        input.removeAttribute("disabled");
       } else {
         input.value = "";
         input.readOnly = false;
+        input.removeAttribute("readonly");
         input.classList.remove("locked-input");
       }
       delete input.dataset.originalValue;
@@ -335,6 +337,11 @@ export class EditModal {
         const boolValue = rawValue === true;
         input.checked = boolValue;
         input.disabled = hasValue;
+        if (hasValue) {
+          input.setAttribute("disabled", "disabled");
+        } else {
+          input.removeAttribute("disabled");
+        }
         input.dataset.originalValue = boolValue ? "true" : "false";
         if (button) {
           if (hasValue) {
@@ -357,9 +364,11 @@ export class EditModal {
       input.dataset.originalValue = value;
       if (hasValue) {
         input.readOnly = true;
+        input.setAttribute("readonly", "readonly");
         input.classList.add("locked-input");
       } else {
         input.readOnly = false;
+        input.removeAttribute("readonly");
         input.classList.remove("locked-input");
       }
 
@@ -443,8 +452,10 @@ export class EditModal {
     if (mode === "locked") {
       if (isCheckbox) {
         input.disabled = false;
+        input.removeAttribute("disabled");
       } else {
         input.readOnly = false;
+        input.removeAttribute("readonly");
         input.classList.remove("locked-input");
       }
       button.dataset.mode = "editing";
@@ -471,6 +482,7 @@ export class EditModal {
     if (isCheckbox) {
       input.checked = originalValue === "true";
       input.disabled = true;
+      input.setAttribute("disabled", "disabled");
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
       if (input === this.fields.isPrivate) {
@@ -483,11 +495,13 @@ export class EditModal {
 
     if (originalValue) {
       input.readOnly = true;
+      input.setAttribute("readonly", "readonly");
       input.classList.add("locked-input");
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
     } else {
       input.readOnly = false;
+      input.removeAttribute("readonly");
       input.classList.remove("locked-input");
       button.classList.add("hidden");
       button.dataset.mode = "locked";
