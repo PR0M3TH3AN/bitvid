@@ -303,8 +303,9 @@ await (async () => {
   });
 
   let walletPaneCalls = 0;
-  app.openWalletPane = () => {
+  app.zapController.requestWalletPane = () => {
     walletPaneCalls += 1;
+    return Promise.resolve();
   };
 
   app.currentVideo = {
@@ -316,9 +317,7 @@ await (async () => {
     lightningAddress: creatorAddress,
   };
 
-  await app.handleVideoModalZap({
-    detail: { amount: 500, comment: "Hello" },
-  });
+  await app.zapController.sendZap({ amount: 500, comment: "Hello" });
 
   assert.equal(walletPaneCalls, 1, "should prompt to open wallet pane");
   assert.equal(splitCalls.length, 0, "splitAndZap should not be invoked");
@@ -366,12 +365,10 @@ await (async () => {
     lightningAddress: creatorAddress,
   };
 
-  app.modalZapAmountValue = 1500;
-  app.modalZapCommentValue = "Great video";
+  app.zapController.setAmount(1500);
+  app.zapController.setComment("Great video");
 
-  await app.handleVideoModalZap({
-    detail: { amount: 1500, comment: "Great video" },
-  });
+  await app.zapController.sendZap({ amount: 1500, comment: "Great video" });
 
   assert.equal(splitCalls.length, 1, "splitAndZap should be called once");
   const call = splitCalls[0];

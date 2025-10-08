@@ -57,29 +57,6 @@ import {
 } from "./nwcSettings.js";
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
 import {
-  calculateZapShares,
-  fetchLightningMetadata,
-  formatMinRequirement,
-  getCachedLightningEntry,
-  getCachedMetadataByUrl,
-  getCachedPlatformLightningAddress,
-  isMetadataEntryFresh,
-  normalizeLightningAddressKey,
-  rememberLightningMetadata,
-  setCachedPlatformLightningAddress,
-  validateInvoiceAmount,
-} from "./payments/zapSharedState.js";
-import {
-  resolveLightningAddress,
-  fetchPayServiceData,
-  requestInvoice,
-} from "./payments/lnurl.js";
-import { getPlatformLightningAddress } from "./payments/platformAddress.js";
-import {
-  ensureWallet as ensureWalletDefault,
-  sendPayment as sendPaymentDefault,
-} from "./payments/nwcClient.js";
-import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatTimeAgo as formatTimeAgoUtil,
   truncateMiddle,
@@ -94,6 +71,7 @@ import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
 import ProfileModalController from "./ui/profileModalController.js";
+import ZapController from "./ui/zapController.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
 import { fakeDecrypt } from "./utils/fakeDecrypt.js";
@@ -506,10 +484,7 @@ class Application {
     this.downloaded = document.getElementById("downloaded") || null;
 
     this.cleanupPromise = null;
-    this.modalZapInFlight = false;
-    this.modalZapRetryState = null;
-    this.modalZapAmountValue = 0;
-    this.modalZapCommentValue = "";
+    this.zapController = null;
 
     this.videoModal =
       (typeof ui.videoModal === "function"
@@ -523,6 +498,21 @@ class Application {
           log: (message, ...args) => this.log(message, ...args),
         },
       });
+    this.zapController = new ZapController({
+      videoModal: this.videoModal,
+      getCurrentVideo: () => this.currentVideo,
+      getActiveNwcSettings: () => this.getActiveNwcSettings(),
+      isUserLoggedIn: () => this.isUserLoggedIn(),
+      hasActiveWalletConnection: () => this.hasActiveWalletConnection(),
+      splitAndZap: (...args) => this.splitAndZap(...args),
+      payments: this.payments,
+      callbacks: {
+        onSuccess: (message) => this.showSuccess(message),
+        onError: (message) => this.showError(message),
+      },
+      requestWalletPane: () =>
+        this.profileController?.showWalletPane?.(),
+    });
     this.boundVideoModalCloseHandler = () => {
       this.hideModal();
     };
@@ -552,19 +542,19 @@ class Application {
       this.boundVideoModalCreatorHandler
     );
     this.boundVideoModalZapHandler = (event) => {
-      this.handleVideoModalZap(event);
+      this.zapController?.sendZap(event?.detail || {});
     };
-    this.boundVideoModalZapOpenHandler = (event) => {
-      this.handleVideoModalZapOpen(event);
+    this.boundVideoModalZapOpenHandler = () => {
+      this.zapController?.open();
     };
-    this.boundVideoModalZapCloseHandler = (event) => {
-      this.handleVideoModalZapClose(event);
+    this.boundVideoModalZapCloseHandler = () => {
+      this.zapController?.close();
     };
     this.boundVideoModalZapAmountHandler = (event) => {
-      this.handleVideoModalZapAmountChange(event);
+      this.zapController?.setAmount(event?.detail?.amount);
     };
     this.boundVideoModalZapCommentHandler = (event) => {
-      this.handleVideoModalZapCommentChange(event);
+      this.zapController?.setComment(event?.detail?.comment);
     };
     this.videoModal.addEventListener(
       "video:zap",
@@ -587,15 +577,7 @@ class Application {
       this.boundVideoModalZapCommentHandler
     );
     this.boundVideoModalZapWalletHandler = () => {
-      if (!this.profileController) {
-        return;
-      }
-
-      this.profileController
-        .showWalletPane()
-        .catch((error) => {
-          console.error("Failed to open wallet pane:", error);
-        });
+      this.zapController?.handleWalletLink();
     };
     this.videoModal.addEventListener(
       "zap:wallet-link",
@@ -2765,6 +2747,31 @@ class Application {
     return candidate.length > 0;
   }
 
+  validateWalletUri(uri, { requireValue = false } = {}) {
+    const value = typeof uri === "string" ? uri.trim() : "";
+
+    if (!value) {
+      if (requireValue) {
+        return {
+          valid: false,
+          sanitized: "",
+          message: "Enter a wallet connect URI before continuing.",
+        };
+      }
+      return { valid: true, sanitized: "" };
+    }
+
+    if (!value.toLowerCase().startsWith(NWC_URI_SCHEME)) {
+      return {
+        valid: false,
+        sanitized: value,
+        message: `Wallet URI must start with ${NWC_URI_SCHEME}.`,
+      };
+    }
+
+    return { valid: true, sanitized: value };
+  }
+
   isUserLoggedIn() {
     return Boolean(this.normalizeHexPubkey(this.pubkey));
   }
@@ -3996,883 +4003,6 @@ class Application {
   setShareButtonState(enabled) {
     if (this.videoModal) {
       this.videoModal.setShareEnabled(enabled);
-    }
-  }
-
-  setModalZapVisibility(visible) {
-    const lightningVisible = !!visible;
-    const shouldShow = lightningVisible && this.isUserLoggedIn();
-    const hasWallet = this.hasActiveWalletConnection();
-    if (this.videoModal) {
-      this.videoModal.setZapVisibility(shouldShow);
-      this.videoModal.setWalletPromptVisible(shouldShow && !hasWallet);
-    }
-  }
-
-  resetModalZapState({ preserveAmount = false } = {}) {
-    if (!preserveAmount) {
-      this.modalZapAmountValue = 0;
-    }
-    this.modalZapCommentValue = "";
-    this.modalZapInFlight = false;
-    this.resetModalZapRetryState();
-    if (this.videoModal) {
-      this.videoModal.resetZapForm({
-        amount: preserveAmount ? this.modalZapAmountValue || "" : "",
-        comment: "",
-      });
-      this.videoModal.setZapPending(false);
-      this.videoModal.setZapSplitSummary("Enter an amount to view the split.");
-    }
-  }
-
-  resetModalZapFeedback() {
-    if (!this.videoModal) {
-      return;
-    }
-    this.videoModal.setZapStatus("", "neutral");
-    this.videoModal.clearZapReceipts();
-    this.videoModal.setZapRetryPending(false);
-    this.videoModal.setZapPending(false);
-  }
-
-  applyModalDefaultZapAmount() {
-    const settings = this.getActiveNwcSettings();
-    let defaultAmount = 0;
-    if (Number.isFinite(settings?.defaultZap) && settings.defaultZap > 0) {
-      defaultAmount = Math.max(0, Math.round(settings.defaultZap));
-    }
-    this.modalZapAmountValue = defaultAmount;
-    if (this.videoModal) {
-      this.videoModal.setZapAmount(defaultAmount || "");
-    }
-    this.updateModalZapSplitSummary();
-  }
-
-  updateModalZapSplitSummary() {
-    if (!this.videoModal) {
-      return;
-    }
-
-    const amount = Math.max(0, Math.round(Number(this.modalZapAmountValue || 0)));
-    if (!amount) {
-      this.videoModal.setZapSplitSummary("Enter an amount to view the split.");
-      return;
-    }
-
-    const shares = calculateZapShares(amount);
-    const parts = [];
-    const lightningAddress = this.currentVideo?.lightningAddress || "";
-    const creatorEntry = getCachedLightningEntry(lightningAddress);
-    const creatorMin = formatMinRequirement(creatorEntry?.metadata);
-    let creatorText = `Creator: ${shares.creatorShare} sats`;
-    if (Number.isFinite(creatorMin) && creatorMin > 0) {
-      creatorText += ` (min ${creatorMin})`;
-    }
-    parts.push(creatorText);
-
-    if (shares.platformShare > 0) {
-      const platformEntry = getCachedLightningEntry(
-        getCachedPlatformLightningAddress()
-      );
-      const platformMin = formatMinRequirement(platformEntry?.metadata);
-      let platformText = `Platform: ${shares.platformShare} sats`;
-      if (Number.isFinite(platformMin) && platformMin > 0) {
-        platformText += ` (min ${platformMin})`;
-      }
-      parts.push(platformText);
-    }
-
-    this.videoModal.setZapSplitSummary(parts.join(" • "));
-  }
-
-  async preloadModalLightningMetadata() {
-    const lightningAddress = this.currentVideo?.lightningAddress || "";
-    if (lightningAddress) {
-      try {
-        await fetchLightningMetadata(lightningAddress);
-      } catch (error) {
-        if (isDevMode) {
-          console.warn("[zap] Failed to preload creator metadata:", error);
-        }
-      }
-    }
-
-    const amount = Math.max(0, Math.round(Number(this.modalZapAmountValue || 0)));
-    if (!amount) {
-      return;
-    }
-
-    const shares = calculateZapShares(amount);
-    if (shares.platformShare > 0) {
-      let platformAddress = getCachedPlatformLightningAddress();
-      if (!platformAddress) {
-        try {
-          platformAddress = await getPlatformLightningAddress({
-            forceRefresh: false,
-          });
-          setCachedPlatformLightningAddress(platformAddress || "");
-        } catch (error) {
-          if (isDevMode) {
-            console.warn("[zap] Failed to load platform Lightning address:", error);
-          }
-        }
-      }
-      if (platformAddress) {
-        try {
-          await fetchLightningMetadata(platformAddress);
-        } catch (error) {
-          if (isDevMode) {
-            console.warn("[zap] Failed to preload platform metadata:", error);
-          }
-        }
-      }
-    }
-  }
-
-  handleVideoModalZapOpen() {
-    this.resetModalZapFeedback();
-    this.applyModalDefaultZapAmount();
-    this.preloadModalLightningMetadata().catch((error) => {
-      if (isDevMode) {
-        console.warn("[zap] Preload metadata error:", error);
-      }
-    });
-  }
-
-  handleVideoModalZapClose() {
-    this.resetModalZapFeedback();
-  }
-
-  handleVideoModalZapAmountChange(event) {
-    const detail = event?.detail || {};
-    const rawAmount = Number(detail.amount);
-    const amount = Number.isFinite(rawAmount)
-      ? rawAmount
-      : this.videoModal?.getZapAmountValue?.() || 0;
-    this.modalZapAmountValue = Math.max(0, Math.round(amount || 0));
-    this.resetModalZapFeedback();
-    this.updateModalZapSplitSummary();
-  }
-
-  handleVideoModalZapCommentChange(event) {
-    const detail = event?.detail || {};
-    if (typeof detail.comment === "string") {
-      this.modalZapCommentValue = detail.comment.trim();
-      return;
-    }
-    const fallback = this.videoModal?.getZapCommentValue?.();
-    this.modalZapCommentValue = typeof fallback === "string" ? fallback : "";
-  }
-
-  getModalWalletSettingsOrPrompt() {
-    const settings = this.getActiveNwcSettings();
-    const normalizedUri =
-      typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
-    if (!normalizedUri) {
-      this.showError("Connect a Lightning wallet to send zaps.");
-      if (this.profileController) {
-        this.profileController
-          .showWalletPane()
-          .catch((error) => {
-            console.error("Failed to open wallet pane:", error);
-          });
-      }
-      return null;
-    }
-    return {
-      ...settings,
-      nwcUri: normalizedUri,
-    };
-  }
-
-  createModalZapDependencies({
-    creatorEntry,
-    platformEntry,
-    shares,
-    shareTracker,
-  }) {
-    const summarizeTracker = (tracker) =>
-      Array.isArray(tracker)
-        ? tracker.map((entry) => ({
-            type: entry?.type || "unknown",
-            status: entry?.status || "unknown",
-            amount:
-              Number.isFinite(entry?.amount) && entry.amount >= 0
-                ? entry.amount
-                : undefined,
-            address: entry?.address || undefined,
-            hasPayment: Boolean(entry?.payment),
-            errorMessage:
-              typeof entry?.error?.message === "string"
-                ? entry.error.message
-                : entry?.error
-                ? String(entry.error)
-                : undefined,
-          }))
-        : undefined;
-    const logZapError = (stage, details, error) => {
-      const summary = {
-        stage,
-        shareType: details?.shareType,
-        address: details?.address,
-        amount:
-          Number.isFinite(details?.amount) && details.amount >= 0
-            ? details.amount
-            : undefined,
-        overrideFee:
-          typeof details?.overrideFee === "number"
-            ? details.overrideFee
-            : undefined,
-        commentLength:
-          typeof details?.comment === "string"
-            ? details.comment.length
-            : undefined,
-        wallet:
-          details?.walletSettings
-            ? {
-                hasUri: Boolean(details.walletSettings.nwcUri),
-                type:
-                  details.walletSettings.type ||
-                  details.walletSettings.name ||
-                  details.walletSettings.client ||
-                  undefined,
-              }
-            : undefined,
-        shares: details?.context?.shares
-          ? {
-              total: details.context.shares.total,
-              creator: details.context.shares.creatorShare,
-              platform: details.context.shares.platformShare,
-            }
-          : undefined,
-        tracker: summarizeTracker(details?.tracker),
-        retryAttempt:
-          Number.isInteger(details?.retryAttempt) && details.retryAttempt >= 0
-            ? details.retryAttempt
-            : undefined,
-      };
-      console.error("[zap] Modal zap failure", summary, error);
-    };
-
-    const lightningAddress = this.currentVideo?.lightningAddress || "";
-    const creatorKey = normalizeLightningAddressKey(
-      creatorEntry?.address || lightningAddress
-    );
-    const platformKey = normalizeLightningAddressKey(
-      platformEntry?.address || getCachedPlatformLightningAddress()
-    );
-
-    const ensureWalletFn =
-      typeof this.payments?.ensureWallet === "function"
-        ? (options) => this.payments.ensureWallet(options)
-        : (options) => ensureWalletDefault(options);
-    const sendPaymentFn =
-      typeof this.payments?.sendPayment === "function"
-        ? (bolt11, params) => this.payments.sendPayment(bolt11, params)
-        : (bolt11, params) => sendPaymentDefault(bolt11, params);
-
-    let activeShare = null;
-
-    return {
-      lnurl: {
-        resolveLightningAddress: (value) => {
-          const normalized = normalizeLightningAddressKey(value);
-          if (normalized && normalized === creatorKey) {
-            activeShare = "creator";
-            if (creatorEntry?.resolved) {
-              return { ...creatorEntry.resolved };
-            }
-          } else if (normalized && normalized === platformKey) {
-            activeShare = "platform";
-            if (platformEntry?.resolved) {
-              return { ...platformEntry.resolved };
-            }
-          } else {
-            activeShare = null;
-          }
-
-          const resolved = resolveLightningAddress(value);
-          if (normalized) {
-            rememberLightningMetadata({
-              key: normalized,
-              address: resolved.address || value,
-              resolved,
-              fetchedAt: Date.now(),
-            });
-          }
-          return resolved;
-        },
-        fetchPayServiceData: async (url) => {
-          const cached = getCachedMetadataByUrl(url);
-          if (cached?.metadata && isMetadataEntryFresh(cached)) {
-            return cached.metadata;
-          }
-
-          const metadata = await fetchPayServiceData(url);
-          if (cached) {
-            rememberLightningMetadata({
-              ...cached,
-              metadata,
-              fetchedAt: Date.now(),
-            });
-          }
-          return metadata;
-        },
-        validateInvoiceAmount,
-        requestInvoice,
-      },
-      wallet: {
-        ensureWallet: async (options) => {
-          try {
-            return await ensureWalletFn(options);
-          } catch (error) {
-            logZapError(
-              "wallet.ensureWallet",
-              {
-                tracker: shareTracker,
-                context: { shares },
-                walletSettings: options?.settings,
-              },
-              error
-            );
-            throw error;
-          }
-        },
-        sendPayment: async (bolt11, params) => {
-          try {
-            const payment = await sendPaymentFn(bolt11, params);
-            if (Array.isArray(shareTracker)) {
-              const shareType = activeShare || "unknown";
-              const amount =
-                shareType === "platform"
-                  ? shares.platformShare
-                  : shares.creatorShare;
-              const address =
-                shareType === "platform"
-                  ? platformEntry?.address || getCachedPlatformLightningAddress()
-                  : creatorEntry?.address || lightningAddress;
-              shareTracker.push({
-                type: shareType,
-                status: "success",
-                amount,
-                address,
-                payment,
-              });
-            }
-            return payment;
-          } catch (error) {
-            if (Array.isArray(shareTracker)) {
-              const shareType = activeShare || "unknown";
-              const amount =
-                shareType === "platform"
-                  ? shares.platformShare
-                  : shares.creatorShare;
-              const address =
-                shareType === "platform"
-                  ? platformEntry?.address || getCachedPlatformLightningAddress()
-                  : creatorEntry?.address || lightningAddress;
-              shareTracker.push({
-                type: shareType,
-                status: "error",
-                amount,
-                address,
-                error,
-              });
-            }
-            logZapError(
-              "wallet.sendPayment",
-              {
-                shareType: activeShare || "unknown",
-                amount,
-                address,
-                tracker: shareTracker,
-                context: { shares },
-              },
-              error
-            );
-            throw error;
-          } finally {
-            activeShare = null;
-          }
-        },
-      },
-      platformAddress: {
-        getPlatformLightningAddress: async () => {
-          if (platformEntry?.address) {
-            return platformEntry.address;
-          }
-          const cachedAddress = getCachedPlatformLightningAddress();
-          if (cachedAddress) {
-            return cachedAddress;
-          }
-          const fallback = await getPlatformLightningAddress({
-            forceRefresh: false,
-          });
-          setCachedPlatformLightningAddress(fallback || "");
-          return fallback;
-        },
-      },
-    };
-  }
-
-  async prepareModalLightningContext({ amount, overrideFee = null }) {
-    const lightningAddress = this.currentVideo?.lightningAddress || "";
-    if (!lightningAddress) {
-      throw new Error("This creator has not configured a Lightning address yet.");
-    }
-
-    const shares = calculateZapShares(amount, overrideFee);
-    if (!shares.total) {
-      throw new Error("Enter a zap amount greater than zero.");
-    }
-
-    const creatorEntry = await fetchLightningMetadata(lightningAddress);
-    if (shares.creatorShare > 0) {
-      try {
-        validateInvoiceAmount(creatorEntry.metadata, shares.creatorShare);
-      } catch (error) {
-        const detail = error?.message || "Unable to validate creator share.";
-        throw new Error(`Creator share error: ${detail}`);
-      }
-    }
-
-    let platformEntry = null;
-    let platformAddress = "";
-    if (shares.platformShare > 0) {
-      platformAddress = getCachedPlatformLightningAddress();
-      if (!platformAddress) {
-        platformAddress = await getPlatformLightningAddress({
-          forceRefresh: false,
-        });
-        setCachedPlatformLightningAddress(platformAddress || "");
-      }
-      if (!platformAddress) {
-        throw new Error("Platform Lightning address is unavailable.");
-      }
-
-      platformEntry = await fetchLightningMetadata(platformAddress);
-      try {
-        validateInvoiceAmount(platformEntry.metadata, shares.platformShare);
-      } catch (error) {
-        const detail = error?.message || "Unable to validate platform share.";
-        throw new Error(`Platform share error: ${detail}`);
-      }
-    }
-
-    this.updateModalZapSplitSummary();
-
-    return {
-      shares,
-      creatorEntry,
-      platformEntry,
-      platformAddress,
-    };
-  }
-
-  getActiveModalVideoEvent() {
-    const video = this.currentVideo || {};
-    const lightningAddress = video.lightningAddress || "";
-    return {
-      kind: typeof video.kind === "number" ? video.kind : 0,
-      id: typeof video.id === "string" ? video.id : "",
-      pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
-      tags: Array.isArray(video.tags) ? [...video.tags] : [],
-      content: typeof video.content === "string" ? video.content : "",
-      created_at: Number.isFinite(video.created_at)
-        ? video.created_at
-        : Math.floor(Date.now() / 1000),
-      lightningAddress,
-    };
-  }
-
-  async runModalZapAttempt({
-    amount,
-    overrideFee = null,
-    walletSettings,
-    comment,
-  }) {
-    const settings = walletSettings || this.getModalWalletSettingsOrPrompt();
-    if (!settings) {
-      return null;
-    }
-
-    let context;
-    try {
-      context = await this.prepareModalLightningContext({
-        amount,
-        overrideFee,
-      });
-    } catch (error) {
-      console.error(
-        "[zap] Modal lightning context failed",
-        {
-          amount,
-          overrideFee,
-          commentLength: typeof comment === "string" ? comment.length : undefined,
-          wallet: {
-            hasUri: Boolean(settings?.nwcUri),
-            type:
-              settings?.type || settings?.name || settings?.client || undefined,
-          },
-        },
-        error
-      );
-      throw error;
-    }
-    const shareTracker = [];
-    const dependencies = this.createModalZapDependencies({
-      ...context,
-      shareTracker,
-    });
-    const videoEvent = this.getActiveModalVideoEvent();
-
-    let previousOverride;
-    const hasGlobal = typeof globalThis !== "undefined";
-    if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
-      previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
-      globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = overrideFee;
-    }
-
-    try {
-      const result = await this.splitAndZap(
-        {
-          videoEvent,
-          amountSats: context.shares.total,
-          comment: typeof comment === "string" ? comment : "",
-          walletSettings: settings,
-        },
-        dependencies
-      );
-      return { context, result, shareTracker };
-    } catch (error) {
-      if (Array.isArray(shareTracker) && shareTracker.length) {
-        error.__zapShareTracker = shareTracker;
-      }
-      console.error(
-        "[zap] splitAndZap failed",
-        {
-          amount,
-          overrideFee,
-          commentLength: typeof comment === "string" ? comment.length : undefined,
-          wallet: {
-            hasUri: Boolean(settings?.nwcUri),
-            type:
-              settings?.type || settings?.name || settings?.client || undefined,
-          },
-          shares: {
-            total: context?.shares?.total,
-            creator: context?.shares?.creatorShare,
-            platform: context?.shares?.platformShare,
-          },
-          tracker: Array.isArray(shareTracker)
-            ? shareTracker.map((entry) => ({
-                type: entry?.type || "unknown",
-                status: entry?.status || "unknown",
-                amount: entry?.amount,
-                address: entry?.address,
-                errorMessage:
-                  typeof entry?.error?.message === "string"
-                    ? entry.error.message
-                    : entry?.error
-                    ? String(entry.error)
-                    : undefined,
-              }))
-            : undefined,
-        },
-        error
-      );
-      throw error;
-    } finally {
-      if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
-        if (typeof previousOverride === "number") {
-          globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
-        } else if (
-          globalThis &&
-          Object.prototype.hasOwnProperty.call(globalThis, "__BITVID_PLATFORM_FEE_OVERRIDE__")
-        ) {
-          delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
-        }
-      }
-    }
-  }
-
-  async executeModalZapRetry({ walletSettings, comment }) {
-    const retryState = this.modalZapRetryState;
-    const shares = Array.isArray(retryState?.shares) ? retryState.shares : [];
-    if (!shares.length) {
-      this.resetModalZapRetryState();
-      return null;
-    }
-
-    const summary = shares
-      .map((share) => {
-        const label =
-          share.type === "platform"
-            ? "Platform"
-            : share.type === "creator"
-            ? "Creator"
-            : "Lightning";
-        return `${label} ${share.amount} sats`;
-      })
-      .join(", ");
-    this.videoModal?.setZapStatus(
-      `Retrying failed share(s): ${summary}`,
-      "warning"
-    );
-    this.videoModal?.clearZapReceipts();
-
-    const aggregatedReceipts = [];
-    const aggregatedTracker = [];
-
-    for (const share of shares) {
-      const overrideFee = share.type === "platform" ? 100 : 0;
-      try {
-        const attempt = await this.runModalZapAttempt({
-          amount: share.amount,
-          overrideFee,
-          walletSettings,
-          comment: retryState?.comment || comment || "",
-        });
-        if (!attempt) {
-          this.videoModal?.setZapStatus("", "neutral");
-          return null;
-        }
-        if (Array.isArray(attempt?.result?.receipts)) {
-          aggregatedReceipts.push(...attempt.result.receipts);
-        } else if (Array.isArray(attempt?.shareTracker)) {
-          aggregatedTracker.push(...attempt.shareTracker);
-        }
-      } catch (error) {
-        const tracker = Array.isArray(error?.__zapShareTracker)
-          ? error.__zapShareTracker
-          : [];
-        console.error(
-          "[zap] Modal zap retry failed",
-          {
-            shareType: share?.type || "unknown",
-            amount: share?.amount,
-            address: share?.address,
-            commentLength:
-              typeof (retryState?.comment || comment) === "string"
-                ? (retryState?.comment || comment).length
-                : undefined,
-            tracker: tracker.map((entry) => ({
-              type: entry?.type || "unknown",
-              status: entry?.status || "unknown",
-              amount: entry?.amount,
-              address: entry?.address,
-              errorMessage:
-                typeof entry?.error?.message === "string"
-                  ? entry.error.message
-                  : entry?.error
-                  ? String(entry.error)
-                  : undefined,
-            })),
-          },
-          error
-        );
-        if (tracker.length) {
-          aggregatedTracker.push(...tracker);
-        }
-        throw error;
-      }
-    }
-
-    if (aggregatedReceipts.length) {
-      this.videoModal?.renderZapReceipts(aggregatedReceipts, { partial: false });
-    } else if (aggregatedTracker.length) {
-      this.videoModal?.renderZapReceipts(aggregatedTracker, { partial: true });
-    }
-
-    const total = shares.reduce((sum, share) => {
-      const value = Math.max(0, Math.round(Number(share.amount) || 0));
-      return sum + value;
-    }, 0);
-    const successMessage =
-      total > 0
-        ? `Retried ${total} sats successfully.`
-        : "Retried zap shares successfully.";
-    this.videoModal?.setZapStatus(successMessage, "success");
-    this.showSuccess("Zap shares retried successfully!");
-    this.resetModalZapRetryState();
-    return true;
-  }
-
-  markModalZapRetryPending(shares, comment = "") {
-    const validShares = Array.isArray(shares)
-      ? shares.filter((share) => share && share.amount > 0)
-      : [];
-    if (!validShares.length) {
-      this.resetModalZapRetryState();
-      return;
-    }
-
-    this.modalZapRetryState = {
-      shares: validShares,
-      comment: typeof comment === "string" ? comment : this.modalZapCommentValue,
-      createdAt: Date.now(),
-    };
-
-    const summary = validShares
-      .map((share) => {
-        const label =
-          share.type === "platform"
-            ? "Platform"
-            : share.type === "creator"
-            ? "Creator"
-            : "Lightning";
-        return `${label} ${share.amount} sats`;
-      })
-      .join(", ");
-    this.videoModal?.setZapRetryPending(true, { summary });
-  }
-
-  resetModalZapRetryState() {
-    this.modalZapRetryState = null;
-    this.videoModal?.setZapRetryPending(false);
-  }
-
-  async handleVideoModalZap(event) {
-    if (this.modalZapInFlight) {
-      return;
-    }
-
-    const detail = event?.detail || {};
-    const eventAmount = Number(detail.amount);
-    let amount = Number.isFinite(eventAmount)
-      ? eventAmount
-      : this.modalZapAmountValue;
-    amount = Math.max(0, Math.round(amount || 0));
-    this.modalZapAmountValue = amount;
-
-    const comment =
-      typeof detail.comment === "string"
-        ? detail.comment.trim()
-        : this.modalZapCommentValue;
-    this.modalZapCommentValue = comment;
-
-    if (!amount) {
-      const message = "Enter a zap amount greater than zero.";
-      this.videoModal?.setZapStatus(message, "error");
-      this.showError(message);
-      return;
-    }
-
-    const walletSettings = this.getModalWalletSettingsOrPrompt();
-    if (!walletSettings) {
-      return;
-    }
-
-    this.modalZapInFlight = true;
-    this.videoModal?.setZapPending(true);
-    this.videoModal?.setZapStatus(`Sending ${amount} sats…`, "warning");
-    this.videoModal?.clearZapReceipts();
-
-    try {
-      if (Array.isArray(this.modalZapRetryState?.shares) && this.modalZapRetryState.shares.length) {
-        await this.executeModalZapRetry({ walletSettings, comment });
-        this.applyModalDefaultZapAmount();
-        return;
-      }
-
-      const attempt = await this.runModalZapAttempt({
-        amount,
-        walletSettings,
-        comment,
-      });
-      if (!attempt) {
-        this.videoModal?.setZapStatus("", "neutral");
-        return;
-      }
-
-      const { context, result } = attempt;
-      const receipts = Array.isArray(result?.receipts) ? result.receipts : [];
-      this.videoModal?.renderZapReceipts(receipts, { partial: false });
-
-      const creatorShare = context.shares.creatorShare;
-      const platformShare = context.shares.platformShare;
-      const summary = platformShare
-        ? `Sent ${context.shares.total} sats (creator ${creatorShare}, platform ${platformShare}).`
-        : `Sent ${context.shares.total} sats to the creator.`;
-      this.videoModal?.setZapStatus(summary, "success");
-      this.showSuccess("Zap sent successfully!");
-
-      this.resetModalZapRetryState();
-      this.modalZapCommentValue = "";
-      this.videoModal?.resetZapForm({ amount: "", comment: "" });
-      this.applyModalDefaultZapAmount();
-    } catch (error) {
-      const tracker = Array.isArray(error?.__zapShareTracker)
-        ? error.__zapShareTracker
-        : [];
-      console.error(
-        "[zap] Modal zap attempt failed",
-        {
-          amount,
-          commentLength: typeof comment === "string" ? comment.length : undefined,
-          wallet: {
-            hasUri: Boolean(walletSettings?.nwcUri),
-            type:
-              walletSettings?.type ||
-              walletSettings?.name ||
-              walletSettings?.client ||
-              undefined,
-          },
-          tracker: tracker.map((entry) => ({
-            type: entry?.type || "unknown",
-            status: entry?.status || "unknown",
-            amount: entry?.amount,
-            address: entry?.address,
-            errorMessage:
-              typeof entry?.error?.message === "string"
-                ? entry.error.message
-                : entry?.error
-                ? String(entry.error)
-                : undefined,
-          })),
-          retryPending: Array.isArray(this.modalZapRetryState?.shares)
-            ? this.modalZapRetryState.shares.length
-            : 0,
-        },
-        error
-      );
-      if (tracker.length) {
-        this.videoModal?.renderZapReceipts(tracker, { partial: true });
-      }
-
-      const failureShares = tracker.filter(
-        (entry) => entry && entry.status !== "success" && entry.amount > 0
-      );
-      if (failureShares.length) {
-        this.markModalZapRetryPending(failureShares, comment);
-        const summary = failureShares
-          .map((share) => {
-            const label =
-              share.type === "platform"
-                ? "Platform"
-                : share.type === "creator"
-                ? "Creator"
-                : "Lightning";
-            return `${label} ${share.amount} sats`;
-          })
-          .join(", ");
-        const tone = tracker.length > failureShares.length ? "warning" : "error";
-        const statusMessage =
-          tracker.length > failureShares.length
-            ? `Partial zap failure. Press Send again to retry: ${summary}.`
-            : `Zap failed. Press Send again to retry: ${summary}.`;
-        this.videoModal?.setZapStatus(statusMessage, tone);
-        this.showError(error?.message || statusMessage);
-      } else {
-        this.resetModalZapRetryState();
-        const message = error?.message || "Zap failed. Please try again.";
-        this.videoModal?.setZapStatus(message, "error");
-        this.showError(message);
-      }
-    } finally {
-      this.modalZapInFlight = false;
-      this.videoModal?.setZapPending(false);
     }
   }
 
@@ -7393,8 +6523,8 @@ class Application {
       )}`;
     window.history.pushState({}, "", pushUrl);
 
-    this.setModalZapVisibility(false);
-    this.resetModalZapState();
+    this.zapController?.setVisibility(false);
+    this.zapController?.resetState();
 
     const magnetInput =
       sanitizedMagnet ||
@@ -7432,7 +6562,7 @@ class Application {
       this.log("Error fetching creator profile:", error);
     }
 
-    this.setModalZapVisibility(!!lightningAddress);
+    this.zapController?.setVisibility(!!lightningAddress);
     if (this.currentVideo) {
       this.currentVideo.lightningAddress = lightningAddress || null;
     }
@@ -7478,8 +6608,8 @@ class Application {
     const magnetSupported = isValidMagnetUri(usableMagnet);
     const sanitizedMagnet = magnetSupported ? usableMagnet : "";
 
-    this.setModalZapVisibility(false);
-    this.resetModalZapState();
+    this.zapController?.setVisibility(false);
+    this.zapController?.resetState();
 
     trackVideoView({
       videoId:
