@@ -47,6 +47,14 @@ if (!globalThis.window.NostrTools) {
   globalThis.window.NostrTools = {};
 }
 
+if (typeof globalThis.window.NostrTools.getEventHash !== "function") {
+  globalThis.window.NostrTools.getEventHash = () => "test-event-hash";
+}
+
+if (typeof globalThis.window.NostrTools.signEvent !== "function") {
+  globalThis.window.NostrTools.signEvent = () => "test-event-sig";
+}
+
 setNostrEventSchemaOverrides({});
 
 const canonicalViewEvent = buildViewEvent({
@@ -275,10 +283,78 @@ const {
   unsubscribeFromVideoViewCount,
   ingestLocalViewEvent,
 } = await import("../js/viewCounter.js");
+const { resolveVideoPointer } = await import("../js/utils/videoPointer.js");
 
 initViewCounter({ nostrClient });
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function testPointerPrefersVideoRootId() {
+  const info = resolveVideoPointer({
+    pubkey: "ABCDEF1234",
+    videoRootId: "ROOT-POINTER",
+    dTag: "legacy-d-tag",
+    fallbackEventId: "event-fallback",
+    kind: 30078,
+  });
+
+  assert.ok(info, "expected pointer info for root-backed video");
+  assert.deepEqual(
+    info.pointer,
+    ["a", "30078:abcdef1234:ROOT-POINTER"],
+    "videos with a videoRootId should resolve to the root pointer"
+  );
+  assert.equal(
+    info.key,
+    "a:30078:abcdef1234:root-pointer",
+    "root pointer key should be normalized for view counter lookups"
+  );
+}
+
+function testPointerFallsBackToDTag() {
+  const info = resolveVideoPointer({
+    pubkey: "ABCDEF1234",
+    dTag: "legacy-pointer",
+    fallbackEventId: "event-fallback",
+    kind: 30078,
+  });
+
+  assert.ok(info, "expected pointer info when only d-tag is present");
+  assert.deepEqual(
+    info.pointer,
+    ["a", "30078:abcdef1234:legacy-pointer"],
+    "videos without a root should fall back to the d-tag pointer"
+  );
+  assert.equal(
+    info.key,
+    "a:30078:abcdef1234:legacy-pointer",
+    "d-tag pointer key should match the normalized value"
+  );
+}
+
+function testPointerFallsBackToEventId() {
+  const info = resolveVideoPointer({
+    pubkey: "ABCDEF1234",
+    fallbackEventId: "legacy-event-id",
+    kind: 30078,
+  });
+
+  assert.ok(info, "expected pointer info when only event id is present");
+  assert.deepEqual(
+    info.pointer,
+    ["e", "legacy-event-id"],
+    "videos without root or d-tag should fall back to the event pointer"
+  );
+  assert.equal(
+    info.key,
+    "e:legacy-event-id",
+    "event pointer key should normalize correctly"
+  );
+}
+
+testPointerPrefersVideoRootId();
+testPointerFallsBackToDTag();
+testPointerFallsBackToEventId();
 
 async function testDedupesWithinWindow() {
   localStorage.clear();

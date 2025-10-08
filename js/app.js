@@ -71,6 +71,7 @@ import ProfileModalController from "./ui/profileModalController.js";
 import ZapController from "./ui/zapController.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
+import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
 import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
 import {
@@ -1309,34 +1310,14 @@ class Application {
     }
 
     const dTagValue = (this.extractDTagValue(video.tags) || "").trim();
-    const normalizedPubkey =
-      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
-    const kind =
-      typeof video.kind === "number" && Number.isFinite(video.kind)
-        ? video.kind
-        : VIDEO_EVENT_KIND;
 
-    if (dTagValue && normalizedPubkey) {
-      const pointer = ["a", `${kind}:${normalizedPubkey}:${dTagValue}`];
-      const key = pointerArrayToKey(pointer);
-      if (key) {
-        return { pointer, key };
-      }
-    }
-
-    const fallbackId =
-      typeof video.id === "string" && video.id.trim()
-        ? video.id.trim()
-        : "";
-    if (fallbackId) {
-      const pointer = ["e", fallbackId];
-      const key = pointerArrayToKey(pointer);
-      if (key) {
-        return { pointer, key };
-      }
-    }
-
-    return null;
+    return resolveVideoPointer({
+      kind: video.kind,
+      pubkey: video.pubkey,
+      videoRootId: video.videoRootId,
+      dTag: dTagValue,
+      fallbackEventId: video.id,
+    });
   }
 
   formatViewCountLabel(total) {
@@ -6257,50 +6238,16 @@ class Application {
     };
 
     const dTagValue = (this.extractDTagValue(video.tags) || "").trim();
-    const normalizedPubkey =
-      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
-    const primaryPointer =
-      dTagValue && normalizedPubkey
-        ? [
-            "a",
-            `${
-              typeof video.kind === "number" && Number.isFinite(video.kind)
-                ? video.kind
-                : 30078
-            }:${normalizedPubkey}:${dTagValue}`,
-          ]
-        : null;
-    const fallbackId =
-      typeof (video.id || eventId) === "string"
-        ? (video.id || eventId).trim()
-        : "";
-    const fallbackPointer = fallbackId ? ["e", fallbackId] : null;
+    const pointerInfo = resolveVideoPointer({
+      kind: video.kind,
+      pubkey: video.pubkey,
+      videoRootId: video.videoRootId,
+      dTag: dTagValue,
+      fallbackEventId: video.id || eventId,
+    });
 
-    let resolvedPointer = null;
-    let resolvedPointerKey = "";
-    const pointerCandidates = [];
-    if (primaryPointer) {
-      pointerCandidates.push(primaryPointer);
-    }
-    if (fallbackPointer) {
-      pointerCandidates.push(fallbackPointer);
-    }
-
-    for (const candidate of pointerCandidates) {
-      const key = pointerArrayToKey(candidate);
-      if (key) {
-        resolvedPointer = candidate;
-        resolvedPointerKey = key;
-        break;
-      }
-    }
-
-    this.currentVideoPointer = resolvedPointer && resolvedPointerKey
-      ? resolvedPointer
-      : null;
-    this.currentVideoPointerKey = this.currentVideoPointer
-      ? resolvedPointerKey
-      : null;
+    this.currentVideoPointer = pointerInfo?.pointer || null;
+    this.currentVideoPointerKey = pointerInfo?.key || null;
 
     if (this.currentVideo) {
       this.currentVideo.pointer = this.currentVideoPointer;
