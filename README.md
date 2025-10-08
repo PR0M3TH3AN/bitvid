@@ -11,7 +11,7 @@
 ## Features
 
 - **Decentralized Sharing**: Video sharing without central servers.
-- **Private Video Listings**: Share encrypted videos for added privacy.
+- **Private Video Listings**: Hide cards from shared grids so only the owner sees them.
 - **Nostr Integration**: Use Nostr keys for login and interaction.
 - **WebTorrent Streaming**: Stream videos directly through torrent technology.
 - **Developer-Friendly**: Open source and customizable for your needs.
@@ -37,7 +37,7 @@ The upload modal enforces **Title + (URL or Magnet)**. Hosted URLs are strongly 
 - **Web seeds (`ws=`)**: HTTPS only. Point to a file root (e.g., `https://cdn.example.com/video/`). Mixed-content (`http://`) hints are rejected just like the modal message explains.
 - **Additional sources (`xs=`)**: Recommend adding an HTTPS `.torrent` link so WebTorrent peers can bootstrap faster.
 - **Trackers**: Bitvid’s browser client only connects to WSS trackers shipped in `js/constants.js`. Do not add UDP or plaintext HTTP trackers to published magnets.
-- **Private toggle**: Encrypts the listing for invited viewers.
+- **Private toggle**: Hides the card from shared grids so only you see it and adds a purple accent so the private state stands out.
 
 ### How playback works
 

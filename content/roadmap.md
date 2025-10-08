@@ -6,7 +6,7 @@
 - Fix "Dev Mode" publishing "Live Mode" notes—add a flag for dev mode posts.
 - Fix issue with video post set to private.
 - Disable "private video" until I can make it work better.
-- Make "private video" work better using nip-04 encryption for magnet field.
+- Make "private video" work better by hiding cards from shared grids while keeping an owner-only view.
 - Fix slow back button issues on Firefox.
 - Add Amber login support for mobile.
 - Add settings (three dots) button for all videos, not the same as gear menu. Only show delete and edit gear for logged-in users videos.

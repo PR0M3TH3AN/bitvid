@@ -59,6 +59,8 @@ read/write split.
 | Admin blacklist (`NOTE_TYPES.ADMIN_BLACKLIST`) | `30000` | `['d', 'bitvid:admin:blacklist']`, repeated `['p', <pubkey>]` entries | Empty content |
 | Admin whitelist (`NOTE_TYPES.ADMIN_WHITELIST`) | `30000` | `['d', 'bitvid:admin:whitelist']`, repeated `['p', <pubkey>]` entries | Empty content |
 
+The `isPrivate` flag in Content Schema v3 marks cards that should stay off shared or public grids. Clients should suppress these events for everyone except the owner, even though the payload stays in clear text for compatibility.
+
 If you introduce a new Nostr feature, add its schema to
 `js/nostrEventSchemas.js` so that the catalogue stays complete and so existing
 builders inherit the same debugging knobs.
