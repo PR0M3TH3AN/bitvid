@@ -71,7 +71,6 @@ import ProfileModalController from "./ui/profileModalController.js";
 import ZapController from "./ui/zapController.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
-import { fakeDecrypt } from "./utils/fakeDecrypt.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
 import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
 import {
@@ -6197,15 +6196,6 @@ class Application {
         this.showError("This content has been removed or is not allowed.");
       }
       return;
-    }
-
-    if (
-      video.isPrivate &&
-      video.pubkey === this.pubkey &&
-      !video.alreadyDecrypted
-    ) {
-      video.magnet = fakeDecrypt(video.magnet);
-      video.alreadyDecrypted = true;
     }
 
     let trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
