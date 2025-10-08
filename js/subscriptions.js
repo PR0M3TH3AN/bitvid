@@ -581,7 +581,12 @@ class SubscriptionsManager {
         return;
       }
       if (detail.videoId) {
-        Promise.resolve(app?.playVideoByEventId?.(detail.videoId)).catch(
+        Promise.resolve(
+          app?.playVideoByEventId?.(detail.videoId, {
+            url: detail.url,
+            magnet: detail.magnet,
+          })
+        ).catch(
           (error) => {
             console.error(
               "[SubscriptionsManager] Failed to play by event id:",

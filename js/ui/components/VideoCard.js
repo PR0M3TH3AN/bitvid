@@ -983,12 +983,35 @@ export class VideoCard {
       this.ensureGlobalMoreMenuHandlers();
     }
 
+    const MouseEventCtor = this.window?.MouseEvent || globalThis.MouseEvent;
+
     [this.anchorEl, this.titleEl].forEach((el) => {
       if (!el) return;
       el.addEventListener("click", (event) => {
-        if (this.callbacks.onPlay) {
-          this.callbacks.onPlay({ event, video: this.video, card: this });
+        if (!this.callbacks.onPlay) {
+          return;
         }
+
+        const isMouseEvent =
+          typeof MouseEventCtor !== "undefined" && event instanceof MouseEventCtor;
+        if (isMouseEvent) {
+          const isPrimaryClick =
+            typeof event.button !== "number" || event.button === 0;
+          const hasModifier =
+            event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+          if (!isPrimaryClick || hasModifier) {
+            return;
+          }
+        }
+
+        if (typeof event.preventDefault === "function") {
+          event.preventDefault();
+        }
+        if (typeof event.stopPropagation === "function") {
+          event.stopPropagation();
+        }
+
+        this.callbacks.onPlay({ event, video: this.video, card: this });
       });
     });
 

@@ -1290,16 +1290,26 @@ export function createWatchHistoryRenderer(config = {}) {
         case "play": {
           event.preventDefault();
           const videoId = trigger.dataset.videoId || pointerKeyAttr;
+          const rawUrlAttr = trigger.dataset.playUrl || "";
+          const magnetAttr = trigger.dataset.playMagnet || "";
+          let url = "";
+          if (rawUrlAttr) {
+            try {
+              url = decodeURIComponent(rawUrlAttr);
+            } catch (error) {
+              url = rawUrlAttr;
+            }
+          }
+
           const app = getAppInstance();
           if (videoId && app?.playVideoByEventId) {
-            app.playVideoByEventId(videoId);
+            app.playVideoByEventId(videoId, { url, magnet: magnetAttr });
             return;
           }
-          const urlAttr = trigger.dataset.playUrl || "";
-          const magnetAttr = trigger.dataset.playMagnet || "";
+
           if (app?.playVideoWithFallback) {
             app.playVideoWithFallback({
-              url: urlAttr ? decodeURIComponent(urlAttr) : "",
+              url,
               magnet: magnetAttr,
             });
           }

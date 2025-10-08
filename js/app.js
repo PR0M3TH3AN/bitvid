@@ -238,29 +238,30 @@ class Application {
         deriveTorrentPlaybackConfig,
         isValidMagnetUri,
         urlFirstEnabled: URL_FIRST_ENABLED,
-      analyticsCallbacks: {
-        "session-start": (detail) => {
-          const urlProvided = detail?.urlProvided ? "true" : "false";
-          const magnetProvided = detail?.magnetProvided ? "true" : "false";
-          const magnetUsable = detail?.magnetUsable ? "true" : "false";
-          this.log(
-            `[playVideoWithFallback] Session start urlProvided=${urlProvided} magnetProvided=${magnetProvided} magnetUsable=${magnetUsable}`
-          );
-        },
-        fallback: (detail) => {
-          if (detail?.reason) {
+        analyticsCallbacks: {
+          "session-start": (detail) => {
+            const urlProvided = detail?.urlProvided ? "true" : "false";
+            const magnetProvided = detail?.magnetProvided ? "true" : "false";
+            const magnetUsable = detail?.magnetUsable ? "true" : "false";
             this.log(
-              `[playVideoWithFallback] Falling back to WebTorrent (${detail.reason}).`
+              `[playVideoWithFallback] Session start urlProvided=${urlProvided} magnetProvided=${magnetProvided} magnetUsable=${magnetUsable}`
             );
-          }
+          },
+          fallback: (detail) => {
+            if (detail?.reason) {
+              this.log(
+                `[playVideoWithFallback] Falling back to WebTorrent (${detail.reason}).`
+              );
+            }
+          },
+          error: (detail) => {
+            if (detail?.error) {
+              this.log("[playVideoWithFallback] Playback error observed", detail.error);
+            }
+          },
         },
-        error: (detail) => {
-          if (detail?.error) {
-            this.log("[playVideoWithFallback] Playback error observed", detail.error);
-          }
-        },
-      },
       });
+    this.activePlaybackResultPromise = null;
     this.activePlaybackSession = null;
 
     this.authService =
@@ -294,7 +295,6 @@ class Application {
     this.isWalletPaneBusy = false;
     this.profileModalCachedSelection = null;
     this.profileModalController = null;
-    this.boundProfileHistoryVisibility = null;
     this.profileSwitcherSelectionPubkey = null;
     this.currentUserNpub = null;
 
@@ -639,7 +639,9 @@ class Application {
 
     this.videoListViewPlaybackHandler = ({ videoId, url, magnet }) => {
       if (videoId) {
-        Promise.resolve(this.playVideoByEventId(videoId)).catch((error) => {
+        Promise.resolve(
+          this.playVideoByEventId(videoId, { url, magnet })
+        ).catch((error) => {
           console.error("[VideoListView] Failed to play by event id:", error);
         });
         return;
@@ -1285,6 +1287,11 @@ class Application {
             return pane;
           },
           setActivePane: (pane) => {
+            if (pane === null) {
+              this.activeProfilePane = null;
+              return this.activeProfilePane;
+            }
+
             const normalized =
               typeof pane === "string" && pane.trim()
                 ? pane.trim().toLowerCase()
@@ -7003,11 +7010,32 @@ class Application {
    * and falls back to WebTorrent when needed.
    */
   async playVideoWithFallback({ url = "", magnet = "" } = {}) {
-    await this.waitForCleanup();
-    this.cancelPendingViewLogging();
-
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const requestSignature = JSON.stringify({
+      url: sanitizedUrl,
+      magnet: trimmedMagnet,
+    });
+
+    if (
+      this.activePlaybackSession &&
+      typeof this.activePlaybackSession.matchesRequestSignature === "function" &&
+      this.activePlaybackSession.matchesRequestSignature(requestSignature)
+    ) {
+      this.log(
+        "[playVideoWithFallback] Duplicate playback request detected; reusing active session."
+      );
+      if (this.activePlaybackResultPromise) {
+        return this.activePlaybackResultPromise;
+      }
+      if (typeof this.activePlaybackSession.getResult === "function") {
+        return this.activePlaybackSession.getResult();
+      }
+      return { source: null };
+    }
+
+    await this.waitForCleanup();
+    this.cancelPendingViewLogging();
 
     let modalVideoEl = this.modalVideo;
     if (!modalVideoEl && this.videoModal) {
@@ -7056,11 +7084,15 @@ class Application {
     if (refreshedModal) {
       this.modalVideo = refreshedModal;
       modalVideoEl = this.modalVideo;
+      this.applyModalLoadingPoster();
+    } else {
+      this.applyModalLoadingPoster();
     }
 
     const session = this.playbackService.createSession({
       url: sanitizedUrl,
       magnet: trimmedMagnet,
+      requestSignature,
       videoElement: this.modalVideo,
       waitForCleanup: () => this.waitForCleanup(),
       cancelPendingViewLogging: () => this.cancelPendingViewLogging(),
@@ -7076,6 +7108,7 @@ class Application {
     });
 
     this.activePlaybackSession = session;
+    this.activePlaybackResultPromise = null;
 
     this.resetTorrentStats();
     this.playSource = null;
@@ -7144,6 +7177,7 @@ class Application {
     subscribe("finished", () => {
       if (this.activePlaybackSession === session) {
         this.activePlaybackSession = null;
+        this.activePlaybackResultPromise = null;
       }
       while (unsubscribers.length) {
         const off = unsubscribers.pop();
@@ -7160,7 +7194,9 @@ class Application {
       }
     });
 
-    const result = await session.start();
+    const startPromise = session.start();
+    this.activePlaybackResultPromise = startPromise;
+    const result = await startPromise;
 
     if (!result || result.error) {
       return result;
@@ -7170,10 +7206,28 @@ class Application {
   }
 
 
-  async playVideoByEventId(eventId) {
+  async playVideoByEventId(eventId, playbackHint = {}) {
     if (!eventId) {
       this.showError("No video identifier provided.");
       return;
+    }
+
+    const fallbackUrl =
+      typeof playbackHint?.url === "string" ? playbackHint.url.trim() : "";
+    const fallbackTitle =
+      typeof playbackHint?.title === "string" ? playbackHint.title : "";
+    const fallbackDescription =
+      typeof playbackHint?.description === "string"
+        ? playbackHint.description
+        : "";
+    const fallbackMagnetRaw =
+      typeof playbackHint?.magnet === "string"
+        ? playbackHint.magnet.trim()
+        : "";
+    let fallbackMagnetCandidate = "";
+    if (fallbackMagnetRaw) {
+      const decoded = safeDecodeMagnet(fallbackMagnetRaw);
+      fallbackMagnetCandidate = decoded || fallbackMagnetRaw;
     }
 
     this.currentVideoPointer = null;
@@ -7189,6 +7243,14 @@ class Application {
       video = await this.getOldEventById(eventId);
     }
     if (!video) {
+      if (fallbackUrl || fallbackMagnetCandidate) {
+        return this.playVideoWithoutEvent({
+          url: fallbackUrl,
+          magnet: fallbackMagnetCandidate,
+          title: fallbackTitle || "Untitled",
+          description: fallbackDescription || "",
+        });
+      }
       this.showError("Video not found or has been removed.");
       return;
     }
@@ -7196,7 +7258,10 @@ class Application {
     try {
       await accessControl.ensureReady();
     } catch (error) {
-      console.warn("Failed to ensure admin lists were loaded before playback:", error);
+      console.warn(
+        "Failed to ensure admin lists were loaded before playback:",
+        error
+      );
     }
     const authorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
     if (!accessControl.canAccess(authorNpub)) {
@@ -7219,15 +7284,34 @@ class Application {
       video.alreadyDecrypted = true;
     }
 
-    const trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
+    let trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
+    if (!trimmedUrl && fallbackUrl) {
+      trimmedUrl = fallbackUrl;
+    }
     const rawMagnet =
       typeof video.magnet === "string" ? video.magnet.trim() : "";
-    const legacyInfoHash =
+    let legacyInfoHash =
       typeof video.infoHash === "string" ? video.infoHash.trim().toLowerCase() : "";
-    const magnetCandidate = rawMagnet || legacyInfoHash;
-    const decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
-    const usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
-    const magnetSupported = isValidMagnetUri(usableMagnetCandidate);
+    const fallbackMagnetForCandidate = fallbackMagnetCandidate || "";
+    if (!legacyInfoHash && fallbackMagnetForCandidate) {
+      const match = fallbackMagnetForCandidate.match(/xt=urn:btih:([0-9a-z]+)/i);
+      if (match && match[1]) {
+        legacyInfoHash = match[1].toLowerCase();
+      }
+    }
+
+    let magnetCandidate = rawMagnet || legacyInfoHash || "";
+    let decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
+    let usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
+    let magnetSupported = isValidMagnetUri(usableMagnetCandidate);
+
+    if (!magnetSupported && fallbackMagnetForCandidate) {
+      magnetCandidate = fallbackMagnetForCandidate;
+      decodedMagnetCandidate = safeDecodeMagnet(magnetCandidate);
+      usableMagnetCandidate = decodedMagnetCandidate || magnetCandidate;
+      magnetSupported = isValidMagnetUri(usableMagnetCandidate);
+    }
+
     const sanitizedMagnet = magnetSupported ? usableMagnetCandidate : "";
 
     trackVideoView({
@@ -7242,7 +7326,8 @@ class Application {
       ...video,
       url: trimmedUrl,
       magnet: sanitizedMagnet,
-      originalMagnet: magnetCandidate,
+      originalMagnet:
+        magnetCandidate || fallbackMagnetForCandidate || legacyInfoHash || "",
       torrentSupported: magnetSupported,
       legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
       lightningAddress: null,
@@ -7321,6 +7406,23 @@ class Application {
 
     this.setModalZapVisibility(false);
     this.resetModalZapState();
+
+    const magnetInput =
+      sanitizedMagnet ||
+      decodedMagnetCandidate ||
+      magnetCandidate ||
+      fallbackMagnetForCandidate ||
+      legacyInfoHash ||
+      "";
+
+    this.showModalWithPoster(this.currentVideo);
+    this.applyModalLoadingPoster();
+
+    const playbackPromise = this.playVideoWithFallback({
+      url: trimmedUrl,
+      magnet: magnetInput,
+    });
+
     let lightningAddress = "";
     let creatorProfile = {
       name: "Unknown",
@@ -7363,17 +7465,12 @@ class Application {
       });
     }
 
-    const magnetInput =
-      sanitizedMagnet ||
-      decodedMagnetCandidate ||
-      magnetCandidate ||
-      legacyInfoHash ||
-      "";
+    const playbackResult =
+      playbackPromise && typeof playbackPromise.then === "function"
+        ? await playbackPromise
+        : playbackPromise;
 
-    await this.playVideoWithFallback({
-      url: trimmedUrl,
-      magnet: magnetInput,
-    });
+    return playbackResult;
   }
 
   async playVideoWithoutEvent({
@@ -7453,7 +7550,7 @@ class Application {
     const cleaned = `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
     window.history.replaceState({}, "", cleaned);
 
-    await this.playVideoWithFallback({
+    return this.playVideoWithFallback({
       url: sanitizedUrl,
       magnet: usableMagnet,
     });
