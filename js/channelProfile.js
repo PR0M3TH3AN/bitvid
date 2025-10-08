@@ -2,6 +2,7 @@
 
 import {
   nostrClient,
+  DEFAULT_RELAY_URLS,
   convertEventToVideo as sharedConvertEventToVideo,
 } from "./nostr.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
@@ -122,7 +123,7 @@ let zapControlsOpen = false;
 let currentVideoLoadToken = 0;
 let currentProfileLoadToken = 0;
 
-const FALLBACK_CHANNEL_BANNER = "assets/jpg/default-banner.jpg";
+const FALLBACK_CHANNEL_BANNER = "assets/jpg/bitvid.jpg";
 const FALLBACK_CHANNEL_AVATAR = "assets/svg/default-profile.svg";
 const PROFILE_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -1559,6 +1560,355 @@ function getCachedChannelProfile(pubkey) {
   };
 }
 
+function isValidRelayUrl(url) {
+  if (typeof url !== "string") {
+    return false;
+  }
+
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (!/^wss?:\/\//i.test(trimmed)) {
+    return false;
+  }
+
+  if (/\s/.test(trimmed)) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    return Boolean(parsed.hostname);
+  } catch (error) {
+    return false;
+  }
+}
+
+function getCachedChannelVideoEvents(pubkey) {
+  if (!nostrClient?.allEvents || typeof nostrClient.allEvents.forEach !== "function") {
+    return [];
+  }
+
+  const normalized = typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+  if (!normalized) {
+    return [];
+  }
+
+  const results = [];
+  nostrClient.allEvents.forEach((event) => {
+    if (
+      event &&
+      event.kind === 30078 &&
+      typeof event.pubkey === "string" &&
+      event.pubkey.trim().toLowerCase() === normalized
+    ) {
+      results.push(event);
+    }
+  });
+
+  return results;
+}
+
+function buildRenderableChannelVideos({ events = [], app } = {}) {
+  if (!Array.isArray(events) || events.length === 0) {
+    return [];
+  }
+
+  const convertedVideos = events
+    .map((evt) => sharedConvertEventToVideo(evt))
+    .filter((vid) => vid && !vid.invalid);
+
+  if (!convertedVideos.length) {
+    return [];
+  }
+
+  const dedupedById = new Map();
+  convertedVideos.forEach((video) => {
+    if (video?.id && !dedupedById.has(video.id)) {
+      dedupedById.set(video.id, video);
+    }
+  });
+
+  const uniqueVideos = Array.from(dedupedById.values());
+
+  const newestByRoot =
+    app?.dedupeVideosByRoot?.(uniqueVideos) ?? dedupeToNewestByRoot(uniqueVideos);
+
+  let videos = newestByRoot.filter((video) => !video.deleted);
+  videos = videos.filter((video) => {
+    if (!video || !video.id) {
+      return false;
+    }
+
+    if (app?.blacklistedEventIds?.has?.(video.id)) {
+      return false;
+    }
+
+    if (!accessControl.canAccess(video)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  videos.sort((a, b) => b.created_at - a.created_at);
+  return videos;
+}
+
+function renderChannelVideosFromList({
+  videos = [],
+  container,
+  app,
+  loadToken,
+  allowEmptyMessage = true,
+} = {}) {
+  if (!container || loadToken !== currentVideoLoadToken) {
+    return false;
+  }
+
+  if (!Array.isArray(videos) || videos.length === 0) {
+    if (allowEmptyMessage) {
+      container.dataset.hasChannelVideos = "false";
+      container.innerHTML = `<p class="text-gray-500">No videos to display.</p>`;
+      return true;
+    }
+    return false;
+  }
+
+  container.dataset.hasChannelVideos = "true";
+  container.innerHTML = "";
+
+  const fragment = document.createDocumentFragment();
+  const allKnownEventsArray = Array.from(nostrClient.allEvents.values());
+  const loadedThumbnails =
+    app?.loadedThumbnails instanceof Map ? app.loadedThumbnails : null;
+  const unsupportedBtihMessage =
+    typeof app?.getUnsupportedBtihMessage === "function"
+      ? app.getUnsupportedBtihMessage()
+      : "This magnet link is missing a compatible BitTorrent v1 info hash.";
+
+  const extractPlaybackDetail = (trigger, video) => {
+    if (
+      app?.videoListView &&
+      typeof app.videoListView.extractPlaybackDetail === "function"
+    ) {
+      return app.videoListView.extractPlaybackDetail(trigger, video);
+    }
+
+    const element = trigger instanceof HTMLElement ? trigger : null;
+    const target = element?.closest("[data-play-url],[data-play-magnet]") || element;
+
+    const rawUrlValue =
+      (target?.dataset && typeof target.dataset.playUrl === "string"
+        ? target.dataset.playUrl
+        : null) ?? target?.getAttribute?.("data-play-url") ?? "";
+    const rawMagnetValue =
+      (target?.dataset && typeof target.dataset.playMagnet === "string"
+        ? target.dataset.playMagnet
+        : null) ?? target?.getAttribute?.("data-play-magnet") ?? "";
+
+    let url = "";
+    if (rawUrlValue) {
+      try {
+        url = decodeURIComponent(rawUrlValue);
+      } catch (error) {
+        url = rawUrlValue;
+      }
+    }
+
+    const magnet = typeof rawMagnetValue === "string" ? rawMagnetValue : "";
+    const videoId =
+      target?.dataset?.videoId ||
+      target?.getAttribute?.("data-video-id") ||
+      video?.id ||
+      "";
+
+    return { videoId, url, magnet, video };
+  };
+
+  const playbackHandler =
+    typeof app?.videoListViewPlaybackHandler === "function"
+      ? app.videoListViewPlaybackHandler.bind(app)
+      : null;
+
+  const startPlayback = (detail) => {
+    if (playbackHandler) {
+      playbackHandler(detail);
+      return;
+    }
+
+    if (detail.videoId && typeof app?.playVideoByEventId === "function") {
+      Promise.resolve(
+        app.playVideoByEventId(detail.videoId, {
+          url: detail.url,
+          magnet: detail.magnet,
+          title: detail.video?.title,
+          description: detail.video?.description,
+        })
+      ).catch((error) => {
+        console.error("Failed to play channel video via event id:", error);
+        if (typeof app?.playVideoWithFallback === "function") {
+          app.playVideoWithFallback({
+            url: detail.url,
+            magnet: detail.magnet,
+          });
+        }
+      });
+      return;
+    }
+
+    if (typeof app?.playVideoWithFallback === "function") {
+      Promise.resolve(
+        app.playVideoWithFallback({ url: detail.url, magnet: detail.magnet })
+      ).catch((error) => {
+        console.error("Failed to start fallback playback for channel video:", error);
+      });
+    }
+  };
+
+  videos.forEach((video, index) => {
+    if (
+      video.isPrivate &&
+      video.pubkey === nostrClient.pubkey &&
+      !video.alreadyDecrypted
+    ) {
+      video.magnet = fakeDecrypt(video.magnet);
+      video.alreadyDecrypted = true;
+    }
+
+    app?.videosMap?.set(video.id, video);
+
+    const canEdit = video.pubkey === app?.pubkey;
+    let hasOlder = false;
+    if (canEdit && video.videoRootId) {
+      hasOlder = app?.hasOlderVersion?.(video, allKnownEventsArray) || false;
+    }
+
+    const pointerInfo =
+      typeof app?.deriveVideoPointerInfo === "function"
+        ? app.deriveVideoPointerInfo(video)
+        : null;
+    if (pointerInfo && typeof app?.persistWatchHistoryMetadataForVideo === "function") {
+      app.persistWatchHistoryMetadataForVideo(video, pointerInfo);
+    }
+
+    const shareUrl =
+      typeof app?.buildShareUrlFromEventId === "function"
+        ? app.buildShareUrlFromEventId(video.id)
+        : "#";
+    const timeAgo =
+      typeof app?.formatTimeAgo === "function"
+        ? app.formatTimeAgo(video.created_at)
+        : new Date(video.created_at * 1000).toLocaleString();
+
+    const videoCard = new VideoCard({
+      document,
+      video,
+      index,
+      shareUrl,
+      pointerInfo,
+      timeAgo,
+      capabilities: {
+        canEdit,
+        canDelete: canEdit,
+        canRevert: hasOlder,
+        canManageBlacklist:
+          typeof app?.canCurrentUserManageBlacklist === "function"
+            ? app.canCurrentUserManageBlacklist()
+            : false,
+      },
+      helpers: {
+        escapeHtml: (value) => escapeHTML(value),
+        isMagnetSupported: (magnet) => app?.isMagnetUriSupported?.(magnet),
+        toLocaleString: (value) =>
+          typeof value === "number" ? value.toLocaleString() : value,
+      },
+      assets: {
+        fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
+        unsupportedBtihMessage,
+      },
+      state: { loadedThumbnails },
+      ensureGlobalMoreMenuHandlers: () => app?.ensureGlobalMoreMenuHandlers?.(),
+      onRequestCloseAllMenus: () => app?.closeAllMoreMenus?.(),
+      formatters: {
+        formatTimeAgo: (ts) =>
+          typeof app?.formatTimeAgo === "function"
+            ? app.formatTimeAgo(ts)
+            : new Date(ts * 1000).toLocaleString(),
+      },
+    });
+
+    videoCard.onPlay = ({ event: domEvent, video: cardVideo }) => {
+      const trigger = domEvent?.currentTarget || domEvent?.target;
+      const detail = extractPlaybackDetail(trigger, cardVideo || video);
+      detail.video = detail.video || video;
+      startPlayback(detail);
+    };
+
+    videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
+      app?.handleEditVideo?.({
+        eventId: editVideo?.id || "",
+        index: Number.isFinite(editIndex) ? editIndex : null,
+      });
+    };
+
+    videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
+      app?.handleRevertVideo?.({
+        eventId: revertVideo?.id || "",
+        index: Number.isFinite(revertIndex) ? revertIndex : null,
+      });
+    };
+
+    videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
+      app?.handleFullDeleteVideo?.({
+        eventId: deleteVideo?.id || "",
+        index: Number.isFinite(deleteIndex) ? deleteIndex : null,
+      });
+    };
+
+    videoCard.onMoreAction = ({ dataset = {} }) => {
+      const action = dataset.action || "";
+      const detail = {
+        ...dataset,
+        eventId: dataset.eventId || video.id || "",
+        context: dataset.context || "channel-grid",
+      };
+      app?.handleMoreMenuAction?.(action || "copy-link", detail);
+    };
+
+    videoCard.onAuthorNavigate = ({ pubkey }) => {
+      const targetPubkey = pubkey || video.pubkey || "";
+      if (targetPubkey && typeof app?.goToProfile === "function") {
+        app.goToProfile(targetPubkey);
+      }
+    };
+
+    const cardEl = videoCard.getRoot();
+    if (cardEl) {
+      fragment.appendChild(cardEl);
+    }
+  });
+
+  container.appendChild(fragment);
+
+  attachHealthBadges(container);
+  attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
+    const video = app?.videosMap?.get(eventId) || { id: eventId };
+    app?.handleUrlHealthBadge?.({ video, url, badgeEl });
+  });
+
+  app?.mountVideoListView?.();
+
+  const lazyEls = container.querySelectorAll("[data-lazy]");
+  lazyEls.forEach((el) => app?.mediaLoader?.observe?.(el));
+
+  app?.attachMoreMenuHandlers?.(container);
+
+  return true;
+}
+
 function applyChannelProfileMetadata({
   profile = {},
   event = null,
@@ -1793,6 +2143,27 @@ async function loadUserVideos(pubkey) {
     }
   }
 
+  let renderedFromCache = false;
+  if (container) {
+    const cachedEvents = getCachedChannelVideoEvents(pubkey);
+    if (cachedEvents.length) {
+      const cachedVideos = buildRenderableChannelVideos({
+        events: cachedEvents,
+        app,
+      });
+      if (cachedVideos.length) {
+        renderedFromCache =
+          renderChannelVideosFromList({
+            videos: cachedVideos,
+            container,
+            app,
+            loadToken,
+            allowEmptyMessage: false,
+          }) || renderedFromCache;
+      }
+    }
+  }
+
   const ensureAccessPromise = accessControl
     .ensureReady()
     .catch((error) => {
@@ -1813,14 +2184,15 @@ async function loadUserVideos(pubkey) {
 
     // 2) Collect raw events from all relays
     const events = [];
-    const relayList = Array.isArray(nostrClient.relays)
+    const knownRelays = Array.isArray(nostrClient.relays)
       ? nostrClient.relays
       : Array.from(nostrClient.relays || []);
+    const relayList = knownRelays.filter((url) => isValidRelayUrl(url));
 
     if (relayList.length === 0) {
       try {
         const fallbackEvents = await nostrClient.pool.list(
-          nostrClient.relays,
+          Array.from(DEFAULT_RELAY_URLS),
           [filter]
         );
         if (Array.isArray(fallbackEvents)) {
@@ -1839,7 +2211,9 @@ async function loadUserVideos(pubkey) {
         const relayUrl = relayList[index];
 
         if (result.status === "fulfilled") {
-          const relayEvents = Array.isArray(result.value) ? result.value : [];
+          const relayEvents = Array.isArray(result.value)
+            ? result.value
+            : [];
           events.push(...relayEvents);
           return;
         }
@@ -1861,272 +2235,18 @@ async function loadUserVideos(pubkey) {
       return;
     }
 
-    // 3) Convert to "video" objects and keep everything (including tombstones)
-    const convertedVideos = events
-      .map((evt) => sharedConvertEventToVideo(evt))
-      .filter((vid) => !vid.invalid);
-
-    // 4) Deduplicate older overshadowed versions => newest only
-    const newestByRoot =
-      app?.dedupeVideosByRoot?.(convertedVideos) ??
-      dedupeToNewestByRoot(convertedVideos);
-
-    // 5) Filter out tombstones, blacklisted IDs / authors
-    let videos = newestByRoot.filter((video) => !video.deleted);
-    videos = videos.filter((video) => {
-      // Event-level blacklisting
-      if (app.blacklistedEventIds.has(video.id)) return false;
-
-      // Author-level
-      if (!accessControl.canAccess(video)) return false;
-      return true;
+    const videos = buildRenderableChannelVideos({ events, app });
+    const rendered = renderChannelVideosFromList({
+      videos,
+      container,
+      app,
+      loadToken,
+      allowEmptyMessage: true,
     });
 
-    // 6) Sort newest first
-    videos.sort((a, b) => b.created_at - a.created_at);
-
-    // 7) Render them
-    container.innerHTML = "";
-    if (!videos.length) {
-      container.dataset.hasChannelVideos = "false";
-      container.innerHTML = `<p class="text-gray-500">No videos to display.</p>`;
-      return;
-    }
-
-    container.dataset.hasChannelVideos = "true";
-    const fragment = document.createDocumentFragment();
-    const allKnownEventsArray = Array.from(nostrClient.allEvents.values());
-    const loadedThumbnails =
-      app?.loadedThumbnails instanceof Map ? app.loadedThumbnails : null;
-    const unsupportedBtihMessage =
-      typeof app?.getUnsupportedBtihMessage === "function"
-        ? app.getUnsupportedBtihMessage()
-        : "This magnet link is missing a compatible BitTorrent v1 info hash.";
-
-    const extractPlaybackDetail = (trigger, video) => {
-      if (
-        app?.videoListView &&
-        typeof app.videoListView.extractPlaybackDetail === "function"
-      ) {
-        return app.videoListView.extractPlaybackDetail(trigger, video);
-      }
-
-      const element = trigger instanceof HTMLElement ? trigger : null;
-      const target =
-        element?.closest("[data-play-url],[data-play-magnet]") || element;
-
-      const rawUrlValue =
-        (target?.dataset && typeof target.dataset.playUrl === "string"
-          ? target.dataset.playUrl
-          : null) ?? target?.getAttribute?.("data-play-url") ?? "";
-      const rawMagnetValue =
-        (target?.dataset && typeof target.dataset.playMagnet === "string"
-          ? target.dataset.playMagnet
-          : null) ?? target?.getAttribute?.("data-play-magnet") ?? "";
-
-      let url = "";
-      if (rawUrlValue) {
-        try {
-          url = decodeURIComponent(rawUrlValue);
-        } catch (error) {
-          url = rawUrlValue;
-        }
-      }
-
-      const magnet = typeof rawMagnetValue === "string" ? rawMagnetValue : "";
-      const videoId =
-        target?.dataset?.videoId ||
-        target?.getAttribute?.("data-video-id") ||
-        video?.id ||
-        "";
-
-      return { videoId, url, magnet, video };
-    };
-
-    const playbackHandler =
-      typeof app?.videoListViewPlaybackHandler === "function"
-        ? app.videoListViewPlaybackHandler.bind(app)
-        : null;
-
-    const startPlayback = (detail) => {
-      if (playbackHandler) {
-        playbackHandler(detail);
-        return;
-      }
-
-      if (detail.videoId && typeof app?.playVideoByEventId === "function") {
-        Promise.resolve(
-          app.playVideoByEventId(detail.videoId, {
-            url: detail.url,
-            magnet: detail.magnet,
-            title: detail.video?.title,
-            description: detail.video?.description,
-          })
-        ).catch((error) => {
-          console.error("Failed to play channel video via event id:", error);
-          if (typeof app?.playVideoWithFallback === "function") {
-            app.playVideoWithFallback({
-              url: detail.url,
-              magnet: detail.magnet,
-            });
-          }
-        });
-        return;
-      }
-
-      if (typeof app?.playVideoWithFallback === "function") {
-        Promise.resolve(
-          app.playVideoWithFallback({ url: detail.url, magnet: detail.magnet })
-        ).catch((error) => {
-          console.error(
-            "Failed to start fallback playback for channel video:",
-            error
-          );
-        });
-      }
-    };
-
-    videos.forEach((video, index) => {
-      if (
-        video.isPrivate &&
-        video.pubkey === nostrClient.pubkey &&
-        !video.alreadyDecrypted
-      ) {
-        video.magnet = fakeDecrypt(video.magnet);
-        video.alreadyDecrypted = true;
-      }
-
-      app?.videosMap?.set(video.id, video);
-
-      const canEdit = video.pubkey === app.pubkey;
-      let hasOlder = false;
-      if (canEdit && video.videoRootId) {
-        hasOlder = app.hasOlderVersion(video, allKnownEventsArray);
-      }
-
-      const pointerInfo =
-        typeof app?.deriveVideoPointerInfo === "function"
-          ? app.deriveVideoPointerInfo(video)
-          : null;
-      if (pointerInfo && typeof app?.persistWatchHistoryMetadataForVideo === "function") {
-        app.persistWatchHistoryMetadataForVideo(video, pointerInfo);
-      }
-
-      const shareUrl =
-        typeof app?.buildShareUrlFromEventId === "function"
-          ? app.buildShareUrlFromEventId(video.id)
-          : "#";
-      const timeAgo =
-        typeof app?.formatTimeAgo === "function"
-          ? app.formatTimeAgo(video.created_at)
-          : new Date(video.created_at * 1000).toLocaleString();
-
-      const videoCard = new VideoCard({
-        document,
-        video,
-        index,
-        shareUrl,
-        pointerInfo,
-        timeAgo,
-        capabilities: {
-          canEdit,
-          canDelete: canEdit,
-          canRevert: hasOlder,
-          canManageBlacklist:
-            typeof app?.canCurrentUserManageBlacklist === "function"
-              ? app.canCurrentUserManageBlacklist()
-              : false,
-        },
-        helpers: {
-          escapeHtml: (value) => escapeHTML(value),
-          isMagnetSupported: (magnet) => app.isMagnetUriSupported(magnet),
-          toLocaleString: (value) =>
-            typeof value === "number" ? value.toLocaleString() : value,
-        },
-        assets: {
-          fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
-          unsupportedBtihMessage,
-        },
-        state: { loadedThumbnails },
-        ensureGlobalMoreMenuHandlers: () =>
-          app?.ensureGlobalMoreMenuHandlers?.(),
-        onRequestCloseAllMenus: () => app?.closeAllMoreMenus?.(),
-        formatters: {
-          formatTimeAgo: (ts) =>
-            typeof app?.formatTimeAgo === "function"
-              ? app.formatTimeAgo(ts)
-              : new Date(ts * 1000).toLocaleString(),
-        },
-      });
-
-      videoCard.onPlay = ({ event: domEvent, video: cardVideo }) => {
-        const trigger = domEvent?.currentTarget || domEvent?.target;
-        const detail = extractPlaybackDetail(trigger, cardVideo || video);
-        detail.video = detail.video || video;
-        startPlayback(detail);
-      };
-
-      videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
-        app?.handleEditVideo?.({
-          eventId: editVideo?.id || "",
-          index: Number.isFinite(editIndex) ? editIndex : null,
-        });
-      };
-
-      videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
-        app?.handleRevertVideo?.({
-          eventId: revertVideo?.id || "",
-          index: Number.isFinite(revertIndex) ? revertIndex : null,
-        });
-      };
-
-      videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
-        app?.handleFullDeleteVideo?.({
-          eventId: deleteVideo?.id || "",
-          index: Number.isFinite(deleteIndex) ? deleteIndex : null,
-        });
-      };
-
-      videoCard.onMoreAction = ({ dataset = {} }) => {
-        const action = dataset.action || "";
-        const detail = {
-          ...dataset,
-          eventId: dataset.eventId || video.id || "",
-          context: dataset.context || "channel-grid",
-        };
-        app?.handleMoreMenuAction?.(action || "copy-link", detail);
-      };
-
-      videoCard.onAuthorNavigate = ({ pubkey }) => {
-        const targetPubkey = pubkey || video.pubkey || "";
-        if (targetPubkey && typeof app?.goToProfile === "function") {
-          app.goToProfile(targetPubkey);
-        }
-      };
-
-      const cardEl = videoCard.getRoot();
-      if (cardEl) {
-        fragment.appendChild(cardEl);
-      }
-    });
-
-    container.appendChild(fragment);
-
-    attachHealthBadges(container);
-    attachUrlHealthBadges(container, ({ badgeEl, url, eventId }) => {
-      const video = app?.videosMap?.get(eventId) || { id: eventId };
-      app?.handleUrlHealthBadge?.({ video, url, badgeEl });
-    });
-
-    app?.mountVideoListView?.();
-
-    const lazyEls = container.querySelectorAll("[data-lazy]");
-    lazyEls.forEach((el) => app?.mediaLoader?.observe?.(el));
-
-    app?.attachMoreMenuHandlers?.(container);
-
+    renderedFromCache = rendered || renderedFromCache;
   } catch (err) {
-    if (loadToken === currentVideoLoadToken && container) {
+    if (loadToken === currentVideoLoadToken && container && !renderedFromCache) {
       container.dataset.hasChannelVideos = "false";
       container.innerHTML = `
         <p class="text-red-400">Failed to load videos. Please try again.</p>

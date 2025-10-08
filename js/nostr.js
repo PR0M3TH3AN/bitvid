@@ -800,7 +800,22 @@ function sanitizeRelayList(list) {
     if (!/^wss?:\/\//i.test(trimmed)) {
       return;
     }
-    const normalized = trimmed.replace(/\/+$/, "");
+    if (/\s/.test(trimmed)) {
+      return;
+    }
+
+    let normalized = trimmed.replace(/\/+$/, "");
+    try {
+      const parsed = new URL(trimmed);
+      if (!parsed.hostname) {
+        return;
+      }
+      const pathname = parsed.pathname.replace(/\/+$/, "");
+      normalized = `${parsed.protocol}//${parsed.host}${pathname}${parsed.search || ""}`;
+    } catch (error) {
+      // Ignore URL parsing failures and fall back to the trimmed string.
+    }
+
     if (seen.has(normalized)) {
       return;
     }
