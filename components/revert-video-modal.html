@@ -87,8 +87,64 @@
             class="rounded-lg border border-gray-800 bg-gray-900/70 p-4 text-sm text-gray-200"
             aria-live="polite"
           >
-            <div id="revertVersionPlaceholder" class="flex h-full items-center justify-center text-center text-gray-500">
-              Select an earlier revision to inspect its metadata.
+            <!-- NOTE: Keep Upload/Edit metadata fields mirrored when adjusting these sections. -->
+            <div class="space-y-6" aria-labelledby="revertVersionPlaceholderHeading">
+              <div class="space-y-2 text-center">
+                <h3 id="revertVersionPlaceholderHeading" class="text-sm font-semibold text-gray-200">
+                  Revision metadata
+                </h3>
+                <p
+                  id="revertVersionPlaceholder"
+                  class="text-sm text-gray-500"
+                >
+                  Select an earlier revision to inspect its metadata.
+                </p>
+              </div>
+
+              <section class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Playback sources
+                </h4>
+                <dl class="grid gap-2 text-xs text-gray-400 sm:grid-cols-2">
+                  <div>
+                    <dt class="font-semibold text-gray-300">Hosted URL</dt>
+                    <dd class="mt-1 text-gray-500">Awaiting selection</dd>
+                  </div>
+                  <div>
+                    <dt class="font-semibold text-gray-300">Magnet</dt>
+                    <dd class="mt-1 text-gray-500">Awaiting selection</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  NIP-71 event metadata
+                </h4>
+                <dl class="grid gap-2 text-xs text-gray-400 sm:grid-cols-2">
+                  <div>
+                    <dt class="font-semibold text-gray-300">Kind</dt>
+                    <dd class="mt-1 text-gray-500">Awaiting selection</dd>
+                  </div>
+                  <div>
+                    <dt class="font-semibold text-gray-300">Duration</dt>
+                    <dd class="mt-1 text-gray-500">Awaiting selection</dd>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <dt class="font-semibold text-gray-300">Summary</dt>
+                    <dd class="mt-1 text-gray-500">Awaiting selection</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  NIP-71 media metadata
+                </h4>
+                <p class="text-xs text-gray-500">
+                  Media variants, text tracks, chapters, hashtags, participants, and references will appear once a revision is selected.
+                </p>
+              </section>
             </div>
           </section>
         </div>
