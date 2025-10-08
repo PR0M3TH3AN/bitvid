@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildNip71VideoEvent } from "../js/nostr.js";
+import {
+  buildNip71VideoEvent,
+  extractNip71MetadataFromTags,
+} from "../js/nostr.js";
 
 test("buildNip71VideoEvent assembles rich metadata", () => {
   const metadata = {
@@ -161,4 +164,79 @@ test("buildNip71VideoEvent falls back to summary and selects kind", () => {
     "Fallback description",
     "should use fallback summary when metadata summary missing"
   );
+});
+
+test("buildNip71VideoEvent attaches pointer tags", () => {
+  const metadata = {
+    kind: 21,
+    summary: "Pointer test",
+    imeta: [{ url: "https://cdn.example/clip.mp4" }],
+  };
+
+  const pubkey = "f".repeat(64);
+  const pointerIdentifiers = {
+    videoRootId: "root-123",
+    eventId: "event-456",
+    dTag: "pointer-d-tag",
+  };
+
+  const event = buildNip71VideoEvent({
+    metadata,
+    pubkey,
+    title: "Pointer Demo",
+    pointerIdentifiers,
+  });
+
+  assert.ok(event, "event should be built with pointer tags");
+  const pointerTags = event.tags.filter((tag) =>
+    ["a", "video-root", "e", "d"].includes(tag[0])
+  );
+  assert.deepEqual(pointerTags, [
+    ["a", `30078:${pubkey}:${pointerIdentifiers.videoRootId}`],
+    ["video-root", pointerIdentifiers.videoRootId],
+    ["e", pointerIdentifiers.eventId],
+    ["d", pointerIdentifiers.dTag],
+  ]);
+});
+
+test("extractNip71MetadataFromTags parses metadata and pointers", () => {
+  const event = {
+    id: "nip71-event",
+    kind: 22,
+    created_at: 123,
+    content: "Summary text",
+    tags: [
+      ["title", "Metadata Title"],
+      ["published_at", "1700000100"],
+      ["alt", "alt text"],
+      ["duration", "321"],
+      ["content-warning", "Bright lights"],
+      ["imeta", "url https://cdn.example/video.mp4", "m video/mp4"],
+      ["text-track", "https://cdn.example/captions.vtt", "captions", "en"],
+      ["segment", "00:00", "00:10", "Intro", "https://cdn.example/thumb.jpg"],
+      ["t", "nostr"],
+      ["p", "c".repeat(64), "wss://relay.example"],
+      ["r", "https://example.com/info"],
+      ["a", "30078:deadbeef:root-123"],
+      ["video-root", "root-123"],
+      ["e", "event-456"],
+      ["d", "d-pointer"],
+    ],
+  };
+
+  const parsed = extractNip71MetadataFromTags(event);
+  assert.ok(parsed, "parser should produce a result");
+  assert.deepEqual(parsed.metadata.title, "Metadata Title");
+  assert.deepEqual(parsed.metadata.summary, "Summary text");
+  assert.equal(parsed.metadata.duration, 321);
+  assert.equal(parsed.metadata.alt, "alt text");
+  assert.equal(parsed.metadata.contentWarning, "Bright lights");
+  assert.deepEqual(parsed.metadata.hashtags, ["nostr"]);
+  assert.deepEqual(parsed.metadata.references, ["https://example.com/info"]);
+  assert.equal(parsed.metadata.textTracks.length, 1);
+  assert.equal(parsed.metadata.imeta.length, 1);
+  assert(parsed.pointers.videoRootIds.has("root-123"));
+  assert(parsed.pointers.videoEventIds.has("event-456"));
+  assert(parsed.pointers.dTags.has("d-pointer"));
+  assert(parsed.pointers.pointerValues.has("30078:deadbeef:root-123"));
 });
