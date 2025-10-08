@@ -2747,6 +2747,31 @@ class Application {
     return candidate.length > 0;
   }
 
+  validateWalletUri(uri, { requireValue = false } = {}) {
+    const value = typeof uri === "string" ? uri.trim() : "";
+
+    if (!value) {
+      if (requireValue) {
+        return {
+          valid: false,
+          sanitized: "",
+          message: "Enter a wallet connect URI before continuing.",
+        };
+      }
+      return { valid: true, sanitized: "" };
+    }
+
+    if (!value.toLowerCase().startsWith(NWC_URI_SCHEME)) {
+      return {
+        valid: false,
+        sanitized: value,
+        message: `Wallet URI must start with ${NWC_URI_SCHEME}.`,
+      };
+    }
+
+    return { valid: true, sanitized: value };
+  }
+
   isUserLoggedIn() {
     return Boolean(this.normalizeHexPubkey(this.pubkey));
   }
