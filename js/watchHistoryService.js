@@ -1250,7 +1250,10 @@ async function loadLatest(actorInput, options = {}) {
 
   const normalizedOptions =
     options && typeof options === "object" ? options : {};
-  const allowStale = normalizedOptions.allowStale !== false;
+  // Only callers that can react to a later fingerprint update should opt into
+  // stale cache reads; everyone else waits for the fresh list so they do not
+  // miss entries.
+  const allowStale = normalizedOptions.allowStale === true;
 
   if (!isFeatureEnabled(actorKey)) {
     if (!state.restored) {

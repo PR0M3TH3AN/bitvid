@@ -1061,7 +1061,9 @@ async function testWatchHistoryStaleCacheRefresh() {
       return refreshedItems;
     };
 
-    const staleResult = await watchHistoryService.loadLatest(actor);
+    const staleResult = await watchHistoryService.loadLatest(actor, {
+      allowStale: true,
+    });
     assert.equal(
       resolveCallCount,
       1,

@@ -572,7 +572,9 @@ export function createWatchHistoryRenderer(config = {}) {
         });
         return engine.run("watch-history", { runtime });
       }
-      const items = await watchHistoryService.loadLatest(actorInput);
+      const items = await watchHistoryService.loadLatest(actorInput, {
+        allowStale: true,
+      });
       const normalized = normalizeHistoryItems(items);
       return { items: normalized, metadata: { engine: "service-fallback" } };
     },
