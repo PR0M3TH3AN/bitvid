@@ -59,6 +59,9 @@ export class EditModal {
     this.eventsBound = false;
     this.loadPromise = null;
 
+    this.pendingSubmit = false;
+    this.pendingSubmitVideo = null;
+
     this.nip71FormManager = new Nip71FormManager();
     this.nip71SectionKey = "edit";
     this.originalNip71Metadata = null;
@@ -142,6 +145,8 @@ export class EditModal {
     this.closeButton = context.querySelector("#closeEditVideoModal") || null;
     this.cancelButton = context.querySelector("#cancelEditVideo") || null;
     this.submitButton = context.querySelector("#submitEditVideo") || null;
+
+    this.updateSubmitButtonState();
 
     this.fieldButtons = Array.from(context.querySelectorAll("[data-edit-target]"));
 
@@ -251,6 +256,7 @@ export class EditModal {
       this.nip71FormManager.resetSection(this.nip71SectionKey);
       this.originalNip71Metadata = null;
       this.originalNip71MetadataJson = null;
+      this.setSubmitState({ pending: false });
       return;
     }
 
@@ -295,6 +301,7 @@ export class EditModal {
     this.originalNip71Metadata = null;
     this.originalNip71MetadataJson = null;
     this.activeVideo = null;
+    this.setSubmitState({ pending: false });
   }
 
   async open(video) {
@@ -677,10 +684,16 @@ export class EditModal {
   }
 
   submit() {
+    if (this.pendingSubmit) {
+      return;
+    }
+
     if (!this.activeVideo || !this.root) {
       this.showError("No video selected for editing.");
       return;
     }
+
+    this.setSubmitState({ pending: true, video: this.activeVideo });
 
     const fieldValue = (key) => {
       const input = this.fields[key];
@@ -696,7 +709,7 @@ export class EditModal {
       return this.sanitizers.text(input.value);
     };
 
-    const original = this.activeVideo;
+    const original = this.pendingSubmitVideo || this.activeVideo;
 
     const titleInput = this.fields.title;
     const urlInput = this.fields.url;
@@ -842,5 +855,31 @@ export class EditModal {
       updatedData,
       video: { ...original },
     });
+  }
+
+  setSubmitState({ pending = false, video } = {}) {
+    const nextPending = Boolean(pending);
+    if (nextPending) {
+      this.pendingSubmitVideo = video || this.activeVideo || this.pendingSubmitVideo;
+    } else {
+      this.pendingSubmitVideo = null;
+    }
+
+    this.pendingSubmit = nextPending;
+    this.updateSubmitButtonState();
+  }
+
+  updateSubmitButtonState() {
+    if (!this.submitButton) {
+      return;
+    }
+
+    if (this.pendingSubmit) {
+      this.submitButton.disabled = true;
+      this.submitButton.setAttribute("disabled", "disabled");
+    } else {
+      this.submitButton.disabled = false;
+      this.submitButton.removeAttribute("disabled");
+    }
   }
 }
