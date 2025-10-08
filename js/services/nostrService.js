@@ -80,6 +80,15 @@ function ensureSet(value) {
   return new Set();
 }
 
+function normalizeHexPubkey(pubkey) {
+  if (typeof pubkey !== "string") {
+    return "";
+  }
+
+  const trimmed = pubkey.trim();
+  return trimmed ? trimmed.toLowerCase() : "";
+}
+
 function normalizeUntil(timestamp) {
   const value = Number(timestamp);
   if (!Number.isFinite(value) || value <= 0) {
@@ -194,6 +203,21 @@ export class NostrService {
         }
       } catch (error) {
         console.warn("[nostrService] isAuthorBlocked handler threw", error);
+      }
+    }
+
+    if (video.isPrivate === true) {
+      const normalizedVideoPubkey = normalizeHexPubkey(video.pubkey);
+      const normalizedViewerPubkey = normalizeHexPubkey(
+        this.nostrClient?.pubkey
+      );
+
+      if (
+        !normalizedViewerPubkey ||
+        !normalizedVideoPubkey ||
+        normalizedVideoPubkey !== normalizedViewerPubkey
+      ) {
+        return false;
       }
     }
 

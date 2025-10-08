@@ -254,28 +254,31 @@ export class VideoListView {
 
     const source = Array.isArray(videos) ? videos : [];
     const dedupedVideos = this.utils.dedupeVideos(source);
-    this.currentVideos = dedupedVideos.slice();
+    const displayVideos = dedupedVideos.filter(
+      (video) => this.utils.canEditVideo(video) || !video?.isPrivate
+    );
 
-    this.syncViewCountSubscriptions(dedupedVideos);
-    this.cleanupThumbnailCache(dedupedVideos);
+    this.syncViewCountSubscriptions(displayVideos);
+    this.cleanupThumbnailCache(displayVideos);
 
-    if (!dedupedVideos.length) {
+    if (!displayVideos.length) {
       this.renderedVideoIds.clear();
       this.videoCardInstances = [];
       if (this.lastRenderedVideoSignature === EMPTY_VIDEO_LIST_SIGNATURE) {
-        return dedupedVideos;
+        return displayVideos;
       }
       this.lastRenderedVideoSignature = EMPTY_VIDEO_LIST_SIGNATURE;
       this.container.innerHTML = `
         <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
           No public videos available yet. Be the first to upload one!
         </p>`;
-      return dedupedVideos;
+      return displayVideos;
     }
 
-    dedupedVideos.sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+    displayVideos.sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+    this.currentVideos = displayVideos.slice();
 
-    const signaturePayload = dedupedVideos.map((video) => ({
+    const signaturePayload = displayVideos.map((video) => ({
       id: typeof video?.id === "string" ? video.id : "",
       createdAt: Number.isFinite(video?.created_at)
         ? video.created_at
@@ -290,7 +293,7 @@ export class VideoListView {
     const signature = JSON.stringify(signaturePayload);
 
     if (signature === this.lastRenderedVideoSignature) {
-      return dedupedVideos;
+      return displayVideos;
     }
     this.lastRenderedVideoSignature = signature;
 
@@ -300,7 +303,7 @@ export class VideoListView {
     const allEvents = this.utils.getAllEvents();
     const fragment = this.document?.createDocumentFragment?.();
     if (!fragment) {
-      return dedupedVideos;
+      return displayVideos;
     }
 
     const authorSet = new Set();
@@ -308,7 +311,7 @@ export class VideoListView {
     const canManageBlacklist = this.utils.canManageBlacklist();
     this.videoCardInstances = [];
 
-    dedupedVideos.forEach((video, index) => {
+    displayVideos.forEach((video, index) => {
       if (!video || !video.id || !video.title) {
         return;
       }
@@ -457,10 +460,10 @@ export class VideoListView {
     if (authorSet.size) {
       this.utils.batchFetchProfiles(authorSet);
     }
-    this.utils.refreshDiscussionCounts(dedupedVideos);
+    this.utils.refreshDiscussionCounts(displayVideos);
     this.pruneDetachedViewCountElements();
 
-    return dedupedVideos;
+    return displayVideos;
   }
 
   updateVideo(videoId, patch) {
