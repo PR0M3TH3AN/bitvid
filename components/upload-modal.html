@@ -599,14 +599,16 @@
                     Add hashtag
                   </button>
                 </div>
-                <p class="text-xs text-gray-400">Enter bare keywords without the <code>#</code> prefix.</p>
+                <p class="text-xs text-gray-400">
+                  Enter keywords; leading <code>#</code> characters are stripped automatically when saving.
+                </p>
                 <div id="nip71HashtagList" class="space-y-2" data-nip71-list="t"></div>
                 <template id="nip71HashtagTemplate" data-nip71-template="t">
                   <div class="flex items-center gap-2" data-nip71-entry="t">
                     <input
                       type="text"
                       data-nip71-field="value"
-                      placeholder="nostr"
+                      placeholder="#nostr"
                       class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
                     />
                     <button
