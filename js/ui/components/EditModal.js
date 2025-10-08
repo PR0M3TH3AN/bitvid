@@ -55,6 +55,8 @@ export class EditModal {
 
     this.activeVideo = null;
     this.isVisible = false;
+    this.eventsBound = false;
+    this.loadPromise = null;
   }
 
   addEventListener(type, listener, options) {
@@ -78,39 +80,54 @@ export class EditModal {
       return this.root;
     }
 
-    const targetContainer =
-      container || this.container || document.getElementById("modalContainer");
-    if (!targetContainer) {
-      throw new Error("Modal container element not found!");
+    if (this.loadPromise) {
+      return this.loadPromise;
     }
 
-    let modal = targetContainer.querySelector("#editVideoModal");
-    if (!modal) {
-      const response = await fetch("components/edit-video-modal.html");
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+    this.loadPromise = (async () => {
+      const targetContainer =
+        container || this.container || document.getElementById("modalContainer");
+      if (!targetContainer) {
+        throw new Error("Modal container element not found!");
       }
 
-      const html = await response.text();
-      const wrapper = document.createElement("div");
-      wrapper.innerHTML = html;
-      this.removeTrackingScripts(wrapper);
-      targetContainer.appendChild(wrapper);
-      modal = wrapper.querySelector("#editVideoModal");
+      let modal = targetContainer.querySelector("#editVideoModal");
+      if (!modal) {
+        const response = await fetch("components/edit-video-modal.html");
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const html = await response.text();
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = html;
+        this.removeTrackingScripts(wrapper);
+        targetContainer.appendChild(wrapper);
+        modal = wrapper.querySelector("#editVideoModal");
+      }
+
+      if (!modal) {
+        throw new Error("Edit video modal markup missing after load.");
+      }
+
+      this.container = targetContainer;
+      this.root = modal;
+
+      this.cacheElements(modal);
+      if (!this.eventsBound) {
+        this.bindEvents();
+        this.eventsBound = true;
+      }
+      this.reset();
+
+      return this.root;
+    })();
+
+    try {
+      return await this.loadPromise;
+    } finally {
+      this.loadPromise = null;
     }
-
-    if (!modal) {
-      throw new Error("Edit video modal markup missing after load.");
-    }
-
-    this.container = targetContainer;
-    this.root = modal;
-
-    this.cacheElements(modal);
-    this.bindEvents();
-    this.reset();
-
-    return this.root;
   }
 
   cacheElements(context) {
@@ -175,9 +192,13 @@ export class EditModal {
 
     if (Array.isArray(this.fieldButtons)) {
       this.fieldButtons.forEach((button) => {
+        if (!button || button.dataset.editListenerAttached === "true") {
+          return;
+        }
         button.addEventListener("click", (event) => {
           this.handleEditFieldToggle(event);
         });
+        button.dataset.editListenerAttached = "true";
       });
     }
 
@@ -450,10 +471,12 @@ export class EditModal {
       return;
     }
 
-    const mode = button.dataset.mode || "locked";
     const isCheckbox = input.type === "checkbox";
+    const isLocked = isCheckbox
+      ? input.disabled === true
+      : input.readOnly === true;
 
-    if (mode === "locked") {
+    if (isLocked) {
       if (isCheckbox) {
         input.disabled = false;
         input.removeAttribute("disabled");
