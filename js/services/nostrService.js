@@ -398,10 +398,6 @@ export class NostrService {
     let legacyResult = null;
 
     try {
-      nip71Result = await this.nostrClient.publishNip71Video(
-        publishPayload,
-        pubkey
-      );
       legacyResult = await this.nostrClient.publishVideo(
         publishPayload,
         pubkey
@@ -409,6 +405,51 @@ export class NostrService {
     } catch (error) {
       detail.error = error;
       throw error;
+    }
+
+    let shouldAttemptNip71 = true;
+    const pointerIdentifiers = {
+      eventId: legacyResult?.id,
+    };
+
+    if (Array.isArray(legacyResult?.tags)) {
+      const dTag = legacyResult.tags.find(
+        (tag) => Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string"
+      );
+      if (dTag) {
+        pointerIdentifiers.dTag = dTag[1];
+      }
+    }
+
+    if (legacyResult?.content) {
+      try {
+        const parsed = JSON.parse(legacyResult.content);
+        if (parsed && typeof parsed.videoRootId === "string") {
+          pointerIdentifiers.videoRootId = parsed.videoRootId;
+        }
+        if (parsed && parsed.isPrivate) {
+          shouldAttemptNip71 = false;
+        }
+      } catch (parseError) {
+        this.log("[nostrService] Failed to parse legacy publish payload", parseError);
+      }
+    }
+
+    if (!pointerIdentifiers.videoRootId) {
+      shouldAttemptNip71 = false;
+    }
+
+    if (shouldAttemptNip71) {
+      try {
+        nip71Result = await this.nostrClient.publishNip71Video(
+          publishPayload,
+          pubkey,
+          pointerIdentifiers
+        );
+      } catch (nip71Error) {
+        detail.nip71Error = nip71Error;
+        this.log("[nostrService] NIP-71 publish failed", nip71Error);
+      }
     }
 
     const result = { legacy: legacyResult, nip71: nip71Result };
