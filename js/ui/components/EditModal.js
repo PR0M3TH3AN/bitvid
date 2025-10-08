@@ -1,4 +1,5 @@
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "../../magnet.js";
+import { Nip71FormManager } from "./nip71FormManager.js";
 
 export class EditModal {
   constructor({
@@ -57,6 +58,11 @@ export class EditModal {
     this.isVisible = false;
     this.eventsBound = false;
     this.loadPromise = null;
+
+    this.nip71FormManager = new Nip71FormManager();
+    this.nip71SectionKey = "edit";
+    this.originalNip71Metadata = null;
+    this.originalNip71MetadataJson = null;
   }
 
   addEventListener(type, listener, options) {
@@ -163,6 +169,9 @@ export class EditModal {
     if (this.visibility.helper) {
       this.visibility.helperDefault = this.visibility.helper.textContent || "";
     }
+
+    const nip71Context = this.form || context;
+    this.nip71FormManager.registerSection(this.nip71SectionKey, nip71Context);
   }
 
   bindEvents() {
@@ -232,11 +241,16 @@ export class EditModal {
         this.emit("video:edit-visibility-change", detail);
       });
     }
+
+    this.nip71FormManager.bindSection(this.nip71SectionKey);
   }
 
   reset() {
     if (!this.root) {
       this.activeVideo = null;
+      this.nip71FormManager.resetSection(this.nip71SectionKey);
+      this.originalNip71Metadata = null;
+      this.originalNip71MetadataJson = null;
       return;
     }
 
@@ -277,6 +291,9 @@ export class EditModal {
 
     this.handleIsPrivateChange({ emit: false });
 
+    this.nip71FormManager.resetSection(this.nip71SectionKey);
+    this.originalNip71Metadata = null;
+    this.originalNip71MetadataJson = null;
     this.activeVideo = null;
   }
 
@@ -306,6 +323,13 @@ export class EditModal {
     };
 
     this.applyVideoToForm(editContext);
+    this.nip71FormManager.resetSection(this.nip71SectionKey);
+    if (video.nip71 && typeof video.nip71 === "object") {
+      this.nip71FormManager.hydrateSection(this.nip71SectionKey, video.nip71);
+    }
+    const initialNip71 = this.nip71FormManager.collectSection(this.nip71SectionKey);
+    this.originalNip71Metadata = this.cloneNip71Metadata(initialNip71);
+    this.originalNip71MetadataJson = JSON.stringify(this.originalNip71Metadata);
     this.activeVideo = editContext;
 
     if (this.root) {
@@ -641,6 +665,17 @@ export class EditModal {
     this.emit("video:edit-visibility-change", detail);
   }
 
+  cloneNip71Metadata(metadata) {
+    if (metadata == null) {
+      return null;
+    }
+    try {
+      return JSON.parse(JSON.stringify(metadata));
+    } catch (error) {
+      return metadata;
+    }
+  }
+
   submit() {
     if (!this.activeVideo || !this.root) {
       this.showError("No video selected for editing.");
@@ -715,6 +750,20 @@ export class EditModal {
       typeof original.enableComments === "boolean" ? original.enableComments : true;
     const originalIsPrivate = original.isPrivate === true;
 
+    const currentNip71 = this.cloneNip71Metadata(
+      this.nip71FormManager.collectSection(this.nip71SectionKey)
+    );
+    const hasImetaSource = Array.isArray(currentNip71?.imeta)
+      ? currentNip71.imeta.some((variant) => {
+          if (!variant || typeof variant !== "object") {
+            return false;
+          }
+          const hasUrl = typeof variant.url === "string" && variant.url.trim();
+          const hasMagnet = typeof variant.x === "string" && variant.x.trim();
+          return Boolean(hasUrl || hasMagnet);
+        })
+      : false;
+
     let finalEnableComments = originalEnableComments;
     if (commentsInput) {
       if (commentsInput.disabled) {
@@ -733,8 +782,10 @@ export class EditModal {
       }
     }
 
-    if (!finalTitle || (!finalUrl && !finalMagnet)) {
-      this.showError("Title and at least one of URL or Magnet is required.");
+    if (!finalTitle || (!finalUrl && !finalMagnet && !hasImetaSource)) {
+      this.showError(
+        "Title and at least one of URL, Magnet, or a NIP-71 media variant is required."
+      );
       return;
     }
 
@@ -774,6 +825,11 @@ export class EditModal {
       enableComments: finalEnableComments,
       isPrivate: finalIsPrivate,
     };
+
+    const currentNip71Json = JSON.stringify(currentNip71);
+    const nip71Edited = currentNip71Json !== this.originalNip71MetadataJson;
+    updatedData.nip71 = currentNip71;
+    updatedData.nip71Edited = nip71Edited;
 
     const originalEvent = {
       id: this.sanitizers.text(original.id || ""),
