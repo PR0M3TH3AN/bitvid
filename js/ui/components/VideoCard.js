@@ -639,6 +639,7 @@ export class VideoCard {
       },
     });
     button.dataset.moreDropdown = String(this.index);
+    button.dataset.moreMenuToggleBound = "true";
 
     const icon = this.document.createElement("img");
     icon.src = "assets/svg/ellipsis.svg";

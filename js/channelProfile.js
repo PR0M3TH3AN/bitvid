@@ -1360,12 +1360,22 @@ export async function initChannelProfileView() {
 
   setupChannelShareButton();
   setupChannelMoreMenu();
-  await updateChannelMenuState();
 
+  const initialMenuRefresh = updateChannelMenuState().catch((error) => {
+    console.error("Failed to prepare channel menu state:", error);
+  });
+
+  let subscriptionsTask = null;
   // 3) If user is logged in, load subscriptions and show sub/unsub button
   if (app?.pubkey) {
-    await subscriptions.loadSubscriptions(app.pubkey);
-    renderSubscribeButton(hexPub);
+    subscriptionsTask = subscriptions
+      .loadSubscriptions(app.pubkey)
+      .catch((error) => {
+        console.error("Failed to load subscriptions for channel view:", error);
+      })
+      .finally(() => {
+        renderSubscribeButton(hexPub);
+      });
   } else {
     const btn = document.getElementById("subscribeBtnArea");
     if (btn) btn.classList.add("hidden");
@@ -1388,7 +1398,15 @@ export async function initChannelProfileView() {
     console.error("Failed to load channel videos:", error);
   });
 
-  await Promise.allSettled([profilePromise, videosPromise]);
+  const pendingTasks = [profilePromise, videosPromise];
+  if (initialMenuRefresh) {
+    pendingTasks.push(initialMenuRefresh);
+  }
+  if (subscriptionsTask) {
+    pendingTasks.push(subscriptionsTask);
+  }
+
+  await Promise.allSettled(pendingTasks);
 }
 
 function setupZapButton() {
