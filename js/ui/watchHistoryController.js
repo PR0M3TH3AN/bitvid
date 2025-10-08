@@ -277,7 +277,10 @@ export default class WatchHistoryController {
 
     if (!normalizedItems) {
       try {
-        const latest = await this.watchHistoryService.loadLatest(actorCandidate);
+        const latest = await this.watchHistoryService.loadLatest(
+          actorCandidate,
+          { allowStale: false },
+        );
         normalizedItems = Array.isArray(latest)
           ? latest.map(normalizeEntry).filter(Boolean)
           : [];

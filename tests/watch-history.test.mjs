@@ -3,7 +3,11 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 
-const { WATCH_HISTORY_PAYLOAD_MAX_BYTES, WATCH_HISTORY_MAX_ITEMS } =
+const {
+  WATCH_HISTORY_PAYLOAD_MAX_BYTES,
+  WATCH_HISTORY_MAX_ITEMS,
+  WATCH_HISTORY_CACHE_TTL_MS,
+} =
   await import("../js/config.js");
 const {
   getWatchHistoryV2Enabled,
@@ -986,6 +990,126 @@ async function testWatchHistoryServiceIntegration() {
   }
 }
 
+async function testWatchHistoryStaleCacheRefresh() {
+  console.log("Running watch history stale cache refresh test...");
+
+  const actor = "stale-cache-actor";
+  const originalResolve = nostrClient.resolveWatchHistory;
+  const originalFingerprint = nostrClient.getWatchHistoryFingerprint;
+  const originalDateNow = Date.now;
+
+  try {
+    watchHistoryService.resetProgress(actor);
+
+    nostrClient.getWatchHistoryFingerprint = async (_actor, items) => {
+      const values = (Array.isArray(items) ? items : []).map((entry) => {
+        if (!entry) {
+          return "";
+        }
+        if (typeof entry.value === "string") {
+          return entry.value;
+        }
+        if (
+          entry.pointer &&
+          typeof entry.pointer.value === "string"
+        ) {
+          return entry.pointer.value;
+        }
+        return "";
+      });
+      return `fingerprint:${values.join("|")}`;
+    };
+
+    const firstItems = [
+      { type: "e", value: "watch-history-old", watchedAt: 1_700_000_000 },
+    ];
+
+    let resolveCallCount = 0;
+    nostrClient.resolveWatchHistory = async (requestedActor) => {
+      resolveCallCount += 1;
+      assert.equal(
+        requestedActor,
+        actor,
+        "initial load should request the expected actor",
+      );
+      return firstItems;
+    };
+
+    await watchHistoryService.loadLatest(actor, { allowStale: false });
+
+    const baseNow = originalDateNow();
+    Date.now = () => baseNow + WATCH_HISTORY_CACHE_TTL_MS + 1;
+
+    const refreshedItems = [
+      { type: "e", value: "watch-history-new", watchedAt: 1_700_000_600 },
+    ];
+
+    let refreshResolve;
+    const refreshGate = new Promise((resolve) => {
+      refreshResolve = resolve;
+    });
+
+    resolveCallCount = 0;
+    nostrClient.resolveWatchHistory = async (requestedActor) => {
+      resolveCallCount += 1;
+      assert.equal(
+        requestedActor,
+        actor,
+        "refresh should continue targeting the same actor",
+      );
+      await refreshGate;
+      return refreshedItems;
+    };
+
+    const staleResult = await watchHistoryService.loadLatest(actor);
+    assert.equal(
+      resolveCallCount,
+      1,
+      "stale load should trigger a single background refresh",
+    );
+    assert.equal(
+      staleResult.length,
+      firstItems.length,
+      "stale load should return cached entries immediately",
+    );
+    const staleValue =
+      staleResult[0]?.value || staleResult[0]?.pointer?.value || "";
+    assert.equal(
+      staleValue,
+      "watch-history-old",
+      "stale load should surface the cached pointer value",
+    );
+
+    refreshResolve();
+    await refreshGate;
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    nostrClient.resolveWatchHistory = async () => {
+      throw new Error("loadLatest should rely on refreshed cache");
+    };
+
+    const freshResult = await watchHistoryService.loadLatest(actor);
+    assert.equal(
+      freshResult.length,
+      refreshedItems.length,
+      "fresh load should surface refreshed watch history entries",
+    );
+    const freshValue =
+      freshResult[0]?.value || freshResult[0]?.pointer?.value || "";
+    assert.equal(
+      freshValue,
+      "watch-history-new",
+      "fresh load should include the updated pointer",
+    );
+  } finally {
+    Date.now = originalDateNow;
+    nostrClient.resolveWatchHistory = originalResolve;
+    nostrClient.getWatchHistoryFingerprint = originalFingerprint;
+    watchHistoryService.resetProgress(actor);
+  }
+}
+
 async function testWatchHistoryLocalFallbackWhenDisabled() {
   console.log("Running watch history local fallback test...");
 
@@ -1199,6 +1323,7 @@ await testPublishSnapshotFailureRetry();
 await testWatchHistoryPartialRelayRetry();
 await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
+await testWatchHistoryStaleCacheRefresh();
 await testWatchHistoryLocalFallbackWhenDisabled();
 await testWatchHistorySyncEnabledForLoggedInUsers();
 await testWatchHistoryAppLoginFallback();
