@@ -5343,6 +5343,9 @@ class Application {
 
     if (!this.pubkey) {
       this.showError("Please login to edit videos.");
+      if (this.editModal?.setSubmitState) {
+        this.editModal.setSubmitState({ pending: false });
+      }
       return;
     }
 
@@ -5355,11 +5358,17 @@ class Application {
       await this.loadVideos();
       this.videosMap.clear();
       this.showSuccess("Video updated successfully!");
+      if (this.editModal?.setSubmitState) {
+        this.editModal.setSubmitState({ pending: false });
+      }
       this.editModal.close();
       this.forceRefreshAllProfiles();
     } catch (error) {
       console.error("Failed to edit video:", error);
       this.showError("Failed to edit video. Please try again.");
+      if (this.editModal?.setSubmitState) {
+        this.editModal.setSubmitState({ pending: false });
+      }
     }
   }
 
