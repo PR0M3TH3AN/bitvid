@@ -8,6 +8,7 @@
   --color-surface: #0f172a;
   --color-bg: var(--color-surface);
   --color-card: #1e293b;
+  --color-card-private: #3b1d74;
   --color-primary: #fe0032;
   --color-secondary: #ff93a5;
   --color-card-critical: #3f0b13;
@@ -165,6 +166,15 @@ header img {
   overflow: hidden;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: var(--shadow-md);
+}
+
+.video-card.video-card--owner-private {
+  background-color: var(--color-card-private) !important;
+  box-shadow: 0 0 0 0.125rem rgba(168, 85, 247, 0.55), var(--shadow-md);
+}
+
+.video-card.video-card--owner-private:hover {
+  box-shadow: 0 0 0 0.125rem rgba(192, 132, 252, 0.65), var(--shadow-lg);
 }
 
 .video-card[data-owner-is-viewer="false"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {

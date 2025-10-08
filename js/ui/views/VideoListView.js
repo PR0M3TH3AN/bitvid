@@ -321,9 +321,8 @@ export class VideoListView {
       const shareUrl = this.buildShareUrl(video, shareBase);
       const canEdit = this.utils.canEditVideo(video);
       const canDelete = this.utils.canDeleteVideo(video);
-      const highlightClass = canEdit && video.isPrivate
-        ? "border-2 border-yellow-500"
-        : "border-none";
+      const highlightClass =
+        canEdit && video.isPrivate ? "video-card--owner-private" : "";
       const isNewlyRendered = !previouslyRenderedIds.has(video.id);
       const animationClass = isNewlyRendered ? "video-card--enter" : "";
       const timeAgo = this.formatters.formatTimeAgo(video.created_at);
