@@ -641,6 +641,91 @@ function buildParticipantTag(participant) {
   return values;
 }
 
+export function buildNip71MetadataTags(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return [];
+  }
+
+  const tags = [];
+
+  const normalizedTitle = stringFromInput(metadata.title);
+  if (normalizedTitle) {
+    tags.push(["title", normalizedTitle]);
+  }
+
+  const publishedAt = normalizeUnixSeconds(metadata.publishedAt);
+  if (publishedAt) {
+    tags.push(["published_at", publishedAt]);
+  }
+
+  const alt = stringFromInput(metadata.alt);
+  if (alt) {
+    tags.push(["alt", alt]);
+  }
+
+  const imetaTags = buildImetaTags(metadata.imeta);
+  if (imetaTags.length) {
+    tags.push(...imetaTags);
+  }
+
+  const duration = normalizeDurationSeconds(metadata.duration);
+  if (duration) {
+    tags.push(["duration", duration]);
+  }
+
+  if (Array.isArray(metadata.textTracks)) {
+    metadata.textTracks.forEach((track) => {
+      const tag = buildTextTrackTag(track);
+      if (tag) {
+        tags.push(tag);
+      }
+    });
+  }
+
+  const contentWarning = stringFromInput(metadata.contentWarning);
+  if (contentWarning) {
+    tags.push(["content-warning", contentWarning]);
+  }
+
+  if (Array.isArray(metadata.segments)) {
+    metadata.segments.forEach((segment) => {
+      const tag = buildSegmentTag(segment);
+      if (tag) {
+        tags.push(tag);
+      }
+    });
+  }
+
+  if (Array.isArray(metadata.hashtags)) {
+    metadata.hashtags
+      .map(stringFromInput)
+      .filter(Boolean)
+      .forEach((value) => {
+        tags.push(["t", value]);
+      });
+  }
+
+  if (Array.isArray(metadata.participants)) {
+    metadata.participants.forEach((participant) => {
+      const tag = buildParticipantTag(participant);
+      if (tag) {
+        tags.push(tag);
+      }
+    });
+  }
+
+  if (Array.isArray(metadata.references)) {
+    metadata.references
+      .map(stringFromInput)
+      .filter(Boolean)
+      .forEach((url) => {
+        tags.push(["r", url]);
+      });
+  }
+
+  return tags;
+}
+
 function extractVideoPublishPayload(rawPayload) {
   let videoData = rawPayload;
   let nip71Metadata = null;
@@ -732,78 +817,10 @@ export function buildNip71VideoEvent({
   ];
   const summary = summaryCandidates.find((value) => Boolean(value)) || "";
 
-  const tags = [];
-  tags.push(["title", normalizedTitle]);
-
-  const publishedAt = normalizeUnixSeconds(metadata.publishedAt);
-  if (publishedAt) {
-    tags.push(["published_at", publishedAt]);
-  }
-
-  const alt = stringFromInput(metadata.alt);
-  if (alt) {
-    tags.push(["alt", alt]);
-  }
-
-  const imetaTags = buildImetaTags(metadata.imeta);
-  if (imetaTags.length) {
-    tags.push(...imetaTags);
-  }
-
-  const duration = normalizeDurationSeconds(metadata.duration);
-  if (duration) {
-    tags.push(["duration", duration]);
-  }
-
-  if (Array.isArray(metadata.textTracks)) {
-    metadata.textTracks.forEach((track) => {
-      const tag = buildTextTrackTag(track);
-      if (tag) {
-        tags.push(tag);
-      }
-    });
-  }
-
-  const contentWarning = stringFromInput(metadata.contentWarning);
-  if (contentWarning) {
-    tags.push(["content-warning", contentWarning]);
-  }
-
-  if (Array.isArray(metadata.segments)) {
-    metadata.segments.forEach((segment) => {
-      const tag = buildSegmentTag(segment);
-      if (tag) {
-        tags.push(tag);
-      }
-    });
-  }
-
-  if (Array.isArray(metadata.hashtags)) {
-    metadata.hashtags
-      .map(stringFromInput)
-      .filter(Boolean)
-      .forEach((value) => {
-        tags.push(["t", value]);
-      });
-  }
-
-  if (Array.isArray(metadata.participants)) {
-    metadata.participants.forEach((participant) => {
-      const tag = buildParticipantTag(participant);
-      if (tag) {
-        tags.push(tag);
-      }
-    });
-  }
-
-  if (Array.isArray(metadata.references)) {
-    metadata.references
-      .map(stringFromInput)
-      .filter(Boolean)
-      .forEach((url) => {
-        tags.push(["r", url]);
-      });
-  }
+  const tags = buildNip71MetadataTags({
+    ...metadata,
+    title: normalizedTitle,
+  });
 
   if (!tags.length) {
     return null;
@@ -2442,7 +2459,7 @@ function getActiveKey(video) {
 
 export { convertEventToVideo };
 
-class NostrClient {
+export class NostrClient {
   constructor() {
     this.pool = null;
     this.poolPromise = null;
@@ -5319,11 +5336,16 @@ class NostrClient {
       contentObject.xs = finalXs;
     }
 
+    const nip71Tags = buildNip71MetadataTags(
+      nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null
+    );
+
     const event = buildVideoPostEvent({
       pubkey,
       created_at: createdAt,
       dTagValue,
       content: contentObject,
+      additionalTags: nip71Tags,
     });
 
     if (isDevMode) {
@@ -5646,17 +5668,28 @@ class NostrClient {
       contentObject.xs = finalXs;
     }
 
-    const event = {
-      kind: 30078,
-      // Use the provided userPubkey (or you can also force it to lowercase here if desired)
+    let metadataForTags =
+      nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null;
+    if (!metadataForTags) {
+      if (baseEvent?.nip71 && typeof baseEvent.nip71 === "object") {
+        metadataForTags = baseEvent.nip71;
+      } else {
+        const extracted = extractNip71MetadataFromTags(baseEvent);
+        if (extracted?.metadata) {
+          metadataForTags = extracted.metadata;
+        }
+      }
+    }
+
+    const nip71Tags = buildNip71MetadataTags(metadataForTags);
+
+    const event = buildVideoPostEvent({
       pubkey: userPubkeyLower,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [
-        ["t", "video"],
-        ["d", newD], // new share link tag
-      ],
-      content: JSON.stringify(contentObject),
-    };
+      dTagValue: newD,
+      content: contentObject,
+      additionalTags: nip71Tags,
+    });
 
     if (isDevMode) {
       console.log("Creating edited event with root ID:", oldRootId);
@@ -6222,44 +6255,110 @@ class NostrClient {
     }
 
     const cacheEntry = this.nip71Cache.get(rootId);
-    if (!cacheEntry) {
-      return video;
-    }
 
-    let record = null;
-    const eventId = typeof video.id === "string" ? video.id : "";
-    if (eventId && cacheEntry.byVideoEventId.has(eventId)) {
-      record = cacheEntry.byVideoEventId.get(eventId);
-    }
+    let appliedMetadata = null;
+    let sourceEventId = "";
+    let sourceCreatedAt = 0;
 
-    if (!record) {
-      const dTag = getDTagValueFromTags(video.tags);
-      if (dTag && cacheEntry.byDTag.has(dTag)) {
-        record = cacheEntry.byDTag.get(dTag);
+    if (cacheEntry) {
+      let record = null;
+      const eventId = typeof video.id === "string" ? video.id : "";
+      if (eventId && cacheEntry.byVideoEventId.has(eventId)) {
+        record = cacheEntry.byVideoEventId.get(eventId);
+      }
+
+      if (!record) {
+        const dTag = getDTagValueFromTags(video.tags);
+        if (dTag && cacheEntry.byDTag.has(dTag)) {
+          record = cacheEntry.byDTag.get(dTag);
+        }
+      }
+
+      if (!record && cacheEntry.fallback) {
+        record = cacheEntry.fallback;
+      }
+
+      if (record?.metadata) {
+        const cloned = cloneNip71Metadata(record.metadata);
+        if (cloned) {
+          appliedMetadata = cloned;
+          sourceEventId = record.nip71EventId || "";
+          sourceCreatedAt = Number.isFinite(record.created_at)
+            ? Math.floor(record.created_at)
+            : 0;
+        }
       }
     }
 
-    if (!record && cacheEntry.fallback) {
-      record = cacheEntry.fallback;
+    if (!appliedMetadata) {
+      const extracted = extractNip71MetadataFromTags(video);
+      if (extracted?.metadata) {
+        const cloned = cloneNip71Metadata(extracted.metadata);
+        if (cloned) {
+          if (Array.isArray(video.tags)) {
+            const hasVideoTopicTag = video.tags.some(
+              (tag) => Array.isArray(tag) && tag[0] === "t" && tag[1] === "video"
+            );
+            if (hasVideoTopicTag) {
+              if (Array.isArray(cloned.hashtags)) {
+                const filteredHashtags = cloned.hashtags.filter((value) => {
+                  if (typeof value !== "string") {
+                    return false;
+                  }
+                  const trimmed = value.trim();
+                  return trimmed && trimmed.toLowerCase() !== "video";
+                });
+                if (filteredHashtags.length) {
+                  cloned.hashtags = filteredHashtags;
+                } else {
+                  delete cloned.hashtags;
+                }
+              }
+
+              if (Array.isArray(cloned.t)) {
+                const filteredTopics = cloned.t.filter((value) => {
+                  if (typeof value !== "string") {
+                    return false;
+                  }
+                  const trimmed = value.trim();
+                  return trimmed && trimmed.toLowerCase() !== "video";
+                });
+                if (filteredTopics.length) {
+                  cloned.t = filteredTopics;
+                } else {
+                  delete cloned.t;
+                }
+              }
+            }
+          }
+
+          appliedMetadata = cloned;
+          const extractedSource = extracted.source || {};
+          const fallbackId = typeof video.id === "string" ? video.id : "";
+          sourceEventId = extractedSource.id || fallbackId;
+          const candidateCreatedAt = Number.isFinite(extractedSource.created_at)
+            ? Math.floor(extractedSource.created_at)
+            : Number.isFinite(video.created_at)
+              ? Math.floor(video.created_at)
+              : 0;
+          sourceCreatedAt = candidateCreatedAt;
+        }
+      }
     }
 
-    if (!record?.metadata) {
+    if (appliedMetadata) {
+      video.nip71 = appliedMetadata;
+      video.nip71Source = {
+        eventId: sourceEventId,
+        created_at: sourceCreatedAt,
+      };
+    } else {
       if (video.nip71) {
         delete video.nip71;
       }
       if (video.nip71Source) {
         delete video.nip71Source;
       }
-      return video;
-    }
-
-    const cloned = cloneNip71Metadata(record.metadata);
-    if (cloned) {
-      video.nip71 = cloned;
-      video.nip71Source = {
-        eventId: record.nip71EventId || "",
-        created_at: record.created_at || 0,
-      };
     }
 
     return video;
