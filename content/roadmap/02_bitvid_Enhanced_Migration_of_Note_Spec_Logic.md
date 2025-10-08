@@ -31,7 +31,7 @@ This new file could export:
    - `buildNewNote(data, pubkey)`: Takes basic form data and returns a fully structured Nostr note (an object) ready to be signed.
    - `buildEditNote(originalEvent, updatedData)`: Merges old note content with new fields.
    - `softDeleteNote(originalEvent)`: Constructs a note with `deleted = true`.
-   - `encryptMagnet(magnet)`, `decryptMagnet(magnet)`: Real or placeholder encryption functions.
+   - `encryptMagnet(magnet)`, `decryptMagnet(magnet)`: Legacy pass-through helpers kept in case encryption returns; private listings now hide rather than encrypt.
    - `validateNoteContent(content)`: Ensures essential fields (title, magnet, mode, etc.) are present and valid.
 
 Because you’re not implementing Version 3 yet, keep your existing version logic. If you do plan to adopt Version 3 later, the new file is where you’d add or change fields without scattering edits across multiple files.
@@ -53,7 +53,7 @@ export function prepareNewNote(formInput, pubkey) {
   // Combine user inputs with defaults
   const isPrivate = formInput.isPrivate === true;
   const finalMagnet = isPrivate
-    ? encryptMagnet(formInput.magnet)
+    ? encryptMagnet(formInput.magnet) // currently a pass-through; hiding happens at the feed layer
     : formInput.magnet;
 
   return {
@@ -178,7 +178,7 @@ By delegating the actual note-building to `buildEditNote` and `buildDeleteNote`,
 
 6. **Test Thoroughly:**  
    - Create, edit, and delete events to ensure everything behaves the same.  
-   - Confirm that private videos are still encrypted as expected.
+   - Confirm that private videos stay hidden from shared grids as expected.
 
 ---
 
@@ -189,13 +189,13 @@ Below is a small outline showing how you might organize the new file. The actual
 ```js
 // bitvidNoteSpec.js
 
-// A placeholder or real encryption method
+// Legacy placeholder kept for future encryption experiments (currently returns the raw magnet)
 export function encryptMagnet(magnet) {
-  return magnet.split("").reverse().join("");
+  return magnet; // private cards are hidden instead of encrypted
 }
 
 export function decryptMagnet(magnet) {
-  return magnet.split("").reverse().join("");
+  return magnet; // private cards are hidden instead of encrypted
 }
 
 function generateUniqueDTag() {
@@ -206,7 +206,7 @@ function generateUniqueDTag() {
 export function prepareNewNote(formInput, pubkey) {
   const isPrivate = formInput.isPrivate === true;
   const finalMagnet = isPrivate
-    ? encryptMagnet(formInput.magnet)
+    ? encryptMagnet(formInput.magnet) // currently a pass-through; hiding happens at the feed layer
     : formInput.magnet;
 
   return {
@@ -234,7 +234,7 @@ export function prepareNewNote(formInput, pubkey) {
 export function buildEditNote(originalEvent, updatedData) {
   // parse old content
   // combine with new fields
-  // handle old vs new encryption
+  // handle legacy visibility toggles / future encryption experiments
   // return the final event object
 }
 
