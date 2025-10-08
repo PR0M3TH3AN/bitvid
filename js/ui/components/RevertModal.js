@@ -1,3 +1,7 @@
+import { Nip71FormManager } from "./nip71FormManager.js";
+
+// NOTE: Any metadata field added to the Upload or Edit modals must also be
+// rendered inside the Revert modal to keep the experiences aligned.
 export class RevertModal {
   constructor({
     removeTrackingScripts,
@@ -17,6 +21,8 @@ export class RevertModal {
     this.truncateMiddle = truncateMiddle;
     this.fallbackThumbnailSrc = fallbackThumbnailSrc || "";
     this.container = container || document.getElementById("modalContainer");
+
+    this.nip71Formatter = new Nip71FormManager();
 
     this.eventTarget = new EventTarget();
 
@@ -540,27 +546,24 @@ export class RevertModal {
     const isPrivate = version.isPrivate === true;
     const dTagValue = this.extractDTagValue(version.tags);
 
-    const escape = (value) =>
-      this.escapeHTML ? this.escapeHTML(String(value ?? "")) : String(value ?? "");
+    const escape = this.getEscapeFn();
+    const nip71Metadata = this.buildNip71DisplayMetadata(version);
 
     const fallbackThumbnail = escape(this.fallbackThumbnailSrc);
     const thumbnailSrc = thumbnail ? escape(thumbnail) : fallbackThumbnail;
     const thumbnailAlt = thumbnail ? "Revision thumbnail" : "Fallback thumbnail";
 
-    let urlHtml = '<span class="text-gray-500">None</span>';
+    let urlHtml = this.renderPlaceholder("None");
     if (url) {
-      const safeUrl = escape(url);
-      const displayUrl = this.truncateMiddle
-        ? escape(this.truncateMiddle(url, 72))
-        : safeUrl;
-      urlHtml = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 break-all">${displayUrl}</a>`;
+      urlHtml = this.buildLinkMarkup(url);
     }
 
-    let magnetHtml = '<span class="text-gray-500">None</span>';
+    let magnetHtml = this.renderPlaceholder("None");
     if (displayMagnet) {
-      const label = this.truncateMiddle
-        ? escape(this.truncateMiddle(displayMagnet, 72))
-        : escape(displayMagnet);
+      const labelRaw = this.truncateMiddle
+        ? this.truncateMiddle(displayMagnet, 72)
+        : displayMagnet;
+      const label = escape(labelRaw);
       const caption = isPrivate
         ? '<span class="block text-xs text-purple-200/90 mt-1">Magnet stays visible only to you — private notes keep the raw string local.</span>'
         : "";
@@ -587,9 +590,7 @@ export class RevertModal {
     }
 
     const descriptionHtml = description
-      ? `<p class="whitespace-pre-wrap text-gray-200">${escape(
-          description
-        )}</p>`
+      ? `<p class="whitespace-pre-wrap text-gray-200">${escape(description)}</p>`
       : '<p class="text-gray-500">No description provided.</p>';
 
     const rootId =
@@ -605,8 +606,120 @@ export class RevertModal {
         : escape(version.id)
       : "";
 
+    const timestampParts = [];
+    if (absolute) {
+      timestampParts.push(escape(absolute));
+    }
+    if (relative) {
+      timestampParts.push(`(${escape(relative)})`);
+    }
+    const timestampHtml = timestampParts.length
+      ? timestampParts.join(" ")
+      : escape(absolute || relative || "");
+
+    const formatTimestamp = (seconds, raw) => {
+      if (Number.isFinite(seconds)) {
+        const absoluteLabel = this.formatAbsoluteTimestamp
+          ? this.formatAbsoluteTimestamp(seconds)
+          : `${seconds}`;
+        const relativeLabel = this.formatTimeAgo
+          ? this.formatTimeAgo(seconds)
+          : "";
+        const parts = [];
+        if (absoluteLabel) {
+          parts.push(`<span class="text-gray-200">${escape(absoluteLabel)}</span>`);
+        }
+        if (relativeLabel) {
+          parts.push(`<span class="text-gray-400">(${escape(relativeLabel)})</span>`);
+        }
+        if (parts.length) {
+          return parts.join(" ");
+        }
+      }
+      if (raw) {
+        return `<span class="text-gray-200">${escape(raw)}</span>`;
+      }
+      return this.renderPlaceholder();
+    };
+
+    const formatDuration = (seconds, raw) => {
+      if (Number.isFinite(seconds)) {
+        const display = this.formatDurationSeconds(seconds);
+        const suffix = seconds === 1 ? "second" : "seconds";
+        return `<span class="text-gray-200">${escape(display)}</span> <span class="text-gray-500">(${escape(
+          `${seconds} ${suffix}`
+        )})</span>`;
+      }
+      if (raw) {
+        return `<span class="text-gray-200">${escape(raw)}</span>`;
+      }
+      return this.renderPlaceholder();
+    };
+
+    const kindValue = nip71Metadata.kind;
+    let kindHtml = this.renderPlaceholder();
+    if (kindValue !== "" && kindValue !== null && kindValue !== undefined) {
+      const label = typeof kindValue === "number" ? kindValue : `${kindValue}`;
+      const numeric = Number(label);
+      let suffix = "";
+      if (Number.isFinite(numeric)) {
+        if (numeric === 22) {
+          suffix = "short";
+        } else if (numeric === 21) {
+          suffix = "video";
+        }
+      }
+      const badge = `<code class="rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">kind ${escape(
+        label
+      )}</code>`;
+      kindHtml = suffix
+        ? `${badge} <span class="text-gray-400">(${escape(suffix)})</span>`
+        : badge;
+    }
+
+    const summaryHtml = nip71Metadata.summary
+      ? `<p class="whitespace-pre-wrap text-gray-200">${escape(
+          nip71Metadata.summary
+        )}</p>`
+      : this.renderPlaceholder("Not provided");
+    const contentWarningHtml = nip71Metadata.contentWarning
+      ? `<span class="inline-flex items-center rounded-full border border-amber-700/70 bg-amber-900/40 px-2 py-0.5 text-xs text-amber-200/90">${escape(
+          nip71Metadata.contentWarning
+        )}</span>`
+      : this.renderPlaceholder("Not provided");
+    const publishedAtHtml = formatTimestamp(
+      nip71Metadata.publishedAtSeconds,
+      nip71Metadata.publishedAtRaw
+    );
+    const durationHtml = formatDuration(
+      nip71Metadata.durationSeconds,
+      nip71Metadata.durationRaw
+    );
+    const altHtml = nip71Metadata.alt
+      ? `<p class="whitespace-pre-wrap text-gray-200">${escape(nip71Metadata.alt)}</p>`
+      : this.renderPlaceholder("Not provided");
+
+    const definition = (label, valueHtml, { span = 1 } = {}) => {
+      const colSpan = span > 1 ? "sm:col-span-2" : "";
+      return `
+        <div class="${colSpan}">
+          <dt class="font-semibold text-gray-200">${escape(label)}</dt>
+          <dd class="mt-1">${valueHtml}</dd>
+        </div>
+      `;
+    };
+
+    const eventMetadataRows = [
+      definition("NIP-71 kind", kindHtml),
+      definition("Summary", summaryHtml, { span: 2 }),
+      definition("Content warning", contentWarningHtml, { span: 2 }),
+      definition("Published timestamp", publishedAtHtml),
+      definition("Duration", durationHtml),
+      definition("Alt text", altHtml, { span: 2 }),
+    ].join("");
+
     this.details.innerHTML = `
-      <div class="space-y-4">
+      <div class="space-y-6">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
           <div class="overflow-hidden rounded-md border border-gray-800 bg-black/40 w-full max-w-sm">
             <img
@@ -621,75 +734,113 @@ export class RevertModal {
               <h3 class="text-lg font-semibold text-white">${escape(
                 version.title || "Untitled"
               )}</h3>
-              <p class="text-xs text-gray-400">${escape(absolute)} (${escape(
-      relative
-    )})</p>
+              <p class="text-xs text-gray-400">${timestampHtml}</p>
             </div>
             ${
               chips.length
                 ? `<div class="flex flex-wrap gap-2">${chips.join("")}</div>`
                 : ""
             }
-            <div class="space-y-2 text-sm text-gray-200">
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
               <div>
-                <span class="font-medium text-gray-300">Hosted URL:</span>
-                <div class="mt-1">${urlHtml}</div>
+                <dt class="font-semibold text-gray-200">Hosted URL</dt>
+                <dd class="mt-1">${urlHtml}</dd>
               </div>
               <div>
-                <span class="font-medium text-gray-300">Magnet:</span>
-                <div class="mt-1">${magnetHtml}</div>
+                <dt class="font-semibold text-gray-200">Magnet</dt>
+                <dd class="mt-1">${magnetHtml}</dd>
               </div>
-            </div>
+            </dl>
           </div>
         </div>
 
-        <div class="space-y-2">
+        <section class="space-y-2">
           <h4 class="text-sm font-semibold text-gray-200">Description</h4>
           ${descriptionHtml}
-        </div>
+        </section>
 
-        <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
-          <div>
-            <dt class="font-semibold text-gray-200">Mode</dt>
-            <dd class="mt-1">${escape(version.mode || "live")}</dd>
+        <section class="space-y-2">
+          <h4 class="text-sm font-semibold text-gray-200">NIP-71 event metadata</h4>
+          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+            ${eventMetadataRows}
+          </dl>
+        </section>
+
+        <section class="space-y-2">
+          <h4 class="text-sm font-semibold text-gray-200">Note pointers</h4>
+          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+            <div>
+              <dt class="font-semibold text-gray-200">Mode</dt>
+              <dd class="mt-1">${escape(version.mode || "live")}</dd>
+            </div>
+            <div>
+              <dt class="font-semibold text-gray-200">d tag</dt>
+              <dd class="mt-1">
+                ${
+                  dTagValue
+                    ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5">${escape(
+                        dTagValue
+                      )}</code>`
+                    : '<span class="text-gray-500">Not provided</span>'
+                }
+              </dd>
+            </div>
+            <div>
+              <dt class="font-semibold text-gray-200">videoRootId</dt>
+              <dd class="mt-1">
+                ${
+                  rootDisplay
+                    ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${escape(
+                        rootId
+                      )}">${rootDisplay}</code>`
+                    : '<span class="text-gray-500">Not provided</span>'
+                }
+              </dd>
+            </div>
+            <div>
+              <dt class="font-semibold text-gray-200">Event ID</dt>
+              <dd class="mt-1">
+                ${
+                  eventDisplay
+                    ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${escape(
+                        version.id || ""
+                      )}">${eventDisplay}</code>`
+                    : '<span class="text-gray-500">Unknown</span>'
+                }
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="space-y-4">
+          <h4 class="text-sm font-semibold text-gray-200">NIP-71 media metadata</h4>
+          <div class="space-y-4">
+            <div class="space-y-2">
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Media variants (imeta)</h5>
+              ${this.renderImetaVariants(nip71Metadata.imeta)}
+            </div>
+            <div class="space-y-2">
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Caption tracks</h5>
+              ${this.renderTextTracks(nip71Metadata.textTracks)}
+            </div>
+            <div class="space-y-2">
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Chapters</h5>
+              ${this.renderSegments(nip71Metadata.segments)}
+            </div>
+            <div class="space-y-2">
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Hashtags</h5>
+              ${this.renderHashtags(nip71Metadata.hashtags)}
+            </div>
+            <div class="space-y-2">
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Participants</h5>
+              ${this.renderParticipants(nip71Metadata.participants)}
+            </div>
+            <div class="space-y-2">
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">References</h5>
+              ${this.renderReferences(nip71Metadata.references)}
+            </div>
           </div>
-          <div>
-            <dt class="font-semibold text-gray-200">d tag</dt>
-            <dd class="mt-1">
-              ${
-                dTagValue
-                  ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5">${escape(
-                      dTagValue
-                    )}</code>`
-                  : '<span class="text-gray-500">Not provided</span>'
-              }
-            </dd>
-          </div>
-          <div>
-            <dt class="font-semibold text-gray-200">videoRootId</dt>
-            <dd class="mt-1">
-              ${
-                rootDisplay
-                  ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${escape(
-                      rootId
-                    )}">${rootDisplay}</code>`
-                  : '<span class="text-gray-500">Not provided</span>'
-              }
-            </dd>
-          </div>
-          <div>
-            <dt class="font-semibold text-gray-200">Event ID</dt>
-            <dd class="mt-1">
-              ${
-                eventDisplay
-                  ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${escape(
-                      version.id || ""
-                    )}">${eventDisplay}</code>`
-                  : '<span class="text-gray-500">Unknown</span>'
-              }
-            </dd>
-          </div>
-        </dl>
+        </section>
       </div>
     `;
   }
@@ -848,6 +999,534 @@ export class RevertModal {
       return;
     }
     this.close();
+  }
+
+  getEscapeFn() {
+    return (value) =>
+      this.escapeHTML ? this.escapeHTML(String(value ?? "")) : String(value ?? "");
+  }
+
+  renderPlaceholder(text = "Not provided") {
+    const escape = this.getEscapeFn();
+    return `<span class="text-gray-500">${escape(text)}</span>`;
+  }
+
+  renderListEmpty(text) {
+    const escape = this.getEscapeFn();
+    return `<p class="text-xs text-gray-500">${escape(text)}</p>`;
+  }
+
+  buildLinkMarkup(value, { breakAll = true } = {}) {
+    if (value == null) {
+      return "";
+    }
+
+    const escape = this.getEscapeFn();
+    const raw = typeof value === "string" ? value.trim() : String(value ?? "").trim();
+    if (!raw) {
+      return "";
+    }
+
+    const displayRaw = this.truncateMiddle
+      ? this.truncateMiddle(raw, 96)
+      : raw;
+    const safeDisplay = escape(displayRaw);
+    const safeValue = escape(raw);
+    const breakClass = breakAll ? " break-all" : " break-words";
+
+    if (/^https?:/i.test(raw)) {
+      return `<a href="${safeValue}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300${breakClass}">${safeDisplay}</a>`;
+    }
+
+    return `<code class="rounded bg-gray-800/70 px-1.5 py-0.5 text-[0.75rem] text-gray-200${breakClass}">${safeDisplay}</code>`;
+  }
+
+  formatDurationSeconds(seconds) {
+    if (!Number.isFinite(seconds)) {
+      return "";
+    }
+
+    const total = Math.max(0, Math.floor(seconds));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    }
+
+    return `${minutes}:${String(secs).padStart(2, "0")}`;
+  }
+
+  buildNip71DisplayMetadata(version) {
+    const raw =
+      version && typeof version === "object" && version.nip71 && typeof version.nip71 === "object"
+        ? version.nip71
+        : {};
+
+    const { normalizeNumber, toInputValue } = this.nip71Formatter || {};
+
+    const toString = (value) => {
+      if (value == null) {
+        return "";
+      }
+      if (typeof value === "string") {
+        return value.trim();
+      }
+      if (typeof value === "number" || typeof value === "boolean") {
+        const converted = toInputValue ? toInputValue(value) : `${value}`;
+        return typeof converted === "string" ? converted.trim() : "";
+      }
+      return "";
+    };
+
+    const parseNumeric = (value) => {
+      if (value == null) {
+        return null;
+      }
+      if (typeof value === "string" && value.includes(":")) {
+        return null;
+      }
+      if (normalizeNumber) {
+        const parsed = normalizeNumber(value);
+        if (typeof parsed === "number" && Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return null;
+        }
+        const numeric = Number(trimmed);
+        return Number.isFinite(numeric) ? numeric : null;
+      }
+      return null;
+    };
+
+    const parseTimestamp = (value) => {
+      const rawValue = toString(value);
+      if (!rawValue) {
+        return { raw: "", seconds: null };
+      }
+
+      if (/^\d+(?:\.\d+)?$/.test(rawValue)) {
+        const numeric = Number(rawValue);
+        if (Number.isFinite(numeric)) {
+          const normalized = numeric > 1e12 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+          return { raw: rawValue, seconds: normalized };
+        }
+      }
+
+      const parsed = Date.parse(rawValue);
+      if (!Number.isNaN(parsed)) {
+        return { raw: rawValue, seconds: Math.floor(parsed / 1000) };
+      }
+
+      return { raw: rawValue, seconds: null };
+    };
+
+    const collectStrings = (values) => {
+      if (!Array.isArray(values)) {
+        return [];
+      }
+      return values
+        .map((entry) => toString(entry))
+        .map((entry) => entry.trim())
+        .filter((entry) => Boolean(entry));
+    };
+
+    const collectObjects = (values, mapFn) => {
+      if (!Array.isArray(values)) {
+        return [];
+      }
+      return values
+        .map((entry) => (entry && typeof entry === "object" ? mapFn(entry) : null))
+        .filter((entry) => entry);
+    };
+
+    const kindValue = parseNumeric(raw.kind);
+    const publishedAt = parseTimestamp(
+      raw.publishedAt ?? raw.published_at ?? raw["published-at"]
+    );
+
+    const durationNumeric = parseNumeric(raw.duration);
+    const durationRaw = durationNumeric != null ? `${durationNumeric}` : toString(raw.duration);
+
+    const imeta = collectObjects(raw.imeta, (variant) => {
+      const mapped = {
+        m: toString(variant.m),
+        dim: toString(variant.dim),
+        url: toString(variant.url),
+        x: toString(variant.x),
+        image: collectStrings(variant.image),
+        fallback: collectStrings(variant.fallback),
+        service: collectStrings(variant.service),
+        autoGenerated: variant.autoGenerated === true,
+      };
+
+      const hasContent =
+        mapped.m ||
+        mapped.dim ||
+        mapped.url ||
+        mapped.x ||
+        mapped.image.length ||
+        mapped.fallback.length ||
+        mapped.service.length;
+
+      return hasContent ? mapped : null;
+    });
+
+    const textTracks = collectObjects(raw.textTracks, (track) => {
+      const mapped = {
+        url: toString(track.url),
+        type: toString(track.type),
+        language: toString(track.language),
+      };
+      return mapped.url || mapped.type || mapped.language ? mapped : null;
+    });
+
+    const segments = collectObjects(raw.segments, (segment) => {
+      const startNumeric = parseNumeric(segment.start);
+      const endNumeric = parseNumeric(segment.end);
+      const mapped = {
+        startSeconds: startNumeric != null ? Math.max(0, startNumeric) : null,
+        endSeconds: endNumeric != null ? Math.max(0, endNumeric) : null,
+        startRaw: toString(segment.start),
+        endRaw: toString(segment.end),
+        title: toString(segment.title),
+        thumbnail: toString(segment.thumbnail),
+      };
+      return mapped.startRaw || mapped.endRaw || mapped.title || mapped.thumbnail
+        ? mapped
+        : null;
+    });
+
+    const hashtags = collectStrings(raw.hashtags);
+    const participants = collectObjects(raw.participants, (participant) => {
+      const mapped = {
+        pubkey: toString(participant.pubkey),
+        relay: toString(participant.relay),
+      };
+      return mapped.pubkey || mapped.relay ? mapped : null;
+    });
+    const references = collectStrings(raw.references);
+
+    return {
+      kind: kindValue != null ? kindValue : toString(raw.kind),
+      summary: toString(raw.summary),
+      contentWarning:
+        toString(raw.contentWarning ?? raw["content-warning"] ?? raw.content_warning),
+      publishedAtSeconds: publishedAt.seconds,
+      publishedAtRaw: publishedAt.raw,
+      durationSeconds: durationNumeric != null ? Math.max(0, durationNumeric) : null,
+      durationRaw,
+      alt: toString(raw.alt),
+      imeta,
+      textTracks,
+      segments,
+      hashtags,
+      participants,
+      references,
+    };
+  }
+
+  renderImetaVariants(variants) {
+    if (!Array.isArray(variants) || variants.length === 0) {
+      return this.renderListEmpty("No media variants provided.");
+    }
+
+    const escape = this.getEscapeFn();
+
+    return `<ol class="space-y-3">${variants
+      .map((variant, index) => {
+        if (!variant) {
+          return "";
+        }
+
+        const badges = [];
+        if (variant.autoGenerated) {
+          badges.push(
+            '<span class="inline-flex items-center rounded-full border border-amber-600/70 bg-amber-900/30 px-2 py-0.5 text-[0.65rem] uppercase tracking-wide text-amber-200/90">Auto-generated</span>'
+          );
+        }
+
+        const variantNumber = `Variant ${index + 1}`;
+
+        const mimeHtml = variant.m
+          ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">${escape(
+              variant.m
+            )}</code>`
+          : this.renderPlaceholder();
+        const dimHtml = variant.dim
+          ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">${escape(
+              variant.dim
+            )}</code>`
+          : this.renderPlaceholder();
+        const urlHtml = variant.url
+          ? this.buildLinkMarkup(variant.url)
+          : this.renderPlaceholder("No URL");
+        const hashHtml = variant.x
+          ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">${escape(
+              variant.x
+            )}</code>`
+          : this.renderPlaceholder("Not provided");
+
+        const renderNestedList = (label, values, emptyLabel) => {
+          if (!Array.isArray(values) || values.length === 0) {
+            return `<div><p class="text-[0.7rem] uppercase tracking-wide text-gray-500">${escape(
+              label
+            )}</p>${this.renderListEmpty(emptyLabel)}</div>`;
+          }
+
+          const items = values
+            .map((entry) => this.buildLinkMarkup(entry))
+            .filter(Boolean)
+            .map((markup) => `<li>${markup}</li>`);
+
+          if (!items.length) {
+            return `<div><p class="text-[0.7rem] uppercase tracking-wide text-gray-500">${escape(
+              label
+            )}</p>${this.renderListEmpty(emptyLabel)}</div>`;
+          }
+
+          return `
+            <div>
+              <p class="text-[0.7rem] uppercase tracking-wide text-gray-500">${escape(
+                label
+              )}</p>
+              <ul class="mt-1 space-y-1 text-xs text-gray-200">${items.join("")}</ul>
+            </div>
+          `;
+        };
+
+        const nestedSections = [
+          renderNestedList("Images", variant.image, "No image URLs."),
+          renderNestedList("Fallbacks", variant.fallback, "No fallback URLs."),
+          renderNestedList("Services", variant.service, "No service hints."),
+        ].join("");
+
+        return `
+          <li class="rounded-md border border-gray-800/70 bg-black/30 p-3 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
+              <span class="font-semibold text-gray-200">${escape(variantNumber)}</span>
+              ${badges.length ? `<div class="flex flex-wrap gap-2">${badges.join("")}</div>` : ""}
+            </div>
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+              <div>
+                <dt class="font-semibold text-gray-200">MIME type</dt>
+                <dd class="mt-1">${mimeHtml}</dd>
+              </div>
+              <div>
+                <dt class="font-semibold text-gray-200">Dimensions</dt>
+                <dd class="mt-1">${dimHtml}</dd>
+              </div>
+              <div class="sm:col-span-2">
+                <dt class="font-semibold text-gray-200">URL</dt>
+                <dd class="mt-1">${urlHtml}</dd>
+              </div>
+              <div class="sm:col-span-2">
+                <dt class="font-semibold text-gray-200">Content hash</dt>
+                <dd class="mt-1">${hashHtml}</dd>
+              </div>
+            </dl>
+            <div class="grid gap-3 sm:grid-cols-3 text-xs text-gray-300">
+              ${nestedSections}
+            </div>
+          </li>
+        `;
+      })
+      .join("")}</ol>`;
+  }
+
+  renderTextTracks(tracks) {
+    if (!Array.isArray(tracks) || tracks.length === 0) {
+      return this.renderListEmpty("No caption tracks.");
+    }
+
+    const escape = this.getEscapeFn();
+
+    return `<ol class="space-y-3">${tracks
+      .map((track, index) => {
+        const headerLabel = `Track ${index + 1}`;
+        const urlHtml = track.url
+          ? this.buildLinkMarkup(track.url)
+          : this.renderPlaceholder("No URL");
+        const typeHtml = track.type
+          ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">${escape(
+              track.type
+            )}</code>`
+          : this.renderPlaceholder();
+        const languageHtml = track.language
+          ? `<span class="inline-flex items-center rounded-full border border-gray-700 bg-gray-800/70 px-2 py-0.5 text-[0.7rem] uppercase tracking-wide text-gray-200">${escape(
+              track.language
+            )}</span>`
+          : this.renderPlaceholder();
+
+        return `
+          <li class="rounded-md border border-gray-800/70 bg-black/30 p-3 space-y-3">
+            <div class="flex items-center justify-between text-xs text-gray-400">
+              <span class="font-semibold text-gray-200">${escape(headerLabel)}</span>
+              ${track.language ? languageHtml : ""}
+            </div>
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+              <div class="sm:col-span-2">
+                <dt class="font-semibold text-gray-200">URL</dt>
+                <dd class="mt-1">${urlHtml}</dd>
+              </div>
+              <div>
+                <dt class="font-semibold text-gray-200">Type</dt>
+                <dd class="mt-1">${typeHtml}</dd>
+              </div>
+              <div>
+                <dt class="font-semibold text-gray-200">Language</dt>
+                <dd class="mt-1">${track.language ? languageHtml : this.renderPlaceholder()}</dd>
+              </div>
+            </dl>
+          </li>
+        `;
+      })
+      .join("")}</ol>`;
+  }
+
+  renderSegments(segments) {
+    if (!Array.isArray(segments) || segments.length === 0) {
+      return this.renderListEmpty("No chapter segments.");
+    }
+
+    const escape = this.getEscapeFn();
+
+    const formatTime = (seconds, raw) => {
+      if (Number.isFinite(seconds)) {
+        const display = this.formatDurationSeconds(seconds);
+        const suffix = seconds === 1 ? "second" : "seconds";
+        return `<span class="text-gray-200">${escape(display)}</span> <span class="text-gray-500">(${escape(
+          `${seconds} ${suffix}`
+        )})</span>`;
+      }
+      if (raw) {
+        return `<span class="text-gray-200">${escape(raw)}</span>`;
+      }
+      return this.renderPlaceholder();
+    };
+
+    return `<ol class="space-y-3">${segments
+      .map((segment, index) => {
+        const headerLabel = `Chapter ${index + 1}`;
+        const startHtml = formatTime(segment.startSeconds, segment.startRaw);
+        const endHtml = formatTime(segment.endSeconds, segment.endRaw);
+        const titleHtml = segment.title
+          ? `<p class="whitespace-pre-wrap text-gray-200">${escape(segment.title)}</p>`
+          : this.renderPlaceholder("No title");
+        const thumbnailHtml = segment.thumbnail
+          ? this.buildLinkMarkup(segment.thumbnail)
+          : this.renderPlaceholder("No thumbnail");
+
+        return `
+          <li class="rounded-md border border-gray-800/70 bg-black/30 p-3 space-y-3">
+            <div class="text-xs font-semibold text-gray-200">${escape(headerLabel)}</div>
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+              <div>
+                <dt class="font-semibold text-gray-200">Start</dt>
+                <dd class="mt-1">${startHtml}</dd>
+              </div>
+              <div>
+                <dt class="font-semibold text-gray-200">End</dt>
+                <dd class="mt-1">${endHtml}</dd>
+              </div>
+              <div class="sm:col-span-2">
+                <dt class="font-semibold text-gray-200">Title</dt>
+                <dd class="mt-1">${titleHtml}</dd>
+              </div>
+              <div class="sm:col-span-2">
+                <dt class="font-semibold text-gray-200">Thumbnail</dt>
+                <dd class="mt-1">${thumbnailHtml}</dd>
+              </div>
+            </dl>
+          </li>
+        `;
+      })
+      .join("")}</ol>`;
+  }
+
+  renderHashtags(hashtags) {
+    if (!Array.isArray(hashtags) || hashtags.length === 0) {
+      return this.renderListEmpty("No hashtags provided.");
+    }
+
+    const escape = this.getEscapeFn();
+
+    const chips = hashtags.map((tag) => {
+      const label = tag.startsWith("#") ? tag : `#${tag}`;
+      return `<span class="inline-flex items-center rounded-full border border-gray-700 bg-gray-800/70 px-2 py-0.5 text-xs text-gray-200">${escape(
+        label
+      )}</span>`;
+    });
+
+    return `<div class="flex flex-wrap gap-2">${chips.join("")}</div>`;
+  }
+
+  renderParticipants(participants) {
+    if (!Array.isArray(participants) || participants.length === 0) {
+      return this.renderListEmpty("No participants listed.");
+    }
+
+    const escape = this.getEscapeFn();
+
+    return `<ol class="space-y-3">${participants
+      .map((participant, index) => {
+        const label = `Participant ${index + 1}`;
+        const displayPubkey = participant.pubkey
+          ? this.truncateMiddle
+            ? this.truncateMiddle(participant.pubkey, 48)
+            : participant.pubkey
+          : "";
+        const pubkeyHtml = participant.pubkey
+          ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100" title="${escape(
+              participant.pubkey
+            )}">${escape(displayPubkey)}</code>`
+          : this.renderPlaceholder("No pubkey");
+        const relayHtml = participant.relay
+          ? this.buildLinkMarkup(participant.relay, { breakAll: false })
+          : this.renderPlaceholder("No relay specified");
+
+        return `
+          <li class="rounded-md border border-gray-800/70 bg-black/30 p-3 space-y-2">
+            <div class="text-xs font-semibold text-gray-200">${escape(label)}</div>
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+              <div class="sm:col-span-2">
+                <dt class="font-semibold text-gray-200">Pubkey</dt>
+                <dd class="mt-1">${pubkeyHtml}</dd>
+              </div>
+              <div class="sm:col-span-2">
+                <dt class="font-semibold text-gray-200">Relay</dt>
+                <dd class="mt-1">${relayHtml}</dd>
+              </div>
+            </dl>
+          </li>
+        `;
+      })
+      .join("")}</ol>`;
+  }
+
+  renderReferences(references) {
+    if (!Array.isArray(references) || references.length === 0) {
+      return this.renderListEmpty("No external references.");
+    }
+
+    const items = references
+      .map((entry) => this.buildLinkMarkup(entry))
+      .filter(Boolean)
+      .map((markup) => `<li>${markup}</li>`);
+
+    if (!items.length) {
+      return this.renderListEmpty("No external references.");
+    }
+
+    return `<ul class="space-y-1 text-xs text-gray-200">${items.join("")}</ul>`;
   }
 
   extractDTagValue(tags) {
