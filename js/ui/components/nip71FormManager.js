@@ -227,8 +227,12 @@ export class Nip71FormManager {
       this.setFieldValue(entry, "thumbnail", value.thumbnail);
     });
 
-    this.hydrateRepeater(key, "t", metadata.hashtags ?? metadata.t, (entry, value) => {
-      this.setFieldValue(entry, "value", value);
+    const sanitizedHashtags = this.sanitizeHashtags(
+      metadata.hashtags ?? metadata.t,
+      { dedupe: true }
+    );
+    this.hydrateRepeater(key, "t", sanitizedHashtags, (entry, value) => {
+      this.setFieldValue(entry, "value", this.renderHashtagValue(value));
     });
 
     this.hydrateRepeater(
@@ -337,10 +341,13 @@ export class Nip71FormManager {
       return hasContent ? segment : null;
     });
 
-    const hashtags = this.collectRepeaterValues(key, "t", (entry) => {
-      const value = this.getFieldValue(entry, "value");
-      return value || null;
-    });
+    const hashtags = this.sanitizeHashtags(
+      this.collectRepeaterValues(key, "t", (entry) => {
+        const value = this.getFieldValue(entry, "value");
+        return value || null;
+      }),
+      { dedupe: true }
+    );
 
     const participants = this.collectRepeaterValues(key, "p", (entry) => {
       const participant = {
@@ -400,6 +407,58 @@ export class Nip71FormManager {
     });
 
     return results;
+  }
+
+  sanitizeHashtags(values, { dedupe = false } = {}) {
+    if (!Array.isArray(values)) {
+      return [];
+    }
+
+    const results = [];
+    const seen = new Set();
+
+    values.forEach((value) => {
+      const sanitized = this.sanitizeHashtagValue(value);
+      if (!sanitized) {
+        return;
+      }
+      const dedupeKey = sanitized.toLowerCase();
+      if (dedupe) {
+        if (seen.has(dedupeKey)) {
+          return;
+        }
+        seen.add(dedupeKey);
+      }
+      results.push(sanitized);
+    });
+
+    return results;
+  }
+
+  sanitizeHashtagValue(value) {
+    if (typeof value === "number") {
+      value = Number.isFinite(value) ? `${value}` : "";
+    }
+    if (typeof value !== "string") {
+      value = `${value ?? ""}`;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    const withoutHash = trimmed.replace(/^#+/, "").trim();
+    if (!withoutHash) {
+      return "";
+    }
+
+    return withoutHash.toLowerCase();
+  }
+
+  renderHashtagValue(value) {
+    const sanitized = this.sanitizeHashtagValue(value);
+    return sanitized ? `#${sanitized}` : "";
   }
 
   collectNestedValues(entry, nestedKey) {
