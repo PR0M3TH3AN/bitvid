@@ -65,6 +65,11 @@ const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const FALLBACK_PROFILE = {
   name: "Unknown",
   picture: "assets/svg/default-profile.svg",
+  about: "",
+  website: "",
+  banner: "",
+  lud16: "",
+  lud06: "",
 };
 
 export default class AuthService {
@@ -556,8 +561,15 @@ export default class AuthService {
       try {
         const data = JSON.parse(events[0].content);
         profile = {
-          name: data.name || data.display_name || FALLBACK_PROFILE.name,
+          name: data.display_name || data.name || FALLBACK_PROFILE.name,
           picture: data.picture || FALLBACK_PROFILE.picture,
+          about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
+          website:
+            typeof data.website === "string" ? data.website : FALLBACK_PROFILE.website,
+          banner:
+            typeof data.banner === "string" ? data.banner : FALLBACK_PROFILE.banner,
+          lud16: typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
+          lud06: typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
         };
       } catch (error) {
         this.log("[AuthService] Failed to parse profile metadata", error);
@@ -618,8 +630,15 @@ export default class AuthService {
       if (newest?.content) {
         const data = JSON.parse(newest.content);
         const profile = {
-          name: data.name || data.display_name || FALLBACK_PROFILE.name,
+          name: data.display_name || data.name || FALLBACK_PROFILE.name,
           picture: data.picture || FALLBACK_PROFILE.picture,
+          about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
+          website:
+            typeof data.website === "string" ? data.website : FALLBACK_PROFILE.website,
+          banner:
+            typeof data.banner === "string" ? data.banner : FALLBACK_PROFILE.banner,
+          lud16: typeof data.lud16 === "string" ? data.lud16 : FALLBACK_PROFILE.lud16,
+          lud06: typeof data.lud06 === "string" ? data.lud06 : FALLBACK_PROFILE.lud06,
         };
         this.setProfileCacheEntry(normalized, profile, {
           persist: true,

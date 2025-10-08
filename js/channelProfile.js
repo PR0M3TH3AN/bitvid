@@ -120,6 +120,13 @@ let pendingZapRetry = null;
 let zapInFlight = false;
 let zapControlsOpen = false;
 let currentVideoLoadToken = 0;
+let currentProfileLoadToken = 0;
+
+const FALLBACK_CHANNEL_BANNER = "assets/jpg/default-banner.jpg";
+const FALLBACK_CHANNEL_AVATAR = "assets/svg/default-profile.svg";
+const PROFILE_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+const channelProfileMetadataCache = new Map();
 
 function getChannelZapButton() {
   if (cachedZapButton && !document.body.contains(cachedZapButton)) {
@@ -1366,13 +1373,21 @@ export async function initChannelProfileView() {
   setupZapButton();
   syncChannelShareButtonState();
 
-  // 4) Load user’s profile (banner, avatar, etc.)
-  await loadUserProfile(hexPub);
-  await updateChannelMenuState();
-  syncChannelShareButtonState();
+  // 4) Load user’s profile (banner, avatar, etc.) and channel videos
+  const profilePromise = loadUserProfile(hexPub)
+    .then(() => updateChannelMenuState())
+    .catch((error) => {
+      console.error("Failed to load channel profile:", error);
+    })
+    .finally(() => {
+      syncChannelShareButtonState();
+    });
 
-  // 5) Load user’s videos (filtered + rendered like the home feed)
-  await loadUserVideos(hexPub);
+  const videosPromise = loadUserVideos(hexPub).catch((error) => {
+    console.error("Failed to load channel videos:", error);
+  });
+
+  await Promise.allSettled([profilePromise, videosPromise]);
 }
 
 function setupZapButton() {
@@ -1476,17 +1491,172 @@ function renderSubscribeButton(channelHex) {
   }
 }
 
-/**
- * Fetches and displays the user's metadata (kind=0).
- */
-async function loadUserProfile(pubkey) {
+function trimProfileString(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim();
+}
+
+function normalizeChannelProfileMetadata(raw = {}) {
+  const name =
+    trimProfileString(raw.display_name) ||
+    trimProfileString(raw.name) ||
+    "Unknown User";
+  const picture =
+    trimProfileString(raw.picture) || trimProfileString(raw.image) || FALLBACK_CHANNEL_AVATAR;
+  const about = trimProfileString(raw.about || raw.bio);
+  const website = trimProfileString(raw.website || raw.url);
+  const banner =
+    trimProfileString(raw.banner || raw.header || raw.background) || "";
+  const lud16 = trimProfileString(raw.lud16);
+  const lud06 = trimProfileString(raw.lud06);
+  const lightningAddress =
+    trimProfileString(raw.lightningAddress) || lud16 || lud06 || "";
+
+  return {
+    name,
+    picture,
+    about,
+    website,
+    banner,
+    lud16,
+    lud06,
+    lightningAddress,
+  };
+}
+
+function rememberChannelProfile(pubkey, { profile = {}, event = null } = {}) {
+  if (typeof pubkey !== "string" || !pubkey) {
+    return;
+  }
+
+  channelProfileMetadataCache.set(pubkey, {
+    timestamp: Date.now(),
+    profile: normalizeChannelProfileMetadata(profile),
+    event: event ? { ...event } : null,
+  });
+}
+
+function getCachedChannelProfile(pubkey) {
+  const entry = channelProfileMetadataCache.get(pubkey);
+  if (!entry) {
+    return null;
+  }
+
+  if (
+    typeof entry.timestamp !== "number" ||
+    Date.now() - entry.timestamp > PROFILE_EVENT_CACHE_TTL_MS
+  ) {
+    channelProfileMetadataCache.delete(pubkey);
+    return null;
+  }
+
+  return {
+    profile: entry.profile,
+    event: entry.event ? { ...entry.event } : null,
+  };
+}
+
+function applyChannelProfileMetadata({
+  profile = {},
+  event = null,
+  pubkey = "",
+  npub = "",
+  loadToken = null,
+} = {}) {
+  if (loadToken !== null && loadToken !== currentProfileLoadToken) {
+    return;
+  }
+
+  const normalized = normalizeChannelProfileMetadata(profile);
+
+  const bannerEl = document.getElementById("channelBanner");
+  if (bannerEl) {
+    bannerEl.src = normalized.banner || FALLBACK_CHANNEL_BANNER;
+  }
+
+  const avatarEl = document.getElementById("channelAvatar");
+  if (avatarEl) {
+    avatarEl.src = normalized.picture || FALLBACK_CHANNEL_AVATAR;
+  }
+
+  const nameEl = document.getElementById("channelName");
+  if (nameEl) {
+    nameEl.textContent = normalized.name || "Unknown User";
+  }
+
+  const channelNpubEl = document.getElementById("channelNpub");
+  if (channelNpubEl) {
+    if (npub) {
+      channelNpubEl.textContent = npub;
+    } else if (pubkey) {
+      try {
+        channelNpubEl.textContent = window.NostrTools.nip19.npubEncode(pubkey);
+      } catch (error) {
+        channelNpubEl.textContent = "";
+      }
+    }
+  }
+
+  const aboutEl = document.getElementById("channelAbout");
+  if (aboutEl) {
+    aboutEl.textContent = normalized.about || "";
+  }
+
+  const websiteEl = document.getElementById("channelWebsite");
+  if (websiteEl) {
+    if (normalized.website) {
+      websiteEl.href = normalized.website;
+      websiteEl.textContent = normalized.website;
+    } else {
+      websiteEl.textContent = "";
+      websiteEl.removeAttribute("href");
+    }
+  }
+
+  const previousLightning = currentChannelLightningAddress;
+  const lightningAddress = normalized.lightningAddress || "";
+  currentChannelLightningAddress = lightningAddress;
+
+  const lnEl = document.getElementById("channelLightning");
+  if (lnEl) {
+    lnEl.textContent =
+      lightningAddress || "No lightning address found.";
+  }
+
+  if (event) {
+    currentChannelProfileEvent = { ...event };
+  } else if (loadToken === currentProfileLoadToken && !event) {
+    currentChannelProfileEvent = null;
+  }
+
+  if (lightningAddress) {
+    if (lightningAddress !== previousLightning) {
+      fetchLightningMetadata(lightningAddress)
+        .then(() => updateZapSplitSummary())
+        .catch(() => {});
+    }
+  } else {
+    updateZapSplitSummary();
+  }
+
+  setChannelZapVisibility(Boolean(lightningAddress));
+}
+
+async function fetchChannelProfileFromRelays(pubkey) {
+  if (!nostrClient?.pool || !Array.isArray(nostrClient?.relays)) {
+    return { event: null, profile: {} };
+  }
+
   try {
     const events = await nostrClient.pool.list(nostrClient.relays, [
       { kinds: [0], authors: [pubkey], limit: 1 },
     ]);
 
     let newestEvent = null;
-    for (const event of events) {
+    for (const event of Array.isArray(events) ? events : []) {
       if (!event || !event.content) {
         continue;
       }
@@ -1496,87 +1666,108 @@ async function loadUserProfile(pubkey) {
     }
 
     if (newestEvent?.content) {
-      currentChannelProfileEvent = { ...newestEvent };
-      const meta = JSON.parse(newestEvent.content);
+      try {
+        const meta = JSON.parse(newestEvent.content);
+        return { event: newestEvent, profile: meta };
+      } catch (error) {
+        console.warn("Failed to parse channel metadata payload:", error);
+        return { event: newestEvent, profile: {} };
+      }
+    }
 
-      // Banner
-      const bannerEl = document.getElementById("channelBanner");
-      if (bannerEl) {
-        bannerEl.src = meta.banner || "assets/jpg/default-banner.jpg";
-      }
+    return { event: newestEvent, profile: {} };
+  } catch (error) {
+    throw error;
+  }
+}
 
-      // Avatar
-      const avatarEl = document.getElementById("channelAvatar");
-      if (avatarEl) {
-        avatarEl.src = meta.picture || "assets/svg/default-profile.svg";
-      }
+/**
+ * Fetches and displays the user's metadata (kind=0).
+ */
+async function loadUserProfile(pubkey) {
+  const app = getApp();
+  const loadToken = ++currentProfileLoadToken;
 
-      // Channel Name
-      const nameEl = document.getElementById("channelName");
-      if (nameEl) {
-        nameEl.textContent = meta.display_name || meta.name || "Unknown User";
-      }
+  setChannelZapVisibility(false);
 
-      // Channel npub
-      const channelNpubEl = document.getElementById("channelNpub");
-      if (channelNpubEl) {
-        const userNpub = window.NostrTools.nip19.npubEncode(pubkey);
-        channelNpubEl.textContent = userNpub;
-      }
-
-      // About/Description
-      const aboutEl = document.getElementById("channelAbout");
-      if (aboutEl) {
-        aboutEl.textContent = meta.about || "";
-      }
-
-      // Website
-      const websiteEl = document.getElementById("channelWebsite");
-      if (websiteEl) {
-        if (meta.website) {
-          websiteEl.href = meta.website;
-          websiteEl.textContent = meta.website;
-        } else {
-          websiteEl.textContent = "";
-          websiteEl.removeAttribute("href");
-        }
-      }
-
-      // Lightning Address
-      const lnEl = document.getElementById("channelLightning");
-      const lightningAddress = (meta.lud16 || meta.lud06 || "").trim();
-      currentChannelLightningAddress = lightningAddress;
-      if (lnEl) {
-        lnEl.textContent =
-          lightningAddress || "No lightning address found.";
-      }
-      if (lightningAddress) {
-        fetchLightningMetadata(lightningAddress)
-          .then(() => updateZapSplitSummary())
-          .catch(() => {});
-      } else {
-        updateZapSplitSummary();
-      }
-      setChannelZapVisibility(!!lightningAddress);
+  const cachedEntry = getCachedChannelProfile(pubkey);
+  if (cachedEntry) {
+    applyChannelProfileMetadata({
+      profile: cachedEntry.profile,
+      event: cachedEntry.event,
+      pubkey,
+      npub: currentChannelNpub,
+      loadToken,
+    });
+  } else {
+    const stateEntry =
+      typeof app?.getProfileCacheEntry === "function"
+        ? app.getProfileCacheEntry(pubkey)
+        : null;
+    if (stateEntry?.profile) {
+      applyChannelProfileMetadata({
+        profile: stateEntry.profile,
+        event: null,
+        pubkey,
+        npub: currentChannelNpub,
+        loadToken,
+      });
     } else {
-      console.warn("No metadata found for this user.");
-      setChannelZapVisibility(false);
+      applyChannelProfileMetadata({
+        profile: {},
+        event: null,
+        pubkey,
+        npub: currentChannelNpub,
+        loadToken,
+      });
+    }
+  }
+
+  try {
+    const result = await fetchChannelProfileFromRelays(pubkey);
+    if (loadToken !== currentProfileLoadToken) {
+      return;
+    }
+
+    rememberChannelProfile(pubkey, result);
+
+    if (typeof app?.setProfileCacheEntry === "function") {
+      try {
+        app.setProfileCacheEntry(pubkey, {
+          ...result.profile,
+          lightningAddress:
+            result.profile?.lightningAddress ||
+            result.profile?.lud16 ||
+            result.profile?.lud06 ||
+            "",
+        });
+      } catch (error) {
+        console.warn(
+          "Failed to persist channel profile metadata to cache:",
+          error
+        );
+      }
+    }
+
+    applyChannelProfileMetadata({
+      profile: result.profile,
+      event: result.event,
+      pubkey,
+      npub: currentChannelNpub,
+      loadToken,
+    });
+  } catch (error) {
+    if (loadToken === currentProfileLoadToken) {
+      console.error("Failed to fetch user profile data:", error);
       const lnEl = document.getElementById("channelLightning");
-      if (lnEl) {
+      if (lnEl && !currentChannelLightningAddress) {
         lnEl.textContent = "No lightning address found.";
       }
-      currentChannelLightningAddress = "";
-      currentChannelProfileEvent = null;
+      if (!currentChannelLightningAddress) {
+        updateZapSplitSummary();
+        setChannelZapVisibility(false);
+      }
     }
-  } catch (err) {
-    console.error("Failed to fetch user profile data:", err);
-    setChannelZapVisibility(false);
-    const lnEl = document.getElementById("channelLightning");
-    if (lnEl) {
-      lnEl.textContent = "No lightning address found.";
-    }
-    currentChannelLightningAddress = "";
-    currentChannelProfileEvent = null;
   }
 }
 
