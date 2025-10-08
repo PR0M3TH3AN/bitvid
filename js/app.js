@@ -1187,35 +1187,39 @@ class Application {
   /**
    * Show the modal and set the "Please stand by" poster on the video.
    */
-  showModalWithPoster(video = this.currentVideo) {
+  async showModalWithPoster(video = this.currentVideo) {
     if (!this.videoModal) {
-      return Promise.resolve(null);
+      return null;
     }
 
     const targetVideo = video || this.currentVideo;
 
-    return this.ensureVideoModalReady({ ensureVideoElement: true })
-      .then(({ root }) => {
-        if (!this.videoModal) {
-          return root || null;
-        }
-        this.videoModal.open(targetVideo);
-        this.applyModalLoadingPoster();
-        return (
-          root ||
-          (typeof this.videoModal.getRoot === "function"
-            ? this.videoModal.getRoot()
-            : null)
-        );
-      })
-      .catch((error) => {
-        console.error(
-          "[Application] Failed to open the video modal before playback:",
-          error
-        );
-        this.showError("Could not open the video player. Please try again.");
-        return null;
+    try {
+      const { root } = await this.ensureVideoModalReady({
+        ensureVideoElement: true,
       });
+
+      if (!this.videoModal) {
+        return root || null;
+      }
+
+      this.videoModal.open(targetVideo);
+      this.applyModalLoadingPoster();
+
+      return (
+        root ||
+        (typeof this.videoModal.getRoot === "function"
+          ? this.videoModal.getRoot()
+          : null)
+      );
+    } catch (error) {
+      console.error(
+        "[Application] Failed to open the video modal before playback:",
+        error
+      );
+      this.showError("Could not open the video player. Please try again.");
+      return null;
+    }
   }
 
   applyModalLoadingPoster() {
@@ -7400,7 +7404,7 @@ class Application {
       legacyInfoHash ||
       "";
 
-    this.showModalWithPoster(this.currentVideo);
+    await this.showModalWithPoster(this.currentVideo);
 
     const playbackPromise = this.playVideoWithFallback({
       url: trimmedUrl,
@@ -7529,7 +7533,7 @@ class Application {
       });
     }
 
-    this.showModalWithPoster(this.currentVideo);
+    await this.showModalWithPoster(this.currentVideo);
 
     const urlObj = new URL(window.location.href);
     urlObj.searchParams.delete("v");
