@@ -1,3 +1,7 @@
+// NOTE: Keep the Upload, Edit, and Revert modals in lockstep when updating NIP-71 form features.
+
+import { Nip71FormManager } from "./nip71FormManager.js";
+
 export class UploadModal {
   constructor({
     authService,
@@ -69,10 +73,7 @@ export class UploadModal {
     this.r2ZoneIdInput = null;
     this.r2BaseDomainInput = null;
 
-    this.nip71 = {
-      custom: null,
-      cloudflare: null,
-    };
+    this.nip71FormManager = new Nip71FormManager();
   }
 
   addEventListener(type, listener, options) {
@@ -210,244 +211,8 @@ export class UploadModal {
     this.r2ZoneIdInput = context.querySelector("#r2ZoneId") || null;
     this.r2BaseDomainInput = context.querySelector("#r2BaseDomain") || null;
 
-    this.nip71.custom = this.cacheNip71Section(this.customSection);
-    this.nip71.cloudflare = this.cacheNip71Section(this.cloudflareSection);
-  }
-
-  cacheNip71Section(section) {
-    if (!section) {
-      return null;
-    }
-
-    const repeaters = {};
-    ["imeta", "text-track", "segment", "t", "p", "r"].forEach((key) => {
-      repeaters[key] = this.cacheNip71Repeater(section, key);
-    });
-
-    return {
-      root: section,
-      kindInputs: Array.from(section.querySelectorAll('[data-nip71-input="kind"]')),
-      publishedAtInput:
-        section.querySelector('[data-nip71-input="published_at"]') || null,
-      altInput: section.querySelector('[data-nip71-input="alt"]') || null,
-      durationInput:
-        section.querySelector('[data-nip71-input="duration"]') || null,
-      contentWarningInput:
-        section.querySelector('[data-nip71-input="content-warning"]') || null,
-      summaryInput: section.querySelector('[data-nip71-input="summary"]') || null,
-      repeaters,
-      handlers: {},
-    };
-  }
-
-  cacheNip71Repeater(section, key) {
-    if (!section || !key) {
-      return null;
-    }
-
-    const repeaterRoot = section.querySelector(`[data-nip71-repeater="${key}"]`);
-    if (!repeaterRoot) {
-      return null;
-    }
-
-    return {
-      root: repeaterRoot,
-      list: repeaterRoot.querySelector(`[data-nip71-list="${key}"]`) || null,
-      template:
-        repeaterRoot.querySelector(`[data-nip71-template="${key}"]`) || null,
-    };
-  }
-
-  getNip71Store(mode) {
-    if (!mode || !this.nip71) {
-      return null;
-    }
-    return this.nip71[mode] || null;
-  }
-
-  bindNip71Events(mode) {
-    const store = this.getNip71Store(mode);
-    if (!store?.root) {
-      return;
-    }
-
-    if (store.handlers?.click) {
-      try {
-        store.root.removeEventListener("click", store.handlers.click);
-      } catch (error) {
-        console.warn("[UploadModal] Failed to detach previous NIP-71 handler", error);
-      }
-    }
-
-    const handleClick = (event) => {
-      const addTrigger = event.target?.closest?.("[data-nip71-add]");
-      if (addTrigger && store.root.contains(addTrigger)) {
-        event.preventDefault();
-        this.handleNip71Add(mode, addTrigger.dataset?.nip71Add || "");
-        return;
-      }
-
-      const nestedAddTrigger = event.target?.closest?.("[data-nip71-nested-add]");
-      if (nestedAddTrigger && store.root.contains(nestedAddTrigger)) {
-        event.preventDefault();
-        this.handleNip71NestedAdd(nestedAddTrigger);
-        return;
-      }
-
-      const removeTrigger = event.target?.closest?.("[data-nip71-remove]");
-      if (removeTrigger && store.root.contains(removeTrigger)) {
-        event.preventDefault();
-        this.handleNip71Remove(mode, removeTrigger);
-      }
-    };
-
-    store.root.addEventListener("click", handleClick);
-    store.handlers = { ...(store.handlers || {}), click: handleClick };
-  }
-
-  handleNip71Add(mode, key) {
-    if (!key) {
-      return;
-    }
-    const entry = this.addNip71RepeaterEntry(mode, key);
-    if (entry) {
-      this.focusFirstField(entry, "[data-nip71-field], [data-nip71-nested-field]");
-    }
-  }
-
-  handleNip71NestedAdd(trigger) {
-    if (!trigger) {
-      return;
-    }
-    const nestedKey = trigger.dataset?.nip71NestedAdd || "";
-    if (!nestedKey) {
-      return;
-    }
-    const container = trigger.closest(`[data-nip71-nested="${nestedKey}"]`);
-    if (!container) {
-      return;
-    }
-    const entry = this.addNip71NestedEntry(container, nestedKey);
-    if (entry) {
-      this.focusFirstField(
-        entry,
-        `[data-nip71-nested-field="${nestedKey}"]`
-      );
-    }
-  }
-
-  handleNip71Remove(mode, trigger) {
-    if (!trigger) {
-      return;
-    }
-    const targetKey = trigger.dataset?.nip71Remove || "";
-    if (!targetKey) {
-      return;
-    }
-
-    if (targetKey === "nested") {
-      const nestedEntry = trigger.closest("[data-nip71-nested-entry]");
-      this.removeNip71NestedEntry(nestedEntry);
-      return;
-    }
-
-    this.removeNip71RepeaterEntry(mode, targetKey, trigger);
-  }
-
-  addNip71RepeaterEntry(mode, key) {
-    const store = this.getNip71Store(mode);
-    if (!store?.repeaters || !key) {
-      return null;
-    }
-
-    const repeater = store.repeaters[key];
-    if (!repeater?.list || !repeater?.template) {
-      return null;
-    }
-
-    const templateNode = repeater.template;
-    const fragment = templateNode.content
-      ? templateNode.content.cloneNode(true)
-      : templateNode.cloneNode(true);
-
-    const entry =
-      fragment.querySelector?.(`[data-nip71-entry="${key}"]`) ||
-      fragment.firstElementChild ||
-      null;
-
-    repeater.list.appendChild(fragment);
-
-    return entry;
-  }
-
-  removeNip71RepeaterEntry(mode, key, trigger) {
-    if (!key || !trigger) {
-      return;
-    }
-
-    const store = this.getNip71Store(mode);
-    if (!store?.repeaters?.[key]?.list) {
-      return;
-    }
-
-    const entry = trigger.closest(`[data-nip71-entry="${key}"]`);
-    if (!entry) {
-      return;
-    }
-
-    if (entry.dataset?.nip71Primary === "true") {
-      this.resetNip71Entry(entry);
-      return;
-    }
-
-    entry.remove();
-  }
-
-  addNip71NestedEntry(container, nestedKey) {
-    if (!container || !nestedKey) {
-      return null;
-    }
-
-    const list = container.querySelector(
-      `[data-nip71-nested-list="${nestedKey}"]`
-    );
-    const template = container.querySelector(
-      `[data-nip71-nested-template="${nestedKey}"]`
-    );
-
-    if (!list || !template) {
-      return null;
-    }
-
-    const fragment = template.content
-      ? template.content.cloneNode(true)
-      : template.cloneNode(true);
-
-    const entry =
-      fragment.querySelector?.(`[data-nip71-nested-entry="${nestedKey}"]`) ||
-      fragment.firstElementChild ||
-      null;
-
-    list.appendChild(fragment);
-
-    return entry;
-  }
-
-  removeNip71NestedEntry(entry) {
-    if (!entry) {
-      return;
-    }
-    entry.remove();
-  }
-
-  focusFirstField(container, selector) {
-    if (!container) {
-      return;
-    }
-    const target = container.querySelector(selector);
-    if (target?.focus) {
-      target.focus();
-    }
+    this.nip71FormManager.registerSection("custom", this.customSection);
+    this.nip71FormManager.registerSection("cloudflare", this.cloudflareSection);
   }
 
   buildAutoGeneratedImetaVariant(file) {
@@ -468,270 +233,6 @@ export class UploadModal {
       service: [],
       autoGenerated: true,
     };
-  }
-
-  collectNip71Metadata(mode) {
-    const store = this.getNip71Store(mode);
-    if (!store) {
-      return null;
-    }
-
-    const kindInput = Array.isArray(store.kindInputs)
-      ? store.kindInputs.find((input) => input?.checked)
-      : null;
-    let kind = null;
-    if (kindInput?.value != null) {
-      const parsed = Number(kindInput.value);
-      kind = Number.isFinite(parsed) ? parsed : String(kindInput.value).trim();
-    }
-
-    const summary = this.getTrimmedValue(store.summaryInput);
-    const publishedAt = this.getTrimmedValue(store.publishedAtInput);
-    const alt = this.getTrimmedValue(store.altInput);
-
-    let duration = null;
-    if (store.durationInput) {
-      const value = store.durationInput.value;
-      if (value !== "" && value != null) {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) {
-          duration = parsed;
-        }
-      }
-    }
-
-    const contentWarning = this.getTrimmedValue(store.contentWarningInput);
-
-    const imeta = this.collectNip71RepeaterValues(mode, "imeta", (entry) => {
-      const variant = {
-        m: this.getNip71FieldValue(entry, "m"),
-        dim: this.getNip71FieldValue(entry, "dim"),
-        url: this.getNip71FieldValue(entry, "url"),
-        x: this.getNip71FieldValue(entry, "x"),
-        image: this.collectNip71NestedValues(entry, "image"),
-        fallback: this.collectNip71NestedValues(entry, "fallback"),
-        service: this.collectNip71NestedValues(entry, "service"),
-      };
-
-      const hasContent =
-        variant.m ||
-        variant.dim ||
-        variant.url ||
-        variant.x ||
-        variant.image.length > 0 ||
-        variant.fallback.length > 0 ||
-        variant.service.length > 0;
-
-      return hasContent ? variant : null;
-    });
-
-    const textTracks = this.collectNip71RepeaterValues(
-      mode,
-      "text-track",
-      (entry) => {
-        const track = {
-          url: this.getNip71FieldValue(entry, "url"),
-          type: this.getNip71FieldValue(entry, "type"),
-          language: this.getNip71FieldValue(entry, "language"),
-        };
-
-        const hasContent = track.url || track.type || track.language;
-        return hasContent ? track : null;
-      }
-    );
-
-    const segments = this.collectNip71RepeaterValues(mode, "segment", (entry) => {
-      const segment = {
-        start: this.getNip71FieldValue(entry, "start"),
-        end: this.getNip71FieldValue(entry, "end"),
-        title: this.getNip71FieldValue(entry, "title"),
-        thumbnail: this.getNip71FieldValue(entry, "thumbnail"),
-      };
-
-      const hasContent =
-        segment.start || segment.end || segment.title || segment.thumbnail;
-      return hasContent ? segment : null;
-    });
-
-    const hashtags = this.collectNip71RepeaterValues(mode, "t", (entry) => {
-      const value = this.getNip71FieldValue(entry, "value");
-      return value || null;
-    });
-
-    const participants = this.collectNip71RepeaterValues(mode, "p", (entry) => {
-      const participant = {
-        pubkey: this.getNip71FieldValue(entry, "pubkey"),
-        relay: this.getNip71FieldValue(entry, "relay"),
-      };
-
-      const hasContent = participant.pubkey || participant.relay;
-      return hasContent ? participant : null;
-    });
-
-    const references = this.collectNip71RepeaterValues(mode, "r", (entry) => {
-      const url = this.getNip71FieldValue(entry, "url");
-      return url || null;
-    });
-
-    return {
-      kind,
-      summary,
-      publishedAt,
-      alt,
-      duration,
-      contentWarning,
-      imeta,
-      textTracks,
-      segments,
-      hashtags,
-      participants,
-      references,
-    };
-  }
-
-  collectNip71RepeaterValues(mode, key, mapFn) {
-    const store = this.getNip71Store(mode);
-    const repeater = store?.repeaters?.[key];
-    if (!repeater?.list) {
-      return [];
-    }
-
-    const entries = Array.from(
-      repeater.list.querySelectorAll(`[data-nip71-entry="${key}"]`)
-    );
-
-    const results = [];
-    entries.forEach((entry) => {
-      const value = typeof mapFn === "function" ? mapFn(entry) : null;
-      if (value == null) {
-        return;
-      }
-      if (typeof value === "string") {
-        if (value.trim()) {
-          results.push(value.trim());
-        }
-        return;
-      }
-      results.push(value);
-    });
-
-    return results;
-  }
-
-  collectNip71NestedValues(entry, nestedKey) {
-    if (!entry || !nestedKey) {
-      return [];
-    }
-
-    const container = entry.querySelector(`[data-nip71-nested="${nestedKey}"]`);
-    if (!container) {
-      return [];
-    }
-
-    const fields = Array.from(
-      container.querySelectorAll(`[data-nip71-nested-field="${nestedKey}"]`)
-    );
-
-    return fields
-      .map((field) => this.getTrimmedValue(field))
-      .filter((value) => Boolean(value));
-  }
-
-  getNip71FieldValue(entry, field) {
-    if (!entry || !field) {
-      return "";
-    }
-    const element = entry.querySelector(`[data-nip71-field="${field}"]`);
-    return this.getTrimmedValue(element);
-  }
-
-  getTrimmedValue(element) {
-    if (!element) {
-      return "";
-    }
-    const { value } = element;
-    if (typeof value === "number") {
-      return Number.isFinite(value) ? String(value).trim() : "";
-    }
-    if (typeof value === "string") {
-      return value.trim();
-    }
-    return String(value ?? "").trim();
-  }
-
-  resetNip71Metadata(mode) {
-    const store = this.getNip71Store(mode);
-    if (!store) {
-      return;
-    }
-
-    if (Array.isArray(store.kindInputs)) {
-      store.kindInputs.forEach((input) => {
-        if (!input) {
-          return;
-        }
-        input.checked = Boolean(input.defaultChecked);
-      });
-    }
-
-    if (store.summaryInput) {
-      store.summaryInput.value = "";
-    }
-    if (store.publishedAtInput) {
-      store.publishedAtInput.value = "";
-    }
-    if (store.altInput) {
-      store.altInput.value = "";
-    }
-    if (store.durationInput) {
-      store.durationInput.value = "";
-    }
-    if (store.contentWarningInput) {
-      store.contentWarningInput.value = "";
-    }
-
-    if (store.repeaters) {
-      Object.entries(store.repeaters).forEach(([key, repeater]) => {
-        if (!repeater?.list) {
-          return;
-        }
-        const entries = Array.from(
-          repeater.list.querySelectorAll(`[data-nip71-entry="${key}"]`)
-        );
-        entries.forEach((entry) => {
-          if (entry.dataset?.nip71Primary === "true") {
-            this.resetNip71Entry(entry);
-          } else {
-            entry.remove();
-          }
-        });
-      });
-    }
-  }
-
-  resetNip71Entry(entry) {
-    if (!entry) {
-      return;
-    }
-    const fields = entry.querySelectorAll("[data-nip71-field]");
-    fields.forEach((field) => {
-      if (field) {
-        field.value = "";
-      }
-    });
-
-    const nestedContainers = entry.querySelectorAll("[data-nip71-nested]");
-    nestedContainers.forEach((container) => {
-      if (!container?.dataset?.nip71Nested) {
-        return;
-      }
-      const list = container.querySelector(
-        `[data-nip71-nested-list="${container.dataset.nip71Nested}"]`
-      );
-      if (list) {
-        list.innerHTML = "";
-      }
-    });
   }
 
   bindEvents() {
@@ -790,8 +291,8 @@ export class UploadModal {
       });
     }
 
-    this.bindNip71Events("custom");
-    this.bindNip71Events("cloudflare");
+    this.nip71FormManager.bindSection("custom");
+    this.nip71FormManager.bindSection("cloudflare");
   }
 
   registerR2Subscriptions() {
@@ -952,7 +453,7 @@ export class UploadModal {
       payload.isPrivate = !!this.customFormInputs.isPrivate.checked;
     }
 
-    const nip71Metadata = this.collectNip71Metadata("custom");
+    const nip71Metadata = this.nip71FormManager.collectSection("custom");
     if (nip71Metadata) {
       payload.nip71 = nip71Metadata;
     }
@@ -1132,7 +633,7 @@ export class UploadModal {
     if (this.cloudflareEnableCommentsInput)
       this.cloudflareEnableCommentsInput.checked = true;
     if (this.cloudflareFileInput) this.cloudflareFileInput.value = "";
-    this.resetNip71Metadata("cloudflare");
+    this.nip71FormManager.resetSection("cloudflare");
     this.updateCloudflareProgress(Number.NaN);
   }
 
@@ -1149,7 +650,7 @@ export class UploadModal {
       this.customFormInputs.enableComments.checked = true;
     if (this.customFormInputs.isPrivate)
       this.customFormInputs.isPrivate.checked = false;
-    this.resetNip71Metadata("custom");
+    this.nip71FormManager.resetSection("custom");
   }
 
   async loadR2Settings() {
@@ -1217,7 +718,7 @@ export class UploadModal {
         : true,
     };
 
-    const nip71Metadata = this.collectNip71Metadata("cloudflare");
+    const nip71Metadata = this.nip71FormManager.collectSection("cloudflare");
     if (nip71Metadata) {
       const imetaList = Array.isArray(nip71Metadata.imeta)
         ? [...nip71Metadata.imeta]
