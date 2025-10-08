@@ -82,6 +82,12 @@ body {
   overflow-x: hidden; /* Disable horizontal scrolling */
 }
 
+#nip71TagsFieldset > legend,
+#editNip71TagsFieldset > legend {
+  margin-left: 0;
+  padding: 0;
+}
+
 #app {
   /*
     Keep the primary content surface aligned with the page background so the
