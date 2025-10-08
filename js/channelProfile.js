@@ -1819,6 +1819,9 @@ function renderChannelVideosFromList({
         ? app.formatTimeAgo(video.created_at)
         : new Date(video.created_at * 1000).toLocaleString();
 
+    const highlightClass =
+      canEdit && video.isPrivate ? "video-card--owner-private" : "";
+
     const videoCard = new VideoCard({
       document,
       video,
@@ -1826,6 +1829,7 @@ function renderChannelVideosFromList({
       shareUrl,
       pointerInfo,
       timeAgo,
+      highlightClass,
       capabilities: {
         canEdit,
         canDelete: canEdit,

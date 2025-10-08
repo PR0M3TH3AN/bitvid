@@ -28,7 +28,8 @@ export class VideoCard {
     this.video = video;
     this.index = index;
     this.shareUrl = shareUrl;
-    this.highlightClass = highlightClass || "";
+    this.highlightClass =
+      typeof highlightClass === "string" ? highlightClass : "";
     this.animationClass = animationClass || "";
     this.pointerInfo = pointerInfo;
     this.capabilities = {
