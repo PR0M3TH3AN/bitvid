@@ -199,6 +199,34 @@
             </div>
           </div>
 
+          <!-- Keep these fields aligned with components/upload-modal.html -->
+          <div class="space-y-1">
+            <label for="editVideoIsPrivate" class="block text-sm font-medium text-gray-200">
+              Private Listing (Encrypt Magnet)
+            </label>
+            <div
+              class="flex flex-col gap-2 rounded-md border border-gray-800 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div class="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="editVideoIsPrivate"
+                  class="h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                />
+                <span class="text-sm text-gray-300">
+                  Keep magnets encrypted so only invited viewers can decode them.
+                </span>
+              </div>
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoIsPrivate"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
           <div class="space-y-1">
             <label for="editEnableComments" class="block text-sm font-medium text-gray-200">
               Enable comments

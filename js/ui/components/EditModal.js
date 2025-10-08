@@ -1,3 +1,4 @@
+// Keep this modal's field list and behavior in sync with UploadModal.
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "../../magnet.js";
 
 export class EditModal {
@@ -127,6 +128,7 @@ export class EditModal {
       thumbnail: context.querySelector("#editVideoThumbnail") || null,
       description: context.querySelector("#editVideoDescription") || null,
       enableComments: context.querySelector("#editEnableComments") || null,
+      isPrivate: context.querySelector("#editVideoIsPrivate") || null,
     };
   }
 
@@ -189,7 +191,7 @@ export class EditModal {
         return;
       }
       if (input.type === "checkbox") {
-        input.checked = true;
+        input.checked = this.getDefaultCheckboxValue(input.id);
         input.disabled = false;
       } else {
         input.value = "";
@@ -210,6 +212,17 @@ export class EditModal {
     this.activeVideo = null;
   }
 
+  getDefaultCheckboxValue(id) {
+    switch (id) {
+      case "editEnableComments":
+        return true;
+      case "editVideoIsPrivate":
+        return false;
+      default:
+        return false;
+    }
+  }
+
   async open(video) {
     await this.load();
 
@@ -225,12 +238,14 @@ export class EditModal {
     const effectiveXs = video.xs || magnetHints.xs || "";
     const enableCommentsValue =
       typeof video.enableComments === "boolean" ? video.enableComments : true;
+    const isPrivateValue = video.isPrivate === true;
 
     const editContext = {
       ...video,
       ws: effectiveWs,
       xs: effectiveXs,
       enableComments: enableCommentsValue,
+      isPrivate: isPrivateValue,
     };
 
     this.applyVideoToForm(editContext);
@@ -259,6 +274,7 @@ export class EditModal {
       thumbnail: editContext.thumbnail || "",
       description: editContext.description || "",
       enableComments: editContext.enableComments,
+      isPrivate: editContext.isPrivate,
     };
 
     Object.entries(fieldMap).forEach(([key, rawValue]) => {
@@ -347,6 +363,8 @@ export class EditModal {
         return "editVideoDescription";
       case "enableComments":
         return "editEnableComments";
+      case "isPrivate":
+        return "editVideoIsPrivate";
       default:
         return null;
     }
@@ -467,6 +485,7 @@ export class EditModal {
     const thumbnailInput = this.fields.thumbnail;
     const descriptionInput = this.fields.description;
     const commentsInput = this.fields.enableComments;
+    const isPrivateInput = this.fields.isPrivate;
 
     const newTitle = fieldValue("title");
     const newUrl = fieldValue("url");
@@ -497,6 +516,7 @@ export class EditModal {
       : original.description || "";
     const originalEnableComments =
       typeof original.enableComments === "boolean" ? original.enableComments : true;
+    const originalIsPrivate = original.isPrivate === true;
 
     let finalEnableComments = originalEnableComments;
     if (commentsInput) {
@@ -504,6 +524,19 @@ export class EditModal {
         finalEnableComments = commentsInput.dataset.originalValue === "true";
       } else {
         finalEnableComments = this.sanitizers.checkbox(commentsInput.checked);
+      }
+    }
+
+    let finalIsPrivate = originalIsPrivate;
+    let isPrivateEdited = false;
+    if (isPrivateInput) {
+      const originalCheckboxValue = isPrivateInput.dataset?.originalValue;
+      const originalCheckboxBool = originalCheckboxValue === "true";
+      if (isPrivateInput.disabled) {
+        finalIsPrivate = originalCheckboxBool;
+      } else {
+        finalIsPrivate = this.sanitizers.checkbox(isPrivateInput.checked);
+        isPrivateEdited = finalIsPrivate !== originalCheckboxBool;
       }
     }
 
@@ -546,6 +579,8 @@ export class EditModal {
       urlEdited: urlWasEdited,
       magnetEdited: magnetWasEdited,
       enableComments: finalEnableComments,
+      isPrivate: finalIsPrivate,
+      isPrivateEdited,
     };
 
     const originalEvent = {
