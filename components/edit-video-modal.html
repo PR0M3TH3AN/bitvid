@@ -200,6 +200,59 @@
           </div>
 
           <div class="space-y-1">
+            <span id="editVideoVisibilityLabel" class="block text-sm font-medium text-gray-200">
+              Visibility
+            </span>
+            <div
+              class="space-y-3 rounded-md border border-gray-800 bg-black/30 p-3"
+              role="group"
+              aria-labelledby="editVideoVisibilityLabel"
+              data-visibility-toggle
+            >
+              <div class="flex flex-wrap items-center gap-2 sm:justify-between">
+                <div
+                  class="video-visibility-toggle"
+                  data-visibility-options
+                >
+                  <button
+                    type="button"
+                    class="video-visibility-toggle__option"
+                    data-visibility-option="public"
+                    aria-pressed="false"
+                  >
+                    Public
+                  </button>
+                  <button
+                    type="button"
+                    class="video-visibility-toggle__option"
+                    data-visibility-option="private"
+                    aria-pressed="false"
+                  >
+                    Private
+                  </button>
+                </div>
+                <input
+                  type="checkbox"
+                  id="editVideoIsPrivate"
+                  class="hidden"
+                  data-default-checked="false"
+                  aria-hidden="true"
+                />
+              </div>
+              <p class="text-xs text-gray-400" data-visibility-helper>
+                Private notes stay visible only to you. Switch back to public when you're ready to share.
+              </p>
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoIsPrivate"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
             <label for="editEnableComments" class="block text-sm font-medium text-gray-200">
               Enable comments
             </label>
@@ -211,6 +264,8 @@
                   type="checkbox"
                   id="editEnableComments"
                   class="h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                  data-default-checked="true"
+                  checked
                 />
                 <span class="text-sm text-gray-300">
                   Allow replies once comment threads are available.

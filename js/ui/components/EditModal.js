@@ -48,6 +48,10 @@ export class EditModal {
     this.submitButton = null;
     this.fieldButtons = [];
     this.fields = {};
+    this.visibility = {
+      container: null,
+      buttons: [],
+    };
 
     this.activeVideo = null;
     this.isVisible = false;
@@ -126,8 +130,22 @@ export class EditModal {
       xs: context.querySelector("#editVideoXs") || null,
       thumbnail: context.querySelector("#editVideoThumbnail") || null,
       description: context.querySelector("#editVideoDescription") || null,
+      isPrivate: context.querySelector("#editVideoIsPrivate") || null,
       enableComments: context.querySelector("#editEnableComments") || null,
     };
+
+    this.visibility = {
+      container: context.querySelector("[data-visibility-toggle]") || null,
+      buttons: Array.from(
+        context.querySelectorAll("[data-visibility-option]") || []
+      ),
+      helper: context.querySelector("[data-visibility-helper]") || null,
+      helperDefault: "",
+    };
+
+    if (this.visibility.helper) {
+      this.visibility.helperDefault = this.visibility.helper.textContent || "";
+    }
   }
 
   bindEvents() {
@@ -163,6 +181,24 @@ export class EditModal {
       });
     }
 
+    if (Array.isArray(this.visibility?.buttons)) {
+      this.visibility.buttons.forEach((button) => {
+        button.addEventListener("click", (event) => {
+          const option = event?.currentTarget?.dataset?.visibilityOption;
+          if (!option) {
+            return;
+          }
+          this.setVisibility(option);
+        });
+      });
+    }
+
+    if (this.fields.isPrivate) {
+      this.fields.isPrivate.addEventListener("change", () => {
+        this.handleIsPrivateChange({ emit: true });
+      });
+    }
+
     if (this.fields.enableComments) {
       this.fields.enableComments.addEventListener("change", (event) => {
         const target = event.currentTarget;
@@ -189,7 +225,14 @@ export class EditModal {
         return;
       }
       if (input.type === "checkbox") {
-        input.checked = true;
+        const defaultAttr = input.dataset?.defaultChecked;
+        const defaultChecked =
+          defaultAttr === "true"
+            ? true
+            : defaultAttr === "false"
+            ? false
+            : input.defaultChecked;
+        input.checked = defaultChecked;
         input.disabled = false;
       } else {
         input.value = "";
@@ -206,6 +249,8 @@ export class EditModal {
         button.textContent = "Edit field";
       });
     }
+
+    this.handleIsPrivateChange({ emit: false });
 
     this.activeVideo = null;
   }
@@ -225,12 +270,14 @@ export class EditModal {
     const effectiveXs = video.xs || magnetHints.xs || "";
     const enableCommentsValue =
       typeof video.enableComments === "boolean" ? video.enableComments : true;
+    const isPrivateValue = video.isPrivate === true;
 
     const editContext = {
       ...video,
       ws: effectiveWs,
       xs: effectiveXs,
       enableComments: enableCommentsValue,
+      isPrivate: isPrivateValue,
     };
 
     this.applyVideoToForm(editContext);
@@ -258,6 +305,7 @@ export class EditModal {
       xs: editContext.xs || "",
       thumbnail: editContext.thumbnail || "",
       description: editContext.description || "",
+      isPrivate: editContext.isPrivate,
       enableComments: editContext.enableComments,
     };
 
@@ -327,6 +375,8 @@ export class EditModal {
         }
       }
     });
+
+    this.handleIsPrivateChange({ emit: false });
   }
 
   fieldIdForKey(key) {
@@ -345,6 +395,8 @@ export class EditModal {
         return "editVideoThumbnail";
       case "description":
         return "editVideoDescription";
+      case "isPrivate":
+        return "editVideoIsPrivate";
       case "enableComments":
         return "editEnableComments";
       default:
@@ -408,6 +460,9 @@ export class EditModal {
           }
         }
       }
+      if (input === this.fields.isPrivate) {
+        this.updateVisibilityToggleUI();
+      }
       return;
     }
 
@@ -418,6 +473,9 @@ export class EditModal {
       input.disabled = true;
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
+      if (input === this.fields.isPrivate) {
+        this.updateVisibilityToggleUI();
+      }
       return;
     }
 
@@ -435,6 +493,105 @@ export class EditModal {
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
     }
+  }
+
+  setVisibility(option, { emit = true } = {}) {
+    const checkbox = this.fields.isPrivate;
+    if (!checkbox) {
+      return;
+    }
+
+    const normalized = typeof option === "string" ? option.toLowerCase() : "";
+    if (normalized !== "public" && normalized !== "private") {
+      return;
+    }
+
+    if (checkbox.disabled) {
+      this.updateVisibilityToggleUI();
+      return;
+    }
+
+    const wantPrivate = normalized === "private";
+    if (checkbox.checked === wantPrivate) {
+      this.updateVisibilityToggleUI();
+      return;
+    }
+
+    checkbox.checked = wantPrivate;
+    this.handleIsPrivateChange({ emit });
+  }
+
+  updateVisibilityToggleUI() {
+    const checkbox = this.fields.isPrivate;
+    const buttons = Array.isArray(this.visibility?.buttons)
+      ? this.visibility.buttons
+      : [];
+    if (!checkbox) {
+      return;
+    }
+
+    const isPrivate = checkbox.checked === true;
+    const disabled = checkbox.disabled === true;
+
+    buttons.forEach((button) => {
+      if (!button) {
+        return;
+      }
+      const option = button.dataset?.visibilityOption || "";
+      const normalized = option.toLowerCase();
+      const isActive =
+        (normalized === "private" && isPrivate) ||
+        (normalized === "public" && !isPrivate);
+      button.dataset.active = isActive ? "true" : "false";
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      if (disabled) {
+        button.classList.add("is-disabled");
+        button.setAttribute("aria-disabled", "true");
+        button.tabIndex = -1;
+      } else {
+        button.classList.remove("is-disabled");
+        button.removeAttribute("aria-disabled");
+        button.tabIndex = 0;
+      }
+    });
+
+    if (this.visibility?.container) {
+      this.visibility.container.dataset.state = isPrivate ? "private" : "public";
+      if (disabled) {
+        this.visibility.container.dataset.disabled = "true";
+      } else {
+        delete this.visibility.container.dataset.disabled;
+      }
+    }
+
+    const helper = this.visibility?.helper;
+    if (helper) {
+      const privateCopy = this.visibility.helperDefault || helper.textContent;
+      const publicCopy =
+        "Public notes appear in feeds for everyone who can view your channel.";
+      helper.textContent = isPrivate ? privateCopy : publicCopy;
+    }
+  }
+
+  handleIsPrivateChange({ emit = true } = {}) {
+    const checkbox = this.fields.isPrivate;
+    if (!checkbox) {
+      return;
+    }
+
+    this.updateVisibilityToggleUI();
+
+    if (!emit) {
+      return;
+    }
+
+    const value = this.sanitizers.checkbox(checkbox.checked);
+    const detail = {
+      field: "isPrivate",
+      value,
+      videoId: this.escapeHtml(this.activeVideo?.id || ""),
+    };
+    this.emit("video:edit-visibility-change", detail);
   }
 
   submit() {
@@ -467,6 +624,7 @@ export class EditModal {
     const thumbnailInput = this.fields.thumbnail;
     const descriptionInput = this.fields.description;
     const commentsInput = this.fields.enableComments;
+    const privateInput = this.fields.isPrivate;
 
     const newTitle = fieldValue("title");
     const newUrl = fieldValue("url");
@@ -497,6 +655,7 @@ export class EditModal {
       : original.description || "";
     const originalEnableComments =
       typeof original.enableComments === "boolean" ? original.enableComments : true;
+    const originalIsPrivate = original.isPrivate === true;
 
     let finalEnableComments = originalEnableComments;
     if (commentsInput) {
@@ -504,6 +663,15 @@ export class EditModal {
         finalEnableComments = commentsInput.dataset.originalValue === "true";
       } else {
         finalEnableComments = this.sanitizers.checkbox(commentsInput.checked);
+      }
+    }
+
+    let finalIsPrivate = originalIsPrivate;
+    if (privateInput) {
+      if (privateInput.disabled) {
+        finalIsPrivate = privateInput.dataset.originalValue === "true";
+      } else {
+        finalIsPrivate = this.sanitizers.checkbox(privateInput.checked);
       }
     }
 
@@ -546,6 +714,7 @@ export class EditModal {
       urlEdited: urlWasEdited,
       magnetEdited: magnetWasEdited,
       enableComments: finalEnableComments,
+      isPrivate: finalIsPrivate,
     };
 
     const originalEvent = {
