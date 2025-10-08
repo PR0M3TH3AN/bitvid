@@ -606,8 +606,9 @@ export function createWatchHistoryRenderer(config = {}) {
     batchSize = WATCH_HISTORY_BATCH_SIZE,
     remove = (payload) => {
       const app = getAppInstance();
-      if (app?.handleWatchHistoryRemoval) {
-        return app.handleWatchHistoryRemoval(payload);
+      const controller = app?.watchHistoryController;
+      if (controller?.handleWatchHistoryRemoval) {
+        return controller.handleWatchHistoryRemoval(payload);
       }
       return defaultRemoveHandler(payload);
     },
