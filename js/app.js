@@ -193,6 +193,7 @@ class Application {
     this.watchHistoryPreferenceUnsubscribe = null;
     this.authEventUnsubscribes = [];
     this.unsubscribeFromNostrService = null;
+    this.videoModalReadyPromise = null;
     this.boundUploadSubmitHandler = null;
     this.boundEditModalSubmitHandler = null;
     this.boundEditModalCancelHandler = null;
@@ -291,11 +292,7 @@ class Application {
     this.profileAvatar = document.getElementById("profileAvatar") || null;
 
     // Profile modal controller state
-    this.activeProfilePane = null;
-    this.isWalletPaneBusy = false;
-    this.profileModalCachedSelection = null;
-    this.profileModalController = null;
-    this.profileSwitcherSelectionPubkey = null;
+    this.profileController = null;
     this.currentUserNpub = null;
 
     // Upload modal component
@@ -388,6 +385,118 @@ class Application {
       this.boundRevertConfirmHandler
     );
 
+    try {
+      const profileModalContainer = document.getElementById("modalContainer") || null;
+      if (profileModalContainer) {
+        const profileModalServices = {
+          normalizeHexPubkey: (value) => this.normalizeHexPubkey(value),
+          safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+          safeDecodeNpub: (npub) => this.safeDecodeNpub(npub),
+          truncateMiddle: (value, maxLength) => truncateMiddle(value, maxLength),
+          getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+          batchFetchProfiles: (authorSet) => this.batchFetchProfiles(authorSet),
+          switchProfile: (pubkey) => this.authService.switchProfile(pubkey),
+          removeSavedProfile: (pubkey) =>
+            this.authService.removeSavedProfile(pubkey),
+          relayManager,
+          userBlocks,
+          nostrClient,
+          accessControl,
+          getCurrentUserNpub: () => this.getCurrentUserNpub(),
+          getActiveNwcSettings: () => this.getActiveNwcSettings(),
+          updateActiveNwcSettings: (partial) =>
+            this.updateActiveNwcSettings(partial),
+          hydrateNwcSettingsForPubkey: (pubkey) =>
+            this.hydrateNwcSettingsForPubkey(pubkey),
+          createDefaultNwcSettings: () => createDefaultNwcSettings(),
+          ensureWallet: (options) => this.ensureWallet(options),
+          loadVideos: (forceFetch, context) =>
+            this.loadVideos(forceFetch, context),
+          onVideosShouldRefresh: (context) =>
+            this.onVideosShouldRefresh(context),
+          describeAdminError: (code) => this.describeAdminError(code),
+          describeNotificationError: (code) =>
+            this.describeNotificationError(code),
+          onAccessControlUpdated: () => this.onAccessControlUpdated(),
+          persistSavedProfiles: (options) => persistSavedProfiles(options),
+          watchHistoryService,
+          authService: this.authService,
+          log: (...args) => this.log(...args),
+          closeAllMoreMenus: () => this.closeAllMoreMenus(),
+        };
+
+        const profileModalState = {
+          getSavedProfiles: () => getSavedProfiles(),
+          setSavedProfiles: (profiles, options) =>
+            setSavedProfiles(Array.isArray(profiles) ? profiles : [], options),
+          persistSavedProfiles: (options) => persistSavedProfiles(options),
+          getActivePubkey: () => getActiveProfilePubkey(),
+          setActivePubkey: (pubkey, options) => {
+            const normalized =
+              typeof pubkey === "string" && pubkey.trim()
+                ? pubkey.trim()
+                : null;
+            setStoredActiveProfilePubkey(normalized, options);
+            return getActiveProfilePubkey();
+          },
+        };
+
+        const profileModalCallbacks = {
+          onClose: () => this.handleProfileModalClosed(),
+          onLogout: async () => this.authService.logout(),
+          onChannelLink: (element) => this.handleProfileChannelLink(element),
+          onAddAccount: (controller) => this.handleAddProfile(controller),
+          onRequestSwitchProfile: (payload) =>
+            this.handleProfileSwitchRequest(payload),
+          onRelayOperation: (payload) =>
+            this.handleProfileRelayOperation(payload),
+          onRelayModeToggle: (payload) =>
+            this.handleProfileRelayModeToggle(payload),
+          onRelayRestore: (payload) =>
+            this.handleProfileRelayRestore(payload),
+          onBlocklistMutation: (payload) =>
+            this.handleProfileBlocklistMutation(payload),
+          onWalletPersist: (payload) =>
+            this.handleProfileWalletPersist(payload),
+          onWalletTestRequest: (payload) =>
+            this.handleProfileWalletTest(payload),
+          onWalletDisconnectRequest: (payload) =>
+            this.handleProfileWalletDisconnect(payload),
+          onAdminMutation: (payload) =>
+            this.handleProfileAdminMutation(payload),
+          onAdminNotifyError: (payload) =>
+            this.handleProfileAdminNotifyError(payload),
+          onHistoryReady: (payload) =>
+            this.handleProfileHistoryEvent(payload),
+        };
+
+        this.profileController = new ProfileModalController({
+          modalContainer: profileModalContainer,
+          removeTrackingScripts,
+          createWatchHistoryRenderer,
+          setGlobalModalState,
+          showError: (message) => this.showError(message),
+          showSuccess: (message) => this.showSuccess(message),
+          showStatus: (message) => this.showStatus(message),
+          constants: {
+            MAX_WALLET_DEFAULT_ZAP,
+            ADMIN_SUPER_NPUB,
+            ADMIN_DM_IMAGE_URL,
+            BITVID_WEBSITE_URL,
+          },
+          services: profileModalServices,
+          state: profileModalState,
+          callbacks: profileModalCallbacks,
+        });
+      } else {
+        console.warn(
+          "[Application] Profile modal controller disabled: modal container not found.",
+        );
+      }
+    } catch (error) {
+      console.error("Failed to initialize profile modal controller:", error);
+    }
+
 
     // Optional small inline player stats
     this.status = document.getElementById("status") || null;
@@ -478,11 +587,11 @@ class Application {
       this.boundVideoModalZapCommentHandler
     );
     this.boundVideoModalZapWalletHandler = () => {
-      if (!this.profileModalController) {
+      if (!this.profileController) {
         return;
       }
 
-      this.profileModalController
+      this.profileController
         .showWalletPane()
         .catch((error) => {
           console.error("Failed to open wallet pane:", error);
@@ -894,7 +1003,34 @@ class Application {
         this.showError(`Failed to initialize edit modal: ${error.message}`);
       });
 
-      const profileModalPromise = this.initProfileModal();
+      const profileModalPromise = this.profileController
+        ? this.profileController
+            .load()
+            .then(() => {
+              try {
+                this.renderSavedProfiles();
+              } catch (error) {
+                console.warn(
+                  "[profileModal] Failed to render saved profiles after load:",
+                  error,
+                );
+              }
+
+              try {
+                this.profileController.refreshWalletPaneState();
+              } catch (error) {
+                console.warn(
+                  "[profileModal] Failed to refresh wallet pane after load:",
+                  error,
+                );
+              }
+              return true;
+            })
+            .catch((error) => {
+              console.error("Failed to load profile modal:", error);
+              return false;
+            })
+        : Promise.resolve(false);
 
       const modalBootstrapPromise = Promise.all([
         videoModalPromise,
@@ -930,12 +1066,16 @@ class Application {
           );
         });
 
-      const adminPanePromise = this.refreshAdminPaneState().catch((error) => {
-        console.warn(
-          "Failed to update admin pane after connecting to Nostr:",
-          error
-        );
-      });
+      const adminPanePromise = this.profileController
+        ? Promise.resolve()
+            .then(() => this.profileController.refreshAdminPaneState())
+            .catch((error) => {
+              console.warn(
+                "Failed to update admin pane after connecting to Nostr:",
+                error,
+              );
+            })
+        : Promise.resolve(null);
 
       await Promise.all([accessControlPromise, adminPanePromise]);
 
@@ -1047,11 +1187,39 @@ class Application {
   /**
    * Show the modal and set the "Please stand by" poster on the video.
    */
-  showModalWithPoster(video = this.currentVideo) {
+  async showModalWithPoster(video = this.currentVideo) {
     if (!this.videoModal) {
-      return;
+      return null;
     }
-    this.videoModal.open(video || this.currentVideo);
+
+    const targetVideo = video || this.currentVideo;
+
+    try {
+      const { root } = await this.ensureVideoModalReady({
+        ensureVideoElement: true,
+      });
+
+      if (!this.videoModal) {
+        return root || null;
+      }
+
+      this.videoModal.open(targetVideo);
+      this.applyModalLoadingPoster();
+
+      return (
+        root ||
+        (typeof this.videoModal.getRoot === "function"
+          ? this.videoModal.getRoot()
+          : null)
+      );
+    } catch (error) {
+      console.error(
+        "[Application] Failed to open the video modal before playback:",
+        error
+      );
+      this.showError("Could not open the video player. Please try again.");
+      return null;
+    }
   }
 
   applyModalLoadingPoster() {
@@ -1066,6 +1234,69 @@ class Application {
       return false;
     }
     return this.videoModal.forceRemovePoster(reason);
+  }
+
+  async ensureVideoModalReady({ ensureVideoElement = false } = {}) {
+    if (!this.videoModal) {
+      throw new Error("Video modal instance is not available.");
+    }
+
+    const getRoot = () =>
+      typeof this.videoModal.getRoot === "function"
+        ? this.videoModal.getRoot()
+        : null;
+    const getVideoElement = () =>
+      typeof this.videoModal.getVideoElement === "function"
+        ? this.videoModal.getVideoElement()
+        : null;
+
+    const existingRoot = getRoot();
+    const existingVideoElement = getVideoElement();
+
+    if (existingRoot && existingRoot.isConnected) {
+      if (ensureVideoElement && !existingVideoElement) {
+        throw new Error("Video modal video element is not ready.");
+      }
+      if (existingVideoElement) {
+        this.modalVideo = existingVideoElement;
+      }
+      return {
+        root: existingRoot,
+        videoElement: existingVideoElement,
+      };
+    }
+
+    if (!this.videoModalReadyPromise) {
+      if (typeof this.videoModal.load !== "function") {
+        throw new Error("Video modal does not expose a load() method.");
+      }
+      this.videoModalReadyPromise = Promise.resolve(this.videoModal.load());
+    }
+
+    try {
+      await this.videoModalReadyPromise;
+    } catch (error) {
+      this.videoModalReadyPromise = null;
+      throw error;
+    }
+
+    this.videoModalReadyPromise = null;
+
+    const readyRoot = getRoot();
+    const readyVideoElement = getVideoElement();
+
+    if (ensureVideoElement && !readyVideoElement) {
+      throw new Error("Video modal video element is missing after load().");
+    }
+
+    if (readyVideoElement) {
+      this.modalVideo = readyVideoElement;
+    }
+
+    return {
+      root: readyRoot,
+      videoElement: readyVideoElement,
+    };
   }
 
   extractDTagValue(tags) {
@@ -1217,187 +1448,25 @@ class Application {
     }
   }
 
-  async initProfileModal() {
-    try {
-      const modalContainer = document.getElementById("modalContainer");
-      if (!modalContainer) {
-        throw new Error("Modal container element not found!");
-      }
-
-      if (!this.profileModalController) {
-        const profileModalServices = {
-          normalizeHexPubkey: (value) => this.normalizeHexPubkey(value),
-          safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
-          safeDecodeNpub: (npub) => this.safeDecodeNpub(npub),
-          truncateMiddle: (value, maxLength) => truncateMiddle(value, maxLength),
-          getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
-          batchFetchProfiles: (authorSet) => this.batchFetchProfiles(authorSet),
-          switchProfile: (pubkey) => this.authService.switchProfile(pubkey),
-          removeSavedProfile: (pubkey) =>
-            this.authService.removeSavedProfile(pubkey),
-          relayManager,
-          userBlocks,
-          nostrClient,
-          accessControl,
-          getCurrentUserNpub: () => this.getCurrentUserNpub(),
-          getActiveNwcSettings: () => this.getActiveNwcSettings(),
-          updateActiveNwcSettings: (partial) =>
-            this.updateActiveNwcSettings(partial),
-          hydrateNwcSettingsForPubkey: (pubkey) =>
-            this.hydrateNwcSettingsForPubkey(pubkey),
-          createDefaultNwcSettings: () => createDefaultNwcSettings(),
-          ensureWallet: (options) => this.ensureWallet(options),
-          loadVideos: (forceFetch) => this.loadVideos(forceFetch),
-          onVideosShouldRefresh: (context) => this.onVideosShouldRefresh(context),
-          describeAdminError: (code) => this.describeAdminError(code),
-          describeNotificationError: (code) =>
-            this.describeNotificationError(code),
-          onAccessControlUpdated: () => this.onAccessControlUpdated(),
-          persistSavedProfiles: (options) => persistSavedProfiles(options),
-        };
-
-        const profileModalState = {
-          getSavedProfiles: () => getSavedProfiles(),
-          setSavedProfiles: (profiles, options) =>
-            setSavedProfiles(Array.isArray(profiles) ? profiles : [], options),
-          persistSavedProfiles: (options) => persistSavedProfiles(options),
-          getActivePubkey: () => this.activeProfilePubkey,
-          setActivePubkey: (pubkey, options) => {
-            this.activeProfilePubkey =
-              typeof pubkey === "string" && pubkey.trim()
-                ? pubkey.trim()
-                : null;
-            setStoredActiveProfilePubkey(this.activeProfilePubkey, options);
-            return this.activeProfilePubkey;
-          },
-          getCachedSelection: () => this.profileModalCachedSelection || null,
-          setCachedSelection: (value) => {
-            const normalized =
-              typeof value === "string" && value.trim()
-                ? value.trim()
-                : null;
-            this.profileModalCachedSelection = normalized;
-            return this.profileModalCachedSelection;
-          },
-          getActivePane: () => {
-            const pane =
-              typeof this.activeProfilePane === "string" && this.activeProfilePane
-                ? this.activeProfilePane
-                : "account";
-            return pane;
-          },
-          setActivePane: (pane) => {
-            if (pane === null) {
-              this.activeProfilePane = null;
-              return this.activeProfilePane;
-            }
-
-            const normalized =
-              typeof pane === "string" && pane.trim()
-                ? pane.trim().toLowerCase()
-                : "account";
-            this.activeProfilePane = normalized;
-            return this.activeProfilePane;
-          },
-          getWalletBusy: () => Boolean(this.isWalletPaneBusy),
-          setWalletBusy: (flag) => {
-            this.isWalletPaneBusy = Boolean(flag);
-            return this.isWalletPaneBusy;
-          },
-        };
-
-        const profileModalCallbacks = {
-          onClose: () => this.handleProfileModalClosed(),
-          onLogout: async () => this.authService.logout(),
-          onChannelLink: (element) => this.handleProfileChannelLink(element),
-          onAddAccount: (controller) => this.handleAddProfile(controller),
-          onSelectPane: (pane) => {
-            this.activeProfilePane = pane;
-          },
-          onPaneShown: (pane) => {
-            this.activeProfilePane = pane;
-          },
-          onRequestSwitchProfile: (payload) =>
-            this.handleProfileSwitchRequest(payload),
-          onRelayOperation: (payload) =>
-            this.handleProfileRelayOperation(payload),
-          onRelayModeToggle: (payload) =>
-            this.handleProfileRelayModeToggle(payload),
-          onRelayRestore: (payload) =>
-            this.handleProfileRelayRestore(payload),
-          onBlocklistMutation: (payload) =>
-            this.handleProfileBlocklistMutation(payload),
-          onWalletPersist: (payload) =>
-            this.handleProfileWalletPersist(payload),
-          onWalletTestRequest: (payload) =>
-            this.handleProfileWalletTest(payload),
-          onWalletDisconnectRequest: (payload) =>
-            this.handleProfileWalletDisconnect(payload),
-          onAdminMutation: (payload) =>
-            this.handleProfileAdminMutation(payload),
-          onAdminNotifyError: (payload) =>
-            this.handleProfileAdminNotifyError(payload),
-          onHistoryReady: (payload) =>
-            this.handleProfileHistoryEvent(payload),
-        };
-
-        this.profileModalController = new ProfileModalController({
-          modalContainer,
-          removeTrackingScripts,
-          createWatchHistoryRenderer,
-          setGlobalModalState,
-          showError: (message) => this.showError(message),
-          showSuccess: (message) => this.showSuccess(message),
-          showStatus: (message) => this.showStatus(message),
-          constants: {
-            MAX_WALLET_DEFAULT_ZAP,
-            ADMIN_SUPER_NPUB,
-            ADMIN_DM_IMAGE_URL,
-            BITVID_WEBSITE_URL,
-          },
-          services: profileModalServices,
-          state: profileModalState,
-          callbacks: profileModalCallbacks,
-        });
-      }
-
-      const alreadyLoaded =
-        this.profileModalController.profileModal instanceof HTMLElement;
-      if (!alreadyLoaded) {
-        const loaded = await this.profileModalController.load();
-        if (!loaded) {
-          return false;
-        }
-      } else {
-        this.profileModalController.cacheDomReferences();
-      }
-
-      this.syncProfileModalState();
-      this.renderSavedProfiles();
-      return true;
-    } catch (error) {
-      console.error("initProfileModal failed:", error);
-      return false;
-    }
-  }
-
   syncProfileModalState({
     includeSavedProfiles = true,
     includeActivePubkey = true,
   } = {}) {
-    if (!this.profileModalController) {
+    if (!this.profileController) {
       return;
     }
 
     if (includeSavedProfiles) {
       try {
-        const entries = Array.isArray(this.savedProfiles)
-          ? this.savedProfiles.slice()
-          : [];
-        this.profileModalController.setSavedProfiles(entries, {
-          persist: false,
-          persistActive: false,
-        });
+        if (typeof this.profileController.setSavedProfiles === "function") {
+          const entries = Array.isArray(this.savedProfiles)
+            ? this.savedProfiles.slice()
+            : [];
+          this.profileController.setSavedProfiles(entries, {
+            persist: false,
+            persistActive: false,
+          });
+        }
       } catch (error) {
         console.warn(
           "[profileModal] Failed to synchronize saved profiles with controller:",
@@ -1408,10 +1477,12 @@ class Application {
 
     if (includeActivePubkey) {
       try {
-        this.profileModalController.setActivePubkey(
-          this.activeProfilePubkey || null,
-          { persist: false },
-        );
+        if (typeof this.profileController.setActivePubkey === "function") {
+          this.profileController.setActivePubkey(
+            this.activeProfilePubkey || null,
+            { persist: false },
+          );
+        }
       } catch (error) {
         console.warn(
           "[profileModal] Failed to synchronize active profile with controller:",
@@ -1422,44 +1493,22 @@ class Application {
   }
 
   renderSavedProfiles() {
-    if (!this.profileModalController) {
+    if (!this.profileController) {
       return;
     }
     this.syncProfileModalState();
-    this.profileModalController.renderSavedProfiles();
-  }
-
-  selectProfilePane(name = "account") {
-    if (!this.profileModalController) {
-      return;
+    try {
+      this.profileController.renderSavedProfiles();
+    } catch (error) {
+      console.warn(
+        "[profileModal] Failed to render saved profiles:",
+        error,
+      );
     }
-    this.syncProfileModalState();
-    this.profileModalController.selectPane(name);
-  }
-
-  setWalletPaneBusy(isBusy = false) {
-    this.isWalletPaneBusy = Boolean(isBusy);
-    if (!this.profileModalController) {
-      return;
-    }
-    this.profileModalController.setWalletPaneBusy(this.isWalletPaneBusy);
-  }
-
-  refreshWalletPaneState() {
-    if (!this.profileModalController) {
-      return;
-    }
-    this.syncProfileModalState({ includeSavedProfiles: false });
-    this.profileModalController.refreshWalletPaneState();
-  }
-
-  updateWalletStatus(message, variant = "info") {
-    this.profileModalController?.updateWalletStatus(message, variant);
   }
 
   handleProfileModalClosed() {
     this.closeAllMoreMenus();
-    this.activeProfilePane = null;
   }
 
   handleProfileChannelLink(element) {
@@ -1471,8 +1520,8 @@ class Application {
       typeof element.dataset.targetNpub === "string"
         ? element.dataset.targetNpub
         : "";
-    if (this.profileModalController) {
-      this.profileModalController.hide();
+    if (this.profileController) {
+      this.profileController.hide();
     }
     if (targetNpub) {
       window.location.hash = `#view=channel-profile&npub=${encodeURIComponent(
@@ -1481,74 +1530,10 @@ class Application {
     }
   }
 
-  populateProfileRelays(relayEntries = null) {
-    if (!this.profileModalController) {
-      return;
-    }
-    this.syncProfileModalState({ includeSavedProfiles: false });
-    this.profileModalController.populateProfileRelays(relayEntries);
-  }
-
-  populateBlockedList(blocked = null) {
-    if (!this.profileModalController) {
-      return;
-    }
-    this.syncProfileModalState({ includeSavedProfiles: false });
-    this.profileModalController.populateBlockedList(blocked);
-  }
-
-  refreshAdminPaneState() {
-    if (!this.profileModalController) {
-      return null;
-    }
-    this.syncProfileModalState();
-    return this.profileModalController.refreshAdminPaneState();
-  }
-
-  populateAdminLists() {
-    if (!this.profileModalController) {
-      return;
-    }
-    this.syncProfileModalState();
-    this.profileModalController.populateAdminLists();
-  }
-
-  renderAdminList(...args) {
-    if (!this.profileModalController) {
-      return null;
-    }
-    this.syncProfileModalState();
-    return this.profileModalController.renderAdminList(...args);
-  }
-
-  handleAdminListMutation(...args) {
-    if (!this.profileModalController) {
-      return null;
-    }
-    this.syncProfileModalState();
-    return this.profileModalController.handleAdminListMutation(...args);
-  }
-
-  handleAddModerator(...args) {
-    if (!this.profileModalController) {
-      return null;
-    }
-    this.syncProfileModalState();
-    return this.profileModalController.handleAddModerator(...args);
-  }
-
-  handleRemoveModerator(...args) {
-    if (!this.profileModalController) {
-      return null;
-    }
-    this.syncProfileModalState();
-    return this.profileModalController.handleRemoveModerator(...args);
-  }
-
   async handleAddProfile(controller) {
     const button =
       (controller && controller.addAccountButton) ||
-      this.profileModalController?.addAccountButton ||
+      this.profileController?.addAccountButton ||
       null;
     if (!(button instanceof HTMLElement)) {
       return;
@@ -1725,10 +1710,12 @@ class Application {
   }
 
   async onAccessControlUpdated() {
-    try {
-      await this.refreshAdminPaneState();
-    } catch (error) {
-      console.error("Failed to refresh admin pane after update:", error);
+    if (this.profileController) {
+      try {
+        await this.profileController.refreshAdminPaneState();
+      } catch (error) {
+        console.error("Failed to refresh admin pane after update:", error);
+      }
     }
 
     this.loadVideos(true).catch((error) => {
@@ -1765,11 +1752,11 @@ class Application {
     // 2) Profile button
     if (this.profileButton) {
       this.profileButton.addEventListener("click", () => {
-        if (!this.profileModalController) {
+        if (!this.profileController) {
           return;
         }
 
-        this.profileModalController
+        this.profileController
           .show()
           .catch((error) => {
             console.error("Failed to open profile modal:", error);
@@ -2706,8 +2693,8 @@ class Application {
   }
 
   updateActiveProfileUI(pubkey, profile = {}) {
-    if (this.profileModalController) {
-      this.profileModalController.handleProfileUpdated({
+    if (this.profileController) {
+      this.profileController.handleProfileUpdated({
         pubkey,
         profile,
       });
@@ -2905,20 +2892,17 @@ class Application {
       await this.hydrateNwcSettingsForPubkey(normalizedActive);
     }
 
-    if (this.profileModalController) {
-      await this.profileModalController.handleAuthLogin(detail);
+    if (this.profileController) {
+      try {
+        await this.profileController.handleAuthLogin(detail);
+      } catch (error) {
+        console.error(
+          "Failed to process login within the profile controller:",
+          error,
+        );
+      }
     } else {
       this.renderSavedProfiles();
-
-      try {
-        await this.refreshAdminPaneState();
-      } catch (error) {
-        console.warn("Failed to refresh admin pane after login:", error);
-      }
-
-      this.populateBlockedList();
-      this.populateProfileRelays();
-      this.refreshWalletPaneState();
     }
 
     if (this.loginButton) {
@@ -2978,20 +2962,17 @@ class Application {
     }
     this.nwcSettings.clear();
 
-    if (this.profileModalController) {
-      await this.profileModalController.handleAuthLogout(detail);
+    if (this.profileController) {
+      try {
+        await this.profileController.handleAuthLogout(detail);
+      } catch (error) {
+        console.error(
+          "Failed to process logout within the profile controller:",
+          error,
+        );
+      }
     } else {
       this.renderSavedProfiles();
-
-      try {
-        await this.refreshAdminPaneState();
-      } catch (error) {
-        console.warn("Failed to refresh admin pane after logout:", error);
-      }
-
-      this.populateBlockedList();
-      this.populateProfileRelays();
-      this.refreshWalletPaneState();
     }
 
     if (this.loginButton) {
@@ -3040,8 +3021,8 @@ class Application {
   }
 
   handleProfileUpdated(detail = {}) {
-    if (this.profileModalController) {
-      this.profileModalController.handleProfileUpdated(detail);
+    if (this.profileController) {
+      this.profileController.handleProfileUpdated(detail);
     } else if (Array.isArray(detail?.savedProfiles)) {
       this.renderSavedProfiles();
     }
@@ -3054,7 +3035,7 @@ class Application {
     if (normalizedPubkey && profile) {
       this.updateProfileInDOM(normalizedPubkey, profile);
       if (
-        !this.profileModalController &&
+        !this.profileController &&
         this.normalizeHexPubkey(this.pubkey) === normalizedPubkey
       ) {
         this.updateActiveProfileUI(normalizedPubkey, profile);
@@ -4190,8 +4171,8 @@ class Application {
       typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
     if (!normalizedUri) {
       this.showError("Connect a Lightning wallet to send zaps.");
-      if (this.profileModalController) {
-        this.profileModalController
+      if (this.profileController) {
+        this.profileController
           .showWalletPane()
           .catch((error) => {
             console.error("Failed to open wallet pane:", error);
@@ -6211,7 +6192,16 @@ class Application {
             );
           }
 
-          this.populateBlockedList();
+          if (this.profileController) {
+            try {
+              this.profileController.populateBlockedList();
+            } catch (error) {
+              console.warn(
+                "[profileModal] Failed to refresh blocked list after update:",
+                error,
+              );
+            }
+          }
           await this.loadVideos();
           subscriptions
             .refreshActiveFeed({ reason: "user-block-update" })
@@ -7038,20 +7028,19 @@ class Application {
     this.cancelPendingViewLogging();
 
     let modalVideoEl = this.modalVideo;
-    if (!modalVideoEl && this.videoModal) {
-      const maybeLoader = this.videoModal.load;
-      if (typeof maybeLoader === "function") {
-        try {
-          await maybeLoader.call(this.videoModal);
-        } catch (error) {
-          this.log(
-            "[playVideoWithFallback] Failed to load video modal before playback:",
-            error
-          );
-          this.showError("Could not prepare the video player. Please try again.");
-          return { source: null, error };
-        }
-        modalVideoEl = this.modalVideo;
+    if (!modalVideoEl) {
+      try {
+        const { videoElement } = await this.ensureVideoModalReady({
+          ensureVideoElement: true,
+        });
+        modalVideoEl = videoElement;
+      } catch (error) {
+        this.log(
+          "[playVideoWithFallback] Failed to load video modal before playback:",
+          error
+        );
+        this.showError("Could not prepare the video player. Please try again.");
+        return { source: null, error };
       }
     }
 
@@ -7415,8 +7404,7 @@ class Application {
       legacyInfoHash ||
       "";
 
-    this.showModalWithPoster(this.currentVideo);
-    this.applyModalLoadingPoster();
+    await this.showModalWithPoster(this.currentVideo);
 
     const playbackPromise = this.playVideoWithFallback({
       url: trimmedUrl,
@@ -7544,6 +7532,8 @@ class Application {
         },
       });
     }
+
+    await this.showModalWithPoster(this.currentVideo);
 
     const urlObj = new URL(window.location.href);
     urlObj.searchParams.delete("v");
@@ -7712,6 +7702,7 @@ class Application {
   destroy() {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
+    this.videoModalReadyPromise = null;
 
     if (typeof this.unsubscribeFromPubkeyState === "function") {
       try {
@@ -7946,6 +7937,20 @@ class Application {
       } catch (error) {
         console.warn("[Application] Failed to destroy VideoListView:", error);
       }
+    }
+
+    if (this.profileController) {
+      if (typeof this.profileController.destroy === "function") {
+        try {
+          this.profileController.destroy();
+        } catch (error) {
+          console.warn(
+            "[Application] Failed to destroy profile controller:",
+            error,
+          );
+        }
+      }
+      this.profileController = null;
     }
 
     this.videoList = null;

@@ -434,7 +434,7 @@ class PlaybackSession extends SimpleEventEmitter {
       }
 
       if (typeof showModalWithPoster === "function") {
-        showModalWithPoster();
+        await Promise.resolve(showModalWithPoster());
       }
 
       this.emit("status", { message: "Preparing video..." });

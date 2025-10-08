@@ -151,9 +151,14 @@ export class VideoModal {
     const wrapper = this.document.createElement("div");
     wrapper.innerHTML = html;
     this.removeTrackingScripts(wrapper);
-    container.appendChild(wrapper);
 
-    const playerModal = wrapper.querySelector("#playerModal");
+    const fragment = this.document.createDocumentFragment();
+    while (wrapper.firstChild) {
+      fragment.appendChild(wrapper.firstChild);
+    }
+    container.appendChild(fragment);
+
+    const playerModal = container.querySelector("#playerModal");
     if (!playerModal) {
       throw new Error("Player modal root not found in markup.");
     }
@@ -386,6 +391,34 @@ export class VideoModal {
     this.dispatch("creator:navigate", { video: this.activeVideo });
   }
 
+  toggleBackgroundInert(enable) {
+    const ids = ["sidebar", "sidebarOverlay"];
+    for (const id of ids) {
+      const element = this.document.getElementById(id);
+      if (!element) {
+        continue;
+      }
+
+      if (enable) {
+        if (!element.hasAttribute("inert")) {
+          element.setAttribute("inert", "");
+        }
+        element.dataset.modalInert = "true";
+        element.setAttribute("aria-hidden", "true");
+        element.classList.add("is-modal-hidden");
+      } else {
+        if (element.dataset.modalInert === "true") {
+          element.removeAttribute("inert");
+          delete element.dataset.modalInert;
+        }
+        if (element.getAttribute("aria-hidden") === "true") {
+          element.removeAttribute("aria-hidden");
+        }
+        element.classList.remove("is-modal-hidden");
+      }
+    }
+  }
+
   open(video) {
     this.activeVideo = video || null;
     if (!this.playerModal) {
@@ -396,6 +429,7 @@ export class VideoModal {
     this.playerModal.classList.remove("hidden");
     this.document.body.classList.add("modal-open");
     this.document.documentElement.classList.add("modal-open");
+    this.toggleBackgroundInert(true);
     if (this.scrollRegion) {
       this.scrollRegion.scrollTop = 0;
     }
@@ -411,6 +445,7 @@ export class VideoModal {
     }
     this.document.body.classList.remove("modal-open");
     this.document.documentElement.classList.remove("modal-open");
+    this.toggleBackgroundInert(false);
     this.setGlobalModalState("player", false);
     this.forceRemovePoster("close");
   }

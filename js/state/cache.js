@@ -18,6 +18,15 @@ const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
+function sanitizeProfileString(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  return trimmed;
+}
+
 let savedProfiles = [];
 let activeProfilePubkey = null;
 const profileCache = new Map();
@@ -444,6 +453,40 @@ export function loadProfileCacheFromStorage() {
         picture: profile.picture || "assets/svg/default-profile.svg",
       };
 
+      const about = sanitizeProfileString(profile.about || profile.aboutMe);
+      if (about) {
+        normalized.about = about;
+      }
+
+      const website = sanitizeProfileString(profile.website || profile.url);
+      if (website) {
+        normalized.website = website;
+      }
+
+      const banner = sanitizeProfileString(profile.banner || profile.header);
+      if (banner) {
+        normalized.banner = banner;
+      }
+
+      const lud16 = sanitizeProfileString(profile.lud16);
+      if (lud16) {
+        normalized.lud16 = lud16;
+      }
+
+      const lud06 = sanitizeProfileString(profile.lud06);
+      if (lud06) {
+        normalized.lud06 = lud06;
+      }
+
+      const lightningCandidates = [
+        sanitizeProfileString(profile.lightningAddress),
+        lud16,
+        lud06,
+      ].filter(Boolean);
+      if (lightningCandidates.length) {
+        normalized.lightningAddress = lightningCandidates[0];
+      }
+
       profileCache.set(pubkey, {
         profile: normalized,
         timestamp,
@@ -535,6 +578,40 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
     name: profile.name || profile.display_name || "Unknown",
     picture: profile.picture || "assets/svg/default-profile.svg",
   };
+
+  const about = sanitizeProfileString(profile.about || profile.aboutMe);
+  if (about) {
+    normalized.about = about;
+  }
+
+  const website = sanitizeProfileString(profile.website || profile.url);
+  if (website) {
+    normalized.website = website;
+  }
+
+  const banner = sanitizeProfileString(profile.banner || profile.header);
+  if (banner) {
+    normalized.banner = banner;
+  }
+
+  const lud16 = sanitizeProfileString(profile.lud16);
+  if (lud16) {
+    normalized.lud16 = lud16;
+  }
+
+  const lud06 = sanitizeProfileString(profile.lud06);
+  if (lud06) {
+    normalized.lud06 = lud06;
+  }
+
+  const lightningCandidates = [
+    sanitizeProfileString(profile.lightningAddress),
+    lud16,
+    lud06,
+  ].filter(Boolean);
+  if (lightningCandidates.length) {
+    normalized.lightningAddress = lightningCandidates[0];
+  }
 
   const entry = {
     profile: normalized,
