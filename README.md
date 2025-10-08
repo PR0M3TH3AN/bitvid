@@ -170,6 +170,12 @@ Use the manual QA checklist before releases or when altering upload/playback flo
 
 See [`docs/qa.md`](docs/qa.md) for the copy/paste-friendly checklist we share with QA.
 
+For automated DOM-focused regression coverage, run the Node-based test suite:
+
+```bash
+node tests/profile-modal-controller.test.mjs
+```
+
 ---
 
 ## Acknowledgments
