@@ -6937,6 +6937,9 @@ class Application {
 
     let modalVideoEl = this.modalVideo;
     if (!modalVideoEl && this.videoModal) {
+      modalVideoEl = this.videoModal.getVideoElement();
+    }
+    if (!modalVideoEl && this.videoModal) {
       const maybeLoader = this.videoModal.load;
       if (typeof maybeLoader === "function") {
         try {
@@ -6950,6 +6953,9 @@ class Application {
           return { source: null, error };
         }
         modalVideoEl = this.modalVideo;
+        if (!modalVideoEl && this.videoModal) {
+          modalVideoEl = this.videoModal.getVideoElement();
+        }
       }
     }
 

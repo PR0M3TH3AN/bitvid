@@ -151,9 +151,14 @@ export class VideoModal {
     const wrapper = this.document.createElement("div");
     wrapper.innerHTML = html;
     this.removeTrackingScripts(wrapper);
-    container.appendChild(wrapper);
 
-    const playerModal = wrapper.querySelector("#playerModal");
+    const fragment = this.document.createDocumentFragment();
+    while (wrapper.firstChild) {
+      fragment.appendChild(wrapper.firstChild);
+    }
+    container.appendChild(fragment);
+
+    const playerModal = container.querySelector("#playerModal");
     if (!playerModal) {
       throw new Error("Player modal root not found in markup.");
     }
