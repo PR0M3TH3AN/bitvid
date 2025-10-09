@@ -75,6 +75,11 @@ import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
 import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
 import {
+  getVideoRootIdentifier,
+  applyRootTimestampToVideosMap,
+  syncActiveVideoRootTimestamp,
+} from "./utils/videoTimestamps.js";
+import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
   getCurrentUserNpub as getStoredCurrentUserNpub,
@@ -6432,17 +6437,27 @@ class Application {
     }
 
     const normalized = Math.floor(timestamp);
+    const rootId = getVideoRootIdentifier(video);
 
     if (video && typeof video === "object") {
       video.rootCreatedAt = normalized;
     }
 
-    if (video?.id && this.videosMap instanceof Map) {
-      const existing = this.videosMap.get(video.id);
-      if (existing && typeof existing === "object") {
-        existing.rootCreatedAt = normalized;
-      }
-    }
+    applyRootTimestampToVideosMap({
+      videosMap: this.videosMap,
+      video,
+      rootId,
+      timestamp: normalized,
+    });
+
+    syncActiveVideoRootTimestamp({
+      activeVideo: this.currentVideo,
+      rootId,
+      timestamp: normalized,
+      buildModalTimestampPayload: (payload) =>
+        this.buildModalTimestampPayload(payload),
+      videoModal: this.videoModal,
+    });
 
     if (nostrClient && typeof nostrClient.applyRootCreatedAt === "function") {
       try {

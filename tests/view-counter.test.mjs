@@ -284,6 +284,11 @@ const {
   ingestLocalViewEvent,
 } = await import("../js/viewCounter.js");
 const { resolveVideoPointer } = await import("../js/utils/videoPointer.js");
+const {
+  getVideoRootIdentifier,
+  applyRootTimestampToVideosMap,
+  syncActiveVideoRootTimestamp,
+} = await import("../js/utils/videoTimestamps.js");
 
 initViewCounter({ nostrClient });
 
@@ -863,6 +868,78 @@ async function testHydrateHistoryPrefersRootEvent() {
   }
 }
 
+async function testModalPostedTimestampStaysInSync() {
+  const videosMap = new Map();
+  const currentVideo = {
+    id: "latest-edit",
+    videoRootId: "root-event-note",
+    created_at: 260,
+    lastEditedAt: 260,
+  };
+
+  const storedVideo = { id: "latest-edit", videoRootId: "root-event-note" };
+  videosMap.set(storedVideo.id, storedVideo);
+
+  const incomingVideo = { ...currentVideo };
+  const rootId = getVideoRootIdentifier(incomingVideo);
+  const timestamp = 100;
+
+  applyRootTimestampToVideosMap({
+    videosMap,
+    video: incomingVideo,
+    rootId,
+    timestamp,
+  });
+
+  assert.equal(
+    storedVideo.rootCreatedAt,
+    timestamp,
+    "videosMap entries that share the root should receive the cached timestamp",
+  );
+
+  const modalUpdates = [];
+  const videoModal = {
+    updateMetadata: ({ timestamps }) => {
+      if (timestamps) {
+        modalUpdates.push({ ...timestamps });
+      }
+    },
+  };
+
+  const buildModalTimestampPayload = ({ postedAt, editedAt }) => ({
+    posted: postedAt !== null ? `Posted time-${postedAt}` : "",
+    edited: editedAt !== null ? `Last edited time-${editedAt}` : "",
+  });
+
+  const updated = syncActiveVideoRootTimestamp({
+    activeVideo: currentVideo,
+    rootId,
+    timestamp,
+    buildModalTimestampPayload,
+    videoModal,
+  });
+
+  assert.ok(updated, "syncActiveVideoRootTimestamp should record the new root time");
+  assert.equal(
+    currentVideo.rootCreatedAt,
+    timestamp,
+    "current video should stay aligned with the cached root timestamp",
+  );
+
+  const lastModalUpdate = modalUpdates.at(-1);
+  assert.ok(lastModalUpdate, "video modal should receive a timestamp update");
+  assert.equal(
+    lastModalUpdate.posted,
+    "Posted time-100",
+    "modal posted label should reflect the root timestamp",
+  );
+  assert.equal(
+    lastModalUpdate.edited,
+    "Last edited time-260",
+    "modal edited label should continue to show the latest edit time",
+  );
+}
+
 await testHydrationRefreshesAfterCacheTtl();
 await testDedupesWithinWindow();
 await testHydrationSkipsStaleEventsAndRollsOff();
@@ -871,5 +948,6 @@ await testUnsubscribeStopsCallbacks();
 await testRelayCountAggregationUsesBestEstimate();
 await testRecordVideoViewEmitsJsonPayload();
 await testHydrateHistoryPrefersRootEvent();
+await testModalPostedTimestampStaysInSync();
 
 console.log("View counter tests completed successfully.");
