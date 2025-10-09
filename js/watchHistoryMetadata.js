@@ -7,11 +7,37 @@ import { nostrClient } from "./nostr.js";
 const isDevEnv =
   typeof process !== "undefined" && process?.env?.NODE_ENV !== "production";
 
+function logInfo(message, details) {
+  if (!isDevEnv) {
+    return;
+  }
+  if (details && typeof details === "object") {
+    console.info(`[watchHistoryMetadata] ${message}`, details);
+  } else {
+    console.info(`[watchHistoryMetadata] ${message}`);
+  }
+}
+
+function logWarn(message, details) {
+  if (!isDevEnv) {
+    return;
+  }
+  if (details && typeof details === "object") {
+    console.warn(`[watchHistoryMetadata] ${message}`, details);
+  } else {
+    console.warn(`[watchHistoryMetadata] ${message}`);
+  }
+}
+
 function normalizeVideoCandidate(candidate) {
   if (!candidate || typeof candidate !== "object") {
+    logInfo("Discarded non-object video candidate while normalizing.");
     return null;
   }
   if (candidate.deleted) {
+    logInfo("Discarded deleted video candidate while normalizing.", {
+      eventId: candidate.id || null,
+    });
     return null;
   }
   return candidate;
@@ -31,25 +57,29 @@ export function createWatchHistoryMetadataResolver({
     try {
       return typeof appResolver === "function" ? appResolver() : getApplication();
     } catch (error) {
-      if (isDevEnv) {
-        console.warn(
-          "[watchHistoryMetadata] Failed to resolve application instance:",
-          error,
-        );
-      }
+      logWarn("Failed to resolve application instance.", { error });
       return null;
     }
   }
 
   async function resolveVideo(pointer) {
     if (!pointer || typeof pointer !== "object") {
+      logInfo("Received invalid pointer when resolving video metadata.", {
+        pointerType: typeof pointer,
+      });
       return null;
     }
 
     const app = getAppInstance();
     const type = pointer.type === "a" ? "a" : "e";
     const value = typeof pointer.value === "string" ? pointer.value.trim() : "";
+    logInfo("Attempting to resolve watch history pointer.", {
+      pointerType: type,
+      pointerValue: value || null,
+      hasAppInstance: Boolean(app),
+    });
     if (!value) {
+      logInfo("Pointer value was empty after trimming. Skipping resolution.");
       return null;
     }
 
@@ -57,6 +87,9 @@ export function createWatchHistoryMetadataResolver({
       const fromAppCache = app?.videosMap?.get?.(value);
       const normalizedAppCache = normalizeVideoCandidate(fromAppCache);
       if (normalizedAppCache) {
+        logInfo("Resolved pointer from application videos map.", {
+          pointerValue: value,
+        });
         return normalizedAppCache;
       }
 
@@ -65,6 +98,9 @@ export function createWatchHistoryMetadataResolver({
         : null;
       const normalizedClientCache = normalizeVideoCandidate(fromClientCache);
       if (normalizedClientCache) {
+        logInfo("Resolved pointer from nostr client event cache.", {
+          pointerValue: value,
+        });
         return normalizedClientCache;
       }
 
@@ -73,15 +109,16 @@ export function createWatchHistoryMetadataResolver({
           const fetched = await app.getOldEventById(value);
           const normalized = normalizeVideoCandidate(fetched);
           if (normalized) {
+            logInfo("Resolved pointer via app.getOldEventById.", {
+              pointerValue: value,
+            });
             return normalized;
           }
         } catch (error) {
-          if (isDevEnv) {
-            console.warn(
-              "[watchHistoryMetadata] Failed to fetch old event by id:",
-              error,
-            );
-          }
+          logWarn("Failed to fetch old event by id.", {
+            pointerValue: value,
+            error,
+          });
         }
       }
 
@@ -90,18 +127,20 @@ export function createWatchHistoryMetadataResolver({
           const fetched = await client.getEventById(value);
           const normalized = normalizeVideoCandidate(fetched);
           if (normalized) {
+            logInfo("Resolved pointer via nostrClient.getEventById.", {
+              pointerValue: value,
+            });
             return normalized;
           }
         } catch (error) {
-          if (isDevEnv) {
-            console.warn(
-              "[watchHistoryMetadata] Failed to fetch event by id:",
-              error,
-            );
-          }
+          logWarn("Failed to fetch event by id via nostrClient.", {
+            pointerValue: value,
+            error,
+          });
         }
       }
 
+      logInfo("Failed to resolve pointer by event id.", { pointerValue: value });
       return null;
     }
 
@@ -114,16 +153,21 @@ export function createWatchHistoryMetadataResolver({
       }
       try {
         const address = app.getVideoAddressPointer(candidate);
-        return typeof address === "string" && address.trim() === value;
-      } catch (error) {
-        if (isDevEnv) {
-          console.warn(
-            "[watchHistoryMetadata] Failed to compute address pointer:",
-            error,
-          );
+        const isMatch = typeof address === "string" && address.trim() === value;
+        if (isMatch) {
+          logInfo("Candidate matched address pointer.", {
+            pointerValue: value,
+            candidateId: candidate.id || null,
+          });
         }
+        return isMatch;
+      } catch (error) {
+        logWarn("Failed to compute address pointer for candidate.", {
+          pointerValue: value,
+          error,
+        });
+        return false;
       }
-      return false;
     };
 
     if (app?.videosMap instanceof Map) {
@@ -149,12 +193,10 @@ export function createWatchHistoryMetadataResolver({
             app.isAuthorBlocked(pubkey)
           );
         } catch (error) {
-          if (isDevEnv) {
-            console.warn(
-              "[watchHistoryMetadata] Failed to evaluate isAuthorBlocked:",
-              error,
-            );
-          }
+          logWarn("Failed to evaluate isAuthorBlocked callback.", {
+            pointerValue: value,
+            error,
+          });
           return false;
         }
       },
@@ -165,13 +207,17 @@ export function createWatchHistoryMetadataResolver({
         caches.activeVideos = nostr.getFilteredActiveVideos
           ? nostr.getFilteredActiveVideos(filterOptions)
           : [];
+        logInfo("Loaded active videos cache for pointer resolution.", {
+          pointerValue: value,
+          candidateCount: Array.isArray(caches.activeVideos)
+            ? caches.activeVideos.length
+            : 0,
+        });
       } catch (error) {
-        if (isDevEnv) {
-          console.warn(
-            "[watchHistoryMetadata] Failed to read active videos cache:",
-            error,
-          );
-        }
+        logWarn("Failed to read active videos cache.", {
+          pointerValue: value,
+          error,
+        });
         caches.activeVideos = [];
       }
     }
@@ -182,21 +228,26 @@ export function createWatchHistoryMetadataResolver({
       if (compareAddress(candidate)) {
         const normalized = normalizeVideoCandidate(candidate);
         if (normalized) {
+          logInfo("Resolved pointer from active videos cache.", {
+            pointerValue: value,
+            candidateId: normalized.id || null,
+          });
           return normalized;
         }
       }
     }
 
     if (!caches.catalogPromise && typeof nostr.fetchVideos === "function") {
+      logInfo("Fetching video catalog for pointer resolution.", {
+        pointerValue: value,
+      });
       caches.catalogPromise = nostr
         .fetchVideos(filterOptions)
         .catch((error) => {
-          if (isDevEnv) {
-            console.warn(
-              "[watchHistoryMetadata] Failed to fetch video catalog:",
-              error,
-            );
-          }
+          logWarn("Failed to fetch video catalog while resolving pointer.", {
+            pointerValue: value,
+            error,
+          });
           return [];
         });
     }
@@ -208,20 +259,25 @@ export function createWatchHistoryMetadataResolver({
           if (compareAddress(candidate)) {
             const normalized = normalizeVideoCandidate(candidate);
             if (normalized) {
+              logInfo("Resolved pointer from fetched video catalog.", {
+                pointerValue: value,
+                candidateId: normalized.id || null,
+              });
               return normalized;
             }
           }
         }
       } catch (error) {
-        if (isDevEnv) {
-          console.warn(
-            "[watchHistoryMetadata] Failed to resolve catalog pointer:",
-            error,
-          );
-        }
+        logWarn("Failed to resolve pointer from fetched catalog.", {
+          pointerValue: value,
+          error,
+        });
       }
     }
 
+    logInfo("Failed to resolve pointer after exhausting lookup strategies.", {
+      pointerValue: value,
+    });
     return null;
   }
 
@@ -239,22 +295,21 @@ export function createWatchHistoryMetadataResolver({
           ? app.getProfileCacheEntry(pubkey)
           : null;
       if (cacheEntry && typeof cacheEntry === "object") {
+        logInfo("Resolved profile from application cache.", { pubkey });
         return cacheEntry.profile || null;
       }
     } catch (error) {
-      if (isDevEnv) {
-        console.warn(
-          "[watchHistoryMetadata] Failed to read profile cache entry:",
-          error,
-        );
-      }
+      logWarn("Failed to read profile cache entry.", { pubkey, error });
     }
+    logInfo("Profile cache miss during watch history hydration.", { pubkey });
     return null;
   }
 
   function reset() {
     caches.activeVideos = null;
+    logInfo("Reset active videos cache for watch history metadata resolver.");
     caches.catalogPromise = null;
+    logInfo("Reset catalog promise for watch history metadata resolver.");
   }
 
   return {
