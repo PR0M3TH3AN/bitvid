@@ -509,7 +509,9 @@ export class VideoListView {
     if (authorSet.size) {
       this.utils.batchFetchProfiles(authorSet);
     }
-    this.utils.refreshDiscussionCounts(displayVideos);
+    this.utils.refreshDiscussionCounts(displayVideos, {
+      container: this.container,
+    });
     this.pruneDetachedViewCountElements();
 
     return displayVideos;
