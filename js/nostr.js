@@ -27,6 +27,7 @@ import { extractMagnetHints } from "./magnet.js";
 import {
   buildVideoPostEvent,
   buildVideoMirrorEvent,
+  buildRepostEvent,
   buildViewEvent,
   buildWatchHistoryIndexEvent,
   buildWatchHistoryChunkEvent,
@@ -57,9 +58,9 @@ const RELAY_URLS = Array.from(DEFAULT_RELAY_URLS);
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const NIP07_LOGIN_TIMEOUT_MS = 15_000; // 15 seconds
+const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
 const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
-  "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again.";
+  "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
@@ -378,8 +379,26 @@ async function runNip07WithRetry(
     retryMultiplier = 2,
   } = {},
 ) {
+  let hasStarted = false;
+  let cachedPromise = null;
+
+  const getOrStartOperation = () => {
+    if (!hasStarted) {
+      hasStarted = true;
+      try {
+        cachedPromise = Promise.resolve(operation());
+      } catch (error) {
+        hasStarted = false;
+        cachedPromise = null;
+        throw error;
+      }
+    }
+
+    return cachedPromise;
+  };
+
   try {
-    return await withNip07Timeout(operation, {
+    return await withNip07Timeout(getOrStartOperation, {
       timeoutMs,
       message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
     });
@@ -399,11 +418,11 @@ async function runNip07WithRetry(
 
     if (isDevMode) {
       console.warn(
-        `[nostr] ${label} timed out after ${timeoutMs}ms. Retrying once with ${extendedTimeout}ms timeout.`,
+        `[nostr] ${label} taking longer than ${timeoutMs}ms. Waiting up to ${extendedTimeout}ms for extension response.`,
       );
     }
 
-    return withNip07Timeout(operation, {
+    return withNip07Timeout(getOrStartOperation, {
       timeoutMs: extendedTimeout,
       message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
     });
@@ -5464,6 +5483,7 @@ export class NostrClient {
       logName = context,
       devLogLabel = logName,
       rejectionLogLevel = "error",
+      relaysOverride = null,
     } = {}
   ) {
     const extension = window?.nostr;
@@ -5549,9 +5569,21 @@ export class NostrClient {
       console.log(`Signed ${devLogLabel} event:`, signedEvent);
     }
 
+    let targetRelays = sanitizeRelayList(
+      Array.isArray(relaysOverride) && relaysOverride.length
+        ? relaysOverride
+        : Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : this.relays
+    );
+
+    if (!targetRelays.length) {
+      targetRelays = Array.from(RELAY_URLS);
+    }
+
     const publishResults = await publishEventToRelays(
       this.pool,
-      this.relays,
+      targetRelays,
       signedEvent
     );
 
@@ -5594,7 +5626,12 @@ export class NostrClient {
       });
     }
 
-    return { signedEvent, summary: publishSummary, signerPubkey };
+    return {
+      signedEvent,
+      summary: publishSummary,
+      signerPubkey,
+      relays: targetRelays,
+    };
   }
 
   async publishVideo(videoPayload, pubkey) {
@@ -7078,6 +7115,439 @@ export class NostrClient {
     }
 
     return video;
+  }
+
+  async repostEvent(eventId, options = {}) {
+    const normalizedId =
+      typeof eventId === "string" && eventId.trim() ? eventId.trim() : "";
+    if (!normalizedId) {
+      return { ok: false, error: "invalid-event-id" };
+    }
+
+    let pointer = null;
+    if (options.pointer) {
+      pointer = normalizePointerInput(options.pointer);
+    }
+    if (!pointer) {
+      const type =
+        typeof options.pointerType === "string" ? options.pointerType.trim() : "";
+      const value =
+        typeof options.pointerValue === "string" ? options.pointerValue.trim() : "";
+      if (type && value) {
+        const candidate = [type, value];
+        const relay =
+          typeof options.pointerRelay === "string"
+            ? options.pointerRelay.trim()
+            : "";
+        if (relay) {
+          candidate.push(relay);
+        }
+        pointer = normalizePointerInput(candidate);
+      }
+    }
+
+    const cachedVideo = this.allEvents.get(normalizedId) || null;
+    const cachedRaw = this.rawEvents.get(normalizedId) || null;
+
+    let authorPubkey =
+      typeof options.authorPubkey === "string" && options.authorPubkey.trim()
+        ? options.authorPubkey.trim().toLowerCase()
+        : "";
+
+    if (!authorPubkey && cachedVideo?.pubkey) {
+      authorPubkey = cachedVideo.pubkey.trim().toLowerCase();
+    }
+    if (!authorPubkey && cachedRaw?.pubkey) {
+      authorPubkey = cachedRaw.pubkey.trim().toLowerCase();
+    }
+
+    let address = typeof options.address === "string" ? options.address.trim() : "";
+    if (!address && pointer?.type === "a") {
+      address = pointer.value;
+    }
+
+    let addressRelay =
+      typeof options.addressRelay === "string" ? options.addressRelay.trim() : "";
+    if (!addressRelay && pointer?.type === "a" && pointer.relay) {
+      addressRelay = pointer.relay;
+    }
+
+    let eventRelay =
+      typeof options.eventRelay === "string" ? options.eventRelay.trim() : "";
+    if (!eventRelay && pointer?.type === "e" && pointer.relay) {
+      eventRelay = pointer.relay;
+    }
+
+    let targetKind = Number.isFinite(options.kind)
+      ? Math.floor(options.kind)
+      : null;
+
+    const parseAddressMetadata = (candidate) => {
+      if (typeof candidate !== "string" || !candidate) {
+        return;
+      }
+      const parts = candidate.split(":");
+      if (parts.length >= 3) {
+        const maybeKind = Number.parseInt(parts[0], 10);
+        if (Number.isFinite(maybeKind) && !Number.isFinite(targetKind)) {
+          targetKind = maybeKind;
+        }
+        const maybePubkey = parts[1];
+        if (
+          maybePubkey &&
+          !authorPubkey &&
+          /^[0-9a-f]{64}$/i.test(maybePubkey)
+        ) {
+          authorPubkey = maybePubkey.toLowerCase();
+        }
+      }
+    };
+
+    if (address) {
+      parseAddressMetadata(address);
+    }
+
+    if (!Number.isFinite(targetKind)) {
+      if (Number.isFinite(cachedRaw?.kind)) {
+        targetKind = Math.floor(cachedRaw.kind);
+      } else if (Number.isFinite(cachedVideo?.kind)) {
+        targetKind = Math.floor(cachedVideo.kind);
+      } else {
+        targetKind = 30078;
+      }
+    }
+
+    const deriveIdentifierFromVideo = () => {
+      if (!cachedVideo || typeof cachedVideo !== "object") {
+        return "";
+      }
+
+      if (typeof cachedVideo.videoRootId === "string" && cachedVideo.videoRootId.trim()) {
+        return cachedVideo.videoRootId.trim();
+      }
+
+      if (Array.isArray(cachedVideo.tags)) {
+        for (const tag of cachedVideo.tags) {
+          if (!Array.isArray(tag) || tag.length < 2) {
+            continue;
+          }
+          if (tag[0] === "d" && typeof tag[1] === "string" && tag[1].trim()) {
+            return tag[1].trim();
+          }
+        }
+      }
+
+      return "";
+    };
+
+    if (!address) {
+      const identifier = deriveIdentifierFromVideo();
+      const ownerPubkey =
+        authorPubkey ||
+        (cachedVideo?.pubkey ? cachedVideo.pubkey.trim().toLowerCase() : "") ||
+        (cachedRaw?.pubkey ? cachedRaw.pubkey.trim().toLowerCase() : "");
+
+      if (identifier && ownerPubkey) {
+        address = `${targetKind}:${ownerPubkey}:${identifier}`;
+        parseAddressMetadata(address);
+      } else if (cachedRaw) {
+        const fallbackAddress = eventToAddressPointer(cachedRaw);
+        if (fallbackAddress) {
+          address = fallbackAddress;
+          parseAddressMetadata(address);
+        }
+      }
+    }
+
+    const relaysOverride = sanitizeRelayList(
+      Array.isArray(options.relays) && options.relays.length
+        ? options.relays
+        : Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : this.relays
+    );
+    const relays = relaysOverride.length ? relaysOverride : Array.from(RELAY_URLS);
+
+    let actorPubkey =
+      typeof options.actorPubkey === "string" && options.actorPubkey.trim()
+        ? options.actorPubkey.trim()
+        : typeof this.pubkey === "string" && this.pubkey.trim()
+        ? this.pubkey.trim()
+        : "";
+
+    if (!actorPubkey) {
+      try {
+        const ensured = await this.ensureSessionActor();
+        actorPubkey = ensured || "";
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure session actor before repost:", error);
+        }
+        return { ok: false, error: "missing-actor", details: error };
+      }
+    }
+
+    if (!actorPubkey) {
+      return { ok: false, error: "missing-actor" };
+    }
+
+    if (!this.pool) {
+      try {
+        await this.ensurePool();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure pool before repost:", error);
+        }
+        return { ok: false, error: "pool-unavailable", details: error };
+      }
+    }
+
+    const createdAt =
+      typeof options.created_at === "number" && Number.isFinite(options.created_at)
+        ? Math.max(0, Math.floor(options.created_at))
+        : Math.floor(Date.now() / 1000);
+
+    const additionalTags = Array.isArray(options.additionalTags)
+      ? options.additionalTags.filter((tag) => Array.isArray(tag) && tag.length >= 2)
+      : [];
+
+    const repostEvent = buildRepostEvent({
+      pubkey: actorPubkey,
+      created_at: createdAt,
+      eventId: normalizedId,
+      eventRelay,
+      address,
+      addressRelay,
+      authorPubkey,
+      additionalTags,
+    });
+
+    try {
+      const { signedEvent, summary, signerPubkey } = await this.signAndPublishEvent(
+        repostEvent,
+        {
+          context: "repost",
+          logName: "Repost",
+          devLogLabel: "repost",
+          relaysOverride: relays,
+        }
+      );
+
+      const normalizedSigner =
+        typeof signerPubkey === "string" ? signerPubkey.toLowerCase() : "";
+      const normalizedLogged =
+        typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+      const sessionPubkey =
+        typeof this.sessionActor?.pubkey === "string"
+          ? this.sessionActor.pubkey.toLowerCase()
+          : "";
+
+      const usedSessionActor =
+        normalizedSigner &&
+        normalizedSigner !== normalizedLogged &&
+        normalizedSigner === sessionPubkey;
+
+      return {
+        ok: true,
+        event: signedEvent,
+        summary,
+        relays,
+        sessionActor: usedSessionActor,
+        signerPubkey,
+      };
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Repost publish failed:", error);
+      }
+      const relayFailure =
+        error && typeof error === "object" && Array.isArray(error.relayFailures);
+      return {
+        ok: false,
+        error: relayFailure ? "publish-rejected" : "signing-failed",
+        details: error,
+      };
+    }
+  }
+
+  async mirrorVideoEvent(eventId, options = {}) {
+    const normalizedId =
+      typeof eventId === "string" && eventId.trim() ? eventId.trim() : "";
+    if (!normalizedId) {
+      return { ok: false, error: "invalid-event-id" };
+    }
+
+    const cachedVideo = this.allEvents.get(normalizedId) || null;
+
+    const sanitize = (value) => (typeof value === "string" ? value.trim() : "");
+
+    let url = sanitize(options.url);
+    if (!url && cachedVideo?.url) {
+      url = sanitize(cachedVideo.url);
+    }
+
+    if (!url) {
+      return { ok: false, error: "missing-url" };
+    }
+
+    const isPrivate =
+      options.isPrivate === true ||
+      options.isPrivate === "true" ||
+      cachedVideo?.isPrivate === true;
+
+    let magnet = sanitize(options.magnet);
+    if (!magnet && cachedVideo?.magnet) {
+      magnet = sanitize(cachedVideo.magnet);
+    }
+    if (!magnet && cachedVideo?.rawMagnet) {
+      magnet = sanitize(cachedVideo.rawMagnet);
+    }
+    if (!magnet && cachedVideo?.originalMagnet) {
+      magnet = sanitize(cachedVideo.originalMagnet);
+    }
+
+    let thumbnail = sanitize(options.thumbnail);
+    if (!thumbnail && cachedVideo?.thumbnail) {
+      thumbnail = sanitize(cachedVideo.thumbnail);
+    }
+
+    let description = sanitize(options.description);
+    if (!description && cachedVideo?.description) {
+      description = sanitize(cachedVideo.description);
+    }
+
+    let title = sanitize(options.title);
+    if (!title && cachedVideo?.title) {
+      title = sanitize(cachedVideo.title);
+    }
+
+    const providedMimeType = sanitize(options.mimeType);
+    const inferredMimeType = inferMimeTypeFromUrl(url);
+    const mimeType = providedMimeType || inferredMimeType || "application/octet-stream";
+
+    const explicitAlt = sanitize(options.altText);
+    const altText = explicitAlt || description || title || "";
+
+    const tags = [];
+    tags.push(["url", url]);
+    if (mimeType) {
+      tags.push(["m", mimeType]);
+    }
+    if (thumbnail) {
+      tags.push(["thumb", thumbnail]);
+    }
+    if (altText) {
+      tags.push(["alt", altText]);
+    }
+    if (!isPrivate && magnet) {
+      tags.push(["magnet", magnet]);
+    }
+
+    const additionalTags = Array.isArray(options.additionalTags)
+      ? options.additionalTags.filter((tag) => Array.isArray(tag) && tag.length >= 2)
+      : [];
+    tags.push(...additionalTags);
+
+    let actorPubkey =
+      typeof options.actorPubkey === "string" && options.actorPubkey.trim()
+        ? options.actorPubkey.trim()
+        : typeof this.pubkey === "string" && this.pubkey.trim()
+        ? this.pubkey.trim()
+        : "";
+
+    if (!actorPubkey) {
+      try {
+        const ensured = await this.ensureSessionActor();
+        actorPubkey = ensured || "";
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure session actor before mirror:", error);
+        }
+        return { ok: false, error: "missing-actor", details: error };
+      }
+    }
+
+    if (!actorPubkey) {
+      return { ok: false, error: "missing-actor" };
+    }
+
+    if (!this.pool) {
+      try {
+        await this.ensurePool();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure pool before mirror:", error);
+        }
+        return { ok: false, error: "pool-unavailable", details: error };
+      }
+    }
+
+    const createdAt =
+      typeof options.created_at === "number" && Number.isFinite(options.created_at)
+        ? Math.max(0, Math.floor(options.created_at))
+        : Math.floor(Date.now() / 1000);
+
+    const relaysOverride = sanitizeRelayList(
+      Array.isArray(options.relays) && options.relays.length
+        ? options.relays
+        : Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : this.relays
+    );
+    const relays = relaysOverride.length ? relaysOverride : Array.from(RELAY_URLS);
+
+    const mirrorEvent = buildVideoMirrorEvent({
+      pubkey: actorPubkey,
+      created_at: createdAt,
+      tags,
+      content: altText,
+    });
+
+    try {
+      const { signedEvent, summary, signerPubkey } = await this.signAndPublishEvent(
+        mirrorEvent,
+        {
+          context: "mirror",
+          logName: "NIP-94 mirror",
+          devLogLabel: "NIP-94 mirror",
+          rejectionLogLevel: "warn",
+          relaysOverride: relays,
+        }
+      );
+
+      const normalizedSigner =
+        typeof signerPubkey === "string" ? signerPubkey.toLowerCase() : "";
+      const normalizedLogged =
+        typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+      const sessionPubkey =
+        typeof this.sessionActor?.pubkey === "string"
+          ? this.sessionActor.pubkey.toLowerCase()
+          : "";
+
+      const usedSessionActor =
+        normalizedSigner &&
+        normalizedSigner !== normalizedLogged &&
+        normalizedSigner === sessionPubkey;
+
+      return {
+        ok: true,
+        event: signedEvent,
+        summary,
+        relays,
+        sessionActor: usedSessionActor,
+        signerPubkey,
+      };
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Mirror publish failed:", error);
+      }
+      const relayFailure =
+        error && typeof error === "object" && Array.isArray(error.relayFailures);
+      return {
+        ok: false,
+        error: relayFailure ? "publish-rejected" : "signing-failed",
+        details: error,
+      };
+    }
   }
 
   async rebroadcastEvent(eventId, options = {}) {
