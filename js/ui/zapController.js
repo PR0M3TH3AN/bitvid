@@ -104,6 +104,7 @@ export default class ZapController {
     this.modalZapInFlight = false;
     this.resetRetryState();
     if (this.videoModal) {
+      this.videoModal.setZapCompleted(false);
       this.videoModal.resetZapForm({
         amount: preserveAmount ? this.modalZapAmountValue || "" : "",
         comment: "",
@@ -150,6 +151,8 @@ export default class ZapController {
       return;
     }
 
+    this.videoModal?.setZapCompleted(false);
+
     const numericAmount = Number.isFinite(Number(amount))
       ? Number(amount)
       : this.modalZapAmountValue;
@@ -182,10 +185,15 @@ export default class ZapController {
         Array.isArray(this.modalZapRetryState?.shares) &&
         this.modalZapRetryState.shares.length
       ) {
-        await this.executeRetry({
+        const retrySuccess = await this.executeRetry({
           walletSettings,
           comment: trimmedComment,
         });
+        if (retrySuccess) {
+          this.modalZapCommentValue = "";
+          this.videoModal?.resetZapForm({ amount: "", comment: "" });
+          this.videoModal?.setZapCompleted(true);
+        }
         this.applyDefaultAmount();
         return;
       }
@@ -215,6 +223,7 @@ export default class ZapController {
       this.resetRetryState();
       this.modalZapCommentValue = "";
       this.videoModal?.resetZapForm({ amount: "", comment: "" });
+      this.videoModal?.setZapCompleted(true);
       this.applyDefaultAmount();
     } catch (error) {
       this.handleZapError({ error, amount: roundedAmount, comment: trimmedComment, walletSettings });
@@ -240,6 +249,7 @@ export default class ZapController {
     if (!this.videoModal) {
       return;
     }
+    this.videoModal.setZapCompleted(false);
     this.videoModal.setZapStatus("", "neutral");
     this.videoModal.clearZapReceipts();
     this.videoModal.setZapRetryPending(false);

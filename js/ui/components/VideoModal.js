@@ -331,6 +331,10 @@ export class VideoModal {
     if (this.modalZapForm) {
       this.modalZapForm.addEventListener("submit", (event) => {
         event?.preventDefault?.();
+        if (this.modalZapSendBtn?.dataset.completed === "true") {
+          this.closeZapDialog();
+          return;
+        }
         if (this.modalZapSendBtn?.disabled) {
           return;
         }
@@ -339,6 +343,15 @@ export class VideoModal {
           amount: this.getZapAmountValue(),
           comment: this.getZapCommentValue(),
         });
+      });
+    }
+
+    if (this.modalZapSendBtn) {
+      this.modalZapSendBtn.addEventListener("click", (event) => {
+        if (this.modalZapSendBtn?.dataset.completed === "true") {
+          event?.preventDefault?.();
+          this.closeZapDialog();
+        }
       });
     }
 
@@ -712,6 +725,7 @@ export class VideoModal {
     this.setZapStatus("", "neutral");
     this.clearZapReceipts();
     this.setZapRetryPending(false);
+    this.setZapCompleted(false);
   }
 
   setZapSplitSummary(text) {
@@ -894,21 +908,67 @@ export class VideoModal {
     }
 
     if (pending) {
+      delete this.modalZapSendBtn.dataset.completed;
       this.modalZapSendBtn.dataset.retryPending = "true";
+      if (summary) {
+        this.modalZapSendBtn.dataset.retrySummary = summary;
+      } else {
+        delete this.modalZapSendBtn.dataset.retrySummary;
+      }
+    } else {
+      delete this.modalZapSendBtn.dataset.retryPending;
+      delete this.modalZapSendBtn.dataset.retrySummary;
+    }
+
+    this.applyZapSendButtonState();
+  }
+
+  setZapCompleted(completed) {
+    if (!this.modalZapSendBtn) {
+      return;
+    }
+
+    if (completed) {
+      delete this.modalZapSendBtn.dataset.retryPending;
+      delete this.modalZapSendBtn.dataset.retrySummary;
+      this.modalZapSendBtn.dataset.completed = "true";
+    } else {
+      delete this.modalZapSendBtn.dataset.completed;
+    }
+
+    this.applyZapSendButtonState();
+  }
+
+  applyZapSendButtonState() {
+    if (!this.modalZapSendBtn) {
+      return;
+    }
+
+    if (this.modalZapSendBtn.dataset.completed === "true") {
+      this.modalZapSendBtn.textContent = "Done";
+      this.modalZapSendBtn.setAttribute("aria-label", "Close zap dialog");
+      this.modalZapSendBtn.title = "Close zap dialog";
+      return;
+    }
+
+    if (this.modalZapSendBtn.dataset.retryPending === "true") {
       this.modalZapSendBtn.textContent = "Retry";
       this.modalZapSendBtn.setAttribute(
         "aria-label",
         "Retry failed zap shares"
       );
+      const summary = this.modalZapSendBtn.dataset.retrySummary;
       if (summary) {
         this.modalZapSendBtn.title = summary;
+      } else {
+        this.modalZapSendBtn.removeAttribute("title");
       }
-    } else {
-      delete this.modalZapSendBtn.dataset.retryPending;
-      this.modalZapSendBtn.textContent = "Send";
-      this.modalZapSendBtn.setAttribute("aria-label", "Send a zap");
-      this.modalZapSendBtn.removeAttribute("title");
+      return;
     }
+
+    this.modalZapSendBtn.textContent = "Send";
+    this.modalZapSendBtn.setAttribute("aria-label", "Send a zap");
+    this.modalZapSendBtn.removeAttribute("title");
   }
 
   getViewCountElement() {
