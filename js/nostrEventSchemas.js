@@ -10,6 +10,7 @@ export const NOTE_TYPES = Object.freeze({
   VIDEO_MIRROR: "videoMirror",
   NIP71_VIDEO: "nip71Video",
   NIP71_SHORT_VIDEO: "nip71ShortVideo",
+  REPOST: "repost",
   RELAY_LIST: "relayList",
   VIEW_EVENT: "viewEvent",
   WATCH_HISTORY_INDEX: "watchHistoryIndex",
@@ -131,6 +132,16 @@ const BASE_SCHEMAS = {
     content: {
       format: "text",
       description: "Optional alt text carried alongside hosted URL metadata.",
+    },
+  },
+  [NOTE_TYPES.REPOST]: {
+    type: NOTE_TYPES.REPOST,
+    label: "NIP-18 repost",
+    kind: 6,
+    appendTags: DEFAULT_APPEND_TAGS,
+    content: {
+      format: "empty",
+      description: "Content field intentionally empty for pure repost events.",
     },
   },
   [NOTE_TYPES.NIP71_VIDEO]: {
@@ -425,6 +436,64 @@ export function buildVideoMirrorEvent({
     created_at,
     tags: combinedTags,
     content: typeof content === "string" ? content : String(content ?? ""),
+  };
+}
+
+export function buildRepostEvent({
+  pubkey,
+  created_at,
+  eventId = "",
+  eventRelay = "",
+  address = "",
+  addressRelay = "",
+  authorPubkey = "",
+  additionalTags = [],
+}) {
+  const schema = getNostrEventSchema(NOTE_TYPES.REPOST);
+  const tags = [];
+
+  const normalizedEventId = typeof eventId === "string" ? eventId.trim() : "";
+  const normalizedEventRelay = typeof eventRelay === "string" ? eventRelay.trim() : "";
+  if (normalizedEventId) {
+    if (normalizedEventRelay) {
+      tags.push(["e", normalizedEventId, normalizedEventRelay]);
+    } else {
+      tags.push(["e", normalizedEventId]);
+    }
+  }
+
+  const normalizedAddress = typeof address === "string" ? address.trim() : "";
+  const normalizedAddressRelay = typeof addressRelay === "string" ? addressRelay.trim() : "";
+  if (normalizedAddress) {
+    if (normalizedAddressRelay) {
+      tags.push(["a", normalizedAddress, normalizedAddressRelay]);
+    } else {
+      tags.push(["a", normalizedAddress]);
+    }
+  }
+
+  const normalizedAuthorPubkey =
+    typeof authorPubkey === "string" ? authorPubkey.trim().toLowerCase() : "";
+  if (normalizedAuthorPubkey) {
+    tags.push(["p", normalizedAuthorPubkey]);
+  }
+
+  appendSchemaTags(tags, schema);
+
+  if (Array.isArray(additionalTags)) {
+    additionalTags.forEach((tag) => {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        tags.push(tag.map((value) => (typeof value === "string" ? value : String(value))));
+      }
+    });
+  }
+
+  return {
+    kind: schema?.kind ?? 6,
+    pubkey,
+    created_at,
+    tags,
+    content: "",
   };
 }
 

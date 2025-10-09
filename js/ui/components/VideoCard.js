@@ -722,17 +722,105 @@ export class VideoCard {
       eventId: this.video.id || "",
     }, ["text-gray-100", "hover:bg-gray-700"]);
 
+    const pointer = Array.isArray(this.pointerInfo?.pointer)
+      ? this.pointerInfo.pointer
+      : null;
+    const pointerType = pointer && pointer.length >= 2 ? pointer[0] : "";
+    const pointerValue = pointer && pointer.length >= 2 ? pointer[1] : "";
+    const pointerRelay = pointer && pointer.length >= 3 ? pointer[2] || "" : "";
+    const numericKind =
+      Number.isFinite(this.video.kind) && this.video.kind > 0
+        ? Math.floor(this.video.kind)
+        : null;
+
+    const baseBoostDataset = {
+      eventId: this.video.id || "",
+      author: this.video.pubkey || "",
+    };
+
+    if (pointerType && pointerValue) {
+      baseBoostDataset.pointerType = pointerType;
+      baseBoostDataset.pointerValue = pointerValue;
+    }
+    if (pointerRelay) {
+      baseBoostDataset.pointerRelay = pointerRelay;
+    }
+    if (Number.isFinite(numericKind)) {
+      baseBoostDataset.kind = String(numericKind);
+    }
+
+    const boostLabel = this.createElement("div", {
+      classNames: [
+        "px-4",
+        "pt-2",
+        "pb-1",
+        "text-xs",
+        "font-semibold",
+        "uppercase",
+        "tracking-wide",
+        "text-gray-400",
+      ],
+      textContent: "Boost on Nostr…",
+    });
+    list.appendChild(boostLabel);
+
+    addActionButton(
+      "Repost (kind 6)",
+      "repost-event",
+      baseBoostDataset,
+      ["text-gray-100", "hover:bg-gray-700"],
+    );
+
+    if (this.playbackUrl && this.video.isPrivate !== true) {
+      const mirrorDataset = {
+        ...baseBoostDataset,
+        url: this.playbackUrl,
+        magnet: this.playbackMagnet || "",
+        thumbnail: typeof this.video.thumbnail === "string" ? this.video.thumbnail : "",
+        description:
+          typeof this.video.description === "string" ? this.video.description : "",
+        title: typeof this.video.title === "string" ? this.video.title : "",
+        isPrivate: this.video.isPrivate === true ? "true" : "false",
+      };
+
+      addActionButton(
+        "Mirror (kind 1063)",
+        "mirror-video",
+        mirrorDataset,
+        ["text-gray-100", "hover:bg-gray-700"],
+      );
+    }
+
+    const ensureDataset = {
+      ...baseBoostDataset,
+      pubkey: this.video.pubkey || "",
+    };
+
+    addActionButton(
+      "Ensure presence (re-publish original)",
+      "ensure-presence",
+      ensureDataset,
+      ["text-gray-100", "hover:bg-gray-700"],
+    );
+
+    list.appendChild(
+      this.createElement("div", {
+        classNames: ["my-1", "border-t", "border-gray-700", "opacity-70"],
+      })
+    );
+
     if (this.pointerInfo && this.pointerInfo.key && this.pointerInfo.pointer) {
-      const [pointerType, pointerValue, pointerRelay] = this.pointerInfo.pointer;
-      if (pointerType && pointerValue) {
+      const [historyPointerType, historyPointerValue, historyPointerRelay] =
+        this.pointerInfo.pointer;
+      if (historyPointerType && historyPointerValue) {
         const removeButton = addActionButton(
           "Remove from history",
           "remove-history",
           {
             pointerKey: this.pointerInfo.key,
-            pointerType,
-            pointerValue,
-            pointerRelay: pointerRelay || "",
+            pointerType: historyPointerType,
+            pointerValue: historyPointerValue,
+            pointerRelay: historyPointerRelay || "",
             reason: "remove-item",
           },
           ["text-gray-100", "hover:bg-gray-700"]

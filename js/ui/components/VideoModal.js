@@ -1028,6 +1028,112 @@ export class VideoModal {
         return;
       }
 
+      if (action === "repost-event") {
+        if (currentVideo?.id) {
+          button.dataset.eventId = currentVideo.id;
+        } else {
+          delete button.dataset.eventId;
+        }
+
+        if (currentVideo?.pubkey) {
+          button.dataset.author = currentVideo.pubkey;
+        } else {
+          delete button.dataset.author;
+        }
+
+        if (
+          Array.isArray(currentVideo?.pointer) &&
+          currentVideo.pointer.length >= 2
+        ) {
+          const [pointerType, pointerValue, pointerRelay] = currentVideo.pointer;
+          button.dataset.pointerType = pointerType || "";
+          button.dataset.pointerValue = pointerValue || "";
+          if (pointerRelay) {
+            button.dataset.pointerRelay = pointerRelay;
+          } else {
+            delete button.dataset.pointerRelay;
+          }
+        } else {
+          delete button.dataset.pointerType;
+          delete button.dataset.pointerValue;
+          delete button.dataset.pointerRelay;
+        }
+
+        if (Number.isFinite(currentVideo?.kind)) {
+          button.dataset.kind = String(Math.floor(currentVideo.kind));
+        } else {
+          delete button.dataset.kind;
+        }
+        return;
+      }
+
+      if (action === "mirror-video") {
+        const hasUrl =
+          typeof currentVideo?.url === "string" && currentVideo.url.trim();
+        const isPrivate = currentVideo?.isPrivate === true;
+
+        if (hasUrl && !isPrivate) {
+          button.classList.remove("hidden");
+          button.setAttribute("aria-hidden", "false");
+          button.dataset.eventId = currentVideo.id || "";
+          button.dataset.author = currentVideo.pubkey || "";
+          button.dataset.url = currentVideo.url || "";
+          button.dataset.magnet =
+            currentVideo.magnet || currentVideo.originalMagnet || "";
+          button.dataset.thumbnail = currentVideo.thumbnail || "";
+          button.dataset.description = currentVideo.description || "";
+          button.dataset.title = currentVideo.title || "";
+          button.dataset.isPrivate = "false";
+        } else {
+          delete button.dataset.eventId;
+          delete button.dataset.author;
+          delete button.dataset.url;
+          delete button.dataset.magnet;
+          delete button.dataset.thumbnail;
+          delete button.dataset.description;
+          delete button.dataset.title;
+          button.dataset.isPrivate = "true";
+          button.classList.add("hidden");
+          button.setAttribute("aria-hidden", "true");
+        }
+        return;
+      }
+
+      if (action === "ensure-presence") {
+        if (currentVideo?.id) {
+          button.dataset.eventId = currentVideo.id;
+        } else {
+          delete button.dataset.eventId;
+        }
+
+        if (currentVideo?.pubkey) {
+          button.dataset.author = currentVideo.pubkey;
+          button.dataset.pubkey = currentVideo.pubkey;
+        } else {
+          delete button.dataset.author;
+          delete button.dataset.pubkey;
+        }
+
+        if (
+          Array.isArray(currentVideo?.pointer) &&
+          currentVideo.pointer.length >= 2
+        ) {
+          const [pointerType, pointerValue, pointerRelay] = currentVideo.pointer;
+          button.dataset.pointerType = pointerType || "";
+          button.dataset.pointerValue = pointerValue || "";
+          if (pointerRelay) {
+            button.dataset.pointerRelay = pointerRelay;
+          } else {
+            delete button.dataset.pointerRelay;
+          }
+        } else {
+          delete button.dataset.pointerType;
+          delete button.dataset.pointerValue;
+          delete button.dataset.pointerRelay;
+        }
+        return;
+      }
+
       if (action === "open-channel" || action === "block-author") {
         if (currentVideo?.pubkey) {
           button.dataset.author = currentVideo.pubkey;

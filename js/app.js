@@ -4916,6 +4916,37 @@ class Application {
     });
   }
 
+  derivePointerFromDataset(dataset = {}, context = "") {
+    const type =
+      typeof dataset.pointerType === "string" ? dataset.pointerType.trim() : "";
+    const value =
+      typeof dataset.pointerValue === "string" ? dataset.pointerValue.trim() : "";
+    const relay =
+      typeof dataset.pointerRelay === "string" ? dataset.pointerRelay.trim() : "";
+
+    if (type && value) {
+      return relay ? [type, value, relay] : [type, value];
+    }
+
+    if (
+      context === "modal" &&
+      Array.isArray(this.currentVideoPointer) &&
+      this.currentVideoPointer.length >= 2
+    ) {
+      return this.currentVideoPointer;
+    }
+
+    if (
+      context === "modal" &&
+      Array.isArray(this.currentVideo?.pointer) &&
+      this.currentVideo.pointer.length >= 2
+    ) {
+      return this.currentVideo.pointer;
+    }
+
+    return null;
+  }
+
   async handleMoreMenuAction(action, dataset = {}) {
     const normalized = typeof action === "string" ? action.trim() : "";
     const context = dataset.context || "";
@@ -4957,6 +4988,14 @@ class Application {
       }
       case "remove-history": {
         await this.handleRemoveHistoryAction(dataset);
+        break;
+      }
+      case "repost-event": {
+        await this.handleRepostAction(dataset);
+        break;
+      }
+      case "mirror-video": {
+        await this.handleMirrorAction(dataset);
         break;
       }
       case "ensure-presence": {
@@ -5155,6 +5194,259 @@ class Application {
       }
       default:
         break;
+    }
+  }
+
+  async handleRepostAction(dataset = {}) {
+    const context = typeof dataset.context === "string" ? dataset.context : "";
+    const explicitEventId =
+      typeof dataset.eventId === "string" && dataset.eventId.trim()
+        ? dataset.eventId.trim()
+        : "";
+    const fallbackEventId =
+      context === "modal" && this.currentVideo?.id ? this.currentVideo.id : "";
+    const targetEventId = explicitEventId || fallbackEventId;
+
+    if (!targetEventId) {
+      this.showError("No event is available to repost.");
+      return;
+    }
+
+    const pointer = this.derivePointerFromDataset(dataset, context);
+
+    let author = typeof dataset.author === "string" ? dataset.author.trim() : "";
+    if (!author && context === "modal" && this.currentVideo?.pubkey) {
+      author = this.currentVideo.pubkey;
+    }
+
+    const rawKindValue = (() => {
+      if (typeof dataset.kind === "string" && dataset.kind.trim()) {
+        const parsed = Number.parseInt(dataset.kind.trim(), 10);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      if (Number.isFinite(dataset.kind)) {
+        return Number(dataset.kind);
+      }
+      if (Number.isFinite(this.currentVideo?.kind)) {
+        return Number(this.currentVideo.kind);
+      }
+      return null;
+    })();
+
+    const options = {
+      pointer,
+      pointerType: dataset.pointerType,
+      pointerValue: dataset.pointerValue,
+      pointerRelay: dataset.pointerRelay,
+      authorPubkey: author,
+    };
+
+    if (Number.isFinite(rawKindValue)) {
+      options.kind = Math.floor(rawKindValue);
+    }
+
+    try {
+      const result = await nostrClient.repostEvent(targetEventId, options);
+
+      if (!result?.ok) {
+        const code = result?.error || "repost-failed";
+        switch (code) {
+          case "invalid-event-id":
+            this.showError("No event is available to repost.");
+            break;
+          case "missing-actor":
+            this.showError(
+              "Cannot sign the repost right now. Please refresh and try again.",
+            );
+            break;
+          case "pool-unavailable":
+            this.showError("Cannot reach relays right now. Please try again later.");
+            break;
+          case "publish-rejected":
+            this.showError("No relay accepted the repost attempt.");
+            break;
+          case "signing-failed":
+            this.showError("Failed to sign the repost. Please try again.");
+            break;
+          default:
+            this.showError("Failed to repost the video. Please try again later.");
+            break;
+        }
+        return;
+      }
+
+      const acceptedCount = Array.isArray(result.summary?.accepted)
+        ? result.summary.accepted.length
+        : 0;
+      const relayCount =
+        acceptedCount > 0
+          ? acceptedCount
+          : Array.isArray(result.relays)
+          ? result.relays.length
+          : acceptedCount;
+
+      const fragments = [];
+      if (relayCount > 0) {
+        fragments.push(
+          `Reposted to ${relayCount} relay${relayCount === 1 ? "" : "s"}.`,
+        );
+      } else {
+        fragments.push("Reposted.");
+      }
+
+      if (result.sessionActor) {
+        fragments.push("Boost as session user.");
+      }
+
+      this.showSuccess(fragments.join(" ").trim());
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[app] Repost action failed:", error);
+      }
+      this.showError("Failed to repost the video. Please try again later.");
+    }
+  }
+
+  async handleMirrorAction(dataset = {}) {
+    const context = typeof dataset.context === "string" ? dataset.context : "";
+    const explicitEventId =
+      typeof dataset.eventId === "string" && dataset.eventId.trim()
+        ? dataset.eventId.trim()
+        : "";
+    const fallbackEventId =
+      context === "modal" && this.currentVideo?.id ? this.currentVideo.id : "";
+    const targetEventId = explicitEventId || fallbackEventId;
+
+    if (!targetEventId) {
+      this.showError("No event is available to mirror.");
+      return;
+    }
+
+    const explicitUrl =
+      typeof dataset.url === "string" && dataset.url.trim() ? dataset.url.trim() : "";
+    const fallbackUrl =
+      context === "modal" && typeof this.currentVideo?.url === "string"
+        ? this.currentVideo.url.trim()
+        : "";
+    const targetUrl = explicitUrl || fallbackUrl;
+
+    if (!targetUrl) {
+      this.showError("This video does not expose a hosted URL to mirror.");
+      return;
+    }
+
+    const rawMagnet =
+      typeof dataset.magnet === "string" && dataset.magnet.trim()
+        ? dataset.magnet.trim()
+        : "";
+    const fallbackMagnet =
+      context === "modal"
+        ? (this.currentVideo?.magnet || this.currentVideo?.originalMagnet || "")
+        : "";
+    const magnet = rawMagnet || fallbackMagnet;
+
+    const thumbnail =
+      typeof dataset.thumbnail === "string" && dataset.thumbnail.trim()
+        ? dataset.thumbnail.trim()
+        : context === "modal" && typeof this.currentVideo?.thumbnail === "string"
+        ? this.currentVideo.thumbnail.trim()
+        : "";
+
+    const description =
+      typeof dataset.description === "string" && dataset.description.trim()
+        ? dataset.description.trim()
+        : context === "modal" && typeof this.currentVideo?.description === "string"
+        ? this.currentVideo.description.trim()
+        : "";
+
+    const title =
+      typeof dataset.title === "string" && dataset.title.trim()
+        ? dataset.title.trim()
+        : context === "modal" && typeof this.currentVideo?.title === "string"
+        ? this.currentVideo.title.trim()
+        : "";
+
+    const datasetPrivate =
+      dataset.isPrivate === "true" || dataset.isPrivate === true ? true : false;
+    const fallbackPrivate = context === "modal" && this.currentVideo?.isPrivate === true;
+    const isPrivate = datasetPrivate || fallbackPrivate;
+
+    if (isPrivate) {
+      this.showError("Mirroring is unavailable for private videos.");
+      return;
+    }
+
+    const options = {
+      url: targetUrl,
+      magnet,
+      thumbnail,
+      description,
+      title,
+      isPrivate,
+    };
+
+    try {
+      const result = await nostrClient.mirrorVideoEvent(targetEventId, options);
+
+      if (!result?.ok) {
+        const code = result?.error || "mirror-failed";
+        switch (code) {
+          case "invalid-event-id":
+            this.showError("No event is available to mirror.");
+            break;
+          case "missing-url":
+            this.showError("This video does not expose a hosted URL to mirror.");
+            break;
+          case "missing-actor":
+            this.showError(
+              "Cannot sign the mirror right now. Please refresh and try again.",
+            );
+            break;
+          case "pool-unavailable":
+            this.showError("Cannot reach relays right now. Please try again later.");
+            break;
+          case "publish-rejected":
+            this.showError("No relay accepted the mirror attempt.");
+            break;
+          case "signing-failed":
+            this.showError("Failed to sign the mirror. Please try again.");
+            break;
+          default:
+            this.showError("Failed to mirror the video. Please try again later.");
+            break;
+        }
+        return;
+      }
+
+      const acceptedCount = Array.isArray(result.summary?.accepted)
+        ? result.summary.accepted.length
+        : 0;
+      const relayCount =
+        acceptedCount > 0
+          ? acceptedCount
+          : Array.isArray(result.relays)
+          ? result.relays.length
+          : acceptedCount;
+
+      const fragments = [];
+      if (relayCount > 0) {
+        fragments.push(
+          `Mirrored to ${relayCount} relay${relayCount === 1 ? "" : "s"}.`,
+        );
+      } else {
+        fragments.push("Mirrored.");
+      }
+
+      if (result.sessionActor) {
+        fragments.push("Boost as session user.");
+      }
+
+      this.showSuccess(fragments.join(" ").trim());
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[app] Mirror action failed:", error);
+      }
+      this.showError("Failed to mirror the video. Please try again later.");
     }
   }
 
