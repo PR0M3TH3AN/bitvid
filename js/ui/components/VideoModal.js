@@ -35,6 +35,7 @@ export class VideoModal {
     this.videoTitle = null;
     this.videoDescription = null;
     this.videoTimestamp = null;
+    this.videoEditedTimestamp = null;
     this.videoViewCountEl = null;
     this.creatorAvatar = null;
     this.creatorName = null;
@@ -185,6 +186,8 @@ export class VideoModal {
       playerModal.querySelector("#videoDescription") || null;
     this.videoTimestamp =
       playerModal.querySelector("#videoTimestamp") || null;
+    this.videoEditedTimestamp =
+      playerModal.querySelector("#videoEditedTimestamp") || null;
     this.videoViewCountEl =
       playerModal.querySelector("#videoViewCount") || null;
     this.creatorAvatar =
@@ -933,23 +936,52 @@ export class VideoModal {
     title,
     description,
     timestamp,
+    timestamps,
     viewCount,
     creator,
   } = {}) {
-    if (this.videoTitle) {
+    if (this.videoTitle && title !== undefined) {
       this.videoTitle.textContent = title || "Untitled";
     }
-    if (this.videoDescription) {
+    if (this.videoDescription && description !== undefined) {
       this.videoDescription.textContent = description || "";
     }
-    if (this.videoTimestamp) {
-      this.videoTimestamp.textContent = timestamp || "";
+    if (timestamps) {
+      this.updateTimestamps(timestamps);
+    } else if (timestamp !== undefined) {
+      this.updateTimestamps({ posted: timestamp });
     }
-    if (typeof viewCount === "string") {
-      this.updateViewCountLabel(viewCount);
+    if (this.videoViewCountEl && viewCount !== undefined) {
+      if (typeof viewCount === "string") {
+        this.updateViewCountLabel(viewCount);
+      } else {
+        this.updateViewCountLabel("");
+      }
     }
-    if (creator) {
+    if (creator !== undefined) {
       this.updateCreator(creator);
+    }
+  }
+
+  updateTimestamps({ posted, edited } = {}) {
+    if (this.videoTimestamp) {
+      if (posted) {
+        this.videoTimestamp.textContent = posted;
+        this.videoTimestamp.classList.remove("hidden");
+      } else {
+        this.videoTimestamp.textContent = "";
+        this.videoTimestamp.classList.add("hidden");
+      }
+    }
+
+    if (this.videoEditedTimestamp) {
+      if (edited) {
+        this.videoEditedTimestamp.textContent = edited;
+        this.videoEditedTimestamp.classList.remove("hidden");
+      } else {
+        this.videoEditedTimestamp.textContent = "";
+        this.videoEditedTimestamp.classList.add("hidden");
+      }
     }
   }
 

@@ -6226,6 +6226,11 @@ class Application {
       hasUrl: !!trimmedUrl,
     });
 
+    const knownPostedAt = this.getKnownVideoPostedAt(video);
+    const normalizedEditedAt = Number.isFinite(video.created_at)
+      ? Math.floor(video.created_at)
+      : null;
+
     this.currentVideo = {
       ...video,
       url: trimmedUrl,
@@ -6235,7 +6240,14 @@ class Application {
       torrentSupported: magnetSupported,
       legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
       lightningAddress: null,
+      lastEditedAt: normalizedEditedAt,
     };
+
+    if (Number.isFinite(knownPostedAt)) {
+      this.cacheVideoRootCreatedAt(this.currentVideo, knownPostedAt);
+    } else if (this.currentVideo.rootCreatedAt) {
+      delete this.currentVideo.rootCreatedAt;
+    }
 
     const dTagValue = (this.extractDTagValue(video.tags) || "").trim();
     const pointerInfo = resolveVideoPointer({
@@ -6320,12 +6332,15 @@ class Application {
 
     const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
     if (this.videoModal) {
-      const formattedTimestamp = this.formatTimeAgo(video.created_at);
+      const timestampPayload = this.buildModalTimestampPayload({
+        postedAt: this.currentVideo?.rootCreatedAt ?? null,
+        editedAt: normalizedEditedAt,
+      });
       const displayNpub = `${creatorNpub.slice(0, 8)}...${creatorNpub.slice(-4)}`;
       this.videoModal.updateMetadata({
         title: video.title || "Untitled",
         description: video.description || "No description available.",
-        timestamp: formattedTimestamp,
+        timestamps: timestampPayload,
         creator: {
           name: creatorProfile.name,
           avatarUrl: creatorProfile.picture,
@@ -6334,12 +6349,191 @@ class Application {
       });
     }
 
+    this.ensureModalPostedTimestamp(this.currentVideo);
+
     const playbackResult =
       playbackPromise && typeof playbackPromise.then === "function"
         ? await playbackPromise
         : playbackPromise;
 
     return playbackResult;
+  }
+
+  buildModalTimestampPayload({ postedAt = null, editedAt = null } = {}) {
+    const normalizedPostedAt = Number.isFinite(postedAt)
+      ? Math.floor(postedAt)
+      : null;
+    const normalizedEditedAt = Number.isFinite(editedAt)
+      ? Math.floor(editedAt)
+      : null;
+
+    const payload = {
+      posted: "",
+      edited: "",
+    };
+
+    const effectivePostedAt =
+      normalizedPostedAt !== null ? normalizedPostedAt : normalizedEditedAt;
+
+    if (effectivePostedAt !== null) {
+      payload.posted = `Posted ${this.formatTimeAgo(effectivePostedAt)}`;
+    }
+
+    const shouldShowEdited =
+      normalizedEditedAt !== null &&
+      (normalizedPostedAt === null || normalizedEditedAt - normalizedPostedAt >= 60);
+
+    if (shouldShowEdited) {
+      payload.edited = `Last edited ${this.formatTimeAgo(normalizedEditedAt)}`;
+    }
+
+    return payload;
+  }
+
+  getKnownVideoPostedAt(video) {
+    if (!video || typeof video !== "object") {
+      return null;
+    }
+
+    const directValue = Number.isFinite(video.rootCreatedAt)
+      ? Math.floor(video.rootCreatedAt)
+      : null;
+    if (directValue !== null) {
+      return directValue;
+    }
+
+    if (video.id && this.videosMap instanceof Map) {
+      const stored = this.videosMap.get(video.id);
+      const storedValue = Number.isFinite(stored?.rootCreatedAt)
+        ? Math.floor(stored.rootCreatedAt)
+        : null;
+      if (storedValue !== null) {
+        video.rootCreatedAt = storedValue;
+        return storedValue;
+      }
+    }
+
+    const nip71Created = Number.isFinite(video?.nip71Source?.created_at)
+      ? Math.floor(video.nip71Source.created_at)
+      : null;
+
+    if (nip71Created !== null) {
+      return nip71Created;
+    }
+
+    return null;
+  }
+
+  cacheVideoRootCreatedAt(video, timestamp) {
+    if (!Number.isFinite(timestamp)) {
+      return;
+    }
+
+    const normalized = Math.floor(timestamp);
+
+    if (video && typeof video === "object") {
+      video.rootCreatedAt = normalized;
+    }
+
+    if (video?.id && this.videosMap instanceof Map) {
+      const existing = this.videosMap.get(video.id);
+      if (existing && typeof existing === "object") {
+        existing.rootCreatedAt = normalized;
+      }
+    }
+  }
+
+  async resolveVideoPostedAt(video) {
+    if (!video || typeof video !== "object") {
+      return null;
+    }
+
+    const cached = this.getKnownVideoPostedAt(video);
+    if (cached !== null) {
+      return cached;
+    }
+
+    if (!nostrClient || typeof nostrClient.hydrateVideoHistory !== "function") {
+      const fallback = Number.isFinite(video.created_at)
+        ? Math.floor(video.created_at)
+        : null;
+      if (fallback !== null) {
+        this.cacheVideoRootCreatedAt(video, fallback);
+      }
+      return fallback;
+    }
+
+    try {
+      const history = await nostrClient.hydrateVideoHistory(video);
+      if (Array.isArray(history) && history.length) {
+        let earliest = null;
+        for (const entry of history) {
+          if (!entry || entry.deleted) {
+            continue;
+          }
+          const created = Number.isFinite(entry.created_at)
+            ? Math.floor(entry.created_at)
+            : null;
+          if (created === null) {
+            continue;
+          }
+          if (earliest === null || created < earliest) {
+            earliest = created;
+          }
+        }
+
+        if (earliest === null) {
+          const lastEntry = history[history.length - 1];
+          if (Number.isFinite(lastEntry?.created_at)) {
+            earliest = Math.floor(lastEntry.created_at);
+          }
+        }
+
+        if (earliest !== null) {
+          this.cacheVideoRootCreatedAt(video, earliest);
+          return earliest;
+        }
+      }
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[Application] Failed to hydrate video history for timestamps:",
+          error
+        );
+      }
+    }
+
+    const fallback = Number.isFinite(video.created_at)
+      ? Math.floor(video.created_at)
+      : null;
+    if (fallback !== null) {
+      this.cacheVideoRootCreatedAt(video, fallback);
+    }
+    return fallback;
+  }
+
+  async ensureModalPostedTimestamp(video) {
+    if (!video || !this.videoModal) {
+      return;
+    }
+
+    const postedAt = await this.resolveVideoPostedAt(video);
+    if (!this.videoModal || this.currentVideo !== video) {
+      return;
+    }
+
+    const editedAt = Number.isFinite(video.lastEditedAt)
+      ? Math.floor(video.lastEditedAt)
+      : Number.isFinite(video.created_at)
+        ? Math.floor(video.created_at)
+        : null;
+
+    const payload = this.buildModalTimestampPayload({
+      postedAt,
+      editedAt,
+    });
+
+    this.videoModal.updateMetadata({ timestamps: payload });
   }
 
   async playVideoWithoutEvent({
