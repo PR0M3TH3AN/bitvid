@@ -72,6 +72,15 @@ const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
 
+const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
+  "get_public_key",
+  "sign_event",
+  "nip04.encrypt",
+  "nip04.decrypt",
+  "read_relays",
+  "write_relays",
+]);
+
 const viewEventPublishMemory = new Map();
 const rebroadcastAttemptMemory = new Map();
 
@@ -2886,6 +2895,99 @@ export class NostrClient {
     this.watchHistoryLastCreatedAt = 0;
     this.countRequestCounter = 0;
     this.countUnsupportedRelays = new Set();
+    this.extensionPermissionCache = new Set();
+  }
+
+  markExtensionPermissions(methods = []) {
+    if (!this.extensionPermissionCache) {
+      this.extensionPermissionCache = new Set();
+    }
+
+    if (!Array.isArray(methods)) {
+      return;
+    }
+
+    for (const method of methods) {
+      if (typeof method !== "string") {
+        continue;
+      }
+      const normalized = method.trim();
+      if (normalized) {
+        this.extensionPermissionCache.add(normalized);
+      }
+    }
+  }
+
+  async ensureExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
+    if (!Array.isArray(methods)) {
+      methods = [];
+    }
+
+    const normalized = Array.from(
+      new Set(
+        methods
+          .map((method) =>
+            typeof method === "string" && method.trim() ? method.trim() : "",
+          )
+          .filter(Boolean),
+      ),
+    );
+
+    if (!normalized.length) {
+      return { ok: true };
+    }
+
+    const outstanding = normalized.filter((method) =>
+      this.extensionPermissionCache ? !this.extensionPermissionCache.has(method) : true,
+    );
+
+    if (!outstanding.length) {
+      return { ok: true };
+    }
+
+    const extension = typeof window !== "undefined" ? window.nostr : null;
+    if (!extension) {
+      return { ok: false, error: new Error("extension-unavailable") };
+    }
+
+    if (typeof extension.enable !== "function") {
+      this.markExtensionPermissions(outstanding);
+      return { ok: true, code: "enable-unavailable" };
+    }
+
+    const permissionVariants = [];
+    if (outstanding.length) {
+      permissionVariants.push({
+        permissions: outstanding.map((method) => ({ method })),
+      });
+      permissionVariants.push({ permissions: outstanding });
+    }
+    permissionVariants.push(null);
+
+    let lastError = null;
+    for (const options of permissionVariants) {
+      try {
+        await runNip07WithRetry(
+          () => (options ? extension.enable(options) : extension.enable()),
+          { label: "extension.enable" },
+        );
+        this.markExtensionPermissions(outstanding);
+        return { ok: true };
+      } catch (error) {
+        lastError = error;
+        if (options && isDevMode) {
+          console.warn(
+            "[nostr] extension.enable request with explicit permissions failed:",
+            error,
+          );
+        }
+      }
+    }
+
+    return {
+      ok: false,
+      error: lastError || new Error("permission-denied"),
+    };
   }
 
   applyRootCreatedAt(video) {
@@ -3813,6 +3915,10 @@ export class NostrClient {
       }
     }
 
+    if (useExtensionEncrypt) {
+      await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
+    }
+
     const canonicalItems = canonicalizeWatchHistoryItems(
       Array.isArray(rawItems) ? rawItems : [],
       WATCH_HISTORY_MAX_ITEMS,
@@ -4590,6 +4696,7 @@ export class NostrClient {
         typeof extension?.nip04?.decrypt === "function" &&
         normalizeActorKey(this.pubkey) === actorKey;
       if (extensionDecrypt) {
+        await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
         return extension.nip04.decrypt(resolvedActor, ciphertext);
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
@@ -5471,14 +5578,9 @@ export class NostrClient {
         if (isDevMode) {
           console.log("Requesting permissions from NIP-07 extension...");
         }
-        const requestedPermissionMethods = [
-          "get_public_key",
-          "sign_event",
-          "nip04.encrypt",
-          "nip04.decrypt",
-          "read_relays",
-          "write_relays",
-        ];
+        const requestedPermissionMethods = Array.from(
+          DEFAULT_NIP07_PERMISSION_METHODS,
+        );
 
         const permissionVariants = [];
         const objectPermissions = requestedPermissionMethods
@@ -5529,6 +5631,8 @@ export class NostrClient {
               : "The NIP-07 extension denied the permission request.",
           );
         }
+
+        this.markExtensionPermissions(requestedPermissionMethods);
       }
 
       if (allowAccountSelection && typeof extension.selectAccounts === "function") {

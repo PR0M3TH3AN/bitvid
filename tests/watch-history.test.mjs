@@ -7,6 +7,8 @@ const {
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_MAX_ITEMS,
   WATCH_HISTORY_CACHE_TTL_MS,
+  WATCH_HISTORY_BATCH_RESOLVE,
+  WATCH_HISTORY_BATCH_PAGE_SIZE,
 } =
   await import("../js/config.js");
 const {
@@ -58,6 +60,14 @@ const originalScheduleWatchHistoryRepublish =
 const originalResolveWatchHistory = nostrClient.resolveWatchHistory;
 const originalGetWatchHistoryFingerprint =
   nostrClient.getWatchHistoryFingerprint;
+const originalExtensionPermissionCache = nostrClient.extensionPermissionCache;
+const originalExtensionPermissionSnapshot = Array.isArray(
+  originalExtensionPermissionCache,
+)
+  ? Array.from(originalExtensionPermissionCache)
+  : [];
+
+nostrClient.extensionPermissionCache = new Set();
 
 nostrClient.watchHistoryCache = new Map();
 nostrClient.watchHistoryStorage = {
@@ -255,7 +265,12 @@ function installExtensionCrypto({ actor }) {
   let extensionEncrypts = 0;
   let extensionDecrypts = 0;
   let fallbackEncrypts = 0;
+  const enableCalls = [];
   window.nostr = {
+    enable: async (options) => {
+      enableCalls.push(options || null);
+      return { ok: true };
+    },
     signEvent: async (event) => ({
       ...event,
       id: `ext-${event.kind}-${event.created_at}`,
@@ -304,6 +319,7 @@ function installExtensionCrypto({ actor }) {
     getExtensionEncrypts: () => extensionEncrypts,
     getExtensionDecrypts: () => extensionDecrypts,
     getFallbackEncrypts: () => fallbackEncrypts,
+    getEnableCalls: () => [...enableCalls],
   };
 }
 
@@ -552,12 +568,54 @@ async function testPublishSnapshotUsesExtensionCrypto() {
       result.items.length,
       "decrypted payload should match canonical item count",
     );
+    assert.equal(
+      extension.getEnableCalls().length,
+      1,
+      "extension permissions should be requested once before encrypting",
+    );
   } finally {
     extension.restore();
     sessionRestore.restore();
     nostrClient.ensureSessionActor = originalEnsure;
     nostrClient.sessionActor = originalSession;
     nostrClient.pubkey = originalPub;
+  }
+}
+
+async function testEnsureExtensionPermissionCaching() {
+  const actor = "permission-actor";
+  const extension = installExtensionCrypto({ actor });
+  const previousCache = nostrClient.extensionPermissionCache;
+  nostrClient.extensionPermissionCache = new Set();
+
+  try {
+    const first = await nostrClient.ensureExtensionPermissions([
+      "nip04.decrypt",
+    ]);
+    assert.equal(
+      first.ok,
+      true,
+      "ensureExtensionPermissions should resolve when extension is available",
+    );
+    assert.equal(
+      extension.getEnableCalls().length > 0,
+      true,
+      "ensureExtensionPermissions should invoke extension.enable to request access",
+    );
+
+    const callsAfterFirst = extension.getEnableCalls().length;
+    const second = await nostrClient.ensureExtensionPermissions([
+      "nip04.decrypt",
+    ]);
+    assert.equal(second.ok, true, "cached permission requests should still resolve");
+    assert.equal(
+      extension.getEnableCalls().length,
+      callsAfterFirst,
+      "cached permission requests should not trigger duplicate enable calls",
+    );
+  } finally {
+    extension.restore();
+    nostrClient.extensionPermissionCache = previousCache;
   }
 }
 
@@ -852,10 +910,22 @@ async function testResolveWatchHistoryBatchingWindow() {
       forceRefresh: true,
     });
 
+    const batchPageSizeRaw = Number(WATCH_HISTORY_BATCH_PAGE_SIZE);
+    const hasCustomBatchSize =
+      Boolean(WATCH_HISTORY_BATCH_RESOLVE) &&
+      Number.isFinite(batchPageSizeRaw) &&
+      batchPageSizeRaw > 0;
+    const expectedCount = hasCustomBatchSize
+      ? Math.min(
+          Math.floor(batchPageSizeRaw),
+          WATCH_HISTORY_MAX_ITEMS,
+          syntheticItems.length,
+        )
+      : Math.min(WATCH_HISTORY_MAX_ITEMS, syntheticItems.length);
     assert.equal(
       resolved.length,
-      Math.min(WATCH_HISTORY_MAX_ITEMS, syntheticItems.length),
-      "batched resolve should return the full window when no page size override is configured",
+      expectedCount,
+      "batched resolve should honor the configured page size when batching is enabled",
     );
     assert(resolved.length > 1, "resolved history should include multiple entries");
     assert.equal(
@@ -1321,6 +1391,7 @@ async function testWatchHistoryAppLoginFallback() {
 
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesExtensionCrypto();
+await testEnsureExtensionPermissionCaching();
 await testPublishSnapshotFailureRetry();
 await testWatchHistoryPartialRelayRetry();
 await testResolveWatchHistoryBatchingWindow();
@@ -1350,6 +1421,14 @@ nostrClient.scheduleWatchHistoryRepublish =
 nostrClient.resolveWatchHistory = originalResolveWatchHistory;
 nostrClient.getWatchHistoryFingerprint =
   originalGetWatchHistoryFingerprint;
+
+if (originalExtensionPermissionCache instanceof Set) {
+  originalExtensionPermissionCache.clear();
+  for (const method of originalExtensionPermissionSnapshot) {
+    originalExtensionPermissionCache.add(method);
+  }
+}
+nostrClient.extensionPermissionCache = originalExtensionPermissionCache;
 
 if (!originalFlag) {
   setWatchHistoryV2Enabled(false);
