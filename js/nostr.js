@@ -2317,8 +2317,18 @@ function normalizeActorKey(actor) {
   if (typeof actor !== "string") {
     return "";
   }
+
   const trimmed = actor.trim();
-  return trimmed ? trimmed.toLowerCase() : "";
+  if (!trimmed) {
+    return "";
+  }
+
+  const decodedHex = decodeNpubToHex(trimmed);
+  if (decodedHex) {
+    return decodedHex.toLowerCase();
+  }
+
+  return trimmed.toLowerCase();
 }
 
 function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_ITEMS) {
@@ -4471,6 +4481,8 @@ export class NostrClient {
       return { pointerEvent: null, items: [], snapshotId: "" };
     }
 
+    const actorKeyIsHex = /^[0-9a-f]{64}$/.test(actorKey);
+
     console.info("[nostr] Fetching watch history from relays.", {
       actor: resolvedActor,
       forceRefresh: options.forceRefresh === true,
@@ -4481,6 +4493,50 @@ export class NostrClient {
     const existingEntry = this.watchHistoryCache.get(actorKey);
     const now = Date.now();
     const ttl = this.getWatchHistoryCacheTtlMs();
+
+    const loadFromStorage = async () => {
+      const storageEntry = this.getWatchHistoryStorage().actors?.[actorKey];
+      const items = Array.isArray(storageEntry?.items)
+        ? canonicalizeWatchHistoryItems(storageEntry.items, WATCH_HISTORY_MAX_ITEMS)
+        : [];
+      const fingerprint = typeof storageEntry?.fingerprint === "string"
+        ? storageEntry.fingerprint
+        : await this.getWatchHistoryFingerprint(resolvedActor, items);
+      const entry = {
+        actor: resolvedActor,
+        items,
+        snapshotId: typeof storageEntry?.snapshotId === "string"
+          ? storageEntry.snapshotId
+          : "",
+        pointerEvent: null,
+        chunkEvents: [],
+        savedAt: now,
+        fingerprint,
+        metadata: sanitizeWatchHistoryMetadata(storageEntry?.metadata),
+      };
+      this.watchHistoryCache.set(actorKey, entry);
+      this.persistWatchHistoryEntry(actorKey, entry);
+      return { pointerEvent: null, items, snapshotId: entry.snapshotId };
+    };
+
+    if (!actorKeyIsHex) {
+      console.warn(
+        `[nostr] Cannot normalize watch history actor key to hex. Aborting relay fetch for ${resolvedActor}.`,
+      );
+      if (
+        !options.forceRefresh &&
+        existingEntry &&
+        Number.isFinite(existingEntry.savedAt) &&
+        now - existingEntry.savedAt < ttl
+      ) {
+        return {
+          pointerEvent: existingEntry.pointerEvent || null,
+          items: existingEntry.items || [],
+          snapshotId: existingEntry.snapshotId || "",
+        };
+      }
+      return await loadFromStorage();
+    }
 
     if (
       !options.forceRefresh &&
@@ -4534,7 +4590,7 @@ export class NostrClient {
       const filters = [
         {
           kinds: [WATCH_HISTORY_KIND],
-          authors: [resolvedActor],
+          authors: [actorKey],
           "#d": identifiers,
           limit,
         },
@@ -4574,28 +4630,7 @@ export class NostrClient {
           actor: resolvedActor,
         }
       );
-      const storageEntry = this.getWatchHistoryStorage().actors?.[actorKey];
-      const items = Array.isArray(storageEntry?.items)
-        ? canonicalizeWatchHistoryItems(storageEntry.items, WATCH_HISTORY_MAX_ITEMS)
-        : [];
-      const fingerprint = typeof storageEntry?.fingerprint === "string"
-        ? storageEntry.fingerprint
-        : await this.getWatchHistoryFingerprint(resolvedActor, items);
-      const entry = {
-        actor: resolvedActor,
-        items,
-        snapshotId: typeof storageEntry?.snapshotId === "string"
-          ? storageEntry.snapshotId
-          : "",
-        pointerEvent: null,
-        chunkEvents: [],
-        savedAt: now,
-        fingerprint,
-        metadata: sanitizeWatchHistoryMetadata(storageEntry?.metadata),
-      };
-      this.watchHistoryCache.set(actorKey, entry);
-      this.persistWatchHistoryEntry(actorKey, entry);
-      return { pointerEvent: null, items, snapshotId: entry.snapshotId };
+      return await loadFromStorage();
     }
 
     const fallbackItems = extractPointerItemsFromEvent(pointerEvent);
@@ -4647,14 +4682,14 @@ export class NostrClient {
     if (chunkIdentifiers.length) {
       chunkFilters.push({
         kinds: [WATCH_HISTORY_KIND],
-        authors: [resolvedActor],
+        authors: [actorKey],
         "#d": chunkIdentifiers,
         limit: Math.max(chunkIdentifiers.length * 2, limit),
       });
     } else if (snapshotId) {
       chunkFilters.push({
         kinds: [WATCH_HISTORY_KIND],
-        authors: [resolvedActor],
+        authors: [actorKey],
         "#snapshot": [snapshotId],
         limit,
       });
@@ -4725,7 +4760,7 @@ export class NostrClient {
         normalizeActorKey(this.pubkey) === actorKey;
       if (extensionDecrypt) {
         await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
-        return extension.nip04.decrypt(resolvedActor, ciphertext);
+        return extension.nip04.decrypt(actorKey, ciphertext);
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
         await this.ensureSessionActor();
@@ -4739,7 +4774,7 @@ export class NostrClient {
       }
       return tools.nip04.decrypt(
         this.sessionActor.privateKey,
-        resolvedActor,
+        actorKey,
         ciphertext,
       );
     };
