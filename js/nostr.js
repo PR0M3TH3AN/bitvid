@@ -5265,15 +5265,62 @@ export class NostrClient {
         if (isDevMode) {
           console.log("Requesting permissions from NIP-07 extension...");
         }
-        try {
-          await runNip07WithRetry(() => extension.enable(), {
-            label: "extension.enable",
-          });
-        } catch (enableErr) {
+        const requestedPermissionMethods = [
+          "get_public_key",
+          "sign_event",
+          "nip04.encrypt",
+          "nip04.decrypt",
+          "read_relays",
+          "write_relays",
+        ];
+
+        const permissionVariants = [];
+        const objectPermissions = requestedPermissionMethods
+          .map((method) =>
+            typeof method === "string" && method.trim()
+              ? { method: method.trim() }
+              : null,
+          )
+          .filter(Boolean);
+        if (objectPermissions.length) {
+          permissionVariants.push({ permissions: objectPermissions });
+        }
+        const stringPermissions = Array.from(
+          new Set(objectPermissions.map((entry) => entry.method)),
+        );
+        if (stringPermissions.length) {
+          permissionVariants.push({ permissions: stringPermissions });
+        }
+        permissionVariants.push(null);
+
+        let enableError = null;
+        for (const options of permissionVariants) {
+          try {
+            await runNip07WithRetry(
+              () =>
+                options
+                  ? extension.enable(options)
+                  : extension.enable(),
+              { label: "extension.enable" },
+            );
+            enableError = null;
+            break;
+          } catch (error) {
+            enableError = error;
+            if (options && isDevMode) {
+              console.warn(
+                "[nostr] extension.enable request with explicit permissions failed:",
+                error,
+              );
+            }
+          }
+        }
+
+        if (enableError) {
           throw new Error(
-            enableErr && enableErr.message
-              ? enableErr.message
-              : "The NIP-07 extension denied the permission request."
+            enableError && enableError.message
+              ? enableError.message
+              : "The NIP-07 extension denied the permission request.",
           );
         }
       }
