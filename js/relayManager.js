@@ -8,6 +8,10 @@ import {
 
 const MODE_SEQUENCE = ["both", "read", "write"];
 
+const FAST_RELAY_FETCH_LIMIT = 3;
+const FAST_RELAY_TIMEOUT_MS = 2500;
+const BACKGROUND_RELAY_TIMEOUT_MS = 6000;
+
 function normalizeHexPubkey(pubkey) {
   if (typeof pubkey !== "string") {
     return null;
@@ -413,44 +417,180 @@ class RelayPreferencesManager {
 
     const filter = { kinds: [10002], authors: [normalizedPubkey], limit: 1 };
     const targetRelays = this.getPublishTargets();
-    const events = [];
-
-    await Promise.all(
-      targetRelays.map(async (relayUrl) => {
-        try {
-          const result = await nostrClient.pool.list([relayUrl], [filter]);
-          if (Array.isArray(result) && result.length) {
-            events.push(...result);
-          }
-        } catch (error) {
-          if (isDevMode) {
-            console.warn(`[relayManager] Failed to fetch relay list from ${relayUrl}:`, error);
-          }
+    const applyEvents = (events, { skipIfEmpty = false } = {}) => {
+      if (!Array.isArray(events) || !events.length) {
+        if (skipIfEmpty) {
+          return null;
         }
-      })
-    );
+        this.lastEvent = null;
+        this.lastLoadSource = "default";
+        this.setEntries(this.defaultEntries, { allowEmpty: false });
+        return { ok: true, source: "default", events: [] };
+      }
 
-    if (!events.length) {
-      this.lastEvent = null;
+      const sorted = events
+        .filter((event) => event && event.pubkey === normalizedPubkey)
+        .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+      if (!sorted.length) {
+        if (skipIfEmpty) {
+          return null;
+        }
+        this.lastEvent = null;
+        this.lastLoadSource = "default";
+        this.setEntries(this.defaultEntries, { allowEmpty: false });
+        return { ok: true, source: "default", events: [] };
+      }
+
+      const newest = sorted[0];
+      this.lastEvent = newest;
+
+      const parsed = parseRelayTags(newest?.tags);
+      if (parsed.length) {
+        this.setEntries(parsed, { allowEmpty: false });
+        this.lastLoadSource = "event";
+        return { ok: true, source: "event", event: newest };
+      }
+
       this.lastLoadSource = "default";
       this.setEntries(this.defaultEntries, { allowEmpty: false });
-      return { ok: true, source: "default", events: [] };
+      return { ok: true, source: "default", event: newest };
+    };
+
+    const fetchFromRelay = (relayUrl, timeoutMs, requireEvent) => {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          const timeoutError = new Error(
+            `Timed out fetching relay list from ${relayUrl} after ${timeoutMs}ms`
+          );
+          timeoutError.code = "timeout";
+          timeoutError.relay = relayUrl;
+          timeoutError.timeoutMs = timeoutMs;
+          reject(timeoutError);
+        }, timeoutMs);
+
+        Promise.resolve()
+          .then(() => nostrClient.pool.list([relayUrl], [filter]))
+          .then((result) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            const events = Array.isArray(result)
+              ? result.filter((event) => event && event.pubkey === normalizedPubkey)
+              : [];
+            if (requireEvent && !events.length) {
+              const emptyError = new Error(
+                `No relay list events returned from ${relayUrl}`
+              );
+              emptyError.code = "empty";
+              emptyError.relay = relayUrl;
+              reject(emptyError);
+              return;
+            }
+            resolve({ relayUrl, events });
+          })
+          .catch((error) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            const wrapped =
+              error instanceof Error ? error : new Error(String(error));
+            wrapped.relay = relayUrl;
+            reject(wrapped);
+          });
+      });
+    };
+
+    const fastRelays = targetRelays.slice(0, FAST_RELAY_FETCH_LIMIT);
+    const backgroundRelays = targetRelays.slice(fastRelays.length);
+
+    const fastPromises = fastRelays.map((relayUrl) =>
+      fetchFromRelay(relayUrl, FAST_RELAY_TIMEOUT_MS, true)
+    );
+    const backgroundPromises = backgroundRelays.map((relayUrl) =>
+      fetchFromRelay(relayUrl, BACKGROUND_RELAY_TIMEOUT_MS, false)
+    );
+
+    const background = Promise.allSettled([
+      ...fastPromises,
+      ...backgroundPromises,
+    ])
+      .then((outcomes) => {
+        const aggregated = [];
+        outcomes.forEach((outcome) => {
+          if (outcome.status === "fulfilled") {
+            const events = Array.isArray(outcome.value?.events)
+              ? outcome.value.events
+              : [];
+            if (events.length) {
+              aggregated.push(...events);
+            }
+          } else {
+            const reason = outcome.reason;
+            if (reason?.code === "timeout") {
+              if (isDevMode) {
+                console.warn(
+                  `[relayManager] Relay ${reason.relay} timed out while loading relay list (${reason.timeoutMs}ms)`
+                );
+              }
+            } else if (isDevMode) {
+              console.warn(
+                `[relayManager] Relay ${reason?.relay || "unknown"} failed while loading relay list:`,
+                reason
+              );
+            }
+          }
+        });
+
+        if (!aggregated.length) {
+          return;
+        }
+
+        applyEvents(aggregated, { skipIfEmpty: true });
+      })
+      .catch((error) => {
+        if (isDevMode) {
+          console.warn("[relayManager] Background relay refresh failed", error);
+        }
+      });
+
+    let fastResult = null;
+    if (fastPromises.length) {
+      try {
+        fastResult = await Promise.any(fastPromises);
+      } catch (error) {
+        if (error instanceof AggregateError) {
+          error.errors?.forEach((err) => {
+            if (err?.code === "timeout" && isDevMode) {
+              console.warn(
+                `[relayManager] Relay ${err.relay} timed out while loading relay list (${err.timeoutMs}ms)`
+              );
+            }
+          });
+        } else if (isDevMode) {
+          console.warn("[relayManager] Fast relay fetch failed", error);
+        }
+      }
     }
 
-    events.sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
-    const newest = events[0];
-    this.lastEvent = newest;
-
-    const parsed = parseRelayTags(newest?.tags);
-    if (parsed.length) {
-      this.setEntries(parsed, { allowEmpty: false });
-      this.lastLoadSource = "event";
-      return { ok: true, source: "event", event: newest };
+    if (fastResult?.events?.length) {
+      const result = applyEvents(fastResult.events);
+      background.catch(() => {});
+      return result;
     }
 
-    this.lastLoadSource = "default";
-    this.setEntries(this.defaultEntries, { allowEmpty: false });
-    return { ok: true, source: "default", event: newest };
+    const fallback = applyEvents([], { skipIfEmpty: false });
+    background.catch(() => {});
+    return fallback;
   }
 
   async publishRelayList(pubkey, options = {}) {

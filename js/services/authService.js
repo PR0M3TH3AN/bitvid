@@ -72,6 +72,10 @@ const FALLBACK_PROFILE = {
   lud06: "",
 };
 
+const FAST_PROFILE_RELAY_LIMIT = 3;
+const FAST_PROFILE_TIMEOUT_MS = 2500;
+const BACKGROUND_PROFILE_TIMEOUT_MS = 6000;
+
 export default class AuthService {
   constructor({ nostrClient, userBlocks, relayManager, logger } = {}) {
     this.nostrClient = nostrClient || null;
@@ -655,15 +659,37 @@ export default class AuthService {
       return FALLBACK_PROFILE;
     }
 
-    const events = await this.nostrClient.pool.list(this.nostrClient.relays, [
-      { kinds: [0], authors: [normalized], limit: 1 },
-    ]);
+    const relays = Array.isArray(this.nostrClient.relays)
+      ? this.nostrClient.relays.filter((url) => typeof url === "string" && url)
+      : [];
 
-    let profile = FALLBACK_PROFILE;
-    if (Array.isArray(events) && events.length && events[0]?.content) {
+    if (!relays.length) {
+      this.setProfileCacheEntry(normalized, FALLBACK_PROFILE, {
+        persist: true,
+        reason: "load-own-profile:fallback",
+      });
+      return FALLBACK_PROFILE;
+    }
+
+    const filter = [{ kinds: [0], authors: [normalized], limit: 1 }];
+
+    const selectNewestEvent = (eventList) => {
+      if (!Array.isArray(eventList) || !eventList.length) {
+        return null;
+      }
+      const sorted = eventList
+        .filter((event) => event && event.pubkey === normalized)
+        .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+      return sorted.length ? sorted[0] : null;
+    };
+
+    const buildProfileFromEvent = (event) => {
+      if (!event?.content) {
+        return FALLBACK_PROFILE;
+      }
       try {
-        const data = JSON.parse(events[0].content);
-        profile = {
+        const data = JSON.parse(event.content);
+        return {
           name: data.display_name || data.name || FALLBACK_PROFILE.name,
           picture: data.picture || FALLBACK_PROFILE.picture,
           about: typeof data.about === "string" ? data.about : FALLBACK_PROFILE.about,
@@ -676,15 +702,157 @@ export default class AuthService {
         };
       } catch (error) {
         this.log("[AuthService] Failed to parse profile metadata", error);
+        return FALLBACK_PROFILE;
+      }
+    };
+
+    const fetchFromRelay = (relayUrl, timeoutMs, requireEvent) => {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          const timeoutError = new Error(
+            `Timed out fetching profile from ${relayUrl} after ${timeoutMs}ms`
+          );
+          timeoutError.code = "timeout";
+          timeoutError.relay = relayUrl;
+          timeoutError.timeoutMs = timeoutMs;
+          reject(timeoutError);
+        }, timeoutMs);
+
+        Promise.resolve()
+          .then(() => this.nostrClient.pool.list([relayUrl], filter))
+          .then((result) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            const events = Array.isArray(result)
+              ? result.filter((event) => event && event.pubkey === normalized)
+              : [];
+            if (requireEvent && !events.length) {
+              const emptyError = new Error(
+                `No profile events returned from ${relayUrl}`
+              );
+              emptyError.code = "empty";
+              emptyError.relay = relayUrl;
+              reject(emptyError);
+              return;
+            }
+            resolve({ relayUrl, events });
+          })
+          .catch((error) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            const wrapped =
+              error instanceof Error ? error : new Error(String(error));
+            wrapped.relay = relayUrl;
+            reject(wrapped);
+          });
+      });
+    };
+
+    const fastRelays = relays.slice(0, FAST_PROFILE_RELAY_LIMIT);
+    const backgroundRelays = relays.slice(fastRelays.length);
+
+    const fastPromises = fastRelays.map((relayUrl) =>
+      fetchFromRelay(relayUrl, FAST_PROFILE_TIMEOUT_MS, true)
+    );
+    const backgroundPromises = backgroundRelays.map((relayUrl) =>
+      fetchFromRelay(relayUrl, BACKGROUND_PROFILE_TIMEOUT_MS, false)
+    );
+
+    const background = Promise.allSettled([
+      ...fastPromises,
+      ...backgroundPromises,
+    ])
+      .then((outcomes) => {
+        const aggregated = [];
+        outcomes.forEach((outcome) => {
+          if (outcome.status === "fulfilled") {
+            const events = Array.isArray(outcome.value?.events)
+              ? outcome.value.events
+              : [];
+            if (events.length) {
+              aggregated.push(...events);
+            }
+          } else if (outcome.status === "rejected") {
+            const reason = outcome.reason;
+            if (reason?.code === "timeout") {
+              this.log(
+                `[AuthService] Relay ${reason.relay} timed out loading profile (background)`
+              );
+            } else {
+              this.log(
+                `[AuthService] Relay ${reason?.relay || "unknown"} failed loading profile (background)`,
+                reason
+              );
+            }
+          }
+        });
+
+        const newest = selectNewestEvent(aggregated);
+        if (!newest) {
+          return;
+        }
+
+        const profile = buildProfileFromEvent(newest);
+        this.setProfileCacheEntry(normalized, profile, {
+          persist: true,
+          reason: "load-own-profile:background",
+        });
+      })
+      .catch((error) => {
+        this.log("[AuthService] Background profile refresh failed", error);
+      });
+
+    let fastResult = null;
+    if (fastPromises.length) {
+      try {
+        fastResult = await Promise.any(fastPromises);
+      } catch (error) {
+        if (error instanceof AggregateError) {
+          error.errors?.forEach((err) => {
+            if (err?.code === "timeout") {
+              this.log(
+                `[AuthService] Relay ${err.relay} timed out loading profile`
+              );
+            }
+          });
+        } else {
+          this.log("[AuthService] Failed to load profile from fast relays", error);
+        }
       }
     }
 
-    this.setProfileCacheEntry(normalized, profile, {
+    if (fastResult?.events?.length) {
+      const newest = selectNewestEvent(fastResult.events);
+      if (newest) {
+        const profile = buildProfileFromEvent(newest);
+        this.setProfileCacheEntry(normalized, profile, {
+          persist: true,
+          reason: "load-own-profile:fast",
+        });
+        background.catch(() => {});
+        return profile;
+      }
+    }
+
+    this.setProfileCacheEntry(normalized, FALLBACK_PROFILE, {
       persist: true,
-      reason: "load-own-profile",
+      reason: "load-own-profile:fallback",
     });
 
-    return profile;
+    background.catch(() => {});
+
+    return FALLBACK_PROFILE;
   }
 
   async fetchProfile(pubkey, { forceRefresh = false } = {}) {
