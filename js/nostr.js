@@ -58,9 +58,9 @@ const RELAY_URLS = Array.from(DEFAULT_RELAY_URLS);
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const NIP07_LOGIN_TIMEOUT_MS = 15_000; // 15 seconds
+const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
 const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
-  "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again.";
+  "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
@@ -379,8 +379,26 @@ async function runNip07WithRetry(
     retryMultiplier = 2,
   } = {},
 ) {
+  let hasStarted = false;
+  let cachedPromise = null;
+
+  const getOrStartOperation = () => {
+    if (!hasStarted) {
+      hasStarted = true;
+      try {
+        cachedPromise = Promise.resolve(operation());
+      } catch (error) {
+        hasStarted = false;
+        cachedPromise = null;
+        throw error;
+      }
+    }
+
+    return cachedPromise;
+  };
+
   try {
-    return await withNip07Timeout(operation, {
+    return await withNip07Timeout(getOrStartOperation, {
       timeoutMs,
       message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
     });
@@ -400,11 +418,11 @@ async function runNip07WithRetry(
 
     if (isDevMode) {
       console.warn(
-        `[nostr] ${label} timed out after ${timeoutMs}ms. Retrying once with ${extendedTimeout}ms timeout.`,
+        `[nostr] ${label} taking longer than ${timeoutMs}ms. Waiting up to ${extendedTimeout}ms for extension response.`,
       );
     }
 
-    return withNip07Timeout(operation, {
+    return withNip07Timeout(getOrStartOperation, {
       timeoutMs: extendedTimeout,
       message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
     });

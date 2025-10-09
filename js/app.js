@@ -1778,13 +1778,36 @@ class Application {
     const nip07Button = document.getElementById("loginNIP07");
     if (nip07Button) {
       const originalLabel = nip07Button.textContent;
+      let slowExtensionTimer = null;
+      const slowExtensionDelayMs = 8_000;
+
+      const clearSlowExtensionTimer = () => {
+        if (slowExtensionTimer) {
+          clearTimeout(slowExtensionTimer);
+          slowExtensionTimer = null;
+        }
+      };
+
       const setLoadingState = (isLoading) => {
-        nip07Button.disabled = isLoading;
-        nip07Button.dataset.loading = isLoading ? "true" : "false";
-        nip07Button.setAttribute("aria-busy", isLoading ? "true" : "false");
-        nip07Button.textContent = isLoading
-          ? "Connecting to NIP-07 extension..."
-          : originalLabel;
+        if (isLoading) {
+          nip07Button.disabled = true;
+          nip07Button.dataset.loading = "true";
+          nip07Button.setAttribute("aria-busy", "true");
+          nip07Button.textContent = "Connecting to NIP-07 extension...";
+
+          clearSlowExtensionTimer();
+          slowExtensionTimer = window.setTimeout(() => {
+            if (nip07Button.dataset.loading === "true") {
+              nip07Button.textContent = "Waiting for the extension prompt…";
+            }
+          }, slowExtensionDelayMs);
+        } else {
+          nip07Button.disabled = false;
+          nip07Button.dataset.loading = "false";
+          nip07Button.setAttribute("aria-busy", "false");
+          clearSlowExtensionTimer();
+          nip07Button.textContent = originalLabel;
+        }
       };
 
       nip07Button.addEventListener("click", async () => {
