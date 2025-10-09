@@ -42,6 +42,7 @@ import WatchHistoryController from "./ui/watchHistoryController.js";
 import WatchHistoryTelemetry from "./services/watchHistoryTelemetry.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
+import { isWatchHistoryDebugEnabled } from "./watchHistoryDebug.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -186,7 +187,38 @@ class Application {
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
-    this.feedEngine = services.feedEngine || createFeedEngine();
+
+    const feedEngineLogger = (...args) => {
+      if (!isWatchHistoryDebugEnabled()) {
+        return;
+      }
+      if (!Array.isArray(args) || args.length === 0) {
+        return;
+      }
+      const [prefix, ...rest] = args;
+      if (typeof prefix === "string" && !prefix.includes("watch-history")) {
+        return;
+      }
+      try {
+        if (rest.length) {
+          console.info(prefix, ...rest);
+        } else {
+          console.info(prefix);
+        }
+      } catch (error) {
+        if (rest.length) {
+          console.log(prefix, ...rest);
+        } else {
+          console.log(prefix);
+        }
+      }
+    };
+
+    this.feedEngine =
+      services.feedEngine ||
+      createFeedEngine({
+        logger: feedEngineLogger,
+      });
     this.payments = services.payments || null;
     this.splitAndZap =
       (services.payments && services.payments.splitAndZap) ||

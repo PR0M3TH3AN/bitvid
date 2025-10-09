@@ -20,6 +20,7 @@ const {
 const {
   nostrClient,
   chunkWatchHistoryPayloadItems,
+  normalizeActorKey,
 } = await import("../js/nostr.js");
 const { watchHistoryService } = await import("../js/watchHistoryService.js");
 const { getApplication, setApplication } = await import(
@@ -348,9 +349,129 @@ function maxCreatedAt(events = []) {
   }, 0);
 }
 
+async function testNormalizeActorKeyShortCircuit() {
+  console.log("Running normalizeActorKey short-circuit test...");
+
+  const actorHex = "f".repeat(64);
+  const actorNpub = "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+  if (!window.NostrTools || typeof window.NostrTools !== "object") {
+    window.NostrTools = {};
+  }
+  const previousNip19 = window.NostrTools.nip19;
+  const previousDecode =
+    previousNip19 && typeof previousNip19.decode === "function"
+      ? previousNip19.decode
+      : null;
+  const decodeCalls = [];
+
+  window.NostrTools.nip19 = {
+    ...(previousNip19 || {}),
+    decode(value) {
+      decodeCalls.push(value);
+      if (value === actorNpub) {
+        return { type: "npub", data: actorHex };
+      }
+      if (typeof previousDecode === "function") {
+        return previousDecode(value);
+      }
+      throw new Error("unsupported-npub");
+    },
+  };
+
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => {
+    warnings.push(args);
+  };
+
+  try {
+    const upperHex = actorHex.toUpperCase();
+    const normalizedHex = normalizeActorKey(upperHex);
+    assert.equal(
+      normalizedHex,
+      actorHex,
+      "hex inputs should normalize to lowercase hex",
+    );
+    assert.equal(
+      decodeCalls.length,
+      0,
+      "hex inputs should not invoke nip19.decode",
+    );
+    assert.equal(
+      warnings.length,
+      0,
+      "hex inputs should not emit decode warnings",
+    );
+
+    const normalizedNpub = normalizeActorKey(actorNpub);
+    assert.equal(normalizedNpub, actorHex, "npub inputs should decode to hex");
+    assert.equal(
+      decodeCalls.length,
+      1,
+      "npub inputs should invoke nip19.decode",
+    );
+    assert.equal(
+      warnings.length,
+      0,
+      "successful npub decode should not emit warnings",
+    );
+  } finally {
+    console.warn = originalWarn;
+    if (previousNip19) {
+      window.NostrTools.nip19 = previousNip19;
+    } else if (window.NostrTools) {
+      delete window.NostrTools.nip19;
+    }
+  }
+}
+
+async function testNormalizeActorKeyManualFallback() {
+  console.log("Running normalizeActorKey manual fallback test...");
+
+  const actorHex =
+    "a4a6b5849bc917b3befd5c81865ee0b88773690609c207ba6588ef3e1e05b95b";
+  const actorNpub =
+    "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
+
+  if (!window.NostrTools || typeof window.NostrTools !== "object") {
+    window.NostrTools = {};
+  }
+
+  const previousNip19 = window.NostrTools.nip19;
+  const originalWarn = console.warn;
+  const warnings = [];
+
+  delete window.NostrTools.nip19;
+  console.warn = (...args) => {
+    warnings.push(args);
+  };
+
+  try {
+    const normalized = normalizeActorKey(actorNpub);
+    assert.equal(
+      normalized,
+      actorHex,
+      "manual fallback should decode npub values to hex",
+    );
+    assert.equal(
+      warnings.length,
+      0,
+      "manual fallback decode should not emit warnings",
+    );
+  } finally {
+    console.warn = originalWarn;
+    if (previousNip19 !== undefined) {
+      window.NostrTools.nip19 = previousNip19;
+    } else {
+      delete window.NostrTools.nip19;
+    }
+  }
+}
+
 async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
   const actorHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-  const actorNpub = "npub-test-extension-decrypt";
+  const actorNpub =
+    "npub1testextensiondecryptqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
   const snapshotId = "extension-fetch";
   const chunkIdentifier = "chunk-extension";
 
@@ -401,23 +522,25 @@ async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
     ],
   };
 
-  const previousNostrTools = window.NostrTools || {};
-  window.NostrTools = {
-    ...previousNostrTools,
-    nip19: {
-      ...(previousNostrTools.nip19 || {}),
-      decode: (value) => {
-        if (value === actorNpub) {
-          return { type: "npub", data: actorHex };
-        }
-        if (
-          previousNostrTools.nip19 &&
-          typeof previousNostrTools.nip19.decode === "function"
-        ) {
-          return previousNostrTools.nip19.decode(value);
-        }
-        throw new Error("unsupported-npub");
-      },
+  if (!window.NostrTools || typeof window.NostrTools !== "object") {
+    window.NostrTools = {};
+  }
+  const previousNip19 = window.NostrTools.nip19;
+  const previousDecode =
+    previousNip19 && typeof previousNip19.decode === "function"
+      ? previousNip19.decode
+      : null;
+
+  window.NostrTools.nip19 = {
+    ...(previousNip19 || {}),
+    decode: (value) => {
+      if (value === actorNpub) {
+        return { type: "npub", data: actorHex };
+      }
+      if (typeof previousDecode === "function") {
+        return previousDecode(value);
+      }
+      throw new Error("unsupported-npub");
     },
   };
 
@@ -505,7 +628,11 @@ async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
     await runVariant("hex", actorHex, actorHex);
     await runVariant("npub", actorNpub, actorNpub);
   } finally {
-    window.NostrTools = previousNostrTools;
+    if (previousNip19) {
+      window.NostrTools.nip19 = previousNip19;
+    } else if (window.NostrTools) {
+      delete window.NostrTools.nip19;
+    }
     nostrClient.ensureSessionActor = originalEnsure;
     nostrClient.sessionActor = originalSession;
     nostrClient.pubkey = originalPub;
@@ -1573,6 +1700,8 @@ await testWatchHistoryStaleCacheRefresh();
 await testWatchHistoryLocalFallbackWhenDisabled();
 await testWatchHistorySyncEnabledForLoggedInUsers();
 await testWatchHistoryAppLoginFallback();
+await testNormalizeActorKeyShortCircuit();
+await testNormalizeActorKeyManualFallback();
 
 console.log("watch-history.test.mjs completed successfully");
 

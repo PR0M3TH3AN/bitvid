@@ -2323,6 +2323,10 @@ function normalizeActorKey(actor) {
     return "";
   }
 
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
   const decodedHex = decodeNpubToHex(trimmed);
   if (decodedHex) {
     return decodedHex.toLowerCase();
@@ -2586,26 +2590,182 @@ function cloneEventForCache(event) {
   return cloned;
 }
 
+const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+const BECH32_CHARSET_MAP = (() => {
+  const map = new Map();
+  for (let index = 0; index < BECH32_CHARSET.length; index += 1) {
+    map.set(BECH32_CHARSET[index], index);
+  }
+  return map;
+})();
+
+const BECH32_GENERATORS = [
+  0x3b6a57b2,
+  0x26508e6d,
+  0x1ea119fa,
+  0x3d4233dd,
+  0x2a1462b3,
+];
+
+function bech32Polymod(values) {
+  let chk = 1;
+  for (const value of values) {
+    const top = chk >>> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ value;
+    for (let bit = 0; bit < BECH32_GENERATORS.length; bit += 1) {
+      if ((top >>> bit) & 1) {
+        chk ^= BECH32_GENERATORS[bit];
+      }
+    }
+  }
+  return chk;
+}
+
+function bech32HrpExpand(hrp) {
+  const expansion = [];
+  for (let i = 0; i < hrp.length; i += 1) {
+    expansion.push(hrp.charCodeAt(i) >>> 5);
+  }
+  expansion.push(0);
+  for (let i = 0; i < hrp.length; i += 1) {
+    expansion.push(hrp.charCodeAt(i) & 31);
+  }
+  return expansion;
+}
+
+function bech32VerifyChecksum(hrp, values) {
+  return bech32Polymod([...bech32HrpExpand(hrp), ...values]) === 1;
+}
+
+function convertBits(data, fromBits, toBits) {
+  let acc = 0;
+  let bits = 0;
+  const maxValue = (1 << toBits) - 1;
+  const result = [];
+
+  for (const value of data) {
+    if (value < 0 || value >>> fromBits !== 0) {
+      return null;
+    }
+    acc = (acc << fromBits) | value;
+    bits += fromBits;
+    while (bits >= toBits) {
+      bits -= toBits;
+      result.push((acc >>> bits) & maxValue);
+    }
+  }
+
+  if (bits > 0) {
+    if ((acc << (toBits - bits)) & maxValue) {
+      return null;
+    }
+  }
+
+  return result;
+}
+
+function decodeBech32Npub(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const hasMixedCase = value !== value.toLowerCase() && value !== value.toUpperCase();
+  if (hasMixedCase) {
+    return "";
+  }
+
+  const normalized = value.toLowerCase();
+  const separatorIndex = normalized.lastIndexOf("1");
+  if (separatorIndex <= 0 || separatorIndex + 7 > normalized.length) {
+    return "";
+  }
+
+  const hrp = normalized.slice(0, separatorIndex);
+  if (hrp !== "npub") {
+    return "";
+  }
+
+  const dataPart = normalized.slice(separatorIndex + 1);
+  const values = [];
+  for (let i = 0; i < dataPart.length; i += 1) {
+    const mapped = BECH32_CHARSET_MAP.get(dataPart[i]);
+    if (typeof mapped !== "number") {
+      return "";
+    }
+    values.push(mapped);
+  }
+
+  if (values.length < 7 || !bech32VerifyChecksum(hrp, values)) {
+    return "";
+  }
+
+  const words = values.slice(0, -6);
+  const bytes = convertBits(words, 5, 8);
+  if (!bytes || bytes.length !== 32) {
+    return "";
+  }
+
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function decodeNpubToHex(npub) {
-  if (typeof npub !== "string" || !npub.trim()) {
+  if (typeof npub !== "string") {
     return "";
   }
 
-  const tools = getCachedNostrTools();
-  if (!tools?.nip19 || typeof tools.nip19.decode !== "function") {
+  const trimmed = npub.trim();
+  if (!trimmed) {
     return "";
   }
 
-  try {
-    const decoded = tools.nip19.decode(npub.trim());
-    if (decoded?.type === "npub" && typeof decoded.data === "string") {
-      return decoded.data;
-    }
-  } catch (error) {
-    if (isDevMode) {
-      console.warn(`[nostr] Failed to decode npub: ${npub}`, error);
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  const lower = trimmed.toLowerCase();
+  const hasNpubPrefix = lower.startsWith("npub1");
+  if (!hasNpubPrefix) {
+    return "";
+  }
+
+  const warnableNpub = /^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(
+    trimmed
+  );
+
+  let tools = cachedNostrTools;
+  if (!tools || typeof tools?.nip19?.decode !== "function") {
+    const fallbackTools = readToolkitFromScope();
+    if (fallbackTools) {
+      tools = fallbackTools;
     }
   }
+
+  let decodeError = null;
+  if (tools?.nip19 && typeof tools.nip19.decode === "function") {
+    try {
+      const decoded = tools.nip19.decode(trimmed);
+      if (decoded?.type === "npub" && typeof decoded.data === "string") {
+        return decoded.data;
+      }
+    } catch (error) {
+      decodeError = error;
+    }
+  }
+
+  const manualDecoded = decodeBech32Npub(trimmed);
+  if (manualDecoded) {
+    return manualDecoded;
+  }
+
+  if (isDevMode && warnableNpub) {
+    console.warn(
+      `[nostr] Failed to decode npub: ${trimmed}`,
+      decodeError || new Error("invalid-npub"),
+    );
+  }
+
   return "";
 }
 
@@ -4745,38 +4905,105 @@ export class NostrClient {
       const tools = await ensureNostrTools();
       if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
         cachedDecryptTools = tools;
+        console.info("[nostr] Loaded nostr-tools nip04 helpers for watch history decryption.");
         return cachedDecryptTools;
       }
+      console.warn("[nostr] Unable to load nostr-tools nip04 helpers for watch history decryption.");
       return null;
     };
 
-    const decryptChunk = async (ciphertext) => {
+    const decryptChunk = async (ciphertext, context = {}) => {
       if (!ciphertext || typeof ciphertext !== "string") {
         throw new Error("empty-ciphertext");
       }
+      const ciphertextPreview = ciphertext.slice(0, 32);
+      console.info("[nostr] Attempting to decrypt watch history chunk.", {
+        actorKey,
+        chunkIdentifier: context.chunkIdentifier ?? null,
+        eventId: context.eventId ?? null,
+        ciphertextPreview,
+        ciphertextFormat: "base64 NIP-04 ciphertext",
+        expectedPlaintextFormat:
+          "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+      });
       const extensionDecrypt =
         extension &&
         typeof extension?.nip04?.decrypt === "function" &&
         normalizeActorKey(this.pubkey) === actorKey;
       if (extensionDecrypt) {
         await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
-        return extension.nip04.decrypt(actorKey, ciphertext);
+        console.info(
+          "[nostr] Using logged in user's extension key to decrypt watch history chunk.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+          },
+        );
+        const plaintext = await extension.nip04.decrypt(actorKey, ciphertext);
+        console.info("[nostr] Successfully decrypted watch history chunk via extension key.", {
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
+        });
+        return plaintext;
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
+        console.info(
+          "[nostr] Session actor mismatch while decrypting watch history chunk. Ensuring session actor matches requested key.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+            currentSessionActor: this.sessionActor?.pubkey ?? null,
+          },
+        );
         await this.ensureSessionActor();
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
+        console.error(
+          "[nostr] Watch history decrypt failed: session actor key unavailable after ensure.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+            currentSessionActor: this.sessionActor?.pubkey ?? null,
+          },
+        );
         throw new Error("missing-session-key");
       }
       const tools = await ensureDecryptTools();
       if (!tools?.nip04 || typeof tools.nip04.decrypt !== "function") {
+        console.error(
+          "[nostr] Watch history decrypt failed: nip04 helpers unavailable.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+          },
+        );
         throw new Error("nip04-unavailable");
       }
-      return tools.nip04.decrypt(
+      console.info(
+        "[nostr] Using session actor private key to decrypt watch history chunk.",
+        {
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
+          sessionActor: this.sessionActor?.pubkey ?? null,
+        },
+      );
+      const plaintext = await tools.nip04.decrypt(
         this.sessionActor.privateKey,
         actorKey,
         ciphertext,
       );
+      console.info("[nostr] Successfully decrypted watch history chunk via session actor key.", {
+        actorKey,
+        chunkIdentifier: context.chunkIdentifier ?? null,
+        eventId: context.eventId ?? null,
+      });
+      return plaintext;
     };
 
     const chunkCount = latestChunks.size || chunkIdentifiers.length || 0;
@@ -4791,10 +5018,26 @@ export class NostrClient {
       }
       const fallbackPointers = extractPointerItemsFromEvent(event);
       const ciphertext = typeof event.content === "string" ? event.content : "";
+      const ciphertextPreview = ciphertext.slice(0, 32);
       let payload;
+      const chunkContext = {
+        chunkIdentifier: identifier,
+        eventId: event.id ?? null,
+      };
       if (isNip04EncryptedWatchHistoryEvent(event, ciphertext)) {
+        console.info("[nostr] Watch history chunk is marked as NIP-04 encrypted. Beginning decrypt flow.", {
+          actorKey,
+          ...chunkContext,
+        });
         try {
-          const plaintext = await decryptChunk(ciphertext);
+          const plaintext = await decryptChunk(ciphertext, chunkContext);
+          console.info("[nostr] Decrypted watch history chunk. Parsing plaintext payload.", {
+            actorKey,
+            ...chunkContext,
+            plaintextPreview: typeof plaintext === "string" ? plaintext.slice(0, 64) : null,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          });
           payload = parseWatchHistoryContentWithFallback(
             plaintext,
             fallbackPointers,
@@ -4808,12 +5051,30 @@ export class NostrClient {
           );
         } catch (error) {
           decryptErrors.push(error);
+          console.error("[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.", {
+            actorKey,
+            ...chunkContext,
+            error: error?.message || error,
+            ciphertextPreview,
+            fallbackPointerCount: Array.isArray(fallbackPointers)
+              ? fallbackPointers.length
+              : 0,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          });
           payload = {
             version: 0,
             items: fallbackPointers,
           };
         }
       } else {
+        console.info("[nostr] Watch history chunk is plaintext. Attempting to parse expected payload format.", {
+          actorKey,
+          ...chunkContext,
+          ciphertextPreview,
+          expectedPlaintextFormat:
+            "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+        });
         payload = parseWatchHistoryContentWithFallback(
           ciphertext,
           fallbackPointers,
