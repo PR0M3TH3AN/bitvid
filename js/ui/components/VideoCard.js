@@ -803,7 +803,7 @@ export class VideoCard {
     };
 
     addActionButton(
-      "Ensure presence (re-publish original)",
+      "Rebroadcast",
       "ensure-presence",
       ensureDataset,
       ["text-gray-100", "hover:bg-gray-700"],

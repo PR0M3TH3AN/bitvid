@@ -62,7 +62,7 @@ const { video, rawEvent } = await nostrClient.getEventById(eventId, {
 
 In DevTools the active client lives at `window.bitvidApp?.nostrClient`.
 
-Use the `rawEvent` blob when implementing “Ensure presence” style flows so the
+Use the `rawEvent` blob when implementing “Rebroadcast” style flows so the
 client can republish exactly what was signed, including the original
 `sig`. Republishers should prefer `rawEvent.sig` over re-signing unless the
 payload actually changes; this avoids accidental drift in dedupe tags or

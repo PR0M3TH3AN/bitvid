@@ -5489,8 +5489,8 @@ class Application {
         const remainingSeconds = Math.ceil(remainingMs / 1000);
         const message =
           remainingSeconds > 0
-            ? `Ensure presence is cooling down. Try again in ${remainingSeconds}s.`
-            : "Ensure presence is cooling down. Try again soon.";
+            ? `Rebroadcast is cooling down. Try again in ${remainingSeconds}s.`
+            : "Rebroadcast is cooling down. Try again soon.";
         this.showStatus(message);
         if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
           window.setTimeout(() => {
@@ -5513,7 +5513,7 @@ class Application {
             this.showError("Cannot reach relays right now. Please try again later.");
             break;
           default:
-            this.showError("Failed to ensure presence. Please try again later.");
+            this.showError("Failed to rebroadcast. Please try again later.");
             break;
         }
         return;
@@ -5527,9 +5527,9 @@ class Application {
       this.showSuccess("Rebroadcast requested across relays.");
     } catch (error) {
       if (isDevMode) {
-        console.warn("[app] Ensure presence action failed:", error);
+        console.warn("[app] Rebroadcast action failed:", error);
       }
-      this.showError("Failed to ensure presence. Please try again later.");
+      this.showError("Failed to rebroadcast. Please try again later.");
     }
   }
 
