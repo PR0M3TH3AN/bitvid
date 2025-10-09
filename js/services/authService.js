@@ -395,43 +395,73 @@ export default class AuthService {
 
   async applyPostLoginState() {
     const activePubkey = this.normalizeHexPubkey(getPubkey()) || getPubkey();
-    if (!activePubkey) {
-      return { pubkey: null };
-    }
-
-    let blocksLoaded = false;
-    if (this.userBlocks && typeof this.userBlocks.loadBlocks === "function") {
-      try {
-        await this.userBlocks.loadBlocks(activePubkey);
-        blocksLoaded = true;
-      } catch (error) {
-        this.log("[AuthService] Failed to load block list", error);
-      }
-    }
-
-    let relaysLoaded = false;
-    if (this.relayManager && typeof this.relayManager.loadRelayList === "function") {
-      try {
-        await this.relayManager.loadRelayList(activePubkey);
-        relaysLoaded = true;
-      } catch (error) {
-        this.log("[AuthService] Failed to load relay list", error);
-      }
-    }
-
-    let profile = null;
-    try {
-      profile = await this.loadOwnProfile(activePubkey);
-    } catch (error) {
-      this.log("[AuthService] Failed to load own profile", error);
-    }
-
-    return {
-      pubkey: activePubkey,
-      blocksLoaded,
-      relaysLoaded,
-      profile,
+    const detail = {
+      pubkey: activePubkey || null,
+      blocksLoaded: false,
+      relaysLoaded: false,
+      profile: null,
     };
+
+    if (!activePubkey) {
+      return detail;
+    }
+
+    const schedule = (callback) => Promise.resolve().then(() => callback());
+
+    const operations = [];
+
+    if (this.userBlocks && typeof this.userBlocks.loadBlocks === "function") {
+      operations.push({
+        name: "blocksLoaded",
+        promise: schedule(() => this.userBlocks.loadBlocks(activePubkey)),
+        onFulfilled: () => true,
+        onRejected: (error) => {
+          this.log("[AuthService] Failed to load block list", error);
+          return false;
+        },
+      });
+    }
+
+    if (this.relayManager && typeof this.relayManager.loadRelayList === "function") {
+      operations.push({
+        name: "relaysLoaded",
+        promise: schedule(() => this.relayManager.loadRelayList(activePubkey)),
+        onFulfilled: () => true,
+        onRejected: (error) => {
+          this.log("[AuthService] Failed to load relay list", error);
+          return false;
+        },
+      });
+    }
+
+    operations.push({
+      name: "profile",
+      promise: schedule(() => this.loadOwnProfile(activePubkey)),
+      onFulfilled: (value) => value,
+      onRejected: (error) => {
+        this.log("[AuthService] Failed to load own profile", error);
+        return null;
+      },
+    });
+
+    const settled = await Promise.allSettled(
+      operations.map((operation) => operation.promise)
+    );
+
+    settled.forEach((result, index) => {
+      const operation = operations[index];
+      if (!operation) {
+        return;
+      }
+
+      if (result.status === "fulfilled") {
+        detail[operation.name] = operation.onFulfilled(result.value);
+      } else {
+        detail[operation.name] = operation.onRejected(result.reason);
+      }
+    });
+
+    return detail;
   }
 
   async logout() {
