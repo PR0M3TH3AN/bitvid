@@ -2471,6 +2471,9 @@ export class NostrClient {
     // Store all events so older links still work
     this.allEvents = new Map();
 
+    // Keep a separate cache of raw events so we can republish the exact payload
+    this.rawEvents = new Map();
+
     // “activeMap” holds only the newest version for each root
     this.activeMap = new Map();
 
@@ -2881,6 +2884,7 @@ export class NostrClient {
     }
 
     this.allEvents.clear();
+    this.rawEvents.clear();
     this.activeMap.clear();
     this.rootCreatedAtByRoot.clear();
 
@@ -6172,6 +6176,9 @@ export class NostrClient {
 
       for (const evt of toProcess) {
         try {
+          if (evt && evt.id) {
+            this.rawEvents.set(evt.id, evt);
+          }
           const video = convertEventToVideo(evt);
 
           if (video.invalid) {
@@ -6687,6 +6694,9 @@ export class NostrClient {
         this.relays.map(async (url) => {
           const events = await this.pool.list([url], [filter]);
           for (const evt of events) {
+            if (evt && evt.id) {
+              this.rawEvents.set(evt.id, evt);
+            }
             const vid = convertEventToVideo(evt);
             if (vid.invalid) {
               // Accumulate if invalid
@@ -6740,30 +6750,165 @@ export class NostrClient {
   }
 
   /**
-   * getEventById => old approach
+   * Raw event helpers
    */
-  async getEventById(eventId) {
-    const local = this.allEvents.get(eventId);
-    if (local) {
-      this.applyRootCreatedAt(local);
-      return local;
+  /**
+   * Fetch the unmodified Nostr event for a given id and cache the payload.
+   *
+   * @param {string} eventId
+   * @param {{ relays?: string[], filter?: import("nostr-tools").Filter }} options
+   * @returns {Promise<object|null>}
+   */
+  async fetchRawEventById(eventId, options = {}) {
+    const id = typeof eventId === "string" ? eventId.trim() : "";
+    if (!id) {
+      return null;
     }
+
+    const cached = this.rawEvents.get(id);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      for (const url of this.relays) {
-        const maybeEvt = await this.pool.get([url], { ids: [eventId] });
-        if (maybeEvt && maybeEvt.id === eventId) {
-          const video = convertEventToVideo(maybeEvt);
-          this.applyRootCreatedAt(video);
-          this.allEvents.set(eventId, video);
-          return video;
+      await this.ensurePool();
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("fetchRawEventById ensurePool error:", error);
+      }
+      return null;
+    }
+
+    if (!this.pool) {
+      return null;
+    }
+
+    const relayCandidatesRaw =
+      Array.isArray(options?.relays) && options.relays.length
+        ? options.relays
+        : this.relays;
+    const relays = Array.isArray(relayCandidatesRaw)
+      ? Array.from(
+          new Set(
+            relayCandidatesRaw
+              .map((url) => (typeof url === "string" ? url.trim() : ""))
+              .filter(Boolean)
+          )
+        )
+      : [];
+
+    if (!relays.length) {
+      return null;
+    }
+
+    const baseFilter =
+      options && typeof options.filter === "object"
+        ? { ...options.filter }
+        : { ids: [id] };
+
+    const normalizedIds = Array.isArray(baseFilter.ids)
+      ? baseFilter.ids
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    if (!normalizedIds.includes(id)) {
+      normalizedIds.push(id);
+    }
+
+    const filterTemplate = { ...baseFilter, ids: normalizedIds };
+
+    const makeFilter = () => ({
+      ...filterTemplate,
+      ids: Array.from(filterTemplate.ids),
+    });
+
+    const remember = (evt) => {
+      if (evt && typeof evt === "object" && evt.id) {
+        this.rawEvents.set(evt.id, evt);
+      }
+      return evt || null;
+    };
+
+    if (typeof this.pool.get === "function") {
+      try {
+        const evt = await this.pool.get(relays, makeFilter());
+        if (evt && evt.id === id) {
+          return remember(evt);
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("fetchRawEventById pool.get error:", error);
         }
       }
-    } catch (err) {
-      if (isDevMode) {
-        console.error("getEventById direct fetch error:", err);
+    }
+
+    if (typeof this.pool.list === "function") {
+      try {
+        const events = await this.pool.list(relays, [makeFilter()]);
+        if (Array.isArray(events)) {
+          for (const evt of events) {
+            if (!evt) {
+              continue;
+            }
+            const stored = remember(evt);
+            if (evt.id === id) {
+              return stored;
+            }
+          }
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("fetchRawEventById pool.list error:", error);
+        }
       }
     }
+
     return null;
+  }
+
+  /**
+   * Resolve a single video from cache or the relay network.
+   *
+   * @param {string} eventId - The event id to look up.
+   * @param {{ includeRaw?: boolean }} options
+   * @returns {Promise<object|null|{video: object|null, rawEvent: object|null}>}
+   */
+  async getEventById(eventId, options = {}) {
+    const includeRaw = options?.includeRaw === true;
+
+    const local = this.allEvents.get(eventId) || null;
+    const localRaw = this.rawEvents.get(eventId) || null;
+
+    if (local) {
+      this.applyRootCreatedAt(local);
+      if (!includeRaw) {
+        return local;
+      }
+
+      if (localRaw) {
+        return { video: local, rawEvent: localRaw };
+      }
+    }
+
+    const rawEvent = await this.fetchRawEventById(eventId);
+    if (!rawEvent && !includeRaw) {
+      return local || null;
+    }
+
+    if (!rawEvent) {
+      return { video: local || null, rawEvent: null };
+    }
+
+    const video = convertEventToVideo(rawEvent);
+    this.applyRootCreatedAt(video);
+    this.allEvents.set(eventId, video);
+
+    if (includeRaw) {
+      return { video, rawEvent };
+    }
+
+    return video;
   }
 
   getRequestTimeoutMs(timeoutMs) {
@@ -7237,6 +7382,7 @@ export class NostrClient {
       try {
         const rootEvent = await this.pool.get(this.relays, { ids: [normalizedRoot] });
         if (rootEvent && rootEvent.id === normalizedRoot) {
+          this.rawEvents.set(rootEvent.id, rootEvent);
           const parsed = convertEventToVideo(rootEvent);
           if (!parsed.invalid) {
             this.mergeNip71MetadataIntoVideo(parsed);
@@ -7289,6 +7435,9 @@ export class NostrClient {
         const merged = perRelay.flat();
         for (const evt of merged) {
           try {
+            if (evt && evt.id) {
+              this.rawEvents.set(evt.id, evt);
+            }
             const parsed = convertEventToVideo(evt);
             if (!parsed.invalid) {
               this.mergeNip71MetadataIntoVideo(parsed);
