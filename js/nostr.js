@@ -6004,67 +6004,89 @@ export class NostrClient {
 
     // We'll collect events here instead of processing them instantly
     let eventBuffer = [];
+    const EVENT_FLUSH_DEBOUNCE_MS = 75;
+    let flushTimerId = null;
 
-    // 1) On each incoming event, just push to the buffer
-    sub.on("event", (event) => {
-      eventBuffer.push(event);
-    });
+    const flushEventBuffer = () => {
+      if (!eventBuffer.length) {
+        return;
+      }
 
-    // 2) Process buffered events on a setInterval (e.g., every second)
-    const processInterval = setInterval(() => {
-      if (eventBuffer.length > 0) {
-        // Copy and clear the buffer
-        const toProcess = eventBuffer.slice();
-        eventBuffer = [];
+      const toProcess = eventBuffer;
+      eventBuffer = [];
 
-        // Now handle each event
-        for (const evt of toProcess) {
-          try {
-            const video = convertEventToVideo(evt);
+      for (const evt of toProcess) {
+        try {
+          const video = convertEventToVideo(evt);
 
-            if (video.invalid) {
-              invalidDuringSub.push({ id: video.id, reason: video.reason });
-              continue;
-            }
+          if (video.invalid) {
+            invalidDuringSub.push({ id: video.id, reason: video.reason });
+            continue;
+          }
 
-            this.mergeNip71MetadataIntoVideo(video);
+          this.mergeNip71MetadataIntoVideo(video);
 
-            // Store in allEvents
-            this.allEvents.set(evt.id, video);
+          // Store in allEvents
+          this.allEvents.set(evt.id, video);
 
-            // If it's a "deleted" note, remove from activeMap
-            if (video.deleted) {
-              const activeKey = getActiveKey(video);
-              this.activeMap.delete(activeKey);
-              continue;
-            }
-
-            // Otherwise, if it's newer than what we have, update activeMap
+          // If it's a "deleted" note, remove from activeMap
+          if (video.deleted) {
             const activeKey = getActiveKey(video);
-            const prevActive = this.activeMap.get(activeKey);
-            if (!prevActive || video.created_at > prevActive.created_at) {
-              this.activeMap.set(activeKey, video);
-              onVideo(video); // Trigger the callback that re-renders
-              this.populateNip71MetadataForVideos([video]).catch((error) => {
-                if (isDevMode) {
-                  console.warn(
-                    "[nostr] Failed to hydrate NIP-71 metadata for live video:",
-                    error
-                  );
-                }
-              });
-            }
-          } catch (err) {
-            if (isDevMode) {
-              console.error("[subscribeVideos] Error processing event:", err);
-            }
+            this.activeMap.delete(activeKey);
+            continue;
+          }
+
+          // Otherwise, if it's newer than what we have, update activeMap
+          const activeKey = getActiveKey(video);
+          const prevActive = this.activeMap.get(activeKey);
+          if (!prevActive || video.created_at > prevActive.created_at) {
+            this.activeMap.set(activeKey, video);
+            onVideo(video); // Trigger the callback that re-renders
+            this.populateNip71MetadataForVideos([video]).catch((error) => {
+              if (isDevMode) {
+                console.warn(
+                  "[nostr] Failed to hydrate NIP-71 metadata for live video:",
+                  error
+                );
+              }
+            });
+          }
+        } catch (err) {
+          if (isDevMode) {
+            console.error("[subscribeVideos] Error processing event:", err);
           }
         }
-
-        // Optionally, save data to local storage after processing the batch
-        this.saveLocalData();
       }
-    }, 1000);
+
+      // Persist processed events after each flush so reloads warm quickly.
+      this.saveLocalData();
+    };
+
+    const scheduleFlush = (immediate = false) => {
+      if (flushTimerId) {
+        if (!immediate) {
+          return;
+        }
+        clearTimeout(flushTimerId);
+        flushTimerId = null;
+      }
+
+      if (immediate) {
+        flushEventBuffer();
+        return;
+      }
+
+      flushTimerId = setTimeout(() => {
+        flushTimerId = null;
+        flushEventBuffer();
+      }, EVENT_FLUSH_DEBOUNCE_MS);
+    };
+
+    // 1) On each incoming event, just push to the buffer and schedule a flush
+    sub.on("event", (event) => {
+      eventBuffer.push(event);
+      scheduleFlush(false);
+    });
 
     // You can still use sub.on("eose") if needed
     sub.on("eose", () => {
@@ -6079,6 +6101,7 @@ export class NostrClient {
           "[subscribeVideos] Reached EOSE for all relays (historical load done)"
         );
       }
+      scheduleFlush(true);
     });
 
     // Return the subscription object if you need to unsub manually later
@@ -6090,7 +6113,12 @@ export class NostrClient {
         return;
       }
       unsubscribed = true;
-      clearInterval(processInterval);
+      if (flushTimerId) {
+        clearTimeout(flushTimerId);
+        flushTimerId = null;
+      }
+      // Ensure any straggling events are flushed before tearing down.
+      flushEventBuffer();
       try {
         return originalUnsub();
       } catch (err) {
