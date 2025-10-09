@@ -5293,7 +5293,85 @@ export class NostrClient {
       rejectionLogLevel = "error",
     } = {}
   ) {
-    const signedEvent = await window.nostr.signEvent(event);
+    const extension = window?.nostr;
+    const extensionSigner =
+      extension && typeof extension.signEvent === "function"
+        ? extension.signEvent.bind(extension)
+        : null;
+
+    const normalizedEventPubkey =
+      event && typeof event.pubkey === "string"
+        ? event.pubkey.toLowerCase()
+        : "";
+    const normalizedLogged =
+      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+    const usingSessionActor =
+      normalizedEventPubkey &&
+      normalizedLogged &&
+      normalizedEventPubkey !== normalizedLogged;
+
+    let eventToSign = event;
+    let signedEvent = null;
+    let signerPubkey = null;
+
+    if (
+      extensionSigner &&
+      normalizedEventPubkey &&
+      normalizedEventPubkey === normalizedLogged
+    ) {
+      signedEvent = await extensionSigner(event);
+    } else {
+      try {
+        const currentSessionPubkey =
+          typeof this.sessionActor?.pubkey === "string"
+            ? this.sessionActor.pubkey.toLowerCase()
+            : "";
+
+        if (
+          usingSessionActor &&
+          normalizedEventPubkey &&
+          normalizedEventPubkey !== currentSessionPubkey
+        ) {
+          await this.ensureSessionActor(true);
+        } else {
+          await this.ensureSessionActor();
+        }
+
+        const sessionActor = this.sessionActor;
+        if (
+          !sessionActor ||
+          typeof sessionActor.pubkey !== "string" ||
+          !sessionActor.pubkey ||
+          typeof sessionActor.privateKey !== "string" ||
+          !sessionActor.privateKey
+        ) {
+          throw new Error("session-actor-unavailable");
+        }
+
+        const normalizedSessionPubkey = sessionActor.pubkey.toLowerCase();
+        if (
+          !normalizedEventPubkey ||
+          normalizedEventPubkey !== normalizedSessionPubkey ||
+          event.pubkey !== sessionActor.pubkey
+        ) {
+          eventToSign = { ...event, pubkey: sessionActor.pubkey };
+        }
+
+        signedEvent = signEventWithPrivateKey(
+          eventToSign,
+          sessionActor.privateKey
+        );
+        signerPubkey = sessionActor.pubkey;
+      } catch (error) {
+        console.warn("[nostr] Failed to sign event with session key:", error);
+        throw error;
+      }
+    }
+
+    if (!signerPubkey && signedEvent && typeof signedEvent.pubkey === "string") {
+      signerPubkey = signedEvent.pubkey;
+    }
+
     if (isDevMode) {
       console.log(`Signed ${devLogLabel} event:`, signedEvent);
     }
@@ -5343,7 +5421,7 @@ export class NostrClient {
       });
     }
 
-    return { signedEvent, summary: publishSummary };
+    return { signedEvent, summary: publishSummary, signerPubkey };
   }
 
   async publishVideo(videoPayload, pubkey) {

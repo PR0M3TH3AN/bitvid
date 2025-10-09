@@ -722,6 +722,99 @@ async function testRecordVideoViewEmitsJsonPayload() {
   );
 }
 
+async function testSignAndPublishFallbackUsesSessionActor() {
+  const originalExtension = window.nostr;
+  const originalPool = nostrClient.pool;
+  const originalRelays = nostrClient.relays;
+  const originalPubkey = nostrClient.pubkey;
+  const originalSessionActor = nostrClient.sessionActor;
+  const originalEnsureSessionActor = nostrClient.ensureSessionActor;
+  const ensureCalls = [];
+  const publishCalls = [];
+
+  try {
+    delete window.nostr;
+
+    nostrClient.pool = {
+      publish(urls, event) {
+        publishCalls.push({ urls, event });
+        return {
+          on(eventName, handler) {
+            if (eventName === "ok") {
+              handler();
+            }
+            return true;
+          },
+        };
+      },
+    };
+    nostrClient.relays = ["wss://relay.fallback"];
+    nostrClient.pubkey = "logged-user";
+    nostrClient.sessionActor = {
+      pubkey: "session-actor",
+      privateKey: "session-private",
+    };
+    nostrClient.ensureSessionActor = async (forceRenew = false) => {
+      ensureCalls.push(forceRenew === true);
+      return nostrClient.sessionActor.pubkey;
+    };
+
+    const event = {
+      kind: 1,
+      pubkey: "session-actor",
+      created_at: 123,
+      tags: [],
+      content: "hello fallback",
+    };
+
+    const result = await nostrClient.signAndPublishEvent(event, {
+      context: "fallback",
+      logName: "fallback",
+    });
+
+    assert.ok(result, "expected a publish result when falling back to the session actor");
+    assert.equal(
+      result.signedEvent.pubkey,
+      "session-actor",
+      "fallback signing should use the session actor pubkey",
+    );
+    assert.equal(
+      result.signerPubkey,
+      "session-actor",
+      "signer pubkey should reflect the session actor when falling back",
+    );
+    assert.ok(
+      ensureCalls.length > 0,
+      "fallback signing should attempt to ensure the session actor",
+    );
+    assert.ok(
+      Array.isArray(result.summary?.accepted) && result.summary.accepted.length > 0,
+      "fallback publish should report accepted relays",
+    );
+    assert.equal(
+      publishCalls.length,
+      result.summary.accepted.length,
+      "each accepted relay should correspond to a publish attempt",
+    );
+    assert.equal(
+      result.summary.accepted[0]?.url,
+      "wss://relay.fallback",
+      "publish summary should surface the accepting relay",
+    );
+  } finally {
+    if (typeof originalExtension === "undefined") {
+      delete window.nostr;
+    } else {
+      window.nostr = originalExtension;
+    }
+    nostrClient.pool = originalPool;
+    nostrClient.relays = originalRelays;
+    nostrClient.pubkey = originalPubkey;
+    nostrClient.sessionActor = originalSessionActor;
+    nostrClient.ensureSessionActor = originalEnsureSessionActor;
+  }
+}
+
 // Cached totals older than VIEW_COUNT_CACHE_TTL_MS should be discarded and rehydrated from relays.
 async function testHydrationRefreshesAfterCacheTtl() {
   harness.reset();
@@ -947,6 +1040,7 @@ await testLocalIngestNotifiesImmediately();
 await testUnsubscribeStopsCallbacks();
 await testRelayCountAggregationUsesBestEstimate();
 await testRecordVideoViewEmitsJsonPayload();
+await testSignAndPublishFallbackUsesSessionActor();
 await testHydrateHistoryPrefersRootEvent();
 await testModalPostedTimestampStaysInSync();
 
