@@ -31,7 +31,7 @@ const WATCH_HISTORY_BATCH_SIZE = (() => {
   }
   return Math.floor(raw);
 })();
-const FALLBACK_THUMBNAIL = "assets/svg/default-thumbnail.svg";
+const FALLBACK_THUMBNAIL = "assets/jpg/video-thumbnail-fallback.jpg";
 const FALLBACK_AVATAR = "assets/svg/default-profile.svg";
 const isDevEnv =
   typeof process !== "undefined" &&
