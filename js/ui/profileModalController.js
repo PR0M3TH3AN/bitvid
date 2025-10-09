@@ -144,51 +144,114 @@ const SERVICE_CONTRACT = [
     fallback: () => () => null,
   },
   {
-    key: "getActiveNwcSettings",
-    type: "function",
+    key: "nwcSettings",
+    type: "object",
     description:
-      "Reads the active Nostr Wallet Connect settings (uri/default zap) for the logged in profile.",
-    fallback: ({ internalState }) => () => {
-      const current = ensureInternalWalletSettings(internalState);
-      return { ...current };
-    },
-  },
-  {
-    key: "updateActiveNwcSettings",
-    type: "function",
-    description: "Persists updates to the active wallet settings and returns the new state.",
-    fallback: ({ internalState }) => (partial = {}) => {
-      const current = ensureInternalWalletSettings(internalState);
-      const next = {
-        ...current,
-        ...(partial && typeof partial === "object" ? partial : {}),
+      "Service that manages Nostr Wallet Connect settings and interactions for the active profile.",
+    fallback: ({ internalState }) => {
+      const ensure = () => ensureInternalWalletSettings(internalState);
+      const service = {};
+
+      service.createDefaultNwcSettings = () => createInternalDefaultNwcSettings();
+
+      service.getActiveNwcSettings = () => {
+        const current = ensure();
+        return { ...current };
       };
-      internalState.walletSettings = next;
-      return { ...next };
+
+      service.updateActiveNwcSettings = (partial = {}) => {
+        const current = ensure();
+        const next = {
+          ...current,
+          ...(partial && typeof partial === "object" ? partial : {}),
+        };
+        internalState.walletSettings = next;
+        return { ...next };
+      };
+
+      service.hydrateNwcSettingsForPubkey = async () => {
+        return service.getActiveNwcSettings();
+      };
+
+      service.handleProfileWalletPersist = async (options = {}) => {
+        const { nwcUri, defaultZap, lastChecked } =
+          options && typeof options === "object" ? options : {};
+        const partial = {};
+        if (nwcUri !== undefined) {
+          partial.nwcUri = nwcUri;
+        }
+        if (defaultZap !== undefined) {
+          partial.defaultZap = defaultZap;
+        }
+        if (lastChecked !== undefined) {
+          partial.lastChecked = lastChecked;
+        }
+        if (!Object.keys(partial).length) {
+          return service.getActiveNwcSettings();
+        }
+        return service.updateActiveNwcSettings(partial);
+      };
+
+      service.hasActiveWalletConnection = () => {
+        const settings = ensure();
+        const candidate =
+          typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
+        return candidate.length > 0;
+      };
+
+      service.validateWalletUri = (uri, { requireValue = false } = {}) => {
+        const value = typeof uri === "string" ? uri.trim() : "";
+
+        if (!value) {
+          if (requireValue) {
+            return {
+              valid: false,
+              sanitized: "",
+              message: "Enter a wallet connect URI before continuing.",
+            };
+          }
+          return { valid: true, sanitized: "" };
+        }
+
+        if (!value.toLowerCase().startsWith(NWC_URI_SCHEME)) {
+          return {
+            valid: false,
+            sanitized: value,
+            message: `Wallet URI must start with ${NWC_URI_SCHEME}.`,
+          };
+        }
+
+        return { valid: true, sanitized: value };
+      };
+
+      service.ensureWallet = async ({ nwcUri } = {}) => {
+        const settings = service.getActiveNwcSettings();
+        const candidate =
+          typeof nwcUri === "string" && nwcUri.trim()
+            ? nwcUri.trim()
+            : settings.nwcUri || "";
+        const { valid, sanitized, message } = service.validateWalletUri(
+          candidate,
+          { requireValue: true },
+        );
+        if (!valid) {
+          throw new Error(message || "Invalid wallet URI provided.");
+        }
+        return { ...settings, nwcUri: sanitized };
+      };
+
+      service.clearStoredNwcSettings = async () => true;
+
+      service.onLogin = async () => service.getActiveNwcSettings();
+
+      service.onLogout = async () => service.createDefaultNwcSettings();
+
+      service.onIdentityChanged = () => {
+        internalState.walletSettings = createInternalDefaultNwcSettings();
+      };
+
+      return service;
     },
-  },
-  {
-    key: "hydrateNwcSettingsForPubkey",
-    type: "function",
-    description:
-      "Ensures wallet settings are loaded for a given pubkey before the pane renders.",
-    fallback: ({ internalState }) => async () => {
-      const current = ensureInternalWalletSettings(internalState);
-      return { ...current };
-    },
-  },
-  {
-    key: "createDefaultNwcSettings",
-    type: "function",
-    description: "Creates a baseline wallet settings object when none exists.",
-    fallback: () => () => createInternalDefaultNwcSettings(),
-  },
-  {
-    key: "ensureWallet",
-    type: "function",
-    description:
-      "Guarantees a wallet connection exists before issuing wallet related operations (connect/test).",
-    fallback: () => async () => ({ ok: false, reason: "not-implemented" }),
   },
   {
     key: "loadVideos",
@@ -2113,9 +2176,9 @@ export class ProfileModalController {
       return;
     }
 
-    let settings = this.services.getActiveNwcSettings();
+    let settings = this.services.nwcSettings.getActiveNwcSettings();
     if (!settings || typeof settings !== "object") {
-      settings = this.services.createDefaultNwcSettings();
+      settings = this.services.nwcSettings.createDefaultNwcSettings();
     }
     setInputValue(this.walletUriInput, settings.nwcUri || "");
     setInputValue(
@@ -2367,9 +2430,9 @@ export class ProfileModalController {
       context.success = true;
       context.reason = "tested";
 
-      let currentSettings = this.services.getActiveNwcSettings();
+      let currentSettings = this.services.nwcSettings.getActiveNwcSettings();
       if (!currentSettings || typeof currentSettings !== "object") {
-        currentSettings = this.services.createDefaultNwcSettings();
+        currentSettings = this.services.nwcSettings.createDefaultNwcSettings();
       }
       if (currentSettings.nwcUri === sanitized) {
         await this.persistWalletSettings({
@@ -3412,22 +3475,11 @@ export class ProfileModalController {
       }
     }
 
-    const partial = {};
-    if (nwcUri !== undefined) {
-      partial.nwcUri = nwcUri;
-    }
-    if (defaultZap !== undefined) {
-      partial.defaultZap = defaultZap;
-    }
-    if (lastChecked !== undefined) {
-      partial.lastChecked = lastChecked;
-    }
-
-    if (!Object.keys(partial).length) {
-      return this.services.getActiveNwcSettings();
-    }
-
-    return this.services.updateActiveNwcSettings(partial);
+    return this.services.nwcSettings.handleProfileWalletPersist({
+      nwcUri,
+      defaultZap,
+      lastChecked,
+    });
   }
 
   async testWalletConnection({ nwcUri, defaultZap, activePubkey } = {}) {
@@ -3444,7 +3496,7 @@ export class ProfileModalController {
       }
     }
 
-    return this.services.ensureWallet({ nwcUri, defaultZap });
+    return this.services.nwcSettings.ensureWallet({ nwcUri, defaultZap });
   }
 
   async disconnectWallet({ activePubkey } = {}) {
@@ -3456,8 +3508,8 @@ export class ProfileModalController {
       }
     }
 
-    return this.services.updateActiveNwcSettings(
-      this.services.createDefaultNwcSettings(),
+    return this.services.nwcSettings.updateActiveNwcSettings(
+      this.services.nwcSettings.createDefaultNwcSettings(),
     );
   }
 
@@ -3935,7 +3987,7 @@ export class ProfileModalController {
   }
 
   async hydrateActiveWalletSettings(pubkey) {
-    const hydrate = this.services.hydrateNwcSettingsForPubkey;
+    const hydrate = this.services.nwcSettings?.hydrateNwcSettingsForPubkey;
     if (typeof hydrate !== "function") {
       return null;
     }
