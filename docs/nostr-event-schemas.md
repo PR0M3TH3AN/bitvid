@@ -41,6 +41,32 @@ When managing relay metadata, use `buildRelayListEvent` so the resulting
 replaceable event follows NIP-65 (`kind:10002`) with `"r"` tags describing the
 read/write split.
 
+### Accessing raw events
+
+`NostrClient` now keeps a lightweight cache of parsed videos alongside a
+separate cache of the untouched event payloads. Call
+`nostrClient.fetchRawEventById(eventId)` when you need the original JSON that
+was received from the relay. For convenience,
+`nostrClient.getEventById(eventId, { includeRaw: true })` returns both shapes at
+once:
+
+```js
+const { video, rawEvent } = await nostrClient.getEventById(eventId, {
+  includeRaw: true,
+});
+
+// `video` is the normalized BitVid object and `rawEvent` is the original
+// Nostr event with `sig`, `id`, and relay metadata intact.
+```
+
+In DevTools the active client lives at `window.bitvidApp?.nostrClient`.
+
+Use the `rawEvent` blob when implementing “Ensure presence” style flows so the
+client can republish exactly what was signed, including the original
+`sig`. Republishers should prefer `rawEvent.sig` over re-signing unless the
+payload actually changes; this avoids accidental drift in dedupe tags or
+timestamps.
+
 ## Event catalogue
 
 | Note | Kind (default) | Tags | Content format |
