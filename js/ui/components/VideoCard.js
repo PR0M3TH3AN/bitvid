@@ -198,7 +198,6 @@ export class VideoCard {
         "video-card",
         "bg-gray-900",
         "rounded-lg",
-        "overflow-hidden",
         "shadow-lg",
         "hover:shadow-2xl",
         "transition-all",
@@ -216,7 +215,14 @@ export class VideoCard {
     this.applySourceDatasets();
 
     const anchor = this.createElement("a", {
-      classNames: ["block", "cursor-pointer", "relative", "group"],
+      classNames: [
+        "block",
+        "cursor-pointer",
+        "relative",
+        "group",
+        "rounded-t-lg",
+        "overflow-hidden",
+      ],
       attrs: {
         href: this.shareUrl,
       },
