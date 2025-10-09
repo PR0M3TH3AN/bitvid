@@ -2878,6 +2878,11 @@ class Application {
   }
 
   async handleAuthLogin(detail = {}) {
+    const postLoginPromise =
+      detail && typeof detail.postLoginPromise?.then === "function"
+        ? detail.postLoginPromise
+        : Promise.resolve(detail?.postLogin ?? null);
+
     if (detail && typeof detail === "object") {
       try {
         detail.__handled = true;
@@ -2890,15 +2895,32 @@ class Application {
       this.resetViewLoggingState();
     }
 
-    await this.nwcSettingsService.onLogin({
+    this.applyAuthenticatedUiState();
+
+    const loginContext = {
       pubkey: detail?.pubkey || this.pubkey,
       previousPubkey: detail?.previousPubkey,
       identityChanged: Boolean(detail?.identityChanged),
-    });
+    };
+
+    const nwcPromise = this.nwcSettingsService
+      .onLogin(loginContext)
+      .catch((error) => {
+        console.error("Failed to process NWC settings during login:", error);
+        throw error;
+      });
 
     if (this.profileController) {
       try {
-        await this.profileController.handleAuthLogin(detail);
+        const maybePromise = this.profileController.handleAuthLogin(detail);
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise.catch((error) => {
+            console.error(
+              "Failed to process login within the profile controller:",
+              error,
+            );
+          });
+        }
       } catch (error) {
         console.error(
           "Failed to process login within the profile controller:",
@@ -2909,11 +2931,22 @@ class Application {
       this.renderSavedProfiles();
     }
 
-    this.applyAuthenticatedUiState();
-
     const activePubkey = detail?.pubkey || this.pubkey;
-    if (activePubkey && detail?.postLogin?.profile) {
-      this.updateActiveProfileUI(activePubkey, detail.postLogin.profile);
+    postLoginPromise
+      .then((postLogin) => {
+        if (activePubkey && postLogin?.profile) {
+          this.updateActiveProfileUI(activePubkey, postLogin.profile);
+        }
+        this.forceRefreshAllProfiles();
+      })
+      .catch((error) => {
+        console.error("Post-login hydration failed:", error);
+      });
+
+    try {
+      await nwcPromise;
+    } catch (error) {
+      // Error already logged above; continue so UI can recover.
     }
 
     try {
@@ -2921,7 +2954,9 @@ class Application {
     } catch (error) {
       console.error("Failed to refresh videos after login:", error);
     }
+
     this.forceRefreshAllProfiles();
+
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
       await this.uploadModal.refreshCloudflareBucketPreview();
     }

@@ -365,17 +365,65 @@ export default class AuthService {
       this.emitProfileList("login");
     }
 
-    const postLogin = await this.applyPostLoginState();
+    const activeLoginPubkey = getPubkey();
+    const normalizedLoginPubkey =
+      this.normalizeHexPubkey(activeLoginPubkey) || activeLoginPubkey || null;
 
     const detail = {
-      pubkey: getPubkey(),
+      pubkey: activeLoginPubkey,
       npub: getCurrentUserNpub(),
       previousPubkey: previousPubkey || null,
       identityChanged,
       savedProfiles: this.cloneSavedProfiles(),
       activeProfilePubkey: getActiveProfilePubkey(),
-      postLogin,
+      postLogin: {
+        pubkey: normalizedLoginPubkey,
+        blocksLoaded: false,
+        relaysLoaded: false,
+        profile: null,
+      },
+      postLoginPromise: null,
+      postLoginError: null,
     };
+
+    const postLoginPromise = Promise.resolve()
+      .then(() => this.applyPostLoginState())
+      .then((postLogin) => {
+        detail.postLogin = postLogin;
+        detail.postLoginError = null;
+
+        try {
+          this.emitProfileList("post-login");
+        } catch (error) {
+          this.log("[AuthService] Failed to emit profile list after login", error);
+        }
+
+        this.emit("auth:post-login", {
+          ...detail,
+          postLogin,
+          postLoginError: null,
+          savedProfiles: this.cloneSavedProfiles(),
+          activeProfilePubkey: getActiveProfilePubkey(),
+        });
+
+        return postLogin;
+      })
+      .catch((error) => {
+        this.log("[AuthService] applyPostLoginState failed", error);
+        detail.postLoginError = error;
+
+        this.emit("auth:post-login", {
+          ...detail,
+          postLogin: detail.postLogin,
+          postLoginError: error,
+          savedProfiles: this.cloneSavedProfiles(),
+          activeProfilePubkey: getActiveProfilePubkey(),
+        });
+
+        return null;
+      });
+
+    detail.postLoginPromise = postLoginPromise;
 
     try {
       Object.defineProperty(detail, "__handled", {

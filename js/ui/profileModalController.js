@@ -3856,6 +3856,11 @@ export class ProfileModalController {
   }
 
   async handleAuthLogin(detail = {}) {
+    const postLoginPromise =
+      detail && typeof detail.postLoginPromise?.then === "function"
+        ? detail.postLoginPromise
+        : Promise.resolve(detail?.postLogin ?? null);
+
     const savedProfiles = Array.isArray(detail?.savedProfiles)
       ? detail.savedProfiles
       : null;
@@ -3892,6 +3897,19 @@ export class ProfileModalController {
     this.populateBlockedList();
     this.populateProfileRelays();
     this.refreshWalletPaneState();
+
+    postLoginPromise
+      .then(() => {
+        this.populateBlockedList();
+        this.populateProfileRelays();
+        this.refreshWalletPaneState();
+      })
+      .catch((error) => {
+        console.warn(
+          "[profileModal] Failed to hydrate deferred login data:",
+          error,
+        );
+      });
 
     return true;
   }
