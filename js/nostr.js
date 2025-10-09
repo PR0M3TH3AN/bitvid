@@ -2323,6 +2323,10 @@ function normalizeActorKey(actor) {
     return "";
   }
 
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
   const decodedHex = decodeNpubToHex(trimmed);
   if (decodedHex) {
     return decodedHex.toLowerCase();
@@ -2587,23 +2591,48 @@ function cloneEventForCache(event) {
 }
 
 function decodeNpubToHex(npub) {
-  if (typeof npub !== "string" || !npub.trim()) {
+  if (typeof npub !== "string") {
     return "";
   }
 
-  const tools = getCachedNostrTools();
+  const trimmed = npub.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  const lower = trimmed.toLowerCase();
+  const hasNpubPrefix = lower.startsWith("npub1");
+  if (!hasNpubPrefix) {
+    return "";
+  }
+
+  const warnableNpub = /^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(
+    trimmed
+  );
+
+  let tools = cachedNostrTools;
+  if (!tools || typeof tools?.nip19?.decode !== "function") {
+    const fallbackTools = readToolkitFromScope();
+    if (fallbackTools) {
+      tools = fallbackTools;
+    }
+  }
   if (!tools?.nip19 || typeof tools.nip19.decode !== "function") {
     return "";
   }
 
   try {
-    const decoded = tools.nip19.decode(npub.trim());
+    const decoded = tools.nip19.decode(trimmed);
     if (decoded?.type === "npub" && typeof decoded.data === "string") {
       return decoded.data;
     }
   } catch (error) {
-    if (isDevMode) {
-      console.warn(`[nostr] Failed to decode npub: ${npub}`, error);
+    if (isDevMode && warnableNpub) {
+      console.warn(`[nostr] Failed to decode npub: ${trimmed}`, error);
     }
   }
   return "";
