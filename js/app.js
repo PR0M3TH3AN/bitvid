@@ -3015,6 +3015,19 @@ class Application {
           });
           if (refreshedModal) {
             this.modalVideo = refreshedModal;
+            if (
+              this.videoModal &&
+              typeof this.videoModal.setVideoElement === "function"
+            ) {
+              try {
+                this.videoModal.setVideoElement(refreshedModal);
+              } catch (err) {
+                console.warn(
+                  "[cleanup] Failed to sync video modal element after replacement:",
+                  err
+                );
+              }
+            }
           }
         }
         // Tell webtorrent to cleanup
