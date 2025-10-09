@@ -253,6 +253,8 @@ function sanitizeVideoForStorage(video) {
     pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
     created_at: createdAt,
     infoHash: typeof video.infoHash === "string" ? video.infoHash : "",
+    legacyInfoHash:
+      typeof video.legacyInfoHash === "string" ? video.legacyInfoHash : "",
     mode: typeof video.mode === "string" ? video.mode : "",
     isPrivate: video?.isPrivate === true,
     description:
@@ -274,6 +276,13 @@ function sanitizeVideoForHistory(video) {
     created_at: sanitized.created_at,
     url: sanitized.url,
     magnet: sanitized.magnet,
+    infoHash: sanitized.infoHash,
+    legacyInfoHash:
+      typeof video?.legacyInfoHash === "string"
+        ? video.legacyInfoHash
+        : typeof sanitized.legacyInfoHash === "string"
+        ? sanitized.legacyInfoHash
+        : "",
   };
 }
 

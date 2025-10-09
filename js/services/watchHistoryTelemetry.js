@@ -36,6 +36,11 @@ function sanitizeVideoMetadata(video) {
     thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
     pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
     created_at: createdAt,
+    url: typeof video.url === "string" ? video.url : "",
+    magnet: typeof video.magnet === "string" ? video.magnet : "",
+    infoHash: typeof video.infoHash === "string" ? video.infoHash : "",
+    legacyInfoHash:
+      typeof video.legacyInfoHash === "string" ? video.legacyInfoHash : "",
   };
 }
 

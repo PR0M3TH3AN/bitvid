@@ -23,6 +23,7 @@ const {
   normalizeActorKey,
 } = await import("../js/nostr.js");
 const { watchHistoryService } = await import("../js/watchHistoryService.js");
+const { buildHistoryCard } = await import("../js/historyView.js");
 const { getApplication, setApplication } = await import(
   "../js/applicationContext.js"
 );
@@ -218,6 +219,43 @@ function createFakeSimplePool() {
 
 const poolHarness = createFakeSimplePool();
 nostrClient.pool = poolHarness;
+
+function extractVideoMetadataFromItem(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+
+  const directVideo = item.video;
+  if (directVideo && typeof directVideo === "object") {
+    return directVideo;
+  }
+
+  const metadataVideo =
+    item.metadata && typeof item.metadata === "object"
+      ? item.metadata.video
+      : null;
+  if (metadataVideo && typeof metadataVideo === "object") {
+    return metadataVideo;
+  }
+
+  const pointer = item.pointer && typeof item.pointer === "object"
+    ? item.pointer
+    : null;
+  if (pointer) {
+    if (pointer.video && typeof pointer.video === "object") {
+      return pointer.video;
+    }
+    const pointerMetadata =
+      pointer.metadata && typeof pointer.metadata === "object"
+        ? pointer.metadata.video
+        : null;
+    if (pointerMetadata && typeof pointerMetadata === "object") {
+      return pointerMetadata;
+    }
+  }
+
+  return null;
+}
 nostrClient.relays = ["wss://relay.test"];
 nostrClient.readRelays = ["wss://relay.test"];
 nostrClient.writeRelays = ["wss://relay.test"];
@@ -1252,6 +1290,15 @@ async function testWatchHistoryServiceIntegration() {
   poolHarness.setResolver(() => ({ ok: true }));
 
   const actor = "service-actor";
+  const pointerVideo = {
+    id: "video-one",
+    title: "Video One",
+    url: "https://cdn.example/video-one.mp4",
+    magnet:
+      "magnet:?xt=urn:btih:89abcdef0123456789abcdef0123456789abcdef",
+    infoHash: "89abcdef0123456789abcdef0123456789abcdef",
+    legacyInfoHash: "89abcdef0123456789abcdef0123456789abcdef",
+  };
   const restoreCrypto = installSessionCrypto({ privateKey: "service-priv" });
   const originalEnsure = nostrClient.ensureSessionActor;
   const originalSession = nostrClient.sessionActor;
@@ -1290,13 +1337,13 @@ async function testWatchHistoryServiceIntegration() {
     await watchHistoryService.publishView(
       { type: "e", value: "video-one" },
       viewCreatedAt,
-      { actor },
+      { actor, video: pointerVideo },
     );
     viewCreatedAt += 60;
     await watchHistoryService.publishView(
       { type: "e", value: "video-one" },
       viewCreatedAt,
-      { actor },
+      { actor, video: pointerVideo },
     );
     viewCreatedAt += 30;
     await watchHistoryService.publishView(
@@ -1313,6 +1360,36 @@ async function testWatchHistoryServiceIntegration() {
       reason: "integration",
     });
     assert.ok(snapshotResult.ok, "snapshot should publish queued pointers");
+    const snapshotItems = Array.isArray(snapshotResult.items)
+      ? snapshotResult.items
+      : [];
+    const snapshotVideo = extractVideoMetadataFromItem(
+      snapshotItems.find(
+        (entry) =>
+          (entry?.value || entry?.pointer?.value || "") === "video-one",
+      ),
+    );
+    assert(snapshotVideo, "snapshot should retain pointer video metadata");
+    assert.equal(
+      snapshotVideo?.url,
+      pointerVideo.url,
+      "snapshot pointer video should preserve url",
+    );
+    assert.equal(
+      snapshotVideo?.magnet,
+      pointerVideo.magnet,
+      "snapshot pointer video should preserve magnet",
+    );
+    assert.equal(
+      snapshotVideo?.infoHash,
+      pointerVideo.infoHash,
+      "snapshot pointer video should preserve infoHash",
+    );
+    assert.equal(
+      snapshotVideo?.legacyInfoHash,
+      pointerVideo.legacyInfoHash,
+      "snapshot pointer video should preserve legacy info hash",
+    );
     assert.equal(
       watchHistoryService.getQueuedPointers(actor).length,
       0,
@@ -1324,6 +1401,33 @@ async function testWatchHistoryServiceIntegration() {
       resolvedItems,
       snapshotResult.items,
       "loadLatest should return decrypted canonical pointers",
+    );
+    const resolvedVideo = extractVideoMetadataFromItem(
+      resolvedItems.find(
+        (entry) =>
+          (entry?.value || entry?.pointer?.value || "") === "video-one",
+      ),
+    );
+    assert(resolvedVideo, "decrypted history should include pointer video");
+    assert.equal(
+      resolvedVideo?.url,
+      pointerVideo.url,
+      "decrypted pointer video should expose url",
+    );
+    assert.equal(
+      resolvedVideo?.magnet,
+      pointerVideo.magnet,
+      "decrypted pointer video should expose magnet",
+    );
+    assert.equal(
+      resolvedVideo?.infoHash,
+      pointerVideo.infoHash,
+      "decrypted pointer video should expose infoHash",
+    );
+    assert.equal(
+      resolvedVideo?.legacyInfoHash,
+      pointerVideo.legacyInfoHash,
+      "decrypted pointer video should expose legacy info hash",
     );
     assert(resolvedItems[0].watchedAt >= resolvedItems[1].watchedAt);
     assert.equal(
@@ -1356,6 +1460,183 @@ async function testWatchHistoryServiceIntegration() {
     nostrClient.watchHistoryCacheTtlMs = originalWatchHistoryCacheTtl;
     nostrClient.watchHistoryCache.clear();
     nostrClient.watchHistoryFingerprints = new Map();
+  }
+}
+
+async function testHistoryCardsUseDecryptedPlaybackMetadata() {
+  console.log("Running watch history card playback metadata test...");
+
+  const pointerVideo = {
+    id: "history-card",
+    title: "History Card Video",
+    url: "https://cdn.example/history-card.mp4",
+    magnet:
+      "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+    infoHash: "0123456789abcdef0123456789abcdef01234567",
+    legacyInfoHash: "0123456789abcdef0123456789abcdef01234567",
+  };
+
+  const item = {
+    pointerKey: "e:history-card",
+    pointer: { type: "e", value: "history-card" },
+    watchedAt: 1_700_000_500,
+  };
+
+  const originalDocument = globalThis.document;
+  const originalHTMLElement = globalThis.HTMLElement;
+
+  class FakeClassList {
+    constructor(element) {
+      this.element = element;
+    }
+
+    _sync() {
+      this.element._className = Array.from(this.element._classSet).join(" ");
+    }
+
+    add(...tokens) {
+      tokens.forEach((token) => {
+        if (token) {
+          this.element._classSet.add(token);
+        }
+      });
+      this._sync();
+    }
+
+    remove(...tokens) {
+      tokens.forEach((token) => this.element._classSet.delete(token));
+      this._sync();
+    }
+
+    toggle(token, force) {
+      if (!token) {
+        return false;
+      }
+      if (force === true) {
+        this.element._classSet.add(token);
+        this._sync();
+        return true;
+      }
+      if (force === false) {
+        this.element._classSet.delete(token);
+        this._sync();
+        return false;
+      }
+      if (this.element._classSet.has(token)) {
+        this.element._classSet.delete(token);
+        this._sync();
+        return false;
+      }
+      this.element._classSet.add(token);
+      this._sync();
+      return true;
+    }
+
+    contains(token) {
+      return this.element._classSet.has(token);
+    }
+  }
+
+  class FakeElement {
+    constructor(tagName) {
+      this.tagName = typeof tagName === "string" ? tagName.toUpperCase() : "";
+      this.children = [];
+      this.parentNode = null;
+      this.dataset = {};
+      this.attributes = {};
+      this.textContent = "";
+      this._classSet = new Set();
+      this._className = "";
+      this.classList = new FakeClassList(this);
+    }
+
+    appendChild(child) {
+      if (child && typeof child === "object") {
+        child.parentNode = this;
+      }
+      this.children.push(child);
+      return child;
+    }
+
+    get className() {
+      return this._className;
+    }
+
+    set className(value) {
+      const tokens =
+        typeof value === "string"
+          ? value
+              .split(/\s+/)
+              .map((token) => token.trim())
+              .filter(Boolean)
+          : [];
+      this._classSet = new Set(tokens);
+      this._className = tokens.join(" ");
+    }
+
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+
+    removeAttribute(name) {
+      delete this.attributes[name];
+    }
+  }
+
+  function collectElements(root, predicate, results = []) {
+    if (!(root instanceof FakeElement)) {
+      return results;
+    }
+    if (predicate(root)) {
+      results.push(root);
+    }
+    for (const child of root.children) {
+      collectElements(child, predicate, results);
+    }
+    return results;
+  }
+
+  const fakeDocument = {
+    createElement(tagName) {
+      return new FakeElement(tagName);
+    },
+  };
+
+  globalThis.document = fakeDocument;
+  globalThis.HTMLElement = FakeElement;
+
+  try {
+    const card = buildHistoryCard({
+      item,
+      video: pointerVideo,
+      profile: null,
+      metadataPreference: "encrypted-only",
+    });
+
+    assert(card instanceof FakeElement);
+    assert.equal(card.dataset.pointerKey, item.pointerKey);
+
+    const playLinks = collectElements(
+      card,
+      (element) =>
+        element.tagName === "A" &&
+        element.dataset.historyAction === "play",
+    );
+
+    assert(playLinks.length >= 1, "card should expose play actions");
+    assert.equal(
+      playLinks[0].dataset.playUrl,
+      encodeURIComponent(pointerVideo.url),
+      "play action should encode url from metadata",
+    );
+    assert.equal(
+      playLinks[0].dataset.playMagnet,
+      pointerVideo.magnet,
+      "play action should surface magnet from metadata",
+    );
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.HTMLElement = originalHTMLElement;
   }
 }
 
@@ -1696,6 +1977,7 @@ await testPublishSnapshotFailureRetry();
 await testWatchHistoryPartialRelayRetry();
 await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
+await testHistoryCardsUseDecryptedPlaybackMetadata();
 await testWatchHistoryStaleCacheRefresh();
 await testWatchHistoryLocalFallbackWhenDisabled();
 await testWatchHistorySyncEnabledForLoggedInUsers();
