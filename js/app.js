@@ -33,6 +33,7 @@ import watchHistoryService from "./watchHistoryService.js";
 import r2Service from "./services/r2Service.js";
 import PlaybackService from "./services/playbackService.js";
 import AuthService from "./services/authService.js";
+import NwcSettingsService from "./services/nwcSettingsService.js";
 import nostrService from "./services/nostrService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
@@ -46,12 +47,6 @@ import {
   formatViewCount,
   ingestLocalViewEvent,
 } from "./viewCounter.js";
-import {
-  loadNwcSettings,
-  saveNwcSettings,
-  clearNwcSettings,
-  createDefaultNwcSettings,
-} from "./nwcSettings.js";
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
@@ -111,7 +106,6 @@ const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
 const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
-const NWC_URI_SCHEME = "nostr+walletconnect://";
 /**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
@@ -200,6 +194,31 @@ class Application {
     this.splitAndZap =
       (services.payments && services.payments.splitAndZap) ||
       splitAndZapDefault;
+
+    this.nwcSettingsService =
+      services.nwcSettingsService ||
+      new NwcSettingsService({
+        normalizeHexPubkey: (value) => this.normalizeHexPubkey(value),
+        getActivePubkey: () => this.pubkey,
+        payments: this.payments,
+        logger: {
+          warn: (...args) => console.warn(...args),
+        },
+        notifyError: (message) => this.showError(message),
+        maxWalletDefaultZap: MAX_WALLET_DEFAULT_ZAP,
+      });
+    if (
+      this.nwcSettingsService &&
+      typeof this.nwcSettingsService.setActivePubkeyGetter === "function"
+    ) {
+      this.nwcSettingsService.setActivePubkeyGetter(() => this.pubkey);
+    }
+    if (
+      this.nwcSettingsService &&
+      typeof this.nwcSettingsService.setPayments === "function"
+    ) {
+      this.nwcSettingsService.setPayments(this.payments);
+    }
     if (
       this.feedEngine &&
       typeof this.feedEngine.run !== "function" &&
@@ -394,13 +413,7 @@ class Application {
           nostrClient,
           accessControl,
           getCurrentUserNpub: () => this.getCurrentUserNpub(),
-          getActiveNwcSettings: () => this.getActiveNwcSettings(),
-          updateActiveNwcSettings: (partial) =>
-            this.updateActiveNwcSettings(partial),
-          hydrateNwcSettingsForPubkey: (pubkey) =>
-            this.hydrateNwcSettingsForPubkey(pubkey),
-          createDefaultNwcSettings: () => createDefaultNwcSettings(),
-          ensureWallet: (options) => this.ensureWallet(options),
+          nwcSettings: this.nwcSettingsService,
           loadVideos: (forceFetch, context) =>
             this.loadVideos(forceFetch, context),
           onVideosShouldRefresh: (context) =>
@@ -514,9 +527,8 @@ class Application {
     this.zapController = new ZapController({
       videoModal: this.videoModal,
       getCurrentVideo: () => this.currentVideo,
-      getActiveNwcSettings: () => this.getActiveNwcSettings(),
+      nwcSettings: this.nwcSettingsService,
       isUserLoggedIn: () => this.isUserLoggedIn(),
-      hasActiveWalletConnection: () => this.hasActiveWalletConnection(),
       splitAndZap: (...args) => this.splitAndZap(...args),
       payments: this.payments,
       callbacks: {
@@ -630,7 +642,6 @@ class Application {
     this.moreMenuGlobalHandlerBound = false;
     this.boundMoreMenuDocumentClick = null;
     this.boundMoreMenuDocumentKeydown = null;
-    this.nwcSettings = new Map();
     this.boundNwcSettingsToastHandler = null;
     Object.defineProperty(this, "savedProfiles", {
       configurable: false,
@@ -2650,35 +2661,18 @@ class Application {
     return context;
   }
 
-  async handleProfileWalletPersist({
-    nwcUri,
-    defaultZap,
-    lastChecked,
-  } = {}) {
-    const partial = {};
-    if (nwcUri !== undefined) {
-      partial.nwcUri = nwcUri;
-    }
-    if (defaultZap !== undefined) {
-      partial.defaultZap = defaultZap;
-    }
-    if (lastChecked !== undefined) {
-      partial.lastChecked = lastChecked;
-    }
-
-    if (!Object.keys(partial).length) {
-      return this.getActiveNwcSettings();
-    }
-
-    return this.updateActiveNwcSettings(partial);
+  async handleProfileWalletPersist(options = {}) {
+    return this.nwcSettingsService.handleProfileWalletPersist(options);
   }
 
   async handleProfileWalletTest({ nwcUri, defaultZap } = {}) {
-    return this.ensureWallet({ nwcUri, defaultZap });
+    return this.nwcSettingsService.ensureWallet({ nwcUri, defaultZap });
   }
 
   async handleProfileWalletDisconnect() {
-    return this.updateActiveNwcSettings(createDefaultNwcSettings());
+    return this.nwcSettingsService.updateActiveNwcSettings(
+      this.nwcSettingsService.createDefaultNwcSettings(),
+    );
   }
 
   handleProfileAdminNotifyError({ error } = {}) {
@@ -2725,69 +2719,19 @@ class Application {
   }
 
   async hydrateNwcSettingsForPubkey(pubkey) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    if (!normalized) {
-      return createDefaultNwcSettings();
-    }
-
-    try {
-      const settings = await loadNwcSettings(normalized);
-      const record =
-        settings && typeof settings === "object"
-          ? { ...settings }
-          : createDefaultNwcSettings();
-      this.nwcSettings.set(normalized, record);
-      return { ...record };
-    } catch (error) {
-      console.warn(
-        `[nwcSettings] Failed to load settings for ${normalized}:`,
-        error
-      );
-      const fallback = createDefaultNwcSettings();
-      this.nwcSettings.set(normalized, fallback);
-      return { ...fallback };
-    }
+    return this.nwcSettingsService.hydrateNwcSettingsForPubkey(pubkey);
   }
 
   getActiveNwcSettings() {
-    const normalized = this.normalizeHexPubkey(this.pubkey);
-    if (!normalized) {
-      return createDefaultNwcSettings();
-    }
-    const cached = this.nwcSettings.get(normalized);
-    return cached ? { ...cached } : createDefaultNwcSettings();
+    return this.nwcSettingsService.getActiveNwcSettings();
   }
 
   hasActiveWalletConnection() {
-    const settings = this.getActiveNwcSettings();
-    const candidate =
-      typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
-    return candidate.length > 0;
+    return this.nwcSettingsService.hasActiveWalletConnection();
   }
 
-  validateWalletUri(uri, { requireValue = false } = {}) {
-    const value = typeof uri === "string" ? uri.trim() : "";
-
-    if (!value) {
-      if (requireValue) {
-        return {
-          valid: false,
-          sanitized: "",
-          message: "Enter a wallet connect URI before continuing.",
-        };
-      }
-      return { valid: true, sanitized: "" };
-    }
-
-    if (!value.toLowerCase().startsWith(NWC_URI_SCHEME)) {
-      return {
-        valid: false,
-        sanitized: value,
-        message: `Wallet URI must start with ${NWC_URI_SCHEME}.`,
-      };
-    }
-
-    return { valid: true, sanitized: value };
+  validateWalletUri(uri, options) {
+    return this.nwcSettingsService.validateWalletUri(uri, options);
   }
 
   isUserLoggedIn() {
@@ -2795,96 +2739,15 @@ class Application {
   }
 
   async updateActiveNwcSettings(partial = {}) {
-    const normalized = this.normalizeHexPubkey(this.pubkey);
-    if (!normalized) {
-      console.warn(
-        "[nwcSettings] Cannot update settings without an active pubkey."
-      );
-      return createDefaultNwcSettings();
-    }
-
-    try {
-      const updated = await saveNwcSettings(normalized, partial);
-      const record =
-        updated && typeof updated === "object"
-          ? { ...updated }
-          : createDefaultNwcSettings();
-      this.nwcSettings.set(normalized, record);
-      return { ...record };
-    } catch (error) {
-      console.warn(
-        `[nwcSettings] Failed to save settings for ${normalized}:`,
-        error
-      );
-      return this.getActiveNwcSettings();
-    }
+    return this.nwcSettingsService.updateActiveNwcSettings(partial);
   }
 
   async ensureWallet({ nwcUri, defaultZap } = {}) {
-    const activeSettings = this.getActiveNwcSettings();
-    const candidateUri =
-      typeof nwcUri === "string" && nwcUri.trim()
-        ? nwcUri.trim()
-        : activeSettings.nwcUri || "";
-    const { valid, sanitized, message } = this.validateWalletUri(candidateUri, {
-      requireValue: true,
-    });
-    if (!valid) {
-      throw new Error(message || "Invalid wallet URI provided.");
-    }
-
-    const merged = {
-      ...activeSettings,
-      nwcUri: sanitized,
-    };
-
-    if (typeof defaultZap === "number" && Number.isFinite(defaultZap)) {
-      const rounded = Math.max(0, Math.round(defaultZap));
-      merged.defaultZap = Math.min(MAX_WALLET_DEFAULT_ZAP, rounded);
-    } else if (defaultZap === null) {
-      merged.defaultZap = null;
-    }
-
-    if (this.payments && typeof this.payments.ensureWallet === "function") {
-      return this.payments.ensureWallet({ settings: merged });
-    }
-
-    console.warn(
-      "[wallet] Falling back to stub ensureWallet implementation. Returning settings without performing a connection test."
-    );
-    return merged;
+    return this.nwcSettingsService.ensureWallet({ nwcUri, defaultZap });
   }
 
-  async clearStoredNwcSettings(pubkey, { silent = false } = {}) {
-    const normalized = this.normalizeHexPubkey(pubkey);
-    if (!normalized) {
-      return false;
-    }
-
-    try {
-      await clearNwcSettings(normalized);
-    } catch (error) {
-      console.warn(
-        `[nwcSettings] Failed to clear settings for ${normalized}:`,
-        error
-      );
-      if (!silent) {
-        this.showError("Failed to clear wallet settings for this account.");
-      }
-      try {
-        await saveNwcSettings(normalized, createDefaultNwcSettings());
-      } catch (persistError) {
-        console.warn(
-          `[nwcSettings] Failed to overwrite settings for ${normalized}:`,
-          persistError
-        );
-      }
-      this.nwcSettings.delete(normalized);
-      return false;
-    }
-
-    this.nwcSettings.delete(normalized);
-    return true;
+  async clearStoredNwcSettings(pubkey, options = {}) {
+    return this.nwcSettingsService.clearStoredNwcSettings(pubkey, options);
   }
 
   async handleAuthLogin(detail = {}) {
@@ -2896,26 +2759,15 @@ class Application {
       }
     }
 
-    const normalizedActive = this.normalizeHexPubkey(
-      detail?.pubkey || this.pubkey
-    );
-    const normalizedPrevious = this.normalizeHexPubkey(detail?.previousPubkey);
-
     if (detail?.identityChanged) {
       this.resetViewLoggingState();
-      this.nwcSettings.clear();
     }
 
-    if (
-      normalizedPrevious &&
-      (!normalizedActive || normalizedPrevious !== normalizedActive)
-    ) {
-      await this.clearStoredNwcSettings(normalizedPrevious, { silent: true });
-    }
-
-    if (normalizedActive) {
-      await this.hydrateNwcSettingsForPubkey(normalizedActive);
-    }
+    await this.nwcSettingsService.onLogin({
+      pubkey: detail?.pubkey || this.pubkey,
+      previousPubkey: detail?.previousPubkey,
+      identityChanged: Boolean(detail?.identityChanged),
+    });
 
     if (this.profileController) {
       try {
@@ -2979,13 +2831,10 @@ class Application {
   async handleAuthLogout(detail = {}) {
     this.resetViewLoggingState();
 
-    const normalizedPrevious = this.normalizeHexPubkey(
-      detail?.previousPubkey || detail?.pubkey || this.pubkey
-    );
-    if (normalizedPrevious) {
-      await this.clearStoredNwcSettings(normalizedPrevious, { silent: false });
-    }
-    this.nwcSettings.clear();
+    await this.nwcSettingsService.onLogout({
+      pubkey: detail?.pubkey || this.pubkey,
+      previousPubkey: detail?.previousPubkey,
+    });
 
     if (this.profileController) {
       try {
@@ -7244,8 +7093,11 @@ class Application {
       this.boundNwcSettingsToastHandler = null;
     }
 
-    if (this.nwcSettings instanceof Map) {
-      this.nwcSettings.clear();
+    if (
+      this.nwcSettingsService &&
+      typeof this.nwcSettingsService.clearCache === "function"
+    ) {
+      this.nwcSettingsService.clearCache();
     }
 
     if (typeof this.watchHistoryPreferenceUnsubscribe === "function") {

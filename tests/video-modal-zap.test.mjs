@@ -349,7 +349,7 @@ await (async () => {
   const pubkeyHex = "b".repeat(64);
   app.pubkey = pubkeyHex;
   const normalized = app.normalizeHexPubkey(pubkeyHex);
-  app.nwcSettings.set(normalized, {
+  app.nwcSettingsService.cache.set(normalized, {
     nwcUri: "nostr+walletconnect://example",
     defaultZap: null,
     lastChecked: null,

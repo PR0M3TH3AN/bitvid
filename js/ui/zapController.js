@@ -29,6 +29,7 @@ export default class ZapController {
   constructor({
     videoModal,
     getCurrentVideo,
+    nwcSettings,
     getActiveNwcSettings,
     isUserLoggedIn,
     hasActiveWalletConnection,
@@ -40,16 +41,33 @@ export default class ZapController {
     this.videoModal = videoModal || null;
     this.getCurrentVideo =
       typeof getCurrentVideo === "function" ? getCurrentVideo : () => null;
-    this.getActiveNwcSettings =
-      typeof getActiveNwcSettings === "function"
-        ? getActiveNwcSettings
-        : () => ({});
+    this.nwcSettings =
+      nwcSettings &&
+      typeof nwcSettings === "object" &&
+      typeof nwcSettings.getActiveNwcSettings === "function"
+        ? nwcSettings
+        : null;
+    if (this.nwcSettings) {
+      this.getActiveNwcSettings = () =>
+        this.nwcSettings.getActiveNwcSettings();
+    } else if (typeof getActiveNwcSettings === "function") {
+      this.getActiveNwcSettings = getActiveNwcSettings;
+    } else {
+      this.getActiveNwcSettings = () => ({});
+    }
     this.isUserLoggedIn =
       typeof isUserLoggedIn === "function" ? isUserLoggedIn : () => false;
-    this.hasActiveWalletConnection =
-      typeof hasActiveWalletConnection === "function"
-        ? hasActiveWalletConnection
-        : () => false;
+    if (
+      this.nwcSettings &&
+      typeof this.nwcSettings.hasActiveWalletConnection === "function"
+    ) {
+      this.hasActiveWalletConnection = () =>
+        this.nwcSettings.hasActiveWalletConnection();
+    } else if (typeof hasActiveWalletConnection === "function") {
+      this.hasActiveWalletConnection = hasActiveWalletConnection;
+    } else {
+      this.hasActiveWalletConnection = () => false;
+    }
     this.splitAndZap =
       typeof splitAndZap === "function" ? splitAndZap : () => Promise.resolve();
     this.payments = payments || {};
