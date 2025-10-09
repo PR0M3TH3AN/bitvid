@@ -1113,6 +1113,8 @@ class Application {
       // Grab the "Subscriptions" link by its id in the sidebar
       this.subscriptionsLink = document.getElementById("subscriptionsLink");
 
+      this.syncAuthUiState();
+
       const savedPubKey = this.activeProfilePubkey;
       if (savedPubKey) {
         // Auto-login if a pubkey was saved
@@ -1120,11 +1122,6 @@ class Application {
           await this.authService.login(savedPubKey, { persistActive: false });
         } catch (error) {
           console.error("Auto-login failed:", error);
-        }
-
-        // If the user was already logged in, show the Subscriptions link
-        if (this.subscriptionsLink) {
-          this.subscriptionsLink.classList.remove("hidden");
         }
       }
 
@@ -2772,6 +2769,82 @@ class Application {
     return this.nwcSettingsService.clearStoredNwcSettings(pubkey, options);
   }
 
+  applyAuthenticatedUiState() {
+    if (this.loginButton) {
+      this.loginButton.classList.add("hidden");
+      this.loginButton.setAttribute("hidden", "");
+      this.loginButton.style.display = "none";
+    }
+
+    if (this.logoutButton) {
+      this.logoutButton.classList.remove("hidden");
+    }
+
+    if (this.userStatus) {
+      this.userStatus.classList.add("hidden");
+    }
+
+    if (this.uploadButton) {
+      this.uploadButton.classList.remove("hidden");
+      this.uploadButton.removeAttribute("hidden");
+      this.uploadButton.style.display = "inline-flex";
+    }
+
+    if (this.profileButton) {
+      this.profileButton.classList.remove("hidden");
+      this.profileButton.removeAttribute("hidden");
+      this.profileButton.style.display = "inline-flex";
+    }
+
+    if (this.subscriptionsLink) {
+      this.subscriptionsLink.classList.remove("hidden");
+    }
+  }
+
+  applyLoggedOutUiState() {
+    if (this.loginButton) {
+      this.loginButton.classList.remove("hidden");
+      this.loginButton.removeAttribute("hidden");
+      this.loginButton.style.display = "";
+    }
+
+    if (this.logoutButton) {
+      this.logoutButton.classList.add("hidden");
+    }
+
+    if (this.userStatus) {
+      this.userStatus.classList.add("hidden");
+    }
+
+    if (this.userPubKey) {
+      this.userPubKey.textContent = "";
+    }
+
+    if (this.uploadButton) {
+      this.uploadButton.classList.add("hidden");
+      this.uploadButton.setAttribute("hidden", "");
+      this.uploadButton.style.display = "none";
+    }
+
+    if (this.profileButton) {
+      this.profileButton.classList.add("hidden");
+      this.profileButton.setAttribute("hidden", "");
+      this.profileButton.style.display = "none";
+    }
+
+    if (this.subscriptionsLink) {
+      this.subscriptionsLink.classList.add("hidden");
+    }
+  }
+
+  syncAuthUiState() {
+    if (this.isUserLoggedIn()) {
+      this.applyAuthenticatedUiState();
+    } else {
+      this.applyLoggedOutUiState();
+    }
+  }
+
   async handleAuthLogin(detail = {}) {
     if (detail && typeof detail === "object") {
       try {
@@ -2804,35 +2877,7 @@ class Application {
       this.renderSavedProfiles();
     }
 
-    if (this.loginButton) {
-      this.loginButton.classList.add("hidden");
-      this.loginButton.setAttribute("hidden", "");
-      this.loginButton.style.display = "none";
-    }
-
-    if (this.logoutButton) {
-      this.logoutButton.classList.remove("hidden");
-    }
-
-    if (this.userStatus) {
-      this.userStatus.classList.add("hidden");
-    }
-
-    if (this.uploadButton) {
-      this.uploadButton.classList.remove("hidden");
-      this.uploadButton.removeAttribute("hidden");
-      this.uploadButton.style.display = "inline-flex";
-    }
-
-    if (this.profileButton) {
-      this.profileButton.classList.remove("hidden");
-      this.profileButton.removeAttribute("hidden");
-      this.profileButton.style.display = "inline-flex";
-    }
-
-    if (this.subscriptionsLink) {
-      this.subscriptionsLink.classList.remove("hidden");
-    }
+    this.applyAuthenticatedUiState();
 
     const activePubkey = detail?.pubkey || this.pubkey;
     if (activePubkey && detail?.postLogin?.profile) {
@@ -2871,39 +2916,7 @@ class Application {
       this.renderSavedProfiles();
     }
 
-    if (this.loginButton) {
-      this.loginButton.classList.remove("hidden");
-      this.loginButton.removeAttribute("hidden");
-      this.loginButton.style.display = "";
-    }
-
-    if (this.logoutButton) {
-      this.logoutButton.classList.add("hidden");
-    }
-
-    if (this.userStatus) {
-      this.userStatus.classList.add("hidden");
-    }
-
-    if (this.userPubKey) {
-      this.userPubKey.textContent = "";
-    }
-
-    if (this.uploadButton) {
-      this.uploadButton.classList.add("hidden");
-      this.uploadButton.setAttribute("hidden", "");
-      this.uploadButton.style.display = "none";
-    }
-
-    if (this.profileButton) {
-      this.profileButton.classList.add("hidden");
-      this.profileButton.setAttribute("hidden", "");
-      this.profileButton.style.display = "none";
-    }
-
-    if (this.subscriptionsLink) {
-      this.subscriptionsLink.classList.add("hidden");
-    }
+    this.applyLoggedOutUiState();
 
     try {
       await this.loadVideos(true);
