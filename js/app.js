@@ -4959,6 +4959,10 @@ class Application {
         await this.handleRemoveHistoryAction(dataset);
         break;
       }
+      case "ensure-presence": {
+        await this.handleEnsurePresenceAction(dataset);
+        break;
+      }
       case "copy-npub": {
         const explicitNpub =
           typeof dataset.npub === "string" && dataset.npub.trim()
@@ -5151,6 +5155,89 @@ class Application {
       }
       default:
         break;
+    }
+  }
+
+  async handleEnsurePresenceAction(dataset = {}) {
+    const context = typeof dataset.context === "string" ? dataset.context : "";
+    const explicitEventId =
+      typeof dataset.eventId === "string" && dataset.eventId.trim()
+        ? dataset.eventId.trim()
+        : "";
+    const fallbackEventId =
+      context === "modal" && this.currentVideo?.id ? this.currentVideo.id : "";
+    const targetEventId = explicitEventId || fallbackEventId;
+
+    if (!targetEventId) {
+      this.showError("No event is available to rebroadcast.");
+      return;
+    }
+
+    const explicitPubkey =
+      typeof dataset.pubkey === "string" && dataset.pubkey.trim()
+        ? dataset.pubkey.trim()
+        : "";
+    const datasetAuthor =
+      typeof dataset.author === "string" && dataset.author.trim()
+        ? dataset.author.trim()
+        : "";
+    const fallbackPubkey =
+      context === "modal" && typeof this.currentVideo?.pubkey === "string"
+        ? this.currentVideo.pubkey
+        : datasetAuthor;
+    const targetPubkey = explicitPubkey || fallbackPubkey || "";
+
+    try {
+      const result = await nostrClient.rebroadcastEvent(targetEventId, {
+        pubkey: targetPubkey,
+      });
+
+      if (result?.throttled) {
+        const remainingMs = Math.max(0, Number(result?.cooldown?.remainingMs) || 0);
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+        const message =
+          remainingSeconds > 0
+            ? `Ensure presence is cooling down. Try again in ${remainingSeconds}s.`
+            : "Ensure presence is cooling down. Try again soon.";
+        this.showStatus(message);
+        if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
+          window.setTimeout(() => {
+            this.showStatus("");
+          }, 5000);
+        }
+        return;
+      }
+
+      if (!result?.ok) {
+        const code = result?.error || "rebroadcast-failed";
+        switch (code) {
+          case "event-not-found":
+            this.showError("Original event payload is unavailable. Reload and try again.");
+            break;
+          case "publish-rejected":
+            this.showError("No relay accepted the rebroadcast attempt.");
+            break;
+          case "pool-unavailable":
+            this.showError("Cannot reach relays right now. Please try again later.");
+            break;
+          default:
+            this.showError("Failed to ensure presence. Please try again later.");
+            break;
+        }
+        return;
+      }
+
+      if (result?.alreadyPresent) {
+        this.showSuccess("Relays already have this revision.");
+        return;
+      }
+
+      this.showSuccess("Rebroadcast requested across relays.");
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[app] Ensure presence action failed:", error);
+      }
+      this.showError("Failed to ensure presence. Please try again later.");
     }
   }
 

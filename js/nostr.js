@@ -13,6 +13,7 @@ import {
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
   WATCH_HISTORY_CACHE_TTL_MS,
+  ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
 } from "./config.js";
 import {
   ACCEPT_LEGACY_V1,
@@ -61,6 +62,7 @@ const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
   "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again.";
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
+const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
 
 const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v2";
 const WATCH_HISTORY_STORAGE_VERSION = 2;
@@ -70,6 +72,7 @@ const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
 
 const viewEventPublishMemory = new Map();
+const rebroadcastAttemptMemory = new Map();
 
 const VIEW_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIEW_EVENT);
 const VIEW_EVENT_KIND = Number.isFinite(VIEW_EVENT_SCHEMA?.kind)
@@ -1677,6 +1680,172 @@ function rememberViewPublish(scope, bucketIndex) {
       console.warn("[nostr] Failed to persist view guard entry:", error);
     }
   }
+}
+
+function deriveRebroadcastBucketIndex(referenceSeconds = null) {
+  const windowSeconds = Math.max(
+    1,
+    Number(ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS) || 0
+  );
+  const baseSeconds = Number.isFinite(referenceSeconds)
+    ? Math.max(0, Math.floor(referenceSeconds))
+    : Math.floor(Date.now() / 1000);
+  return Math.floor(baseSeconds / windowSeconds);
+}
+
+function getRebroadcastCooldownWindowMs() {
+  const windowSeconds = Math.max(
+    1,
+    Number(ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS) || 0
+  );
+  return windowSeconds * 1000;
+}
+
+function deriveRebroadcastScope(pubkey, eventId) {
+  const normalizedPubkey =
+    typeof pubkey === "string" && pubkey.trim()
+      ? pubkey.trim().toLowerCase()
+      : "";
+  const normalizedEventId =
+    typeof eventId === "string" && eventId.trim()
+      ? eventId.trim().toLowerCase()
+      : "";
+  if (!normalizedPubkey || !normalizedEventId) {
+    return "";
+  }
+  return `${normalizedPubkey}:${normalizedEventId}`;
+}
+
+function readRebroadcastGuardEntry(scope) {
+  if (!scope) {
+    return null;
+  }
+
+  const windowMs = getRebroadcastCooldownWindowMs();
+  const now = Date.now();
+  const entry = rebroadcastAttemptMemory.get(scope);
+
+  if (entry) {
+    const age = now - Number(entry.seenAt);
+    if (!Number.isFinite(entry.seenAt) || age >= windowMs) {
+      rebroadcastAttemptMemory.delete(scope);
+    } else {
+      return entry;
+    }
+  }
+
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  const storageKey = `${REBROADCAST_GUARD_PREFIX}:${scope}`;
+  let rawValue = null;
+  try {
+    rawValue = localStorage.getItem(storageKey);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to read rebroadcast guard entry:", error);
+    }
+    return null;
+  }
+
+  if (typeof rawValue !== "string" || !rawValue) {
+    return null;
+  }
+
+  const [storedBucketRaw, storedSeenRaw] = rawValue.split(":", 2);
+  const storedBucket = Number(storedBucketRaw);
+  const storedSeenAt = Number(storedSeenRaw);
+
+  if (!Number.isFinite(storedBucket) || !Number.isFinite(storedSeenAt)) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to clear corrupt rebroadcast guard entry:", error);
+      }
+    }
+    return null;
+  }
+
+  if (now - storedSeenAt >= windowMs) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to remove expired rebroadcast guard entry:", error);
+      }
+    }
+    return null;
+  }
+
+  const normalizedEntry = {
+    bucket: storedBucket,
+    seenAt: storedSeenAt,
+  };
+  rebroadcastAttemptMemory.set(scope, normalizedEntry);
+  return normalizedEntry;
+}
+
+function hasRecentRebroadcastAttempt(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return false;
+  }
+
+  const entry = readRebroadcastGuardEntry(scope);
+  return entry ? Number(entry.bucket) === bucketIndex : false;
+}
+
+function rememberRebroadcastAttempt(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return;
+  }
+
+  const now = Date.now();
+  const windowMs = getRebroadcastCooldownWindowMs();
+  const entry = rebroadcastAttemptMemory.get(scope);
+  if (entry && Number.isFinite(entry.seenAt) && now - entry.seenAt >= windowMs) {
+    rebroadcastAttemptMemory.delete(scope);
+  }
+
+  const normalizedEntry = { bucket: bucketIndex, seenAt: now };
+  rebroadcastAttemptMemory.set(scope, normalizedEntry);
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const storageKey = `${REBROADCAST_GUARD_PREFIX}:${scope}`;
+  try {
+    localStorage.setItem(storageKey, `${bucketIndex}:${now}`);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to persist rebroadcast guard entry:", error);
+    }
+  }
+}
+
+function getRebroadcastCooldownState(scope) {
+  if (!scope) {
+    return null;
+  }
+  const entry = readRebroadcastGuardEntry(scope);
+  if (!entry || !Number.isFinite(entry.seenAt)) {
+    return null;
+  }
+  const windowMs = getRebroadcastCooldownWindowMs();
+  const expiresAt = entry.seenAt + windowMs;
+  const remainingMs = Math.max(0, expiresAt - Date.now());
+  if (remainingMs <= 0) {
+    return null;
+  }
+  return {
+    scope,
+    seenAt: entry.seenAt,
+    bucket: entry.bucket,
+    expiresAt,
+    remainingMs,
+  };
 }
 
 function isVideoViewEvent(event, pointer) {
@@ -6909,6 +7078,135 @@ export class NostrClient {
     }
 
     return video;
+  }
+
+  async rebroadcastEvent(eventId, options = {}) {
+    const normalizedId =
+      typeof eventId === "string" && eventId.trim() ? eventId.trim() : "";
+    if (!normalizedId) {
+      return { ok: false, error: "invalid-event-id" };
+    }
+
+    const candidatePubkeys = [];
+    if (typeof options.pubkey === "string" && options.pubkey.trim()) {
+      candidatePubkeys.push(options.pubkey.trim().toLowerCase());
+    }
+    const cachedVideo = this.allEvents.get(normalizedId);
+    if (cachedVideo?.pubkey) {
+      candidatePubkeys.push(cachedVideo.pubkey.toLowerCase());
+    }
+    const cachedRaw = this.rawEvents.get(normalizedId);
+    if (cachedRaw?.pubkey) {
+      candidatePubkeys.push(cachedRaw.pubkey.toLowerCase());
+    }
+
+    let normalizedPubkey = "";
+    for (const candidate of candidatePubkeys) {
+      if (typeof candidate === "string" && candidate) {
+        normalizedPubkey = candidate;
+        break;
+      }
+    }
+
+    let guardScope = deriveRebroadcastScope(normalizedPubkey, normalizedId);
+    const guardBucket = deriveRebroadcastBucketIndex();
+    if (guardScope && hasRecentRebroadcastAttempt(guardScope, guardBucket)) {
+      const cooldown = getRebroadcastCooldownState(guardScope);
+      return { ok: false, error: "cooldown-active", throttled: true, cooldown };
+    }
+
+    const relayCandidates = Array.isArray(options.relays) && options.relays.length
+      ? options.relays
+      : Array.isArray(this.relays) && this.relays.length
+      ? this.relays
+      : RELAY_URLS;
+    const relays = relayCandidates
+      .map((url) => (typeof url === "string" ? url.trim() : ""))
+      .filter(Boolean);
+
+    if (!this.pool) {
+      try {
+        await this.ensurePool();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure pool before rebroadcast:", error);
+        }
+        return { ok: false, error: "pool-unavailable", details: error };
+      }
+    }
+
+    let rawEvent =
+      options.rawEvent || cachedRaw || (await this.fetchRawEventById(normalizedId, { relays }));
+
+    if (!rawEvent) {
+      return { ok: false, error: "event-not-found" };
+    }
+
+    if (!normalizedPubkey && typeof rawEvent.pubkey === "string") {
+      normalizedPubkey = rawEvent.pubkey.trim().toLowerCase();
+    }
+
+    const effectiveScope = deriveRebroadcastScope(normalizedPubkey, normalizedId);
+    if (effectiveScope && !guardScope) {
+      guardScope = effectiveScope;
+      if (hasRecentRebroadcastAttempt(guardScope, guardBucket)) {
+        const cooldown = getRebroadcastCooldownState(guardScope);
+        return { ok: false, error: "cooldown-active", throttled: true, cooldown };
+      }
+    }
+
+    if (guardScope) {
+      rememberRebroadcastAttempt(guardScope, guardBucket);
+    }
+
+    let countResult = null;
+    if (options.skipCount !== true) {
+      try {
+        countResult = await this.countEventsAcrossRelays([
+          { ids: [normalizedId] },
+        ], {
+          relays,
+          timeoutMs: options.timeoutMs,
+        });
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] COUNT request for rebroadcast failed:", error);
+        }
+      }
+
+      if (countResult?.total && Number(countResult.total) > 0) {
+        return {
+          ok: true,
+          alreadyPresent: true,
+          count: countResult,
+          cooldown: guardScope ? getRebroadcastCooldownState(guardScope) : null,
+        };
+      }
+    }
+
+    const publishResults = await publishEventToRelays(this.pool, relays, rawEvent);
+
+    try {
+      const summary = assertAnyRelayAccepted(publishResults, { context: "rebroadcast" });
+      return {
+        ok: true,
+        rebroadcast: true,
+        summary,
+        count: countResult,
+        cooldown: guardScope ? getRebroadcastCooldownState(guardScope) : null,
+      };
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Rebroadcast rejected by relays:", error);
+      }
+      return {
+        ok: false,
+        error: "publish-rejected",
+        details: error,
+        results: publishResults,
+        cooldown: guardScope ? getRebroadcastCooldownState(guardScope) : null,
+      };
+    }
   }
 
   getRequestTimeoutMs(timeoutMs) {
