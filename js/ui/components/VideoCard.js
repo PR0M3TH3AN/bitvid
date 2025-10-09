@@ -5,6 +5,7 @@ export class VideoCard {
     index = 0,
     shareUrl = "#",
     timeAgo = "",
+    postedAt = null,
     pointerInfo = null,
     highlightClass = "",
     animationClass = "",
@@ -91,6 +92,7 @@ export class VideoCard {
     this.discussionCountEl = null;
     this.authorPicEl = null;
     this.authorNameEl = null;
+    this.timestampEl = null;
 
     this.playbackUrl =
       typeof video.url === "string" ? video.url.trim() : "";
@@ -105,11 +107,26 @@ export class VideoCard {
     this.showUnsupportedTorrentBadge =
       !this.playbackUrl && this.magnetProvided && !this.magnetSupported;
 
+    const normalizedPostedAt = Number.isFinite(postedAt)
+      ? Math.floor(postedAt)
+      : null;
+    this.postedAt = normalizedPostedAt;
+
+    if (this.postedAt !== null && this.video && typeof this.video === "object") {
+      this.video.rootCreatedAt = this.postedAt;
+    }
+
+    const fallbackTimestamp =
+      this.postedAt !== null
+        ? this.postedAt
+        : Number.isFinite(video?.created_at)
+          ? Math.floor(video.created_at)
+          : null;
+
     this.timeAgo =
-      timeAgo ||
-      (typeof this.formatters.formatTimeAgo === "function"
-        ? this.formatters.formatTimeAgo(video.created_at)
-        : "");
+      typeof timeAgo === "string" && timeAgo
+        ? timeAgo
+        : this.formatTimestampForLabel(fallbackTimestamp);
 
     this.build();
   }
@@ -440,6 +457,7 @@ export class VideoCard {
       textContent: this.timeAgo,
     });
     metadata.appendChild(timeEl);
+    this.timestampEl = timeEl;
 
     if (this.pointerInfo && this.pointerInfo.key) {
       const dot = this.createElement("span", {
@@ -977,6 +995,49 @@ export class VideoCard {
     } else if (this.urlHealthBadgeEl) {
       delete this.urlHealthBadgeEl.dataset.urlHealthEventId;
       delete this.urlHealthBadgeEl.dataset.urlHealthUrl;
+    }
+  }
+
+  formatTimestampForLabel(timestamp) {
+    if (!Number.isFinite(timestamp)) {
+      return "";
+    }
+
+    const normalized = Math.floor(timestamp);
+    if (typeof this.formatters.formatTimeAgo === "function") {
+      try {
+        const formatted = this.formatters.formatTimeAgo(normalized);
+        return typeof formatted === "string" ? formatted : "";
+      } catch (error) {
+        if (this.window?.console?.warn) {
+          this.window.console.warn(
+            "[VideoCard] formatTimeAgo formatter threw",
+            error
+          );
+        }
+      }
+    }
+
+    return "";
+  }
+
+  updatePostedAt(timestamp) {
+    if (!Number.isFinite(timestamp)) {
+      return;
+    }
+
+    const normalized = Math.floor(timestamp);
+    this.postedAt = normalized;
+
+    if (this.video && typeof this.video === "object") {
+      this.video.rootCreatedAt = normalized;
+    }
+
+    const label = this.formatTimestampForLabel(normalized);
+    this.timeAgo = label;
+
+    if (this.timestampEl) {
+      this.timestampEl.textContent = label;
     }
   }
 

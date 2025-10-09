@@ -2474,6 +2474,8 @@ export class NostrClient {
     // “activeMap” holds only the newest version for each root
     this.activeMap = new Map();
 
+    this.rootCreatedAtByRoot = new Map();
+
     this.hasRestoredLocalData = false;
 
     this.sessionActor = null;
@@ -2487,6 +2489,79 @@ export class NostrClient {
     this.watchHistoryLastCreatedAt = 0;
     this.countRequestCounter = 0;
     this.countUnsupportedRelays = new Set();
+  }
+
+  applyRootCreatedAt(video) {
+    if (!video || typeof video !== "object") {
+      return null;
+    }
+
+    const rootId =
+      typeof video.videoRootId === "string" && video.videoRootId
+        ? video.videoRootId
+        : typeof video.id === "string"
+          ? video.id
+          : "";
+
+    if (!rootId) {
+      if ("rootCreatedAt" in video) {
+        delete video.rootCreatedAt;
+      }
+      return null;
+    }
+
+    const candidates = [];
+
+    const declaredRoot = Number.isFinite(video.rootCreatedAt)
+      ? Math.floor(video.rootCreatedAt)
+      : null;
+    if (declaredRoot !== null) {
+      candidates.push(declaredRoot);
+    }
+
+    const nip71Created = Number.isFinite(video?.nip71Source?.created_at)
+      ? Math.floor(video.nip71Source.created_at)
+      : null;
+    if (nip71Created !== null) {
+      candidates.push(nip71Created);
+    }
+
+    const createdAt = Number.isFinite(video.created_at)
+      ? Math.floor(video.created_at)
+      : null;
+    if (createdAt !== null) {
+      candidates.push(createdAt);
+    }
+
+    const existingValue = this.rootCreatedAtByRoot.get(rootId);
+    if (Number.isFinite(existingValue)) {
+      candidates.push(Math.floor(existingValue));
+    }
+
+    let earliest = null;
+    for (const candidate of candidates) {
+      if (!Number.isFinite(candidate)) {
+        continue;
+      }
+      if (earliest === null || candidate < earliest) {
+        earliest = candidate;
+      }
+    }
+
+    if (earliest !== null) {
+      this.rootCreatedAtByRoot.set(rootId, earliest);
+      video.rootCreatedAt = earliest;
+    } else if ("rootCreatedAt" in video) {
+      delete video.rootCreatedAt;
+    }
+
+    const activeKey = getActiveKey(video);
+    const activeVideo = this.activeMap.get(activeKey);
+    if (activeVideo && activeVideo !== video && earliest !== null) {
+      activeVideo.rootCreatedAt = earliest;
+    }
+
+    return earliest;
   }
 
   restoreSessionActorFromStorage() {
@@ -2807,12 +2882,14 @@ export class NostrClient {
 
     this.allEvents.clear();
     this.activeMap.clear();
+    this.rootCreatedAtByRoot.clear();
 
     for (const [id, video] of Object.entries(events)) {
       if (!id || !video || typeof video !== "object") {
         continue;
       }
 
+      this.applyRootCreatedAt(video);
       this.allEvents.set(id, video);
       if (video.deleted) {
         continue;
@@ -6025,6 +6102,7 @@ export class NostrClient {
           }
 
           this.mergeNip71MetadataIntoVideo(video);
+          this.applyRootCreatedAt(video);
 
           // Store in allEvents
           this.allEvents.set(evt.id, video);
@@ -6042,14 +6120,18 @@ export class NostrClient {
           if (!prevActive || video.created_at > prevActive.created_at) {
             this.activeMap.set(activeKey, video);
             onVideo(video); // Trigger the callback that re-renders
-            this.populateNip71MetadataForVideos([video]).catch((error) => {
-              if (isDevMode) {
-                console.warn(
-                  "[nostr] Failed to hydrate NIP-71 metadata for live video:",
-                  error
-                );
-              }
-            });
+            this.populateNip71MetadataForVideos([video])
+              .then(() => {
+                this.applyRootCreatedAt(video);
+              })
+              .catch((error) => {
+                if (isDevMode) {
+                  console.warn(
+                    "[nostr] Failed to hydrate NIP-71 metadata for live video:",
+                    error
+                  );
+                }
+              });
           }
         } catch (err) {
           if (isDevMode) {
@@ -6533,6 +6615,7 @@ export class NostrClient {
               invalidNotes.push({ id: vid.id, reason: vid.reason });
             } else {
               // Only add if good
+              this.applyRootCreatedAt(vid);
               localAll.set(evt.id, vid);
             }
           }
@@ -6542,6 +6625,7 @@ export class NostrClient {
       // Merge into allEvents
       for (const [id, vid] of localAll.entries()) {
         this.allEvents.set(id, vid);
+        this.applyRootCreatedAt(vid);
       }
 
       // Rebuild activeMap
@@ -6553,6 +6637,7 @@ export class NostrClient {
 
         if (!existing || video.created_at > existing.created_at) {
           this.activeMap.set(activeKey, video);
+          this.applyRootCreatedAt(video);
         }
       }
 
@@ -6568,6 +6653,7 @@ export class NostrClient {
         (a, b) => b.created_at - a.created_at
       );
       await this.populateNip71MetadataForVideos(activeVideos);
+      activeVideos.forEach((video) => this.applyRootCreatedAt(video));
       return activeVideos;
     } catch (err) {
       console.error("fetchVideos error:", err);
@@ -6581,6 +6667,7 @@ export class NostrClient {
   async getEventById(eventId) {
     const local = this.allEvents.get(eventId);
     if (local) {
+      this.applyRootCreatedAt(local);
       return local;
     }
     try {
@@ -6588,6 +6675,7 @@ export class NostrClient {
         const maybeEvt = await this.pool.get([url], { ids: [eventId] });
         if (maybeEvt && maybeEvt.id === eventId) {
           const video = convertEventToVideo(maybeEvt);
+          this.applyRootCreatedAt(video);
           this.allEvents.set(eventId, video);
           return video;
         }
@@ -6991,6 +7079,8 @@ export class NostrClient {
       return [];
     }
 
+    this.applyRootCreatedAt(video);
+
     const targetRoot = typeof video.videoRootId === "string" ? video.videoRootId : "";
     const targetPubkey = typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
 
@@ -7037,6 +7127,58 @@ export class NostrClient {
 
     let localMatches = collectLocalMatches();
 
+    const ensureRootPresence = async () => {
+      const normalizedRoot = targetRoot && typeof targetRoot === "string"
+        ? targetRoot
+        : "";
+      if (!normalizedRoot || normalizedRoot === video.id) {
+        return;
+      }
+
+      const alreadyPresent = localMatches.some((entry) => entry?.id === normalizedRoot);
+      if (alreadyPresent) {
+        return;
+      }
+
+      const cachedRoot = this.allEvents.get(normalizedRoot);
+      if (cachedRoot) {
+        this.applyRootCreatedAt(cachedRoot);
+        localMatches.push(cachedRoot);
+        return;
+      }
+
+      if (
+        !this.pool ||
+        typeof this.pool.get !== "function" ||
+        !Array.isArray(this.relays) ||
+        !this.relays.length
+      ) {
+        return;
+      }
+
+      try {
+        const rootEvent = await this.pool.get(this.relays, { ids: [normalizedRoot] });
+        if (rootEvent && rootEvent.id === normalizedRoot) {
+          const parsed = convertEventToVideo(rootEvent);
+          if (!parsed.invalid) {
+            this.mergeNip71MetadataIntoVideo(parsed);
+            this.applyRootCreatedAt(parsed);
+            this.allEvents.set(rootEvent.id, parsed);
+            localMatches.push(parsed);
+          }
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            `[nostr] Failed to fetch root event ${normalizedRoot} for history:`,
+            error
+          );
+        }
+      }
+    };
+
+    await ensureRootPresence();
+
     const shouldFetchFromRelays =
       localMatches.filter((entry) => !entry.deleted).length <= 1 && targetDTag;
 
@@ -7071,6 +7213,8 @@ export class NostrClient {
           try {
             const parsed = convertEventToVideo(evt);
             if (!parsed.invalid) {
+              this.mergeNip71MetadataIntoVideo(parsed);
+              this.applyRootCreatedAt(parsed);
               this.allEvents.set(evt.id, parsed);
             }
           } catch (err) {
@@ -7086,10 +7230,12 @@ export class NostrClient {
       }
 
       localMatches = collectLocalMatches();
+      await ensureRootPresence();
     }
 
     localMatches.sort((a, b) => b.created_at - a.created_at);
     await this.populateNip71MetadataForVideos(localMatches);
+    localMatches.forEach((entry) => this.applyRootCreatedAt(entry));
     return localMatches;
   }
 

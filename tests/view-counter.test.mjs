@@ -773,6 +773,96 @@ async function testHydrationRefreshesAfterCacheTtl() {
   }
 }
 
+async function testHydrateHistoryPrefersRootEvent() {
+  const originalPool = nostrClient.pool;
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : [];
+  const originalPopulate = nostrClient.populateNip71MetadataForVideos;
+  const originalAllEvents = nostrClient.allEvents;
+  const originalActiveMap = nostrClient.activeMap;
+  const originalRootMap = nostrClient.rootCreatedAtByRoot;
+
+  const rootId = "root-event-note";
+  const latestVideo = {
+    id: "latest-edit",
+    videoRootId: rootId,
+    pubkey: "PUBKEY123",
+    created_at: 200,
+    title: "Edited title",
+    url: "https://example.com/edited.mp4",
+    tags: [["t", "video"]],
+    deleted: false,
+  };
+
+  const rootEvent = {
+    id: rootId,
+    pubkey: latestVideo.pubkey,
+    created_at: 100,
+    kind: 30078,
+    content: JSON.stringify({
+      version: 3,
+      title: "Original title",
+      url: "https://example.com/original.mp4",
+      videoRootId: rootId,
+      description: "",
+      mode: "live",
+    }),
+    tags: [["t", "video"]],
+  };
+
+  const getCalls = [];
+
+  try {
+    nostrClient.pool = {
+      get: async (relays, filter) => {
+        getCalls.push({ relays, filter });
+        return rootEvent;
+      },
+      list: async () => [],
+    };
+    nostrClient.relays = ["wss://relay.example"];
+    nostrClient.populateNip71MetadataForVideos = async () => {};
+    nostrClient.allEvents = new Map([[latestVideo.id, latestVideo]]);
+    nostrClient.activeMap = new Map([[`ROOT:${rootId}`, latestVideo]]);
+    nostrClient.rootCreatedAtByRoot = new Map();
+
+    const history = await nostrClient.hydrateVideoHistory(latestVideo);
+
+    assert.equal(
+      getCalls.length,
+      1,
+      "hydrateVideoHistory should fetch the root event when it is missing locally"
+    );
+
+    assert.ok(Array.isArray(history) && history.length >= 2);
+    const fetchedRoot = history.find((entry) => entry.id === rootId);
+    assert.ok(fetchedRoot, "history should include the fetched root event");
+    assert.equal(
+      fetchedRoot.created_at,
+      rootEvent.created_at,
+      "root event should preserve its original created_at timestamp"
+    );
+    assert.equal(
+      latestVideo.rootCreatedAt,
+      rootEvent.created_at,
+      "latest revision should inherit the root created_at timestamp"
+    );
+    assert.equal(
+      nostrClient.rootCreatedAtByRoot.get(rootId),
+      rootEvent.created_at,
+      "nostrClient should cache the earliest created_at per root"
+    );
+  } finally {
+    nostrClient.pool = originalPool;
+    nostrClient.relays = originalRelays;
+    nostrClient.populateNip71MetadataForVideos = originalPopulate;
+    nostrClient.allEvents = originalAllEvents;
+    nostrClient.activeMap = originalActiveMap;
+    nostrClient.rootCreatedAtByRoot = originalRootMap;
+  }
+}
+
 await testHydrationRefreshesAfterCacheTtl();
 await testDedupesWithinWindow();
 await testHydrationSkipsStaleEventsAndRollsOff();
@@ -780,5 +870,6 @@ await testLocalIngestNotifiesImmediately();
 await testUnsubscribeStopsCallbacks();
 await testRelayCountAggregationUsesBestEstimate();
 await testRecordVideoViewEmitsJsonPayload();
+await testHydrateHistoryPrefersRootEvent();
 
 console.log("View counter tests completed successfully.");

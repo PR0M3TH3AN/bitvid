@@ -716,6 +716,8 @@ class Application {
         getShareUrlBase: () => this.getShareUrlBase(),
         buildShareUrlFromNevent: (nevent) => this.buildShareUrlFromNevent(nevent),
         buildShareUrlFromEventId: (eventId) => this.buildShareUrlFromEventId(eventId),
+        getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+        resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
         canManageBlacklist: () => this.canCurrentUserManageBlacklist(),
         canEditVideo: (video) => video?.pubkey === this.pubkey,
         canDeleteVideo: (video) => video?.pubkey === this.pubkey,
@@ -6439,6 +6441,19 @@ class Application {
       const existing = this.videosMap.get(video.id);
       if (existing && typeof existing === "object") {
         existing.rootCreatedAt = normalized;
+      }
+    }
+
+    if (nostrClient && typeof nostrClient.applyRootCreatedAt === "function") {
+      try {
+        nostrClient.applyRootCreatedAt(video);
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[Application] Failed to sync cached root timestamp with nostrClient:",
+            error
+          );
+        }
       }
     }
   }
