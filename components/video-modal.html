@@ -237,10 +237,14 @@
 
         <!-- Video Timestamp -->
         <div
-          class="flex items-center justify-between text-sm text-gray-400 mb-4"
+          class="flex items-start justify-between text-sm text-gray-400 mb-4"
         >
-          <div class="flex items-center gap-2 modal-meta">
-            <span id="videoTimestamp">just now</span>
+          <div class="flex flex-wrap items-center gap-2 modal-meta">
+            <span id="videoTimestamp">Posted just now</span>
+            <span
+              id="videoEditedTimestamp"
+              class="hidden"
+            >Last edited just now</span>
             <span id="videoViewCount" class="modal-view-count">– views</span>
           </div>
           <div id="modalStatus" class="text-gray-300">

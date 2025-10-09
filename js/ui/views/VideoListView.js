@@ -98,6 +98,14 @@ export class VideoListView {
         typeof utils.buildShareUrlFromEventId === "function"
           ? utils.buildShareUrlFromEventId
           : () => "",
+      getKnownVideoPostedAt:
+        typeof utils.getKnownVideoPostedAt === "function"
+          ? utils.getKnownVideoPostedAt
+          : () => null,
+      resolveVideoPostedAt:
+        typeof utils.resolveVideoPostedAt === "function"
+          ? utils.resolveVideoPostedAt
+          : null,
       canManageBlacklist:
         typeof utils.canManageBlacklist === "function"
           ? utils.canManageBlacklist
@@ -325,7 +333,20 @@ export class VideoListView {
         canEdit && video.isPrivate ? "video-card--owner-private" : "";
       const isNewlyRendered = !previouslyRenderedIds.has(video.id);
       const animationClass = isNewlyRendered ? "video-card--enter" : "";
-      const timeAgo = this.formatters.formatTimeAgo(video.created_at);
+      const knownPostedAt = this.utils.getKnownVideoPostedAt(video);
+      const normalizedPostedAt = Number.isFinite(knownPostedAt)
+        ? Math.floor(knownPostedAt)
+        : null;
+      const fallbackTimestamp =
+        normalizedPostedAt !== null
+          ? normalizedPostedAt
+          : Number.isFinite(video?.created_at)
+            ? Math.floor(video.created_at)
+            : null;
+      const timeAgo =
+        fallbackTimestamp !== null
+          ? this.formatters.formatTimeAgo(fallbackTimestamp)
+          : "";
 
       let hasOlder = false;
       if (canEdit && video.videoRootId) {
@@ -344,6 +365,7 @@ export class VideoListView {
         shareUrl,
         pointerInfo,
         timeAgo,
+        postedAt: normalizedPostedAt,
         highlightClass,
         animationClass,
         capabilities: {
@@ -435,6 +457,34 @@ export class VideoListView {
       fragment.appendChild(cardEl);
       this.renderedVideoIds.add(video.id);
       this.videoCardInstances.push(videoCard);
+
+      const shouldResolvePostedAt =
+        normalizedPostedAt === null &&
+        typeof this.utils.resolveVideoPostedAt === "function";
+
+      if (shouldResolvePostedAt) {
+        Promise.resolve(this.utils.resolveVideoPostedAt(video))
+          .then((resolvedPostedAt) => {
+            if (!Number.isFinite(resolvedPostedAt)) {
+              return;
+            }
+            if (!this.videoCardInstances.includes(videoCard)) {
+              return;
+            }
+            if (videoCard.video?.id !== video.id) {
+              return;
+            }
+            videoCard.updatePostedAt(Math.floor(resolvedPostedAt));
+          })
+          .catch((error) => {
+            if (this.window?.console?.warn) {
+              this.window.console.warn(
+                "[VideoListView] Failed to resolve posted timestamp:",
+                error
+              );
+            }
+          });
+      }
     });
 
     this.container.innerHTML = "";

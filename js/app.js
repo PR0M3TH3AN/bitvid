@@ -71,8 +71,14 @@ import ProfileModalController from "./ui/profileModalController.js";
 import ZapController from "./ui/zapController.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
 import { pointerArrayToKey } from "./utils/pointer.js";
+import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
 import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
+import {
+  getVideoRootIdentifier,
+  applyRootTimestampToVideosMap,
+  syncActiveVideoRootTimestamp,
+} from "./utils/videoTimestamps.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -715,6 +721,8 @@ class Application {
         getShareUrlBase: () => this.getShareUrlBase(),
         buildShareUrlFromNevent: (nevent) => this.buildShareUrlFromNevent(nevent),
         buildShareUrlFromEventId: (eventId) => this.buildShareUrlFromEventId(eventId),
+        getKnownVideoPostedAt: (video) => this.getKnownVideoPostedAt(video),
+        resolveVideoPostedAt: (video) => this.resolveVideoPostedAt(video),
         canManageBlacklist: () => this.canCurrentUserManageBlacklist(),
         canEditVideo: (video) => video?.pubkey === this.pubkey,
         canDeleteVideo: (video) => video?.pubkey === this.pubkey,
@@ -1309,34 +1317,14 @@ class Application {
     }
 
     const dTagValue = (this.extractDTagValue(video.tags) || "").trim();
-    const normalizedPubkey =
-      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
-    const kind =
-      typeof video.kind === "number" && Number.isFinite(video.kind)
-        ? video.kind
-        : VIDEO_EVENT_KIND;
 
-    if (dTagValue && normalizedPubkey) {
-      const pointer = ["a", `${kind}:${normalizedPubkey}:${dTagValue}`];
-      const key = pointerArrayToKey(pointer);
-      if (key) {
-        return { pointer, key };
-      }
-    }
-
-    const fallbackId =
-      typeof video.id === "string" && video.id.trim()
-        ? video.id.trim()
-        : "";
-    if (fallbackId) {
-      const pointer = ["e", fallbackId];
-      const key = pointerArrayToKey(pointer);
-      if (key) {
-        return { pointer, key };
-      }
-    }
-
-    return null;
+    return resolveVideoPointer({
+      kind: video.kind,
+      pubkey: video.pubkey,
+      videoRootId: video.videoRootId,
+      dTag: dTagValue,
+      fallbackEventId: video.id,
+    });
   }
 
   formatViewCountLabel(total) {
@@ -6245,6 +6233,11 @@ class Application {
       hasUrl: !!trimmedUrl,
     });
 
+    const knownPostedAt = this.getKnownVideoPostedAt(video);
+    const normalizedEditedAt = Number.isFinite(video.created_at)
+      ? Math.floor(video.created_at)
+      : null;
+
     this.currentVideo = {
       ...video,
       url: trimmedUrl,
@@ -6254,53 +6247,26 @@ class Application {
       torrentSupported: magnetSupported,
       legacyInfoHash: video.legacyInfoHash || legacyInfoHash,
       lightningAddress: null,
+      lastEditedAt: normalizedEditedAt,
     };
 
+    if (Number.isFinite(knownPostedAt)) {
+      this.cacheVideoRootCreatedAt(this.currentVideo, knownPostedAt);
+    } else if (this.currentVideo.rootCreatedAt) {
+      delete this.currentVideo.rootCreatedAt;
+    }
+
     const dTagValue = (this.extractDTagValue(video.tags) || "").trim();
-    const normalizedPubkey =
-      typeof video.pubkey === "string" ? video.pubkey.trim() : "";
-    const primaryPointer =
-      dTagValue && normalizedPubkey
-        ? [
-            "a",
-            `${
-              typeof video.kind === "number" && Number.isFinite(video.kind)
-                ? video.kind
-                : 30078
-            }:${normalizedPubkey}:${dTagValue}`,
-          ]
-        : null;
-    const fallbackId =
-      typeof (video.id || eventId) === "string"
-        ? (video.id || eventId).trim()
-        : "";
-    const fallbackPointer = fallbackId ? ["e", fallbackId] : null;
+    const pointerInfo = resolveVideoPointer({
+      kind: video.kind,
+      pubkey: video.pubkey,
+      videoRootId: video.videoRootId,
+      dTag: dTagValue,
+      fallbackEventId: video.id || eventId,
+    });
 
-    let resolvedPointer = null;
-    let resolvedPointerKey = "";
-    const pointerCandidates = [];
-    if (primaryPointer) {
-      pointerCandidates.push(primaryPointer);
-    }
-    if (fallbackPointer) {
-      pointerCandidates.push(fallbackPointer);
-    }
-
-    for (const candidate of pointerCandidates) {
-      const key = pointerArrayToKey(candidate);
-      if (key) {
-        resolvedPointer = candidate;
-        resolvedPointerKey = key;
-        break;
-      }
-    }
-
-    this.currentVideoPointer = resolvedPointer && resolvedPointerKey
-      ? resolvedPointer
-      : null;
-    this.currentVideoPointerKey = this.currentVideoPointer
-      ? resolvedPointerKey
-      : null;
+    this.currentVideoPointer = pointerInfo?.pointer || null;
+    this.currentVideoPointerKey = pointerInfo?.key || null;
 
     if (this.currentVideo) {
       this.currentVideo.pointer = this.currentVideoPointer;
@@ -6373,12 +6339,15 @@ class Application {
 
     const creatorNpub = this.safeEncodeNpub(video.pubkey) || video.pubkey;
     if (this.videoModal) {
-      const formattedTimestamp = this.formatTimeAgo(video.created_at);
+      const timestampPayload = this.buildModalTimestampPayload({
+        postedAt: this.currentVideo?.rootCreatedAt ?? null,
+        editedAt: normalizedEditedAt,
+      });
       const displayNpub = `${creatorNpub.slice(0, 8)}...${creatorNpub.slice(-4)}`;
       this.videoModal.updateMetadata({
         title: video.title || "Untitled",
         description: video.description || "No description available.",
-        timestamp: formattedTimestamp,
+        timestamps: timestampPayload,
         creator: {
           name: creatorProfile.name,
           avatarUrl: creatorProfile.picture,
@@ -6387,12 +6356,214 @@ class Application {
       });
     }
 
+    this.ensureModalPostedTimestamp(this.currentVideo);
+
     const playbackResult =
       playbackPromise && typeof playbackPromise.then === "function"
         ? await playbackPromise
         : playbackPromise;
 
     return playbackResult;
+  }
+
+  buildModalTimestampPayload({ postedAt = null, editedAt = null } = {}) {
+    const normalizedPostedAt = Number.isFinite(postedAt)
+      ? Math.floor(postedAt)
+      : null;
+    const normalizedEditedAt = Number.isFinite(editedAt)
+      ? Math.floor(editedAt)
+      : null;
+
+    const payload = {
+      posted: "",
+      edited: "",
+    };
+
+    const effectivePostedAt =
+      normalizedPostedAt !== null ? normalizedPostedAt : normalizedEditedAt;
+
+    if (effectivePostedAt !== null) {
+      payload.posted = `Posted ${this.formatTimeAgo(effectivePostedAt)}`;
+    }
+
+    const shouldShowEdited =
+      normalizedEditedAt !== null &&
+      (normalizedPostedAt === null || normalizedEditedAt - normalizedPostedAt >= 60);
+
+    if (shouldShowEdited) {
+      payload.edited = `Last edited ${this.formatTimeAgo(normalizedEditedAt)}`;
+    }
+
+    return payload;
+  }
+
+  getKnownVideoPostedAt(video) {
+    if (!video || typeof video !== "object") {
+      return null;
+    }
+
+    const directValue = Number.isFinite(video.rootCreatedAt)
+      ? Math.floor(video.rootCreatedAt)
+      : null;
+    if (directValue !== null) {
+      return directValue;
+    }
+
+    if (video.id && this.videosMap instanceof Map) {
+      const stored = this.videosMap.get(video.id);
+      const storedValue = Number.isFinite(stored?.rootCreatedAt)
+        ? Math.floor(stored.rootCreatedAt)
+        : null;
+      if (storedValue !== null) {
+        video.rootCreatedAt = storedValue;
+        return storedValue;
+      }
+    }
+
+    const nip71Created = Number.isFinite(video?.nip71Source?.created_at)
+      ? Math.floor(video.nip71Source.created_at)
+      : null;
+
+    if (nip71Created !== null) {
+      return nip71Created;
+    }
+
+    return null;
+  }
+
+  cacheVideoRootCreatedAt(video, timestamp) {
+    if (!Number.isFinite(timestamp)) {
+      return;
+    }
+
+    const normalized = Math.floor(timestamp);
+    const rootId = getVideoRootIdentifier(video);
+
+    if (video && typeof video === "object") {
+      video.rootCreatedAt = normalized;
+    }
+
+    applyRootTimestampToVideosMap({
+      videosMap: this.videosMap,
+      video,
+      rootId,
+      timestamp: normalized,
+    });
+
+    syncActiveVideoRootTimestamp({
+      activeVideo: this.currentVideo,
+      rootId,
+      timestamp: normalized,
+      buildModalTimestampPayload: (payload) =>
+        this.buildModalTimestampPayload(payload),
+      videoModal: this.videoModal,
+    });
+
+    if (nostrClient && typeof nostrClient.applyRootCreatedAt === "function") {
+      try {
+        nostrClient.applyRootCreatedAt(video);
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            "[Application] Failed to sync cached root timestamp with nostrClient:",
+            error
+          );
+        }
+      }
+    }
+  }
+
+  async resolveVideoPostedAt(video) {
+    if (!video || typeof video !== "object") {
+      return null;
+    }
+
+    const cached = this.getKnownVideoPostedAt(video);
+    if (cached !== null) {
+      return cached;
+    }
+
+    if (!nostrClient || typeof nostrClient.hydrateVideoHistory !== "function") {
+      const fallback = Number.isFinite(video.created_at)
+        ? Math.floor(video.created_at)
+        : null;
+      if (fallback !== null) {
+        this.cacheVideoRootCreatedAt(video, fallback);
+      }
+      return fallback;
+    }
+
+    try {
+      const history = await nostrClient.hydrateVideoHistory(video);
+      if (Array.isArray(history) && history.length) {
+        let earliest = null;
+        for (const entry of history) {
+          if (!entry || entry.deleted) {
+            continue;
+          }
+          const created = Number.isFinite(entry.created_at)
+            ? Math.floor(entry.created_at)
+            : null;
+          if (created === null) {
+            continue;
+          }
+          if (earliest === null || created < earliest) {
+            earliest = created;
+          }
+        }
+
+        if (earliest === null) {
+          const lastEntry = history[history.length - 1];
+          if (Number.isFinite(lastEntry?.created_at)) {
+            earliest = Math.floor(lastEntry.created_at);
+          }
+        }
+
+        if (earliest !== null) {
+          this.cacheVideoRootCreatedAt(video, earliest);
+          return earliest;
+        }
+      }
+    } catch (error) {
+      if (isDevMode) {
+        console.warn(
+          "[Application] Failed to hydrate video history for timestamps:",
+          error
+        );
+      }
+    }
+
+    const fallback = Number.isFinite(video.created_at)
+      ? Math.floor(video.created_at)
+      : null;
+    if (fallback !== null) {
+      this.cacheVideoRootCreatedAt(video, fallback);
+    }
+    return fallback;
+  }
+
+  async ensureModalPostedTimestamp(video) {
+    if (!video || !this.videoModal) {
+      return;
+    }
+
+    const postedAt = await this.resolveVideoPostedAt(video);
+    if (!this.videoModal || this.currentVideo !== video) {
+      return;
+    }
+
+    const editedAt = Number.isFinite(video.lastEditedAt)
+      ? Math.floor(video.lastEditedAt)
+      : Number.isFinite(video.created_at)
+        ? Math.floor(video.created_at)
+        : null;
+
+    const payload = this.buildModalTimestampPayload({
+      postedAt,
+      editedAt,
+    });
+
+    this.videoModal.updateMetadata({ timestamps: payload });
   }
 
   async playVideoWithoutEvent({

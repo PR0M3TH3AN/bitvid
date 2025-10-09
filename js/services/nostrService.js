@@ -354,6 +354,12 @@ export class NostrService {
           if (video.invalid) {
             continue;
           }
+          if (
+            this.nostrClient &&
+            typeof this.nostrClient.applyRootCreatedAt === "function"
+          ) {
+            this.nostrClient.applyRootCreatedAt(video);
+          }
           if (collected.has(video.id)) {
             continue;
           }
