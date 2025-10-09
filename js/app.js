@@ -35,6 +35,7 @@ import PlaybackService from "./services/playbackService.js";
 import AuthService from "./services/authService.js";
 import NwcSettingsService from "./services/nwcSettingsService.js";
 import nostrService from "./services/nostrService.js";
+import DiscussionCountService from "./services/discussionCountService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import WatchHistoryController from "./ui/watchHistoryController.js";
@@ -105,7 +106,6 @@ const UNSUPPORTED_BTITH_MESSAGE =
   "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
 const FALLBACK_THUMBNAIL_SRC = "assets/jpg/video-thumbnail-fallback.jpg";
-const MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const VIDEO_EVENT_KIND = 30078;
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 /**
@@ -162,8 +162,6 @@ class Application {
         : mediaLoaderFactory();
     this.loadedThumbnails = new Map();
     this.relayManager = relayManager;
-    this.videoDiscussionCountCache = new Map();
-    this.inFlightDiscussionCounts = new Map();
     this.activeIntervals = [];
     this.watchHistoryTelemetry = null;
     this.authEventUnsubscribes = [];
@@ -193,6 +191,9 @@ class Application {
     this.splitAndZap =
       (services.payments && services.payments.splitAndZap) ||
       splitAndZapDefault;
+
+    this.discussionCountService =
+      services.discussionCountService || new DiscussionCountService();
 
     this.nwcSettingsService =
       services.nwcSettingsService ||
@@ -791,7 +792,10 @@ class Application {
         batchFetchProfiles: (authorSet) => this.batchFetchProfiles(authorSet),
         bindThumbnailFallbacks: (container) => this.bindThumbnailFallbacks(container),
         handleUrlHealthBadge: (payload) => this.handleUrlHealthBadge(payload),
-        refreshDiscussionCounts: (videos) => this.refreshVideoDiscussionCounts(videos),
+        refreshDiscussionCounts: (videos, { container } = {}) =>
+          this.refreshVideoDiscussionCounts(videos, {
+            videoListRoot: container || this.videoList || null,
+          }),
         ensureGlobalMoreMenuHandlers: () => this.ensureGlobalMoreMenuHandlers(),
         closeAllMenus: () => this.closeAllMoreMenus(),
       },
@@ -4120,112 +4124,27 @@ class Application {
     this.videoListView.render(videos, metadata);
   }
 
-  refreshVideoDiscussionCounts(videos = []) {
-    if (
-      !Array.isArray(videos) ||
-      !videos.length ||
-      !this.videoList ||
-      !nostrClient?.pool
-    ) {
+  refreshVideoDiscussionCounts(videos = [], options = {}) {
+    if (!this.discussionCountService) {
       return;
     }
 
-    const eligible = videos
-      .filter(
-        (video) =>
-          video &&
-          typeof video.id === "string" &&
-          video.id &&
-          video.enableComments !== false
-      )
-      .slice(0, MAX_DISCUSSION_COUNT_VIDEOS);
+    const { videoListRoot = this.videoList || null } = options;
 
-    eligible.forEach((video) => {
-      const container = this.videoList.querySelector(
-        `[data-discussion-count="${video.id}"]`
-      );
-      if (!container) {
-        return;
-      }
-
-      const cached = this.videoDiscussionCountCache.get(video.id);
-      if (typeof cached === "number") {
-        this.updateDiscussionCountElement(container, cached);
-        return;
-      }
-
-      const filters = this.buildDiscussionCountFilters(video);
-      if (!filters.length) {
-        this.markDiscussionCountError(container, { unsupported: true });
-        return;
-      }
-
-      const existingPromise = this.inFlightDiscussionCounts.get(video.id);
-      if (existingPromise) {
-        this.setDiscussionCountPending(container);
-        return;
-      }
-
-      this.setDiscussionCountPending(container);
-
-      const request = nostrClient
-        .countEventsAcrossRelays(filters)
-        .then((result) => {
-          const perRelay = Array.isArray(result?.perRelay)
-            ? result.perRelay.filter((entry) => entry && entry.ok)
-            : [];
-
-          if (!perRelay.length) {
-            this.markDiscussionCountError(container, { unsupported: true });
-            return result;
-          }
-
-          const total = Number(result?.total);
-          const normalized =
-            Number.isFinite(total) && total >= 0 ? total : 0;
-          this.videoDiscussionCountCache.set(video.id, normalized);
-          this.updateDiscussionCountElement(container, normalized);
-          return result;
-        })
-        .catch((error) => {
-          if (isDevMode) {
-            console.warn(
-              `[counts] Failed to fetch discussion count for ${video.id}:`,
-              error
-            );
-          }
-          this.markDiscussionCountError(container);
-          throw error;
-        })
-        .finally(() => {
-          this.inFlightDiscussionCounts.delete(video.id);
-        });
-
-      this.inFlightDiscussionCounts.set(video.id, request);
+    this.discussionCountService.refreshCounts(videos, {
+      videoListRoot,
+      nostrClient,
     });
   }
 
-  buildDiscussionCountFilters(video) {
-    if (!video || typeof video !== "object") {
-      return [];
-    }
-
-    const filters = [];
-    const eventId =
-      typeof video.id === "string" ? video.id.trim() : "";
-    if (eventId) {
-      filters.push({ kinds: [1], "#e": [eventId] });
-    }
-
-    const address = this.getVideoAddressPointer(video);
-    if (address) {
-      filters.push({ kinds: [1], "#a": [address] });
-    }
-
-    return filters;
-  }
-
   getVideoAddressPointer(video) {
+    if (
+      this.discussionCountService &&
+      typeof this.discussionCountService.getVideoAddressPointer === "function"
+    ) {
+      return this.discussionCountService.getVideoAddressPointer(video);
+    }
+
     if (!video || typeof video !== "object") {
       return "";
     }
@@ -4261,50 +4180,6 @@ class Application {
         : VIDEO_EVENT_KIND;
 
     return `${kind}:${pubkey}:${identifier}`;
-  }
-
-  setDiscussionCountPending(element) {
-    if (!element) {
-      return;
-    }
-    element.dataset.countState = "pending";
-    const valueEl = element.querySelector("[data-discussion-count-value]");
-    if (valueEl) {
-      valueEl.textContent = "…";
-    }
-    element.removeAttribute("title");
-  }
-
-  updateDiscussionCountElement(element, count) {
-    if (!element) {
-      return;
-    }
-    const valueEl = element.querySelector("[data-discussion-count-value]");
-    if (!valueEl) {
-      return;
-    }
-    const numeric = Number(count);
-    const safeValue =
-      Number.isFinite(numeric) && numeric >= 0 ? Math.floor(numeric) : 0;
-    element.dataset.countState = "ready";
-    valueEl.textContent = safeValue.toLocaleString();
-    element.removeAttribute("title");
-  }
-
-  markDiscussionCountError(element, { unsupported = false } = {}) {
-    if (!element) {
-      return;
-    }
-    const valueEl = element.querySelector("[data-discussion-count-value]");
-    if (valueEl) {
-      valueEl.textContent = "—";
-    }
-    element.dataset.countState = unsupported ? "unsupported" : "error";
-    if (unsupported) {
-      element.title = "Relay does not support NIP-45 COUNT queries.";
-    } else {
-      element.removeAttribute("title");
-    }
   }
 
   bindThumbnailFallbacks(container) {

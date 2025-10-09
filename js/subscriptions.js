@@ -563,8 +563,10 @@ class SubscriptionsManager {
           app?.bindThumbnailFallbacks?.(target),
         handleUrlHealthBadge: (payload) =>
           app?.handleUrlHealthBadge?.(payload),
-        refreshDiscussionCounts: (videosList) =>
-          app?.refreshVideoDiscussionCounts?.(videosList),
+        refreshDiscussionCounts: (videosList, { container: root } = {}) =>
+          app?.refreshVideoDiscussionCounts?.(videosList, {
+            videoListRoot: root || container || null,
+          }),
         ensureGlobalMoreMenuHandlers: () =>
           app?.ensureGlobalMoreMenuHandlers?.(),
         closeAllMenus: () => app?.closeAllMoreMenus?.(),
