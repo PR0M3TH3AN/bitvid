@@ -1313,9 +1313,25 @@ class Application {
     const existingVideoElement = getVideoElement();
 
     if (existingRoot && existingRoot.isConnected) {
-      if (ensureVideoElement && !existingVideoElement) {
-        throw new Error("Video modal video element is not ready.");
+      if (!existingVideoElement && ensureVideoElement) {
+        if (typeof this.videoModal.load === "function") {
+          await this.videoModal.load();
+        }
+
+        const rehydratedRoot = getRoot();
+        const rehydratedVideoElement = getVideoElement();
+
+        if (!rehydratedVideoElement) {
+          throw new Error("Video modal video element is not ready.");
+        }
+
+        this.modalVideo = rehydratedVideoElement;
+        return {
+          root: rehydratedRoot || existingRoot,
+          videoElement: rehydratedVideoElement,
+        };
       }
+
       if (existingVideoElement) {
         this.modalVideo = existingVideoElement;
       }
