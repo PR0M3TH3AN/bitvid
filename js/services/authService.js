@@ -591,16 +591,33 @@ export default class AuthService {
       return { switched: false, reason: "already-active" };
     }
 
+    const requestOptions = {
+      allowAccountSelection: true,
+      expectPubkey: normalizedTarget,
+      persistActive: true,
+    };
+    const autoApply = requestOptions.autoApply !== false;
+
+    let requestResult;
     try {
-      await this.requestLogin({
-        allowAccountSelection: true,
-        expectPubkey: normalizedTarget,
-      });
+      requestResult = await this.requestLogin(requestOptions);
     } catch (error) {
       throw error;
     }
 
-    const detail = await this.login(normalizedTarget, { persistActive: true });
+    const requestedPubkey =
+      this.normalizeHexPubkey(requestResult?.pubkey) ||
+      (typeof requestResult?.pubkey === "string"
+        ? requestResult.pubkey.trim()
+        : "");
+
+    let detail = requestResult?.detail || null;
+
+    if (!detail && !autoApply) {
+      const fallbackTarget =
+        this.normalizeHexPubkey(requestedPubkey) || requestedPubkey || normalizedTarget;
+      detail = await this.login(fallbackTarget, { persistActive: true });
+    }
 
     mutateSavedProfiles((profiles) => {
       const draft = profiles.slice();
@@ -613,6 +630,14 @@ export default class AuthService {
       }
       return draft;
     }, { persist: true, persistActive: true });
+
+    const savedProfiles = this.cloneSavedProfiles();
+    const activeProfilePubkey = getActiveProfilePubkey();
+
+    if (detail && typeof detail === "object") {
+      detail.savedProfiles = savedProfiles;
+      detail.activeProfilePubkey = activeProfilePubkey;
+    }
 
     this.emitProfileList("switch-profile");
 
