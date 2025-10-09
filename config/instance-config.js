@@ -238,3 +238,14 @@ export const VIEW_COUNT_BACKFILL_MAX_DAYS = 90;
  * fresher dashboards or raise it if your analytics traffic is heavy.
  */
 export const VIEW_COUNT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Cooldown window (in seconds) between manual "Ensure presence" rebroadcast
+ * attempts.
+ *
+ * Rebroadcasting is an escape hatch for creators to nudge stale relays. A
+ * short cooldown keeps this safeguard from turning into an accidental DDoS.
+ * Five minutes provides enough breathing room for relays to catch up while
+ * still letting operators retry if a publish genuinely failed.
+ */
+export const ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS = 5 * 60;

@@ -22,6 +22,7 @@ import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
   VIEW_COUNT_BACKFILL_MAX_DAYS,
   VIEW_COUNT_CACHE_TTL_MS,
+  ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
 } from "../config/instance-config.js";
 
 export const isDevMode = true; // Set to false for production
@@ -83,3 +84,4 @@ export { WATCH_HISTORY_CACHE_TTL_MS };
 export { VIEW_COUNT_DEDUPE_WINDOW_SECONDS };
 export { VIEW_COUNT_BACKFILL_MAX_DAYS };
 export { VIEW_COUNT_CACHE_TTL_MS };
+export { ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS };
