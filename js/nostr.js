@@ -4905,38 +4905,105 @@ export class NostrClient {
       const tools = await ensureNostrTools();
       if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
         cachedDecryptTools = tools;
+        console.info("[nostr] Loaded nostr-tools nip04 helpers for watch history decryption.");
         return cachedDecryptTools;
       }
+      console.warn("[nostr] Unable to load nostr-tools nip04 helpers for watch history decryption.");
       return null;
     };
 
-    const decryptChunk = async (ciphertext) => {
+    const decryptChunk = async (ciphertext, context = {}) => {
       if (!ciphertext || typeof ciphertext !== "string") {
         throw new Error("empty-ciphertext");
       }
+      const ciphertextPreview = ciphertext.slice(0, 32);
+      console.info("[nostr] Attempting to decrypt watch history chunk.", {
+        actorKey,
+        chunkIdentifier: context.chunkIdentifier ?? null,
+        eventId: context.eventId ?? null,
+        ciphertextPreview,
+        ciphertextFormat: "base64 NIP-04 ciphertext",
+        expectedPlaintextFormat:
+          "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+      });
       const extensionDecrypt =
         extension &&
         typeof extension?.nip04?.decrypt === "function" &&
         normalizeActorKey(this.pubkey) === actorKey;
       if (extensionDecrypt) {
         await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
-        return extension.nip04.decrypt(actorKey, ciphertext);
+        console.info(
+          "[nostr] Using logged in user's extension key to decrypt watch history chunk.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+          },
+        );
+        const plaintext = await extension.nip04.decrypt(actorKey, ciphertext);
+        console.info("[nostr] Successfully decrypted watch history chunk via extension key.", {
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
+        });
+        return plaintext;
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
+        console.info(
+          "[nostr] Session actor mismatch while decrypting watch history chunk. Ensuring session actor matches requested key.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+            currentSessionActor: this.sessionActor?.pubkey ?? null,
+          },
+        );
         await this.ensureSessionActor();
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
+        console.error(
+          "[nostr] Watch history decrypt failed: session actor key unavailable after ensure.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+            currentSessionActor: this.sessionActor?.pubkey ?? null,
+          },
+        );
         throw new Error("missing-session-key");
       }
       const tools = await ensureDecryptTools();
       if (!tools?.nip04 || typeof tools.nip04.decrypt !== "function") {
+        console.error(
+          "[nostr] Watch history decrypt failed: nip04 helpers unavailable.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+          },
+        );
         throw new Error("nip04-unavailable");
       }
-      return tools.nip04.decrypt(
+      console.info(
+        "[nostr] Using session actor private key to decrypt watch history chunk.",
+        {
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
+          sessionActor: this.sessionActor?.pubkey ?? null,
+        },
+      );
+      const plaintext = await tools.nip04.decrypt(
         this.sessionActor.privateKey,
         actorKey,
         ciphertext,
       );
+      console.info("[nostr] Successfully decrypted watch history chunk via session actor key.", {
+        actorKey,
+        chunkIdentifier: context.chunkIdentifier ?? null,
+        eventId: context.eventId ?? null,
+      });
+      return plaintext;
     };
 
     const chunkCount = latestChunks.size || chunkIdentifiers.length || 0;
@@ -4951,10 +5018,26 @@ export class NostrClient {
       }
       const fallbackPointers = extractPointerItemsFromEvent(event);
       const ciphertext = typeof event.content === "string" ? event.content : "";
+      const ciphertextPreview = ciphertext.slice(0, 32);
       let payload;
+      const chunkContext = {
+        chunkIdentifier: identifier,
+        eventId: event.id ?? null,
+      };
       if (isNip04EncryptedWatchHistoryEvent(event, ciphertext)) {
+        console.info("[nostr] Watch history chunk is marked as NIP-04 encrypted. Beginning decrypt flow.", {
+          actorKey,
+          ...chunkContext,
+        });
         try {
-          const plaintext = await decryptChunk(ciphertext);
+          const plaintext = await decryptChunk(ciphertext, chunkContext);
+          console.info("[nostr] Decrypted watch history chunk. Parsing plaintext payload.", {
+            actorKey,
+            ...chunkContext,
+            plaintextPreview: typeof plaintext === "string" ? plaintext.slice(0, 64) : null,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          });
           payload = parseWatchHistoryContentWithFallback(
             plaintext,
             fallbackPointers,
@@ -4968,12 +5051,30 @@ export class NostrClient {
           );
         } catch (error) {
           decryptErrors.push(error);
+          console.error("[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.", {
+            actorKey,
+            ...chunkContext,
+            error: error?.message || error,
+            ciphertextPreview,
+            fallbackPointerCount: Array.isArray(fallbackPointers)
+              ? fallbackPointers.length
+              : 0,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          });
           payload = {
             version: 0,
             items: fallbackPointers,
           };
         }
       } else {
+        console.info("[nostr] Watch history chunk is plaintext. Attempting to parse expected payload format.", {
+          actorKey,
+          ...chunkContext,
+          ciphertextPreview,
+          expectedPlaintextFormat:
+            "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+        });
         payload = parseWatchHistoryContentWithFallback(
           ciphertext,
           fallbackPointers,
