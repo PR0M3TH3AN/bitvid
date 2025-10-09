@@ -338,7 +338,7 @@ function getPointerVideoId(video, pointer) {
   return "";
 }
 
-function buildHistoryCard({
+export function buildHistoryCard({
   item,
   video,
   profile,
