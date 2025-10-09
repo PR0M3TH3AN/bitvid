@@ -9,6 +9,8 @@ const {
   WATCH_HISTORY_CACHE_TTL_MS,
   WATCH_HISTORY_BATCH_RESOLVE,
   WATCH_HISTORY_BATCH_PAGE_SIZE,
+  WATCH_HISTORY_LIST_IDENTIFIER,
+  WATCH_HISTORY_KIND,
 } =
   await import("../js/config.js");
 const {
@@ -266,6 +268,7 @@ function installExtensionCrypto({ actor }) {
   let extensionDecrypts = 0;
   let fallbackEncrypts = 0;
   const enableCalls = [];
+  const decryptCalls = [];
   window.nostr = {
     enable: async (options) => {
       enableCalls.push(options || null);
@@ -284,6 +287,7 @@ function installExtensionCrypto({ actor }) {
       },
       decrypt: async (target, ciphertext) => {
         extensionDecrypts += 1;
+        decryptCalls.push({ target, ciphertext });
         const prefix = `extension:${target}:`;
         if (!ciphertext.startsWith(prefix)) {
           throw new Error("invalid-extension-ciphertext");
@@ -320,6 +324,7 @@ function installExtensionCrypto({ actor }) {
     getExtensionDecrypts: () => extensionDecrypts,
     getFallbackEncrypts: () => fallbackEncrypts,
     getEnableCalls: () => [...enableCalls],
+    getDecryptCalls: () => decryptCalls.map((entry) => ({ ...entry })),
   };
 }
 
@@ -341,6 +346,173 @@ function maxCreatedAt(events = []) {
     const created = Number.isFinite(event.created_at) ? event.created_at : 0;
     return created > max ? created : max;
   }, 0);
+}
+
+async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
+  const actorHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  const actorNpub = "npub-test-extension-decrypt";
+  const snapshotId = "extension-fetch";
+  const chunkIdentifier = "chunk-extension";
+
+  const fallbackTag = ["e", "fallback-pointer"];
+  const fallbackItem = { type: "e", value: "fallback-pointer", watchedAt: 1_700_800_000 };
+  const chunkItem = { type: "e", value: "chunk-pointer", watchedAt: 1_700_800_100 };
+
+  const chunkPayload = JSON.stringify({
+    version: 1,
+    items: [chunkItem],
+    snapshot: snapshotId,
+    chunkIndex: 0,
+    totalChunks: 1,
+  });
+  const chunkCiphertext = `extension:${actorHex}:${Buffer.from(chunkPayload, "utf8").toString("base64")}`;
+
+  const pointerEvent = {
+    id: "pointer-extension",
+    kind: WATCH_HISTORY_KIND,
+    pubkey: actorHex,
+    created_at: 1_700_800_000,
+    content: JSON.stringify({
+      version: 1,
+      items: [fallbackItem],
+      snapshot: snapshotId,
+      chunkIndex: 0,
+      totalChunks: 1,
+    }),
+    tags: [
+      ["d", WATCH_HISTORY_LIST_IDENTIFIER],
+      ["snapshot", snapshotId],
+      ["encrypted", "nip04"],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:${chunkIdentifier}`],
+      fallbackTag,
+    ],
+  };
+
+  const chunkEvent = {
+    id: "chunk-extension",
+    kind: WATCH_HISTORY_KIND,
+    pubkey: actorHex,
+    created_at: 1_700_800_060,
+    content: chunkCiphertext,
+    tags: [
+      ["d", chunkIdentifier],
+      ["snapshot", snapshotId],
+      ["encrypted", "nip04"],
+    ],
+  };
+
+  const previousNostrTools = window.NostrTools || {};
+  window.NostrTools = {
+    ...previousNostrTools,
+    nip19: {
+      ...(previousNostrTools.nip19 || {}),
+      decode: (value) => {
+        if (value === actorNpub) {
+          return { type: "npub", data: actorHex };
+        }
+        if (
+          previousNostrTools.nip19 &&
+          typeof previousNostrTools.nip19.decode === "function"
+        ) {
+          return previousNostrTools.nip19.decode(value);
+        }
+        throw new Error("unsupported-npub");
+      },
+    },
+  };
+
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
+  const originalCache = nostrClient.watchHistoryCache;
+  const originalStorage = nostrClient.watchHistoryStorage;
+
+  nostrClient.watchHistoryCache = new Map();
+  nostrClient.watchHistoryStorage = { version: 2, actors: {} };
+
+  const publishEvents = async () => {
+    poolHarness.reset();
+    poolHarness.setResolver(() => ({ ok: true }));
+    poolHarness.publish(["wss://relay.test"], pointerEvent);
+    poolHarness.publish(["wss://relay.test"], chunkEvent);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  const runVariant = async (label, actorInput, pubkeyInput) => {
+    await publishEvents();
+
+    const sessionCrypto = installSessionCrypto({ privateKey: `session-${label}` });
+    const extensionCrypto = installExtensionCrypto({ actor: actorHex });
+
+    const previousEnsure = nostrClient.ensureSessionActor;
+    const previousSession = nostrClient.sessionActor;
+    const previousPub = nostrClient.pubkey;
+    const previousStorage = nostrClient.watchHistoryStorage;
+
+    try {
+      nostrClient.pubkey = pubkeyInput;
+      nostrClient.sessionActor = null;
+      nostrClient.ensureSessionActor = async () => {
+        throw new Error(`session fallback should not run for ${label}`);
+      };
+      nostrClient.watchHistoryCache.clear();
+      nostrClient.watchHistoryStorage = { version: 2, actors: {} };
+
+      const result = await nostrClient.fetchWatchHistory(actorInput, {
+        forceRefresh: true,
+      });
+
+      assert.equal(
+        extensionCrypto.getExtensionDecrypts(),
+        1,
+        `${label} actor should use extension decrypt`,
+      );
+      assert.equal(
+        sessionCrypto.getDecryptCalls(),
+        0,
+        `${label} actor should not trigger session decrypt fallback`,
+      );
+      const decryptCalls = extensionCrypto.getDecryptCalls();
+      assert.equal(
+        decryptCalls.length,
+        1,
+        `${label} actor should invoke extension decrypt exactly once`,
+      );
+      assert.equal(
+        decryptCalls[0]?.target,
+        actorHex,
+        `${label} actor should normalize npub inputs to hex for decrypt`,
+      );
+
+      assert.equal(result.items.length, 1, `${label} actor should return chunk item`);
+      assert.equal(
+        result.items[0]?.value,
+        chunkItem.value,
+        `${label} actor should surface decrypted pointer value`,
+      );
+    } finally {
+      extensionCrypto.restore();
+      sessionCrypto.restore();
+      nostrClient.ensureSessionActor = previousEnsure;
+      nostrClient.sessionActor = previousSession;
+      nostrClient.pubkey = previousPub;
+      nostrClient.watchHistoryStorage = previousStorage;
+      poolHarness.reset();
+    }
+  };
+
+  try {
+    await runVariant("hex", actorHex, actorHex);
+    await runVariant("npub", actorNpub, actorNpub);
+  } finally {
+    window.NostrTools = previousNostrTools;
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+    nostrClient.watchHistoryCache = originalCache;
+    nostrClient.watchHistoryStorage = originalStorage;
+    poolHarness.reset();
+  }
 }
 
 async function testPublishSnapshotCanonicalizationAndChunking() {
@@ -1392,6 +1564,7 @@ async function testWatchHistoryAppLoginFallback() {
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesExtensionCrypto();
 await testEnsureExtensionPermissionCaching();
+await testFetchWatchHistoryExtensionDecryptsHexAndNpub();
 await testPublishSnapshotFailureRetry();
 await testWatchHistoryPartialRelayRetry();
 await testResolveWatchHistoryBatchingWindow();
