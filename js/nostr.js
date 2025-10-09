@@ -2590,6 +2590,126 @@ function cloneEventForCache(event) {
   return cloned;
 }
 
+const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+const BECH32_CHARSET_MAP = (() => {
+  const map = new Map();
+  for (let index = 0; index < BECH32_CHARSET.length; index += 1) {
+    map.set(BECH32_CHARSET[index], index);
+  }
+  return map;
+})();
+
+const BECH32_GENERATORS = [
+  0x3b6a57b2,
+  0x26508e6d,
+  0x1ea119fa,
+  0x3d4233dd,
+  0x2a1462b3,
+];
+
+function bech32Polymod(values) {
+  let chk = 1;
+  for (const value of values) {
+    const top = chk >>> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ value;
+    for (let bit = 0; bit < BECH32_GENERATORS.length; bit += 1) {
+      if ((top >>> bit) & 1) {
+        chk ^= BECH32_GENERATORS[bit];
+      }
+    }
+  }
+  return chk;
+}
+
+function bech32HrpExpand(hrp) {
+  const expansion = [];
+  for (let i = 0; i < hrp.length; i += 1) {
+    expansion.push(hrp.charCodeAt(i) >>> 5);
+  }
+  expansion.push(0);
+  for (let i = 0; i < hrp.length; i += 1) {
+    expansion.push(hrp.charCodeAt(i) & 31);
+  }
+  return expansion;
+}
+
+function bech32VerifyChecksum(hrp, values) {
+  return bech32Polymod([...bech32HrpExpand(hrp), ...values]) === 1;
+}
+
+function convertBits(data, fromBits, toBits) {
+  let acc = 0;
+  let bits = 0;
+  const maxValue = (1 << toBits) - 1;
+  const result = [];
+
+  for (const value of data) {
+    if (value < 0 || value >>> fromBits !== 0) {
+      return null;
+    }
+    acc = (acc << fromBits) | value;
+    bits += fromBits;
+    while (bits >= toBits) {
+      bits -= toBits;
+      result.push((acc >>> bits) & maxValue);
+    }
+  }
+
+  if (bits > 0) {
+    if ((acc << (toBits - bits)) & maxValue) {
+      return null;
+    }
+  }
+
+  return result;
+}
+
+function decodeBech32Npub(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const hasMixedCase = value !== value.toLowerCase() && value !== value.toUpperCase();
+  if (hasMixedCase) {
+    return "";
+  }
+
+  const normalized = value.toLowerCase();
+  const separatorIndex = normalized.lastIndexOf("1");
+  if (separatorIndex <= 0 || separatorIndex + 7 > normalized.length) {
+    return "";
+  }
+
+  const hrp = normalized.slice(0, separatorIndex);
+  if (hrp !== "npub") {
+    return "";
+  }
+
+  const dataPart = normalized.slice(separatorIndex + 1);
+  const values = [];
+  for (let i = 0; i < dataPart.length; i += 1) {
+    const mapped = BECH32_CHARSET_MAP.get(dataPart[i]);
+    if (typeof mapped !== "number") {
+      return "";
+    }
+    values.push(mapped);
+  }
+
+  if (values.length < 7 || !bech32VerifyChecksum(hrp, values)) {
+    return "";
+  }
+
+  const words = values.slice(0, -6);
+  const bytes = convertBits(words, 5, 8);
+  if (!bytes || bytes.length !== 32) {
+    return "";
+  }
+
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function decodeNpubToHex(npub) {
   if (typeof npub !== "string") {
     return "";
@@ -2621,20 +2741,31 @@ function decodeNpubToHex(npub) {
       tools = fallbackTools;
     }
   }
-  if (!tools?.nip19 || typeof tools.nip19.decode !== "function") {
-    return "";
+
+  let decodeError = null;
+  if (tools?.nip19 && typeof tools.nip19.decode === "function") {
+    try {
+      const decoded = tools.nip19.decode(trimmed);
+      if (decoded?.type === "npub" && typeof decoded.data === "string") {
+        return decoded.data;
+      }
+    } catch (error) {
+      decodeError = error;
+    }
   }
 
-  try {
-    const decoded = tools.nip19.decode(trimmed);
-    if (decoded?.type === "npub" && typeof decoded.data === "string") {
-      return decoded.data;
-    }
-  } catch (error) {
-    if (isDevMode && warnableNpub) {
-      console.warn(`[nostr] Failed to decode npub: ${trimmed}`, error);
-    }
+  const manualDecoded = decodeBech32Npub(trimmed);
+  if (manualDecoded) {
+    return manualDecoded;
   }
+
+  if (isDevMode && warnableNpub) {
+    console.warn(
+      `[nostr] Failed to decode npub: ${trimmed}`,
+      decodeError || new Error("invalid-npub"),
+    );
+  }
+
   return "";
 }
 

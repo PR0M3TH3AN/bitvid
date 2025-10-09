@@ -425,6 +425,49 @@ async function testNormalizeActorKeyShortCircuit() {
   }
 }
 
+async function testNormalizeActorKeyManualFallback() {
+  console.log("Running normalizeActorKey manual fallback test...");
+
+  const actorHex =
+    "a4a6b5849bc917b3befd5c81865ee0b88773690609c207ba6588ef3e1e05b95b";
+  const actorNpub =
+    "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
+
+  if (!window.NostrTools || typeof window.NostrTools !== "object") {
+    window.NostrTools = {};
+  }
+
+  const previousNip19 = window.NostrTools.nip19;
+  const originalWarn = console.warn;
+  const warnings = [];
+
+  delete window.NostrTools.nip19;
+  console.warn = (...args) => {
+    warnings.push(args);
+  };
+
+  try {
+    const normalized = normalizeActorKey(actorNpub);
+    assert.equal(
+      normalized,
+      actorHex,
+      "manual fallback should decode npub values to hex",
+    );
+    assert.equal(
+      warnings.length,
+      0,
+      "manual fallback decode should not emit warnings",
+    );
+  } finally {
+    console.warn = originalWarn;
+    if (previousNip19 !== undefined) {
+      window.NostrTools.nip19 = previousNip19;
+    } else {
+      delete window.NostrTools.nip19;
+    }
+  }
+}
+
 async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
   const actorHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   const actorNpub =
@@ -1658,6 +1701,7 @@ await testWatchHistoryLocalFallbackWhenDisabled();
 await testWatchHistorySyncEnabledForLoggedInUsers();
 await testWatchHistoryAppLoginFallback();
 await testNormalizeActorKeyShortCircuit();
+await testNormalizeActorKeyManualFallback();
 
 console.log("watch-history.test.mjs completed successfully");
 
