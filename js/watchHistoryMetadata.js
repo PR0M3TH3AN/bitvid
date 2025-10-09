@@ -3,30 +3,14 @@
 import { getApplication } from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import { nostrClient } from "./nostr.js";
-
-const isDevEnv =
-  typeof process !== "undefined" && process?.env?.NODE_ENV !== "production";
+import { logWatchHistoryDebug } from "./watchHistoryDebug.js";
 
 function logInfo(message, details) {
-  if (!isDevEnv) {
-    return;
-  }
-  if (details && typeof details === "object") {
-    console.info(`[watchHistoryMetadata] ${message}`, details);
-  } else {
-    console.info(`[watchHistoryMetadata] ${message}`);
-  }
+  logWatchHistoryDebug("watchHistoryMetadata", "info", message, details);
 }
 
 function logWarn(message, details) {
-  if (!isDevEnv) {
-    return;
-  }
-  if (details && typeof details === "object") {
-    console.warn(`[watchHistoryMetadata] ${message}`, details);
-  } else {
-    console.warn(`[watchHistoryMetadata] ${message}`);
-  }
+  logWatchHistoryDebug("watchHistoryMetadata", "warn", message, details);
 }
 
 function normalizeVideoCandidate(candidate) {

@@ -5,10 +5,24 @@ import watchHistoryService from "../watchHistoryService.js";
 import nostrService from "../services/nostrService.js";
 import { createWatchHistoryMetadataResolver } from "../watchHistoryMetadata.js";
 import {
+  isWatchHistoryDebugEnabled,
+  logWatchHistoryDebug,
+} from "../watchHistoryDebug.js";
+import {
   createBlacklistFilterStage,
   createWatchHistorySuppressionStage,
 } from "./stages.js";
 import { isPlainObject } from "./utils.js";
+
+const WATCH_HISTORY_FEED_LOG_NAMESPACE = "watchHistoryFeed";
+
+function debugInfo(message, details) {
+  logWatchHistoryDebug(WATCH_HISTORY_FEED_LOG_NAMESPACE, "info", message, details);
+}
+
+function debugWarn(message, details) {
+  logWatchHistoryDebug(WATCH_HISTORY_FEED_LOG_NAMESPACE, "warn", message, details);
+}
 
 function normalizeActorCandidate(...values) {
   for (const value of values) {
@@ -213,6 +227,11 @@ function createWatchHistoryHydratorStage({
           ? item.pointerKey
           : pointerKey(item.pointer);
 
+      const pointerType =
+        typeof item?.pointer?.type === "string" ? item.pointer.type : null;
+      const pointerValue =
+        typeof item?.pointer?.value === "string" ? item.pointer.value : null;
+
       const watchedAtValue = Number.isFinite(item?.watchedAt)
         ? Math.max(0, Math.floor(Number(item.watchedAt)))
         : Number.isFinite(item?.metadata?.watchedAt)
@@ -222,40 +241,133 @@ function createWatchHistoryHydratorStage({
       let video = item.video || null;
       let profile = item.metadata?.profile || null;
 
+      if (isWatchHistoryDebugEnabled()) {
+        debugInfo("Hydrating watch history item.", {
+          pointerKey: pointerKeyValue || null,
+          pointerType,
+          pointerValue,
+          hasInitialVideo: Boolean(video),
+          hasInitialProfile: Boolean(profile),
+          watchedAt: watchedAtValue || null,
+        });
+      }
+
       if (pointerKeyValue && typeof service?.getLocalMetadata === "function") {
         try {
           const stored = service.getLocalMetadata(pointerKeyValue);
           if (stored) {
+            const hadVideo = Boolean(video);
+            const hadProfile = Boolean(profile);
             video = video || stored.video || null;
             profile = profile || stored.profile || null;
+            if (isWatchHistoryDebugEnabled()) {
+              debugInfo("Loaded cached metadata for pointer.", {
+                pointerKey: pointerKeyValue,
+                hadVideo,
+                hadProfile,
+                cachedVideo: Boolean(stored.video),
+                cachedProfile: Boolean(stored.profile),
+                resultingVideo: Boolean(video),
+                resultingProfile: Boolean(profile),
+              });
+            }
           }
         } catch (error) {
           context?.log?.(
             "[watch-history-feed] Failed to read cached metadata",
             error,
           );
+          if (isWatchHistoryDebugEnabled()) {
+            debugWarn("Failed to read cached metadata for pointer.", {
+              pointerKey: pointerKeyValue || null,
+              error,
+            });
+          }
         }
       }
 
       if (!video && resolver?.resolveVideo) {
+        if (isWatchHistoryDebugEnabled()) {
+          debugInfo("Resolving video via metadata resolver.", {
+            pointerKey: pointerKeyValue || null,
+            pointerType,
+            pointerValue,
+          });
+        }
         try {
           video = await resolver.resolveVideo(item.pointer);
+          if (isWatchHistoryDebugEnabled()) {
+            if (video) {
+              debugInfo("Metadata resolver returned video candidate.", {
+                pointerKey: pointerKeyValue || null,
+                videoId: typeof video.id === "string" ? video.id : null,
+                title:
+                  typeof video.title === "string" && video.title.trim()
+                    ? video.title
+                    : null,
+                invalid: Boolean(video.invalid),
+              });
+            } else {
+              debugWarn("Metadata resolver returned no video candidate.", {
+                pointerKey: pointerKeyValue || null,
+              });
+            }
+          }
         } catch (error) {
           context?.log?.(
             "[watch-history-feed] Failed to resolve video from pointer",
             error,
           );
+          if (isWatchHistoryDebugEnabled()) {
+            debugWarn("Metadata resolver threw while resolving video.", {
+              pointerKey: pointerKeyValue || null,
+              error,
+            });
+          }
         }
       }
 
       if (video?.pubkey && !profile && resolver?.resolveProfile) {
+        if (isWatchHistoryDebugEnabled()) {
+          debugInfo("Resolving profile for video author.", {
+            pointerKey: pointerKeyValue || null,
+            pubkey: video.pubkey,
+          });
+        }
         try {
           profile = resolver.resolveProfile(video.pubkey) || null;
+          if (isWatchHistoryDebugEnabled()) {
+            if (profile) {
+              const label =
+                profile.display_name ||
+                profile.name ||
+                profile.username ||
+                profile.nip05 ||
+                null;
+              debugInfo("Resolved profile for video author.", {
+                pointerKey: pointerKeyValue || null,
+                pubkey: video.pubkey,
+                label: label || null,
+              });
+            } else {
+              debugWarn("Resolver returned no profile for video author.", {
+                pointerKey: pointerKeyValue || null,
+                pubkey: video.pubkey,
+              });
+            }
+          }
         } catch (error) {
           context?.log?.(
             "[watch-history-feed] Failed to resolve profile for pointer",
             error,
           );
+          if (isWatchHistoryDebugEnabled()) {
+            debugWarn("Profile resolver threw while hydrating metadata.", {
+              pointerKey: pointerKeyValue || null,
+              pubkey: video.pubkey,
+              error,
+            });
+          }
         }
       }
 
@@ -269,6 +381,27 @@ function createWatchHistoryHydratorStage({
         video: video || null,
         profile: profile || null,
       };
+
+      if (isWatchHistoryDebugEnabled()) {
+        const summary = {
+          pointerKey: pointerKeyValue || null,
+          pointerType,
+          pointerValue,
+          watchedAt: watchedAtValue || null,
+          videoId: typeof video?.id === "string" ? video.id : null,
+          title:
+            typeof video?.title === "string" && video.title?.trim()
+              ? video.title
+              : null,
+          invalid: Boolean(video?.invalid),
+          hasProfile: Boolean(profile),
+        };
+        if (video) {
+          debugInfo("Hydrated watch history entry metadata.", summary);
+        } else {
+          debugWarn("Hydrated entry is missing resolved video metadata.", summary);
+        }
+      }
 
       const nextItem = {
         ...item,
@@ -286,20 +419,44 @@ function createWatchHistoryHydratorStage({
               video: metadata.video,
               profile: metadata.profile,
             });
+            if (isWatchHistoryDebugEnabled()) {
+              debugInfo("Stored metadata cache entry for pointer.", {
+                pointerKey: pointerKeyValue,
+                cachedVideo: Boolean(metadata.video),
+                cachedProfile: Boolean(metadata.profile),
+              });
+            }
           } catch (error) {
             context?.log?.(
               "[watch-history-feed] Failed to persist metadata cache",
               error,
             );
+            if (isWatchHistoryDebugEnabled()) {
+              debugWarn("Failed to persist metadata cache entry.", {
+                pointerKey: pointerKeyValue,
+                error,
+              });
+            }
           }
         } else if (typeof service?.removeLocalMetadata === "function") {
           try {
             service.removeLocalMetadata(pointerKeyValue);
+            if (isWatchHistoryDebugEnabled()) {
+              debugInfo("Cleared metadata cache entry for pointer.", {
+                pointerKey: pointerKeyValue,
+              });
+            }
           } catch (error) {
             context?.log?.(
               "[watch-history-feed] Failed to clear cached metadata",
               error,
             );
+            if (isWatchHistoryDebugEnabled()) {
+              debugWarn("Failed to clear cached metadata entry.", {
+                pointerKey: pointerKeyValue,
+                error,
+              });
+            }
           }
         }
       }
