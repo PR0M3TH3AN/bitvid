@@ -61,6 +61,23 @@ const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
 const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
   "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
+
+const DEFAULT_ENABLE_VARIANT_TIMEOUT_MS = 7000;
+
+function getEnableVariantTimeoutMs() {
+  const overrideValue =
+    typeof globalThis !== "undefined" &&
+    globalThis !== null &&
+    Number.isFinite(globalThis.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__)
+      ? Math.floor(globalThis.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__)
+      : null;
+
+  if (overrideValue !== null && overrideValue > 0) {
+    return Math.max(50, overrideValue);
+  }
+
+  return DEFAULT_ENABLE_VARIANT_TIMEOUT_MS;
+}
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
@@ -437,6 +454,8 @@ async function runNip07WithRetry(
     });
   }
 }
+
+export const __testExports = { runNip07WithRetry };
 
 function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
   const resolvedTimeout = Number(timeoutMs);
@@ -2955,21 +2974,30 @@ export class NostrClient {
       return { ok: true, code: "enable-unavailable" };
     }
 
-    const permissionVariants = [];
+    const permissionVariants = [null];
     if (outstanding.length) {
       permissionVariants.push({
         permissions: outstanding.map((method) => ({ method })),
       });
       permissionVariants.push({ permissions: outstanding });
     }
-    permissionVariants.push(null);
 
     let lastError = null;
     for (const options of permissionVariants) {
+      const variantTimeoutOverrides = options
+        ? {
+            timeoutMs: Math.min(
+              NIP07_LOGIN_TIMEOUT_MS,
+              getEnableVariantTimeoutMs(),
+            ),
+            retryMultiplier: 1,
+          }
+        : { retryMultiplier: 1 };
+
       try {
         await runNip07WithRetry(
           () => (options ? extension.enable(options) : extension.enable()),
-          { label: "extension.enable" },
+          { label: "extension.enable", ...variantTimeoutOverrides },
         );
         this.markExtensionPermissions(outstanding);
         return { ok: true };
@@ -5582,7 +5610,7 @@ export class NostrClient {
           DEFAULT_NIP07_PERMISSION_METHODS,
         );
 
-        const permissionVariants = [];
+        const permissionVariants = [null];
         const objectPermissions = requestedPermissionMethods
           .map((method) =>
             typeof method === "string" && method.trim()
@@ -5599,8 +5627,6 @@ export class NostrClient {
         if (stringPermissions.length) {
           permissionVariants.push({ permissions: stringPermissions });
         }
-        permissionVariants.push(null);
-
         let enableError = null;
         for (const options of permissionVariants) {
           try {
@@ -5609,7 +5635,18 @@ export class NostrClient {
                 options
                   ? extension.enable(options)
                   : extension.enable(),
-              { label: "extension.enable" },
+              {
+                label: "extension.enable",
+                ...(options
+                  ? {
+                      timeoutMs: Math.min(
+                        NIP07_LOGIN_TIMEOUT_MS,
+                        getEnableVariantTimeoutMs(),
+                      ),
+                    }
+                  : {}),
+                retryMultiplier: 1,
+              },
             );
             enableError = null;
             break;
