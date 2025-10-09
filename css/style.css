@@ -1577,6 +1577,15 @@ footer a:hover {
   object-fit: cover;
 }
 
+.video-card .ratio-16-9 {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.video-card .ratio-16-9 > [data-video-thumbnail] {
+  border-radius: inherit;
+}
+
 /* Sidebar default states */
 #sidebarContainer {
   position: relative;
