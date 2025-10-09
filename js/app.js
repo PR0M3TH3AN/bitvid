@@ -63,6 +63,7 @@ import { UploadModal } from "./ui/components/UploadModal.js";
 import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
+import MoreMenuController from "./ui/moreMenuController.js";
 import ProfileModalController from "./ui/profileModalController.js";
 import ZapController from "./ui/zapController.js";
 import { MediaLoader } from "./utils/mediaLoader.js";
@@ -182,9 +183,7 @@ class Application {
     this.videoListViewEditHandler = null;
     this.videoListViewRevertHandler = null;
     this.videoListViewDeleteHandler = null;
-    this.videoListViewBlacklistHandler = null;
-    this.boundVideoListShareListener = null;
-    this.boundVideoListContextListener = null;
+    this.moreMenuController = null;
     this.latestFeedMetadata = null;
 
     this.nostrService = services.nostrService || nostrService;
@@ -619,6 +618,53 @@ class Application {
       this.boundVideoModalZapWalletHandler
     );
 
+    this.moreMenuController = new MoreMenuController({
+      document,
+      accessControl,
+      userBlocks,
+      subscriptions,
+      clipboard:
+        typeof navigator !== "undefined" && navigator?.clipboard
+          ? navigator.clipboard
+          : null,
+      isDevMode,
+      callbacks: {
+        getCurrentVideo: () => this.currentVideo,
+        getCurrentUserNpub: () => this.getCurrentUserNpub(),
+        getCurrentUserPubkey: () => this.pubkey,
+        canCurrentUserManageBlacklist: () =>
+          this.canCurrentUserManageBlacklist(),
+        openCreatorChannel: () => this.openCreatorChannel(),
+        goToProfile: (author) => this.goToProfile(author),
+        showError: (message) => this.showError(message),
+        showSuccess: (message) => this.showSuccess(message),
+        safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
+        safeDecodeNpub: (npub) => this.safeDecodeNpub(npub),
+        buildShareUrlFromEventId: (eventId) =>
+          this.buildShareUrlFromEventId(eventId),
+        handleRemoveHistoryAction: (payload) =>
+          this.handleRemoveHistoryAction(payload),
+        handleRepostAction: (payload) => this.handleRepostAction(payload),
+        handleMirrorAction: (payload) => this.handleMirrorAction(payload),
+        handleEnsurePresenceAction: (payload) =>
+          this.handleEnsurePresenceAction(payload),
+        loadVideos: () => this.loadVideos(),
+        onUserBlocksUpdated: () => {
+          if (this.profileController) {
+            try {
+              this.profileController.populateBlockedList();
+            } catch (error) {
+              console.warn(
+                "[profileModal] Failed to refresh blocked list after update:",
+                error,
+              );
+            }
+          }
+        },
+      },
+    });
+    this.moreMenuController.setVideoModal(this.videoModal);
+
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
 
@@ -647,9 +693,6 @@ class Application {
         this.videoSubscription = subscription || null;
       }
     );
-    this.moreMenuGlobalHandlerBound = false;
-    this.boundMoreMenuDocumentClick = null;
-    this.boundMoreMenuDocumentKeydown = null;
     this.boundNwcSettingsToastHandler = null;
     Object.defineProperty(this, "savedProfiles", {
       configurable: false,
@@ -812,41 +855,9 @@ class Application {
     };
     this.videoListView.setDeleteHandler(this.videoListViewDeleteHandler);
 
-    this.videoListViewBlacklistHandler = ({ video, dataset }) => {
-      const detail = {
-        ...(dataset || {}),
-        author: dataset?.author || video?.pubkey || "",
-      };
-      this.handleMoreMenuAction("blacklist-author", detail);
-    };
-    this.videoListView.setBlacklistHandler(this.videoListViewBlacklistHandler);
-
-    this.boundVideoListShareListener = (event) => {
-      const detail = event?.detail || {};
-      const dataset = {
-        ...(detail.dataset || {}),
-        eventId: detail.eventId || detail.dataset?.eventId || detail.video?.id || "",
-        context: detail.dataset?.context || "card",
-      };
-      this.handleMoreMenuAction(detail.action || "copy-link", dataset);
-    };
-    this.videoListView.addEventListener(
-      "video:share",
-      this.boundVideoListShareListener
-    );
-
-    this.boundVideoListContextListener = (event) => {
-      const detail = event?.detail || {};
-      const dataset = {
-        ...(detail.dataset || {}),
-        eventId: detail.dataset?.eventId || detail.video?.id || "",
-      };
-      this.handleMoreMenuAction(detail.action, dataset);
-    };
-    this.videoListView.addEventListener(
-      "video:context-action",
-      this.boundVideoListContextListener
-    );
+    if (this.moreMenuController) {
+      this.moreMenuController.attachVideoListView(this.videoListView);
+    }
 
     // NEW: reference to the login modal's close button
     this.closeLoginModalBtn =
@@ -4379,127 +4390,27 @@ class Application {
   }
 
   ensureGlobalMoreMenuHandlers() {
-    if (this.moreMenuGlobalHandlerBound) {
-      return;
+    if (this.moreMenuController) {
+      this.moreMenuController.ensureGlobalMoreMenuHandlers();
     }
-
-    this.moreMenuGlobalHandlerBound = true;
-
-    this.boundMoreMenuDocumentClick = (event) => {
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.closest("[data-more-menu-wrapper]") ||
-          target.closest("[data-more-menu]"))
-      ) {
-        return;
-      }
-      this.closeAllMoreMenus();
-    };
-
-    this.boundMoreMenuDocumentKeydown = (event) => {
-      if (event.key === "Escape") {
-        this.closeAllMoreMenus();
-      }
-    };
-
-    document.addEventListener("click", this.boundMoreMenuDocumentClick);
-    document.addEventListener("keydown", this.boundMoreMenuDocumentKeydown);
   }
 
   closeAllMoreMenus() {
-    if (this.videoListView) {
-      this.videoListView.closeAllMenus();
+    if (this.moreMenuController) {
+      this.moreMenuController.closeAllMoreMenus();
     }
-
-    const menus = document.querySelectorAll("[data-more-menu]");
-    menus.forEach((menu) => {
-      if (menu instanceof HTMLElement) {
-        menu.classList.add("hidden");
-      }
-    });
-
-    const buttons = document.querySelectorAll("[data-more-dropdown]");
-    buttons.forEach((btn) => {
-      if (btn instanceof HTMLElement) {
-        btn.setAttribute("aria-expanded", "false");
-      }
-    });
   }
 
   attachMoreMenuHandlers(container) {
-    if (!container || typeof container.querySelectorAll !== "function") {
-      return;
+    if (this.moreMenuController) {
+      this.moreMenuController.attachMoreMenuHandlers(container);
     }
-
-    const buttons = container.querySelectorAll("[data-more-dropdown]");
-    if (!buttons.length) {
-      return;
-    }
-
-    this.ensureGlobalMoreMenuHandlers();
-
-    buttons.forEach((button) => {
-      if (!(button instanceof HTMLElement)) {
-        return;
-      }
-      if (button.dataset.moreMenuToggleBound === "true") {
-        return;
-      }
-      button.dataset.moreMenuToggleBound = "true";
-      button.setAttribute("aria-expanded", "false");
-
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        const key = button.getAttribute("data-more-dropdown") || "";
-        const dropdown = document.getElementById(`moreDropdown-${key}`);
-        if (!(dropdown instanceof HTMLElement)) {
-          return;
-        }
-
-        const willOpen = dropdown.classList.contains("hidden");
-        this.closeAllMoreMenus();
-
-        if (willOpen) {
-          dropdown.classList.remove("hidden");
-          button.setAttribute("aria-expanded", "true");
-        }
-      });
-    });
-
-    const actionButtons = container.querySelectorAll(
-      "[data-more-menu] button[data-action]"
-    );
-    actionButtons.forEach((button) => {
-      if (!(button instanceof HTMLElement)) {
-        return;
-      }
-      if (button.dataset.moreMenuActionBound === "true") {
-        return;
-      }
-      button.dataset.moreMenuActionBound = "true";
-
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const { action } = button.dataset;
-        this.handleMoreMenuAction(action, button.dataset);
-        this.closeAllMoreMenus();
-      });
-    });
   }
 
   syncModalMoreMenuData() {
-    if (!this.videoModal) {
-      return;
+    if (this.moreMenuController) {
+      this.moreMenuController.syncModalMoreMenuData();
     }
-
-    this.videoModal.syncMoreMenuData({
-      currentVideo: this.currentVideo,
-      canManageBlacklist: this.canCurrentUserManageBlacklist(),
-    });
   }
 
   derivePointerFromDataset(dataset = {}, context = "") {
@@ -4534,253 +4445,11 @@ class Application {
   }
 
   async handleMoreMenuAction(action, dataset = {}) {
-    const normalized = typeof action === "string" ? action.trim() : "";
-    const context = dataset.context || "";
-
-    switch (normalized) {
-      case "open-channel": {
-        if (context === "modal") {
-          this.openCreatorChannel();
-          break;
-        }
-
-        const author =
-          dataset.author || (this.currentVideo ? this.currentVideo.pubkey : "");
-        if (author) {
-          this.goToProfile(author);
-        } else {
-          this.showError("No creator info available.");
-        }
-        break;
-      }
-      case "copy-link": {
-        const eventId =
-          dataset.eventId ||
-          (context === "modal" && this.currentVideo ? this.currentVideo.id : "");
-        if (!eventId) {
-          this.showError("Could not generate link.");
-          break;
-        }
-        const shareUrl = this.buildShareUrlFromEventId(eventId);
-        if (!shareUrl) {
-          this.showError("Could not generate link.");
-          break;
-        }
-        navigator.clipboard
-          .writeText(shareUrl)
-          .then(() => this.showSuccess("Video link copied to clipboard!"))
-          .catch(() => this.showError("Failed to copy the link."));
-        break;
-      }
-      case "remove-history": {
-        await this.handleRemoveHistoryAction(dataset);
-        break;
-      }
-      case "repost-event": {
-        await this.handleRepostAction(dataset);
-        break;
-      }
-      case "mirror-video": {
-        await this.handleMirrorAction(dataset);
-        break;
-      }
-      case "ensure-presence": {
-        await this.handleEnsurePresenceAction(dataset);
-        break;
-      }
-      case "copy-npub": {
-        const explicitNpub =
-          typeof dataset.npub === "string" && dataset.npub.trim()
-            ? dataset.npub.trim()
-            : "";
-        const authorCandidate = dataset.author || "";
-        const fallbackNpub = this.safeEncodeNpub(authorCandidate);
-        const valueToCopy = explicitNpub || fallbackNpub;
-
-        if (!valueToCopy) {
-          this.showError("No npub available to copy.");
-          break;
-        }
-
-        try {
-          await navigator.clipboard.writeText(valueToCopy);
-          this.showSuccess("Channel npub copied to clipboard!");
-        } catch (error) {
-          console.error("Failed to copy npub:", error);
-          this.showError("Failed to copy the npub.");
-        }
-        break;
-      }
-      case "blacklist-author": {
-        const actorNpub = this.getCurrentUserNpub();
-        if (!actorNpub) {
-          this.showError("Please login as a moderator to manage the blacklist.");
-          break;
-        }
-
-        try {
-          await accessControl.ensureReady();
-        } catch (error) {
-          console.warn("Failed to refresh moderation state before blacklisting:", error);
-        }
-
-        if (!accessControl.canEditAdminLists(actorNpub)) {
-          this.showError("Only moderators can manage the blacklist.");
-          break;
-        }
-
-        let author = dataset.author || "";
-        if (!author && context === "modal" && this.currentVideo?.pubkey) {
-          author = this.currentVideo.pubkey;
-        }
-        if (!author && this.currentVideo?.pubkey) {
-          author = this.currentVideo.pubkey;
-        }
-
-        const explicitNpub =
-          typeof dataset.npub === "string" && dataset.npub.trim()
-            ? dataset.npub.trim()
-            : "";
-        const targetNpub = explicitNpub || this.safeEncodeNpub(author);
-
-        if (!targetNpub) {
-          this.showError("Unable to determine the creator npub.");
-          break;
-        }
-
-        try {
-          const result = await accessControl.addToBlacklist(
-            actorNpub,
-            targetNpub
-          );
-
-          if (result?.ok) {
-            this.showSuccess("Creator added to the blacklist.");
-            subscriptions
-              .refreshActiveFeed({ reason: "admin-blacklist-update" })
-              .catch((error) => {
-                if (isDevMode) {
-                  console.warn(
-                    "[Subscriptions] Failed to refresh after blacklist update:",
-                    error
-                  );
-                }
-              });
-          } else {
-            const code = result?.error || "unknown";
-            switch (code) {
-              case "self":
-                this.showError("You cannot blacklist yourself.");
-                break;
-              case "immutable":
-                this.showError(
-                  "Moderators cannot blacklist the super admin or fellow moderators."
-                );
-                break;
-              case "invalid npub":
-                this.showError("Unable to blacklist this creator.");
-                break;
-              case "forbidden":
-                this.showError("Only moderators can manage the blacklist.");
-                break;
-              default:
-                this.showError(
-                  "Failed to update the blacklist. Please try again."
-                );
-                break;
-            }
-          }
-        } catch (error) {
-          console.error("Failed to add creator to blacklist:", error);
-          this.showError("Failed to update the blacklist. Please try again.");
-        }
-        break;
-      }
-      case "block-author": {
-        if (!this.pubkey) {
-          this.showError("Please login to manage your block list.");
-          break;
-        }
-
-        const authorCandidate =
-          dataset.author ||
-          (this.currentVideo && this.currentVideo.pubkey) ||
-          "";
-
-        const trimmed =
-          typeof authorCandidate === "string" ? authorCandidate.trim() : "";
-        if (!trimmed) {
-          this.showError("Unable to determine the creator to block.");
-          break;
-        }
-
-        let normalizedHex = "";
-        if (trimmed.startsWith("npub1")) {
-          normalizedHex = this.safeDecodeNpub(trimmed) || "";
-        } else if (/^[0-9a-f]{64}$/i.test(trimmed)) {
-          normalizedHex = trimmed.toLowerCase();
-        }
-
-        if (!normalizedHex) {
-          this.showError("Unable to determine the creator to block.");
-          break;
-        }
-
-        if (normalizedHex === this.pubkey) {
-          this.showError("You cannot block yourself.");
-          break;
-        }
-
-        try {
-          await userBlocks.ensureLoaded(this.pubkey);
-
-          if (userBlocks.isBlocked(normalizedHex)) {
-            this.showSuccess("You already blocked this creator.");
-          } else {
-            await userBlocks.addBlock(normalizedHex, this.pubkey);
-            this.showSuccess(
-              "Creator blocked. You won't see their videos anymore."
-            );
-          }
-
-          if (this.profileController) {
-            try {
-              this.profileController.populateBlockedList();
-            } catch (error) {
-              console.warn(
-                "[profileModal] Failed to refresh blocked list after update:",
-                error,
-              );
-            }
-          }
-          await this.loadVideos();
-          subscriptions
-            .refreshActiveFeed({ reason: "user-block-update" })
-            .catch((error) => {
-              if (isDevMode) {
-                console.warn(
-                  "[Subscriptions] Failed to refresh after user block update:",
-                  error
-                );
-              }
-            });
-        } catch (error) {
-          console.error("Failed to update personal block list:", error);
-          const message =
-            error?.code === "nip04-missing"
-              ? "Your Nostr extension must support NIP-04 to manage private lists."
-              : "Failed to update your block list. Please try again.";
-          this.showError(message);
-        }
-        break;
-      }
-      case "report": {
-        this.showSuccess("Reporting coming soon.");
-        break;
-      }
-      default:
-        break;
+    if (!this.moreMenuController) {
+      return;
     }
+
+    return this.moreMenuController.handleMoreMenuAction(action, dataset);
   }
 
   async handleRepostAction(dataset = {}) {
@@ -6981,35 +6650,29 @@ class Application {
     }
 
     if (this.videoListView) {
-      if (this.boundVideoListShareListener) {
-        this.videoListView.removeEventListener(
-          "video:share",
-          this.boundVideoListShareListener
-        );
-        this.boundVideoListShareListener = null;
-      }
-      if (this.boundVideoListContextListener) {
-        this.videoListView.removeEventListener(
-          "video:context-action",
-          this.boundVideoListContextListener
-        );
-        this.boundVideoListContextListener = null;
+      if (this.moreMenuController) {
+        this.moreMenuController.detachVideoListView();
       }
       this.videoListView.setPlaybackHandler(null);
       this.videoListView.setEditHandler(null);
       this.videoListView.setRevertHandler(null);
       this.videoListView.setDeleteHandler(null);
-      this.videoListView.setBlacklistHandler(null);
       this.videoListViewPlaybackHandler = null;
       this.videoListViewEditHandler = null;
       this.videoListViewRevertHandler = null;
       this.videoListViewDeleteHandler = null;
-      this.videoListViewBlacklistHandler = null;
       try {
         this.videoListView.destroy();
       } catch (error) {
         console.warn("[Application] Failed to destroy VideoListView:", error);
       }
+      this.videoListView = null;
+    }
+
+    if (this.moreMenuController) {
+      this.moreMenuController.setVideoModal(null);
+      this.moreMenuController.destroy();
+      this.moreMenuController = null;
     }
 
     if (this.profileController) {
