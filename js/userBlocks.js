@@ -87,14 +87,33 @@ class UserBlockListManager {
       };
 
       const events = [];
-      for (const relay of nostrClient.relays) {
-        try {
-          const res = await nostrClient.pool.list([relay], [filter]);
+      const relays = Array.isArray(nostrClient.relays)
+        ? nostrClient.relays
+        : [];
+
+      const results = await Promise.allSettled(
+        relays.map((relay) =>
+          Promise.resolve()
+            .then(() => nostrClient.pool.list([relay], [filter]))
+            .then((res) => ({ relay, res }))
+            .catch((error) => {
+              throw { relay, error };
+            })
+        )
+      );
+
+      for (const outcome of results) {
+        if (outcome.status === "fulfilled") {
+          const { res } = outcome.value || {};
           if (Array.isArray(res) && res.length) {
             events.push(...res);
           }
-        } catch (err) {
-          console.error(`[UserBlockList] Relay error at ${relay}:`, err);
+        } else {
+          const { relay, error } = outcome.reason || {};
+          console.error(
+            `[UserBlockList] Relay error at ${relay}:`,
+            error ?? outcome.reason
+          );
         }
       }
 
