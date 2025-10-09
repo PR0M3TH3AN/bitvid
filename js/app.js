@@ -38,6 +38,7 @@ import nostrService from "./services/nostrService.js";
 import { initQuickR2Upload } from "./r2-quick.js";
 import { createWatchHistoryRenderer } from "./historyView.js";
 import WatchHistoryController from "./ui/watchHistoryController.js";
+import WatchHistoryTelemetry from "./services/watchHistoryTelemetry.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
 import {
@@ -163,8 +164,7 @@ class Application {
     this.videoDiscussionCountCache = new Map();
     this.inFlightDiscussionCounts = new Map();
     this.activeIntervals = [];
-    this.watchHistoryMetadataEnabled = null;
-    this.watchHistoryPreferenceUnsubscribe = null;
+    this.watchHistoryTelemetry = null;
     this.authEventUnsubscribes = [];
     this.unsubscribeFromNostrService = null;
     this.videoModalReadyPromise = null;
@@ -239,6 +239,16 @@ class Application {
         this.dropWatchHistoryMetadata(pointerKey),
       getActivePubkey: () =>
         typeof this.pubkey === "string" && this.pubkey ? this.pubkey : "",
+    });
+
+    this.watchHistoryTelemetry = new WatchHistoryTelemetry({
+      watchHistoryService,
+      watchHistoryController: this.watchHistoryController,
+      nostrClient,
+      log: (message, ...args) => this.log(message, ...args),
+      normalizeHexPubkey: (value) => this.normalizeHexPubkey(value),
+      getActiveUserPubkey: () => this.pubkey,
+      ingestLocalViewEvent,
     });
 
     this.playbackService =
@@ -625,8 +635,6 @@ class Application {
     this.currentVideo = null;
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
-    this.playbackTelemetryState = null;
-    this.loggedViewPointerKeys = new Set();
     this.videoSubscription = this.nostrService.getVideoSubscription() || null;
     this.videoList = null;
     this.modalViewCountUnsub = null;
@@ -1108,16 +1116,15 @@ class Application {
       // 5. Setup general event listeners
       this.setupEventListeners();
 
-      const watchHistoryInitPromise = this.initWatchHistoryMetadataSync().catch(
-        (error) => {
+      const watchHistoryInitPromise =
+        this.watchHistoryTelemetry?.initPreferenceSync?.().catch((error) => {
           if (isDevMode) {
             console.warn(
               "[app.init()] Failed to initialize watch history metadata sync:",
               error
             );
           }
-        }
-      );
+        }) || Promise.resolve();
 
       // 6) Load the default view ONLY if there's no #view= already
       if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
@@ -3040,146 +3047,20 @@ class Application {
   }
 
   cancelPendingViewLogging() {
-    const state = this.playbackTelemetryState;
-    if (!state) {
-      return;
-    }
-
-    if (state.viewTimerId) {
-      clearTimeout(state.viewTimerId);
-    }
-
-    if (Array.isArray(state.handlers) && state.videoEl) {
-      for (const { eventName, handler } of state.handlers) {
-        try {
-          state.videoEl.removeEventListener(eventName, handler);
-        } catch (err) {
-          if (isDevMode) {
-            console.warn(
-              `[cancelPendingViewLogging] Failed to detach ${eventName} listener:`,
-              err
-            );
-          }
-        }
-      }
-    }
-
-    this.playbackTelemetryState = null;
-
-    this.flushWatchHistory("session-end", "cancelPendingViewLogging").catch(
-      (error) => {
-        const message =
-          error && typeof error.message === "string"
-            ? error.message
-            : String(error ?? "unknown error");
-        this.log(
-          `[cancelPendingViewLogging] Watch history flush failed: ${message}`
-        );
-      }
-    );
+    this.watchHistoryTelemetry?.cancelPlaybackLogging?.();
   }
 
   resetViewLoggingState() {
-    this.cancelPendingViewLogging();
-    if (this.loggedViewPointerKeys.size > 0) {
-      this.loggedViewPointerKeys.clear();
-    }
-  }
-
-  refreshWatchHistoryMetadataSettings() {
-    if (!watchHistoryService?.isEnabled?.()) {
-      this.watchHistoryMetadataEnabled = false;
-      return this.watchHistoryMetadataEnabled;
-    }
-
-    const previous = this.watchHistoryMetadataEnabled;
-    let enabled = true;
-
-    try {
-      if (typeof watchHistoryService.getSettings === "function") {
-        const settings = watchHistoryService.getSettings();
-        enabled = settings?.metadata?.storeLocally !== false;
-      } else if (typeof watchHistoryService.shouldStoreMetadata === "function") {
-        enabled = watchHistoryService.shouldStoreMetadata() !== false;
-      }
-    } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistory] Failed to read metadata settings:",
-          error,
-        );
-      }
-      enabled = true;
-    }
-
-    this.watchHistoryMetadataEnabled = enabled;
-
-    if (enabled === false && previous !== false) {
-      try {
-        watchHistoryService?.clearLocalMetadata?.();
-      } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[watchHistory] Failed to purge metadata cache while preference disabled:",
-            error,
-          );
-        }
-      }
-    }
-
-    return this.watchHistoryMetadataEnabled;
-  }
-
-  async initWatchHistoryMetadataSync() {
-    if (!watchHistoryService?.isEnabled?.()) {
-      this.watchHistoryMetadataEnabled = false;
-      return;
-    }
-
-    this.refreshWatchHistoryMetadataSettings();
-
-    if (
-      typeof watchHistoryService.subscribe === "function" &&
-      !this.watchHistoryPreferenceUnsubscribe
-    ) {
-      try {
-        const unsubscribe = watchHistoryService.subscribe(
-          "metadata-preference",
-          (payload) => {
-            const previous = this.watchHistoryMetadataEnabled;
-            const enabled = payload?.enabled !== false;
-            this.watchHistoryMetadataEnabled = enabled;
-            if (previous === true && enabled === false) {
-              try {
-                watchHistoryService?.clearLocalMetadata?.();
-              } catch (error) {
-                if (isDevMode) {
-                  console.warn(
-                    "[watchHistory] Failed to clear cached metadata after toggle off:",
-                    error,
-                  );
-                }
-              }
-            }
-          },
-        );
-        if (typeof unsubscribe === "function") {
-          this.watchHistoryPreferenceUnsubscribe = unsubscribe;
-        }
-      } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[watchHistory] Failed to subscribe to metadata preference changes:",
-            error,
-          );
-        }
-      }
-    }
+    this.watchHistoryTelemetry?.resetPlaybackLoggingState?.();
   }
 
   persistWatchHistoryMetadataForVideo(video, pointerInfo) {
+    if (this.watchHistoryTelemetry) {
+      this.watchHistoryTelemetry.persistMetadataForVideo(video, pointerInfo);
+      return;
+    }
+
     if (
-      !this.watchHistoryMetadataEnabled ||
       !pointerInfo ||
       !pointerInfo.key ||
       typeof watchHistoryService?.setLocalMetadata !== "function"
@@ -3214,6 +3095,11 @@ class Application {
   }
 
   dropWatchHistoryMetadata(pointerKey) {
+    if (this.watchHistoryTelemetry) {
+      this.watchHistoryTelemetry.dropMetadata(pointerKey);
+      return;
+    }
+
     if (!pointerKey || typeof pointerKey !== "string") {
       return;
     }
@@ -3254,277 +3140,104 @@ class Application {
   }
 
   async handleWatchHistoryRemoval(payload = {}) {
-    if (!this.watchHistoryController) {
+    if (!this.watchHistoryTelemetry) {
       this.showError("Watch history sync is not available right now.");
       const error = new Error("watch-history-disabled");
       error.handled = true;
       throw error;
     }
-    return this.watchHistoryController.handleWatchHistoryRemoval(payload);
+    return this.watchHistoryTelemetry.handleRemoval(payload);
   }
 
   flushWatchHistory(reason = "session-end", context = "watch-history") {
-    if (!this.watchHistoryController) {
+    if (!this.watchHistoryTelemetry) {
       return Promise.resolve();
     }
-    return this.watchHistoryController.flush(reason, context);
+    return this.watchHistoryTelemetry.flush(reason, context);
   }
 
   getActiveViewIdentityKey() {
-    const normalizedUser = this.normalizeHexPubkey(this.pubkey);
-    if (normalizedUser) {
-      return `actor:${normalizedUser}`;
+    if (!this.watchHistoryTelemetry) {
+      const normalizedUser = this.normalizeHexPubkey(this.pubkey);
+      if (normalizedUser) {
+        return `actor:${normalizedUser}`;
+      }
+
+      const sessionActorPubkey = this.normalizeHexPubkey(
+        nostrClient?.sessionActor?.pubkey
+      );
+      if (sessionActorPubkey) {
+        return `actor:${sessionActorPubkey}`;
+      }
+
+      return "actor:anonymous";
     }
 
-    const sessionActorPubkey = this.normalizeHexPubkey(
-      nostrClient?.sessionActor?.pubkey
-    );
-    if (sessionActorPubkey) {
-      return `actor:${sessionActorPubkey}`;
-    }
-
-    return "actor:anonymous";
+    return this.watchHistoryTelemetry.getActiveViewIdentityKey();
   }
 
   deriveViewIdentityKeyFromEvent(event) {
-    if (!event || typeof event !== "object") {
-      return "";
+    if (!this.watchHistoryTelemetry) {
+      if (!event || typeof event !== "object") {
+        return "";
+      }
+
+      const normalizedPubkey = this.normalizeHexPubkey(event.pubkey);
+      if (!normalizedPubkey) {
+        return "";
+      }
+
+      return `actor:${normalizedPubkey}`;
     }
 
-    const normalizedPubkey = this.normalizeHexPubkey(event.pubkey);
-    if (!normalizedPubkey) {
-      return "";
-    }
-
-    return `actor:${normalizedPubkey}`;
+    return this.watchHistoryTelemetry.deriveViewIdentityKeyFromEvent(event);
   }
 
   buildViewCooldownKey(pointerKey, identityKey) {
-    const normalizedPointerKey =
-      typeof pointerKey === "string" && pointerKey.trim()
-        ? pointerKey.trim()
-        : "";
-    if (!normalizedPointerKey) {
-      return "";
+    if (!this.watchHistoryTelemetry) {
+      const normalizedPointerKey =
+        typeof pointerKey === "string" && pointerKey.trim()
+          ? pointerKey.trim()
+          : "";
+      if (!normalizedPointerKey) {
+        return "";
+      }
+
+      const normalizedIdentity =
+        typeof identityKey === "string" && identityKey.trim()
+          ? identityKey.trim().toLowerCase()
+          : "";
+
+      return normalizedIdentity
+        ? `${normalizedPointerKey}::${normalizedIdentity}`
+        : normalizedPointerKey;
     }
 
-    const normalizedIdentity =
-      typeof identityKey === "string" && identityKey.trim()
-        ? identityKey.trim().toLowerCase()
-        : "";
-
-    return normalizedIdentity
-      ? `${normalizedPointerKey}::${normalizedIdentity}`
-      : normalizedPointerKey;
+    return this.watchHistoryTelemetry.buildViewCooldownKey(
+      pointerKey,
+      identityKey
+    );
   }
 
-  preparePlaybackViewLogging(videoEl) {
-    this.cancelPendingViewLogging();
-
-    if (!videoEl || typeof videoEl.addEventListener !== "function") {
+  preparePlaybackLogging(videoEl) {
+    if (!this.watchHistoryTelemetry) {
+      this.cancelPendingViewLogging();
       return;
     }
 
     const pointer = this.currentVideoPointer;
     const pointerKey = this.currentVideoPointerKey || pointerArrayToKey(pointer);
+
     if (!pointer || !pointerKey) {
+      this.watchHistoryTelemetry.cancelPlaybackLogging();
       return;
     }
 
-    const viewerIdentityKey = this.getActiveViewIdentityKey();
-    const cooldownKey = this.buildViewCooldownKey(pointerKey, viewerIdentityKey);
-
-    if (cooldownKey && this.loggedViewPointerKeys.has(cooldownKey)) {
-      return;
-    }
-
-    const VIEW_THRESHOLD_SECONDS = 12;
-    const state = {
-      videoEl,
+    this.watchHistoryTelemetry.preparePlaybackLogging({
+      videoElement: videoEl,
       pointer,
       pointerKey,
-      viewerIdentityKey,
-      handlers: [],
-      viewTimerId: null,
-      viewFired: false,
-    };
-
-    const clearTimer = (timerKey) => {
-      const property = `${timerKey}TimerId`;
-      if (state[property]) {
-        clearTimeout(state[property]);
-        state[property] = null;
-      }
-    };
-
-    const finalizeView = () => {
-      if (state.viewFired) {
-        return;
-      }
-      state.viewFired = true;
-      clearTimer("view");
-      this.cancelPendingViewLogging();
-
-      const { pointer: thresholdPointer, pointerKey: thresholdPointerKey } =
-        state;
-
-      (async () => {
-        let viewResult;
-        try {
-          const canUseWatchHistoryService =
-            typeof watchHistoryService?.publishView === "function";
-          const resolveWatchActor = () => {
-            const normalizedUser = this.normalizeHexPubkey(this.pubkey);
-            if (normalizedUser) {
-              return normalizedUser;
-            }
-
-            const normalizedClient = this.normalizeHexPubkey(
-              nostrClient?.pubkey
-            );
-            if (normalizedClient) {
-              return normalizedClient;
-            }
-
-            const normalizedSession = this.normalizeHexPubkey(
-              nostrClient?.sessionActor?.pubkey
-            );
-            if (normalizedSession) {
-              return normalizedSession;
-            }
-
-            if (
-              typeof nostrClient?.pubkey === "string" &&
-              nostrClient.pubkey.trim()
-            ) {
-              return nostrClient.pubkey.trim().toLowerCase();
-            }
-
-            if (
-              typeof nostrClient?.sessionActor?.pubkey === "string" &&
-              nostrClient.sessionActor.pubkey.trim()
-            ) {
-              return nostrClient.sessionActor.pubkey.trim().toLowerCase();
-            }
-
-            return "";
-          };
-
-          const activeWatchActor = resolveWatchActor();
-          const watchMetadata = activeWatchActor ? { actor: activeWatchActor } : undefined;
-
-          if (canUseWatchHistoryService) {
-            viewResult = await watchHistoryService.publishView(
-              thresholdPointer,
-              undefined,
-              watchMetadata
-            );
-          } else if (typeof nostrClient?.recordVideoView === "function") {
-            viewResult = await nostrClient.recordVideoView(thresholdPointer);
-          } else {
-            viewResult = { ok: false, error: "view-logging-unavailable" };
-          }
-        } catch (error) {
-          if (isDevMode) {
-            console.warn(
-              "[playVideoWithFallback] Exception while recording video view:",
-              error
-            );
-          }
-        }
-
-        const viewOk = !!viewResult?.ok;
-        if (viewOk) {
-          const eventIdentityKey =
-            this.deriveViewIdentityKeyFromEvent(viewResult?.event) ||
-            state.viewerIdentityKey ||
-            this.getActiveViewIdentityKey();
-          const keyToPersist = this.buildViewCooldownKey(
-            thresholdPointerKey,
-            eventIdentityKey
-          );
-          if (keyToPersist) {
-            this.loggedViewPointerKeys.add(keyToPersist);
-          }
-          if (viewResult?.event) {
-            ingestLocalViewEvent({
-              event: viewResult.event,
-              pointer: thresholdPointer,
-            });
-          }
-        } else if (isDevMode && viewResult) {
-          console.warn(
-            "[playVideoWithFallback] View event rejected by relays:",
-            viewResult
-          );
-        }
-      })().catch((error) => {
-        if (isDevMode) {
-          console.warn(
-            "[playVideoWithFallback] Unexpected error while recording video view:",
-            error
-          );
-        }
-      });
-    };
-
-    const scheduleTimer = (timerKey, thresholdSeconds, callback) => {
-      const firedKey = `${timerKey}Fired`;
-      const idKey = `${timerKey}TimerId`;
-      if (state[firedKey] || state[idKey]) {
-        return;
-      }
-      const currentSeconds = Number.isFinite(videoEl.currentTime)
-        ? videoEl.currentTime
-        : 0;
-      const remainingMs = Math.max(
-        0,
-        Math.ceil((thresholdSeconds - currentSeconds) * 1000)
-      );
-      if (remainingMs <= 0) {
-        callback();
-        return;
-      }
-      state[idKey] = window.setTimeout(callback, remainingMs);
-    };
-
-    const registerHandler = (eventName, handler) => {
-      videoEl.addEventListener(eventName, handler);
-      state.handlers.push({ eventName, handler });
-    };
-
-    registerHandler("timeupdate", () => {
-      if (!state.viewFired && videoEl.currentTime >= VIEW_THRESHOLD_SECONDS) {
-        finalizeView();
-      }
     });
-
-    const cancelOnPause = () => {
-      if (!state.viewFired) {
-        clearTimer("view");
-      }
-    };
-
-    ["pause", "waiting", "stalled", "ended", "emptied"].forEach((event) =>
-      registerHandler(event, cancelOnPause)
-    );
-
-    const resumeIfNeeded = () => {
-      if (state.viewFired) {
-        return;
-      }
-      scheduleTimer("view", VIEW_THRESHOLD_SECONDS, finalizeView);
-    };
-
-    ["play", "playing"].forEach((event) =>
-      registerHandler(event, resumeIfNeeded)
-    );
-
-    this.playbackTelemetryState = state;
-
-    if (!videoEl.paused && videoEl.currentTime > 0) {
-      resumeIfNeeded();
-    }
   }
 
   teardownVideoElement(videoElement, { replaceNode = false } = {}) {
@@ -6323,7 +6036,7 @@ class Application {
 
     subscribe("view-logging-request", ({ videoElement } = {}) => {
       if (videoElement) {
-        this.preparePlaybackViewLogging(videoElement);
+        this.preparePlaybackLogging(videoElement);
       }
     });
 
@@ -7060,6 +6773,18 @@ class Application {
     this.teardownModalViewCountSubscription();
     this.videoModalReadyPromise = null;
 
+    if (this.watchHistoryTelemetry) {
+      try {
+        this.watchHistoryTelemetry.destroy();
+      } catch (error) {
+        console.warn(
+          "[Application] Failed to destroy watch history telemetry:",
+          error
+        );
+      }
+      this.watchHistoryTelemetry = null;
+    }
+
     if (typeof this.unsubscribeFromPubkeyState === "function") {
       try {
         this.unsubscribeFromPubkeyState();
@@ -7098,18 +6823,6 @@ class Application {
       typeof this.nwcSettingsService.clearCache === "function"
     ) {
       this.nwcSettingsService.clearCache();
-    }
-
-    if (typeof this.watchHistoryPreferenceUnsubscribe === "function") {
-      try {
-        this.watchHistoryPreferenceUnsubscribe();
-      } catch (error) {
-        console.warn(
-          "[Application] Failed to unsubscribe watch history preference:",
-          error
-        );
-      }
-      this.watchHistoryPreferenceUnsubscribe = null;
     }
 
     this.authEventUnsubscribes.forEach((unsubscribe) => {
