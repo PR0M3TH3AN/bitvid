@@ -174,6 +174,58 @@ async function testPreparePlaybackLoggingPublishesOnce() {
   );
 }
 
+async function testPreparePlaybackLoggingIncludesVideoMetadata() {
+  const publishCalls = [];
+
+  const pointer = { type: "e", value: "event-id" };
+  const pointerKey = "event-id";
+
+  const { telemetry } = createTelemetry({
+    serviceOverrides: {
+      publishView: async (ptr, _relay, metadata) => {
+        publishCalls.push({ ptr, metadata });
+        return {
+          ok: true,
+          event: { pubkey: hexPubkey },
+        };
+      },
+    },
+  });
+
+  const videoElement = new FakeVideoElement();
+  videoElement.paused = false;
+  videoElement.currentTime = telemetry.viewThresholdSeconds;
+
+  const videoMetadata = {
+    id: "evt1",
+    title: "Example Video",
+    thumbnail: "https://example.com/thumb.jpg",
+    pubkey: hexPubkey,
+    rootCreatedAt: 1_700_000_000,
+    url: "https://example.com/video.mp4",
+  };
+
+  telemetry.preparePlaybackLogging({
+    videoElement,
+    pointer,
+    pointerKey,
+    video: videoMetadata,
+  });
+
+  await flushAsyncOperations();
+
+  assert.equal(publishCalls.length, 1, "publishView should be invoked once");
+  assert.equal(publishCalls[0].ptr, pointer);
+  assert.ok(publishCalls[0].metadata, "metadata payload should exist");
+  assert.deepEqual(publishCalls[0].metadata.video, {
+    id: "evt1",
+    title: "Example Video",
+    thumbnail: "https://example.com/thumb.jpg",
+    pubkey: hexPubkey,
+    created_at: 1_700_000_000,
+  });
+}
+
 async function testCancelPlaybackLoggingFlushes() {
   let flushArgs = null;
   const video = new FakeVideoElement();
@@ -202,6 +254,7 @@ async function testCancelPlaybackLoggingFlushes() {
 
 await testMetadataPreferenceSync();
 await testPreparePlaybackLoggingPublishesOnce();
+await testPreparePlaybackLoggingIncludesVideoMetadata();
 await testCancelPlaybackLoggingFlushes();
 
 console.log("watch-history-telemetry tests passed");

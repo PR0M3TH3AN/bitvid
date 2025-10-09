@@ -260,6 +260,23 @@ function sanitizeVideoForStorage(video) {
   };
 }
 
+function sanitizeVideoForHistory(video) {
+  const sanitized = sanitizeVideoForStorage(video);
+  if (!sanitized) {
+    return null;
+  }
+
+  return {
+    id: sanitized.id,
+    title: sanitized.title,
+    thumbnail: sanitized.thumbnail,
+    pubkey: sanitized.pubkey,
+    created_at: sanitized.created_at,
+    url: sanitized.url,
+    magnet: sanitized.magnet,
+  };
+}
+
 function sanitizeProfileForStorage(profile) {
   if (!profile || typeof profile !== "object") {
     return null;
@@ -355,6 +372,41 @@ function restoreMetadataCache() {
       storedAt: Number.isFinite(entry?.storedAt) ? entry.storedAt : Date.now(),
     });
   }
+}
+
+function sanitizePointerMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const pointerMetadata = {};
+  const video = sanitizeVideoForHistory(metadata.video);
+  if (video) {
+    pointerMetadata.video = video;
+  }
+
+  const profile = sanitizeProfileForStorage(metadata.profile);
+  if (profile) {
+    pointerMetadata.profile = profile;
+  }
+
+  const resumeCandidates = [
+    metadata.resumeAt,
+    metadata.resume,
+    metadata.resumeSeconds,
+  ];
+  for (const candidate of resumeCandidates) {
+    if (Number.isFinite(candidate)) {
+      pointerMetadata.resumeAt = Math.max(0, Math.floor(candidate));
+      break;
+    }
+  }
+
+  if (metadata.completed === true) {
+    pointerMetadata.completed = true;
+  }
+
+  return Object.keys(pointerMetadata).length ? pointerMetadata : null;
 }
 
 function persistMetadataCache() {
@@ -974,6 +1026,33 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     createdAt,
     viewResult?.event?.created_at
   );
+
+  const pointerMetadata = sanitizePointerMetadata(metadata);
+  if (pointerMetadata) {
+    const existingMetadata =
+      typeof normalizedPointer.metadata === "object"
+        ? normalizedPointer.metadata
+        : {};
+    normalizedPointer.metadata = { ...existingMetadata, ...pointerMetadata };
+    if (pointerMetadata.video) {
+      normalizedPointer.video = pointerMetadata.video;
+    }
+    if (pointerMetadata.profile) {
+      normalizedPointer.profile = pointerMetadata.profile;
+    }
+    if (
+      Number.isFinite(pointerMetadata.resumeAt) &&
+      !Number.isFinite(normalizedPointer.resumeAt)
+    ) {
+      normalizedPointer.resumeAt = Math.max(
+        0,
+        Math.floor(pointerMetadata.resumeAt),
+      );
+    }
+    if (pointerMetadata.completed === true) {
+      normalizedPointer.completed = true;
+    }
+  }
 
   const key = pointerKey(normalizedPointer);
   console.info(

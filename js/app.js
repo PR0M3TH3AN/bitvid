@@ -3237,6 +3237,7 @@ class Application {
       videoElement: videoEl,
       pointer,
       pointerKey,
+      video: this.currentVideo,
     });
   }
 

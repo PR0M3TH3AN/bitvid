@@ -96,16 +96,47 @@ function normalizeHistoryEntry(raw) {
     raw?.timestamp,
     raw?.created_at,
     pointer?.watchedAt,
+    raw?.metadata?.watchedAt,
+    pointer?.metadata?.watchedAt,
   );
 
-  const resumeAt = resolveResumeSeconds(raw);
-  const completed = resolveCompleted(raw);
+  const resumeAt = (() => {
+    const fromPointer = Number.isFinite(pointer?.resumeAt)
+      ? Math.max(0, Math.floor(pointer.resumeAt))
+      : Number.isFinite(pointer?.metadata?.resumeAt)
+      ? Math.max(0, Math.floor(pointer.metadata.resumeAt))
+      : null;
+    if (fromPointer !== null) {
+      return fromPointer;
+    }
+    return resolveResumeSeconds(raw);
+  })();
+
+  const completed =
+    pointer?.completed === true ||
+    pointer?.metadata?.completed === true ||
+    resolveCompleted(raw);
+
+  const pointerVideo =
+    (pointer?.video && isPlainObject(pointer.video) ? pointer.video : null) ||
+    (pointer?.metadata?.video && isPlainObject(pointer.metadata.video)
+      ? pointer.metadata.video
+      : null);
+
+  const pointerProfile =
+    (pointer?.profile && isPlainObject(pointer.profile) ? pointer.profile : null) ||
+    (pointer?.metadata?.profile && isPlainObject(pointer.metadata.profile)
+      ? pointer.metadata.profile
+      : null);
 
   return {
     pointer,
     pointerKey: key,
     watchedAt,
-    video: isPlainObject(raw?.video) ? raw.video : null,
+    video:
+      isPlainObject(raw?.video) && raw.video
+        ? raw.video
+        : pointerVideo,
     metadata: {
       source: "watch-history",
       pointerKey: key,
@@ -113,6 +144,8 @@ function normalizeHistoryEntry(raw) {
       resumeAt,
       completed,
       session: raw?.session === true || pointer.session === true,
+      video: pointerVideo,
+      profile: pointerProfile,
     },
   };
 }

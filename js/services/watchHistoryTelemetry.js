@@ -10,6 +10,35 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function sanitizeVideoMetadata(video) {
+  if (!video || typeof video !== "object") {
+    return null;
+  }
+
+  const createdAtCandidates = [
+    video.rootCreatedAt,
+    video.created_at,
+    video.createdAt,
+    video.publishedAt,
+  ];
+
+  let createdAt = null;
+  for (const candidate of createdAtCandidates) {
+    if (Number.isFinite(candidate)) {
+      createdAt = Math.floor(candidate);
+      break;
+    }
+  }
+
+  return {
+    id: typeof video.id === "string" ? video.id : "",
+    title: typeof video.title === "string" ? video.title : "",
+    thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
+    pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+    created_at: createdAt,
+  };
+}
+
 export default class WatchHistoryTelemetry {
   constructor({
     watchHistoryService = null,
@@ -165,12 +194,7 @@ export default class WatchHistoryTelemetry {
     }
 
     const metadata = {
-      video: {
-        id: typeof video.id === "string" ? video.id : "",
-        title: typeof video.title === "string" ? video.title : "",
-        thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
-        pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
-      },
+      video: sanitizeVideoMetadata(video),
     };
 
     try {
@@ -279,6 +303,7 @@ export default class WatchHistoryTelemetry {
     videoElement,
     pointer,
     pointerKey: explicitPointerKey,
+    video,
   } = {}) {
     this.cancelPlaybackLogging();
 
@@ -305,6 +330,7 @@ export default class WatchHistoryTelemetry {
       handlers: [],
       viewTimerId: null,
       viewFired: false,
+      videoMetadata: sanitizeVideoMetadata(video),
     };
 
     const clearTimer = (timerKey) => {
@@ -367,15 +393,22 @@ export default class WatchHistoryTelemetry {
           };
 
           const activeWatchActor = resolveWatchActor();
-          const watchMetadata = activeWatchActor
-            ? { actor: activeWatchActor }
+          const watchMetadata = {};
+          if (activeWatchActor) {
+            watchMetadata.actor = activeWatchActor;
+          }
+          if (state.videoMetadata) {
+            watchMetadata.video = state.videoMetadata;
+          }
+          const metadataPayload = Object.keys(watchMetadata).length
+            ? watchMetadata
             : undefined;
 
           if (canUseWatchHistoryService) {
             viewResult = await this.watchHistoryService.publishView(
               thresholdPointer,
               undefined,
-              watchMetadata,
+              metadataPayload,
             );
           } else if (typeof this.nostrClient?.recordVideoView === "function") {
             viewResult = await this.nostrClient.recordVideoView(

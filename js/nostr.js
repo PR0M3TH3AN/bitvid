@@ -1329,6 +1329,117 @@ function pointerKey(pointer) {
   return `${type}:${value}`;
 }
 
+function cloneVideoMetadata(video) {
+  if (!video || typeof video !== "object") {
+    return null;
+  }
+
+  const createdAt = Number.isFinite(video.created_at)
+    ? Math.floor(video.created_at)
+    : null;
+
+  return {
+    id: typeof video.id === "string" ? video.id : "",
+    title: typeof video.title === "string" ? video.title : "",
+    thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
+    pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+    created_at: createdAt,
+    url: typeof video.url === "string" ? video.url : "",
+    magnet: typeof video.magnet === "string" ? video.magnet : "",
+  };
+}
+
+function cloneProfileMetadata(profile) {
+  if (!profile || typeof profile !== "object") {
+    return null;
+  }
+
+  return {
+    pubkey: typeof profile.pubkey === "string" ? profile.pubkey : "",
+    name: typeof profile.name === "string" ? profile.name : "",
+    display_name:
+      typeof profile.display_name === "string" ? profile.display_name : "",
+    picture: typeof profile.picture === "string" ? profile.picture : "",
+    nip05: typeof profile.nip05 === "string" ? profile.nip05 : "",
+  };
+}
+
+function clonePointerMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const cloned = {};
+  const video = cloneVideoMetadata(metadata.video);
+  if (video) {
+    cloned.video = video;
+  }
+
+  const profile = cloneProfileMetadata(metadata.profile);
+  if (profile) {
+    cloned.profile = profile;
+  }
+
+  if (Number.isFinite(metadata.resumeAt)) {
+    cloned.resumeAt = Math.max(0, Math.floor(metadata.resumeAt));
+  }
+
+  if (metadata.completed === true) {
+    cloned.completed = true;
+  }
+
+  if (Number.isFinite(metadata.watchedAt)) {
+    cloned.watchedAt = Math.max(0, Math.floor(metadata.watchedAt));
+  }
+
+  return Object.keys(cloned).length ? cloned : null;
+}
+
+function mergePointerDetails(target, source) {
+  if (!target || !source) {
+    return;
+  }
+
+  if (!target.metadata && source.metadata) {
+    target.metadata = clonePointerMetadata(source.metadata);
+  } else if (target.metadata && source.metadata) {
+    const merged = clonePointerMetadata(target.metadata) || {};
+    const additional = clonePointerMetadata(source.metadata) || {};
+    if (!merged.video && additional.video) {
+      merged.video = additional.video;
+    }
+    if (!merged.profile && additional.profile) {
+      merged.profile = additional.profile;
+    }
+    if (!Number.isFinite(merged.resumeAt) && Number.isFinite(additional.resumeAt)) {
+      merged.resumeAt = additional.resumeAt;
+    }
+    if (additional.completed === true) {
+      merged.completed = true;
+    }
+    if (!Number.isFinite(merged.watchedAt) && Number.isFinite(additional.watchedAt)) {
+      merged.watchedAt = additional.watchedAt;
+    }
+    target.metadata = Object.keys(merged).length ? merged : undefined;
+  }
+
+  if (!target.video && source.video) {
+    target.video = cloneVideoMetadata(source.video);
+  }
+
+  if (!target.profile && source.profile) {
+    target.profile = cloneProfileMetadata(source.profile);
+  }
+
+  if (!Number.isFinite(target.resumeAt) && Number.isFinite(source.resumeAt)) {
+    target.resumeAt = Math.max(0, Math.floor(source.resumeAt));
+  }
+
+  if (source.completed === true) {
+    target.completed = true;
+  }
+}
+
 function clonePointerItem(pointer) {
   if (!pointer || typeof pointer !== "object") {
     return null;
@@ -1357,6 +1468,31 @@ function clonePointerItem(pointer) {
 
   if (pointer.session === true) {
     cloned.session = true;
+  }
+
+  const metadata = clonePointerMetadata(pointer.metadata);
+  if (metadata) {
+    cloned.metadata = metadata;
+  }
+
+  const video = cloneVideoMetadata(pointer.video) || metadata?.video || null;
+  if (video) {
+    cloned.video = video;
+  }
+
+  const profile = cloneProfileMetadata(pointer.profile) || metadata?.profile || null;
+  if (profile) {
+    cloned.profile = profile;
+  }
+
+  if (Number.isFinite(pointer.resumeAt)) {
+    cloned.resumeAt = Math.max(0, Math.floor(pointer.resumeAt));
+  } else if (Number.isFinite(metadata?.resumeAt)) {
+    cloned.resumeAt = metadata.resumeAt;
+  }
+
+  if (pointer.completed === true || metadata?.completed === true) {
+    cloned.completed = true;
   }
 
   return cloned;
@@ -2181,7 +2317,21 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
         ? pointer.watchedAt
         : 0;
       if (incomingWatched > currentWatched) {
+        mergePointerDetails(pointer, existing);
+        pointer.watchedAt = incomingWatched;
+        pointer.session = existing.session === true || pointer.session === true;
         seen.set(key, pointer);
+        continue;
+      }
+
+      if (incomingWatched === currentWatched) {
+        mergePointerDetails(existing, pointer);
+      } else {
+        mergePointerDetails(existing, pointer);
+      }
+
+      if (pointer.session === true) {
+        existing.session = true;
       }
     }
   }
@@ -2230,25 +2380,81 @@ function serializeWatchHistoryItems(items) {
     return "[]";
   }
 
-  const normalized = items.map((item) => {
-    const type = item?.type === "a" ? "a" : "e";
-    const value = typeof item?.value === "string" ? item.value : "";
-    const relay =
-      typeof item?.relay === "string" && item.relay.trim()
-        ? item.relay.trim()
+  const normalized = items
+    .map((item) => {
+      const type = item?.type === "a" ? "a" : "e";
+      const value = typeof item?.value === "string" ? item.value : "";
+      if (!type || !value) {
+        return null;
+      }
+
+      const relay =
+        typeof item?.relay === "string" && item.relay.trim()
+          ? item.relay.trim()
+          : undefined;
+      const watchedAt = Number.isFinite(item?.watchedAt)
+        ? Math.max(0, Math.floor(item.watchedAt))
         : undefined;
-    const watchedAt = Number.isFinite(item?.watchedAt)
-      ? Math.max(0, Math.floor(item.watchedAt))
-      : undefined;
-    const payload = { type, value };
-    if (relay) {
-      payload.relay = relay;
-    }
-    if (watchedAt !== undefined) {
-      payload.watchedAt = watchedAt;
-    }
-    return payload;
-  });
+
+      const payload = { type, value };
+      if (relay) {
+        payload.relay = relay;
+      }
+      if (watchedAt !== undefined) {
+        payload.watchedAt = watchedAt;
+      }
+
+      const metadata = clonePointerMetadata(item?.metadata);
+      if (metadata) {
+        payload.metadata = metadata;
+      }
+
+      const video = metadata?.video || cloneVideoMetadata(item?.video);
+      if (video) {
+        if (payload.metadata) {
+          payload.metadata.video = payload.metadata.video || video;
+        } else {
+          payload.video = video;
+        }
+      }
+
+      const profile = metadata?.profile || cloneProfileMetadata(item?.profile);
+      if (profile) {
+        if (payload.metadata) {
+          payload.metadata.profile = payload.metadata.profile || profile;
+        } else {
+          payload.profile = profile;
+        }
+      }
+
+      const resumeAt = Number.isFinite(item?.resumeAt)
+        ? Math.max(0, Math.floor(item.resumeAt))
+        : undefined;
+      if (resumeAt !== undefined) {
+        if (payload.metadata) {
+          if (!Number.isFinite(payload.metadata.resumeAt)) {
+            payload.metadata.resumeAt = resumeAt;
+          }
+        } else {
+          payload.resumeAt = resumeAt;
+        }
+      }
+
+      if (item?.completed === true) {
+        if (payload.metadata) {
+          payload.metadata.completed = true;
+        } else {
+          payload.completed = true;
+        }
+      }
+
+      if (payload.metadata && !Object.keys(payload.metadata).length) {
+        delete payload.metadata;
+      }
+
+      return payload;
+    })
+    .filter(Boolean);
 
   return JSON.stringify(normalized);
 }
