@@ -102,30 +102,36 @@
                   Choose the video format. <span class="font-medium text-gray-300">Kind 21</span> is a full video, while
                   <span class="font-medium text-gray-300">Kind 22</span> is a short.
                 </p>
-                <div class="flex flex-wrap gap-4" role="radiogroup" aria-labelledby="nip71KindFieldset">
-                  <label class="flex items-center gap-2 text-sm text-gray-200">
-                    <input
-                      type="radio"
-                      name="nip71Kind"
-                      id="nip71KindLong"
-                      value="21"
-                      checked
-                      data-nip71-input="kind"
-                      class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
-                    />
-                    Normal video (kind 21)
-                  </label>
-                  <label class="flex items-center gap-2 text-sm text-gray-200">
-                    <input
-                      type="radio"
-                      name="nip71Kind"
-                      id="nip71KindShort"
-                      value="22"
-                      data-nip71-input="kind"
-                      class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
-                    />
-                    Short video (kind 22)
-                  </label>
+                <div
+                  class="form-control"
+                  role="radiogroup"
+                  aria-labelledby="nip71KindFieldset"
+                >
+                  <div class="menu sm:flex-row sm:flex-wrap sm:py-0" role="presentation">
+                    <label class="menu__item gap-3 px-0 py-0" for="nip71KindLong">
+                      <input
+                        type="radio"
+                        name="nip71Kind"
+                        id="nip71KindLong"
+                        value="21"
+                        checked
+                        data-nip71-input="kind"
+                        class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                      />
+                      <span class="text-sm text-gray-200">Normal video (kind 21)</span>
+                    </label>
+                    <label class="menu__item gap-3 px-0 py-0" for="nip71KindShort">
+                      <input
+                        type="radio"
+                        name="nip71Kind"
+                        id="nip71KindShort"
+                        value="22"
+                        data-nip71-input="kind"
+                        class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                      />
+                      <span class="text-sm text-gray-200">Short video (kind 22)</span>
+                    </label>
+                  </div>
                 </div>
               </fieldset>
 
@@ -705,55 +711,73 @@
               </section>
             </fieldset>
 
-            <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
-              <input
-                type="checkbox"
-                id="uploadEnableComments"
-                class="mt-1 checkbox"
-                checked
-                data-default-checked="true"
-              />
-              <div>
-                <label for="uploadEnableComments" class="text-sm font-medium text-gray-200"
-                  >Enable comments</label
-                >
-                <p class="mt-1 text-xs text-gray-400">
-                  Keep this on to let viewers discuss the video once comment threads launch.
-                </p>
-              </div>
+            <div
+              class="form-control"
+              role="group"
+              aria-labelledby="uploadEnableCommentsLabel"
+            >
+              <label class="menu__item gap-3 px-0 py-0 text-left" for="uploadEnableComments">
+                <input
+                  type="checkbox"
+                  id="uploadEnableComments"
+                  class="mt-1 checkbox"
+                  checked
+                  data-default-checked="true"
+                />
+                <span class="flex flex-col">
+                  <span id="uploadEnableCommentsLabel" class="text-sm font-medium text-gray-200">
+                    Enable comments
+                  </span>
+                  <span class="mt-1 text-xs text-gray-400">
+                    Keep this on to let viewers discuss the video once comment threads launch.
+                  </span>
+                </span>
+              </label>
             </div>
             <div class="grid gap-3 md:grid-cols-2">
-              <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
-                <input
-                  type="checkbox"
-                  id="uploadIsNsfw"
-                  class="mt-1 checkbox"
-                  data-default-checked="false"
-                />
-                <div>
-                  <label for="uploadIsNsfw" class="text-sm font-medium text-gray-200"
-                    >Is this content NSFW?</label
-                  >
-                  <p class="mt-1 text-xs text-gray-400">
-                    Flag mature or explicit uploads so clients can warn viewers before playback.
-                  </p>
-                </div>
+              <div
+                class="form-control"
+                role="group"
+                aria-labelledby="uploadIsNsfwLabel"
+              >
+                <label class="menu__item gap-3 px-0 py-0 text-left" for="uploadIsNsfw">
+                  <input
+                    type="checkbox"
+                    id="uploadIsNsfw"
+                    class="mt-1 checkbox"
+                    data-default-checked="false"
+                  />
+                  <span class="flex flex-col">
+                    <span id="uploadIsNsfwLabel" class="text-sm font-medium text-gray-200">
+                      Is this content NSFW?
+                    </span>
+                    <span class="mt-1 text-xs text-gray-400">
+                      Flag mature or explicit uploads so clients can warn viewers before playback.
+                    </span>
+                  </span>
+                </label>
               </div>
-              <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
-                <input
-                  type="checkbox"
-                  id="uploadIsForKids"
-                  class="mt-1 checkbox"
-                  data-default-checked="false"
-                />
-                <div>
-                  <label for="uploadIsForKids" class="text-sm font-medium text-gray-200"
-                    >Is this content created for Kids?</label
-                  >
-                  <p class="mt-1 text-xs text-gray-400">
-                    Mark clearly kid-friendly videos so parental controls and playlists stay accurate.
-                  </p>
-                </div>
+              <div
+                class="form-control"
+                role="group"
+                aria-labelledby="uploadIsForKidsLabel"
+              >
+                <label class="menu__item gap-3 px-0 py-0 text-left" for="uploadIsForKids">
+                  <input
+                    type="checkbox"
+                    id="uploadIsForKids"
+                    class="mt-1 checkbox"
+                    data-default-checked="false"
+                  />
+                  <span class="flex flex-col">
+                    <span id="uploadIsForKidsLabel" class="text-sm font-medium text-gray-200">
+                      Is this content created for Kids?
+                    </span>
+                    <span class="mt-1 text-xs text-gray-400">
+                      Mark clearly kid-friendly videos so parental controls and playlists stay accurate.
+                    </span>
+                  </span>
+                </label>
               </div>
             </div>
             <!--
@@ -974,33 +998,35 @@
                       <span class="font-medium text-gray-300">Kind 22</span> is a short.
                     </p>
                     <div
-                      class="flex flex-wrap gap-4"
+                      class="form-control"
                       role="radiogroup"
                       aria-labelledby="cloudflareNip71KindFieldset"
                     >
-                      <label class="flex items-center gap-2 text-sm text-gray-200">
-                        <input
-                          type="radio"
-                          name="cloudflareNip71Kind"
-                          id="cloudflareNip71KindLong"
-                          value="21"
-                          checked
-                          data-nip71-input="kind"
-                          class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
-                        />
-                        Normal video (kind 21)
-                      </label>
-                      <label class="flex items-center gap-2 text-sm text-gray-200">
-                        <input
-                          type="radio"
-                          name="cloudflareNip71Kind"
-                          id="cloudflareNip71KindShort"
-                          value="22"
-                          data-nip71-input="kind"
-                          class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
-                        />
-                        Short video (kind 22)
-                      </label>
+                      <div class="menu sm:flex-row sm:flex-wrap sm:py-0" role="presentation">
+                        <label class="menu__item gap-3 px-0 py-0" for="cloudflareNip71KindLong">
+                          <input
+                            type="radio"
+                            name="cloudflareNip71Kind"
+                            id="cloudflareNip71KindLong"
+                            value="21"
+                            checked
+                            data-nip71-input="kind"
+                            class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                          />
+                          <span class="text-sm text-gray-200">Normal video (kind 21)</span>
+                        </label>
+                        <label class="menu__item gap-3 px-0 py-0" for="cloudflareNip71KindShort">
+                          <input
+                            type="radio"
+                            name="cloudflareNip71Kind"
+                            id="cloudflareNip71KindShort"
+                            value="22"
+                            data-nip71-input="kind"
+                            class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                          />
+                          <span class="text-sm text-gray-200">Short video (kind 22)</span>
+                        </label>
+                      </div>
                     </div>
                   </fieldset>
 
@@ -1414,55 +1440,73 @@
                     <div id="cloudflareNip71ReferenceList" class="space-y-2" data-nip71-list="r"></div>
                   </section>
                 </fieldset>
-                <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
-                  <input
-                    type="checkbox"
-                    id="cloudflareEnableComments"
-                    class="mt-1 checkbox"
-                    checked
-                    data-default-checked="true"
-                  />
-                  <div>
-                    <label for="cloudflareEnableComments" class="text-sm font-medium text-gray-200"
-                      >Enable comments</label
-                    >
-                    <p class="mt-1 text-xs text-gray-400">
-                      Publish with comments switched on. Toggle off to quietly disable replies on this video.
-                    </p>
-                  </div>
+                <div
+                  class="form-control"
+                  role="group"
+                  aria-labelledby="cloudflareEnableCommentsLabel"
+                >
+                  <label class="menu__item gap-3 px-0 py-0 text-left" for="cloudflareEnableComments">
+                    <input
+                      type="checkbox"
+                      id="cloudflareEnableComments"
+                      class="mt-1 checkbox"
+                      checked
+                      data-default-checked="true"
+                    />
+                    <span class="flex flex-col">
+                      <span id="cloudflareEnableCommentsLabel" class="text-sm font-medium text-gray-200">
+                        Enable comments
+                      </span>
+                      <span class="mt-1 text-xs text-gray-400">
+                        Publish with comments switched on. Toggle off to quietly disable replies on this video.
+                      </span>
+                    </span>
+                  </label>
                 </div>
                 <div class="grid gap-3 md:grid-cols-2">
-                  <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
-                    <input
-                      type="checkbox"
-                      id="cloudflareIsNsfw"
-                      class="mt-1 checkbox"
-                      data-default-checked="false"
-                    />
-                    <div>
-                      <label for="cloudflareIsNsfw" class="text-sm font-medium text-gray-200"
-                        >Is this content NSFW?</label
-                      >
-                      <p class="mt-1 text-xs text-gray-400">
-                        Turn this on to signal mature or explicit material to downstream clients.
-                      </p>
-                    </div>
+                  <div
+                    class="form-control"
+                    role="group"
+                    aria-labelledby="cloudflareIsNsfwLabel"
+                  >
+                    <label class="menu__item gap-3 px-0 py-0 text-left" for="cloudflareIsNsfw">
+                      <input
+                        type="checkbox"
+                        id="cloudflareIsNsfw"
+                        class="mt-1 checkbox"
+                        data-default-checked="false"
+                      />
+                      <span class="flex flex-col">
+                        <span id="cloudflareIsNsfwLabel" class="text-sm font-medium text-gray-200">
+                          Is this content NSFW?
+                        </span>
+                        <span class="mt-1 text-xs text-gray-400">
+                          Turn this on to signal mature or explicit material to downstream clients.
+                        </span>
+                      </span>
+                    </label>
                   </div>
-                  <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
-                    <input
-                      type="checkbox"
-                      id="cloudflareIsForKids"
-                      class="mt-1 checkbox"
-                      data-default-checked="false"
-                    />
-                    <div>
-                      <label for="cloudflareIsForKids" class="text-sm font-medium text-gray-200"
-                        >Is this content created for Kids?</label
-                      >
-                      <p class="mt-1 text-xs text-gray-400">
-                        Highlight family-safe uploads so moderation tooling and filters stay accurate.
-                      </p>
-                    </div>
+                  <div
+                    class="form-control"
+                    role="group"
+                    aria-labelledby="cloudflareIsForKidsLabel"
+                  >
+                    <label class="menu__item gap-3 px-0 py-0 text-left" for="cloudflareIsForKids">
+                      <input
+                        type="checkbox"
+                        id="cloudflareIsForKids"
+                        class="mt-1 checkbox"
+                        data-default-checked="false"
+                      />
+                      <span class="flex flex-col">
+                        <span id="cloudflareIsForKidsLabel" class="text-sm font-medium text-gray-200">
+                          Is this content created for Kids?
+                        </span>
+                        <span class="mt-1 text-xs text-gray-400">
+                          Highlight family-safe uploads so moderation tooling and filters stay accurate.
+                        </span>
+                      </span>
+                    </label>
                   </div>
                 </div>
                 <div>
