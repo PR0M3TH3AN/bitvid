@@ -3,6 +3,7 @@ import {
   convertEventToVideo,
 } from "../nostr.js";
 import { accessControl } from "../accessControl.js";
+import { ALLOW_NSFW_CONTENT } from "../config.js";
 import {
   getVideosMap as getStoredVideosMap,
   setVideosMap as setStoredVideosMap,
@@ -192,6 +193,12 @@ export class NostrService {
       return false;
     }
 
+    const viewerIsAuthor = this.isViewerVideoAuthor(video);
+
+    if (ALLOW_NSFW_CONTENT !== true && video.isNsfw === true && !viewerIsAuthor) {
+      return false;
+    }
+
     if (blacklistedEventIds.has(video.id)) {
       return false;
     }
@@ -206,19 +213,8 @@ export class NostrService {
       }
     }
 
-    if (video.isPrivate === true) {
-      const normalizedVideoPubkey = normalizeHexPubkey(video.pubkey);
-      const normalizedViewerPubkey = normalizeHexPubkey(
-        this.nostrClient?.pubkey
-      );
-
-      if (
-        !normalizedViewerPubkey ||
-        !normalizedVideoPubkey ||
-        normalizedVideoPubkey !== normalizedViewerPubkey
-      ) {
-        return false;
-      }
+    if (video.isPrivate === true && !viewerIsAuthor) {
+      return false;
     }
 
     if (this.accessControl && typeof this.accessControl.canAccess === "function") {
@@ -482,12 +478,26 @@ export class NostrService {
 
   async getOldEventById(eventId) {
     const map = this.ensureVideosMap();
+    const isBlockedNsfw = (video) =>
+      ALLOW_NSFW_CONTENT !== true &&
+      video?.isNsfw === true &&
+      !this.isViewerVideoAuthor(video);
+
     if (map.has(eventId)) {
-      return map.get(eventId);
+      const existing = map.get(eventId);
+      if (isBlockedNsfw(existing)) {
+        map.delete(eventId);
+        setStoredVideosMap(map);
+        return null;
+      }
+      return existing;
     }
 
     const cached = this.nostrClient.allEvents.get(eventId);
     if (cached && !cached.deleted) {
+      if (isBlockedNsfw(cached)) {
+        return null;
+      }
       map.set(eventId, cached);
       setStoredVideosMap(map);
       return cached;
@@ -495,12 +505,29 @@ export class NostrService {
 
     const fetched = await this.nostrClient.getEventById(eventId);
     if (fetched && !fetched.deleted) {
+      if (isBlockedNsfw(fetched)) {
+        return null;
+      }
       map.set(eventId, fetched);
       setStoredVideosMap(map);
       return fetched;
     }
 
     return null;
+  }
+
+  isViewerVideoAuthor(video) {
+    if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    const viewerPubkey = normalizeHexPubkey(this.nostrClient?.pubkey);
+    if (!viewerPubkey) {
+      return false;
+    }
+
+    const videoPubkey = normalizeHexPubkey(video.pubkey);
+    return !!videoPubkey && videoPubkey === viewerPubkey;
   }
 }
 

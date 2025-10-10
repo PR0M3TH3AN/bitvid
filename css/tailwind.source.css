@@ -134,6 +134,20 @@
     @apply bg-card-private;
   }
 
+  .video-card.video-card--nsfw-owner {
+    @apply border border-critical border-opacity-40 bg-black;
+  }
+
+  .video-card.video-card--nsfw-owner:hover {
+    @apply border-opacity-60 shadow-lg;
+  }
+
+  .video-card img.video-card__thumbnail--blurred {
+    @apply transition duration-base ease-in-out;
+    filter: blur(18px);
+    transform: scale(1.05);
+  }
+
   .video-card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
     @apply border border-critical border-opacity-40 bg-card-critical;
   }
