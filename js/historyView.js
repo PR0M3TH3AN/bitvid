@@ -345,16 +345,15 @@ export function buildHistoryCard({
   metadataPreference,
 }) {
   const article = document.createElement("article");
-  article.className = "card flex flex-wrap items-stretch gap-6 p-5";
+  article.className = "watch-history-card";
   article.dataset.pointerKey = item.pointerKey;
+  article.dataset.historyCard = "true";
   if (video?.isPrivate) {
-    article.dataset.state = "private";
-  } else {
-    delete article.dataset.state;
+    article.classList.add("watch-history-card--private");
   }
 
   const primary = document.createElement("div");
-  primary.className = "flex min-w-0 flex-1 gap-4";
+  primary.className = "watch-history-card__primary";
 
   const playbackData = (() => {
     if (!video) {
@@ -373,8 +372,7 @@ export function buildHistoryCard({
   const pointerVideoId = getPointerVideoId(video, item.pointer);
 
   const thumbnailLink = document.createElement("a");
-  thumbnailLink.className =
-    "focus-ring block max-w-[14rem] flex-shrink-0 overflow-hidden rounded-lg bg-slate-900 transition hover:opacity-90";
+  thumbnailLink.className = "watch-history-card__thumbnail";
   thumbnailLink.href = "#";
   thumbnailLink.dataset.historyAction = "play";
   thumbnailLink.dataset.pointerKey = item.pointerKey;
@@ -389,9 +387,8 @@ export function buildHistoryCard({
   }
 
   const thumbnailInner = document.createElement("div");
-  thumbnailInner.className = "aspect-video w-full overflow-hidden rounded-lg bg-slate-900";
+  thumbnailInner.className = "watch-history-card__thumbnailInner";
   const thumbnailImg = document.createElement("img");
-  thumbnailImg.className = "h-full w-full object-cover";
   thumbnailImg.alt = video?.title || "Video thumbnail";
   const thumbnailSrc =
     (video && typeof video.thumbnail === "string" && video.thumbnail.trim())
@@ -404,11 +401,10 @@ export function buildHistoryCard({
   thumbnailLink.appendChild(thumbnailInner);
 
   const details = document.createElement("div");
-  details.className = "flex min-w-0 flex-col justify-center gap-2";
+  details.className = "watch-history-card__details";
 
   const titleLink = document.createElement("a");
-  titleLink.className =
-    "focus-ring text-left text-lg font-semibold text-white transition hover:text-blue-400";
+  titleLink.className = "watch-history-card__title";
   titleLink.href = "#";
   titleLink.dataset.historyAction = "play";
   titleLink.dataset.pointerKey = item.pointerKey;
@@ -424,7 +420,7 @@ export function buildHistoryCard({
   titleLink.textContent = video?.title || "Untitled video";
 
   const created = document.createElement("p");
-  created.className = "text-sm text-gray-400";
+  created.className = "watch-history-card__created";
   const createdAt = Number.isFinite(video?.created_at) ? video.created_at : null;
   created.textContent = createdAt
     ? `Published ${formatRelativeTime(createdAt)}`
@@ -437,29 +433,27 @@ export function buildHistoryCard({
   primary.appendChild(details);
 
   const meta = document.createElement("div");
-  meta.className = "flex min-w-[14rem] flex-col justify-between gap-4";
+  meta.className = "watch-history-card__meta";
 
   const watched = document.createElement("p");
-  watched.className = "text-sm text-gray-500";
+  watched.className = "watch-history-card__watched";
   watched.textContent = item.watchedAt
     ? `Watched ${formatRelativeTime(item.watchedAt)}`
     : "Watched time unavailable";
   meta.appendChild(watched);
 
   const creator = document.createElement("div");
-  creator.className = "flex items-center gap-3";
+  creator.className = "watch-history-card__creator";
 
   const creatorAvatarButton = document.createElement("button");
   creatorAvatarButton.type = "button";
-  creatorAvatarButton.className =
-    "focus-ring flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-slate-800";
+  creatorAvatarButton.className = "watch-history-card__creatorAvatar";
   creatorAvatarButton.dataset.historyAction = "channel";
   creatorAvatarButton.dataset.pointerKey = item.pointerKey;
   if (video?.pubkey) {
     creatorAvatarButton.dataset.author = video.pubkey;
   }
   const avatarImg = document.createElement("img");
-  avatarImg.className = "h-full w-full object-cover";
   const avatarSrc =
     (profile && typeof profile.picture === "string" && profile.picture.trim())
       ? profile.picture.trim()
@@ -470,8 +464,7 @@ export function buildHistoryCard({
 
   const creatorNameButton = document.createElement("button");
   creatorNameButton.type = "button";
-  creatorNameButton.className =
-    "focus-ring text-left text-sm font-medium text-gray-200 transition hover:text-blue-400";
+  creatorNameButton.className = "watch-history-card__creatorName";
   creatorNameButton.dataset.historyAction = "channel";
   creatorNameButton.dataset.pointerKey = item.pointerKey;
   if (video?.pubkey) {
@@ -491,11 +484,12 @@ export function buildHistoryCard({
   meta.appendChild(creator);
 
   const actions = document.createElement("div");
-  actions.className = "flex flex-wrap items-center gap-3";
+  actions.className = "watch-history-card__actions";
 
   const playButton = document.createElement("button");
   playButton.type = "button";
-  playButton.className = "btn focus-ring";
+  playButton.className =
+    "watch-history-card__action watch-history-card__action--primary";
   playButton.dataset.historyAction = "play";
   playButton.dataset.pointerKey = item.pointerKey;
   if (pointerVideoId) {
@@ -511,7 +505,7 @@ export function buildHistoryCard({
 
   const channelButton = document.createElement("button");
   channelButton.type = "button";
-  channelButton.className = "btn-ghost focus-ring";
+  channelButton.className = "watch-history-card__action";
   channelButton.dataset.historyAction = "channel";
   channelButton.dataset.pointerKey = item.pointerKey;
   if (video?.pubkey) {
@@ -521,7 +515,8 @@ export function buildHistoryCard({
 
   const removeButton = document.createElement("button");
   removeButton.type = "button";
-  removeButton.className = "btn-ghost focus-ring";
+  removeButton.className =
+    "watch-history-card__action watch-history-card__action--danger";
   removeButton.dataset.variant = "danger";
   removeButton.dataset.historyAction = "remove";
   removeButton.dataset.pointerKey = item.pointerKey;
