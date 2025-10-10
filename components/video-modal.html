@@ -2,12 +2,12 @@
 <div id="playerModal" class="bv-modal hidden" role="dialog" aria-modal="true">
   <div class="bv-modal-backdrop" data-dismiss></div>
   <div class="bv-modal__panel" tabindex="-1">
-    <div class="player-modal__container">
-      <div class="player-modal__content grid gap-6">
+    <div class="player-modal__container video-modal__container">
+      <div class="player-modal__content video-modal__panel grid gap-6">
         <!-- Navigation bar - sliding at top -->
         <div
           id="modalNav"
-          class="modal-nav sticky top-0 z-60 transition-transform duration-150"
+          class="modal-nav video-modal__nav sticky top-0 z-60 transition-transform duration-150"
         >
           <div
             class="card flex w-full items-center justify-between gap-4 px-4 py-3"
@@ -34,7 +34,7 @@
                 </svg>
               </button>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="modal-actions video-modal__actions flex items-center gap-2">
               <button
                 id="copyMagnetBtn"
                 type="button"
@@ -265,17 +265,17 @@
         <div
           class="player-modal__body grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]"
         >
-          <div class="player-modal__video modal-video-shell">
+          <div class="player-modal__video video-modal__video modal-video-shell">
             <div class="card overflow-hidden p-0 lg:sticky lg:top-24">
               <video
                 id="modalVideo"
-                class="aspect-video w-full bg-black"
+                class="video-modal__media"
                 controls
               ></video>
             </div>
           </div>
 
-          <div class="player-modal__info modal-info-panel grid gap-4">
+          <div class="player-modal__info video-modal__info modal-info-panel grid gap-4">
             <div class="card flex flex-col gap-4 px-6 py-5">
               <div class="flex items-start justify-between gap-4">
                 <h2
