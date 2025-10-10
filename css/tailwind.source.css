@@ -3,3 +3,194 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
+  }
+
+  .btn {
+    @apply focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-transparent bg-primary px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white shadow-md transition duration-base ease-in-out;
+  }
+
+  .btn:hover {
+    @apply bg-info-strong shadow-lg;
+  }
+
+  .btn:focus-visible {
+    @apply bg-info-pressed;
+  }
+
+  .btn:disabled {
+    @apply pointer-events-none cursor-not-allowed opacity-60 shadow-none;
+  }
+
+  .btn-ghost {
+    @apply btn border border-border border-opacity-60 bg-transparent text-white shadow-none;
+  }
+
+  .btn-ghost:hover {
+    @apply bg-panel-hover text-text;
+  }
+
+  .btn-ghost:focus-visible {
+    @apply bg-panel-hover;
+  }
+
+  .btn-ghost:disabled {
+    @apply pointer-events-none opacity-50 shadow-none;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full bg-panel px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-strong;
+  }
+
+  .badge[data-variant="critical"] {
+    @apply bg-critical bg-opacity-20 text-critical-strong;
+  }
+
+  .badge[data-variant="info"] {
+    @apply bg-info bg-opacity-20 text-info-strong;
+  }
+
+  .badge[data-variant="neutral"] {
+    @apply bg-border bg-opacity-40 text-muted-strong;
+  }
+
+  .card {
+    @apply focus-ring relative rounded-lg border border-transparent bg-card text-text shadow-md transition duration-base ease-in-out;
+  }
+
+  .card:hover {
+    @apply shadow-lg;
+  }
+
+  .card:focus-visible {
+    @apply border-info border-opacity-40 shadow-lg;
+  }
+
+  .card[data-state="critical"] {
+    @apply border border-critical border-opacity-40 bg-card-critical;
+  }
+
+  .card[data-state="private"] {
+    @apply bg-card-private shadow-lg;
+  }
+
+  .card[data-state="disabled"] {
+    @apply opacity-60 shadow-none;
+  }
+
+  .input {
+    @apply focus-ring block w-full rounded-md border border-border-subtle bg-surface-alt px-3 py-2 text-sm text-text shadow-sm transition duration-base ease-in-out placeholder:text-muted;
+  }
+
+  .input:hover {
+    @apply border-border;
+  }
+
+  .input:focus-visible {
+    @apply border-info-strong;
+  }
+
+  .input:disabled {
+    @apply cursor-not-allowed bg-surface text-muted opacity-60;
+  }
+
+  .bv-modal {
+    @apply fixed inset-0 z-[var(--z-modal-root)] flex items-center justify-center p-4 sm:p-6;
+  }
+
+  .bv-modal__panel {
+    @apply focus-ring relative z-[var(--z-modal-content)] w-full max-w-3xl rounded-xl border border-border border-opacity-40 bg-surface px-6 py-8 text-left text-white shadow-modal transition duration-base ease-out;
+  }
+
+  .bv-modal__panel:focus-visible {
+    @apply border-info border-opacity-50;
+  }
+
+  .bv-modal-backdrop {
+    @apply absolute inset-0 z-[var(--z-modal-overlay)] bg-overlay bg-opacity-80 backdrop-blur;
+  }
+
+  .grid-stack {
+    @apply grid gap-lg;
+  }
+
+  .grid-stack[data-variant="cards"] {
+    @apply grid-cols-1 sm:grid-cols-2 xl:grid-cols-3;
+  }
+
+  .grid-stack[data-orientation="vertical"] {
+    @apply flex flex-col gap-md;
+  }
+
+  /* Legacy compatibility shims */
+  .video-card {
+    @apply card overflow-visible;
+  }
+
+  .video-card.video-card--owner-private {
+    @apply bg-card-private;
+  }
+
+  .video-card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
+    @apply border border-critical border-opacity-40 bg-card-critical;
+  }
+
+  .video-visibility-toggle {
+    @apply inline-flex items-center gap-1 rounded-full border border-border bg-panel px-1 py-1;
+  }
+
+  .video-visibility-toggle__option {
+    @apply inline-flex items-center justify-center rounded-full border border-transparent bg-panel px-3 py-2 text-xs font-semibold uppercase text-muted transition duration-base ease-in-out;
+  }
+
+  .video-visibility-toggle__option:not(.is-disabled):hover {
+    @apply bg-panel-hover text-text;
+  }
+
+  .video-visibility-toggle__option[data-active="true"] {
+    @apply border border-info border-opacity-60 text-text shadow-lg;
+  }
+
+  .video-visibility-toggle__option.is-disabled {
+    @apply cursor-not-allowed opacity-45;
+  }
+
+  #profileModal .profile-switcher {
+    @apply card flex flex-col gap-lg;
+  }
+
+  #profileModal .profile-switcher__badge {
+    @apply badge;
+  }
+
+  #profileModal .profile-card {
+    @apply card flex items-center gap-4 p-4 text-text;
+  }
+
+  #profileModal .profile-switcher__add {
+    @apply card flex items-center gap-4 p-4 text-left;
+  }
+
+  #profileModal .profile-card__action {
+    @apply btn-ghost;
+  }
+
+  .modal-content {
+    @apply bv-modal__panel;
+  }
+
+  .modal-nav .icon-button {
+    @apply btn-ghost text-text;
+  }
+
+  .modal-nav .icon-button:hover {
+    @apply border-border bg-panel-hover;
+  }
+
+  .modal-nav .icon-button:focus-visible {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+  }
+}
