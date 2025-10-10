@@ -249,7 +249,42 @@ export class EditModal {
       });
     }
 
+    if (this.fields.isNsfw && this.fields.isForKids) {
+      this.setupMutuallyExclusiveCheckboxes(
+        this.fields.isNsfw,
+        this.fields.isForKids
+      );
+    }
+
     this.nip71FormManager.bindSection(this.nip71SectionKey);
+  }
+
+  setupMutuallyExclusiveCheckboxes(firstInput, secondInput) {
+    if (!firstInput || !secondInput) {
+      return;
+    }
+
+    const enforceExclusion = (primary, secondary) => {
+      if (primary.checked) {
+        secondary.checked = false;
+      }
+    };
+
+    const handleFirstChange = () => enforceExclusion(firstInput, secondInput);
+    const handleSecondChange = () => enforceExclusion(secondInput, firstInput);
+
+    if (firstInput.checked && secondInput.checked) {
+      secondInput.checked = false;
+    }
+
+    firstInput.addEventListener("change", handleFirstChange);
+    secondInput.addEventListener("change", handleSecondChange);
+  }
+
+  sanitizeAudienceFlags(flags = {}) {
+    const isNsfw = flags?.isNsfw === true;
+    const isForKids = flags?.isForKids === true && !isNsfw;
+    return { isNsfw, isForKids };
   }
 
   reset() {
@@ -322,10 +357,14 @@ export class EditModal {
     const enableCommentsValue =
       typeof video.enableComments === "boolean" ? video.enableComments : true;
     const isPrivateValue = video.isPrivate === true;
-    const isNsfwValue =
-      typeof video.isNsfw === "boolean" ? video.isNsfw : false;
-    const isForKidsValue =
+    const rawIsNsfw = typeof video.isNsfw === "boolean" ? video.isNsfw : false;
+    const rawIsForKids =
       typeof video.isForKids === "boolean" ? video.isForKids : false;
+    const { isNsfw: isNsfwValue, isForKids: isForKidsValue } =
+      this.sanitizeAudienceFlags({
+        isNsfw: rawIsNsfw,
+        isForKids: rawIsForKids,
+      });
 
     const editContext = {
       ...video,
@@ -360,6 +399,13 @@ export class EditModal {
     if (!editContext) {
       return;
     }
+
+    const sanitizedFlags = this.sanitizeAudienceFlags({
+      isNsfw: editContext.isNsfw,
+      isForKids: editContext.isForKids,
+    });
+    editContext.isNsfw = sanitizedFlags.isNsfw;
+    editContext.isForKids = sanitizedFlags.isForKids;
 
     const fieldMap = {
       title: editContext.title || "",
@@ -830,6 +876,12 @@ export class EditModal {
         finalIsForKids = this.sanitizers.checkbox(forKidsInput.checked);
       }
     }
+
+    ({ isNsfw: finalIsNsfw, isForKids: finalIsForKids } =
+      this.sanitizeAudienceFlags({
+        isNsfw: finalIsNsfw,
+        isForKids: finalIsForKids,
+      }));
 
     if (!finalTitle || (!finalUrl && !finalMagnet && !hasImetaSource)) {
       this.showError(
