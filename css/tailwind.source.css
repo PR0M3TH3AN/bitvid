@@ -213,7 +213,7 @@
   }
 
   .video-modal__nav {
-    @apply sticky top-0 z-[60] border-b border-border border-opacity-40 bg-bg;
+    @apply sticky top-0 z-[60] border-b border-border border-opacity-40 bg-surface;
   }
 
   .modal-nav {
@@ -229,7 +229,7 @@
   }
 
   .video-modal__video {
-    @apply sticky top-0 z-[51] flex w-full flex-shrink-0 items-center justify-center border-b border-border border-opacity-20 bg-bg;
+    @apply sticky top-0 z-[51] flex w-full flex-shrink-0 items-center justify-center border-b border-border border-opacity-20 bg-surface;
   }
 
   .player-modal__video {
@@ -237,7 +237,7 @@
   }
 
   .video-modal__media {
-    @apply aspect-video block w-full rounded-xl bg-black object-contain shadow-2xl;
+    @apply block aspect-video w-full rounded-xl bg-black object-contain shadow-2xl;
   }
 
   .player-modal__video video {
@@ -245,11 +245,10 @@
   }
 
   .video-modal__info {
-    @apply flex-none border-t border-border border-opacity-20 bg-bg;
+    @apply flex-none border-t border-border border-opacity-20 bg-surface;
   }
 
   .player-modal__info {
     @apply video-modal__info;
   }
-
 }

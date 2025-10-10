@@ -187,7 +187,9 @@ header img {
 .video-card img.video-card__thumbnail--blurred {
   filter: blur(18px);
   transform: scale(1.05);
-  transition: filter 200ms ease, transform 200ms ease;
+  transition:
+    filter 200ms ease,
+    transform 200ms ease;
 }
 
 .video-card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
