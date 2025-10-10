@@ -330,8 +330,24 @@ header img {
   animation: fadeIn var(--modal-motion-duration) ease-out;
 }
 
+/*
+  The modal action buttons reuse the shared `.icon-button` primitive which
+  previously layered Tailwind's `.btn-ghost` helper on top. The helper adds
+  responsive padding/height rules that collapse when the flex container
+  tightens, so the glyphs shrank while the back button (a fixed-size button)
+  stayed stable. Reset every dimension here so the icons always render with
+  the same 40px square footprint as the back control, regardless of flex
+  squeezing or inherited ghost styles.
+*/
 .modal-nav .icon-button {
   box-shadow: none;
+  padding: 0;
+  gap: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  border: none;
 }
 
 /* Watch history cards */
@@ -1495,6 +1511,9 @@ footer a:hover {
   justify-content: center;
   width: 2.5rem; /* 40px */
   height: 2.5rem; /* 40px */
+  min-width: 2.5rem; /* Prevent flex shrink */
+  min-height: 2.5rem; /* Prevent flex shrink */
+  flex: 0 0 2.5rem;
   line-height: 0;
   background-color: var(--color-neutral-700); /* Gray 700 */
   color: var(--color-white);
