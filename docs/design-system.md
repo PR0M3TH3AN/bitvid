@@ -75,6 +75,43 @@ For toggles:
 
 Compose them together when mounting new modal portals. If you need a drawer or sheet, start from these primitives and adjust spacing/positioning via utilities.
 
+### Popovers
+
+Use `.popover` as the relative anchor for floating content. Nest `.popover__panel` for the floating surface—it’s positioned absolutely below the trigger, inherits the shared focus ring, and animates with opacity/scale tokens. Toggle `[data-state="open"]` on the panel to switch between the collapsed (`opacity-0 scale-95`) and expanded (`opacity-100 scale-100`) states.
+
+```html
+<div class="popover">
+  <button class="btn" type="button">Open filters</button>
+  <div class="popover__panel" role="dialog" data-state="open">
+    <p class="text-sm text-muted">Fine-tune the current feed using tags and duration filters.</p>
+  </div>
+</div>
+```
+
+Mix utilities such as `right-0` or `translate-x-1/2` on `.popover__panel` when you need alternative alignments. The motion helpers defer to the global motion tokens so Task 5 can adjust timing globally without revisiting individual components.
+
+### Menus
+
+`.menu` normalises list-based command menus with consistent padding. Pair it with `.menu__heading` for optional section labels, `.menu__separator` for dividers, and `.menu__item` for actionable rows. Each item supports hover, active (`data-state="active"`), and critical (`data-variant="critical"`) palettes plus disabled fallbacks through either `disabled` or `aria-disabled="true"`.
+
+```html
+<div class="popover">
+  <button class="btn-ghost" type="button">Command palette</button>
+  <div class="popover__panel" role="menu" data-state="open">
+    <div class="menu" role="none">
+      <p class="menu__heading" role="presentation">Navigation</p>
+      <button class="menu__item" role="menuitem">Search videos</button>
+      <button class="menu__item" role="menuitem" data-state="active">Go live dashboard</button>
+      <div class="menu__separator" role="separator"></div>
+      <button class="menu__item" role="menuitem" data-variant="critical">Delete current draft</button>
+      <button class="menu__item" role="menuitem" disabled>Switch profile (pro only)</button>
+    </div>
+  </div>
+</div>
+```
+
+The helpers rely on layout utilities (`flex`, `gap-*`) so you can safely inject icons, shortcuts, or nested badges without restyling the base tokens.
+
 ### Grid Stack
 
 `.grid-stack` offers gap tokens for dense layouts. Add `data-variant="cards"` for responsive card grids (`grid-cols-1` → `sm:grid-cols-2` → `xl:grid-cols-3`). Switch to `data-orientation="vertical"` for stacked flex columns that reuse the same spacing tokens.
