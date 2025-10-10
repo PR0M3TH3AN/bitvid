@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bitvid Tailwind Kitchen Sink</title>
+    <link rel="stylesheet" href="../css/tailwind.generated.css" />
+  </head>
+  <body class="bg-page font-sans text-text-strong">
+    <div class="min-h-screen bg-page-alt">
+      <header class="bg-surface text-text shadow-modal">
+        <div
+          class="mx-auto flex max-w-6xl items-center justify-between px-md py-sm"
+        >
+          <h1 class="text-2xl font-semibold">Bitvid UI Kitchen Sink</h1>
+          <button
+            class="rounded-lg bg-primary px-sm py-2 text-white shadow-md transition duration-fast ease-out hover:bg-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            Primary Action
+          </button>
+        </div>
+      </header>
+
+      <main class="mx-auto flex max-w-6xl flex-col gap-lg px-md py-lg">
+        <section class="space-y-md">
+          <h2 class="text-xl font-semibold text-text-strong">Buttons</h2>
+          <div class="flex flex-wrap gap-sm">
+            <button
+              class="rounded-md bg-primary px-sm py-2 text-white shadow-md transition duration-fast ease-out hover:bg-secondary"
+            >
+              Primary
+            </button>
+            <button
+              class="rounded-md bg-info px-sm py-2 text-surface shadow-sm transition duration-fast ease-out hover:bg-info-strong"
+            >
+              Informational
+            </button>
+            <button
+              class="rounded-md bg-critical px-sm py-2 text-white shadow-sm transition duration-fast ease-out hover:bg-critical-strong"
+            >
+              Destructive
+            </button>
+            <button
+              class="rounded-md border border-border-subtle px-sm py-2 text-text-muted shadow-none transition duration-fast ease-out hover:bg-panel-hover hover:text-text"
+            >
+              Ghost
+            </button>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <h2 class="text-xl font-semibold text-text-strong">Cards</h2>
+          <div class="grid gap-md md:grid-cols-3">
+            <article class="rounded-lg bg-card p-md text-text shadow-lg">
+              <h3 class="text-lg font-semibold">Default Card</h3>
+              <p class="mt-xs text-text-muted">
+                Uses
+                <code class="font-mono text-sm text-info">bg-card</code> and
+                tokenized shadows.
+              </p>
+              <button
+                class="mt-sm rounded-md bg-info px-sm py-2 text-surface shadow-sm transition duration-base ease-in-out hover:bg-info-strong"
+              >
+                Watch Now
+              </button>
+            </article>
+            <article
+              class="rounded-lg bg-card-private p-md text-text shadow-lg"
+            >
+              <h3 class="text-lg font-semibold">Private Card</h3>
+              <p class="mt-xs text-text-muted">
+                Emphasizes restricted content with
+                <code class="font-mono text-sm text-info">bg-card-private</code
+                >.
+              </p>
+            </article>
+            <article
+              class="rounded-lg bg-card-critical p-md text-text shadow-lg"
+            >
+              <h3 class="text-lg font-semibold">Critical Card</h3>
+              <p class="mt-xs text-text-muted">
+                Use for outage or abuse states.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <h2 class="text-xl font-semibold text-text-strong">Form Inputs</h2>
+          <form class="grid gap-md md:grid-cols-2">
+            <label class="flex flex-col gap-xs">
+              <span class="text-sm font-medium text-text-muted"
+                >Display Name</span
+              >
+              <input
+                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong shadow-sm focus:border-info focus:ring-2 focus:ring-info-strong"
+                type="text"
+                placeholder="Satoshi Stack"
+              />
+            </label>
+            <label class="flex flex-col gap-xs">
+              <span class="text-sm font-medium text-text-muted">Video URL</span>
+              <input
+                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong shadow-sm focus:border-info focus:ring-2 focus:ring-info-strong"
+                type="url"
+                placeholder="https://example.com/video.mp4"
+              />
+            </label>
+            <label class="flex flex-col gap-xs md:col-span-2">
+              <span class="text-sm font-medium text-text-muted"
+                >Description</span
+              >
+              <textarea
+                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong shadow-sm focus:border-info focus:ring-2 focus:ring-info-strong"
+                rows="3"
+                placeholder="Describe what viewers should expect..."
+              ></textarea>
+            </label>
+          </form>
+        </section>
+
+        <section class="space-y-md">
+          <h2 class="text-xl font-semibold text-text-strong">Modal Preview</h2>
+          <div
+            class="relative overflow-hidden rounded-xl bg-overlay p-lg text-text shadow-modal"
+          >
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Upload Video</h3>
+              <p class="text-text-muted">
+                Motion tokens control the fade via
+                <code class="font-mono text-sm text-info">duration-base</code>
+                and
+                <code class="font-mono text-sm text-info">ease-out</code>
+                utilities.
+              </p>
+            </div>
+            <div class="mt-md flex flex-col gap-sm">
+              <input
+                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong focus:border-info focus:ring-2 focus:ring-info"
+                type="text"
+                placeholder="Magnet URI"
+              />
+              <div class="flex justify-end gap-sm">
+                <button
+                  class="rounded-md border border-border px-sm py-2 text-text-muted transition duration-fast ease-out hover:text-text"
+                >
+                  Cancel
+                </button>
+                <button
+                  class="rounded-md bg-primary px-sm py-2 text-white shadow-md transition duration-fast ease-out hover:bg-secondary"
+                >
+                  Publish
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <h2 class="text-xl font-semibold text-text-strong">
+            Typography Scale
+          </h2>
+          <div class="space-y-xs">
+            <p class="text-2xl font-semibold">Display / 2xl</p>
+            <p class="text-xl font-semibold">Headline / xl</p>
+            <p class="text-lg font-medium">Title / lg</p>
+            <p class="text-base">Body / base</p>
+            <p class="text-sm text-text-muted">Caption / sm</p>
+            <p class="text-xs uppercase tracking-wide text-text-muted">
+              Meta / xs
+            </p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
