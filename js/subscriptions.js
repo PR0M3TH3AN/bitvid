@@ -518,6 +518,20 @@ class SubscriptionsManager {
         ? baseView.state.videosMap
         : new Map();
 
+    const urlHealthCache =
+      app?.urlHealthSnapshots instanceof Map
+        ? app.urlHealthSnapshots
+        : baseView?.state?.urlHealthByVideoId instanceof Map
+        ? baseView.state.urlHealthByVideoId
+        : new Map();
+
+    const streamHealthCache =
+      app?.streamHealthSnapshots instanceof Map
+        ? app.streamHealthSnapshots
+        : baseView?.state?.streamHealthByVideoId instanceof Map
+        ? baseView.state.streamHealthByVideoId
+        : new Map();
+
     const listViewConfig = {
       document: doc,
       container,
@@ -538,6 +552,8 @@ class SubscriptionsManager {
       state: {
         loadedThumbnails,
         videosMap,
+        urlHealthByVideoId: urlHealthCache,
+        streamHealthByVideoId: streamHealthCache,
       },
       utils: {
         dedupeVideos: (videos) => (Array.isArray(videos) ? [...videos] : []),

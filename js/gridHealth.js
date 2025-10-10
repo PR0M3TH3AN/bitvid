@@ -2,6 +2,25 @@ import { createCardObserver } from "./dom/cardObserver.js";
 import { infoHashFromMagnet } from "./magnets.js";
 import { TorrentClient, torrentClient } from "./webtorrent.js";
 
+const badgeUpdateListeners = new Set();
+
+function notifyBadgeUpdate(payload) {
+  if (!payload) {
+    return;
+  }
+
+  badgeUpdateListeners.forEach((listener) => {
+    if (typeof listener !== "function") {
+      return;
+    }
+    try {
+      listener(payload);
+    } catch (err) {
+      console.warn("[gridHealth] badge listener failed", err);
+    }
+  });
+}
+
 const ROOT_MARGIN = "200px 0px";
 
 function now() {
@@ -479,7 +498,8 @@ function setBadge(card, state, details) {
         });
   badge.setAttribute("aria-label", tooltip);
   badge.setAttribute("title", tooltip);
-  badge.setAttribute("aria-live", entry.role === "alert" ? "assertive" : "polite");
+  const ariaLive = entry.role === "alert" ? "assertive" : "polite";
+  badge.setAttribute("aria-live", ariaLive);
   badge.setAttribute("role", entry.role);
   badge.dataset.streamHealthState = normalizedState;
   if (hasPeerCount) {
@@ -487,6 +507,20 @@ function setBadge(card, state, details) {
   } else if (badge.dataset.streamHealthPeers) {
     delete badge.dataset.streamHealthPeers;
   }
+
+  const payload = {
+    card,
+    state: normalizedState,
+    peers: hasPeerCount ? peersValue : null,
+    reason: details && typeof details.reason === "string" ? details.reason : null,
+    checkedAt:
+      details && Number.isFinite(details.checkedAt) ? Number(details.checkedAt) : null,
+    text: badge.textContent,
+    tooltip,
+    role: entry.role,
+    ariaLive,
+  };
+  notifyBadgeUpdate(payload);
 }
 
 function handleCardVisible({ card, pendingByCard, priority = 0 }) {
@@ -597,9 +631,12 @@ const gridCardObserver = createCardObserver({
   },
 });
 
-export function attachHealthBadges(container) {
+export function attachHealthBadges(container, options = {}) {
   if (!(container instanceof HTMLElement)) {
     return;
+  }
+  if (options && typeof options.onUpdate === "function") {
+    badgeUpdateListeners.add(options.onUpdate);
   }
   gridCardObserver.observe(container);
 }

@@ -56,6 +56,12 @@ export class VideoCard {
     this.state = {
       loadedThumbnails:
         state.loadedThumbnails instanceof Map ? state.loadedThumbnails : null,
+      urlHealthByVideoId:
+        state.urlHealthByVideoId instanceof Map ? state.urlHealthByVideoId : null,
+      streamHealthByVideoId:
+        state.streamHealthByVideoId instanceof Map
+          ? state.streamHealthByVideoId
+          : null,
     };
     this.ensureGlobalMoreMenuHandlers =
       typeof ensureGlobalMoreMenuHandlers === "function"
@@ -209,6 +215,10 @@ export class VideoCard {
     this.applyClassListFromString(root, this.animationClass);
 
     this.root = root;
+
+    if (this.video?.id) {
+      root.dataset.videoId = this.video.id;
+    }
 
     this.applyPointerDataset();
     this.applyOwnerDataset();
@@ -887,17 +897,13 @@ export class VideoCard {
           "px-2",
           "py-1",
           "rounded",
-          "inline-flex",
-          "items-center",
-          "gap-1",
-          "bg-gray-800",
-          "text-gray-300",
+          "transition-colors",
+          "duration-200",
         ],
-        textContent: "Checking hosted URL…",
       });
-      badge.dataset.urlHealthState = "checking";
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
+      this.applyUrlBadgeVisualState(badge, this.getCachedUrlHealthEntry());
       this.urlHealthBadgeEl = badge;
       pieces.push(badge);
     }
@@ -911,19 +917,13 @@ export class VideoCard {
           "px-2",
           "py-1",
           "rounded",
-          "inline-flex",
-          "items-center",
-          "gap-1",
-          "bg-gray-800",
-          "text-gray-300",
           "transition-colors",
           "duration-200",
         ],
-        textContent: "⏳ Torrent",
       });
-      badge.dataset.streamHealthState = "checking";
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
+      this.applyStreamBadgeVisualState(badge, this.getCachedStreamHealthEntry());
       this.torrentHealthBadgeEl = badge;
       pieces.push(badge);
     }
@@ -937,6 +937,269 @@ export class VideoCard {
     });
     pieces.forEach((el) => container.appendChild(el));
     return container;
+  }
+
+  getCachedUrlHealthEntry() {
+    if (!this.video?.id || !(this.state.urlHealthByVideoId instanceof Map)) {
+      return null;
+    }
+
+    const entry = this.state.urlHealthByVideoId.get(this.video.id);
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+
+    const normalized = {};
+    if (typeof entry.status === "string" && entry.status) {
+      normalized.status = entry.status;
+    }
+    if (typeof entry.message === "string" && entry.message) {
+      normalized.message = entry.message;
+    }
+    if (Number.isFinite(entry.lastCheckedAt)) {
+      normalized.lastCheckedAt = Math.floor(entry.lastCheckedAt);
+    }
+
+    return Object.keys(normalized).length ? normalized : null;
+  }
+
+  getCachedStreamHealthEntry() {
+    if (!this.video?.id || !(this.state.streamHealthByVideoId instanceof Map)) {
+      return null;
+    }
+
+    const entry = this.state.streamHealthByVideoId.get(this.video.id);
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+
+    const normalized = {};
+    if (typeof entry.state === "string" && entry.state) {
+      normalized.state = entry.state;
+    }
+    if (Number.isFinite(entry.peers)) {
+      normalized.peers = Math.max(0, Number(entry.peers));
+    }
+    if (typeof entry.reason === "string" && entry.reason) {
+      normalized.reason = entry.reason;
+    }
+    if (Number.isFinite(entry.checkedAt)) {
+      normalized.checkedAt = Math.floor(entry.checkedAt);
+    }
+    if (typeof entry.text === "string" && entry.text) {
+      normalized.text = entry.text;
+    }
+    if (typeof entry.tooltip === "string" && entry.tooltip) {
+      normalized.tooltip = entry.tooltip;
+    }
+    if (entry.role === "alert" || entry.role === "status") {
+      normalized.role = entry.role;
+    }
+    if (entry.ariaLive === "assertive" || entry.ariaLive === "polite") {
+      normalized.ariaLive = entry.ariaLive;
+    }
+
+    return Object.keys(normalized).length ? normalized : null;
+  }
+
+  formatTorrentCheckedTime(timestamp) {
+    if (!Number.isFinite(timestamp)) {
+      return "";
+    }
+
+    try {
+      return new Date(timestamp).toLocaleTimeString([], { hour12: false });
+    } catch (error) {
+      try {
+        return new Date(timestamp).toLocaleTimeString();
+      } catch (err) {
+        return "";
+      }
+    }
+  }
+
+  buildTorrentTooltip({ peers = null, checkedAt = null, reason = null } = {}) {
+    const parts = [];
+    if (Number.isFinite(peers)) {
+      parts.push(`Peers: ${Math.max(0, Number(peers))}`);
+    }
+    if (Number.isFinite(checkedAt)) {
+      const formatted = this.formatTorrentCheckedTime(checkedAt);
+      if (formatted) {
+        parts.push(`Checked ${formatted}`);
+      }
+    }
+    if (typeof reason === "string" && reason && reason !== "peer") {
+      let normalizedReason;
+      if (reason === "timeout") {
+        normalizedReason = "Timed out";
+      } else if (reason === "no-trackers") {
+        normalizedReason = "No WSS trackers";
+      } else if (reason === "invalid") {
+        normalizedReason = "Invalid magnet";
+      } else {
+        normalizedReason = reason.charAt(0).toUpperCase() + reason.slice(1);
+      }
+      parts.push(normalizedReason);
+    }
+    if (!parts.length) {
+      return "WebTorrent status unknown";
+    }
+    return `WebTorrent • ${parts.join(" • ")}`;
+  }
+
+  applyUrlBadgeVisualState(badge, entry) {
+    if (!(badge instanceof HTMLElement)) {
+      return;
+    }
+
+    const status =
+      typeof entry?.status === "string" && entry.status ? entry.status : "checking";
+    const message =
+      typeof entry?.message === "string" && entry.message
+        ? entry.message
+        : "Checking hosted URL…";
+
+    const hadMargin = badge.classList.contains("mt-3");
+    const baseClasses = [
+      "url-health-badge",
+      "text-xs",
+      "font-semibold",
+      "px-2",
+      "py-1",
+      "rounded",
+      "transition-colors",
+      "duration-200",
+    ];
+    if (hadMargin) {
+      baseClasses.unshift("mt-3");
+    }
+    badge.className = baseClasses.join(" ");
+
+    const common = ["inline-flex", "items-center", "gap-1"];
+    const addClasses = (classes) => {
+      classes.forEach((cls) => badge.classList.add(cls));
+    };
+
+    if (status === "healthy") {
+      addClasses([...common, "bg-green-900", "text-green-200"]);
+    } else if (status === "offline") {
+      addClasses([...common, "bg-red-900", "text-red-200"]);
+    } else if (status === "unknown" || status === "timeout") {
+      addClasses([...common, "bg-amber-900", "text-amber-200"]);
+    } else {
+      addClasses([...common, "bg-gray-800", "text-gray-300"]);
+    }
+
+    badge.dataset.urlHealthState = status;
+    badge.textContent = message;
+    badge.setAttribute("aria-live", "polite");
+    badge.setAttribute("role", status === "offline" ? "alert" : "status");
+  }
+
+  applyStreamBadgeVisualState(badge, entry) {
+    if (!(badge instanceof HTMLElement)) {
+      return;
+    }
+
+    const state =
+      typeof entry?.state === "string" && entry.state ? entry.state : "checking";
+    const peersValue = Number.isFinite(entry?.peers)
+      ? Math.max(0, Number(entry.peers))
+      : null;
+    const reason = typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
+    const text = typeof entry?.text === "string" && entry.text ? entry.text : null;
+    const tooltip =
+      typeof entry?.tooltip === "string" && entry.tooltip ? entry.tooltip : null;
+    const role = entry?.role === "alert" || entry?.role === "status" ? entry.role : null;
+    const ariaLive =
+      entry?.ariaLive === "assertive" || entry?.ariaLive === "polite"
+        ? entry.ariaLive
+        : role === "alert"
+        ? "assertive"
+        : "polite";
+
+    const hadMargin = badge.classList.contains("mt-3");
+    const baseClasses = [
+      "torrent-health-badge",
+      "text-xs",
+      "font-semibold",
+      "px-2",
+      "py-1",
+      "rounded",
+      "transition-colors",
+      "duration-200",
+    ];
+    if (hadMargin) {
+      baseClasses.unshift("mt-3");
+    }
+    badge.className = baseClasses.join(" ");
+
+    const common = ["inline-flex", "items-center", "gap-1"];
+    const addClasses = (classes) => {
+      classes.forEach((cls) => badge.classList.add(cls));
+    };
+
+    if (state === "healthy") {
+      addClasses([...common, "bg-green-900", "text-green-200"]);
+    } else if (state === "unhealthy") {
+      addClasses([...common, "bg-red-900", "text-red-200"]);
+    } else {
+      addClasses([...common, "bg-gray-800", "text-gray-300"]);
+    }
+
+    const map = {
+      healthy: {
+        icon: "🟢",
+        aria: "WebTorrent peers available",
+      },
+      unhealthy: {
+        icon: "🔴",
+        aria: "WebTorrent peers unavailable",
+      },
+      checking: {
+        icon: "⏳",
+        aria: "Checking WebTorrent peers",
+      },
+      unknown: {
+        icon: "⚪",
+        aria: "WebTorrent status unknown",
+      },
+    };
+
+    const descriptor = map[state] || map.unknown;
+    const peersText = state === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
+    const iconPrefix = descriptor.icon ? `${descriptor.icon} ` : "";
+    const computedText = `${iconPrefix}WebTorrent${peersText}`;
+    badge.textContent = text || computedText;
+
+    const tooltipValue =
+      tooltip ||
+      (state === "checking" || state === "unknown"
+        ? descriptor.aria
+        : this.buildTorrentTooltip({
+            peers: peersValue,
+            checkedAt: Number.isFinite(entry?.checkedAt) ? entry.checkedAt : null,
+            reason,
+          }));
+
+    badge.setAttribute("aria-label", tooltipValue);
+    badge.setAttribute("title", tooltipValue);
+    badge.setAttribute("aria-live", ariaLive);
+    badge.setAttribute("role", role || (state === "unhealthy" ? "alert" : "status"));
+
+    badge.dataset.streamHealthState = state;
+    if (reason) {
+      badge.dataset.streamHealthReason = reason;
+    } else if (badge.dataset.streamHealthReason) {
+      delete badge.dataset.streamHealthReason;
+    }
+
+    if (Number.isFinite(peersValue) && peersValue !== null) {
+      badge.dataset.streamHealthPeers = String(peersValue);
+    } else if (badge.dataset.streamHealthPeers) {
+      delete badge.dataset.streamHealthPeers;
+    }
   }
 
   buildDiscussionCount() {
@@ -1033,8 +1296,13 @@ export class VideoCard {
       return;
     }
 
+    const cachedUrlHealth = this.getCachedUrlHealthEntry();
     if (this.playbackUrl) {
-      this.root.dataset.urlHealthState = "checking";
+      const status =
+        typeof cachedUrlHealth?.status === "string" && cachedUrlHealth.status
+          ? cachedUrlHealth.status
+          : "checking";
+      this.root.dataset.urlHealthState = status;
       delete this.root.dataset.urlHealthReason;
       this.root.dataset.urlHealthEventId = this.video.id || "";
       this.root.dataset.urlHealthUrl = encodeURIComponent(this.playbackUrl);
@@ -1045,14 +1313,33 @@ export class VideoCard {
       delete this.root.dataset.urlHealthUrl;
     }
 
+    const cachedStreamHealth = this.getCachedStreamHealthEntry();
     if (this.magnetProvided && this.magnetSupported) {
-      this.root.dataset.streamHealthState = "checking";
-      delete this.root.dataset.streamHealthReason;
+      const state =
+        typeof cachedStreamHealth?.state === "string" && cachedStreamHealth.state
+          ? cachedStreamHealth.state
+          : "checking";
+      this.root.dataset.streamHealthState = state;
+      if (cachedStreamHealth?.reason) {
+        this.root.dataset.streamHealthReason = cachedStreamHealth.reason;
+      } else if (this.root.dataset.streamHealthReason) {
+        delete this.root.dataset.streamHealthReason;
+      }
+      if (Number.isFinite(cachedStreamHealth?.peers)) {
+        this.root.dataset.streamHealthPeers = String(
+          Math.max(0, Number(cachedStreamHealth.peers))
+        );
+      } else if (this.root.dataset.streamHealthPeers) {
+        delete this.root.dataset.streamHealthPeers;
+      }
     } else {
       this.root.dataset.streamHealthState = "unhealthy";
       this.root.dataset.streamHealthReason = this.magnetProvided
         ? "unsupported"
         : "missing-source";
+      if (this.root.dataset.streamHealthPeers) {
+        delete this.root.dataset.streamHealthPeers;
+      }
     }
 
     if (this.magnetProvided) {

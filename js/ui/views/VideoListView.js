@@ -54,6 +54,14 @@ export class VideoListView {
       loadedThumbnails:
         state.loadedThumbnails instanceof Map ? state.loadedThumbnails : new Map(),
       videosMap: state.videosMap instanceof Map ? state.videosMap : new Map(),
+      urlHealthByVideoId:
+        state.urlHealthByVideoId instanceof Map
+          ? state.urlHealthByVideoId
+          : new Map(),
+      streamHealthByVideoId:
+        state.streamHealthByVideoId instanceof Map
+          ? state.streamHealthByVideoId
+          : new Map(),
       feedMetadata:
         state.feedMetadata && typeof state.feedMetadata === "object"
           ? { ...state.feedMetadata }
@@ -268,6 +276,7 @@ export class VideoListView {
 
     this.syncViewCountSubscriptions(displayVideos);
     this.cleanupThumbnailCache(displayVideos);
+    this.cleanupHealthCache(displayVideos);
 
     if (!displayVideos.length) {
       this.renderedVideoIds.clear();
@@ -383,7 +392,11 @@ export class VideoListView {
           fallbackThumbnailSrc: this.assets.fallbackThumbnailSrc,
           unsupportedBtihMessage: this.assets.unsupportedBtihMessage,
         },
-        state: { loadedThumbnails: this.state.loadedThumbnails },
+        state: {
+          loadedThumbnails: this.state.loadedThumbnails,
+          urlHealthByVideoId: this.state.urlHealthByVideoId,
+          streamHealthByVideoId: this.state.streamHealthByVideoId,
+        },
         ensureGlobalMoreMenuHandlers: () =>
           this.utils.ensureGlobalMoreMenuHandlers(),
         onRequestCloseAllMenus: () => this.closeAllMenus(),
@@ -515,6 +528,99 @@ export class VideoListView {
     this.pruneDetachedViewCountElements();
 
     return displayVideos;
+  }
+
+  cacheUrlHealth(videoId, entry) {
+    if (!videoId || !(this.state.urlHealthByVideoId instanceof Map)) {
+      return;
+    }
+
+    if (!entry || typeof entry !== "object") {
+      this.state.urlHealthByVideoId.delete(videoId);
+      return;
+    }
+
+    const normalized = {
+      status:
+        typeof entry.status === "string" && entry.status ? entry.status : "checking",
+      message:
+        typeof entry.message === "string" && entry.message
+          ? entry.message
+          : "Checking hosted URL…",
+    };
+
+    if (Number.isFinite(entry.lastCheckedAt)) {
+      normalized.lastCheckedAt = Math.floor(entry.lastCheckedAt);
+    }
+
+    this.state.urlHealthByVideoId.set(videoId, normalized);
+  }
+
+  cacheStreamHealth(videoId, entry) {
+    if (!videoId || !(this.state.streamHealthByVideoId instanceof Map)) {
+      return;
+    }
+
+    if (!entry || typeof entry !== "object") {
+      this.state.streamHealthByVideoId.delete(videoId);
+      return;
+    }
+
+    const normalized = {
+      state:
+        typeof entry.state === "string" && entry.state ? entry.state : "unknown",
+    };
+
+    if (Number.isFinite(entry.peers)) {
+      normalized.peers = Math.max(0, Number(entry.peers));
+    }
+    if (typeof entry.reason === "string" && entry.reason) {
+      normalized.reason = entry.reason;
+    }
+    if (Number.isFinite(entry.checkedAt)) {
+      normalized.checkedAt = Math.floor(entry.checkedAt);
+    }
+    if (typeof entry.text === "string" && entry.text) {
+      normalized.text = entry.text;
+    }
+    if (typeof entry.tooltip === "string" && entry.tooltip) {
+      normalized.tooltip = entry.tooltip;
+    }
+    if (entry.role === "alert" || entry.role === "status") {
+      normalized.role = entry.role;
+    }
+    if (entry.ariaLive === "assertive" || entry.ariaLive === "polite") {
+      normalized.ariaLive = entry.ariaLive;
+    }
+
+    this.state.streamHealthByVideoId.set(videoId, normalized);
+  }
+
+  cleanupHealthCache(videos) {
+    const activeIds = new Set();
+    if (Array.isArray(videos)) {
+      videos.forEach((video) => {
+        if (video && typeof video.id === "string" && video.id) {
+          activeIds.add(video.id);
+        }
+      });
+    }
+
+    if (this.state.urlHealthByVideoId instanceof Map) {
+      Array.from(this.state.urlHealthByVideoId.keys()).forEach((videoId) => {
+        if (!activeIds.has(videoId)) {
+          this.state.urlHealthByVideoId.delete(videoId);
+        }
+      });
+    }
+
+    if (this.state.streamHealthByVideoId instanceof Map) {
+      Array.from(this.state.streamHealthByVideoId.keys()).forEach((videoId) => {
+        if (!activeIds.has(videoId)) {
+          this.state.streamHealthByVideoId.delete(videoId);
+        }
+      });
+    }
   }
 
   updateVideo(videoId, patch) {
