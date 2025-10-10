@@ -76,9 +76,14 @@ During migration we keep existing selectors alive by layering `@apply` calls in 
 - `.modal-content` → `.bv-modal__panel`
 - `#profileModal .profile-switcher*` → `.card`, `.badge`, `.btn-ghost`
 
-These shims live under the "Legacy component compatibility" section and will be removed once templates switch to the new primitives.
+We continue to expose aliases such as `.profile-switcher` and nested variations (for example, `.profile-switcher__item`) so existing profile and admin controllers stay functional while downstream templates finish their migration. These shims live under the "Legacy component compatibility" section and will be removed once templates switch to the new primitives.
 
-**Target removal:** Audit usage after the Q1 2025 UI refresh and delete remaining shims no later than April 2025.
+**Target removal:** Audit usage after the Q1 2025 UI refresh and delete remaining shims no later than April 2025. At that point the compatibility layer will be deleted once dependent feature flags confirm that no legacy selectors remain in production HTML.
+
+### Migration Notes (Q4 2024)
+
+- Modal templates across the app now mount `.bv-modal`, `.bv-modal-backdrop`, and `.bv-modal__panel` primitives directly. Controllers such as `ProfileModalController` and the upload modal orchestrator were updated to expect these primitives, so any new modal should follow the same structure for consistent accessibility and animation hooks.
+- The compatibility shim keeps the `.profile-switcher` selector family alive temporarily so third-party embeds and cached HTML fragments continue to render while operators redeploy updated templates. Keep the aliases until the April 2025 removal window above, then delete the shim and update any last callers to the new `.card`/`.btn-ghost` structure.
 
 ## When to Mix Utilities
 

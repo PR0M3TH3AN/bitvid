@@ -274,8 +274,8 @@
               Profile &amp; Edit Modal Shells
             </h2>
             <p class="text-sm text-muted">
-              Both shells share the `.bv-modal` overlay and tokenized
-              primitives (`.card`, `.btn`, `.btn-ghost`, `.badge`, `.grid-stack`,
+              Both shells share the `.bv-modal` overlay and tokenized primitives
+              (`.card`, `.btn`, `.btn-ghost`, `.badge`, `.grid-stack`,
               `.focus-ring`). Compatibility hooks like `modal-content` remain on
               the panels so legacy CSS selectors keep working alongside the new
               primitives.
@@ -304,12 +304,17 @@
                       role="dialog"
                       aria-labelledby="profileModalTitle"
                     >
-                      <header class="card flex items-center justify-between gap-sm p-md">
+                      <header
+                        class="card flex items-center justify-between gap-sm p-md"
+                      >
                         <div>
                           <p class="text-xs uppercase tracking-wide text-muted">
                             Modal header
                           </p>
-                          <h4 id="profileModalTitle" class="text-lg font-semibold">
+                          <h4
+                            id="profileModalTitle"
+                            class="text-lg font-semibold"
+                          >
                             Active profile
                           </h4>
                         </div>
@@ -323,7 +328,7 @@
                       </header>
                       <div class="flex flex-1 flex-col gap-lg lg:flex-row">
                         <nav
-                          class="grid gap-xs sm:grid-cols-3 lg:w-56 lg:flex lg:flex-col"
+                          class="grid gap-xs sm:grid-cols-3 lg:flex lg:w-56 lg:flex-col"
                           aria-label="Profile sections"
                         >
                           <button
@@ -349,20 +354,31 @@
                             Blocked users
                           </button>
                         </nav>
-                        <div class="grid-stack flex-1 gap-md" data-variant="cards">
+                        <div
+                          class="grid-stack flex-1 gap-md"
+                          data-variant="cards"
+                        >
                           <article
                             id="profilePaneAccount"
                             class="card space-y-sm p-md"
                             data-profile-pane
                           >
-                            <div class="flex items-start justify-between gap-sm">
+                            <div
+                              class="flex items-start justify-between gap-sm"
+                            >
                               <div>
-                                <p class="text-xs uppercase tracking-wide text-muted">
+                                <p
+                                  class="text-xs uppercase tracking-wide text-muted"
+                                >
                                   Current identity
                                 </p>
-                                <h5 class="text-base font-semibold">npub1example...</h5>
+                                <h5 class="text-base font-semibold">
+                                  npub1example...
+                                </h5>
                               </div>
-                              <span class="badge" data-variant="info">Active</span>
+                              <span class="badge" data-variant="info"
+                                >Active</span
+                              >
                             </div>
                             <p class="text-sm text-muted">
                               `.grid-stack` arranges saved identities with
@@ -374,13 +390,19 @@
                               <button class="btn-ghost">Manage keys</button>
                             </footer>
                           </article>
-                          <article class="card space-y-sm p-md" data-profile-pane>
-                            <h5 class="text-base font-semibold">Relay presets</h5>
+                          <article
+                            class="card space-y-sm p-md"
+                            data-profile-pane
+                          >
+                            <h5 class="text-base font-semibold">
+                              Relay presets
+                            </h5>
                             <p class="text-sm text-muted">
                               Use badges to indicate status (e.g.
-                              <span class="badge" data-variant="neutral">New</span>)
-                              while keeping content spacing consistent with the
-                              production modal.
+                              <span class="badge" data-variant="neutral"
+                                >New</span
+                              >) while keeping content spacing consistent with
+                              the production modal.
                             </p>
                             <ul class="space-y-xs text-sm text-muted">
                               <li data-relay-row>relay.example.com</li>
@@ -390,14 +412,19 @@
                           </article>
                         </div>
                       </div>
-                      <footer class="card flex flex-wrap items-center justify-between gap-sm p-md">
+                      <footer
+                        class="card flex flex-wrap items-center justify-between gap-sm p-md"
+                      >
                         <p class="text-xs text-muted">
                           Footer keeps shared spacing tokens while exposing
                           legacy hooks like `data-profile-action` for scripts if
                           needed.
                         </p>
                         <div class="flex gap-sm">
-                          <button class="btn-ghost" data-profile-action="cancel">
+                          <button
+                            class="btn-ghost"
+                            data-profile-action="cancel"
+                          >
                             Cancel
                           </button>
                           <button class="btn" data-profile-action="save">
@@ -434,12 +461,17 @@
                       class="bv-modal__panel modal-content flex max-h-[80vh] flex-col gap-lg"
                       data-modal="edit"
                     >
-                      <header class="card flex items-center justify-between gap-sm p-md">
+                      <header
+                        class="card flex items-center justify-between gap-sm p-md"
+                      >
                         <div class="space-y-xs">
                           <p class="text-xs uppercase tracking-wide text-muted">
                             Edit metadata
                           </p>
-                          <h4 id="editVideoModalTitle" class="text-lg font-semibold">
+                          <h4
+                            id="editVideoModalTitle"
+                            class="text-lg font-semibold"
+                          >
                             Update video note
                           </h4>
                         </div>
@@ -460,7 +492,10 @@
                         </p>
                         <div class="card space-y-md p-md">
                           <div class="space-y-xs">
-                            <label class="text-sm font-medium text-text" for="editTitleDemo">
+                            <label
+                              class="text-sm font-medium text-text"
+                              for="editTitleDemo"
+                            >
                               Title
                             </label>
                             <div class="flex flex-wrap gap-sm sm:flex-nowrap">
@@ -479,24 +514,45 @@
                               </button>
                             </div>
                           </div>
-                          <div class="grid gap-md md:grid-cols-2" data-nip71-grid>
+                          <div
+                            class="grid gap-md md:grid-cols-2"
+                            data-nip71-grid
+                          >
                             <div class="space-y-xs">
-                              <label class="text-sm font-medium text-text" for="editKindDemo">
+                              <label
+                                class="text-sm font-medium text-text"
+                                for="editKindDemo"
+                              >
                                 NIP-71 kind
                               </label>
-                              <div class="card space-y-xs p-sm" data-nip71-fieldset>
+                              <div
+                                class="card space-y-xs p-sm"
+                                data-nip71-fieldset
+                              >
                                 <label class="flex items-center gap-xs text-sm">
-                                  <input class="focus-ring" type="radio" name="editKindDemo" checked />
+                                  <input
+                                    class="focus-ring"
+                                    type="radio"
+                                    name="editKindDemo"
+                                    checked
+                                  />
                                   Kind 21 — Full video
                                 </label>
                                 <label class="flex items-center gap-xs text-sm">
-                                  <input class="focus-ring" type="radio" name="editKindDemo" />
+                                  <input
+                                    class="focus-ring"
+                                    type="radio"
+                                    name="editKindDemo"
+                                  />
                                   Kind 22 — Short
                                 </label>
                               </div>
                             </div>
                             <div class="space-y-xs">
-                              <label class="text-sm font-medium text-text" for="editPublishDemo">
+                              <label
+                                class="text-sm font-medium text-text"
+                                for="editPublishDemo"
+                              >
                                 Published at
                               </label>
                               <input
@@ -514,7 +570,9 @@
                           </div>
                         </div>
                       </div>
-                      <footer class="card flex flex-wrap items-center justify-between gap-sm p-md">
+                      <footer
+                        class="card flex flex-wrap items-center justify-between gap-sm p-md"
+                      >
                         <p class="text-xs text-muted">
                           Footer actions mix `.btn` variants while referencing
                           `data-submit-state` for controller hand-offs.
