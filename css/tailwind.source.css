@@ -125,6 +125,19 @@
     @apply flex flex-col gap-md;
   }
 
+  .bv-stack {
+    @apply flex flex-col gap-lg;
+  }
+
+  .bv-stack--tight {
+    @apply gap-md;
+  }
+
+  .bv-grid-video {
+    @apply grid gap-xl py-lg;
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  }
+
   /* Legacy compatibility shims */
   .video-card {
     @apply card overflow-visible;
@@ -436,5 +449,12 @@
 
   .watch-history-card__action--danger {
     @apply bg-critical text-white hover:bg-critical-strong focus-visible:bg-critical-strong;
+  }
+}
+
+@media (max-width: 40rem) {
+  .bv-grid-video {
+    gap: var(--space-md);
+    grid-template-columns: 1fr;
   }
 }

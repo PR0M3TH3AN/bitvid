@@ -13,7 +13,19 @@ module.exports = {
         "page-alt": "var(--color-page-alt)",
         surface: "var(--color-surface)",
         "surface-alt": "var(--color-surface-alt)",
-        overlay: "var(--color-overlay)",
+        overlay: {
+          DEFAULT: "var(--color-overlay)",
+          muted: "var(--color-overlay-muted)",
+          strong: "var(--color-overlay-strong)",
+          darker: "var(--color-overlay-darker)",
+          veil: "var(--color-overlay-veil)",
+          banner: "var(--color-overlay-banner)",
+          panel: "var(--color-overlay-panel)",
+          "panel-soft": "var(--color-overlay-panel-soft)",
+          "panel-tint": "var(--color-overlay-panel-tint)",
+          "panel-glass": "var(--color-overlay-panel-glass)",
+          black: "var(--color-overlay-black)"
+        },
         primary: "var(--color-primary)",
         secondary: "var(--color-secondary)",
         panel: {
@@ -27,12 +39,24 @@ module.exports = {
         },
         border: {
           DEFAULT: "var(--color-border)",
-          subtle: "var(--color-border-subtle)"
+          subtle: "var(--color-border-subtle)",
+          translucent: "var(--color-border-translucent)",
+          "translucent-strong": "var(--color-border-translucent-strong)",
+          "translucent-bright": "var(--color-border-translucent-bright)",
+          "translucent-stronger": "var(--color-border-translucent-stronger)",
+          "translucent-strongest": "var(--color-border-translucent-strongest)",
+          "translucent-glow": "var(--color-border-translucent-glow)",
+          "info-soft": "var(--color-border-info-soft)",
+          "neutral-soft": "var(--color-border-neutral-soft)",
+          "sidebar-strong": "var(--color-border-sidebar-strong)"
         },
         text: {
           DEFAULT: "var(--color-text)",
           strong: "var(--color-text-strong)",
-          muted: "var(--color-muted)"
+          muted: "var(--color-muted)",
+          frosted: "var(--color-text-frosted)",
+          "frosted-strong": "var(--color-text-frosted-strong)",
+          "frosted-soft": "var(--color-text-frosted-soft)"
         },
         muted: {
           DEFAULT: "var(--color-muted)",
