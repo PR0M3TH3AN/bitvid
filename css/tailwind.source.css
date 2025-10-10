@@ -9,6 +9,18 @@
     @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
   }
 
+  .popover {
+    @apply relative inline-flex;
+  }
+
+  .popover__panel {
+    @apply focus-ring absolute left-0 top-full z-[70] mt-2 min-w-[12rem] origin-top rounded-lg border border-border border-opacity-40 bg-panel px-4 py-3 text-sm text-text shadow-lg transition-transform transition-opacity duration-[var(--motion-duration-base)] ease-[var(--motion-ease-out)] opacity-0 scale-95 pointer-events-none;
+  }
+
+  .popover__panel[data-state="open"] {
+    @apply pointer-events-auto opacity-100 scale-100;
+  }
+
   .btn {
     @apply focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-transparent bg-primary px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white shadow-md transition duration-base ease-in-out;
   }
@@ -55,6 +67,48 @@
 
   .badge[data-variant="neutral"] {
     @apply bg-border bg-opacity-40 text-muted-strong;
+  }
+
+  .menu {
+    @apply flex flex-col gap-1 py-2;
+  }
+
+  .menu__heading {
+    @apply px-4 pb-2 text-xs font-semibold uppercase tracking-wide text-muted;
+  }
+
+  .menu__separator {
+    @apply my-2 h-px bg-border bg-opacity-20;
+  }
+
+  .menu__item {
+    @apply focus-ring relative flex w-full items-center gap-3 rounded-md px-4 py-2 text-sm font-medium text-text transition-colors duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-in-out)];
+  }
+
+  .menu__item:hover {
+    @apply bg-panel-hover text-text;
+  }
+
+  .menu__item[data-state="active"] {
+    @apply bg-info bg-opacity-20 text-info-strong;
+  }
+
+  .menu__item[data-variant="critical"] {
+    @apply text-critical-strong;
+  }
+
+  .menu__item[data-variant="critical"]:hover {
+    @apply bg-critical bg-opacity-20;
+  }
+
+  .menu__item:disabled,
+  .menu__item[aria-disabled="true"] {
+    @apply cursor-not-allowed bg-transparent text-muted opacity-60;
+  }
+
+  .menu__item:disabled:hover,
+  .menu__item[aria-disabled="true"]:hover {
+    @apply bg-transparent text-muted;
   }
 
   .card {
@@ -193,7 +247,9 @@
     .checkbox,
     .checkbox::after,
     .switch,
-    .switch::before {
+    .switch::before,
+    .popover__panel,
+    .menu__item {
       transition: none !important;
     }
   }
