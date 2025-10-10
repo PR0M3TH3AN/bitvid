@@ -227,6 +227,7 @@ header img {
 #profileModal .profile-switcher {
   @apply card flex flex-col gap-lg;
   padding: clamp(1.25rem, 2vw, 1.5rem);
+  gap: 1.5rem;
   border: 0.0625rem solid rgba(148, 163, 184, 0.28);
   background: linear-gradient(
     145deg,
@@ -283,7 +284,7 @@ header img {
 }
 
 #profileModal .profile-switcher__add {
-  @apply card flex items-center gap-4 text-left;
+  @apply card flex items-center gap-4 text-left p-4;
   border: 0.125rem dashed rgba(148, 163, 184, 0.35);
   background: rgba(15, 23, 42, 0.55);
   border-radius: 1rem;
