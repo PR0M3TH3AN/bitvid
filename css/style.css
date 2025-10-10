@@ -2,9 +2,9 @@
 
 :root {
   --scrollbar-width: 0.5rem;
-  --scrollbar-track: rgba(255, 255, 255, 0.1);
-  --scrollbar-thumb: rgba(255, 255, 255, 0.3);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.4);
+  --scrollbar-track: var(--color-white-soft);
+  --scrollbar-thumb: var(--color-white-softer);
+  --scrollbar-thumb-hover: var(--color-white-softest);
   /* Sidebar stack must remain below modal overlays. */
   --z-sidebar-overlay: 10;
   --z-sidebar: 20;
@@ -98,30 +98,6 @@ header img {
   padding: 1rem;
 }
 
-/* Video Grids */
-#videoList {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
-  gap: 2rem;
-  padding: 1.5rem 0;
-}
-
-/* Subscriptions grid: same pattern as #videoList */
-#subscriptionsVideoList {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
-  gap: 2rem;
-  padding: 1.5rem 0;
-}
-
-/* Now also match for channelVideoList (channel profile) */
-#channelVideoList {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
-  gap: 2rem;
-  padding: 1.5rem 0;
-}
-
 /* --------------------------------------------------------------------------
    Legacy component compatibility shims
    --------------------------------------------------------------------------
@@ -136,26 +112,26 @@ header img {
 
 .video-card.video-card--owner-private {
   box-shadow:
-    0 0 0 0.125rem rgba(168, 85, 247, 0.55),
+    0 0 0 0.125rem var(--color-ring-private),
     var(--shadow-md);
 }
 
 .video-card.video-card--owner-private:hover {
   box-shadow:
-    0 0 0 0.125rem rgba(192, 132, 252, 0.65),
+    0 0 0 0.125rem var(--color-ring-private-hover),
     var(--shadow-lg);
 }
 
 .video-card.video-card--nsfw-owner {
-  background-color: #000;
+  background-color: var(--color-black);
   box-shadow:
-    0 0 0 0.0625rem rgba(239, 68, 68, 0.4),
+    0 0 0 0.0625rem var(--color-ring-critical),
     var(--shadow-md);
 }
 
 .video-card.video-card--nsfw-owner:hover {
   box-shadow:
-    0 0 0 0.0625rem rgba(239, 68, 68, 0.55),
+    0 0 0 0.0625rem var(--color-ring-critical-strong),
     var(--shadow-lg);
 }
 
@@ -169,13 +145,13 @@ header img {
 
 .video-card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
   box-shadow:
-    0 0 0 0.0625rem rgba(239, 68, 68, 0.35),
+    0 0 0 0.0625rem var(--color-ring-critical-soft),
     var(--shadow-md);
 }
 
 .video-card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"]:hover {
   box-shadow:
-    0 0 0 0.0625rem rgba(239, 68, 68, 0.45),
+    0 0 0 0.0625rem var(--color-ring-critical-hover),
     var(--shadow-lg);
 }
 
@@ -196,8 +172,8 @@ header img {
 .video-visibility-toggle__option[data-active="true"] {
   background: linear-gradient(
     135deg,
-    rgba(129, 140, 248, 0.4),
-    rgba(192, 132, 252, 0.32)
+    var(--color-gradient-visibility-start),
+    var(--color-gradient-visibility-end)
   );
 }
 
@@ -413,12 +389,12 @@ header img {
 .video-modal__video,
 #playerModal .player-modal__video {
   padding: clamp(0.75rem, 3.5vw, 2.5rem);
-  border-bottom: 0.0625rem solid rgba(148, 163, 184, 0.18);
+  border-bottom: 0.0625rem solid var(--color-border-translucent);
 }
 
 .video-modal__media,
 #playerModal .player-modal__video video {
-  box-shadow: 0 1.125rem 2.75rem rgba(8, 11, 30, 0.55);
+  box-shadow: 0 1.125rem 2.75rem var(--color-shadow-floating);
   max-height: min(80vh, calc(100vw * 9 / 16));
 }
 
@@ -426,7 +402,7 @@ header img {
 #playerModal .player-modal__info {
   padding: clamp(1.5rem, 3vw, 2.5rem);
   padding-bottom: clamp(2.5rem, 6vw, 4rem);
-  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.35);
+  box-shadow: inset 0 1px 0 var(--color-divider-strong);
 }
 
 .modal-meta {
@@ -526,8 +502,8 @@ body.modal-open #sidebarOverlay {
 .modal-nav,
 .video-modal__nav {
   background-color: var(--color-bg);
-  border-bottom: 0.0625rem solid rgba(148, 163, 184, 0.25);
-  box-shadow: 0 0.75rem 2rem rgba(8, 11, 30, 0.45);
+  border-bottom: 0.0625rem solid var(--color-border-translucent-strong);
+  box-shadow: 0 0.75rem 2rem var(--color-shadow-elevated);
 }
 
 .modal-nav .flex {
@@ -547,10 +523,10 @@ body.modal-open #sidebarOverlay {
 .zap-popover__content {
   width: 18rem;
   max-width: calc(100vw - 2rem);
-  background: rgba(11, 17, 32, 0.96);
+  background: var(--color-overlay-veil);
   color: var(--color-subtle);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: 0 22px 48px -18px rgba(8, 14, 28, 0.7);
+  border: 1px solid var(--color-border-translucent-stronger);
+  box-shadow: 0 22px 48px -18px var(--color-shadow-intense);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
@@ -579,7 +555,7 @@ body.modal-open #sidebarOverlay {
 .progress-bar {
   width: 100%;
   height: 0.5rem;
-  background-color: rgb(255 255 255 / 0.1);
+  background-color: var(--color-white-soft);
   border-radius: 9999px;
   overflow: hidden;
 }
@@ -596,7 +572,7 @@ textarea {
   width: 100%;
   padding: 0.75rem;
   background-color: var(--color-bg);
-  border: 0.0625rem solid rgb(255 255 255 / 0.1);
+  border: 0.0625rem solid var(--color-white-soft);
   border-radius: 0.5rem;
   color: var(--color-text);
   transition: border-color 0.2s;
@@ -665,7 +641,7 @@ button:not(.icon-button):focus {
   margin-bottom: 0;
   pointer-events: auto;
   border-radius: 0.75rem;
-  box-shadow: 0 1.25rem 3rem rgba(15, 23, 42, 0.3);
+  box-shadow: 0 1.25rem 3rem var(--color-shadow-notification);
 }
 
 /* Base styling without a forced display */
@@ -685,7 +661,7 @@ button:not(.icon-button):focus {
 
 .status-spinner--inline {
   animation: spin 1s linear infinite;
-  border: 0.125rem solid rgba(96, 165, 250, 0.35);
+  border: 0.125rem solid var(--color-border-info-soft);
   border-radius: 9999px;
   border-top-color: var(--color-info);
   display: inline-block;
@@ -718,7 +694,7 @@ button:not(.icon-button):focus {
 
 .status-banner {
   align-items: center;
-  background-color: rgba(31, 41, 55, 0.9);
+  background-color: var(--color-overlay-panel);
   border-radius: 0.5rem;
   color: var(--color-subtle);
   display: flex;
@@ -729,7 +705,7 @@ button:not(.icon-button):focus {
 
 .status-banner .status-spinner {
   animation: spin 1s linear infinite;
-  border: 0.125rem solid rgba(229, 231, 235, 0.35);
+  border: 0.125rem solid var(--color-border-neutral-soft);
   border-radius: 9999px;
   border-top-color: var(--color-page-alt);
   height: 1.25rem;
@@ -744,18 +720,13 @@ button:not(.icon-button):focus {
 
 /* Responsive Design */
 @media (max-width: 640px) {
-  #videoList {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-
   .container {
     padding: 0.75rem;
   }
 }
 
 footer {
-  border-top: 0.0625rem solid rgba(255, 255, 255, 0.1);
+  border-top: 0.0625rem solid var(--color-white-soft);
   margin-top: 4rem;
   padding-top: 2rem;
 }
@@ -772,7 +743,7 @@ footer a:hover {
 #disclaimerModal {
   position: fixed;
   inset: 0;
-  background-color: rgb(0 0 0 / 0.9);
+  background-color: var(--color-overlay-black);
   z-index: var(--z-modal-root);
   /* remove display: none; */
   display: flex;
@@ -800,7 +771,7 @@ footer a:hover {
   display: flex;
   flex-direction: column;
   background-color: var(--color-bg);
-  box-shadow: 0 1.5625rem 3.125rem -0.75rem rgb(0 0 0 / 0.45);
+  box-shadow: 0 1.5625rem 3.125rem -0.75rem var(--color-shadow-sidebar);
 }
 
 #disclaimerModal .modal-header {
@@ -816,7 +787,7 @@ footer a:hover {
 #disclaimerModal .modal-footer {
   padding: 1.25rem 1.5rem 1.75rem;
   background-color: var(--color-overlay);
-  border-top: 0.0625rem solid rgba(255, 255, 255, 0.1);
+  border-top: 0.0625rem solid var(--color-white-soft);
 }
 
 /* Responsive Adjustments for Disclaimer Modal */
@@ -862,18 +833,18 @@ footer a:hover {
 
 /* Override default button styles for back button */
 .back-button {
-  background: rgba(15, 23, 42, 0.75) !important;
+  background: var(--color-overlay-strong) !important;
   padding: 0 !important;
-  color: rgb(226 232 240) !important;
+  color: var(--color-subtle-text) !important;
   transform: none !important;
-  border: 0.0625rem solid rgba(148, 163, 184, 0.4) !important;
+  border: 0.0625rem solid var(--color-border-translucent-strongest) !important;
   box-shadow: none;
 }
 
 .back-button:hover {
-  background: rgba(51, 65, 85, 0.95) !important;
-  color: white !important;
-  border-color: rgba(148, 163, 184, 0.55) !important;
+  background: var(--color-overlay-banner) !important;
+  color: var(--color-white) !important;
+  border-color: var(--color-border-translucent-glow) !important;
 }
 
 /* Modal Container */
@@ -889,7 +860,7 @@ footer a:hover {
 
 /* Video info cards */
 .player-modal__info .bg-gray-800\/50 {
-  background-color: rgb(31 41 55 / 0.5);
+  background-color: var(--color-overlay-panel-tint);
   backdrop-filter: blur(0.25rem);
 }
 
@@ -921,7 +892,7 @@ footer a:hover {
 .icon-button:focus,
 .icon-button:active {
   outline: none;
-  box-shadow: 0 0 0 0.1875rem rgba(220, 38, 38, 0.6);
+  box-shadow: 0 0 0 0.1875rem var(--color-ring-alert);
 }
 
 .icon-image {
@@ -1017,12 +988,12 @@ footer a:hover {
 .sidebar-panel {
   background: linear-gradient(
     160deg,
-    rgba(30, 41, 59, 0.92) 0%,
-    rgba(15, 23, 42, 0.92) 100%
+    var(--color-overlay-panel-gradient-start) 0%,
+    var(--color-overlay-panel-gradient-end) 100%
   );
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--color-border-translucent);
   border-radius: 1rem;
-  box-shadow: 0 1.25rem 2.5rem rgba(15, 23, 42, 0.35);
+  box-shadow: 0 1.25rem 2.5rem var(--color-shadow-panel);
   padding: 1.25rem 1rem;
   width: 100%;
   box-sizing: border-box;
@@ -1049,8 +1020,8 @@ footer a:hover {
   width: var(--sidebar-control-size);
   height: var(--sidebar-control-size);
   border-radius: 9999px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid var(--color-border-translucent-medium);
+  background: var(--color-surface-tint-subtle);
   color: inherit;
   cursor: pointer;
   transition:
@@ -1062,8 +1033,8 @@ footer a:hover {
 }
 
 .sidebar-collapse-toggle:hover {
-  background: rgba(148, 163, 184, 0.18);
-  border-color: rgba(148, 163, 184, 0.35);
+  background: var(--color-border-translucent);
+  border-color: var(--color-border-translucent-stronger);
   color: var(--color-text);
 }
 
@@ -1096,7 +1067,7 @@ footer a:hover {
   border-radius: 0.875rem;
   font-size: 0.95rem;
   font-weight: 600;
-  color: rgba(226, 232, 240, 0.94);
+  color: var(--color-text-frosted-strong);
   text-decoration: none;
   transition:
     background 160ms ease,
@@ -1107,7 +1078,7 @@ footer a:hover {
 }
 
 .sidebar-nav-link:hover {
-  background: rgba(148, 163, 184, 0.18);
+  background: var(--color-border-translucent);
   color: var(--color-text);
 }
 
@@ -1119,7 +1090,7 @@ footer a:hover {
 .sidebar-nav-link--sub {
   font-size: 0.85rem;
   font-weight: 500;
-  color: rgba(226, 232, 240, 0.82);
+  color: var(--color-text-frosted-soft);
   padding-block: 0.55rem;
 }
 
@@ -1151,9 +1122,9 @@ footer a:hover {
   padding: 0.75rem 0.875rem;
   min-height: var(--sidebar-control-size);
   border-radius: 0.875rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(30, 41, 59, 0.85);
-  color: rgba(226, 232, 240, 0.9);
+  border: 1px solid var(--color-border-translucent);
+  background: var(--color-overlay-panel-glass);
+  color: var(--color-text-frosted);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -1166,8 +1137,8 @@ footer a:hover {
 }
 
 .sidebar-dropup-trigger:hover {
-  background: rgba(51, 65, 85, 0.95);
-  border-color: rgba(148, 163, 184, 0.32);
+  background: var(--color-overlay-banner);
+  border-color: var(--color-border-translucent-bright);
   color: var(--color-text);
 }
 
@@ -1194,10 +1165,10 @@ footer a:hover {
 }
 
 .sidebar-dropup-panel {
-  background: rgba(15, 23, 42, 0.88);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--color-overlay-darker);
+  border: 1px solid var(--color-border-translucent);
   border-radius: 0.875rem;
-  box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.4);
+  box-shadow: 0 1.5rem 3rem var(--color-shadow-panel);
   padding: 0.75rem 0.5rem;
   position: absolute;
   left: 0;
@@ -1237,7 +1208,7 @@ footer a:hover {
 }
 
 #sidebar.sidebar-open {
-  box-shadow: 0 0.75rem 1.5rem rgba(15, 23, 42, 0.45);
+  box-shadow: 0 0.75rem 1.5rem var(--color-shadow-panel);
 }
 
 #sidebarOverlay {
@@ -1246,7 +1217,7 @@ footer a:hover {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(15, 23, 42, 0.55);
+  background: var(--color-overlay-muted);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
@@ -1453,8 +1424,8 @@ body.sidebar-open #sidebarOverlay {
 }
 
 .locked-input {
-  background-color: rgba(31, 41, 55, 0.75) !important;
-  border-color: rgba(55, 65, 81, 0.9) !important;
+  background-color: var(--color-overlay-panel-soft) !important;
+  border-color: var(--color-border-sidebar-strong) !important;
   color: var(--color-muted) !important;
   cursor: default;
 }

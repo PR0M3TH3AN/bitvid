@@ -136,6 +136,79 @@
 
         <section class="space-y-md">
           <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">
+              Layout Helpers
+            </h2>
+            <p class="text-sm text-muted">
+              `.bv-stack` and `.bv-grid-video` consolidate our common feed and
+              profile layouts.
+            </p>
+          </div>
+          <div class="grid gap-lg lg:grid-cols-2">
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Stack (.bv-stack)</h3>
+              <div class="bv-stack">
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Default spacing</h4>
+                  <p class="text-sm text-muted">
+                    Use `.bv-stack` for page-level groupings such as the watch
+                    history header and banners.
+                  </p>
+                </article>
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Nested card</h4>
+                  <p class="text-sm text-muted">
+                    The helper keeps consistent gaps without repeating
+                    `space-y-*` utilities.
+                  </p>
+                </article>
+              </div>
+              <div class="bv-stack bv-stack--tight">
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Tight stack</h4>
+                  <p class="text-sm text-muted">
+                    Apply `.bv-stack--tight` when stacking compact forms or
+                    metadata blocks in profile views.
+                  </p>
+                </article>
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Form footer</h4>
+                  <p class="text-sm text-muted">
+                    The modifier inherits flex behaviour from `.bv-stack` while
+                    reducing the gap to `var(--space-md)`.
+                  </p>
+                </article>
+              </div>
+            </div>
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Video Grid (.bv-grid-video)</h3>
+              <div class="bv-grid-video">
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Feed Tile</h4>
+                  <p class="text-sm text-muted">
+                    Auto-fills with a 20rem minimum column size on desktop.
+                  </p>
+                </article>
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Subscription Tile</h4>
+                  <p class="text-sm text-muted">
+                    The grid collapses to a single column below 40rem.
+                  </p>
+                </article>
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Channel Tile</h4>
+                  <p class="text-sm text-muted">
+                    Reuse the same helper instead of duplicating inline grid
+                    declarations.
+                  </p>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
             <h2 class="text-xl font-semibold text-text-strong">Form Inputs</h2>
             <p class="text-sm text-muted">
               `.input` works for both `&lt;input&gt;` and `&lt;textarea&gt;`

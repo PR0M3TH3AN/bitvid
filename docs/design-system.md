@@ -68,6 +68,12 @@ Compose them together when mounting new modal portals. If you need a drawer or s
 
 `.grid-stack` offers gap tokens for dense layouts. Add `data-variant="cards"` for responsive card grids (`grid-cols-1` → `sm:grid-cols-2` → `xl:grid-cols-3`). Switch to `data-orientation="vertical"` for stacked flex columns that reuse the same spacing tokens.
 
+### Layout Helpers
+
+- `.bv-stack` creates a vertical flex stack with the default large gap (`var(--space-lg)`). Use it for page sections such as the watch-history summary blocks.
+- `.bv-stack--tight` reduces the gap to `var(--space-md)` while inheriting the `.bv-stack` flex behaviour. Combine the modifier when stacking smaller card fragments or form controls inside profile templates.
+- `.bv-grid-video` centralises the responsive video grid (`repeat(auto-fill, minmax(20rem, 1fr))`) with the standard gutter (`gap-xl`) and vertical padding (`py-lg`). Apply it to feed, subscriptions, and channel views instead of repeating inline grid rules.
+
 ## Legacy Compatibility Shims
 
 During migration we keep existing selectors alive by layering `@apply` calls in `css/style.css`. Notable shims:
