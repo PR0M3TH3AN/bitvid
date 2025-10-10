@@ -51,7 +51,7 @@
               <input
                 type="text"
                 id="editVideoTitle"
-                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                class="flex-1 input"
                 placeholder="Video title"
               />
               <button
@@ -122,7 +122,7 @@
                   type="datetime-local"
                   id="editNip71PublishedAt"
                   data-nip71-input="published_at"
-                  class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                  class="mt-1 input"
                 />
                 <p class="mt-1 text-xs text-gray-400">
                   Set the canonical publish time for cross-client ordering.
@@ -137,7 +137,7 @@
                   id="editNip71AltText"
                   data-nip71-input="alt"
                   placeholder="Describe the visuals for screen readers"
-                  class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                  class="mt-1 input"
                 />
                 <p class="mt-1 text-xs text-gray-400">
                   Plain-language fallback shown when the media cannot load.
@@ -153,7 +153,7 @@
                   min="0"
                   step="1"
                   data-nip71-input="duration"
-                  class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                  class="mt-1 input"
                 />
                 <p class="mt-1 text-xs text-gray-400">
                   Provide the runtime in whole seconds for timeline scrubbing.
@@ -168,7 +168,7 @@
                   id="editNip71ContentWarning"
                   data-nip71-input="content-warning"
                   placeholder="e.g., Flashing lights"
-                  class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                  class="mt-1 input"
                 />
                 <p class="mt-1 text-xs text-gray-400">
                   Leave blank if the video is safe for all audiences.
@@ -184,7 +184,7 @@
                 id="editNip71Summary"
                 rows="3"
                 data-nip71-input="summary"
-                class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                class="mt-1 textarea"
                 placeholder="Short synopsis used as the Nostr content field"
               ></textarea>
               <p class="mt-1 text-xs text-gray-400">
@@ -233,7 +233,7 @@
                         type="text"
                         data-nip71-field="m"
                         placeholder="video/mp4"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                       <p class="mt-1 text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
                     </div>
@@ -245,7 +245,7 @@
                         type="text"
                         data-nip71-field="dim"
                         placeholder="1920x1080"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                       <p class="mt-1 text-[11px] text-gray-500">Formatted as widthxheight.</p>
                     </div>
@@ -257,7 +257,7 @@
                         type="url"
                         data-nip71-field="url"
                         placeholder="https://cdn.example.com/variant.m3u8"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                       <p class="mt-1 text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
                     </div>
@@ -269,7 +269,7 @@
                         type="text"
                         data-nip71-field="x"
                         placeholder="magnet:?xt=urn:btih:..."
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                       <p class="mt-1 text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
                     </div>
@@ -293,7 +293,7 @@
                           type="url"
                           placeholder="https://cdn.example.com/poster.jpg"
                           data-nip71-nested-field="image"
-                          class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                          class="flex-1 input"
                         />
                         <button
                           type="button"
@@ -325,7 +325,7 @@
                           type="url"
                           placeholder="https://cdn.backup.net/video.mp4"
                           data-nip71-nested-field="fallback"
-                          class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                          class="flex-1 input"
                         />
                         <button
                           type="button"
@@ -357,7 +357,7 @@
                           type="text"
                           placeholder="https://api.example.com"
                           data-nip71-nested-field="service"
-                          class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                          class="flex-1 input"
                         />
                         <button
                           type="button"
@@ -411,7 +411,7 @@
                         type="url"
                         data-nip71-field="url"
                         placeholder="https://cdn.example.com/subs.vtt"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                     </div>
                     <div>
@@ -420,7 +420,7 @@
                         type="text"
                         data-nip71-field="type"
                         placeholder="text/vtt"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                     </div>
                     <div>
@@ -429,7 +429,7 @@
                         type="text"
                         data-nip71-field="language"
                         placeholder="en"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                     </div>
                   </div>
@@ -472,7 +472,7 @@
                         data-nip71-field="start"
                         min="0"
                         step="1"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                     </div>
                     <div>
@@ -482,7 +482,7 @@
                         data-nip71-field="end"
                         min="0"
                         step="1"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                     </div>
                     <div>
@@ -491,7 +491,7 @@
                         type="text"
                         data-nip71-field="title"
                         placeholder="Chapter title"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                     </div>
                     <div>
@@ -500,7 +500,7 @@
                         type="url"
                         data-nip71-field="thumbnail"
                         placeholder="https://cdn.example.com/frame.jpg"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                     </div>
                   </div>
@@ -538,7 +538,7 @@
                     type="text"
                     data-nip71-field="value"
                     placeholder="#nostr"
-                    class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                    class="flex-1 input"
                   />
                   <button
                     type="button"
@@ -572,7 +572,7 @@
                         type="text"
                         data-nip71-field="pubkey"
                         placeholder="npub1... or hex"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                     </div>
                     <div>
@@ -581,7 +581,7 @@
                         type="text"
                         data-nip71-field="relay"
                         placeholder="wss://relay.example.com"
-                        class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                        class="mt-1 input"
                       />
                     </div>
                   </div>
@@ -616,7 +616,7 @@
                     type="url"
                     data-nip71-field="url"
                     placeholder="https://example.com/context"
-                    class="flex-1 rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                    class="flex-1 input"
                   />
                   <button
                     type="button"
@@ -638,7 +638,7 @@
               <input
                 type="url"
                 id="editVideoUrl"
-                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                class="flex-1 input"
                 placeholder="https://cdn.example.com/video.mp4"
               />
               <button
@@ -659,7 +659,7 @@
               <input
                 type="url"
                 id="editVideoWs"
-                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                class="flex-1 input"
                 placeholder="https://cdn.example.com/video.mp4"
               />
               <button
@@ -680,7 +680,7 @@
               <input
                 type="url"
                 id="editVideoXs"
-                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                class="flex-1 input"
                 placeholder="https://cdn.example.com/video.torrent"
               />
               <button
@@ -701,7 +701,7 @@
               <input
                 type="text"
                 id="editVideoMagnet"
-                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                class="flex-1 input"
                 placeholder="magnet:?xt=urn:btih:..."
               />
               <button
@@ -722,7 +722,7 @@
               <input
                 type="url"
                 id="editVideoThumbnail"
-                class="flex-1 rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                class="flex-1 input"
                 placeholder="https://cdn.example.com/preview.jpg"
               />
               <button
@@ -743,7 +743,7 @@
               <textarea
                 id="editVideoDescription"
                 rows="4"
-                class="w-full rounded-md border border-gray-700 bg-gray-800 text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                class="textarea"
                 placeholder="What is this video about?"
               ></textarea>
               <button
@@ -820,7 +820,7 @@
                 <input
                   type="checkbox"
                   id="editVideoIsNsfw"
-                  class="h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                  class="checkbox"
                   data-default-checked="false"
                 />
                 <span class="text-sm text-gray-300">
@@ -848,7 +848,7 @@
                 <input
                   type="checkbox"
                   id="editVideoIsForKids"
-                  class="h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                  class="checkbox"
                   data-default-checked="false"
                 />
                 <span class="text-sm text-gray-300">
@@ -876,7 +876,7 @@
                 <input
                   type="checkbox"
                   id="editEnableComments"
-                  class="h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                  class="checkbox"
                   data-default-checked="true"
                   checked
                 />
