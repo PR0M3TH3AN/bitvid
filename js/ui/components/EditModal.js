@@ -160,6 +160,8 @@ export class EditModal {
       description: context.querySelector("#editVideoDescription") || null,
       isPrivate: context.querySelector("#editVideoIsPrivate") || null,
       enableComments: context.querySelector("#editEnableComments") || null,
+      isNsfw: context.querySelector("#editVideoIsNsfw") || null,
+      isForKids: context.querySelector("#editVideoIsForKids") || null,
     };
 
     this.visibility = {
@@ -320,6 +322,10 @@ export class EditModal {
     const enableCommentsValue =
       typeof video.enableComments === "boolean" ? video.enableComments : true;
     const isPrivateValue = video.isPrivate === true;
+    const isNsfwValue =
+      typeof video.isNsfw === "boolean" ? video.isNsfw : false;
+    const isForKidsValue =
+      typeof video.isForKids === "boolean" ? video.isForKids : false;
 
     const editContext = {
       ...video,
@@ -327,6 +333,8 @@ export class EditModal {
       xs: effectiveXs,
       enableComments: enableCommentsValue,
       isPrivate: isPrivateValue,
+      isNsfw: isNsfwValue,
+      isForKids: isForKidsValue,
     };
 
     this.applyVideoToForm(editContext);
@@ -363,6 +371,8 @@ export class EditModal {
       description: editContext.description || "",
       isPrivate: editContext.isPrivate,
       enableComments: editContext.enableComments,
+      isNsfw: editContext.isNsfw,
+      isForKids: editContext.isForKids,
     };
 
     Object.entries(fieldMap).forEach(([key, rawValue]) => {
@@ -464,6 +474,10 @@ export class EditModal {
         return "editVideoIsPrivate";
       case "enableComments":
         return "editEnableComments";
+      case "isNsfw":
+        return "editVideoIsNsfw";
+      case "isForKids":
+        return "editVideoIsForKids";
       default:
         return null;
     }
@@ -720,6 +734,8 @@ export class EditModal {
     const descriptionInput = this.fields.description;
     const commentsInput = this.fields.enableComments;
     const privateInput = this.fields.isPrivate;
+    const nsfwInput = this.fields.isNsfw;
+    const forKidsInput = this.fields.isForKids;
 
     const newTitle = fieldValue("title");
     const newUrl = fieldValue("url");
@@ -762,6 +778,8 @@ export class EditModal {
     const originalEnableComments =
       typeof original.enableComments === "boolean" ? original.enableComments : true;
     const originalIsPrivate = original.isPrivate === true;
+    const originalIsNsfw = original.isNsfw === true;
+    const originalIsForKids = original.isForKids === true;
 
     const currentNip71 = this.cloneNip71Metadata(
       this.nip71FormManager.collectSection(this.nip71SectionKey)
@@ -792,6 +810,24 @@ export class EditModal {
         finalIsPrivate = privateInput.dataset.originalValue === "true";
       } else {
         finalIsPrivate = this.sanitizers.checkbox(privateInput.checked);
+      }
+    }
+
+    let finalIsNsfw = originalIsNsfw;
+    if (nsfwInput) {
+      if (nsfwInput.disabled) {
+        finalIsNsfw = nsfwInput.dataset.originalValue === "true";
+      } else {
+        finalIsNsfw = this.sanitizers.checkbox(nsfwInput.checked);
+      }
+    }
+
+    let finalIsForKids = originalIsForKids;
+    if (forKidsInput) {
+      if (forKidsInput.disabled) {
+        finalIsForKids = forKidsInput.dataset.originalValue === "true";
+      } else {
+        finalIsForKids = this.sanitizers.checkbox(forKidsInput.checked);
       }
     }
 
@@ -837,6 +873,8 @@ export class EditModal {
       magnetEdited: magnetWasEdited,
       enableComments: finalEnableComments,
       isPrivate: finalIsPrivate,
+      isNsfw: finalIsNsfw,
+      isForKids: finalIsForKids,
     };
 
     const currentNip71Json = JSON.stringify(currentNip71);

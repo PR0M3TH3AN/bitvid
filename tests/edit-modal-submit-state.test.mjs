@@ -104,6 +104,8 @@ test('ignores additional submissions while pending without spurious errors', asy
     description: '',
     enableComments: true,
     isPrivate: false,
+    isNsfw: true,
+    isForKids: false,
   };
 
   await modal.open(video);
@@ -127,6 +129,19 @@ test('ignores additional submissions while pending without spurious errors', asy
   );
   assert.equal(modal.submitButton.disabled, true, 'button should disable while pending');
 
+  const firstSubmission = submissions[0];
+  assert.ok(firstSubmission, 'expected first submission payload');
+  assert.equal(
+    firstSubmission.updatedData.isNsfw,
+    true,
+    'locked NSFW flag should persist in emitted payload',
+  );
+  assert.equal(
+    firstSubmission.updatedData.isForKids,
+    false,
+    'locked kids flag should persist in emitted payload',
+  );
+
   modal.submit();
 
   assert.equal(submissions.length, 1, 'duplicate submit should be ignored');
@@ -140,4 +155,39 @@ test('ignores additional submissions while pending without spurious errors', asy
 
   assert.equal(modal.pendingSubmit, false, 'pending flag should reset after release');
   assert.equal(modal.submitButton.disabled, false, 'button should re-enable after release');
+
+  const unlockButton = (selector) =>
+    modal.root.querySelector(selector)?.dispatchEvent(
+      new dom.window.Event('click', { bubbles: true }),
+    );
+
+  unlockButton('[data-edit-target="editVideoIsNsfw"]');
+  unlockButton('[data-edit-target="editVideoIsForKids"]');
+
+  const nsfwCheckbox = modal.fields.isNsfw;
+  const kidsCheckbox = modal.fields.isForKids;
+
+  assert.ok(nsfwCheckbox, 'expected nsfw checkbox to be cached');
+  assert.ok(kidsCheckbox, 'expected kids checkbox to be cached');
+
+  nsfwCheckbox.checked = false;
+  kidsCheckbox.checked = true;
+
+  modal.submit();
+
+  assert.equal(submissions.length, 2, 'unlocked submit should emit again');
+  const secondSubmission = submissions[1];
+  assert.ok(secondSubmission, 'expected second submission payload');
+  assert.equal(
+    secondSubmission.updatedData.isNsfw,
+    false,
+    'updated NSFW flag should reflect unlocked checkbox state',
+  );
+  assert.equal(
+    secondSubmission.updatedData.isForKids,
+    true,
+    'updated kids flag should reflect unlocked checkbox state',
+  );
+
+  modal.setSubmitState({ pending: false });
 });
