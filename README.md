@@ -62,7 +62,6 @@ To run **bitvid** locally:
    ```
 
 2. Start a local server:
-
    - Using Python:
      ```bash
      python -m http.server 8000
@@ -73,24 +72,28 @@ To run **bitvid** locally:
      ```
 
 3. Open the site in your browser:
-  ```
-  http://localhost:8000
-  ```
+
+```
+http://localhost:8000
+```
 
 ### CSS build pipeline
 
-Tailwind utilities are generated from `css/tailwind.source.css` using the build
-script below. Run this whenever you add or remove classes in HTML or JavaScript
-so the purged output stays in sync:
+Tailwind utilities are generated from `css/tailwind.source.css` and themed via
+the shared tokens in `css/tokens.css`. Install dependencies once and lean on the
+package scripts to keep formatting, linting, and generated output consistent:
 
 ```bash
-npm install         # first run only
-npm run build:css
+npm install          # install Prettier, Stylelint, and Tailwind toolchain
+npm run format       # format CSS/HTML/JS/MD with Prettier + tailwindcss plugin
+npm run lint:css     # enforce token usage and forbid raw hex colors
+npm run build:css    # rebuild css/tailwind.generated.css from tailwind.source.css
+npm run check:css    # CI-friendly guard that fails if tailwind.generated.css is dirty
 ```
 
-The command compiles Tailwind with `tailwind.config.cjs`, runs it through the
-PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and emits
-the purged, minified stylesheet at `css/tailwind.generated.css`. Commit the
+The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
+the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
+emits the purged, minified stylesheet at `css/tailwind.generated.css`. Commit the
 regenerated file alongside any template changes so deployments pick up the
 latest styles.
 
