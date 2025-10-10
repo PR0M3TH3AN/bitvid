@@ -746,7 +746,9 @@ header img {
 }
 
 #modalContainer > #playerModal .player-modal__container,
-#modalContainer > #playerModal .player-modal__content {
+#modalContainer > #playerModal .player-modal__content,
+#modalContainer > #playerModal .video-modal__container,
+#modalContainer > #playerModal .video-modal__panel {
   z-index: var(--z-modal-content);
 }
 
@@ -962,62 +964,27 @@ header img {
   display: flex;
 }
 
-#playerModal .player-modal__container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  min-height: 100vh;
-  padding: 0;
-  margin: 0;
-}
-
+.video-modal__panel,
 #playerModal .player-modal__content {
-  position: relative;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-height: 100%;
-  max-width: none;
-  background-color: var(--color-surface);
-  overflow: visible;
-  box-shadow: none;
   animation: fadeIn var(--modal-motion-duration) ease-out;
 }
 
+.video-modal__video,
 #playerModal .player-modal__video {
-  width: 100%;
-  position: sticky;
-  top: 0;
-  z-index: 51;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: clamp(0.75rem, 3.5vw, 2.5rem);
-  background-color: var(--color-bg);
   border-bottom: 0.0625rem solid rgba(148, 163, 184, 0.18);
 }
 
+.video-modal__media,
 #playerModal .player-modal__video video {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  background-color: var(--color-black);
-  border-radius: 0.75rem;
-  display: block;
   box-shadow: 0 1.125rem 2.75rem rgba(8, 11, 30, 0.55);
   max-height: min(80vh, calc(100vw * 9 / 16));
-  object-fit: contain;
 }
 
+.video-modal__info,
 #playerModal .player-modal__info {
-  flex: 0 0 auto;
   padding: clamp(1.5rem, 3vw, 2.5rem);
   padding-bottom: clamp(2.5rem, 6vw, 4rem);
-  background-color: var(--color-bg);
-  border-top: 0.0625rem solid rgba(148, 163, 184, 0.16);
   box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.35);
 }
 
@@ -1121,7 +1088,8 @@ body.modal-open #sidebarOverlay {
 }
 
 #modalNav.modal-nav,
-.modal-nav {
+.modal-nav,
+.video-modal__nav {
   background-color: var(--color-bg);
   border-bottom: 0.0625rem solid rgba(148, 163, 184, 0.25);
   box-shadow: 0 0.75rem 2rem rgba(8, 11, 30, 0.45);
@@ -1132,21 +1100,7 @@ body.modal-open #sidebarOverlay {
   gap: 0.75rem;
 }
 
-#modalNav {
-  position: sticky;
-  top: 0;
-  z-index: 60;
-}
-
-.modal-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  flex-wrap: nowrap;
-}
-
+[data-modal-zap-wrapper] .zap-popover,
 .zap-popover {
   position: absolute;
   top: calc(100% + 0.5rem);
@@ -1168,6 +1122,10 @@ body.modal-open #sidebarOverlay {
 
 .modal-actions__overflow {
   position: relative;
+}
+
+.modal-actions__overflow,
+[data-more-menu-wrapper] {
   overflow: visible;
 }
 

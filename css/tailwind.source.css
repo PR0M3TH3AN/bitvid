@@ -196,4 +196,60 @@
     @apply bv-modal__panel;
   }
 
+  .video-modal__container {
+    @apply flex h-full min-h-screen w-full flex-1 flex-col;
+  }
+
+  .player-modal__container {
+    @apply video-modal__container;
+  }
+
+  .video-modal__panel {
+    @apply bv-modal__panel relative flex w-full flex-1 flex-col overflow-visible bg-surface shadow-none;
+  }
+
+  .player-modal__content {
+    @apply video-modal__panel;
+  }
+
+  .video-modal__nav {
+    @apply sticky top-0 z-[60] border-b border-border border-opacity-40 bg-bg;
+  }
+
+  .modal-nav {
+    @apply video-modal__nav;
+  }
+
+  .video-modal__actions {
+    @apply ml-auto flex flex-nowrap items-center justify-end gap-2;
+  }
+
+  .modal-actions {
+    @apply video-modal__actions;
+  }
+
+  .video-modal__video {
+    @apply sticky top-0 z-[51] flex w-full flex-shrink-0 items-center justify-center border-b border-border border-opacity-20 bg-bg;
+  }
+
+  .player-modal__video {
+    @apply video-modal__video;
+  }
+
+  .video-modal__media {
+    @apply aspect-video block w-full rounded-xl bg-black object-contain shadow-2xl;
+  }
+
+  .player-modal__video video {
+    @apply video-modal__media;
+  }
+
+  .video-modal__info {
+    @apply flex-none border-t border-border border-opacity-20 bg-bg;
+  }
+
+  .player-modal__info {
+    @apply video-modal__info;
+  }
+
 }
