@@ -162,6 +162,15 @@ class Application {
         ? helpers.mediaLoader
         : mediaLoaderFactory();
     this.loadedThumbnails = new Map();
+    this.urlHealthSnapshots = new Map();
+    this.streamHealthSnapshots = new Map();
+    this.boundStreamHealthBadgeHandler = (detail) =>
+      this.handleStreamHealthBadgeUpdate(detail);
+    this.attachHealthBadgesWithCache = (container) => {
+      attachHealthBadges(container, {
+        onUpdate: this.boundStreamHealthBadgeHandler,
+      });
+    };
     this.relayManager = relayManager;
     this.activeIntervals = [];
     this.watchHistoryTelemetry = null;
@@ -787,7 +796,11 @@ class Application {
     const videoListViewConfig = {
       document,
       mediaLoader: this.mediaLoader,
-      badgeHelpers: { attachHealthBadges, attachUrlHealthBadges },
+      badgeHelpers: {
+        attachHealthBadges: this.attachHealthBadgesWithCache,
+        attachUrlHealthBadges: (container, onCheck) =>
+          attachUrlHealthBadges(container, onCheck),
+      },
       formatters: {
         formatTimeAgo: (timestamp) => this.formatTimeAgo(timestamp),
         formatViewCountLabel: (total) => this.formatViewCountLabel(total),
@@ -805,6 +818,8 @@ class Application {
       state: {
         loadedThumbnails: this.loadedThumbnails,
         videosMap: this.videosMap,
+        urlHealthByVideoId: this.urlHealthSnapshots,
+        streamHealthByVideoId: this.streamHealthSnapshots,
       },
       utils: {
         dedupeVideos: (videos) => this.dedupeVideosByRoot(videos),
@@ -4104,6 +4119,20 @@ class Application {
         "text-gray-300"
       );
     }
+
+    if (
+      videoId &&
+      this.videoListView &&
+      typeof this.videoListView.cacheUrlHealth === "function"
+    ) {
+      this.videoListView.cacheUrlHealth(videoId, {
+        status,
+        message,
+        lastCheckedAt: Number.isFinite(state?.lastCheckedAt)
+          ? state.lastCheckedAt
+          : undefined,
+      });
+    }
   }
 
   handleUrlHealthBadge({ video, url, badgeEl }) {
@@ -4199,6 +4228,46 @@ class Application {
           err
         );
       });
+  }
+
+  handleStreamHealthBadgeUpdate(detail) {
+    if (!detail || typeof detail !== "object") {
+      return;
+    }
+
+    const card = detail.card;
+    if (!(card instanceof HTMLElement)) {
+      return;
+    }
+
+    let videoId =
+      (card.dataset && card.dataset.videoId) ||
+      (typeof card.getAttribute === "function" ? card.getAttribute("data-video-id") : "") ||
+      "";
+
+    if (!videoId && typeof card.querySelector === "function") {
+      const fallback = card.querySelector("[data-video-id]");
+      if (fallback instanceof HTMLElement && fallback.dataset.videoId) {
+        videoId = fallback.dataset.videoId;
+      }
+    }
+
+    if (!videoId) {
+      return;
+    }
+
+    if (this.videoListView && typeof this.videoListView.cacheStreamHealth === "function") {
+      this.videoListView.cacheStreamHealth(videoId, {
+        state: detail.state,
+        peers: detail.peers,
+        reason: detail.reason,
+        checkedAt: detail.checkedAt,
+        text: detail.text,
+        tooltip: detail.tooltip,
+        role: detail.role,
+        ariaLive: detail.ariaLive,
+      });
+    }
   }
 
   async renderVideoList(payload) {
