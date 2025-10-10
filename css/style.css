@@ -147,17 +147,19 @@ header img {
   }
 }
 
-/* Video Cards */
+/* --------------------------------------------------------------------------
+   Legacy component compatibility shims
+   --------------------------------------------------------------------------
+   These selectors bridge existing markup to the token-backed primitives while
+   templates migrate to the new utility classes. Remove once all views are
+   updated.
+--------------------------------------------------------------------------- */
 .video-card {
-  background-color: var(--color-card);
-  border-radius: 0.75rem;
-  overflow: visible;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: var(--shadow-md);
+  @apply card overflow-visible;
 }
 
 .video-card.video-card--owner-private {
-  background-color: var(--color-card-private) !important;
+  @apply bg-card-private;
   box-shadow:
     0 0 0 0.125rem rgba(168, 85, 247, 0.55),
     var(--shadow-md);
@@ -169,72 +171,12 @@ header img {
     var(--shadow-lg);
 }
 
-.video-visibility-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  border-radius: 9999px;
-  border: 1px solid rgba(30, 41, 59, 0.7);
-  background-color: rgba(15, 23, 42, 0.55);
-  padding: 0.35rem;
-}
-
-.video-visibility-toggle__option {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  border: 1px solid transparent;
-  background-color: rgba(15, 23, 42, 0.6);
-  color: rgba(203, 213, 225, 0.78);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  min-width: 5.5rem;
-  padding: 0.4rem 0.95rem;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    opacity 0.18s ease;
-}
-
-.video-visibility-toggle__option:not(.is-disabled):hover {
-  background-color: rgba(148, 163, 184, 0.16);
-  color: rgba(226, 232, 240, 0.88);
-}
-
-.video-visibility-toggle__option[data-active="true"] {
-  background: linear-gradient(
-    135deg,
-    rgba(129, 140, 248, 0.4),
-    rgba(192, 132, 252, 0.32)
-  );
-  color: var(--color-text);
-  border-color: rgba(129, 140, 248, 0.6);
-  box-shadow:
-    0 0 0 1px rgba(129, 140, 248, 0.4) inset,
-    0 6px 14px -6px rgba(129, 140, 248, 0.55);
-}
-
-.video-visibility-toggle__option.is-disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.video-visibility-toggle__option.is-disabled[data-active="true"] {
-  opacity: 0.65;
-}
-
 .video-card[data-owner-is-viewer="false"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
   display: none;
 }
 
 .video-card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
-  background-color: var(--color-card-critical);
+  @apply border border-critical border-opacity-40 bg-card-critical;
   box-shadow:
     0 0 0 0.0625rem rgba(239, 68, 68, 0.35),
     var(--shadow-md);
@@ -249,6 +191,129 @@ header img {
 .video-card--enter {
   opacity: 0;
   animation: video-card-fade-in 220ms ease-out forwards;
+}
+
+.video-visibility-toggle {
+  @apply inline-flex items-center gap-1 rounded-full border border-border bg-panel px-1 py-1;
+}
+
+.video-visibility-toggle__option {
+  @apply inline-flex items-center justify-center rounded-full border border-transparent bg-panel px-3 py-2 text-xs font-semibold uppercase text-muted transition duration-base ease-in-out;
+  min-width: 5.5rem;
+  letter-spacing: 0.08em;
+}
+
+.video-visibility-toggle__option:not(.is-disabled):hover {
+  @apply bg-panel-hover text-text;
+}
+
+.video-visibility-toggle__option[data-active="true"] {
+  background: linear-gradient(
+    135deg,
+    rgba(129, 140, 248, 0.4),
+    rgba(192, 132, 252, 0.32)
+  );
+  @apply border border-info border-opacity-60 text-text shadow-lg;
+}
+
+.video-visibility-toggle__option.is-disabled {
+  @apply cursor-not-allowed opacity-45;
+}
+
+.video-visibility-toggle__option.is-disabled[data-active="true"] {
+  opacity: 0.65;
+}
+
+#profileModal .profile-switcher {
+  @apply card flex flex-col gap-lg;
+  padding: clamp(1.25rem, 2vw, 1.5rem);
+  background: linear-gradient(
+    145deg,
+    rgba(15, 23, 42, 0.94),
+    rgba(15, 23, 42, 0.72)
+  );
+  box-shadow: 0 1.75rem 3.5rem rgba(8, 11, 30, 0.45);
+  border-radius: 1.25rem;
+}
+
+#profileModal .profile-switcher__badge {
+  @apply badge;
+  font-size: 0.625rem;
+  letter-spacing: 0.18em;
+  border: 0.0625rem solid rgba(96, 165, 250, 0.25);
+  background: rgba(59, 130, 246, 0.18);
+  color: rgba(191, 219, 254, 0.95);
+  align-self: flex-start;
+}
+
+#profileModal .profile-card {
+  @apply card flex flex-col gap-3 p-4 text-text;
+  border: 0.0625rem solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  border-radius: 1rem;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+#profileModal .profile-card:hover {
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+#profileModal .profile-card:focus-visible {
+  border-color: rgba(96, 165, 250, 0.6);
+  box-shadow: 0 0 0 0.1875rem rgba(37, 99, 235, 0.25);
+}
+
+#profileModal .profile-card--active {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: linear-gradient(
+    160deg,
+    rgba(37, 99, 235, 0.22),
+    rgba(15, 23, 42, 0.78)
+  );
+  box-shadow: 0 1.35rem 2.8rem rgba(37, 99, 235, 0.22);
+}
+
+#profileModal .profile-switcher__add {
+  @apply card flex items-center gap-4 text-left text-muted;
+  border: 0.125rem dashed rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: 1rem;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+#profileModal .profile-switcher__add:hover,
+#profileModal .profile-switcher__add:focus-visible {
+  border-color: rgba(96, 165, 250, 0.65);
+  background: rgba(59, 130, 246, 0.18);
+  color: var(--color-white);
+  outline: none;
+}
+
+#profileModal .profile-card__action {
+  @apply btn-ghost px-3 py-2 text-xs;
+  border: 0.0625rem solid rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.14);
+  color: rgba(191, 219, 254, 0.95);
+  letter-spacing: 0.18em;
+  text-decoration: none;
+}
+
+#profileModal .profile-card__action:hover,
+#profileModal .profile-card__action:focus-visible {
+  background: rgba(59, 130, 246, 0.24);
+  border-color: rgba(59, 130, 246, 0.6);
+  color: var(--color-white);
 }
 
 /* Watch history cards */
@@ -703,21 +768,6 @@ header img {
   display: none;
 }
 
-#profileModal .profile-switcher {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  padding: clamp(1.25rem, 2vw, 1.5rem);
-  border-radius: 1.25rem;
-  border: 0.0625rem solid rgba(148, 163, 184, 0.28);
-  background: linear-gradient(
-    145deg,
-    rgba(15, 23, 42, 0.94),
-    rgba(15, 23, 42, 0.72)
-  );
-  box-shadow: 0 1.75rem 3.5rem rgba(8, 11, 30, 0.45);
-}
-
 #profileModal .profile-switcher__header {
   display: flex;
   flex-direction: column;
@@ -741,60 +791,6 @@ header img {
   margin: 0;
   font-size: 0.875rem;
   color: var(--color-muted);
-}
-
-#profileModal .profile-switcher__badge {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.35rem 0.85rem;
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  border-radius: 9999px;
-  background: rgba(59, 130, 246, 0.18);
-  color: rgba(191, 219, 254, 0.95);
-  border: 0.0625rem solid rgba(96, 165, 250, 0.25);
-}
-
-#profileModal .profile-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  padding: 1rem;
-  border-radius: 1rem;
-  border: 0.0625rem solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.72);
-  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
-  color: var(--color-text);
-  cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    background 0.2s ease;
-  outline: none;
-}
-
-#profileModal .profile-card:hover {
-  border-color: rgba(148, 163, 184, 0.45);
-}
-
-#profileModal .profile-card:focus-visible {
-  border-color: rgba(96, 165, 250, 0.6);
-  box-shadow: 0 0 0 0.1875rem rgba(37, 99, 235, 0.25);
-}
-
-#profileModal .profile-card--active {
-  border-color: rgba(59, 130, 246, 0.55);
-  background: linear-gradient(
-    160deg,
-    rgba(37, 99, 235, 0.22),
-    rgba(15, 23, 42, 0.78)
-  );
-  box-shadow: 0 1.35rem 2.8rem rgba(37, 99, 235, 0.22);
 }
 
 #profileModal .profile-card__avatar {
@@ -844,33 +840,6 @@ header img {
   color: rgba(191, 219, 254, 0.9);
 }
 
-#profileModal .profile-card__action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.3rem 0.8rem;
-  border-radius: 9999px;
-  border: 0.0625rem solid rgba(59, 130, 246, 0.4);
-  background: rgba(59, 130, 246, 0.14);
-  color: rgba(191, 219, 254, 0.95);
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  text-decoration: none;
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease;
-}
-
-#profileModal .profile-card__action:hover,
-#profileModal .profile-card__action:focus-visible {
-  background: rgba(59, 130, 246, 0.24);
-  border-color: rgba(59, 130, 246, 0.6);
-  color: var(--color-white);
-}
-
 #profileModal .profile-card__name {
   font-size: 0.95rem;
   font-weight: 600;
@@ -893,31 +862,6 @@ header img {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-}
-
-#profileModal .profile-switcher__add {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  border-radius: 1rem;
-  border: 0.125rem dashed rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.55);
-  color: rgba(226, 232, 240, 0.85);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    color 0.2s ease;
-}
-
-#profileModal .profile-switcher__add:hover,
-#profileModal .profile-switcher__add:focus-visible {
-  border-color: rgba(96, 165, 250, 0.65);
-  background: rgba(59, 130, 246, 0.18);
-  color: var(--color-white);
-  outline: none;
 }
 
 #profileModal .profile-switcher__addAvatar {
@@ -1106,11 +1050,10 @@ body.modal-open #sidebarOverlay {
 
 /* Modal Content Container */
 .modal-content {
-  width: 100%;
+  @apply bv-modal__panel;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--color-surface);
   animation: fadeIn var(--modal-motion-duration) ease-out;
 }
 
@@ -1166,20 +1109,16 @@ body.modal-open #sidebarOverlay {
 }
 
 .modal-nav .icon-button {
-  background-color: rgba(30, 41, 59, 0.85);
-  border: 0.0625rem solid rgba(148, 163, 184, 0.4);
-  color: var(--color-text);
+  @apply btn-ghost text-text;
   box-shadow: none;
 }
 
 .modal-nav .icon-button:hover {
-  background-color: rgba(51, 65, 85, 0.95);
-  border-color: rgba(148, 163, 184, 0.55);
+  @apply border-border bg-panel-hover;
 }
 
 .modal-nav .icon-button:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 0.1875rem rgba(148, 163, 184, 0.45);
+  @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
 }
 
 #modalNav {

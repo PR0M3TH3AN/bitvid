@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bitvid Tailwind Kitchen Sink</title>
+    <title>Bitvid Design System Kitchen Sink</title>
     <link rel="stylesheet" href="../css/tailwind.generated.css" />
   </head>
   <body class="bg-page font-sans text-text-strong">
@@ -13,162 +13,298 @@
           class="mx-auto flex max-w-6xl items-center justify-between px-md py-sm"
         >
           <h1 class="text-2xl font-semibold">Bitvid UI Kitchen Sink</h1>
-          <button
-            class="rounded-lg bg-primary px-sm py-2 text-white shadow-md transition duration-fast ease-out hover:bg-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            Primary Action
-          </button>
+          <button class="btn">Primary Action</button>
         </div>
       </header>
 
-      <main class="mx-auto flex max-w-6xl flex-col gap-lg px-md py-lg">
+      <main class="mx-auto max-w-6xl space-y-xl px-md py-xl">
         <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">Buttons</h2>
-          <div class="flex flex-wrap gap-sm">
-            <button
-              class="rounded-md bg-primary px-sm py-2 text-white shadow-md transition duration-fast ease-out hover:bg-secondary"
-            >
-              Primary
-            </button>
-            <button
-              class="rounded-md bg-info px-sm py-2 text-surface shadow-sm transition duration-fast ease-out hover:bg-info-strong"
-            >
-              Informational
-            </button>
-            <button
-              class="rounded-md bg-critical px-sm py-2 text-white shadow-sm transition duration-fast ease-out hover:bg-critical-strong"
-            >
-              Destructive
-            </button>
-            <button
-              class="rounded-md border border-border-subtle px-sm py-2 text-text-muted shadow-none transition duration-fast ease-out hover:bg-panel-hover hover:text-text"
-            >
-              Ghost
-            </button>
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">Buttons</h2>
+            <p class="text-sm text-muted">
+              Each block shows the default, simulated hover, focus, and disabled
+              states.
+            </p>
           </div>
-        </section>
-
-        <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">Cards</h2>
-          <div class="grid gap-md md:grid-cols-3">
-            <article class="rounded-lg bg-card p-md text-text shadow-lg">
-              <h3 class="text-lg font-semibold">Default Card</h3>
-              <p class="mt-xs text-text-muted">
-                Uses
-                <code class="font-mono text-sm text-info">bg-card</code> and
-                tokenized shadows.
-              </p>
-              <button
-                class="mt-sm rounded-md bg-info px-sm py-2 text-surface shadow-sm transition duration-base ease-in-out hover:bg-info-strong"
-              >
-                Watch Now
-              </button>
-            </article>
-            <article
-              class="rounded-lg bg-card-private p-md text-text shadow-lg"
-            >
-              <h3 class="text-lg font-semibold">Private Card</h3>
-              <p class="mt-xs text-text-muted">
-                Emphasizes restricted content with
-                <code class="font-mono text-sm text-info">bg-card-private</code
-                >.
-              </p>
-            </article>
-            <article
-              class="rounded-lg bg-card-critical p-md text-text shadow-lg"
-            >
-              <h3 class="text-lg font-semibold">Critical Card</h3>
-              <p class="mt-xs text-text-muted">
-                Use for outage or abuse states.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">Form Inputs</h2>
-          <form class="grid gap-md md:grid-cols-2">
-            <label class="flex flex-col gap-xs">
-              <span class="text-sm font-medium text-text-muted"
-                >Display Name</span
-              >
-              <input
-                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong shadow-sm focus:border-info focus:ring-2 focus:ring-info-strong"
-                type="text"
-                placeholder="Satoshi Stack"
-              />
-            </label>
-            <label class="flex flex-col gap-xs">
-              <span class="text-sm font-medium text-text-muted">Video URL</span>
-              <input
-                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong shadow-sm focus:border-info focus:ring-2 focus:ring-info-strong"
-                type="url"
-                placeholder="https://example.com/video.mp4"
-              />
-            </label>
-            <label class="flex flex-col gap-xs md:col-span-2">
-              <span class="text-sm font-medium text-text-muted"
-                >Description</span
-              >
-              <textarea
-                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong shadow-sm focus:border-info focus:ring-2 focus:ring-info-strong"
-                rows="3"
-                placeholder="Describe what viewers should expect..."
-              ></textarea>
-            </label>
-          </form>
-        </section>
-
-        <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">Modal Preview</h2>
-          <div
-            class="relative overflow-hidden rounded-xl bg-overlay p-lg text-text shadow-modal"
-          >
+          <div class="grid gap-lg lg:grid-cols-2">
             <div class="space-y-sm">
-              <h3 class="text-lg font-semibold">Upload Video</h3>
-              <p class="text-text-muted">
-                Motion tokens control the fade via
-                <code class="font-mono text-sm text-info">duration-base</code>
-                and
-                <code class="font-mono text-sm text-info">ease-out</code>
-                utilities.
-              </p>
+              <h3 class="text-lg font-semibold">Primary (.btn)</h3>
+              <div class="grid gap-sm sm:grid-cols-2 xl:grid-cols-4">
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Default</p>
+                  <button class="btn">Default</button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Hover (simulated)</p>
+                  <button class="btn bg-info-strong shadow-lg">Hover</button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Focus (simulated)</p>
+                  <button
+                    class="btn bg-info-pressed ring-2 ring-info ring-opacity-70 ring-offset-2 ring-offset-surface"
+                  >
+                    Focus
+                  </button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Disabled</p>
+                  <button class="btn" disabled>Disabled</button>
+                </div>
+              </div>
             </div>
-            <div class="mt-md flex flex-col gap-sm">
-              <input
-                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong focus:border-info focus:ring-2 focus:ring-info"
-                type="text"
-                placeholder="Magnet URI"
-              />
-              <div class="flex justify-end gap-sm">
-                <button
-                  class="rounded-md border border-border px-sm py-2 text-text-muted transition duration-fast ease-out hover:text-text"
-                >
-                  Cancel
-                </button>
-                <button
-                  class="rounded-md bg-primary px-sm py-2 text-white shadow-md transition duration-fast ease-out hover:bg-secondary"
-                >
-                  Publish
-                </button>
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Ghost (.btn-ghost)</h3>
+              <div class="grid gap-sm sm:grid-cols-2 xl:grid-cols-4">
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Default</p>
+                  <button class="btn-ghost">Default</button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Hover (simulated)</p>
+                  <button class="btn-ghost bg-panel-hover text-text">
+                    Hover
+                  </button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Focus (simulated)</p>
+                  <button
+                    class="btn-ghost bg-panel-hover ring-2 ring-info ring-opacity-70 ring-offset-2 ring-offset-surface"
+                  >
+                    Focus
+                  </button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Disabled</p>
+                  <button class="btn-ghost" disabled>Disabled</button>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
         <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">
-            Typography Scale
-          </h2>
           <div class="space-y-xs">
-            <p class="text-2xl font-semibold">Display / 2xl</p>
-            <p class="text-xl font-semibold">Headline / xl</p>
-            <p class="text-lg font-medium">Title / lg</p>
-            <p class="text-base">Body / base</p>
-            <p class="text-sm text-text-muted">Caption / sm</p>
-            <p class="text-xs uppercase tracking-wide text-text-muted">
-              Meta / xs
+            <h2 class="text-xl font-semibold text-text-strong">Badges</h2>
+            <p class="text-sm text-muted">
+              Use `data-variant` for semantic colorways.
             </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-sm">
+            <span class="badge">Default</span>
+            <span class="badge" data-variant="info">Info</span>
+            <span class="badge" data-variant="critical">Critical</span>
+            <span class="badge" data-variant="neutral">Neutral</span>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">Cards</h2>
+            <p class="text-sm text-muted">
+              Cards inherit focus-ring behaviour and support semantic states.
+            </p>
+          </div>
+          <div class="grid-stack" data-variant="cards">
+            <article class="card p-md">
+              <h3 class="text-lg font-semibold">Default Card</h3>
+              <p class="mt-xs text-muted">
+                Combine with layout utilities like `p-md` or `gap-sm` for
+                content spacing.
+              </p>
+              <button class="btn mt-sm">Watch</button>
+            </article>
+            <article
+              class="card -translate-y-1 bg-card p-md shadow-lg transition-none"
+            >
+              <h3 class="text-lg font-semibold">Hover (simulated)</h3>
+              <p class="mt-xs text-muted">Applies the hover shadow and lift.</p>
+            </article>
+            <article
+              class="card bg-card p-md ring-2 ring-info ring-opacity-70 ring-offset-2 ring-offset-surface"
+            >
+              <h3 class="text-lg font-semibold">Focus (simulated)</h3>
+              <p class="mt-xs text-muted">Rings appear on `focus-visible`.</p>
+            </article>
+            <article class="card p-md" data-state="disabled">
+              <h3 class="text-lg font-semibold">Disabled</h3>
+              <p class="mt-xs text-muted">
+                Opacity drops and the shadow is removed.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">Form Inputs</h2>
+            <p class="text-sm text-muted">
+              `.input` works for both `&lt;input&gt;` and `&lt;textarea&gt;`
+              elements.
+            </p>
+          </div>
+          <div class="grid gap-md md:grid-cols-2">
+            <div class="space-y-xs">
+              <label
+                class="text-sm font-medium text-muted"
+                for="demo-input-default"
+                >Default</label
+              >
+              <input
+                id="demo-input-default"
+                class="input"
+                type="text"
+                placeholder="Display name"
+              />
+            </div>
+            <div class="space-y-xs">
+              <label
+                class="text-sm font-medium text-muted"
+                for="demo-input-hover"
+                >Hover (simulated)</label
+              >
+              <input
+                id="demo-input-hover"
+                class="input border-border"
+                type="text"
+                value="Hovering"
+              />
+            </div>
+            <div class="space-y-xs">
+              <label
+                class="text-sm font-medium text-muted"
+                for="demo-input-focus"
+                >Focus (simulated)</label
+              >
+              <input
+                id="demo-input-focus"
+                class="input border-info-strong ring-2 ring-info ring-opacity-70 ring-offset-2 ring-offset-surface"
+                type="text"
+                value="In focus"
+              />
+            </div>
+            <div class="space-y-xs">
+              <label
+                class="text-sm font-medium text-muted"
+                for="demo-input-disabled"
+                >Disabled</label
+              >
+              <input
+                id="demo-input-disabled"
+                class="input"
+                type="text"
+                value="Read only"
+                disabled
+              />
+            </div>
+            <div class="space-y-xs md:col-span-2">
+              <label class="text-sm font-medium text-muted" for="demo-textarea"
+                >Textarea</label
+              >
+              <textarea
+                id="demo-textarea"
+                class="input"
+                rows="3"
+                placeholder="Describe the video..."
+              ></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">
+              Focus Ring Helper
+            </h2>
+            <p class="text-sm text-muted">
+              Add `.focus-ring` to custom interactives when you opt out of
+              `.btn` or other primitives.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-sm">
+            <a
+              href="#"
+              class="focus-ring inline-flex items-center gap-xs rounded-md border border-border bg-panel px-sm py-xs text-text no-underline"
+            >
+              Focusable Link
+            </a>
+            <button
+              class="focus-ring inline-flex items-center gap-xs rounded-md border border-border px-sm py-xs"
+            >
+              Plain Button
+            </button>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">
+              Modal Surface
+            </h2>
+            <p class="text-sm text-muted">
+              `.bv-modal` anchors the overlay, `.bv-modal-backdrop` dims the
+              page, and `.bv-modal__panel` styles content.
+            </p>
+          </div>
+          <div
+            class="relative isolate overflow-hidden rounded-xl bg-surface-alt p-lg text-text shadow-inner"
+          >
+            <div class="absolute inset-0" style="position: relative">
+              <div class="bv-modal" style="position: absolute; inset: 0">
+                <div class="bv-modal-backdrop"></div>
+                <div class="bv-modal__panel space-y-sm">
+                  <h3 class="text-lg font-semibold">Upload Video</h3>
+                  <p class="text-muted">
+                    Use `.input` and `.btn` primitives inside panels for
+                    consistency.
+                  </p>
+                  <input class="input" type="text" placeholder="Magnet URI" />
+                  <div class="flex justify-end gap-sm">
+                    <button class="btn-ghost">Cancel</button>
+                    <button class="btn">Publish</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">Grid Stack</h2>
+            <p class="text-sm text-muted">
+              Use `data-variant="cards"` for responsive columns or
+              `data-orientation="vertical"` for flex stacks.
+            </p>
+          </div>
+          <div class="grid gap-lg lg:grid-cols-2">
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Card Grid</h3>
+              <div class="grid-stack" data-variant="cards">
+                <div class="card p-md">
+                  <p class="text-sm text-muted">Card A</p>
+                </div>
+                <div class="card p-md">
+                  <p class="text-sm text-muted">Card B</p>
+                </div>
+                <div class="card p-md">
+                  <p class="text-sm text-muted">Card C</p>
+                </div>
+              </div>
+            </div>
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Vertical Stack</h3>
+              <div class="grid-stack" data-orientation="vertical">
+                <div class="card p-sm">
+                  <p class="text-sm text-muted">Row 1</p>
+                </div>
+                <div class="card p-sm">
+                  <p class="text-sm text-muted">Row 2</p>
+                </div>
+                <div class="card p-sm" data-state="disabled">
+                  <p class="text-sm text-muted">Row 3 (disabled)</p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </main>
