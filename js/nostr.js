@@ -13,9 +13,11 @@ import {
   WATCH_HISTORY_PAYLOAD_MAX_BYTES,
   WATCH_HISTORY_FETCH_EVENT_LIMIT,
   WATCH_HISTORY_CACHE_TTL_MS,
+  ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
 } from "./config.js";
 import {
   ACCEPT_LEGACY_V1,
+  FEATURE_PUBLISH_NIP71,
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
@@ -25,6 +27,7 @@ import { extractMagnetHints } from "./magnet.js";
 import {
   buildVideoPostEvent,
   buildVideoMirrorEvent,
+  buildRepostEvent,
   buildViewEvent,
   buildWatchHistoryIndexEvent,
   buildWatchHistoryChunkEvent,
@@ -36,6 +39,7 @@ import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
+import { nostrToolsReady } from "./nostrToolsBootstrap.js";
 
 /**
  * The default relay set BitVid bootstraps with before loading a user's
@@ -54,11 +58,29 @@ const RELAY_URLS = Array.from(DEFAULT_RELAY_URLS);
 const EVENTS_CACHE_STORAGE_KEY = "bitvid:eventsCache:v1";
 const LEGACY_EVENTS_STORAGE_KEY = "bitvidEvents";
 const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const NIP07_LOGIN_TIMEOUT_MS = 15_000; // 15 seconds
+const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
 const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
-  "Timed out waiting for the NIP-07 extension. Check the extension prompt and try again.";
+  "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
+
+const DEFAULT_ENABLE_VARIANT_TIMEOUT_MS = 7000;
+
+function getEnableVariantTimeoutMs() {
+  const overrideValue =
+    typeof globalThis !== "undefined" &&
+    globalThis !== null &&
+    Number.isFinite(globalThis.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__)
+      ? Math.floor(globalThis.__BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__)
+      : null;
+
+  if (overrideValue !== null && overrideValue > 0) {
+    return Math.max(50, overrideValue);
+  }
+
+  return DEFAULT_ENABLE_VARIANT_TIMEOUT_MS;
+}
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
+const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
 
 const WATCH_HISTORY_STORAGE_KEY = "bitvid:watch-history:v2";
 const WATCH_HISTORY_STORAGE_VERSION = 2;
@@ -67,12 +89,233 @@ const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
 
+const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
+  "get_public_key",
+  "sign_event",
+  "nip04.encrypt",
+  "nip04.decrypt",
+  "read_relays",
+  "write_relays",
+]);
+
 const viewEventPublishMemory = new Map();
+const rebroadcastAttemptMemory = new Map();
 
 const VIEW_EVENT_SCHEMA = getNostrEventSchema(NOTE_TYPES.VIEW_EVENT);
 const VIEW_EVENT_KIND = Number.isFinite(VIEW_EVENT_SCHEMA?.kind)
   ? VIEW_EVENT_SCHEMA.kind
   : 30079;
+
+const globalScope =
+  typeof window !== "undefined"
+    ? window
+    : typeof globalThis !== "undefined"
+    ? globalThis
+    : null;
+
+const nostrToolsReadySource =
+  globalScope &&
+  globalScope.nostrToolsReady &&
+  typeof globalScope.nostrToolsReady.then === "function"
+    ? globalScope.nostrToolsReady
+    : nostrToolsReady;
+
+function normalizeToolkitCandidate(candidate) {
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    candidate.ok !== false &&
+    typeof candidate.then !== "function"
+  ) {
+    return candidate;
+  }
+  return null;
+}
+
+function readToolkitFromScope(scope = globalScope) {
+  if (!scope || typeof scope !== "object") {
+    return null;
+  }
+
+  const candidates = [];
+
+  const canonical = scope.__BITVID_CANONICAL_NOSTR_TOOLS__;
+  if (canonical) {
+    candidates.push(canonical);
+  }
+
+  const direct = scope.NostrTools;
+  if (direct) {
+    candidates.push(direct);
+  }
+
+  const nestedWindow =
+    scope.window && scope.window !== scope && typeof scope.window === "object"
+      ? scope.window
+      : null;
+  if (nestedWindow) {
+    if (nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__) {
+      candidates.push(nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__);
+    }
+    if (nestedWindow.NostrTools) {
+      candidates.push(nestedWindow.NostrTools);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const normalized = normalizeToolkitCandidate(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+const __nostrToolsBootstrapResult = await (async () => {
+  try {
+    const result = await nostrToolsReadySource;
+    if (result && typeof result === "object" && result.ok === false) {
+      return {
+        toolkit: normalizeToolkitCandidate(readToolkitFromScope()),
+        failure: result,
+      };
+    }
+
+    const normalized = normalizeToolkitCandidate(result);
+    if (normalized) {
+      return { toolkit: normalized, failure: null };
+    }
+
+    return {
+      toolkit: normalizeToolkitCandidate(readToolkitFromScope()),
+      failure: null,
+    };
+  } catch (error) {
+    return {
+      toolkit: normalizeToolkitCandidate(readToolkitFromScope()),
+      failure: error,
+    };
+  }
+})();
+
+let cachedNostrTools = __nostrToolsBootstrapResult.toolkit || null;
+const nostrToolsBootstrapFailure = __nostrToolsBootstrapResult.failure || null;
+
+if (!cachedNostrTools && nostrToolsBootstrapFailure && isDevMode) {
+  console.warn(
+    "[nostr] nostr-tools helpers unavailable after bootstrap.",
+    nostrToolsBootstrapFailure
+  );
+}
+
+function rememberNostrTools(candidate) {
+  const normalized = normalizeToolkitCandidate(candidate);
+  if (normalized) {
+    cachedNostrTools = normalized;
+  }
+}
+
+function getCachedNostrTools() {
+  const fallback = readToolkitFromScope();
+  if (cachedNostrTools && fallback && fallback !== cachedNostrTools) {
+    rememberNostrTools(fallback);
+  } else if (!cachedNostrTools && fallback) {
+    rememberNostrTools(fallback);
+  }
+  return cachedNostrTools || fallback || null;
+}
+
+async function ensureNostrTools() {
+  if (cachedNostrTools) {
+    return cachedNostrTools;
+  }
+
+  try {
+    const result = await nostrToolsReadySource;
+    rememberNostrTools(result);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to resolve nostr-tools helpers.", error);
+    }
+  }
+
+  if (!cachedNostrTools) {
+    rememberNostrTools(readToolkitFromScope());
+  }
+
+  return cachedNostrTools || null;
+}
+
+function isSimplePoolConstructor(candidate) {
+  if (typeof candidate !== "function") {
+    return false;
+  }
+
+  const prototype = candidate.prototype;
+  if (!prototype || typeof prototype !== "object") {
+    return false;
+  }
+
+  return typeof prototype.sub === "function" && typeof prototype.close === "function";
+}
+
+function unwrapSimplePool(candidate) {
+  if (!candidate) {
+    return null;
+  }
+
+  if (isSimplePoolConstructor(candidate)) {
+    return candidate;
+  }
+
+  if (typeof candidate === "object") {
+    if (isSimplePoolConstructor(candidate.SimplePool)) {
+      return candidate.SimplePool;
+    }
+    if (isSimplePoolConstructor(candidate.default)) {
+      return candidate.default;
+    }
+  }
+
+  return null;
+}
+
+function resolveSimplePoolConstructor(tools, scope = globalScope) {
+  const candidates = [
+    tools?.SimplePool,
+    tools?.pool?.SimplePool,
+    tools?.pool,
+    tools?.SimplePool?.SimplePool,
+    tools?.SimplePool?.default,
+    tools?.pool?.default,
+    tools?.default?.SimplePool,
+    tools?.default?.pool?.SimplePool,
+    tools?.default?.pool,
+  ];
+
+  if (scope && typeof scope === "object") {
+    candidates.push(scope?.SimplePool);
+    candidates.push(scope?.pool?.SimplePool);
+    candidates.push(scope?.pool);
+    const scopedTools =
+      scope?.NostrTools && scope.NostrTools !== tools ? scope.NostrTools : null;
+    if (scopedTools) {
+      candidates.push(scopedTools.SimplePool);
+      candidates.push(scopedTools.pool?.SimplePool);
+      candidates.push(scopedTools.pool);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const resolved = unwrapSimplePool(candidate);
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return null;
+}
 
 let ingestLocalViewEventRef = null;
 
@@ -115,12 +358,24 @@ function logErrorOnce(message, eventContent = null) {
   }
 }
 
-function withNip07Timeout(operation) {
+function withNip07Timeout(
+  operation,
+  {
+    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
+    message = NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+  } = {},
+) {
+  const numericTimeout = Number(timeoutMs);
+  const effectiveTimeout =
+    Number.isFinite(numericTimeout) && numericTimeout > 0
+      ? numericTimeout
+      : NIP07_LOGIN_TIMEOUT_MS;
+
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE));
-    }, NIP07_LOGIN_TIMEOUT_MS);
+      reject(new Error(message));
+    }, effectiveTimeout);
   });
 
   let operationResult;
@@ -141,6 +396,66 @@ function withNip07Timeout(operation) {
     }
   });
 }
+
+async function runNip07WithRetry(
+  operation,
+  {
+    label = "NIP-07 operation",
+    timeoutMs = NIP07_LOGIN_TIMEOUT_MS,
+    retryMultiplier = 2,
+  } = {},
+) {
+  let hasStarted = false;
+  let cachedPromise = null;
+
+  const getOrStartOperation = () => {
+    if (!hasStarted) {
+      hasStarted = true;
+      try {
+        cachedPromise = Promise.resolve(operation());
+      } catch (error) {
+        hasStarted = false;
+        cachedPromise = null;
+        throw error;
+      }
+    }
+
+    return cachedPromise;
+  };
+
+  try {
+    return await withNip07Timeout(getOrStartOperation, {
+      timeoutMs,
+      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+    });
+  } catch (error) {
+    const isTimeoutError =
+      error instanceof Error &&
+      error.message === NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE;
+
+    if (!isTimeoutError || retryMultiplier <= 1) {
+      throw error;
+    }
+
+    const extendedTimeout = Math.max(
+      timeoutMs,
+      Math.round(timeoutMs * retryMultiplier),
+    );
+
+    if (isDevMode) {
+      console.warn(
+        `[nostr] ${label} taking longer than ${timeoutMs}ms. Waiting up to ${extendedTimeout}ms for extension response.`,
+      );
+    }
+
+    return withNip07Timeout(getOrStartOperation, {
+      timeoutMs: extendedTimeout,
+      message: NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE,
+    });
+  }
+}
+
+export const __testExports = { runNip07WithRetry };
 
 function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
   const resolvedTimeout = Number(timeoutMs);
@@ -194,6 +509,794 @@ function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request ti
   });
 }
 
+function stringFromInput(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "";
+  }
+  return String(value).trim();
+}
+
+function normalizeUnixSeconds(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const normalized = value > 1e12 ? value / 1000 : value;
+    return String(Math.floor(normalized));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      const normalized = numeric > 1e12 ? numeric / 1000 : numeric;
+      return String(Math.floor(normalized));
+    }
+    const parsed = Date.parse(trimmed);
+    if (!Number.isNaN(parsed)) {
+      return String(Math.floor(parsed / 1000));
+    }
+  }
+  return "";
+}
+
+function normalizeDurationSeconds(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.max(0, Math.floor(value)));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      return String(Math.max(0, Math.floor(numeric)));
+    }
+  }
+  return "";
+}
+
+function normalizeNip71Kind(value) {
+  const numeric =
+    typeof value === "string"
+      ? Number(value.trim())
+      : typeof value === "number"
+        ? value
+        : Number.NaN;
+  if (numeric === 22) {
+    return 22;
+  }
+  return 21;
+}
+
+function trimTrailingEmpty(values) {
+  const trimmed = [...values];
+  while (trimmed.length && !trimmed[trimmed.length - 1]) {
+    trimmed.pop();
+  }
+  return trimmed;
+}
+
+function buildImetaTags(variants) {
+  if (!Array.isArray(variants)) {
+    return [];
+  }
+  const tags = [];
+  for (const variant of variants) {
+    if (!variant || typeof variant !== "object") {
+      continue;
+    }
+    const entries = ["imeta"];
+    const dim = stringFromInput(variant.dim);
+    if (dim) {
+      entries.push(`dim ${dim}`);
+    }
+    const url = stringFromInput(variant.url);
+    if (url) {
+      entries.push(`url ${url}`);
+    }
+    const x = stringFromInput(variant.x);
+    if (x) {
+      entries.push(`x ${x}`);
+    }
+    const mime = stringFromInput(variant.m);
+    if (mime) {
+      entries.push(`m ${mime}`);
+    }
+    if (Array.isArray(variant.image)) {
+      variant.image
+        .map(stringFromInput)
+        .filter(Boolean)
+        .forEach((imageUrl) => {
+          entries.push(`image ${imageUrl}`);
+        });
+    }
+    if (Array.isArray(variant.fallback)) {
+      variant.fallback
+        .map(stringFromInput)
+        .filter(Boolean)
+        .forEach((fallbackUrl) => {
+          entries.push(`fallback ${fallbackUrl}`);
+        });
+    }
+    if (Array.isArray(variant.service)) {
+      variant.service
+        .map(stringFromInput)
+        .filter(Boolean)
+        .forEach((service) => {
+          entries.push(`service ${service}`);
+        });
+    }
+    if (entries.length > 1) {
+      tags.push(entries);
+    }
+  }
+  return tags;
+}
+
+function buildTextTrackTag(track) {
+  if (!track || typeof track !== "object") {
+    return null;
+  }
+  const url = stringFromInput(track.url);
+  const type = stringFromInput(track.type);
+  const language = stringFromInput(track.language);
+  if (!url && !type && !language) {
+    return null;
+  }
+  const values = trimTrailingEmpty([url, type, language]);
+  return ["text-track", ...values];
+}
+
+function buildSegmentTag(segment) {
+  if (!segment || typeof segment !== "object") {
+    return null;
+  }
+  const start = stringFromInput(segment.start);
+  const end = stringFromInput(segment.end);
+  const title = stringFromInput(segment.title);
+  const thumbnail = stringFromInput(segment.thumbnail);
+  if (!start && !end && !title && !thumbnail) {
+    return null;
+  }
+  const values = trimTrailingEmpty([start, end, title, thumbnail]);
+  return ["segment", ...values];
+}
+
+function buildParticipantTag(participant) {
+  if (!participant || typeof participant !== "object") {
+    return null;
+  }
+  const pubkey = stringFromInput(participant.pubkey);
+  if (!pubkey) {
+    return null;
+  }
+  const relay = stringFromInput(participant.relay);
+  const values = ["p", pubkey];
+  if (relay) {
+    values.push(relay);
+  }
+  return values;
+}
+
+export function buildNip71MetadataTags(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return [];
+  }
+
+  const tags = [];
+
+  const normalizedTitle = stringFromInput(metadata.title);
+  if (normalizedTitle) {
+    tags.push(["title", normalizedTitle]);
+  }
+
+  const publishedAt = normalizeUnixSeconds(metadata.publishedAt);
+  if (publishedAt) {
+    tags.push(["published_at", publishedAt]);
+  }
+
+  const alt = stringFromInput(metadata.alt);
+  if (alt) {
+    tags.push(["alt", alt]);
+  }
+
+  const imetaTags = buildImetaTags(metadata.imeta);
+  if (imetaTags.length) {
+    tags.push(...imetaTags);
+  }
+
+  const duration = normalizeDurationSeconds(metadata.duration);
+  if (duration) {
+    tags.push(["duration", duration]);
+  }
+
+  if (Array.isArray(metadata.textTracks)) {
+    metadata.textTracks.forEach((track) => {
+      const tag = buildTextTrackTag(track);
+      if (tag) {
+        tags.push(tag);
+      }
+    });
+  }
+
+  const contentWarning = stringFromInput(metadata.contentWarning);
+  if (contentWarning) {
+    tags.push(["content-warning", contentWarning]);
+  }
+
+  if (Array.isArray(metadata.segments)) {
+    metadata.segments.forEach((segment) => {
+      const tag = buildSegmentTag(segment);
+      if (tag) {
+        tags.push(tag);
+      }
+    });
+  }
+
+  if (Array.isArray(metadata.hashtags)) {
+    metadata.hashtags
+      .map(stringFromInput)
+      .filter(Boolean)
+      .forEach((value) => {
+        tags.push(["t", value]);
+      });
+  }
+
+  if (Array.isArray(metadata.participants)) {
+    metadata.participants.forEach((participant) => {
+      const tag = buildParticipantTag(participant);
+      if (tag) {
+        tags.push(tag);
+      }
+    });
+  }
+
+  if (Array.isArray(metadata.references)) {
+    metadata.references
+      .map(stringFromInput)
+      .filter(Boolean)
+      .forEach((url) => {
+        tags.push(["r", url]);
+      });
+  }
+
+  return tags;
+}
+
+function extractVideoPublishPayload(rawPayload) {
+  let videoData = rawPayload;
+  let nip71Metadata = null;
+
+  if (rawPayload && typeof rawPayload === "object") {
+    if (rawPayload.nip71 && typeof rawPayload.nip71 === "object") {
+      nip71Metadata = rawPayload.nip71;
+    }
+    if (
+      rawPayload.legacyFormData &&
+      typeof rawPayload.legacyFormData === "object"
+    ) {
+      videoData = rawPayload.legacyFormData;
+    } else if (
+      Object.prototype.hasOwnProperty.call(rawPayload, "legacyFormData")
+    ) {
+      videoData = rawPayload.legacyFormData || {};
+    }
+  }
+
+  if (!videoData || typeof videoData !== "object") {
+    videoData = {};
+  }
+
+  return { videoData, nip71Metadata };
+}
+
+function buildVideoPointerValue(pubkey, videoRootId) {
+  const normalizedRoot = stringFromInput(videoRootId);
+  const normalizedPubkey = stringFromInput(pubkey).toLowerCase();
+  if (!normalizedRoot || !normalizedPubkey) {
+    return "";
+  }
+  return `30078:${normalizedPubkey}:${normalizedRoot}`;
+}
+
+function buildNip71PointerTags({
+  pubkey = "",
+  videoRootId = "",
+  videoEventId = "",
+  dTag = "",
+} = {}) {
+  const pointerTags = [];
+
+  const normalizedRoot = stringFromInput(videoRootId);
+  const normalizedEventId = stringFromInput(videoEventId);
+  const normalizedDTag = stringFromInput(dTag);
+
+  if (normalizedRoot) {
+    const pointerValue = buildVideoPointerValue(pubkey, normalizedRoot);
+    if (pointerValue) {
+      pointerTags.push(["a", pointerValue]);
+    }
+    pointerTags.push(["video-root", normalizedRoot]);
+  }
+
+  if (normalizedEventId) {
+    pointerTags.push(["e", normalizedEventId]);
+  }
+
+  if (normalizedDTag) {
+    pointerTags.push(["d", normalizedDTag]);
+  }
+
+  return pointerTags;
+}
+
+export function buildNip71VideoEvent({
+  metadata,
+  pubkey = "",
+  title,
+  summaryFallback = "",
+  createdAt = Math.floor(Date.now() / 1000),
+  pointerIdentifiers = {},
+} = {}) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const normalizedTitle = stringFromInput(title);
+  if (!normalizedTitle) {
+    return null;
+  }
+
+  const summaryCandidates = [
+    stringFromInput(metadata.summary),
+    stringFromInput(summaryFallback),
+    normalizedTitle,
+  ];
+  const summary = summaryCandidates.find((value) => Boolean(value)) || "";
+
+  const tags = buildNip71MetadataTags({
+    ...metadata,
+    title: normalizedTitle,
+  });
+
+  if (!tags.length) {
+    return null;
+  }
+
+  const normalizedPubkey = stringFromInput(pubkey);
+  const timestamp = Number.isFinite(createdAt)
+    ? Math.floor(createdAt)
+    : Math.floor(Date.now() / 1000);
+
+  const pointerTags = buildNip71PointerTags({
+    pubkey,
+    videoRootId: pointerIdentifiers.videoRootId,
+    videoEventId: pointerIdentifiers.eventId,
+    dTag: pointerIdentifiers.dTag,
+  });
+
+  if (pointerTags.length) {
+    tags.push(...pointerTags);
+  }
+
+  return {
+    kind: normalizeNip71Kind(metadata.kind),
+    pubkey: normalizedPubkey,
+    created_at: timestamp,
+    tags,
+    content: summary,
+  };
+}
+
+function parseKeyValuePair(entry) {
+  if (typeof entry !== "string") {
+    return null;
+  }
+  const trimmed = entry.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const spaceIndex = trimmed.indexOf(" ");
+  if (spaceIndex === -1) {
+    return null;
+  }
+  const key = trimmed.slice(0, spaceIndex).trim().toLowerCase();
+  const value = trimmed.slice(spaceIndex + 1).trim();
+  if (!key || !value) {
+    return null;
+  }
+  return { key, value };
+}
+
+function parseImetaTag(tag) {
+  if (!Array.isArray(tag) || tag[0] !== "imeta") {
+    return null;
+  }
+
+  const variant = {
+    image: [],
+    fallback: [],
+    service: [],
+  };
+
+  for (let i = 1; i < tag.length; i += 1) {
+    const parsed = parseKeyValuePair(tag[i]);
+    if (!parsed) {
+      continue;
+    }
+
+    switch (parsed.key) {
+      case "dim":
+        variant.dim = parsed.value;
+        break;
+      case "url":
+        variant.url = parsed.value;
+        break;
+      case "x":
+        variant.x = parsed.value;
+        break;
+      case "m":
+        variant.m = parsed.value;
+        break;
+      case "image":
+        variant.image.push(parsed.value);
+        break;
+      case "fallback":
+        variant.fallback.push(parsed.value);
+        break;
+      case "service":
+        variant.service.push(parsed.value);
+        break;
+      default:
+        break;
+    }
+  }
+
+  const hasContent =
+    Boolean(variant.dim) ||
+    Boolean(variant.url) ||
+    Boolean(variant.x) ||
+    Boolean(variant.m) ||
+    variant.image.length > 0 ||
+    variant.fallback.length > 0 ||
+    variant.service.length > 0;
+
+  if (!hasContent) {
+    return null;
+  }
+
+  if (!variant.image.length) {
+    delete variant.image;
+  }
+  if (!variant.fallback.length) {
+    delete variant.fallback;
+  }
+  if (!variant.service.length) {
+    delete variant.service;
+  }
+
+  return variant;
+}
+
+function parseTextTrackTag(tag) {
+  if (!Array.isArray(tag) || tag[0] !== "text-track") {
+    return null;
+  }
+  const url = stringFromInput(tag[1]);
+  const type = stringFromInput(tag[2]);
+  const language = stringFromInput(tag[3]);
+  if (!url && !type && !language) {
+    return null;
+  }
+  const track = {};
+  if (url) {
+    track.url = url;
+  }
+  if (type) {
+    track.type = type;
+  }
+  if (language) {
+    track.language = language;
+  }
+  return track;
+}
+
+function parseSegmentTag(tag) {
+  if (!Array.isArray(tag) || tag[0] !== "segment") {
+    return null;
+  }
+
+  const values = [];
+  for (let i = 1; i < tag.length; i += 1) {
+    const value = stringFromInput(tag[i]);
+    values.push(value);
+  }
+
+  while (values.length < 4) {
+    values.push("");
+  }
+
+  const [start, end, title, thumbnail] = values;
+  const hasContent = start || end || title || thumbnail;
+  if (!hasContent) {
+    return null;
+  }
+  const segment = {};
+  if (start) {
+    segment.start = start;
+  }
+  if (end) {
+    segment.end = end;
+  }
+  if (title) {
+    segment.title = title;
+  }
+  if (thumbnail) {
+    segment.thumbnail = thumbnail;
+  }
+  return segment;
+}
+
+function parseParticipantTag(tag) {
+  if (!Array.isArray(tag) || tag[0] !== "p") {
+    return null;
+  }
+  const pubkey = stringFromInput(tag[1]);
+  if (!pubkey) {
+    return null;
+  }
+  const participant = { pubkey };
+  const relay = stringFromInput(tag[2]);
+  if (relay) {
+    participant.relay = relay;
+  }
+  return participant;
+}
+
+function parseReferenceTag(tag) {
+  if (!Array.isArray(tag) || tag[0] !== "r") {
+    return null;
+  }
+  const url = stringFromInput(tag[1]);
+  return url ? url : null;
+}
+
+function parseHashtagTag(tag) {
+  if (!Array.isArray(tag) || tag[0] !== "t") {
+    return null;
+  }
+  const value = stringFromInput(tag[1]);
+  return value || null;
+}
+
+export function extractNip71MetadataFromTags(event) {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  const metadata = { kind: normalizeNip71Kind(event.kind) };
+
+  const summary = stringFromInput(event.content);
+  if (summary) {
+    metadata.summary = summary;
+  }
+
+  const imeta = [];
+  const textTracks = [];
+  const segments = [];
+  const hashtags = [];
+  const participants = [];
+  const references = [];
+
+  const pointerValues = new Set();
+  const videoRootIds = new Set();
+  const videoEventIds = new Set();
+  const dTags = new Set();
+
+  tags.forEach((tag) => {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      return;
+    }
+
+    const name = tag[0];
+    switch (name) {
+      case "title": {
+        const value = stringFromInput(tag[1]);
+        if (value) {
+          metadata.title = value;
+        }
+        break;
+      }
+      case "published_at": {
+        const value = stringFromInput(tag[1]);
+        if (value) {
+          metadata.publishedAt = value;
+        }
+        break;
+      }
+      case "alt": {
+        const value = stringFromInput(tag[1]);
+        if (value) {
+          metadata.alt = value;
+        }
+        break;
+      }
+      case "duration": {
+        const value = stringFromInput(tag[1]);
+        if (value) {
+          const parsed = Number(value);
+          metadata.duration = Number.isFinite(parsed) ? parsed : value;
+        }
+        break;
+      }
+      case "content-warning": {
+        const value = stringFromInput(tag[1]);
+        if (value) {
+          metadata.contentWarning = value;
+        }
+        break;
+      }
+      case "imeta": {
+        const variant = parseImetaTag(tag);
+        if (variant) {
+          imeta.push(variant);
+        }
+        break;
+      }
+      case "text-track": {
+        const track = parseTextTrackTag(tag);
+        if (track) {
+          textTracks.push(track);
+        }
+        break;
+      }
+      case "segment": {
+        const segment = parseSegmentTag(tag);
+        if (segment) {
+          segments.push(segment);
+        }
+        break;
+      }
+      case "t": {
+        const hashtag = parseHashtagTag(tag);
+        if (hashtag) {
+          hashtags.push(hashtag);
+        }
+        break;
+      }
+      case "p": {
+        const participant = parseParticipantTag(tag);
+        if (participant) {
+          participants.push(participant);
+        }
+        break;
+      }
+      case "r": {
+        const reference = parseReferenceTag(tag);
+        if (reference) {
+          references.push(reference);
+        }
+        break;
+      }
+      case "a": {
+        const pointerValue = stringFromInput(tag[1]).toLowerCase();
+        if (pointerValue) {
+          pointerValues.add(pointerValue);
+          const parts = pointerValue.split(":");
+          if (parts.length === 3 && parts[0] === "30078") {
+            const root = parts[2];
+            if (root) {
+              videoRootIds.add(root);
+            }
+          }
+        }
+        break;
+      }
+      case "video-root": {
+        const value = stringFromInput(tag[1]);
+        if (value) {
+          videoRootIds.add(value);
+        }
+        break;
+      }
+      case "e": {
+        const value = stringFromInput(tag[1]);
+        if (value) {
+          videoEventIds.add(value);
+        }
+        break;
+      }
+      case "d": {
+        const value = stringFromInput(tag[1]);
+        if (value) {
+          dTags.add(value);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  });
+
+  if (imeta.length) {
+    metadata.imeta = imeta;
+  }
+  if (textTracks.length) {
+    metadata.textTracks = textTracks;
+  }
+  if (segments.length) {
+    metadata.segments = segments;
+  }
+  if (hashtags.length) {
+    metadata.hashtags = hashtags;
+    metadata.t = hashtags;
+  }
+  if (participants.length) {
+    metadata.participants = participants;
+  }
+  if (references.length) {
+    metadata.references = references;
+  }
+
+  return {
+    metadata,
+    pointers: {
+      pointerValues,
+      videoRootIds,
+      videoEventIds,
+      dTags,
+    },
+    source: {
+      id: typeof event.id === "string" ? event.id : "",
+      created_at: Number.isFinite(event.created_at) ? event.created_at : null,
+      kind: Number.isFinite(event.kind) ? event.kind : normalizeNip71Kind(event.kind),
+    },
+  };
+}
+
+function cloneNip71Metadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  try {
+    return JSON.parse(JSON.stringify(metadata));
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to clone NIP-71 metadata", error);
+    }
+    return { ...metadata };
+  }
+}
+
+function getDTagValueFromTags(tags) {
+  if (!Array.isArray(tags)) {
+    return "";
+  }
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag[0] !== "d") {
+      continue;
+    }
+    if (typeof tag[1] === "string" && tag[1]) {
+      return tag[1];
+    }
+  }
+  return "";
+}
+
 function sanitizeRelayList(list) {
   const seen = new Set();
   const sanitized = [];
@@ -212,7 +1315,22 @@ function sanitizeRelayList(list) {
     if (!/^wss?:\/\//i.test(trimmed)) {
       return;
     }
-    const normalized = trimmed.replace(/\/+$/, "");
+    if (/\s/.test(trimmed)) {
+      return;
+    }
+
+    let normalized = trimmed.replace(/\/+$/, "");
+    try {
+      const parsed = new URL(trimmed);
+      if (!parsed.hostname) {
+        return;
+      }
+      const pathname = parsed.pathname.replace(/\/+$/, "");
+      normalized = `${parsed.protocol}//${parsed.host}${pathname}${parsed.search || ""}`;
+    } catch (error) {
+      // Ignore URL parsing failures and fall back to the trimmed string.
+    }
+
     if (seen.has(normalized)) {
       return;
     }
@@ -237,6 +1355,120 @@ function pointerKey(pointer) {
   }
 
   return `${type}:${value}`;
+}
+
+function cloneVideoMetadata(video) {
+  if (!video || typeof video !== "object") {
+    return null;
+  }
+
+  const createdAt = Number.isFinite(video.created_at)
+    ? Math.floor(video.created_at)
+    : null;
+
+  return {
+    id: typeof video.id === "string" ? video.id : "",
+    title: typeof video.title === "string" ? video.title : "",
+    thumbnail: typeof video.thumbnail === "string" ? video.thumbnail : "",
+    pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
+    created_at: createdAt,
+    url: typeof video.url === "string" ? video.url : "",
+    magnet: typeof video.magnet === "string" ? video.magnet : "",
+    infoHash: typeof video.infoHash === "string" ? video.infoHash : "",
+    legacyInfoHash:
+      typeof video.legacyInfoHash === "string" ? video.legacyInfoHash : "",
+  };
+}
+
+function cloneProfileMetadata(profile) {
+  if (!profile || typeof profile !== "object") {
+    return null;
+  }
+
+  return {
+    pubkey: typeof profile.pubkey === "string" ? profile.pubkey : "",
+    name: typeof profile.name === "string" ? profile.name : "",
+    display_name:
+      typeof profile.display_name === "string" ? profile.display_name : "",
+    picture: typeof profile.picture === "string" ? profile.picture : "",
+    nip05: typeof profile.nip05 === "string" ? profile.nip05 : "",
+  };
+}
+
+function clonePointerMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const cloned = {};
+  const video = cloneVideoMetadata(metadata.video);
+  if (video) {
+    cloned.video = video;
+  }
+
+  const profile = cloneProfileMetadata(metadata.profile);
+  if (profile) {
+    cloned.profile = profile;
+  }
+
+  if (Number.isFinite(metadata.resumeAt)) {
+    cloned.resumeAt = Math.max(0, Math.floor(metadata.resumeAt));
+  }
+
+  if (metadata.completed === true) {
+    cloned.completed = true;
+  }
+
+  if (Number.isFinite(metadata.watchedAt)) {
+    cloned.watchedAt = Math.max(0, Math.floor(metadata.watchedAt));
+  }
+
+  return Object.keys(cloned).length ? cloned : null;
+}
+
+function mergePointerDetails(target, source) {
+  if (!target || !source) {
+    return;
+  }
+
+  if (!target.metadata && source.metadata) {
+    target.metadata = clonePointerMetadata(source.metadata);
+  } else if (target.metadata && source.metadata) {
+    const merged = clonePointerMetadata(target.metadata) || {};
+    const additional = clonePointerMetadata(source.metadata) || {};
+    if (!merged.video && additional.video) {
+      merged.video = additional.video;
+    }
+    if (!merged.profile && additional.profile) {
+      merged.profile = additional.profile;
+    }
+    if (!Number.isFinite(merged.resumeAt) && Number.isFinite(additional.resumeAt)) {
+      merged.resumeAt = additional.resumeAt;
+    }
+    if (additional.completed === true) {
+      merged.completed = true;
+    }
+    if (!Number.isFinite(merged.watchedAt) && Number.isFinite(additional.watchedAt)) {
+      merged.watchedAt = additional.watchedAt;
+    }
+    target.metadata = Object.keys(merged).length ? merged : undefined;
+  }
+
+  if (!target.video && source.video) {
+    target.video = cloneVideoMetadata(source.video);
+  }
+
+  if (!target.profile && source.profile) {
+    target.profile = cloneProfileMetadata(source.profile);
+  }
+
+  if (!Number.isFinite(target.resumeAt) && Number.isFinite(source.resumeAt)) {
+    target.resumeAt = Math.max(0, Math.floor(source.resumeAt));
+  }
+
+  if (source.completed === true) {
+    target.completed = true;
+  }
 }
 
 function clonePointerItem(pointer) {
@@ -267,6 +1499,31 @@ function clonePointerItem(pointer) {
 
   if (pointer.session === true) {
     cloned.session = true;
+  }
+
+  const metadata = clonePointerMetadata(pointer.metadata);
+  if (metadata) {
+    cloned.metadata = metadata;
+  }
+
+  const video = cloneVideoMetadata(pointer.video) || metadata?.video || null;
+  if (video) {
+    cloned.video = video;
+  }
+
+  const profile = cloneProfileMetadata(pointer.profile) || metadata?.profile || null;
+  if (profile) {
+    cloned.profile = profile;
+  }
+
+  if (Number.isFinite(pointer.resumeAt)) {
+    cloned.resumeAt = Math.max(0, Math.floor(pointer.resumeAt));
+  } else if (Number.isFinite(metadata?.resumeAt)) {
+    cloned.resumeAt = metadata.resumeAt;
+  }
+
+  if (pointer.completed === true || metadata?.completed === true) {
+    cloned.completed = true;
   }
 
   return cloned;
@@ -325,7 +1582,7 @@ function normalizePointerInput(pointer) {
 
   if (trimmed.startsWith("naddr") || trimmed.startsWith("nevent")) {
     try {
-      const decoder = window?.NostrTools?.nip19?.decode;
+      const decoder = getCachedNostrTools()?.nip19?.decode;
       if (typeof decoder === "function") {
         const decoded = decoder(trimmed);
         if (decoded?.type === "naddr" && decoded.data) {
@@ -609,6 +1866,172 @@ function rememberViewPublish(scope, bucketIndex) {
       console.warn("[nostr] Failed to persist view guard entry:", error);
     }
   }
+}
+
+function deriveRebroadcastBucketIndex(referenceSeconds = null) {
+  const windowSeconds = Math.max(
+    1,
+    Number(ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS) || 0
+  );
+  const baseSeconds = Number.isFinite(referenceSeconds)
+    ? Math.max(0, Math.floor(referenceSeconds))
+    : Math.floor(Date.now() / 1000);
+  return Math.floor(baseSeconds / windowSeconds);
+}
+
+function getRebroadcastCooldownWindowMs() {
+  const windowSeconds = Math.max(
+    1,
+    Number(ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS) || 0
+  );
+  return windowSeconds * 1000;
+}
+
+function deriveRebroadcastScope(pubkey, eventId) {
+  const normalizedPubkey =
+    typeof pubkey === "string" && pubkey.trim()
+      ? pubkey.trim().toLowerCase()
+      : "";
+  const normalizedEventId =
+    typeof eventId === "string" && eventId.trim()
+      ? eventId.trim().toLowerCase()
+      : "";
+  if (!normalizedPubkey || !normalizedEventId) {
+    return "";
+  }
+  return `${normalizedPubkey}:${normalizedEventId}`;
+}
+
+function readRebroadcastGuardEntry(scope) {
+  if (!scope) {
+    return null;
+  }
+
+  const windowMs = getRebroadcastCooldownWindowMs();
+  const now = Date.now();
+  const entry = rebroadcastAttemptMemory.get(scope);
+
+  if (entry) {
+    const age = now - Number(entry.seenAt);
+    if (!Number.isFinite(entry.seenAt) || age >= windowMs) {
+      rebroadcastAttemptMemory.delete(scope);
+    } else {
+      return entry;
+    }
+  }
+
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  const storageKey = `${REBROADCAST_GUARD_PREFIX}:${scope}`;
+  let rawValue = null;
+  try {
+    rawValue = localStorage.getItem(storageKey);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to read rebroadcast guard entry:", error);
+    }
+    return null;
+  }
+
+  if (typeof rawValue !== "string" || !rawValue) {
+    return null;
+  }
+
+  const [storedBucketRaw, storedSeenRaw] = rawValue.split(":", 2);
+  const storedBucket = Number(storedBucketRaw);
+  const storedSeenAt = Number(storedSeenRaw);
+
+  if (!Number.isFinite(storedBucket) || !Number.isFinite(storedSeenAt)) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to clear corrupt rebroadcast guard entry:", error);
+      }
+    }
+    return null;
+  }
+
+  if (now - storedSeenAt >= windowMs) {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to remove expired rebroadcast guard entry:", error);
+      }
+    }
+    return null;
+  }
+
+  const normalizedEntry = {
+    bucket: storedBucket,
+    seenAt: storedSeenAt,
+  };
+  rebroadcastAttemptMemory.set(scope, normalizedEntry);
+  return normalizedEntry;
+}
+
+function hasRecentRebroadcastAttempt(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return false;
+  }
+
+  const entry = readRebroadcastGuardEntry(scope);
+  return entry ? Number(entry.bucket) === bucketIndex : false;
+}
+
+function rememberRebroadcastAttempt(scope, bucketIndex) {
+  if (!scope || !Number.isFinite(bucketIndex)) {
+    return;
+  }
+
+  const now = Date.now();
+  const windowMs = getRebroadcastCooldownWindowMs();
+  const entry = rebroadcastAttemptMemory.get(scope);
+  if (entry && Number.isFinite(entry.seenAt) && now - entry.seenAt >= windowMs) {
+    rebroadcastAttemptMemory.delete(scope);
+  }
+
+  const normalizedEntry = { bucket: bucketIndex, seenAt: now };
+  rebroadcastAttemptMemory.set(scope, normalizedEntry);
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const storageKey = `${REBROADCAST_GUARD_PREFIX}:${scope}`;
+  try {
+    localStorage.setItem(storageKey, `${bucketIndex}:${now}`);
+  } catch (error) {
+    if (isDevMode) {
+      console.warn("[nostr] Failed to persist rebroadcast guard entry:", error);
+    }
+  }
+}
+
+function getRebroadcastCooldownState(scope) {
+  if (!scope) {
+    return null;
+  }
+  const entry = readRebroadcastGuardEntry(scope);
+  if (!entry || !Number.isFinite(entry.seenAt)) {
+    return null;
+  }
+  const windowMs = getRebroadcastCooldownWindowMs();
+  const expiresAt = entry.seenAt + windowMs;
+  const remainingMs = Math.max(0, expiresAt - Date.now());
+  if (remainingMs <= 0) {
+    return null;
+  }
+  return {
+    scope,
+    seenAt: entry.seenAt,
+    bucket: entry.bucket,
+    expiresAt,
+    remainingMs,
+  };
 }
 
 function isVideoViewEvent(event, pointer) {
@@ -897,8 +2320,22 @@ function normalizeActorKey(actor) {
   if (typeof actor !== "string") {
     return "";
   }
+
   const trimmed = actor.trim();
-  return trimmed ? trimmed.toLowerCase() : "";
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  const decodedHex = decodeNpubToHex(trimmed);
+  if (decodedHex) {
+    return decodedHex.toLowerCase();
+  }
+
+  return trimmed.toLowerCase();
 }
 
 function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_ITEMS) {
@@ -925,7 +2362,21 @@ function canonicalizeWatchHistoryItems(rawItems, maxItems = WATCH_HISTORY_MAX_IT
         ? pointer.watchedAt
         : 0;
       if (incomingWatched > currentWatched) {
+        mergePointerDetails(pointer, existing);
+        pointer.watchedAt = incomingWatched;
+        pointer.session = existing.session === true || pointer.session === true;
         seen.set(key, pointer);
+        continue;
+      }
+
+      if (incomingWatched === currentWatched) {
+        mergePointerDetails(existing, pointer);
+      } else {
+        mergePointerDetails(existing, pointer);
+      }
+
+      if (pointer.session === true) {
+        existing.session = true;
       }
     }
   }
@@ -974,25 +2425,81 @@ function serializeWatchHistoryItems(items) {
     return "[]";
   }
 
-  const normalized = items.map((item) => {
-    const type = item?.type === "a" ? "a" : "e";
-    const value = typeof item?.value === "string" ? item.value : "";
-    const relay =
-      typeof item?.relay === "string" && item.relay.trim()
-        ? item.relay.trim()
+  const normalized = items
+    .map((item) => {
+      const type = item?.type === "a" ? "a" : "e";
+      const value = typeof item?.value === "string" ? item.value : "";
+      if (!type || !value) {
+        return null;
+      }
+
+      const relay =
+        typeof item?.relay === "string" && item.relay.trim()
+          ? item.relay.trim()
+          : undefined;
+      const watchedAt = Number.isFinite(item?.watchedAt)
+        ? Math.max(0, Math.floor(item.watchedAt))
         : undefined;
-    const watchedAt = Number.isFinite(item?.watchedAt)
-      ? Math.max(0, Math.floor(item.watchedAt))
-      : undefined;
-    const payload = { type, value };
-    if (relay) {
-      payload.relay = relay;
-    }
-    if (watchedAt !== undefined) {
-      payload.watchedAt = watchedAt;
-    }
-    return payload;
-  });
+
+      const payload = { type, value };
+      if (relay) {
+        payload.relay = relay;
+      }
+      if (watchedAt !== undefined) {
+        payload.watchedAt = watchedAt;
+      }
+
+      const metadata = clonePointerMetadata(item?.metadata);
+      if (metadata) {
+        payload.metadata = metadata;
+      }
+
+      const video = metadata?.video || cloneVideoMetadata(item?.video);
+      if (video) {
+        if (payload.metadata) {
+          payload.metadata.video = payload.metadata.video || video;
+        } else {
+          payload.video = video;
+        }
+      }
+
+      const profile = metadata?.profile || cloneProfileMetadata(item?.profile);
+      if (profile) {
+        if (payload.metadata) {
+          payload.metadata.profile = payload.metadata.profile || profile;
+        } else {
+          payload.profile = profile;
+        }
+      }
+
+      const resumeAt = Number.isFinite(item?.resumeAt)
+        ? Math.max(0, Math.floor(item.resumeAt))
+        : undefined;
+      if (resumeAt !== undefined) {
+        if (payload.metadata) {
+          if (!Number.isFinite(payload.metadata.resumeAt)) {
+            payload.metadata.resumeAt = resumeAt;
+          }
+        } else {
+          payload.resumeAt = resumeAt;
+        }
+      }
+
+      if (item?.completed === true) {
+        if (payload.metadata) {
+          payload.metadata.completed = true;
+        } else {
+          payload.completed = true;
+        }
+      }
+
+      if (payload.metadata && !Object.keys(payload.metadata).length) {
+        delete payload.metadata;
+      }
+
+      return payload;
+    })
+    .filter(Boolean);
 
   return JSON.stringify(normalized);
 }
@@ -1044,11 +2551,12 @@ function eventToAddressPointer(event) {
 }
 
 function signEventWithPrivateKey(event, privateKey) {
+  const tools = getCachedNostrTools();
   if (
     !privateKey ||
     typeof privateKey !== "string" ||
-    !window?.NostrTools?.getEventHash ||
-    typeof window.NostrTools.signEvent !== "function"
+    !tools?.getEventHash ||
+    typeof tools.signEvent !== "function"
   ) {
     throw new Error("Missing signing primitives");
   }
@@ -1064,9 +2572,8 @@ function signEventWithPrivateKey(event, privateKey) {
     tags,
     content: typeof event.content === "string" ? event.content : "",
   };
-
-  const id = window.NostrTools.getEventHash(prepared);
-  const sig = window.NostrTools.signEvent(prepared, privateKey);
+  const id = tools.getEventHash(prepared);
+  const sig = tools.signEvent(prepared, privateKey);
 
   return { ...prepared, id, sig };
 }
@@ -1086,39 +2593,182 @@ function cloneEventForCache(event) {
   return cloned;
 }
 
-/**
- * Example "encryption" that just reverses strings.
- * In real usage, replace with actual crypto.
- */
-function fakeEncrypt(magnet) {
-  return magnet.split("").reverse().join("");
+const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+const BECH32_CHARSET_MAP = (() => {
+  const map = new Map();
+  for (let index = 0; index < BECH32_CHARSET.length; index += 1) {
+    map.set(BECH32_CHARSET[index], index);
+  }
+  return map;
+})();
+
+const BECH32_GENERATORS = [
+  0x3b6a57b2,
+  0x26508e6d,
+  0x1ea119fa,
+  0x3d4233dd,
+  0x2a1462b3,
+];
+
+function bech32Polymod(values) {
+  let chk = 1;
+  for (const value of values) {
+    const top = chk >>> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ value;
+    for (let bit = 0; bit < BECH32_GENERATORS.length; bit += 1) {
+      if ((top >>> bit) & 1) {
+        chk ^= BECH32_GENERATORS[bit];
+      }
+    }
+  }
+  return chk;
 }
-function fakeDecrypt(encrypted) {
-  return encrypted.split("").reverse().join("");
+
+function bech32HrpExpand(hrp) {
+  const expansion = [];
+  for (let i = 0; i < hrp.length; i += 1) {
+    expansion.push(hrp.charCodeAt(i) >>> 5);
+  }
+  expansion.push(0);
+  for (let i = 0; i < hrp.length; i += 1) {
+    expansion.push(hrp.charCodeAt(i) & 31);
+  }
+  return expansion;
+}
+
+function bech32VerifyChecksum(hrp, values) {
+  return bech32Polymod([...bech32HrpExpand(hrp), ...values]) === 1;
+}
+
+function convertBits(data, fromBits, toBits) {
+  let acc = 0;
+  let bits = 0;
+  const maxValue = (1 << toBits) - 1;
+  const result = [];
+
+  for (const value of data) {
+    if (value < 0 || value >>> fromBits !== 0) {
+      return null;
+    }
+    acc = (acc << fromBits) | value;
+    bits += fromBits;
+    while (bits >= toBits) {
+      bits -= toBits;
+      result.push((acc >>> bits) & maxValue);
+    }
+  }
+
+  if (bits > 0) {
+    if ((acc << (toBits - bits)) & maxValue) {
+      return null;
+    }
+  }
+
+  return result;
+}
+
+function decodeBech32Npub(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const hasMixedCase = value !== value.toLowerCase() && value !== value.toUpperCase();
+  if (hasMixedCase) {
+    return "";
+  }
+
+  const normalized = value.toLowerCase();
+  const separatorIndex = normalized.lastIndexOf("1");
+  if (separatorIndex <= 0 || separatorIndex + 7 > normalized.length) {
+    return "";
+  }
+
+  const hrp = normalized.slice(0, separatorIndex);
+  if (hrp !== "npub") {
+    return "";
+  }
+
+  const dataPart = normalized.slice(separatorIndex + 1);
+  const values = [];
+  for (let i = 0; i < dataPart.length; i += 1) {
+    const mapped = BECH32_CHARSET_MAP.get(dataPart[i]);
+    if (typeof mapped !== "number") {
+      return "";
+    }
+    values.push(mapped);
+  }
+
+  if (values.length < 7 || !bech32VerifyChecksum(hrp, values)) {
+    return "";
+  }
+
+  const words = values.slice(0, -6);
+  const bytes = convertBits(words, 5, 8);
+  if (!bytes || bytes.length !== 32) {
+    return "";
+  }
+
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function decodeNpubToHex(npub) {
-  if (typeof npub !== "string" || !npub.trim()) {
+  if (typeof npub !== "string") {
     return "";
   }
 
-  if (
-    !window?.NostrTools?.nip19 ||
-    typeof window.NostrTools.nip19.decode !== "function"
-  ) {
+  const trimmed = npub.trim();
+  if (!trimmed) {
     return "";
   }
 
-  try {
-    const decoded = window.NostrTools.nip19.decode(npub.trim());
-    if (decoded?.type === "npub" && typeof decoded.data === "string") {
-      return decoded.data;
-    }
-  } catch (error) {
-    if (isDevMode) {
-      console.warn(`[nostr] Failed to decode npub: ${npub}`, error);
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  const lower = trimmed.toLowerCase();
+  const hasNpubPrefix = lower.startsWith("npub1");
+  if (!hasNpubPrefix) {
+    return "";
+  }
+
+  const warnableNpub = /^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(
+    trimmed
+  );
+
+  let tools = cachedNostrTools;
+  if (!tools || typeof tools?.nip19?.decode !== "function") {
+    const fallbackTools = readToolkitFromScope();
+    if (fallbackTools) {
+      tools = fallbackTools;
     }
   }
+
+  let decodeError = null;
+  if (tools?.nip19 && typeof tools.nip19.decode === "function") {
+    try {
+      const decoded = tools.nip19.decode(trimmed);
+      if (decoded?.type === "npub" && typeof decoded.data === "string") {
+        return decoded.data;
+      }
+    } catch (error) {
+      decodeError = error;
+    }
+  }
+
+  const manualDecoded = decodeBech32Npub(trimmed);
+  if (manualDecoded) {
+    return manualDecoded;
+  }
+
+  if (isDevMode && warnableNpub) {
+    console.warn(
+      `[nostr] Failed to decode npub: ${trimmed}`,
+      decodeError || new Error("invalid-npub"),
+    );
+  }
+
   return "";
 }
 
@@ -1404,9 +3054,10 @@ function getActiveKey(video) {
 
 export { convertEventToVideo };
 
-class NostrClient {
+export class NostrClient {
   constructor() {
     this.pool = null;
+    this.poolPromise = null;
     this.pubkey = null;
     this.relays = sanitizeRelayList(Array.from(DEFAULT_RELAY_URLS));
     this.readRelays = Array.from(this.relays);
@@ -1415,12 +3066,18 @@ class NostrClient {
     // Store all events so older links still work
     this.allEvents = new Map();
 
+    // Keep a separate cache of raw events so we can republish the exact payload
+    this.rawEvents = new Map();
+
     // “activeMap” holds only the newest version for each root
     this.activeMap = new Map();
+
+    this.rootCreatedAtByRoot = new Map();
 
     this.hasRestoredLocalData = false;
 
     this.sessionActor = null;
+    this.nip71Cache = new Map();
     this.watchHistoryCache = new Map();
     this.watchHistoryStorage = null;
     this.watchHistoryRepublishTimers = new Map();
@@ -1430,6 +3087,181 @@ class NostrClient {
     this.watchHistoryLastCreatedAt = 0;
     this.countRequestCounter = 0;
     this.countUnsupportedRelays = new Set();
+    this.extensionPermissionCache = new Set();
+  }
+
+  markExtensionPermissions(methods = []) {
+    if (!this.extensionPermissionCache) {
+      this.extensionPermissionCache = new Set();
+    }
+
+    if (!Array.isArray(methods)) {
+      return;
+    }
+
+    for (const method of methods) {
+      if (typeof method !== "string") {
+        continue;
+      }
+      const normalized = method.trim();
+      if (normalized) {
+        this.extensionPermissionCache.add(normalized);
+      }
+    }
+  }
+
+  async ensureExtensionPermissions(methods = DEFAULT_NIP07_PERMISSION_METHODS) {
+    if (!Array.isArray(methods)) {
+      methods = [];
+    }
+
+    const normalized = Array.from(
+      new Set(
+        methods
+          .map((method) =>
+            typeof method === "string" && method.trim() ? method.trim() : "",
+          )
+          .filter(Boolean),
+      ),
+    );
+
+    if (!normalized.length) {
+      return { ok: true };
+    }
+
+    const outstanding = normalized.filter((method) =>
+      this.extensionPermissionCache ? !this.extensionPermissionCache.has(method) : true,
+    );
+
+    if (!outstanding.length) {
+      return { ok: true };
+    }
+
+    const extension = typeof window !== "undefined" ? window.nostr : null;
+    if (!extension) {
+      return { ok: false, error: new Error("extension-unavailable") };
+    }
+
+    if (typeof extension.enable !== "function") {
+      this.markExtensionPermissions(outstanding);
+      return { ok: true, code: "enable-unavailable" };
+    }
+
+    const permissionVariants = [null];
+    if (outstanding.length) {
+      permissionVariants.push({
+        permissions: outstanding.map((method) => ({ method })),
+      });
+      permissionVariants.push({ permissions: outstanding });
+    }
+
+    let lastError = null;
+    for (const options of permissionVariants) {
+      const variantTimeoutOverrides = options
+        ? {
+            timeoutMs: Math.min(
+              NIP07_LOGIN_TIMEOUT_MS,
+              getEnableVariantTimeoutMs(),
+            ),
+            retryMultiplier: 1,
+          }
+        : { retryMultiplier: 1 };
+
+      try {
+        await runNip07WithRetry(
+          () => (options ? extension.enable(options) : extension.enable()),
+          { label: "extension.enable", ...variantTimeoutOverrides },
+        );
+        this.markExtensionPermissions(outstanding);
+        return { ok: true };
+      } catch (error) {
+        lastError = error;
+        if (options && isDevMode) {
+          console.warn(
+            "[nostr] extension.enable request with explicit permissions failed:",
+            error,
+          );
+        }
+      }
+    }
+
+    return {
+      ok: false,
+      error: lastError || new Error("permission-denied"),
+    };
+  }
+
+  applyRootCreatedAt(video) {
+    if (!video || typeof video !== "object") {
+      return null;
+    }
+
+    const rootId =
+      typeof video.videoRootId === "string" && video.videoRootId
+        ? video.videoRootId
+        : typeof video.id === "string"
+          ? video.id
+          : "";
+
+    if (!rootId) {
+      if ("rootCreatedAt" in video) {
+        delete video.rootCreatedAt;
+      }
+      return null;
+    }
+
+    const candidates = [];
+
+    const declaredRoot = Number.isFinite(video.rootCreatedAt)
+      ? Math.floor(video.rootCreatedAt)
+      : null;
+    if (declaredRoot !== null) {
+      candidates.push(declaredRoot);
+    }
+
+    const nip71Created = Number.isFinite(video?.nip71Source?.created_at)
+      ? Math.floor(video.nip71Source.created_at)
+      : null;
+    if (nip71Created !== null) {
+      candidates.push(nip71Created);
+    }
+
+    const createdAt = Number.isFinite(video.created_at)
+      ? Math.floor(video.created_at)
+      : null;
+    if (createdAt !== null) {
+      candidates.push(createdAt);
+    }
+
+    const existingValue = this.rootCreatedAtByRoot.get(rootId);
+    if (Number.isFinite(existingValue)) {
+      candidates.push(Math.floor(existingValue));
+    }
+
+    let earliest = null;
+    for (const candidate of candidates) {
+      if (!Number.isFinite(candidate)) {
+        continue;
+      }
+      if (earliest === null || candidate < earliest) {
+        earliest = candidate;
+      }
+    }
+
+    if (earliest !== null) {
+      this.rootCreatedAtByRoot.set(rootId, earliest);
+      video.rootCreatedAt = earliest;
+    } else if ("rootCreatedAt" in video) {
+      delete video.rootCreatedAt;
+    }
+
+    const activeKey = getActiveKey(video);
+    const activeVideo = this.activeMap.get(activeKey);
+    if (activeVideo && activeVideo !== video && earliest !== null) {
+      activeVideo.rootCreatedAt = earliest;
+    }
+
+    return earliest;
   }
 
   restoreSessionActorFromStorage() {
@@ -1539,7 +3371,7 @@ class NostrClient {
   }
 
   mintSessionActor() {
-    const tools = window?.NostrTools || null;
+    const tools = getCachedNostrTools();
     if (!tools) {
       if (isDevMode) {
         console.warn("[nostr] Cannot mint session actor without NostrTools.");
@@ -1749,13 +3581,16 @@ class NostrClient {
     }
 
     this.allEvents.clear();
+    this.rawEvents.clear();
     this.activeMap.clear();
+    this.rootCreatedAtByRoot.clear();
 
     for (const [id, video] of Object.entries(events)) {
       if (!id || !video || typeof video !== "object") {
         continue;
       }
 
+      this.applyRootCreatedAt(video);
       this.allEvents.set(id, video);
       if (video.deleted) {
         continue;
@@ -2281,6 +4116,10 @@ class NostrClient {
       }
     }
 
+    if (useExtensionEncrypt) {
+      await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
+    }
+
     const canonicalItems = canonicalizeWatchHistoryItems(
       Array.isArray(rawItems) ? rawItems : [],
       WATCH_HISTORY_MAX_ITEMS,
@@ -2337,14 +4176,28 @@ class NostrClient {
       this.watchHistoryLastCreatedAt + 1,
     );
 
+    let cachedNip04Tools = null;
+    const ensureNip04Tools = async () => {
+      if (cachedNip04Tools) {
+        return cachedNip04Tools;
+      }
+      const tools = await ensureNostrTools();
+      if (tools?.nip04 && typeof tools.nip04.encrypt === "function") {
+        cachedNip04Tools = tools;
+        return cachedNip04Tools;
+      }
+      return null;
+    };
+
     const encryptChunk = async (plaintext) => {
       if (useExtensionEncrypt) {
         return extension.nip04.encrypt(actorPubkey, plaintext);
       }
-      if (!window?.NostrTools?.nip04?.encrypt) {
+      const tools = await ensureNip04Tools();
+      if (!tools?.nip04 || typeof tools.nip04.encrypt !== "function") {
         throw new Error("nip04-unavailable");
       }
-      return window.NostrTools.nip04.encrypt(privateKey, actorPubkey, plaintext);
+      return tools.nip04.encrypt(privateKey, actorPubkey, plaintext);
     };
 
     const signEvent = async (event) => {
@@ -2791,6 +4644,8 @@ class NostrClient {
       return { pointerEvent: null, items: [], snapshotId: "" };
     }
 
+    const actorKeyIsHex = /^[0-9a-f]{64}$/.test(actorKey);
+
     console.info("[nostr] Fetching watch history from relays.", {
       actor: resolvedActor,
       forceRefresh: options.forceRefresh === true,
@@ -2801,6 +4656,50 @@ class NostrClient {
     const existingEntry = this.watchHistoryCache.get(actorKey);
     const now = Date.now();
     const ttl = this.getWatchHistoryCacheTtlMs();
+
+    const loadFromStorage = async () => {
+      const storageEntry = this.getWatchHistoryStorage().actors?.[actorKey];
+      const items = Array.isArray(storageEntry?.items)
+        ? canonicalizeWatchHistoryItems(storageEntry.items, WATCH_HISTORY_MAX_ITEMS)
+        : [];
+      const fingerprint = typeof storageEntry?.fingerprint === "string"
+        ? storageEntry.fingerprint
+        : await this.getWatchHistoryFingerprint(resolvedActor, items);
+      const entry = {
+        actor: resolvedActor,
+        items,
+        snapshotId: typeof storageEntry?.snapshotId === "string"
+          ? storageEntry.snapshotId
+          : "",
+        pointerEvent: null,
+        chunkEvents: [],
+        savedAt: now,
+        fingerprint,
+        metadata: sanitizeWatchHistoryMetadata(storageEntry?.metadata),
+      };
+      this.watchHistoryCache.set(actorKey, entry);
+      this.persistWatchHistoryEntry(actorKey, entry);
+      return { pointerEvent: null, items, snapshotId: entry.snapshotId };
+    };
+
+    if (!actorKeyIsHex) {
+      console.warn(
+        `[nostr] Cannot normalize watch history actor key to hex. Aborting relay fetch for ${resolvedActor}.`,
+      );
+      if (
+        !options.forceRefresh &&
+        existingEntry &&
+        Number.isFinite(existingEntry.savedAt) &&
+        now - existingEntry.savedAt < ttl
+      ) {
+        return {
+          pointerEvent: existingEntry.pointerEvent || null,
+          items: existingEntry.items || [],
+          snapshotId: existingEntry.snapshotId || "",
+        };
+      }
+      return await loadFromStorage();
+    }
 
     if (
       !options.forceRefresh &&
@@ -2854,7 +4753,7 @@ class NostrClient {
       const filters = [
         {
           kinds: [WATCH_HISTORY_KIND],
-          authors: [resolvedActor],
+          authors: [actorKey],
           "#d": identifiers,
           limit,
         },
@@ -2894,28 +4793,7 @@ class NostrClient {
           actor: resolvedActor,
         }
       );
-      const storageEntry = this.getWatchHistoryStorage().actors?.[actorKey];
-      const items = Array.isArray(storageEntry?.items)
-        ? canonicalizeWatchHistoryItems(storageEntry.items, WATCH_HISTORY_MAX_ITEMS)
-        : [];
-      const fingerprint = typeof storageEntry?.fingerprint === "string"
-        ? storageEntry.fingerprint
-        : await this.getWatchHistoryFingerprint(resolvedActor, items);
-      const entry = {
-        actor: resolvedActor,
-        items,
-        snapshotId: typeof storageEntry?.snapshotId === "string"
-          ? storageEntry.snapshotId
-          : "",
-        pointerEvent: null,
-        chunkEvents: [],
-        savedAt: now,
-        fingerprint,
-        metadata: sanitizeWatchHistoryMetadata(storageEntry?.metadata),
-      };
-      this.watchHistoryCache.set(actorKey, entry);
-      this.persistWatchHistoryEntry(actorKey, entry);
-      return { pointerEvent: null, items, snapshotId: entry.snapshotId };
+      return await loadFromStorage();
     }
 
     const fallbackItems = extractPointerItemsFromEvent(pointerEvent);
@@ -2967,14 +4845,14 @@ class NostrClient {
     if (chunkIdentifiers.length) {
       chunkFilters.push({
         kinds: [WATCH_HISTORY_KIND],
-        authors: [resolvedActor],
+        authors: [actorKey],
         "#d": chunkIdentifiers,
         limit: Math.max(chunkIdentifiers.length * 2, limit),
       });
     } else if (snapshotId) {
       chunkFilters.push({
         kinds: [WATCH_HISTORY_KIND],
-        authors: [resolvedActor],
+        authors: [actorKey],
         "#snapshot": [snapshotId],
         limit,
       });
@@ -3022,31 +4900,113 @@ class NostrClient {
     const decryptErrors = [];
     const collectedItems = [];
 
-    const decryptChunk = async (ciphertext) => {
+    let cachedDecryptTools = null;
+    const ensureDecryptTools = async () => {
+      if (cachedDecryptTools) {
+        return cachedDecryptTools;
+      }
+      const tools = await ensureNostrTools();
+      if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
+        cachedDecryptTools = tools;
+        console.info("[nostr] Loaded nostr-tools nip04 helpers for watch history decryption.");
+        return cachedDecryptTools;
+      }
+      console.warn("[nostr] Unable to load nostr-tools nip04 helpers for watch history decryption.");
+      return null;
+    };
+
+    const decryptChunk = async (ciphertext, context = {}) => {
       if (!ciphertext || typeof ciphertext !== "string") {
         throw new Error("empty-ciphertext");
       }
+      const ciphertextPreview = ciphertext.slice(0, 32);
+      console.info("[nostr] Attempting to decrypt watch history chunk.", {
+        actorKey,
+        chunkIdentifier: context.chunkIdentifier ?? null,
+        eventId: context.eventId ?? null,
+        ciphertextPreview,
+        ciphertextFormat: "base64 NIP-04 ciphertext",
+        expectedPlaintextFormat:
+          "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+      });
       const extensionDecrypt =
         extension &&
         typeof extension?.nip04?.decrypt === "function" &&
         normalizeActorKey(this.pubkey) === actorKey;
       if (extensionDecrypt) {
-        return extension.nip04.decrypt(resolvedActor, ciphertext);
+        await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
+        console.info(
+          "[nostr] Using logged in user's extension key to decrypt watch history chunk.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+          },
+        );
+        const plaintext = await extension.nip04.decrypt(actorKey, ciphertext);
+        console.info("[nostr] Successfully decrypted watch history chunk via extension key.", {
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
+        });
+        return plaintext;
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
+        console.info(
+          "[nostr] Session actor mismatch while decrypting watch history chunk. Ensuring session actor matches requested key.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+            currentSessionActor: this.sessionActor?.pubkey ?? null,
+          },
+        );
         await this.ensureSessionActor();
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
+        console.error(
+          "[nostr] Watch history decrypt failed: session actor key unavailable after ensure.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+            currentSessionActor: this.sessionActor?.pubkey ?? null,
+          },
+        );
         throw new Error("missing-session-key");
       }
-      if (!window?.NostrTools?.nip04?.decrypt) {
+      const tools = await ensureDecryptTools();
+      if (!tools?.nip04 || typeof tools.nip04.decrypt !== "function") {
+        console.error(
+          "[nostr] Watch history decrypt failed: nip04 helpers unavailable.",
+          {
+            actorKey,
+            chunkIdentifier: context.chunkIdentifier ?? null,
+            eventId: context.eventId ?? null,
+          },
+        );
         throw new Error("nip04-unavailable");
       }
-      return window.NostrTools.nip04.decrypt(
+      console.info(
+        "[nostr] Using session actor private key to decrypt watch history chunk.",
+        {
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
+          sessionActor: this.sessionActor?.pubkey ?? null,
+        },
+      );
+      const plaintext = await tools.nip04.decrypt(
         this.sessionActor.privateKey,
-        resolvedActor,
+        actorKey,
         ciphertext,
       );
+      console.info("[nostr] Successfully decrypted watch history chunk via session actor key.", {
+        actorKey,
+        chunkIdentifier: context.chunkIdentifier ?? null,
+        eventId: context.eventId ?? null,
+      });
+      return plaintext;
     };
 
     const chunkCount = latestChunks.size || chunkIdentifiers.length || 0;
@@ -3061,10 +5021,26 @@ class NostrClient {
       }
       const fallbackPointers = extractPointerItemsFromEvent(event);
       const ciphertext = typeof event.content === "string" ? event.content : "";
+      const ciphertextPreview = ciphertext.slice(0, 32);
       let payload;
+      const chunkContext = {
+        chunkIdentifier: identifier,
+        eventId: event.id ?? null,
+      };
       if (isNip04EncryptedWatchHistoryEvent(event, ciphertext)) {
+        console.info("[nostr] Watch history chunk is marked as NIP-04 encrypted. Beginning decrypt flow.", {
+          actorKey,
+          ...chunkContext,
+        });
         try {
-          const plaintext = await decryptChunk(ciphertext);
+          const plaintext = await decryptChunk(ciphertext, chunkContext);
+          console.info("[nostr] Decrypted watch history chunk. Parsing plaintext payload.", {
+            actorKey,
+            ...chunkContext,
+            plaintextPreview: typeof plaintext === "string" ? plaintext.slice(0, 64) : null,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          });
           payload = parseWatchHistoryContentWithFallback(
             plaintext,
             fallbackPointers,
@@ -3078,12 +5054,30 @@ class NostrClient {
           );
         } catch (error) {
           decryptErrors.push(error);
+          console.error("[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.", {
+            actorKey,
+            ...chunkContext,
+            error: error?.message || error,
+            ciphertextPreview,
+            fallbackPointerCount: Array.isArray(fallbackPointers)
+              ? fallbackPointers.length
+              : 0,
+            expectedPlaintextFormat:
+              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          });
           payload = {
             version: 0,
             items: fallbackPointers,
           };
         }
       } else {
+        console.info("[nostr] Watch history chunk is plaintext. Attempting to parse expected payload format.", {
+          actorKey,
+          ...chunkContext,
+          ciphertextPreview,
+          expectedPlaintextFormat:
+            "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+        });
         payload = parseWatchHistoryContentWithFallback(
           ciphertext,
           fallbackPointers,
@@ -3772,7 +5766,7 @@ class NostrClient {
     this.restoreLocalData();
 
     try {
-      this.pool = new window.NostrTools.SimplePool();
+      await this.ensurePool();
       const results = await this.connectToRelays();
       const successfulRelays = results
         .filter((r) => r.success)
@@ -3787,6 +5781,70 @@ class NostrClient {
       console.error("Nostr init failed:", err);
       throw err;
     }
+  }
+
+  async ensurePool() {
+    if (this.pool) {
+      return this.pool;
+    }
+
+    if (this.poolPromise) {
+      return this.poolPromise;
+    }
+
+    const tools = await ensureNostrTools();
+    const SimplePool = resolveSimplePoolConstructor(tools);
+
+    if (typeof SimplePool !== "function") {
+      if (isDevMode) {
+        if (tools && typeof tools === "object") {
+          const availableKeys = Object.keys(tools).join(", ");
+          console.warn(
+            "[nostr] NostrTools helpers did not expose SimplePool. Available keys:",
+            availableKeys
+          );
+        } else {
+          console.warn(
+            "[nostr] NostrTools helpers were unavailable. Check that nostr-tools bundles can load on this domain."
+          );
+        }
+        if (nostrToolsBootstrapFailure) {
+          console.warn(
+            "[nostr] nostr-tools bootstrap failure details:",
+            nostrToolsBootstrapFailure
+          );
+        }
+      }
+      const error = new Error(
+        "NostrTools SimplePool is unavailable. Verify that nostr-tools resources can load on this domain."
+      );
+
+      error.code = "nostr-simplepool-unavailable";
+      if (nostrToolsBootstrapFailure) {
+        error.bootstrapFailure = nostrToolsBootstrapFailure;
+      }
+      this.poolPromise = null;
+      throw error;
+    }
+
+    const creation = Promise.resolve().then(() => {
+      const instance = new SimplePool();
+      this.pool = instance;
+      return instance;
+    });
+
+    const shared = creation
+      .then((instance) => {
+        this.poolPromise = Promise.resolve(instance);
+        return instance;
+      })
+      .catch((error) => {
+        this.poolPromise = null;
+        throw error;
+      });
+
+    this.poolPromise = shared;
+    return shared;
   }
 
   // We subscribe to kind `0` purely as a liveness probe because almost every
@@ -3847,21 +5905,77 @@ class NostrClient {
         if (isDevMode) {
           console.log("Requesting permissions from NIP-07 extension...");
         }
-        try {
-          await withNip07Timeout(() => extension.enable());
-        } catch (enableErr) {
+        const requestedPermissionMethods = Array.from(
+          DEFAULT_NIP07_PERMISSION_METHODS,
+        );
+
+        const permissionVariants = [null];
+        const objectPermissions = requestedPermissionMethods
+          .map((method) =>
+            typeof method === "string" && method.trim()
+              ? { method: method.trim() }
+              : null,
+          )
+          .filter(Boolean);
+        if (objectPermissions.length) {
+          permissionVariants.push({ permissions: objectPermissions });
+        }
+        const stringPermissions = Array.from(
+          new Set(objectPermissions.map((entry) => entry.method)),
+        );
+        if (stringPermissions.length) {
+          permissionVariants.push({ permissions: stringPermissions });
+        }
+        let enableError = null;
+        for (const options of permissionVariants) {
+          try {
+            await runNip07WithRetry(
+              () =>
+                options
+                  ? extension.enable(options)
+                  : extension.enable(),
+              {
+                label: "extension.enable",
+                ...(options
+                  ? {
+                      timeoutMs: Math.min(
+                        NIP07_LOGIN_TIMEOUT_MS,
+                        getEnableVariantTimeoutMs(),
+                      ),
+                    }
+                  : {}),
+                retryMultiplier: 1,
+              },
+            );
+            enableError = null;
+            break;
+          } catch (error) {
+            enableError = error;
+            if (options && isDevMode) {
+              console.warn(
+                "[nostr] extension.enable request with explicit permissions failed:",
+                error,
+              );
+            }
+          }
+        }
+
+        if (enableError) {
           throw new Error(
-            enableErr && enableErr.message
-              ? enableErr.message
-              : "The NIP-07 extension denied the permission request."
+            enableError && enableError.message
+              ? enableError.message
+              : "The NIP-07 extension denied the permission request.",
           );
         }
+
+        this.markExtensionPermissions(requestedPermissionMethods);
       }
 
       if (allowAccountSelection && typeof extension.selectAccounts === "function") {
         try {
-          const selection = await withNip07Timeout(() =>
-            extension.selectAccounts(expectPubkey ? [expectPubkey] : undefined)
+          const selection = await runNip07WithRetry(
+            () => extension.selectAccounts(expectPubkey ? [expectPubkey] : undefined),
+            { label: "extension.selectAccounts" }
           );
 
           const didCancelSelection =
@@ -3881,7 +5995,9 @@ class NostrClient {
           throw new Error(message);
         }
       }
-      const pubkey = await withNip07Timeout(() => extension.getPublicKey());
+      const pubkey = await runNip07WithRetry(() => extension.getPublicKey(), {
+        label: "extension.getPublicKey",
+      });
       if (!pubkey || typeof pubkey !== "string") {
         throw new Error(
           "The NIP-07 extension did not return a public key. Please try again."
@@ -3896,7 +6012,12 @@ class NostrClient {
           "The selected account doesn't match the expected profile. Please try again."
         );
       }
-      const npub = window.NostrTools.nip19.npubEncode(pubkey);
+      const nip19Tools = await ensureNostrTools();
+      const npubEncode = nip19Tools?.nip19?.npubEncode;
+      if (typeof npubEncode !== "function") {
+        throw new Error("NostrTools nip19 encoder is unavailable.");
+      }
+      const npub = npubEncode(pubkey);
 
       if (isDevMode) {
         console.log("Got pubkey:", pubkey);
@@ -4048,18 +6169,181 @@ class NostrClient {
   /**
    * Publish a new video using the v3 content schema.
    */
-  async publishVideo(videoData, pubkey) {
-    if (!pubkey) throw new Error("Not logged in to publish video.");
+  async signAndPublishEvent(
+    event,
+    {
+      context = "event",
+      logName = context,
+      devLogLabel = logName,
+      rejectionLogLevel = "error",
+      relaysOverride = null,
+    } = {}
+  ) {
+    const extension = window?.nostr;
+    const extensionSigner =
+      extension && typeof extension.signEvent === "function"
+        ? extension.signEvent.bind(extension)
+        : null;
+
+    const normalizedEventPubkey =
+      event && typeof event.pubkey === "string"
+        ? event.pubkey.toLowerCase()
+        : "";
+    const normalizedLogged =
+      typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+    const usingSessionActor =
+      normalizedEventPubkey &&
+      normalizedLogged &&
+      normalizedEventPubkey !== normalizedLogged;
+
+    let eventToSign = event;
+    let signedEvent = null;
+    let signerPubkey = null;
+
+    if (
+      extensionSigner &&
+      normalizedEventPubkey &&
+      normalizedEventPubkey === normalizedLogged
+    ) {
+      signedEvent = await extensionSigner(event);
+    } else {
+      try {
+        const currentSessionPubkey =
+          typeof this.sessionActor?.pubkey === "string"
+            ? this.sessionActor.pubkey.toLowerCase()
+            : "";
+
+        if (
+          usingSessionActor &&
+          normalizedEventPubkey &&
+          normalizedEventPubkey !== currentSessionPubkey
+        ) {
+          await this.ensureSessionActor(true);
+        } else {
+          await this.ensureSessionActor();
+        }
+
+        const sessionActor = this.sessionActor;
+        if (
+          !sessionActor ||
+          typeof sessionActor.pubkey !== "string" ||
+          !sessionActor.pubkey ||
+          typeof sessionActor.privateKey !== "string" ||
+          !sessionActor.privateKey
+        ) {
+          throw new Error("session-actor-unavailable");
+        }
+
+        const normalizedSessionPubkey = sessionActor.pubkey.toLowerCase();
+        if (
+          !normalizedEventPubkey ||
+          normalizedEventPubkey !== normalizedSessionPubkey ||
+          event.pubkey !== sessionActor.pubkey
+        ) {
+          eventToSign = { ...event, pubkey: sessionActor.pubkey };
+        }
+
+        signedEvent = signEventWithPrivateKey(
+          eventToSign,
+          sessionActor.privateKey
+        );
+        signerPubkey = sessionActor.pubkey;
+      } catch (error) {
+        console.warn("[nostr] Failed to sign event with session key:", error);
+        throw error;
+      }
+    }
+
+    if (!signerPubkey && signedEvent && typeof signedEvent.pubkey === "string") {
+      signerPubkey = signedEvent.pubkey;
+    }
 
     if (isDevMode) {
+      console.log(`Signed ${devLogLabel} event:`, signedEvent);
+    }
+
+    let targetRelays = sanitizeRelayList(
+      Array.isArray(relaysOverride) && relaysOverride.length
+        ? relaysOverride
+        : Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : this.relays
+    );
+
+    if (!targetRelays.length) {
+      targetRelays = Array.from(RELAY_URLS);
+    }
+
+    const publishResults = await publishEventToRelays(
+      this.pool,
+      targetRelays,
+      signedEvent
+    );
+
+    let publishSummary;
+    try {
+      publishSummary = assertAnyRelayAccepted(publishResults, { context });
+    } catch (publishError) {
+      if (publishError?.relayFailures?.length) {
+        const logLevel = rejectionLogLevel === "warn" ? "warn" : "error";
+        publishError.relayFailures.forEach(
+          ({ url, error: relayError, reason }) => {
+            console[logLevel](
+              `[nostr] ${logName} rejected by ${url}: ${reason}`,
+              relayError || reason
+            );
+          }
+        );
+      }
+      throw publishError;
+    }
+
+    if (isDevMode) {
+      publishSummary.accepted.forEach(({ url }) => {
+        console.log(`${logName} published to ${url}`);
+      });
+    }
+
+    if (publishSummary.failed.length) {
+      publishSummary.failed.forEach(({ url, error: relayError }) => {
+        const reason =
+          relayError instanceof Error
+            ? relayError.message
+            : relayError
+            ? String(relayError)
+            : "publish failed";
+        console.warn(
+          `[nostr] ${logName} not accepted by ${url}: ${reason}`,
+          relayError
+        );
+      });
+    }
+
+    return {
+      signedEvent,
+      summary: publishSummary,
+      signerPubkey,
+      relays: targetRelays,
+    };
+  }
+
+  async publishVideo(videoPayload, pubkey) {
+    if (!pubkey) throw new Error("Not logged in to publish video.");
+
+    const { videoData, nip71Metadata } = extractVideoPublishPayload(videoPayload);
+
+    // NOTE: Keep the Upload, Edit, and Revert flows synchronized when
+    // updating shared fields. Changes here must be reflected in the modal
+    // controllers and revert helpers so all paths stay in lockstep.
+    if (isDevMode) {
       console.log("Publishing new video with data:", videoData);
+      if (nip71Metadata) {
+        console.log("Including NIP-71 metadata:", nip71Metadata);
+      }
     }
 
     const rawMagnet = typeof videoData.magnet === "string" ? videoData.magnet : "";
-    let finalMagnet = rawMagnet.trim();
-    if (videoData.isPrivate && finalMagnet) {
-      finalMagnet = fakeEncrypt(finalMagnet);
-    }
+    const finalMagnet = rawMagnet.trim();
     const finalUrl =
       typeof videoData.url === "string" ? videoData.url.trim() : "";
     const finalThumbnail =
@@ -4110,11 +6394,16 @@ class NostrClient {
       contentObject.xs = finalXs;
     }
 
+    const nip71Tags = buildNip71MetadataTags(
+      nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null
+    );
+
     const event = buildVideoPostEvent({
       pubkey,
       created_at: createdAt,
       dTagValue,
       content: contentObject,
+      additionalTags: nip71Tags,
     });
 
     if (isDevMode) {
@@ -4123,56 +6412,11 @@ class NostrClient {
     }
 
     try {
-      const signedEvent = await window.nostr.signEvent(event);
-      if (isDevMode) console.log("Signed event:", signedEvent);
-
-      const publishResults = await publishEventToRelays(
-        this.pool,
-        this.relays,
-        signedEvent
-      );
-
-      let publishSummary;
-      try {
-        publishSummary = assertAnyRelayAccepted(publishResults, {
-          context: "video note",
-        });
-      } catch (publishError) {
-        if (publishError?.relayFailures?.length) {
-          publishError.relayFailures.forEach(
-            ({ url, error: relayError, reason }) => {
-              console.error(
-                `[nostr] Video note rejected by ${url}: ${reason}`,
-                relayError || reason
-              );
-            }
-          );
-        }
-        throw publishError;
-      }
-
-      const { accepted: acceptedRelays, failed: failedRelays } = publishSummary;
-
-      if (isDevMode) {
-        acceptedRelays.forEach(({ url }) =>
-          console.log(`Video published to ${url}`)
-        );
-      }
-
-      if (failedRelays.length) {
-        failedRelays.forEach(({ url, error: relayError }) => {
-          const reason =
-            relayError instanceof Error
-              ? relayError.message
-              : relayError
-              ? String(relayError)
-              : "publish failed";
-          console.warn(
-            `[nostr] Video note not accepted by ${url}: ${reason}`,
-            relayError
-          );
-        });
-      }
+      const { signedEvent } = await this.signAndPublishEvent(event, {
+        context: "video note",
+        logName: "Video note",
+        devLogLabel: "video note",
+      });
 
       if (finalUrl) {
         const inferredMimeType = inferMimeTypeFromUrl(finalUrl);
@@ -4209,59 +6453,12 @@ class NostrClient {
         }
 
         try {
-          const signedMirrorEvent = await window.nostr.signEvent(mirrorEvent);
-          if (isDevMode) {
-            console.log("Signed NIP-94 mirror event:", signedMirrorEvent);
-          }
-
-          const mirrorResults = await publishEventToRelays(
-            this.pool,
-            this.relays,
-            signedMirrorEvent
-          );
-
-          try {
-            const mirrorSummary = assertAnyRelayAccepted(mirrorResults, {
-              context: "NIP-94 mirror",
-            });
-
-            if (isDevMode) {
-              mirrorSummary.accepted.forEach(({ url }) =>
-                console.log(`NIP-94 mirror published to ${url}`)
-              );
-            }
-
-            if (mirrorSummary.failed.length) {
-              mirrorSummary.failed.forEach(({ url, error: relayError }) => {
-                const reason =
-                  relayError instanceof Error
-                    ? relayError.message
-                    : relayError
-                    ? String(relayError)
-                    : "publish failed";
-                console.warn(
-                  `[nostr] NIP-94 mirror not accepted by ${url}: ${reason}`,
-                  relayError
-                );
-              });
-            }
-          } catch (mirrorError) {
-            if (mirrorError?.relayFailures?.length) {
-              mirrorError.relayFailures.forEach(
-                ({ url, error: relayError, reason }) => {
-                  console.warn(
-                    `[nostr] NIP-94 mirror rejected by ${url}: ${reason}`,
-                    relayError || reason
-                  );
-                }
-              );
-            } else if (isDevMode) {
-              console.warn(
-                "[nostr] NIP-94 mirror rejected by all relays:",
-                mirrorError
-              );
-            }
-          }
+          await this.signAndPublishEvent(mirrorEvent, {
+            context: "NIP-94 mirror",
+            logName: "NIP-94 mirror",
+            devLogLabel: "NIP-94 mirror",
+            rejectionLogLevel: "warn",
+          });
 
           if (isDevMode) {
             console.log(
@@ -4271,8 +6468,8 @@ class NostrClient {
           }
         } catch (mirrorError) {
           if (isDevMode) {
-            console.error(
-              "Failed to sign/publish NIP-94 mirror event:",
+            console.warn(
+              "[nostr] NIP-94 mirror rejected by all relays:",
               mirrorError
             );
           }
@@ -4280,11 +6477,138 @@ class NostrClient {
       } else if (isDevMode) {
         console.log("Skipping NIP-94 mirror: no hosted URL provided.");
       }
+      const hasMetadataObject =
+        nip71Metadata && typeof nip71Metadata === "object";
+      const metadataWasEdited =
+        nip71EditedFlag === true ||
+        (nip71EditedFlag == null && hasMetadataObject);
+      const shouldAttemptNip71 = !wantPrivate && metadataWasEdited;
+
+      if (shouldAttemptNip71) {
+        const metadataLegacyFormData = {
+          title: contentObject.title,
+          description: contentObject.description,
+          url: contentObject.url,
+          magnet: contentObject.magnet,
+          thumbnail: contentObject.thumbnail,
+          mode: contentObject.mode,
+          isPrivate: contentObject.isPrivate,
+        };
+
+        if (contentObject.ws) {
+          metadataLegacyFormData.ws = contentObject.ws;
+        }
+
+        if (contentObject.xs) {
+          metadataLegacyFormData.xs = contentObject.xs;
+        }
+
+        try {
+          await this.publishNip71Video(
+            {
+              nip71: nip71Metadata,
+              legacyFormData: metadataLegacyFormData,
+            },
+            userPubkeyLower,
+            {
+              videoRootId: oldRootId,
+              dTag: newD,
+              eventId: signedEvent.id,
+            }
+          );
+        } catch (nip71Error) {
+          console.warn(
+            "[nostr] Failed to publish NIP-71 metadata for edit:",
+            nip71Error
+          );
+        }
+      }
+
       return signedEvent;
     } catch (err) {
       if (isDevMode) console.error("Failed to sign/publish:", err);
       throw err;
     }
+  }
+
+  async publishNip71Video(videoPayload, pubkey, pointerOptions = {}) {
+    if (!FEATURE_PUBLISH_NIP71) {
+      return null;
+    }
+
+    if (!pubkey) {
+      throw new Error("Not logged in to publish video.");
+    }
+
+    const { videoData, nip71Metadata } = extractVideoPublishPayload(videoPayload);
+
+    if (!nip71Metadata || typeof nip71Metadata !== "object") {
+      if (isDevMode) {
+        console.log("[nostr] Skipping NIP-71 publish: metadata missing.");
+      }
+      return null;
+    }
+
+    const title = stringFromInput(videoData?.title);
+    const description = stringFromInput(videoData?.description);
+
+    const pointerIdentifiers =
+      pointerOptions && typeof pointerOptions === "object"
+        ? pointerOptions
+        : {};
+
+    const event = buildNip71VideoEvent({
+      metadata: nip71Metadata,
+      pubkey,
+      title,
+      summaryFallback: description,
+      pointerIdentifiers: {
+        videoRootId: pointerIdentifiers.videoRootId,
+        dTag: pointerIdentifiers.dTag,
+        eventId: pointerIdentifiers.eventId,
+      },
+      createdAt: Math.floor(Date.now() / 1000),
+    });
+
+    if (!event) {
+      if (isDevMode) {
+        console.warn("[nostr] Skipping NIP-71 publish: builder produced no event.");
+      }
+      return null;
+    }
+
+    if (isDevMode) {
+      console.log("Prepared NIP-71 video event:", event);
+    }
+
+    const { signedEvent } = await this.signAndPublishEvent(event, {
+      context: "NIP-71 video",
+      logName: "NIP-71 video",
+      devLogLabel: "NIP-71 video",
+      rejectionLogLevel: "warn",
+    });
+
+    const pointerMap = new Map();
+    if (pointerIdentifiers.videoRootId) {
+      const pointerValue = buildVideoPointerValue(
+        pubkey,
+        pointerIdentifiers.videoRootId
+      );
+      if (pointerValue) {
+        pointerMap.set(pointerValue, {
+          videoRootId: pointerIdentifiers.videoRootId,
+          pointerValue,
+          videoEventIds: new Set(
+            pointerIdentifiers.eventId ? [pointerIdentifiers.eventId] : []
+          ),
+          dTags: new Set(pointerIdentifiers.dTag ? [pointerIdentifiers.dTag] : []),
+        });
+      }
+    }
+
+    this.processNip71Events([signedEvent], pointerMap);
+
+    return signedEvent;
   }
 
   /**
@@ -4299,8 +6623,17 @@ class NostrClient {
       throw new Error("Not logged in to edit.");
     }
 
+    // NOTE: Keep the Upload, Edit, and Revert flows synchronized when
+    // adjusting validation or persisted fields.
     // Convert the provided pubkey to lowercase
     const userPubkeyLower = userPubkey.toLowerCase();
+
+    const nip71Metadata =
+      updatedData && typeof updatedData === "object" ? updatedData.nip71 : null;
+    const nip71EditedFlag =
+      updatedData && typeof updatedData === "object"
+        ? updatedData.nip71Edited
+        : null;
 
     // Use getEventById to fetch the full original event details
     const baseEvent = await this.getEventById(originalEventStub.id);
@@ -4323,12 +6656,12 @@ class NostrClient {
       throw new Error("You do not own this video (pubkey mismatch).");
     }
 
-    // Decrypt the old magnet if the note is private
-    let oldPlainMagnet = baseEvent.magnet || "";
-    if (baseEvent.isPrivate && oldPlainMagnet) {
-      oldPlainMagnet = fakeDecrypt(oldPlainMagnet);
-    }
-
+    const oldMagnet =
+      typeof baseEvent.rawMagnet === "string" && baseEvent.rawMagnet.trim()
+        ? baseEvent.rawMagnet.trim()
+        : typeof baseEvent.magnet === "string"
+        ? baseEvent.magnet.trim()
+        : "";
     const oldUrl = baseEvent.url || "";
 
     // Determine if the updated note should be private
@@ -4338,11 +6671,7 @@ class NostrClient {
     const magnetEdited = updatedData.magnetEdited === true;
     const newMagnetValue =
       typeof updatedData.magnet === "string" ? updatedData.magnet.trim() : "";
-    let finalPlainMagnet = magnetEdited ? newMagnetValue : oldPlainMagnet;
-    let finalMagnet =
-      wantPrivate && finalPlainMagnet
-        ? fakeEncrypt(finalPlainMagnet)
-        : finalPlainMagnet;
+    const finalMagnet = magnetEdited ? newMagnetValue : oldMagnet;
 
     const urlEdited = updatedData.urlEdited === true;
     const newUrlValue =
@@ -4397,17 +6726,28 @@ class NostrClient {
       contentObject.xs = finalXs;
     }
 
-    const event = {
-      kind: 30078,
-      // Use the provided userPubkey (or you can also force it to lowercase here if desired)
+    let metadataForTags =
+      nip71Metadata && typeof nip71Metadata === "object" ? nip71Metadata : null;
+    if (!metadataForTags) {
+      if (baseEvent?.nip71 && typeof baseEvent.nip71 === "object") {
+        metadataForTags = baseEvent.nip71;
+      } else {
+        const extracted = extractNip71MetadataFromTags(baseEvent);
+        if (extracted?.metadata) {
+          metadataForTags = extracted.metadata;
+        }
+      }
+    }
+
+    const nip71Tags = buildNip71MetadataTags(metadataForTags);
+
+    const event = buildVideoPostEvent({
       pubkey: userPubkeyLower,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [
-        ["t", "video"],
-        ["d", newD], // new share link tag
-      ],
-      content: JSON.stringify(contentObject),
-    };
+      dTagValue: newD,
+      content: contentObject,
+      additionalTags: nip71Tags,
+    });
 
     if (isDevMode) {
       console.log("Creating edited event with root ID:", oldRootId);
@@ -4611,17 +6951,21 @@ class NostrClient {
    *
    * This version now asks for confirmation before proceeding.
    */
-  async deleteAllVersions(videoRootId, pubkey) {
+  async deleteAllVersions(videoRootId, pubkey, options = {}) {
     if (!pubkey) {
       throw new Error("Not logged in to delete all versions.");
     }
 
-    // Ask for confirmation before proceeding
-    if (
-      !window.confirm(
+    const shouldConfirm = options?.confirm !== false;
+    let confirmed = true;
+
+    if (shouldConfirm && typeof window?.confirm === "function") {
+      confirmed = window.confirm(
         "Are you sure you want to delete all versions of this video? This action cannot be undone."
-      )
-    ) {
+      );
+    }
+
+    if (!confirmed) {
       console.log("Deletion cancelled by user.");
       return null; // Cancel deletion if user clicks "Cancel"
     }
@@ -4718,57 +7062,97 @@ class NostrClient {
 
     // We'll collect events here instead of processing them instantly
     let eventBuffer = [];
+    const EVENT_FLUSH_DEBOUNCE_MS = 75;
+    let flushTimerId = null;
 
-    // 1) On each incoming event, just push to the buffer
-    sub.on("event", (event) => {
-      eventBuffer.push(event);
-    });
+    const flushEventBuffer = () => {
+      if (!eventBuffer.length) {
+        return;
+      }
 
-    // 2) Process buffered events on a setInterval (e.g., every second)
-    const processInterval = setInterval(() => {
-      if (eventBuffer.length > 0) {
-        // Copy and clear the buffer
-        const toProcess = eventBuffer.slice();
-        eventBuffer = [];
+      const toProcess = eventBuffer;
+      eventBuffer = [];
 
-        // Now handle each event
-        for (const evt of toProcess) {
-          try {
-            const video = convertEventToVideo(evt);
+      for (const evt of toProcess) {
+        try {
+          if (evt && evt.id) {
+            this.rawEvents.set(evt.id, evt);
+          }
+          const video = convertEventToVideo(evt);
 
-            if (video.invalid) {
-              invalidDuringSub.push({ id: video.id, reason: video.reason });
-              continue;
-            }
+          if (video.invalid) {
+            invalidDuringSub.push({ id: video.id, reason: video.reason });
+            continue;
+          }
 
-            // Store in allEvents
-            this.allEvents.set(evt.id, video);
+          this.mergeNip71MetadataIntoVideo(video);
+          this.applyRootCreatedAt(video);
 
-            // If it's a "deleted" note, remove from activeMap
-            if (video.deleted) {
-              const activeKey = getActiveKey(video);
-              this.activeMap.delete(activeKey);
-              continue;
-            }
+          // Store in allEvents
+          this.allEvents.set(evt.id, video);
 
-            // Otherwise, if it's newer than what we have, update activeMap
+          // If it's a "deleted" note, remove from activeMap
+          if (video.deleted) {
             const activeKey = getActiveKey(video);
-            const prevActive = this.activeMap.get(activeKey);
-            if (!prevActive || video.created_at > prevActive.created_at) {
-              this.activeMap.set(activeKey, video);
-              onVideo(video); // Trigger the callback that re-renders
-            }
-          } catch (err) {
-            if (isDevMode) {
-              console.error("[subscribeVideos] Error processing event:", err);
-            }
+            this.activeMap.delete(activeKey);
+            continue;
+          }
+
+          // Otherwise, if it's newer than what we have, update activeMap
+          const activeKey = getActiveKey(video);
+          const prevActive = this.activeMap.get(activeKey);
+          if (!prevActive || video.created_at > prevActive.created_at) {
+            this.activeMap.set(activeKey, video);
+            onVideo(video); // Trigger the callback that re-renders
+            this.populateNip71MetadataForVideos([video])
+              .then(() => {
+                this.applyRootCreatedAt(video);
+              })
+              .catch((error) => {
+                if (isDevMode) {
+                  console.warn(
+                    "[nostr] Failed to hydrate NIP-71 metadata for live video:",
+                    error
+                  );
+                }
+              });
+          }
+        } catch (err) {
+          if (isDevMode) {
+            console.error("[subscribeVideos] Error processing event:", err);
           }
         }
-
-        // Optionally, save data to local storage after processing the batch
-        this.saveLocalData();
       }
-    }, 1000);
+
+      // Persist processed events after each flush so reloads warm quickly.
+      this.saveLocalData();
+    };
+
+    const scheduleFlush = (immediate = false) => {
+      if (flushTimerId) {
+        if (!immediate) {
+          return;
+        }
+        clearTimeout(flushTimerId);
+        flushTimerId = null;
+      }
+
+      if (immediate) {
+        flushEventBuffer();
+        return;
+      }
+
+      flushTimerId = setTimeout(() => {
+        flushTimerId = null;
+        flushEventBuffer();
+      }, EVENT_FLUSH_DEBOUNCE_MS);
+    };
+
+    // 1) On each incoming event, just push to the buffer and schedule a flush
+    sub.on("event", (event) => {
+      eventBuffer.push(event);
+      scheduleFlush(false);
+    });
 
     // You can still use sub.on("eose") if needed
     sub.on("eose", () => {
@@ -4783,6 +7167,7 @@ class NostrClient {
           "[subscribeVideos] Reached EOSE for all relays (historical load done)"
         );
       }
+      scheduleFlush(true);
     });
 
     // Return the subscription object if you need to unsub manually later
@@ -4794,7 +7179,12 @@ class NostrClient {
         return;
       }
       unsubscribed = true;
-      clearInterval(processInterval);
+      if (flushTimerId) {
+        clearTimeout(flushTimerId);
+        flushTimerId = null;
+      }
+      // Ensure any straggling events are flushed before tearing down.
+      flushEventBuffer();
       try {
         return originalUnsub();
       } catch (err) {
@@ -4804,6 +7194,383 @@ class NostrClient {
     };
 
     return sub;
+  }
+
+  collectNip71PointerRequests(videos = []) {
+    const pointerMap = new Map();
+    if (!Array.isArray(videos)) {
+      return pointerMap;
+    }
+
+    videos.forEach((video) => {
+      if (!video || typeof video !== "object") {
+        return;
+      }
+
+      const rootId = typeof video.videoRootId === "string" ? video.videoRootId : "";
+      const pubkey =
+        typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
+      if (!rootId || !pubkey) {
+        return;
+      }
+
+      const pointerValue = buildVideoPointerValue(pubkey, rootId);
+      if (!pointerValue) {
+        return;
+      }
+
+      let info = pointerMap.get(pointerValue);
+      if (!info) {
+        info = {
+          videoRootId: rootId,
+          pointerValue,
+          videoEventIds: new Set(),
+          dTags: new Set(),
+        };
+        pointerMap.set(pointerValue, info);
+      }
+
+      if (typeof video.id === "string" && video.id) {
+        info.videoEventIds.add(video.id);
+      }
+
+      const dTag = getDTagValueFromTags(video.tags);
+      if (dTag) {
+        info.dTags.add(dTag);
+      }
+    });
+
+    return pointerMap;
+  }
+
+  ensureNip71CacheEntry(videoRootId) {
+    const rootId = typeof videoRootId === "string" ? videoRootId : "";
+    if (!rootId) {
+      return null;
+    }
+
+    let entry = this.nip71Cache.get(rootId);
+    if (!entry) {
+      entry = {
+        byVideoEventId: new Map(),
+        byDTag: new Map(),
+        fallback: null,
+        fetchedPointers: new Set(),
+      };
+      this.nip71Cache.set(rootId, entry);
+    }
+    return entry;
+  }
+
+  storeNip71RecordForRoot(videoRootId, parsedRecord) {
+    const entry = this.ensureNip71CacheEntry(videoRootId);
+    if (!entry || !parsedRecord || !parsedRecord.metadata) {
+      return;
+    }
+
+    const storedRecord = {
+      metadata: cloneNip71Metadata(parsedRecord.metadata),
+      nip71EventId: parsedRecord.source?.id || "",
+      created_at: parsedRecord.source?.created_at || 0,
+      pointerValues: new Set(parsedRecord.pointers?.pointerValues || []),
+      videoEventIds: new Set(parsedRecord.pointers?.videoEventIds || []),
+      dTags: new Set(parsedRecord.pointers?.dTags || []),
+    };
+
+    if (!storedRecord.metadata) {
+      return;
+    }
+
+    storedRecord.pointerValues.forEach((pointerValue) => {
+      if (pointerValue) {
+        entry.fetchedPointers.add(pointerValue);
+      }
+    });
+
+    storedRecord.videoEventIds.forEach((eventId) => {
+      if (eventId) {
+        entry.byVideoEventId.set(eventId, storedRecord);
+      }
+    });
+
+    storedRecord.dTags.forEach((dTag) => {
+      if (dTag) {
+        entry.byDTag.set(dTag, storedRecord);
+      }
+    });
+
+    if (
+      !entry.fallback ||
+      (storedRecord.created_at || 0) >= (entry.fallback.created_at || 0)
+    ) {
+      entry.fallback = storedRecord;
+    }
+  }
+
+  processNip71Events(events, pointerMap = null) {
+    if (!Array.isArray(events) || !events.length) {
+      return;
+    }
+
+    events.forEach((event) => {
+      const parsed = extractNip71MetadataFromTags(event);
+      if (!parsed || !parsed.metadata) {
+        return;
+      }
+
+      const rootIds = new Set(parsed.pointers?.videoRootIds || []);
+      if (!rootIds.size && pointerMap instanceof Map) {
+        parsed.pointers?.pointerValues?.forEach?.((pointerValue) => {
+          const info = pointerMap.get(pointerValue);
+          if (info?.videoRootId) {
+            rootIds.add(info.videoRootId);
+          }
+        });
+      }
+
+      if (!rootIds.size) {
+        return;
+      }
+
+      rootIds.forEach((rootId) => {
+        this.storeNip71RecordForRoot(rootId, parsed);
+      });
+    });
+  }
+
+  mergeNip71MetadataIntoVideo(video) {
+    if (!video || typeof video !== "object") {
+      return video;
+    }
+
+    const rootId = typeof video.videoRootId === "string" ? video.videoRootId : "";
+    if (!rootId) {
+      return video;
+    }
+
+    const cacheEntry = this.nip71Cache.get(rootId);
+
+    let appliedMetadata = null;
+    let sourceEventId = "";
+    let sourceCreatedAt = 0;
+
+    if (cacheEntry) {
+      let record = null;
+      const eventId = typeof video.id === "string" ? video.id : "";
+      if (eventId && cacheEntry.byVideoEventId.has(eventId)) {
+        record = cacheEntry.byVideoEventId.get(eventId);
+      }
+
+      if (!record) {
+        const dTag = getDTagValueFromTags(video.tags);
+        if (dTag && cacheEntry.byDTag.has(dTag)) {
+          record = cacheEntry.byDTag.get(dTag);
+        }
+      }
+
+      if (!record && cacheEntry.fallback) {
+        record = cacheEntry.fallback;
+      }
+
+      if (record?.metadata) {
+        const cloned = cloneNip71Metadata(record.metadata);
+        if (cloned) {
+          appliedMetadata = cloned;
+          sourceEventId = record.nip71EventId || "";
+          sourceCreatedAt = Number.isFinite(record.created_at)
+            ? Math.floor(record.created_at)
+            : 0;
+        }
+      }
+    }
+
+    if (!appliedMetadata) {
+      const extracted = extractNip71MetadataFromTags(video);
+      if (extracted?.metadata) {
+        const cloned = cloneNip71Metadata(extracted.metadata);
+        if (cloned) {
+          if (Array.isArray(video.tags)) {
+            const hasVideoTopicTag = video.tags.some(
+              (tag) => Array.isArray(tag) && tag[0] === "t" && tag[1] === "video"
+            );
+            if (hasVideoTopicTag) {
+              if (Array.isArray(cloned.hashtags)) {
+                const filteredHashtags = cloned.hashtags.filter((value) => {
+                  if (typeof value !== "string") {
+                    return false;
+                  }
+                  const trimmed = value.trim();
+                  return trimmed && trimmed.toLowerCase() !== "video";
+                });
+                if (filteredHashtags.length) {
+                  cloned.hashtags = filteredHashtags;
+                } else {
+                  delete cloned.hashtags;
+                }
+              }
+
+              if (Array.isArray(cloned.t)) {
+                const filteredTopics = cloned.t.filter((value) => {
+                  if (typeof value !== "string") {
+                    return false;
+                  }
+                  const trimmed = value.trim();
+                  return trimmed && trimmed.toLowerCase() !== "video";
+                });
+                if (filteredTopics.length) {
+                  cloned.t = filteredTopics;
+                } else {
+                  delete cloned.t;
+                }
+              }
+            }
+          }
+
+          appliedMetadata = cloned;
+          const extractedSource = extracted.source || {};
+          const fallbackId = typeof video.id === "string" ? video.id : "";
+          sourceEventId = extractedSource.id || fallbackId;
+          const candidateCreatedAt = Number.isFinite(extractedSource.created_at)
+            ? Math.floor(extractedSource.created_at)
+            : Number.isFinite(video.created_at)
+              ? Math.floor(video.created_at)
+              : 0;
+          sourceCreatedAt = candidateCreatedAt;
+        }
+      }
+    }
+
+    if (appliedMetadata) {
+      video.nip71 = appliedMetadata;
+      video.nip71Source = {
+        eventId: sourceEventId,
+        created_at: sourceCreatedAt,
+      };
+    } else {
+      if (video.nip71) {
+        delete video.nip71;
+      }
+      if (video.nip71Source) {
+        delete video.nip71Source;
+      }
+    }
+
+    return video;
+  }
+
+  async fetchAndCacheNip71Metadata(pointerMap, pointerValues) {
+    if (!Array.isArray(pointerValues) || !pointerValues.length) {
+      return;
+    }
+
+    if (!this.pool || !Array.isArray(this.relays) || !this.relays.length) {
+      pointerValues.forEach((pointerValue) => {
+        const info = pointerMap.get(pointerValue);
+        if (!info) {
+          return;
+        }
+        const entry = this.ensureNip71CacheEntry(info.videoRootId);
+        if (entry) {
+          entry.fetchedPointers.add(pointerValue);
+        }
+      });
+      return;
+    }
+
+    const filter = {
+      kinds: [21, 22],
+      "#a": pointerValues,
+    };
+
+    try {
+      const responses = await Promise.all(
+        this.relays.map(async (url) => {
+          try {
+            const events = await this.pool.list([url], [filter]);
+            return Array.isArray(events) ? events : [];
+          } catch (error) {
+            if (isDevMode) {
+              console.warn(`[nostr] NIP-71 fetch failed on ${url}:`, error);
+            }
+            return [];
+          }
+        })
+      );
+
+      const deduped = new Map();
+      responses.flat().forEach((event) => {
+        if (event?.id && !deduped.has(event.id)) {
+          deduped.set(event.id, event);
+        }
+      });
+
+      this.processNip71Events(Array.from(deduped.values()), pointerMap);
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Failed to fetch NIP-71 metadata:", error);
+      }
+    } finally {
+      pointerValues.forEach((pointerValue) => {
+        const info = pointerMap.get(pointerValue);
+        if (!info) {
+          return;
+        }
+        const entry = this.ensureNip71CacheEntry(info.videoRootId);
+        if (entry) {
+          entry.fetchedPointers.add(pointerValue);
+        }
+      });
+    }
+  }
+
+  async populateNip71MetadataForVideos(videos = []) {
+    if (!Array.isArray(videos) || !videos.length) {
+      return;
+    }
+
+    const pointerMap = this.collectNip71PointerRequests(videos);
+    const pointersToFetch = [];
+
+    pointerMap.forEach((info, pointerValue) => {
+      const entry = this.ensureNip71CacheEntry(info.videoRootId);
+      if (!entry) {
+        return;
+      }
+
+      let needsFetch = false;
+
+      info.videoEventIds.forEach((eventId) => {
+        if (eventId && !entry.byVideoEventId.has(eventId)) {
+          needsFetch = true;
+        }
+      });
+
+      if (!needsFetch) {
+        info.dTags.forEach((dTag) => {
+          if (dTag && !entry.byDTag.has(dTag)) {
+            needsFetch = true;
+          }
+        });
+      }
+
+      if (!needsFetch && !entry.fallback) {
+        needsFetch = true;
+      }
+
+      if (needsFetch && !entry.fetchedPointers.has(pointerValue)) {
+        pointersToFetch.push(pointerValue);
+      } else {
+        entry.fetchedPointers.add(pointerValue);
+      }
+    });
+
+    if (pointersToFetch.length) {
+      await this.fetchAndCacheNip71Metadata(pointerMap, pointersToFetch);
+    }
+
+    videos.forEach((video) => {
+      this.mergeNip71MetadataIntoVideo(video);
+    });
   }
 
   /**
@@ -4826,12 +7593,16 @@ class NostrClient {
         this.relays.map(async (url) => {
           const events = await this.pool.list([url], [filter]);
           for (const evt of events) {
+            if (evt && evt.id) {
+              this.rawEvents.set(evt.id, evt);
+            }
             const vid = convertEventToVideo(evt);
             if (vid.invalid) {
               // Accumulate if invalid
               invalidNotes.push({ id: vid.id, reason: vid.reason });
             } else {
               // Only add if good
+              this.applyRootCreatedAt(vid);
               localAll.set(evt.id, vid);
             }
           }
@@ -4841,6 +7612,7 @@ class NostrClient {
       // Merge into allEvents
       for (const [id, vid] of localAll.entries()) {
         this.allEvents.set(id, vid);
+        this.applyRootCreatedAt(vid);
       }
 
       // Rebuild activeMap
@@ -4852,6 +7624,7 @@ class NostrClient {
 
         if (!existing || video.created_at > existing.created_at) {
           this.activeMap.set(activeKey, video);
+          this.applyRootCreatedAt(video);
         }
       }
 
@@ -4866,6 +7639,8 @@ class NostrClient {
       const activeVideos = Array.from(this.activeMap.values()).sort(
         (a, b) => b.created_at - a.created_at
       );
+      await this.populateNip71MetadataForVideos(activeVideos);
+      activeVideos.forEach((video) => this.applyRootCreatedAt(video));
       return activeVideos;
     } catch (err) {
       console.error("fetchVideos error:", err);
@@ -4874,28 +7649,727 @@ class NostrClient {
   }
 
   /**
-   * getEventById => old approach
+   * Raw event helpers
    */
-  async getEventById(eventId) {
-    const local = this.allEvents.get(eventId);
-    if (local) {
-      return local;
+  /**
+   * Fetch the unmodified Nostr event for a given id and cache the payload.
+   *
+   * @param {string} eventId
+   * @param {{ relays?: string[], filter?: import("nostr-tools").Filter }} options
+   * @returns {Promise<object|null>}
+   */
+  async fetchRawEventById(eventId, options = {}) {
+    const id = typeof eventId === "string" ? eventId.trim() : "";
+    if (!id) {
+      return null;
     }
+
+    const cached = this.rawEvents.get(id);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      for (const url of this.relays) {
-        const maybeEvt = await this.pool.get([url], { ids: [eventId] });
-        if (maybeEvt && maybeEvt.id === eventId) {
-          const video = convertEventToVideo(maybeEvt);
-          this.allEvents.set(eventId, video);
-          return video;
+      await this.ensurePool();
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("fetchRawEventById ensurePool error:", error);
+      }
+      return null;
+    }
+
+    if (!this.pool) {
+      return null;
+    }
+
+    const relayCandidatesRaw =
+      Array.isArray(options?.relays) && options.relays.length
+        ? options.relays
+        : this.relays;
+    const relays = Array.isArray(relayCandidatesRaw)
+      ? Array.from(
+          new Set(
+            relayCandidatesRaw
+              .map((url) => (typeof url === "string" ? url.trim() : ""))
+              .filter(Boolean)
+          )
+        )
+      : [];
+
+    if (!relays.length) {
+      return null;
+    }
+
+    const baseFilter =
+      options && typeof options.filter === "object"
+        ? { ...options.filter }
+        : { ids: [id] };
+
+    const normalizedIds = Array.isArray(baseFilter.ids)
+      ? baseFilter.ids
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    if (!normalizedIds.includes(id)) {
+      normalizedIds.push(id);
+    }
+
+    const filterTemplate = { ...baseFilter, ids: normalizedIds };
+
+    const makeFilter = () => ({
+      ...filterTemplate,
+      ids: Array.from(filterTemplate.ids),
+    });
+
+    const remember = (evt) => {
+      if (evt && typeof evt === "object" && evt.id) {
+        this.rawEvents.set(evt.id, evt);
+      }
+      return evt || null;
+    };
+
+    if (typeof this.pool.get === "function") {
+      try {
+        const evt = await this.pool.get(relays, makeFilter());
+        if (evt && evt.id === id) {
+          return remember(evt);
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("fetchRawEventById pool.get error:", error);
         }
       }
-    } catch (err) {
-      if (isDevMode) {
-        console.error("getEventById direct fetch error:", err);
+    }
+
+    if (typeof this.pool.list === "function") {
+      try {
+        const events = await this.pool.list(relays, [makeFilter()]);
+        if (Array.isArray(events)) {
+          for (const evt of events) {
+            if (!evt) {
+              continue;
+            }
+            const stored = remember(evt);
+            if (evt.id === id) {
+              return stored;
+            }
+          }
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("fetchRawEventById pool.list error:", error);
+        }
       }
     }
+
     return null;
+  }
+
+  /**
+   * Resolve a single video from cache or the relay network.
+   *
+   * @param {string} eventId - The event id to look up.
+   * @param {{ includeRaw?: boolean }} options
+   * @returns {Promise<object|null|{video: object|null, rawEvent: object|null}>}
+   */
+  async getEventById(eventId, options = {}) {
+    const includeRaw = options?.includeRaw === true;
+
+    const local = this.allEvents.get(eventId) || null;
+    const localRaw = this.rawEvents.get(eventId) || null;
+
+    if (local) {
+      this.applyRootCreatedAt(local);
+      if (!includeRaw) {
+        return local;
+      }
+
+      if (localRaw) {
+        return { video: local, rawEvent: localRaw };
+      }
+    }
+
+    const rawEvent = await this.fetchRawEventById(eventId);
+    if (!rawEvent && !includeRaw) {
+      return local || null;
+    }
+
+    if (!rawEvent) {
+      return { video: local || null, rawEvent: null };
+    }
+
+    const video = convertEventToVideo(rawEvent);
+    this.applyRootCreatedAt(video);
+    this.allEvents.set(eventId, video);
+
+    if (includeRaw) {
+      return { video, rawEvent };
+    }
+
+    return video;
+  }
+
+  async repostEvent(eventId, options = {}) {
+    const normalizedId =
+      typeof eventId === "string" && eventId.trim() ? eventId.trim() : "";
+    if (!normalizedId) {
+      return { ok: false, error: "invalid-event-id" };
+    }
+
+    let pointer = null;
+    if (options.pointer) {
+      pointer = normalizePointerInput(options.pointer);
+    }
+    if (!pointer) {
+      const type =
+        typeof options.pointerType === "string" ? options.pointerType.trim() : "";
+      const value =
+        typeof options.pointerValue === "string" ? options.pointerValue.trim() : "";
+      if (type && value) {
+        const candidate = [type, value];
+        const relay =
+          typeof options.pointerRelay === "string"
+            ? options.pointerRelay.trim()
+            : "";
+        if (relay) {
+          candidate.push(relay);
+        }
+        pointer = normalizePointerInput(candidate);
+      }
+    }
+
+    const cachedVideo = this.allEvents.get(normalizedId) || null;
+    const cachedRaw = this.rawEvents.get(normalizedId) || null;
+
+    let authorPubkey =
+      typeof options.authorPubkey === "string" && options.authorPubkey.trim()
+        ? options.authorPubkey.trim().toLowerCase()
+        : "";
+
+    if (!authorPubkey && cachedVideo?.pubkey) {
+      authorPubkey = cachedVideo.pubkey.trim().toLowerCase();
+    }
+    if (!authorPubkey && cachedRaw?.pubkey) {
+      authorPubkey = cachedRaw.pubkey.trim().toLowerCase();
+    }
+
+    let address = typeof options.address === "string" ? options.address.trim() : "";
+    if (!address && pointer?.type === "a") {
+      address = pointer.value;
+    }
+
+    let addressRelay =
+      typeof options.addressRelay === "string" ? options.addressRelay.trim() : "";
+    if (!addressRelay && pointer?.type === "a" && pointer.relay) {
+      addressRelay = pointer.relay;
+    }
+
+    let eventRelay =
+      typeof options.eventRelay === "string" ? options.eventRelay.trim() : "";
+    if (!eventRelay && pointer?.type === "e" && pointer.relay) {
+      eventRelay = pointer.relay;
+    }
+
+    let targetKind = Number.isFinite(options.kind)
+      ? Math.floor(options.kind)
+      : null;
+
+    const parseAddressMetadata = (candidate) => {
+      if (typeof candidate !== "string" || !candidate) {
+        return;
+      }
+      const parts = candidate.split(":");
+      if (parts.length >= 3) {
+        const maybeKind = Number.parseInt(parts[0], 10);
+        if (Number.isFinite(maybeKind) && !Number.isFinite(targetKind)) {
+          targetKind = maybeKind;
+        }
+        const maybePubkey = parts[1];
+        if (
+          maybePubkey &&
+          !authorPubkey &&
+          /^[0-9a-f]{64}$/i.test(maybePubkey)
+        ) {
+          authorPubkey = maybePubkey.toLowerCase();
+        }
+      }
+    };
+
+    if (address) {
+      parseAddressMetadata(address);
+    }
+
+    if (!Number.isFinite(targetKind)) {
+      if (Number.isFinite(cachedRaw?.kind)) {
+        targetKind = Math.floor(cachedRaw.kind);
+      } else if (Number.isFinite(cachedVideo?.kind)) {
+        targetKind = Math.floor(cachedVideo.kind);
+      } else {
+        targetKind = 30078;
+      }
+    }
+
+    const deriveIdentifierFromVideo = () => {
+      if (!cachedVideo || typeof cachedVideo !== "object") {
+        return "";
+      }
+
+      if (typeof cachedVideo.videoRootId === "string" && cachedVideo.videoRootId.trim()) {
+        return cachedVideo.videoRootId.trim();
+      }
+
+      if (Array.isArray(cachedVideo.tags)) {
+        for (const tag of cachedVideo.tags) {
+          if (!Array.isArray(tag) || tag.length < 2) {
+            continue;
+          }
+          if (tag[0] === "d" && typeof tag[1] === "string" && tag[1].trim()) {
+            return tag[1].trim();
+          }
+        }
+      }
+
+      return "";
+    };
+
+    if (!address) {
+      const identifier = deriveIdentifierFromVideo();
+      const ownerPubkey =
+        authorPubkey ||
+        (cachedVideo?.pubkey ? cachedVideo.pubkey.trim().toLowerCase() : "") ||
+        (cachedRaw?.pubkey ? cachedRaw.pubkey.trim().toLowerCase() : "");
+
+      if (identifier && ownerPubkey) {
+        address = `${targetKind}:${ownerPubkey}:${identifier}`;
+        parseAddressMetadata(address);
+      } else if (cachedRaw) {
+        const fallbackAddress = eventToAddressPointer(cachedRaw);
+        if (fallbackAddress) {
+          address = fallbackAddress;
+          parseAddressMetadata(address);
+        }
+      }
+    }
+
+    const relaysOverride = sanitizeRelayList(
+      Array.isArray(options.relays) && options.relays.length
+        ? options.relays
+        : Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : this.relays
+    );
+    const relays = relaysOverride.length ? relaysOverride : Array.from(RELAY_URLS);
+
+    let actorPubkey =
+      typeof options.actorPubkey === "string" && options.actorPubkey.trim()
+        ? options.actorPubkey.trim()
+        : typeof this.pubkey === "string" && this.pubkey.trim()
+        ? this.pubkey.trim()
+        : "";
+
+    if (!actorPubkey) {
+      try {
+        const ensured = await this.ensureSessionActor();
+        actorPubkey = ensured || "";
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure session actor before repost:", error);
+        }
+        return { ok: false, error: "missing-actor", details: error };
+      }
+    }
+
+    if (!actorPubkey) {
+      return { ok: false, error: "missing-actor" };
+    }
+
+    if (!this.pool) {
+      try {
+        await this.ensurePool();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure pool before repost:", error);
+        }
+        return { ok: false, error: "pool-unavailable", details: error };
+      }
+    }
+
+    const createdAt =
+      typeof options.created_at === "number" && Number.isFinite(options.created_at)
+        ? Math.max(0, Math.floor(options.created_at))
+        : Math.floor(Date.now() / 1000);
+
+    const additionalTags = Array.isArray(options.additionalTags)
+      ? options.additionalTags.filter((tag) => Array.isArray(tag) && tag.length >= 2)
+      : [];
+
+    const repostEvent = buildRepostEvent({
+      pubkey: actorPubkey,
+      created_at: createdAt,
+      eventId: normalizedId,
+      eventRelay,
+      address,
+      addressRelay,
+      authorPubkey,
+      additionalTags,
+    });
+
+    try {
+      const { signedEvent, summary, signerPubkey } = await this.signAndPublishEvent(
+        repostEvent,
+        {
+          context: "repost",
+          logName: "Repost",
+          devLogLabel: "repost",
+          relaysOverride: relays,
+        }
+      );
+
+      const normalizedSigner =
+        typeof signerPubkey === "string" ? signerPubkey.toLowerCase() : "";
+      const normalizedLogged =
+        typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+      const sessionPubkey =
+        typeof this.sessionActor?.pubkey === "string"
+          ? this.sessionActor.pubkey.toLowerCase()
+          : "";
+
+      const usedSessionActor =
+        normalizedSigner &&
+        normalizedSigner !== normalizedLogged &&
+        normalizedSigner === sessionPubkey;
+
+      return {
+        ok: true,
+        event: signedEvent,
+        summary,
+        relays,
+        sessionActor: usedSessionActor,
+        signerPubkey,
+      };
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Repost publish failed:", error);
+      }
+      const relayFailure =
+        error && typeof error === "object" && Array.isArray(error.relayFailures);
+      return {
+        ok: false,
+        error: relayFailure ? "publish-rejected" : "signing-failed",
+        details: error,
+      };
+    }
+  }
+
+  async mirrorVideoEvent(eventId, options = {}) {
+    const normalizedId =
+      typeof eventId === "string" && eventId.trim() ? eventId.trim() : "";
+    if (!normalizedId) {
+      return { ok: false, error: "invalid-event-id" };
+    }
+
+    const cachedVideo = this.allEvents.get(normalizedId) || null;
+
+    const sanitize = (value) => (typeof value === "string" ? value.trim() : "");
+
+    let url = sanitize(options.url);
+    if (!url && cachedVideo?.url) {
+      url = sanitize(cachedVideo.url);
+    }
+
+    if (!url) {
+      return { ok: false, error: "missing-url" };
+    }
+
+    const isPrivate =
+      options.isPrivate === true ||
+      options.isPrivate === "true" ||
+      cachedVideo?.isPrivate === true;
+
+    let magnet = sanitize(options.magnet);
+    if (!magnet && cachedVideo?.magnet) {
+      magnet = sanitize(cachedVideo.magnet);
+    }
+    if (!magnet && cachedVideo?.rawMagnet) {
+      magnet = sanitize(cachedVideo.rawMagnet);
+    }
+    if (!magnet && cachedVideo?.originalMagnet) {
+      magnet = sanitize(cachedVideo.originalMagnet);
+    }
+
+    let thumbnail = sanitize(options.thumbnail);
+    if (!thumbnail && cachedVideo?.thumbnail) {
+      thumbnail = sanitize(cachedVideo.thumbnail);
+    }
+
+    let description = sanitize(options.description);
+    if (!description && cachedVideo?.description) {
+      description = sanitize(cachedVideo.description);
+    }
+
+    let title = sanitize(options.title);
+    if (!title && cachedVideo?.title) {
+      title = sanitize(cachedVideo.title);
+    }
+
+    const providedMimeType = sanitize(options.mimeType);
+    const inferredMimeType = inferMimeTypeFromUrl(url);
+    const mimeType = providedMimeType || inferredMimeType || "application/octet-stream";
+
+    const explicitAlt = sanitize(options.altText);
+    const altText = explicitAlt || description || title || "";
+
+    const tags = [];
+    tags.push(["url", url]);
+    if (mimeType) {
+      tags.push(["m", mimeType]);
+    }
+    if (thumbnail) {
+      tags.push(["thumb", thumbnail]);
+    }
+    if (altText) {
+      tags.push(["alt", altText]);
+    }
+    if (!isPrivate && magnet) {
+      tags.push(["magnet", magnet]);
+    }
+
+    const additionalTags = Array.isArray(options.additionalTags)
+      ? options.additionalTags.filter((tag) => Array.isArray(tag) && tag.length >= 2)
+      : [];
+    tags.push(...additionalTags);
+
+    let actorPubkey =
+      typeof options.actorPubkey === "string" && options.actorPubkey.trim()
+        ? options.actorPubkey.trim()
+        : typeof this.pubkey === "string" && this.pubkey.trim()
+        ? this.pubkey.trim()
+        : "";
+
+    if (!actorPubkey) {
+      try {
+        const ensured = await this.ensureSessionActor();
+        actorPubkey = ensured || "";
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure session actor before mirror:", error);
+        }
+        return { ok: false, error: "missing-actor", details: error };
+      }
+    }
+
+    if (!actorPubkey) {
+      return { ok: false, error: "missing-actor" };
+    }
+
+    if (!this.pool) {
+      try {
+        await this.ensurePool();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure pool before mirror:", error);
+        }
+        return { ok: false, error: "pool-unavailable", details: error };
+      }
+    }
+
+    const createdAt =
+      typeof options.created_at === "number" && Number.isFinite(options.created_at)
+        ? Math.max(0, Math.floor(options.created_at))
+        : Math.floor(Date.now() / 1000);
+
+    const relaysOverride = sanitizeRelayList(
+      Array.isArray(options.relays) && options.relays.length
+        ? options.relays
+        : Array.isArray(this.writeRelays) && this.writeRelays.length
+        ? this.writeRelays
+        : this.relays
+    );
+    const relays = relaysOverride.length ? relaysOverride : Array.from(RELAY_URLS);
+
+    const mirrorEvent = buildVideoMirrorEvent({
+      pubkey: actorPubkey,
+      created_at: createdAt,
+      tags,
+      content: altText,
+    });
+
+    try {
+      const { signedEvent, summary, signerPubkey } = await this.signAndPublishEvent(
+        mirrorEvent,
+        {
+          context: "mirror",
+          logName: "NIP-94 mirror",
+          devLogLabel: "NIP-94 mirror",
+          rejectionLogLevel: "warn",
+          relaysOverride: relays,
+        }
+      );
+
+      const normalizedSigner =
+        typeof signerPubkey === "string" ? signerPubkey.toLowerCase() : "";
+      const normalizedLogged =
+        typeof this.pubkey === "string" ? this.pubkey.toLowerCase() : "";
+      const sessionPubkey =
+        typeof this.sessionActor?.pubkey === "string"
+          ? this.sessionActor.pubkey.toLowerCase()
+          : "";
+
+      const usedSessionActor =
+        normalizedSigner &&
+        normalizedSigner !== normalizedLogged &&
+        normalizedSigner === sessionPubkey;
+
+      return {
+        ok: true,
+        event: signedEvent,
+        summary,
+        relays,
+        sessionActor: usedSessionActor,
+        signerPubkey,
+      };
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Mirror publish failed:", error);
+      }
+      const relayFailure =
+        error && typeof error === "object" && Array.isArray(error.relayFailures);
+      return {
+        ok: false,
+        error: relayFailure ? "publish-rejected" : "signing-failed",
+        details: error,
+      };
+    }
+  }
+
+  async rebroadcastEvent(eventId, options = {}) {
+    const normalizedId =
+      typeof eventId === "string" && eventId.trim() ? eventId.trim() : "";
+    if (!normalizedId) {
+      return { ok: false, error: "invalid-event-id" };
+    }
+
+    const candidatePubkeys = [];
+    if (typeof options.pubkey === "string" && options.pubkey.trim()) {
+      candidatePubkeys.push(options.pubkey.trim().toLowerCase());
+    }
+    const cachedVideo = this.allEvents.get(normalizedId);
+    if (cachedVideo?.pubkey) {
+      candidatePubkeys.push(cachedVideo.pubkey.toLowerCase());
+    }
+    const cachedRaw = this.rawEvents.get(normalizedId);
+    if (cachedRaw?.pubkey) {
+      candidatePubkeys.push(cachedRaw.pubkey.toLowerCase());
+    }
+
+    let normalizedPubkey = "";
+    for (const candidate of candidatePubkeys) {
+      if (typeof candidate === "string" && candidate) {
+        normalizedPubkey = candidate;
+        break;
+      }
+    }
+
+    let guardScope = deriveRebroadcastScope(normalizedPubkey, normalizedId);
+    const guardBucket = deriveRebroadcastBucketIndex();
+    if (guardScope && hasRecentRebroadcastAttempt(guardScope, guardBucket)) {
+      const cooldown = getRebroadcastCooldownState(guardScope);
+      return { ok: false, error: "cooldown-active", throttled: true, cooldown };
+    }
+
+    const relayCandidates = Array.isArray(options.relays) && options.relays.length
+      ? options.relays
+      : Array.isArray(this.relays) && this.relays.length
+      ? this.relays
+      : RELAY_URLS;
+    const relays = relayCandidates
+      .map((url) => (typeof url === "string" ? url.trim() : ""))
+      .filter(Boolean);
+
+    if (!this.pool) {
+      try {
+        await this.ensurePool();
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] Failed to ensure pool before rebroadcast:", error);
+        }
+        return { ok: false, error: "pool-unavailable", details: error };
+      }
+    }
+
+    let rawEvent =
+      options.rawEvent || cachedRaw || (await this.fetchRawEventById(normalizedId, { relays }));
+
+    if (!rawEvent) {
+      return { ok: false, error: "event-not-found" };
+    }
+
+    if (!normalizedPubkey && typeof rawEvent.pubkey === "string") {
+      normalizedPubkey = rawEvent.pubkey.trim().toLowerCase();
+    }
+
+    const effectiveScope = deriveRebroadcastScope(normalizedPubkey, normalizedId);
+    if (effectiveScope && !guardScope) {
+      guardScope = effectiveScope;
+      if (hasRecentRebroadcastAttempt(guardScope, guardBucket)) {
+        const cooldown = getRebroadcastCooldownState(guardScope);
+        return { ok: false, error: "cooldown-active", throttled: true, cooldown };
+      }
+    }
+
+    if (guardScope) {
+      rememberRebroadcastAttempt(guardScope, guardBucket);
+    }
+
+    let countResult = null;
+    if (options.skipCount !== true) {
+      try {
+        countResult = await this.countEventsAcrossRelays([
+          { ids: [normalizedId] },
+        ], {
+          relays,
+          timeoutMs: options.timeoutMs,
+        });
+      } catch (error) {
+        if (isDevMode) {
+          console.warn("[nostr] COUNT request for rebroadcast failed:", error);
+        }
+      }
+
+      if (countResult?.total && Number(countResult.total) > 0) {
+        return {
+          ok: true,
+          alreadyPresent: true,
+          count: countResult,
+          cooldown: guardScope ? getRebroadcastCooldownState(guardScope) : null,
+        };
+      }
+    }
+
+    const publishResults = await publishEventToRelays(this.pool, relays, rawEvent);
+
+    try {
+      const summary = assertAnyRelayAccepted(publishResults, { context: "rebroadcast" });
+      return {
+        ok: true,
+        rebroadcast: true,
+        summary,
+        count: countResult,
+        cooldown: guardScope ? getRebroadcastCooldownState(guardScope) : null,
+      };
+    } catch (error) {
+      if (isDevMode) {
+        console.warn("[nostr] Rebroadcast rejected by relays:", error);
+      }
+      return {
+        ok: false,
+        error: "publish-rejected",
+        details: error,
+        results: publishResults,
+        cooldown: guardScope ? getRebroadcastCooldownState(guardScope) : null,
+      };
+    }
   }
 
   getRequestTimeoutMs(timeoutMs) {
@@ -5289,24 +8763,12 @@ class NostrClient {
       return [];
     }
 
+    this.applyRootCreatedAt(video);
+
     const targetRoot = typeof video.videoRootId === "string" ? video.videoRootId : "";
     const targetPubkey = typeof video.pubkey === "string" ? video.pubkey.toLowerCase() : "";
-    const findDTagValue = (tags = []) => {
-      if (!Array.isArray(tags)) {
-        return "";
-      }
-      for (const tag of tags) {
-        if (!Array.isArray(tag) || tag.length < 2) {
-          continue;
-        }
-        if (tag[0] === "d" && typeof tag[1] === "string") {
-          return tag[1];
-        }
-      }
-      return "";
-    };
 
-    const targetDTag = findDTagValue(video.tags);
+    const targetDTag = getDTagValueFromTags(video.tags);
 
     const collectLocalMatches = () => {
       const seen = new Set();
@@ -5326,7 +8788,7 @@ class NostrClient {
 
         const candidateRoot =
           typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
-        const candidateDTag = findDTagValue(candidate.tags);
+        const candidateDTag = getDTagValueFromTags(candidate.tags);
 
         const sameRoot = targetRoot && candidateRoot === targetRoot;
         const sameD = targetDTag && candidateDTag === targetDTag;
@@ -5348,6 +8810,59 @@ class NostrClient {
     };
 
     let localMatches = collectLocalMatches();
+
+    const ensureRootPresence = async () => {
+      const normalizedRoot = targetRoot && typeof targetRoot === "string"
+        ? targetRoot
+        : "";
+      if (!normalizedRoot || normalizedRoot === video.id) {
+        return;
+      }
+
+      const alreadyPresent = localMatches.some((entry) => entry?.id === normalizedRoot);
+      if (alreadyPresent) {
+        return;
+      }
+
+      const cachedRoot = this.allEvents.get(normalizedRoot);
+      if (cachedRoot) {
+        this.applyRootCreatedAt(cachedRoot);
+        localMatches.push(cachedRoot);
+        return;
+      }
+
+      if (
+        !this.pool ||
+        typeof this.pool.get !== "function" ||
+        !Array.isArray(this.relays) ||
+        !this.relays.length
+      ) {
+        return;
+      }
+
+      try {
+        const rootEvent = await this.pool.get(this.relays, { ids: [normalizedRoot] });
+        if (rootEvent && rootEvent.id === normalizedRoot) {
+          this.rawEvents.set(rootEvent.id, rootEvent);
+          const parsed = convertEventToVideo(rootEvent);
+          if (!parsed.invalid) {
+            this.mergeNip71MetadataIntoVideo(parsed);
+            this.applyRootCreatedAt(parsed);
+            this.allEvents.set(rootEvent.id, parsed);
+            localMatches.push(parsed);
+          }
+        }
+      } catch (error) {
+        if (isDevMode) {
+          console.warn(
+            `[nostr] Failed to fetch root event ${normalizedRoot} for history:`,
+            error
+          );
+        }
+      }
+    };
+
+    await ensureRootPresence();
 
     const shouldFetchFromRelays =
       localMatches.filter((entry) => !entry.deleted).length <= 1 && targetDTag;
@@ -5381,8 +8896,13 @@ class NostrClient {
         const merged = perRelay.flat();
         for (const evt of merged) {
           try {
+            if (evt && evt.id) {
+              this.rawEvents.set(evt.id, evt);
+            }
             const parsed = convertEventToVideo(evt);
             if (!parsed.invalid) {
+              this.mergeNip71MetadataIntoVideo(parsed);
+              this.applyRootCreatedAt(parsed);
               this.allEvents.set(evt.id, parsed);
             }
           } catch (err) {
@@ -5398,9 +8918,13 @@ class NostrClient {
       }
 
       localMatches = collectLocalMatches();
+      await ensureRootPresence();
     }
 
-    return localMatches.sort((a, b) => b.created_at - a.created_at);
+    localMatches.sort((a, b) => b.created_at - a.created_at);
+    await this.populateNip71MetadataForVideos(localMatches);
+    localMatches.forEach((entry) => this.applyRootCreatedAt(entry));
+    return localMatches;
   }
 
   getActiveVideos() {

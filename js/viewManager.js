@@ -1,19 +1,31 @@
 // js/viewManager.js
 import { initChannelProfileView } from "./channelProfile.js";
 import { subscriptions } from "./subscriptions.js";
+import { getApplication } from "./applicationContext.js";
+import { ASSET_VERSION } from "../config/asset-version.js";
 
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
+
+const withAssetVersion = (url) => {
+  if (typeof url !== "string" || url.length === 0) {
+    return url;
+  }
+
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${encodeURIComponent(ASSET_VERSION)}`;
+};
 
 /**
  * Load a partial view by URL into the #viewContainer.
  */
 export async function loadView(viewUrl) {
   try {
-    if (window.app && typeof window.app.prepareForViewLoad === "function") {
-      window.app.prepareForViewLoad();
+    const app = getApplication();
+    if (app && typeof app.prepareForViewLoad === "function") {
+      app.prepareForViewLoad();
     }
 
-    const res = await fetch(viewUrl);
+    const res = await fetch(withAssetVersion(viewUrl), { cache: "no-store" });
     if (!res.ok) {
       throw new Error(`Failed to load view: ${res.status}`);
     }
@@ -52,16 +64,17 @@ export async function loadView(viewUrl) {
  */
 export const viewInitRegistry = {
   "most-recent-videos": () => {
-    if (window.app && window.app.loadVideos) {
-      window.app.videoList = document.getElementById("videoList");
-      if (window.app.attachVideoListHandler) {
-        window.app.attachVideoListHandler();
+    const app = getApplication();
+    if (app && typeof app.loadVideos === "function") {
+      if (typeof app.mountVideoListView === "function") {
+        app.mountVideoListView();
       }
-      window.app.loadVideos();
+      app.loadVideos();
     }
     // Force profile updates after the new view is in place.
-    if (window.app && window.app.forceRefreshAllProfiles) {
-      window.app.forceRefreshAllProfiles();
+    const refreshApp = getApplication();
+    if (refreshApp && typeof refreshApp.forceRefreshAllProfiles === "function") {
+      refreshApp.forceRefreshAllProfiles();
     }
   },
   explore: () => {
@@ -86,7 +99,8 @@ export const viewInitRegistry = {
   subscriptions: async () => {
     console.log("Subscriptions view loaded.");
 
-    if (!window.app.pubkey) {
+    const app = getApplication();
+    if (!app?.pubkey) {
       const container = document.getElementById("subscriptionsVideoList");
       if (container) {
         container.innerHTML =
@@ -97,7 +111,7 @@ export const viewInitRegistry = {
 
     // If user is logged in, let the SubscriptionsManager do everything:
     await subscriptions.showSubscriptionVideos(
-      window.app.pubkey,
+      app.pubkey,
       "subscriptionsVideoList"
     );
   },

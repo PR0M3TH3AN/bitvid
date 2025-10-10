@@ -11,7 +11,7 @@
 ## Features
 
 - **Decentralized Sharing**: Video sharing without central servers.
-- **Private Video Listings**: Share encrypted videos for added privacy.
+- **Private Video Listings**: Hide cards from shared grids so only the owner sees them.
 - **Nostr Integration**: Use Nostr keys for login and interaction.
 - **WebTorrent Streaming**: Stream videos directly through torrent technology.
 - **Developer-Friendly**: Open source and customizable for your needs.
@@ -37,7 +37,7 @@ The upload modal enforces **Title + (URL or Magnet)**. Hosted URLs are strongly 
 - **Web seeds (`ws=`)**: HTTPS only. Point to a file root (e.g., `https://cdn.example.com/video/`). Mixed-content (`http://`) hints are rejected just like the modal message explains.
 - **Additional sources (`xs=`)**: Recommend adding an HTTPS `.torrent` link so WebTorrent peers can bootstrap faster.
 - **Trackers**: Bitvid’s browser client only connects to WSS trackers shipped in `js/constants.js`. Do not add UDP or plaintext HTTP trackers to published magnets.
-- **Private toggle**: Encrypts the listing for invited viewers.
+- **Private toggle**: Hides the card from shared grids so only you see it and adds a purple accent so the private state stands out.
 
 ### How playback works
 
@@ -62,7 +62,6 @@ To run **bitvid** locally:
    ```
 
 2. Start a local server:
-
    - Using Python:
      ```bash
      python -m http.server 8000
@@ -73,24 +72,28 @@ To run **bitvid** locally:
      ```
 
 3. Open the site in your browser:
-  ```
-  http://localhost:8000
-  ```
+
+```
+http://localhost:8000
+```
 
 ### CSS build pipeline
 
-Tailwind utilities are generated from `css/tailwind.source.css` using the build
-script below. Run this whenever you add or remove classes in HTML or JavaScript
-so the purged output stays in sync:
+Tailwind utilities are generated from `css/tailwind.source.css` and themed via
+the shared tokens in `css/tokens.css`. Install dependencies once and lean on the
+package scripts to keep formatting, linting, and generated output consistent:
 
 ```bash
-npm install         # first run only
-npm run build:css
+npm install          # install Prettier, Stylelint, and Tailwind toolchain
+npm run format       # format CSS/HTML/JS/MD with Prettier + tailwindcss plugin
+npm run lint:css     # enforce token usage and forbid raw hex colors
+npm run build:css    # rebuild css/tailwind.generated.css from tailwind.source.css
+npm run check:css    # CI-friendly guard that fails if tailwind.generated.css is dirty
 ```
 
-The command compiles Tailwind with `tailwind.config.cjs`, runs it through the
-PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and emits
-the purged, minified stylesheet at `css/tailwind.generated.css`. Commit the
+The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
+the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
+emits the purged, minified stylesheet at `css/tailwind.generated.css`. Commit the
 regenerated file alongside any template changes so deployments pick up the
 latest styles.
 
@@ -100,6 +103,13 @@ latest styles.
   - Central place for instance-specific values like the Super Admin npub and the
     default whitelist-only mode setting. Update the documented exports here when
     preparing a new deployment.
+  - Tune `PLATFORM_FEE_PERCENT` (0–100) to keep a percentage of Lightning tips.
+    When the fee is positive, BitVid routes the platform’s split to
+    `PLATFORM_LUD16_OVERRIDE`, so set it to the Lightning address that should
+    receive the sats (or publish a `lud16` on the Super Admin profile). Leave
+    the fee at `0` to pass through every satoshi.
+  - Populate `DEFAULT_RELAY_URLS_OVERRIDE` with WSS URLs to replace the bundled
+    relay bootstrap list. Keep it empty to stick with the upstream defaults.
 - **`config.js`**:
   - Toggle `isDevMode` for development (`true`) or production (`false`).
 - **`js/constants.js`**:
@@ -162,6 +172,12 @@ Use the manual QA checklist before releases or when altering upload/playback flo
 5. Spot-check Chromium and Firefox for console warnings (CORS, Range requests, tracker connectivity).
 
 See [`docs/qa.md`](docs/qa.md) for the copy/paste-friendly checklist we share with QA.
+
+For automated DOM-focused regression coverage, run the Node-based test suite:
+
+```bash
+node tests/profile-modal-controller.test.mjs
+```
 
 ---
 

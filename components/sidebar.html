@@ -5,150 +5,174 @@
 -->
 <aside
   id="sidebar"
-  class="bg-gray-900 text-white transition-transform duration-300 ease-in-out fixed top-0 left-0 w-64 h-screen overflow-y-auto fade-in fade-in-delay-100"
+  class="fade-in fade-in-delay-100 sidebar-collapsed"
+  data-state="collapsed"
 >
-  <div class="flex flex-col h-full">
-    <!-- Top Navigation Links -->
-    <div class="flex-1 overflow-y-auto px-4">
-      <div class="bg-gray-800 rounded-lg shadow-md mt-4 p-4">
-        <nav class="flex flex-col space-y-2">
-          <a
-            href="#view=most-recent-videos"
-            class="flex items-center py-2 px-4 hover:bg-gray-700 rounded font-semibold"
+  <div class="sidebar__inner">
+    <div class="sidebar-scroll">
+      <!-- Primary navigation -->
+      <section class="sidebar-panel sidebar-panel--primary">
+        <div class="sidebar-panel__header">
+          <button
+            id="sidebarCollapseToggle"
+            type="button"
+            class="sidebar-collapse-toggle"
+            aria-controls="sidebar"
+            aria-expanded="false"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
           >
+            <svg
+              data-sidebar-chevron
+              class="sidebar-collapse-toggle__icon sidebar-toggle-icon--rotated"
+              aria-hidden="true"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M10 6l6 6-6 6" />
+            </svg>
+          </button>
+        </div>
+        <nav class="sidebar-nav" aria-label="Primary">
+          <a href="#view=most-recent-videos" class="sidebar-nav-link" title="Recent">
             <img
               src="assets/svg/recent-icon.svg"
-              alt="Recent"
-              class="w-6 h-6 mr-3 flex-shrink-0"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
             />
             <span class="sidebar-text">Recent</span>
           </a>
-          <a
-            href="#view=explore"
-            class="flex items-center py-2 px-4 hover:bg-gray-700 rounded font-semibold"
-          >
+          <a href="#view=explore" class="sidebar-nav-link" title="Explore">
             <img
               src="assets/svg/explore-icon.svg"
-              alt="Explore"
-              class="w-6 h-6 mr-3 flex-shrink-0"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
             />
             <span class="sidebar-text">Explore</span>
           </a>
-          <a
-            href="#view=history"
-            class="flex items-center py-2 px-4 hover:bg-gray-700 rounded font-semibold"
-          >
+          <a href="#view=history" class="sidebar-nav-link" title="History">
             <img
               src="assets/svg/history-icon.svg"
-              alt="History"
-              class="w-6 h-6 mr-3 flex-shrink-0"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
             />
             <span class="sidebar-text">History</span>
           </a>
           <a
             id="subscriptionsLink"
             href="#view=subscriptions"
-            class="hidden flex items-center py-2 px-4 hover:bg-gray-700 rounded font-semibold"
+            class="sidebar-nav-link hidden"
+            title="Subscriptions"
           >
             <img
               src="assets/svg/subscriptions-icon.svg"
-              alt="Subscriptions"
-              class="w-6 h-6 mr-3 flex-shrink-0"
+              alt=""
+              aria-hidden="true"
+              class="sidebar-icon"
             />
             <span class="sidebar-text">Subscriptions</span>
           </a>
         </nav>
-      </div>
-    </div>
+      </section>
 
-    <!-- Footer Links Toggle -->
-    <div class="md:mt-auto">
-      <div class="p-4">
+      <!-- Footer Links Toggle -->
+      <footer class="sidebar-footer" data-footer-state="collapsed">
         <button
           id="footerDropdownButton"
           type="button"
-          class="flex items-center w-full py-2 px-4 bg-gray-800 hover:bg-gray-700 text-sm font-semibold text-gray-100 rounded shadow-md focus:outline-none transition-colors duration-200"
+          class="sidebar-dropup-trigger"
           aria-expanded="false"
           aria-controls="footerLinksContainer"
         >
-          <!-- Arrow on the left side -->
+          <img
+            src="assets/svg/ellipsis.svg"
+            alt=""
+            aria-hidden="true"
+            class="sidebar-icon sidebar-dropup-trigger__glyph"
+          />
+          <span id="footerDropdownText" class="sidebar-text">More</span>
           <svg
             id="footerDropdownIcon"
-            class="w-4 h-4 mr-2 transform transition-transform duration-300"
+            class="sidebar-dropup-trigger__chevron"
+            aria-hidden="true"
             xmlns="http://www.w3.org/2000/svg"
-            fill="none"
             viewBox="0 0 24 24"
+            fill="none"
             stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M19 9l-7 7-7-7"
-            />
-
+            <path d="M6 9l6 6 6-6" />
           </svg>
-          <span id="footerDropdownText">More</span>
         </button>
-      </div>
 
-      <!-- Footer Links Container -->
-      <div id="footerLinksContainer" class="hidden">
-        <hr class="border-gray-700" />
-        <div class="p-4">
-          <nav class="space-y-2 text-sm opacity-70">
-            <a
-              href="#view=about"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-            >
+        <!-- Footer Links Container -->
+        <div
+          id="footerLinksContainer"
+          class="sidebar-dropup-panel"
+          aria-hidden="true"
+          data-state="collapsed"
+        >
+          <nav class="sidebar-dropup-panel__inner" aria-label="Secondary">
+            <a href="#view=about" class="sidebar-nav-link sidebar-nav-link--sub" title="About">
               <img
                 src="assets/svg/about-icon.svg"
-                alt="About"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">About</span>
             </a>
             <a
               href="#view=community-guidelines"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Community Guidelines"
             >
               <img
                 src="assets/svg/guidelines-icon.svg"
-                alt="Guidelines"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">Guidelines</span>
             </a>
             <a
               href="#view=getting-started"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Getting Started"
             >
               <img
                 src="assets/svg/getting-started-icon.svg"
-                alt="Getting Started"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">Getting Started</span>
             </a>
-            <a
-              href="#view=roadmap"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-            >
+            <a href="#view=roadmap" class="sidebar-nav-link sidebar-nav-link--sub" title="Roadmap">
               <img
                 src="assets/svg/roadmap-icon.svg"
-                alt="Roadmap"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">Roadmap</span>
             </a>
-            <a
-              href="#view=blog"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-            >
+            <a href="#view=blog" class="sidebar-nav-link sidebar-nav-link--sub" title="Blog">
               <img
                 src="assets/svg/blog-icon.svg"
-                alt="Blog"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">Blog</span>
             </a>
@@ -156,12 +180,14 @@
               href="https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Nostr"
             >
               <img
                 src="assets/svg/nostr-icon.svg"
-                alt="Nostr"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">Nostr</span>
             </a>
@@ -169,12 +195,14 @@
               href="https://github.com/PR0M3TH3AN/bitvid"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="GitHub"
             >
               <img
                 src="assets/svg/github-icon.svg"
-                alt="GitHub"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">GitHub</span>
             </a>
@@ -182,12 +210,14 @@
               href="torrent/beacon.html"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="βeacon"
             >
               <img
                 src="assets/svg/beacon-icon.svg"
-                alt="βeacon"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">βeacon</span>
             </a>
@@ -195,34 +225,32 @@
               href="https://beta.bitvid.network/"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Beta"
             >
               <img
                 src="assets/svg/beta-icon.svg"
-                alt="Beta"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">Beta</span>
             </a>
-            <a
-              href="#view=links"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-            >
+            <a href="#view=links" class="sidebar-nav-link sidebar-nav-link--sub" title="Links">
               <img
                 src="assets/svg/links-icon.svg"
-                alt="Links"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">Links</span>
             </a>
-            <a
-              href="#view=ipns"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
-            >
+            <a href="#view=ipns" class="sidebar-nav-link sidebar-nav-link--sub" title="IPNS">
               <img
                 src="assets/svg/ipns-icon.svg"
-                alt="IPNS"
-                class="w-5 h-5 mr-3"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
               />
               <span class="sidebar-text">IPNS</span>
             </a>
@@ -230,36 +258,20 @@
               href="https://bitvid.network/"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center hover:bg-gray-800 px-4 py-2 rounded"
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="DNS"
             >
-              <img src="assets/svg/dns-icon.svg" alt="DNS" class="w-5 h-5 mr-3" />
+              <img
+                src="assets/svg/dns-icon.svg"
+                alt=""
+                aria-hidden="true"
+                class="sidebar-icon"
+              />
               <span class="sidebar-text">DNS</span>
             </a>
           </nav>
         </div>
-      </div>
+      </footer>
     </div>
   </div>
-
-  <script>
-    (function () {
-      var btn = document.getElementById("footerDropdownButton");
-      var footerLinks = document.getElementById("footerLinksContainer");
-      if (btn && footerLinks) {
-        btn.addEventListener("click", function () {
-          footerLinks.classList.toggle("hidden");
-          var isHidden = footerLinks.classList.contains("hidden");
-          btn.setAttribute("aria-expanded", String(!isHidden));
-          var icon = document.getElementById("footerDropdownIcon");
-          var textSpan = document.getElementById("footerDropdownText");
-          if (textSpan) {
-            textSpan.textContent = isHidden ? "More" : "Less";
-          }
-          if (icon) {
-            icon.classList.toggle("rotate-180", !isHidden);
-          }
-        });
-      }
-    })();
-  </script>
 </aside>

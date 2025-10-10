@@ -1,7 +1,50 @@
 // js/index.js
 
+import { validateInstanceConfig } from "../config/validate-config.js";
+import { ASSET_VERSION } from "../config/asset-version.js";
 import "./bufferPolyfill.js";
-import { trackPageView } from "./analytics.js";
+import Application from "./app.js";
+import { setApplication, setApplicationReady } from "./applicationContext.js";
+import nostrService from "./services/nostrService.js";
+import r2Service from "./services/r2Service.js";
+import { loadView, viewInitRegistry } from "./viewManager.js";
+
+validateInstanceConfig();
+
+let application = null;
+let applicationReadyPromise = Promise.resolve();
+
+function startApplication() {
+  if (application) {
+    return applicationReadyPromise;
+  }
+
+  application = new Application({
+    services: {
+      nostrService,
+      r2Service,
+    },
+    loadView,
+  });
+
+  setApplication(application);
+
+  const startupPromise = (async () => {
+    await application.init();
+    if (typeof application.start === "function") {
+      await application.start();
+    }
+  })();
+
+  applicationReadyPromise = startupPromise;
+  setApplicationReady(startupPromise);
+
+  startupPromise.catch((error) => {
+    console.error("Application failed to initialize:", error);
+  });
+
+  return startupPromise;
+}
 
 const INTERFACE_FADE_IN_ANIMATION = "interface-fade-in";
 const VIDEO_THUMBNAIL_FADE_IN_ANIMATION = "video-thumbnail-fade-in";
@@ -60,13 +103,26 @@ document.addEventListener("animationend", handleFadeInAnimationComplete, true);
 document.addEventListener("animationcancel", handleFadeInAnimationComplete, true);
 
 // 1) Load modals (login, application, etc.)
+const withAssetVersion = (url) => {
+  if (typeof url !== "string" || url.length === 0) {
+    return url;
+  }
+
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${encodeURIComponent(ASSET_VERSION)}`;
+};
+
+const fetchPartial = async (url) => {
+  const response = await fetch(withAssetVersion(url), { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to load " + url);
+  }
+  return response.text();
+};
+
 async function loadModal(url) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to load " + url);
-    }
-    const html = await response.text();
+    const html = await fetchPartial(url);
     // Remove analytics loader tags from modal partials to avoid duplicate pageview events.
     const sanitizedHtml = html.replace(
       /<script\b[^>]*src=["'][^"']*tracking\.js[^"']*["'][^>]*>\s*<\/script>/gi,
@@ -84,11 +140,7 @@ async function loadModal(url) {
 // 2) Load sidebar
 async function loadSidebar(url, containerId) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to load " + url);
-    }
-    const html = await response.text();
+    const html = await fetchPartial(url);
     document.getElementById(containerId).innerHTML = html;
     console.log(url, "loaded into", containerId);
   } catch (err) {
@@ -99,11 +151,7 @@ async function loadSidebar(url, containerId) {
 // 3) Load the disclaimer (now separate)
 async function loadDisclaimer(url, containerId) {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Failed to load " + url);
-    }
-    const html = await response.text();
+    const html = await fetchPartial(url);
     document.getElementById(containerId).insertAdjacentHTML("beforeend", html);
     console.log(url, "disclaimer loaded into", containerId);
   } catch (err) {
@@ -111,137 +159,375 @@ async function loadDisclaimer(url, containerId) {
   }
 }
 
-// 4) Load everything: modals, sidebar, disclaimers
-Promise.all([
-  // Existing modals
-  loadModal("components/login-modal.html"),
-  loadModal("components/application-form.html"),
-  loadModal("components/content-appeals-form.html"),
+async function bootstrapInterface() {
+  await Promise.all([
+    loadModal("components/login-modal.html"),
+    loadModal("components/application-form.html"),
+    loadModal("components/content-appeals-form.html"),
+    loadModal("components/general-feedback-form.html"),
+    loadModal("components/feature-request-form.html"),
+    loadModal("components/bug-fix-form.html"),
+  ]);
 
-  // New forms
-  loadModal("components/general-feedback-form.html"),
-  loadModal("components/feature-request-form.html"),
-  loadModal("components/bug-fix-form.html"),
-])
-  .then(() => {
-    console.log("Modals loaded.");
-    return loadSidebar("components/sidebar.html", "sidebarContainer");
-  })
-  .then(() => {
-    console.log("Sidebar loaded.");
+  console.log("Modals loaded.");
 
-    // Attach mobile menu button toggle logic (for sidebar)
-    const mobileMenuBtn = document.getElementById("mobileMenuBtn");
-    const sidebar = document.getElementById("sidebar");
-    const app = document.getElementById("app");
-    if (mobileMenuBtn && sidebar && app) {
-      mobileMenuBtn.addEventListener("click", () => {
-        sidebar.classList.toggle("sidebar-open");
-        app.classList.toggle("sidebar-open");
-      });
+  await loadSidebar("components/sidebar.html", "sidebarContainer");
+  console.log("Sidebar loaded.");
+
+  const sidebar = document.getElementById("sidebar");
+  const collapseToggle = document.getElementById("sidebarCollapseToggle");
+  if (sidebar && !sidebar.hasAttribute("data-footer-state")) {
+    sidebar.setAttribute("data-footer-state", "collapsed");
+  }
+  if (!collapseToggle) {
+    console.warn("Sidebar collapse toggle not found; skipping density controls.");
+  }
+
+  const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+  const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+  const SIDEBAR_COLLAPSED_STORAGE_KEY = "sidebarCollapsed";
+  const SIDEBAR_WIDTH_EXPANDED = "16rem";
+  const SIDEBAR_WIDTH_COLLAPSED = "4rem";
+  const DEFAULT_SIDEBAR_COLLAPSED = true;
+  let isSidebarCollapsed = DEFAULT_SIDEBAR_COLLAPSED;
+  let isFooterDropupExpanded = false;
+  let syncFooterDropupFn = null;
+
+  const readStoredSidebarCollapsed = () => {
+    try {
+      const storedValue = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+      if (storedValue === null) {
+        return DEFAULT_SIDEBAR_COLLAPSED;
+      }
+      return storedValue === "true";
+    } catch (error) {
+      console.warn("Unable to read sidebar collapse state from storage:", error);
+      return DEFAULT_SIDEBAR_COLLAPSED;
     }
+  };
 
-    // Attach "More" button toggle logic for footer links
-    const footerDropdownButton = document.getElementById(
-      "footerDropdownButton"
+  const persistSidebarCollapsed = (collapsed) => {
+    try {
+      localStorage.setItem(
+        SIDEBAR_COLLAPSED_STORAGE_KEY,
+        collapsed ? "true" : "false",
+      );
+    } catch (error) {
+      console.warn("Unable to persist sidebar collapse state:", error);
+    }
+  };
+
+  const applySidebarDensity = (collapsed) => {
+    const widthTargets = [document.documentElement, document.body].filter(
+      (element) => element instanceof HTMLElement,
     );
-    if (footerDropdownButton) {
-      footerDropdownButton.addEventListener("click", () => {
-        const footerLinksContainer = document.getElementById(
-          "footerLinksContainer"
-        );
-        if (!footerLinksContainer) return;
-        footerLinksContainer.classList.toggle("hidden");
-        if (footerLinksContainer.classList.contains("hidden")) {
-          footerDropdownButton.innerHTML = "More &#9660;";
-        } else {
-          footerDropdownButton.innerHTML = "Less &#9650;";
-        }
-      });
+    if (sidebar instanceof HTMLElement) {
+      widthTargets.push(sidebar);
     }
+    const appShell = document.getElementById("app");
+    if (appShell instanceof HTMLElement) {
+      widthTargets.push(appShell);
+    }
+    const state = collapsed ? "collapsed" : "expanded";
+    const nextWidth = collapsed
+      ? SIDEBAR_WIDTH_COLLAPSED
+      : SIDEBAR_WIDTH_EXPANDED;
 
-    // Load and set up sidebar navigation
-    return import("./sidebar.js").then((module) => {
-      module.setupSidebarNavigation();
+    widthTargets.forEach((element) => {
+      element.style.setProperty("--sidebar-width", nextWidth);
     });
-  })
-  .then(() => {
-    // Now load the disclaimer
-    return loadDisclaimer("components/disclaimer.html", "modalContainer");
-  })
-  .then(() => {
-    console.log("Disclaimer loaded.");
 
-    // 1) Login button => open login modal
-    const loginNavBtn = document.getElementById("loginButton");
-    if (loginNavBtn) {
-      loginNavBtn.addEventListener("click", () => {
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.remove("hidden");
-        }
-      });
+    if (appShell instanceof HTMLElement) {
+      appShell.dataset.sidebarState = state;
     }
 
-    // 2) Close login modal
-    const closeLoginBtn = document.getElementById("closeLoginModal");
-    if (closeLoginBtn) {
-      closeLoginBtn.addEventListener("click", () => {
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.add("hidden");
-        }
+    [sidebar, document.body]
+      .filter((element) => element instanceof HTMLElement)
+      .forEach((element) => {
+        element.classList.toggle("sidebar-collapsed", collapsed);
+        element.classList.toggle("sidebar-expanded", !collapsed);
+        element.setAttribute("data-state", state);
       });
+
+    if (collapseToggle) {
+      const actionLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
+      collapseToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      collapseToggle.setAttribute("data-state", state);
+      collapseToggle.setAttribute("aria-label", actionLabel);
+      collapseToggle.setAttribute("title", actionLabel);
     }
 
-    // 3) "Application Form" => open application form
-    const openAppFormBtn = document.getElementById("openApplicationModal");
-    if (openAppFormBtn) {
-      openAppFormBtn.addEventListener("click", () => {
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.add("hidden");
-        }
-        const appModal = document.getElementById("nostrFormModal");
-        if (appModal) {
-          appModal.classList.remove("hidden");
-        }
-      });
+    if (
+      collapsed &&
+      isFooterDropupExpanded &&
+      typeof syncFooterDropupFn === "function"
+    ) {
+      syncFooterDropupFn(false);
+    }
+  };
+
+  const syncSidebarDensityToViewport = (isDesktopViewport) => {
+    if (!collapseToggle) {
+      applySidebarDensity(false);
+      return;
     }
 
-    // 4) Close application form
-    const closeNostrFormBtn = document.getElementById("closeNostrFormModal");
-    if (closeNostrFormBtn) {
-      closeNostrFormBtn.addEventListener("click", () => {
-        const appModal = document.getElementById("nostrFormModal");
-        if (appModal) {
-          appModal.classList.add("hidden");
-        }
-        // If user hasn't seen disclaimer, show it
-        if (!localStorage.getItem("hasSeenDisclaimer")) {
-          const disclaimerModal = document.getElementById("disclaimerModal");
-          if (disclaimerModal) {
-            disclaimerModal.classList.remove("hidden");
-          }
-        }
-      });
+    if (isDesktopViewport) {
+      isSidebarCollapsed = readStoredSidebarCollapsed();
+      applySidebarDensity(isSidebarCollapsed);
+      return;
     }
 
-    // Once everything is loaded, handle the query params (modal? v?) & disclaimers
-    handleQueryParams();
+    applySidebarDensity(false);
+  };
 
-    // Listen for hash changes
-    window.addEventListener("hashchange", handleHashChange);
+  if (collapseToggle) {
+    isSidebarCollapsed = readStoredSidebarCollapsed();
+  }
 
-    // Also run once on initial load
-    handleHashChange();
+  const setSidebarState = (isOpen) => {
+    if (sidebar) {
+      sidebar.classList.toggle("sidebar-open", isOpen);
+    }
+    document.body.classList.toggle("sidebar-open", isOpen);
+    if (mobileMenuBtn) {
+      mobileMenuBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    }
+  };
 
-    return import("./disclaimer.js");
-  })
-  .then(({ default: disclaimerModal }) => {
-    disclaimerModal.init();
-    disclaimerModal.show();
+  const closeSidebar = () => setSidebarState(false);
+  const isMobileViewport = () => {
+    if (typeof window.matchMedia === "function") {
+      return window.matchMedia("(max-width: 767px)").matches;
+    }
+    return window.innerWidth < 768;
+  };
+
+  const toggleSidebar = () => {
+    if (!sidebar) return;
+    const isMobile = isMobileViewport();
+    if (!isMobile) return;
+    const shouldOpen = !sidebar.classList.contains("sidebar-open");
+    setSidebarState(shouldOpen);
+  };
+
+  let desktopQuery = null;
+  const isDesktopViewport = () => {
+    if (desktopQuery) {
+      return desktopQuery.matches;
+    }
+    return window.innerWidth >= 768;
+  };
+
+  if (collapseToggle) {
+    collapseToggle.addEventListener("click", (event) => {
+      const desktop = isDesktopViewport();
+      if (!desktop) {
+        event.preventDefault();
+        return;
+      }
+
+      event.preventDefault();
+      const nextCollapsed = !isSidebarCollapsed;
+      isSidebarCollapsed = nextCollapsed;
+      applySidebarDensity(nextCollapsed);
+      persistSidebarCollapsed(nextCollapsed);
+    });
+  }
+
+  if (mobileMenuBtn && sidebar) {
+    mobileMenuBtn.addEventListener("click", toggleSidebar);
+  }
+
+  if (sidebarOverlay) {
+    sidebarOverlay.addEventListener("click", closeSidebar);
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && sidebar && sidebar.classList.contains("sidebar-open")) {
+      closeSidebar();
+    }
   });
+
+  if (typeof window.matchMedia === "function") {
+    desktopQuery = window.matchMedia("(min-width: 768px)");
+    syncSidebarDensityToViewport(desktopQuery.matches);
+
+    const onDesktopChange = (event) => {
+      if (event.matches) {
+        closeSidebar();
+        syncSidebarDensityToViewport(true);
+        return;
+      }
+
+      syncSidebarDensityToViewport(false);
+    };
+
+    if (typeof desktopQuery.addEventListener === "function") {
+      desktopQuery.addEventListener("change", onDesktopChange);
+    } else if (typeof desktopQuery.addListener === "function") {
+      desktopQuery.addListener(onDesktopChange);
+    }
+  } else {
+    syncSidebarDensityToViewport(window.innerWidth >= 768);
+  }
+
+  const footerDropdownButton = document.getElementById("footerDropdownButton");
+  const footerLinksContainer = document.getElementById("footerLinksContainer");
+  const footerDropdownLabel = document.getElementById("footerDropdownText");
+  const footerDropdownIcon = document.getElementById("footerDropdownIcon");
+
+  if (footerDropdownButton && footerLinksContainer) {
+    const sidebarFooter = footerDropdownButton.closest(".sidebar-footer");
+
+    syncFooterDropupFn = (expanded) => {
+      const nextState = expanded ? "expanded" : "collapsed";
+      const actionLabel = expanded ? "Show fewer sidebar links" : "Show more sidebar links";
+
+      footerDropdownButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+      footerDropdownButton.dataset.state = nextState;
+      footerDropdownButton.setAttribute("aria-label", actionLabel);
+      footerDropdownButton.setAttribute("title", actionLabel);
+
+      if (footerDropdownLabel) {
+        footerDropdownLabel.textContent = expanded ? "Less" : "More";
+      }
+
+      if (footerDropdownIcon) {
+        footerDropdownIcon.classList.toggle("is-rotated", expanded);
+      }
+
+      footerLinksContainer.classList.remove("hidden");
+      footerLinksContainer.setAttribute("aria-hidden", expanded ? "false" : "true");
+      footerLinksContainer.dataset.state = nextState;
+
+      if (sidebar) {
+        sidebar.setAttribute("data-footer-state", nextState);
+      }
+
+      if (sidebarFooter instanceof HTMLElement) {
+        sidebarFooter.dataset.footerState = nextState;
+      }
+      isFooterDropupExpanded = expanded;
+    };
+
+    footerDropdownButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      const expanded = footerDropdownButton.getAttribute("aria-expanded") === "true";
+
+      if (isSidebarCollapsed && !expanded) {
+        const nextCollapsed = false;
+        isSidebarCollapsed = nextCollapsed;
+        applySidebarDensity(nextCollapsed);
+        persistSidebarCollapsed(nextCollapsed);
+      }
+
+      if (typeof syncFooterDropupFn === "function") {
+        syncFooterDropupFn(!expanded);
+      }
+    });
+
+    const initialExpanded = footerDropdownButton.getAttribute("aria-expanded") === "true";
+    if (typeof syncFooterDropupFn === "function") {
+      syncFooterDropupFn(initialExpanded);
+    }
+  }
+
+  try {
+    const sidebarModule = await import("./sidebar.js");
+    if (typeof sidebarModule.setupSidebarNavigation === "function") {
+      sidebarModule.setupSidebarNavigation({ closeSidebar });
+    }
+  } catch (error) {
+    console.error("Failed to set up sidebar navigation:", error);
+  }
+
+  await loadDisclaimer("components/disclaimer.html", "modalContainer");
+  console.log("Disclaimer loaded.");
+
+  const loginNavBtn = document.getElementById("loginButton");
+  if (loginNavBtn) {
+    loginNavBtn.addEventListener("click", () => {
+      const loginModal = document.getElementById("loginModal");
+      if (loginModal) {
+        loginModal.classList.remove("hidden");
+      }
+    });
+  }
+
+  const closeLoginBtn = document.getElementById("closeLoginModal");
+  if (closeLoginBtn) {
+    closeLoginBtn.addEventListener("click", () => {
+      const loginModal = document.getElementById("loginModal");
+      if (loginModal) {
+        loginModal.classList.add("hidden");
+      }
+    });
+  }
+
+  const openAppFormBtn = document.getElementById("openApplicationModal");
+  if (openAppFormBtn) {
+    openAppFormBtn.addEventListener("click", () => {
+      const loginModal = document.getElementById("loginModal");
+      if (loginModal) {
+        loginModal.classList.add("hidden");
+      }
+      const appModal = document.getElementById("nostrFormModal");
+      if (appModal) {
+        appModal.classList.remove("hidden");
+      }
+    });
+  }
+
+  const closeNostrFormBtn = document.getElementById("closeNostrFormModal");
+  if (closeNostrFormBtn) {
+    closeNostrFormBtn.addEventListener("click", () => {
+      const appModal = document.getElementById("nostrFormModal");
+      if (appModal) {
+        appModal.classList.add("hidden");
+      }
+      if (!localStorage.getItem("hasSeenDisclaimer")) {
+        const disclaimerModal = document.getElementById("disclaimerModal");
+        if (disclaimerModal) {
+          disclaimerModal.classList.remove("hidden");
+        }
+      }
+    });
+  }
+
+  handleQueryParams();
+
+  window.addEventListener("hashchange", handleHashChange);
+
+  await handleHashChange();
+
+  const { default: disclaimerModal } = await import("./disclaimer.js");
+  disclaimerModal.init();
+  disclaimerModal.show();
+}
+
+async function initializeInterface() {
+  startApplication();
+
+  try {
+    await bootstrapInterface();
+  } catch (error) {
+    console.error("Failed to bootstrap Bitvid interface:", error);
+  }
+}
+
+function onDomReady() {
+  initializeInterface().catch((error) => {
+    console.error("Unhandled error during Bitvid initialization:", error);
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", onDomReady, { once: true });
+} else {
+  onDomReady();
+}
 
 /* -------------------------------------------
    HELPER FUNCTIONS FOR QUERY AND HASH
@@ -366,27 +652,17 @@ function handleQueryParams() {
   }
 }
 
-async function waitForAppInitialization() {
-  const maybePromise = window.appReady;
-
-  if (!maybePromise || typeof maybePromise.then !== "function") {
-    return;
-  }
-
-  try {
-    await maybePromise;
-  } catch (error) {
-    console.warn(
-      "Proceeding with hash handling despite app initialization failure:",
-      error
-    );
-  }
-}
-
 async function handleHashChange() {
   console.log("handleHashChange called, current hash =", window.location.hash);
 
-  await waitForAppInitialization();
+  try {
+    await applicationReadyPromise;
+  } catch (error) {
+    console.warn(
+      "Proceeding with hash handling despite application initialization failure:",
+      error
+    );
+  }
 
   const hash = window.location.hash || "";
   // Use a regex that captures up to the first ampersand or end of string.
@@ -394,14 +670,12 @@ async function handleHashChange() {
   const match = hash.match(/^#view=([^&]+)/);
 
   try {
-    const { loadView, viewInitRegistry } = await import("./viewManager.js");
-
     if (!match || !match[1]) {
       // No valid "#view=..." => default to "most-recent-videos"
       await loadView("views/most-recent-videos.html");
       const initFn = viewInitRegistry["most-recent-videos"];
       if (typeof initFn === "function") {
-        initFn();
+        await initFn();
       }
       return;
     }
@@ -415,7 +689,7 @@ async function handleHashChange() {
     await loadView(viewUrl);
     const initFn = viewInitRegistry[viewName];
     if (typeof initFn === "function") {
-      initFn();
+      await initFn();
     }
   } catch (error) {
     console.error("Failed to handle hash change:", error);

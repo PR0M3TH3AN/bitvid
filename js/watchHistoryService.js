@@ -15,6 +15,7 @@ import {
   getWatchHistoryV2Enabled,
 } from "./constants.js";
 import { isDevMode } from "./config.js";
+import { getApplication } from "./applicationContext.js";
 
 const SESSION_STORAGE_KEY = "bitvid:watch-history:session:v1";
 const SESSION_STORAGE_VERSION = 1;
@@ -60,7 +61,7 @@ function getLoggedInActorKey() {
 
   if (typeof window !== "undefined") {
     const appCandidate =
-      (window.bitvid && window.bitvid.app) || window.app || null;
+      getApplication() || null;
     if (appCandidate && typeof appCandidate === "object") {
       if (typeof appCandidate.normalizeHexPubkey === "function") {
         try {
@@ -252,10 +253,36 @@ function sanitizeVideoForStorage(video) {
     pubkey: typeof video.pubkey === "string" ? video.pubkey : "",
     created_at: createdAt,
     infoHash: typeof video.infoHash === "string" ? video.infoHash : "",
+    legacyInfoHash:
+      typeof video.legacyInfoHash === "string" ? video.legacyInfoHash : "",
     mode: typeof video.mode === "string" ? video.mode : "",
     isPrivate: video?.isPrivate === true,
     description:
       typeof video.description === "string" ? video.description : "",
+  };
+}
+
+function sanitizeVideoForHistory(video) {
+  const sanitized = sanitizeVideoForStorage(video);
+  if (!sanitized) {
+    return null;
+  }
+
+  return {
+    id: sanitized.id,
+    title: sanitized.title,
+    thumbnail: sanitized.thumbnail,
+    pubkey: sanitized.pubkey,
+    created_at: sanitized.created_at,
+    url: sanitized.url,
+    magnet: sanitized.magnet,
+    infoHash: sanitized.infoHash,
+    legacyInfoHash:
+      typeof video?.legacyInfoHash === "string"
+        ? video.legacyInfoHash
+        : typeof sanitized.legacyInfoHash === "string"
+        ? sanitized.legacyInfoHash
+        : "",
   };
 }
 
@@ -354,6 +381,41 @@ function restoreMetadataCache() {
       storedAt: Number.isFinite(entry?.storedAt) ? entry.storedAt : Date.now(),
     });
   }
+}
+
+function sanitizePointerMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const pointerMetadata = {};
+  const video = sanitizeVideoForHistory(metadata.video);
+  if (video) {
+    pointerMetadata.video = video;
+  }
+
+  const profile = sanitizeProfileForStorage(metadata.profile);
+  if (profile) {
+    pointerMetadata.profile = profile;
+  }
+
+  const resumeCandidates = [
+    metadata.resumeAt,
+    metadata.resume,
+    metadata.resumeSeconds,
+  ];
+  for (const candidate of resumeCandidates) {
+    if (Number.isFinite(candidate)) {
+      pointerMetadata.resumeAt = Math.max(0, Math.floor(candidate));
+      break;
+    }
+  }
+
+  if (metadata.completed === true) {
+    pointerMetadata.completed = true;
+  }
+
+  return Object.keys(pointerMetadata).length ? pointerMetadata : null;
 }
 
 function persistMetadataCache() {
@@ -974,6 +1036,33 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     viewResult?.event?.created_at
   );
 
+  const pointerMetadata = sanitizePointerMetadata(metadata);
+  if (pointerMetadata) {
+    const existingMetadata =
+      typeof normalizedPointer.metadata === "object"
+        ? normalizedPointer.metadata
+        : {};
+    normalizedPointer.metadata = { ...existingMetadata, ...pointerMetadata };
+    if (pointerMetadata.video) {
+      normalizedPointer.video = pointerMetadata.video;
+    }
+    if (pointerMetadata.profile) {
+      normalizedPointer.profile = pointerMetadata.profile;
+    }
+    if (
+      Number.isFinite(pointerMetadata.resumeAt) &&
+      !Number.isFinite(normalizedPointer.resumeAt)
+    ) {
+      normalizedPointer.resumeAt = Math.max(
+        0,
+        Math.floor(pointerMetadata.resumeAt),
+      );
+    }
+    if (pointerMetadata.completed === true) {
+      normalizedPointer.completed = true;
+    }
+  }
+
   const key = pointerKey(normalizedPointer);
   console.info(
     "[watchHistoryService] Watch list process triggered by video view.",
@@ -1199,11 +1288,60 @@ async function snapshot(items, options = {}) {
   return run;
 }
 
-async function loadLatest(actorInput) {
+function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
+  if (!actorKey) {
+    return Promise.resolve([]);
+  }
+
+  if (cacheEntry && typeof cacheEntry === "object" && cacheEntry.promise) {
+    return cacheEntry.promise;
+  }
+
+  const promise = nostrClient
+    .resolveWatchHistory(actorKey, { forceRefresh: true })
+    .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
+    .then(() => {
+      const latest = state.fingerprintCache.get(actorKey);
+      return latest?.items || [];
+    })
+    .catch((error) => {
+      if (isDevMode) {
+        console.warn("[watchHistoryService] Failed to load watch history:", error);
+      }
+      throw error;
+    })
+    .finally(() => {
+      const entry = state.fingerprintCache.get(actorKey);
+      if (entry) {
+        delete entry.promise;
+      }
+    });
+
+  console.info("[watchHistoryService] Triggered nostr watch list refresh.", {
+    actor: actorKey,
+  });
+
+  const baseEntry = cacheEntry && typeof cacheEntry === "object" ? cacheEntry : {};
+  state.fingerprintCache.set(actorKey, {
+    ...baseEntry,
+    promise,
+  });
+
+  return promise;
+}
+
+async function loadLatest(actorInput, options = {}) {
   const actorKey = resolveActorKey(actorInput);
   if (!actorKey) {
     return [];
   }
+
+  const normalizedOptions =
+    options && typeof options === "object" ? options : {};
+  // Only callers that can react to a later fingerprint update should opt into
+  // stale cache reads; everyone else waits for the fresh list so they do not
+  // miss entries.
+  const allowStale = normalizedOptions.allowStale === true;
 
   if (!isFeatureEnabled(actorKey)) {
     if (!state.restored) {
@@ -1230,12 +1368,13 @@ async function loadLatest(actorInput) {
       cacheExpiresAt: cacheEntry?.expiresAt || null,
     }
   );
-  if (
-    cacheEntry?.items &&
-    cacheEntry.expiresAt &&
-    cacheEntry.expiresAt > now &&
-    Array.isArray(cacheEntry.items)
-  ) {
+  const hasCachedItems = Array.isArray(cacheEntry?.items);
+  const cacheIsFresh =
+    hasCachedItems &&
+    cacheEntry?.expiresAt &&
+    cacheEntry.expiresAt > now;
+
+  if (cacheIsFresh) {
     console.info(
       "[watchHistoryService] Returning cached watch list items.",
       {
@@ -1253,42 +1392,35 @@ async function loadLatest(actorInput) {
         actor: actorKey,
       }
     );
+    if (allowStale && hasCachedItems) {
+      console.info(
+        "[watchHistoryService] Returning stale watch list items while refresh completes.",
+        {
+          actor: actorKey,
+          itemCount: cacheEntry.items.length,
+        }
+      );
+      return cacheEntry.items;
+    }
     return cacheEntry.promise;
   }
 
-  const promise = nostrClient
-    .resolveWatchHistory(actorKey, { forceRefresh: true })
-    .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
-    .then(() => {
-      const latest = state.fingerprintCache.get(actorKey);
-      return latest?.items || [];
-    })
-    .catch((error) => {
-      if (isDevMode) {
-        console.warn("[watchHistoryService] Failed to load watch history:", error);
-      }
-      throw error;
-    })
-    .finally(() => {
-      const entry = state.fingerprintCache.get(actorKey);
-      if (entry) {
-        delete entry.promise;
-      }
-    });
+  if (!allowStale || !hasCachedItems) {
+    return scheduleWatchHistoryRefresh(actorKey, cacheEntry);
+  }
+
+  const refreshPromise = scheduleWatchHistoryRefresh(actorKey, cacheEntry);
+  refreshPromise.catch(() => {});
 
   console.info(
-    "[watchHistoryService] Triggered nostr watch list refresh.",
+    "[watchHistoryService] Returning stale watch list items while refresh is pending.",
     {
       actor: actorKey,
+      itemCount: cacheEntry?.items?.length || 0,
     }
   );
 
-  state.fingerprintCache.set(actorKey, {
-    ...(cacheEntry || {}),
-    promise,
-  });
-
-  return promise;
+  return cacheEntry.items || [];
 }
 
 async function getFingerprint(actorInput) {

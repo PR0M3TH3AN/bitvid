@@ -36,6 +36,19 @@ function normalizeNpub(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const HEX_PUBKEY_REGEX = /^[0-9a-f]{64}$/i;
+
+function isHexPubkey(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return HEX_PUBKEY_REGEX.test(trimmed);
+}
+
 function dedupeNpubs(values) {
   const normalized = Array.isArray(values) ? values.map(normalizeNpub) : [];
   return Array.from(
@@ -238,17 +251,67 @@ function encodeHexToNpub(hex) {
   }
 }
 
+function normalizeParticipantTagValue(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const nip19 = window?.NostrTools?.nip19;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("npub")) {
+    if (nip19?.decode) {
+      try {
+        const decoded = nip19.decode(trimmed);
+        if (decoded?.type === "npub") {
+          return trimmed;
+        }
+      } catch (error) {
+        // Swallow decode errors so we can still fall back to the raw npub string.
+      }
+    }
+    return trimmed;
+  }
+
+  if (isHexPubkey(trimmed)) {
+    const encoded = encodeHexToNpub(trimmed);
+    if (encoded) {
+      return encoded;
+    }
+    if (!canDecodeNpub()) {
+      return trimmed;
+    }
+  }
+
+  if (nip19?.decode) {
+    try {
+      const decoded = nip19.decode(trimmed);
+      if (decoded?.type === "npub") {
+        return trimmed;
+      }
+    } catch (error) {
+      // Ignore decode failures; values that cannot be interpreted as npubs are dropped.
+    }
+  }
+
+  return "";
+}
+
 function extractNpubsFromEvent(event) {
   if (!event || !Array.isArray(event.tags)) {
     return [];
   }
 
-  const hexKeys = event.tags
+  const candidates = event.tags
     .filter((tag) => Array.isArray(tag) && tag[0] === "p" && tag[1])
     .map((tag) => tag[1]);
 
-  const npubs = hexKeys
-    .map((hex) => encodeHexToNpub(hex))
+  const npubs = candidates
+    .map((value) => normalizeParticipantTagValue(value))
     .filter((npub) => typeof npub === "string" && npub);
 
   return dedupeNpubs(npubs);
@@ -570,3 +633,8 @@ export async function persistAdminState(actorNpub, updates) {
 
   return persistNostrState(actorNpub, updates);
 }
+
+export const __adminListStoreTestHooks = Object.freeze({
+  extractNpubsFromEvent,
+  normalizeParticipantTagValue,
+});

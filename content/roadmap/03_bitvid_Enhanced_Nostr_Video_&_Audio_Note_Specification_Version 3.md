@@ -43,19 +43,19 @@ A typical event:
 | `videoRootId`                     | String (optional)  | A stable root ID used to link multiple versions (edits) and a delete event together. **Recommended** for overshadow logic. |
 | `version`                         | Integer            | Now set to `3`.                                                                                                            |
 | `deleted`                         | Boolean            | `true` marks the post as “soft deleted.”                                                                                   |
-| `isPrivate`                       | Boolean            | Indicates if `magnet` (and possibly other fields) are encrypted.                                                           |
+| `isPrivate`                       | Boolean            | Indicates the card should stay off shared grids and remain visible only to its owner; payloads stay plaintext. |
 | `title`                           | String             | Display title for the media.                                                                                               |
-| `magnet`                          | String             | Magnet link for primary media (encrypted if `isPrivate = true`).                                                           |
+| `magnet`                          | String             | Magnet link for primary media (still stored in plaintext even when `isPrivate = true`). |
 | `extraMagnets`                    | Array (optional)   | Additional magnet links (e.g., multiple resolutions).                                                                      |
-| `thumbnail`                       | String (optional)  | URL or magnet link to a thumbnail image (encrypted if `isPrivate = true` and `encryptedMeta = true`).                      |
-| `description`                     | String (optional)  | A textual description (encrypted if `isPrivate = true` and `encryptedMeta = true`).                                        |
+| `thumbnail`                       | String (optional)  | URL or magnet link to a thumbnail image. |
+| `description`                     | String (optional)  | A textual description. |
 | `mode`                            | String             | Typically `live` or `dev`.                                                                                                 |
 | `adult`                           | Boolean (optional) | `true` if content is adult-only. Default: `false` or omitted.                                                              |
 | `categories`                      | Array (optional)   | Array of categories, e.g. `["comedy", "music"]`.                                                                           |
 | `language`                        | String (optional)  | Language code (e.g. `"en"`, `"es"`).                                                                                       |
 | `payment`                         | String (optional)  | Monetization field (e.g. a Lightning address).                                                                             |
 | `i18n`                            | Object (optional)  | Internationalization map (e.g. `{"title_en": "...", "description_es": "..."}`).                                            |
-| `encryptedMeta`                   | Boolean (optional) | Indicates if fields like `description` or `thumbnail` are encrypted.                                                       |
+| `encryptedMeta`                   | Boolean (optional) | Legacy flag from earlier encryption experiments; leave `false` unless a future spec revives encrypted metadata. |
 | **Audio/Podcast-Specific Fields** |                    |                                                                                                                            |
 | `contentType`                     | String (optional)  | E.g., `"video"`, `"music"`, `"podcast"`, `"audiobook"`.                                                                    |
 | `albumName`                       | String (optional)  | Name of the album (for music).                                                                                             |
@@ -194,7 +194,7 @@ A typical event:
 ### **8.2 Deletion**
 
 1. **deleted = true**: Mark the item as deleted in the `content` JSON.
-2. **Remove or encrypt** sensitive fields (`magnet`, `description`, etc.).
+2. **Clear** sensitive fields (`magnet`, `description`, etc.) if you do not want them mirrored in older clients.
 3. **videoRootId**: Must remain the same as the original so clients remove/overshadow the old item.
 4. **subscribeVideos** Logic:
    ```js
@@ -217,7 +217,7 @@ A typical event:
 1. **Adult Content**: If `adult = true`, clients typically hide the post unless the user enables adult content in settings.
 2. **Categories**: Provide optional grouping or searching by `categories`.
 3. **Language**: If specified, clients can filter by language.
-4. **Encryption**: If `isPrivate = true`, some fields (e.g., `magnet`) may need client-side decryption.
+4. **Privacy handling**: If `isPrivate = true`, clients should hide the card from shared grids instead of attempting client-side decryption.
 
 ---
 

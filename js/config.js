@@ -2,6 +2,12 @@
 
 import {
   ADMIN_SUPER_NPUB,
+  ADMIN_DM_IMAGE_URL,
+  BITVID_WEBSITE_URL,
+  MAX_WALLET_DEFAULT_ZAP,
+  PLATFORM_FEE_PERCENT,
+  PLATFORM_LUD16_OVERRIDE,
+  DEFAULT_RELAY_URLS_OVERRIDE,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
   DEFAULT_WHITELIST_MODE_ENABLED,
   WATCH_HISTORY_KIND,
@@ -16,6 +22,7 @@ import {
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
   VIEW_COUNT_BACKFILL_MAX_DAYS,
   VIEW_COUNT_CACHE_TTL_MS,
+  ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
 } from "../config/instance-config.js";
 
 export const isDevMode = true; // Set to false for production
@@ -26,6 +33,12 @@ export const isDevMode = true; // Set to false for production
 
 export const ADMIN_LIST_MODE = "nostr";
 export { ADMIN_SUPER_NPUB };
+export { ADMIN_DM_IMAGE_URL };
+export { BITVID_WEBSITE_URL };
+export { MAX_WALLET_DEFAULT_ZAP };
+export { PLATFORM_FEE_PERCENT };
+export { PLATFORM_LUD16_OVERRIDE };
+export { DEFAULT_RELAY_URLS_OVERRIDE };
 export const ADMIN_EDITORS_NPUBS = []; // Default moderators (optional)
 export const ADMIN_LIST_NAMESPACE = "bitvid:admin"; // Reserved for Nostr lists
 
@@ -71,3 +84,4 @@ export { WATCH_HISTORY_CACHE_TTL_MS };
 export { VIEW_COUNT_DEDUPE_WINDOW_SECONDS };
 export { VIEW_COUNT_BACKFILL_MAX_DAYS };
 export { VIEW_COUNT_CACHE_TTL_MS };
+export { ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS };

@@ -6,6 +6,10 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 
+const FAST_BLOCKLIST_RELAY_LIMIT = 3;
+const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
+const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
+
 function normalizeHex(pubkey) {
   if (typeof pubkey !== "string") {
     return null;
@@ -86,63 +90,214 @@ class UserBlockListManager {
         limit: 1,
       };
 
-      const events = [];
-      for (const relay of nostrClient.relays) {
-        try {
-          const res = await nostrClient.pool.list([relay], [filter]);
-          if (Array.isArray(res) && res.length) {
-            events.push(...res);
-          }
-        } catch (err) {
-          console.error(`[UserBlockList] Relay error at ${relay}:`, err);
-        }
-      }
+      const relays = Array.isArray(nostrClient.relays)
+        ? nostrClient.relays.filter((relay) => typeof relay === "string" && relay)
+        : [];
 
-      if (!events.length) {
+      if (!relays.length) {
         this.blockedPubkeys.clear();
         this.blockEventId = null;
         this.loaded = true;
         return;
       }
 
-      events.sort((a, b) => b.created_at - a.created_at);
-      const newest = events[0];
-      this.blockEventId = newest.id;
+      const fastRelays = relays.slice(0, FAST_BLOCKLIST_RELAY_LIMIT);
+      const backgroundRelays = relays.slice(fastRelays.length);
 
-      let decrypted = "";
-      try {
-        decrypted = await window.nostr.nip04.decrypt(
-          normalized,
-          newest.content
-        );
-      } catch (err) {
-        console.error("[UserBlockList] Failed to decrypt block list:", err);
-        this.blockedPubkeys.clear();
-        this.loaded = true;
+      const fetchFromRelay = (relayUrl, timeoutMs, requireEvent) =>
+        new Promise((resolve, reject) => {
+          let settled = false;
+          const timer = setTimeout(() => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            const timeoutError = new Error(
+              `Timed out fetching block list from ${relayUrl} after ${timeoutMs}ms`
+            );
+            timeoutError.code = "timeout";
+            timeoutError.relay = relayUrl;
+            timeoutError.timeoutMs = timeoutMs;
+            reject(timeoutError);
+          }, timeoutMs);
+
+          Promise.resolve()
+            .then(() => nostrClient.pool.list([relayUrl], [filter]))
+            .then((result) => {
+              if (settled) {
+                return;
+              }
+              settled = true;
+              clearTimeout(timer);
+              const events = Array.isArray(result)
+                ? result.filter((event) => event && event.pubkey === normalized)
+                : [];
+              if (requireEvent && !events.length) {
+                const emptyError = new Error(
+                  `No block list events returned from ${relayUrl}`
+                );
+                emptyError.code = "empty";
+                emptyError.relay = relayUrl;
+                reject(emptyError);
+                return;
+              }
+              resolve({ relayUrl, events });
+            })
+            .catch((error) => {
+              if (settled) {
+                return;
+              }
+              settled = true;
+              clearTimeout(timer);
+              const wrapped =
+                error instanceof Error ? error : new Error(String(error));
+              wrapped.relay = relayUrl;
+              reject(wrapped);
+            });
+        });
+
+      const fastPromises = fastRelays.map((relayUrl) =>
+        fetchFromRelay(relayUrl, FAST_BLOCKLIST_TIMEOUT_MS, true)
+      );
+      const backgroundPromises = backgroundRelays.map((relayUrl) =>
+        fetchFromRelay(relayUrl, BACKGROUND_BLOCKLIST_TIMEOUT_MS, false)
+      );
+
+      const applyEvents = async (events, { skipIfEmpty = false } = {}) => {
+        if (!Array.isArray(events) || !events.length) {
+          if (skipIfEmpty) {
+            return;
+          }
+          this.blockedPubkeys.clear();
+          this.blockEventId = null;
+          return;
+        }
+
+        const sorted = events
+          .filter((event) => event && event.pubkey === normalized)
+          .sort((a, b) => (b?.created_at || 0) - (a?.created_at || 0));
+
+        if (!sorted.length) {
+          if (skipIfEmpty) {
+            return;
+          }
+          this.blockedPubkeys.clear();
+          this.blockEventId = null;
+          return;
+        }
+
+        const newest = sorted[0];
+        if (newest?.id && newest.id === this.blockEventId && this.blockedPubkeys.size) {
+          return;
+        }
+
+        this.blockEventId = newest?.id || null;
+
+        if (!newest?.content) {
+          this.blockedPubkeys.clear();
+          return;
+        }
+
+        let decrypted = "";
+        try {
+          decrypted = await window.nostr.nip04.decrypt(normalized, newest.content);
+        } catch (err) {
+          console.error("[UserBlockList] Failed to decrypt block list:", err);
+          this.blockedPubkeys.clear();
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(decrypted);
+          const list = Array.isArray(parsed?.blockedPubkeys)
+            ? parsed.blockedPubkeys
+            : [];
+          const sanitized = list
+            .map((entry) => normalizeHex(entry))
+            .filter((candidate) => {
+              if (!candidate) {
+                return false;
+              }
+              if (candidate === normalized) {
+                return false;
+              }
+              return true;
+            });
+          this.blockedPubkeys = new Set(sanitized);
+        } catch (err) {
+          console.error("[UserBlockList] Failed to parse block list:", err);
+          this.blockedPubkeys.clear();
+        }
+      };
+
+      const background = Promise.allSettled([
+        ...fastPromises,
+        ...backgroundPromises,
+      ])
+        .then(async (outcomes) => {
+          const aggregated = [];
+          for (const outcome of outcomes) {
+            if (outcome.status === "fulfilled") {
+              const events = Array.isArray(outcome.value?.events)
+                ? outcome.value.events
+                : [];
+              if (events.length) {
+                aggregated.push(...events);
+              }
+            } else {
+              const reason = outcome.reason;
+              if (reason?.code === "timeout") {
+                console.warn(
+                  `[UserBlockList] Relay ${reason.relay} timed out while loading block list (${reason.timeoutMs}ms)`
+                );
+              } else {
+                const relay = reason?.relay || reason?.relayUrl;
+                console.error(
+                  `[UserBlockList] Relay error at ${relay}:`,
+                  reason?.error ?? reason
+                );
+              }
+            }
+          }
+
+          if (!aggregated.length) {
+            return;
+          }
+
+          await applyEvents(aggregated, { skipIfEmpty: true });
+        })
+        .catch((error) => {
+          console.error("[UserBlockList] background block list refresh failed:", error);
+        });
+
+      let fastResult = null;
+      if (fastPromises.length) {
+        try {
+          fastResult = await Promise.any(fastPromises);
+        } catch (error) {
+          if (error instanceof AggregateError) {
+            error.errors?.forEach((err) => {
+              if (err?.code === "timeout") {
+                console.warn(
+                  `[UserBlockList] Relay ${err.relay} timed out while loading block list (${err.timeoutMs}ms)`
+                );
+              }
+            });
+          } else {
+            console.error("[UserBlockList] Fast block list fetch failed:", error);
+          }
+        }
+      }
+
+      if (fastResult?.events?.length) {
+        await applyEvents(fastResult.events);
+        background.catch(() => {});
         return;
       }
 
-      try {
-        const parsed = JSON.parse(decrypted);
-        const list = Array.isArray(parsed?.blockedPubkeys)
-          ? parsed.blockedPubkeys
-          : [];
-        const sanitized = list
-          .map((entry) => normalizeHex(entry))
-          .filter((candidate) => {
-            if (!candidate) {
-              return false;
-            }
-            if (candidate === normalized) {
-              return false;
-            }
-            return true;
-          });
-        this.blockedPubkeys = new Set(sanitized);
-      } catch (err) {
-        console.error("[UserBlockList] Failed to parse block list:", err);
-        this.blockedPubkeys.clear();
-      }
+      this.blockedPubkeys.clear();
+      this.blockEventId = null;
+      background.catch(() => {});
     } catch (error) {
       console.error("[UserBlockList] loadBlocks failed:", error);
       this.blockedPubkeys.clear();

@@ -47,6 +47,14 @@ if (!globalThis.window.NostrTools) {
   globalThis.window.NostrTools = {};
 }
 
+if (typeof globalThis.window.NostrTools.getEventHash !== "function") {
+  globalThis.window.NostrTools.getEventHash = () => "test-event-hash";
+}
+
+if (typeof globalThis.window.NostrTools.signEvent !== "function") {
+  globalThis.window.NostrTools.signEvent = () => "test-event-sig";
+}
+
 setNostrEventSchemaOverrides({});
 
 const canonicalViewEvent = buildViewEvent({
@@ -275,10 +283,83 @@ const {
   unsubscribeFromVideoViewCount,
   ingestLocalViewEvent,
 } = await import("../js/viewCounter.js");
+const { resolveVideoPointer } = await import("../js/utils/videoPointer.js");
+const {
+  getVideoRootIdentifier,
+  applyRootTimestampToVideosMap,
+  syncActiveVideoRootTimestamp,
+} = await import("../js/utils/videoTimestamps.js");
 
 initViewCounter({ nostrClient });
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function testPointerPrefersVideoRootId() {
+  const info = resolveVideoPointer({
+    pubkey: "ABCDEF1234",
+    videoRootId: "ROOT-POINTER",
+    dTag: "legacy-d-tag",
+    fallbackEventId: "event-fallback",
+    kind: 30078,
+  });
+
+  assert.ok(info, "expected pointer info for root-backed video");
+  assert.deepEqual(
+    info.pointer,
+    ["a", "30078:abcdef1234:ROOT-POINTER"],
+    "videos with a videoRootId should resolve to the root pointer"
+  );
+  assert.equal(
+    info.key,
+    "a:30078:abcdef1234:root-pointer",
+    "root pointer key should be normalized for view counter lookups"
+  );
+}
+
+function testPointerFallsBackToDTag() {
+  const info = resolveVideoPointer({
+    pubkey: "ABCDEF1234",
+    dTag: "legacy-pointer",
+    fallbackEventId: "event-fallback",
+    kind: 30078,
+  });
+
+  assert.ok(info, "expected pointer info when only d-tag is present");
+  assert.deepEqual(
+    info.pointer,
+    ["a", "30078:abcdef1234:legacy-pointer"],
+    "videos without a root should fall back to the d-tag pointer"
+  );
+  assert.equal(
+    info.key,
+    "a:30078:abcdef1234:legacy-pointer",
+    "d-tag pointer key should match the normalized value"
+  );
+}
+
+function testPointerFallsBackToEventId() {
+  const info = resolveVideoPointer({
+    pubkey: "ABCDEF1234",
+    fallbackEventId: "legacy-event-id",
+    kind: 30078,
+  });
+
+  assert.ok(info, "expected pointer info when only event id is present");
+  assert.deepEqual(
+    info.pointer,
+    ["e", "legacy-event-id"],
+    "videos without root or d-tag should fall back to the event pointer"
+  );
+  assert.equal(
+    info.key,
+    "e:legacy-event-id",
+    "event pointer key should normalize correctly"
+  );
+}
+
+testPointerPrefersVideoRootId();
+testPointerFallsBackToDTag();
+testPointerFallsBackToEventId();
 
 async function testDedupesWithinWindow() {
   localStorage.clear();
@@ -641,6 +722,99 @@ async function testRecordVideoViewEmitsJsonPayload() {
   );
 }
 
+async function testSignAndPublishFallbackUsesSessionActor() {
+  const originalExtension = window.nostr;
+  const originalPool = nostrClient.pool;
+  const originalRelays = nostrClient.relays;
+  const originalPubkey = nostrClient.pubkey;
+  const originalSessionActor = nostrClient.sessionActor;
+  const originalEnsureSessionActor = nostrClient.ensureSessionActor;
+  const ensureCalls = [];
+  const publishCalls = [];
+
+  try {
+    delete window.nostr;
+
+    nostrClient.pool = {
+      publish(urls, event) {
+        publishCalls.push({ urls, event });
+        return {
+          on(eventName, handler) {
+            if (eventName === "ok") {
+              handler();
+            }
+            return true;
+          },
+        };
+      },
+    };
+    nostrClient.relays = ["wss://relay.fallback"];
+    nostrClient.pubkey = "logged-user";
+    nostrClient.sessionActor = {
+      pubkey: "session-actor",
+      privateKey: "session-private",
+    };
+    nostrClient.ensureSessionActor = async (forceRenew = false) => {
+      ensureCalls.push(forceRenew === true);
+      return nostrClient.sessionActor.pubkey;
+    };
+
+    const event = {
+      kind: 1,
+      pubkey: "session-actor",
+      created_at: 123,
+      tags: [],
+      content: "hello fallback",
+    };
+
+    const result = await nostrClient.signAndPublishEvent(event, {
+      context: "fallback",
+      logName: "fallback",
+    });
+
+    assert.ok(result, "expected a publish result when falling back to the session actor");
+    assert.equal(
+      result.signedEvent.pubkey,
+      "session-actor",
+      "fallback signing should use the session actor pubkey",
+    );
+    assert.equal(
+      result.signerPubkey,
+      "session-actor",
+      "signer pubkey should reflect the session actor when falling back",
+    );
+    assert.ok(
+      ensureCalls.length > 0,
+      "fallback signing should attempt to ensure the session actor",
+    );
+    assert.ok(
+      Array.isArray(result.summary?.accepted) && result.summary.accepted.length > 0,
+      "fallback publish should report accepted relays",
+    );
+    assert.equal(
+      publishCalls.length,
+      result.summary.accepted.length,
+      "each accepted relay should correspond to a publish attempt",
+    );
+    assert.equal(
+      result.summary.accepted[0]?.url,
+      "wss://relay.fallback",
+      "publish summary should surface the accepting relay",
+    );
+  } finally {
+    if (typeof originalExtension === "undefined") {
+      delete window.nostr;
+    } else {
+      window.nostr = originalExtension;
+    }
+    nostrClient.pool = originalPool;
+    nostrClient.relays = originalRelays;
+    nostrClient.pubkey = originalPubkey;
+    nostrClient.sessionActor = originalSessionActor;
+    nostrClient.ensureSessionActor = originalEnsureSessionActor;
+  }
+}
+
 // Cached totals older than VIEW_COUNT_CACHE_TTL_MS should be discarded and rehydrated from relays.
 async function testHydrationRefreshesAfterCacheTtl() {
   harness.reset();
@@ -697,6 +871,168 @@ async function testHydrationRefreshesAfterCacheTtl() {
   }
 }
 
+async function testHydrateHistoryPrefersRootEvent() {
+  const originalPool = nostrClient.pool;
+  const originalRelays = Array.isArray(nostrClient.relays)
+    ? [...nostrClient.relays]
+    : [];
+  const originalPopulate = nostrClient.populateNip71MetadataForVideos;
+  const originalAllEvents = nostrClient.allEvents;
+  const originalActiveMap = nostrClient.activeMap;
+  const originalRootMap = nostrClient.rootCreatedAtByRoot;
+
+  const rootId = "root-event-note";
+  const latestVideo = {
+    id: "latest-edit",
+    videoRootId: rootId,
+    pubkey: "PUBKEY123",
+    created_at: 200,
+    title: "Edited title",
+    url: "https://example.com/edited.mp4",
+    tags: [["t", "video"]],
+    deleted: false,
+  };
+
+  const rootEvent = {
+    id: rootId,
+    pubkey: latestVideo.pubkey,
+    created_at: 100,
+    kind: 30078,
+    content: JSON.stringify({
+      version: 3,
+      title: "Original title",
+      url: "https://example.com/original.mp4",
+      videoRootId: rootId,
+      description: "",
+      mode: "live",
+    }),
+    tags: [["t", "video"]],
+  };
+
+  const getCalls = [];
+
+  try {
+    nostrClient.pool = {
+      get: async (relays, filter) => {
+        getCalls.push({ relays, filter });
+        return rootEvent;
+      },
+      list: async () => [],
+    };
+    nostrClient.relays = ["wss://relay.example"];
+    nostrClient.populateNip71MetadataForVideos = async () => {};
+    nostrClient.allEvents = new Map([[latestVideo.id, latestVideo]]);
+    nostrClient.activeMap = new Map([[`ROOT:${rootId}`, latestVideo]]);
+    nostrClient.rootCreatedAtByRoot = new Map();
+
+    const history = await nostrClient.hydrateVideoHistory(latestVideo);
+
+    assert.equal(
+      getCalls.length,
+      1,
+      "hydrateVideoHistory should fetch the root event when it is missing locally"
+    );
+
+    assert.ok(Array.isArray(history) && history.length >= 2);
+    const fetchedRoot = history.find((entry) => entry.id === rootId);
+    assert.ok(fetchedRoot, "history should include the fetched root event");
+    assert.equal(
+      fetchedRoot.created_at,
+      rootEvent.created_at,
+      "root event should preserve its original created_at timestamp"
+    );
+    assert.equal(
+      latestVideo.rootCreatedAt,
+      rootEvent.created_at,
+      "latest revision should inherit the root created_at timestamp"
+    );
+    assert.equal(
+      nostrClient.rootCreatedAtByRoot.get(rootId),
+      rootEvent.created_at,
+      "nostrClient should cache the earliest created_at per root"
+    );
+  } finally {
+    nostrClient.pool = originalPool;
+    nostrClient.relays = originalRelays;
+    nostrClient.populateNip71MetadataForVideos = originalPopulate;
+    nostrClient.allEvents = originalAllEvents;
+    nostrClient.activeMap = originalActiveMap;
+    nostrClient.rootCreatedAtByRoot = originalRootMap;
+  }
+}
+
+async function testModalPostedTimestampStaysInSync() {
+  const videosMap = new Map();
+  const currentVideo = {
+    id: "latest-edit",
+    videoRootId: "root-event-note",
+    created_at: 260,
+    lastEditedAt: 260,
+  };
+
+  const storedVideo = { id: "latest-edit", videoRootId: "root-event-note" };
+  videosMap.set(storedVideo.id, storedVideo);
+
+  const incomingVideo = { ...currentVideo };
+  const rootId = getVideoRootIdentifier(incomingVideo);
+  const timestamp = 100;
+
+  applyRootTimestampToVideosMap({
+    videosMap,
+    video: incomingVideo,
+    rootId,
+    timestamp,
+  });
+
+  assert.equal(
+    storedVideo.rootCreatedAt,
+    timestamp,
+    "videosMap entries that share the root should receive the cached timestamp",
+  );
+
+  const modalUpdates = [];
+  const videoModal = {
+    updateMetadata: ({ timestamps }) => {
+      if (timestamps) {
+        modalUpdates.push({ ...timestamps });
+      }
+    },
+  };
+
+  const buildModalTimestampPayload = ({ postedAt, editedAt }) => ({
+    posted: postedAt !== null ? `Posted time-${postedAt}` : "",
+    edited: editedAt !== null ? `Last edited time-${editedAt}` : "",
+  });
+
+  const updated = syncActiveVideoRootTimestamp({
+    activeVideo: currentVideo,
+    rootId,
+    timestamp,
+    buildModalTimestampPayload,
+    videoModal,
+  });
+
+  assert.ok(updated, "syncActiveVideoRootTimestamp should record the new root time");
+  assert.equal(
+    currentVideo.rootCreatedAt,
+    timestamp,
+    "current video should stay aligned with the cached root timestamp",
+  );
+
+  const lastModalUpdate = modalUpdates.at(-1);
+  assert.ok(lastModalUpdate, "video modal should receive a timestamp update");
+  assert.equal(
+    lastModalUpdate.posted,
+    "Posted time-100",
+    "modal posted label should reflect the root timestamp",
+  );
+  assert.equal(
+    lastModalUpdate.edited,
+    "Last edited time-260",
+    "modal edited label should continue to show the latest edit time",
+  );
+}
+
 await testHydrationRefreshesAfterCacheTtl();
 await testDedupesWithinWindow();
 await testHydrationSkipsStaleEventsAndRollsOff();
@@ -704,5 +1040,8 @@ await testLocalIngestNotifiesImmediately();
 await testUnsubscribeStopsCallbacks();
 await testRelayCountAggregationUsesBestEstimate();
 await testRecordVideoViewEmitsJsonPayload();
+await testSignAndPublishFallbackUsesSessionActor();
+await testHydrateHistoryPrefersRootEvent();
+await testModalPostedTimestampStaysInSync();
 
 console.log("View counter tests completed successfully.");

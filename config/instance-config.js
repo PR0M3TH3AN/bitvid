@@ -26,6 +26,67 @@ export const ADMIN_SUPER_NPUB =
   "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
 
 /**
+ * Canonical URL for the public BitVid site.
+ *
+ * Surfaces in admin outreach copy and moderation DMs so that recipients can
+ * quickly jump back to the primary destination. Update this if your
+ * deployment relies on a different canonical hostname.
+ */
+export const BITVID_WEBSITE_URL = "https://bitvid.network/";
+
+/**
+ * Default image included in automated moderation DMs.
+ *
+ * BitVid embeds this media asset at the top of notification messages so the
+ * payload renders with a recognizable preview. Provide a fully qualified URL
+ * that points to a hosted image accessible by the intended recipients.
+ */
+export const ADMIN_DM_IMAGE_URL =
+  "https://beta.bitvid.network/assets/jpg/video-thumbnail-fallback.jpg";
+
+/**
+ * Maximum satoshi value allowed when storing the default zap amount.
+ *
+ * Wallet settings clamp user input to this value before persistence to guard
+ * against accidental overpayment. Tune the ceiling to match your instance's
+ * risk tolerance.
+ */
+export const MAX_WALLET_DEFAULT_ZAP = 100000000;
+
+/**
+ * Percentage of every Lightning payment the platform retains as a fee.
+ *
+ * Accepts numbers between 0 and 100 (inclusive). Decimals are supported when
+ * you want to keep a fractional cut—e.g., `2.5` represents a 2.5% fee. The
+ * default of `0` disables the fee so creators receive the full payment.
+ */
+export const PLATFORM_FEE_PERCENT = 30;
+
+/**
+ * Lightning address to fall back to when authors omit their own `lud16`.
+ *
+ * Supply a string like `"tips@example.com"` to force a deployment-wide
+ * fallback Lightning address. When `PLATFORM_FEE_PERCENT` is greater than 0,
+ * this override also acts as the Lightning target for the platform’s split.
+ * Leave the value as `null` to respect the creator’s metadata and rely on the
+ * Super Admin profile publishing a `lud16` so BitVid still knows where to route
+ * fees when they are enabled.
+ */
+export const PLATFORM_LUD16_OVERRIDE = "adammalin@strike.me";
+
+/**
+ * Optional list of relays to seed new sessions with instead of the defaults.
+ *
+ * Provide WSS URLs (e.g., `"wss://relay.example.com"`). Leave the array empty
+ * to keep BitVid’s bundled defaults. Operators that need a custom bootstrap set
+ * should list the relays in priority order; entries later in the list are used
+ * as fallbacks when earlier relays fail.
+ */
+export const DEFAULT_RELAY_URLS_OVERRIDE = Object.freeze([
+  // "wss://relay.example.com",
+]);
+
+/**
  * Storage key used to persist whitelist-only mode in the browser.
  *
  * You usually do not need to change this, but the export lives here so that all
@@ -115,7 +176,7 @@ export const WATCH_HISTORY_BATCH_RESOLVE = true;
  * that page through histories in smaller slices can set a positive integer to
  * cap the resolver output so pagination and API responses stay aligned.
  */
-export const WATCH_HISTORY_BATCH_PAGE_SIZE = null;
+export const WATCH_HISTORY_BATCH_PAGE_SIZE = 10;
 
 /**
  * Maximum size of the JSON payload for each watch-history chunk, measured
@@ -177,3 +238,13 @@ export const VIEW_COUNT_BACKFILL_MAX_DAYS = 90;
  * fresher dashboards or raise it if your analytics traffic is heavy.
  */
 export const VIEW_COUNT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Cooldown window (in seconds) between manual "Rebroadcast" attempts.
+ *
+ * Rebroadcasting is an escape hatch for creators to nudge stale relays. A
+ * short cooldown keeps this safeguard from turning into an accidental DDoS.
+ * Five minutes provides enough breathing room for relays to catch up while
+ * still letting operators retry if a publish genuinely failed.
+ */
+export const ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS = 5 * 60;

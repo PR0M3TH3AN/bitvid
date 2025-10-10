@@ -3,7 +3,15 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 
-const { WATCH_HISTORY_PAYLOAD_MAX_BYTES, WATCH_HISTORY_MAX_ITEMS } =
+const {
+  WATCH_HISTORY_PAYLOAD_MAX_BYTES,
+  WATCH_HISTORY_MAX_ITEMS,
+  WATCH_HISTORY_CACHE_TTL_MS,
+  WATCH_HISTORY_BATCH_RESOLVE,
+  WATCH_HISTORY_BATCH_PAGE_SIZE,
+  WATCH_HISTORY_LIST_IDENTIFIER,
+  WATCH_HISTORY_KIND,
+} =
   await import("../js/config.js");
 const {
   getWatchHistoryV2Enabled,
@@ -12,8 +20,13 @@ const {
 const {
   nostrClient,
   chunkWatchHistoryPayloadItems,
+  normalizeActorKey,
 } = await import("../js/nostr.js");
 const { watchHistoryService } = await import("../js/watchHistoryService.js");
+const { buildHistoryCard } = await import("../js/historyView.js");
+const { getApplication, setApplication } = await import(
+  "../js/applicationContext.js"
+);
 
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
@@ -51,6 +64,14 @@ const originalScheduleWatchHistoryRepublish =
 const originalResolveWatchHistory = nostrClient.resolveWatchHistory;
 const originalGetWatchHistoryFingerprint =
   nostrClient.getWatchHistoryFingerprint;
+const originalExtensionPermissionCache = nostrClient.extensionPermissionCache;
+const originalExtensionPermissionSnapshot = Array.isArray(
+  originalExtensionPermissionCache,
+)
+  ? Array.from(originalExtensionPermissionCache)
+  : [];
+
+nostrClient.extensionPermissionCache = new Set();
 
 nostrClient.watchHistoryCache = new Map();
 nostrClient.watchHistoryStorage = {
@@ -198,6 +219,43 @@ function createFakeSimplePool() {
 
 const poolHarness = createFakeSimplePool();
 nostrClient.pool = poolHarness;
+
+function extractVideoMetadataFromItem(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+
+  const directVideo = item.video;
+  if (directVideo && typeof directVideo === "object") {
+    return directVideo;
+  }
+
+  const metadataVideo =
+    item.metadata && typeof item.metadata === "object"
+      ? item.metadata.video
+      : null;
+  if (metadataVideo && typeof metadataVideo === "object") {
+    return metadataVideo;
+  }
+
+  const pointer = item.pointer && typeof item.pointer === "object"
+    ? item.pointer
+    : null;
+  if (pointer) {
+    if (pointer.video && typeof pointer.video === "object") {
+      return pointer.video;
+    }
+    const pointerMetadata =
+      pointer.metadata && typeof pointer.metadata === "object"
+        ? pointer.metadata.video
+        : null;
+    if (pointerMetadata && typeof pointerMetadata === "object") {
+      return pointerMetadata;
+    }
+  }
+
+  return null;
+}
 nostrClient.relays = ["wss://relay.test"];
 nostrClient.readRelays = ["wss://relay.test"];
 nostrClient.writeRelays = ["wss://relay.test"];
@@ -248,7 +306,13 @@ function installExtensionCrypto({ actor }) {
   let extensionEncrypts = 0;
   let extensionDecrypts = 0;
   let fallbackEncrypts = 0;
+  const enableCalls = [];
+  const decryptCalls = [];
   window.nostr = {
+    enable: async (options) => {
+      enableCalls.push(options || null);
+      return { ok: true };
+    },
     signEvent: async (event) => ({
       ...event,
       id: `ext-${event.kind}-${event.created_at}`,
@@ -262,6 +326,7 @@ function installExtensionCrypto({ actor }) {
       },
       decrypt: async (target, ciphertext) => {
         extensionDecrypts += 1;
+        decryptCalls.push({ target, ciphertext });
         const prefix = `extension:${target}:`;
         if (!ciphertext.startsWith(prefix)) {
           throw new Error("invalid-extension-ciphertext");
@@ -297,6 +362,8 @@ function installExtensionCrypto({ actor }) {
     getExtensionEncrypts: () => extensionEncrypts,
     getExtensionDecrypts: () => extensionDecrypts,
     getFallbackEncrypts: () => fallbackEncrypts,
+    getEnableCalls: () => [...enableCalls],
+    getDecryptCalls: () => decryptCalls.map((entry) => ({ ...entry })),
   };
 }
 
@@ -318,6 +385,299 @@ function maxCreatedAt(events = []) {
     const created = Number.isFinite(event.created_at) ? event.created_at : 0;
     return created > max ? created : max;
   }, 0);
+}
+
+async function testNormalizeActorKeyShortCircuit() {
+  console.log("Running normalizeActorKey short-circuit test...");
+
+  const actorHex = "f".repeat(64);
+  const actorNpub = "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+  if (!window.NostrTools || typeof window.NostrTools !== "object") {
+    window.NostrTools = {};
+  }
+  const previousNip19 = window.NostrTools.nip19;
+  const previousDecode =
+    previousNip19 && typeof previousNip19.decode === "function"
+      ? previousNip19.decode
+      : null;
+  const decodeCalls = [];
+
+  window.NostrTools.nip19 = {
+    ...(previousNip19 || {}),
+    decode(value) {
+      decodeCalls.push(value);
+      if (value === actorNpub) {
+        return { type: "npub", data: actorHex };
+      }
+      if (typeof previousDecode === "function") {
+        return previousDecode(value);
+      }
+      throw new Error("unsupported-npub");
+    },
+  };
+
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => {
+    warnings.push(args);
+  };
+
+  try {
+    const upperHex = actorHex.toUpperCase();
+    const normalizedHex = normalizeActorKey(upperHex);
+    assert.equal(
+      normalizedHex,
+      actorHex,
+      "hex inputs should normalize to lowercase hex",
+    );
+    assert.equal(
+      decodeCalls.length,
+      0,
+      "hex inputs should not invoke nip19.decode",
+    );
+    assert.equal(
+      warnings.length,
+      0,
+      "hex inputs should not emit decode warnings",
+    );
+
+    const normalizedNpub = normalizeActorKey(actorNpub);
+    assert.equal(normalizedNpub, actorHex, "npub inputs should decode to hex");
+    assert.equal(
+      decodeCalls.length,
+      1,
+      "npub inputs should invoke nip19.decode",
+    );
+    assert.equal(
+      warnings.length,
+      0,
+      "successful npub decode should not emit warnings",
+    );
+  } finally {
+    console.warn = originalWarn;
+    if (previousNip19) {
+      window.NostrTools.nip19 = previousNip19;
+    } else if (window.NostrTools) {
+      delete window.NostrTools.nip19;
+    }
+  }
+}
+
+async function testNormalizeActorKeyManualFallback() {
+  console.log("Running normalizeActorKey manual fallback test...");
+
+  const actorHex =
+    "a4a6b5849bc917b3befd5c81865ee0b88773690609c207ba6588ef3e1e05b95b";
+  const actorNpub =
+    "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
+
+  if (!window.NostrTools || typeof window.NostrTools !== "object") {
+    window.NostrTools = {};
+  }
+
+  const previousNip19 = window.NostrTools.nip19;
+  const originalWarn = console.warn;
+  const warnings = [];
+
+  delete window.NostrTools.nip19;
+  console.warn = (...args) => {
+    warnings.push(args);
+  };
+
+  try {
+    const normalized = normalizeActorKey(actorNpub);
+    assert.equal(
+      normalized,
+      actorHex,
+      "manual fallback should decode npub values to hex",
+    );
+    assert.equal(
+      warnings.length,
+      0,
+      "manual fallback decode should not emit warnings",
+    );
+  } finally {
+    console.warn = originalWarn;
+    if (previousNip19 !== undefined) {
+      window.NostrTools.nip19 = previousNip19;
+    } else {
+      delete window.NostrTools.nip19;
+    }
+  }
+}
+
+async function testFetchWatchHistoryExtensionDecryptsHexAndNpub() {
+  const actorHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  const actorNpub =
+    "npub1testextensiondecryptqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+  const snapshotId = "extension-fetch";
+  const chunkIdentifier = "chunk-extension";
+
+  const fallbackTag = ["e", "fallback-pointer"];
+  const fallbackItem = { type: "e", value: "fallback-pointer", watchedAt: 1_700_800_000 };
+  const chunkItem = { type: "e", value: "chunk-pointer", watchedAt: 1_700_800_100 };
+
+  const chunkPayload = JSON.stringify({
+    version: 1,
+    items: [chunkItem],
+    snapshot: snapshotId,
+    chunkIndex: 0,
+    totalChunks: 1,
+  });
+  const chunkCiphertext = `extension:${actorHex}:${Buffer.from(chunkPayload, "utf8").toString("base64")}`;
+
+  const pointerEvent = {
+    id: "pointer-extension",
+    kind: WATCH_HISTORY_KIND,
+    pubkey: actorHex,
+    created_at: 1_700_800_000,
+    content: JSON.stringify({
+      version: 1,
+      items: [fallbackItem],
+      snapshot: snapshotId,
+      chunkIndex: 0,
+      totalChunks: 1,
+    }),
+    tags: [
+      ["d", WATCH_HISTORY_LIST_IDENTIFIER],
+      ["snapshot", snapshotId],
+      ["encrypted", "nip04"],
+      ["a", `${WATCH_HISTORY_KIND}:${actorHex}:${chunkIdentifier}`],
+      fallbackTag,
+    ],
+  };
+
+  const chunkEvent = {
+    id: "chunk-extension",
+    kind: WATCH_HISTORY_KIND,
+    pubkey: actorHex,
+    created_at: 1_700_800_060,
+    content: chunkCiphertext,
+    tags: [
+      ["d", chunkIdentifier],
+      ["snapshot", snapshotId],
+      ["encrypted", "nip04"],
+    ],
+  };
+
+  if (!window.NostrTools || typeof window.NostrTools !== "object") {
+    window.NostrTools = {};
+  }
+  const previousNip19 = window.NostrTools.nip19;
+  const previousDecode =
+    previousNip19 && typeof previousNip19.decode === "function"
+      ? previousNip19.decode
+      : null;
+
+  window.NostrTools.nip19 = {
+    ...(previousNip19 || {}),
+    decode: (value) => {
+      if (value === actorNpub) {
+        return { type: "npub", data: actorHex };
+      }
+      if (typeof previousDecode === "function") {
+        return previousDecode(value);
+      }
+      throw new Error("unsupported-npub");
+    },
+  };
+
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
+  const originalCache = nostrClient.watchHistoryCache;
+  const originalStorage = nostrClient.watchHistoryStorage;
+
+  nostrClient.watchHistoryCache = new Map();
+  nostrClient.watchHistoryStorage = { version: 2, actors: {} };
+
+  const publishEvents = async () => {
+    poolHarness.reset();
+    poolHarness.setResolver(() => ({ ok: true }));
+    poolHarness.publish(["wss://relay.test"], pointerEvent);
+    poolHarness.publish(["wss://relay.test"], chunkEvent);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  const runVariant = async (label, actorInput, pubkeyInput) => {
+    await publishEvents();
+
+    const sessionCrypto = installSessionCrypto({ privateKey: `session-${label}` });
+    const extensionCrypto = installExtensionCrypto({ actor: actorHex });
+
+    const previousEnsure = nostrClient.ensureSessionActor;
+    const previousSession = nostrClient.sessionActor;
+    const previousPub = nostrClient.pubkey;
+    const previousStorage = nostrClient.watchHistoryStorage;
+
+    try {
+      nostrClient.pubkey = pubkeyInput;
+      nostrClient.sessionActor = null;
+      nostrClient.ensureSessionActor = async () => {
+        throw new Error(`session fallback should not run for ${label}`);
+      };
+      nostrClient.watchHistoryCache.clear();
+      nostrClient.watchHistoryStorage = { version: 2, actors: {} };
+
+      const result = await nostrClient.fetchWatchHistory(actorInput, {
+        forceRefresh: true,
+      });
+
+      assert.equal(
+        extensionCrypto.getExtensionDecrypts(),
+        1,
+        `${label} actor should use extension decrypt`,
+      );
+      assert.equal(
+        sessionCrypto.getDecryptCalls(),
+        0,
+        `${label} actor should not trigger session decrypt fallback`,
+      );
+      const decryptCalls = extensionCrypto.getDecryptCalls();
+      assert.equal(
+        decryptCalls.length,
+        1,
+        `${label} actor should invoke extension decrypt exactly once`,
+      );
+      assert.equal(
+        decryptCalls[0]?.target,
+        actorHex,
+        `${label} actor should normalize npub inputs to hex for decrypt`,
+      );
+
+      assert.equal(result.items.length, 1, `${label} actor should return chunk item`);
+      assert.equal(
+        result.items[0]?.value,
+        chunkItem.value,
+        `${label} actor should surface decrypted pointer value`,
+      );
+    } finally {
+      extensionCrypto.restore();
+      sessionCrypto.restore();
+      nostrClient.ensureSessionActor = previousEnsure;
+      nostrClient.sessionActor = previousSession;
+      nostrClient.pubkey = previousPub;
+      nostrClient.watchHistoryStorage = previousStorage;
+      poolHarness.reset();
+    }
+  };
+
+  try {
+    await runVariant("hex", actorHex, actorHex);
+    await runVariant("npub", actorNpub, actorNpub);
+  } finally {
+    if (previousNip19) {
+      window.NostrTools.nip19 = previousNip19;
+    } else if (window.NostrTools) {
+      delete window.NostrTools.nip19;
+    }
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+    nostrClient.watchHistoryCache = originalCache;
+    nostrClient.watchHistoryStorage = originalStorage;
+    poolHarness.reset();
+  }
 }
 
 async function testPublishSnapshotCanonicalizationAndChunking() {
@@ -545,12 +905,54 @@ async function testPublishSnapshotUsesExtensionCrypto() {
       result.items.length,
       "decrypted payload should match canonical item count",
     );
+    assert.equal(
+      extension.getEnableCalls().length,
+      1,
+      "extension permissions should be requested once before encrypting",
+    );
   } finally {
     extension.restore();
     sessionRestore.restore();
     nostrClient.ensureSessionActor = originalEnsure;
     nostrClient.sessionActor = originalSession;
     nostrClient.pubkey = originalPub;
+  }
+}
+
+async function testEnsureExtensionPermissionCaching() {
+  const actor = "permission-actor";
+  const extension = installExtensionCrypto({ actor });
+  const previousCache = nostrClient.extensionPermissionCache;
+  nostrClient.extensionPermissionCache = new Set();
+
+  try {
+    const first = await nostrClient.ensureExtensionPermissions([
+      "nip04.decrypt",
+    ]);
+    assert.equal(
+      first.ok,
+      true,
+      "ensureExtensionPermissions should resolve when extension is available",
+    );
+    assert.equal(
+      extension.getEnableCalls().length > 0,
+      true,
+      "ensureExtensionPermissions should invoke extension.enable to request access",
+    );
+
+    const callsAfterFirst = extension.getEnableCalls().length;
+    const second = await nostrClient.ensureExtensionPermissions([
+      "nip04.decrypt",
+    ]);
+    assert.equal(second.ok, true, "cached permission requests should still resolve");
+    assert.equal(
+      extension.getEnableCalls().length,
+      callsAfterFirst,
+      "cached permission requests should not trigger duplicate enable calls",
+    );
+  } finally {
+    extension.restore();
+    nostrClient.extensionPermissionCache = previousCache;
   }
 }
 
@@ -845,10 +1247,22 @@ async function testResolveWatchHistoryBatchingWindow() {
       forceRefresh: true,
     });
 
+    const batchPageSizeRaw = Number(WATCH_HISTORY_BATCH_PAGE_SIZE);
+    const hasCustomBatchSize =
+      Boolean(WATCH_HISTORY_BATCH_RESOLVE) &&
+      Number.isFinite(batchPageSizeRaw) &&
+      batchPageSizeRaw > 0;
+    const expectedCount = hasCustomBatchSize
+      ? Math.min(
+          Math.floor(batchPageSizeRaw),
+          WATCH_HISTORY_MAX_ITEMS,
+          syntheticItems.length,
+        )
+      : Math.min(WATCH_HISTORY_MAX_ITEMS, syntheticItems.length);
     assert.equal(
       resolved.length,
-      Math.min(WATCH_HISTORY_MAX_ITEMS, syntheticItems.length),
-      "batched resolve should return the full window when no page size override is configured",
+      expectedCount,
+      "batched resolve should honor the configured page size when batching is enabled",
     );
     assert(resolved.length > 1, "resolved history should include multiple entries");
     assert.equal(
@@ -876,6 +1290,15 @@ async function testWatchHistoryServiceIntegration() {
   poolHarness.setResolver(() => ({ ok: true }));
 
   const actor = "service-actor";
+  const pointerVideo = {
+    id: "video-one",
+    title: "Video One",
+    url: "https://cdn.example/video-one.mp4",
+    magnet:
+      "magnet:?xt=urn:btih:89abcdef0123456789abcdef0123456789abcdef",
+    infoHash: "89abcdef0123456789abcdef0123456789abcdef",
+    legacyInfoHash: "89abcdef0123456789abcdef0123456789abcdef",
+  };
   const restoreCrypto = installSessionCrypto({ privateKey: "service-priv" });
   const originalEnsure = nostrClient.ensureSessionActor;
   const originalSession = nostrClient.sessionActor;
@@ -914,13 +1337,13 @@ async function testWatchHistoryServiceIntegration() {
     await watchHistoryService.publishView(
       { type: "e", value: "video-one" },
       viewCreatedAt,
-      { actor },
+      { actor, video: pointerVideo },
     );
     viewCreatedAt += 60;
     await watchHistoryService.publishView(
       { type: "e", value: "video-one" },
       viewCreatedAt,
-      { actor },
+      { actor, video: pointerVideo },
     );
     viewCreatedAt += 30;
     await watchHistoryService.publishView(
@@ -937,6 +1360,36 @@ async function testWatchHistoryServiceIntegration() {
       reason: "integration",
     });
     assert.ok(snapshotResult.ok, "snapshot should publish queued pointers");
+    const snapshotItems = Array.isArray(snapshotResult.items)
+      ? snapshotResult.items
+      : [];
+    const snapshotVideo = extractVideoMetadataFromItem(
+      snapshotItems.find(
+        (entry) =>
+          (entry?.value || entry?.pointer?.value || "") === "video-one",
+      ),
+    );
+    assert(snapshotVideo, "snapshot should retain pointer video metadata");
+    assert.equal(
+      snapshotVideo?.url,
+      pointerVideo.url,
+      "snapshot pointer video should preserve url",
+    );
+    assert.equal(
+      snapshotVideo?.magnet,
+      pointerVideo.magnet,
+      "snapshot pointer video should preserve magnet",
+    );
+    assert.equal(
+      snapshotVideo?.infoHash,
+      pointerVideo.infoHash,
+      "snapshot pointer video should preserve infoHash",
+    );
+    assert.equal(
+      snapshotVideo?.legacyInfoHash,
+      pointerVideo.legacyInfoHash,
+      "snapshot pointer video should preserve legacy info hash",
+    );
     assert.equal(
       watchHistoryService.getQueuedPointers(actor).length,
       0,
@@ -948,6 +1401,33 @@ async function testWatchHistoryServiceIntegration() {
       resolvedItems,
       snapshotResult.items,
       "loadLatest should return decrypted canonical pointers",
+    );
+    const resolvedVideo = extractVideoMetadataFromItem(
+      resolvedItems.find(
+        (entry) =>
+          (entry?.value || entry?.pointer?.value || "") === "video-one",
+      ),
+    );
+    assert(resolvedVideo, "decrypted history should include pointer video");
+    assert.equal(
+      resolvedVideo?.url,
+      pointerVideo.url,
+      "decrypted pointer video should expose url",
+    );
+    assert.equal(
+      resolvedVideo?.magnet,
+      pointerVideo.magnet,
+      "decrypted pointer video should expose magnet",
+    );
+    assert.equal(
+      resolvedVideo?.infoHash,
+      pointerVideo.infoHash,
+      "decrypted pointer video should expose infoHash",
+    );
+    assert.equal(
+      resolvedVideo?.legacyInfoHash,
+      pointerVideo.legacyInfoHash,
+      "decrypted pointer video should expose legacy info hash",
     );
     assert(resolvedItems[0].watchedAt >= resolvedItems[1].watchedAt);
     assert.equal(
@@ -980,6 +1460,305 @@ async function testWatchHistoryServiceIntegration() {
     nostrClient.watchHistoryCacheTtlMs = originalWatchHistoryCacheTtl;
     nostrClient.watchHistoryCache.clear();
     nostrClient.watchHistoryFingerprints = new Map();
+  }
+}
+
+async function testHistoryCardsUseDecryptedPlaybackMetadata() {
+  console.log("Running watch history card playback metadata test...");
+
+  const pointerVideo = {
+    id: "history-card",
+    title: "History Card Video",
+    url: "https://cdn.example/history-card.mp4",
+    magnet:
+      "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+    infoHash: "0123456789abcdef0123456789abcdef01234567",
+    legacyInfoHash: "0123456789abcdef0123456789abcdef01234567",
+  };
+
+  const item = {
+    pointerKey: "e:history-card",
+    pointer: { type: "e", value: "history-card" },
+    watchedAt: 1_700_000_500,
+  };
+
+  const originalDocument = globalThis.document;
+  const originalHTMLElement = globalThis.HTMLElement;
+
+  class FakeClassList {
+    constructor(element) {
+      this.element = element;
+    }
+
+    _sync() {
+      this.element._className = Array.from(this.element._classSet).join(" ");
+    }
+
+    add(...tokens) {
+      tokens.forEach((token) => {
+        if (token) {
+          this.element._classSet.add(token);
+        }
+      });
+      this._sync();
+    }
+
+    remove(...tokens) {
+      tokens.forEach((token) => this.element._classSet.delete(token));
+      this._sync();
+    }
+
+    toggle(token, force) {
+      if (!token) {
+        return false;
+      }
+      if (force === true) {
+        this.element._classSet.add(token);
+        this._sync();
+        return true;
+      }
+      if (force === false) {
+        this.element._classSet.delete(token);
+        this._sync();
+        return false;
+      }
+      if (this.element._classSet.has(token)) {
+        this.element._classSet.delete(token);
+        this._sync();
+        return false;
+      }
+      this.element._classSet.add(token);
+      this._sync();
+      return true;
+    }
+
+    contains(token) {
+      return this.element._classSet.has(token);
+    }
+  }
+
+  class FakeElement {
+    constructor(tagName) {
+      this.tagName = typeof tagName === "string" ? tagName.toUpperCase() : "";
+      this.children = [];
+      this.parentNode = null;
+      this.dataset = {};
+      this.attributes = {};
+      this.textContent = "";
+      this._classSet = new Set();
+      this._className = "";
+      this.classList = new FakeClassList(this);
+    }
+
+    appendChild(child) {
+      if (child && typeof child === "object") {
+        child.parentNode = this;
+      }
+      this.children.push(child);
+      return child;
+    }
+
+    get className() {
+      return this._className;
+    }
+
+    set className(value) {
+      const tokens =
+        typeof value === "string"
+          ? value
+              .split(/\s+/)
+              .map((token) => token.trim())
+              .filter(Boolean)
+          : [];
+      this._classSet = new Set(tokens);
+      this._className = tokens.join(" ");
+    }
+
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+
+    removeAttribute(name) {
+      delete this.attributes[name];
+    }
+  }
+
+  function collectElements(root, predicate, results = []) {
+    if (!(root instanceof FakeElement)) {
+      return results;
+    }
+    if (predicate(root)) {
+      results.push(root);
+    }
+    for (const child of root.children) {
+      collectElements(child, predicate, results);
+    }
+    return results;
+  }
+
+  const fakeDocument = {
+    createElement(tagName) {
+      return new FakeElement(tagName);
+    },
+  };
+
+  globalThis.document = fakeDocument;
+  globalThis.HTMLElement = FakeElement;
+
+  try {
+    const card = buildHistoryCard({
+      item,
+      video: pointerVideo,
+      profile: null,
+      metadataPreference: "encrypted-only",
+    });
+
+    assert(card instanceof FakeElement);
+    assert.equal(card.dataset.pointerKey, item.pointerKey);
+
+    const playLinks = collectElements(
+      card,
+      (element) =>
+        element.tagName === "A" &&
+        element.dataset.historyAction === "play",
+    );
+
+    assert(playLinks.length >= 1, "card should expose play actions");
+    assert.equal(
+      playLinks[0].dataset.playUrl,
+      encodeURIComponent(pointerVideo.url),
+      "play action should encode url from metadata",
+    );
+    assert.equal(
+      playLinks[0].dataset.playMagnet,
+      pointerVideo.magnet,
+      "play action should surface magnet from metadata",
+    );
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.HTMLElement = originalHTMLElement;
+  }
+}
+
+async function testWatchHistoryStaleCacheRefresh() {
+  console.log("Running watch history stale cache refresh test...");
+
+  const actor = "stale-cache-actor";
+  const originalResolve = nostrClient.resolveWatchHistory;
+  const originalFingerprint = nostrClient.getWatchHistoryFingerprint;
+  const originalDateNow = Date.now;
+
+  try {
+    watchHistoryService.resetProgress(actor);
+
+    nostrClient.getWatchHistoryFingerprint = async (_actor, items) => {
+      const values = (Array.isArray(items) ? items : []).map((entry) => {
+        if (!entry) {
+          return "";
+        }
+        if (typeof entry.value === "string") {
+          return entry.value;
+        }
+        if (
+          entry.pointer &&
+          typeof entry.pointer.value === "string"
+        ) {
+          return entry.pointer.value;
+        }
+        return "";
+      });
+      return `fingerprint:${values.join("|")}`;
+    };
+
+    const firstItems = [
+      { type: "e", value: "watch-history-old", watchedAt: 1_700_000_000 },
+    ];
+
+    let resolveCallCount = 0;
+    nostrClient.resolveWatchHistory = async (requestedActor) => {
+      resolveCallCount += 1;
+      assert.equal(
+        requestedActor,
+        actor,
+        "initial load should request the expected actor",
+      );
+      return firstItems;
+    };
+
+    await watchHistoryService.loadLatest(actor, { allowStale: false });
+
+    const baseNow = originalDateNow();
+    Date.now = () => baseNow + WATCH_HISTORY_CACHE_TTL_MS + 1;
+
+    const refreshedItems = [
+      { type: "e", value: "watch-history-new", watchedAt: 1_700_000_600 },
+    ];
+
+    let refreshResolve;
+    const refreshGate = new Promise((resolve) => {
+      refreshResolve = resolve;
+    });
+
+    resolveCallCount = 0;
+    nostrClient.resolveWatchHistory = async (requestedActor) => {
+      resolveCallCount += 1;
+      assert.equal(
+        requestedActor,
+        actor,
+        "refresh should continue targeting the same actor",
+      );
+      await refreshGate;
+      return refreshedItems;
+    };
+
+    const staleResult = await watchHistoryService.loadLatest(actor, {
+      allowStale: true,
+    });
+    assert.equal(
+      resolveCallCount,
+      1,
+      "stale load should trigger a single background refresh",
+    );
+    assert.equal(
+      staleResult.length,
+      firstItems.length,
+      "stale load should return cached entries immediately",
+    );
+    const staleValue =
+      staleResult[0]?.value || staleResult[0]?.pointer?.value || "";
+    assert.equal(
+      staleValue,
+      "watch-history-old",
+      "stale load should surface the cached pointer value",
+    );
+
+    refreshResolve();
+    await refreshGate;
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    nostrClient.resolveWatchHistory = async () => {
+      throw new Error("loadLatest should rely on refreshed cache");
+    };
+
+    const freshResult = await watchHistoryService.loadLatest(actor);
+    assert.equal(
+      freshResult.length,
+      refreshedItems.length,
+      "fresh load should surface refreshed watch history entries",
+    );
+    const freshValue =
+      freshResult[0]?.value || freshResult[0]?.pointer?.value || "";
+    assert.equal(
+      freshValue,
+      "watch-history-new",
+      "fresh load should include the updated pointer",
+    );
+  } finally {
+    Date.now = originalDateNow;
+    nostrClient.resolveWatchHistory = originalResolve;
+    nostrClient.getWatchHistoryFingerprint = originalFingerprint;
+    watchHistoryService.resetProgress(actor);
   }
 }
 
@@ -1154,7 +1933,7 @@ async function testWatchHistoryAppLoginFallback() {
   const actor = "f".repeat(64);
   const originalPub = nostrClient.pubkey;
   const originalSession = nostrClient.sessionActor;
-  const originalApp = typeof window.app === "undefined" ? undefined : window.app;
+  const originalApp = getApplication();
 
   try {
     setWatchHistoryV2Enabled(false);
@@ -1162,7 +1941,7 @@ async function testWatchHistoryAppLoginFallback() {
     watchHistoryService.resetProgress();
     nostrClient.pubkey = "";
     nostrClient.sessionActor = null;
-    window.app = {
+    setApplication({
       pubkey: actor,
       normalizeHexPubkey(value) {
         if (typeof value === "string" && value.trim()) {
@@ -1170,7 +1949,7 @@ async function testWatchHistoryAppLoginFallback() {
         }
         return null;
       },
-    };
+    });
 
     const enabled =
       typeof watchHistoryService.isEnabled === "function"
@@ -1186,23 +1965,25 @@ async function testWatchHistoryAppLoginFallback() {
     watchHistoryService.resetProgress();
     nostrClient.pubkey = originalPub;
     nostrClient.sessionActor = originalSession;
-    if (typeof originalApp === "undefined") {
-      delete window.app;
-    } else {
-      window.app = originalApp;
-    }
+    setApplication(originalApp || null);
   }
 }
 
 await testPublishSnapshotCanonicalizationAndChunking();
 await testPublishSnapshotUsesExtensionCrypto();
+await testEnsureExtensionPermissionCaching();
+await testFetchWatchHistoryExtensionDecryptsHexAndNpub();
 await testPublishSnapshotFailureRetry();
 await testWatchHistoryPartialRelayRetry();
 await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
+await testHistoryCardsUseDecryptedPlaybackMetadata();
+await testWatchHistoryStaleCacheRefresh();
 await testWatchHistoryLocalFallbackWhenDisabled();
 await testWatchHistorySyncEnabledForLoggedInUsers();
 await testWatchHistoryAppLoginFallback();
+await testNormalizeActorKeyShortCircuit();
+await testNormalizeActorKeyManualFallback();
 
 console.log("watch-history.test.mjs completed successfully");
 
@@ -1224,6 +2005,14 @@ nostrClient.scheduleWatchHistoryRepublish =
 nostrClient.resolveWatchHistory = originalResolveWatchHistory;
 nostrClient.getWatchHistoryFingerprint =
   originalGetWatchHistoryFingerprint;
+
+if (originalExtensionPermissionCache instanceof Set) {
+  originalExtensionPermissionCache.clear();
+  for (const method of originalExtensionPermissionSnapshot) {
+    originalExtensionPermissionCache.add(method);
+  }
+}
+nostrClient.extensionPermissionCache = originalExtensionPermissionCache;
 
 if (!originalFlag) {
   setWatchHistoryV2Enabled(false);
