@@ -81,20 +81,121 @@
     @apply opacity-60 shadow-none;
   }
 
-  .input {
+  .form-control {
     @apply focus-ring block w-full rounded-md border border-border-subtle bg-surface-alt px-3 py-2 text-sm text-text shadow-sm transition duration-base ease-in-out placeholder:text-muted;
   }
 
-  .input:hover {
+  .form-control:hover {
     @apply border-border;
   }
 
-  .input:focus-visible {
+  .form-control:focus-visible {
     @apply border-info-strong;
   }
 
-  .input:disabled {
+  .form-control:disabled {
     @apply cursor-not-allowed bg-surface text-muted opacity-60;
+  }
+
+  .form-control:invalid {
+    @apply border-critical border-opacity-60;
+  }
+
+  .input {
+    @apply form-control;
+  }
+
+  .textarea {
+    @apply form-control min-h-[8rem] resize-y;
+  }
+
+  .select {
+    @apply form-control appearance-none pr-10;
+    --select-arrow-color: var(--color-border);
+    background-image: linear-gradient(135deg, transparent 50%, var(--select-arrow-color) 50%),
+      linear-gradient(45deg, var(--select-arrow-color) 50%, transparent 50%),
+      linear-gradient(to right, var(--color-border-subtle), var(--color-border-subtle));
+    background-position: right 0.75rem center, right 0.4rem center, right 2.5rem center;
+    background-size: 0.6rem 0.6rem, 0.6rem 0.6rem, 1px 60%;
+    background-repeat: no-repeat;
+  }
+
+  .select:hover {
+    --select-arrow-color: var(--color-border);
+  }
+
+  .select:focus-visible {
+    --select-arrow-color: var(--color-info-strong);
+  }
+
+  .select:disabled {
+    --select-arrow-color: var(--color-border-subtle);
+  }
+
+  .select:invalid {
+    --select-arrow-color: var(--color-critical);
+  }
+
+  .checkbox {
+    @apply focus-ring inline-flex h-5 w-5 cursor-pointer appearance-none items-center justify-center rounded border border-border-subtle bg-surface-alt text-white transition duration-base ease-in-out;
+  }
+
+  .checkbox:hover {
+    @apply border-border;
+  }
+
+  .checkbox:disabled {
+    @apply cursor-not-allowed border-border-subtle bg-surface text-muted opacity-60;
+  }
+
+  .checkbox::after {
+    content: "";
+    @apply pointer-events-none h-2 w-3 border-b-2 border-r-2 border-white opacity-0 transition duration-base ease-in-out;
+    transform: rotate(45deg) translateY(-0.125rem) scale(0.85);
+  }
+
+  .checkbox:checked,
+  .checkbox[aria-checked="true"] {
+    @apply border-info-strong bg-info-strong;
+  }
+
+  .checkbox:checked::after,
+  .checkbox[aria-checked="true"]::after {
+    @apply opacity-100;
+    transform: rotate(45deg) translateY(-0.125rem) scale(1);
+  }
+
+  .switch {
+    @apply focus-ring relative inline-flex h-6 w-11 cursor-pointer items-center rounded-full border border-border-subtle bg-border-subtle transition-colors duration-base ease-in-out;
+  }
+
+  .switch::before {
+    content: "";
+    @apply pointer-events-none absolute left-0.5 top-1/2 h-5 w-5 -translate-y-1/2 transform rounded-full bg-surface shadow-md transition duration-base ease-in-out;
+  }
+
+  .switch:disabled {
+    @apply cursor-not-allowed border-border-subtle bg-surface text-muted opacity-60;
+  }
+
+  .switch[aria-checked="true"],
+  .switch.is-on {
+    @apply border-info-strong bg-info-strong;
+  }
+
+  .switch[aria-checked="true"]::before,
+  .switch.is-on::before {
+    @apply translate-x-5;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .form-control,
+    .checkbox,
+    .checkbox::after,
+    .switch,
+    .switch::before {
+      transition: none !important;
+    }
   }
 
   .bv-modal {

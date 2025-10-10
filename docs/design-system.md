@@ -52,9 +52,20 @@ Combine with padding utilities per layout. Interactive cards should maintain `cu
 
 ### Form Inputs
 
-`.input` styles text fields and textareas. Hovering deepens the border, focus highlights with `border-info-strong` and the shared focus ring. Disabled inputs dim their background and block pointer events.
+`.form-control` is the base primitive for text entry surfaces. It handles layout (`block`, `w-full`), rounded corners, subtle borders, muted placeholders, and the shared focus ring. Hovering deepens the border, focus highlights with `border-info-strong`, `:invalid` raises a critical border, and `:disabled` mutes the field while blocking pointer events.
 
-Add sizing utilities (`h-12`, `text-lg`) or adornments (e.g., `pl-10`) as required. Keep placeholder contrast by relying on the built-in `placeholder:text-muted` rule.
+Specialisations reuse `.form-control`:
+
+- `.input` – Standard single-line text input.
+- `.textarea` – Multi-line input with a minimum height (`min-h-[8rem]`) and `resize-y` enabled.
+- `.select` – Native `<select>` element with `appearance-none`, an integrated arrow glyph, and consistent spacing (`pr-10`).
+
+All three share hover, focus-visible, disabled, and invalid treatments. Layer on utilities (`h-12`, `text-lg`, icon padding) as needed without re-declaring tokens.
+
+For toggles:
+
+- `.checkbox` resets native appearance, applies the token border/background, and swaps to the info palette when checked. The checkmark is rendered via `::after`, and disabled states lower contrast while keeping the focus ring behaviour.
+- `.switch` renders a pill track with a translating thumb (`::before`). Apply `[aria-checked="true"]` or `.is-on` to move the thumb and recolor the track. Motion respects `prefers-reduced-motion` while maintaining the focus ring.
 
 ### Modal Surface
 
