@@ -43,6 +43,7 @@ export class EditModal {
 
     this.root = null;
     this.overlay = null;
+    this.panel = null;
     this.form = null;
     this.closeButton = null;
     this.cancelButton = null;
@@ -140,7 +141,14 @@ export class EditModal {
   }
 
   cacheElements(context) {
-    this.overlay = context.querySelector("#editVideoModalOverlay") || null;
+    this.overlay =
+      context.querySelector("#editVideoModalOverlay") ||
+      context.querySelector(".bv-modal-backdrop") ||
+      null;
+    this.panel =
+      context.querySelector(".bv-modal__panel") ||
+      context.querySelector(".modal-content") ||
+      null;
     this.form = context.querySelector("#editVideoForm") || null;
     this.closeButton = context.querySelector("#closeEditVideoModal") || null;
     this.cancelButton = context.querySelector("#cancelEditVideo") || null;
@@ -388,8 +396,19 @@ export class EditModal {
 
     if (this.root) {
       this.root.classList.remove("hidden");
+      this.root.setAttribute("aria-hidden", "false");
       this.isVisible = true;
       this.setGlobalModalState("editVideo", true);
+
+      const focusTarget =
+        this.form?.querySelector("[data-initial-focus]") ||
+        this.panel ||
+        this.root;
+      window.requestAnimationFrame(() => {
+        if (typeof focusTarget?.focus === "function") {
+          focusTarget.focus();
+        }
+      });
     }
 
     return true;
@@ -532,6 +551,7 @@ export class EditModal {
   close({ emitCancel = false } = {}) {
     if (this.root) {
       this.root.classList.add("hidden");
+      this.root.setAttribute("aria-hidden", "true");
     }
     this.isVisible = false;
     this.setGlobalModalState("editVideo", false);

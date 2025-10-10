@@ -655,6 +655,9 @@ export class ProfileModalController {
     };
 
     this.profileModal = null;
+    this.profileModalRoot = null;
+    this.profileModalPanel = null;
+    this.profileModalBackdrop = null;
     this.profileAvatar = null;
     this.profileName = null;
     this.profileNpub = null;
@@ -743,6 +746,7 @@ export class ProfileModalController {
     this.boundKeydown = null;
     this.boundFocusIn = null;
     this.focusableElements = [];
+    this.focusTrapContainer = null;
     this.profileSwitcherSelectionPubkey = null;
     this.previouslyFocusedElement = null;
     this.setActivePane(this.getActivePane());
@@ -771,7 +775,12 @@ export class ProfileModalController {
     }
 
     this.modalContainer.appendChild(template.content);
+    this.profileModalRoot = modalRoot;
     this.profileModal = modalRoot;
+    this.profileModalPanel =
+      modalRoot.querySelector(".bv-modal__panel") || modalRoot;
+    this.profileModalBackdrop =
+      modalRoot.querySelector(".bv-modal-backdrop") || null;
 
     this.cacheDomReferences();
     this.registerEventListeners();
@@ -782,7 +791,12 @@ export class ProfileModalController {
   }
 
   cacheDomReferences() {
-    this.profileModal = document.getElementById("profileModal") || null;
+    this.profileModalRoot = document.getElementById("profileModal") || null;
+    this.profileModalPanel =
+      this.profileModalRoot?.querySelector(".bv-modal__panel") || null;
+    this.profileModalBackdrop =
+      this.profileModalRoot?.querySelector(".bv-modal-backdrop") || null;
+    this.profileModal = this.profileModalRoot;
     this.closeButton = document.getElementById("closeProfileModal") || null;
     this.logoutButton = document.getElementById("profileLogoutBtn") || null;
     this.channelLink = document.getElementById("profileChannelLink") || null;
@@ -1284,7 +1298,6 @@ export class ProfileModalController {
             normalizedSelection && normalizedPubkey === normalizedSelection;
           if (isSelected) {
             button.dataset.state = "active";
-            button.classList.add("ring-1", "ring-blue-400/60", "bg-blue-500/10");
             button.setAttribute("aria-pressed", "true");
           } else {
             delete button.dataset.state;
@@ -3598,16 +3611,21 @@ export class ProfileModalController {
   }
 
   updateFocusTrap() {
-    if (!(this.profileModal instanceof HTMLElement)) {
+    const container =
+      this.profileModalPanel instanceof HTMLElement
+        ? this.profileModalPanel
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
+
+    if (!container) {
       this.focusableElements = [];
       return;
     }
 
     const selector =
       'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-    const nodes = Array.from(
-      this.profileModal.querySelectorAll(selector),
-    );
+    const nodes = Array.from(container.querySelectorAll(selector));
     this.focusableElements = nodes.filter((node) => {
       if (!(node instanceof HTMLElement)) {
         return false;
@@ -3625,11 +3643,19 @@ export class ProfileModalController {
       return true;
     });
 
-    this.bindFocusTrap();
+    this.bindFocusTrap(container);
   }
 
-  bindFocusTrap() {
-    if (!(this.profileModal instanceof HTMLElement)) {
+  bindFocusTrap(container) {
+    const targetContainer =
+      container ||
+      (this.profileModalPanel instanceof HTMLElement
+        ? this.profileModalPanel
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null);
+
+    if (!targetContainer) {
       return;
     }
 
@@ -3647,8 +3673,10 @@ export class ProfileModalController {
 
         if (!this.focusableElements.length) {
           event.preventDefault();
-          if (typeof this.profileModal.focus === "function") {
-            this.profileModal.focus();
+          const fallback =
+            this.profileModalPanel || this.profileModal || targetContainer;
+          if (typeof fallback?.focus === "function") {
+            fallback.focus();
           }
           return;
         }
@@ -3658,7 +3686,7 @@ export class ProfileModalController {
         const active = document.activeElement;
 
         if (event.shiftKey) {
-          if (active === first || !this.profileModal.contains(active)) {
+          if (active === first || !targetContainer.contains(active)) {
             event.preventDefault();
             if (typeof last?.focus === "function") {
               last.focus();
@@ -3678,22 +3706,36 @@ export class ProfileModalController {
 
     if (!this.boundFocusIn) {
       this.boundFocusIn = (event) => {
+        const modalRoot = this.profileModalRoot || this.profileModal;
         if (
-          !this.profileModal ||
-          this.profileModal.classList.contains("hidden") ||
-          this.profileModal.contains(event.target)
+          !modalRoot ||
+          modalRoot.classList.contains("hidden") ||
+          modalRoot.contains(event.target)
         ) {
           return;
         }
 
-        const target = this.focusableElements[0] || this.profileModal;
-        if (typeof target?.focus === "function") {
-          target.focus();
+        const fallback =
+          this.focusableElements[0] ||
+          this.profileModalPanel ||
+          this.profileModal;
+        if (typeof fallback?.focus === "function") {
+          fallback.focus();
         }
       };
     }
 
-    this.profileModal.addEventListener("keydown", this.boundKeydown);
+    if (
+      this.focusTrapContainer &&
+      this.focusTrapContainer !== targetContainer &&
+      this.boundKeydown
+    ) {
+      this.focusTrapContainer.removeEventListener("keydown", this.boundKeydown);
+    }
+
+    targetContainer.addEventListener("keydown", this.boundKeydown);
+    this.focusTrapContainer = targetContainer;
+
     document.addEventListener("focusin", this.boundFocusIn);
   }
 
@@ -3707,11 +3749,14 @@ export class ProfileModalController {
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
-    if (
-      activeElement &&
-      this.profileModal instanceof HTMLElement &&
-      this.profileModal.contains(activeElement)
-    ) {
+    const modalRoot =
+      this.profileModalRoot instanceof HTMLElement
+        ? this.profileModalRoot
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
+
+    if (activeElement && modalRoot && modalRoot.contains(activeElement)) {
       this.previouslyFocusedElement = null;
     } else {
       this.previouslyFocusedElement = activeElement;
@@ -3757,16 +3802,26 @@ export class ProfileModalController {
   }
 
   open(pane = "account") {
-    if (!(this.profileModal instanceof HTMLElement)) {
+    const modalRoot =
+      this.profileModalRoot instanceof HTMLElement
+        ? this.profileModalRoot
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
+
+    if (!modalRoot) {
       return;
     }
 
-    this.profileModal.classList.remove("hidden");
-    this.profileModal.setAttribute("aria-hidden", "false");
+    modalRoot.classList.remove("hidden");
+    modalRoot.setAttribute("aria-hidden", "false");
     this.setGlobalModalState("profile", true);
     this.selectPane(pane);
 
-    const focusTarget = this.focusableElements[0] || this.profileModal;
+    const focusTarget =
+      this.focusableElements[0] ||
+      this.profileModalPanel ||
+      modalRoot;
     window.requestAnimationFrame(() => {
       if (typeof focusTarget?.focus === "function") {
         focusTarget.focus();
@@ -3779,21 +3834,30 @@ export class ProfileModalController {
       options && typeof options === "object" ? options : {};
 
     const modalElement =
-      this.profileModal instanceof HTMLElement ? this.profileModal : null;
+      this.profileModalRoot instanceof HTMLElement
+        ? this.profileModalRoot
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
 
     if (modalElement) {
       modalElement.classList.add("hidden");
       modalElement.setAttribute("aria-hidden", "true");
       this.setGlobalModalState("profile", false);
 
-      if (this.boundKeydown) {
-        modalElement.removeEventListener("keydown", this.boundKeydown);
+      if (this.boundKeydown && this.focusTrapContainer) {
+        this.focusTrapContainer.removeEventListener(
+          "keydown",
+          this.boundKeydown,
+        );
       }
     }
 
     if (this.boundFocusIn) {
       document.removeEventListener("focusin", this.boundFocusIn);
     }
+
+    this.focusTrapContainer = null;
 
     if (
       this.boundProfileHistoryVisibility &&

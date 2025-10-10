@@ -10,7 +10,7 @@ function resolveCardElement(trigger) {
   if (!(trigger instanceof HTMLElement)) {
     return null;
   }
-  const candidate = trigger.closest(".video-card");
+  const candidate = trigger.closest("[data-history-card]");
   return candidate instanceof HTMLElement ? candidate : null;
 }
 
