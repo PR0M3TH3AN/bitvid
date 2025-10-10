@@ -12,29 +12,29 @@
     class="bv-modal__panel modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-4xl my-0 overflow-y-auto relative max-h-[90vh]"
     tabindex="-1"
   >
-      <div
-        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-150 p-4 flex items-center justify-between"
-      >
-        <h2 class="text-xl font-bold text-white">Edit Video Note</h2>
-        <button
-          id="closeEditVideoModal"
-          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-6 h-6 text-gray-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+      <div class="sticky top-0 p-4">
+        <div class="card flex items-center justify-between gap-4 p-4">
+          <h2 class="text-xl font-bold text-white">Edit Video Note</h2>
+          <button
+            id="closeEditVideoModal"
+            class="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-gray-300 transition hover:bg-black/70"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div class="p-6 space-y-6">
@@ -56,7 +56,7 @@
               />
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoTitle"
               >
                 Edit field
@@ -210,7 +210,7 @@
                 <h3 id="editNip71ImetaLabel" class="text-sm font-medium text-gray-200">Image metadata (imeta)</h3>
                 <button
                   type="button"
-                  class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                  class="btn-ghost focus-ring text-xs font-semibold"
                   data-nip71-add="imeta"
                   aria-describedby="editNip71ImetaHelp"
                 >
@@ -223,7 +223,7 @@
               </p>
               <div id="editNip71ImetaList" class="space-y-4" data-nip71-list="imeta"></div>
               <template id="editNip71ImetaTemplate" data-nip71-template="imeta">
-                <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="imeta">
+                <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="imeta">
                   <div class="grid gap-3 md:grid-cols-2">
                     <div>
                       <label class="block text-xs font-medium text-gray-300">
@@ -280,7 +280,7 @@
                       <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Image values</h4>
                       <button
                         type="button"
-                        class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
+                        class="btn-ghost focus-ring text-[11px] font-medium"
                         data-nip71-nested-add="image"
                       >
                         Add image URL
@@ -297,7 +297,7 @@
                         />
                         <button
                           type="button"
-                          class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                          class="btn-ghost focus-ring text-[11px] font-medium"
                           data-nip71-remove="nested"
                           aria-label="Remove image URL"
                         >
@@ -312,7 +312,7 @@
                       <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Fallback URLs</h4>
                       <button
                         type="button"
-                        class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
+                        class="btn-ghost focus-ring text-[11px] font-medium"
                         data-nip71-nested-add="fallback"
                       >
                         Add fallback
@@ -329,7 +329,7 @@
                         />
                         <button
                           type="button"
-                          class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                          class="btn-ghost focus-ring text-[11px] font-medium"
                           data-nip71-remove="nested"
                           aria-label="Remove fallback URL"
                         >
@@ -344,7 +344,7 @@
                       <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Services</h4>
                       <button
                         type="button"
-                        class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
+                        class="btn-ghost focus-ring text-[11px] font-medium"
                         data-nip71-nested-add="service"
                       >
                         Add service
@@ -361,7 +361,7 @@
                         />
                         <button
                           type="button"
-                          class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                          class="btn-ghost focus-ring text-[11px] font-medium"
                           data-nip71-remove="nested"
                           aria-label="Remove service entry"
                         >
@@ -374,7 +374,7 @@
                   <div class="flex justify-end">
                     <button
                       type="button"
-                      class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                      class="btn-ghost focus-ring text-[11px] font-medium"
                       data-nip71-remove="imeta"
                     >
                       Remove variant
@@ -391,7 +391,7 @@
                 </h3>
                 <button
                   type="button"
-                  class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                  class="btn-ghost focus-ring text-xs font-semibold"
                   data-nip71-add="text-track"
                   aria-describedby="editNip71TextTracksHelp"
                 >
@@ -403,7 +403,7 @@
               </p>
               <div id="editNip71TextTrackList" class="space-y-4" data-nip71-list="text-track"></div>
               <template id="editNip71TextTrackTemplate" data-nip71-template="text-track">
-                <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="text-track">
+                <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="text-track">
                   <div class="grid gap-3 md:grid-cols-3">
                     <div>
                       <label class="block text-xs font-medium text-gray-300">Track URL</label>
@@ -436,7 +436,7 @@
                   <div class="flex justify-end">
                     <button
                       type="button"
-                      class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                      class="btn-ghost focus-ring text-[11px] font-medium"
                       data-nip71-remove="text-track"
                     >
                       Remove track
@@ -451,7 +451,7 @@
                 <h3 id="editNip71SegmentsLabel" class="text-sm font-medium text-gray-200">Chapters &amp; segments (segment)</h3>
                 <button
                   type="button"
-                  class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                  class="btn-ghost focus-ring text-xs font-semibold"
                   data-nip71-add="segment"
                   aria-describedby="editNip71SegmentsHelp"
                 >
@@ -463,7 +463,7 @@
               </p>
               <div id="editNip71SegmentList" class="space-y-4" data-nip71-list="segment"></div>
               <template id="editNip71SegmentTemplate" data-nip71-template="segment">
-                <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="segment">
+                <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="segment">
                   <div class="grid gap-3 md:grid-cols-2">
                     <div>
                       <label class="block text-xs font-medium text-gray-300">Start (seconds)</label>
@@ -507,7 +507,7 @@
                   <div class="flex justify-end">
                     <button
                       type="button"
-                      class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                      class="btn-ghost focus-ring text-[11px] font-medium"
                       data-nip71-remove="segment"
                     >
                       Remove segment
@@ -522,7 +522,7 @@
                 <h3 id="editNip71HashtagsLabel" class="text-sm font-medium text-gray-200">Hashtags (<code>t</code>)</h3>
                 <button
                   type="button"
-                  class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                  class="btn-ghost focus-ring text-xs font-semibold"
                   data-nip71-add="t"
                 >
                   Add hashtag
@@ -542,7 +542,7 @@
                   />
                   <button
                     type="button"
-                    class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                    class="btn-ghost focus-ring text-[11px] font-medium"
                     data-nip71-remove="t"
                   >
                     Remove
@@ -556,7 +556,7 @@
                 <h3 id="editNip71ParticipantsLabel" class="text-sm font-medium text-gray-200">Participants (<code>p</code>)</h3>
                 <button
                   type="button"
-                  class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                  class="btn-ghost focus-ring text-xs font-semibold"
                   data-nip71-add="p"
                 >
                   Add participant
@@ -564,7 +564,7 @@
               </div>
               <div id="editNip71ParticipantList" class="space-y-3" data-nip71-list="p"></div>
               <template id="editNip71ParticipantTemplate" data-nip71-template="p">
-                <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="p">
+                <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="p">
                   <div class="grid gap-3 md:grid-cols-2">
                     <div>
                       <label class="block text-xs font-medium text-gray-300">Participant pubkey</label>
@@ -588,7 +588,7 @@
                   <div class="flex justify-end">
                     <button
                       type="button"
-                      class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                      class="btn-ghost focus-ring text-[11px] font-medium"
                       data-nip71-remove="p"
                     >
                       Remove participant
@@ -603,7 +603,7 @@
                 <h3 id="editNip71ReferencesLabel" class="text-sm font-medium text-gray-200">Reference links (<code>r</code>)</h3>
                 <button
                   type="button"
-                  class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                  class="btn-ghost focus-ring text-xs font-semibold"
                   data-nip71-add="r"
                 >
                   Add reference
@@ -620,7 +620,7 @@
                   />
                   <button
                     type="button"
-                    class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-500 hover:text-white"
+                    class="btn-ghost focus-ring text-[11px] font-medium"
                     data-nip71-remove="r"
                   >
                     Remove
@@ -643,7 +643,7 @@
               />
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoUrl"
               >
                 Edit field
@@ -664,7 +664,7 @@
               />
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoWs"
               >
                 Edit field
@@ -685,7 +685,7 @@
               />
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoXs"
               >
                 Edit field
@@ -706,7 +706,7 @@
               />
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoMagnet"
               >
                 Edit field
@@ -727,7 +727,7 @@
               />
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoThumbnail"
               >
                 Edit field
@@ -748,7 +748,7 @@
               ></textarea>
               <button
                 type="button"
-                class="edit-field-button self-start hidden"
+                class="btn-ghost focus-ring hidden self-start text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoDescription"
               >
                 Edit field
@@ -773,7 +773,7 @@
                 >
                   <button
                     type="button"
-                    class="video-visibility-toggle__option"
+                    class="video-visibility-toggle__option focus-ring"
                     data-visibility-option="public"
                     aria-pressed="false"
                   >
@@ -781,7 +781,7 @@
                   </button>
                   <button
                     type="button"
-                    class="video-visibility-toggle__option"
+                    class="video-visibility-toggle__option focus-ring"
                     data-visibility-option="private"
                     aria-pressed="false"
                   >
@@ -801,7 +801,7 @@
               </p>
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoIsPrivate"
               >
                 Edit field
@@ -829,7 +829,7 @@
               </div>
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoIsNsfw"
               >
                 Edit field
@@ -857,7 +857,7 @@
               </div>
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editVideoIsForKids"
               >
                 Edit field
@@ -886,7 +886,7 @@
               </div>
               <button
                 type="button"
-                class="edit-field-button hidden"
+                class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
                 data-edit-target="editEnableComments"
               >
                 Edit field
@@ -898,14 +898,14 @@
             <button
               type="button"
               id="cancelEditVideo"
-              class="w-full sm:w-auto px-4 py-2 rounded-md bg-gray-800 text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500"
+              class="btn-ghost focus-ring w-full sm:w-auto"
             >
               Cancel
             </button>
             <button
               type="submit"
               id="submitEditVideo"
-              class="w-full sm:w-auto px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500"
+              class="btn focus-ring w-full sm:w-auto"
             >
               Save changes
             </button>

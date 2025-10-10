@@ -14,29 +14,29 @@
     tabindex="-1"
   >
       <!-- Modal Header -->
-      <div
-        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
-      >
-        <h2 id="profileModalTitle" class="text-xl font-bold text-white">Profile</h2>
-        <button
-          id="closeProfileModal"
-          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-6 h-6 text-gray-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+      <div class="sticky top-0 p-4">
+        <div class="card flex items-center justify-between gap-4 p-4">
+          <h2 id="profileModalTitle" class="text-xl font-bold text-white">Profile</h2>
+          <button
+            id="closeProfileModal"
+            class="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-gray-300 transition hover:bg-black/70"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- Modal Body -->
@@ -44,22 +44,23 @@
         <div class="flex flex-col lg:flex-row gap-6 h-full">
           <!-- Left navigation column -->
           <nav
-            class="flex lg:flex-col gap-2 flex-shrink-0"
+            class="flex flex-wrap gap-2 flex-shrink-0 lg:flex-col"
             aria-label="Profile sections"
           >
             <button
               id="profileNavAccount"
               type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-white bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              class="btn-ghost focus-ring w-full justify-start gap-3 px-4 py-2 text-sm font-medium"
               aria-controls="profilePaneAccount"
               aria-selected="true"
+              data-state="active"
             >
               Account
             </button>
             <button
               id="profileNavRelays"
               type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              class="btn-ghost focus-ring w-full justify-start gap-3 px-4 py-2 text-sm font-medium"
               aria-controls="profilePaneRelays"
               aria-selected="false"
             >
@@ -68,7 +69,7 @@
             <button
               id="profileNavWallet"
               type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              class="btn-ghost focus-ring w-full justify-start gap-3 px-4 py-2 text-sm font-medium"
               aria-controls="profilePaneWallet"
               aria-selected="false"
             >
@@ -77,7 +78,7 @@
             <button
               id="profileNavBlocked"
               type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              class="btn-ghost focus-ring w-full justify-start gap-3 px-4 py-2 text-sm font-medium"
               aria-controls="profilePaneBlocked"
               aria-selected="false"
             >
@@ -86,7 +87,7 @@
             <button
               id="profileNavHistory"
               type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+              class="btn-ghost focus-ring w-full justify-start gap-3 px-4 py-2 text-sm font-medium"
               aria-controls="profilePaneHistory"
               aria-selected="false"
             >
@@ -95,7 +96,7 @@
             <button
               id="profileNavAdmin"
               type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 hidden"
+              class="btn-ghost focus-ring hidden w-full justify-start gap-3 px-4 py-2 text-sm font-medium"
               aria-controls="profilePaneAdmin"
               aria-selected="false"
             >
@@ -116,61 +117,72 @@
                 "Profile modal account pane") so we are not dependent on utility
                 classes that may be purged or overridden by other builds.
               -->
-              <div class="profile-switcher" id="profileSwitcherTray">
-                <div class="profile-switcher__header">
-                  <div class="profile-switcher__intro">
-                    <h3 class="profile-switcher__title">Switch profiles</h3>
-                    <p class="profile-switcher__subtitle">
+              <div id="profileSwitcherTray" class="card space-y-6 p-6">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                  <div class="space-y-2">
+                    <h3 class="text-lg font-semibold text-white">Switch profiles</h3>
+                    <p class="text-sm text-gray-400">
                       Save multiple Nostr profiles so you can swap identities without leaving BitVid.
                     </p>
                   </div>
-                  <span class="profile-switcher__badge">Preview</span>
+                  <span class="badge" data-variant="info">Preview</span>
                 </div>
 
                 <div
-                  class="profile-card profile-card--active"
+                  class="card focus-ring flex items-center gap-4 p-4"
                   aria-label="Current Nostr profile"
                   aria-pressed="true"
                   role="button"
                   tabindex="0"
+                  data-state="active"
                 >
-                  <span class="profile-card__avatar">
+                  <span
+                    class="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-blue-400/50 bg-slate-900"
+                  >
                     <img
                       id="profileModalAvatar"
                       src="assets/svg/default-profile.svg"
                       alt="Active profile avatar"
+                      class="h-full w-full object-cover"
                     />
                   </span>
-                  <span class="profile-card__meta">
-                    <span class="profile-card__topline">
-                      <span class="profile-card__label">Active profile</span>
+                  <div class="flex min-w-0 flex-1 flex-col gap-2">
+                    <div class="flex flex-wrap items-center gap-3">
+                      <span class="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200">
+                        Active profile
+                      </span>
                       <a
                         id="profileChannelLink"
                         href="#"
-                        class="profile-card__action hidden"
+                        class="btn-ghost focus-ring hidden text-xs"
                       >
                         View channel
                       </a>
-                    </span>
-                    <span id="profileModalName" class="profile-card__name">Loading...</span>
-                    <span id="profileModalNpub" class="profile-card__npub">npub1...</span>
-                  </span>
+                    </div>
+                    <span id="profileModalName" class="truncate text-sm font-semibold text-white">Loading...</span>
+                    <span id="profileModalNpub" class="break-all font-mono text-xs text-gray-400">npub1...</span>
+                  </div>
                 </div>
 
                 <div
                   id="profileSwitcherList"
-                  class="profile-switcher__list"
+                  class="grid-stack"
                   aria-live="polite"
                   aria-label="Additional Nostr profiles"
+                  role="list"
+                  data-orientation="vertical"
                 ></div>
 
                 <button
                   type="button"
                   id="profileAddAccountBtn"
-                  class="profile-switcher__add"
+                  class="btn focus-ring w-full justify-start gap-4 p-4"
                   aria-label="Add a new Nostr profile"
                 >
-                  <span class="profile-switcher__addAvatar">
+                  <span
+                    class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/20 text-blue-400"
+                    aria-hidden="true"
+                  >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 24 24"
@@ -179,19 +191,18 @@
                       stroke-width="2"
                       stroke-linecap="round"
                       stroke-linejoin="round"
-                      aria-hidden="true"
                     >
                       <line x1="12" y1="5" x2="12" y2="19" />
                       <line x1="5" y1="12" x2="19" y2="12" />
                     </svg>
                   </span>
-                  <span class="profile-switcher__addCopy">
-                    <span class="profile-switcher__addTitle">Add profile</span>
-                    <span class="profile-switcher__addHint">Link another npub</span>
+                  <span class="flex flex-col text-left">
+                    <span data-profile-add-title class="text-sm font-semibold text-white">Add profile</span>
+                    <span data-profile-add-hint class="text-xs text-gray-300">Link another npub</span>
                   </span>
                 </button>
 
-                <p class="profile-switcher__helper">
+                <p class="text-sm text-gray-400">
                   Profiles you add here will stay on this device so you can quickly switch before posting or moderating.
                 </p>
               </div>
@@ -221,21 +232,21 @@
                     <button
                       id="addRelayBtn"
                       type="button"
-                      class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="btn focus-ring"
                     >
                       Add relay
                     </button>
                     <button
                       id="restoreRelaysBtn"
                       type="button"
-                      class="px-4 py-2 rounded-md bg-gray-800 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="btn-ghost focus-ring"
                     >
                       Restore defaults
                     </button>
                   </div>
                 </div>
               </div>
-              <ul id="relayList" class="space-y-3"></ul>
+              <ul id="relayList" class="grid-stack" data-orientation="vertical"></ul>
             </section>
 
             <section
@@ -275,21 +286,22 @@
                   <button
                     id="profileWalletSave"
                     type="button"
-                    class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
                   >
                     Save wallet
                   </button>
                   <button
                     id="profileWalletTest"
                     type="button"
-                    class="inline-flex items-center justify-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn-ghost focus-ring"
                   >
                     Test connection
                   </button>
                   <button
                     id="profileWalletDisconnect"
                     type="button"
-                    class="inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
+                    data-variant="danger"
                   >
                     Disconnect wallet
                   </button>
@@ -328,18 +340,18 @@
                 <button
                   id="addBlockedBtn"
                   type="button"
-                  class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  class="btn focus-ring"
                 >
                   Block creator
                 </button>
               </div>
               <div
                 id="blockedEmpty"
-                class="rounded-lg border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"
+                class="card border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"
               >
                 You haven’t blocked any creators yet.
               </div>
-              <ul id="blockedList" class="space-y-3"></ul>
+              <ul id="blockedList" class="grid-stack" data-orientation="vertical"></ul>
             </section>
             <section
               id="profilePaneHistory"
@@ -352,7 +364,7 @@
               </p>
               <div
                 id="profileHistoryFeatureBanner"
-                class="hidden rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+                class="card hidden border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
                 role="status"
                 aria-live="polite"
               ></div>
@@ -366,14 +378,14 @@
                     <button
                       id="profileHistoryClear"
                       type="button"
-                      class="inline-flex items-center gap-2 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="btn-ghost focus-ring inline-flex items-center gap-2"
                     >
                       Clear local cache
                     </button>
                     <button
                       id="profileHistoryRepublish"
                       type="button"
-                      class="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="btn focus-ring inline-flex items-center gap-2"
                     >
                       Republish now
                     </button>
@@ -396,7 +408,7 @@
                     <button
                       id="profileHistoryMetadataToggle"
                       type="button"
-                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center rounded-full border border-gray-600 bg-gray-700 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="focus-ring relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center rounded-full border border-gray-600 bg-gray-700 transition"
                       role="switch"
                       aria-checked="true"
                       aria-labelledby="profileHistoryMetadataLabel"
@@ -446,20 +458,22 @@
                 </div>
                 <div
                   id="profileHistoryError"
-                  class="hidden rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100"
+                  class="card hidden border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100"
                   role="alert"
                   aria-live="assertive"
                 ></div>
                 <div
                   id="profileHistoryEmpty"
-                  class="hidden rounded-lg border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"
+                  class="card hidden border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"
                 >
                   You haven’t watched any videos yet.
                 </div>
                 <div id="profileHistoryScroll" class="relative max-h-[420px] overflow-y-auto pr-1">
                   <div
                     id="profileHistoryGrid"
-                    class="watch-history-grid watch-history-grid--modal hidden"
+                    class="grid-stack hidden"
+                    data-variant="cards"
+                    data-orientation="vertical"
                     role="list"
                   ></div>
                   <div id="profileHistorySentinel" class="h-1 w-full"></div>
@@ -504,18 +518,18 @@
                   <button
                     id="adminAddModeratorBtn"
                     type="button"
-                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
                   >
                     Add moderator
                   </button>
                 </div>
                 <div
                   id="adminModeratorsEmpty"
-                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                  class="card border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
                 >
                   No moderators configured yet.
                 </div>
-                <ul id="adminModeratorList" class="space-y-3"></ul>
+                <ul id="adminModeratorList" class="grid-stack" data-orientation="vertical"></ul>
               </div>
 
               <div id="adminWhitelistSection" class="space-y-4">
@@ -540,18 +554,18 @@
                   <button
                     id="adminAddWhitelistBtn"
                     type="button"
-                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
                   >
                     Add to whitelist
                   </button>
                 </div>
                 <div
                   id="adminWhitelistEmpty"
-                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                  class="card border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
                 >
                   No whitelisted creators yet.
                 </div>
-                <ul id="adminWhitelistList" class="space-y-3"></ul>
+                <ul id="adminWhitelistList" class="grid-stack" data-orientation="vertical"></ul>
               </div>
 
               <div id="adminBlacklistSection" class="space-y-4">
@@ -576,18 +590,18 @@
                   <button
                     id="adminAddBlacklistBtn"
                     type="button"
-                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
                   >
                     Add to blacklist
                   </button>
                 </div>
                 <div
                   id="adminBlacklistEmpty"
-                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                  class="card border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
                 >
                   No blacklisted creators yet.
                 </div>
-                <ul id="adminBlacklistList" class="space-y-3"></ul>
+                <ul id="adminBlacklistList" class="grid-stack" data-orientation="vertical"></ul>
               </div>
             </section>
           </div>
@@ -595,11 +609,8 @@
       </div>
 
       <!-- Modal Footer -->
-      <div class="p-4 border-t border-gray-700 flex items-center justify-end">
-        <button
-          id="profileLogoutBtn"
-          class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-        >
+      <div class="flex items-center justify-end gap-3 border-t border-gray-700 p-4">
+        <button id="profileLogoutBtn" class="btn focus-ring" data-variant="danger">
           Logout
         </button>
       </div>
