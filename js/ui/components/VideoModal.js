@@ -1,3 +1,5 @@
+import { setupModalAccessibility } from "./modalAccessibility.js";
+
 export class VideoModal {
   constructor({
     removeTrackingScripts,
@@ -25,6 +27,8 @@ export class VideoModal {
     this.loaded = false;
 
     this.playerModal = null;
+    this.modalPanel = null;
+    this.modalBackdrop = null;
     this.scrollRegion = null;
     this.modalVideo = null;
     this.modalStatus = null;
@@ -64,6 +68,7 @@ export class VideoModal {
     this.videoEventCleanup = null;
 
     this.activeVideo = null;
+    this.accessibilityCleanup = null;
 
     this.handleCopyRequest = this.handleCopyRequest.bind(this);
     this.handleShareRequest = this.handleShareRequest.bind(this);
@@ -191,8 +196,16 @@ export class VideoModal {
 
   hydrate(playerModal) {
     this.playerModal = playerModal;
+    this.modalPanel =
+      playerModal.querySelector(".bv-modal__panel") ||
+      playerModal.querySelector(".player-modal__content") ||
+      null;
+    this.modalBackdrop =
+      playerModal.querySelector(".bv-modal-backdrop") || null;
     this.scrollRegion =
-      playerModal.querySelector(".player-modal__content") || playerModal;
+      playerModal.querySelector(".bv-modal__scroll") ||
+      this.modalPanel ||
+      playerModal;
 
     this.modalVideo = playerModal.querySelector("#modalVideo") || null;
     this.modalStatus = playerModal.querySelector("#modalStatus") || null;
@@ -245,8 +258,9 @@ export class VideoModal {
 
     const closeButton = playerModal.querySelector("#closeModal");
     if (closeButton) {
-      closeButton.addEventListener("click", () => {
-        this.dispatch("modal:close", { video: this.activeVideo });
+      closeButton.addEventListener("click", (event) => {
+        event?.preventDefault?.();
+        this.requestClose("close-button");
       });
     }
 
@@ -455,6 +469,43 @@ export class VideoModal {
     }
   }
 
+  requestClose(origin = "manual") {
+    this.dispatch("modal:close", { video: this.activeVideo, origin });
+  }
+
+  setupAccessibility() {
+    this.teardownAccessibility();
+    if (!this.playerModal) {
+      return;
+    }
+
+    const panel = this.modalPanel || this.playerModal;
+    this.accessibilityCleanup = setupModalAccessibility({
+      root: this.playerModal,
+      panel,
+      backdrop: this.modalBackdrop,
+      document: this.document,
+      onRequestClose: ({ origin } = {}) => {
+        const reason = typeof origin === "string" ? origin : "dismiss";
+        this.requestClose(reason);
+      },
+    });
+  }
+
+  teardownAccessibility() {
+    if (typeof this.accessibilityCleanup === "function") {
+      try {
+        this.accessibilityCleanup();
+      } catch (error) {
+        this.log(
+          "[VideoModal] Failed to teardown accessibility helpers",
+          error,
+        );
+      }
+    }
+    this.accessibilityCleanup = null;
+  }
+
   open(video) {
     this.activeVideo = video || null;
     if (!this.playerModal) {
@@ -471,9 +522,11 @@ export class VideoModal {
     }
     this.setGlobalModalState("player", true);
     this.applyLoadingPoster();
+    this.setupAccessibility();
   }
 
   close() {
+    this.teardownAccessibility();
     this.activeVideo = null;
     if (this.playerModal) {
       this.playerModal.style.display = "none";
