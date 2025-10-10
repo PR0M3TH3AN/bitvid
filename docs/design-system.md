@@ -1,6 +1,6 @@
-# Bitvid Design System Primitives
+# bitvid Design System Primitives
 
-Bitvid's visual language is now powered by Tailwind utilities backed by our design tokens. This document lists the primitives available via `css/tailwind.source.css`, how they behave across states, and when to mix them with Tailwind utilities.
+bitvid's visual language is now powered by Tailwind utilities backed by our design tokens. This document lists the primitives available via `css/tailwind.source.css`, how they behave across states, and when to mix them with Tailwind utilities.
 
 ## Focus Handling
 

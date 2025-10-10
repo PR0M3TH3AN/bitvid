@@ -1,4 +1,4 @@
-# Web-of-Trust Policy (Bitvid)
+# Web-of-Trust Policy (bitvid)
 
 ## Graph terms
 - **F1 (friends)**: pubkeys you follow.

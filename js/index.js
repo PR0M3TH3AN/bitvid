@@ -513,13 +513,13 @@ async function initializeInterface() {
   try {
     await bootstrapInterface();
   } catch (error) {
-    console.error("Failed to bootstrap Bitvid interface:", error);
+    console.error("Failed to bootstrap bitvid interface:", error);
   }
 }
 
 function onDomReady() {
   initializeInterface().catch((error) => {
-    console.error("Unhandled error during Bitvid initialization:", error);
+    console.error("Unhandled error during bitvid initialization:", error);
   });
 }
 

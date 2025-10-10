@@ -42,7 +42,7 @@ import {
 import { nostrToolsReady } from "./nostrToolsBootstrap.js";
 
 /**
- * The default relay set BitVid bootstraps with before loading a user's
+ * The default relay set bitvid bootstraps with before loading a user's
  * preferences.
  */
 export const DEFAULT_RELAY_URLS = Object.freeze([
@@ -2821,7 +2821,7 @@ function inferMimeTypeFromUrl(url) {
 }
 
 /**
- * Convert a raw Nostr event into Bitvid's canonical "video" object.
+ * Convert a raw Nostr event into bitvid's canonical "video" object.
  *
  * The converter intentionally centralises all of the quirky legacy handling so
  * that feed rendering, subscriptions, and deep links rely on the exact same

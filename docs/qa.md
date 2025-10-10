@@ -1,4 +1,4 @@
-# Bitvid Manual QA Script
+# bitvid Manual QA Script
 
 Run this checklist before publishing releases or merging changes that touch upload or playback flows. Copy/paste the steps into QA tickets when requesting validation.
 

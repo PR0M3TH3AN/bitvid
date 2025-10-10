@@ -577,7 +577,7 @@ export class ProfileModalController {
       return fromConfig || DEFAULT_ADMIN_DM_IMAGE_URL;
     })();
 
-    const resolvedBitvidWebsiteUrl = (() => {
+    const resolvedbitvidWebsiteUrl = (() => {
       const fromOptions =
         typeof providedConstants.BITVID_WEBSITE_URL === "string"
           ? providedConstants.BITVID_WEBSITE_URL.trim()
@@ -595,7 +595,7 @@ export class ProfileModalController {
     this.maxWalletDefaultZap = resolvedMaxWalletDefaultZap;
     this.adminSuperNpub = resolvedAdminSuperNpub;
     this.adminDmImageUrl = resolvedAdminDmImageUrl;
-    this.bitvidWebsiteUrl = resolvedBitvidWebsiteUrl;
+    this.bitvidWebsiteUrl = resolvedbitvidWebsiteUrl;
 
     this.internalState = {
       savedProfiles: [],
@@ -2809,7 +2809,7 @@ export class ProfileModalController {
       return null;
     }
     if (!this.services.accessControl.canEditAdminLists(actorNpub)) {
-      this.showError("You do not have permission to manage BitVid moderation lists.");
+      this.showError("You do not have permission to manage bitvid moderation lists.");
       return null;
     }
     if (requireSuperAdmin && !this.services.accessControl.isSuperAdmin(actorNpub)) {
@@ -3256,17 +3256,17 @@ export class ProfileModalController {
       return { ok: false, error: "missing-actor-pubkey" };
     }
 
-    const fallbackActor = this.safeEncodeNpub(activeHex) || "a BitVid moderator";
+    const fallbackActor = this.safeEncodeNpub(activeHex) || "a bitvid moderator";
     const actorDisplay = this.normalizeNpubValue(actorNpub) || fallbackActor;
     const isWhitelist = listType === "whitelist";
 
     const introLine = isWhitelist
-      ? `Great news—your npub ${normalizedTarget} has been added to the BitVid whitelist by ${actorDisplay}.`
-      : `We wanted to let you know that your npub ${normalizedTarget} has been placed on the BitVid blacklist by ${actorDisplay}.`;
+      ? `Great news—your npub ${normalizedTarget} has been added to the bitvid whitelist by ${actorDisplay}.`
+      : `We wanted to let you know that your npub ${normalizedTarget} has been placed on the bitvid blacklist by ${actorDisplay}.`;
 
     const statusLine = isWhitelist
-      ? `You now have full creator access across BitVid (${this.bitvidWebsiteUrl}).`
-      : `This hides your channel and prevents uploads across BitVid (${this.bitvidWebsiteUrl}) for now.`;
+      ? `You now have full creator access across bitvid (${this.bitvidWebsiteUrl}).`
+      : `This hides your channel and prevents uploads across bitvid (${this.bitvidWebsiteUrl}) for now.`;
 
     const followUpLine = isWhitelist
       ? "Please take a moment to review our community guidelines (https://bitvid.network/#view=community-guidelines), and reply to this DM if you have any questions."
@@ -3281,10 +3281,10 @@ export class ProfileModalController {
       "",
       followUpLine,
       "",
-      "— The BitVid Team",
+      "— the bitvid team",
     ].join("\n");
 
-    const message = `![BitVid status update](${this.adminDmImageUrl})\n\n${messageBody}`;
+    const message = `![bitvid status update](${this.adminDmImageUrl})\n\n${messageBody}`;
 
     return this.services.nostrClient.sendDirectMessage(
       normalizedTarget,

@@ -1,6 +1,6 @@
 /**
  * @module viewCounter
- * @description Public API for tracking and formatting BitVid video view totals.
+ * @description Public API for tracking and formatting bitvid video view totals.
  *
  * The module exposes lifecycle helpers:
  *   - {@link initViewCounter} to prime the counter with the active Nostr client.

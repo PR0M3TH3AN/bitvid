@@ -1,6 +1,6 @@
-# Bitvid — AI Agent Guide
+# bitvid — AI Agent Guide
 
-This guide tells AI agents how to keep Bitvid aligned with the current product direction. Follow it whenever you touch code, content, or documentation inside this repository.
+This guide tells AI agents how to keep bitvid aligned with the current product direction. Follow it whenever you touch code, content, or documentation inside this repository.
 
 ---
 
@@ -16,7 +16,7 @@ This guide tells AI agents how to keep Bitvid aligned with the current product d
 * **Primary transport:** A hosted video URL (MP4/WebM/HLS/DASH) that the `<video>` element can stream directly.
 * **Fallback transport:** A WebTorrent magnet that includes browser‑safe trackers plus optional HTTP hints.
 * **Runtime behavior:** Call `bitvidApp.playVideoWithFallback({ url, magnet })` in `js/app.js`. This function orchestrates URL probing and magnet fallback, delegating low-level stream handling to `js/services/playbackService.js`. `js/playbackUtils.js` now provides magnet/session helper utilities rather than the playback entry point itself.
-* **Content contract:** Bitvid posts (Nostr kind `30078`) must include a `title` and at least one of `url` or `magnet`. Prefer to publish both along with optional `thumbnail`, `description`, and `mode` fields. When mirroring to NIP‑94 (`kind 1063`), copy the hosted URL and (optionally) the magnet so other clients can discover the same asset.
+* **Content contract:** bitvid posts (Nostr kind `30078`) must include a `title` and at least one of `url` or `magnet`. Prefer to publish both along with optional `thumbnail`, `description`, and `mode` fields. When mirroring to NIP‑94 (`kind 1063`), copy the hosted URL and (optionally) the magnet so other clients can discover the same asset.
 
 ---
 
@@ -70,9 +70,9 @@ Document the run in PR descriptions so QA can cross-reference results.
 
 ---
 
-## 6. Moderation Quickstart (Bitvid)
+## 6. Moderation Quickstart (bitvid)
 
-The moderation and admin list tooling remain active in Bitvid and must follow Nostr moderation policies and QA steps. Review `docs/moderation/README.md` and these key expectations:
+The moderation and admin list tooling remain active in bitvid and must follow Nostr moderation policies and QA steps. Review `docs/moderation/README.md` and these key expectations:
 
 1. **Report thresholds:** Parse NIP-56 reports and compute `trustedReportCount` using **only F1 followers**.
 2. **Default behaviors:** Blur thumbnails at ≥3 F1 `nudity` reports and block autoplay at ≥2.

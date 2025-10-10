@@ -17,5 +17,6 @@
     "stylelint": "^16.8.0",
     "stylelint-config-standard": "^36.0.1",
     "tailwindcss": "^3.4.13"
-  }
+  },
+  "license": "GPL-3.0-or-later"
 }
