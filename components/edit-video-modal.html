@@ -83,33 +83,35 @@
                 <span class="font-medium text-gray-300">Kind 22</span> is a short.
               </p>
               <div
-                class="flex flex-wrap gap-4"
+                class="form-control"
                 role="radiogroup"
                 aria-labelledby="editNip71KindFieldset"
               >
-                <label class="flex items-center gap-2 text-sm text-gray-200">
-                  <input
-                    type="radio"
-                    name="editNip71Kind"
-                    id="editNip71KindLong"
-                    value="21"
-                    checked
-                    data-nip71-input="kind"
-                    class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
-                  />
-                  Normal video (kind 21)
-                </label>
-                <label class="flex items-center gap-2 text-sm text-gray-200">
-                  <input
-                    type="radio"
-                    name="editNip71Kind"
-                    id="editNip71KindShort"
-                    value="22"
-                    data-nip71-input="kind"
-                    class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
-                  />
-                  Short video (kind 22)
-                </label>
+                <div class="menu sm:flex-row sm:flex-wrap sm:py-0" role="presentation">
+                  <label class="menu__item gap-3 px-0 py-0" for="editNip71KindLong">
+                    <input
+                      type="radio"
+                      name="editNip71Kind"
+                      id="editNip71KindLong"
+                      value="21"
+                      checked
+                      data-nip71-input="kind"
+                      class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                    />
+                    <span class="text-sm text-gray-200">Normal video (kind 21)</span>
+                  </label>
+                  <label class="menu__item gap-3 px-0 py-0" for="editNip71KindShort">
+                    <input
+                      type="radio"
+                      name="editNip71Kind"
+                      id="editNip71KindShort"
+                      value="22"
+                      data-nip71-input="kind"
+                      class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                    />
+                    <span class="text-sm text-gray-200">Short video (kind 22)</span>
+                  </label>
+                </div>
               </div>
             </fieldset>
 
@@ -809,14 +811,20 @@
             </div>
           </div>
 
-          <div class="space-y-1">
-            <label for="editVideoIsNsfw" class="block text-sm font-medium text-gray-200">
+          <div class="space-y-2">
+            <label
+              for="editVideoIsNsfw"
+              id="editVideoIsNsfwLabel"
+              class="block text-sm font-medium text-gray-200"
+            >
               NSFW content
             </label>
             <div
-              class="flex flex-col gap-2 rounded-md border border-gray-800 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+              class="form-control"
+              role="group"
+              aria-labelledby="editVideoIsNsfwLabel"
             >
-              <div class="flex items-center gap-3">
+              <label class="menu__item gap-3 px-0 py-0 text-left" for="editVideoIsNsfw">
                 <input
                   type="checkbox"
                   id="editVideoIsNsfw"
@@ -826,7 +834,9 @@
                 <span class="text-sm text-gray-300">
                   Mark as sensitive to blur previews and gate playback.
                 </span>
-              </div>
+              </label>
+            </div>
+            <div class="flex justify-end">
               <button
                 type="button"
                 class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
@@ -837,14 +847,20 @@
             </div>
           </div>
 
-          <div class="space-y-1">
-            <label for="editVideoIsForKids" class="block text-sm font-medium text-gray-200">
+          <div class="space-y-2">
+            <label
+              for="editVideoIsForKids"
+              id="editVideoIsForKidsLabel"
+              class="block text-sm font-medium text-gray-200"
+            >
               Made for kids
             </label>
             <div
-              class="flex flex-col gap-2 rounded-md border border-gray-800 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+              class="form-control"
+              role="group"
+              aria-labelledby="editVideoIsForKidsLabel"
             >
-              <div class="flex items-center gap-3">
+              <label class="menu__item gap-3 px-0 py-0 text-left" for="editVideoIsForKids">
                 <input
                   type="checkbox"
                   id="editVideoIsForKids"
@@ -854,7 +870,9 @@
                 <span class="text-sm text-gray-300">
                   Flag kid-friendly videos to adjust recommendations and controls.
                 </span>
-              </div>
+              </label>
+            </div>
+            <div class="flex justify-end">
               <button
                 type="button"
                 class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
@@ -865,14 +883,20 @@
             </div>
           </div>
 
-          <div class="space-y-1">
-            <label for="editEnableComments" class="block text-sm font-medium text-gray-200">
+          <div class="space-y-2">
+            <label
+              for="editEnableComments"
+              id="editEnableCommentsLabel"
+              class="block text-sm font-medium text-gray-200"
+            >
               Enable comments
             </label>
             <div
-              class="flex flex-col gap-2 rounded-md border border-gray-800 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+              class="form-control"
+              role="group"
+              aria-labelledby="editEnableCommentsLabel"
             >
-              <div class="flex items-center gap-3">
+              <label class="menu__item gap-3 px-0 py-0 text-left" for="editEnableComments">
                 <input
                   type="checkbox"
                   id="editEnableComments"
@@ -883,7 +907,9 @@
                 <span class="text-sm text-gray-300">
                   Allow replies once comment threads are available.
                 </span>
-              </div>
+              </label>
+            </div>
+            <div class="flex justify-end">
               <button
                 type="button"
                 class="btn-ghost focus-ring hidden text-xs font-semibold uppercase tracking-wide"
