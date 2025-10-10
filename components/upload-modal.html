@@ -81,7 +81,7 @@
             <p class="text-sm text-gray-400">
               Share a title plus either a hosted video URL or a magnet link. Providing both helps bitvid fall back gracefully.
             </p>
-            <div>
+            <div class="space-y-2">
               <label
                 for="uploadTitle"
                 class="block text-sm font-medium text-gray-200"
@@ -91,7 +91,7 @@
                 type="text"
                 id="uploadTitle"
                 required
-                class="mt-1 input"
+                class="input"
               />
             </div>
 
@@ -136,28 +136,28 @@
               </fieldset>
 
               <div class="grid gap-4 md:grid-cols-2" data-nip71-grid="metadata">
-                <div>
+                <div class="space-y-2">
                   <label for="nip71PublishedAt" class="block text-sm font-medium text-gray-200">Published at</label>
                   <input
                     type="datetime-local"
                     id="nip71PublishedAt"
                     data-nip71-input="published_at"
-                    class="mt-1 input"
+                    class="input"
                   />
-                  <p class="mt-1 text-xs text-gray-400">Set the canonical publish time for cross-client ordering.</p>
+                  <p class="text-xs text-gray-400">Set the canonical publish time for cross-client ordering.</p>
                 </div>
-                <div>
+                <div class="space-y-2">
                   <label for="nip71AltText" class="block text-sm font-medium text-gray-200">Alt text</label>
                   <input
                     type="text"
                     id="nip71AltText"
                     data-nip71-input="alt"
                     placeholder="Describe the visuals for screen readers"
-                    class="mt-1 input"
+                    class="input"
                   />
-                  <p class="mt-1 text-xs text-gray-400">Plain-language fallback shown when the media cannot load.</p>
+                  <p class="text-xs text-gray-400">Plain-language fallback shown when the media cannot load.</p>
                 </div>
-                <div>
+                <div class="space-y-2">
                   <label for="nip71Duration" class="block text-sm font-medium text-gray-200">Duration (seconds)</label>
                   <input
                     type="number"
@@ -165,38 +165,38 @@
                     min="0"
                     step="1"
                     data-nip71-input="duration"
-                    class="mt-1 input"
+                    class="input"
                   />
-                  <p class="mt-1 text-xs text-gray-400">Provide the runtime in whole seconds for timeline scrubbing.</p>
+                  <p class="text-xs text-gray-400">Provide the runtime in whole seconds for timeline scrubbing.</p>
                 </div>
-                <div>
+                <div class="space-y-2">
                   <label for="nip71ContentWarning" class="block text-sm font-medium text-gray-200">Content warning</label>
                   <input
                     type="text"
                     id="nip71ContentWarning"
                     data-nip71-input="content-warning"
                     placeholder="e.g., Flashing lights"
-                    class="mt-1 input"
+                    class="input"
                   />
-                  <p class="mt-1 text-xs text-gray-400">Leave blank if the video is safe for all audiences.</p>
+                  <p class="text-xs text-gray-400">Leave blank if the video is safe for all audiences.</p>
                 </div>
               </div>
 
-              <div>
+              <div class="space-y-2">
                 <label for="nip71Summary" class="block text-sm font-medium text-gray-200">Summary</label>
                 <textarea
                   id="nip71Summary"
                   rows="3"
                   data-nip71-input="summary"
-                  class="mt-1 textarea"
+                  class="textarea"
                   placeholder="Short synopsis used as the Nostr content field"
                 ></textarea>
-                <p class="mt-1 text-xs text-gray-400">This becomes the event content. Keep it concise for Nostr readers.</p>
+                <p class="text-xs text-gray-400">This becomes the event content. Keep it concise for Nostr readers.</p>
               </div>
             </div>
 
             <!-- Hosted video URL -->
-            <div class="form-group">
+            <div class="form-group space-y-2">
               <label
                 for="uploadUrl"
                 class="block text-sm font-medium text-gray-200"
@@ -205,10 +205,10 @@
               <input
                 id="uploadUrl"
                 type="url"
-                class="mt-1 input"
+                class="input"
                 placeholder="https://cdn.example.com/video.mp4"
               />
-              <small class="mt-1 block text-xs text-gray-400"
+              <small class="block text-xs text-gray-400"
                 >Optional but preferred. We will play this first and fall back to
                 P2P.</small
               >
@@ -230,7 +230,7 @@
               >
             </div>
 
-            <div>
+            <div class="space-y-2">
               <label
                 for="uploadMagnet"
                 class="block text-sm font-medium text-gray-200"
@@ -240,14 +240,14 @@
                 type="text"
                 id="uploadMagnet"
                 placeholder="magnet:?xt=urn:btih:..."
-                class="mt-1 input"
+                class="input"
               />
-              <p class="mt-1 text-xs text-gray-400">
+              <p class="text-xs text-gray-400">
                 Provide a hosted URL for instant playback. Add a magnet for P2P
                 cost control.
               </p>
             </div>
-            <div>
+            <div class="space-y-2">
               <label
                 for="uploadThumbnail"
                 class="block text-sm font-medium text-gray-200"
@@ -256,11 +256,11 @@
               <input
                 type="url"
                 id="uploadThumbnail"
-                class="mt-1 input"
+                class="input"
               />
             </div>
 
-            <div>
+            <div class="space-y-2">
               <label
                 for="uploadDescription"
                 class="block text-sm font-medium text-gray-200"
@@ -269,9 +269,9 @@
               <textarea
                 id="uploadDescription"
                 rows="3"
-                class="mt-1 textarea"
+                class="textarea"
               ></textarea>
-              <p class="mt-1 text-xs text-gray-400">Kept for older clients that rely on the legacy description tag.</p>
+              <p class="text-xs text-gray-400">Kept for older clients that rely on the legacy description tag.</p>
             </div>
 
             <fieldset
@@ -306,7 +306,7 @@
                 <template id="nip71ImetaTemplate" data-nip71-template="imeta">
                   <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="imeta">
                     <div class="grid gap-3 md:grid-cols-2">
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">
                           MIME type (<code>m</code>)
                         </label>
@@ -314,11 +314,11 @@
                           type="text"
                           data-nip71-field="m"
                           placeholder="video/mp4"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
+                        <p class="text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
                       </div>
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">
                           Pixel dimensions (<code>dim</code>)
                         </label>
@@ -326,11 +326,11 @@
                           type="text"
                           data-nip71-field="dim"
                           placeholder="1920x1080"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">Formatted as widthxheight.</p>
+                        <p class="text-[11px] text-gray-500">Formatted as widthxheight.</p>
                       </div>
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">
                           Streaming URL (<code>url</code>)
                         </label>
@@ -338,11 +338,11 @@
                           type="url"
                           data-nip71-field="url"
                           placeholder="https://cdn.example.com/variant.m3u8"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
+                        <p class="text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
                       </div>
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">
                           Magnet (<code>x</code>)
                         </label>
@@ -350,9 +350,9 @@
                           type="text"
                           data-nip71-field="x"
                           placeholder="magnet:?xt=urn:btih:..."
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
+                        <p class="text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
                       </div>
                     </div>
 
@@ -482,35 +482,35 @@
                 <template id="nip71TextTrackTemplate" data-nip71-template="text-track">
                   <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="text-track">
                     <div class="grid gap-3 md:grid-cols-3">
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">Resource URL</label>
                         <input
                           type="url"
                           data-nip71-field="url"
                           placeholder="https://cdn.example.com/captions.en.vtt"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">Direct link to the caption file.</p>
+                        <p class="text-[11px] text-gray-500">Direct link to the caption file.</p>
                       </div>
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">Track type</label>
                         <input
                           type="text"
                           data-nip71-field="type"
                           placeholder="subtitles"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">Use values like captions, subtitles, or descriptions.</p>
+                        <p class="text-[11px] text-gray-500">Use values like captions, subtitles, or descriptions.</p>
                       </div>
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">Language (optional)</label>
                         <input
                           type="text"
                           data-nip71-field="language"
                           placeholder="en-US"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">BCP-47 locale code.</p>
+                        <p class="text-[11px] text-gray-500">BCP-47 locale code.</p>
                       </div>
                     </div>
                     <button
@@ -543,44 +543,44 @@
                 <template id="nip71SegmentTemplate" data-nip71-template="segment">
                   <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="segment">
                     <div class="grid gap-3 md:grid-cols-4">
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">Start</label>
                         <input
                           type="text"
                           data-nip71-field="start"
                           placeholder="00:00:00"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">HH:MM:SS</p>
+                        <p class="text-[11px] text-gray-500">HH:MM:SS</p>
                       </div>
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">End</label>
                         <input
                           type="text"
                           data-nip71-field="end"
                           placeholder="00:03:30"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">Leave blank for open-ended segments.</p>
+                        <p class="text-[11px] text-gray-500">Leave blank for open-ended segments.</p>
                       </div>
-                      <div class="md:col-span-2">
+                      <div class="md:col-span-2 space-y-2">
                         <label class="block text-xs font-medium text-gray-300">Chapter title</label>
                         <input
                           type="text"
                           data-nip71-field="title"
                           placeholder="Introduction"
-                          class="mt-1 input"
+                          class="input"
                         />
                       </div>
-                      <div class="md:col-span-2">
+                      <div class="md:col-span-2 space-y-2">
                         <label class="block text-xs font-medium text-gray-300">Thumbnail URL</label>
                         <input
                           type="url"
                           data-nip71-field="thumbnail"
                           placeholder="https://cdn.example.com/segment.jpg"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">Optional still image for this moment.</p>
+                        <p class="text-[11px] text-gray-500">Optional still image for this moment.</p>
                       </div>
                     </div>
                     <button
@@ -645,25 +645,25 @@
                 <template id="nip71ParticipantTemplate" data-nip71-template="p">
                   <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="p">
                     <div class="grid gap-3 md:grid-cols-2">
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">Pubkey</label>
                         <input
                           type="text"
                           data-nip71-field="pubkey"
                           placeholder="npub1..."
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">Accepts npub or hex.</p>
+                        <p class="text-[11px] text-gray-500">Accepts npub or hex.</p>
                       </div>
-                      <div>
+                      <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">Relay URL (optional)</label>
                         <input
                           type="url"
                           data-nip71-field="relay"
                           placeholder="wss://relay.example.com"
-                          class="mt-1 input"
+                          class="input"
                         />
-                        <p class="mt-1 text-[11px] text-gray-500">Relay hint for discovering the participant.</p>
+                        <p class="text-[11px] text-gray-500">Relay hint for discovering the participant.</p>
                       </div>
                     </div>
                     <button
@@ -720,15 +720,15 @@
                 <input
                   type="checkbox"
                   id="uploadEnableComments"
-                  class="mt-1 checkbox"
+                  class="checkbox"
                   checked
                   data-default-checked="true"
                 />
-                <span class="flex flex-col">
+                <span class="flex flex-col gap-1">
                   <span id="uploadEnableCommentsLabel" class="text-sm font-medium text-gray-200">
                     Enable comments
                   </span>
-                  <span class="mt-1 text-xs text-gray-400">
+                  <span class="text-xs text-gray-400">
                     Keep this on to let viewers discuss the video once comment threads launch.
                   </span>
                 </span>
@@ -744,14 +744,14 @@
                   <input
                     type="checkbox"
                     id="uploadIsNsfw"
-                    class="mt-1 checkbox"
+                    class="checkbox"
                     data-default-checked="false"
                   />
-                  <span class="flex flex-col">
+                  <span class="flex flex-col gap-1">
                     <span id="uploadIsNsfwLabel" class="text-sm font-medium text-gray-200">
                       Is this content NSFW?
                     </span>
-                    <span class="mt-1 text-xs text-gray-400">
+                    <span class="text-xs text-gray-400">
                       Flag mature or explicit uploads so clients can warn viewers before playback.
                     </span>
                   </span>
@@ -766,14 +766,14 @@
                   <input
                     type="checkbox"
                     id="uploadIsForKids"
-                    class="mt-1 checkbox"
+                    class="checkbox"
                     data-default-checked="false"
                   />
-                  <span class="flex flex-col">
+                  <span class="flex flex-col gap-1">
                     <span id="uploadIsForKidsLabel" class="text-sm font-medium text-gray-200">
                       Is this content created for Kids?
                     </span>
-                    <span class="mt-1 text-xs text-gray-400">
+                    <span class="text-xs text-gray-400">
                       Mark clearly kid-friendly videos so parental controls and playlists stay accurate.
                     </span>
                   </span>
@@ -821,7 +821,7 @@
               </p>
               <form id="cloudflareSettingsForm" class="space-y-4">
                 <div class="grid gap-3 md:grid-cols-2">
-                  <div>
+                  <div class="space-y-2">
                     <label for="r2AccountId" class="block text-sm font-medium text-gray-200"
                       >Account ID</label
                     >
@@ -829,12 +829,12 @@
                       id="r2AccountId"
                       type="text"
                       autocomplete="off"
-                      class="mt-1 input"
+                      class="input"
                       placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                       required
                     />
                   </div>
-                  <div>
+                  <div class="space-y-2">
                     <label for="r2AccessKeyId" class="block text-sm font-medium text-gray-200"
                       >S3 Access Key ID</label
                     >
@@ -842,13 +842,13 @@
                       id="r2AccessKeyId"
                       type="text"
                       autocomplete="off"
-                      class="mt-1 input"
+                      class="input"
                       placeholder="AKIA..."
                       required
                     />
                   </div>
                 </div>
-                <div>
+                <div class="space-y-2">
                   <label for="r2SecretAccessKey" class="block text-sm font-medium text-gray-200"
                     >S3 Secret Access Key</label
                   >
@@ -856,7 +856,7 @@
                     id="r2SecretAccessKey"
                     type="password"
                     autocomplete="off"
-                    class="mt-1 input"
+                    class="input"
                     required
                   />
                 </div>
@@ -885,7 +885,7 @@
                     id="cloudflareAdvancedFields"
                     class="mt-3 space-y-4 hidden"
                   >
-                    <div>
+                    <div class="space-y-2">
                       <label for="r2ApiToken" class="block text-sm font-medium text-gray-200"
                         >Cloudflare API Token (optional)</label
                       >
@@ -893,15 +893,15 @@
                         id="r2ApiToken"
                         type="password"
                         autocomplete="off"
-                        class="mt-1 input"
+                        class="input"
                         placeholder="Token with Workers R2 Storage Write"
                       />
-                      <p class="mt-1 text-xs text-gray-500">
+                      <p class="text-xs text-gray-500">
                         Used to create buckets, configure CORS, and attach domains automatically.
                       </p>
                     </div>
                     <div class="grid gap-3 md:grid-cols-2">
-                      <div>
+                      <div class="space-y-2">
                         <label for="r2ZoneId" class="block text-sm font-medium text-gray-200"
                           >Zone ID (optional)</label
                         >
@@ -909,14 +909,14 @@
                           id="r2ZoneId"
                           type="text"
                           autocomplete="off"
-                          class="mt-1 input"
+                          class="input"
                           placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                         />
-                        <p class="mt-1 text-xs text-gray-500">
+                        <p class="text-xs text-gray-500">
                           Required when you want us to attach a custom domain on your behalf.
                         </p>
                       </div>
-                      <div>
+                      <div class="space-y-2">
                         <label for="r2BaseDomain" class="block text-sm font-medium text-gray-200"
                           >Base domain (optional)</label
                         >
@@ -924,10 +924,10 @@
                           id="r2BaseDomain"
                           type="text"
                           autocomplete="off"
-                          class="mt-1 input"
+                          class="input"
                           placeholder="cdn.example.com"
                         />
-                        <p class="mt-1 text-xs text-gray-500">
+                        <p class="text-xs text-gray-500">
                           We'll attach <code class="rounded bg-gray-800 px-1 py-0.5">npub.&lt;baseDomain&gt;</code>.
                           Leave blank to use the managed <code class="rounded bg-gray-800 px-1 py-0.5">*.r2.dev</code> domain.
                         </p>
@@ -963,13 +963,13 @@
                 <h3 class="text-lg font-semibold text-gray-100">
                   Upload &amp; publish
                 </h3>
-                <p class="mt-1 text-sm text-gray-400">
+                <p class="text-sm text-gray-400">
                   Choose a file, we will upload it to R2, fill the hosted URL,
                   and publish your note automatically.
                 </p>
               </div>
               <form id="cloudflareUploadForm" class="space-y-4">
-                <div>
+                <div class="space-y-2">
                   <label for="cloudflareTitle" class="block text-sm font-medium text-gray-200"
                     >Title</label
                   >
@@ -977,7 +977,7 @@
                     id="cloudflareTitle"
                     type="text"
                     required
-                    class="mt-1 input"
+                    class="input"
                   />
                 </div>
                 <div
@@ -1031,7 +1031,7 @@
                   </fieldset>
 
                   <div class="grid gap-4 md:grid-cols-2" data-nip71-grid="metadata">
-                    <div>
+                    <div class="space-y-2">
                       <label for="cloudflareNip71PublishedAt" class="block text-sm font-medium text-gray-200">
                         Published at
                       </label>
@@ -1039,22 +1039,22 @@
                         type="datetime-local"
                         id="cloudflareNip71PublishedAt"
                         data-nip71-input="published_at"
-                        class="mt-1 input"
+                        class="input"
                       />
-                      <p class="mt-1 text-xs text-gray-400">Set the canonical publish time for cross-client ordering.</p>
+                      <p class="text-xs text-gray-400">Set the canonical publish time for cross-client ordering.</p>
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label for="cloudflareNip71AltText" class="block text-sm font-medium text-gray-200">Alt text</label>
                       <input
                         type="text"
                         id="cloudflareNip71AltText"
                         data-nip71-input="alt"
                         placeholder="Describe the visuals for screen readers"
-                        class="mt-1 input"
+                        class="input"
                       />
-                      <p class="mt-1 text-xs text-gray-400">Plain-language fallback shown when the media cannot load.</p>
+                      <p class="text-xs text-gray-400">Plain-language fallback shown when the media cannot load.</p>
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label for="cloudflareNip71Duration" class="block text-sm font-medium text-gray-200">
                         Duration (seconds)
                       </label>
@@ -1064,11 +1064,11 @@
                         min="0"
                         step="1"
                         data-nip71-input="duration"
-                        class="mt-1 input"
+                        class="input"
                       />
-                      <p class="mt-1 text-xs text-gray-400">Provide the runtime in whole seconds for timeline scrubbing.</p>
+                      <p class="text-xs text-gray-400">Provide the runtime in whole seconds for timeline scrubbing.</p>
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label for="cloudflareNip71ContentWarning" class="block text-sm font-medium text-gray-200">
                         Content warning
                       </label>
@@ -1077,46 +1077,46 @@
                         id="cloudflareNip71ContentWarning"
                         data-nip71-input="content-warning"
                         placeholder="e.g., Flashing lights"
-                        class="mt-1 input"
+                        class="input"
                       />
-                      <p class="mt-1 text-xs text-gray-400">Leave blank if the video is safe for all audiences.</p>
+                      <p class="text-xs text-gray-400">Leave blank if the video is safe for all audiences.</p>
                     </div>
                   </div>
 
-                  <div>
+                  <div class="space-y-2">
                     <label for="cloudflareNip71Summary" class="block text-sm font-medium text-gray-200">Summary</label>
                     <textarea
                       id="cloudflareNip71Summary"
                       rows="3"
                       data-nip71-input="summary"
-                      class="mt-1 textarea"
+                      class="textarea"
                       placeholder="Short synopsis used as the Nostr content field"
                     ></textarea>
-                    <p class="mt-1 text-xs text-gray-400">This becomes the event content. Keep it concise for Nostr readers.</p>
+                    <p class="text-xs text-gray-400">This becomes the event content. Keep it concise for Nostr readers.</p>
                   </div>
                 </div>
-                <div>
+                <div class="space-y-2">
                   <label for="cloudflareDescription" class="block text-sm font-medium text-gray-200"
                     >Description (optional)</label
                   >
                   <textarea
                     id="cloudflareDescription"
                     rows="3"
-                    class="mt-1 input"
+                    class="input"
                   ></textarea>
                 </div>
                 <div class="grid gap-3 md:grid-cols-2">
-                  <div>
+                  <div class="space-y-2">
                     <label for="cloudflareThumbnail" class="block text-sm font-medium text-gray-200"
                       >Thumbnail URL (optional)</label
                     >
                     <input
                       id="cloudflareThumbnail"
                       type="url"
-                      class="mt-1 input"
+                      class="input"
                     />
                   </div>
-                  <div>
+                  <div class="space-y-2">
                     <label for="cloudflareMagnet" class="block text-sm font-medium text-gray-200"
                       >Magnet link (optional)</label
                     >
@@ -1124,7 +1124,7 @@
                       id="cloudflareMagnet"
                       type="text"
                       placeholder="magnet:?xt=urn:btih:..."
-                      class="mt-1 input"
+                      class="input"
                     />
                   </div>
                 </div>
@@ -1181,7 +1181,7 @@
                         data-nip71-primary="true"
                       >
                         <div class="grid gap-3 md:grid-cols-2">
-                          <div>
+                          <div class="space-y-2">
                             <label class="block text-xs font-medium text-gray-300">
                               MIME type (<code>m</code>)
                             </label>
@@ -1189,11 +1189,11 @@
                               type="text"
                               data-nip71-field="m"
                               placeholder="Auto-filled after upload (e.g., video/mp4)"
-                              class="mt-1 input"
+                              class="input"
                             />
-                            <p class="mt-1 text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
+                            <p class="text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
                           </div>
-                          <div>
+                          <div class="space-y-2">
                             <label class="block text-xs font-medium text-gray-300">
                               Pixel dimensions (<code>dim</code>)
                             </label>
@@ -1201,11 +1201,11 @@
                               type="text"
                               data-nip71-field="dim"
                               placeholder="Auto-filled if detected (e.g., 1920x1080)"
-                              class="mt-1 input"
+                              class="input"
                             />
-                            <p class="mt-1 text-[11px] text-gray-500">Formatted as widthxheight.</p>
+                            <p class="text-[11px] text-gray-500">Formatted as widthxheight.</p>
                           </div>
-                          <div>
+                          <div class="space-y-2">
                             <label class="block text-xs font-medium text-gray-300">
                               Streaming URL (<code>url</code>)
                             </label>
@@ -1213,11 +1213,11 @@
                               type="url"
                               data-nip71-field="url"
                               placeholder="Auto-filled after upload with the public HTTPS URL"
-                              class="mt-1 input"
+                              class="input"
                             />
-                            <p class="mt-1 text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
+                            <p class="text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
                           </div>
-                          <div>
+                          <div class="space-y-2">
                             <label class="block text-xs font-medium text-gray-300">
                               Magnet (<code>x</code>)
                             </label>
@@ -1225,9 +1225,9 @@
                               type="text"
                               data-nip71-field="x"
                               placeholder="Optional magnet pointer if seeding via P2P"
-                              class="mt-1 input"
+                              class="input"
                             />
-                            <p class="mt-1 text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
+                            <p class="text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
                           </div>
                         </div>
 
@@ -1449,15 +1449,15 @@
                     <input
                       type="checkbox"
                       id="cloudflareEnableComments"
-                      class="mt-1 checkbox"
+                      class="checkbox"
                       checked
                       data-default-checked="true"
                     />
-                    <span class="flex flex-col">
+                    <span class="flex flex-col gap-1">
                       <span id="cloudflareEnableCommentsLabel" class="text-sm font-medium text-gray-200">
                         Enable comments
                       </span>
-                      <span class="mt-1 text-xs text-gray-400">
+                      <span class="text-xs text-gray-400">
                         Publish with comments switched on. Toggle off to quietly disable replies on this video.
                       </span>
                     </span>
@@ -1473,14 +1473,14 @@
                       <input
                         type="checkbox"
                         id="cloudflareIsNsfw"
-                        class="mt-1 checkbox"
+                        class="checkbox"
                         data-default-checked="false"
                       />
-                      <span class="flex flex-col">
+                      <span class="flex flex-col gap-1">
                         <span id="cloudflareIsNsfwLabel" class="text-sm font-medium text-gray-200">
                           Is this content NSFW?
                         </span>
-                        <span class="mt-1 text-xs text-gray-400">
+                        <span class="text-xs text-gray-400">
                           Turn this on to signal mature or explicit material to downstream clients.
                         </span>
                       </span>
@@ -1495,21 +1495,21 @@
                       <input
                         type="checkbox"
                         id="cloudflareIsForKids"
-                        class="mt-1 checkbox"
+                        class="checkbox"
                         data-default-checked="false"
                       />
-                      <span class="flex flex-col">
+                      <span class="flex flex-col gap-1">
                         <span id="cloudflareIsForKidsLabel" class="text-sm font-medium text-gray-200">
                           Is this content created for Kids?
                         </span>
-                        <span class="mt-1 text-xs text-gray-400">
+                        <span class="text-xs text-gray-400">
                           Highlight family-safe uploads so moderation tooling and filters stay accurate.
                         </span>
                       </span>
                     </label>
                   </div>
                 </div>
-                <div>
+                <div class="space-y-2">
                   <label for="cloudflareFile" class="block text-sm font-medium text-gray-200"
                     >Video or HLS file</label
                   >
@@ -1517,10 +1517,10 @@
                     id="cloudflareFile"
                     type="file"
                     accept="video/*,.m3u8,.ts,.mp4,.webm,.mov,.mkv,.mpg,.mpeg"
-                    class="mt-1 input border-dashed bg-gray-900 px-3 py-4 text-gray-300"
+                    class="input border-dashed bg-gray-900 px-3 py-4 text-gray-300"
                     required
                   />
-                  <p class="mt-1 text-xs text-gray-500">
+                  <p class="text-xs text-gray-500">
                     We use multipart uploads with automatic bucket creation.
                     Large files are supported.
                   </p>

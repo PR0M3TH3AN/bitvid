@@ -116,7 +116,7 @@
             </fieldset>
 
             <div class="grid gap-4 md:grid-cols-2" data-nip71-grid="metadata">
-              <div>
+              <div class="space-y-2">
                 <label for="editNip71PublishedAt" class="block text-sm font-medium text-gray-200">
                   Published at
                 </label>
@@ -124,13 +124,13 @@
                   type="datetime-local"
                   id="editNip71PublishedAt"
                   data-nip71-input="published_at"
-                  class="mt-1 input"
+                  class="input"
                 />
-                <p class="mt-1 text-xs text-gray-400">
+                <p class="text-xs text-gray-400">
                   Set the canonical publish time for cross-client ordering.
                 </p>
               </div>
-              <div>
+              <div class="space-y-2">
                 <label for="editNip71AltText" class="block text-sm font-medium text-gray-200">
                   Alt text
                 </label>
@@ -139,13 +139,13 @@
                   id="editNip71AltText"
                   data-nip71-input="alt"
                   placeholder="Describe the visuals for screen readers"
-                  class="mt-1 input"
+                  class="input"
                 />
-                <p class="mt-1 text-xs text-gray-400">
+                <p class="text-xs text-gray-400">
                   Plain-language fallback shown when the media cannot load.
                 </p>
               </div>
-              <div>
+              <div class="space-y-2">
                 <label for="editNip71Duration" class="block text-sm font-medium text-gray-200">
                   Duration (seconds)
                 </label>
@@ -155,13 +155,13 @@
                   min="0"
                   step="1"
                   data-nip71-input="duration"
-                  class="mt-1 input"
+                  class="input"
                 />
-                <p class="mt-1 text-xs text-gray-400">
+                <p class="text-xs text-gray-400">
                   Provide the runtime in whole seconds for timeline scrubbing.
                 </p>
               </div>
-              <div>
+              <div class="space-y-2">
                 <label for="editNip71ContentWarning" class="block text-sm font-medium text-gray-200">
                   Content warning
                 </label>
@@ -170,15 +170,15 @@
                   id="editNip71ContentWarning"
                   data-nip71-input="content-warning"
                   placeholder="e.g., Flashing lights"
-                  class="mt-1 input"
+                  class="input"
                 />
-                <p class="mt-1 text-xs text-gray-400">
+                <p class="text-xs text-gray-400">
                   Leave blank if the video is safe for all audiences.
                 </p>
               </div>
             </div>
 
-            <div>
+            <div class="space-y-2">
               <label for="editNip71Summary" class="block text-sm font-medium text-gray-200">
                 Summary
               </label>
@@ -186,10 +186,10 @@
                 id="editNip71Summary"
                 rows="3"
                 data-nip71-input="summary"
-                class="mt-1 textarea"
+                class="textarea"
                 placeholder="Short synopsis used as the Nostr content field"
               ></textarea>
-              <p class="mt-1 text-xs text-gray-400">
+              <p class="text-xs text-gray-400">
                 This becomes the event content. Keep it concise for Nostr readers.
               </p>
             </div>
@@ -227,7 +227,7 @@
               <template id="editNip71ImetaTemplate" data-nip71-template="imeta">
                 <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="imeta">
                   <div class="grid gap-3 md:grid-cols-2">
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">
                         MIME type (<code>m</code>)
                       </label>
@@ -235,11 +235,11 @@
                         type="text"
                         data-nip71-field="m"
                         placeholder="video/mp4"
-                        class="mt-1 input"
+                        class="input"
                       />
-                      <p class="mt-1 text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
+                      <p class="text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">
                         Pixel dimensions (<code>dim</code>)
                       </label>
@@ -247,11 +247,11 @@
                         type="text"
                         data-nip71-field="dim"
                         placeholder="1920x1080"
-                        class="mt-1 input"
+                        class="input"
                       />
-                      <p class="mt-1 text-[11px] text-gray-500">Formatted as widthxheight.</p>
+                      <p class="text-[11px] text-gray-500">Formatted as widthxheight.</p>
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">
                         Streaming URL (<code>url</code>)
                       </label>
@@ -259,11 +259,11 @@
                         type="url"
                         data-nip71-field="url"
                         placeholder="https://cdn.example.com/variant.m3u8"
-                        class="mt-1 input"
+                        class="input"
                       />
-                      <p class="mt-1 text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
+                      <p class="text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">
                         Magnet (<code>x</code>)
                       </label>
@@ -271,9 +271,9 @@
                         type="text"
                         data-nip71-field="x"
                         placeholder="magnet:?xt=urn:btih:..."
-                        class="mt-1 input"
+                        class="input"
                       />
-                      <p class="mt-1 text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
+                      <p class="text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
                     </div>
                   </div>
 
@@ -407,31 +407,31 @@
               <template id="editNip71TextTrackTemplate" data-nip71-template="text-track">
                 <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="text-track">
                   <div class="grid gap-3 md:grid-cols-3">
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">Track URL</label>
                       <input
                         type="url"
                         data-nip71-field="url"
                         placeholder="https://cdn.example.com/subs.vtt"
-                        class="mt-1 input"
+                        class="input"
                       />
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">Type</label>
                       <input
                         type="text"
                         data-nip71-field="type"
                         placeholder="text/vtt"
-                        class="mt-1 input"
+                        class="input"
                       />
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">Language</label>
                       <input
                         type="text"
                         data-nip71-field="language"
                         placeholder="en"
-                        class="mt-1 input"
+                        class="input"
                       />
                     </div>
                   </div>
@@ -467,42 +467,42 @@
               <template id="editNip71SegmentTemplate" data-nip71-template="segment">
                 <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="segment">
                   <div class="grid gap-3 md:grid-cols-2">
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">Start (seconds)</label>
                       <input
                         type="number"
                         data-nip71-field="start"
                         min="0"
                         step="1"
-                        class="mt-1 input"
+                        class="input"
                       />
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">End (seconds)</label>
                       <input
                         type="number"
                         data-nip71-field="end"
                         min="0"
                         step="1"
-                        class="mt-1 input"
+                        class="input"
                       />
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">Title</label>
                       <input
                         type="text"
                         data-nip71-field="title"
                         placeholder="Chapter title"
-                        class="mt-1 input"
+                        class="input"
                       />
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">Thumbnail URL</label>
                       <input
                         type="url"
                         data-nip71-field="thumbnail"
                         placeholder="https://cdn.example.com/frame.jpg"
-                        class="mt-1 input"
+                        class="input"
                       />
                     </div>
                   </div>
@@ -568,22 +568,22 @@
               <template id="editNip71ParticipantTemplate" data-nip71-template="p">
                 <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="p">
                   <div class="grid gap-3 md:grid-cols-2">
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">Participant pubkey</label>
                       <input
                         type="text"
                         data-nip71-field="pubkey"
                         placeholder="npub1... or hex"
-                        class="mt-1 input"
+                        class="input"
                       />
                     </div>
-                    <div>
+                    <div class="space-y-2">
                       <label class="block text-xs font-medium text-gray-300">Relay hint</label>
                       <input
                         type="text"
                         data-nip71-field="relay"
                         placeholder="wss://relay.example.com"
-                        class="mt-1 input"
+                        class="input"
                       />
                     </div>
                   </div>
