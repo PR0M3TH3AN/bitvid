@@ -152,14 +152,14 @@ header img {
    --------------------------------------------------------------------------
    These selectors bridge existing markup to the token-backed primitives while
    templates migrate to the new utility classes. Remove once all views are
-   updated.
+   updated. The shared token mappings now live in `css/tailwind.source.css`
+   so this file only maintains bespoke overrides.
 --------------------------------------------------------------------------- */
-.video-card {
-  @apply card overflow-visible;
+.video-card[data-owner-is-viewer="false"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
+  display: none;
 }
 
 .video-card.video-card--owner-private {
-  @apply bg-card-private;
   box-shadow:
     0 0 0 0.125rem rgba(168, 85, 247, 0.55),
     var(--shadow-md);
@@ -171,12 +171,7 @@ header img {
     var(--shadow-lg);
 }
 
-.video-card[data-owner-is-viewer="false"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
-  display: none;
-}
-
 .video-card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
-  @apply border border-critical border-opacity-40 bg-card-critical;
   box-shadow:
     0 0 0 0.0625rem rgba(239, 68, 68, 0.35),
     var(--shadow-md);
@@ -193,18 +188,13 @@ header img {
   animation: video-card-fade-in 220ms ease-out forwards;
 }
 
-.video-visibility-toggle {
-  @apply inline-flex items-center gap-1 rounded-full border border-border bg-panel px-1 py-1;
-}
-
 .video-visibility-toggle__option {
-  @apply inline-flex items-center justify-center rounded-full border border-transparent bg-panel px-3 py-2 text-xs font-semibold uppercase text-muted transition duration-base ease-in-out;
   min-width: 5.5rem;
   letter-spacing: 0.08em;
 }
 
-.video-visibility-toggle__option:not(.is-disabled):hover {
-  @apply bg-panel-hover text-text;
+.video-visibility-toggle__option.is-disabled[data-active="true"] {
+  opacity: 0.65;
 }
 
 .video-visibility-toggle__option[data-active="true"] {
@@ -213,19 +203,9 @@ header img {
     rgba(129, 140, 248, 0.4),
     rgba(192, 132, 252, 0.32)
   );
-  @apply border border-info border-opacity-60 text-text shadow-lg;
-}
-
-.video-visibility-toggle__option.is-disabled {
-  @apply cursor-not-allowed opacity-45;
-}
-
-.video-visibility-toggle__option.is-disabled[data-active="true"] {
-  opacity: 0.65;
 }
 
 #profileModal .profile-switcher {
-  @apply card flex flex-col gap-lg;
   padding: clamp(1.25rem, 2vw, 1.5rem);
   gap: 1.5rem;
   border: 0.0625rem solid rgba(148, 163, 184, 0.28);
@@ -239,7 +219,6 @@ header img {
 }
 
 #profileModal .profile-switcher__badge {
-  @apply badge;
   font-size: 0.625rem;
   letter-spacing: 0.18em;
   border: 0.0625rem solid rgba(96, 165, 250, 0.25);
@@ -249,7 +228,6 @@ header img {
 }
 
 #profileModal .profile-card {
-  @apply card flex flex-col p-4 text-text;
   gap: 0.85rem;
   border: 0.0625rem solid rgba(148, 163, 184, 0.24);
   background: rgba(15, 23, 42, 0.72);
@@ -284,7 +262,6 @@ header img {
 }
 
 #profileModal .profile-switcher__add {
-  @apply card flex items-center gap-4 text-left p-4;
   border: 0.125rem dashed rgba(148, 163, 184, 0.35);
   background: rgba(15, 23, 42, 0.55);
   border-radius: 1rem;
@@ -307,7 +284,6 @@ header img {
 }
 
 #profileModal .profile-card__action {
-  @apply btn-ghost;
   padding: 0.3rem 0.8rem;
   border: 0.0625rem solid rgba(59, 130, 246, 0.4);
   background: rgba(59, 130, 246, 0.14);
@@ -323,6 +299,17 @@ header img {
   background: rgba(59, 130, 246, 0.24);
   border-color: rgba(59, 130, 246, 0.6);
   color: var(--color-white);
+}
+
+.modal-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn var(--modal-motion-duration) ease-out;
+}
+
+.modal-nav .icon-button {
+  box-shadow: none;
 }
 
 /* Watch history cards */
@@ -1057,15 +1044,6 @@ body.modal-open #sidebarOverlay {
   visibility: hidden;
 }
 
-/* Modal Content Container */
-.modal-content {
-  @apply bv-modal__panel;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  animation: fadeIn var(--modal-motion-duration) ease-out;
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -1115,19 +1093,6 @@ body.modal-open #sidebarOverlay {
 .modal-nav .flex {
   position: relative;
   gap: 0.75rem;
-}
-
-.modal-nav .icon-button {
-  @apply btn-ghost text-text;
-  box-shadow: none;
-}
-
-.modal-nav .icon-button:hover {
-  @apply border-border bg-panel-hover;
-}
-
-.modal-nav .icon-button:focus-visible {
-  @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
 }
 
 #modalNav {
