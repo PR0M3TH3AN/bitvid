@@ -107,6 +107,15 @@ export const ADMIN_WHITELIST_MODE_STORAGE_KEY = "bitvid_admin_whitelist_mode";
 export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 
 /**
+ * Whether the public client should display content flagged as NSFW.
+ *
+ * When set to `false`, BitVid filters out any video notes marked with the
+ * `isNsfw` flag so they never appear in feeds or video lists. Toggle to `true`
+ * only if your deployment allows NSFW media to surface publicly.
+ */
+export const ALLOW_NSFW_CONTENT = false;
+
+/**
  * Nostr kind used when persisting watch history events.
  *
  * BitVid’s roadmap standardizes on kind 30079 so that watch events, view logs,

@@ -171,6 +171,25 @@ header img {
     var(--shadow-lg);
 }
 
+.video-card.video-card--nsfw-owner {
+  background-color: #000;
+  box-shadow:
+    0 0 0 0.0625rem rgba(239, 68, 68, 0.4),
+    var(--shadow-md);
+}
+
+.video-card.video-card--nsfw-owner:hover {
+  box-shadow:
+    0 0 0 0.0625rem rgba(239, 68, 68, 0.55),
+    var(--shadow-lg);
+}
+
+.video-card img.video-card__thumbnail--blurred {
+  filter: blur(18px);
+  transform: scale(1.05);
+  transition: filter 200ms ease, transform 200ms ease;
+}
+
 .video-card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
   box-shadow:
     0 0 0 0.0625rem rgba(239, 68, 68, 0.35),

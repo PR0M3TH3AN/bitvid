@@ -8,6 +8,7 @@ import {
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
   MAX_WALLET_DEFAULT_ZAP,
+  ALLOW_NSFW_CONTENT,
 } from "./config.js";
 import { accessControl } from "./accessControl.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
@@ -849,6 +850,7 @@ class Application {
       renderers: {
         getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
       },
+      allowNsfw: ALLOW_NSFW_CONTENT === true,
     };
     this.videoListView =
       (typeof ui.videoListView === "function"
