@@ -221,7 +221,7 @@
   }
 
   .video-modal__media {
-    @apply aspect-video block w-full rounded-xl bg-black object-contain shadow-2xl;
+    @apply block aspect-video w-full rounded-xl bg-black object-contain shadow-2xl;
   }
 
   .player-modal__video video {
@@ -322,7 +322,7 @@
   }
 
   .profile-switcher__add {
-    @apply card flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-info hover:border-opacity-60 hover:bg-info/10 hover:text-white focus-visible:border-info focus-visible:border-opacity-60;
+    @apply card hover:bg-info/10 flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-info hover:border-opacity-60 hover:text-white focus-visible:border-info focus-visible:border-opacity-60;
   }
 
   .profile-switcher__addAvatar {
@@ -399,7 +399,7 @@
   }
 
   .watch-history-card__meta {
-    @apply flex min-w-0 flex-col justify-between gap-4 sm:flex-[0_0_16rem] sm:min-w-[14rem];
+    @apply flex min-w-0 flex-col justify-between gap-4 sm:min-w-[14rem] sm:flex-[0_0_16rem];
   }
 
   .watch-history-card__watched {
@@ -427,7 +427,7 @@
   }
 
   .watch-history-card__action {
-    @apply inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-panel px-4 py-2 text-sm font-medium text-muted transition duration-base ease-out hover:bg-surface-alt hover:text-white hover:border-border focus-visible:bg-surface-alt focus-visible:text-white focus-visible:border-border;
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-panel px-4 py-2 text-sm font-medium text-muted transition duration-base ease-out hover:border-border hover:bg-surface-alt hover:text-white focus-visible:border-border focus-visible:bg-surface-alt focus-visible:text-white;
   }
 
   .watch-history-card__action--primary {
@@ -437,5 +437,4 @@
   .watch-history-card__action--danger {
     @apply bg-critical text-white hover:bg-critical-strong focus-visible:bg-critical-strong;
   }
-
 }
