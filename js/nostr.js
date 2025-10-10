@@ -800,7 +800,13 @@ function extractVideoPublishPayload(rawPayload) {
     videoData = {};
   }
 
-  return { videoData, nip71Metadata };
+  const normalizedVideoData = { ...videoData };
+  const isNsfw = videoData.isNsfw === true;
+  normalizedVideoData.isNsfw = isNsfw;
+  normalizedVideoData.isForKids =
+    videoData.isForKids === true && !isNsfw;
+
+  return { videoData: normalizedVideoData, nip71Metadata };
 }
 
 function buildVideoPointerValue(pubkey, videoRootId) {
@@ -2916,6 +2922,8 @@ function convertEventToVideo(event = {}) {
   const mode = rawMode || "live";
   const deleted = parsedContent.deleted === true;
   const isPrivate = parsedContent.isPrivate === true;
+  const isNsfw = parsedContent.isNsfw === true;
+  const isForKids = parsedContent.isForKids === true && !isNsfw;
   const videoRootId = safeTrim(parsedContent.videoRootId) || event.id;
   const wsField = safeTrim(parsedContent.ws);
   const xsField = safeTrim(parsedContent.xs);
@@ -3018,6 +3026,8 @@ function convertEventToVideo(event = {}) {
     videoRootId,
     version,
     isPrivate,
+    isNsfw,
+    isForKids,
     title,
     url,
     magnet,
@@ -6367,6 +6377,9 @@ export class NostrClient {
 
     const finalEnableComments =
       videoData.enableComments === false ? false : true;
+    const finalIsNsfw = videoData.isNsfw === true;
+    const finalIsForKids =
+      videoData.isForKids === true && !finalIsNsfw;
     const finalWs =
       typeof videoData.ws === "string" ? videoData.ws.trim() : "";
     const finalXs =
@@ -6383,6 +6396,8 @@ export class NostrClient {
       videoRootId,
       deleted: false,
       isPrivate: videoData.isPrivate ?? false,
+      isNsfw: finalIsNsfw,
+      isForKids: finalIsForKids,
       enableComments: finalEnableComments,
     };
 
@@ -6493,6 +6508,8 @@ export class NostrClient {
           thumbnail: contentObject.thumbnail,
           mode: contentObject.mode,
           isPrivate: contentObject.isPrivate,
+          isNsfw: contentObject.isNsfw,
+          isForKids: contentObject.isForKids,
         };
 
         if (contentObject.ws) {
@@ -6666,6 +6683,10 @@ export class NostrClient {
 
     // Determine if the updated note should be private
     const wantPrivate = updatedData.isPrivate ?? baseEvent.isPrivate ?? false;
+    const wantNsfw = updatedData.isNsfw ?? baseEvent.isNsfw ?? false;
+    const wantForKids = updatedData.isForKids ?? baseEvent.isForKids ?? false;
+    const finalIsNsfw = wantNsfw === true;
+    const finalIsForKids = finalIsNsfw ? false : wantForKids === true;
 
     // Use the new magnet if provided; otherwise, fall back to the decrypted old magnet
     const magnetEdited = updatedData.magnetEdited === true;
@@ -6709,6 +6730,8 @@ export class NostrClient {
       version: updatedData.version ?? baseEvent.version ?? 2,
       deleted: false,
       isPrivate: wantPrivate,
+      isNsfw: finalIsNsfw,
+      isForKids: finalIsForKids,
       title: updatedData.title ?? baseEvent.title,
       url: finalUrl,
       magnet: finalMagnet,
@@ -6833,13 +6856,15 @@ export class NostrClient {
       baseEvent = {
         id: fetched.id,
         pubkey: fetched.pubkey,
-        content: JSON.stringify({
-          version: fetched.version,
-          deleted: fetched.deleted,
-          isPrivate: fetched.isPrivate,
-          title: fetched.title,
-          url: fetched.url,
-          magnet: fetched.magnet,
+          content: JSON.stringify({
+            version: fetched.version,
+            deleted: fetched.deleted,
+            isPrivate: fetched.isPrivate,
+            isNsfw: fetched.isNsfw,
+            isForKids: fetched.isForKids,
+            title: fetched.title,
+            url: fetched.url,
+            magnet: fetched.magnet,
           thumbnail: fetched.thumbnail,
           description: fetched.description,
           mode: fetched.mode,
@@ -6869,11 +6894,16 @@ export class NostrClient {
         ? `LEGACY:${baseEvent.pubkey}:${existingD}`
         : baseEvent.id);
 
+    const oldIsNsfw = oldContent.isNsfw === true;
+    const oldIsForKids = oldContent.isForKids === true && !oldIsNsfw;
+
     const contentObject = {
       videoRootId: finalRootId,
       version: oldVersion,
       deleted: true,
       isPrivate: oldContent.isPrivate ?? false,
+      isNsfw: oldIsNsfw,
+      isForKids: oldIsForKids,
       title: oldContent.title || "",
       url: "",
       magnet: "",

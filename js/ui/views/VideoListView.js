@@ -302,6 +302,8 @@ export class VideoListView {
         : Number(video?.created_at) || 0,
       deleted: Boolean(video?.deleted),
       isPrivate: Boolean(video?.isPrivate),
+      isNsfw: Boolean(video?.isNsfw),
+      isForKids: Boolean(video?.isForKids),
       thumbnail: typeof video?.thumbnail === "string" ? video.thumbnail : "",
       url: typeof video?.url === "string" ? video.url : "",
       magnet: typeof video?.magnet === "string" ? video.magnet : "",
