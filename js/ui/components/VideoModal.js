@@ -127,8 +127,28 @@ export class VideoModal {
   }
 
   async load() {
-    if (this.loaded && this.playerModal && this.playerModal.isConnected) {
-      return this.playerModal;
+    if (this.loaded) {
+      const root = this.playerModal;
+      const rootConnected = root && root.isConnected;
+      if (rootConnected) {
+        const video = this.modalVideo;
+        const videoConnected = video && video.isConnected;
+        if (!videoConnected) {
+          const existingVideo = root.querySelector("#modalVideo");
+          if (existingVideo) {
+            this.hydrate(root);
+            if (this.modalVideo && this.modalVideo.isConnected) {
+              return this.playerModal;
+            }
+          }
+          this.loaded = false;
+        } else {
+          return this.playerModal;
+        }
+      } else {
+        this.loaded = false;
+        this.playerModal = null;
+      }
     }
 
     const existing = this.document.getElementById("playerModal");
