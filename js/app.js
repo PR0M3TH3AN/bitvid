@@ -2391,8 +2391,10 @@ class Application {
       legacyPayload?.enableComments,
       true
     );
-    const isNsfw = normalizeBooleanFlag(legacyPayload?.isNsfw, false);
-    const isForKids = normalizeBooleanFlag(legacyPayload?.isForKids, false);
+    const rawIsNsfw = normalizeBooleanFlag(legacyPayload?.isNsfw, false);
+    const rawIsForKids = normalizeBooleanFlag(legacyPayload?.isForKids, false);
+    const isNsfw = rawIsNsfw;
+    const isForKids = rawIsNsfw ? false : rawIsForKids;
 
     const legacyFormData = {
       version: 3,

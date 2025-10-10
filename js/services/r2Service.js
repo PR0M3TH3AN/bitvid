@@ -674,7 +674,10 @@ class R2Service {
     const xs = String(metadata.xs || "").trim();
     const enableComments = metadata.enableComments !== false;
     const isNsfw = metadata.isNsfw === true;
-    const isForKids = metadata.isForKids === true;
+    const isForKids = metadata.isForKids === true && !isNsfw;
+
+    metadata.isNsfw = isNsfw;
+    metadata.isForKids = isForKids;
 
     const accountId = (this.cloudflareSettings?.accountId || "").trim();
     const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
