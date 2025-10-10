@@ -194,6 +194,7 @@ class Application {
     this.videoListViewDeleteHandler = null;
     this.moreMenuController = null;
     this.latestFeedMetadata = null;
+    this.lastModalTrigger = null;
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
@@ -858,16 +859,23 @@ class Application {
         : ui.videoListView) ||
       new VideoListView(videoListViewConfig);
 
-    this.videoListViewPlaybackHandler = ({ videoId, url, magnet }) => {
+    this.videoListViewPlaybackHandler = ({
+      videoId,
+      url,
+      magnet,
+      trigger,
+    }) => {
       if (videoId) {
         Promise.resolve(
-          this.playVideoByEventId(videoId, { url, magnet })
+          this.playVideoByEventId(videoId, { url, magnet, trigger })
         ).catch((error) => {
           console.error("[VideoListView] Failed to play by event id:", error);
         });
         return;
       }
-      Promise.resolve(this.playVideoWithFallback({ url, magnet })).catch(
+      Promise.resolve(
+        this.playVideoWithFallback({ url, magnet, trigger })
+      ).catch(
         (error) => {
           console.error("[VideoListView] Failed to start playback:", error);
         }
@@ -1260,12 +1268,43 @@ class Application {
     }
   }
 
+  normalizeModalTrigger(candidate) {
+    if (!candidate) {
+      return null;
+    }
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+    const isElement =
+      typeof candidate === "object" &&
+      candidate !== null &&
+      typeof candidate.nodeType === "number" &&
+      candidate.nodeType === 1 &&
+      typeof candidate.focus === "function";
+    if (!isElement) {
+      return null;
+    }
+    if (doc && typeof doc.contains === "function" && !doc.contains(candidate)) {
+      return null;
+    }
+    return candidate;
+  }
+
+  setLastModalTrigger(candidate) {
+    this.lastModalTrigger = this.normalizeModalTrigger(candidate);
+    return this.lastModalTrigger;
+  }
+
   /**
    * Show the modal and set the "Please stand by" poster on the video.
    */
-  async showModalWithPoster(video = this.currentVideo) {
+  async showModalWithPoster(video = this.currentVideo, options = {}) {
     if (!this.videoModal) {
       return null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(options || {}, "trigger")) {
+      this.setLastModalTrigger(options.trigger);
     }
 
     const targetVideo = video || this.currentVideo;
@@ -1279,7 +1318,9 @@ class Application {
         return root || null;
       }
 
-      this.videoModal.open(targetVideo);
+      this.videoModal.open(targetVideo, {
+        triggerElement: this.lastModalTrigger,
+      });
       this.applyModalLoadingPoster();
 
       return (
@@ -3730,6 +3771,8 @@ class Application {
       }
     }
 
+    this.lastModalTrigger = null;
+
     this.currentMagnetUri = null;
 
     // 3) Kick off heavy cleanup work asynchronously. We still await it so
@@ -5675,7 +5718,15 @@ class Application {
    * Unified playback helper that prefers HTTP URL sources
    * and falls back to WebTorrent when needed.
    */
-  async playVideoWithFallback({ url = "", magnet = "" } = {}) {
+  async playVideoWithFallback(options = {}) {
+    const { url = "", magnet = "", trigger } = options || {};
+    const hasTrigger = Object.prototype.hasOwnProperty.call(
+      options || {},
+      "trigger"
+    );
+    if (hasTrigger) {
+      this.setLastModalTrigger(trigger);
+    }
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     const requestSignature = JSON.stringify({
@@ -5877,22 +5928,28 @@ class Application {
       return;
     }
 
+    const hint = playbackHint && typeof playbackHint === "object"
+      ? playbackHint
+      : {};
     const fallbackUrl =
-      typeof playbackHint?.url === "string" ? playbackHint.url.trim() : "";
+      typeof hint.url === "string" ? hint.url.trim() : "";
     const fallbackTitle =
-      typeof playbackHint?.title === "string" ? playbackHint.title : "";
+      typeof hint.title === "string" ? hint.title : "";
     const fallbackDescription =
-      typeof playbackHint?.description === "string"
-        ? playbackHint.description
-        : "";
+      typeof hint.description === "string" ? hint.description : "";
     const fallbackMagnetRaw =
-      typeof playbackHint?.magnet === "string"
-        ? playbackHint.magnet.trim()
-        : "";
+      typeof hint.magnet === "string" ? hint.magnet.trim() : "";
     let fallbackMagnetCandidate = "";
     if (fallbackMagnetRaw) {
       const decoded = safeDecodeMagnet(fallbackMagnetRaw);
       fallbackMagnetCandidate = decoded || fallbackMagnetRaw;
+    }
+
+    const hasTrigger = Object.prototype.hasOwnProperty.call(hint, "trigger");
+    if (hasTrigger) {
+      this.setLastModalTrigger(hint.trigger);
+    } else {
+      this.setLastModalTrigger(null);
     }
 
     this.currentVideoPointer = null;
@@ -5914,6 +5971,7 @@ class Application {
           magnet: fallbackMagnetCandidate,
           title: fallbackTitle || "Untitled",
           description: fallbackDescription || "",
+          trigger: hasTrigger ? hint.trigger : null,
         });
       }
       this.showError("Video not found or has been removed.");
@@ -6054,6 +6112,7 @@ class Application {
     const playbackPromise = this.playVideoWithFallback({
       url: trimmedUrl,
       magnet: magnetInput,
+      trigger: hasTrigger ? this.lastModalTrigger : null,
     });
 
     let lightningAddress = "";
@@ -6311,12 +6370,23 @@ class Application {
     this.videoModal.updateMetadata({ timestamps: payload });
   }
 
-  async playVideoWithoutEvent({
-    url = "",
-    magnet = "",
-    title = "Untitled",
-    description = "",
-  } = {}) {
+  async playVideoWithoutEvent(options = {}) {
+    const {
+      url = "",
+      magnet = "",
+      title = "Untitled",
+      description = "",
+      trigger,
+    } = options || {};
+    const hasTrigger = Object.prototype.hasOwnProperty.call(
+      options || {},
+      "trigger"
+    );
+    if (hasTrigger) {
+      this.setLastModalTrigger(trigger);
+    } else {
+      this.setLastModalTrigger(null);
+    }
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
     this.subscribeModalViewCount(null, null);
@@ -6383,7 +6453,7 @@ class Application {
       });
     }
 
-    await this.showModalWithPoster(this.currentVideo);
+    await this.showModalWithPoster(this.currentVideo, hasTrigger ? { trigger } : {});
 
     const urlObj = new URL(window.location.href);
     urlObj.searchParams.delete("v");
@@ -6393,6 +6463,7 @@ class Application {
     return this.playVideoWithFallback({
       url: sanitizedUrl,
       magnet: usableMagnet,
+      trigger: hasTrigger ? this.lastModalTrigger : null,
     });
   }
 

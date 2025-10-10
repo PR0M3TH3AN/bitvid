@@ -461,7 +461,7 @@ export class VideoModal {
     this.dispatch("creator:navigate", { video: this.activeVideo });
   }
 
-  open(video) {
+  open(video, options = {}) {
     this.activeVideo = video || null;
     if (!this.playerModal) {
       return;
@@ -471,7 +471,9 @@ export class VideoModal {
     this.playerModal.classList.remove("hidden");
     this.document.body.classList.add("modal-open");
     this.document.documentElement.classList.add("modal-open");
-    this.modalAccessibility?.activate();
+    const triggerElement =
+      options && typeof options === "object" ? options.triggerElement : null;
+    this.modalAccessibility?.activate({ triggerElement });
     if (this.scrollRegion) {
       this.scrollRegion.scrollTop = 0;
     }

@@ -2,6 +2,13 @@
 
 Run this checklist before publishing releases or merging changes that touch upload or playback flows. Copy/paste the steps into QA tickets when requesting validation.
 
+Before starting, open `docs/kitchen-sink.html` in a browser to review the modal surface reference. With that page as your visual baseline, perform this quick accessibility spot check in the running app:
+
+* Launch the site, trigger any video card or thumbnail to open the playback modal, and keep track of the element you used to open it.
+* Scroll the modal content down and back up; confirm the sticky navigation bar hides on downward scroll and reappears when you reverse direction.
+* Activate the zap button to display the popover and tab through its fields to confirm focus stays within the dialog; press `Escape` to close it and ensure focus returns to the zap trigger.
+* Close the video modal first with `Escape` and again by clicking the dimmed backdrop; in both cases, focus should move back to the original trigger element you used to open the modal.
+
 1. **Upload Modal Smoke Test**
    - Open the Upload modal, verify title is required, and ensure either a hosted URL or a magnet (or both) must be supplied.
    - Submit three variants: URL-only, magnet-only, and both URL + magnet. Confirm success messaging or event publication in each case.

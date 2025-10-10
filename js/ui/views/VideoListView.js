@@ -796,7 +796,7 @@ export class VideoListView {
     const videoId =
       target?.dataset?.videoId || target?.getAttribute?.("data-video-id") || video?.id || "";
 
-    return { videoId, url, magnet, video };
+    return { videoId, url, magnet, video, trigger: element };
   }
 
   emitSelected(detail) {
