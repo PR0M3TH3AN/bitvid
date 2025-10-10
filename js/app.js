@@ -1655,8 +1655,8 @@ class Application {
       return;
     }
 
-    const titleEl = button.querySelector(".profile-switcher__addTitle");
-    const hintEl = button.querySelector(".profile-switcher__addHint");
+    const titleEl = button.querySelector('[data-profile-add-title]');
+    const hintEl = button.querySelector('[data-profile-add-hint]');
     const originalTitle = titleEl ? titleEl.textContent : "";
     const originalHint = hintEl ? hintEl.textContent : "";
     const originalAriaLabel = button.getAttribute("aria-label");

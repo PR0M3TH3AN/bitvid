@@ -1258,7 +1258,7 @@ export class ProfileModalController {
       if (!entriesToRender.length) {
         listEl.setAttribute("data-profile-switcher-empty", "true");
         const helper = document.createElement("p");
-        helper.className = "profile-switcher__empty text-sm text-gray-400";
+        helper.className = "text-sm text-gray-400";
         helper.textContent = "No other profiles saved yet.";
         helper.setAttribute("role", "note");
         listEl.appendChild(helper);
@@ -1269,7 +1269,8 @@ export class ProfileModalController {
           const meta = resolveMeta(entry);
           const button = document.createElement("button");
           button.type = "button";
-          button.classList.add("profile-card");
+          button.className =
+            "card focus-ring flex w-full items-center gap-4 p-4 text-left transition";
           button.dataset.pubkey = entry.pubkey;
           if (meta.npub) {
             button.dataset.npub = meta.npub;
@@ -1282,15 +1283,19 @@ export class ProfileModalController {
           const isSelected =
             normalizedSelection && normalizedPubkey === normalizedSelection;
           if (isSelected) {
-            button.classList.add("profile-card--active");
+            button.dataset.state = "active";
+            button.classList.add("ring-1", "ring-blue-400/60", "bg-blue-500/10");
             button.setAttribute("aria-pressed", "true");
           } else {
+            delete button.dataset.state;
             button.setAttribute("aria-pressed", "false");
           }
 
           const avatarSpan = document.createElement("span");
-          avatarSpan.className = "profile-card__avatar";
+          avatarSpan.className =
+            "flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-slate-500/50 bg-slate-900";
           const avatarImg = document.createElement("img");
+          avatarImg.className = "h-full w-full object-cover";
           avatarImg.src = meta.picture || FALLBACK_PROFILE_AVATAR;
           const cardDisplayName =
             meta.name?.trim() ||
@@ -1298,30 +1303,31 @@ export class ProfileModalController {
           avatarImg.alt = `${cardDisplayName} avatar`;
           avatarSpan.appendChild(avatarImg);
 
-          const metaSpan = document.createElement("span");
-          metaSpan.className = "profile-card__meta";
+          const metaSpan = document.createElement("div");
+          metaSpan.className = "flex min-w-0 flex-1 flex-col gap-2";
 
-          const topLine = document.createElement("span");
-          topLine.className = "profile-card__topline";
+          const topLine = document.createElement("div");
+          topLine.className = "flex flex-wrap items-center gap-3";
 
           const label = document.createElement("span");
-          label.className = "profile-card__label";
+          label.className =
+            "text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200";
           label.textContent =
             entry.authType === "nsec" ? "Direct key" : "Saved profile";
 
           const action = document.createElement("span");
-          action.className = "profile-card__action";
+          action.className = "text-xs font-medium text-gray-400";
           action.setAttribute("aria-hidden", "true");
           action.textContent = isSelected ? "Selected" : "Switch";
 
           topLine.append(label, action);
 
           const nameSpan = document.createElement("span");
-          nameSpan.className = "profile-card__name";
+          nameSpan.className = "truncate text-sm font-semibold text-white";
           nameSpan.textContent = cardDisplayName;
 
           const npubSpan = document.createElement("span");
-          npubSpan.className = "profile-card__npub";
+          npubSpan.className = "break-all font-mono text-xs text-gray-400";
           npubSpan.textContent = meta.npub
             ? truncate(meta.npub, 48)
             : "npub unavailable";
@@ -1424,9 +1430,11 @@ export class ProfileModalController {
       }
       const isActive = key === target;
       button.setAttribute("aria-selected", isActive ? "true" : "false");
-      button.classList.toggle("bg-gray-800", isActive);
-      button.classList.toggle("text-white", isActive);
-      button.classList.toggle("text-gray-400", !isActive);
+      if (isActive) {
+        button.dataset.state = "active";
+      } else {
+        delete button.dataset.state;
+      }
     });
 
     this.setActivePane(target);
@@ -1483,7 +1491,7 @@ export class ProfileModalController {
     if (!relays.length) {
       const emptyState = document.createElement("li");
       emptyState.className =
-        "rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400";
+        "card border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400";
       emptyState.textContent = "No relays configured.";
       this.relayList.appendChild(emptyState);
       return;
@@ -1492,7 +1500,7 @@ export class ProfileModalController {
     relays.forEach((entry) => {
       const item = document.createElement("li");
       item.className =
-        "flex items-start justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+        "card flex items-start justify-between gap-4 p-4";
 
       const info = document.createElement("div");
       info.className = "flex-1 min-w-0";
@@ -1519,8 +1527,7 @@ export class ProfileModalController {
 
       const editBtn = document.createElement("button");
       editBtn.type = "button";
-      editBtn.className =
-        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      editBtn.className = "btn-ghost focus-ring text-xs";
       editBtn.textContent = "Change mode";
       editBtn.title = "Cycle between read-only, write-only, or read/write modes.";
       editBtn.addEventListener("click", () => {
@@ -1529,8 +1536,8 @@ export class ProfileModalController {
 
       const removeBtn = document.createElement("button");
       removeBtn.type = "button";
-      removeBtn.className =
-        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      removeBtn.className = "btn-ghost focus-ring text-xs";
+      removeBtn.dataset.variant = "danger";
       removeBtn.textContent = "Remove";
       removeBtn.addEventListener("click", () => {
         void this.handleRemoveRelay(entry.url);
@@ -1838,21 +1845,21 @@ export class ProfileModalController {
     deduped.forEach(({ hex, label }) => {
       const item = document.createElement("li");
       item.className =
-        "flex items-center justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+        "card flex items-center justify-between gap-4 p-4";
 
       const info = document.createElement("div");
-      info.className = "min-w-0";
+      info.className = "min-w-0 flex-1";
 
       const title = document.createElement("p");
-      title.className = "text-sm font-medium text-gray-100 break-all";
+      title.className = "break-all text-sm font-medium text-gray-100";
       title.textContent = label;
 
       info.appendChild(title);
 
       const actionBtn = document.createElement("button");
       actionBtn.type = "button";
-      actionBtn.className =
-        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      actionBtn.className = "btn-ghost focus-ring text-xs";
+      actionBtn.dataset.variant = "danger";
       actionBtn.textContent = "Remove";
       actionBtn.dataset.blockedHex = hex;
       actionBtn.addEventListener("click", () => {
@@ -2618,18 +2625,17 @@ export class ProfileModalController {
     values.forEach((npub) => {
       const item = document.createElement("li");
       item.className =
-        "flex flex-col gap-2 rounded-lg bg-gray-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between";
+        "card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between";
 
       const label = document.createElement("p");
-      label.className = "text-sm font-medium text-gray-100 break-all";
+      label.className = "break-all text-sm font-medium text-gray-100";
       label.textContent = npub;
       item.appendChild(label);
 
       if (removable && typeof onRemove === "function") {
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";
-        removeBtn.className =
-          "self-start rounded-md bg-gray-700 px-3 py-1 text-xs font-medium text-gray-100 transition hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+        removeBtn.className = "btn-ghost focus-ring text-xs";
         removeBtn.textContent = removeLabel;
         removeBtn.addEventListener("click", () => {
           if (confirmMessage) {
@@ -2759,7 +2765,7 @@ export class ProfileModalController {
       this.setAdminLoading(false);
       if (
         adminNav instanceof HTMLElement &&
-        adminNav.classList.contains("bg-gray-800")
+        adminNav.dataset.state === "active"
       ) {
         this.selectPane("account");
       }
