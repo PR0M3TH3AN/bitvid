@@ -1,3 +1,5 @@
+import { createModalAccessibility } from "./modalAccessibility.js";
+
 export class VideoModal {
   constructor({
     removeTrackingScripts,
@@ -25,6 +27,8 @@ export class VideoModal {
     this.loaded = false;
 
     this.playerModal = null;
+    this.modalPanel = null;
+    this.modalBackdrop = null;
     this.scrollRegion = null;
     this.modalVideo = null;
     this.modalStatus = null;
@@ -45,6 +49,9 @@ export class VideoModal {
     this.modalZapBtn = null;
     this.modalMoreBtn = null;
     this.modalMoreMenu = null;
+
+    this.modalAccessibility = null;
+    this.modalNavScrollHandler = null;
 
     this.modalZapDialog = null;
     this.modalZapForm = null;
@@ -190,9 +197,23 @@ export class VideoModal {
   }
 
   hydrate(playerModal) {
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+    this.modalAccessibility = null;
+
+    const previousScrollRegion = this.scrollRegion;
+    if (previousScrollRegion && this.modalNavScrollHandler) {
+      previousScrollRegion.removeEventListener(
+        "scroll",
+        this.modalNavScrollHandler
+      );
+    }
+
     this.playerModal = playerModal;
-    this.scrollRegion =
-      playerModal.querySelector(".player-modal__content") || playerModal;
+    this.modalPanel = playerModal.querySelector(".bv-modal__panel") || null;
+    this.modalBackdrop = playerModal.querySelector("[data-dismiss]") || null;
+    this.scrollRegion = this.modalPanel || playerModal;
 
     this.modalVideo = playerModal.querySelector("#modalVideo") || null;
     this.modalStatus = playerModal.querySelector("#modalStatus") || null;
@@ -253,7 +274,7 @@ export class VideoModal {
     const modalNav = playerModal.querySelector("#modalNav");
     if (modalNav && this.scrollRegion) {
       let lastScrollY = 0;
-      this.scrollRegion.addEventListener("scroll", () => {
+      this.modalNavScrollHandler = () => {
         const currentScrollY = this.scrollRegion.scrollTop;
         const shouldShowNav =
           currentScrollY <= lastScrollY || currentScrollY < 50;
@@ -261,8 +282,21 @@ export class VideoModal {
           ? "translateY(0)"
           : "translateY(-100%)";
         lastScrollY = currentScrollY;
-      });
+      };
+      this.scrollRegion.addEventListener("scroll", this.modalNavScrollHandler);
+    } else {
+      this.modalNavScrollHandler = null;
     }
+
+    this.modalAccessibility = createModalAccessibility({
+      root: this.playerModal,
+      panel: this.modalPanel,
+      backdrop: this.modalBackdrop,
+      document: this.document,
+      onRequestClose: () => {
+        this.dispatch("modal:close", { video: this.activeVideo });
+      },
+    });
 
     this.bindVideoEvents();
     this.bindActionButtons();
@@ -427,34 +461,6 @@ export class VideoModal {
     this.dispatch("creator:navigate", { video: this.activeVideo });
   }
 
-  toggleBackgroundInert(enable) {
-    const ids = ["sidebar", "sidebarOverlay"];
-    for (const id of ids) {
-      const element = this.document.getElementById(id);
-      if (!element) {
-        continue;
-      }
-
-      if (enable) {
-        if (!element.hasAttribute("inert")) {
-          element.setAttribute("inert", "");
-        }
-        element.dataset.modalInert = "true";
-        element.setAttribute("aria-hidden", "true");
-        element.classList.add("is-modal-hidden");
-      } else {
-        if (element.dataset.modalInert === "true") {
-          element.removeAttribute("inert");
-          delete element.dataset.modalInert;
-        }
-        if (element.getAttribute("aria-hidden") === "true") {
-          element.removeAttribute("aria-hidden");
-        }
-        element.classList.remove("is-modal-hidden");
-      }
-    }
-  }
-
   open(video) {
     this.activeVideo = video || null;
     if (!this.playerModal) {
@@ -465,7 +471,7 @@ export class VideoModal {
     this.playerModal.classList.remove("hidden");
     this.document.body.classList.add("modal-open");
     this.document.documentElement.classList.add("modal-open");
-    this.toggleBackgroundInert(true);
+    this.modalAccessibility?.activate();
     if (this.scrollRegion) {
       this.scrollRegion.scrollTop = 0;
     }
@@ -481,7 +487,7 @@ export class VideoModal {
     }
     this.document.body.classList.remove("modal-open");
     this.document.documentElement.classList.remove("modal-open");
-    this.toggleBackgroundInert(false);
+    this.modalAccessibility?.deactivate();
     this.setGlobalModalState("player", false);
     this.forceRemovePoster("close");
   }
