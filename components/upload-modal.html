@@ -3,10 +3,16 @@
   id="uploadModal"
   class="fixed inset-0 z-50 hidden"
   style="background: transparent"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="uploadModalTitle"
+  aria-describedby="uploadModalDescription"
+  tabindex="-1"
 >
   <!-- Overlay Layer with dark background and blur -->
   <div
     class="absolute inset-0 z-10"
+    aria-hidden="true"
     style="
       background-color: rgba(0, 0, 0, 0.9);
       backdrop-filter: blur(10px);
@@ -16,25 +22,30 @@
 
   <!-- Modal Container -->
   <div
-    class="relative modal-container h-full w-full flex items-start md:items-center justify-center overflow-y-auto z-20"
+    class="modal-container relative z-20 flex h-full w-full items-start justify-center overflow-y-auto md:items-center"
   >
     <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-y-auto relative"
+      class="modal-content relative my-0 w-full max-w-[90%] overflow-y-auto rounded-lg bg-gray-900 lg:max-w-6xl"
       style="max-height: 90vh"
+      tabindex="-1"
     >
       <!-- Top Bar (similar to video-modal) -->
       <div
-        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent transition-transform duration-150 p-4 flex items-center justify-between"
+        class="from-black/80 sticky top-0 flex items-center justify-between bg-gradient-to-b to-transparent p-4 transition-transform duration-150"
       >
-        <h2 class="text-xl font-bold text-white">Share a Video</h2>
+        <h2 id="uploadModalTitle" class="text-xl font-bold text-white">
+          Share a Video
+        </h2>
         <button
           id="closeUploadModal"
-          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
+          class="bg-black/50 hover:bg-black/70 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black"
+          type="button"
+          aria-label="Close upload modal"
         >
           <!-- X or arrow icon -->
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="w-6 h-6 text-gray-300"
+            class="h-6 w-6 text-gray-300"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -50,7 +61,7 @@
       </div>
 
       <!-- Form Content -->
-      <div class="p-6 space-y-6">
+      <div class="space-y-6 p-6">
         <div class="flex justify-center">
           <div
             class="inline-flex items-center rounded-full bg-gray-800/80 p-1 text-sm"
@@ -78,8 +89,9 @@
 
         <div id="customUploadSection">
           <form id="uploadForm" class="space-y-6">
-            <p class="text-sm text-gray-400">
-              Share a title plus either a hosted video URL or a magnet link. Providing both helps bitvid fall back gracefully.
+            <p id="uploadModalDescription" class="text-sm text-gray-400">
+              Share a title plus either a hosted video URL or a magnet link.
+              Providing both helps bitvid fall back gracefully.
             </p>
             <div class="space-y-2">
               <label
@@ -87,28 +99,42 @@
                 class="block text-sm font-medium text-gray-200"
                 >Title</label
               >
-              <input
-                type="text"
-                id="uploadTitle"
-                required
-                class="input"
-              />
+              <input type="text" id="uploadTitle" required class="input" />
             </div>
 
-            <div class="space-y-4 rounded-lg border border-gray-800 bg-black/30 p-4" id="nip71EventDetails" data-nip71-section="event-details">
-              <fieldset id="nip71KindFieldset" class="space-y-2" data-nip71-fieldset="kind">
-                <legend class="text-sm font-semibold text-gray-200">NIP-71 event type</legend>
+            <div
+              class="bg-black/30 space-y-4 rounded-lg border border-gray-800 p-4"
+              id="nip71EventDetails"
+              data-nip71-section="event-details"
+            >
+              <fieldset
+                id="nip71KindFieldset"
+                class="space-y-2"
+                data-nip71-fieldset="kind"
+              >
+                <legend class="text-sm font-semibold text-gray-200">
+                  NIP-71 event type
+                </legend>
                 <p class="text-xs text-gray-400">
-                  Choose the video format. <span class="font-medium text-gray-300">Kind 21</span> is a full video, while
-                  <span class="font-medium text-gray-300">Kind 22</span> is a short.
+                  Choose the video format.
+                  <span class="font-medium text-gray-300">Kind 21</span> is a
+                  full video, while
+                  <span class="font-medium text-gray-300">Kind 22</span> is a
+                  short.
                 </p>
                 <div
                   class="form-control"
                   role="radiogroup"
                   aria-labelledby="nip71KindFieldset"
                 >
-                  <div class="menu sm:flex-row sm:flex-wrap sm:py-0" role="presentation">
-                    <label class="menu__item gap-3 px-0 py-0" for="nip71KindLong">
+                  <div
+                    class="menu sm:flex-row sm:flex-wrap sm:py-0"
+                    role="presentation"
+                  >
+                    <label
+                      class="menu__item gap-3 px-0 py-0"
+                      for="nip71KindLong"
+                    >
                       <input
                         type="radio"
                         name="nip71Kind"
@@ -118,9 +144,14 @@
                         data-nip71-input="kind"
                         class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
                       />
-                      <span class="text-sm text-gray-200">Normal video (kind 21)</span>
+                      <span class="text-sm text-gray-200"
+                        >Normal video (kind 21)</span
+                      >
                     </label>
-                    <label class="menu__item gap-3 px-0 py-0" for="nip71KindShort">
+                    <label
+                      class="menu__item gap-3 px-0 py-0"
+                      for="nip71KindShort"
+                    >
                       <input
                         type="radio"
                         name="nip71Kind"
@@ -129,7 +160,9 @@
                         data-nip71-input="kind"
                         class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
                       />
-                      <span class="text-sm text-gray-200">Short video (kind 22)</span>
+                      <span class="text-sm text-gray-200"
+                        >Short video (kind 22)</span
+                      >
                     </label>
                   </div>
                 </div>
@@ -137,17 +170,27 @@
 
               <div class="grid gap-4 md:grid-cols-2" data-nip71-grid="metadata">
                 <div class="space-y-2">
-                  <label for="nip71PublishedAt" class="block text-sm font-medium text-gray-200">Published at</label>
+                  <label
+                    for="nip71PublishedAt"
+                    class="block text-sm font-medium text-gray-200"
+                    >Published at</label
+                  >
                   <input
                     type="datetime-local"
                     id="nip71PublishedAt"
                     data-nip71-input="published_at"
                     class="input"
                   />
-                  <p class="text-xs text-gray-400">Set the canonical publish time for cross-client ordering.</p>
+                  <p class="text-xs text-gray-400">
+                    Set the canonical publish time for cross-client ordering.
+                  </p>
                 </div>
                 <div class="space-y-2">
-                  <label for="nip71AltText" class="block text-sm font-medium text-gray-200">Alt text</label>
+                  <label
+                    for="nip71AltText"
+                    class="block text-sm font-medium text-gray-200"
+                    >Alt text</label
+                  >
                   <input
                     type="text"
                     id="nip71AltText"
@@ -155,10 +198,16 @@
                     placeholder="Describe the visuals for screen readers"
                     class="input"
                   />
-                  <p class="text-xs text-gray-400">Plain-language fallback shown when the media cannot load.</p>
+                  <p class="text-xs text-gray-400">
+                    Plain-language fallback shown when the media cannot load.
+                  </p>
                 </div>
                 <div class="space-y-2">
-                  <label for="nip71Duration" class="block text-sm font-medium text-gray-200">Duration (seconds)</label>
+                  <label
+                    for="nip71Duration"
+                    class="block text-sm font-medium text-gray-200"
+                    >Duration (seconds)</label
+                  >
                   <input
                     type="number"
                     id="nip71Duration"
@@ -167,10 +216,16 @@
                     data-nip71-input="duration"
                     class="input"
                   />
-                  <p class="text-xs text-gray-400">Provide the runtime in whole seconds for timeline scrubbing.</p>
+                  <p class="text-xs text-gray-400">
+                    Provide the runtime in whole seconds for timeline scrubbing.
+                  </p>
                 </div>
                 <div class="space-y-2">
-                  <label for="nip71ContentWarning" class="block text-sm font-medium text-gray-200">Content warning</label>
+                  <label
+                    for="nip71ContentWarning"
+                    class="block text-sm font-medium text-gray-200"
+                    >Content warning</label
+                  >
                   <input
                     type="text"
                     id="nip71ContentWarning"
@@ -178,12 +233,18 @@
                     placeholder="e.g., Flashing lights"
                     class="input"
                   />
-                  <p class="text-xs text-gray-400">Leave blank if the video is safe for all audiences.</p>
+                  <p class="text-xs text-gray-400">
+                    Leave blank if the video is safe for all audiences.
+                  </p>
                 </div>
               </div>
 
               <div class="space-y-2">
-                <label for="nip71Summary" class="block text-sm font-medium text-gray-200">Summary</label>
+                <label
+                  for="nip71Summary"
+                  class="block text-sm font-medium text-gray-200"
+                  >Summary</label
+                >
                 <textarea
                   id="nip71Summary"
                   rows="3"
@@ -191,7 +252,10 @@
                   class="textarea"
                   placeholder="Short synopsis used as the Nostr content field"
                 ></textarea>
-                <p class="text-xs text-gray-400">This becomes the event content. Keep it concise for Nostr readers.</p>
+                <p class="text-xs text-gray-400">
+                  This becomes the event content. Keep it concise for Nostr
+                  readers.
+                </p>
               </div>
             </div>
 
@@ -209,25 +273,25 @@
                 placeholder="https://cdn.example.com/video.mp4"
               />
               <small class="block text-xs text-gray-400"
-                >Optional but preferred. We will play this first and fall back to
-                P2P.</small
+                >Optional but preferred. We will play this first and fall back
+                to P2P.</small
               >
             </div>
 
             <!-- Optional: seed bootstraps for magnet -->
-            <div class="grid grid-cols-1 gap-3 mb-2 text-xs">
+            <div class="mb-2 grid grid-cols-1 gap-3 text-xs">
               <input
                 id="uploadWs"
                 type="url"
-                class="w-full p-2 rounded"
+                class="w-full rounded p-2"
                 placeholder="Web seed (ws=) e.g., https://cdn.example.com/video.mp4"
-              >
+              />
               <input
                 id="uploadXs"
                 type="url"
-                class="w-full p-2 rounded"
+                class="w-full rounded p-2"
                 placeholder=".torrent URL (xs=) e.g., https://cdn.example.com/video.torrent"
-              >
+              />
             </div>
 
             <div class="space-y-2">
@@ -253,11 +317,7 @@
                 class="block text-sm font-medium text-gray-200"
                 >Thumbnail URL (optional)</label
               >
-              <input
-                type="url"
-                id="uploadThumbnail"
-                class="input"
-              />
+              <input type="url" id="uploadThumbnail" class="input" />
             </div>
 
             <div class="space-y-2">
@@ -271,24 +331,38 @@
                 rows="3"
                 class="textarea"
               ></textarea>
-              <p class="text-xs text-gray-400">Kept for older clients that rely on the legacy description tag.</p>
+              <p class="text-xs text-gray-400">
+                Kept for older clients that rely on the legacy description tag.
+              </p>
             </div>
 
             <fieldset
               id="nip71TagsFieldset"
-              class="space-y-6 rounded-lg border border-gray-800 bg-black/30 p-4"
+              class="bg-black/30 space-y-6 rounded-lg border border-gray-800 p-4"
               data-nip71-section="tags"
             >
               <legend class="relative text-sm font-semibold text-gray-200">
-                <span class="inline-block -ml-2 rounded px-2 bg-black/30">NIP-71 tags</span>
+                <span class="bg-black/30 -ml-2 inline-block rounded px-2"
+                  >NIP-71 tags</span
+                >
               </legend>
               <p class="text-xs text-gray-400">
-                Use the controls below to describe media variants, captions, chapters, participants, and references.
+                Use the controls below to describe media variants, captions,
+                chapters, participants, and references.
               </p>
 
-              <section class="space-y-4" aria-labelledby="nip71ImetaLabel" data-nip71-repeater="imeta">
+              <section
+                class="space-y-4"
+                aria-labelledby="nip71ImetaLabel"
+                data-nip71-repeater="imeta"
+              >
                 <div class="flex items-center justify-between">
-                  <h3 id="nip71ImetaLabel" class="text-sm font-medium text-gray-200">Image metadata (imeta)</h3>
+                  <h3
+                    id="nip71ImetaLabel"
+                    class="text-sm font-medium text-gray-200"
+                  >
+                    Image metadata (imeta)
+                  </h3>
                   <button
                     type="button"
                     class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
@@ -299,12 +373,21 @@
                   </button>
                 </div>
                 <p id="nip71ImetaHelp" class="text-xs text-gray-400">
-                  Provide dimensions, MIME type, and resource links for each variant. Nested repeaters let you attach multiple
-                  <code>image</code>, <code>fallback</code>, or <code>service</code> values.
+                  Provide dimensions, MIME type, and resource links for each
+                  variant. Nested repeaters let you attach multiple
+                  <code>image</code>, <code>fallback</code>, or
+                  <code>service</code> values.
                 </p>
-                <div id="nip71ImetaList" class="space-y-4" data-nip71-list="imeta"></div>
+                <div
+                  id="nip71ImetaList"
+                  class="space-y-4"
+                  data-nip71-list="imeta"
+                ></div>
                 <template id="nip71ImetaTemplate" data-nip71-template="imeta">
-                  <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="imeta">
+                  <article
+                    class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4"
+                    data-nip71-entry="imeta"
+                  >
                     <div class="grid gap-3 md:grid-cols-2">
                       <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">
@@ -316,7 +399,9 @@
                           placeholder="video/mp4"
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
+                        <p class="text-[11px] text-gray-500">
+                          RFC 2046 media type for this encoding.
+                        </p>
                       </div>
                       <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">
@@ -328,7 +413,9 @@
                           placeholder="1920x1080"
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">Formatted as widthxheight.</p>
+                        <p class="text-[11px] text-gray-500">
+                          Formatted as widthxheight.
+                        </p>
                       </div>
                       <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">
@@ -340,7 +427,9 @@
                           placeholder="https://cdn.example.com/variant.m3u8"
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
+                        <p class="text-[11px] text-gray-500">
+                          HTTPS variant URL shared across clients.
+                        </p>
                       </div>
                       <div class="space-y-2">
                         <label class="block text-xs font-medium text-gray-300">
@@ -352,13 +441,20 @@
                           placeholder="magnet:?xt=urn:btih:..."
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
+                        <p class="text-[11px] text-gray-500">
+                          Optional magnet pointer if the variant is seeded via
+                          P2P.
+                        </p>
                       </div>
                     </div>
 
                     <div class="space-y-3" data-nip71-nested="image">
                       <div class="flex items-center justify-between">
-                        <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Image values</h4>
+                        <h4
+                          class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                        >
+                          Image values
+                        </h4>
                         <button
                           type="button"
                           class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
@@ -367,14 +463,20 @@
                           Add image URL
                         </button>
                       </div>
-                      <div class="space-y-2" data-nip71-nested-list="image"></div>
+                      <div
+                        class="space-y-2"
+                        data-nip71-nested-list="image"
+                      ></div>
                       <template data-nip71-nested-template="image">
-                        <div class="flex items-center gap-2" data-nip71-nested-entry="image">
+                        <div
+                          class="flex items-center gap-2"
+                          data-nip71-nested-entry="image"
+                        >
                           <input
                             type="url"
                             placeholder="https://cdn.example.com/poster.jpg"
                             data-nip71-nested-field="image"
-                            class="flex-1 input"
+                            class="input flex-1"
                           />
                           <button
                             type="button"
@@ -390,7 +492,11 @@
 
                     <div class="space-y-3" data-nip71-nested="fallback">
                       <div class="flex items-center justify-between">
-                        <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Fallback URLs</h4>
+                        <h4
+                          class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                        >
+                          Fallback URLs
+                        </h4>
                         <button
                           type="button"
                           class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
@@ -399,14 +505,20 @@
                           Add fallback
                         </button>
                       </div>
-                      <div class="space-y-2" data-nip71-nested-list="fallback"></div>
+                      <div
+                        class="space-y-2"
+                        data-nip71-nested-list="fallback"
+                      ></div>
                       <template data-nip71-nested-template="fallback">
-                        <div class="flex items-center gap-2" data-nip71-nested-entry="fallback">
+                        <div
+                          class="flex items-center gap-2"
+                          data-nip71-nested-entry="fallback"
+                        >
                           <input
                             type="url"
                             placeholder="https://cdn.backup.net/video.mp4"
                             data-nip71-nested-field="fallback"
-                            class="flex-1 input"
+                            class="input flex-1"
                           />
                           <button
                             type="button"
@@ -422,7 +534,11 @@
 
                     <div class="space-y-3" data-nip71-nested="service">
                       <div class="flex items-center justify-between">
-                        <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Services</h4>
+                        <h4
+                          class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                        >
+                          Services
+                        </h4>
                         <button
                           type="button"
                           class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
@@ -431,14 +547,20 @@
                           Add service hint
                         </button>
                       </div>
-                      <div class="space-y-2" data-nip71-nested-list="service"></div>
+                      <div
+                        class="space-y-2"
+                        data-nip71-nested-list="service"
+                      ></div>
                       <template data-nip71-nested-template="service">
-                        <div class="flex items-center gap-2" data-nip71-nested-entry="service">
+                        <div
+                          class="flex items-center gap-2"
+                          data-nip71-nested-entry="service"
+                        >
                           <input
                             type="text"
                             placeholder="streaming-provider-id"
                             data-nip71-nested-field="service"
-                            class="flex-1 input"
+                            class="input flex-1"
                           />
                           <button
                             type="button"
@@ -463,9 +585,18 @@
                 </template>
               </section>
 
-              <section class="space-y-4" aria-labelledby="nip71TextTracksLabel" data-nip71-repeater="text-track">
+              <section
+                class="space-y-4"
+                aria-labelledby="nip71TextTracksLabel"
+                data-nip71-repeater="text-track"
+              >
                 <div class="flex items-center justify-between">
-                  <h3 id="nip71TextTracksLabel" class="text-sm font-medium text-gray-200">Caption &amp; subtitle tracks (text-track)</h3>
+                  <h3
+                    id="nip71TextTracksLabel"
+                    class="text-sm font-medium text-gray-200"
+                  >
+                    Caption &amp; subtitle tracks (text-track)
+                  </h3>
                   <button
                     type="button"
                     class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
@@ -476,41 +607,64 @@
                   </button>
                 </div>
                 <p id="nip71TextTracksHelp" class="text-xs text-gray-400">
-                  Point to VTT/SRT caption files and optionally declare the language code (BCP-47).
+                  Point to VTT/SRT caption files and optionally declare the
+                  language code (BCP-47).
                 </p>
-                <div id="nip71TextTrackList" class="space-y-4" data-nip71-list="text-track"></div>
-                <template id="nip71TextTrackTemplate" data-nip71-template="text-track">
-                  <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="text-track">
+                <div
+                  id="nip71TextTrackList"
+                  class="space-y-4"
+                  data-nip71-list="text-track"
+                ></div>
+                <template
+                  id="nip71TextTrackTemplate"
+                  data-nip71-template="text-track"
+                >
+                  <article
+                    class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4"
+                    data-nip71-entry="text-track"
+                  >
                     <div class="grid gap-3 md:grid-cols-3">
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-300">Resource URL</label>
+                        <label class="block text-xs font-medium text-gray-300"
+                          >Resource URL</label
+                        >
                         <input
                           type="url"
                           data-nip71-field="url"
                           placeholder="https://cdn.example.com/captions.en.vtt"
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">Direct link to the caption file.</p>
+                        <p class="text-[11px] text-gray-500">
+                          Direct link to the caption file.
+                        </p>
                       </div>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-300">Track type</label>
+                        <label class="block text-xs font-medium text-gray-300"
+                          >Track type</label
+                        >
                         <input
                           type="text"
                           data-nip71-field="type"
                           placeholder="subtitles"
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">Use values like captions, subtitles, or descriptions.</p>
+                        <p class="text-[11px] text-gray-500">
+                          Use values like captions, subtitles, or descriptions.
+                        </p>
                       </div>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-300">Language (optional)</label>
+                        <label class="block text-xs font-medium text-gray-300"
+                          >Language (optional)</label
+                        >
                         <input
                           type="text"
                           data-nip71-field="language"
                           placeholder="en-US"
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">BCP-47 locale code.</p>
+                        <p class="text-[11px] text-gray-500">
+                          BCP-47 locale code.
+                        </p>
                       </div>
                     </div>
                     <button
@@ -524,9 +678,18 @@
                 </template>
               </section>
 
-              <section class="space-y-4" aria-labelledby="nip71SegmentsLabel" data-nip71-repeater="segment">
+              <section
+                class="space-y-4"
+                aria-labelledby="nip71SegmentsLabel"
+                data-nip71-repeater="segment"
+              >
                 <div class="flex items-center justify-between">
-                  <h3 id="nip71SegmentsLabel" class="text-sm font-medium text-gray-200">Chapters &amp; segments (segment)</h3>
+                  <h3
+                    id="nip71SegmentsLabel"
+                    class="text-sm font-medium text-gray-200"
+                  >
+                    Chapters &amp; segments (segment)
+                  </h3>
                   <button
                     type="button"
                     class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
@@ -537,14 +700,27 @@
                   </button>
                 </div>
                 <p id="nip71SegmentsHelp" class="text-xs text-gray-400">
-                  Outline the timeline using HH:MM:SS timestamps. Thumbnail URLs are optional.
+                  Outline the timeline using HH:MM:SS timestamps. Thumbnail URLs
+                  are optional.
                 </p>
-                <div id="nip71SegmentList" class="space-y-4" data-nip71-list="segment"></div>
-                <template id="nip71SegmentTemplate" data-nip71-template="segment">
-                  <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="segment">
+                <div
+                  id="nip71SegmentList"
+                  class="space-y-4"
+                  data-nip71-list="segment"
+                ></div>
+                <template
+                  id="nip71SegmentTemplate"
+                  data-nip71-template="segment"
+                >
+                  <article
+                    class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4"
+                    data-nip71-entry="segment"
+                  >
                     <div class="grid gap-3 md:grid-cols-4">
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-300">Start</label>
+                        <label class="block text-xs font-medium text-gray-300"
+                          >Start</label
+                        >
                         <input
                           type="text"
                           data-nip71-field="start"
@@ -554,17 +730,23 @@
                         <p class="text-[11px] text-gray-500">HH:MM:SS</p>
                       </div>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-300">End</label>
+                        <label class="block text-xs font-medium text-gray-300"
+                          >End</label
+                        >
                         <input
                           type="text"
                           data-nip71-field="end"
                           placeholder="00:03:30"
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">Leave blank for open-ended segments.</p>
+                        <p class="text-[11px] text-gray-500">
+                          Leave blank for open-ended segments.
+                        </p>
                       </div>
-                      <div class="md:col-span-2 space-y-2">
-                        <label class="block text-xs font-medium text-gray-300">Chapter title</label>
+                      <div class="space-y-2 md:col-span-2">
+                        <label class="block text-xs font-medium text-gray-300"
+                          >Chapter title</label
+                        >
                         <input
                           type="text"
                           data-nip71-field="title"
@@ -572,15 +754,19 @@
                           class="input"
                         />
                       </div>
-                      <div class="md:col-span-2 space-y-2">
-                        <label class="block text-xs font-medium text-gray-300">Thumbnail URL</label>
+                      <div class="space-y-2 md:col-span-2">
+                        <label class="block text-xs font-medium text-gray-300"
+                          >Thumbnail URL</label
+                        >
                         <input
                           type="url"
                           data-nip71-field="thumbnail"
                           placeholder="https://cdn.example.com/segment.jpg"
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">Optional still image for this moment.</p>
+                        <p class="text-[11px] text-gray-500">
+                          Optional still image for this moment.
+                        </p>
                       </div>
                     </div>
                     <button
@@ -594,9 +780,18 @@
                 </template>
               </section>
 
-              <section class="space-y-4" aria-labelledby="nip71HashtagsLabel" data-nip71-repeater="t">
+              <section
+                class="space-y-4"
+                aria-labelledby="nip71HashtagsLabel"
+                data-nip71-repeater="t"
+              >
                 <div class="flex items-center justify-between">
-                  <h3 id="nip71HashtagsLabel" class="text-sm font-medium text-gray-200">Hashtags (<code>t</code>)</h3>
+                  <h3
+                    id="nip71HashtagsLabel"
+                    class="text-sm font-medium text-gray-200"
+                  >
+                    Hashtags (<code>t</code>)
+                  </h3>
                   <button
                     type="button"
                     class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
@@ -606,16 +801,21 @@
                   </button>
                 </div>
                 <p class="text-xs text-gray-400">
-                  Enter keywords; leading <code>#</code> characters are stripped automatically when saving.
+                  Enter keywords; leading <code>#</code> characters are stripped
+                  automatically when saving.
                 </p>
-                <div id="nip71HashtagList" class="space-y-2" data-nip71-list="t"></div>
+                <div
+                  id="nip71HashtagList"
+                  class="space-y-2"
+                  data-nip71-list="t"
+                ></div>
                 <template id="nip71HashtagTemplate" data-nip71-template="t">
                   <div class="flex items-center gap-2" data-nip71-entry="t">
                     <input
                       type="text"
                       data-nip71-field="value"
                       placeholder="#nostr"
-                      class="flex-1 input"
+                      class="input flex-1"
                     />
                     <button
                       type="button"
@@ -629,9 +829,18 @@
                 </template>
               </section>
 
-              <section class="space-y-4" aria-labelledby="nip71ParticipantsLabel" data-nip71-repeater="p">
+              <section
+                class="space-y-4"
+                aria-labelledby="nip71ParticipantsLabel"
+                data-nip71-repeater="p"
+              >
                 <div class="flex items-center justify-between">
-                  <h3 id="nip71ParticipantsLabel" class="text-sm font-medium text-gray-200">Participants (<code>p</code>)</h3>
+                  <h3
+                    id="nip71ParticipantsLabel"
+                    class="text-sm font-medium text-gray-200"
+                  >
+                    Participants (<code>p</code>)
+                  </h3>
                   <button
                     type="button"
                     class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
@@ -640,30 +849,48 @@
                     Add participant
                   </button>
                 </div>
-                <p class="text-xs text-gray-400">Paste the participant npub or hex pubkey. Optionally provide a preferred relay URL.</p>
-                <div id="nip71ParticipantList" class="space-y-3" data-nip71-list="p"></div>
+                <p class="text-xs text-gray-400">
+                  Paste the participant npub or hex pubkey. Optionally provide a
+                  preferred relay URL.
+                </p>
+                <div
+                  id="nip71ParticipantList"
+                  class="space-y-3"
+                  data-nip71-list="p"
+                ></div>
                 <template id="nip71ParticipantTemplate" data-nip71-template="p">
-                  <article class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4" data-nip71-entry="p">
+                  <article
+                    class="space-y-3 rounded-md border border-gray-800 bg-gray-900/60 p-4"
+                    data-nip71-entry="p"
+                  >
                     <div class="grid gap-3 md:grid-cols-2">
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-300">Pubkey</label>
+                        <label class="block text-xs font-medium text-gray-300"
+                          >Pubkey</label
+                        >
                         <input
                           type="text"
                           data-nip71-field="pubkey"
                           placeholder="npub1..."
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">Accepts npub or hex.</p>
+                        <p class="text-[11px] text-gray-500">
+                          Accepts npub or hex.
+                        </p>
                       </div>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-300">Relay URL (optional)</label>
+                        <label class="block text-xs font-medium text-gray-300"
+                          >Relay URL (optional)</label
+                        >
                         <input
                           type="url"
                           data-nip71-field="relay"
                           placeholder="wss://relay.example.com"
                           class="input"
                         />
-                        <p class="text-[11px] text-gray-500">Relay hint for discovering the participant.</p>
+                        <p class="text-[11px] text-gray-500">
+                          Relay hint for discovering the participant.
+                        </p>
                       </div>
                     </div>
                     <button
@@ -677,9 +904,18 @@
                 </template>
               </section>
 
-              <section class="space-y-4" aria-labelledby="nip71ReferencesLabel" data-nip71-repeater="r">
+              <section
+                class="space-y-4"
+                aria-labelledby="nip71ReferencesLabel"
+                data-nip71-repeater="r"
+              >
                 <div class="flex items-center justify-between">
-                  <h3 id="nip71ReferencesLabel" class="text-sm font-medium text-gray-200">Reference links (<code>r</code>)</h3>
+                  <h3
+                    id="nip71ReferencesLabel"
+                    class="text-sm font-medium text-gray-200"
+                  >
+                    Reference links (<code>r</code>)
+                  </h3>
                   <button
                     type="button"
                     class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
@@ -688,15 +924,22 @@
                     Add reference
                   </button>
                 </div>
-                <p class="text-xs text-gray-400">Link to transcripts, source repositories, or related resources.</p>
-                <div id="nip71ReferenceList" class="space-y-2" data-nip71-list="r"></div>
+                <p class="text-xs text-gray-400">
+                  Link to transcripts, source repositories, or related
+                  resources.
+                </p>
+                <div
+                  id="nip71ReferenceList"
+                  class="space-y-2"
+                  data-nip71-list="r"
+                ></div>
                 <template id="nip71ReferenceTemplate" data-nip71-template="r">
                   <div class="flex items-center gap-2" data-nip71-entry="r">
                     <input
                       type="url"
                       data-nip71-field="url"
                       placeholder="https://example.com/article"
-                      class="flex-1 input"
+                      class="input flex-1"
                     />
                     <button
                       type="button"
@@ -716,7 +959,10 @@
               role="group"
               aria-labelledby="uploadEnableCommentsLabel"
             >
-              <label class="menu__item gap-3 px-0 py-0 text-left" for="uploadEnableComments">
+              <label
+                class="menu__item gap-3 px-0 py-0 text-left"
+                for="uploadEnableComments"
+              >
                 <input
                   type="checkbox"
                   id="uploadEnableComments"
@@ -725,11 +971,15 @@
                   data-default-checked="true"
                 />
                 <span class="flex flex-col gap-1">
-                  <span id="uploadEnableCommentsLabel" class="text-sm font-medium text-gray-200">
+                  <span
+                    id="uploadEnableCommentsLabel"
+                    class="text-sm font-medium text-gray-200"
+                  >
                     Enable comments
                   </span>
                   <span class="text-xs text-gray-400">
-                    Keep this on to let viewers discuss the video once comment threads launch.
+                    Keep this on to let viewers discuss the video once comment
+                    threads launch.
                   </span>
                 </span>
               </label>
@@ -740,7 +990,10 @@
                 role="group"
                 aria-labelledby="uploadIsNsfwLabel"
               >
-                <label class="menu__item gap-3 px-0 py-0 text-left" for="uploadIsNsfw">
+                <label
+                  class="menu__item gap-3 px-0 py-0 text-left"
+                  for="uploadIsNsfw"
+                >
                   <input
                     type="checkbox"
                     id="uploadIsNsfw"
@@ -748,11 +1001,15 @@
                     data-default-checked="false"
                   />
                   <span class="flex flex-col gap-1">
-                    <span id="uploadIsNsfwLabel" class="text-sm font-medium text-gray-200">
+                    <span
+                      id="uploadIsNsfwLabel"
+                      class="text-sm font-medium text-gray-200"
+                    >
                       Is this content NSFW?
                     </span>
                     <span class="text-xs text-gray-400">
-                      Flag mature or explicit uploads so clients can warn viewers before playback.
+                      Flag mature or explicit uploads so clients can warn
+                      viewers before playback.
                     </span>
                   </span>
                 </label>
@@ -762,7 +1019,10 @@
                 role="group"
                 aria-labelledby="uploadIsForKidsLabel"
               >
-                <label class="menu__item gap-3 px-0 py-0 text-left" for="uploadIsForKids">
+                <label
+                  class="menu__item gap-3 px-0 py-0 text-left"
+                  for="uploadIsForKids"
+                >
                   <input
                     type="checkbox"
                     id="uploadIsForKids"
@@ -770,11 +1030,15 @@
                     data-default-checked="false"
                   />
                   <span class="flex flex-col gap-1">
-                    <span id="uploadIsForKidsLabel" class="text-sm font-medium text-gray-200">
+                    <span
+                      id="uploadIsForKidsLabel"
+                      class="text-sm font-medium text-gray-200"
+                    >
                       Is this content created for Kids?
                     </span>
                     <span class="text-xs text-gray-400">
-                      Mark clearly kid-friendly videos so parental controls and playlists stay accurate.
+                      Mark clearly kid-friendly videos so parental controls and
+                      playlists stay accurate.
                     </span>
                   </span>
                 </label>
@@ -794,7 +1058,7 @@
             -->
             <button
               type="submit"
-              class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              class="rounded-md bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               Publish
             </button>
@@ -803,10 +1067,14 @@
 
         <div id="cloudflareUploadSection" class="hidden">
           <div class="space-y-8">
-            <p class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-300">
+            <p
+              class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-300"
+            >
               This feature is experimental and may not be working correctly.
             </p>
-            <section class="rounded-lg border border-gray-800 bg-gray-900/60 p-5">
+            <section
+              class="rounded-lg border border-gray-800 bg-gray-900/60 p-5"
+            >
               <div class="mb-4 flex items-center justify-between">
                 <h3 class="text-lg font-semibold text-gray-100">
                   Cloudflare R2 credentials
@@ -822,7 +1090,9 @@
               <form id="cloudflareSettingsForm" class="space-y-4">
                 <div class="grid gap-3 md:grid-cols-2">
                   <div class="space-y-2">
-                    <label for="r2AccountId" class="block text-sm font-medium text-gray-200"
+                    <label
+                      for="r2AccountId"
+                      class="block text-sm font-medium text-gray-200"
                       >Account ID</label
                     >
                     <input
@@ -835,7 +1105,9 @@
                     />
                   </div>
                   <div class="space-y-2">
-                    <label for="r2AccessKeyId" class="block text-sm font-medium text-gray-200"
+                    <label
+                      for="r2AccessKeyId"
+                      class="block text-sm font-medium text-gray-200"
                       >S3 Access Key ID</label
                     >
                     <input
@@ -849,7 +1121,9 @@
                   </div>
                 </div>
                 <div class="space-y-2">
-                  <label for="r2SecretAccessKey" class="block text-sm font-medium text-gray-200"
+                  <label
+                    for="r2SecretAccessKey"
+                    class="block text-sm font-medium text-gray-200"
                     >S3 Secret Access Key</label
                   >
                   <input
@@ -871,22 +1145,30 @@
                     <svg
                       id="cloudflareAdvancedToggleIcon"
                       xmlns="http://www.w3.org/2000/svg"
-                      class="h-4 w-4 text-gray-300 transition-transform duration-150 transform"
+                      class="h-4 w-4 transform text-gray-300 transition-transform duration-150"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
                       stroke-width="2"
                     >
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M9 5l7 7-7 7"
+                      />
                     </svg>
-                    <span id="cloudflareAdvancedToggleLabel">Show advanced options</span>
+                    <span id="cloudflareAdvancedToggleLabel"
+                      >Show advanced options</span
+                    >
                   </button>
                   <div
                     id="cloudflareAdvancedFields"
-                    class="mt-3 space-y-4 hidden"
+                    class="mt-3 hidden space-y-4"
                   >
                     <div class="space-y-2">
-                      <label for="r2ApiToken" class="block text-sm font-medium text-gray-200"
+                      <label
+                        for="r2ApiToken"
+                        class="block text-sm font-medium text-gray-200"
                         >Cloudflare API Token (optional)</label
                       >
                       <input
@@ -897,12 +1179,15 @@
                         placeholder="Token with Workers R2 Storage Write"
                       />
                       <p class="text-xs text-gray-500">
-                        Used to create buckets, configure CORS, and attach domains automatically.
+                        Used to create buckets, configure CORS, and attach
+                        domains automatically.
                       </p>
                     </div>
                     <div class="grid gap-3 md:grid-cols-2">
                       <div class="space-y-2">
-                        <label for="r2ZoneId" class="block text-sm font-medium text-gray-200"
+                        <label
+                          for="r2ZoneId"
+                          class="block text-sm font-medium text-gray-200"
                           >Zone ID (optional)</label
                         >
                         <input
@@ -913,11 +1198,14 @@
                           placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                         />
                         <p class="text-xs text-gray-500">
-                          Required when you want us to attach a custom domain on your behalf.
+                          Required when you want us to attach a custom domain on
+                          your behalf.
                         </p>
                       </div>
                       <div class="space-y-2">
-                        <label for="r2BaseDomain" class="block text-sm font-medium text-gray-200"
+                        <label
+                          for="r2BaseDomain"
+                          class="block text-sm font-medium text-gray-200"
                           >Base domain (optional)</label
                         >
                         <input
@@ -928,8 +1216,14 @@
                           placeholder="cdn.example.com"
                         />
                         <p class="text-xs text-gray-500">
-                          We'll attach <code class="rounded bg-gray-800 px-1 py-0.5">npub.&lt;baseDomain&gt;</code>.
-                          Leave blank to use the managed <code class="rounded bg-gray-800 px-1 py-0.5">*.r2.dev</code> domain.
+                          We'll attach
+                          <code class="rounded bg-gray-800 px-1 py-0.5"
+                            >npub.&lt;baseDomain&gt;</code
+                          >. Leave blank to use the managed
+                          <code class="rounded bg-gray-800 px-1 py-0.5"
+                            >*.r2.dev</code
+                          >
+                          domain.
                         </p>
                       </div>
                     </div>
@@ -958,7 +1252,9 @@
               </form>
             </section>
 
-            <section class="rounded-lg border border-gray-800 bg-gray-900/60 p-5">
+            <section
+              class="rounded-lg border border-gray-800 bg-gray-900/60 p-5"
+            >
               <div class="mb-4">
                 <h3 class="text-lg font-semibold text-gray-100">
                   Upload &amp; publish
@@ -970,7 +1266,9 @@
               </div>
               <form id="cloudflareUploadForm" class="space-y-4">
                 <div class="space-y-2">
-                  <label for="cloudflareTitle" class="block text-sm font-medium text-gray-200"
+                  <label
+                    for="cloudflareTitle"
+                    class="block text-sm font-medium text-gray-200"
                     >Title</label
                   >
                   <input
@@ -981,7 +1279,7 @@
                   />
                 </div>
                 <div
-                  class="space-y-4 rounded-lg border border-gray-800 bg-black/30 p-4"
+                  class="bg-black/30 space-y-4 rounded-lg border border-gray-800 p-4"
                   id="cloudflareNip71EventDetails"
                   data-nip71-section="event-details"
                 >
@@ -994,16 +1292,25 @@
                       NIP-71 event type
                     </legend>
                     <p class="text-xs text-gray-400">
-                      Choose the video format. <span class="font-medium text-gray-300">Kind 21</span> is a full video, while
-                      <span class="font-medium text-gray-300">Kind 22</span> is a short.
+                      Choose the video format.
+                      <span class="font-medium text-gray-300">Kind 21</span> is
+                      a full video, while
+                      <span class="font-medium text-gray-300">Kind 22</span> is
+                      a short.
                     </p>
                     <div
                       class="form-control"
                       role="radiogroup"
                       aria-labelledby="cloudflareNip71KindFieldset"
                     >
-                      <div class="menu sm:flex-row sm:flex-wrap sm:py-0" role="presentation">
-                        <label class="menu__item gap-3 px-0 py-0" for="cloudflareNip71KindLong">
+                      <div
+                        class="menu sm:flex-row sm:flex-wrap sm:py-0"
+                        role="presentation"
+                      >
+                        <label
+                          class="menu__item gap-3 px-0 py-0"
+                          for="cloudflareNip71KindLong"
+                        >
                           <input
                             type="radio"
                             name="cloudflareNip71Kind"
@@ -1013,9 +1320,14 @@
                             data-nip71-input="kind"
                             class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
                           />
-                          <span class="text-sm text-gray-200">Normal video (kind 21)</span>
+                          <span class="text-sm text-gray-200"
+                            >Normal video (kind 21)</span
+                          >
                         </label>
-                        <label class="menu__item gap-3 px-0 py-0" for="cloudflareNip71KindShort">
+                        <label
+                          class="menu__item gap-3 px-0 py-0"
+                          for="cloudflareNip71KindShort"
+                        >
                           <input
                             type="radio"
                             name="cloudflareNip71Kind"
@@ -1024,15 +1336,23 @@
                             data-nip71-input="kind"
                             class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
                           />
-                          <span class="text-sm text-gray-200">Short video (kind 22)</span>
+                          <span class="text-sm text-gray-200"
+                            >Short video (kind 22)</span
+                          >
                         </label>
                       </div>
                     </div>
                   </fieldset>
 
-                  <div class="grid gap-4 md:grid-cols-2" data-nip71-grid="metadata">
+                  <div
+                    class="grid gap-4 md:grid-cols-2"
+                    data-nip71-grid="metadata"
+                  >
                     <div class="space-y-2">
-                      <label for="cloudflareNip71PublishedAt" class="block text-sm font-medium text-gray-200">
+                      <label
+                        for="cloudflareNip71PublishedAt"
+                        class="block text-sm font-medium text-gray-200"
+                      >
                         Published at
                       </label>
                       <input
@@ -1041,10 +1361,17 @@
                         data-nip71-input="published_at"
                         class="input"
                       />
-                      <p class="text-xs text-gray-400">Set the canonical publish time for cross-client ordering.</p>
+                      <p class="text-xs text-gray-400">
+                        Set the canonical publish time for cross-client
+                        ordering.
+                      </p>
                     </div>
                     <div class="space-y-2">
-                      <label for="cloudflareNip71AltText" class="block text-sm font-medium text-gray-200">Alt text</label>
+                      <label
+                        for="cloudflareNip71AltText"
+                        class="block text-sm font-medium text-gray-200"
+                        >Alt text</label
+                      >
                       <input
                         type="text"
                         id="cloudflareNip71AltText"
@@ -1052,10 +1379,16 @@
                         placeholder="Describe the visuals for screen readers"
                         class="input"
                       />
-                      <p class="text-xs text-gray-400">Plain-language fallback shown when the media cannot load.</p>
+                      <p class="text-xs text-gray-400">
+                        Plain-language fallback shown when the media cannot
+                        load.
+                      </p>
                     </div>
                     <div class="space-y-2">
-                      <label for="cloudflareNip71Duration" class="block text-sm font-medium text-gray-200">
+                      <label
+                        for="cloudflareNip71Duration"
+                        class="block text-sm font-medium text-gray-200"
+                      >
                         Duration (seconds)
                       </label>
                       <input
@@ -1066,10 +1399,16 @@
                         data-nip71-input="duration"
                         class="input"
                       />
-                      <p class="text-xs text-gray-400">Provide the runtime in whole seconds for timeline scrubbing.</p>
+                      <p class="text-xs text-gray-400">
+                        Provide the runtime in whole seconds for timeline
+                        scrubbing.
+                      </p>
                     </div>
                     <div class="space-y-2">
-                      <label for="cloudflareNip71ContentWarning" class="block text-sm font-medium text-gray-200">
+                      <label
+                        for="cloudflareNip71ContentWarning"
+                        class="block text-sm font-medium text-gray-200"
+                      >
                         Content warning
                       </label>
                       <input
@@ -1079,12 +1418,18 @@
                         placeholder="e.g., Flashing lights"
                         class="input"
                       />
-                      <p class="text-xs text-gray-400">Leave blank if the video is safe for all audiences.</p>
+                      <p class="text-xs text-gray-400">
+                        Leave blank if the video is safe for all audiences.
+                      </p>
                     </div>
                   </div>
 
                   <div class="space-y-2">
-                    <label for="cloudflareNip71Summary" class="block text-sm font-medium text-gray-200">Summary</label>
+                    <label
+                      for="cloudflareNip71Summary"
+                      class="block text-sm font-medium text-gray-200"
+                      >Summary</label
+                    >
                     <textarea
                       id="cloudflareNip71Summary"
                       rows="3"
@@ -1092,11 +1437,16 @@
                       class="textarea"
                       placeholder="Short synopsis used as the Nostr content field"
                     ></textarea>
-                    <p class="text-xs text-gray-400">This becomes the event content. Keep it concise for Nostr readers.</p>
+                    <p class="text-xs text-gray-400">
+                      This becomes the event content. Keep it concise for Nostr
+                      readers.
+                    </p>
                   </div>
                 </div>
                 <div class="space-y-2">
-                  <label for="cloudflareDescription" class="block text-sm font-medium text-gray-200"
+                  <label
+                    for="cloudflareDescription"
+                    class="block text-sm font-medium text-gray-200"
                     >Description (optional)</label
                   >
                   <textarea
@@ -1107,17 +1457,17 @@
                 </div>
                 <div class="grid gap-3 md:grid-cols-2">
                   <div class="space-y-2">
-                    <label for="cloudflareThumbnail" class="block text-sm font-medium text-gray-200"
+                    <label
+                      for="cloudflareThumbnail"
+                      class="block text-sm font-medium text-gray-200"
                       >Thumbnail URL (optional)</label
                     >
-                    <input
-                      id="cloudflareThumbnail"
-                      type="url"
-                      class="input"
-                    />
+                    <input id="cloudflareThumbnail" type="url" class="input" />
                   </div>
                   <div class="space-y-2">
-                    <label for="cloudflareMagnet" class="block text-sm font-medium text-gray-200"
+                    <label
+                      for="cloudflareMagnet"
+                      class="block text-sm font-medium text-gray-200"
                       >Magnet link (optional)</label
                     >
                     <input
@@ -1144,17 +1494,27 @@
                 </div>
                 <fieldset
                   id="cloudflareNip71TagsFieldset"
-                  class="space-y-6 rounded-lg border border-gray-800 bg-black/30 p-4"
+                  class="bg-black/30 space-y-6 rounded-lg border border-gray-800 p-4"
                   data-nip71-section="tags"
                 >
-                  <legend class="text-sm font-semibold text-gray-200">NIP-71 tags</legend>
+                  <legend class="text-sm font-semibold text-gray-200">
+                    NIP-71 tags
+                  </legend>
                   <p class="text-xs text-gray-400">
-                    Use the controls below to describe media variants, captions, chapters, participants, and references.
+                    Use the controls below to describe media variants, captions,
+                    chapters, participants, and references.
                   </p>
 
-                  <section class="space-y-4" aria-labelledby="cloudflareNip71ImetaLabel" data-nip71-repeater="imeta">
+                  <section
+                    class="space-y-4"
+                    aria-labelledby="cloudflareNip71ImetaLabel"
+                    data-nip71-repeater="imeta"
+                  >
                     <div class="flex items-center justify-between">
-                      <h3 id="cloudflareNip71ImetaLabel" class="text-sm font-medium text-gray-200">
+                      <h3
+                        id="cloudflareNip71ImetaLabel"
+                        class="text-sm font-medium text-gray-200"
+                      >
                         Image metadata (imeta)
                       </h3>
                       <button
@@ -1166,9 +1526,14 @@
                         Add variant
                       </button>
                     </div>
-                    <p id="cloudflareNip71ImetaHelp" class="text-xs text-gray-400">
-                      Provide dimensions, MIME type, and resource links for each variant. Nested repeaters let you attach multiple
-                      <code>image</code>, <code>fallback</code>, or <code>service</code> values.
+                    <p
+                      id="cloudflareNip71ImetaHelp"
+                      class="text-xs text-gray-400"
+                    >
+                      Provide dimensions, MIME type, and resource links for each
+                      variant. Nested repeaters let you attach multiple
+                      <code>image</code>, <code>fallback</code>, or
+                      <code>service</code> values.
                     </p>
                     <div
                       id="cloudflareNip71ImetaList"
@@ -1182,7 +1547,9 @@
                       >
                         <div class="grid gap-3 md:grid-cols-2">
                           <div class="space-y-2">
-                            <label class="block text-xs font-medium text-gray-300">
+                            <label
+                              class="block text-xs font-medium text-gray-300"
+                            >
                               MIME type (<code>m</code>)
                             </label>
                             <input
@@ -1191,10 +1558,14 @@
                               placeholder="Auto-filled after upload (e.g., video/mp4)"
                               class="input"
                             />
-                            <p class="text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
+                            <p class="text-[11px] text-gray-500">
+                              RFC 2046 media type for this encoding.
+                            </p>
                           </div>
                           <div class="space-y-2">
-                            <label class="block text-xs font-medium text-gray-300">
+                            <label
+                              class="block text-xs font-medium text-gray-300"
+                            >
                               Pixel dimensions (<code>dim</code>)
                             </label>
                             <input
@@ -1203,10 +1574,14 @@
                               placeholder="Auto-filled if detected (e.g., 1920x1080)"
                               class="input"
                             />
-                            <p class="text-[11px] text-gray-500">Formatted as widthxheight.</p>
+                            <p class="text-[11px] text-gray-500">
+                              Formatted as widthxheight.
+                            </p>
                           </div>
                           <div class="space-y-2">
-                            <label class="block text-xs font-medium text-gray-300">
+                            <label
+                              class="block text-xs font-medium text-gray-300"
+                            >
                               Streaming URL (<code>url</code>)
                             </label>
                             <input
@@ -1215,10 +1590,14 @@
                               placeholder="Auto-filled after upload with the public HTTPS URL"
                               class="input"
                             />
-                            <p class="text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
+                            <p class="text-[11px] text-gray-500">
+                              HTTPS variant URL shared across clients.
+                            </p>
                           </div>
                           <div class="space-y-2">
-                            <label class="block text-xs font-medium text-gray-300">
+                            <label
+                              class="block text-xs font-medium text-gray-300"
+                            >
                               Magnet (<code>x</code>)
                             </label>
                             <input
@@ -1227,13 +1606,20 @@
                               placeholder="Optional magnet pointer if seeding via P2P"
                               class="input"
                             />
-                            <p class="text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
+                            <p class="text-[11px] text-gray-500">
+                              Optional magnet pointer if the variant is seeded
+                              via P2P.
+                            </p>
                           </div>
                         </div>
 
                         <div class="space-y-3" data-nip71-nested="image">
                           <div class="flex items-center justify-between">
-                            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Image values</h4>
+                            <h4
+                              class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                            >
+                              Image values
+                            </h4>
                             <button
                               type="button"
                               class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
@@ -1242,14 +1628,20 @@
                               Add image URL
                             </button>
                           </div>
-                          <div class="space-y-2" data-nip71-nested-list="image"></div>
+                          <div
+                            class="space-y-2"
+                            data-nip71-nested-list="image"
+                          ></div>
                           <template data-nip71-nested-template="image">
-                            <div class="flex items-center gap-2" data-nip71-nested-entry="image">
+                            <div
+                              class="flex items-center gap-2"
+                              data-nip71-nested-entry="image"
+                            >
                               <input
                                 type="url"
                                 placeholder="https://cdn.example.com/poster.jpg"
                                 data-nip71-nested-field="image"
-                                class="flex-1 input"
+                                class="input flex-1"
                               />
                               <button
                                 type="button"
@@ -1265,7 +1657,11 @@
 
                         <div class="space-y-3" data-nip71-nested="fallback">
                           <div class="flex items-center justify-between">
-                            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Fallback URLs</h4>
+                            <h4
+                              class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                            >
+                              Fallback URLs
+                            </h4>
                             <button
                               type="button"
                               class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
@@ -1274,14 +1670,20 @@
                               Add fallback
                             </button>
                           </div>
-                          <div class="space-y-2" data-nip71-nested-list="fallback"></div>
+                          <div
+                            class="space-y-2"
+                            data-nip71-nested-list="fallback"
+                          ></div>
                           <template data-nip71-nested-template="fallback">
-                            <div class="flex items-center gap-2" data-nip71-nested-entry="fallback">
+                            <div
+                              class="flex items-center gap-2"
+                              data-nip71-nested-entry="fallback"
+                            >
                               <input
                                 type="url"
                                 placeholder="https://cdn.backup.net/video.mp4"
                                 data-nip71-nested-field="fallback"
-                                class="flex-1 input"
+                                class="input flex-1"
                               />
                               <button
                                 type="button"
@@ -1297,7 +1699,11 @@
 
                         <div class="space-y-3" data-nip71-nested="service">
                           <div class="flex items-center justify-between">
-                            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Services</h4>
+                            <h4
+                              class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                            >
+                              Services
+                            </h4>
                             <button
                               type="button"
                               class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500 hover:text-white"
@@ -1306,14 +1712,20 @@
                               Add service hint
                             </button>
                           </div>
-                          <div class="space-y-2" data-nip71-nested-list="service"></div>
+                          <div
+                            class="space-y-2"
+                            data-nip71-nested-list="service"
+                          ></div>
                           <template data-nip71-nested-template="service">
-                            <div class="flex items-center gap-2" data-nip71-nested-entry="service">
+                            <div
+                              class="flex items-center gap-2"
+                              data-nip71-nested-entry="service"
+                            >
                               <input
                                 type="text"
                                 placeholder="streaming-provider-id"
                                 data-nip71-nested-field="service"
-                                class="flex-1 input"
+                                class="input flex-1"
                               />
                               <button
                                 type="button"
@@ -1344,7 +1756,10 @@
                     data-nip71-repeater="text-track"
                   >
                     <div class="flex items-center justify-between">
-                      <h3 id="cloudflareNip71TextTracksLabel" class="text-sm font-medium text-gray-200">
+                      <h3
+                        id="cloudflareNip71TextTracksLabel"
+                        class="text-sm font-medium text-gray-200"
+                      >
                         Caption &amp; subtitle tracks (text-track)
                       </h3>
                       <button
@@ -1356,15 +1771,30 @@
                         Add track
                       </button>
                     </div>
-                    <p id="cloudflareNip71TextTracksHelp" class="text-xs text-gray-400">
-                      Point to VTT/SRT caption files and optionally declare the language code (BCP-47).
+                    <p
+                      id="cloudflareNip71TextTracksHelp"
+                      class="text-xs text-gray-400"
+                    >
+                      Point to VTT/SRT caption files and optionally declare the
+                      language code (BCP-47).
                     </p>
-                    <div id="cloudflareNip71TextTrackList" class="space-y-4" data-nip71-list="text-track"></div>
+                    <div
+                      id="cloudflareNip71TextTrackList"
+                      class="space-y-4"
+                      data-nip71-list="text-track"
+                    ></div>
                   </section>
 
-                  <section class="space-y-4" aria-labelledby="cloudflareNip71SegmentsLabel" data-nip71-repeater="segment">
+                  <section
+                    class="space-y-4"
+                    aria-labelledby="cloudflareNip71SegmentsLabel"
+                    data-nip71-repeater="segment"
+                  >
                     <div class="flex items-center justify-between">
-                      <h3 id="cloudflareNip71SegmentsLabel" class="text-sm font-medium text-gray-200">
+                      <h3
+                        id="cloudflareNip71SegmentsLabel"
+                        class="text-sm font-medium text-gray-200"
+                      >
                         Timeline segments (segment)
                       </h3>
                       <button
@@ -1376,15 +1806,32 @@
                         Add chapter
                       </button>
                     </div>
-                    <p id="cloudflareNip71SegmentsHelp" class="text-xs text-gray-400">
-                      Define chapters by timestamp so clients can build jump lists.
+                    <p
+                      id="cloudflareNip71SegmentsHelp"
+                      class="text-xs text-gray-400"
+                    >
+                      Define chapters by timestamp so clients can build jump
+                      lists.
                     </p>
-                    <div id="cloudflareNip71SegmentList" class="space-y-4" data-nip71-list="segment"></div>
+                    <div
+                      id="cloudflareNip71SegmentList"
+                      class="space-y-4"
+                      data-nip71-list="segment"
+                    ></div>
                   </section>
 
-                  <section class="space-y-4" aria-labelledby="cloudflareNip71HashtagsLabel" data-nip71-repeater="t">
+                  <section
+                    class="space-y-4"
+                    aria-labelledby="cloudflareNip71HashtagsLabel"
+                    data-nip71-repeater="t"
+                  >
                     <div class="flex items-center justify-between">
-                      <h3 id="cloudflareNip71HashtagsLabel" class="text-sm font-medium text-gray-200">Hashtags (t)</h3>
+                      <h3
+                        id="cloudflareNip71HashtagsLabel"
+                        class="text-sm font-medium text-gray-200"
+                      >
+                        Hashtags (t)
+                      </h3>
                       <button
                         type="button"
                         class="rounded-md border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
@@ -1394,15 +1841,30 @@
                         Add hashtag
                       </button>
                     </div>
-                    <p id="cloudflareNip71HashtagsHelp" class="text-xs text-gray-400">
-                      Label the video with keywords to boost discovery across clients.
+                    <p
+                      id="cloudflareNip71HashtagsHelp"
+                      class="text-xs text-gray-400"
+                    >
+                      Label the video with keywords to boost discovery across
+                      clients.
                     </p>
-                    <div id="cloudflareNip71HashtagList" class="space-y-2" data-nip71-list="t"></div>
+                    <div
+                      id="cloudflareNip71HashtagList"
+                      class="space-y-2"
+                      data-nip71-list="t"
+                    ></div>
                   </section>
 
-                  <section class="space-y-4" aria-labelledby="cloudflareNip71ParticipantsLabel" data-nip71-repeater="p">
+                  <section
+                    class="space-y-4"
+                    aria-labelledby="cloudflareNip71ParticipantsLabel"
+                    data-nip71-repeater="p"
+                  >
                     <div class="flex items-center justify-between">
-                      <h3 id="cloudflareNip71ParticipantsLabel" class="text-sm font-medium text-gray-200">
+                      <h3
+                        id="cloudflareNip71ParticipantsLabel"
+                        class="text-sm font-medium text-gray-200"
+                      >
                         Participants (p)
                       </h3>
                       <button
@@ -1414,15 +1876,30 @@
                         Add participant
                       </button>
                     </div>
-                    <p id="cloudflareNip71ParticipantsHelp" class="text-xs text-gray-400">
-                      Credit guests, hosts, or collaborators with their npubs and preferred relay hints.
+                    <p
+                      id="cloudflareNip71ParticipantsHelp"
+                      class="text-xs text-gray-400"
+                    >
+                      Credit guests, hosts, or collaborators with their npubs
+                      and preferred relay hints.
                     </p>
-                    <div id="cloudflareNip71ParticipantList" class="space-y-3" data-nip71-list="p"></div>
+                    <div
+                      id="cloudflareNip71ParticipantList"
+                      class="space-y-3"
+                      data-nip71-list="p"
+                    ></div>
                   </section>
 
-                  <section class="space-y-4" aria-labelledby="cloudflareNip71ReferencesLabel" data-nip71-repeater="r">
+                  <section
+                    class="space-y-4"
+                    aria-labelledby="cloudflareNip71ReferencesLabel"
+                    data-nip71-repeater="r"
+                  >
                     <div class="flex items-center justify-between">
-                      <h3 id="cloudflareNip71ReferencesLabel" class="text-sm font-medium text-gray-200">
+                      <h3
+                        id="cloudflareNip71ReferencesLabel"
+                        class="text-sm font-medium text-gray-200"
+                      >
                         References (r)
                       </h3>
                       <button
@@ -1434,10 +1911,18 @@
                         Add reference
                       </button>
                     </div>
-                    <p id="cloudflareNip71ReferencesHelp" class="text-xs text-gray-400">
-                      Link to companion articles, source material, or announcements that contextualize the upload.
+                    <p
+                      id="cloudflareNip71ReferencesHelp"
+                      class="text-xs text-gray-400"
+                    >
+                      Link to companion articles, source material, or
+                      announcements that contextualize the upload.
                     </p>
-                    <div id="cloudflareNip71ReferenceList" class="space-y-2" data-nip71-list="r"></div>
+                    <div
+                      id="cloudflareNip71ReferenceList"
+                      class="space-y-2"
+                      data-nip71-list="r"
+                    ></div>
                   </section>
                 </fieldset>
                 <div
@@ -1445,7 +1930,10 @@
                   role="group"
                   aria-labelledby="cloudflareEnableCommentsLabel"
                 >
-                  <label class="menu__item gap-3 px-0 py-0 text-left" for="cloudflareEnableComments">
+                  <label
+                    class="menu__item gap-3 px-0 py-0 text-left"
+                    for="cloudflareEnableComments"
+                  >
                     <input
                       type="checkbox"
                       id="cloudflareEnableComments"
@@ -1454,11 +1942,15 @@
                       data-default-checked="true"
                     />
                     <span class="flex flex-col gap-1">
-                      <span id="cloudflareEnableCommentsLabel" class="text-sm font-medium text-gray-200">
+                      <span
+                        id="cloudflareEnableCommentsLabel"
+                        class="text-sm font-medium text-gray-200"
+                      >
                         Enable comments
                       </span>
                       <span class="text-xs text-gray-400">
-                        Publish with comments switched on. Toggle off to quietly disable replies on this video.
+                        Publish with comments switched on. Toggle off to quietly
+                        disable replies on this video.
                       </span>
                     </span>
                   </label>
@@ -1469,7 +1961,10 @@
                     role="group"
                     aria-labelledby="cloudflareIsNsfwLabel"
                   >
-                    <label class="menu__item gap-3 px-0 py-0 text-left" for="cloudflareIsNsfw">
+                    <label
+                      class="menu__item gap-3 px-0 py-0 text-left"
+                      for="cloudflareIsNsfw"
+                    >
                       <input
                         type="checkbox"
                         id="cloudflareIsNsfw"
@@ -1477,11 +1972,15 @@
                         data-default-checked="false"
                       />
                       <span class="flex flex-col gap-1">
-                        <span id="cloudflareIsNsfwLabel" class="text-sm font-medium text-gray-200">
+                        <span
+                          id="cloudflareIsNsfwLabel"
+                          class="text-sm font-medium text-gray-200"
+                        >
                           Is this content NSFW?
                         </span>
                         <span class="text-xs text-gray-400">
-                          Turn this on to signal mature or explicit material to downstream clients.
+                          Turn this on to signal mature or explicit material to
+                          downstream clients.
                         </span>
                       </span>
                     </label>
@@ -1491,7 +1990,10 @@
                     role="group"
                     aria-labelledby="cloudflareIsForKidsLabel"
                   >
-                    <label class="menu__item gap-3 px-0 py-0 text-left" for="cloudflareIsForKids">
+                    <label
+                      class="menu__item gap-3 px-0 py-0 text-left"
+                      for="cloudflareIsForKids"
+                    >
                       <input
                         type="checkbox"
                         id="cloudflareIsForKids"
@@ -1499,18 +2001,24 @@
                         data-default-checked="false"
                       />
                       <span class="flex flex-col gap-1">
-                        <span id="cloudflareIsForKidsLabel" class="text-sm font-medium text-gray-200">
+                        <span
+                          id="cloudflareIsForKidsLabel"
+                          class="text-sm font-medium text-gray-200"
+                        >
                           Is this content created for Kids?
                         </span>
                         <span class="text-xs text-gray-400">
-                          Highlight family-safe uploads so moderation tooling and filters stay accurate.
+                          Highlight family-safe uploads so moderation tooling
+                          and filters stay accurate.
                         </span>
                       </span>
                     </label>
                   </div>
                 </div>
                 <div class="space-y-2">
-                  <label for="cloudflareFile" class="block text-sm font-medium text-gray-200"
+                  <label
+                    for="cloudflareFile"
+                    class="block text-sm font-medium text-gray-200"
                     >Video or HLS file</label
                   >
                   <input
@@ -1525,11 +2033,15 @@
                     Large files are supported.
                   </p>
                 </div>
-                <div class="rounded-md border border-gray-800 bg-black/40 p-3 text-xs text-gray-400">
+                <div
+                  class="bg-black/40 rounded-md border border-gray-800 p-3 text-xs text-gray-400"
+                >
                   <p>
                     <strong class="text-gray-200">Bucket preview:</strong>
-                    <span id="cloudflareBucketPreview" class="ml-1">We'll show your
-                      bucket and public domain after setup.</span>
+                    <span id="cloudflareBucketPreview" class="ml-1"
+                      >We'll show your bucket and public domain after
+                      setup.</span
+                    >
                   </p>
                 </div>
                 <div class="space-y-2">
