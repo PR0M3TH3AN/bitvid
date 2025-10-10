@@ -673,6 +673,8 @@ class R2Service {
     const ws = String(metadata.ws || "").trim();
     const xs = String(metadata.xs || "").trim();
     const enableComments = metadata.enableComments !== false;
+    const isNsfw = metadata.isNsfw === true;
+    const isForKids = metadata.isForKids === true;
 
     const accountId = (this.cloudflareSettings?.accountId || "").trim();
     const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
@@ -769,6 +771,8 @@ class R2Service {
           ws,
           xs,
           enableComments,
+          isNsfw,
+          isForKids,
         };
 
         const mergedNip71 = this.buildNip71MetadataForUpload(metadata?.nip71, {
