@@ -1495,6 +1495,9 @@ footer a:hover {
   justify-content: center;
   width: 2.5rem; /* 40px */
   height: 2.5rem; /* 40px */
+  min-width: 2.5rem; /* Prevent flex shrink */
+  min-height: 2.5rem; /* Prevent flex shrink */
+  flex: 0 0 2.5rem;
   line-height: 0;
   background-color: var(--color-neutral-700); /* Gray 700 */
   color: var(--color-white);
