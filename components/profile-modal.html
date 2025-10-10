@@ -1,32 +1,18 @@
 <!-- components/profile-modal.html -->
 <div
   id="profileModal"
-  class="fixed inset-0 z-50 hidden"
+  class="bv-modal hidden items-start"
   role="dialog"
   aria-modal="true"
   aria-labelledby="profileModalTitle"
   tabindex="-1"
-  style="background: transparent"
 >
-  <!-- Overlay Layer with dark background and blur -->
-  <div
-    class="absolute inset-0 z-10"
-    style="
-      background-color: rgba(0, 0, 0, 0.9);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    "
-  ></div>
+  <div class="bv-modal-backdrop"></div>
 
-  <!-- Outer container with the same sizing approach as your other modals -->
   <div
-    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
+    class="bv-modal__panel modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 flex flex-col overflow-hidden relative max-h-[90vh]"
+    tabindex="-1"
   >
-    <!-- Inner content: wide layout, matching your video modal -->
-    <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative flex flex-col"
-      style="max-height: 90vh"
-    >
       <!-- Modal Header -->
       <div
         class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
@@ -618,5 +604,4 @@
         </button>
       </div>
     </div>
-  </div>
 </div>
