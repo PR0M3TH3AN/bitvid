@@ -49,7 +49,7 @@ export class MediaLoader {
           el.style.backgroundImage = `url('${lazySrc}')`;
         }
 
-        el.dataset.thumbnailLoaded = "true";
+        delete el.dataset.lazy;
         this.observer.unobserve(el);
       }
     }, {
