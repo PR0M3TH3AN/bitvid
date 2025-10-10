@@ -79,7 +79,7 @@ export function validateInstanceConfig(overrides) {
 
   if (platformFeePercent > 0 && !trimmedOverride) {
     throw new Error(
-      "PLATFORM_FEE_PERCENT is positive but PLATFORM_LUD16_OVERRIDE is empty. Set PLATFORM_LUD16_OVERRIDE to the Lightning address that should receive the platform's split, or publish a lud16 value on the Super Admin profile so BitVid can route platform fees."
+      "PLATFORM_FEE_PERCENT is positive but PLATFORM_LUD16_OVERRIDE is empty. Set PLATFORM_LUD16_OVERRIDE to the Lightning address that should receive the platform's split, or publish a lud16 value on the Super Admin profile so bitvid can route platform fees."
     );
   }
 }

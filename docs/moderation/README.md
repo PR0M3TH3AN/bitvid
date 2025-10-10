@@ -1,7 +1,7 @@
-# Bitvid Moderation Overview
+# bitvid Moderation Overview
 
 ## What we’re building
-Bitvid is follow-centric. Your Home feed comes from people you follow (F1). Discovery can optionally expand to friends-of-friends (F2) and ranked sources. Moderation is **client-side** and **user-controlled** with optional admin lists.
+bitvid is follow-centric. Your Home feed comes from people you follow (F1). Discovery can optionally expand to friends-of-friends (F2) and ranked sources. Moderation is **client-side** and **user-controlled** with optional admin lists.
 
 ## Core principles
 - **Freedom to choose**: User picks filters. Defaults are safe but reversible.
@@ -28,6 +28,6 @@ Bitvid is follow-centric. Your Home feed comes from people you follow (F1). Disc
 
 ## Files in this folder
 - `web-of-trust.md` — how we compute trust signals and thresholds
-- `nips.md` — exact NIPs and kinds Bitvid uses
+- `nips.md` — exact NIPs and kinds bitvid uses
 - `relays.md` — relay compatibility and COUNT fallbacks
 - `testing.md` — QA checklist + test vectors

@@ -253,7 +253,7 @@ export default VideoTracker;
 
 import VideoTracker from './videoTracker.js';
 
-class BitvidApp {
+class bitvidApp {
   constructor(nostrClient) {
     this.nostrClient = nostrClient;
     this.videoTracker = null;
@@ -276,7 +276,7 @@ class BitvidApp {
   }
 }
 
-export default BitvidApp;
+export default bitvidApp;
 ```
 
 ---

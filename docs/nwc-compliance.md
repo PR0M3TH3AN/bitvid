@@ -1,6 +1,6 @@
 # Nostr Wallet Connect Coverage
 
-This note cross-references Bitvid's current Nostr Wallet Connect (NIP-47) implementation with the official
+This note cross-references bitvid's current Nostr Wallet Connect (NIP-47) implementation with the official
 specification so we can quickly spot regressions or missing features.
 
 ## URI handling

@@ -36,13 +36,13 @@ The upload modal enforces **Title + (URL or Magnet)**. Hosted URLs are strongly 
 - **Magnet (optional but encouraged)**: Paste the literal `magnet:?xt=urn:btih:...` string. The form decodes it with `safeDecodeMagnet()` to prevent hash corruption. Never wrap magnets in `new URL()`—store them raw or decode then pass directly to the helpers.
 - **Web seeds (`ws=`)**: HTTPS only. Point to a file root (e.g., `https://cdn.example.com/video/`). Mixed-content (`http://`) hints are rejected just like the modal message explains.
 - **Additional sources (`xs=`)**: Recommend adding an HTTPS `.torrent` link so WebTorrent peers can bootstrap faster.
-- **Trackers**: Bitvid’s browser client only connects to WSS trackers shipped in `js/constants.js`. Do not add UDP or plaintext HTTP trackers to published magnets.
+- **Trackers**: bitvid’s browser client only connects to WSS trackers shipped in `js/constants.js`. Do not add UDP or plaintext HTTP trackers to published magnets.
 - **Private toggle**: Hides the card from shared grids so only you see it and adds a purple accent so the private state stands out.
 
 ### How playback works
 
 1. **URL-first**: `playVideoWithFallback({ url, magnet })` attempts the hosted URL immediately. Healthy URLs deliver the full experience without touching P2P resources.
-2. **WebTorrent fallback**: If the URL probe fails or returns an error status, Bitvid falls back to WebTorrent using the raw magnet. The helpers append HTTPS `ws=`/`xs=` hints so peers seed quickly.
+2. **WebTorrent fallback**: If the URL probe fails or returns an error status, bitvid falls back to WebTorrent using the raw magnet. The helpers append HTTPS `ws=`/`xs=` hints so peers seed quickly.
 3. **Safety checks**: Magnets are decoded with `safeDecodeMagnet()` and normalized via `normalizeAndAugmentMagnet()` before reaching WebTorrent. Trackers remain WSS-only to satisfy browser constraints.
 4. **Operator playbook**: If a deployment causes playback regressions, flip the relevant feature flags back to their default values in `js/constants.js` and redeploy. Capture the rollback steps in AGENTS.md and the PR description so the Main channel stays stable.
 
@@ -104,7 +104,7 @@ latest styles.
     default whitelist-only mode setting. Update the documented exports here when
     preparing a new deployment.
   - Tune `PLATFORM_FEE_PERCENT` (0–100) to keep a percentage of Lightning tips.
-    When the fee is positive, BitVid routes the platform’s split to
+    When the fee is positive, bitvid routes the platform’s split to
     `PLATFORM_LUD16_OVERRIDE`, so set it to the Lightning address that should
     receive the sats (or publish a `lud16` on the Super Admin profile). Leave
     the fee at `0` to pass through every satoshi.
@@ -119,7 +119,7 @@ latest styles.
 
 ### Relay compatibility
 
-Bitvid now requests per-video discussion counts using the NIP-45 `COUNT` frame. The bundled client opens each relay via
+bitvid now requests per-video discussion counts using the NIP-45 `COUNT` frame. The bundled client opens each relay via
 `this.pool.ensureRelay(url)` and streams a raw `COUNT` message, so your relay stack must understand that verb (nostr-tools ≥ 1.8
 or any relay advertising NIP-45 support). Relays that do not implement `COUNT` are skipped gracefully—the UI keeps the count
 placeholder at “—” and development builds log a warning—so mixed deployments remain usable while you phase in compatible relays.
@@ -196,3 +196,9 @@ node tests/profile-modal-controller.test.mjs
 - **Website**: [bitvid.network](https://bitvid.network)
 - **GitHub**: [PR0M3TH3AN](https://github.com/PR0M3TH3AN)
 - **Nostr**: [npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe](https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe)
+
+---
+
+## License
+
+GPL-3.0-or-later. See [LICENSE](./LICENSE).

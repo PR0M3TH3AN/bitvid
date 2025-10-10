@@ -334,7 +334,7 @@ function resolveOverride(type) {
   }
 
   if (typeof window !== "undefined") {
-    const runtimeOverrides = window.BitVidNostrEventOverrides;
+    const runtimeOverrides = window.bitvidNostrEventOverrides;
     if (runtimeOverrides && runtimeOverrides[type]) {
       return runtimeOverrides[type];
     }
@@ -350,7 +350,7 @@ export function setNostrEventSchemaOverrides(overrides = {}) {
   }
 
   if (typeof window !== "undefined") {
-    window.BitVidNostrEventOverrides = schemaOverrides;
+    window.bitvidNostrEventOverrides = schemaOverrides;
   }
 }
 
@@ -868,7 +868,7 @@ export function buildAdminListEvent(listKey, { pubkey, created_at, hexPubkeys = 
 }
 
 if (typeof window !== "undefined") {
-  window.BitVidNostrEvents = {
+  window.bitvidNostrEvents = {
     NOTE_TYPES,
     getSchema: getNostrEventSchema,
     getAllSchemas: getAllNostrEventSchemas,

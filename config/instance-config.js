@@ -1,22 +1,22 @@
 // config/instance-config.js
 // -----------------------------------------------------------------------------
-// BitVid instance configuration
+// bitvid instance configuration
 // -----------------------------------------------------------------------------
 //
 // This file consolidates the values that operators usually customize when they
-// deploy their own BitVid instance. Update the exports below to match your
+// deploy their own bitvid instance. Update the exports below to match your
 // environment, commit the changes, and redeploy. Leaving this file in the repo
 // (instead of hidden in environment variables) makes it easy for future
 // maintainers to understand how your instance is configured.
 //
-// Each setting includes guidance about how BitVid uses the value and what
+// Each setting includes guidance about how bitvid uses the value and what
 // adjustments are safe. When in doubt, mirror the structure shown here so other
 // contributors can follow along.
 
 /**
- * The primary administrator for this BitVid instance.
+ * The primary administrator for this bitvid instance.
  *
- * BitVid treats this Nostr public key (npub) as the "Super Admin". This user
+ * bitvid treats this Nostr public key (npub) as the "Super Admin". This user
  * cannot be removed from moderator lists, and only they can promote new
  * moderators or toggle whitelist-only mode. Replace the string below with the
  * npub of the account you want to act as the ultimate authority for your
@@ -26,7 +26,7 @@ export const ADMIN_SUPER_NPUB =
   "npub15jnttpymeytm80hatjqcvhhqhzrhx6gxp8pq0wn93rhnu8s9h9dsha32lx";
 
 /**
- * Canonical URL for the public BitVid site.
+ * Canonical URL for the public bitvid site.
  *
  * Surfaces in admin outreach copy and moderation DMs so that recipients can
  * quickly jump back to the primary destination. Update this if your
@@ -37,7 +37,7 @@ export const BITVID_WEBSITE_URL = "https://bitvid.network/";
 /**
  * Default image included in automated moderation DMs.
  *
- * BitVid embeds this media asset at the top of notification messages so the
+ * bitvid embeds this media asset at the top of notification messages so the
  * payload renders with a recognizable preview. Provide a fully qualified URL
  * that points to a hosted image accessible by the intended recipients.
  */
@@ -69,7 +69,7 @@ export const PLATFORM_FEE_PERCENT = 30;
  * fallback Lightning address. When `PLATFORM_FEE_PERCENT` is greater than 0,
  * this override also acts as the Lightning target for the platform’s split.
  * Leave the value as `null` to respect the creator’s metadata and rely on the
- * Super Admin profile publishing a `lud16` so BitVid still knows where to route
+ * Super Admin profile publishing a `lud16` so bitvid still knows where to route
  * fees when they are enabled.
  */
 export const PLATFORM_LUD16_OVERRIDE = "adammalin@strike.me";
@@ -78,7 +78,7 @@ export const PLATFORM_LUD16_OVERRIDE = "adammalin@strike.me";
  * Optional list of relays to seed new sessions with instead of the defaults.
  *
  * Provide WSS URLs (e.g., `"wss://relay.example.com"`). Leave the array empty
- * to keep BitVid’s bundled defaults. Operators that need a custom bootstrap set
+ * to keep bitvid’s bundled defaults. Operators that need a custom bootstrap set
  * should list the relays in priority order; entries later in the list are used
  * as fallbacks when earlier relays fail.
  */
@@ -99,7 +99,7 @@ export const ADMIN_WHITELIST_MODE_STORAGE_KEY = "bitvid_admin_whitelist_mode";
  * Whether whitelist-only mode should be enabled the first time an operator
  * loads the admin dashboard.
  *
- * Set this to `true` if you want BitVid to start with whitelist-only access and
+ * Set this to `true` if you want bitvid to start with whitelist-only access and
  * require an explicit opt-out. Set to `false` to allow all creators by default.
  * Operators can still toggle the mode at runtime; this value only controls the
  * default state when no preference has been stored in localStorage yet.
@@ -109,7 +109,7 @@ export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 /**
  * Whether the public client should display content flagged as NSFW.
  *
- * When set to `false`, BitVid filters out any video notes marked with the
+ * When set to `false`, bitvid filters out any video notes marked with the
  * `isNsfw` flag so they never appear in feeds or video lists. Toggle to `true`
  * only if your deployment allows NSFW media to surface publicly.
  */
@@ -118,7 +118,7 @@ export const ALLOW_NSFW_CONTENT = false;
 /**
  * Nostr kind used when persisting watch history events.
  *
- * BitVid’s roadmap standardizes on kind 30079 so that watch events, view logs,
+ * bitvid’s roadmap standardizes on kind 30079 so that watch events, view logs,
  * and media metadata stay in the same family of documents. During the rollout
  * from the legacy 30078 payloads, clients query both kinds so historical data
  * keeps syncing; remove the compatibility fetch once all writers emit the new
@@ -133,13 +133,13 @@ export const WATCH_HISTORY_KIND = 30079;
  *
  * This becomes the value of the `d` tag so clients can find the correct list
  * without guessing. Customize the slug if you need isolation between multiple
- * BitVid deployments that share relays, but keep it stable once clients begin
+ * bitvid deployments that share relays, but keep it stable once clients begin
  * syncing history.
  */
 export const WATCH_HISTORY_LIST_IDENTIFIER = "watch-history";
 
 /**
- * Legacy identifiers that BitVid clients should continue honoring when
+ * Legacy identifiers that bitvid clients should continue honoring when
  * fetching historical watch-history snapshots.
  */
 export const WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS = Object.freeze([
@@ -153,7 +153,7 @@ export const WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS = Object.freeze([
  * deployments stick with the analytics-only view flow until operators opt in.
  * To enable V2, set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_WATCH_HISTORY_V2 = true`
  * in a bootstrap script (or override the value before the app loads). When the
- * flag stays off, BitVid still emits legacy view events and will honor
+ * flag stays off, bitvid still emits legacy view events and will honor
  * existing watch-history reads per plan §12, but the sync UI will surface a
  * disabled banner instead of querying relays.
  */
@@ -170,7 +170,7 @@ export const WATCH_HISTORY_MAX_ITEMS = 1500;
 /**
  * Whether clients should resolve watch-history entries in batches.
  *
- * When enabled, BitVid fetches video metadata in grouped queries instead of
+ * When enabled, bitvid fetches video metadata in grouped queries instead of
  * issuing one request per entry. Operators with relays that struggle under
  * bursty loads can disable batching at the cost of additional round trips.
  */
@@ -191,7 +191,7 @@ export const WATCH_HISTORY_BATCH_PAGE_SIZE = 10;
  * Maximum size of the JSON payload for each watch-history chunk, measured
  * before encryption.
  *
- * BitVid splits large histories across multiple events to stay within relay
+ * bitvid splits large histories across multiple events to stay within relay
  * limits. This cap keeps individual chunks under roughly 60 KB so that
  * encrypted payloads remain relay-friendly even after base64 expansion.
  * Lower the number if your relays enforce tighter limits.
@@ -220,7 +220,7 @@ export const WATCH_HISTORY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 /**
  * How long the view counter should treat repeat plays as duplicates.
  *
- * BitVid de-duplicates view events that occur within this rolling window so
+ * bitvid de-duplicates view events that occur within this rolling window so
  * quick refreshes or stalled replays do not inflate the totals. The default of
  * 24 hours mirrors common analytics tooling, but you can tighten or relax the
  * window depending on how aggressively you want to filter repeat traffic.
