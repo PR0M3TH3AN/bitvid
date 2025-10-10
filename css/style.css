@@ -292,6 +292,9 @@ header img {
   text-decoration: none;
   border-radius: 9999px;
   font-size: 0.65rem;
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 #profileModal .profile-card__action:hover,
@@ -823,9 +826,12 @@ header img {
 
 #profileModal .profile-card__topline {
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  width: 100%;
+  justify-content: flex-start;
 }
 
 #profileModal .profile-card__label {
@@ -908,15 +914,11 @@ header img {
   }
 
   #profileModal .profile-card {
-    flex-direction: row;
     align-items: center;
   }
 
   #profileModal .profile-card__topline {
-    flex-direction: row;
     justify-content: space-between;
-    align-items: center;
-    gap: 0.75rem;
   }
 }
 

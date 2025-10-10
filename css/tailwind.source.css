@@ -167,7 +167,7 @@
   }
 
   #profileModal .profile-card {
-    @apply card flex flex-col p-4 text-text;
+    @apply card flex items-center gap-4 p-4 text-text;
   }
 
   #profileModal .profile-switcher__add {
