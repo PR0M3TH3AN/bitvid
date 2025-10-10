@@ -196,15 +196,4 @@
     @apply bv-modal__panel;
   }
 
-  .modal-nav .icon-button {
-    @apply btn-ghost text-text;
-  }
-
-  .modal-nav .icon-button:hover {
-    @apply border-border bg-panel-hover;
-  }
-
-  .modal-nav .icon-button:focus-visible {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
-  }
 }
