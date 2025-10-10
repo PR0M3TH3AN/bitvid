@@ -330,8 +330,20 @@ header img {
   animation: fadeIn var(--modal-motion-duration) ease-out;
 }
 
+/*
+  The modal action buttons inherit tailwind's `.btn-ghost` padding via
+  `@apply` in tailwind.source.css. Reset the sizing so these icons stay
+  aligned with the fixed-size back button.
+*/
 .modal-nav .icon-button {
   box-shadow: none;
+  padding: 0;
+  gap: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  border: none;
 }
 
 /* Watch history cards */
