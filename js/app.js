@@ -2016,6 +2016,39 @@ class Application {
     return this.videoList;
   }
 
+  reinitializeVideoListView({ reason, postLoginResult } = {}) {
+    if (!this.videoListView) {
+      return;
+    }
+
+    const isElement = (value) =>
+      typeof HTMLElement !== "undefined" && value instanceof HTMLElement;
+
+    const container = isElement(this.videoList)
+      ? this.videoList
+      : document.getElementById("videoList");
+
+    try {
+      this.videoListView.destroy();
+    } catch (error) {
+      console.warn(
+        "[Application] Failed to destroy VideoListView during reinitialization:",
+        error,
+      );
+    }
+
+    const messageContext =
+      reason === "login" && postLoginResult?.blocksLoaded !== false
+        ? "Applying your filters…"
+        : "Refreshing videos…";
+
+    this.videoList = isElement(container) ? container : null;
+
+    if (this.videoList) {
+      this.videoList.innerHTML = getSidebarLoadingMarkup(messageContext);
+    }
+  }
+
   /**
    * Attempt to load the user's own profile from Nostr (kind:0).
    */
@@ -2950,11 +2983,11 @@ class Application {
       identityChanged: Boolean(detail?.identityChanged),
     };
 
-    const nwcPromise = this.nwcSettingsService
-      .onLogin(loginContext)
+    const nwcPromise = Promise.resolve()
+      .then(() => this.nwcSettingsService.onLogin(loginContext))
       .catch((error) => {
         console.error("Failed to process NWC settings during login:", error);
-        throw error;
+        return null;
       });
 
     if (this.profileController) {
@@ -2990,10 +3023,19 @@ class Application {
         console.error("Post-login hydration failed:", error);
       });
 
+    let postLoginResult = null;
     try {
-      await nwcPromise;
+      postLoginResult = await postLoginPromise;
     } catch (error) {
-      // Error already logged above; continue so UI can recover.
+      console.error("Post-login processing failed:", error);
+    }
+
+    await nwcPromise;
+
+    try {
+      this.reinitializeVideoListView({ reason: "login", postLoginResult });
+    } catch (error) {
+      console.warn("Failed to reinitialize video list view after login:", error);
     }
 
     try {
