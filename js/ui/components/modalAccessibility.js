@@ -19,6 +19,15 @@ const scheduleMicrotask =
     ? queueMicrotask
     : (callback) => Promise.resolve().then(callback);
 
+function isElement(node) {
+  return (
+    !!node &&
+    typeof node === "object" &&
+    typeof node.nodeType === "number" &&
+    node.nodeType === 1
+  );
+}
+
 function isFocusable(element) {
   if (!element) {
     return false;
@@ -130,13 +139,22 @@ export function createModalAccessibility({ root, panel, backdrop, document: prov
     onRequestClose?.(event);
   };
 
-  const activate = () => {
+  const activate = ({ triggerElement } = {}) => {
     if (active) {
       return;
     }
     active = true;
     const activeElement = doc.activeElement;
-    previousFocus = activeElement instanceof Element ? activeElement : null;
+    const hasDocContains = typeof doc.contains === "function";
+    const normalizedTrigger =
+      isElement(triggerElement) && (!hasDocContains || doc.contains(triggerElement))
+        ? triggerElement
+        : null;
+    if (normalizedTrigger) {
+      previousFocus = normalizedTrigger;
+    } else {
+      previousFocus = isElement(activeElement) ? activeElement : null;
+    }
     doc.addEventListener("keydown", keydownListener, true);
     root.addEventListener("click", clickListener);
     if (backdrop && backdrop !== root) {
