@@ -15,10 +15,11 @@ const modalMarkupPromise = readFile(
   "utf8"
 );
 
-async function setupModal({ designSystemEnabled = false } = {}) {
+async function setupModal({ designSystemEnabled = false, lazyLoad = false } = {}) {
   const markup = await modalMarkupPromise;
+  const modalMarkup = lazyLoad ? "" : markup;
   const dom = new JSDOM(
-    `<!DOCTYPE html><html><body><button id="trigger" type="button">Open modal</button><div id="modalContainer">${markup}</div></body></html>`,
+    `<!DOCTYPE html><html><body><button id="trigger" type="button">Open modal</button><div id="modalContainer">${modalMarkup}</div></body></html>`,
     { url: "https://example.com", pretendToBeVisual: true }
   );
 
@@ -42,6 +43,34 @@ async function setupModal({ designSystemEnabled = false } = {}) {
   setFeatureDesignSystemEnabled(designSystemEnabled);
   applyDesignSystemAttributes(document);
 
+  let restoreFetch = null;
+  if (lazyLoad) {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (resource, init) => {
+      const url = typeof resource === "string" ? resource : resource?.url;
+      if (url && url.endsWith("components/video-modal.html")) {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return markup;
+          },
+        };
+      }
+      if (typeof originalFetch === "function") {
+        return originalFetch(resource, init);
+      }
+      throw new Error(`Unexpected fetch request in tests: ${String(url || resource)}`);
+    };
+    restoreFetch = () => {
+      if (originalFetch) {
+        globalThis.fetch = originalFetch;
+      } else {
+        delete globalThis.fetch;
+      }
+    };
+  }
+
   const modal = new VideoModal({
     removeTrackingScripts: () => {},
     setGlobalModalState: () => {},
@@ -49,10 +78,14 @@ async function setupModal({ designSystemEnabled = false } = {}) {
     logger: console,
   });
 
-  const playerModal = document.querySelector("#playerModal");
-  assert.ok(playerModal, "player modal markup should exist");
-  modal.hydrate(playerModal);
-  applyDesignSystemAttributes(playerModal);
+  let playerModal = document.querySelector("#playerModal");
+  if (playerModal) {
+    modal.hydrate(playerModal);
+  } else {
+    await modal.load();
+    playerModal = modal.getRoot();
+    assert.ok(playerModal, "player modal markup should exist after load");
+  }
 
   const trigger = document.getElementById("trigger");
   assert.ok(trigger, "trigger button should exist");
@@ -77,6 +110,9 @@ async function setupModal({ designSystemEnabled = false } = {}) {
     delete globalThis.location;
     delete globalThis.KeyboardEvent;
     delete globalThis.MouseEvent;
+    if (restoreFetch) {
+      restoreFetch();
+    }
   };
 
   return { window, document, modal, playerModal, trigger, cleanup };
@@ -275,4 +311,19 @@ for (const designSystemEnabled of [false, true]) {
       modal.close();
     }
   );
+
+  if (designSystemEnabled) {
+    test(
+      `[${modeLabel}] video modal inherits design system mode when loaded dynamically`,
+      async (t) => {
+        const { playerModal, cleanup } = await setupModal({
+          designSystemEnabled,
+          lazyLoad: true,
+        });
+        t.after(cleanup);
+
+        assert.strictEqual(playerModal.getAttribute("data-ds"), "new");
+      }
+    );
+  }
 }
