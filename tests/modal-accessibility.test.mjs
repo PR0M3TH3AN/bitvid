@@ -11,6 +11,11 @@ import {
   openStaticModal,
   closeStaticModal,
 } from "../js/ui/components/staticModalAccessibility.js";
+import {
+  setFeatureDesignSystemEnabled,
+  resetRuntimeFlags,
+} from "../js/constants.js";
+import { applyDesignSystemAttributes } from "../js/designSystem.js";
 
 const uploadMarkupPromise = readFile(
   new URL("../components/upload-modal.html", import.meta.url),
@@ -90,101 +95,388 @@ async function flushMicrotasks() {
   await Promise.resolve();
 }
 
-test("UploadModal closes on Escape and restores trigger focus", async () => {
-  const markup = await uploadMarkupPromise;
-  const cleanups = [];
-  cleanups.push(
-    installDom(
-      "<!DOCTYPE html><html><body><button id=\"trigger\">Upload</button><div id=\"modalContainer\"></div></body></html>",
-    ),
-  );
-  cleanups.push(
-    stubFetch(
-      new Map([["components/upload-modal.html", markup]]),
-    ),
-  );
+for (const designSystemEnabled of [false, true]) {
+  const modeLabel = designSystemEnabled ? "design-system" : "legacy";
 
-  const modal = new UploadModal({
-    removeTrackingScripts: () => {},
-    setGlobalModalState: () => {},
-  });
-  await modal.load();
+  test(
+    `[${modeLabel}] UploadModal closes on Escape and restores trigger focus`,
+    async (t) => {
+      const markup = await uploadMarkupPromise;
+      const cleanups = [];
+      cleanups.push(
+        installDom(
+          "<!DOCTYPE html><html><body><button id=\"trigger\">Upload</button><div id=\"modalContainer\"></div></body></html>",
+        ),
+      );
+      cleanups.push(
+        stubFetch(new Map([["components/upload-modal.html", markup]])),
+      );
 
-  const trigger = document.getElementById("trigger");
-  assert.ok(trigger);
+      setFeatureDesignSystemEnabled(designSystemEnabled);
 
-  modal.open({ triggerElement: trigger });
-  await flushMicrotasks();
+      const modal = new UploadModal({
+        removeTrackingScripts: () => {},
+        setGlobalModalState: () => {},
+      });
+      await modal.load();
+      applyDesignSystemAttributes(document);
 
-  document.dispatchEvent(
-    new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
-  );
-  await flushMicrotasks();
+      const trigger = document.getElementById("trigger");
+      assert.ok(trigger);
 
-  const root = modal.getRoot();
-  assert.ok(root?.classList.contains("hidden"));
-  assert.strictEqual(document.activeElement, trigger);
+      modal.open({ triggerElement: trigger });
+      await flushMicrotasks();
 
-  modal.destroy();
-  cleanups.reverse().forEach((fn) => fn?.());
-});
+      document.dispatchEvent(
+        new window.KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await flushMicrotasks();
 
-test("EditModal Escape closes and restores trigger focus", async () => {
-  const markup = await editMarkupPromise;
-  const cleanups = [];
-  cleanups.push(
-    installDom(
-      "<!DOCTYPE html><html><body><button id=\"trigger\">Edit</button><div id=\"modalContainer\"></div></body></html>",
-    ),
-  );
-  cleanups.push(
-    stubFetch(
-      new Map([["components/edit-video-modal.html", markup]]),
-    ),
-  );
+      const root = modal.getRoot();
+      assert.ok(root?.classList.contains("hidden"));
+      assert.strictEqual(document.activeElement, trigger);
 
-  const modal = new EditModal({
-    removeTrackingScripts: () => {},
-    setGlobalModalState: () => {},
-    sanitizers: {},
-    escapeHtml: (value) => String(value ?? ""),
-    showError: () => {},
-    getMode: () => "live",
-  });
-  await modal.load();
-
-  const trigger = document.getElementById("trigger");
-  assert.ok(trigger);
-
-  await modal.open(
-    {
-      id: "event1",
-      title: "Example",
-      url: "https://example.com/video.mp4",
-      magnet: "",
-      ws: "",
-      xs: "",
-      enableComments: true,
-      isPrivate: false,
-      isNsfw: false,
-      isForKids: false,
+      t.after(() => {
+        modal.destroy();
+        resetRuntimeFlags();
+        cleanups.reverse().forEach((fn) => fn?.());
+      });
     },
-    { triggerElement: trigger },
   );
-  await flushMicrotasks();
 
-  document.dispatchEvent(
-    new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+  test(
+    `[${modeLabel}] UploadModal backdrop click closes and restores trigger focus`,
+    async (t) => {
+      const markup = await uploadMarkupPromise;
+      const cleanups = [];
+      cleanups.push(
+        installDom(
+          "<!DOCTYPE html><html><body><button id=\"trigger\">Upload</button><div id=\"modalContainer\"></div></body></html>",
+        ),
+      );
+      cleanups.push(
+        stubFetch(new Map([["components/upload-modal.html", markup]])),
+      );
+
+      setFeatureDesignSystemEnabled(designSystemEnabled);
+
+      const modal = new UploadModal({
+        removeTrackingScripts: () => {},
+        setGlobalModalState: () => {},
+      });
+      await modal.load();
+      applyDesignSystemAttributes(document);
+
+      const trigger = document.getElementById("trigger");
+      assert.ok(trigger);
+
+      modal.open({ triggerElement: trigger });
+      await flushMicrotasks();
+
+      const backdrop = modal.getRoot()?.querySelector?.("[data-dismiss]");
+      assert.ok(backdrop, "expected upload modal backdrop");
+
+      backdrop.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+      await flushMicrotasks();
+
+      const root = modal.getRoot();
+      assert.ok(root?.classList.contains("hidden"));
+      assert.strictEqual(document.activeElement, trigger);
+
+      t.after(() => {
+        modal.destroy();
+        resetRuntimeFlags();
+        cleanups.reverse().forEach((fn) => fn?.());
+      });
+    },
   );
-  await flushMicrotasks();
 
-  const root = modal.getRoot();
-  assert.ok(root?.classList.contains("hidden"));
-  assert.strictEqual(document.activeElement, trigger);
+  test(
+    `[${modeLabel}] UploadModal mode toggle updates button states`,
+    async (t) => {
+      const markup = await uploadMarkupPromise;
+      const cleanups = [];
+      cleanups.push(
+        installDom(
+          "<!DOCTYPE html><html><body><div id=\"modalContainer\"></div></body></html>",
+        ),
+      );
+      cleanups.push(
+        stubFetch(new Map([["components/upload-modal.html", markup]])),
+      );
 
-  modal.destroy();
-  cleanups.reverse().forEach((fn) => fn?.());
-});
+      setFeatureDesignSystemEnabled(designSystemEnabled);
+
+      const modal = new UploadModal({
+        removeTrackingScripts: () => {},
+        setGlobalModalState: () => {},
+      });
+      await modal.load();
+      applyDesignSystemAttributes(document);
+
+      const customButton = document.querySelector(
+        ".upload-mode-toggle[data-upload-mode=\"custom\"]",
+      );
+      const cloudflareButton = document.querySelector(
+        ".upload-mode-toggle[data-upload-mode=\"cloudflare\"]",
+      );
+      const customSection = document.getElementById("customUploadSection");
+      const cloudflareSection = document.getElementById("cloudflareUploadSection");
+
+      assert.ok(customButton && cloudflareButton);
+      assert.ok(customSection && cloudflareSection);
+
+      modal.setMode("cloudflare");
+
+      assert.equal(cloudflareButton.getAttribute("aria-pressed"), "true");
+      assert.equal(customButton.getAttribute("aria-pressed"), "false");
+      assert.equal(cloudflareSection.classList.contains("hidden"), false);
+      assert.equal(customSection.classList.contains("hidden"), true);
+
+      modal.setMode("custom");
+
+      assert.equal(customButton.getAttribute("aria-pressed"), "true");
+      assert.equal(cloudflareButton.getAttribute("aria-pressed"), "false");
+      assert.equal(customSection.classList.contains("hidden"), false);
+      assert.equal(cloudflareSection.classList.contains("hidden"), true);
+
+      t.after(() => {
+        modal.destroy();
+        resetRuntimeFlags();
+        cleanups.reverse().forEach((fn) => fn?.());
+      });
+    },
+  );
+}
+
+for (const designSystemEnabled of [false, true]) {
+  const modeLabel = designSystemEnabled ? "design-system" : "legacy";
+
+  test(
+    `[${modeLabel}] EditModal Escape closes and restores trigger focus`,
+    async (t) => {
+      const markup = await editMarkupPromise;
+      const cleanups = [];
+      cleanups.push(
+        installDom(
+          "<!DOCTYPE html><html><body><button id=\"trigger\">Edit</button><div id=\"modalContainer\"></div></body></html>",
+        ),
+      );
+      cleanups.push(
+        stubFetch(
+          new Map([["components/edit-video-modal.html", markup]]),
+        ),
+      );
+
+      setFeatureDesignSystemEnabled(designSystemEnabled);
+
+      const modal = new EditModal({
+        removeTrackingScripts: () => {},
+        setGlobalModalState: () => {},
+        sanitizers: {},
+        escapeHtml: (value) => String(value ?? ""),
+        showError: () => {},
+        getMode: () => "live",
+      });
+      await modal.load();
+      applyDesignSystemAttributes(document);
+
+      const trigger = document.getElementById("trigger");
+      assert.ok(trigger);
+
+      await modal.open(
+        {
+          id: "event1",
+          title: "Example",
+          url: "https://example.com/video.mp4",
+          magnet: "",
+          ws: "",
+          xs: "",
+          enableComments: true,
+          isPrivate: false,
+          isNsfw: false,
+          isForKids: false,
+        },
+        { triggerElement: trigger },
+      );
+      await flushMicrotasks();
+
+      document.dispatchEvent(
+        new window.KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await flushMicrotasks();
+
+      const root = modal.getRoot();
+      assert.ok(root?.classList.contains("hidden"));
+      assert.strictEqual(document.activeElement, trigger);
+
+      t.after(() => {
+        modal.destroy();
+        resetRuntimeFlags();
+        cleanups.reverse().forEach((fn) => fn?.());
+      });
+    },
+  );
+
+  test(
+    `[${modeLabel}] EditModal backdrop click closes and restores trigger focus`,
+    async (t) => {
+      const markup = await editMarkupPromise;
+      const cleanups = [];
+      cleanups.push(
+        installDom(
+          "<!DOCTYPE html><html><body><button id=\"trigger\">Edit</button><div id=\"modalContainer\"></div></body></html>",
+        ),
+      );
+      cleanups.push(
+        stubFetch(
+          new Map([["components/edit-video-modal.html", markup]]),
+        ),
+      );
+
+      setFeatureDesignSystemEnabled(designSystemEnabled);
+
+      const modal = new EditModal({
+        removeTrackingScripts: () => {},
+        setGlobalModalState: () => {},
+        sanitizers: {},
+        escapeHtml: (value) => String(value ?? ""),
+        showError: () => {},
+        getMode: () => "live",
+      });
+      await modal.load();
+      applyDesignSystemAttributes(document);
+
+      const trigger = document.getElementById("trigger");
+      assert.ok(trigger);
+
+      await modal.open(
+        {
+          id: "event1",
+          title: "Example",
+          url: "https://example.com/video.mp4",
+          magnet: "",
+          ws: "",
+          xs: "",
+          enableComments: true,
+          isPrivate: false,
+          isNsfw: false,
+          isForKids: false,
+        },
+        { triggerElement: trigger },
+      );
+      await flushMicrotasks();
+
+      const overlay = modal.overlay;
+      assert.ok(overlay, "expected edit modal overlay");
+
+      overlay.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+      await flushMicrotasks();
+
+      const root = modal.getRoot();
+      assert.ok(root?.classList.contains("hidden"));
+      assert.strictEqual(document.activeElement, trigger);
+
+      t.after(() => {
+        modal.destroy();
+        resetRuntimeFlags();
+        cleanups.reverse().forEach((fn) => fn?.());
+      });
+    },
+  );
+
+  test(
+    `[${modeLabel}] EditModal visibility toggle updates button state`,
+    async (t) => {
+      const markup = await editMarkupPromise;
+      const cleanups = [];
+      cleanups.push(
+        installDom(
+          "<!DOCTYPE html><html><body><div id=\"modalContainer\"></div></body></html>",
+        ),
+      );
+      cleanups.push(
+        stubFetch(
+          new Map([["components/edit-video-modal.html", markup]]),
+        ),
+      );
+
+      setFeatureDesignSystemEnabled(designSystemEnabled);
+
+      const modal = new EditModal({
+        removeTrackingScripts: () => {},
+        setGlobalModalState: () => {},
+        sanitizers: {},
+        escapeHtml: (value) => String(value ?? ""),
+        showError: () => {},
+        getMode: () => "live",
+      });
+      await modal.load();
+      applyDesignSystemAttributes(document);
+
+      await modal.open(
+        {
+          id: "event1",
+          title: "Example",
+          url: "https://example.com/video.mp4",
+          magnet: "",
+          ws: "",
+          xs: "",
+          enableComments: true,
+          isPrivate: false,
+          isNsfw: false,
+          isForKids: false,
+        },
+        {},
+      );
+      await flushMicrotasks();
+
+      const privateButton = modal.visibility.buttons.find((button) =>
+        button?.dataset?.visibilityOption === "private",
+      );
+      const publicButton = modal.visibility.buttons.find((button) =>
+        button?.dataset?.visibilityOption === "public",
+      );
+      assert.ok(privateButton && publicButton);
+
+      const unlockVisibilityButton =
+        modal.root?.querySelector("[data-edit-target=\"editVideoIsPrivate\"]");
+      assert.ok(unlockVisibilityButton);
+
+      unlockVisibilityButton.dispatchEvent(
+        new window.Event("click", { bubbles: true, cancelable: true }),
+      );
+
+      modal.setVisibility("private");
+      assert.equal(privateButton.getAttribute("aria-pressed"), "true");
+      assert.equal(publicButton.getAttribute("aria-pressed"), "false");
+      assert.equal(modal.visibility.container?.dataset.state, "private");
+
+      modal.setVisibility("public");
+      assert.equal(publicButton.getAttribute("aria-pressed"), "true");
+      assert.equal(privateButton.getAttribute("aria-pressed"), "false");
+      assert.equal(modal.visibility.container?.dataset.state, "public");
+
+      t.after(() => {
+        modal.destroy();
+        resetRuntimeFlags();
+        cleanups.reverse().forEach((fn) => fn?.());
+      });
+    },
+  );
+}
 
 test("RevertModal Escape closes and restores trigger focus", async () => {
   const markup = await revertMarkupPromise;

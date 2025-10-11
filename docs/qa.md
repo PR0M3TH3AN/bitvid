@@ -4,6 +4,12 @@ Run this checklist before publishing releases or merging changes that touch uplo
 
 Before starting, open `docs/kitchen-sink.html` in a browser to review the modal surface reference. With that page as your visual baseline, perform this quick accessibility spot check in the running app:
 
+Automated regression coverage now exercises these flows across both the legacy and design-system variants:
+
+* `tests/video-modal-accessibility.test.mjs` validates sticky header transitions, scroll locking, and zap popover accessibility for the video modal.
+* `tests/modal-accessibility.test.mjs` mirrors upload/edit modal accessibility along with their form validation and mode toggles.
+* `tests/profile-modal-controller.test.mjs` verifies profile modal focus restoration and navigation button state changes.
+
 * Launch the site, trigger any video card or thumbnail to open the playback modal, and keep track of the element you used to open it.
 * Scroll the modal content down and back up; confirm the sticky navigation bar hides on downward scroll and reappears when you reverse direction.
 * Activate the zap button to display the popover and tab through its fields to confirm focus stays within the dialog; press `Escape` to close it and ensure focus returns to the zap trigger.

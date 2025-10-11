@@ -3,6 +3,11 @@ import { strict as assert } from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import ProfileModalController from '../js/ui/profileModalController.js';
+import {
+  setFeatureDesignSystemEnabled,
+  resetRuntimeFlags,
+} from '../js/constants.js';
+import { applyDesignSystemAttributes } from '../js/designSystem.js';
 
 const profileModalHtml = await readFile(
   new URL('../components/profile-modal.html', import.meta.url),
@@ -14,6 +19,12 @@ const defaultActorHex = 'a'.repeat(64);
 
 let dom;
 let container;
+
+async function waitForAnimationFrame(window, cycles = 1) {
+  for (let i = 0; i < cycles; i += 1) {
+    await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+  }
+}
 
 beforeEach(() => {
   dom = new JSDOM(
@@ -161,6 +172,129 @@ function createController(options = {}) {
     state: options.state ?? {},
     constants: options.constants ?? {},
   });
+}
+
+for (const designSystemEnabled of [false, true]) {
+  const modeLabel = designSystemEnabled ? 'design-system' : 'legacy';
+
+  test(
+    `[${modeLabel}] Profile modal Escape closes and restores trigger focus`,
+    async (t) => {
+      setFeatureDesignSystemEnabled(designSystemEnabled);
+      const controller = createController();
+      await controller.load();
+      applyDesignSystemAttributes(document);
+
+      const trigger = document.createElement('button');
+      trigger.id = 'profileTrigger';
+      trigger.textContent = 'Open profile';
+      document.body.appendChild(trigger);
+      trigger.focus();
+      await waitForAnimationFrame(window, 1);
+
+      const cleanup = () => {
+        try {
+          controller.hide({ silent: true });
+        } catch {}
+        try {
+          trigger.remove();
+        } catch {}
+      };
+
+      let cleanupRan = false;
+      try {
+        await controller.show('account');
+        await waitForAnimationFrame(window, 2);
+
+        const focusTrap =
+          controller.focusTrapContainer ||
+          controller.profileModalPanel ||
+          controller.profileModal ||
+          document.getElementById('profileModal');
+        assert.ok(focusTrap, 'focus trap container should exist');
+
+        focusTrap.dispatchEvent(
+          new window.KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+
+        await waitForAnimationFrame(window, 2);
+
+        const modalRoot = document.getElementById('profileModal');
+        assert.ok(modalRoot?.classList.contains('hidden'));
+        assert.strictEqual(document.activeElement, trigger);
+      } finally {
+        cleanup();
+        cleanupRan = true;
+      }
+
+      t.after(() => {
+        if (!cleanupRan) {
+          cleanup();
+        }
+        resetRuntimeFlags();
+      });
+    },
+  );
+
+  test(
+    `[${modeLabel}] Profile modal navigation buttons toggle active state`,
+    async (t) => {
+      setFeatureDesignSystemEnabled(designSystemEnabled);
+      const controller = createController();
+      await controller.load();
+      applyDesignSystemAttributes(document);
+
+      let cleanupRan = false;
+      const cleanup = () => {
+        try {
+          controller.hide({ silent: true });
+        } catch {}
+        cleanupRan = true;
+      };
+
+      try {
+        await controller.show('account');
+        await waitForAnimationFrame(window, 2);
+
+        const accountButton = document.getElementById('profileNavAccount');
+        const relaysButton = document.getElementById('profileNavRelays');
+        const accountPane = document.getElementById('profilePaneAccount');
+        const relaysPane = document.getElementById('profilePaneRelays');
+
+        assert.ok(accountButton && relaysButton);
+        assert.ok(accountPane && relaysPane);
+
+        controller.selectPane('relays');
+        await waitForAnimationFrame(window, 1);
+
+        assert.equal(relaysButton?.getAttribute('aria-selected'), 'true');
+        assert.equal(accountButton?.getAttribute('aria-selected'), 'false');
+        assert.equal(relaysPane?.classList.contains('hidden'), false);
+        assert.equal(accountPane?.classList.contains('hidden'), true);
+
+        controller.selectPane('account');
+        await waitForAnimationFrame(window, 1);
+
+        assert.equal(accountButton?.getAttribute('aria-selected'), 'true');
+        assert.equal(relaysButton?.getAttribute('aria-selected'), 'false');
+        assert.equal(accountPane?.classList.contains('hidden'), false);
+        assert.equal(relaysPane?.classList.contains('hidden'), true);
+      } finally {
+        cleanup();
+      }
+
+      t.after(() => {
+        if (!cleanupRan) {
+          cleanup();
+        }
+        resetRuntimeFlags();
+      });
+    },
+  );
 }
 
 test('load() injects markup and caches expected elements', async () => {
