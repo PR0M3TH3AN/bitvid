@@ -1,4 +1,4 @@
-const DEFAULT_CARD_SELECTOR = ".video-card";
+const DEFAULT_CARD_SELECTOR = ".card[data-video-id]";
 
 function defaultIsCardVisible(entry) {
   if (!entry) {

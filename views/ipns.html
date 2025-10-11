@@ -1,20 +1,15 @@
 <!-- views/ipns.html -->
-<section class="mb-8">
-  <!--
-    Added text-text-strong here to ensure we override
-    any global white text color that might be inherited.
-  -->
-  <div class="rounded-lg bg-page p-6 text-text-strong shadow-md">
-    <h2 class="mb-4 text-2xl font-bold text-text-strong">IPNS Gateways</h2>
-
-    <!-- 
-      "markdown-body" can be any class name; it’s just so markdown.css 
-      can style headings, lists, etc. 
-    -->
-    <div id="markdown-container" class="markdown-body">
-      <p class="text-muted-strong">Loading content...</p>
+<section class="bv-stack" aria-labelledby="ipnsHeading">
+  <article class="card p-lg">
+    <div class="bv-stack bv-stack--tight">
+      <h2 id="ipnsHeading" class="text-2xl font-semibold text-text-strong">
+        IPNS Gateways
+      </h2>
+      <div id="markdown-container" class="markdown-body">
+        <p class="text-muted-strong">Loading content...</p>
+      </div>
     </div>
-  </div>
+  </article>
 </section>
 
 <script>

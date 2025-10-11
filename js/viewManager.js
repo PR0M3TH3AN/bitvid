@@ -54,8 +54,16 @@ export async function loadView(viewUrl) {
     });
   } catch (err) {
     console.error("View loading error:", err);
-    document.getElementById("viewContainer").innerHTML =
-      "<p class='text-center text-red-500'>Failed to load content.</p>";
+    const fallbackMarkup = `
+      <div class="bv-stack">
+        <article class="card p-md" data-state="critical">
+          <p class="text-sm text-critical-strong text-center">
+            Failed to load content.
+          </p>
+        </article>
+      </div>
+    `;
+    document.getElementById("viewContainer").innerHTML = fallbackMarkup;
   }
 }
 
