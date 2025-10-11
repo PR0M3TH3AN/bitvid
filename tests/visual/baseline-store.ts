@@ -3,7 +3,12 @@ import { resolve } from "node:path";
 
 export type KitchenSinkTheme = "default" | "light" | "contrast";
 
-type BaselineMap = Record<KitchenSinkTheme, string>;
+export type BaselineKey =
+  | KitchenSinkTheme
+  | "video-modal-mobile-legacy"
+  | "video-modal-mobile-design-system";
+
+type BaselineMap = Record<string, string>;
 
 const BASELINE_FILE_PATH = resolve(__dirname, "baselines.json");
 
@@ -12,18 +17,18 @@ const baselines: BaselineMap = JSON.parse(
   readFileSync(BASELINE_FILE_PATH, "utf-8")
 );
 
-export function getBaseline(theme: KitchenSinkTheme): Buffer {
-  const base64 = baselines[theme];
+export function getBaseline(key: BaselineKey): Buffer {
+  const base64 = baselines[key];
 
   if (!base64) {
-    throw new Error(`Missing baseline for theme: ${theme}`);
+    throw new Error(`Missing baseline for theme: ${key}`);
   }
 
   return Buffer.from(base64, "base64");
 }
 
-export function setBaseline(theme: KitchenSinkTheme, baseline: Buffer): void {
-  baselines[theme] = baseline.toString("base64");
+export function setBaseline(key: BaselineKey, baseline: Buffer): void {
+  baselines[key] = baseline.toString("base64");
   dirty = true;
 }
 
