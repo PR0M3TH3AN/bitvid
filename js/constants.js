@@ -4,6 +4,7 @@ const DEFAULT_FLAGS = Object.freeze({
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
   FEATURE_WATCH_HISTORY_V2: false,
   FEATURE_PUBLISH_NIP71: false,
+  FEATURE_DESIGN_SYSTEM: false,
   WSS_TRACKERS: Object.freeze([
     "wss://tracker.openwebtorrent.com",
     "wss://tracker.fastcast.nz",
@@ -12,7 +13,47 @@ const DEFAULT_FLAGS = Object.freeze({
   ]),
 });
 
+export const DESIGN_SYSTEM_EVENT_NAME = "bitvid:design-system-flag-change";
+
 const globalScope = typeof globalThis === "object" && globalThis ? globalThis : undefined;
+
+function dispatchDesignSystemFlagChange(enabled) {
+  if (
+    !globalScope ||
+    typeof globalScope.dispatchEvent !== "function" ||
+    (typeof globalScope.CustomEvent !== "function" &&
+      typeof globalScope.Event !== "function")
+  ) {
+    return;
+  }
+
+  let event;
+  if (typeof globalScope.CustomEvent === "function") {
+    event = new globalScope.CustomEvent(DESIGN_SYSTEM_EVENT_NAME, {
+      detail: { enabled: enabled === true },
+    });
+  } else {
+    event = new globalScope.Event(DESIGN_SYSTEM_EVENT_NAME);
+    try {
+      Object.defineProperty(event, "detail", {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: { enabled: enabled === true },
+      });
+    } catch (error) {
+      // Older browsers may not allow redefining detail; ignore.
+    }
+  }
+
+  try {
+    globalScope.dispatchEvent(event);
+  } catch (error) {
+    if (typeof console !== "undefined" && console && console.warn) {
+      console.warn("[design-system] Failed to dispatch flag change event:", error);
+    }
+  }
+}
 
 const runtimeFlags = (() => {
   if (globalScope && typeof globalScope.__BITVID_RUNTIME_FLAGS__ === "object") {
@@ -25,6 +66,7 @@ const runtimeFlags = (() => {
       DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
     FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
     FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
+    FEATURE_DESIGN_SYSTEM: DEFAULT_FLAGS.FEATURE_DESIGN_SYSTEM,
     WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
   };
   if (globalScope) {
@@ -115,6 +157,11 @@ export let FEATURE_PUBLISH_NIP71 = coerceBoolean(
   DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71
 );
 
+export let FEATURE_DESIGN_SYSTEM = coerceBoolean(
+  runtimeFlags.FEATURE_DESIGN_SYSTEM,
+  DEFAULT_FLAGS.FEATURE_DESIGN_SYSTEM
+);
+
 export let WSS_TRACKERS = freezeTrackers(
   sanitizeTrackerList(runtimeFlags.WSS_TRACKERS)
 );
@@ -183,6 +230,25 @@ Object.defineProperty(runtimeFlags, "FEATURE_PUBLISH_NIP71", {
   },
 });
 
+Object.defineProperty(runtimeFlags, "FEATURE_DESIGN_SYSTEM", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return FEATURE_DESIGN_SYSTEM;
+  },
+  set(next) {
+    const previous = FEATURE_DESIGN_SYSTEM === true;
+    FEATURE_DESIGN_SYSTEM = coerceBoolean(
+      next,
+      DEFAULT_FLAGS.FEATURE_DESIGN_SYSTEM
+    );
+    const current = FEATURE_DESIGN_SYSTEM === true;
+    if (previous !== current) {
+      dispatchDesignSystemFlagChange(current);
+    }
+  },
+});
+
 Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
   configurable: true,
   enumerable: true,
@@ -200,6 +266,7 @@ runtimeFlags.ACCEPT_LEGACY_V1 = ACCEPT_LEGACY_V1;
 runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO = VIEW_FILTER_INCLUDE_LEGACY_VIDEO;
 runtimeFlags.FEATURE_WATCH_HISTORY_V2 = FEATURE_WATCH_HISTORY_V2;
 runtimeFlags.FEATURE_PUBLISH_NIP71 = FEATURE_PUBLISH_NIP71;
+runtimeFlags.FEATURE_DESIGN_SYSTEM = FEATURE_DESIGN_SYSTEM;
 runtimeFlags.WSS_TRACKERS = WSS_TRACKERS;
 
 export function setUrlFirstEnabled(next) {
@@ -221,6 +288,10 @@ export function getWatchHistoryV2Enabled() {
   return FEATURE_WATCH_HISTORY_V2 === true;
 }
 
+export function getFeatureDesignSystemEnabled() {
+  return FEATURE_DESIGN_SYSTEM === true;
+}
+
 export function setWssTrackers(next) {
   runtimeFlags.WSS_TRACKERS = next;
   return WSS_TRACKERS;
@@ -233,6 +304,7 @@ export function resetRuntimeFlags() {
     DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO
   );
   setWatchHistoryV2Enabled(DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2);
+  setFeatureDesignSystemEnabled(DEFAULT_FLAGS.FEATURE_DESIGN_SYSTEM);
   setWssTrackers(DEFAULT_FLAGS.WSS_TRACKERS);
 }
 
@@ -241,5 +313,10 @@ export const RUNTIME_FLAGS = runtimeFlags;
 export function setWatchHistoryV2Enabled(next) {
   runtimeFlags.FEATURE_WATCH_HISTORY_V2 = next;
   return FEATURE_WATCH_HISTORY_V2;
+}
+
+export function setFeatureDesignSystemEnabled(next) {
+  runtimeFlags.FEATURE_DESIGN_SYSTEM = next;
+  return FEATURE_DESIGN_SYSTEM;
 }
 

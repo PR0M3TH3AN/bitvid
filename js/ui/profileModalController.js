@@ -5,6 +5,7 @@ import {
   BITVID_WEBSITE_URL as CONFIG_BITVID_WEBSITE_URL,
   MAX_WALLET_DEFAULT_ZAP as CONFIG_MAX_WALLET_DEFAULT_ZAP,
 } from "../config.js";
+import { normalizeDesignSystemContext } from "../designSystem.js";
 
 const noop = () => {};
 
@@ -528,6 +529,7 @@ export class ProfileModalController {
       services = {},
       state = {},
       constants: providedConstants = {},
+      designSystem = null,
     } = options;
 
     this.modalContainer = modalContainer;
@@ -537,6 +539,7 @@ export class ProfileModalController {
     this.showError = showError;
     this.showSuccess = showSuccess;
     this.showStatus = showStatus;
+    this.designSystem = normalizeDesignSystemContext(designSystem);
 
     const resolvedMaxWalletDefaultZap =
       typeof providedConstants.MAX_WALLET_DEFAULT_ZAP === "number" &&

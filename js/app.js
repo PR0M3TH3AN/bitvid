@@ -85,6 +85,10 @@ import {
   syncActiveVideoRootTimestamp,
 } from "./utils/videoTimestamps.js";
 import {
+  getDesignSystemMode as readDesignSystemMode,
+  subscribeToDesignSystemChanges,
+} from "./designSystem.js";
+import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
   getCurrentUserNpub as getStoredCurrentUserNpub,
@@ -182,6 +186,21 @@ class Application {
     this.watchHistoryTelemetry = null;
     this.authEventUnsubscribes = [];
     this.unsubscribeFromNostrService = null;
+    this.unsubscribeFromDesignSystem = null;
+    this.designSystemMode = readDesignSystemMode();
+    this.designSystemContext = {
+      getMode: () => this.getDesignSystemMode(),
+      isNew: () => this.isDesignSystemNew(),
+    };
+    this.unsubscribeFromDesignSystem = subscribeToDesignSystemChanges(
+      ({ mode }) => {
+        if (typeof mode === "string" && mode) {
+          this.designSystemMode = mode;
+        } else {
+          this.designSystemMode = readDesignSystemMode();
+        }
+      }
+    );
     this.videoModalReadyPromise = null;
     this.boundUploadSubmitHandler = null;
     this.boundEditModalSubmitHandler = null;
@@ -287,6 +306,7 @@ class Application {
         this.dropWatchHistoryMetadata(pointerKey),
       getActivePubkey: () =>
         typeof this.pubkey === "string" && this.pubkey ? this.pubkey : "",
+      designSystem: this.designSystemContext,
     });
 
     this.watchHistoryTelemetry = new WatchHistoryTelemetry({
@@ -549,6 +569,7 @@ class Application {
           services: profileModalServices,
           state: profileModalState,
           callbacks: profileModalCallbacks,
+          designSystem: this.designSystemContext,
         });
       } else {
         console.warn(
@@ -677,6 +698,7 @@ class Application {
           ? navigator.clipboard
           : null,
       isDevMode,
+      designSystem: this.designSystemContext,
       callbacks: {
         getCurrentVideo: () => this.currentVideo,
         getCurrentUserNpub: () => this.getCurrentUserNpub(),
@@ -857,6 +879,7 @@ class Application {
         getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
       },
       allowNsfw: ALLOW_NSFW_CONTENT === true,
+      designSystem: this.designSystemContext,
     };
     this.videoListView =
       (typeof ui.videoListView === "function"
@@ -1300,6 +1323,14 @@ class Application {
   setLastModalTrigger(candidate) {
     this.lastModalTrigger = this.normalizeModalTrigger(candidate);
     return this.lastModalTrigger;
+  }
+
+  getDesignSystemMode() {
+    return this.designSystemMode === "new" ? "new" : "legacy";
+  }
+
+  isDesignSystemNew() {
+    return this.getDesignSystemMode() === "new";
   }
 
   /**
@@ -6594,6 +6625,18 @@ class Application {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
     this.videoModalReadyPromise = null;
+
+    if (typeof this.unsubscribeFromDesignSystem === "function") {
+      try {
+        this.unsubscribeFromDesignSystem();
+      } catch (error) {
+        console.warn(
+          "[Application] Failed to unsubscribe design system listener:",
+          error
+        );
+      }
+      this.unsubscribeFromDesignSystem = null;
+    }
 
     if (this.watchHistoryTelemetry) {
       try {

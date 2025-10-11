@@ -1,3 +1,5 @@
+import { normalizeDesignSystemContext } from "../../designSystem.js";
+
 export class VideoCard {
   constructor({
     document: doc,
@@ -16,7 +18,8 @@ export class VideoCard {
     state = {},
     ensureGlobalMoreMenuHandlers,
     onRequestCloseAllMenus,
-    nsfwContext = null
+    nsfwContext = null,
+    designSystem = null,
   } = {}) {
     if (!doc) {
       throw new Error("VideoCard requires a document reference.");
@@ -75,6 +78,8 @@ export class VideoCard {
       typeof onRequestCloseAllMenus === "function"
         ? onRequestCloseAllMenus
         : null;
+
+    this.designSystem = normalizeDesignSystemContext(designSystem);
 
     this.nsfwContext = {
       isNsfw: Boolean(nsfwContext?.isNsfw),
