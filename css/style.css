@@ -510,26 +510,6 @@ body.modal-open #sidebarOverlay {
   gap: 0.75rem;
 }
 
-[data-modal-zap-wrapper] .zap-popover,
-.zap-popover {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  right: 0;
-  z-index: 80;
-  width: max-content;
-}
-
-.zap-popover__content {
-  width: 18rem;
-  max-width: calc(100vw - 2rem);
-  background: var(--color-overlay-veil);
-  color: var(--color-subtle);
-  border: 1px solid var(--color-border-translucent-stronger);
-  box-shadow: 0 22px 48px -18px var(--color-shadow-intense);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-}
-
 .modal-actions__overflow {
   position: relative;
 }
@@ -541,6 +521,15 @@ body.modal-open #sidebarOverlay {
 
 [data-more-menu="true"] {
   z-index: 70;
+}
+
+.popover__panel[data-variant="zap"] {
+  background: var(--color-overlay-veil);
+  color: var(--color-subtle);
+  border: 1px solid var(--color-border-translucent-stronger);
+  box-shadow: 0 22px 48px -18px var(--color-shadow-intense);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 /* Mobile-specific styles */

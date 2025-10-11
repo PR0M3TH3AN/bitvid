@@ -264,6 +264,32 @@ export class VideoModal {
     this.modalZapWalletLink =
       playerModal.querySelector("#modalZapWalletLink") || null;
 
+    if (this.modalZapDialog) {
+      if (!this.modalZapDialog.dataset.state) {
+        const isHidden =
+          this.modalZapDialog.hasAttribute("hidden") ||
+          this.modalZapDialog.getAttribute("aria-hidden") === "true";
+        this.modalZapDialog.dataset.state = isHidden ? "closed" : "open";
+      }
+      if (this.modalZapDialog.dataset.state !== "open") {
+        this.modalZapDialog.hidden = true;
+        this.modalZapDialog.setAttribute("aria-hidden", "true");
+      }
+    }
+
+    if (this.modalMoreMenu) {
+      if (!this.modalMoreMenu.dataset.state) {
+        const isHidden =
+          this.modalMoreMenu.hasAttribute("hidden") ||
+          this.modalMoreMenu.getAttribute("aria-hidden") === "true";
+        this.modalMoreMenu.dataset.state = isHidden ? "closed" : "open";
+      }
+      if (this.modalMoreMenu.dataset.state !== "open") {
+        this.modalMoreMenu.hidden = true;
+        this.modalMoreMenu.setAttribute("aria-hidden", "true");
+      }
+    }
+
     const closeButton = playerModal.querySelector("#closeModal");
     if (closeButton) {
       closeButton.addEventListener("click", () => {
@@ -626,7 +652,7 @@ export class VideoModal {
   setZapVisibility(visible) {
     const shouldShow = !!visible;
     if (this.modalZapBtn) {
-      this.modalZapBtn.classList.toggle("hidden", !shouldShow);
+      this.modalZapBtn.toggleAttribute("hidden", !shouldShow);
       const disableButton = !shouldShow || this.modalZapPending;
       this.modalZapBtn.disabled = disableButton;
       this.modalZapBtn.setAttribute("aria-disabled", (!shouldShow).toString());
@@ -656,7 +682,7 @@ export class VideoModal {
       return;
     }
     const shouldShow = !!visible;
-    this.modalZapWalletPrompt.classList.toggle("hidden", !shouldShow);
+    this.modalZapWalletPrompt.toggleAttribute("hidden", !shouldShow);
     this.modalZapWalletPrompt.setAttribute(
       "aria-hidden",
       (!shouldShow).toString()
@@ -667,7 +693,8 @@ export class VideoModal {
     if (!this.modalZapDialog) {
       return;
     }
-    this.modalZapDialog.classList.remove("hidden");
+    this.modalZapDialog.hidden = false;
+    this.modalZapDialog.dataset.state = "open";
     this.modalZapDialogOpen = true;
     this.modalZapDialog.setAttribute("aria-hidden", "false");
     if (this.modalZapBtn) {
@@ -681,8 +708,9 @@ export class VideoModal {
       return;
     }
     if (this.modalZapDialogOpen) {
-      this.modalZapDialog.classList.add("hidden");
+      this.modalZapDialog.dataset.state = "closed";
       this.modalZapDialog.setAttribute("aria-hidden", "true");
+      this.modalZapDialog.hidden = true;
       this.modalZapDialogOpen = false;
       if (this.modalZapBtn) {
         this.modalZapBtn.setAttribute("aria-expanded", "false");
@@ -918,7 +946,7 @@ export class VideoModal {
         this.modalZapBtn.disabled = true;
         this.modalZapBtn.setAttribute("aria-busy", "true");
         this.modalZapBtn.classList.add("opacity-50", "pointer-events-none");
-      } else if (!this.modalZapBtn.classList.contains("hidden")) {
+      } else if (!this.modalZapBtn.hasAttribute("hidden")) {
         this.modalZapBtn.disabled = false;
         this.modalZapBtn.removeAttribute("aria-busy");
         this.modalZapBtn.classList.remove("opacity-50", "pointer-events-none");
@@ -1106,12 +1134,12 @@ export class VideoModal {
       if (action === "blacklist-author") {
         if (canManageBlacklist && currentVideo?.pubkey) {
           button.dataset.author = currentVideo.pubkey;
-          button.classList.remove("hidden");
+          button.removeAttribute("hidden");
           button.setAttribute("aria-hidden", "false");
         } else {
           delete button.dataset.author;
-          button.classList.add("hidden");
           button.setAttribute("aria-hidden", "true");
+          button.setAttribute("hidden", "");
         }
         return;
       }
@@ -1161,7 +1189,7 @@ export class VideoModal {
         const isPrivate = currentVideo?.isPrivate === true;
 
         if (hasUrl && !isPrivate) {
-          button.classList.remove("hidden");
+          button.removeAttribute("hidden");
           button.setAttribute("aria-hidden", "false");
           button.dataset.eventId = currentVideo.id || "";
           button.dataset.author = currentVideo.pubkey || "";
@@ -1181,8 +1209,8 @@ export class VideoModal {
           delete button.dataset.description;
           delete button.dataset.title;
           button.dataset.isPrivate = "true";
-          button.classList.add("hidden");
           button.setAttribute("aria-hidden", "true");
+          button.setAttribute("hidden", "");
         }
         return;
       }

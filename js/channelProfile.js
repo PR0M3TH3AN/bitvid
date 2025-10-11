@@ -154,7 +154,7 @@ function setChannelZapVisibility(visible) {
       ? app.isUserLoggedIn()
       : Boolean(app?.normalizeHexPubkey?.(app?.pubkey));
   const shouldShow = !!visible && isLoggedIn;
-  zapButton.classList.toggle("hidden", !shouldShow);
+  zapButton.toggleAttribute("hidden", !shouldShow);
   zapButton.disabled = !shouldShow;
   zapButton.setAttribute("aria-disabled", (!shouldShow).toString());
   zapButton.setAttribute("aria-hidden", (!shouldShow).toString());
@@ -171,6 +171,7 @@ function setChannelZapVisibility(visible) {
   closeZapControls();
   if (controls) {
     controls.setAttribute("aria-hidden", "true");
+    controls.hidden = true;
   }
   if (amountInput) {
     amountInput.disabled = !shouldShow;
@@ -232,6 +233,18 @@ function getZapControlsContainer() {
   }
   if (!cachedZapControls) {
     cachedZapControls = document.getElementById("zapControls");
+  }
+  if (cachedZapControls) {
+    if (!cachedZapControls.dataset.state) {
+      const isHidden =
+        cachedZapControls.hasAttribute("hidden") ||
+        cachedZapControls.getAttribute("aria-hidden") === "true";
+      cachedZapControls.dataset.state = isHidden ? "closed" : "open";
+    }
+    if (cachedZapControls.dataset.state !== "open") {
+      cachedZapControls.hidden = true;
+      cachedZapControls.setAttribute("aria-hidden", "true");
+    }
   }
   return cachedZapControls;
 }
@@ -332,7 +345,7 @@ function setZapWalletPromptVisible(visible) {
     return;
   }
   const shouldShow = !!visible;
-  prompt.classList.toggle("hidden", !shouldShow);
+  prompt.toggleAttribute("hidden", !shouldShow);
   prompt.setAttribute("aria-hidden", (!shouldShow).toString());
 }
 
@@ -376,7 +389,8 @@ function openZapControls({ focus = false } = {}) {
     return false;
   }
   if (!zapControlsOpen) {
-    controls.classList.remove("hidden");
+    controls.hidden = false;
+    controls.dataset.state = "open";
     controls.setAttribute("aria-hidden", "false");
     zapButton.setAttribute("aria-expanded", "true");
     zapControlsOpen = true;
@@ -391,8 +405,9 @@ function closeZapControls({ focusButton = false } = {}) {
   const controls = getZapControlsContainer();
   const zapButton = getChannelZapButton();
   if (controls) {
-    controls.classList.add("hidden");
+    controls.dataset.state = "closed";
     controls.setAttribute("aria-hidden", "true");
+    controls.hidden = true;
   }
   if (zapButton) {
     zapButton.setAttribute("aria-expanded", "false");
@@ -1274,12 +1289,12 @@ async function updateChannelMenuState() {
     if (action === "copy-npub") {
       if (currentChannelNpub) {
         button.dataset.npub = currentChannelNpub;
-        button.classList.remove("hidden");
+        button.removeAttribute("hidden");
         button.setAttribute("aria-hidden", "false");
       } else {
         delete button.dataset.npub;
-        button.classList.add("hidden");
         button.setAttribute("aria-hidden", "true");
+        button.setAttribute("hidden", "");
       }
       return;
     }
@@ -1287,12 +1302,12 @@ async function updateChannelMenuState() {
     if (action === "block-author") {
       if (currentChannelHex) {
         button.dataset.author = currentChannelHex;
-        button.classList.remove("hidden");
+        button.removeAttribute("hidden");
         button.setAttribute("aria-hidden", "false");
       } else {
         delete button.dataset.author;
-        button.classList.add("hidden");
         button.setAttribute("aria-hidden", "true");
+        button.setAttribute("hidden", "");
       }
       return;
     }
@@ -1305,13 +1320,13 @@ async function updateChannelMenuState() {
         } else {
           delete button.dataset.npub;
         }
-        button.classList.remove("hidden");
+        button.removeAttribute("hidden");
         button.setAttribute("aria-hidden", "false");
       } else {
         delete button.dataset.author;
         delete button.dataset.npub;
-        button.classList.add("hidden");
         button.setAttribute("aria-hidden", "true");
+        button.setAttribute("hidden", "");
       }
     }
   });
@@ -1421,7 +1436,8 @@ function setupZapButton() {
   }
 
   setChannelZapVisibility(false);
-  controls.classList.add("hidden");
+  controls.dataset.state = "closed";
+  controls.hidden = true;
   controls.setAttribute("aria-hidden", "true");
   zapButton.setAttribute("aria-expanded", "false");
   setupZapWalletLink();
