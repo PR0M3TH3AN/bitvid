@@ -165,20 +165,6 @@ header img {
   pointer-events: auto;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .popover__panel {
-    transition-duration: 1ms;
-    transition-timing-function: linear;
-    transform: none !important;
-  }
-  .popover__panel[data-state="open"] {
-    opacity: 1;
-  }
-  .popover__panel[data-state="closed"] {
-    opacity: 0;
-  }
-}
-
 .card[data-motion="enter"] {
   opacity: 0;
   animation: card-motion-enter 220ms ease-out forwards;
@@ -291,15 +277,76 @@ header img {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-delay: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    animation-timing-function: linear !important;
+    transition-delay: 0s !important;
+    transition-duration: 0s !important;
+    transition-timing-function: linear !important;
+  }
+
+  .btn,
+  .btn-ghost,
+  .card,
+  .card[data-motion="enter"],
+  .fade-in,
+  .icon-button,
+  .menu__item,
+  .modal-actions__overflow,
+  .modal-header,
+  .modal-nav,
+  .popover__panel,
+  .progress-bar-fill,
+  .video-modal__panel,
+  .watch-history-card,
+  .watch-history-card__action,
+  .watch-history-card__creatorAvatar,
+  .watch-history-card__creatorName,
+  .watch-history-card__title,
+  #app,
+  #playerModal .player-modal__content,
+  #sidebar,
+  #sidebarOverlay,
+  .sidebar-collapse-toggle,
+  .sidebar-collapse-toggle__icon,
+  .sidebar-dropup-panel,
+  .sidebar-dropup-trigger,
+  .sidebar-dropup-trigger__chevron,
+  .sidebar-nav,
+  .sidebar-nav-link {
+    transition-property: none !important;
+  }
+
   .card[data-motion="enter"],
   .fade-in {
     opacity: 1;
-    animation: none;
+    animation: none !important;
   }
 
   [data-video-thumbnail][data-thumbnail-loaded="true"] {
-    animation: none;
+    animation: none !important;
     opacity: 1;
+  }
+
+  .popover__panel {
+    transform: none !important;
+  }
+
+  .popover__panel[data-state="open"] {
+    opacity: 1;
+  }
+
+  .popover__panel[data-state="closed"] {
+    opacity: 0;
+  }
+
+  .status-spinner--inline,
+  .status-banner .status-spinner {
+    animation: none !important;
   }
 }
 
@@ -462,13 +509,6 @@ body.modal-open #sidebarOverlay {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .video-modal__panel,
-  #playerModal .player-modal__content {
-    animation-duration: 1ms;
   }
 }
 

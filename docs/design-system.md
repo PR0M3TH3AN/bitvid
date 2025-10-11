@@ -49,6 +49,26 @@ The helper includes:
 
 Never hide focus styles without providing an accessible alternative.
 
+## Motion Guardrails
+
+### Motion inventory
+
+The `rg "transition"` audit surfaces the components that animate by default. Keep this list in sync when new motion primitives land:
+
+- **Buttons:** `.btn` and `.btn-ghost` transition their backgrounds, borders, and shadows using the shared token durations. 【F:css/tailwind.source.css†L18-L55】
+- **Cards and watch history:** `.card`, `.watch-history-card`, and their nested controls use hover/focus transitions plus optional entry animations via `data-motion="enter"`. 【F:css/style.css†L182-L185】【F:css/tailwind.source.css†L196-L247】
+- **Popovers:** `.popover__panel` fades and scales between `[data-state]` values. 【F:css/style.css†L150-L166】
+- **Modals:** `.bv-modal__panel`, `.video-modal__panel`, and `.player-modal__content` animate in concert with the modal nav/header layout helpers. 【F:docs/kitchen-sink.html†L335-L391】【F:css/style.css†L335-L468】
+- **Feedback & loading:** `.progress-bar-fill`, `.status-spinner--inline`, and `.status-banner .status-spinner` communicate state changes with width transitions or spin animations. 【F:css/style.css†L532-L695】
+- **Sidebar controls:** `.sidebar-nav-link`, `.sidebar-dropup-trigger`, `.sidebar-collapse-toggle`, and related chevrons/toggles translate, fade, and resize during rail expansion. 【F:css/style.css†L889-L1147】
+
+### Reduced-motion policy
+
+- A consolidated `@media (prefers-reduced-motion: reduce)` block now zeroes out transition and animation durations globally, removes motion-only transforms, and leaves opacity state changes in place so surfaces still show and hide instantly. 【F:css/style.css†L287-L339】
+- Motion tokens also collapse to `0s` inside Tailwind's component layer so the primitives (`.btn`, `.card`, `.popover__panel`, watch-history tiles) inherit the same behaviour without per-selector overrides. 【F:css/tailwind.source.css†L229-L270】
+- Spinners fall back to static indicators when reduced motion is requested, while focus rings remain intact because the underlying styles are unaffected—only the timing curves are reset. 【F:css/style.css†L329-L339】
+- When adding a new animated component, register its selector in this block (or reuse the tokenised durations) so reduced-motion users never see unintended transitions. Document the addition here alongside the inventory.
+
 ## Component Primitives
 
 ### Buttons
