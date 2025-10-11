@@ -65,6 +65,11 @@ import { VideoModal } from "./ui/components/VideoModal.js";
 import { UploadModal } from "./ui/components/UploadModal.js";
 import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
+import {
+  prepareStaticModal,
+  openStaticModal,
+  closeStaticModal,
+} from "./ui/components/staticModalAccessibility.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
 import MoreMenuController from "./ui/moreMenuController.js";
 import ProfileModalController from "./ui/profileModalController.js";
@@ -883,24 +888,26 @@ class Application {
     };
     this.videoListView.setPlaybackHandler(this.videoListViewPlaybackHandler);
 
-    this.videoListViewEditHandler = ({ video, index }) => {
+    this.videoListViewEditHandler = ({ video, index, trigger }) => {
       if (!video?.id) {
         return;
       }
       this.handleEditVideo({
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
+        triggerElement: trigger,
       });
     };
     this.videoListView.setEditHandler(this.videoListViewEditHandler);
 
-    this.videoListViewRevertHandler = ({ video, index }) => {
+    this.videoListViewRevertHandler = ({ video, index, trigger }) => {
       if (!video?.id) {
         return;
       }
       this.handleRevertVideo({
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
+        triggerElement: trigger,
       });
     };
     this.videoListView.setRevertHandler(this.videoListViewRevertHandler);
@@ -1879,20 +1886,22 @@ class Application {
 
     // 3) Upload button => show upload modal
     if (this.uploadButton) {
-      this.uploadButton.addEventListener("click", () => {
+      this.uploadButton.addEventListener("click", (event) => {
         if (this.uploadModal) {
-          this.uploadModal.open();
+          const trigger = event?.currentTarget || event?.target || null;
+          this.uploadModal.open({ triggerElement: trigger });
         }
       });
     }
 
     // 4) Login button => show the login modal
     if (this.loginButton) {
-      this.loginButton.addEventListener("click", () => {
+      this.loginButton.addEventListener("click", (event) => {
         console.log("Login button clicked!");
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.remove("hidden");
+        const loginModal =
+          prepareStaticModal({ id: "loginModal" }) || document.getElementById("loginModal");
+        const trigger = event?.currentTarget || event?.target || null;
+        if (loginModal && openStaticModal(loginModal, { triggerElement: trigger })) {
           setGlobalModalState("login", true);
         }
       });
@@ -1902,9 +1911,7 @@ class Application {
     if (this.closeLoginModalBtn) {
       this.closeLoginModalBtn.addEventListener("click", () => {
         console.log("[app.js] closeLoginModal button clicked!");
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.add("hidden");
+        if (closeStaticModal("loginModal")) {
           setGlobalModalState("login", false);
         }
       });
@@ -1975,9 +1982,7 @@ class Application {
               }
             }
 
-            const loginModal = document.getElementById("loginModal");
-            if (loginModal) {
-              loginModal.classList.add("hidden");
+            if (closeStaticModal("loginModal")) {
               setGlobalModalState("login", false);
             }
           }
@@ -2031,15 +2036,15 @@ class Application {
     document.addEventListener("click", (event) => {
       if (event.target && event.target.id === "openApplicationModal") {
         // Hide the login modal
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.add("hidden");
+        if (closeStaticModal("loginModal")) {
           setGlobalModalState("login", false);
         }
         // Show the application modal
-        const appModal = document.getElementById("nostrFormModal");
+        const appModal =
+          prepareStaticModal({ id: "nostrFormModal" }) ||
+          document.getElementById("nostrFormModal");
         if (appModal) {
-          appModal.classList.remove("hidden");
+          openStaticModal(appModal, { triggerElement: event.target });
         }
       }
     });
@@ -4997,6 +5002,9 @@ class Application {
   }
 
   normalizeActionTarget(target) {
+    const isElement = (value) =>
+      typeof Element !== "undefined" && value instanceof Element;
+    let triggerElement = null;
     if (target && typeof target === "object") {
       const eventId =
         typeof target.eventId === "string" ? target.eventId.trim() : "";
@@ -5009,26 +5017,35 @@ class Application {
         const parsed = Number.parseInt(target.index.trim(), 10);
         index = Number.isNaN(parsed) ? null : parsed;
       }
-      return { eventId, index };
+      if (isElement(target.triggerElement)) {
+        triggerElement = target.triggerElement;
+      } else if (isElement(target.trigger)) {
+        triggerElement = target.trigger;
+      }
+      return { eventId, index, triggerElement };
     }
 
     if (typeof target === "string") {
       const trimmed = target.trim();
       if (!trimmed) {
-        return { eventId: "", index: null };
+        return { eventId: "", index: null, triggerElement };
       }
       if (/^-?\d+$/.test(trimmed)) {
         const parsed = Number.parseInt(trimmed, 10);
-        return { eventId: "", index: Number.isNaN(parsed) ? null : parsed };
+        return {
+          eventId: "",
+          index: Number.isNaN(parsed) ? null : parsed,
+          triggerElement,
+        };
       }
-      return { eventId: trimmed, index: null };
+      return { eventId: trimmed, index: null, triggerElement };
     }
 
     if (typeof target === "number" && Number.isInteger(target)) {
-      return { eventId: "", index: target };
+      return { eventId: "", index: target, triggerElement };
     }
 
-    return { eventId: "", index: null };
+    return { eventId: "", index: null, triggerElement };
   }
 
   async resolveVideoActionTarget({
@@ -5151,6 +5168,7 @@ class Application {
   async handleEditVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
+      const { triggerElement } = normalizedTarget;
       const latestVideos = await this.nostrService.fetchVideos({
         blacklistedEventIds: this.blacklistedEventIds,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
@@ -5181,7 +5199,7 @@ class Application {
       }
 
       try {
-        await this.editModal.open(video);
+        await this.editModal.open(video, { triggerElement });
       } catch (error) {
         console.error("Failed to open edit modal:", error);
         this.showError("Edit modal is not available right now.");
@@ -5195,6 +5213,7 @@ class Application {
   async handleRevertVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
+      const { triggerElement } = normalizedTarget;
       const activeVideos = await this.nostrService.fetchVideos({
         blacklistedEventIds: this.blacklistedEventIds,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
@@ -5229,7 +5248,7 @@ class Application {
       const history = await nostrClient.hydrateVideoHistory(video);
 
       this.revertModal.setHistory(video, history);
-      this.revertModal.open({ video });
+      this.revertModal.open({ video }, { triggerElement });
     } catch (err) {
       console.error("Failed to revert video:", err);
       this.showError("Failed to load revision history. Please try again.");

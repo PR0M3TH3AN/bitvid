@@ -1,5 +1,6 @@
 // NOTE: Keep the Upload, Edit, and Revert modals in lockstep when updating NIP-71 form features.
 
+import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
 
 export class UploadModal {
@@ -77,6 +78,9 @@ export class UploadModal {
 
     this.nip71FormManager = new Nip71FormManager();
     this.cleanupHandlers = [];
+    this.modalAccessibility = null;
+    this.modalBackdrop = null;
+    this.modalPanel = null;
   }
 
   addEventListener(type, listener, options) {
@@ -133,6 +137,7 @@ export class UploadModal {
     }
 
     this.cacheElements(wrapper);
+    this.setupModalAccessibility();
     this.bindEvents();
     this.registerR2Subscriptions();
 
@@ -154,6 +159,10 @@ export class UploadModal {
   }
 
   cacheElements(context) {
+    const scope = this.root || context;
+    this.modalBackdrop = scope?.querySelector?.(".bv-modal-backdrop") || null;
+    this.modalPanel = scope?.querySelector?.(".bv-modal__panel") || scope || null;
+
     this.uploadModeButtons = Array.from(
       context.querySelectorAll(".upload-mode-toggle[data-upload-mode]")
     );
@@ -370,6 +379,30 @@ export class UploadModal {
     this.nip71FormManager.bindSection("cloudflare");
   }
 
+  setupModalAccessibility() {
+    if (!this.root) {
+      return;
+    }
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+
+    this.modalAccessibility = createModalAccessibility({
+      root: this.root,
+      backdrop: this.modalBackdrop || this.root,
+      panel: this.modalPanel || this.root,
+      onRequestClose: () => this.close(),
+    });
+
+    this.cleanupHandlers.push(() => {
+      if (this.modalAccessibility?.destroy) {
+        this.modalAccessibility.destroy();
+      }
+      this.modalAccessibility = null;
+    });
+  }
+
   registerR2Subscriptions() {
     if (!this.r2Service?.on) {
       return;
@@ -443,24 +476,25 @@ export class UploadModal {
     );
   }
 
-  open() {
+  open({ triggerElement } = {}) {
     if (!this.root) {
       return;
     }
-    if (!this.root.classList.contains("hidden")) {
-      this.isVisible = true;
-      return;
+    const wasHidden = this.root.classList.contains("hidden");
+    if (wasHidden) {
+      this.root.classList.remove("hidden");
+      this.setGlobalModalState("upload", true);
+      this.emit("upload:open", { mode: this.activeMode });
     }
-    this.root.classList.remove("hidden");
     this.isVisible = true;
-    this.setGlobalModalState("upload", true);
-    this.emit("upload:open", { mode: this.activeMode });
+    this.modalAccessibility?.activate({ triggerElement });
   }
 
   close() {
     if (!this.root) {
       return;
     }
+    this.modalAccessibility?.deactivate();
     if (this.root.classList.contains("hidden")) {
       this.isVisible = false;
       return;
@@ -847,6 +881,13 @@ export class UploadModal {
   }
 
   destroy() {
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+    this.modalAccessibility = null;
+    this.modalBackdrop = null;
+    this.modalPanel = null;
+
     if (Array.isArray(this.cleanupHandlers)) {
       this.cleanupHandlers.forEach((cleanup) => {
         try {

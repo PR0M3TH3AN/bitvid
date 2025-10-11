@@ -434,21 +434,44 @@ export class VideoListView {
         this.emitSelected(detail);
       };
 
-      videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
+      videoCard.onEdit = ({ event: editEvent, video: editVideo, index: editIndex }) => {
         if (this.handlers.edit) {
-          this.handlers.edit({ video: editVideo, index: editIndex });
+          const trigger = editEvent?.currentTarget || editEvent?.target || null;
+          this.handlers.edit({
+            video: editVideo,
+            index: editIndex,
+            trigger,
+          });
         }
       };
 
-      videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
+      videoCard.onRevert = ({
+        event: revertEvent,
+        video: revertVideo,
+        index: revertIndex,
+      }) => {
         if (this.handlers.revert) {
-          this.handlers.revert({ video: revertVideo, index: revertIndex });
+          const trigger = revertEvent?.currentTarget || revertEvent?.target || null;
+          this.handlers.revert({
+            video: revertVideo,
+            index: revertIndex,
+            trigger,
+          });
         }
       };
 
-      videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
+      videoCard.onDelete = ({
+        event: deleteEvent,
+        video: deleteVideo,
+        index: deleteIndex,
+      }) => {
         if (this.handlers.delete) {
-          this.handlers.delete({ video: deleteVideo, index: deleteIndex });
+          const trigger = deleteEvent?.currentTarget || deleteEvent?.target || null;
+          this.handlers.delete({
+            video: deleteVideo,
+            index: deleteIndex,
+            trigger,
+          });
         }
       };
 

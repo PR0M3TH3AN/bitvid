@@ -8,6 +8,11 @@ import { setApplication, setApplicationReady } from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
+import {
+  prepareStaticModal,
+  openStaticModal,
+  closeStaticModal,
+} from "./ui/components/staticModalAccessibility.js";
 
 validateInstanceConfig();
 
@@ -170,6 +175,17 @@ async function bootstrapInterface() {
   ]);
 
   console.log("Modals loaded.");
+
+  [
+    "loginModal",
+    "nostrFormModal",
+    "contentAppealsModal",
+    "generalFeedbackModal",
+    "featureRequestModal",
+    "bugFixModal",
+  ].forEach((id) => {
+    prepareStaticModal({ id });
+  });
 
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   console.log("Sidebar loaded.");
@@ -445,13 +461,16 @@ async function bootstrapInterface() {
 
   await loadDisclaimer("components/disclaimer.html", "modalContainer");
   console.log("Disclaimer loaded.");
+  prepareStaticModal({ id: "disclaimerModal" });
 
   const loginNavBtn = document.getElementById("loginButton");
   if (loginNavBtn) {
-    loginNavBtn.addEventListener("click", () => {
-      const loginModal = document.getElementById("loginModal");
+    loginNavBtn.addEventListener("click", (event) => {
+      const loginModal =
+        prepareStaticModal({ id: "loginModal" }) ||
+        document.getElementById("loginModal");
       if (loginModal) {
-        loginModal.classList.remove("hidden");
+        openStaticModal(loginModal, { triggerElement: event.currentTarget });
       }
     });
   }
@@ -459,23 +478,19 @@ async function bootstrapInterface() {
   const closeLoginBtn = document.getElementById("closeLoginModal");
   if (closeLoginBtn) {
     closeLoginBtn.addEventListener("click", () => {
-      const loginModal = document.getElementById("loginModal");
-      if (loginModal) {
-        loginModal.classList.add("hidden");
-      }
+      closeStaticModal("loginModal");
     });
   }
 
   const openAppFormBtn = document.getElementById("openApplicationModal");
   if (openAppFormBtn) {
-    openAppFormBtn.addEventListener("click", () => {
-      const loginModal = document.getElementById("loginModal");
-      if (loginModal) {
-        loginModal.classList.add("hidden");
-      }
-      const appModal = document.getElementById("nostrFormModal");
+    openAppFormBtn.addEventListener("click", (event) => {
+      closeStaticModal("loginModal");
+      const appModal =
+        prepareStaticModal({ id: "nostrFormModal" }) ||
+        document.getElementById("nostrFormModal");
       if (appModal) {
-        appModal.classList.remove("hidden");
+        openStaticModal(appModal, { triggerElement: event.currentTarget });
       }
     });
   }
@@ -483,14 +498,11 @@ async function bootstrapInterface() {
   const closeNostrFormBtn = document.getElementById("closeNostrFormModal");
   if (closeNostrFormBtn) {
     closeNostrFormBtn.addEventListener("click", () => {
-      const appModal = document.getElementById("nostrFormModal");
-      if (appModal) {
-        appModal.classList.add("hidden");
-      }
+      closeStaticModal("nostrFormModal");
       if (!localStorage.getItem("hasSeenDisclaimer")) {
         const disclaimerModal = document.getElementById("disclaimerModal");
         if (disclaimerModal) {
-          disclaimerModal.classList.remove("hidden");
+          openStaticModal(disclaimerModal);
         }
       }
     });
@@ -572,82 +584,80 @@ function handleQueryParams() {
   const modalParam = urlParams.get("modal");
 
   if (modalParam === "appeals") {
-    const appealsModal = document.getElementById("contentAppealsModal");
+    const appealsModal =
+      prepareStaticModal({ id: "contentAppealsModal" }) ||
+      document.getElementById("contentAppealsModal");
     if (appealsModal) {
-      appealsModal.classList.remove("hidden");
+      openStaticModal(appealsModal);
     }
     const closeAppealsBtn = document.getElementById("closeContentAppealsModal");
     if (closeAppealsBtn) {
       closeAppealsBtn.addEventListener("click", () => {
-        const appealsModal = document.getElementById("contentAppealsModal");
-        if (appealsModal) {
-          appealsModal.classList.add("hidden");
-        }
+        closeStaticModal("contentAppealsModal");
         if (!localStorage.getItem("hasSeenDisclaimer")) {
           const disclaimerModal = document.getElementById("disclaimerModal");
           if (disclaimerModal) {
-            disclaimerModal.classList.remove("hidden");
+            openStaticModal(disclaimerModal);
           }
         }
       });
     }
   } else if (modalParam === "application") {
-    const appModal = document.getElementById("nostrFormModal");
+    const appModal =
+      prepareStaticModal({ id: "nostrFormModal" }) ||
+      document.getElementById("nostrFormModal");
     if (appModal) {
-      appModal.classList.remove("hidden");
+      openStaticModal(appModal);
     }
   } else {
     const hasSeenDisclaimer = localStorage.getItem("hasSeenDisclaimer");
     if (!hasSeenDisclaimer) {
       const disclaimerModal = document.getElementById("disclaimerModal");
       if (disclaimerModal) {
-        disclaimerModal.classList.remove("hidden");
+        openStaticModal(disclaimerModal);
       }
     }
   }
 
   if (modalParam === "feedback") {
-    const feedbackModal = document.getElementById("generalFeedbackModal");
+    const feedbackModal =
+      prepareStaticModal({ id: "generalFeedbackModal" }) ||
+      document.getElementById("generalFeedbackModal");
     if (feedbackModal) {
-      feedbackModal.classList.remove("hidden");
+      openStaticModal(feedbackModal);
     }
   } else if (modalParam === "feature") {
-    const featureModal = document.getElementById("featureRequestModal");
+    const featureModal =
+      prepareStaticModal({ id: "featureRequestModal" }) ||
+      document.getElementById("featureRequestModal");
     if (featureModal) {
-      featureModal.classList.remove("hidden");
+      openStaticModal(featureModal);
     }
   } else if (modalParam === "bug") {
-    const bugModal = document.getElementById("bugFixModal");
+    const bugModal =
+      prepareStaticModal({ id: "bugFixModal" }) ||
+      document.getElementById("bugFixModal");
     if (bugModal) {
-      bugModal.classList.remove("hidden");
+      openStaticModal(bugModal);
     }
   }
 
   const closeFeedbackBtn = document.getElementById("closeGeneralFeedbackModal");
   if (closeFeedbackBtn) {
     closeFeedbackBtn.addEventListener("click", () => {
-      const feedbackModal = document.getElementById("generalFeedbackModal");
-      if (feedbackModal) {
-        feedbackModal.classList.add("hidden");
-      }
+      closeStaticModal("generalFeedbackModal");
     });
   }
   const closeFeatureBtn = document.getElementById("closeFeatureRequestModal");
   if (closeFeatureBtn) {
     closeFeatureBtn.addEventListener("click", () => {
-      const featureModal = document.getElementById("featureRequestModal");
-      if (featureModal) {
-        featureModal.classList.add("hidden");
-      }
+      closeStaticModal("featureRequestModal");
     });
   }
   const closeBugBtn = document.getElementById("closeBugFixModal");
   if (closeBugBtn) {
     closeBugBtn.addEventListener("click", () => {
-      const bugModal = document.getElementById("bugFixModal");
-      if (bugModal) {
-        bugModal.classList.add("hidden");
-      }
+      closeStaticModal("bugFixModal");
     });
   }
 }
