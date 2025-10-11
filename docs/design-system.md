@@ -75,6 +75,8 @@ For toggles:
 
 Compose them together when mounting new modal portals. If you need a drawer or sheet, start from these primitives and adjust spacing/positioning via utilities.
 
+Static modal partials (login, application, feedback, etc.) should call the helpers exported from `js/ui/components/staticModalAccessibility.js`—`prepareStaticModal`, `openStaticModal`, and `closeStaticModal`—to attach focus trapping, Escape/backdrop dismissal, and the shared `data-open`/`html.modal-open` toggles without duplicating controller logic.
+
 ### Popovers
 
 Use `.popover` as the relative anchor for floating content. Nest `.popover__panel` for the floating surface—it’s positioned absolutely below the trigger, inherits the shared focus ring, and animates with opacity/scale tokens. Toggle `[data-state="open"]` on the panel to switch between the collapsed (`opacity-0 scale-95`) and expanded (`opacity-100 scale-100`) states.

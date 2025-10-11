@@ -1,4 +1,5 @@
 import { Nip71FormManager } from "./nip71FormManager.js";
+import { createModalAccessibility } from "./modalAccessibility.js";
 
 // NOTE: Any metadata field added to the Upload or Edit modals must also be
 // rendered inside the Revert modal to keep the experiences aligned.
@@ -39,6 +40,8 @@ export class RevertModal {
     this.closeButton = null;
     this.cancelButton = null;
     this.confirmButton = null;
+    this.modalPanel = null;
+    this.modalAccessibility = null;
 
     this.activeVideo = null;
     this.revisions = [];
@@ -110,6 +113,7 @@ export class RevertModal {
     }
 
     this.cacheElements(modal);
+    this.setupModalAccessibility();
     this.bindEvents();
     this.reset();
 
@@ -119,6 +123,7 @@ export class RevertModal {
   cacheElements(modal) {
     this.modal = modal;
     this.overlay = modal.querySelector("#revertVideoModalOverlay") || null;
+    this.modalPanel = modal.querySelector(".bv-modal__panel") || modal;
     this.list = modal.querySelector("#revertVersionsList") || null;
     this.details = modal.querySelector("#revertVersionDetails") || null;
     this.placeholder = modal.querySelector("#revertVersionPlaceholder") || null;
@@ -220,7 +225,24 @@ export class RevertModal {
     toggleDisabledStyles(this.closeButton);
   }
 
-  open(context = {}) {
+  setupModalAccessibility() {
+    if (!this.modal) {
+      return;
+    }
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+
+    this.modalAccessibility = createModalAccessibility({
+      root: this.modal,
+      panel: this.modalPanel || this.modal,
+      backdrop: this.overlay || this.modal,
+      onRequestClose: () => this.handleCancelInteraction(),
+    });
+  }
+
+  open(context = {}, { triggerElement } = {}) {
     if (!this.modal) {
       throw new Error("Revert modal has not been loaded.");
     }
@@ -230,6 +252,7 @@ export class RevertModal {
     if (typeof this.setGlobalModalState === "function") {
       this.setGlobalModalState("revertVideo", true);
     }
+    this.modalAccessibility?.activate({ triggerElement });
     this.dispatch("video:revert-open", {
       context: this.context,
       video: this.activeVideo,
@@ -247,6 +270,7 @@ export class RevertModal {
     };
 
     this.modal.classList.add("hidden");
+    this.modalAccessibility?.deactivate();
     if (typeof this.setGlobalModalState === "function") {
       this.setGlobalModalState("revertVideo", false);
     }
@@ -1060,6 +1084,39 @@ export class RevertModal {
       return;
     }
     this.close();
+  }
+
+  destroy() {
+    if (this.bound) {
+      if (this.list) {
+        this.list.removeEventListener("click", this.boundHandlers.listClick);
+      }
+      if (this.confirmButton) {
+        this.confirmButton.removeEventListener(
+          "click",
+          this.boundHandlers.confirm
+        );
+      }
+      if (this.cancelButton) {
+        this.cancelButton.removeEventListener(
+          "click",
+          this.boundHandlers.cancel
+        );
+      }
+      if (this.overlay) {
+        this.overlay.removeEventListener("click", this.boundHandlers.overlay);
+      }
+      if (this.closeButton) {
+        this.closeButton.removeEventListener("click", this.boundHandlers.close);
+      }
+      this.bound = false;
+    }
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+    this.modalAccessibility = null;
+    this.modalPanel = null;
   }
 
   getEscapeFn() {
