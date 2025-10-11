@@ -213,16 +213,15 @@ export class RevertModal {
       this.confirmButton.classList.remove("cursor-wait");
     }
 
-    const toggleDisabledStyles = (button) => {
+    const enableButton = (button) => {
       if (!button) {
         return;
       }
       button.disabled = false;
-      button.classList.remove("opacity-60", "cursor-not-allowed");
     };
 
-    toggleDisabledStyles(this.cancelButton);
-    toggleDisabledStyles(this.closeButton);
+    enableButton(this.cancelButton);
+    enableButton(this.closeButton);
   }
 
   setupModalAccessibility() {
@@ -1025,17 +1024,15 @@ export class RevertModal {
       this.confirmButton.classList.toggle("cursor-wait", this.busy);
     }
 
-    const toggleDisabledStyles = (button) => {
+    const toggleInteractionDisabled = (button) => {
       if (!button) {
         return;
       }
       button.disabled = this.busy;
-      button.classList.toggle("opacity-60", this.busy);
-      button.classList.toggle("cursor-not-allowed", this.busy);
     };
 
-    toggleDisabledStyles(this.cancelButton);
-    toggleDisabledStyles(this.closeButton);
+    toggleInteractionDisabled(this.cancelButton);
+    toggleInteractionDisabled(this.closeButton);
 
     if (!this.busy) {
       this.updateConfirmationState();
