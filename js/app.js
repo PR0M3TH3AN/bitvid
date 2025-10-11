@@ -4063,65 +4063,41 @@ class Application {
    */
   getUrlHealthPlaceholderMarkup(options = {}) {
     const includeMargin = options?.includeMargin !== false;
-    const classes = [
-      "url-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "inline-flex",
-      "items-center",
-      "gap-1",
-      "bg-gray-800",
-      "text-gray-300",
-    ];
+    const classes = ["badge", "url-health-badge", "text-muted"];
     if (includeMargin) {
-      classes.splice(1, 0, "mt-3");
+      classes.push("mt-sm");
     }
 
     return `
-      <div
+      <span
         class="${classes.join(" ")}"
         data-url-health-state="checking"
+        data-variant="neutral"
         aria-live="polite"
         role="status"
       >
         Checking hosted URL…
-      </div>
+      </span>
     `;
   }
 
   getTorrentHealthBadgeMarkup(options = {}) {
     const includeMargin = options?.includeMargin !== false;
-    const classes = [
-      "torrent-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "inline-flex",
-      "items-center",
-      "gap-1",
-      "bg-gray-800",
-      "text-gray-300",
-      "transition-colors",
-      "duration-200",
-    ];
+    const classes = ["badge", "torrent-health-badge"];
     if (includeMargin) {
-      classes.unshift("mt-3");
+      classes.push("mt-sm");
     }
 
     return `
-      <div
+      <span
         class="${classes.join(" ")}"
         data-stream-health-state="checking"
+        data-variant="neutral"
         aria-live="polite"
         role="status"
       >
         ⏳ Torrent
-      </div>
+      </span>
     `;
   }
 
@@ -4170,10 +4146,10 @@ class Application {
         ? "⚠️ CDN timed out"
         : "Checking hosted URL…");
 
-    const hadMargin = badgeEl.classList.contains("mt-3");
-
+    const hadCompactMargin =
+      badgeEl.classList.contains("mt-sm") || badgeEl.classList.contains("mt-3");
     badgeEl.dataset.urlHealthState = status;
-    const cardEl = badgeEl.closest(".video-card");
+    const cardEl = badgeEl.closest(".card[data-video-id]");
     if (cardEl) {
       cardEl.dataset.urlHealthState = status;
     }
@@ -4181,53 +4157,24 @@ class Application {
     badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
     badgeEl.textContent = message;
 
-    const baseClasses = [
-      "url-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "transition-colors",
-      "duration-200",
-    ];
-    if (hadMargin) {
-      baseClasses.unshift("mt-3");
+    const classes = ["badge", "url-health-badge"];
+    if (hadCompactMargin) {
+      classes.push("mt-sm");
     }
-    badgeEl.className = baseClasses.join(" ");
+    badgeEl.className = classes.join(" ");
 
-    if (status === "healthy") {
-      badgeEl.classList.add(
-        "inline-flex",
-        "items-center",
-        "gap-1",
-        "bg-green-900",
-        "text-green-200"
-      );
-    } else if (status === "offline") {
-      badgeEl.classList.add(
-        "inline-flex",
-        "items-center",
-        "gap-1",
-        "bg-red-900",
-        "text-red-200"
-      );
-    } else if (status === "unknown" || status === "timeout") {
-      badgeEl.classList.add(
-        "inline-flex",
-        "items-center",
-        "gap-1",
-        "bg-amber-900",
-        "text-amber-200"
-      );
-    } else {
-      badgeEl.classList.add(
-        "inline-flex",
-        "items-center",
-        "gap-1",
-        "bg-gray-800",
-        "text-gray-300"
-      );
+    const variantMap = {
+      healthy: "info",
+      offline: "critical",
+      unknown: "neutral",
+      timeout: "neutral",
+      checking: "neutral",
+    };
+    const variant = variantMap[status];
+    if (variant) {
+      badgeEl.dataset.variant = variant;
+    } else if (badgeEl.dataset.variant) {
+      delete badgeEl.dataset.variant;
     }
 
     if (

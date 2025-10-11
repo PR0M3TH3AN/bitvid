@@ -1,22 +1,18 @@
 <!-- views/community-guidelines.html -->
-<section class="mb-8">
-  <!--
-    This card has a light background and shadow, similar to your other partials.
-    We use text-text-strong to override the global body text color.
-  -->
-  <div class="rounded-lg bg-page p-6 text-text-strong shadow-md">
-    <h2 class="mb-4 text-2xl font-bold text-text-strong">
-      Community Guidelines
-    </h2>
-
-    <!-- 
-      The .markdown-body class can use your markdown.css 
-      so headings, paragraphs, etc. are styled nicely.
-    -->
-    <div id="markdown-container" class="markdown-body">
-      <p class="text-muted-strong">Loading content...</p>
+<section class="bv-stack" aria-labelledby="communityGuidelinesHeading">
+  <article class="card p-lg">
+    <div class="bv-stack bv-stack--tight">
+      <h2
+        id="communityGuidelinesHeading"
+        class="text-2xl font-semibold text-text-strong"
+      >
+        Community Guidelines
+      </h2>
+      <div id="markdown-container" class="markdown-body">
+        <p class="text-muted-strong">Loading content...</p>
+      </div>
     </div>
-  </div>
+  </article>
 </section>
 
 <script>

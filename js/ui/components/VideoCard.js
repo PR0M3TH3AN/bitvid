@@ -210,7 +210,12 @@ export class VideoCard {
 
   closeSettingsMenu() {
     if (this.settingsDropdown) {
-      this.settingsDropdown.classList.add("hidden");
+      this.settingsDropdown.dataset.state = "closed";
+      this.settingsDropdown.setAttribute("aria-hidden", "true");
+      this.settingsDropdown.hidden = true;
+    }
+    if (this.settingsButton) {
+      this.settingsButton.setAttribute("aria-expanded", "false");
     }
   }
 
@@ -218,15 +223,7 @@ export class VideoCard {
     const doc = this.document;
 
     const root = this.createElement("div", {
-      classNames: [
-        "video-card",
-        "bg-card",
-        "rounded-lg",
-        "shadow-lg",
-        "hover:shadow-2xl",
-        "transition-all",
-        "duration-300"
-      ]
+      classNames: ["video-card", "card"]
     });
 
     this.applyClassListFromString(root, this.highlightClass);
@@ -266,7 +263,9 @@ export class VideoCard {
     ratio.appendChild(thumbnail);
     anchor.appendChild(ratio);
 
-    const content = this.createElement("div", { classNames: ["p-4"] });
+    const content = this.createElement("div", {
+      classNames: ["p-md", "bv-stack", "bv-stack--tight"]
+    });
 
     const title = this.createElement("h3", {
       classNames: [
@@ -275,8 +274,7 @@ export class VideoCard {
         "text-text",
         "line-clamp-2",
         "hover:text-info-strong",
-        "cursor-pointer",
-        "mb-3"
+        "cursor-pointer"
       ],
       textContent: this.video.title
     });
@@ -551,21 +549,22 @@ export class VideoCard {
 
     if (this.capabilities.canEdit) {
       const wrapper = this.createElement("div", {
-        classNames: ["relative", "inline-block", "ml-3", "overflow-visible"]
+        classNames: ["popover", "ml-2"]
       });
       const button = this.createElement("button", {
         classNames: [
-          "focus-ring",
-          "inline-flex",
-          "items-center",
-          "p-2",
+          "btn-ghost",
+          "h-10",
+          "w-10",
           "rounded-full",
-          "text-muted",
-          "hover:text-text",
-          "hover:bg-panel"
+          "p-0",
+          "text-muted"
         ],
         attrs: {
-          type: "button"
+          type: "button",
+          "aria-haspopup": "true",
+          "aria-expanded": "false",
+          "aria-label": "Video settings"
         }
       });
       button.dataset.settingsDropdown = String(this.index);
@@ -573,89 +572,77 @@ export class VideoCard {
       const icon = doc.createElement("img");
       icon.src = "assets/svg/video-settings-gear.svg";
       icon.alt = "Settings";
-      icon.classList.add("w-5", "h-5");
+      icon.classList.add("h-5", "w-5");
       button.appendChild(icon);
 
       const dropdown = this.createElement("div", {
-        classNames: [
-          "hidden",
-          "absolute",
-          "right-0",
-          "bottom-full",
-          "mb-2",
-          "w-32",
-          "rounded-md",
-          "shadow-lg",
-          "bg-panel",
-          "ring-1",
-          "ring-black",
-          "ring-opacity-5",
-          "z-50"
-        ]
+        classNames: ["popover__panel", "w-44", "p-0"],
+        attrs: {
+          hidden: "",
+          "data-state": "closed",
+          "aria-hidden": "true"
+        }
       });
       dropdown.id = `settingsDropdown-${this.index}`;
+      dropdown.setAttribute("role", "menu");
 
       const list = this.createElement("div", {
-        classNames: ["py-1"]
+        classNames: ["menu"],
+        attrs: { role: "none" }
       });
 
-      const editButton = this.createElement("button", {
-        classNames: [
-          "block",
-          "w-full",
-          "text-left",
-          "px-4",
-          "py-2",
-          "text-sm",
-          "text-text",
-          "hover:bg-panel-hover"
-        ],
-        textContent: "Edit"
+      const addMenuItem = ({ text, variant = null, dataset = {} }) => {
+        const item = this.createElement("button", {
+          classNames: ["menu__item", "justify-start"],
+          textContent: text,
+          attrs: {
+            type: "button",
+            role: "menuitem"
+          }
+        });
+        if (variant) {
+          item.dataset.variant = variant;
+        }
+        Object.entries(dataset).forEach(([key, value]) => {
+          if (value === undefined || value === null) {
+            return;
+          }
+          item.dataset[key] = String(value);
+        });
+        list.appendChild(item);
+        return item;
+      };
+
+      const editButton = addMenuItem({
+        text: "Edit",
+        dataset: {
+          editIndex: String(this.index),
+          editEventId: this.video.id
+        }
       });
-      editButton.dataset.editIndex = String(this.index);
-      editButton.dataset.editEventId = this.video.id;
-      list.appendChild(editButton);
       this.editButton = editButton;
 
       if (this.capabilities.canRevert) {
-        const revertButton = this.createElement("button", {
-          classNames: [
-            "block",
-            "w-full",
-            "text-left",
-            "px-4",
-            "py-2",
-            "text-sm",
-            "text-critical",
-            "hover:bg-critical/20",
-            "hover:text-text"
-          ],
-          textContent: "Revert"
+        const revertButton = addMenuItem({
+          text: "Revert",
+          variant: "critical",
+          dataset: {
+            revertIndex: String(this.index),
+            revertEventId: this.video.id
+          }
         });
-        revertButton.dataset.revertIndex = String(this.index);
-        revertButton.dataset.revertEventId = this.video.id;
-        list.appendChild(revertButton);
         this.revertButton = revertButton;
       }
 
       if (this.capabilities.canDelete) {
-        const deleteButton = this.createElement("button", {
-          classNames: [
-            "block",
-            "w-full",
-            "text-left",
-            "px-4",
-            "py-2",
-            "text-sm",
-            "text-critical",
-            "hover:bg-critical/20",
-            "hover:text-text"
-          ],
-          textContent: "Delete All"
+        const deleteButton = addMenuItem({
+          text: "Delete All",
+          variant: "critical",
+          dataset: {
+            deleteAllIndex: String(this.index),
+            deleteAllEventId: this.video.id
+          }
         });
-        deleteButton.dataset.deleteAllIndex = String(this.index);
-        deleteButton.dataset.deleteAllEventId = this.video.id;
-        list.appendChild(deleteButton);
         this.deleteButton = deleteButton;
       }
 
@@ -680,17 +667,12 @@ export class VideoCard {
 
     const button = this.createElement("button", {
       classNames: [
-        "focus-ring",
-        "inline-flex",
-        "items-center",
-        "justify-center",
-        "w-10",
+        "btn-ghost",
         "h-10",
-        "p-2",
+        "w-10",
         "rounded-full",
-        "text-muted",
-        "hover:text-text",
-        "hover:bg-panel"
+        "p-0",
+        "text-muted"
       ],
       attrs: {
         type: "button",
@@ -882,17 +864,8 @@ export class VideoCard {
     const pieces = [];
 
     if (this.playbackUrl) {
-      const badge = this.createElement("div", {
-        classNames: [
-          "url-health-badge",
-          "text-xs",
-          "font-semibold",
-          "px-2",
-          "py-1",
-          "rounded",
-          "transition-colors",
-          "duration-200"
-        ]
+      const badge = this.createElement("span", {
+        classNames: ["badge", "url-health-badge"]
       });
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
@@ -902,17 +875,8 @@ export class VideoCard {
     }
 
     if (this.magnetSupported && this.magnetProvided) {
-      const badge = this.createElement("div", {
-        classNames: [
-          "torrent-health-badge",
-          "text-xs",
-          "font-semibold",
-          "px-2",
-          "py-1",
-          "rounded",
-          "transition-colors",
-          "duration-200"
-        ]
+      const badge = this.createElement("span", {
+        classNames: ["badge", "torrent-health-badge"]
       });
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
@@ -929,7 +893,7 @@ export class VideoCard {
     }
 
     const container = this.createElement("div", {
-      classNames: ["mt-3", "flex", "flex-wrap", "items-center", "gap-2"]
+      classNames: ["flex", "flex-wrap", "items-center", "gap-sm"]
     });
     pieces.forEach((el) => container.appendChild(el));
     return container;
@@ -1058,35 +1022,20 @@ export class VideoCard {
         ? entry.message
         : "Checking hosted URL…";
 
-    const hadMargin = badge.classList.contains("mt-3");
-    const baseClasses = [
-      "url-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "transition-colors",
-      "duration-200"
-    ];
-    if (hadMargin) {
-      baseClasses.unshift("mt-3");
-    }
-    badge.className = baseClasses.join(" ");
+    badge.className = ["badge", "url-health-badge"].join(" ");
 
-    const common = ["inline-flex", "items-center", "gap-1"];
-    const addClasses = (classes) => {
-      classes.forEach((cls) => badge.classList.add(cls));
+    const variantMap = {
+      healthy: "info",
+      offline: "critical",
+      unknown: "neutral",
+      timeout: "neutral",
+      checking: "neutral"
     };
-
-    if (status === "healthy") {
-      addClasses([...common, "bg-info/20", "text-info-strong"]);
-    } else if (status === "offline") {
-      addClasses([...common, "bg-critical/20", "text-critical"]);
-    } else if (status === "unknown" || status === "timeout") {
-      addClasses([...common, "bg-warning-surface", "text-warning-strong"]);
-    } else {
-      addClasses([...common, "bg-panel", "text-muted"]);
+    const variant = variantMap[status];
+    if (variant) {
+      badge.dataset.variant = variant;
+    } else if (badge.dataset.variant) {
+      delete badge.dataset.variant;
     }
 
     badge.dataset.urlHealthState = status;
@@ -1124,55 +1073,41 @@ export class VideoCard {
           ? "assertive"
           : "polite";
 
-    const hadMargin = badge.classList.contains("mt-3");
-    const baseClasses = [
-      "torrent-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "transition-colors",
-      "duration-200"
-    ];
-    if (hadMargin) {
-      baseClasses.unshift("mt-3");
-    }
-    badge.className = baseClasses.join(" ");
-
-    const common = ["inline-flex", "items-center", "gap-1"];
-    const addClasses = (classes) => {
-      classes.forEach((cls) => badge.classList.add(cls));
-    };
-
-    if (state === "healthy") {
-      addClasses([...common, "bg-info/20", "text-info-strong"]);
-    } else if (state === "unhealthy") {
-      addClasses([...common, "bg-critical/20", "text-critical"]);
-    } else {
-      addClasses([...common, "bg-panel", "text-muted"]);
-    }
+    badge.className = ["badge", "torrent-health-badge"].join(" ");
 
     const map = {
       healthy: {
         icon: "🟢",
-        aria: "WebTorrent peers available"
+        aria: "WebTorrent peers available",
+        variant: "info",
+        role: "status"
       },
       unhealthy: {
         icon: "🔴",
-        aria: "WebTorrent peers unavailable"
+        aria: "WebTorrent peers unavailable",
+        variant: "critical",
+        role: "alert"
       },
       checking: {
         icon: "⏳",
-        aria: "Checking WebTorrent peers"
+        aria: "Checking WebTorrent peers",
+        variant: "neutral",
+        role: "status"
       },
       unknown: {
         icon: "⚪",
-        aria: "WebTorrent status unknown"
+        aria: "WebTorrent status unknown",
+        variant: "neutral",
+        role: "status"
       }
     };
 
     const descriptor = map[state] || map.unknown;
+    if (descriptor.variant) {
+      badge.dataset.variant = descriptor.variant;
+    } else if (badge.dataset.variant) {
+      delete badge.dataset.variant;
+    }
     const peersText =
       state === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
     const iconPrefix = descriptor.icon ? `${descriptor.icon} ` : "";
@@ -1245,13 +1180,7 @@ export class VideoCard {
       : safeCount.toLocaleString();
 
     const container = this.createElement("div", {
-      classNames: [
-        "flex",
-        "items-center",
-        "text-xs",
-        "text-muted-strong",
-        "mt-3"
-      ]
+      classNames: ["flex", "items-center", "text-xs", "text-muted-strong"]
     });
     container.dataset.discussionCount = this.video.id;
     container.dataset.countState = "ready";
@@ -1507,14 +1436,17 @@ export class VideoCard {
       this.settingsButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const willOpen = this.settingsDropdown.classList.contains("hidden");
+        const willOpen = this.settingsDropdown.dataset.state !== "open";
         if (this.onRequestCloseAllMenus) {
           this.onRequestCloseAllMenus(this);
         } else {
           this.closeSettingsMenu();
         }
         if (willOpen) {
-          this.settingsDropdown.classList.remove("hidden");
+          this.settingsDropdown.hidden = false;
+          this.settingsDropdown.dataset.state = "open";
+          this.settingsDropdown.setAttribute("aria-hidden", "false");
+          this.settingsButton.setAttribute("aria-expanded", "true");
         }
       });
     }

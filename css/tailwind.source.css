@@ -369,7 +369,7 @@
 
   /* Legacy compatibility shims */
   .video-card {
-    @apply card overflow-visible;
+    @apply overflow-visible;
   }
 
   .video-card.video-card--owner-private {
