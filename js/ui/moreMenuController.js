@@ -1,4 +1,5 @@
 import { normalizeDesignSystemContext } from "../designSystem.js";
+import positionFloatingPanel from "./utils/positionFloatingPanel.js";
 
 export default class MoreMenuController {
   constructor(options = {}) {
@@ -57,6 +58,7 @@ export default class MoreMenuController {
     this.boundVideoListShareListener = null;
     this.boundVideoListContextListener = null;
     this.boundVideoListBlacklistHandler = null;
+    this.dropdownPositioners = new Map();
   }
 
   setVideoModal(videoModal) {
@@ -284,6 +286,16 @@ export default class MoreMenuController {
           return;
         }
 
+        if (dropdown && !this.dropdownPositioners.has(dropdown)) {
+          const positioner = positionFloatingPanel(button, dropdown, {
+            placement: "bottom",
+            alignment: "end",
+            offset: 8,
+            viewportPadding: 16,
+          });
+          this.dropdownPositioners.set(dropdown, positioner);
+        }
+
         if (dropdown && !dropdown.dataset.state) {
           const isHidden =
             dropdown.hasAttribute("hidden") ||
@@ -304,6 +316,8 @@ export default class MoreMenuController {
           dropdown.dataset.state = "open";
           dropdown.setAttribute("aria-hidden", "false");
           button.setAttribute("aria-expanded", "true");
+          const positioner = this.dropdownPositioners.get(dropdown);
+          positioner?.update();
         }
       });
     });

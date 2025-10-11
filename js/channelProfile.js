@@ -11,6 +11,7 @@ import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
 import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
+import positionFloatingPanel from "./ui/utils/positionFloatingPanel.js";
 import { VideoCard } from "./ui/components/VideoCard.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import {
@@ -124,6 +125,7 @@ let cachedZapSendBtn = null;
 let pendingZapRetry = null;
 let zapInFlight = false;
 let zapControlsOpen = false;
+let zapControlsPositioner = null;
 let currentVideoLoadToken = 0;
 let currentProfileLoadToken = 0;
 
@@ -394,12 +396,21 @@ function openZapControls({ focus = false } = {}) {
   if (!controls || !zapButton) {
     return false;
   }
+  if (!zapControlsPositioner) {
+    zapControlsPositioner = positionFloatingPanel(zapButton, controls, {
+      placement: "bottom",
+      alignment: "end",
+      offset: 8,
+      viewportPadding: 16,
+    });
+  }
   if (!zapControlsOpen) {
     controls.hidden = false;
     controls.dataset.state = "open";
     controls.setAttribute("aria-hidden", "false");
     zapButton.setAttribute("aria-expanded", "true");
     zapControlsOpen = true;
+    zapControlsPositioner?.update();
   }
   if (focus) {
     focusZapAmountField();
