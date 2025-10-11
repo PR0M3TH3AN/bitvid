@@ -1,58 +1,91 @@
 @import "../css/tokens.css";
 
+html,
 body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
   font-family: var(--font-family-sans, system-ui, -apple-system, sans-serif);
   background-color: var(--color-surface);
   color: var(--color-text);
-  line-height: 1.5;
-  height: 100%;
-  width: 100%;
+  line-height: var(--line-height-base, 1.5);
 }
 
-/* Container used in header & footer */
-.container {
-  width: 95%;
-  max-width: 95%;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
-/* Header styling */
 .header-torrent {
   background-color: var(--color-surface);
-  margin-bottom: 2rem;
-  /* No extra horizontal padding so it lines up with .container */
+  border-bottom: 1px solid var(--color-border-translucent-medium);
 }
 
-.logo-container {
+.header-torrent__inner {
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: var(--space-lg) var(--space-md);
   display: flex;
   align-items: center;
 }
 
-.bitvid-logo {
-  height: 6rem;
+.header-torrent__logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs);
+  border-radius: var(--radius-full);
+  color: var(--color-text);
+  text-decoration: none;
+  transition: color var(--motion-duration-fast, 120ms)
+      var(--motion-ease-out, ease-out),
+    background-color var(--motion-duration-fast, 120ms)
+      var(--motion-ease-out, ease-out);
+}
+
+.header-torrent__logo:hover,
+.header-torrent__logo:focus-visible {
+  background-color: var(--color-panel-hover);
+  color: var(--color-text-strong);
+}
+
+.header-torrent__logo-image {
+  height: 3.5rem;
   width: auto;
-  /* Adjust spacing around the logo if needed */
-  margin-bottom: 0.5rem;
-  margin-top: 4rem;
 }
 
-/* Footer styling */
-.footer-torrent {
-  border-top: 1px solid var(--color-border-translucent-medium);
-  padding-top: 2rem;
-  padding-bottom: 2rem;
-  margin-top: 2rem;
-  background-color: var(--color-surface);
-  text-align: center;
+.spinner-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  background-color: var(--color-overlay-muted, rgba(15, 23, 42, 0.35));
+  backdrop-filter: blur(6px);
 }
 
-/* If you want to override the generic footer rules, remove them or unify here:
-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  margin-top: 4rem;
-  padding-top: 2rem;
+.spinner-overlay__icon {
+  height: 3rem;
+  width: 3rem;
+  stroke: var(--color-info-strong);
+  animation: spinner-rotate
+    calc(var(--motion-duration-base, 160ms) * 6)
+    linear
+    infinite;
 }
-*/
 
-/* Additional styling remains unchanged... */
+.spinner-overlay__track {
+  stroke: var(--color-border-translucent);
+  opacity: 0.35;
+}
+
+.spinner-overlay__indicator {
+  stroke: currentColor;
+}
+
+@keyframes spinner-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

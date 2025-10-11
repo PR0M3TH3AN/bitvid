@@ -21,37 +21,34 @@
     <script src="bundle.min.js"></script>
     <!--<script src="https://cdn.jsdelivr.net/combine/npm/webtorrent/webtorrent.min.js,npm/moment@2,npm/angular@1.5/angular.min.js,npm/angular-route@1.5/angular-route.min.js,npm/angular-sanitize@1.5/angular-sanitize.min.js,npm/angular-ui-grid@3/ui-grid.min.js,gh/matowens/ng-notify/dist/ng-notify.min.js,npm/ng-file-upload@12.2.13/dist/ng-file-upload.min.js"></script>-->
 
-    <!-- External styles -->
+    <!-- Local styles -->
+    <link rel="stylesheet" href="../css/tailwind.generated.css" />
     <link
       rel="stylesheet"
-      href="https://cdn.jsdelivr.net/g/normalize@3,skeleton@2,angular.ng-notify@0.8(ng-notify.min.css)"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/fontawesome/4/css/font-awesome.min.css"
+      href="https://cdn.jsdelivr.net/gh/matowens/ng-notify/dist/ng-notify.min.css"
     />
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/angular.ui-grid/3/ui-grid.min.css"
     />
-
-    <!-- Local CSS -->
     <link rel="stylesheet" href="style.css" />
   </head>
 
-  <body ng-controller="BTorrentCtrl" ng-cloak="">
+  <body class="bg-surface font-sans text-text" ng-controller="BTorrentCtrl" ng-cloak="">
     <!-- Header with container -->
     <header class="header-torrent">
-      <div class="container">
-        <div class="logo-container">
-          <a href="../index.html" aria-label="Return to the bitvid home page">
-            <img
-              src="../assets/svg/bitvid-logo-light-mode.svg"
-              alt="bitvid logo"
-              class="bitvid-logo"
-            />
-          </a>
-        </div>
+      <div class="header-torrent__inner">
+        <a
+          class="header-torrent__logo focus-ring"
+          href="../index.html"
+          aria-label="Return to the bitvid home page"
+        >
+          <img
+            src="../assets/svg/bitvid-logo-light-mode.svg"
+            alt="bitvid logo"
+            class="header-torrent__logo-image"
+          />
+        </a>
       </div>
     </header>
 
@@ -60,8 +57,29 @@
     <div id="view" ng-view></div>
 
     <!-- Processing Spinner -->
-    <div class="spinner" ng-show="client.processing">
-      <i class="fa fa-spinner fa-spin spinner-icon"></i>
+    <div class="spinner-overlay" ng-show="client.processing">
+      <svg
+        class="spinner-overlay__icon"
+        viewBox="0 0 24 24"
+        role="img"
+        aria-hidden="true"
+      >
+        <circle
+          class="spinner-overlay__track"
+          cx="12"
+          cy="12"
+          r="9"
+          fill="none"
+          stroke-width="2"
+        ></circle>
+        <path
+          class="spinner-overlay__indicator"
+          d="M21 12a9 9 0 0 0-9-9"
+          fill="none"
+          stroke-width="2"
+          stroke-linecap="round"
+        ></path>
+      </svg>
     </div>
 
     <!-- Local Angular code -->
