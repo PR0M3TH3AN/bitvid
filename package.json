@@ -6,11 +6,17 @@
     "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
     "format": "prettier --cache --write css/style.css css/tailwind.source.css css/tokens.css \"docs/**/*.html\" tailwind.config.cjs README.md",
     "lint:css": "stylelint css/tailwind.source.css css/tokens.css",
-    "check:css": "npm run build:css && git diff --exit-code -- css/tailwind.generated.css"
+    "check:css": "npm run build:css && git diff --exit-code -- css/tailwind.generated.css",
+    "test:visual": "npm run build:css && npx playwright test",
+    "test:visual:update": "npm run build:css && cross-env UPDATE_VISUAL_BASELINES=1 npx playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "autoprefixer": "^10.4.19",
+    "cross-env": "^7.0.3",
     "jsdom": "^24.0.0",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0",
     "postcss": "^8.4.41",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.5",
