@@ -163,7 +163,13 @@ placeholder at “—” and development builds log a warning—so mixed deploym
 
 ## Testing
 
-Use the manual QA checklist before releases or when altering upload/playback flows:
+Continuous integration runs CSS linting/builds, the Playwright kitchen-sink snapshots, and the Node-based unit tests on every push.
+Before pushing, run `npm run check:css` locally so `css/tailwind.generated.css` stays clean. Pair that with `npm run test:unit` for
+application logic changes and `npm run test:visual` for presentation updates to mirror the CI surface area.
+
+### Manual QA checklist
+
+Use this checklist before releases or when altering upload/playback flows:
 
 1. Open the Upload modal, confirm validation (title plus URL or magnet), and test submissions for URL-only, magnet-only, and combined entries.
 2. Publish a post with both URL and magnet, verify the player streams the hosted URL, then simulate a URL failure and confirm WebTorrent playback.
@@ -172,12 +178,6 @@ Use the manual QA checklist before releases or when altering upload/playback flo
 5. Spot-check Chromium and Firefox for console warnings (CORS, Range requests, tracker connectivity).
 
 See [`docs/qa.md`](docs/qa.md) for the copy/paste-friendly checklist we share with QA.
-
-For automated DOM-focused regression coverage, run the Node-based test suite:
-
-```bash
-node tests/profile-modal-controller.test.mjs
-```
 
 ---
 

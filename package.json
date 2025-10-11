@@ -10,7 +10,8 @@
     "lint:hex": "node scripts/check-hex.js",
     "check:css": "npm run build:css && git diff --exit-code -- css/tailwind.generated.css",
     "test:visual": "npm run build:css && npx playwright test",
-    "test:visual:update": "npm run build:css && cross-env UPDATE_VISUAL_BASELINES=1 npx playwright test"
+    "test:visual:update": "npm run build:css && cross-env UPDATE_VISUAL_BASELINES=1 npx playwright test",
+    "test:unit": "node scripts/run-unit-tests.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
