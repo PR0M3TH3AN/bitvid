@@ -4,12 +4,13 @@
     <meta charset="utf-8" />
     <title>Nostr Ephemeral DM Tester (Using finalizeEvent)</title>
     <script src="../js/tracking.js" defer></script>
+    <link rel="stylesheet" href="../css/tokens.css" />
     <style>
       /* Basic styling for the demo page */
       body {
-        background: #222;
-        color: #eee;
-        font-family: sans-serif;
+        background: var(--color-surface, rgb(15 23 42));
+        color: var(--color-text, rgb(248 250 252));
+        font-family: var(--font-family-sans, sans-serif);
         margin: 20px;
         max-width: 600px;
       }
@@ -22,38 +23,41 @@
       textarea {
         width: 100%;
         margin-bottom: 0.75em;
-        background: #333;
-        color: #fff;
-        border: 1px solid #888;
+        background: var(--color-panel, rgb(31 41 55));
+        color: var(--color-text, rgb(248 250 252));
+        border: 1px solid var(--color-border, rgb(55 65 81));
         padding: 0.5em;
         box-sizing: border-box;
+        border-radius: var(--radius-sm, 4px);
       }
       button {
         padding: 0.5em 1em;
-        background: #3399cc;
-        color: #fff;
+        background: var(--color-info, rgb(96 165 250));
+        color: var(--color-white, rgb(255 255 255));
         border: none;
-        border-radius: 4px;
+        border-radius: var(--radius-sm, 4px);
         cursor: pointer;
       }
       #status {
         margin-top: 1em;
         padding: 0.5em;
-        background: #111;
+        background: var(--color-card, rgb(30 41 59));
+        color: var(--color-text, rgb(248 250 252));
         white-space: pre-wrap;
         min-height: 80px;
+        border-radius: var(--radius-sm, 4px);
       }
       .status-line {
         margin: 0.25em 0;
       }
       .error {
-        color: #ff6666;
+        color: var(--color-critical-strong, rgb(153 27 27));
       }
       .success {
-        color: #66ff66;
+        color: var(--color-blog-green-500, rgb(34 197 94));
       }
       .warn {
-        color: #ffff66;
+        color: var(--color-warning, rgb(250 204 21));
       }
     </style>
 
