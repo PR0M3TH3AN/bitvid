@@ -531,10 +531,11 @@ export class UploadModal {
           return;
         }
         const isActive = button.dataset.uploadMode === normalized;
-        button.classList.toggle("bg-blue-500", isActive);
-        button.classList.toggle("text-white", isActive);
-        button.classList.toggle("shadow", isActive);
-        button.classList.toggle("text-gray-300", !isActive);
+        if (isActive) {
+          button.dataset.state = "active";
+        } else {
+          delete button.dataset.state;
+        }
         button.setAttribute("aria-pressed", isActive ? "true" : "false");
       });
     }
