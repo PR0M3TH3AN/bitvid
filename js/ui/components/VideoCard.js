@@ -1,4 +1,5 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
+import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 
 export class VideoCard {
   constructor({
@@ -111,6 +112,8 @@ export class VideoCard {
     this.deleteButton = null;
     this.moreMenuButton = null;
     this.moreMenu = null;
+    this.settingsDropdownPositioner = null;
+    this.moreMenuPositioner = null;
     this.urlHealthBadgeEl = null;
     this.torrentHealthBadgeEl = null;
     this.viewCountEl = null;
@@ -660,6 +663,16 @@ export class VideoCard {
 
       this.settingsButton = button;
       this.settingsDropdown = dropdown;
+      this.settingsDropdownPositioner = positionFloatingPanel(
+        button,
+        dropdown,
+        {
+          placement: "bottom",
+          alignment: "end",
+          offset: 8,
+          viewportPadding: 16,
+        },
+      );
     }
 
     return container;
@@ -862,6 +875,12 @@ export class VideoCard {
 
     this.moreMenuButton = button;
     this.moreMenu = dropdown;
+    this.moreMenuPositioner = positionFloatingPanel(button, dropdown, {
+      placement: "bottom",
+      alignment: "end",
+      offset: 8,
+      viewportPadding: 16,
+    });
 
     return wrapper;
   }
@@ -1462,6 +1481,7 @@ export class VideoCard {
           this.settingsDropdown.dataset.state = "open";
           this.settingsDropdown.setAttribute("aria-hidden", "false");
           this.settingsButton.setAttribute("aria-expanded", "true");
+          this.settingsDropdownPositioner?.update();
         }
       });
     }
@@ -1524,6 +1544,7 @@ export class VideoCard {
           this.moreMenu.dataset.state = "open";
           this.moreMenu.setAttribute("aria-hidden", "false");
           this.moreMenuButton.setAttribute("aria-expanded", "true");
+          this.moreMenuPositioner?.update();
         }
       });
 

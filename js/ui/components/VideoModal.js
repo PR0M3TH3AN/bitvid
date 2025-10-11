@@ -1,4 +1,5 @@
 import { createModalAccessibility } from "./modalAccessibility.js";
+import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 
 export class VideoModal {
   constructor({
@@ -66,6 +67,8 @@ export class VideoModal {
     this.modalZapWalletLink = null;
     this.modalZapDialogOpen = false;
     this.modalZapPending = false;
+    this.modalZapPositioner = null;
+    this.modalMoreMenuPositioner = null;
 
     this.modalPosterCleanup = null;
     this.videoEventCleanup = null;
@@ -202,6 +205,15 @@ export class VideoModal {
     }
     this.modalAccessibility = null;
 
+    if (this.modalZapPositioner?.destroy) {
+      this.modalZapPositioner.destroy();
+    }
+    if (this.modalMoreMenuPositioner?.destroy) {
+      this.modalMoreMenuPositioner.destroy();
+    }
+    this.modalZapPositioner = null;
+    this.modalMoreMenuPositioner = null;
+
     const previousScrollRegion = this.scrollRegion;
     if (previousScrollRegion && this.modalNavScrollHandler) {
       previousScrollRegion.removeEventListener(
@@ -272,6 +284,18 @@ export class VideoModal {
         this.modalZapDialog.hidden = true;
         this.modalZapDialog.setAttribute("aria-hidden", "true");
       }
+      if (this.modalZapBtn) {
+        this.modalZapPositioner = positionFloatingPanel(
+          this.modalZapBtn,
+          this.modalZapDialog,
+          {
+            placement: "bottom",
+            alignment: "end",
+            offset: 8,
+            viewportPadding: 16,
+          },
+        );
+      }
     }
 
     if (this.modalMoreMenu) {
@@ -284,6 +308,18 @@ export class VideoModal {
       if (this.modalMoreMenu.dataset.state !== "open") {
         this.modalMoreMenu.hidden = true;
         this.modalMoreMenu.setAttribute("aria-hidden", "true");
+      }
+      if (this.modalMoreBtn) {
+        this.modalMoreMenuPositioner = positionFloatingPanel(
+          this.modalMoreBtn,
+          this.modalMoreMenu,
+          {
+            placement: "bottom",
+            alignment: "end",
+            offset: 8,
+            viewportPadding: 16,
+          },
+        );
       }
     }
 
@@ -694,6 +730,7 @@ export class VideoModal {
     if (this.modalZapBtn) {
       this.modalZapBtn.setAttribute("aria-expanded", "true");
     }
+    this.modalZapPositioner?.update();
     this.focusZapAmount();
   }
 

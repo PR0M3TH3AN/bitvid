@@ -147,6 +147,38 @@ header img {
     var(--shadow-lg);
 }
 
+.popover__panel {
+  position: fixed;
+  z-index: 40;
+  opacity: 0;
+  transform: var(--floating-transform-closed, scale(0.97));
+  transform-origin: var(--floating-transform-origin, top center);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--motion-ease-out);
+  pointer-events: none;
+}
+
+.popover__panel[data-state="open"] {
+  opacity: 1;
+  transform: var(--floating-transform-open, scale(1));
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover__panel {
+    transition-duration: 1ms;
+    transition-timing-function: linear;
+    transform: none !important;
+  }
+  .popover__panel[data-state="open"] {
+    opacity: 1;
+  }
+  .popover__panel[data-state="closed"] {
+    opacity: 0;
+  }
+}
+
 .card[data-motion="enter"] {
   opacity: 0;
   animation: card-motion-enter 220ms ease-out forwards;

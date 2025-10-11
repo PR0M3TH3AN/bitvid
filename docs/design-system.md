@@ -155,7 +155,7 @@ Static modal partials (login, application, feedback, etc.) should call the helpe
 
 ### Popovers
 
-Use `.popover` as the relative anchor for floating content. Nest `.popover__panel` for the floating surface—it’s positioned absolutely below the trigger, inherits the shared focus ring, and animates with opacity/scale tokens. Toggle `[data-state="open"]` on the panel to switch between the collapsed (`opacity-0 scale-95`) and expanded (`opacity-100 scale-100`) states.
+Use `.popover` as the relative anchor for floating content. Nest `.popover__panel` for the floating surface—it’s positioned with the shared helper, inherits the shared focus ring, and animates with opacity/scale tokens. Toggle `[data-state="open"]` on the panel to switch between the collapsed (`opacity-0 scale-95`) and expanded (`opacity-100 scale-100`) states.
 
 ```html
 <div class="popover">
@@ -166,7 +166,30 @@ Use `.popover` as the relative anchor for floating content. Nest `.popover__pane
 </div>
 ```
 
-Mix utilities such as `right-0` or `translate-x-1/2` on `.popover__panel` when you need alternative alignments. The motion helpers defer to the global motion tokens so Task 5 can adjust timing globally without revisiting individual components.
+Use the shared positioning helper (`js/ui/utils/positionFloatingPanel.js`) instead of manual utility offsets. It calculates placement, flips when the surface collides with the viewport, and clamps to an optional padding gutter—all while listening for scroll/resize events and using `ResizeObserver` when available. Call it with the trigger and panel elements, then invoke `positioner.update()` once the panel is visible:
+
+```js
+import positionFloatingPanel from "../utils/positionFloatingPanel.js";
+
+const positioner = positionFloatingPanel(triggerEl, panelEl, {
+  placement: "bottom", // top | bottom | left | right
+  alignment: "end",    // start | center | end (RTL aware)
+  offset: 8,
+  viewportPadding: 16,
+});
+
+panelEl.hidden = false;
+panelEl.dataset.state = "open";
+positioner.update();
+```
+
+Recommended container pattern:
+
+- Wrap the trigger and panel in `.popover` so the markup stays discoverable and inherits spacing tokens.
+- Leave the wrapper’s overflow visible; the helper defaults to `position: fixed`, so floating surfaces escape scroll containers without getting clipped. Opt into `{ strategy: "absolute" }` if you intentionally want the panel constrained.
+- When tearing down a component, call `positioner.destroy()` to drop scroll/resize listeners.
+
+The motion helpers defer to the global motion tokens so Task 5 can adjust timing globally without revisiting individual components. Animations respect `prefers-reduced-motion` by collapsing to opacity-only transitions.
 
 ### Menus
 
