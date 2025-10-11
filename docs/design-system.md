@@ -74,6 +74,8 @@ Mix in Tailwind utilities for icon spacing (`gap-3`), sizing (`px-lg`, `py-sm`),
 
 Combine with padding utilities per layout. Interactive cards should maintain `cursor-pointer` manually (see legacy shim example below) until templates adopt dedicated controller classes.
 
+> **2025-10-11 update:** The legacy `.video-card*` shim selectors were removed. Video grids should now render plain `.card` elements and opt into semantic variants via `data-state`, `data-alert`, and `data-motion` attributes. Runtime code no longer maps the deprecated classes, so older selectors will not receive token updates.
+
 ### Form Inputs
 
 `.form-control` is the base primitive for text entry surfaces. It handles layout (`block`, `w-full`), rounded corners, subtle borders, muted placeholders, and the shared focus ring. Hovering deepens the border, focus highlights with `border-info-strong`, `:invalid` raises a critical border, and `:disabled` mutes the field while blocking pointer events.
@@ -215,8 +217,9 @@ Compose `.popover` with a zap-specific panel variant when you need to surface th
 
 During migration we keep existing selectors alive by layering `@apply` calls in `css/style.css`. Notable shims:
 
-- `.video-card` → `.card`
 - `#profileModal .profile-switcher*` → `.card`, `.badge`, `.btn-ghost`
+
+> **2025-10-11:** The `.video-card` shim family was removed. Templates must emit `.card` elements with the appropriate `data-state` and `data-alert` attributes instead of relying on the legacy class names.
 
 We continue to expose aliases such as `.profile-switcher` and nested variations (for example, `.profile-switcher__item`) so existing profile and admin controllers stay functional while downstream templates finish their migration. These shims live under the "Legacy component compatibility" section and will be removed once templates switch to the new primitives.
 

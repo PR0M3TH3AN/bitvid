@@ -348,18 +348,17 @@ export class VideoListView {
       const shareUrl = this.buildShareUrl(video, shareBase);
       const canEdit = this.utils.canEditVideo(video);
       const canDelete = this.utils.canDeleteVideo(video);
-      const highlightClasses = [];
+      let cardState = "";
       if (canEdit && video.isPrivate) {
-        highlightClasses.push("video-card--owner-private");
+        cardState = "private";
       }
       const viewerSeesBlockedNsfw =
         !this.allowNsfw && video?.isNsfw === true && canEdit;
       if (viewerSeesBlockedNsfw) {
-        highlightClasses.push("video-card--nsfw-owner");
+        cardState = "critical";
       }
-      const highlightClass = highlightClasses.join(" ");
       const isNewlyRendered = !previouslyRenderedIds.has(video.id);
-      const animationClass = isNewlyRendered ? "video-card--enter" : "";
+      const motionState = isNewlyRendered ? "enter" : "";
       const knownPostedAt = this.utils.getKnownVideoPostedAt(video);
       const normalizedPostedAt = Number.isFinite(knownPostedAt)
         ? Math.floor(knownPostedAt)
@@ -393,8 +392,8 @@ export class VideoListView {
         pointerInfo,
         timeAgo,
         postedAt: normalizedPostedAt,
-        highlightClass,
-        animationClass,
+        cardState,
+        motionState,
         nsfwContext: {
           isNsfw: video?.isNsfw === true,
           allowNsfw: this.allowNsfw,

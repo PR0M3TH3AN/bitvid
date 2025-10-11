@@ -1917,14 +1917,13 @@ function renderChannelVideosFromList({
         ? app.formatTimeAgo(video.created_at)
         : new Date(video.created_at * 1000).toLocaleString();
 
-    const highlightClasses = [];
+    let cardState = "";
     if (canEdit && video.isPrivate) {
-      highlightClasses.push("video-card--owner-private");
+      cardState = "private";
     }
     if (!allowNsfw && video?.isNsfw === true && canEdit) {
-      highlightClasses.push("video-card--nsfw-owner");
+      cardState = "critical";
     }
-    const highlightClass = highlightClasses.join(" ");
 
     const videoCard = new VideoCard({
       document,
@@ -1933,7 +1932,7 @@ function renderChannelVideosFromList({
       shareUrl,
       pointerInfo,
       timeAgo,
-      highlightClass,
+      cardState,
       capabilities: {
         canEdit,
         canDelete: canEdit,

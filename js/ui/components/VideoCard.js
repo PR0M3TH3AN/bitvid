@@ -7,8 +7,8 @@ export class VideoCard {
     timeAgo = "",
     postedAt = null,
     pointerInfo = null,
-    highlightClass = "",
-    animationClass = "",
+    cardState = "",
+    motionState = "",
     capabilities = {},
     formatters = {},
     helpers = {},
@@ -30,9 +30,10 @@ export class VideoCard {
     this.video = video;
     this.index = index;
     this.shareUrl = shareUrl;
-    this.highlightClass =
-      typeof highlightClass === "string" ? highlightClass : "";
-    this.animationClass = animationClass || "";
+    this.cardState =
+      typeof cardState === "string" ? cardState.trim() : "";
+    this.motionState =
+      typeof motionState === "string" ? motionState.trim() : "";
     this.pointerInfo = pointerInfo;
     this.capabilities = {
       canEdit: false,
@@ -223,14 +224,14 @@ export class VideoCard {
     const doc = this.document;
 
     const root = this.createElement("div", {
-      classNames: ["video-card", "card"]
+      classNames: ["card"]
     });
-
-    this.applyClassListFromString(root, this.highlightClass);
-    this.applyClassListFromString(root, this.animationClass);
 
     this.root = root;
 
+    this.root.dataset.component = "video-card";
+    this.syncCardState();
+    this.syncMotionState();
     if (this.video?.id) {
       root.dataset.videoId = this.video.id;
     }
@@ -358,7 +359,7 @@ export class VideoCard {
     this.thumbnailEl = img;
 
     if (this.shouldMaskNsfwForOwner) {
-      img.classList.add("video-card__thumbnail--blurred");
+      img.dataset.thumbnailState = "blurred";
     }
 
     const markThumbnailAsLoaded = () => {
@@ -1212,18 +1213,27 @@ export class VideoCard {
       if (this.root.dataset.nsfwVisibility) {
         delete this.root.dataset.nsfwVisibility;
       }
+      if (this.root.dataset.alert) {
+        delete this.root.dataset.alert;
+      }
+      this.syncCardState();
       return;
     }
 
     if (this.shouldMaskNsfwForOwner) {
       this.root.dataset.nsfwVisibility = "owner-only";
-      this.root.classList.add("video-card--nsfw-owner");
+      this.root.dataset.alert = "nsfw-owner";
+      this.root.dataset.state = "critical";
       return;
     }
 
     this.root.dataset.nsfwVisibility = this.nsfwContext.allowNsfw
       ? "allowed"
       : "hidden";
+    if (this.root.dataset.alert) {
+      delete this.root.dataset.alert;
+    }
+    this.syncCardState();
   }
 
   applyPointerDataset() {
@@ -1550,15 +1560,30 @@ export class VideoCard {
     });
   }
 
-  applyClassListFromString(el, classString) {
-    if (!el || !classString) {
+  syncCardState() {
+    if (!this.root) {
       return;
     }
-    classString
-      .split(/\s+/)
-      .map((cls) => cls.trim())
-      .filter(Boolean)
-      .forEach((cls) => el.classList.add(cls));
+    if (this.cardState) {
+      this.root.dataset.state = this.cardState;
+      return;
+    }
+    if (this.root.dataset.state && !this.shouldMaskNsfwForOwner) {
+      delete this.root.dataset.state;
+    }
+  }
+
+  syncMotionState() {
+    if (!this.root) {
+      return;
+    }
+    if (this.motionState) {
+      this.root.dataset.motion = this.motionState;
+      return;
+    }
+    if (this.root.dataset.motion) {
+      delete this.root.dataset.motion;
+    }
   }
 
   createElement(tagName, { classNames = [], attrs = {}, textContent } = {}) {
