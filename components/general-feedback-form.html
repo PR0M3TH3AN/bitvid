@@ -8,13 +8,20 @@
 <div
   id="generalFeedbackModal"
   class="bv-modal hidden items-start justify-center overflow-y-auto"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="generalFeedbackModalTitle"
+  aria-describedby="generalFeedbackModalDescription"
 >
   <div class="bv-modal-backdrop" data-dismiss></div>
 
   <div class="modal-sheet">
     <!-- Header bar (sticky) with updated title styling -->
     <div class="modal-header">
-      <h2 class="pb-2 text-3xl font-extrabold tracking-wide text-text">
+      <h2
+        id="generalFeedbackModalTitle"
+        class="pb-2 text-3xl font-extrabold tracking-wide text-text"
+      >
         General Feedback Form
       </h2>
       <button
@@ -38,7 +45,7 @@
       </button>
     </div>
 
-    <div class="modal-body">
+    <div id="generalFeedbackModalDescription" class="modal-body">
       <div class="h-[80vh] w-full">
         <iframe
           src="./components/iframe_forms/iframe-feedback-form.html"

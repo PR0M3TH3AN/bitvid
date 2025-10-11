@@ -15,6 +15,10 @@
     <div
       id="nostrFormModal"
       class="bv-modal hidden items-start justify-center overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="nostrFormModalTitle"
+      aria-describedby="nostrFormModalDescription"
     >
       <div class="bv-modal-backdrop" data-dismiss></div>
 
@@ -22,7 +26,10 @@
       <div class="modal-sheet">
           <!-- Header bar with updated styling -->
           <div class="modal-header">
-            <h2 class="pb-2 text-3xl font-extrabold tracking-wide text-text">
+            <h2
+              id="nostrFormModalTitle"
+              class="pb-2 text-3xl font-extrabold tracking-wide text-text"
+            >
               Application Form
             </h2>
             <button
@@ -47,7 +54,7 @@
           </div>
 
           <!-- Main Content -->
-          <div class="modal-body">
+          <div id="nostrFormModalDescription" class="modal-body">
             <div class="h-[80vh] w-full">
               <iframe
                 src="./components/iframe_forms/iframe-application-form.html"

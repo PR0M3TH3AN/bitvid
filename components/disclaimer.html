@@ -2,6 +2,10 @@
 <div
   id="disclaimerModal"
   class="bv-modal hidden items-start justify-center overflow-y-auto"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="disclaimerModalTitle"
+  aria-describedby="disclaimerModalDescription"
 >
   <div class="bv-modal-backdrop" data-dismiss></div>
 
@@ -23,7 +27,12 @@
             class="h-16"
           />
         </div>
-        <h2 class="mb-0 text-2xl font-bold text-text">Welcome to bitvid</h2>
+        <h2
+          id="disclaimerModalTitle"
+          class="mb-0 text-2xl font-bold text-text"
+        >
+          Welcome to bitvid
+        </h2>
         <!-- Warning Alert -->
         <div
           class="mb-6 flex items-start rounded-lg border border-warning-strong/60 bg-warning-surface p-4"
@@ -54,7 +63,7 @@
           points before you continue:
         </p>
 
-        <div class="space-y-4">
+        <div id="disclaimerModalDescription" class="space-y-4">
           <div class="rounded-lg bg-panel p-4">
             <h3 class="mb-2 font-semibold text-text">Early Access Status</h3>
             <p class="text-muted">
