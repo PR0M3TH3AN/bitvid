@@ -10,17 +10,28 @@ The new design system ships behind the `FEATURE_DESIGN_SYSTEM` runtime flag defi
 - **Runtime toggle:** Set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_DESIGN_SYSTEM = true` (or call `setFeatureDesignSystemEnabled(true)`) to opt into the new primitives. The entrypoint automatically updates every `[data-ds]` container to `data-ds="new"` and notifies controllers.
 - **DOM contract:** Templates and partials must include `data-ds` on their root elements. Controllers should rely on the `designSystem` context (see `js/designSystem.js`) before attaching classes or behaviors that only exist in the new system.
 
-## Theme System
+## Theming
 
-The default experience renders the production dark palette. Pages and embeds can opt into alternates by setting the `data-theme` attribute on the `<html>` (or any ancestor that wraps the component). `data-theme="light"` promotes the light tokens defined in `css/tokens.css`, swapping surface, panel, border, muted, and overlay colors while keeping semantic accents consistent. Omit the attribute or set it back to `default` to inherit the dark baseline. Reserve additional theme keys (for example, `data-theme="contrast"`) for upcoming accessibility palettes—the same hook will activate them once their tokens land.
+### `[data-theme]` contract
 
-### Per-page overrides
+The default experience renders the production dark palette. Pages and embeds can opt into alternates by setting the `data-theme` attribute on the `<html>` (or any ancestor that wraps the component). `data-theme="light"` promotes the light tokens defined in `css/tokens.css`, swapping surface, panel, border, muted, and overlay colors while keeping semantic accents consistent. Omit the attribute or set it back to `default` to inherit the dark baseline. Reserve additional theme keys (for example, `data-theme="contrast"`) for upcoming accessibility palettes—the same hook will activate them once their tokens land. When scoping components inside legacy templates, prefer wrapping the smallest possible container so downstream shims continue to function.
 
-Add `<html data-theme="light">` to force a page into light mode. The attribute can also target specific islands—wrap your component tree in a container with `data-theme="light"` when you need to render light cards inside a dark shell.
+### Token overrides & experiments
 
-### Embedding in third-party surfaces
+Tokens are sourced from `css/tokens.css` and consumed as CSS custom properties. To try temporary overrides—such as custom backgrounds for a partner landing page—stack a higher-specificity selector and reassign the variable without hard-coding literal colors:
 
-Components consume design tokens via CSS custom properties, so they pick up the active theme from the closest ancestor. When embedding widgets into a host site, include the `css/tokens.css` bundle and set `data-theme` on the wrapper to control contrast. If the host already defines its own theme, namespace our tokens (e.g., nest them inside a dedicated `.bitvid-embed[data-theme="light"]`) to avoid collisions while still letting overlay, border, and panel tokens cascade.
+```css
+.landing[data-theme="light"] {
+  --color-bg-page: var(--color-bg-surface);
+  --shadow-card: 0 10px 40px rgba(12, 14, 23, 0.25);
+}
+```
+
+Limit overrides to variables defined in `css/tokens.css` and document any long-lived changes in this file so the design tokens remain the source of truth. Feature-flagged experiments should wrap overrides in a `data-flag-<name>` selector or toggle them via controller logic so the defaults remain stable when the flag is off.
+
+### Previewing themes
+
+The design-system kitchen sink (`docs/kitchen-sink.html`) exposes a theme switcher that mirrors the production toggle contract. Use the "Theme" select menu in the header to flip between `default`, `light`, and any preview keys (for example, `contrast`). This control updates `document.documentElement.dataset.theme` at runtime, letting you verify hover/focus/disabled states without redeploying. When authoring new palettes, add them to `css/tokens.css`, confirm the kitchen-sink toggle picks them up, and record before/after screenshots for review so the CI snapshots have clear context.
 
 ## Focus Handling
 
@@ -233,7 +244,27 @@ We continue to expose aliases such as `.profile-switcher` and nested variations 
 
 > **Update (Q1 2025):** The modal shim that mapped `.modal-container`/`.modal-content` to the new primitives has been removed. All modal templates must mount `.bv-modal`, `.bv-modal-backdrop`, and `.bv-modal__panel` directly.
 
-**Target removal:** Audit usage after the Q1 2025 UI refresh and delete remaining shims no later than April 2025. At that point the compatibility layer will be deleted once dependent feature flags confirm that no legacy selectors remain in production HTML.
+**Shim removal checklist (Task DS-742):**
+
+- [ ] Confirm no production templates emit `.profile-switcher*` selectors (owners: @ui-templates, @design-systems).
+- [ ] Verify the torrent beacon renders `.card`, `.btn`, `.btn-ghost`, and `.input` primitives with no fallback selectors (owner: @torrent-beacon).
+- [ ] Flip `FEATURE_DESIGN_SYSTEM` to `true` in staging and run kitchen-sink visual snapshots to ensure no regressions.
+- [ ] Delete residual `@apply` rules under "Legacy component compatibility" in `css/style.css`.
+- [ ] Announce the removal in release notes and update downstream embed documentation.
+
+**Owners:** Design Systems Guild (@design-systems) with support from the Templates crew (@ui-templates) and the torrent beacon maintainers (@torrent-beacon).
+
+**Target removal release:** 2025.04 mainline (aligns with the shim removal milestone tracked in DS-742). Audit usage after the Q1 2025 UI refresh and delete remaining shims no later than the April 2025 deployment window. At that point the compatibility layer will be removed once dependent feature flags confirm that no legacy selectors remain in production HTML.
+
+### Selector migration table
+
+| Legacy selector | Replacement primitive(s) | Beacon / app notes | Feature-flag strategy |
+| --- | --- | --- | --- |
+| `.video-card`, `.video-card__meta`, `.video-card--loading` | `.card` with `data-state` + utility classes | Removed in web app; ensure beacon dashboards render `.card` with skeleton states instead of `.video-card--loading`. | Ship markup updates behind `FEATURE_DESIGN_SYSTEM`, defaulting to legacy HTML until verified.
+| `.profile-switcher`, `.profile-switcher__item` | `.card` rows + `.btn-ghost` toggles | Keep shim until profile modal Reactors deploy; beacon does not consume this selector. | Enable flag per environment after QA verifies profile modals in the kitchen sink.
+| `.button`, `.button-danger` (Skeleton) | `.btn`, `.btn-ghost[data-variant="critical"]` | Critical for torrent beacon—replace the Angular templates before removing Skeleton CDN. | Roll out under `FEATURE_DESIGN_SYSTEM` in beacon build; leave fallback until beacon release 2025.03 ships.
+| `.u-full-width`, `.input-text` | `.input`, `.select`, `.form-control` | Applies to upload forms and beacon filter controls; also update tests that target legacy classes. | Toggle per route: controllers read `designSystem.isEnabled()` before rendering new markup.
+| `.modal-container`, `.modal-content` | `.bv-modal`, `.bv-modal-backdrop`, `.bv-modal__panel` | Already removed in core app; verify beacon modals use the primitives before deleting helper styles. | No flag required—templates should ship the primitives outright while flag protects unrelated surfaces.
 
 ### Migration Notes (Q4 2024)
 
@@ -263,3 +294,13 @@ Use the primitives for foundation and lean on Tailwind utilities for:
 - State variations not yet encoded as tokens (e.g., success/neutral buttons)
 
 Avoid re-declaring token values manually. If a new pattern repeats, promote it into a primitive or request new tokens to keep styling consistent.
+
+## Visual snapshot review workflow
+
+Continuous integration captures Playwright-powered screenshots of `docs/kitchen-sink.html` (`tests/visual/kitchen-sink.spec.ts`) on every pull request. When a snapshot job fails:
+
+1. Read the diff produced by Playwright (attached as an artifact) and compare it with your local preview. The harness highlights per-pixel changes so reviewers can distinguish deliberate theme updates from regressions.
+2. Reproduce locally with `npm run test:visual -- --update-snapshots` to refresh the expected images after verifying the change in the kitchen sink. Always run the command with the same feature flag configuration used in CI (`FEATURE_DESIGN_SYSTEM=true`).
+3. Document the intent in the PR description (include before/after screenshots or reference the kitchen-sink toggle state) so reviewers and QA know the snapshot change is expected.
+
+The design system doc is the single source of truth for reviewing these failures—if a diff contradicts the guidance above, treat it as a regression, request updates, and block the merge until the visual snapshot stabilises.
