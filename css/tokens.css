@@ -80,6 +80,52 @@
   --color-text-frosted: rgb(226 232 240 / 0.9);
   --color-text-frosted-soft: rgb(226 232 240 / 0.82);
 
+  /* Blog palette */
+  --color-blog-transparent: rgb(0 0 0 / 0);
+  --color-blog-cyan-500: rgb(6 182 212);
+  --color-blog-sky-500: rgb(0 187 255);
+  --color-blog-teal-600: rgb(14 116 144);
+  --color-blog-green-800: rgb(20 83 45);
+  --color-blog-green-700: rgb(21 128 61);
+  --color-blog-teal-700: rgb(22 78 99);
+  --color-blog-gray-900: rgb(23 23 23);
+  --color-blog-coffee-900: rgb(28 25 23);
+  --color-blog-green-500: rgb(34 197 94);
+  --color-blog-gray-800: rgb(43 43 43);
+  --color-blog-gray-700: rgb(59 59 59);
+  --color-blog-teal-accent: rgb(62 139 138);
+  --color-blog-gray-650: rgb(64 64 64);
+  --color-blog-brown-700: rgb(68 64 60);
+  --color-blog-purple-900: rgb(88 28 135);
+  --color-blog-gray-500: rgb(102 102 102);
+  --color-blog-gray-450: rgb(115 115 115);
+  --color-blog-gray-440: rgb(116 116 116);
+  --color-blog-brown-500: rgb(120 113 108);
+  --color-blog-rust-700: rgb(124 45 18);
+  --color-blog-purple-700: rgb(126 34 206);
+  --color-blog-purple-accent: rgb(146 55 156);
+  --color-blog-purple-muted: rgb(150 96 156);
+  --color-blog-gray-300: rgb(153 153 153);
+  --color-blog-purple-500: rgb(168 85 247);
+  --color-blog-gray-275: rgb(169 169 169);
+  --color-blog-red-600: rgb(185 28 28);
+  --color-blog-rust-600: rgb(194 65 12);
+  --color-blog-error: rgb(202 23 23);
+  --color-blog-gray-220: rgb(203 203 203);
+  --color-blog-gray-210: rgb(204 204 204);
+  --color-blog-gray-200: rgb(222 222 222);
+  --color-blog-amber-500: rgb(228 152 77);
+  --color-blog-gray-190: rgb(224 224 224);
+  --color-blog-orange-600: rgb(227 84 40);
+  --color-blog-gray-180: rgb(233 233 233);
+  --color-blog-gray-170: rgb(235 235 235);
+  --color-blog-red-500: rgb(239 68 68);
+  --color-blog-amber-400: rgb(246 173 85);
+  --color-blog-neutral-100: rgb(245 245 245);
+  --color-blog-neutral-120: rgb(246 246 246);
+  --color-blog-orange-500: rgb(249 115 22);
+  --color-blog-neutral-50: rgb(253 253 253);
+
   /* Spacing scale */
   --space-2xs: 0.25rem;
   --space-xs: 0.5rem;
