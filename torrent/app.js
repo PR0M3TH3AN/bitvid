@@ -36,7 +36,7 @@ const app = angular.module("BTorrent", [
 const styleEl = document.createElement("style");
 styleEl.textContent = `
   .ui-grid-row {
-    border-bottom: 1px solid #ccc;
+    border-bottom: 1px solid var(--color-border-subtle, #d1d5db);
   }
 `;
 document.head.appendChild(styleEl);
