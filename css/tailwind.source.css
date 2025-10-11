@@ -670,3 +670,49 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-fast: 0s;
+    --motion-duration-base: 0s;
+    --motion-duration-slow: 0s;
+    --modal-motion-duration: 0s;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-delay: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    animation-timing-function: linear !important;
+    transition-delay: 0s !important;
+    transition-duration: 0s !important;
+    transition-timing-function: linear !important;
+  }
+
+  .btn,
+  .btn-ghost,
+  .card,
+  .menu__item,
+  .popover__panel,
+  .watch-history-card,
+  .watch-history-card__creatorAvatar,
+  .watch-history-card__creatorName,
+  .watch-history-card__action,
+  .watch-history-card__title {
+    transition-property: none !important;
+  }
+
+  .popover__panel {
+    transform: none !important;
+  }
+
+  .popover__panel[data-state="open"] {
+    opacity: 1;
+  }
+
+  .popover__panel[data-state="closed"] {
+    opacity: 0;
+  }
+}
