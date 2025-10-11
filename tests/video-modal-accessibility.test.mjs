@@ -4,17 +4,22 @@ import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 
 import { VideoModal } from "../js/ui/components/VideoModal.js";
+import {
+  setFeatureDesignSystemEnabled,
+  resetRuntimeFlags,
+} from "../js/constants.js";
+import { applyDesignSystemAttributes } from "../js/designSystem.js";
 
 const modalMarkupPromise = readFile(
   new URL("../components/video-modal.html", import.meta.url),
   "utf8"
 );
 
-async function setupModal() {
+async function setupModal({ designSystemEnabled = false } = {}) {
   const markup = await modalMarkupPromise;
   const dom = new JSDOM(
     `<!DOCTYPE html><html><body><button id="trigger" type="button">Open modal</button><div id="modalContainer">${markup}</div></body></html>`,
-    { url: "https://example.com" }
+    { url: "https://example.com", pretendToBeVisual: true }
   );
 
   const { window } = dom;
@@ -31,6 +36,11 @@ async function setupModal() {
   globalThis.EventTarget = window.EventTarget;
   globalThis.navigator = window.navigator;
   globalThis.location = window.location;
+  globalThis.KeyboardEvent = window.KeyboardEvent;
+  globalThis.MouseEvent = window.MouseEvent;
+
+  setFeatureDesignSystemEnabled(designSystemEnabled);
+  applyDesignSystemAttributes(document);
 
   const modal = new VideoModal({
     removeTrackingScripts: () => {},
@@ -42,15 +52,40 @@ async function setupModal() {
   const playerModal = document.querySelector("#playerModal");
   assert.ok(playerModal, "player modal markup should exist");
   modal.hydrate(playerModal);
+  applyDesignSystemAttributes(playerModal);
 
   const trigger = document.getElementById("trigger");
   assert.ok(trigger, "trigger button should exist");
 
-  return { window, document, modal, playerModal, trigger };
+  const cleanup = () => {
+    try {
+      resetRuntimeFlags();
+    } catch (error) {
+      console.warn("[tests] failed to reset runtime flags", error);
+    }
+    dom.window.close();
+    delete globalThis.window;
+    delete globalThis.document;
+    delete globalThis.HTMLElement;
+    delete globalThis.HTMLVideoElement;
+    delete globalThis.Element;
+    delete globalThis.CustomEvent;
+    delete globalThis.Event;
+    delete globalThis.Node;
+    delete globalThis.EventTarget;
+    delete globalThis.navigator;
+    delete globalThis.location;
+    delete globalThis.KeyboardEvent;
+    delete globalThis.MouseEvent;
+  };
+
+  return { window, document, modal, playerModal, trigger, cleanup };
 }
 
-test("backdrop data-dismiss closes the modal and restores focus", async () => {
-  const { window, document, modal, playerModal, trigger } = await setupModal();
+test("backdrop data-dismiss closes the modal and restores focus", async (t) => {
+  const { window, document, modal, playerModal, trigger, cleanup } =
+    await setupModal();
+  t.after(cleanup);
   const backdrop = playerModal.querySelector("[data-dismiss]");
   assert.ok(backdrop, "modal backdrop should be present");
 
@@ -73,8 +108,10 @@ test("backdrop data-dismiss closes the modal and restores focus", async () => {
   assert.strictEqual(document.activeElement, trigger);
 });
 
-test("Escape key closes the modal and returns focus to the trigger", async () => {
-  const { window, document, modal, playerModal, trigger } = await setupModal();
+test("Escape key closes the modal and returns focus to the trigger", async (t) => {
+  const { window, document, modal, playerModal, trigger, cleanup } =
+    await setupModal();
+  t.after(cleanup);
   const closeButton = playerModal.querySelector("#closeModal");
   assert.ok(closeButton, "close button should be present");
 
@@ -102,3 +139,140 @@ test("Escape key closes the modal and returns focus to the trigger", async () =>
   assert.equal(closeEvents, 1);
   assert.strictEqual(document.activeElement, trigger);
 });
+
+for (const designSystemEnabled of [false, true]) {
+  const modeLabel = designSystemEnabled ? "design-system" : "legacy";
+
+  test(
+    `[${modeLabel}] video modal sticky navigation responds to scroll direction`,
+    async (t) => {
+      const {
+        window,
+        document,
+        modal,
+        playerModal,
+        trigger,
+        cleanup,
+      } = await setupModal({ designSystemEnabled });
+      t.after(cleanup);
+
+      modal.open(null, { triggerElement: trigger });
+      await Promise.resolve();
+
+      const nav = document.getElementById("modalNav");
+      assert.ok(nav, "navigation bar should exist");
+      const scrollRegion = playerModal.querySelector(".bv-modal__panel");
+      assert.ok(scrollRegion, "modal panel should exist");
+
+      let scrollPosition = 0;
+      Object.defineProperty(scrollRegion, "scrollTop", {
+        configurable: true,
+        get() {
+          return scrollPosition;
+        },
+        set(value) {
+          scrollPosition = Number(value) || 0;
+        }
+      });
+
+      scrollRegion.scrollTop = 120;
+      assert.equal(modal.scrollRegion.scrollTop, 120);
+      modal.modalNavScrollHandler?.();
+      assert.equal(nav.style.transform, "translateY(-100%)");
+
+      scrollRegion.scrollTop = 60;
+      assert.equal(modal.scrollRegion.scrollTop, 60);
+      modal.modalNavScrollHandler?.();
+      assert.equal(nav.style.transform, "translateY(0)");
+
+      scrollRegion.scrollTop = 10;
+      assert.equal(modal.scrollRegion.scrollTop, 10);
+      modal.modalNavScrollHandler?.();
+      assert.equal(nav.style.transform, "translateY(0)");
+    }
+  );
+
+  test(
+    `[${modeLabel}] video modal toggles document scroll locking on open/close`,
+    async (t) => {
+      const { document, modal, trigger, cleanup } = await setupModal({
+        designSystemEnabled,
+      });
+      t.after(cleanup);
+
+      modal.open(null, { triggerElement: trigger });
+      await Promise.resolve();
+
+      assert.equal(
+        document.documentElement.classList.contains("modal-open"),
+        true
+      );
+      assert.equal(document.body.classList.contains("modal-open"), true);
+
+      modal.close();
+      await Promise.resolve();
+
+      assert.equal(
+        document.documentElement.classList.contains("modal-open"),
+        false
+      );
+      assert.equal(document.body.classList.contains("modal-open"), false);
+      assert.strictEqual(document.activeElement, trigger);
+    }
+  );
+
+  test(
+    `[${modeLabel}] video modal zap dialog updates aria state while toggling`,
+    async (t) => {
+      const {
+        window,
+        document,
+        modal,
+        playerModal,
+        trigger,
+        cleanup,
+      } = await setupModal({ designSystemEnabled });
+      t.after(cleanup);
+
+      modal.open(null, { triggerElement: trigger });
+      await Promise.resolve();
+
+      const zapButton = document.getElementById("modalZapBtn");
+      const zapDialog = document.getElementById("modalZapDialog");
+      const amountInput = document.getElementById("modalZapAmountInput");
+      assert.ok(zapButton, "zap trigger should exist");
+      assert.ok(zapDialog, "zap dialog should exist");
+      assert.ok(amountInput, "zap amount input should exist");
+
+      modal.setZapVisibility(true);
+
+      assert.equal(zapDialog.hidden, true);
+      assert.equal(zapDialog.dataset.state, "closed");
+      assert.equal(zapButton.getAttribute("aria-expanded"), "false");
+
+      zapButton.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+
+      assert.equal(zapDialog.hidden, false);
+      assert.equal(zapDialog.dataset.state, "open");
+      assert.equal(zapDialog.getAttribute("aria-hidden"), "false");
+      assert.equal(zapButton.getAttribute("aria-expanded"), "true");
+      assert.strictEqual(document.activeElement, amountInput);
+
+      const closeButton = document.getElementById("modalZapCloseBtn");
+      assert.ok(closeButton, "zap close button should exist");
+
+      closeButton.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+
+      assert.equal(zapDialog.hidden, true);
+      assert.equal(zapDialog.dataset.state, "closed");
+      assert.equal(zapDialog.getAttribute("aria-hidden"), "true");
+      assert.equal(zapButton.getAttribute("aria-expanded"), "false");
+
+      modal.close();
+    }
+  );
+}
