@@ -1,5 +1,6 @@
 import { createModalAccessibility } from "./modalAccessibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
+import { applyDesignSystemAttributes } from "../../designSystem.js";
 
 export class VideoModal {
   constructor({
@@ -163,6 +164,9 @@ export class VideoModal {
 
     const existing = this.document.getElementById("playerModal");
     if (existing) {
+      if (this.playerModal === existing && this.loaded) {
+        return this.playerModal;
+      }
       this.hydrate(existing);
       this.loaded = true;
       return this.playerModal;
@@ -193,6 +197,8 @@ export class VideoModal {
     if (!playerModal) {
       throw new Error("Player modal root not found in markup.");
     }
+
+    applyDesignSystemAttributes(playerModal);
 
     this.hydrate(playerModal);
     this.loaded = true;
