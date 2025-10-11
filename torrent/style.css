@@ -1,18 +1,8 @@
-:root {
-  --color-bg: #ffffff;
-  --color-card: #1e293b;
-  --color-primary: #8b5cf6;
-  --color-secondary: #f43f5e;
-  --color-text: #7b7b7b;
-  --color-muted: #94a3b8;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-}
+@import "../css/tokens.css";
 
 body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background-color: var(--color-bg);
+  font-family: var(--font-family-sans, system-ui, -apple-system, sans-serif);
+  background-color: var(--color-surface);
   color: var(--color-text);
   line-height: 1.5;
   height: 100%;
@@ -29,7 +19,7 @@ body {
 
 /* Header styling */
 .header-torrent {
-  background-color: var(--color-bg);
+  background-color: var(--color-surface);
   margin-bottom: 2rem;
   /* No extra horizontal padding so it lines up with .container */
 }
@@ -49,11 +39,11 @@ body {
 
 /* Footer styling */
 .footer-torrent {
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 1px solid var(--color-border-translucent-medium);
   padding-top: 2rem;
   padding-bottom: 2rem;
   margin-top: 2rem;
-  background-color: var(--color-bg);
+  background-color: var(--color-surface);
   text-align: center;
 }
 
