@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -81,11 +81,11 @@
 
     <div
       id="app"
-      class="px-4 py-8 min-h-screen flex flex-col fade-in"
+      class="fade-in flex min-h-screen flex-col px-4 py-8"
       data-sidebar-state="collapsed"
     >
       <!-- Header -->
-      <header class="mb-8 flex items-center w-full">
+      <header class="mb-8 flex w-full items-center">
         <!-- Mobile hamburger button (hidden on md+) -->
         <!-- New button -->
         <!--
@@ -95,7 +95,7 @@
         -->
         <button
           id="mobileMenuBtn"
-          class="md:hidden ml-2 mr-4 flex items-center justify-center w-10 h-10 rounded-full bg-transparent hover:bg-transparent focus-ring z-[60] fade-in"
+          class="focus-ring fade-in z-[60] ml-2 mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-transparent hover:bg-transparent md:hidden"
           type="button"
           aria-expanded="false"
           aria-controls="sidebar"
@@ -104,7 +104,7 @@
           <img
             src="assets/svg/mobile-sidebar-menu-icon.svg"
             alt="Mobile Sidebar Menu Icon"
-            class="w-6 h-6"
+            class="h-6 w-6"
           />
         </button>
         <!-- Logo -->
@@ -125,7 +125,9 @@
 
         <!-- Header action buttons share the fade-in treatment for consistency. -->
 
-        <div class="ml-auto flex items-center space-x-4 fade-in fade-in-delay-200">
+        <div
+          class="fade-in fade-in-delay-200 ml-auto flex items-center space-x-4"
+        >
           <!-- Login Button -->
           <button
             id="loginButton"
@@ -134,14 +136,14 @@
             <img
               src="assets/svg/default-profile.svg"
               alt="Profile Icon"
-              class="w-9 h-9"
+              class="h-9 w-9"
             />
           </button>
 
           <!-- Upload Button (hidden by default) -->
           <button
             id="uploadButton"
-            class="hidden btn focus-ring h-12 w-12 rounded-full p-0 text-xl font-bold leading-none"
+            class="btn focus-ring hidden h-12 w-12 rounded-full p-0 text-xl font-bold leading-none"
           >
             +
           </button>
@@ -149,14 +151,14 @@
           <!-- Profile Button (hidden by default) -->
           <button
             id="profileButton"
-            class="hidden btn-ghost focus-ring h-12 w-12 rounded-full p-0"
+            class="btn-ghost focus-ring hidden h-12 w-12 rounded-full p-0"
           >
-            <div class="w-10 h-10 rounded-full overflow-hidden">
+            <div class="h-10 w-10 overflow-hidden rounded-full">
               <img
                 id="profileAvatar"
                 src="assets/svg/default-profile.svg"
                 alt="Profile"
-                class="w-full h-full object-cover"
+                class="h-full w-full object-cover"
               />
             </div>
           </button>
@@ -173,13 +175,13 @@
         <!-- Error Container -->
         <div
           id="errorContainer"
-          class="hidden bg-red-100 text-red-900 p-4 rounded-md mb-4"
+          class="bg-critical/10 mb-4 hidden rounded-md p-4 text-critical-strong"
         ></div>
 
         <!-- Status Container -->
         <div
           id="statusContainer"
-          class="hidden status-banner"
+          class="status-banner hidden"
           role="status"
           aria-live="polite"
         >
@@ -190,12 +192,12 @@
         <!-- Success Container -->
         <div
           id="successContainer"
-          class="hidden bg-green-100 text-green-900 p-4 rounded-md mb-4"
+          class="bg-info/10 mb-4 hidden rounded-md p-4 text-info-strong"
         ></div>
       </div>
 
       <!-- Dynamic views (like most-recent-videos.html, etc.) -->
-      <main id="viewContainer" class="flex-grow mb-8"></main>
+      <main id="viewContainer" class="mb-8 flex-grow"></main>
 
       <!-- Modal Container (external modals) -->
       <div id="modalContainer"></div>
@@ -204,8 +206,8 @@
 
       <!-- Tagline fade matches the cards. -->
 
-      <div class="text-center mb-8 fade-in fade-in-delay-300">
-        <h2 class="text-2xl font-bold text-gray-500 tracking-wide">
+      <div class="fade-in fade-in-delay-300 mb-8 text-center">
+        <h2 class="text-2xl font-bold tracking-wide text-muted-strong">
           seed. zap. subscribe.
         </h2>
       </div>
@@ -213,12 +215,12 @@
 
     <!-- Additional Scripts -->
     <!-- Bootstraps nostr-tools before other modules rely on nostrToolsReady -->
-      <script type="module" src="js/nostrToolsBootstrap.js?v=2024.10.29"></script>
-      <script type="module" src="js/config.js?v=2024.10.29"></script>
-      <script type="module" src="js/lists.js?v=2024.10.29"></script>
-      <script type="module" src="js/accessControl.js?v=2024.10.29"></script>
-      <script type="module" src="js/webtorrent.js?v=2024.10.29"></script>
-      <script type="module" src="js/nostr.js?v=2024.10.29"></script>
+    <script type="module" src="js/nostrToolsBootstrap.js?v=2024.10.29"></script>
+    <script type="module" src="js/config.js?v=2024.10.29"></script>
+    <script type="module" src="js/lists.js?v=2024.10.29"></script>
+    <script type="module" src="js/accessControl.js?v=2024.10.29"></script>
+    <script type="module" src="js/webtorrent.js?v=2024.10.29"></script>
+    <script type="module" src="js/nostr.js?v=2024.10.29"></script>
     <script type="module" src="js/viewManager.js?v=2024.10.29"></script>
     <script type="module" src="js/bootstrap.js?v=2024.10.29"></script>
     <script type="module" src="js/disclaimer.js?v=2024.10.29"></script>

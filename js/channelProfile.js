@@ -3,7 +3,7 @@
 import {
   nostrClient,
   DEFAULT_RELAY_URLS,
-  convertEventToVideo as sharedConvertEventToVideo,
+  convertEventToVideo as sharedConvertEventToVideo
 } from "./nostr.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { attachHealthBadges } from "./gridHealth.js";
@@ -25,16 +25,19 @@ import {
   normalizeLightningAddressKey,
   rememberLightningMetadata,
   setCachedPlatformLightningAddress,
-  validateInvoiceAmount,
+  validateInvoiceAmount
 } from "./payments/zapSharedState.js";
 import { splitAndZap } from "./payments/zapSplit.js";
 import {
   resolveLightningAddress,
   fetchPayServiceData,
-  requestInvoice,
+  requestInvoice
 } from "./payments/lnurl.js";
 import { getPlatformLightningAddress } from "./payments/platformAddress.js";
-import { ensureWallet, sendPayment as sendWalletPayment } from "./payments/nwcClient.js";
+import {
+  ensureWallet,
+  sendPayment as sendWalletPayment
+} from "./payments/nwcClient.js";
 
 const getApp = () => getApplication();
 
@@ -57,8 +60,8 @@ const summarizeZapTracker = (tracker) =>
           typeof entry?.error?.message === "string"
             ? entry.error.message
             : entry?.error
-            ? String(entry.error)
-            : undefined,
+              ? String(entry.error)
+              : undefined
       }))
     : undefined;
 
@@ -84,21 +87,21 @@ function logZapError(stage, details = {}, error) {
             details.walletSettings.type ||
             details.walletSettings.name ||
             details.walletSettings.client ||
-            undefined,
+            undefined
         }
       : undefined,
     shares: details?.context?.shares
       ? {
           total: details.context.shares.total,
           creator: details.context.shares.creatorShare,
-          platform: details.context.shares.platformShare,
+          platform: details.context.shares.platformShare
         }
       : undefined,
     tracker: summarizeZapTracker(details?.tracker),
     retryAttempt:
       Number.isInteger(details?.retryAttempt) && details.retryAttempt >= 0
         ? details.retryAttempt
-        : undefined,
+        : undefined
   };
   console.error("[zap] Channel zap failure", summary, error);
 }
@@ -208,7 +211,10 @@ function setChannelZapVisibility(visible) {
 }
 
 function getChannelShareButton() {
-  if (cachedChannelShareButton && !document.body.contains(cachedChannelShareButton)) {
+  if (
+    cachedChannelShareButton &&
+    !document.body.contains(cachedChannelShareButton)
+  ) {
     cachedChannelShareButton = null;
   }
   if (!cachedChannelShareButton) {
@@ -467,30 +473,30 @@ function setZapStatus(message, tone = "neutral") {
   const normalizedTone = typeof tone === "string" ? tone : "neutral";
   statusEl.textContent = message || "";
   statusEl.classList.remove(
-    "text-gray-300",
-    "text-gray-400",
-    "text-green-300",
-    "text-red-300",
-    "text-yellow-300"
+    "text-text",
+    "text-muted",
+    "text-info",
+    "text-critical",
+    "text-warning-strong"
   );
 
   if (!message) {
-    statusEl.classList.add("text-gray-400");
+    statusEl.classList.add("text-muted");
     return;
   }
 
   switch (normalizedTone) {
     case "success":
-      statusEl.classList.add("text-green-300");
+      statusEl.classList.add("text-info");
       break;
     case "error":
-      statusEl.classList.add("text-red-300");
+      statusEl.classList.add("text-critical");
       break;
     case "warning":
-      statusEl.classList.add("text-yellow-300");
+      statusEl.classList.add("text-warning-strong");
       break;
     default:
-      statusEl.classList.add("text-gray-300");
+      statusEl.classList.add("text-text");
       break;
   }
 }
@@ -514,7 +520,8 @@ function renderZapReceipts(receipts, { partial = false } = {}) {
   if (!Array.isArray(receipts) || receipts.length === 0) {
     if (partial) {
       const emptyItem = document.createElement("li");
-      emptyItem.className = "rounded border border-gray-700 bg-gray-800/70 p-3 text-gray-300";
+      emptyItem.className =
+        "rounded border border-border bg-panel/70 p-3 text-text";
       emptyItem.textContent = "No receipts were returned for this attempt.";
       list.appendChild(emptyItem);
     }
@@ -527,10 +534,11 @@ function renderZapReceipts(receipts, { partial = false } = {}) {
     }
 
     const li = document.createElement("li");
-    li.className = "rounded border border-gray-700 bg-gray-800/70 p-3";
+    li.className = "rounded border border-border bg-panel/70 p-3";
 
     const header = document.createElement("div");
-    header.className = "flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-200";
+    header.className =
+      "flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-text";
 
     const shareType = receipt.recipientType || receipt.type || "creator";
     const shareLabel = document.createElement("span");
@@ -544,14 +552,14 @@ function renderZapReceipts(receipts, { partial = false } = {}) {
       ? receipt.status === "success"
       : !receipt.error;
     status.textContent = isSuccess ? "Success" : "Failed";
-    status.className = isSuccess ? "text-green-300" : "text-red-300";
+    status.className = isSuccess ? "text-info" : "text-critical";
 
     header.appendChild(shareLabel);
     header.appendChild(status);
     li.appendChild(header);
 
     const address = document.createElement("p");
-    address.className = "mt-1 text-xs text-gray-300 break-all";
+    address.className = "mt-1 text-xs text-text break-all";
     const addressValue = receipt.address || "";
     if (addressValue) {
       address.textContent = addressValue;
@@ -559,7 +567,7 @@ function renderZapReceipts(receipts, { partial = false } = {}) {
     }
 
     const detail = document.createElement("p");
-    detail.className = "mt-2 text-xs text-gray-400";
+    detail.className = "mt-2 text-xs text-muted";
     if (isSuccess) {
       let detailMessage = "Invoice settled.";
       const preimage = receipt.payment?.result?.preimage;
@@ -636,7 +644,7 @@ function getZapVideoEvent() {
     tags: Array.isArray(baseEvent.tags) ? [...baseEvent.tags] : [],
     content: typeof baseEvent.content === "string" ? baseEvent.content : "",
     created_at: baseEvent.created_at || Math.floor(Date.now() / 1000),
-    lightningAddress,
+    lightningAddress
   };
 }
 
@@ -650,7 +658,9 @@ async function prepareLightningContext({ amount, overrideFee = null }) {
     throw new Error("Enter a zap amount greater than zero.");
   }
 
-  const creatorEntry = await fetchLightningMetadata(currentChannelLightningAddress);
+  const creatorEntry = await fetchLightningMetadata(
+    currentChannelLightningAddress
+  );
   if (shares.creatorShare > 0) {
     try {
       validateInvoiceAmount(creatorEntry.metadata, shares.creatorShare);
@@ -665,7 +675,9 @@ async function prepareLightningContext({ amount, overrideFee = null }) {
   if (shares.platformShare > 0) {
     platformAddress = getCachedPlatformLightningAddress();
     if (!platformAddress) {
-      platformAddress = await getPlatformLightningAddress({ forceRefresh: false });
+      platformAddress = await getPlatformLightningAddress({
+        forceRefresh: false
+      });
       setCachedPlatformLightningAddress(platformAddress || "");
     }
     if (!platformAddress) {
@@ -687,7 +699,7 @@ async function prepareLightningContext({ amount, overrideFee = null }) {
     shares,
     creatorEntry,
     platformEntry,
-    platformAddress,
+    platformAddress
   };
 }
 
@@ -696,7 +708,7 @@ function createZapDependencies({
   platformEntry,
   shares,
   shareTracker,
-  walletSettings,
+  walletSettings
 }) {
   const creatorKey = normalizeLightningAddressKey(
     creatorEntry?.address || currentChannelLightningAddress
@@ -731,7 +743,7 @@ function createZapDependencies({
             key: normalized,
             address: resolved.address || value,
             resolved,
-            fetchedAt: Date.now(),
+            fetchedAt: Date.now()
           });
         }
         return resolved;
@@ -747,13 +759,13 @@ function createZapDependencies({
           rememberLightningMetadata({
             ...cached,
             metadata,
-            fetchedAt: Date.now(),
+            fetchedAt: Date.now()
           });
         }
         return metadata;
       },
       validateInvoiceAmount,
-      requestInvoice,
+      requestInvoice
     },
     wallet: {
       ensureWallet: async (options) => {
@@ -765,7 +777,7 @@ function createZapDependencies({
             {
               tracker: shareTracker,
               context: { shares },
-              walletSettings: options?.settings,
+              walletSettings: options?.settings
             },
             error
           );
@@ -775,17 +787,18 @@ function createZapDependencies({
       sendPayment: async (bolt11, params) => {
         const shareType = activeShare || "unknown";
         const shareAmount =
-          shareType === "platform"
-            ? shares.platformShare
-            : shares.creatorShare;
+          shareType === "platform" ? shares.platformShare : shares.creatorShare;
         const address =
           shareType === "platform"
             ? platformEntry?.address || getCachedPlatformLightningAddress()
             : creatorEntry?.address || currentChannelLightningAddress;
         const normalizedParams = {
-          ...(params || {}),
+          ...(params || {})
         };
-        if (!Number.isFinite(normalizedParams.amountSats) && Number.isFinite(shareAmount)) {
+        if (
+          !Number.isFinite(normalizedParams.amountSats) &&
+          Number.isFinite(shareAmount)
+        ) {
           normalizedParams.amountSats = shareAmount;
         }
         if (!normalizedParams.settings && walletSettings) {
@@ -799,7 +812,7 @@ function createZapDependencies({
               status: "success",
               amount: shareAmount,
               address,
-              payment,
+              payment
             });
           }
           return payment;
@@ -810,7 +823,7 @@ function createZapDependencies({
               status: "error",
               amount: shareAmount,
               address,
-              error,
+              error
             });
           }
           logZapError(
@@ -820,7 +833,7 @@ function createZapDependencies({
               amount: shareAmount,
               address,
               tracker: shareTracker,
-              context: { shares },
+              context: { shares }
             },
             error
           );
@@ -828,7 +841,7 @@ function createZapDependencies({
         } finally {
           activeShare = null;
         }
-      },
+      }
     },
     platformAddress: {
       getPlatformLightningAddress: async () => {
@@ -839,11 +852,13 @@ function createZapDependencies({
         if (cachedAddress) {
           return cachedAddress;
         }
-        const fallback = await getPlatformLightningAddress({ forceRefresh: false });
+        const fallback = await getPlatformLightningAddress({
+          forceRefresh: false
+        });
         setCachedPlatformLightningAddress(fallback || "");
         return fallback;
-      },
-    },
+      }
+    }
   };
 }
 
@@ -864,7 +879,7 @@ function getWalletSettingsOrPrompt() {
   }
   return {
     ...settings,
-    nwcUri: normalizedUri,
+    nwcUri: normalizedUri
   };
 }
 
@@ -883,7 +898,7 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
       {
         amount,
         overrideFee,
-        walletSettings: settings,
+        walletSettings: settings
       },
       error
     );
@@ -893,13 +908,17 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
   const dependencies = createZapDependencies({
     ...context,
     shareTracker,
-    walletSettings: settings,
+    walletSettings: settings
   });
   const videoEvent = getZapVideoEvent();
 
   let previousOverride;
   const hasGlobal = typeof globalThis !== "undefined";
-  if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
+  if (
+    hasGlobal &&
+    typeof overrideFee === "number" &&
+    Number.isFinite(overrideFee)
+  ) {
     previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
     globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = overrideFee;
   }
@@ -909,7 +928,7 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
       {
         videoEvent,
         amountSats: context.shares.total,
-        walletSettings: settings,
+        walletSettings: settings
       },
       dependencies
     );
@@ -925,16 +944,23 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
         overrideFee,
         walletSettings: settings,
         context,
-        tracker: shareTracker,
+        tracker: shareTracker
       },
       error
     );
     throw error;
   } finally {
-    if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
+    if (
+      hasGlobal &&
+      typeof overrideFee === "number" &&
+      Number.isFinite(overrideFee)
+    ) {
       if (typeof previousOverride === "number") {
         globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
-      } else if (globalThis && "__BITVID_PLATFORM_FEE_OVERRIDE__" in globalThis) {
+      } else if (
+        globalThis &&
+        "__BITVID_PLATFORM_FEE_OVERRIDE__" in globalThis
+      ) {
         delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
       }
     }
@@ -970,7 +996,7 @@ async function executePendingRetry({ walletSettings }) {
       const attempt = await runZapAttempt({
         amount: share.amount,
         overrideFee,
-        walletSettings,
+        walletSettings
       });
       if (!attempt) {
         setZapStatus("", "neutral");
@@ -992,7 +1018,7 @@ async function executePendingRetry({ walletSettings }) {
           amount: share?.amount,
           address: share?.address,
           walletSettings,
-          tracker,
+          tracker
         },
         error
       );
@@ -1006,9 +1032,12 @@ async function executePendingRetry({ walletSettings }) {
       const message = error?.message || "Retry failed.";
       setZapStatus(message, "error");
       app?.showError?.(message);
-      renderZapReceipts(aggregatedTracker.length ? aggregatedTracker : tracker, {
-        partial: true,
-      });
+      renderZapReceipts(
+        aggregatedTracker.length ? aggregatedTracker : tracker,
+        {
+          partial: true
+        }
+      );
       return;
     }
   }
@@ -1137,9 +1166,10 @@ async function handleZapSend(event) {
         walletSettings,
         tracker,
         retryAttempt:
-          Array.isArray(pendingZapRetry?.shares) && pendingZapRetry.shares.length
+          Array.isArray(pendingZapRetry?.shares) &&
+          pendingZapRetry.shares.length
             ? pendingZapRetry.shares.length
-            : undefined,
+            : undefined
       },
       error
     );
@@ -1431,7 +1461,13 @@ function setupZapButton() {
   const amountInput = getZapAmountInput();
   const controls = getZapControlsContainer();
   const zapForm = getZapFormElement();
-  if (!zapButton || !amountInput || !controls || !zapForm || !getZapSendButton()) {
+  if (
+    !zapButton ||
+    !amountInput ||
+    !controls ||
+    !zapForm ||
+    !getZapSendButton()
+  ) {
     return;
   }
 
@@ -1460,7 +1496,10 @@ function setupZapButton() {
     typeof app?.getActiveNwcSettings === "function"
       ? app.getActiveNwcSettings()
       : {};
-  if (Number.isFinite(activeSettings?.defaultZap) && activeSettings.defaultZap > 0) {
+  if (
+    Number.isFinite(activeSettings?.defaultZap) &&
+    activeSettings.defaultZap > 0
+  ) {
     amountInput.value = Math.max(0, Math.round(activeSettings.defaultZap));
   }
 
@@ -1542,7 +1581,9 @@ function normalizeChannelProfileMetadata(raw = {}) {
     trimProfileString(raw.name) ||
     "Unknown User";
   const picture =
-    trimProfileString(raw.picture) || trimProfileString(raw.image) || FALLBACK_CHANNEL_AVATAR;
+    trimProfileString(raw.picture) ||
+    trimProfileString(raw.image) ||
+    FALLBACK_CHANNEL_AVATAR;
   const about = trimProfileString(raw.about || raw.bio);
   const website = trimProfileString(raw.website || raw.url);
   const banner =
@@ -1560,7 +1601,7 @@ function normalizeChannelProfileMetadata(raw = {}) {
     banner,
     lud16,
     lud06,
-    lightningAddress,
+    lightningAddress
   };
 }
 
@@ -1572,7 +1613,7 @@ function rememberChannelProfile(pubkey, { profile = {}, event = null } = {}) {
   channelProfileMetadataCache.set(pubkey, {
     timestamp: Date.now(),
     profile: normalizeChannelProfileMetadata(profile),
-    event: event ? { ...event } : null,
+    event: event ? { ...event } : null
   });
 }
 
@@ -1592,7 +1633,7 @@ function getCachedChannelProfile(pubkey) {
 
   return {
     profile: entry.profile,
-    event: entry.event ? { ...entry.event } : null,
+    event: entry.event ? { ...entry.event } : null
   };
 }
 
@@ -1623,11 +1664,15 @@ function isValidRelayUrl(url) {
 }
 
 function getCachedChannelVideoEvents(pubkey) {
-  if (!nostrClient?.allEvents || typeof nostrClient.allEvents.forEach !== "function") {
+  if (
+    !nostrClient?.allEvents ||
+    typeof nostrClient.allEvents.forEach !== "function"
+  ) {
     return [];
   }
 
-  const normalized = typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+  const normalized =
+    typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
   if (!normalized) {
     return [];
   }
@@ -1670,7 +1715,8 @@ function buildRenderableChannelVideos({ events = [], app } = {}) {
   const uniqueVideos = Array.from(dedupedById.values());
 
   const newestByRoot =
-    app?.dedupeVideosByRoot?.(uniqueVideos) ?? dedupeToNewestByRoot(uniqueVideos);
+    app?.dedupeVideosByRoot?.(uniqueVideos) ??
+    dedupeToNewestByRoot(uniqueVideos);
 
   let videos = newestByRoot.filter((video) => !video.deleted);
   videos = videos.filter((video) => {
@@ -1698,7 +1744,7 @@ function renderChannelVideosFromList({
   container,
   app,
   loadToken,
-  allowEmptyMessage = true,
+  allowEmptyMessage = true
 } = {}) {
   if (!container || loadToken !== currentVideoLoadToken) {
     return false;
@@ -1707,7 +1753,7 @@ function renderChannelVideosFromList({
   if (!Array.isArray(videos) || videos.length === 0) {
     if (allowEmptyMessage) {
       container.dataset.hasChannelVideos = "false";
-      container.innerHTML = `<p class="text-gray-500">No videos to display.</p>`;
+      container.innerHTML = `<p class="text-muted-strong">No videos to display.</p>`;
       return true;
     }
     return false;
@@ -1726,12 +1772,11 @@ function renderChannelVideosFromList({
       : "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
   const fallbackNormalizePubkey = (value) =>
-    typeof value === "string" && value
-      ? value.trim().toLowerCase()
-      : "";
+    typeof value === "string" && value ? value.trim().toLowerCase() : "";
   const normalizePubkey =
     typeof app?.normalizeHexPubkey === "function"
-      ? (value) => app.normalizeHexPubkey(value) || fallbackNormalizePubkey(value)
+      ? (value) =>
+          app.normalizeHexPubkey(value) || fallbackNormalizePubkey(value)
       : fallbackNormalizePubkey;
   const normalizedViewerPubkey = normalizePubkey(app?.pubkey);
   let renderIndex = 0;
@@ -1745,16 +1790,21 @@ function renderChannelVideosFromList({
     }
 
     const element = trigger instanceof HTMLElement ? trigger : null;
-    const target = element?.closest("[data-play-url],[data-play-magnet]") || element;
+    const target =
+      element?.closest("[data-play-url],[data-play-magnet]") || element;
 
     const rawUrlValue =
       (target?.dataset && typeof target.dataset.playUrl === "string"
         ? target.dataset.playUrl
-        : null) ?? target?.getAttribute?.("data-play-url") ?? "";
+        : null) ??
+      target?.getAttribute?.("data-play-url") ??
+      "";
     const rawMagnetValue =
       (target?.dataset && typeof target.dataset.playMagnet === "string"
         ? target.dataset.playMagnet
-        : null) ?? target?.getAttribute?.("data-play-magnet") ?? "";
+        : null) ??
+      target?.getAttribute?.("data-play-magnet") ??
+      "";
 
     let url = "";
     if (rawUrlValue) {
@@ -1792,14 +1842,14 @@ function renderChannelVideosFromList({
           url: detail.url,
           magnet: detail.magnet,
           title: detail.video?.title,
-          description: detail.video?.description,
+          description: detail.video?.description
         })
       ).catch((error) => {
         console.error("Failed to play channel video via event id:", error);
         if (typeof app?.playVideoWithFallback === "function") {
           app.playVideoWithFallback({
             url: detail.url,
-            magnet: detail.magnet,
+            magnet: detail.magnet
           });
         }
       });
@@ -1810,7 +1860,10 @@ function renderChannelVideosFromList({
       Promise.resolve(
         app.playVideoWithFallback({ url: detail.url, magnet: detail.magnet })
       ).catch((error) => {
-        console.error("Failed to start fallback playback for channel video:", error);
+        console.error(
+          "Failed to start fallback playback for channel video:",
+          error
+        );
       });
     }
   };
@@ -1848,7 +1901,10 @@ function renderChannelVideosFromList({
       typeof app?.deriveVideoPointerInfo === "function"
         ? app.deriveVideoPointerInfo(video)
         : null;
-    if (pointerInfo && typeof app?.persistWatchHistoryMetadataForVideo === "function") {
+    if (
+      pointerInfo &&
+      typeof app?.persistWatchHistoryMetadataForVideo === "function"
+    ) {
       app.persistWatchHistoryMetadataForVideo(video, pointerInfo);
     }
 
@@ -1885,22 +1941,22 @@ function renderChannelVideosFromList({
         canManageBlacklist:
           typeof app?.canCurrentUserManageBlacklist === "function"
             ? app.canCurrentUserManageBlacklist()
-            : false,
+            : false
       },
       nsfwContext: {
         isNsfw: video?.isNsfw === true,
         allowNsfw,
-        viewerIsOwner: canEdit,
+        viewerIsOwner: canEdit
       },
       helpers: {
         escapeHtml: (value) => escapeHTML(value),
         isMagnetSupported: (magnet) => app?.isMagnetUriSupported?.(magnet),
         toLocaleString: (value) =>
-          typeof value === "number" ? value.toLocaleString() : value,
+          typeof value === "number" ? value.toLocaleString() : value
       },
       assets: {
         fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
-        unsupportedBtihMessage,
+        unsupportedBtihMessage
       },
       state: { loadedThumbnails },
       ensureGlobalMoreMenuHandlers: () => app?.ensureGlobalMoreMenuHandlers?.(),
@@ -1909,8 +1965,8 @@ function renderChannelVideosFromList({
         formatTimeAgo: (ts) =>
           typeof app?.formatTimeAgo === "function"
             ? app.formatTimeAgo(ts)
-            : new Date(ts * 1000).toLocaleString(),
-      },
+            : new Date(ts * 1000).toLocaleString()
+      }
     });
 
     videoCard.onPlay = ({ event: domEvent, video: cardVideo }) => {
@@ -1923,21 +1979,21 @@ function renderChannelVideosFromList({
     videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
       app?.handleEditVideo?.({
         eventId: editVideo?.id || "",
-        index: Number.isFinite(editIndex) ? editIndex : null,
+        index: Number.isFinite(editIndex) ? editIndex : null
       });
     };
 
     videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
       app?.handleRevertVideo?.({
         eventId: revertVideo?.id || "",
-        index: Number.isFinite(revertIndex) ? revertIndex : null,
+        index: Number.isFinite(revertIndex) ? revertIndex : null
       });
     };
 
     videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
       app?.handleFullDeleteVideo?.({
         eventId: deleteVideo?.id || "",
-        index: Number.isFinite(deleteIndex) ? deleteIndex : null,
+        index: Number.isFinite(deleteIndex) ? deleteIndex : null
       });
     };
 
@@ -1946,7 +2002,7 @@ function renderChannelVideosFromList({
       const detail = {
         ...dataset,
         eventId: dataset.eventId || video.id || "",
-        context: dataset.context || "channel-grid",
+        context: dataset.context || "channel-grid"
       };
       app?.handleMoreMenuAction?.(action || "copy-link", detail);
     };
@@ -1967,7 +2023,7 @@ function renderChannelVideosFromList({
   if (renderIndex === 0) {
     if (allowEmptyMessage) {
       container.dataset.hasChannelVideos = "false";
-      container.innerHTML = `<p class="text-gray-500">No videos to display.</p>`;
+      container.innerHTML = `<p class="text-muted-strong">No videos to display.</p>`;
       return true;
     }
     return false;
@@ -1996,7 +2052,7 @@ function applyChannelProfileMetadata({
   event = null,
   pubkey = "",
   npub = "",
-  loadToken = null,
+  loadToken = null
 } = {}) {
   if (loadToken !== null && loadToken !== currentProfileLoadToken) {
     return;
@@ -2054,8 +2110,7 @@ function applyChannelProfileMetadata({
 
   const lnEl = document.getElementById("channelLightning");
   if (lnEl) {
-    lnEl.textContent =
-      lightningAddress || "No lightning address found.";
+    lnEl.textContent = lightningAddress || "No lightning address found.";
   }
 
   if (event) {
@@ -2084,7 +2139,7 @@ async function fetchChannelProfileFromRelays(pubkey) {
 
   try {
     const events = await nostrClient.pool.list(nostrClient.relays, [
-      { kinds: [0], authors: [pubkey], limit: 1 },
+      { kinds: [0], authors: [pubkey], limit: 1 }
     ]);
 
     let newestEvent = null;
@@ -2129,7 +2184,7 @@ async function loadUserProfile(pubkey) {
       event: cachedEntry.event,
       pubkey,
       npub: currentChannelNpub,
-      loadToken,
+      loadToken
     });
   } else {
     const stateEntry =
@@ -2142,7 +2197,7 @@ async function loadUserProfile(pubkey) {
         event: null,
         pubkey,
         npub: currentChannelNpub,
-        loadToken,
+        loadToken
       });
     } else {
       applyChannelProfileMetadata({
@@ -2150,7 +2205,7 @@ async function loadUserProfile(pubkey) {
         event: null,
         pubkey,
         npub: currentChannelNpub,
-        loadToken,
+        loadToken
       });
     }
   }
@@ -2171,7 +2226,7 @@ async function loadUserProfile(pubkey) {
             result.profile?.lightningAddress ||
             result.profile?.lud16 ||
             result.profile?.lud06 ||
-            "",
+            ""
         });
       } catch (error) {
         console.warn(
@@ -2186,7 +2241,7 @@ async function loadUserProfile(pubkey) {
       event: result.event,
       pubkey,
       npub: currentChannelNpub,
-      loadToken,
+      loadToken
     });
   } catch (error) {
     if (loadToken === currentProfileLoadToken) {
@@ -2219,7 +2274,7 @@ async function loadUserVideos(pubkey) {
     if (!hadExistingContent) {
       container.innerHTML = `
         <div class="py-16 flex justify-center">
-          <span class="text-gray-400 animate-pulse">Loading videos…</span>
+        <span class="text-muted animate-pulse">Loading videos…</span>
         </div>
       `;
     }
@@ -2231,7 +2286,7 @@ async function loadUserVideos(pubkey) {
     if (cachedEvents.length) {
       const cachedVideos = buildRenderableChannelVideos({
         events: cachedEvents,
-        app,
+        app
       });
       if (cachedVideos.length) {
         renderedFromCache =
@@ -2240,20 +2295,18 @@ async function loadUserVideos(pubkey) {
             container,
             app,
             loadToken,
-            allowEmptyMessage: false,
+            allowEmptyMessage: false
           }) || renderedFromCache;
       }
     }
   }
 
-  const ensureAccessPromise = accessControl
-    .ensureReady()
-    .catch((error) => {
-      console.warn(
-        "Failed to ensure admin lists were loaded before channel fetch:",
-        error
-      );
-    });
+  const ensureAccessPromise = accessControl.ensureReady().catch((error) => {
+    console.warn(
+      "Failed to ensure admin lists were loaded before channel fetch:",
+      error
+    );
+  });
 
   try {
     // 1) Build filter for videos from this pubkey
@@ -2261,7 +2314,7 @@ async function loadUserVideos(pubkey) {
       kinds: [30078],
       authors: [pubkey],
       "#t": ["video"],
-      limit: 200,
+      limit: 200
     };
 
     // 2) Collect raw events from all relays
@@ -2293,9 +2346,7 @@ async function loadUserVideos(pubkey) {
         const relayUrl = relayList[index];
 
         if (result.status === "fulfilled") {
-          const relayEvents = Array.isArray(result.value)
-            ? result.value
-            : [];
+          const relayEvents = Array.isArray(result.value) ? result.value : [];
           events.push(...relayEvents);
           return;
         }
@@ -2323,15 +2374,19 @@ async function loadUserVideos(pubkey) {
       container,
       app,
       loadToken,
-      allowEmptyMessage: true,
+      allowEmptyMessage: true
     });
 
     renderedFromCache = rendered || renderedFromCache;
   } catch (err) {
-    if (loadToken === currentVideoLoadToken && container && !renderedFromCache) {
+    if (
+      loadToken === currentVideoLoadToken &&
+      container &&
+      !renderedFromCache
+    ) {
       container.dataset.hasChannelVideos = "false";
       container.innerHTML = `
-        <p class="text-red-400">Failed to load videos. Please try again.</p>
+        <p class="text-critical">Failed to load videos. Please try again.</p>
       `;
     }
     console.error("Error loading user videos:", err);
@@ -2359,7 +2414,10 @@ window.addEventListener("bitvid:access-control-updated", () => {
   }
 
   loadUserVideos(currentChannelHex).catch((error) => {
-    console.error("Failed to refresh channel videos after admin update:", error);
+    console.error(
+      "Failed to refresh channel videos after admin update:",
+      error
+    );
   });
 });
 
@@ -2377,4 +2435,3 @@ function dedupeToNewestByRoot(videos) {
   }
   return Array.from(map.values());
 }
-

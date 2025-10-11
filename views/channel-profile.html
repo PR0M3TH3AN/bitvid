@@ -4,25 +4,27 @@
     <!-- Increase the default height classes -->
     <img
       id="channelBanner"
-      class="w-full h-48 md:h-64 object-cover rounded-lg"
+      class="h-48 w-full rounded-lg object-cover md:h-64"
       src=""
       alt="Banner"
     />
-    <div class="absolute inset-0 bg-black bg-opacity-50 rounded-lg"></div>
+    <div class="absolute inset-0 rounded-lg bg-black bg-opacity-50"></div>
 
     <div
       class="absolute bottom-4 left-4 right-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
     >
       <div class="flex items-center">
-        <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-white">
+        <div
+          class="h-16 w-16 overflow-hidden rounded-full border-2 border-border-translucent-bright"
+        >
           <img
             id="channelAvatar"
             src="assets/svg/default-profile.svg"
             alt="Avatar"
-            class="w-full h-full object-cover"
+            class="h-full w-full object-cover"
           />
         </div>
-        <div class="ml-4 text-white">
+        <div class="ml-4 text-text">
           <h2 id="channelName" class="text-xl font-bold">User Name</h2>
           <p id="channelNpub" class="text-sm opacity-80">npub...</p>
         </div>
@@ -120,7 +122,10 @@
                     role="status"
                     aria-live="polite"
                   ></p>
-                  <ul id="zapReceipts" class="space-y-2 text-xs text-muted"></ul>
+                  <ul
+                    id="zapReceipts"
+                    class="space-y-2 text-xs text-muted"
+                  ></ul>
                   <div class="flex items-center justify-end gap-2">
                     <button
                       type="submit"
@@ -157,7 +162,7 @@
               aria-label="Channel options"
               data-more-dropdown="channel-profile"
             >
-              <img src="assets/svg/ellipsis.svg" alt="More" class="w-5 h-5" />
+              <img src="assets/svg/ellipsis.svg" alt="More" class="h-5 w-5" />
             </button>
             <div
               id="moreDropdown-channel-profile"
@@ -217,26 +222,26 @@
   </div>
 
   <!-- Basic profile details: about text, website, LN address -->
-  <div class="profile-details px-4 mt-4">
-    <p id="channelAbout" class="mb-2 text-gray-700"></p>
+  <div class="profile-details mt-4 px-4">
+    <p id="channelAbout" class="mb-2 text-text-strong"></p>
     <a
       id="channelWebsite"
       href="#"
       target="_blank"
-      class="block text-blue-500 hover:underline mb-2"
+      class="mb-2 block text-info-strong hover:underline"
       >Website</a
     >
-    <p id="channelLightning" class="text-sm text-gray-500"></p>
+    <p id="channelLightning" class="text-sm text-muted-strong"></p>
   </div>
 
   <!-- Area for Subscribe/Unsubscribe button -->
-  <div class="px-4 my-4">
+  <div class="my-4 px-4">
     <div id="subscribeBtnArea" class="hidden"></div>
   </div>
 
   <hr class="my-6" />
 
-  <h3 class="text-lg font-bold mb-4 text-gray-700">Videos by This User</h3>
+  <h3 class="mb-4 text-lg font-bold text-text-strong">Videos by This User</h3>
   <div id="channelVideoList" class="bv-grid-video">
     <!-- User’s videos will go here -->
   </div>

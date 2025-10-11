@@ -1,16 +1,16 @@
 // js/subscriptions.js
 import {
   nostrClient,
-  convertEventToVideo as sharedConvertEventToVideo,
+  convertEventToVideo as sharedConvertEventToVideo
 } from "./nostr.js";
 import {
   buildSubscriptionListEvent,
-  SUBSCRIPTION_LIST_IDENTIFIER,
+  SUBSCRIPTION_LIST_IDENTIFIER
 } from "./nostrEventSchemas.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
   publishEventToRelays,
-  assertAnyRelayAccepted,
+  assertAnyRelayAccepted
 } from "./nostrPublish.js";
 import { getApplication } from "./applicationContext.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
@@ -48,7 +48,7 @@ class SubscriptionsManager {
         kinds: [30002],
         authors: [userPubkey],
         "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
-        limit: 1,
+        limit: 1
       };
 
       const events = [];
@@ -180,7 +180,7 @@ class SubscriptionsManager {
     const evt = buildSubscriptionListEvent({
       pubkey: userPubkey,
       created_at: Math.floor(Date.now() / 1000),
-      content: cipherText,
+      content: cipherText
     });
 
     let signedEvent;
@@ -200,7 +200,7 @@ class SubscriptionsManager {
     let publishSummary;
     try {
       publishSummary = assertAnyRelayAccepted(publishResults, {
-        context: "subscription list",
+        context: "subscription list"
       });
     } catch (publishError) {
       if (publishError?.relayFailures?.length) {
@@ -222,8 +222,8 @@ class SubscriptionsManager {
           relayError instanceof Error
             ? relayError.message
             : relayError
-            ? String(relayError)
-            : "publish failed";
+              ? String(relayError)
+              : "publish failed";
         console.warn(
           `[SubscriptionsManager] Subscription list not accepted by ${url}: ${reason}`,
           relayError
@@ -251,9 +251,10 @@ class SubscriptionsManager {
     options = {}
   ) {
     const limitCandidate = Number(options?.limit);
-    const limit = Number.isFinite(limitCandidate) && limitCandidate > 0
-      ? Math.floor(limitCandidate)
-      : null;
+    const limit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
     const reason =
       typeof options?.reason === "string" && options.reason.trim()
         ? options.reason.trim()
@@ -265,7 +266,7 @@ class SubscriptionsManager {
     if (!userPubkey) {
       if (container) {
         container.innerHTML =
-          "<p class='text-gray-500'>Please log in first.</p>";
+          "<p class='text-muted-strong'>Please log in first.</p>";
       }
       this.lastRunOptions = null;
       this.lastResult = null;
@@ -281,18 +282,18 @@ class SubscriptionsManager {
       this.lastRunOptions = {
         actorPubkey: userPubkey,
         limit,
-        containerId,
+        containerId
       };
       return null;
     }
 
     if (!channelHexes.length) {
       container.innerHTML =
-        "<p class='text-gray-500'>No subscriptions found.</p>";
+        "<p class='text-muted-strong'>No subscriptions found.</p>";
       this.lastRunOptions = {
         actorPubkey: userPubkey,
         limit,
-        containerId,
+        containerId
       };
       this.lastResult = { items: [], metadata: { reason: "no-subscriptions" } };
       return this.lastResult;
@@ -304,14 +305,14 @@ class SubscriptionsManager {
       actorPubkey: userPubkey,
       limit,
       containerId,
-      reason,
+      reason
     };
 
     this.ensureFeedRegistered();
     const engine = this.getFeedEngine();
     if (!engine || typeof engine.run !== "function") {
       container.innerHTML =
-        "<p class='text-gray-500'>Subscriptions are unavailable right now.</p>";
+        "<p class='text-muted-strong'>Subscriptions are unavailable right now.</p>";
       return null;
     }
 
@@ -323,9 +324,9 @@ class SubscriptionsManager {
       runtime,
       hooks: {
         subscriptions: {
-          resolveAuthors: () => this.getSubscribedAuthors(),
-        },
-      },
+          resolveAuthors: () => this.getSubscribedAuthors()
+        }
+      }
     };
 
     try {
@@ -352,7 +353,7 @@ class SubscriptionsManager {
         error
       );
       container.innerHTML =
-        "<p class='text-gray-500'>Unable to load subscriptions right now.</p>";
+        "<p class='text-muted-strong'>Unable to load subscriptions right now.</p>";
       this.lastResult = null;
       return null;
     }
@@ -396,7 +397,7 @@ class SubscriptionsManager {
       subscriptionAuthors: normalizedAuthors,
       authors: normalizedAuthors,
       blacklistedEventIds: blacklist,
-      isAuthorBlocked,
+      isAuthorBlocked
     };
   }
 
@@ -418,9 +419,10 @@ class SubscriptionsManager {
         : {};
 
     const limitCandidate = Number(options?.limit);
-    const limit = Number.isFinite(limitCandidate) && limitCandidate > 0
-      ? Math.floor(limitCandidate)
-      : null;
+    const limit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
 
     const limitedItems = limit ? items.slice(0, limit) : items;
     const videos = limitedItems
@@ -429,7 +431,7 @@ class SubscriptionsManager {
 
     if (!videos.length) {
       container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
+        <p class="flex justify-center items-center h-full w-full text-center text-muted-strong">
           No videos available yet.
         </p>`;
       return;
@@ -438,7 +440,7 @@ class SubscriptionsManager {
     const listView = this.getListView(container, app);
     if (!listView) {
       container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
+        <p class="flex justify-center items-center h-full w-full text-center text-muted-strong">
           Unable to render subscriptions feed.
         </p>`;
       return;
@@ -452,7 +454,7 @@ class SubscriptionsManager {
 
     const enrichedMetadata = {
       ...metadata,
-      feed: "subscriptions",
+      feed: "subscriptions"
     };
     if (limit) {
       enrichedMetadata.limit = limit;
@@ -479,7 +481,7 @@ class SubscriptionsManager {
 
     const badgeHelpers = baseView?.badgeHelpers || {
       attachHealthBadges: () => {},
-      attachUrlHealthBadges: () => {},
+      attachUrlHealthBadges: () => {}
     };
 
     const formatTimeAgo = (timestamp) => {
@@ -502,36 +504,36 @@ class SubscriptionsManager {
     const assets = baseView?.assets || {
       fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
       unsupportedBtihMessage:
-        "This magnet link is missing a compatible BitTorrent v1 info hash.",
+        "This magnet link is missing a compatible BitTorrent v1 info hash."
     };
 
     const loadedThumbnails =
       app?.loadedThumbnails instanceof Map
         ? app.loadedThumbnails
         : baseView?.state?.loadedThumbnails instanceof Map
-        ? baseView.state.loadedThumbnails
-        : new Map();
+          ? baseView.state.loadedThumbnails
+          : new Map();
 
     const videosMap =
       app?.videosMap instanceof Map
         ? app.videosMap
         : baseView?.state?.videosMap instanceof Map
-        ? baseView.state.videosMap
-        : new Map();
+          ? baseView.state.videosMap
+          : new Map();
 
     const urlHealthCache =
       app?.urlHealthSnapshots instanceof Map
         ? app.urlHealthSnapshots
         : baseView?.state?.urlHealthByVideoId instanceof Map
-        ? baseView.state.urlHealthByVideoId
-        : new Map();
+          ? baseView.state.urlHealthByVideoId
+          : new Map();
 
     const streamHealthCache =
       app?.streamHealthSnapshots instanceof Map
         ? app.streamHealthSnapshots
         : baseView?.state?.streamHealthByVideoId instanceof Map
-        ? baseView.state.streamHealthByVideoId
-        : new Map();
+          ? baseView.state.streamHealthByVideoId
+          : new Map();
 
     const listViewConfig = {
       document: doc,
@@ -540,21 +542,21 @@ class SubscriptionsManager {
       badgeHelpers,
       formatters: {
         formatTimeAgo,
-        formatViewCountLabel,
+        formatViewCountLabel
       },
       helpers: {
         escapeHtml: (value) => app?.escapeHTML?.(value) ?? value,
         isMagnetSupported: (magnet) =>
           app?.isMagnetUriSupported?.(magnet) ?? false,
         toLocaleString: (value) =>
-          typeof value === "number" ? value.toLocaleString() : value,
+          typeof value === "number" ? value.toLocaleString() : value
       },
       assets,
       state: {
         loadedThumbnails,
         videosMap,
         urlHealthByVideoId: urlHealthCache,
-        streamHealthByVideoId: streamHealthCache,
+        streamHealthByVideoId: streamHealthCache
       },
       utils: {
         dedupeVideos: (videos) => (Array.isArray(videos) ? [...videos] : []),
@@ -574,24 +576,22 @@ class SubscriptionsManager {
           app?.canCurrentUserManageBlacklist?.() ?? false,
         canEditVideo: (video) => video?.pubkey === app?.pubkey,
         canDeleteVideo: (video) => video?.pubkey === app?.pubkey,
-        batchFetchProfiles: (authorSet) =>
-          app?.batchFetchProfiles?.(authorSet),
+        batchFetchProfiles: (authorSet) => app?.batchFetchProfiles?.(authorSet),
         bindThumbnailFallbacks: (target) =>
           app?.bindThumbnailFallbacks?.(target),
-        handleUrlHealthBadge: (payload) =>
-          app?.handleUrlHealthBadge?.(payload),
+        handleUrlHealthBadge: (payload) => app?.handleUrlHealthBadge?.(payload),
         refreshDiscussionCounts: (videosList, { container: root } = {}) =>
           app?.refreshVideoDiscussionCounts?.(videosList, {
-            videoListRoot: root || container || null,
+            videoListRoot: root || container || null
           }),
         ensureGlobalMoreMenuHandlers: () =>
           app?.ensureGlobalMoreMenuHandlers?.(),
-        closeAllMenus: () => app?.closeAllMoreMenus?.(),
+        closeAllMenus: () => app?.closeAllMoreMenus?.()
       },
       renderers: {
-        getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
+        getLoadingMarkup: (message) => getSidebarLoadingMarkup(message)
       },
-      allowNsfw: ALLOW_NSFW_CONTENT === true,
+      allowNsfw: ALLOW_NSFW_CONTENT === true
     };
 
     const listView = new VideoListView(listViewConfig);
@@ -604,16 +604,14 @@ class SubscriptionsManager {
         Promise.resolve(
           app?.playVideoByEventId?.(detail.videoId, {
             url: detail.url,
-            magnet: detail.magnet,
+            magnet: detail.magnet
           })
-        ).catch(
-          (error) => {
-            console.error(
-              "[SubscriptionsManager] Failed to play by event id:",
-              error
-            );
-          }
-        );
+        ).catch((error) => {
+          console.error(
+            "[SubscriptionsManager] Failed to play by event id:",
+            error
+          );
+        });
         return;
       }
       Promise.resolve(
@@ -632,7 +630,7 @@ class SubscriptionsManager {
       }
       app?.handleEditVideo?.({
         eventId: video.id,
-        index: Number.isFinite(index) ? index : null,
+        index: Number.isFinite(index) ? index : null
       });
     });
 
@@ -642,7 +640,7 @@ class SubscriptionsManager {
       }
       app?.handleRevertVideo?.({
         eventId: video.id,
-        index: Number.isFinite(index) ? index : null,
+        index: Number.isFinite(index) ? index : null
       });
     });
 
@@ -652,7 +650,7 @@ class SubscriptionsManager {
       }
       app?.handleFullDeleteVideo?.({
         eventId: video.id,
-        index: Number.isFinite(index) ? index : null,
+        index: Number.isFinite(index) ? index : null
       });
     });
 
@@ -660,7 +658,7 @@ class SubscriptionsManager {
       const detail = {
         ...(dataset || {}),
         author: dataset?.author || video?.pubkey || "",
-        context: dataset?.context || "subscriptions",
+        context: dataset?.context || "subscriptions"
       };
       app?.handleMoreMenuAction?.("blacklist-author", detail);
     });
@@ -670,11 +668,8 @@ class SubscriptionsManager {
       const dataset = {
         ...(detail.dataset || {}),
         eventId:
-          detail.eventId ||
-          detail.dataset?.eventId ||
-          detail.video?.id ||
-          "",
-        context: detail.dataset?.context || "subscriptions",
+          detail.eventId || detail.dataset?.eventId || detail.video?.id || "",
+        context: detail.dataset?.context || "subscriptions"
       };
       app?.handleMoreMenuAction?.(detail.action || "copy-link", dataset);
     });
@@ -684,7 +679,7 @@ class SubscriptionsManager {
       const dataset = {
         ...(detail.dataset || {}),
         eventId: detail.dataset?.eventId || detail.video?.id || "",
-        context: detail.dataset?.context || "subscriptions",
+        context: detail.dataset?.context || "subscriptions"
       };
       app?.handleMoreMenuAction?.(detail.action, dataset);
     });
@@ -710,14 +705,13 @@ class SubscriptionsManager {
 
     return this.showSubscriptionVideos(actorPubkey, containerId, {
       limit,
-      reason,
+      reason
     });
   }
 
   convertEventToVideo(evt) {
     return sharedConvertEventToVideo(evt);
   }
-
 }
 
 export const subscriptions = new SubscriptionsManager();

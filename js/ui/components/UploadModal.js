@@ -15,20 +15,29 @@ export class UploadModal {
     getCurrentPubkey,
     safeEncodeNpub,
     eventTarget,
-    container,
+    container
   } = {}) {
     this.authService = authService || null;
     this.r2Service = r2Service || null;
-    this.publishVideoNote = typeof publishVideoNote === "function" ? publishVideoNote : null;
+    this.publishVideoNote =
+      typeof publishVideoNote === "function" ? publishVideoNote : null;
     this.removeTrackingScripts =
-      typeof removeTrackingScripts === "function" ? removeTrackingScripts : () => {};
+      typeof removeTrackingScripts === "function"
+        ? removeTrackingScripts
+        : () => {};
     this.setGlobalModalState =
-      typeof setGlobalModalState === "function" ? setGlobalModalState : () => {};
+      typeof setGlobalModalState === "function"
+        ? setGlobalModalState
+        : () => {};
     this.showError = typeof showError === "function" ? showError : () => {};
-    this.showSuccess = typeof showSuccess === "function" ? showSuccess : () => {};
-    this.getCurrentPubkey = typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
-    this.safeEncodeNpub = typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
-    this.eventTarget = eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
+    this.showSuccess =
+      typeof showSuccess === "function" ? showSuccess : () => {};
+    this.getCurrentPubkey =
+      typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
+    this.safeEncodeNpub =
+      typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
+    this.eventTarget =
+      eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
     this.container = container || null;
 
     this.root = null;
@@ -161,13 +170,15 @@ export class UploadModal {
   cacheElements(context) {
     const scope = this.root || context;
     this.modalBackdrop = scope?.querySelector?.(".bv-modal-backdrop") || null;
-    this.modalPanel = scope?.querySelector?.(".bv-modal__panel") || scope || null;
+    this.modalPanel =
+      scope?.querySelector?.(".bv-modal__panel") || scope || null;
 
     this.uploadModeButtons = Array.from(
       context.querySelectorAll(".upload-mode-toggle[data-upload-mode]")
     );
     this.customSection = context.querySelector("#customUploadSection") || null;
-    this.cloudflareSection = context.querySelector("#cloudflareUploadSection") || null;
+    this.cloudflareSection =
+      context.querySelector("#cloudflareUploadSection") || null;
 
     this.customForm = context.querySelector("#uploadForm") || null;
     this.customFormInputs = {
@@ -181,36 +192,44 @@ export class UploadModal {
       enableComments: context.querySelector("#uploadEnableComments") || null,
       isNsfw: context.querySelector("#uploadIsNsfw") || null,
       isForKids: context.querySelector("#uploadIsForKids") || null,
-      isPrivate: context.querySelector("#uploadIsPrivate") || null,
+      isPrivate: context.querySelector("#uploadIsPrivate") || null
     };
 
     this.closeButton = context.querySelector("#closeUploadModal") || null;
 
-    this.cloudflareSettingsForm = context.querySelector("#cloudflareSettingsForm") || null;
+    this.cloudflareSettingsForm =
+      context.querySelector("#cloudflareSettingsForm") || null;
     this.cloudflareClearSettingsButton =
       context.querySelector("#cloudflareClearSettings") || null;
     this.cloudflareSettingsStatus =
       context.querySelector("#cloudflareSettingsStatus") || null;
     this.cloudflareBucketPreview =
       context.querySelector("#cloudflareBucketPreview") || null;
-    this.cloudflareUploadForm = context.querySelector("#cloudflareUploadForm") || null;
+    this.cloudflareUploadForm =
+      context.querySelector("#cloudflareUploadForm") || null;
     this.cloudflareFileInput = context.querySelector("#cloudflareFile") || null;
-    this.cloudflareUploadButton = context.querySelector("#cloudflareUploadButton") || null;
+    this.cloudflareUploadButton =
+      context.querySelector("#cloudflareUploadButton") || null;
     this.cloudflareUploadStatus =
       context.querySelector("#cloudflareUploadStatus") || null;
-    this.cloudflareProgressBar = context.querySelector("#cloudflareProgressBar") || null;
-    this.cloudflareProgressFill = context.querySelector("#cloudflareProgressFill") || null;
-    this.cloudflareTitleInput = context.querySelector("#cloudflareTitle") || null;
+    this.cloudflareProgressBar =
+      context.querySelector("#cloudflareProgressBar") || null;
+    this.cloudflareProgressFill =
+      context.querySelector("#cloudflareProgressFill") || null;
+    this.cloudflareTitleInput =
+      context.querySelector("#cloudflareTitle") || null;
     this.cloudflareDescriptionInput =
       context.querySelector("#cloudflareDescription") || null;
     this.cloudflareThumbnailInput =
       context.querySelector("#cloudflareThumbnail") || null;
-    this.cloudflareMagnetInput = context.querySelector("#cloudflareMagnet") || null;
+    this.cloudflareMagnetInput =
+      context.querySelector("#cloudflareMagnet") || null;
     this.cloudflareWsInput = context.querySelector("#cloudflareWs") || null;
     this.cloudflareXsInput = context.querySelector("#cloudflareXs") || null;
     this.cloudflareEnableCommentsInput =
       context.querySelector("#cloudflareEnableComments") || null;
-    this.cloudflareIsNsfwInput = context.querySelector("#cloudflareIsNsfw") || null;
+    this.cloudflareIsNsfwInput =
+      context.querySelector("#cloudflareIsNsfw") || null;
     this.cloudflareIsForKidsInput =
       context.querySelector("#cloudflareIsForKids") || null;
     this.cloudflareAdvancedToggle =
@@ -223,7 +242,8 @@ export class UploadModal {
       context.querySelector("#cloudflareAdvancedFields") || null;
     this.r2AccountIdInput = context.querySelector("#r2AccountId") || null;
     this.r2AccessKeyIdInput = context.querySelector("#r2AccessKeyId") || null;
-    this.r2SecretAccessKeyInput = context.querySelector("#r2SecretAccessKey") || null;
+    this.r2SecretAccessKeyInput =
+      context.querySelector("#r2SecretAccessKey") || null;
     this.r2ApiTokenInput = context.querySelector("#r2ApiToken") || null;
     this.r2ZoneIdInput = context.querySelector("#r2ZoneId") || null;
     this.r2BaseDomainInput = context.querySelector("#r2BaseDomain") || null;
@@ -301,7 +321,7 @@ export class UploadModal {
       image: [],
       fallback: [],
       service: [],
-      autoGenerated: true,
+      autoGenerated: true
     };
   }
 
@@ -351,12 +371,16 @@ export class UploadModal {
 
     if (this.cloudflareAdvancedToggle) {
       this.cloudflareAdvancedToggle.addEventListener("click", () => {
-        if (this.r2Service?.setCloudflareAdvancedVisibility &&
-            this.r2Service?.getCloudflareAdvancedVisibility) {
+        if (
+          this.r2Service?.setCloudflareAdvancedVisibility &&
+          this.r2Service?.getCloudflareAdvancedVisibility
+        ) {
           const nextState = !this.r2Service.getCloudflareAdvancedVisibility();
           this.r2Service.setCloudflareAdvancedVisibility(nextState);
         } else {
-          this.renderCloudflareAdvancedVisibility(!this.cloudflareAdvancedVisible);
+          this.renderCloudflareAdvancedVisibility(
+            !this.cloudflareAdvancedVisible
+          );
         }
       });
     }
@@ -392,7 +416,7 @@ export class UploadModal {
       root: this.root,
       backdrop: this.modalBackdrop || this.root,
       panel: this.modalPanel || this.root,
-      onRequestClose: () => this.close(),
+      onRequestClose: () => this.close()
     });
 
     this.cleanupHandlers.push(() => {
@@ -435,13 +459,21 @@ export class UploadModal {
 
     register(
       this.r2Service.on("settingsStatus", ({ message, variant } = {}) => {
-        this.applyCloudflareStatus(this.cloudflareSettingsStatus, message, variant);
+        this.applyCloudflareStatus(
+          this.cloudflareSettingsStatus,
+          message,
+          variant
+        );
       })
     );
 
     register(
       this.r2Service.on("uploadStatus", ({ message, variant } = {}) => {
-        this.applyCloudflareStatus(this.cloudflareUploadStatus, message, variant);
+        this.applyCloudflareStatus(
+          this.cloudflareUploadStatus,
+          message,
+          variant
+        );
       })
     );
 
@@ -548,7 +580,7 @@ export class UploadModal {
   handleCustomSubmit() {
     const audienceFlags = this.sanitizeAudienceFlags({
       isNsfw: this.readCheckboxValue(this.customFormInputs.isNsfw, false),
-      isForKids: this.readCheckboxValue(this.customFormInputs.isForKids, false),
+      isForKids: this.readCheckboxValue(this.customFormInputs.isForKids, false)
     });
     const payload = {
       title: this.customFormInputs.title?.value?.trim() || "",
@@ -562,7 +594,7 @@ export class UploadModal {
         this.customFormInputs.enableComments,
         true
       ),
-      ...audienceFlags,
+      ...audienceFlags
     };
 
     if (this.customFormInputs.isPrivate) {
@@ -587,7 +619,7 @@ export class UploadModal {
       secretAccessKey: this.r2SecretAccessKeyInput?.value?.trim() || "",
       apiToken: this.r2ApiTokenInput?.value?.trim() || "",
       zoneId: this.r2ZoneIdInput?.value?.trim() || "",
-      baseDomain: this.r2BaseDomainInput?.value || "",
+      baseDomain: this.r2BaseDomainInput?.value || ""
     };
   }
 
@@ -598,24 +630,24 @@ export class UploadModal {
 
     element.textContent = message || "";
     element.classList.remove(
-      "text-green-400",
-      "text-red-400",
-      "text-yellow-400",
-      "text-gray-400"
+      "text-info-strong",
+      "text-critical",
+      "text-warning-strong",
+      "text-muted"
     );
 
     if (!message) {
-      element.classList.add("text-gray-400");
+      element.classList.add("text-muted");
       return;
     }
 
-    let className = "text-gray-400";
+    let className = "text-muted";
     if (variant === "success") {
-      className = "text-green-400";
+      className = "text-info-strong";
     } else if (variant === "error") {
-      className = "text-red-400";
+      className = "text-critical";
     } else if (variant === "warning") {
-      className = "text-yellow-400";
+      className = "text-warning-strong";
     }
     element.classList.add(className);
   }
@@ -646,7 +678,10 @@ export class UploadModal {
     }
 
     if (this.cloudflareAdvancedToggleIcon) {
-      this.cloudflareAdvancedToggleIcon.classList.toggle("rotate-90", isVisible);
+      this.cloudflareAdvancedToggleIcon.classList.toggle(
+        "rotate-90",
+        isVisible
+      );
     }
   }
 
@@ -744,7 +779,8 @@ export class UploadModal {
 
   resetCloudflareUploadForm() {
     if (this.cloudflareTitleInput) this.cloudflareTitleInput.value = "";
-    if (this.cloudflareDescriptionInput) this.cloudflareDescriptionInput.value = "";
+    if (this.cloudflareDescriptionInput)
+      this.cloudflareDescriptionInput.value = "";
     if (this.cloudflareThumbnailInput) this.cloudflareThumbnailInput.value = "";
     if (this.cloudflareMagnetInput) this.cloudflareMagnetInput.value = "";
     if (this.cloudflareWsInput) this.cloudflareWsInput.value = "";
@@ -766,7 +802,8 @@ export class UploadModal {
     if (this.customFormInputs.magnet) this.customFormInputs.magnet.value = "";
     if (this.customFormInputs.ws) this.customFormInputs.ws.value = "";
     if (this.customFormInputs.xs) this.customFormInputs.xs.value = "";
-    if (this.customFormInputs.thumbnail) this.customFormInputs.thumbnail.value = "";
+    if (this.customFormInputs.thumbnail)
+      this.customFormInputs.thumbnail.value = "";
     if (this.customFormInputs.description)
       this.customFormInputs.description.value = "";
     if (this.customFormInputs.enableComments)
@@ -835,7 +872,7 @@ export class UploadModal {
     const file = this.cloudflareFileInput?.files?.[0] || null;
     const audienceFlags = this.sanitizeAudienceFlags({
       isNsfw: this.readCheckboxValue(this.cloudflareIsNsfwInput, false),
-      isForKids: this.readCheckboxValue(this.cloudflareIsForKidsInput, false),
+      isForKids: this.readCheckboxValue(this.cloudflareIsForKidsInput, false)
     });
     const metadata = {
       title: this.cloudflareTitleInput?.value?.trim() || "",
@@ -848,7 +885,7 @@ export class UploadModal {
         this.cloudflareEnableCommentsInput,
         true
       ),
-      ...audienceFlags,
+      ...audienceFlags
     };
 
     const nip71Metadata = this.nip71FormManager.collectSection("cloudflare");
@@ -862,7 +899,7 @@ export class UploadModal {
       }
       metadata.nip71 = {
         ...nip71Metadata,
-        imeta: imetaList,
+        imeta: imetaList
       };
     }
 
@@ -873,8 +910,10 @@ export class UploadModal {
         metadata,
         settingsInput: this.collectCloudflareSettingsFormValues(),
         publishVideoNote: (payload, options) =>
-          this.publishVideoNote ? this.publishVideoNote(payload, options) : null,
-        onReset: () => this.resetCloudflareUploadForm(),
+          this.publishVideoNote
+            ? this.publishVideoNote(payload, options)
+            : null,
+        onReset: () => this.resetCloudflareUploadForm()
       });
     } catch (error) {
       console.error("[UploadModal] Cloudflare upload failed", error);

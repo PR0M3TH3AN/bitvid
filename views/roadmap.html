@@ -1,12 +1,12 @@
 <!-- views/roadmap.html -->
 <section class="mb-8">
   <!-- White card, dark text to override global site color -->
-  <div class="bg-white p-6 rounded-lg shadow-md text-gray-900">
-    <h2 class="text-2xl font-bold mb-4 text-gray-700">Roadmap</h2>
+  <div class="rounded-lg bg-page p-6 text-text-strong shadow-md">
+    <h2 class="mb-4 text-2xl font-bold text-text-strong">Roadmap</h2>
 
     <!-- .markdown-body uses your markdown.css rules for headings, etc. -->
     <div id="markdown-container" class="markdown-body">
-      <p class="text-gray-500">Loading content...</p>
+      <p class="text-muted-strong">Loading content...</p>
     </div>
   </div>
 </section>
@@ -39,7 +39,7 @@
       const container = document.getElementById("markdown-container");
       if (container) {
         container.innerHTML = `
-          <p class="text-red-500">Error loading content. Please try again later.</p>
+          <p class="text-critical-strong">Error loading content. Please try again later.</p>
         `;
       }
     }
