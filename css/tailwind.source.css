@@ -438,7 +438,7 @@
   }
 
   .video-modal__video {
-    @apply sticky top-0 z-[51] flex w-full flex-shrink-0 items-center justify-center border-b border-border border-opacity-20 bg-surface;
+    @apply z-[51] flex w-full flex-shrink-0 items-center justify-center border-b border-border border-opacity-20 bg-surface lg:sticky lg:top-0;
   }
 
   .player-modal__video {
