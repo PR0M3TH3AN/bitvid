@@ -182,14 +182,8 @@ for (const designSystemEnabled of [false, true]) {
   test(
     `[${modeLabel}] video modal sticky navigation responds to scroll direction`,
     async (t) => {
-      const {
-        window,
-        document,
-        modal,
-        playerModal,
-        trigger,
-        cleanup,
-      } = await setupModal({ designSystemEnabled });
+      const { window, modal, playerModal, trigger, cleanup } =
+        await setupModal({ designSystemEnabled });
       t.after(cleanup);
 
       modal.open(null, { triggerElement: trigger });
@@ -225,6 +219,41 @@ for (const designSystemEnabled of [false, true]) {
       assert.equal(modal.scrollRegion.scrollTop, 10);
       modal.modalNavScrollHandler?.();
       assert.equal(nav.style.transform, "translateY(0)");
+    }
+  );
+
+  test(
+    `[${modeLabel}] video modal video shell is not sticky at mobile breakpoints`,
+    async (t) => {
+      const { window, modal, playerModal, trigger, cleanup } =
+        await setupModal({ designSystemEnabled });
+      t.after(cleanup);
+
+      const originalInnerWidth = window.innerWidth;
+      window.innerWidth = 390;
+      t.after(() => {
+        window.innerWidth = originalInnerWidth;
+      });
+      window.dispatchEvent(new window.Event("resize"));
+
+      modal.open(null, { triggerElement: trigger });
+      await Promise.resolve();
+
+      const videoShell = playerModal.querySelector(".video-modal__video");
+      assert.ok(videoShell, "video shell wrapper should exist");
+
+      const stickyTargets = [
+        videoShell,
+        videoShell.querySelector(".card"),
+      ].filter(Boolean);
+
+      stickyTargets.forEach((element) => {
+        assert.equal(
+          element.classList.contains("sticky"),
+          false,
+          "video shell should not use sticky positioning on mobile"
+        );
+      });
     }
   );
 
