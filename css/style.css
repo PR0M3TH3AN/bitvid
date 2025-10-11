@@ -330,12 +330,11 @@ header img {
   z-index: var(--z-modal-root);
 }
 
-#modalContainer > [id$="Modal"]:not(#playerModal) > .absolute {
+#modalContainer > [id$="Modal"]:not(#playerModal) > .bv-modal-backdrop {
   z-index: var(--z-modal-overlay);
 }
 
-#modalContainer > [id$="Modal"]:not(#playerModal) .modal-container,
-#modalContainer > [id$="Modal"]:not(#playerModal) .modal-content {
+#modalContainer > [id$="Modal"]:not(#playerModal) .bv-modal__panel {
   z-index: var(--z-modal-content);
 }
 
@@ -741,31 +740,14 @@ footer a:hover {
 
 /* Disclaimer Modal Styles */
 #disclaimerModal {
-  position: fixed;
-  inset: 0;
-  background-color: var(--color-overlay-black);
-  z-index: var(--z-modal-root);
-  /* remove display: none; */
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
   overscroll-behavior: contain;
-}
-
-#disclaimerModal > .absolute {
-  z-index: var(--z-modal-overlay);
-}
-
-#disclaimerModal .modal-container,
-#disclaimerModal .modal-content {
-  z-index: var(--z-modal-content);
 }
 
 #disclaimerModal.hidden {
   display: none !important;
 }
 
-#disclaimerModal .modal-content {
+#disclaimerModal .bv-modal__panel {
   width: min(60rem, calc(100% - 2rem));
   max-height: min(90vh, 51.25rem);
   display: flex;
@@ -814,7 +796,7 @@ footer a:hover {
     padding: 0;
   }
 
-  #disclaimerModal .modal-content {
+  #disclaimerModal .bv-modal__panel {
     min-height: 100vh;
     border-radius: 0;
     max-height: none;

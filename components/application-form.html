@@ -14,27 +14,14 @@
     <!-- Application Form Modal -->
     <div
       id="nostrFormModal"
-      class="fixed inset-0 z-50 hidden"
-      style="background: transparent"
+      class="bv-modal hidden items-start justify-center overflow-y-auto"
     >
-      <!-- Dark/blur overlay -->
-      <div
-        class="absolute inset-0 z-10"
-        style="
-          background-color: rgba(0, 0, 0, 0.9);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-        "
-      ></div>
+      <div class="bv-modal-backdrop" data-dismiss></div>
 
-      <!-- Outer container with full width and centered content -->
+      <!-- Inner content container -->
       <div
-        class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
+        class="bv-modal__panel relative my-0 w-full max-w-[90%] overflow-hidden rounded-lg bg-gray-900 lg:max-w-6xl"
       >
-        <!-- Inner content container -->
-        <div
-          class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
-        >
           <!-- Header bar with updated styling -->
           <div
             class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between border-b border-gray-700"
