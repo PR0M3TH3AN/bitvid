@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Cache npm directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-npm-
+
+      - name: Cache node_modules
+        id: node-modules-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-modules-
+
+      - name: Install dependencies
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Run CSS lint
+        run: npm run lint:css
+
+      - name: Build CSS
+        run: npm run build:css
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run visual regression tests
+        id: visual
+        run: npm run test:visual
+        continue-on-error: true
+
+      - name: Upload Playwright artifacts
+        if: steps.visual.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-visual-diffs
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Check CSS artifacts are clean
+        run: npm run check:css
+
+      - name: Fail if visual regressions detected
+        if: steps.visual.outcome == 'failure'
+        run: exit 1
