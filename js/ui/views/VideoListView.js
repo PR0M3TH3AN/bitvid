@@ -1001,7 +1001,9 @@ export class VideoListView {
     const menus = this.document.querySelectorAll("[data-more-menu]");
     menus.forEach((menu) => {
       if (menu instanceof HTMLElement) {
-        menu.classList.add("hidden");
+        menu.dataset.state = "closed";
+        menu.setAttribute("aria-hidden", "true");
+        menu.hidden = true;
       }
     });
 

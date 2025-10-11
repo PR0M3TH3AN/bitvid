@@ -157,6 +157,38 @@ Mix utilities such as `right-0` or `translate-x-1/2` on `.popover__panel` when y
 
 The helpers rely on layout utilities (`flex`, `gap-*`) so you can safely inject icons, shortcuts, or nested badges without restyling the base tokens.
 
+### Zap Popover
+
+Compose `.popover` with a zap-specific panel variant when you need to surface the tipping form inline. Toggle `data-state="open"` on the `.popover__panel` and remove its `hidden` attribute when the dialog is visible. The `data-variant="zap"` hook reuses the frosted-glass styling defined in `css/style.css`.
+
+```html
+<div class="popover">
+  <button class="btn-ghost h-10 w-10 rounded-full p-0" type="button" aria-haspopup="dialog" aria-expanded="false">
+    <img src="assets/svg/lightning-bolt.svg" alt="Zap" class="h-5 w-5" />
+  </button>
+  <div
+    class="popover__panel card w-72 max-w-[calc(100vw-2rem)] space-y-4"
+    role="dialog"
+    aria-hidden="true"
+    data-variant="zap"
+    data-state="closed"
+    hidden
+  >
+    <div class="flex items-center justify-between gap-4">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">Send a zap</h3>
+      <button class="btn-ghost h-8 w-8 rounded-full p-0" type="button" aria-label="Close zap dialog">✕</button>
+    </div>
+    <form class="space-y-4">
+      <label class="block text-xs font-semibold uppercase tracking-wide text-muted" for="zapAmountExample">
+        Zap amount (sats)
+      </label>
+      <input id="zapAmountExample" class="input" type="number" min="1" step="1" inputmode="numeric" />
+      <button class="btn w-full" type="submit">Send</button>
+    </form>
+  </div>
+</div>
+```
+
 ### Grid Stack
 
 `.grid-stack` offers gap tokens for dense layouts. Add `data-variant="cards"` for responsive card grids (`grid-cols-1` → `sm:grid-cols-2` → `xl:grid-cols-3`). Switch to `data-orientation="vertical"` for stacked flex columns that reuse the same spacing tokens.

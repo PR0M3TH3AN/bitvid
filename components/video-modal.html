@@ -47,7 +47,7 @@
                   class="h-5 w-5"
                 />
               </button>
-              <div class="relative" data-modal-zap-wrapper>
+              <div class="popover" data-modal-zap-wrapper>
                 <button
                   id="modalZapBtn"
                   type="button"
@@ -65,13 +65,14 @@
                 </button>
                 <div
                   id="modalZapDialog"
-                  class="zap-popover hidden"
+                  class="popover__panel card w-72 max-w-[calc(100vw-2rem)] px-5 py-4"
+                  data-variant="zap"
                   role="dialog"
                   aria-hidden="true"
+                  data-state="closed"
+                  hidden
                 >
-                  <div
-                    class="zap-popover__content card w-72 max-w-[calc(100vw-2rem)] px-5 py-4"
-                  >
+                  <div class="grid gap-4">
                     <div class="mb-4 flex items-center justify-between gap-4">
                       <h3
                         class="text-xs font-semibold uppercase tracking-wide text-muted"
@@ -89,8 +90,9 @@
                     </div>
                     <p
                       id="modalZapWalletPrompt"
-                      class="mb-3 hidden text-sm text-muted"
+                      class="mb-3 text-sm text-muted"
                       aria-hidden="true"
+                      hidden
                     >
                       Connect a wallet in
                       <button
@@ -191,71 +193,94 @@
                 </button>
                 <div
                   id="moreDropdown-modal"
-                  class="absolute right-0 top-14 hidden w-48 rounded-lg border border-border bg-surface-alt py-2 text-left text-sm text-text shadow-lg"
+                  class="popover__panel w-48"
                   role="menu"
                   data-more-menu="true"
+                  data-state="closed"
+                  aria-hidden="true"
+                  hidden
                 >
-                  <button
-                    class="focus-ring block w-full px-4 py-2 text-left transition hover:bg-panel-hover"
-                    data-action="open-channel"
-                    data-context="modal"
-                  >
-                    Open channel
-                  </button>
-                  <button
-                    class="focus-ring block w-full px-4 py-2 text-left transition hover:bg-panel-hover"
-                    data-action="copy-link"
-                    data-context="modal"
-                  >
-                    Copy link
-                  </button>
-                  <div class="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Boost on Nostr…
+                  <div class="menu" role="none">
+                    <button
+                      type="button"
+                      class="menu__item justify-start"
+                      role="menuitem"
+                      data-action="open-channel"
+                      data-context="modal"
+                    >
+                      Open channel
+                    </button>
+                    <button
+                      type="button"
+                      class="menu__item justify-start"
+                      role="menuitem"
+                      data-action="copy-link"
+                      data-context="modal"
+                    >
+                      Copy link
+                    </button>
+                    <p class="menu__heading" role="presentation">
+                      Boost on Nostr…
+                    </p>
+                    <button
+                      type="button"
+                      class="menu__item justify-start"
+                      role="menuitem"
+                      data-action="repost-event"
+                      data-context="modal"
+                    >
+                      Repost (kind 6)
+                    </button>
+                    <button
+                      type="button"
+                      class="menu__item justify-start"
+                      role="menuitem"
+                      data-action="mirror-video"
+                      data-context="modal"
+                    >
+                      Mirror (kind 1063)
+                    </button>
+                    <button
+                      type="button"
+                      class="menu__item justify-start"
+                      role="menuitem"
+                      data-action="ensure-presence"
+                      data-context="modal"
+                    >
+                      Rebroadcast
+                    </button>
+                    <div class="menu__separator" role="separator"></div>
+                    <button
+                      type="button"
+                      class="menu__item justify-start"
+                      role="menuitem"
+                      data-action="blacklist-author"
+                      data-context="modal"
+                      data-blacklist-menu="true"
+                      data-variant="critical"
+                    >
+                      Blacklist creator
+                    </button>
+                    <button
+                      type="button"
+                      class="menu__item justify-start"
+                      role="menuitem"
+                      data-action="block-author"
+                      data-context="modal"
+                      data-variant="critical"
+                    >
+                      Block creator
+                    </button>
+                    <button
+                      type="button"
+                      class="menu__item justify-start"
+                      role="menuitem"
+                      data-action="report"
+                      data-context="modal"
+                    >
+                      Report
+                    </button>
                   </div>
-                  <button
-                    class="focus-ring block w-full px-4 py-2 text-left transition hover:bg-panel-hover"
-                    data-action="repost-event"
-                    data-context="modal"
-                  >
-                    Repost (kind 6)
-                  </button>
-                  <button
-                    class="focus-ring block w-full px-4 py-2 text-left transition hover:bg-panel-hover"
-                    data-action="mirror-video"
-                    data-context="modal"
-                  >
-                    Mirror (kind 1063)
-                  </button>
-                  <button
-                    class="focus-ring block w-full px-4 py-2 text-left transition hover:bg-panel-hover"
-                    data-action="ensure-presence"
-                    data-context="modal"
-                  >
-                    Rebroadcast
-                  </button>
-                  <div class="my-2 border-t border-border/40"></div>
-                  <button
-                    class="focus-ring block w-full px-4 py-2 text-left font-semibold text-critical transition hover:bg-critical hover:text-text"
-                    data-action="blacklist-author"
-                    data-context="modal"
-                    data-blacklist-menu="true"
-                  >
-                    Blacklist creator
-                  </button>
-                  <button
-                    class="focus-ring block w-full px-4 py-2 text-left font-semibold text-critical transition hover:bg-critical hover:text-text"
-                    data-action="block-author"
-                    data-context="modal"
-                  >
-                    Block creator
-                  </button>
-                  <button
-                    class="focus-ring block w-full px-4 py-2 text-left transition hover:bg-panel-hover"
-                    data-action="report"
-                    data-context="modal"
-                  >
-                    Report
-                  </button>
                 </div>
               </div>
             </div>

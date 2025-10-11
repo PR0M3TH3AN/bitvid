@@ -226,7 +226,9 @@ export default class MoreMenuController {
     const menus = this.document.querySelectorAll("[data-more-menu]");
     menus.forEach((menu) => {
       if (!HTMLElementCtor || menu instanceof HTMLElementCtor) {
-        menu.classList.add("hidden");
+        menu.dataset.state = "closed";
+        menu.setAttribute("aria-hidden", "true");
+        menu.hidden = true;
       }
     });
 
@@ -278,11 +280,25 @@ export default class MoreMenuController {
           return;
         }
 
-        const willOpen = dropdown.classList.contains("hidden");
+        if (dropdown && !dropdown.dataset.state) {
+          const isHidden =
+            dropdown.hasAttribute("hidden") ||
+            dropdown.getAttribute("aria-hidden") === "true";
+          dropdown.dataset.state = isHidden ? "closed" : "open";
+        }
+
+        if (dropdown && dropdown.dataset.state !== "open") {
+          dropdown.hidden = true;
+          dropdown.setAttribute("aria-hidden", "true");
+        }
+
+        const willOpen = dropdown?.dataset.state !== "open";
         this.closeAllMoreMenus();
 
         if (willOpen) {
-          dropdown.classList.remove("hidden");
+          dropdown.hidden = false;
+          dropdown.dataset.state = "open";
+          dropdown.setAttribute("aria-hidden", "false");
           button.setAttribute("aria-expanded", "true");
         }
       });

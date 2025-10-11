@@ -29,7 +29,7 @@
       </div>
       <div class="flex flex-col items-end gap-3 self-start sm:self-end">
         <div class="flex items-center gap-2">
-          <div class="relative" data-channel-zap-wrapper>
+          <div class="popover" data-channel-zap-wrapper>
             <button
               id="zapButton"
               type="button"
@@ -47,15 +47,16 @@
             </button>
             <div
               id="zapControls"
-              class="zap-popover hidden"
+              class="popover__panel card w-72 max-w-[calc(100vw-2rem)] p-4"
+              data-variant="zap"
               role="dialog"
               aria-hidden="true"
               aria-label="Channel zap dialog"
+              data-state="closed"
+              hidden
             >
-              <div
-                class="zap-popover__content card w-72 max-w-[calc(100vw-2rem)] p-4"
-              >
-                <div class="mb-3 flex items-center justify-between gap-4">
+              <div class="grid gap-4">
+                <div class="flex items-center justify-between gap-4">
                   <h3
                     class="text-xs font-semibold uppercase tracking-wide text-muted-strong"
                   >
@@ -72,8 +73,9 @@
                 </div>
                 <p
                   id="zapWalletPrompt"
-                  class="mb-3 hidden text-sm text-muted"
+                  class="text-sm text-muted"
                   aria-hidden="true"
+                  hidden
                 >
                   Connect a wallet in
                   <button
@@ -145,10 +147,7 @@
               class="icon-image"
             />
           </button>
-          <div
-            class="relative inline-block overflow-visible"
-            data-more-menu-wrapper="true"
-          >
+          <div class="popover" data-more-menu-wrapper="true">
             <button
               id="channelMoreBtn"
               type="button"
@@ -162,35 +161,48 @@
             </button>
             <div
               id="moreDropdown-channel-profile"
-              class="hidden absolute right-0 top-12 w-48 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+              class="popover__panel w-48"
               role="menu"
               data-more-menu="true"
+              data-state="closed"
+              aria-hidden="true"
+              hidden
             >
-              <div class="py-1">
+              <div class="menu" role="none">
                 <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                  type="button"
+                  class="menu__item justify-start"
+                  role="menuitem"
                   data-action="copy-npub"
                   data-context="channel-profile"
                 >
                   Copy npub
                 </button>
                 <button
-                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                  type="button"
+                  class="menu__item justify-start"
+                  role="menuitem"
                   data-action="blacklist-author"
                   data-context="channel-profile"
                   data-blacklist-menu="true"
+                  data-variant="critical"
                 >
                   Blacklist channel
                 </button>
                 <button
-                  class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-700 hover:text-white"
+                  type="button"
+                  class="menu__item justify-start"
+                  role="menuitem"
                   data-action="block-author"
                   data-context="channel-profile"
+                  data-variant="critical"
                 >
                   Block channel
                 </button>
                 <button
-                  class="block w-full text-left px-4 py-2 text-sm text-gray-100 hover:bg-gray-700"
+                  type="button"
+                  class="menu__item justify-start"
+                  role="menuitem"
                   data-action="report"
                   data-context="channel-profile"
                 >

@@ -194,7 +194,9 @@ export class VideoCard {
 
   closeMoreMenu() {
     if (this.moreMenu) {
-      this.moreMenu.classList.add("hidden");
+      this.moreMenu.dataset.state = "closed";
+      this.moreMenu.setAttribute("aria-hidden", "true");
+      this.moreMenu.hidden = true;
     }
     if (this.moreMenuButton) {
       this.moreMenuButton.setAttribute("aria-expanded", "false");
@@ -661,7 +663,7 @@ export class VideoCard {
 
   buildMoreMenu() {
     const wrapper = this.createElement("div", {
-      classNames: ["relative", "inline-block", "ml-1", "overflow-visible"],
+      classNames: ["popover", "ml-1"],
     });
     wrapper.dataset.moreMenuWrapper = "true";
 
@@ -698,43 +700,38 @@ export class VideoCard {
     button.appendChild(icon);
 
     const dropdown = this.createElement("div", {
-      classNames: [
-        "hidden",
-        "absolute",
-        "right-0",
-        "bottom-full",
-        "mb-2",
-        "w-40",
-        "rounded-md",
-        "shadow-lg",
-        "bg-gray-800",
-        "ring-1",
-        "ring-black",
-        "ring-opacity-5",
-        "z-50",
-      ],
+      classNames: ["popover__panel", "w-40", "p-0"],
+      attrs: {
+        hidden: "",
+        "data-state": "closed",
+        "aria-hidden": "true",
+      },
     });
     dropdown.id = `moreDropdown-${this.index}`;
     dropdown.dataset.moreMenu = "true";
     dropdown.setAttribute("role", "menu");
 
     const list = this.createElement("div", {
-      classNames: ["py-1"],
+      classNames: ["menu"],
+      attrs: { role: "none" },
     });
 
-    const addActionButton = (text, action, extraDataset = {}, classes = []) => {
+    const addActionButton = (text, action, extraDataset = {}, options = {}) => {
+      const { variant = null } = options || {};
       const btn = this.createElement("button", {
         classNames: [
-          "block",
-          "w-full",
-          "text-left",
-          "px-4",
-          "py-2",
-          "text-sm",
-          ...classes,
+          "menu__item",
+          "justify-start",
         ],
         textContent: text,
+        attrs: {
+          type: "button",
+          role: "menuitem",
+        },
       });
+      if (variant) {
+        btn.dataset.variant = variant;
+      }
       btn.dataset.action = action;
       Object.entries(extraDataset || {}).forEach(([key, value]) => {
         if (value === undefined || value === null) {
@@ -748,11 +745,11 @@ export class VideoCard {
 
     addActionButton("Open channel", "open-channel", {
       author: this.video.pubkey || "",
-    }, ["text-gray-100", "hover:bg-gray-700"]);
+    });
 
     addActionButton("Copy link", "copy-link", {
       eventId: this.video.id || "",
-    }, ["text-gray-100", "hover:bg-gray-700"]);
+    });
 
     const pointer = Array.isArray(this.pointerInfo?.pointer)
       ? this.pointerInfo.pointer
@@ -782,16 +779,7 @@ export class VideoCard {
     }
 
     const boostLabel = this.createElement("div", {
-      classNames: [
-        "px-4",
-        "pt-2",
-        "pb-1",
-        "text-xs",
-        "font-semibold",
-        "uppercase",
-        "tracking-wide",
-        "text-gray-400",
-      ],
+      classNames: ["menu__heading"],
       textContent: "Boost on Nostr…",
     });
     list.appendChild(boostLabel);
@@ -800,7 +788,6 @@ export class VideoCard {
       "Repost (kind 6)",
       "repost-event",
       baseBoostDataset,
-      ["text-gray-100", "hover:bg-gray-700"],
     );
 
     if (this.playbackUrl && this.video.isPrivate !== true) {
@@ -819,7 +806,6 @@ export class VideoCard {
         "Mirror (kind 1063)",
         "mirror-video",
         mirrorDataset,
-        ["text-gray-100", "hover:bg-gray-700"],
       );
     }
 
@@ -832,12 +818,12 @@ export class VideoCard {
       "Rebroadcast",
       "ensure-presence",
       ensureDataset,
-      ["text-gray-100", "hover:bg-gray-700"],
     );
 
     list.appendChild(
       this.createElement("div", {
-        classNames: ["my-1", "border-t", "border-gray-700", "opacity-70"],
+        classNames: ["menu__separator"],
+        attrs: { role: "separator" },
       })
     );
 
@@ -855,7 +841,6 @@ export class VideoCard {
             pointerRelay: historyPointerRelay || "",
             reason: "remove-item",
           },
-          ["text-gray-100", "hover:bg-gray-700"]
         );
         removeButton.setAttribute(
           "title",
@@ -873,7 +858,7 @@ export class VideoCard {
         "Blacklist creator",
         "blacklist-author",
         { author: this.video.pubkey || "" },
-        ["text-red-400", "hover:bg-red-700", "hover:text-white"]
+        { variant: "critical" }
       );
     }
 
@@ -881,14 +866,13 @@ export class VideoCard {
       "Block creator",
       "block-author",
       { author: this.video.pubkey || "" },
-      ["text-red-400", "hover:bg-red-700", "hover:text-white"]
+      { variant: "critical" }
     );
 
     addActionButton(
       "Report",
       "report",
       { eventId: this.video.id || "" },
-      ["text-gray-100", "hover:bg-gray-700"]
     );
 
     dropdown.appendChild(list);
@@ -1563,12 +1547,14 @@ export class VideoCard {
       this.moreMenuButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const willOpen = this.moreMenu.classList.contains("hidden");
+        const willOpen = this.moreMenu.dataset.state !== "open";
         if (this.onRequestCloseAllMenus) {
           this.onRequestCloseAllMenus(this);
         }
         if (willOpen) {
-          this.moreMenu.classList.remove("hidden");
+          this.moreMenu.hidden = false;
+          this.moreMenu.dataset.state = "open";
+          this.moreMenu.setAttribute("aria-hidden", "false");
           this.moreMenuButton.setAttribute("aria-expanded", "true");
         }
       });
