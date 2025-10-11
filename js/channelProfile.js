@@ -1477,7 +1477,7 @@ function setupZapButton() {
 
 /**
  * Renders a Subscribe / Unsubscribe button with an icon,
- * using color #fe0032 and the subscribe-button-icon.svg on the left.
+ * using the primary button token styling and the subscribe icon on the left.
  */
 function renderSubscribeButton(channelHex) {
   const container = document.getElementById("subscribeBtnArea");
@@ -1488,14 +1488,14 @@ function renderSubscribeButton(channelHex) {
   container.classList.remove("hidden");
   const alreadySubscribed = subscriptions.isSubscribed(channelHex);
 
-  // We'll use #fe0032 for both subscribe/unsubscribe,
-  // and the same icon. If you prefer separate logic for unsub, you can do it here.
+  // Both subscribe/unsubscribe states share the primary styling and icon.
+  // If you prefer separate logic for unsub, you can do it here.
   container.innerHTML = `
     <button
       id="subscribeToggleBtn"
-      class="flex items-center gap-2 px-4 py-2 rounded text-white
-             hover:opacity-90 focus:outline-none"
-      style="background-color: #fe0032;"
+      type="button"
+      class="btn normal-case rounded hover:opacity-90 focus-visible:bg-primary"
+      data-state="${alreadySubscribed ? "subscribed" : "unsubscribed"}"
     >
       <img
         src="assets/svg/subscribe-button-icon.svg"
