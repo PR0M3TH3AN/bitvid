@@ -4,13 +4,23 @@
 //    Form:
 //    Responses:
 -->
-<div id="bugFixModal" class="bv-modal hidden items-start justify-center overflow-y-auto">
+<div
+  id="bugFixModal"
+  class="bv-modal hidden items-start justify-center overflow-y-auto"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="bugFixModalTitle"
+  aria-describedby="bugFixModalDescription"
+>
   <div class="bv-modal-backdrop" data-dismiss></div>
 
   <div class="modal-sheet">
     <!-- Header bar (sticky) with updated title styling -->
     <div class="modal-header">
-      <h2 class="pb-2 text-3xl font-extrabold tracking-wide text-text">
+      <h2
+        id="bugFixModalTitle"
+        class="pb-2 text-3xl font-extrabold tracking-wide text-text"
+      >
         Bug Fix Form
       </h2>
       <button
@@ -34,7 +44,7 @@
       </button>
     </div>
 
-    <div class="modal-body">
+    <div id="bugFixModalDescription" class="modal-body">
       <div class="h-[80vh] w-full">
         <iframe
           src="./components/iframe_forms/iframe-bug-fix-form.html"
