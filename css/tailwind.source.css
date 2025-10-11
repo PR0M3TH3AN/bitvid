@@ -270,6 +270,57 @@
     @apply absolute inset-0 z-[var(--z-modal-overlay)] bg-overlay bg-opacity-80 backdrop-blur;
   }
 
+  .bv-modal-backdrop[data-variant="veil"] {
+    @apply bg-overlay-veil bg-opacity-100;
+  }
+
+  .bv-modal-backdrop[data-variant="muted"] {
+    @apply bg-overlay-muted;
+  }
+
+  .modal-sheet {
+    @apply bv-modal__panel relative my-0 w-full max-w-[90%] overflow-hidden rounded-xl bg-surface lg:max-w-6xl;
+  }
+
+  .modal-header {
+    @apply sticky top-0 flex items-center justify-between border-b border border-border border-opacity-60 px-4 py-4;
+    background: linear-gradient(
+      to bottom,
+      var(--color-overlay-panel-gradient-start),
+      var(--color-overlay-panel-gradient-end, transparent)
+    );
+    backdrop-filter: blur(var(--modal-header-blur, 18px));
+  }
+
+  .modal-header[data-variant="flush"] {
+    @apply border-transparent;
+    background: linear-gradient(
+      to bottom,
+      var(--color-overlay-panel-tint),
+      transparent
+    );
+  }
+
+  .modal-header__title {
+    @apply text-xl font-bold text-text;
+  }
+
+  .modal-close {
+    @apply focus-ring flex h-10 w-10 items-center justify-center rounded-full bg-overlay-black bg-opacity-50 text-muted transition duration-base ease-out;
+  }
+
+  .modal-close:hover {
+    @apply bg-overlay-black bg-opacity-70 text-text;
+  }
+
+  .modal-body {
+    @apply space-y-4 p-6;
+  }
+
+  .modal-footer {
+    @apply border-t border border-border border-opacity-60 bg-surface px-6 py-4;
+  }
+
   .grid-stack {
     @apply grid gap-lg;
   }

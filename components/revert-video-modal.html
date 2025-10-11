@@ -13,30 +13,25 @@
     data-dismiss
   ></div>
 
-  <div
-    class="bv-modal__panel relative my-0 w-full max-h-[92vh] max-w-[95%] overflow-hidden rounded-lg bg-gray-900 lg:max-w-5xl"
-    tabindex="-1"
-  >
-      <div
-        class="from-black/80 sticky top-0 flex items-center justify-between bg-gradient-to-b to-transparent p-4 transition-transform duration-150"
-      >
+  <div class="modal-sheet max-h-[92vh] overflow-hidden lg:max-w-5xl" tabindex="-1">
+      <div class="modal-header transition-transform duration-150">
         <div class="flex flex-col">
-          <h2 id="revertModalTitle" class="text-xl font-bold text-white">
+          <h2 id="revertModalTitle" class="text-xl font-bold text-text">
             Revert Video Note
           </h2>
-          <p id="revertModalSubtitle" class="text-xs text-gray-400">
+          <p id="revertModalSubtitle" class="text-xs text-muted">
             Review previous versions before restoring an older state.
           </p>
         </div>
         <button
           id="closeRevertVideoModal"
-          class="bg-black/50 hover:bg-black/70 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black"
+          class="modal-close"
           type="button"
           aria-label="Close revert modal"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6 text-gray-300"
+            class="h-6 w-6 text-muted-strong"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -51,26 +46,23 @@
         </button>
       </div>
 
-      <div
-        class="space-y-6 overflow-y-auto p-6"
-        style="max-height: calc(92vh - 4rem)"
-      >
+      <div class="modal-body space-y-6 overflow-y-auto max-h-[calc(92vh-4rem)]">
         <div
-          class="rounded-md border border-gray-700 bg-gray-800/60 p-4 text-sm text-gray-300"
+          class="rounded-md border border-border/60 bg-panel/60 p-4 text-sm text-muted-strong"
         >
           <p>
             Selecting an older version will mark any newer edits as reverted.
             The previous revision will become the active note on the relays.
           </p>
-          <p class="mt-2 text-xs text-gray-400">
+          <p class="mt-2 text-xs text-muted">
             Versions are grouped by their
             <code
-              class="rounded border border-gray-700 bg-gray-900/60 px-1 py-0.5 text-[0.7rem]"
+              class="rounded border border-border/60 bg-surface/60 px-1 py-0.5 text-[0.7rem]"
               >d</code
             >
             tag or shared
             <code
-              class="rounded border border-gray-700 bg-gray-900/60 px-1 py-0.5 text-[0.7rem]"
+              class="rounded border border-border/60 bg-surface/60 px-1 py-0.5 text-[0.7rem]"
               >videoRootId</code
             >. This ensures legacy clients see consistent history when multiple
             edits were published, and keeps audience flags (NSFW / for kids)
@@ -81,24 +73,23 @@
         <div class="grid gap-6 lg:grid-cols-[minmax(240px,280px)_1fr]">
           <aside class="space-y-4">
             <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-gray-200">
+              <h3 class="text-sm font-semibold text-text">
                 Revision history
               </h3>
               <span
                 id="revertHistoryCount"
-                class="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400"
+                class="rounded-full bg-panel px-2 py-0.5 text-xs text-muted"
               ></span>
             </div>
             <div
               id="revertVersionsList"
-              class="space-y-2 overflow-y-auto pr-1"
-              style="max-height: 48vh"
+              class="space-y-2 overflow-y-auto pr-1 max-h-[48vh]"
             ></div>
           </aside>
 
           <section
             id="revertVersionDetails"
-            class="rounded-lg border border-gray-800 bg-gray-900/70 p-4 text-sm text-gray-200"
+            class="rounded-lg border border-border/70 bg-surface/70 p-4 text-sm text-text"
             aria-live="polite"
           >
             <!-- NOTE: Keep Upload/Edit metadata fields mirrored when adjusting these sections. -->
@@ -109,80 +100,80 @@
               <div class="space-y-2 text-center">
                 <h3
                   id="revertVersionPlaceholderHeading"
-                  class="text-sm font-semibold text-gray-200"
+                  class="text-sm font-semibold text-text"
                 >
                   Revision metadata
                 </h3>
-                <p id="revertVersionPlaceholder" class="text-sm text-gray-500">
+                <p id="revertVersionPlaceholder" class="text-sm text-muted">
                   Select an earlier revision to inspect its metadata.
                 </p>
               </div>
 
               <section class="space-y-2">
                 <h4
-                  class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                  class="text-xs font-semibold uppercase tracking-wide text-muted"
                 >
                   Playback sources
                 </h4>
-                <dl class="grid gap-2 text-xs text-gray-400 sm:grid-cols-2">
+                <dl class="grid gap-2 text-xs text-muted sm:grid-cols-2">
                   <div class="space-y-1">
-                    <dt class="font-semibold text-gray-300">Hosted URL</dt>
-                    <dd class="text-gray-500">Awaiting selection</dd>
+                    <dt class="font-semibold text-muted-strong">Hosted URL</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
                   </div>
                   <div class="space-y-1">
-                    <dt class="font-semibold text-gray-300">Magnet</dt>
-                    <dd class="text-gray-500">Awaiting selection</dd>
+                    <dt class="font-semibold text-muted-strong">Magnet</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
                   </div>
                 </dl>
               </section>
 
               <section class="space-y-2">
                 <h4
-                  class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                  class="text-xs font-semibold uppercase tracking-wide text-muted"
                 >
                   Audience flags
                 </h4>
-                <dl class="grid gap-2 text-xs text-gray-400 sm:grid-cols-2">
+                <dl class="grid gap-2 text-xs text-muted sm:grid-cols-2">
                   <div class="space-y-1">
-                    <dt class="font-semibold text-gray-300">NSFW flag</dt>
-                    <dd class="text-gray-500">Awaiting selection</dd>
+                    <dt class="font-semibold text-muted-strong">NSFW flag</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
                   </div>
                   <div class="space-y-1">
-                    <dt class="font-semibold text-gray-300">For kids flag</dt>
-                    <dd class="text-gray-500">Awaiting selection</dd>
+                    <dt class="font-semibold text-muted-strong">For kids flag</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
                   </div>
                 </dl>
               </section>
 
               <section class="space-y-2">
                 <h4
-                  class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                  class="text-xs font-semibold uppercase tracking-wide text-muted"
                 >
                   NIP-71 event metadata
                 </h4>
-                <dl class="grid gap-2 text-xs text-gray-400 sm:grid-cols-2">
+                <dl class="grid gap-2 text-xs text-muted sm:grid-cols-2">
                   <div class="space-y-1">
-                    <dt class="font-semibold text-gray-300">Kind</dt>
-                    <dd class="text-gray-500">Awaiting selection</dd>
+                    <dt class="font-semibold text-muted-strong">Kind</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
                   </div>
                   <div class="space-y-1">
-                    <dt class="font-semibold text-gray-300">Duration</dt>
-                    <dd class="text-gray-500">Awaiting selection</dd>
+                    <dt class="font-semibold text-muted-strong">Duration</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
                   </div>
                   <div class="space-y-1 sm:col-span-2">
-                    <dt class="font-semibold text-gray-300">Summary</dt>
-                    <dd class="text-gray-500">Awaiting selection</dd>
+                    <dt class="font-semibold text-muted-strong">Summary</dt>
+                    <dd class="text-muted">Awaiting selection</dd>
                   </div>
                 </dl>
               </section>
 
               <section class="space-y-2">
                 <h4
-                  class="text-xs font-semibold uppercase tracking-wide text-gray-400"
+                  class="text-xs font-semibold uppercase tracking-wide text-muted"
                 >
                   NIP-71 media metadata
                 </h4>
-                <p class="text-xs text-gray-500">
+                <p class="text-xs text-muted">
                   Media variants, text tracks, chapters, hashtags, participants,
                   and references will appear once a revision is selected.
                 </p>
@@ -191,20 +182,20 @@
           </section>
         </div>
 
-        <p id="revertSelectionStatus" class="text-xs text-gray-400"></p>
+        <p id="revertSelectionStatus" class="text-xs text-muted"></p>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <button
             type="button"
             id="cancelRevertVideo"
-            class="w-full rounded-md bg-gray-800 px-4 py-2 text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900 sm:w-auto"
+            class="w-full rounded-md bg-panel px-4 py-2 text-text hover:bg-panel focus:outline-none focus:ring-2 focus:ring-info focus:ring-offset-2 focus:ring-offset-surface sm:w-auto"
           >
             Cancel
           </button>
           <button
             type="button"
             id="confirmRevertVideo"
-            class="w-full rounded-md bg-red-600 px-4 py-2 text-white hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            class="w-full rounded-md bg-critical px-4 py-2 text-text hover:bg-critical-strong focus:outline-none focus:ring-2 focus:ring-critical-strong focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             disabled
           >
             Revert to selected version

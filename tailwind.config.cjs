@@ -72,6 +72,11 @@ module.exports = {
           DEFAULT: "var(--color-critical)",
           strong: "var(--color-critical-strong)"
         },
+        warning: {
+          DEFAULT: "var(--color-warning)",
+          strong: "var(--color-warning-strong)",
+          surface: "var(--color-warning-surface)"
+        },
         neutral: {
           600: "var(--color-neutral-600)",
           700: "var(--color-neutral-700)"

@@ -8,43 +8,35 @@
 >
   <div id="editVideoModalOverlay" class="bv-modal-backdrop"></div>
 
-  <div
-    class="bv-modal__panel modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-4xl my-0 overflow-y-auto relative max-h-[90vh]"
-    tabindex="-1"
-  >
-      <div class="sticky top-0 p-4">
-        <div class="card flex items-center justify-between gap-4 p-4">
-          <h2 class="text-xl font-bold text-white">Edit Video Note</h2>
-          <button
-            id="closeEditVideoModal"
-            class="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-gray-300 transition hover:bg-black/70"
+  <div class="modal-sheet modal-content max-h-[90vh] overflow-y-auto lg:max-w-4xl" tabindex="-1">
+      <div class="modal-header">
+        <h2 class="text-xl font-bold text-text">Edit Video Note</h2>
+        <button id="closeEditVideoModal" class="modal-close">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
       </div>
 
-      <div class="p-6 space-y-6">
-        <p class="text-sm text-gray-400">
+      <div class="modal-body space-y-6">
+        <p class="text-sm text-muted">
           Fields that already have values are locked. Click <strong>Edit field</strong> to make changes.
         </p>
 
         <form id="editVideoForm" class="space-y-5">
           <div class="space-y-1">
-            <label for="editVideoTitle" class="block text-sm font-medium text-gray-200">
+            <label for="editVideoTitle" class="block text-sm font-medium text-text">
               Title
             </label>
             <div class="flex flex-col gap-2 sm:flex-row">
@@ -66,7 +58,7 @@
 
           <!-- NOTE: Keep this NIP-71 markup in sync with the upload and revert modals. -->
           <div
-            class="space-y-4 rounded-lg border border-gray-800 bg-black/30 p-4"
+            class="space-y-4 rounded-lg border border-border/70 bg-overlay-black/30 p-4"
             id="editNip71EventDetails"
             data-nip71-section="event-details"
           >
@@ -75,12 +67,12 @@
               class="space-y-2"
               data-nip71-fieldset="kind"
             >
-              <legend class="text-sm font-semibold text-gray-200">
+              <legend class="text-sm font-semibold text-text">
                 NIP-71 event type
               </legend>
-              <p class="text-xs text-gray-400">
-                Choose the video format. <span class="font-medium text-gray-300">Kind 21</span> is a full video, while
-                <span class="font-medium text-gray-300">Kind 22</span> is a short.
+              <p class="text-xs text-muted">
+                Choose the video format. <span class="font-medium text-muted-strong">Kind 21</span> is a full video, while
+                <span class="font-medium text-muted-strong">Kind 22</span> is a short.
               </p>
               <div
                 class="form-control"
@@ -96,9 +88,9 @@
                       value="21"
                       checked
                       data-nip71-input="kind"
-                      class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                      class="h-4 w-4 border-border bg-panel text-info focus:ring-info"
                     />
-                    <span class="text-sm text-gray-200">Normal video (kind 21)</span>
+                    <span class="text-sm text-text">Normal video (kind 21)</span>
                   </label>
                   <label class="menu__item gap-3 px-0 py-0" for="editNip71KindShort">
                     <input
@@ -107,9 +99,9 @@
                       id="editNip71KindShort"
                       value="22"
                       data-nip71-input="kind"
-                      class="h-4 w-4 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                      class="h-4 w-4 border-border bg-panel text-info focus:ring-info"
                     />
-                    <span class="text-sm text-gray-200">Short video (kind 22)</span>
+                    <span class="text-sm text-text">Short video (kind 22)</span>
                   </label>
                 </div>
               </div>
@@ -117,7 +109,7 @@
 
             <div class="grid gap-4 md:grid-cols-2" data-nip71-grid="metadata">
               <div class="space-y-2">
-                <label for="editNip71PublishedAt" class="block text-sm font-medium text-gray-200">
+                <label for="editNip71PublishedAt" class="block text-sm font-medium text-text">
                   Published at
                 </label>
                 <input
@@ -126,12 +118,12 @@
                   data-nip71-input="published_at"
                   class="input"
                 />
-                <p class="text-xs text-gray-400">
+                <p class="text-xs text-muted">
                   Set the canonical publish time for cross-client ordering.
                 </p>
               </div>
               <div class="space-y-2">
-                <label for="editNip71AltText" class="block text-sm font-medium text-gray-200">
+                <label for="editNip71AltText" class="block text-sm font-medium text-text">
                   Alt text
                 </label>
                 <input
@@ -141,12 +133,12 @@
                   placeholder="Describe the visuals for screen readers"
                   class="input"
                 />
-                <p class="text-xs text-gray-400">
+                <p class="text-xs text-muted">
                   Plain-language fallback shown when the media cannot load.
                 </p>
               </div>
               <div class="space-y-2">
-                <label for="editNip71Duration" class="block text-sm font-medium text-gray-200">
+                <label for="editNip71Duration" class="block text-sm font-medium text-text">
                   Duration (seconds)
                 </label>
                 <input
@@ -157,12 +149,12 @@
                   data-nip71-input="duration"
                   class="input"
                 />
-                <p class="text-xs text-gray-400">
+                <p class="text-xs text-muted">
                   Provide the runtime in whole seconds for timeline scrubbing.
                 </p>
               </div>
               <div class="space-y-2">
-                <label for="editNip71ContentWarning" class="block text-sm font-medium text-gray-200">
+                <label for="editNip71ContentWarning" class="block text-sm font-medium text-text">
                   Content warning
                 </label>
                 <input
@@ -172,14 +164,14 @@
                   placeholder="e.g., Flashing lights"
                   class="input"
                 />
-                <p class="text-xs text-gray-400">
+                <p class="text-xs text-muted">
                   Leave blank if the video is safe for all audiences.
                 </p>
               </div>
             </div>
 
             <div class="space-y-2">
-              <label for="editNip71Summary" class="block text-sm font-medium text-gray-200">
+              <label for="editNip71Summary" class="block text-sm font-medium text-text">
                 Summary
               </label>
               <textarea
@@ -189,7 +181,7 @@
                 class="textarea"
                 placeholder="Short synopsis used as the Nostr content field"
               ></textarea>
-              <p class="text-xs text-gray-400">
+              <p class="text-xs text-muted">
                 This becomes the event content. Keep it concise for Nostr readers.
               </p>
             </div>
@@ -197,19 +189,19 @@
 
           <fieldset
             id="editNip71TagsFieldset"
-            class="space-y-6 rounded-lg border border-gray-800 bg-black/30 p-4"
+            class="space-y-6 rounded-lg border border-border/70 bg-overlay-black/30 p-4"
             data-nip71-section="tags"
           >
-            <legend class="relative text-sm font-semibold text-gray-200">
-              <span class="inline-block -ml-2 rounded px-2 bg-black/30">NIP-71 tags</span>
+            <legend class="relative text-sm font-semibold text-text">
+              <span class="inline-block -ml-2 rounded px-2 bg-overlay-black/30">NIP-71 tags</span>
             </legend>
-            <p class="text-xs text-gray-400">
+            <p class="text-xs text-muted">
               Use the controls below to describe media variants, captions, chapters, participants, and references.
             </p>
 
             <section class="space-y-4" aria-labelledby="editNip71ImetaLabel" data-nip71-repeater="imeta">
               <div class="flex items-center justify-between">
-                <h3 id="editNip71ImetaLabel" class="text-sm font-medium text-gray-200">Image metadata (imeta)</h3>
+                <h3 id="editNip71ImetaLabel" class="text-sm font-medium text-text">Image metadata (imeta)</h3>
                 <button
                   type="button"
                   class="btn-ghost focus-ring text-xs font-semibold"
@@ -219,16 +211,16 @@
                   Add variant
                 </button>
               </div>
-              <p id="editNip71ImetaHelp" class="text-xs text-gray-400">
+              <p id="editNip71ImetaHelp" class="text-xs text-muted">
                 Provide dimensions, MIME type, and resource links for each variant. Nested repeaters let you attach multiple
                 <code>image</code>, <code>fallback</code>, or <code>service</code> values.
               </p>
               <div id="editNip71ImetaList" class="space-y-4" data-nip71-list="imeta"></div>
               <template id="editNip71ImetaTemplate" data-nip71-template="imeta">
-                <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="imeta">
+                <article class="card space-y-3 bg-surface/60 p-4" data-nip71-entry="imeta">
                   <div class="grid gap-3 md:grid-cols-2">
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">
+                      <label class="block text-xs font-medium text-muted-strong">
                         MIME type (<code>m</code>)
                       </label>
                       <input
@@ -237,10 +229,10 @@
                         placeholder="video/mp4"
                         class="input"
                       />
-                      <p class="text-[11px] text-gray-500">RFC 2046 media type for this encoding.</p>
+                      <p class="text-[11px] text-muted">RFC 2046 media type for this encoding.</p>
                     </div>
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">
+                      <label class="block text-xs font-medium text-muted-strong">
                         Pixel dimensions (<code>dim</code>)
                       </label>
                       <input
@@ -249,10 +241,10 @@
                         placeholder="1920x1080"
                         class="input"
                       />
-                      <p class="text-[11px] text-gray-500">Formatted as widthxheight.</p>
+                      <p class="text-[11px] text-muted">Formatted as widthxheight.</p>
                     </div>
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">
+                      <label class="block text-xs font-medium text-muted-strong">
                         Streaming URL (<code>url</code>)
                       </label>
                       <input
@@ -261,10 +253,10 @@
                         placeholder="https://cdn.example.com/variant.m3u8"
                         class="input"
                       />
-                      <p class="text-[11px] text-gray-500">HTTPS variant URL shared across clients.</p>
+                      <p class="text-[11px] text-muted">HTTPS variant URL shared across clients.</p>
                     </div>
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">
+                      <label class="block text-xs font-medium text-muted-strong">
                         Magnet (<code>x</code>)
                       </label>
                       <input
@@ -273,13 +265,13 @@
                         placeholder="magnet:?xt=urn:btih:..."
                         class="input"
                       />
-                      <p class="text-[11px] text-gray-500">Optional magnet pointer if the variant is seeded via P2P.</p>
+                      <p class="text-[11px] text-muted">Optional magnet pointer if the variant is seeded via P2P.</p>
                     </div>
                   </div>
 
                   <div class="space-y-3" data-nip71-nested="image">
                     <div class="flex items-center justify-between">
-                      <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Image values</h4>
+                      <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">Image values</h4>
                       <button
                         type="button"
                         class="btn-ghost focus-ring text-[11px] font-medium"
@@ -311,7 +303,7 @@
 
                   <div class="space-y-3" data-nip71-nested="fallback">
                     <div class="flex items-center justify-between">
-                      <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Fallback URLs</h4>
+                      <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">Fallback URLs</h4>
                       <button
                         type="button"
                         class="btn-ghost focus-ring text-[11px] font-medium"
@@ -343,7 +335,7 @@
 
                   <div class="space-y-3" data-nip71-nested="service">
                     <div class="flex items-center justify-between">
-                      <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Services</h4>
+                      <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">Services</h4>
                       <button
                         type="button"
                         class="btn-ghost focus-ring text-[11px] font-medium"
@@ -388,7 +380,7 @@
 
             <section class="space-y-4" aria-labelledby="editNip71TextTracksLabel" data-nip71-repeater="text-track">
               <div class="flex items-center justify-between">
-                <h3 id="editNip71TextTracksLabel" class="text-sm font-medium text-gray-200">
+                <h3 id="editNip71TextTracksLabel" class="text-sm font-medium text-text">
                   Caption &amp; subtitle tracks (text-track)
                 </h3>
                 <button
@@ -400,15 +392,15 @@
                   Add track
                 </button>
               </div>
-              <p id="editNip71TextTracksHelp" class="text-xs text-gray-400">
+              <p id="editNip71TextTracksHelp" class="text-xs text-muted">
                 Supply caption or subtitle URLs along with file type and language so players can surface accessibility features.
               </p>
               <div id="editNip71TextTrackList" class="space-y-4" data-nip71-list="text-track"></div>
               <template id="editNip71TextTrackTemplate" data-nip71-template="text-track">
-                <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="text-track">
+                <article class="card space-y-3 bg-surface/60 p-4" data-nip71-entry="text-track">
                   <div class="grid gap-3 md:grid-cols-3">
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">Track URL</label>
+                      <label class="block text-xs font-medium text-muted-strong">Track URL</label>
                       <input
                         type="url"
                         data-nip71-field="url"
@@ -417,7 +409,7 @@
                       />
                     </div>
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">Type</label>
+                      <label class="block text-xs font-medium text-muted-strong">Type</label>
                       <input
                         type="text"
                         data-nip71-field="type"
@@ -426,7 +418,7 @@
                       />
                     </div>
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">Language</label>
+                      <label class="block text-xs font-medium text-muted-strong">Language</label>
                       <input
                         type="text"
                         data-nip71-field="language"
@@ -450,7 +442,7 @@
 
             <section class="space-y-4" aria-labelledby="editNip71SegmentsLabel" data-nip71-repeater="segment">
               <div class="flex items-center justify-between">
-                <h3 id="editNip71SegmentsLabel" class="text-sm font-medium text-gray-200">Chapters &amp; segments (segment)</h3>
+                <h3 id="editNip71SegmentsLabel" class="text-sm font-medium text-text">Chapters &amp; segments (segment)</h3>
                 <button
                   type="button"
                   class="btn-ghost focus-ring text-xs font-semibold"
@@ -460,15 +452,15 @@
                   Add segment
                 </button>
               </div>
-              <p id="editNip71SegmentsHelp" class="text-xs text-gray-400">
+              <p id="editNip71SegmentsHelp" class="text-xs text-muted">
                 Outline chapters with start and end times, titles, and optional thumbnails.
               </p>
               <div id="editNip71SegmentList" class="space-y-4" data-nip71-list="segment"></div>
               <template id="editNip71SegmentTemplate" data-nip71-template="segment">
-                <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="segment">
+                <article class="card space-y-3 bg-surface/60 p-4" data-nip71-entry="segment">
                   <div class="grid gap-3 md:grid-cols-2">
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">Start (seconds)</label>
+                      <label class="block text-xs font-medium text-muted-strong">Start (seconds)</label>
                       <input
                         type="number"
                         data-nip71-field="start"
@@ -478,7 +470,7 @@
                       />
                     </div>
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">End (seconds)</label>
+                      <label class="block text-xs font-medium text-muted-strong">End (seconds)</label>
                       <input
                         type="number"
                         data-nip71-field="end"
@@ -488,7 +480,7 @@
                       />
                     </div>
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">Title</label>
+                      <label class="block text-xs font-medium text-muted-strong">Title</label>
                       <input
                         type="text"
                         data-nip71-field="title"
@@ -497,7 +489,7 @@
                       />
                     </div>
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">Thumbnail URL</label>
+                      <label class="block text-xs font-medium text-muted-strong">Thumbnail URL</label>
                       <input
                         type="url"
                         data-nip71-field="thumbnail"
@@ -521,7 +513,7 @@
 
             <section class="space-y-4" aria-labelledby="editNip71HashtagsLabel" data-nip71-repeater="t">
               <div class="flex items-center justify-between">
-                <h3 id="editNip71HashtagsLabel" class="text-sm font-medium text-gray-200">Hashtags (<code>t</code>)</h3>
+                <h3 id="editNip71HashtagsLabel" class="text-sm font-medium text-text">Hashtags (<code>t</code>)</h3>
                 <button
                   type="button"
                   class="btn-ghost focus-ring text-xs font-semibold"
@@ -530,7 +522,7 @@
                   Add hashtag
                 </button>
               </div>
-              <p class="text-xs text-gray-400">
+              <p class="text-xs text-muted">
                 Enter keywords; leading <code>#</code> characters are stripped automatically when saving.
               </p>
               <div id="editNip71HashtagList" class="space-y-2" data-nip71-list="t"></div>
@@ -555,7 +547,7 @@
 
             <section class="space-y-4" aria-labelledby="editNip71ParticipantsLabel" data-nip71-repeater="p">
               <div class="flex items-center justify-between">
-                <h3 id="editNip71ParticipantsLabel" class="text-sm font-medium text-gray-200">Participants (<code>p</code>)</h3>
+                <h3 id="editNip71ParticipantsLabel" class="text-sm font-medium text-text">Participants (<code>p</code>)</h3>
                 <button
                   type="button"
                   class="btn-ghost focus-ring text-xs font-semibold"
@@ -566,10 +558,10 @@
               </div>
               <div id="editNip71ParticipantList" class="space-y-3" data-nip71-list="p"></div>
               <template id="editNip71ParticipantTemplate" data-nip71-template="p">
-                <article class="card space-y-3 bg-gray-900/60 p-4" data-nip71-entry="p">
+                <article class="card space-y-3 bg-surface/60 p-4" data-nip71-entry="p">
                   <div class="grid gap-3 md:grid-cols-2">
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">Participant pubkey</label>
+                      <label class="block text-xs font-medium text-muted-strong">Participant pubkey</label>
                       <input
                         type="text"
                         data-nip71-field="pubkey"
@@ -578,7 +570,7 @@
                       />
                     </div>
                     <div class="space-y-2">
-                      <label class="block text-xs font-medium text-gray-300">Relay hint</label>
+                      <label class="block text-xs font-medium text-muted-strong">Relay hint</label>
                       <input
                         type="text"
                         data-nip71-field="relay"
@@ -602,7 +594,7 @@
 
             <section class="space-y-4" aria-labelledby="editNip71ReferencesLabel" data-nip71-repeater="r">
               <div class="flex items-center justify-between">
-                <h3 id="editNip71ReferencesLabel" class="text-sm font-medium text-gray-200">Reference links (<code>r</code>)</h3>
+                <h3 id="editNip71ReferencesLabel" class="text-sm font-medium text-text">Reference links (<code>r</code>)</h3>
                 <button
                   type="button"
                   class="btn-ghost focus-ring text-xs font-semibold"
@@ -633,7 +625,7 @@
           </fieldset>
 
           <div class="space-y-1">
-            <label for="editVideoUrl" class="block text-sm font-medium text-gray-200">
+            <label for="editVideoUrl" class="block text-sm font-medium text-text">
               Hosted video URL (https)
             </label>
             <div class="flex flex-col gap-2 sm:flex-row">
@@ -654,7 +646,7 @@
           </div>
 
           <div class="space-y-1">
-            <label for="editVideoWs" class="block text-sm font-medium text-gray-200">
+            <label for="editVideoWs" class="block text-sm font-medium text-text">
               Web seed (ws=)
             </label>
             <div class="flex flex-col gap-2 sm:flex-row">
@@ -675,7 +667,7 @@
           </div>
 
           <div class="space-y-1">
-            <label for="editVideoXs" class="block text-sm font-medium text-gray-200">
+            <label for="editVideoXs" class="block text-sm font-medium text-text">
               .torrent URL (xs=)
             </label>
             <div class="flex flex-col gap-2 sm:flex-row">
@@ -696,7 +688,7 @@
           </div>
 
           <div class="space-y-1">
-            <label for="editVideoMagnet" class="block text-sm font-medium text-gray-200">
+            <label for="editVideoMagnet" class="block text-sm font-medium text-text">
               Magnet link
             </label>
             <div class="flex flex-col gap-2 sm:flex-row">
@@ -717,7 +709,7 @@
           </div>
 
           <div class="space-y-1">
-            <label for="editVideoThumbnail" class="block text-sm font-medium text-gray-200">
+            <label for="editVideoThumbnail" class="block text-sm font-medium text-text">
               Thumbnail URL
             </label>
             <div class="flex flex-col gap-2 sm:flex-row">
@@ -738,7 +730,7 @@
           </div>
 
           <div class="space-y-1">
-            <label for="editVideoDescription" class="block text-sm font-medium text-gray-200">
+            <label for="editVideoDescription" class="block text-sm font-medium text-text">
               Description
             </label>
             <div class="flex flex-col gap-2">
@@ -759,11 +751,11 @@
           </div>
 
           <div class="space-y-1">
-            <span id="editVideoVisibilityLabel" class="block text-sm font-medium text-gray-200">
+            <span id="editVideoVisibilityLabel" class="block text-sm font-medium text-text">
               Visibility
             </span>
             <div
-              class="space-y-3 rounded-md border border-gray-800 bg-black/30 p-3"
+              class="space-y-3 rounded-md border border-border/70 bg-overlay-black/30 p-3"
               role="group"
               aria-labelledby="editVideoVisibilityLabel"
               data-visibility-toggle
@@ -798,7 +790,7 @@
                   aria-hidden="true"
                 />
               </div>
-              <p class="text-xs text-gray-400" data-visibility-helper>
+              <p class="text-xs text-muted" data-visibility-helper>
                 Private notes stay visible only to you. Switch back to public when you're ready to share.
               </p>
               <button
@@ -815,7 +807,7 @@
             <label
               for="editVideoIsNsfw"
               id="editVideoIsNsfwLabel"
-              class="block text-sm font-medium text-gray-200"
+              class="block text-sm font-medium text-text"
             >
               NSFW content
             </label>
@@ -831,7 +823,7 @@
                   class="checkbox"
                   data-default-checked="false"
                 />
-                <span class="text-sm text-gray-300">
+                <span class="text-sm text-muted-strong">
                   Mark as sensitive to blur previews and gate playback.
                 </span>
               </label>
@@ -851,7 +843,7 @@
             <label
               for="editVideoIsForKids"
               id="editVideoIsForKidsLabel"
-              class="block text-sm font-medium text-gray-200"
+              class="block text-sm font-medium text-text"
             >
               Made for kids
             </label>
@@ -867,7 +859,7 @@
                   class="checkbox"
                   data-default-checked="false"
                 />
-                <span class="text-sm text-gray-300">
+                <span class="text-sm text-muted-strong">
                   Flag kid-friendly videos to adjust recommendations and controls.
                 </span>
               </label>
@@ -887,7 +879,7 @@
             <label
               for="editEnableComments"
               id="editEnableCommentsLabel"
-              class="block text-sm font-medium text-gray-200"
+              class="block text-sm font-medium text-text"
             >
               Enable comments
             </label>
@@ -904,7 +896,7 @@
                   data-default-checked="true"
                   checked
                 />
-                <span class="text-sm text-gray-300">
+                <span class="text-sm text-muted-strong">
                   Allow replies once comment threads are available.
                 </span>
               </label>
