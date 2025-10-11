@@ -533,6 +533,10 @@ body.modal-open #sidebarOverlay {
   background-color: var(--color-bg);
   border-bottom: 0.0625rem solid var(--color-border-translucent-strong);
   box-shadow: 0 0.75rem 2rem var(--color-shadow-elevated);
+  padding-top: calc(env(safe-area-inset-top, 0px) + var(--space-sm));
+  padding-right: calc(env(safe-area-inset-right, 0px) + var(--space-md));
+  padding-bottom: var(--space-sm);
+  padding-left: calc(env(safe-area-inset-left, 0px) + var(--space-md));
 }
 
 .modal-nav .flex {
