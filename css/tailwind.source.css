@@ -38,7 +38,7 @@
   }
 
   .btn-ghost {
-    @apply btn border border-border border-opacity-60 bg-transparent text-white shadow-none;
+    @apply btn border border-border border-opacity-60 bg-transparent text-text shadow-none;
   }
 
   .btn-ghost:hover {
@@ -280,7 +280,7 @@
   }
 
   .bv-modal__panel {
-    @apply focus-ring relative z-[var(--z-modal-content)] w-full max-w-3xl rounded-xl border border-border border-opacity-40 bg-surface px-6 py-8 text-left text-white shadow-modal transition duration-base ease-out;
+    @apply focus-ring relative z-[var(--z-modal-content)] w-full max-w-3xl rounded-xl border border-border border-opacity-40 bg-surface px-6 py-8 text-left text-text shadow-modal transition duration-base ease-out;
   }
 
   .bv-modal__panel:focus-visible {
@@ -556,7 +556,7 @@
   }
 
   .profile-switcher__add {
-    @apply card hover:bg-info/10 flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-info hover:border-opacity-60 hover:text-white focus-visible:border-info focus-visible:border-opacity-60;
+    @apply card hover:bg-info/10 flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-info hover:border-opacity-60 hover:text-text focus-visible:border-info focus-visible:border-opacity-60;
   }
 
   .profile-switcher__addAvatar {
@@ -600,7 +600,7 @@
   }
 
   .watch-history-card__thumbnail {
-    @apply block flex-none text-white no-underline sm:w-56;
+    @apply block flex-none text-text no-underline sm:w-56;
   }
 
   .watch-history-card__thumbnailInner {
@@ -616,7 +616,7 @@
   }
 
   .watch-history-card__title {
-    @apply cursor-pointer text-lg font-semibold leading-snug text-white transition duration-base ease-out;
+    @apply cursor-pointer text-lg font-semibold leading-snug text-text transition duration-base ease-out;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -661,7 +661,7 @@
   }
 
   .watch-history-card__action {
-    @apply inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-panel px-4 py-2 text-sm font-medium text-muted transition duration-base ease-out hover:border-border hover:bg-surface-alt hover:text-white focus-visible:border-border focus-visible:bg-surface-alt focus-visible:text-white;
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-panel px-4 py-2 text-sm font-medium text-muted transition duration-base ease-out hover:border-border hover:bg-surface-alt hover:text-text focus-visible:border-border focus-visible:bg-surface-alt focus-visible:text-text;
   }
 
   .watch-history-card__action--primary {

@@ -170,3 +170,44 @@
   --motion-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --modal-motion-duration: var(--motion-duration-base);
 }
+
+[data-theme="light"] {
+  /* Light theme overrides */
+  --color-surface: rgb(248 250 252);
+  --color-surface-alt: rgb(241 245 249);
+  --color-bg: var(--color-surface);
+  --color-card: rgb(255 255 255);
+  --color-card-private: rgb(244 236 255);
+  --color-card-critical: rgb(255 228 230);
+  --color-panel: rgb(255 255 255);
+  --color-panel-hover: rgb(226 232 240);
+  --color-border: rgb(148 163 184);
+  --color-border-subtle: rgb(203 213 225);
+  --color-primary: rgb(220 38 38);
+  --color-text: rgb(15 23 42);
+  --color-text-strong: rgb(15 23 42);
+  --color-muted: rgb(71 85 105);
+  --color-muted-alt: rgb(100 116 139);
+  --color-muted-strong: rgb(51 65 85);
+  --color-overlay: rgb(15 23 42 / 0.55);
+  --color-overlay-muted: rgb(15 23 42 / 0.35);
+  --color-overlay-strong: rgb(15 23 42 / 0.65);
+  --color-overlay-darker: rgb(15 23 42 / 0.72);
+  --color-overlay-panel: rgb(15 23 42 / 0.78);
+  --color-overlay-panel-soft: rgb(15 23 42 / 0.6);
+  --color-overlay-panel-tint: rgb(148 163 184 / 0.2);
+  --color-overlay-panel-glass: rgb(255 255 255 / 0.82);
+  --color-overlay-veil: rgb(148 163 184 / 0.5);
+  --color-overlay-panel-gradient-start: rgb(255 255 255 / 0.92);
+  --color-overlay-panel-gradient-end: rgb(226 232 240 / 0.92);
+  --color-surface-tint-subtle: rgb(15 23 42 / 0.08);
+  --color-border-translucent: rgb(148 163 184 / 0.18);
+  --color-border-translucent-strong: rgb(148 163 184 / 0.22);
+  --color-border-translucent-bright: rgb(148 163 184 / 0.28);
+  --color-border-translucent-stronger: rgb(148 163 184 / 0.32);
+  --color-border-translucent-strongest: rgb(148 163 184 / 0.36);
+  --color-border-translucent-glow: rgb(148 163 184 / 0.45);
+  --color-border-translucent-medium: rgb(148 163 184 / 0.2);
+  --color-border-neutral-soft: rgb(148 163 184 / 0.25);
+  --color-overlay-banner: rgb(148 163 184 / 0.7);
+}

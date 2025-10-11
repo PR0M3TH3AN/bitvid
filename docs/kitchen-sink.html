@@ -10,10 +10,18 @@
     <div class="min-h-screen bg-page-alt">
       <header class="bg-surface text-text shadow-modal">
         <div
-          class="mx-auto flex max-w-6xl items-center justify-between px-md py-sm"
+          class="mx-auto flex max-w-6xl items-center justify-between gap-sm px-md py-sm"
         >
           <h1 class="text-2xl font-semibold">bitvid UI Kitchen Sink</h1>
-          <button class="btn">Primary Action</button>
+          <div class="flex items-center gap-sm">
+            <label class="sr-only" for="themeSwitcher">Theme</label>
+            <select id="themeSwitcher" class="select h-10" aria-label="Select theme">
+              <option value="default">Default (Dark)</option>
+              <option value="light">Light</option>
+              <option value="contrast">High Contrast (Preview)</option>
+            </select>
+            <button class="btn">Primary Action</button>
+          </div>
         </div>
       </header>
 
@@ -708,5 +716,46 @@
         </section>
       </main>
     </div>
+    <script>
+      (() => {
+        const storageKey = "bitvid-docs-theme";
+        const root = document.documentElement;
+        const switcher = document.getElementById("themeSwitcher");
+
+        const applyTheme = (value) => {
+          if (!value || value === "default") {
+            delete root.dataset.theme;
+          } else {
+            root.dataset.theme = value;
+          }
+        };
+
+        let savedTheme;
+        try {
+          savedTheme = window.localStorage.getItem(storageKey) || undefined;
+        } catch (error) {
+          savedTheme = undefined;
+        }
+
+        applyTheme(savedTheme);
+
+        if (switcher) {
+          switcher.value = savedTheme ?? "default";
+          switcher.addEventListener("change", (event) => {
+            const { value } = event.target;
+            applyTheme(value);
+            try {
+              if (!value || value === "default") {
+                window.localStorage.removeItem(storageKey);
+              } else {
+                window.localStorage.setItem(storageKey, value);
+              }
+            } catch (error) {
+              /* Ignore storage failures (private mode, etc.) */
+            }
+          });
+        }
+      })();
+    </script>
   </body>
 </html>
