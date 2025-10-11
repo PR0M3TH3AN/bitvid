@@ -367,30 +367,21 @@
     grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
   }
 
-  /* Legacy compatibility shims */
-  .video-card {
-    @apply overflow-visible;
-  }
-
-  .video-card.video-card--owner-private {
-    @apply bg-card-private;
-  }
-
-  .video-card.video-card--nsfw-owner {
+  .card[data-alert="nsfw-owner"] {
     @apply border border-critical border-opacity-40 bg-black;
   }
 
-  .video-card.video-card--nsfw-owner:hover {
+  .card[data-alert="nsfw-owner"]:hover {
     @apply border-opacity-60 shadow-lg;
   }
 
-  .video-card img.video-card__thumbnail--blurred {
+  .card img[data-thumbnail-state="blurred"] {
     @apply transition duration-base ease-in-out;
     filter: blur(18px);
     transform: scale(1.05);
   }
 
-  .video-card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
+  .card[data-owner-is-viewer="true"][data-url-health-state="offline"][data-stream-health-state="unhealthy"] {
     @apply border border-critical border-opacity-40 bg-card-critical;
   }
 
