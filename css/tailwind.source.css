@@ -53,6 +53,27 @@
     @apply pointer-events-none opacity-50 shadow-none;
   }
 
+  .btn-ghost[data-variant="critical"] {
+    @apply border border-critical border-opacity-60 text-critical;
+  }
+
+  .btn-ghost[data-variant="critical"]:hover,
+  .btn-ghost[data-variant="critical"]:focus-visible {
+    @apply bg-critical bg-opacity-20 text-critical-strong;
+  }
+
+  .btn-ghost[data-state="active"],
+  .btn-ghost[aria-pressed="true"] {
+    @apply border-transparent bg-primary text-white shadow-md;
+  }
+
+  .btn-ghost[data-state="active"]:hover,
+  .btn-ghost[data-state="active"]:focus-visible,
+  .btn-ghost[aria-pressed="true"]:hover,
+  .btn-ghost[aria-pressed="true"]:focus-visible {
+    @apply bg-info-strong;
+  }
+
   .badge {
     @apply inline-flex items-center gap-1 rounded-full bg-panel px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-strong;
   }

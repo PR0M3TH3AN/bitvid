@@ -53,18 +53,18 @@
               aria-label="Channel zap dialog"
             >
               <div
-                class="zap-popover__content w-72 max-w-[calc(100vw-2rem)] rounded-lg p-4 shadow-lg"
+                class="zap-popover__content card w-72 max-w-[calc(100vw-2rem)] p-4"
               >
                 <div class="mb-3 flex items-center justify-between gap-4">
                   <h3
-                    class="text-xs font-semibold uppercase tracking-wide text-gray-300"
+                    class="text-xs font-semibold uppercase tracking-wide text-muted-strong"
                   >
                     Send a zap
                   </h3>
                   <button
                     type="button"
                     id="zapCloseBtn"
-                    class="text-gray-400 transition-colors hover:text-gray-200"
+                    class="btn-ghost px-2 py-1 text-xs"
                     aria-label="Close zap dialog"
                   >
                     ✕
@@ -72,14 +72,14 @@
                 </div>
                 <p
                   id="zapWalletPrompt"
-                  class="mb-3 hidden text-sm text-gray-200"
+                  class="mb-3 hidden text-sm text-muted"
                   aria-hidden="true"
                 >
                   Connect a wallet in
                   <button
                     type="button"
                     id="zapWalletLink"
-                    class="font-semibold text-blue-300 underline decoration-dotted transition-colors hover:text-blue-200"
+                    class="btn-ghost px-2 py-1 text-xs"
                   >
                     Wallet Connect settings
                   </button>
@@ -90,7 +90,7 @@
                     <label
                       for="zapAmountInput"
                       id="zapAmountLabel"
-                      class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-300"
+                      class="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-strong"
                     >
                       Zap amount (sats)
                     </label>
@@ -100,30 +100,30 @@
                       min="1"
                       step="1"
                       inputmode="numeric"
-                      class="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      class="input"
                       placeholder="Enter sats"
                       aria-labelledby="zapAmountLabel"
                     />
                   </div>
                   <p
                     id="zapSplitSummary"
-                    class="text-sm text-gray-300"
+                    class="text-sm text-muted"
                     aria-live="polite"
                   >
                     Enter an amount to view the split.
                   </p>
                   <p
                     id="zapStatus"
-                    class="text-xs text-gray-400"
+                    class="text-xs text-muted"
                     role="status"
                     aria-live="polite"
                   ></p>
-                  <ul id="zapReceipts" class="space-y-2 text-xs text-gray-300"></ul>
+                  <ul id="zapReceipts" class="space-y-2 text-xs text-muted"></ul>
                   <div class="flex items-center justify-end gap-2">
                     <button
                       type="submit"
                       id="zapSendBtn"
-                      class="rounded bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="btn"
                       aria-label="Send a zap"
                     >
                       Send

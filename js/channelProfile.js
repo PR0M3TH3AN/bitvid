@@ -181,9 +181,10 @@ function setChannelZapVisibility(visible) {
     if (shouldShow) {
       sendButton.removeAttribute("tabindex");
       sendButton.removeAttribute("aria-busy");
-      sendButton.classList.remove("opacity-50", "pointer-events-none");
+      delete sendButton.dataset.state;
     } else {
       sendButton.setAttribute("tabindex", "-1");
+      delete sendButton.dataset.state;
     }
   }
 
@@ -1070,7 +1071,7 @@ async function handleZapSend(event) {
   }
   sendButton.disabled = true;
   sendButton.setAttribute("aria-busy", "true");
-  sendButton.classList.add("opacity-50", "pointer-events-none");
+  sendButton.dataset.state = "loading";
   amountInput.disabled = true;
 
   let attemptedAmount = null;
@@ -1160,7 +1161,7 @@ async function handleZapSend(event) {
     }
     sendButton.disabled = false;
     sendButton.removeAttribute("aria-busy");
-    sendButton.classList.remove("opacity-50", "pointer-events-none");
+    delete sendButton.dataset.state;
     amountInput.disabled = false;
   }
 }

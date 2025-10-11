@@ -50,7 +50,7 @@
           >
             <button
               type="button"
-              class="upload-mode-toggle flex-1 rounded-full px-4 py-2 font-medium text-muted-strong transition-colors hover:bg-panel/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+              class="upload-mode-toggle btn-ghost flex-1"
               data-upload-mode="custom"
               aria-pressed="true"
             >
@@ -58,7 +58,7 @@
             </button>
             <button
               type="button"
-              class="upload-mode-toggle flex-1 rounded-full px-4 py-2 font-medium text-muted-strong transition-colors hover:bg-panel/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+              class="upload-mode-toggle btn-ghost flex-1"
               data-upload-mode="cloudflare"
               aria-pressed="false"
             >
@@ -263,13 +263,13 @@
               <input
                 id="uploadWs"
                 type="url"
-                class="w-full rounded p-2"
+                class="input text-xs"
                 placeholder="Web seed (ws=) e.g., https://cdn.example.com/video.mp4"
               />
               <input
                 id="uploadXs"
                 type="url"
-                class="w-full rounded p-2"
+                class="input text-xs"
                 placeholder=".torrent URL (xs=) e.g., https://cdn.example.com/video.torrent"
               />
             </div>
@@ -345,7 +345,7 @@
                   </h3>
                   <button
                     type="button"
-                    class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                    class="btn-ghost px-3 py-1 text-xs"
                     data-nip71-add="imeta"
                     aria-describedby="nip71ImetaHelp"
                   >
@@ -437,7 +437,7 @@
                         </h4>
                         <button
                           type="button"
-                          class="rounded border border-border/60 px-2 py-1 text-[11px] text-text hover:border-border hover:text-text"
+                          class="btn-ghost px-2 py-1 text-[11px]"
                           data-nip71-nested-add="image"
                         >
                           Add image URL
@@ -460,7 +460,7 @@
                           />
                           <button
                             type="button"
-                            class="rounded border border-border/60 px-2 py-1 text-[11px] text-muted-strong hover:border-border hover:text-text"
+                            class="btn-ghost px-2 py-1 text-[11px] text-muted-strong"
                             data-nip71-remove="nested"
                             aria-label="Remove image URL"
                           >
@@ -479,7 +479,7 @@
                         </h4>
                         <button
                           type="button"
-                          class="rounded border border-border/60 px-2 py-1 text-[11px] text-text hover:border-border hover:text-text"
+                          class="btn-ghost px-2 py-1 text-[11px]"
                           data-nip71-nested-add="fallback"
                         >
                           Add fallback
@@ -502,7 +502,7 @@
                           />
                           <button
                             type="button"
-                            class="rounded border border-border/60 px-2 py-1 text-[11px] text-muted-strong hover:border-border hover:text-text"
+                            class="btn-ghost px-2 py-1 text-[11px] text-muted-strong"
                             data-nip71-remove="nested"
                             aria-label="Remove fallback URL"
                           >
@@ -521,7 +521,7 @@
                         </h4>
                         <button
                           type="button"
-                          class="rounded border border-border/60 px-2 py-1 text-[11px] text-text hover:border-border hover:text-text"
+                          class="btn-ghost px-2 py-1 text-[11px]"
                           data-nip71-nested-add="service"
                         >
                           Add service hint
@@ -544,7 +544,7 @@
                           />
                           <button
                             type="button"
-                            class="rounded border border-border/60 px-2 py-1 text-[11px] text-muted-strong hover:border-border hover:text-text"
+                            class="btn-ghost px-2 py-1 text-[11px] text-muted-strong"
                             data-nip71-remove="nested"
                             aria-label="Remove service hint"
                           >
@@ -556,7 +556,7 @@
 
                     <button
                       type="button"
-                      class="rounded-md border border-critical/60 px-3 py-1 text-xs font-semibold text-critical hover:border-critical hover:text-critical-strong"
+                      class="btn-ghost px-3 py-1 text-xs" data-variant="critical"
                       data-nip71-remove="imeta"
                     >
                       Remove variant
@@ -579,7 +579,7 @@
                   </h3>
                   <button
                     type="button"
-                    class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                    class="btn-ghost px-3 py-1 text-xs"
                     data-nip71-add="text-track"
                     aria-describedby="nip71TextTracksHelp"
                   >
@@ -649,7 +649,7 @@
                     </div>
                     <button
                       type="button"
-                      class="rounded-md border border-critical/60 px-3 py-1 text-xs font-semibold text-critical hover:border-critical hover:text-critical-strong"
+                      class="btn-ghost px-3 py-1 text-xs" data-variant="critical"
                       data-nip71-remove="text-track"
                     >
                       Remove track
@@ -672,7 +672,7 @@
                   </h3>
                   <button
                     type="button"
-                    class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                    class="btn-ghost px-3 py-1 text-xs"
                     data-nip71-add="segment"
                     aria-describedby="nip71SegmentsHelp"
                   >
@@ -751,7 +751,7 @@
                     </div>
                     <button
                       type="button"
-                      class="rounded-md border border-critical/60 px-3 py-1 text-xs font-semibold text-critical hover:border-critical hover:text-critical-strong"
+                      class="btn-ghost px-3 py-1 text-xs" data-variant="critical"
                       data-nip71-remove="segment"
                     >
                       Remove segment
@@ -774,7 +774,7 @@
                   </h3>
                   <button
                     type="button"
-                    class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                    class="btn-ghost px-3 py-1 text-xs"
                     data-nip71-add="t"
                   >
                     Add hashtag
@@ -799,7 +799,7 @@
                     />
                     <button
                       type="button"
-                      class="rounded border border-critical/60 px-2 py-1 text-[11px] text-critical hover:border-critical hover:text-critical-strong"
+                      class="btn-ghost px-2 py-1 text-[11px]" data-variant="critical"
                       data-nip71-remove="t"
                       aria-label="Remove hashtag"
                     >
@@ -823,7 +823,7 @@
                   </h3>
                   <button
                     type="button"
-                    class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                    class="btn-ghost px-3 py-1 text-xs"
                     data-nip71-add="p"
                   >
                     Add participant
@@ -875,7 +875,7 @@
                     </div>
                     <button
                       type="button"
-                      class="rounded-md border border-critical/60 px-3 py-1 text-xs font-semibold text-critical hover:border-critical hover:text-critical-strong"
+                      class="btn-ghost px-3 py-1 text-xs" data-variant="critical"
                       data-nip71-remove="p"
                     >
                       Remove participant
@@ -898,7 +898,7 @@
                   </h3>
                   <button
                     type="button"
-                    class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                    class="btn-ghost px-3 py-1 text-xs"
                     data-nip71-add="r"
                   >
                     Add reference
@@ -923,7 +923,7 @@
                     />
                     <button
                       type="button"
-                      class="rounded border border-critical/60 px-2 py-1 text-[11px] text-critical hover:border-critical hover:text-critical-strong"
+                      class="btn-ghost px-2 py-1 text-[11px]" data-variant="critical"
                       data-nip71-remove="r"
                       aria-label="Remove reference"
                     >
@@ -1029,7 +1029,7 @@
               <input
                 type="checkbox"
                 id="uploadIsPrivate"
-                class="form-checkbox h-5 w-5 text-info"
+                class="checkbox"
               />
               <span class="text-sm font-medium text-text"
                 >Private Listing (Hide from shared grids)</span
@@ -1038,7 +1038,7 @@
             -->
             <button
               type="submit"
-              class="rounded-md bg-info px-4 py-2 text-text hover:bg-info-strong focus:outline-none focus:ring-2 focus:ring-info focus:ring-offset-2"
+              class="btn"
             >
               Publish
             </button>
@@ -1118,7 +1118,7 @@
                   <button
                     type="button"
                     id="cloudflareAdvancedToggle"
-                    class="flex items-center gap-2 text-sm font-medium text-muted-strong transition-colors hover:text-text focus:outline-none focus:ring-2 focus:ring-info focus:ring-offset-2 focus:ring-offset-surface"
+                    class="btn-ghost justify-start gap-2 text-sm text-muted-strong"
                     aria-expanded="false"
                     aria-controls="cloudflareAdvancedFields"
                   >
@@ -1212,14 +1212,14 @@
                 <div class="flex flex-wrap items-center gap-3">
                   <button
                     type="submit"
-                    class="rounded-md bg-info px-4 py-2 text-sm font-semibold text-text transition hover:bg-info-strong focus:outline-none focus:ring-2 focus:ring-info"
+                    class="btn text-sm"
                   >
                     Save settings
                   </button>
                   <button
                     type="button"
                     id="cloudflareClearSettings"
-                    class="rounded-md border border-border px-4 py-2 text-sm font-semibold text-text transition hover:border-border hover:text-text focus:outline-none focus:ring-2 focus:ring-info"
+                    class="btn-ghost text-sm"
                   >
                     Clear
                   </button>
@@ -1499,7 +1499,7 @@
                       </h3>
                       <button
                         type="button"
-                        class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                        class="btn-ghost px-3 py-1 text-xs"
                         data-nip71-add="imeta"
                         aria-describedby="cloudflareNip71ImetaHelp"
                       >
@@ -1602,7 +1602,7 @@
                             </h4>
                             <button
                               type="button"
-                              class="rounded border border-border/60 px-2 py-1 text-[11px] text-text hover:border-border hover:text-text"
+                              class="btn-ghost px-2 py-1 text-[11px]"
                               data-nip71-nested-add="image"
                             >
                               Add image URL
@@ -1625,7 +1625,7 @@
                               />
                               <button
                                 type="button"
-                                class="rounded border border-border/60 px-2 py-1 text-[11px] text-muted-strong hover:border-border hover:text-text"
+                                class="btn-ghost px-2 py-1 text-[11px] text-muted-strong"
                                 data-nip71-remove="nested"
                                 aria-label="Remove image URL"
                               >
@@ -1644,7 +1644,7 @@
                             </h4>
                             <button
                               type="button"
-                              class="rounded border border-border/60 px-2 py-1 text-[11px] text-text hover:border-border hover:text-text"
+                              class="btn-ghost px-2 py-1 text-[11px]"
                               data-nip71-nested-add="fallback"
                             >
                               Add fallback
@@ -1667,7 +1667,7 @@
                               />
                               <button
                                 type="button"
-                                class="rounded border border-border/60 px-2 py-1 text-[11px] text-muted-strong hover:border-border hover:text-text"
+                                class="btn-ghost px-2 py-1 text-[11px] text-muted-strong"
                                 data-nip71-remove="nested"
                                 aria-label="Remove fallback URL"
                               >
@@ -1686,7 +1686,7 @@
                             </h4>
                             <button
                               type="button"
-                              class="rounded border border-border/60 px-2 py-1 text-[11px] text-text hover:border-border hover:text-text"
+                              class="btn-ghost px-2 py-1 text-[11px]"
                               data-nip71-nested-add="service"
                             >
                               Add service hint
@@ -1709,7 +1709,7 @@
                               />
                               <button
                                 type="button"
-                                class="rounded border border-border/60 px-2 py-1 text-[11px] text-muted-strong hover:border-border hover:text-text"
+                                class="btn-ghost px-2 py-1 text-[11px] text-muted-strong"
                                 data-nip71-remove="nested"
                                 aria-label="Remove service hint"
                               >
@@ -1721,7 +1721,7 @@
 
                         <button
                           type="button"
-                          class="rounded-md border border-critical/60 px-3 py-1 text-xs font-semibold text-critical hover:border-critical hover:text-critical-strong"
+                          class="btn-ghost px-3 py-1 text-xs" data-variant="critical"
                           data-nip71-remove="imeta"
                         >
                           Remove variant
@@ -1744,7 +1744,7 @@
                       </h3>
                       <button
                         type="button"
-                        class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                        class="btn-ghost px-3 py-1 text-xs"
                         data-nip71-add="text-track"
                         aria-describedby="cloudflareNip71TextTracksHelp"
                       >
@@ -1779,7 +1779,7 @@
                       </h3>
                       <button
                         type="button"
-                        class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                        class="btn-ghost px-3 py-1 text-xs"
                         data-nip71-add="segment"
                         aria-describedby="cloudflareNip71SegmentsHelp"
                       >
@@ -1814,7 +1814,7 @@
                       </h3>
                       <button
                         type="button"
-                        class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                        class="btn-ghost px-3 py-1 text-xs"
                         data-nip71-add="t"
                         aria-describedby="cloudflareNip71HashtagsHelp"
                       >
@@ -1849,7 +1849,7 @@
                       </h3>
                       <button
                         type="button"
-                        class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                        class="btn-ghost px-3 py-1 text-xs"
                         data-nip71-add="p"
                         aria-describedby="cloudflareNip71ParticipantsHelp"
                       >
@@ -1884,7 +1884,7 @@
                       </h3>
                       <button
                         type="button"
-                        class="rounded-md border border-border/60 px-3 py-1 text-xs font-semibold text-text hover:border-border hover:text-text"
+                        class="btn-ghost px-3 py-1 text-xs"
                         data-nip71-add="r"
                         aria-describedby="cloudflareNip71ReferencesHelp"
                       >
@@ -2043,7 +2043,7 @@
                 <button
                   type="submit"
                   id="cloudflareUploadButton"
-                  class="w-full rounded-md bg-info px-4 py-2 text-sm font-semibold text-text transition hover:bg-info-strong focus:outline-none focus:ring-2 focus:ring-info disabled:cursor-not-allowed disabled:bg-blue-900"
+                  class="btn w-full text-sm"
                 >
                   Upload to R2 &amp; publish
                 </button>

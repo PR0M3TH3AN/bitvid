@@ -35,6 +35,18 @@ Both buttons:
 
 Mix in Tailwind utilities for icon spacing (`gap-3`), sizing (`px-lg`, `py-sm`), or layout (`w-full`). Avoid overriding colors unless introducing a new semantic variant.
 
+#### Variants & Toggle States
+
+- Apply `data-variant="critical"` to `.btn-ghost` when rendering destructive affordances (for example, "Remove variant" pills inside repeater rows). The primitive swaps the border and text colors to the critical palette and deepens the fill on hover/focus.
+- Toggle groups can rely on `[aria-pressed="true"]` or `data-state="active"` without extra utilities. When a `.btn-ghost` reports an active state it automatically promotes to the filled primary style.
+
+```html
+<div class="inline-flex items-center rounded-full bg-panel/80 p-1" role="group">
+  <button class="btn-ghost flex-1" type="button" aria-pressed="true">Custom</button>
+  <button class="btn-ghost flex-1" type="button" aria-pressed="false">Cloudflare</button>
+</div>
+```
+
 ### Badges
 
 `.badge` renders an inline pill (`bg-panel`, uppercase text). Opt into semantic variants with `data-variant="info"`, `data-variant="critical"`, or `data-variant="neutral"`. Layer on utilities for icon alignment or truncation.
@@ -62,6 +74,26 @@ Specialisations reuse `.form-control`:
 
 All three share hover, focus-visible, disabled, and invalid treatments. Layer on utilities (`h-12`, `text-lg`, icon padding) as needed without re-declaring tokens.
 
+```html
+<form class="bv-stack bv-stack--tight" aria-labelledby="zapAmountLabel">
+  <label
+    id="zapAmountLabel"
+    class="text-xs font-semibold uppercase tracking-wide text-muted-strong"
+  >
+    Zap amount (sats)
+  </label>
+  <input
+    id="zapAmountInput"
+    type="number"
+    min="1"
+    step="1"
+    class="input"
+    placeholder="Enter sats"
+  />
+  <button class="btn" type="submit">Send</button>
+</form>
+```
+
 For toggles:
 
 - `.checkbox` resets native appearance, applies the token border/background, and swaps to the info palette when checked. The checkmark is rendered via `::after`, and disabled states lower contrast while keeping the focus ring behaviour.
@@ -74,6 +106,17 @@ For toggles:
 - `.bv-modal__panel` hosts modal content (`bg-surface`, `shadow-modal`, focus ring).
 
 Compose them together when mounting new modal portals. If you need a drawer or sheet, start from these primitives and adjust spacing/positioning via utilities.
+
+#### Modal Actions
+
+Action rows in login, disclaimer, and upload flows now pair `.btn-ghost` and `.btn` directly. Layer layout utilities such as `w-full` or `gap-3` without re-adding custom focus rings.
+
+```html
+<footer class="modal-footer flex gap-3">
+  <button class="btn-ghost flex-1" type="button">Cancel</button>
+  <button class="btn flex-1" type="submit">Publish</button>
+</footer>
+```
 
 Static modal partials (login, application, feedback, etc.) should call the helpers exported from `js/ui/components/staticModalAccessibility.js`—`prepareStaticModal`, `openStaticModal`, and `closeStaticModal`—to attach focus trapping, Escape/backdrop dismissal, and the shared `data-open`/`html.modal-open` toggles without duplicating controller logic.
 
