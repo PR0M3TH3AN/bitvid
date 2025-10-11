@@ -1,0 +1,140 @@
+/* Shared styling for iframe-hosted forms so they match the modal design system. */
+body {
+  background-color: transparent;
+  color: var(--color-text);
+  font-family: var(--font-family-sans);
+  margin: var(--space-lg);
+}
+
+.container {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.form-container {
+  background-color: var(--color-surface-alt);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+}
+
+.form-container > p {
+  margin: 0;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+}
+
+form > * + * {
+  margin-top: var(--space-sm);
+}
+
+form h1,
+form h2 {
+  color: var(--color-text);
+  margin-top: var(--space-md);
+}
+
+label {
+  color: var(--color-subtle-text);
+  display: block;
+  font-weight: 600;
+  margin-top: var(--space-sm);
+}
+
+label + .form-control,
+label + .textarea,
+label + .select {
+  margin-top: var(--space-xs);
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+
+.checkbox-group label {
+  align-items: center;
+  color: var(--color-subtle-text);
+  display: inline-flex;
+  font-weight: 500;
+  gap: var(--space-xs);
+  margin: 0;
+}
+
+.checkbox-group input[type="checkbox"] {
+  margin: 0;
+}
+
+.radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+
+.radio-group label {
+  align-items: center;
+  color: var(--color-subtle-text);
+  display: inline-flex;
+  font-weight: 500;
+  gap: var(--space-xs);
+  margin: 0;
+}
+
+.radio-group input[type="radio"] {
+  accent-color: var(--color-info-strong);
+  margin: 0;
+}
+
+button.btn {
+  align-self: flex-start;
+  margin-top: var(--space-md);
+}
+
+#status {
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px var(--color-border-translucent);
+  color: var(--color-subtle-text);
+  min-height: 5rem;
+  padding: var(--space-sm);
+  white-space: pre-wrap;
+}
+
+.status-line {
+  color: var(--color-subtle-text);
+  margin: var(--space-2xs) 0;
+}
+
+.status-line.error {
+  color: var(--color-critical-strong);
+}
+
+.status-line.success {
+  color: var(--color-info-strong);
+}
+
+.status-line.warn {
+  color: var(--color-warning-strong);
+}
+
+@media (max-width: 640px) {
+  body {
+    margin: var(--space-md);
+  }
+
+  .form-container {
+    padding: var(--space-md);
+  }
+}
