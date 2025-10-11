@@ -2,6 +2,18 @@
 
 bitvid's visual language is now powered by Tailwind utilities backed by our design tokens. This document lists the primitives available via `css/tailwind.source.css`, how they behave across states, and when to mix them with Tailwind utilities.
 
+## Theme System
+
+The default experience renders the production dark palette. Pages and embeds can opt into alternates by setting the `data-theme` attribute on the `<html>` (or any ancestor that wraps the component). `data-theme="light"` promotes the light tokens defined in `css/tokens.css`, swapping surface, panel, border, muted, and overlay colors while keeping semantic accents consistent. Omit the attribute or set it back to `default` to inherit the dark baseline. Reserve additional theme keys (for example, `data-theme="contrast"`) for upcoming accessibility palettes—the same hook will activate them once their tokens land.
+
+### Per-page overrides
+
+Add `<html data-theme="light">` to force a page into light mode. The attribute can also target specific islands—wrap your component tree in a container with `data-theme="light"` when you need to render light cards inside a dark shell.
+
+### Embedding in third-party surfaces
+
+Components consume design tokens via CSS custom properties, so they pick up the active theme from the closest ancestor. When embedding widgets into a host site, include the `css/tokens.css` bundle and set `data-theme` on the wrapper to control contrast. If the host already defines its own theme, namespace our tokens (e.g., nest them inside a dedicated `.bitvid-embed[data-theme="light"]`) to avoid collisions while still letting overlay, border, and panel tokens cascade.
+
 ## Focus Handling
 
 All interactive primitives mix in the shared `.focus-ring` helper. It removes default outlines and applies a branded ring using `focus-visible` only. When building bespoke components, add `.focus-ring` to your root interactive element or replicate its rules:
