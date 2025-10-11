@@ -16,7 +16,7 @@ export class VideoCard {
     state = {},
     ensureGlobalMoreMenuHandlers,
     onRequestCloseAllMenus,
-    nsfwContext = null,
+    nsfwContext = null
   } = {}) {
     if (!doc) {
       throw new Error("VideoCard requires a document reference.");
@@ -39,30 +39,32 @@ export class VideoCard {
       canDelete: false,
       canRevert: false,
       canManageBlacklist: false,
-      ...capabilities,
+      ...capabilities
     };
     this.formatters = {
       formatTimeAgo: formatters.formatTimeAgo,
-      formatNumber: formatters.formatNumber,
+      formatNumber: formatters.formatNumber
     };
     this.helpers = {
       escapeHtml: helpers.escapeHtml,
       isMagnetSupported: helpers.isMagnetSupported,
-      toLocaleString: helpers.toLocaleString,
+      toLocaleString: helpers.toLocaleString
     };
     this.assets = {
       fallbackThumbnailSrc: assets.fallbackThumbnailSrc || "",
-      unsupportedBtihMessage: assets.unsupportedBtihMessage || "",
+      unsupportedBtihMessage: assets.unsupportedBtihMessage || ""
     };
     this.state = {
       loadedThumbnails:
         state.loadedThumbnails instanceof Map ? state.loadedThumbnails : null,
       urlHealthByVideoId:
-        state.urlHealthByVideoId instanceof Map ? state.urlHealthByVideoId : null,
+        state.urlHealthByVideoId instanceof Map
+          ? state.urlHealthByVideoId
+          : null,
       streamHealthByVideoId:
         state.streamHealthByVideoId instanceof Map
           ? state.streamHealthByVideoId
-          : null,
+          : null
     };
     this.ensureGlobalMoreMenuHandlers =
       typeof ensureGlobalMoreMenuHandlers === "function"
@@ -76,7 +78,7 @@ export class VideoCard {
     this.nsfwContext = {
       isNsfw: Boolean(nsfwContext?.isNsfw),
       allowNsfw: nsfwContext?.allowNsfw !== false,
-      viewerIsOwner: nsfwContext?.viewerIsOwner === true,
+      viewerIsOwner: nsfwContext?.viewerIsOwner === true
     };
     this.shouldMaskNsfwForOwner =
       this.nsfwContext.isNsfw &&
@@ -89,7 +91,7 @@ export class VideoCard {
       onRevert: null,
       onDelete: null,
       onMoreAction: null,
-      onAuthorNavigate: null,
+      onAuthorNavigate: null
     };
 
     this.root = null;
@@ -111,8 +113,7 @@ export class VideoCard {
     this.authorNameEl = null;
     this.timestampEl = null;
 
-    this.playbackUrl =
-      typeof video.url === "string" ? video.url.trim() : "";
+    this.playbackUrl = typeof video.url === "string" ? video.url.trim() : "";
     const magnet =
       (typeof video.magnet === "string" ? video.magnet.trim() : "") ||
       (typeof video.infoHash === "string" ? video.infoHash.trim() : "");
@@ -129,7 +130,11 @@ export class VideoCard {
       : null;
     this.postedAt = normalizedPostedAt;
 
-    if (this.postedAt !== null && this.video && typeof this.video === "object") {
+    if (
+      this.postedAt !== null &&
+      this.video &&
+      typeof this.video === "object"
+    ) {
       this.video.rootCreatedAt = this.postedAt;
     }
 
@@ -215,13 +220,13 @@ export class VideoCard {
     const root = this.createElement("div", {
       classNames: [
         "video-card",
-        "bg-gray-900",
+        "bg-card",
         "rounded-lg",
         "shadow-lg",
         "hover:shadow-2xl",
         "transition-all",
-        "duration-300",
-      ],
+        "duration-300"
+      ]
     });
 
     this.applyClassListFromString(root, this.highlightClass);
@@ -245,17 +250,17 @@ export class VideoCard {
         "relative",
         "group",
         "rounded-t-lg",
-        "overflow-hidden",
+        "overflow-hidden"
       ],
       attrs: {
-        href: this.shareUrl,
-      },
+        href: this.shareUrl
+      }
     });
     anchor.dataset.videoId = this.video.id;
     this.anchorEl = anchor;
 
     const ratio = this.createElement("div", {
-      classNames: ["ratio-16-9"],
+      classNames: ["ratio-16-9"]
     });
     const thumbnail = this.buildThumbnail();
     ratio.appendChild(thumbnail);
@@ -267,19 +272,19 @@ export class VideoCard {
       classNames: [
         "text-lg",
         "font-bold",
-        "text-white",
+        "text-text",
         "line-clamp-2",
-        "hover:text-blue-400",
+        "hover:text-info-strong",
         "cursor-pointer",
-        "mb-3",
+        "mb-3"
       ],
-      textContent: this.video.title,
+      textContent: this.video.title
     });
     title.dataset.videoId = this.video.id;
     this.titleEl = title;
 
     const header = this.createElement("div", {
-      classNames: ["flex", "items-center", "justify-between"],
+      classNames: ["flex", "items-center", "justify-between"]
     });
 
     const authorSection = this.buildAuthorSection();
@@ -308,7 +313,7 @@ export class VideoCard {
         classNames: ["mt-3", "text-xs", "text-amber-300"],
         attrs: { title: this.assets.unsupportedBtihMessage || "" },
         textContent:
-          "WebTorrent fallback unavailable (magnet missing btih info hash)",
+          "WebTorrent fallback unavailable (magnet missing btih info hash)"
       });
       warning.dataset.torrentStatus = "unsupported";
       content.appendChild(warning);
@@ -395,7 +400,9 @@ export class VideoCard {
       const fallbackAttr =
         (typeof img.dataset.fallbackSrc === "string"
           ? img.dataset.fallbackSrc.trim()
-          : "") || fallbackSrc || "";
+          : "") ||
+        fallbackSrc ||
+        "";
 
       const currentSrc = img.currentSrc || img.src || "";
       const isFallback =
@@ -442,7 +449,7 @@ export class VideoCard {
 
   buildAuthorSection() {
     const wrapper = this.createElement("div", {
-      classNames: ["flex", "items-center", "space-x-3"],
+      classNames: ["flex", "items-center", "space-x-3"]
     });
 
     const avatarWrapper = this.createElement("div", {
@@ -450,19 +457,19 @@ export class VideoCard {
         "w-8",
         "h-8",
         "rounded-full",
-        "bg-gray-700",
+        "bg-panel",
         "overflow-hidden",
         "flex",
         "items-center",
-        "justify-center",
-      ],
+        "justify-center"
+      ]
     });
 
     const avatar = this.createElement("img", {
       attrs: {
         src: "assets/svg/default-profile.svg",
-        alt: "Placeholder",
-      },
+        alt: "Placeholder"
+      }
     });
     avatar.classList.add("author-pic");
     if (this.video.pubkey) {
@@ -475,8 +482,8 @@ export class VideoCard {
     const authorMeta = this.createElement("div", { classNames: ["min-w-0"] });
 
     const authorName = this.createElement("p", {
-      classNames: ["text-sm", "text-gray-400", "author-name"],
-      textContent: "Loading name...",
+      classNames: ["text-sm", "text-muted", "author-name"],
+      textContent: "Loading name..."
     });
     if (this.video.pubkey) {
       authorName.dataset.pubkey = this.video.pubkey;
@@ -484,25 +491,31 @@ export class VideoCard {
     authorName.style.cursor = "pointer";
 
     const metadata = this.createElement("div", {
-      classNames: ["flex", "items-center", "text-xs", "text-gray-500", "mt-1"],
+      classNames: [
+        "flex",
+        "items-center",
+        "text-xs",
+        "text-muted-strong",
+        "mt-1"
+      ]
     });
 
     const timeEl = this.createElement("span", {
-      textContent: this.timeAgo,
+      textContent: this.timeAgo
     });
     metadata.appendChild(timeEl);
     this.timestampEl = timeEl;
 
     if (this.pointerInfo && this.pointerInfo.key) {
       const dot = this.createElement("span", {
-        classNames: ["mx-1", "text-gray-600"],
-        textContent: "•",
+        classNames: ["mx-1", "text-muted-strong"],
+        textContent: "•"
       });
       dot.setAttribute("aria-hidden", "true");
 
       const view = this.createElement("span", {
         classNames: ["view-count-text"],
-        textContent: "– views",
+        textContent: "– views"
       });
       view.dataset.viewCount = "";
       view.dataset.viewPointer = this.pointerInfo.key;
@@ -528,7 +541,7 @@ export class VideoCard {
   buildControls() {
     const doc = this.document;
     const container = this.createElement("div", {
-      classNames: ["flex", "items-center"],
+      classNames: ["flex", "items-center"]
     });
 
     const moreMenu = this.buildMoreMenu();
@@ -538,24 +551,22 @@ export class VideoCard {
 
     if (this.capabilities.canEdit) {
       const wrapper = this.createElement("div", {
-        classNames: ["relative", "inline-block", "ml-3", "overflow-visible"],
+        classNames: ["relative", "inline-block", "ml-3", "overflow-visible"]
       });
       const button = this.createElement("button", {
         classNames: [
+          "focus-ring",
           "inline-flex",
           "items-center",
           "p-2",
           "rounded-full",
-          "text-gray-400",
-          "hover:text-gray-200",
-          "hover:bg-gray-800",
-          "focus:outline-none",
-          "focus:ring-2",
-          "focus:ring-blue-500",
+          "text-muted",
+          "hover:text-text",
+          "hover:bg-panel"
         ],
         attrs: {
-          type: "button",
-        },
+          type: "button"
+        }
       });
       button.dataset.settingsDropdown = String(this.index);
 
@@ -575,17 +586,17 @@ export class VideoCard {
           "w-32",
           "rounded-md",
           "shadow-lg",
-          "bg-gray-800",
+          "bg-panel",
           "ring-1",
           "ring-black",
           "ring-opacity-5",
-          "z-50",
-        ],
+          "z-50"
+        ]
       });
       dropdown.id = `settingsDropdown-${this.index}`;
 
       const list = this.createElement("div", {
-        classNames: ["py-1"],
+        classNames: ["py-1"]
       });
 
       const editButton = this.createElement("button", {
@@ -596,10 +607,10 @@ export class VideoCard {
           "px-4",
           "py-2",
           "text-sm",
-          "text-gray-100",
-          "hover:bg-gray-700",
+          "text-text",
+          "hover:bg-panel-hover"
         ],
-        textContent: "Edit",
+        textContent: "Edit"
       });
       editButton.dataset.editIndex = String(this.index);
       editButton.dataset.editEventId = this.video.id;
@@ -615,11 +626,11 @@ export class VideoCard {
             "px-4",
             "py-2",
             "text-sm",
-            "text-red-400",
-            "hover:bg-red-700",
-            "hover:text-white",
+            "text-critical",
+            "hover:bg-critical/20",
+            "hover:text-text"
           ],
-          textContent: "Revert",
+          textContent: "Revert"
         });
         revertButton.dataset.revertIndex = String(this.index);
         revertButton.dataset.revertEventId = this.video.id;
@@ -636,11 +647,11 @@ export class VideoCard {
             "px-4",
             "py-2",
             "text-sm",
-            "text-red-400",
-            "hover:bg-red-700",
-            "hover:text-white",
+            "text-critical",
+            "hover:bg-critical/20",
+            "hover:text-text"
           ],
-          textContent: "Delete All",
+          textContent: "Delete All"
         });
         deleteButton.dataset.deleteAllIndex = String(this.index);
         deleteButton.dataset.deleteAllEventId = this.video.id;
@@ -663,12 +674,13 @@ export class VideoCard {
 
   buildMoreMenu() {
     const wrapper = this.createElement("div", {
-      classNames: ["popover", "ml-1"],
+      classNames: ["popover", "ml-1"]
     });
     wrapper.dataset.moreMenuWrapper = "true";
 
     const button = this.createElement("button", {
       classNames: [
+        "focus-ring",
         "inline-flex",
         "items-center",
         "justify-center",
@@ -676,19 +688,16 @@ export class VideoCard {
         "h-10",
         "p-2",
         "rounded-full",
-        "text-gray-400",
-        "hover:text-gray-200",
-        "hover:bg-gray-800",
-        "focus:outline-none",
-        "focus:ring-2",
-        "focus:ring-blue-500",
+        "text-muted",
+        "hover:text-text",
+        "hover:bg-panel"
       ],
       attrs: {
         type: "button",
         "aria-haspopup": "true",
         "aria-expanded": "false",
-        "aria-label": "More options",
-      },
+        "aria-label": "More options"
+      }
     });
     button.dataset.moreDropdown = String(this.index);
     button.dataset.moreMenuToggleBound = "true";
@@ -704,8 +713,8 @@ export class VideoCard {
       attrs: {
         hidden: "",
         "data-state": "closed",
-        "aria-hidden": "true",
-      },
+        "aria-hidden": "true"
+      }
     });
     dropdown.id = `moreDropdown-${this.index}`;
     dropdown.dataset.moreMenu = "true";
@@ -713,21 +722,18 @@ export class VideoCard {
 
     const list = this.createElement("div", {
       classNames: ["menu"],
-      attrs: { role: "none" },
+      attrs: { role: "none" }
     });
 
     const addActionButton = (text, action, extraDataset = {}, options = {}) => {
       const { variant = null } = options || {};
       const btn = this.createElement("button", {
-        classNames: [
-          "menu__item",
-          "justify-start",
-        ],
+        classNames: ["menu__item", "justify-start"],
         textContent: text,
         attrs: {
           type: "button",
-          role: "menuitem",
-        },
+          role: "menuitem"
+        }
       });
       if (variant) {
         btn.dataset.variant = variant;
@@ -744,11 +750,11 @@ export class VideoCard {
     };
 
     addActionButton("Open channel", "open-channel", {
-      author: this.video.pubkey || "",
+      author: this.video.pubkey || ""
     });
 
     addActionButton("Copy link", "copy-link", {
-      eventId: this.video.id || "",
+      eventId: this.video.id || ""
     });
 
     const pointer = Array.isArray(this.pointerInfo?.pointer)
@@ -764,7 +770,7 @@ export class VideoCard {
 
     const baseBoostDataset = {
       eventId: this.video.id || "",
-      author: this.video.pubkey || "",
+      author: this.video.pubkey || ""
     };
 
     if (pointerType && pointerValue) {
@@ -780,50 +786,41 @@ export class VideoCard {
 
     const boostLabel = this.createElement("div", {
       classNames: ["menu__heading"],
-      textContent: "Boost on Nostr…",
+      textContent: "Boost on Nostr…"
     });
     list.appendChild(boostLabel);
 
-    addActionButton(
-      "Repost (kind 6)",
-      "repost-event",
-      baseBoostDataset,
-    );
+    addActionButton("Repost (kind 6)", "repost-event", baseBoostDataset);
 
     if (this.playbackUrl && this.video.isPrivate !== true) {
       const mirrorDataset = {
         ...baseBoostDataset,
         url: this.playbackUrl,
         magnet: this.playbackMagnet || "",
-        thumbnail: typeof this.video.thumbnail === "string" ? this.video.thumbnail : "",
+        thumbnail:
+          typeof this.video.thumbnail === "string" ? this.video.thumbnail : "",
         description:
-          typeof this.video.description === "string" ? this.video.description : "",
+          typeof this.video.description === "string"
+            ? this.video.description
+            : "",
         title: typeof this.video.title === "string" ? this.video.title : "",
-        isPrivate: this.video.isPrivate === true ? "true" : "false",
+        isPrivate: this.video.isPrivate === true ? "true" : "false"
       };
 
-      addActionButton(
-        "Mirror (kind 1063)",
-        "mirror-video",
-        mirrorDataset,
-      );
+      addActionButton("Mirror (kind 1063)", "mirror-video", mirrorDataset);
     }
 
     const ensureDataset = {
       ...baseBoostDataset,
-      pubkey: this.video.pubkey || "",
+      pubkey: this.video.pubkey || ""
     };
 
-    addActionButton(
-      "Rebroadcast",
-      "ensure-presence",
-      ensureDataset,
-    );
+    addActionButton("Rebroadcast", "ensure-presence", ensureDataset);
 
     list.appendChild(
       this.createElement("div", {
         classNames: ["menu__separator"],
-        attrs: { role: "separator" },
+        attrs: { role: "separator" }
       })
     );
 
@@ -839,8 +836,8 @@ export class VideoCard {
             pointerType: historyPointerType,
             pointerValue: historyPointerValue,
             pointerRelay: historyPointerRelay || "",
-            reason: "remove-item",
-          },
+            reason: "remove-item"
+          }
         );
         removeButton.setAttribute(
           "title",
@@ -869,11 +866,7 @@ export class VideoCard {
       { variant: "critical" }
     );
 
-    addActionButton(
-      "Report",
-      "report",
-      { eventId: this.video.id || "" },
-    );
+    addActionButton("Report", "report", { eventId: this.video.id || "" });
 
     dropdown.appendChild(list);
     wrapper.appendChild(button);
@@ -898,8 +891,8 @@ export class VideoCard {
           "py-1",
           "rounded",
           "transition-colors",
-          "duration-200",
-        ],
+          "duration-200"
+        ]
       });
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
@@ -918,12 +911,15 @@ export class VideoCard {
           "py-1",
           "rounded",
           "transition-colors",
-          "duration-200",
-        ],
+          "duration-200"
+        ]
       });
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
-      this.applyStreamBadgeVisualState(badge, this.getCachedStreamHealthEntry());
+      this.applyStreamBadgeVisualState(
+        badge,
+        this.getCachedStreamHealthEntry()
+      );
       this.torrentHealthBadgeEl = badge;
       pieces.push(badge);
     }
@@ -933,7 +929,7 @@ export class VideoCard {
     }
 
     const container = this.createElement("div", {
-      classNames: ["mt-3", "flex", "flex-wrap", "items-center", "gap-2"],
+      classNames: ["mt-3", "flex", "flex-wrap", "items-center", "gap-2"]
     });
     pieces.forEach((el) => container.appendChild(el));
     return container;
@@ -1054,7 +1050,9 @@ export class VideoCard {
     }
 
     const status =
-      typeof entry?.status === "string" && entry.status ? entry.status : "checking";
+      typeof entry?.status === "string" && entry.status
+        ? entry.status
+        : "checking";
     const message =
       typeof entry?.message === "string" && entry.message
         ? entry.message
@@ -1069,7 +1067,7 @@ export class VideoCard {
       "py-1",
       "rounded",
       "transition-colors",
-      "duration-200",
+      "duration-200"
     ];
     if (hadMargin) {
       baseClasses.unshift("mt-3");
@@ -1082,13 +1080,13 @@ export class VideoCard {
     };
 
     if (status === "healthy") {
-      addClasses([...common, "bg-green-900", "text-green-200"]);
+      addClasses([...common, "bg-info/20", "text-info-strong"]);
     } else if (status === "offline") {
-      addClasses([...common, "bg-red-900", "text-red-200"]);
+      addClasses([...common, "bg-critical/20", "text-critical"]);
     } else if (status === "unknown" || status === "timeout") {
-      addClasses([...common, "bg-amber-900", "text-amber-200"]);
+      addClasses([...common, "bg-warning-surface", "text-warning-strong"]);
     } else {
-      addClasses([...common, "bg-gray-800", "text-gray-300"]);
+      addClasses([...common, "bg-panel", "text-muted"]);
     }
 
     badge.dataset.urlHealthState = status;
@@ -1103,21 +1101,28 @@ export class VideoCard {
     }
 
     const state =
-      typeof entry?.state === "string" && entry.state ? entry.state : "checking";
+      typeof entry?.state === "string" && entry.state
+        ? entry.state
+        : "checking";
     const peersValue = Number.isFinite(entry?.peers)
       ? Math.max(0, Number(entry.peers))
       : null;
-    const reason = typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
-    const text = typeof entry?.text === "string" && entry.text ? entry.text : null;
+    const reason =
+      typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
+    const text =
+      typeof entry?.text === "string" && entry.text ? entry.text : null;
     const tooltip =
-      typeof entry?.tooltip === "string" && entry.tooltip ? entry.tooltip : null;
-    const role = entry?.role === "alert" || entry?.role === "status" ? entry.role : null;
+      typeof entry?.tooltip === "string" && entry.tooltip
+        ? entry.tooltip
+        : null;
+    const role =
+      entry?.role === "alert" || entry?.role === "status" ? entry.role : null;
     const ariaLive =
       entry?.ariaLive === "assertive" || entry?.ariaLive === "polite"
         ? entry.ariaLive
         : role === "alert"
-        ? "assertive"
-        : "polite";
+          ? "assertive"
+          : "polite";
 
     const hadMargin = badge.classList.contains("mt-3");
     const baseClasses = [
@@ -1128,7 +1133,7 @@ export class VideoCard {
       "py-1",
       "rounded",
       "transition-colors",
-      "duration-200",
+      "duration-200"
     ];
     if (hadMargin) {
       baseClasses.unshift("mt-3");
@@ -1141,34 +1146,35 @@ export class VideoCard {
     };
 
     if (state === "healthy") {
-      addClasses([...common, "bg-green-900", "text-green-200"]);
+      addClasses([...common, "bg-info/20", "text-info-strong"]);
     } else if (state === "unhealthy") {
-      addClasses([...common, "bg-red-900", "text-red-200"]);
+      addClasses([...common, "bg-critical/20", "text-critical"]);
     } else {
-      addClasses([...common, "bg-gray-800", "text-gray-300"]);
+      addClasses([...common, "bg-panel", "text-muted"]);
     }
 
     const map = {
       healthy: {
         icon: "🟢",
-        aria: "WebTorrent peers available",
+        aria: "WebTorrent peers available"
       },
       unhealthy: {
         icon: "🔴",
-        aria: "WebTorrent peers unavailable",
+        aria: "WebTorrent peers unavailable"
       },
       checking: {
         icon: "⏳",
-        aria: "Checking WebTorrent peers",
+        aria: "Checking WebTorrent peers"
       },
       unknown: {
         icon: "⚪",
-        aria: "WebTorrent status unknown",
-      },
+        aria: "WebTorrent status unknown"
+      }
     };
 
     const descriptor = map[state] || map.unknown;
-    const peersText = state === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
+    const peersText =
+      state === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
     const iconPrefix = descriptor.icon ? `${descriptor.icon} ` : "";
     const computedText = `${iconPrefix}WebTorrent${peersText}`;
     badge.textContent = text || computedText;
@@ -1179,14 +1185,19 @@ export class VideoCard {
         ? descriptor.aria
         : this.buildTorrentTooltip({
             peers: peersValue,
-            checkedAt: Number.isFinite(entry?.checkedAt) ? entry.checkedAt : null,
-            reason,
+            checkedAt: Number.isFinite(entry?.checkedAt)
+              ? entry.checkedAt
+              : null,
+            reason
           }));
 
     badge.setAttribute("aria-label", tooltipValue);
     badge.setAttribute("title", tooltipValue);
     badge.setAttribute("aria-live", ariaLive);
-    badge.setAttribute("role", role || (state === "unhealthy" ? "alert" : "status"));
+    badge.setAttribute(
+      "role",
+      role || (state === "unhealthy" ? "alert" : "status")
+    );
 
     badge.dataset.streamHealthState = state;
     if (reason) {
@@ -1234,19 +1245,25 @@ export class VideoCard {
       : safeCount.toLocaleString();
 
     const container = this.createElement("div", {
-      classNames: ["flex", "items-center", "text-xs", "text-gray-500", "mt-3"],
+      classNames: [
+        "flex",
+        "items-center",
+        "text-xs",
+        "text-muted-strong",
+        "mt-3"
+      ]
     });
     container.dataset.discussionCount = this.video.id;
     container.dataset.countState = "ready";
 
     const valueEl = this.createElement("span", {
-      textContent: displayValue,
+      textContent: displayValue
     });
     valueEl.dataset.discussionCountValue = "";
 
     const labelEl = this.createElement("span", {
       classNames: ["ml-1"],
-      textContent: "notes",
+      textContent: "notes"
     });
 
     container.appendChild(valueEl);
@@ -1308,7 +1325,9 @@ export class VideoCard {
     if (!this.root) {
       return;
     }
-    this.root.dataset.ownerIsViewer = this.capabilities.canEdit ? "true" : "false";
+    this.root.dataset.ownerIsViewer = this.capabilities.canEdit
+      ? "true"
+      : "false";
     if (this.video.pubkey) {
       this.root.dataset.ownerPubkey = this.video.pubkey;
     }
@@ -1339,7 +1358,8 @@ export class VideoCard {
     const cachedStreamHealth = this.getCachedStreamHealthEntry();
     if (this.magnetProvided && this.magnetSupported) {
       const state =
-        typeof cachedStreamHealth?.state === "string" && cachedStreamHealth.state
+        typeof cachedStreamHealth?.state === "string" &&
+        cachedStreamHealth.state
           ? cachedStreamHealth.state
           : "checking";
       this.root.dataset.streamHealthState = state;
@@ -1460,7 +1480,8 @@ export class VideoCard {
         }
 
         const isMouseEvent =
-          typeof MouseEventCtor !== "undefined" && event instanceof MouseEventCtor;
+          typeof MouseEventCtor !== "undefined" &&
+          event instanceof MouseEventCtor;
         if (isMouseEvent) {
           const isPrimaryClick =
             typeof event.button !== "number" || event.button === 0;
@@ -1507,7 +1528,7 @@ export class VideoCard {
             event,
             video: this.video,
             index: this.index,
-            card: this,
+            card: this
           });
         }
       });
@@ -1522,7 +1543,7 @@ export class VideoCard {
             event,
             video: this.video,
             index: this.index,
-            card: this,
+            card: this
           });
         }
       });
@@ -1537,7 +1558,7 @@ export class VideoCard {
             event,
             video: this.video,
             index: this.index,
-            card: this,
+            card: this
           });
         }
       });
@@ -1572,7 +1593,7 @@ export class VideoCard {
               event,
               video: this.video,
               card: this,
-              dataset,
+              dataset
             });
           }
           this.closeMoreMenu();
@@ -1590,7 +1611,7 @@ export class VideoCard {
             event,
             video: this.video,
             card: this,
-            pubkey: this.video.pubkey || "",
+            pubkey: this.video.pubkey || ""
           });
         }
       });

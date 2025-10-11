@@ -1,18 +1,20 @@
 <!-- views/community-guidelines.html -->
 <section class="mb-8">
-  <!-- 
-    This card has a white background and shadow, similar to your other partials.
-    We also add text-gray-900 to override the global body text color.
+  <!--
+    This card has a light background and shadow, similar to your other partials.
+    We use text-text-strong to override the global body text color.
   -->
-  <div class="bg-white p-6 rounded-lg shadow-md text-gray-900">
-    <h2 class="text-2xl font-bold mb-4 text-gray-700">Community Guidelines</h2>
+  <div class="rounded-lg bg-page p-6 text-text-strong shadow-md">
+    <h2 class="mb-4 text-2xl font-bold text-text-strong">
+      Community Guidelines
+    </h2>
 
     <!-- 
       The .markdown-body class can use your markdown.css 
       so headings, paragraphs, etc. are styled nicely.
     -->
     <div id="markdown-container" class="markdown-body">
-      <p class="text-gray-500">Loading content...</p>
+      <p class="text-muted-strong">Loading content...</p>
     </div>
   </div>
 </section>
@@ -45,7 +47,7 @@
       const container = document.getElementById("markdown-container");
       if (container) {
         container.innerHTML = `
-          <p class="text-red-500">Error loading content. Please try again later.</p>
+          <p class="text-critical-strong">Error loading content. Please try again later.</p>
         `;
       }
     }

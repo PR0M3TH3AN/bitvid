@@ -5,7 +5,7 @@ export class VideoModal {
     removeTrackingScripts,
     setGlobalModalState,
     document: doc,
-    logger,
+    logger
   } = {}) {
     if (!doc) {
       throw new Error("VideoModal requires a document reference.");
@@ -225,14 +225,12 @@ export class VideoModal {
     this.videoTitle = playerModal.querySelector("#videoTitle") || null;
     this.videoDescription =
       playerModal.querySelector("#videoDescription") || null;
-    this.videoTimestamp =
-      playerModal.querySelector("#videoTimestamp") || null;
+    this.videoTimestamp = playerModal.querySelector("#videoTimestamp") || null;
     this.videoEditedTimestamp =
       playerModal.querySelector("#videoEditedTimestamp") || null;
     this.videoViewCountEl =
       playerModal.querySelector("#videoViewCount") || null;
-    this.creatorAvatar =
-      playerModal.querySelector("#creatorAvatar") || null;
+    this.creatorAvatar = playerModal.querySelector("#creatorAvatar") || null;
     this.creatorName = playerModal.querySelector("#creatorName") || null;
     this.creatorNpub = playerModal.querySelector("#creatorNpub") || null;
     this.copyMagnetBtn = playerModal.querySelector("#copyMagnetBtn") || null;
@@ -242,8 +240,7 @@ export class VideoModal {
     this.modalMoreMenu =
       playerModal.querySelector("#moreDropdown-modal") || null;
 
-    this.modalZapDialog =
-      playerModal.querySelector("#modalZapDialog") || null;
+    this.modalZapDialog = playerModal.querySelector("#modalZapDialog") || null;
     this.modalZapForm = playerModal.querySelector("#modalZapForm") || null;
     this.modalZapAmountInput =
       playerModal.querySelector("#modalZapAmountInput") || null;
@@ -321,7 +318,7 @@ export class VideoModal {
       document: this.document,
       onRequestClose: () => {
         this.dispatch("modal:close", { video: this.activeVideo });
-      },
+      }
     });
 
     this.bindVideoEvents();
@@ -345,13 +342,13 @@ export class VideoModal {
     const loadedHandler = () => {
       this.dispatch("playback:loadeddata", {
         video: this.modalVideo,
-        active: this.activeVideo,
+        active: this.activeVideo
       });
     };
     const playingHandler = () => {
       this.dispatch("playback:playing", {
         video: this.modalVideo,
-        active: this.activeVideo,
+        active: this.activeVideo
       });
     };
 
@@ -421,7 +418,7 @@ export class VideoModal {
         this.dispatch("video:zap", {
           video: this.activeVideo,
           amount: this.getZapAmountValue(),
-          comment: this.getZapCommentValue(),
+          comment: this.getZapCommentValue()
         });
       });
     }
@@ -439,7 +436,7 @@ export class VideoModal {
       const amountHandler = () => {
         this.dispatch("zap:amount-change", {
           video: this.activeVideo,
-          amount: this.getZapAmountValue(),
+          amount: this.getZapAmountValue()
         });
       };
       this.modalZapAmountInput.addEventListener("input", amountHandler);
@@ -450,7 +447,7 @@ export class VideoModal {
       const commentHandler = () => {
         this.dispatch("zap:comment-change", {
           video: this.activeVideo,
-          comment: this.getZapCommentValue(),
+          comment: this.getZapCommentValue()
         });
       };
       this.modalZapCommentInput.addEventListener("input", commentHandler);
@@ -458,7 +455,10 @@ export class VideoModal {
 
     if (this.creatorAvatar) {
       this.creatorAvatar.style.cursor = "pointer";
-      this.creatorAvatar.addEventListener("click", this.handleCreatorNavigation);
+      this.creatorAvatar.addEventListener(
+        "click",
+        this.handleCreatorNavigation
+      );
     }
     if (this.creatorName) {
       this.creatorName.style.cursor = "pointer";
@@ -628,10 +628,7 @@ export class VideoModal {
       return;
     }
     this.copyMagnetBtn.disabled = !enabled;
-    this.copyMagnetBtn.setAttribute(
-      "aria-disabled",
-      (!enabled).toString()
-    );
+    this.copyMagnetBtn.setAttribute("aria-disabled", (!enabled).toString());
     this.copyMagnetBtn.classList.toggle("opacity-50", !enabled);
     this.copyMagnetBtn.classList.toggle("cursor-not-allowed", !enabled);
   }
@@ -641,10 +638,7 @@ export class VideoModal {
       return;
     }
     this.shareBtn.disabled = !enabled;
-    this.shareBtn.setAttribute(
-      "aria-disabled",
-      (!enabled).toString()
-    );
+    this.shareBtn.setAttribute("aria-disabled", (!enabled).toString());
     this.shareBtn.classList.toggle("opacity-50", !enabled);
     this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
   }
@@ -789,7 +783,8 @@ export class VideoModal {
       return;
     }
     const message = typeof text === "string" ? text : "";
-    this.modalZapSplitSummary.textContent = message || "Enter an amount to view the split.";
+    this.modalZapSplitSummary.textContent =
+      message || "Enter an amount to view the split.";
   }
 
   setZapStatus(message, tone = "neutral") {
@@ -801,26 +796,26 @@ export class VideoModal {
     const text = typeof message === "string" ? message : "";
     this.modalZapStatusEl.textContent = text;
     this.modalZapStatusEl.classList.remove(
-      "text-gray-300",
-      "text-gray-400",
-      "text-green-300",
-      "text-red-300",
-      "text-yellow-300"
+      "text-text",
+      "text-muted",
+      "text-info",
+      "text-critical",
+      "text-warning-strong"
     );
 
     if (!text) {
-      this.modalZapStatusEl.classList.add("text-gray-400");
+      this.modalZapStatusEl.classList.add("text-muted");
       return;
     }
 
     if (normalizedTone === "success") {
-      this.modalZapStatusEl.classList.add("text-green-300");
+      this.modalZapStatusEl.classList.add("text-info");
     } else if (normalizedTone === "error") {
-      this.modalZapStatusEl.classList.add("text-red-300");
+      this.modalZapStatusEl.classList.add("text-critical");
     } else if (normalizedTone === "warning") {
-      this.modalZapStatusEl.classList.add("text-yellow-300");
+      this.modalZapStatusEl.classList.add("text-warning-strong");
     } else {
-      this.modalZapStatusEl.classList.add("text-gray-300");
+      this.modalZapStatusEl.classList.add("text-text");
     }
   }
 
@@ -843,7 +838,7 @@ export class VideoModal {
     if (!Array.isArray(receipts) || receipts.length === 0) {
       if (partial) {
         const empty = this.document.createElement("li");
-        empty.className = "text-sm text-gray-300";
+        empty.className = "text-sm text-text";
         empty.textContent = "No zap receipts available.";
         this.modalZapReceipts.appendChild(empty);
       }
@@ -852,10 +847,11 @@ export class VideoModal {
 
     receipts.forEach((receipt) => {
       const li = this.document.createElement("li");
-      li.className = "rounded border border-gray-700 p-3 bg-gray-800/70";
+      li.className = "rounded border border-border p-3 bg-panel/70";
 
       const header = this.document.createElement("div");
-      header.className = "flex items-center justify-between gap-2 text-xs text-gray-300";
+      header.className =
+        "flex items-center justify-between gap-2 text-xs text-text";
 
       const shareType = receipt.recipientType || receipt.type || "creator";
       const shareLabel = this.document.createElement("span");
@@ -863,8 +859,8 @@ export class VideoModal {
         shareType === "platform"
           ? "Platform"
           : shareType === "creator"
-          ? "Creator"
-          : "Lightning";
+            ? "Creator"
+            : "Lightning";
       shareLabel.textContent = `${label} • ${Math.max(
         0,
         Math.round(Number(receipt.amount || 0))
@@ -875,21 +871,21 @@ export class VideoModal {
         ? receipt.status === "success"
         : !receipt.error;
       status.textContent = isSuccess ? "Success" : "Failed";
-      status.className = isSuccess ? "text-green-300" : "text-red-300";
+      status.className = isSuccess ? "text-info" : "text-critical";
 
       header.appendChild(shareLabel);
       header.appendChild(status);
       li.appendChild(header);
 
       const address = this.document.createElement("p");
-      address.className = "mt-1 text-xs text-gray-300 break-all";
+      address.className = "mt-1 text-xs text-text break-all";
       if (receipt.address) {
         address.textContent = receipt.address;
         li.appendChild(address);
       }
 
       const detail = this.document.createElement("p");
-      detail.className = "mt-2 text-xs text-gray-400";
+      detail.className = "mt-2 text-xs text-muted";
       if (isSuccess) {
         let detailMessage = "Invoice settled.";
         const preimage = receipt.payment?.result?.preimage;
@@ -1054,7 +1050,7 @@ export class VideoModal {
     timestamp,
     timestamps,
     viewCount,
-    creator,
+    creator
   } = {}) {
     if (this.videoTitle && title !== undefined) {
       this.videoTitle.textContent = title || "Untitled";
@@ -1161,7 +1157,8 @@ export class VideoModal {
           Array.isArray(currentVideo?.pointer) &&
           currentVideo.pointer.length >= 2
         ) {
-          const [pointerType, pointerValue, pointerRelay] = currentVideo.pointer;
+          const [pointerType, pointerValue, pointerRelay] =
+            currentVideo.pointer;
           button.dataset.pointerType = pointerType || "";
           button.dataset.pointerValue = pointerValue || "";
           if (pointerRelay) {
@@ -1234,7 +1231,8 @@ export class VideoModal {
           Array.isArray(currentVideo?.pointer) &&
           currentVideo.pointer.length >= 2
         ) {
-          const [pointerType, pointerValue, pointerRelay] = currentVideo.pointer;
+          const [pointerType, pointerValue, pointerRelay] =
+            currentVideo.pointer;
           button.dataset.pointerType = pointerType || "";
           button.dataset.pointerValue = pointerValue || "";
           if (pointerRelay) {
