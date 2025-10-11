@@ -42,7 +42,11 @@
       href="assets/png/favicon-16x16.png"
     />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#0f172a" />
+    <!--
+      Use the surface token so browsers pick up theme updates without editing
+      hex values in multiple places.
+    -->
+    <meta name="theme-color" content="rgb(15 23 42)" />
 
     <!-- Styles -->
     <!--
