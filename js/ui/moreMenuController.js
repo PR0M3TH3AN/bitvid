@@ -1,3 +1,5 @@
+import { normalizeDesignSystemContext } from "../designSystem.js";
+
 export default class MoreMenuController {
   constructor(options = {}) {
     const {
@@ -8,6 +10,7 @@ export default class MoreMenuController {
       clipboard = typeof navigator !== "undefined" ? navigator.clipboard : null,
       isDevMode = false,
       callbacks = {},
+      designSystem = null,
     } = options;
 
     this.document = doc;
@@ -16,6 +19,7 @@ export default class MoreMenuController {
     this.subscriptions = subscriptions;
     this.clipboard = clipboard;
     this.isDevMode = Boolean(isDevMode);
+    this.designSystem = normalizeDesignSystemContext(designSystem);
 
     this.callbacks = {
       getCurrentVideo: callbacks.getCurrentVideo || (() => null),

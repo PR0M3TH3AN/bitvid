@@ -3,6 +3,7 @@ import {
   normalizePointerInput,
   pointerKey as derivePointerKey,
 } from "../nostr.js";
+import { normalizeDesignSystemContext } from "../designSystem.js";
 
 const noop = () => {};
 
@@ -38,6 +39,7 @@ export default class WatchHistoryController {
     showSuccess,
     dropWatchHistoryMetadata,
     getActivePubkey,
+    designSystem,
   } = {}) {
     this.watchHistoryService = watchHistoryService || null;
     this.nostrClient = nostrClient || null;
@@ -49,6 +51,7 @@ export default class WatchHistoryController {
         : noop;
     this.getActivePubkey =
       typeof getActivePubkey === "function" ? getActivePubkey : () => "";
+    this.designSystem = normalizeDesignSystemContext(designSystem);
   }
 
   buildPointerFromDataset(dataset = {}) {

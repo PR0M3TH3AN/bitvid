@@ -3,6 +3,7 @@ import { initChannelProfileView } from "./channelProfile.js";
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
+import { applyDesignSystemAttributes } from "./designSystem.js";
 
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 
@@ -37,6 +38,7 @@ export async function loadView(viewUrl) {
     const container = document.getElementById("viewContainer");
 
     container.innerHTML = doc.body.innerHTML;
+    applyDesignSystemAttributes(container);
 
     // Copy and execute any inline scripts
     const scriptTags = doc.querySelectorAll("script");
@@ -63,7 +65,11 @@ export async function loadView(viewUrl) {
         </article>
       </div>
     `;
-    document.getElementById("viewContainer").innerHTML = fallbackMarkup;
+    const fallbackContainer = document.getElementById("viewContainer");
+    if (fallbackContainer) {
+      fallbackContainer.innerHTML = fallbackMarkup;
+      applyDesignSystemAttributes(fallbackContainer);
+    }
   }
 }
 

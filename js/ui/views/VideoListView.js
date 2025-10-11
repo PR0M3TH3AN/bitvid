@@ -3,6 +3,7 @@ import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
 } from "../../viewCounter.js";
+import { normalizeDesignSystemContext } from "../../designSystem.js";
 
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 
@@ -20,6 +21,7 @@ export class VideoListView {
       utils = {},
       renderers = {},
       allowNsfw = true,
+      designSystem = null,
     } = options;
 
     this.document = doc;
@@ -165,6 +167,7 @@ export class VideoListView {
     };
 
     this.allowNsfw = allowNsfw !== false;
+    this.designSystem = normalizeDesignSystemContext(designSystem);
 
     this.emitter = typeof EventTarget !== "undefined" ? new EventTarget() : null;
     this._boundClickHandler = this.handleContainerClick.bind(this);
@@ -425,6 +428,7 @@ export class VideoListView {
         formatters: {
           formatTimeAgo: this.formatters.formatTimeAgo,
         },
+        designSystem: this.designSystem,
       });
 
       videoCard.onPlay = ({ event: domEvent, video: cardVideo }) => {

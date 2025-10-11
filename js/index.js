@@ -9,12 +9,21 @@ import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
 import {
+  applyDesignSystemAttributes,
+  subscribeToDesignSystemChanges,
+} from "./designSystem.js";
+import {
   prepareStaticModal,
   openStaticModal,
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
 
 validateInstanceConfig();
+
+applyDesignSystemAttributes();
+subscribeToDesignSystemChanges(() => {
+  applyDesignSystemAttributes();
+});
 
 let application = null;
 let applicationReadyPromise = Promise.resolve();
@@ -136,6 +145,10 @@ async function loadModal(url) {
     document
       .getElementById("modalContainer")
       .insertAdjacentHTML("beforeend", sanitizedHtml);
+    const modalContainer = document.getElementById("modalContainer");
+    if (modalContainer) {
+      applyDesignSystemAttributes(modalContainer);
+    }
     console.log(url, "loaded");
   } catch (err) {
     console.error(err);
@@ -146,7 +159,11 @@ async function loadModal(url) {
 async function loadSidebar(url, containerId) {
   try {
     const html = await fetchPartial(url);
-    document.getElementById(containerId).innerHTML = html;
+    const container = document.getElementById(containerId);
+    if (container) {
+      container.innerHTML = html;
+      applyDesignSystemAttributes(container);
+    }
     console.log(url, "loaded into", containerId);
   } catch (err) {
     console.error(err);
@@ -157,7 +174,11 @@ async function loadSidebar(url, containerId) {
 async function loadDisclaimer(url, containerId) {
   try {
     const html = await fetchPartial(url);
-    document.getElementById(containerId).insertAdjacentHTML("beforeend", html);
+    const container = document.getElementById(containerId);
+    if (container) {
+      container.insertAdjacentHTML("beforeend", html);
+      applyDesignSystemAttributes(container);
+    }
     console.log(url, "disclaimer loaded into", containerId);
   } catch (err) {
     console.error(err);

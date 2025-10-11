@@ -2,6 +2,14 @@
 
 bitvid's visual language is now powered by Tailwind utilities backed by our design tokens. This document lists the primitives available via `css/tailwind.source.css`, how they behave across states, and when to mix them with Tailwind utilities.
 
+## Feature Flag Rollout
+
+The new design system ships behind the `FEATURE_DESIGN_SYSTEM` runtime flag defined in `js/constants.js`. Deployments should keep the flag disabled (`false`) until the new primitives are ready for broad adoption.
+
+- **Default state:** `FEATURE_DESIGN_SYSTEM` is `false`, so templates render with `data-ds="legacy"` on root containers.
+- **Runtime toggle:** Set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_DESIGN_SYSTEM = true` (or call `setFeatureDesignSystemEnabled(true)`) to opt into the new primitives. The entrypoint automatically updates every `[data-ds]` container to `data-ds="new"` and notifies controllers.
+- **DOM contract:** Templates and partials must include `data-ds` on their root elements. Controllers should rely on the `designSystem` context (see `js/designSystem.js`) before attaching classes or behaviors that only exist in the new system.
+
 ## Theme System
 
 The default experience renders the production dark palette. Pages and embeds can opt into alternates by setting the `data-theme` attribute on the `<html>` (or any ancestor that wraps the component). `data-theme="light"` promotes the light tokens defined in `css/tokens.css`, swapping surface, panel, border, muted, and overlay colors while keeping semantic accents consistent. Omit the attribute or set it back to `default` to inherit the dark baseline. Reserve additional theme keys (for example, `data-theme="contrast"`) for upcoming accessibility palettes—the same hook will activate them once their tokens land.
