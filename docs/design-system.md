@@ -127,10 +127,11 @@ The helpers rely on layout utilities (`flex`, `gap-*`) so you can safely inject 
 During migration we keep existing selectors alive by layering `@apply` calls in `css/style.css`. Notable shims:
 
 - `.video-card` → `.card`
-- `.modal-content` → `.bv-modal__panel`
 - `#profileModal .profile-switcher*` → `.card`, `.badge`, `.btn-ghost`
 
 We continue to expose aliases such as `.profile-switcher` and nested variations (for example, `.profile-switcher__item`) so existing profile and admin controllers stay functional while downstream templates finish their migration. These shims live under the "Legacy component compatibility" section and will be removed once templates switch to the new primitives.
+
+> **Update (Q1 2025):** The modal shim that mapped `.modal-container`/`.modal-content` to the new primitives has been removed. All modal templates must mount `.bv-modal`, `.bv-modal-backdrop`, and `.bv-modal__panel` directly.
 
 **Target removal:** Audit usage after the Q1 2025 UI refresh and delete remaining shims no later than April 2025. At that point the compatibility layer will be deleted once dependent feature flags confirm that no legacy selectors remain in production HTML.
 

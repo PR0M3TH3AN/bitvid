@@ -1,79 +1,62 @@
-<div
-  id="loginModal"
-  class="fixed inset-0 z-50 hidden"
-  style="background: transparent"
->
-  <!-- Dark overlay with blur (unchanged) -->
-  <div
-    class="absolute inset-0 z-10"
-    style="
-      background-color: rgba(0, 0, 0, 0.9);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    "
-  ></div>
+<div id="loginModal" class="bv-modal hidden items-start justify-center">
+  <div class="bv-modal-backdrop" data-dismiss></div>
 
-  <!-- Outer container matching video modal's flex layout & wide sizing -->
   <div
-    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
+    class="bv-modal__panel bg-gray-900 w-full max-w-[90%] overflow-hidden lg:max-w-6xl"
   >
+    <!-- Header with the special exit button (unchanged) -->
     <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
+      class="sticky top-0 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4"
     >
-      <!-- Header with the special exit button (unchanged) -->
-      <div
-        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
+      <h2 class="text-xl font-bold text-white">Login Options</h2>
+      <button
+        id="closeLoginModal"
+        class="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 transition-all duration-200 backdrop-blur hover:bg-black/70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
       >
-        <h2 class="text-xl font-bold text-white">Login Options</h2>
-        <button
-          id="closeLoginModal"
-          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6 text-gray-300"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-6 h-6 text-gray-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      </button>
+    </div>
 
-      <!-- Body with buttons (unchanged) -->
-      <div class="p-6 space-y-4">
-        <!-- Application Form button -->
-        <button
-          id="openApplicationModal"
-          class="w-full bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-        >
-          Application Form
-        </button>
+    <!-- Body with buttons (unchanged) -->
+    <div class="space-y-4 p-6">
+      <!-- Application Form button -->
+      <button
+        id="openApplicationModal"
+        class="w-full rounded-md bg-indigo-500 px-4 py-2 text-white hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+      >
+        Application Form
+      </button>
 
-        <!-- Simple horizontal rule -->
-        <div class="my-2 border-t border-gray-700"></div>
+      <!-- Simple horizontal rule -->
+      <div class="my-2 border-t border-gray-700"></div>
 
-        <!-- Existing login buttons -->
-        <button
-          id="loginNIP07"
-          class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-        >
-          Login with Extension (NIP-07)
-        </button>
-        <button
-          id="loginNSEC"
-          class="w-full bg-gray-500 text-white px-4 py-2 rounded-md cursor-not-allowed"
-          disabled
-        >
-          Login with NSEC (Coming Soon)
-        </button>
-      </div>
+      <!-- Existing login buttons -->
+      <button
+        id="loginNIP07"
+        class="w-full rounded-md bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      >
+        Login with Extension (NIP-07)
+      </button>
+      <button
+        id="loginNSEC"
+        class="w-full cursor-not-allowed rounded-md bg-gray-500 px-4 py-2 text-white"
+        disabled
+      >
+        Login with NSEC (Coming Soon)
+      </button>
     </div>
   </div>
 </div>

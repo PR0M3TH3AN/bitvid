@@ -1,34 +1,19 @@
 <!-- components/upload-modal.html -->
 <div
   id="uploadModal"
-  class="fixed inset-0 z-50 hidden"
-  style="background: transparent"
+  class="bv-modal hidden items-start justify-center overflow-y-auto md:items-center"
   role="dialog"
   aria-modal="true"
   aria-labelledby="uploadModalTitle"
   aria-describedby="uploadModalDescription"
-  tabindex="-1"
 >
-  <!-- Overlay Layer with dark background and blur -->
-  <div
-    class="absolute inset-0 z-10"
-    aria-hidden="true"
-    style="
-      background-color: rgba(0, 0, 0, 0.9);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    "
-  ></div>
+  <div class="bv-modal-backdrop" data-dismiss></div>
 
   <!-- Modal Container -->
   <div
-    class="modal-container relative z-20 flex h-full w-full items-start justify-center overflow-y-auto md:items-center"
+    class="bv-modal__panel relative my-0 w-full max-h-[90vh] max-w-[90%] overflow-y-auto rounded-lg bg-gray-900 lg:max-w-6xl"
+    tabindex="-1"
   >
-    <div
-      class="modal-content relative my-0 w-full max-w-[90%] overflow-y-auto rounded-lg bg-gray-900 lg:max-w-6xl"
-      style="max-height: 90vh"
-      tabindex="-1"
-    >
       <!-- Top Bar (similar to video-modal) -->
       <div
         class="from-black/80 sticky top-0 flex items-center justify-between bg-gradient-to-b to-transparent p-4 transition-transform duration-150"

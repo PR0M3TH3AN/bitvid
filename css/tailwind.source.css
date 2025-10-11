@@ -342,14 +342,6 @@
     @apply cursor-not-allowed opacity-45;
   }
 
-  .modal-container {
-    @apply bv-modal;
-  }
-
-  .modal-content {
-    @apply bv-modal__panel flex h-full flex-col;
-  }
-
   .video-modal__container {
     @apply flex h-full min-h-screen w-full flex-1 flex-col;
   }
