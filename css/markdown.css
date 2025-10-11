@@ -5,7 +5,7 @@
   that is easy to read on a white background 
 */
 #markdown-container {
-  color: #333;
+  color: var(--color-text-strong);
   line-height: 1.6;
   /* Padding & border radius come from your inline Tailwind classes */
 }
@@ -16,7 +16,7 @@
   font-weight: 700;
   margin-bottom: 1rem;
   margin-top: 0.5rem;
-  color: #111;
+  color: var(--color-text-strong);
 }
 
 #markdown-container h2 {
@@ -24,7 +24,7 @@
   font-weight: 700;
   margin-bottom: 0.75rem;
   margin-top: 1.25rem;
-  color: #222;
+  color: var(--color-text-strong);
 }
 
 #markdown-container h3 {
@@ -60,16 +60,16 @@
 
 /* Blockquotes */
 #markdown-container blockquote {
-  border-left: 4px solid #ccc;
+  border-left: 4px solid var(--color-border-subtle);
   padding-left: 1rem;
   margin: 1rem 0;
-  color: #555;
+  color: var(--color-muted);
 }
 
 /* Inline code */
 #markdown-container code {
-  background-color: #f6f8fa;
-  color: #d63384;
+  background-color: var(--color-page-alt);
+  color: var(--color-secondary);
   padding: 0.2rem 0.4rem;
   border-radius: 0.25rem;
   font-family: Menlo, Monaco, "Courier New", monospace;
@@ -78,8 +78,8 @@
 
 /* Code blocks */
 #markdown-container pre {
-  background-color: #f6f8fa;
-  color: #333;
+  background-color: var(--color-page-alt);
+  color: var(--color-text-strong);
   padding: 1rem;
   border-radius: 0.25rem;
   overflow-x: auto;
@@ -88,7 +88,7 @@
 
 /* Links */
 #markdown-container a {
-  color: #bf5af2; /* pick a link color or use var(--color-primary) if you like */
+  color: var(--color-primary);
   text-decoration: none;
 }
 
@@ -99,7 +99,7 @@
 /* Horizontal Rule */
 #markdown-container hr {
   border: 0;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--color-border-subtle);
   margin: 2rem 0;
 }
 

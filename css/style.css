@@ -487,7 +487,7 @@ body.modal-open #sidebarOverlay {
 #modalVideo {
   width: 100%;
   aspect-ratio: 16/9;
-  background-color: black;
+  background-color: var(--color-black);
 }
 
 /* Responsive Adjustments */
