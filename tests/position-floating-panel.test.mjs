@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import positionFloatingPanel from "../js/ui/utils/positionFloatingPanel.js";
+import { getAppliedDynamicStyles } from "../js/ui/styleSystem.js";
 
 test("flips to top when bottom placement collides with viewport", () => {
   const dom = new JSDOM(
@@ -54,8 +55,10 @@ test("flips to top when bottom placement collides with viewport", () => {
   positioner.update();
 
   assert.equal(panel.dataset.placement, "top");
-  assert.equal(panel.style.top, "132px");
-  assert.equal(panel.style.left, "100px");
+  const styles = getAppliedDynamicStyles(panel, { slot: "floating-position" });
+  assert.ok(styles);
+  assert.equal(styles.top, "132px");
+  assert.equal(styles.left, "100px");
 
   positioner.destroy();
 });
@@ -113,7 +116,9 @@ test("respects RTL alignment and clamps within the viewport", () => {
   positioner.update();
 
   // In RTL mode, start alignment hugs the right edge of the trigger.
-  assert.equal(panel.style.left, "140px");
+  const rtlStyles = getAppliedDynamicStyles(panel, { slot: "floating-position" });
+  assert.ok(rtlStyles);
+  assert.equal(rtlStyles.left, "140px");
   assert.equal(panel.dataset.placement, "bottom");
 
   positioner.destroy();
@@ -178,12 +183,16 @@ test("updates when scroll containers move the trigger", async () => {
   panel.dataset.state = "open";
   positioner.update();
 
-  assert.equal(panel.style.top, "152px");
+  const initialStyles = getAppliedDynamicStyles(panel, { slot: "floating-position" });
+  assert.ok(initialStyles);
+  assert.equal(initialStyles.top, "152px");
   assert.ok(scrollHandler, "scroll listener should be registered");
 
   anchorTop = 60;
   scrollHandler?.({ type: "scroll" });
-  assert.equal(panel.style.top, "112px");
+  const updatedStyles = getAppliedDynamicStyles(panel, { slot: "floating-position" });
+  assert.ok(updatedStyles);
+  assert.equal(updatedStyles.top, "112px");
 
   positioner.destroy();
   window.addEventListener = originalAddEventListener;

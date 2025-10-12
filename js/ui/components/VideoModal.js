@@ -1,6 +1,10 @@
 import { createModalAccessibility } from "./modalAccessibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
+import {
+  applyDynamicStyles,
+  removeDynamicStyles,
+} from "../styleSystem.js";
 
 export class VideoModal {
   constructor({
@@ -339,15 +343,18 @@ export class VideoModal {
     const modalNav = playerModal.querySelector("#modalNav");
     if (modalNav && this.scrollRegion) {
       let lastScrollY = 0;
+      const updateNavVisibility = (shouldShowNav) => {
+        modalNav.classList.toggle("modal-nav--hidden", !shouldShowNav);
+        modalNav.classList.toggle("modal-nav--visible", shouldShowNav);
+      };
       this.modalNavScrollHandler = () => {
         const currentScrollY = this.scrollRegion.scrollTop;
         const shouldShowNav =
           currentScrollY <= lastScrollY || currentScrollY < 50;
-        modalNav.style.transform = shouldShowNav
-          ? "translateY(0)"
-          : "translateY(-100%)";
+        updateNavVisibility(shouldShowNav);
         lastScrollY = currentScrollY;
       };
+      updateNavVisibility(true);
       this.scrollRegion.addEventListener("scroll", this.modalNavScrollHandler);
     } else {
       this.modalNavScrollHandler = null;
@@ -496,14 +503,12 @@ export class VideoModal {
     }
 
     if (this.creatorAvatar) {
-      this.creatorAvatar.style.cursor = "pointer";
       this.creatorAvatar.addEventListener(
         "click",
         this.handleCreatorNavigation
       );
     }
     if (this.creatorName) {
-      this.creatorName.style.cursor = "pointer";
       this.creatorName.addEventListener("click", this.handleCreatorNavigation);
     }
   }
@@ -535,8 +540,8 @@ export class VideoModal {
       return;
     }
 
-    this.playerModal.style.display = "flex";
     this.playerModal.classList.remove("hidden");
+    this.playerModal.removeAttribute("hidden");
     this.document.body.classList.add("modal-open");
     this.document.documentElement.classList.add("modal-open");
     const triggerElement =
@@ -552,8 +557,8 @@ export class VideoModal {
   close() {
     this.activeVideo = null;
     if (this.playerModal) {
-      this.playerModal.style.display = "none";
       this.playerModal.classList.add("hidden");
+      this.playerModal.setAttribute("hidden", "");
     }
     this.document.body.classList.remove("modal-open");
     this.document.documentElement.classList.remove("modal-open");
@@ -655,20 +660,25 @@ export class VideoModal {
       return;
     }
     if (typeof value === "number" && Number.isFinite(value)) {
-      this.modalProgress.style.setProperty(
-        "--progress-width",
-        `${Math.max(0, value)}%`,
+      applyDynamicStyles(
+        this.modalProgress,
+        { "--progress-width": `${Math.max(0, value)}%` },
+        { slot: "progress" },
       );
       return;
     }
     if (typeof value === "string") {
       const trimmed = value.trim();
       if (trimmed) {
-        this.modalProgress.style.setProperty("--progress-width", trimmed);
+        applyDynamicStyles(
+          this.modalProgress,
+          { "--progress-width": trimmed },
+          { slot: "progress" },
+        );
         return;
       }
     }
-    this.modalProgress.style.removeProperty("--progress-width");
+    removeDynamicStyles(this.modalProgress, { slot: "progress" });
   }
 
   setCopyEnabled(enabled) {

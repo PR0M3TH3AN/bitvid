@@ -256,36 +256,26 @@ async function bootstrapInterface() {
   };
 
   const applySidebarDensity = (collapsed) => {
-    const widthTargets = [document.documentElement, document.body].filter(
-      (element) => element instanceof HTMLElement,
+    const state = collapsed ? "collapsed" : "expanded";
+    const toggleTargets = new Set(
+      [document.documentElement, document.body, sidebar].filter(
+        (element) => element instanceof HTMLElement
+      ),
     );
-    if (sidebar instanceof HTMLElement) {
-      widthTargets.push(sidebar);
-    }
+
     const appShell = document.getElementById("app");
     if (appShell instanceof HTMLElement) {
-      widthTargets.push(appShell);
-    }
-    const state = collapsed ? "collapsed" : "expanded";
-    const nextWidth = collapsed
-      ? SIDEBAR_WIDTH_COLLAPSED
-      : SIDEBAR_WIDTH_EXPANDED;
-
-    widthTargets.forEach((element) => {
-      element.style.setProperty("--sidebar-width", nextWidth);
-    });
-
-    if (appShell instanceof HTMLElement) {
+      toggleTargets.add(appShell);
       appShell.dataset.sidebarState = state;
+      appShell.classList.toggle("sidebar-collapsed", collapsed);
+      appShell.classList.toggle("sidebar-expanded", !collapsed);
     }
 
-    [sidebar, document.body]
-      .filter((element) => element instanceof HTMLElement)
-      .forEach((element) => {
-        element.classList.toggle("sidebar-collapsed", collapsed);
-        element.classList.toggle("sidebar-expanded", !collapsed);
-        element.setAttribute("data-state", state);
-      });
+    toggleTargets.forEach((element) => {
+      element.classList.toggle("sidebar-collapsed", collapsed);
+      element.classList.toggle("sidebar-expanded", !collapsed);
+      element.setAttribute("data-state", state);
+    });
 
     if (collapseToggle) {
       const actionLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";

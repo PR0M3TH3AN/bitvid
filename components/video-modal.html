@@ -5,6 +5,7 @@
   role="dialog"
   aria-modal="true"
   data-ds="new"
+  hidden
 >
   <div class="bv-modal-backdrop" data-dismiss></div>
   <div class="bv-modal__panel" tabindex="-1">
@@ -13,7 +14,7 @@
         <!-- Navigation bar - sliding at top -->
         <div
           id="modalNav"
-          class="modal-nav video-modal__nav sticky top-0 z-60 transition-transform duration-150"
+          class="modal-nav modal-nav--visible video-modal__nav sticky top-0 z-60"
         >
           <div
             class="card flex w-full items-center justify-between gap-4 px-4 py-3 u-max-400-flex-wrap u-max-400-gap-y-sm u-max-400-px-sm"
@@ -336,13 +337,13 @@
                   id="creatorAvatar"
                   src=""
                   alt="Creator"
-                  class="h-full w-full object-cover"
+                  class="h-full w-full cursor-pointer object-cover"
                 />
               </div>
               <div class="flex flex-col gap-1">
                 <h3
                   id="creatorName"
-                  class="text-lg font-semibold text-text"
+                  class="cursor-pointer text-lg font-semibold text-text"
                 >
                   Creator Name
                 </h3>

@@ -2,6 +2,10 @@
 
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
+import {
+  applyDynamicStyles,
+  removeDynamicStyles,
+} from "../styleSystem.js";
 
 export class UploadModal {
   constructor({
@@ -761,7 +765,7 @@ export class UploadModal {
     if (!Number.isFinite(fraction) || fraction < 0) {
       this.cloudflareProgressBar.classList.add("hidden");
       this.cloudflareProgressBar.setAttribute("aria-hidden", "true");
-      this.cloudflareProgressFill.style.width = "0%";
+      removeDynamicStyles(this.cloudflareProgressFill, { slot: "r2-progress" });
       this.cloudflareProgressFill.setAttribute("aria-valuenow", "0");
       this.emit("upload:r2-progress", { fraction: null });
       return;
@@ -772,7 +776,11 @@ export class UploadModal {
 
     this.cloudflareProgressBar.classList.remove("hidden");
     this.cloudflareProgressBar.setAttribute("aria-hidden", "false");
-    this.cloudflareProgressFill.style.width = `${percent}%`;
+    applyDynamicStyles(
+      this.cloudflareProgressFill,
+      { "--cloudflare-progress-width": `${percent}%` },
+      { slot: "r2-progress" },
+    );
     this.cloudflareProgressFill.setAttribute("aria-valuenow", `${percent}`);
     this.emit("upload:r2-progress", { fraction: clamped });
   }

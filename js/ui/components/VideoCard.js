@@ -478,24 +478,22 @@ export class VideoCard {
         alt: "Placeholder"
       }
     });
-    avatar.classList.add("author-pic");
+    avatar.classList.add("author-pic", "cursor-pointer");
     if (this.video.pubkey) {
       avatar.dataset.pubkey = this.video.pubkey;
     }
-    avatar.style.cursor = "pointer";
 
     avatarWrapper.appendChild(avatar);
 
     const authorMeta = this.createElement("div", { classNames: ["min-w-0"] });
 
     const authorName = this.createElement("p", {
-      classNames: ["text-sm", "text-muted", "author-name"],
+      classNames: ["text-sm", "text-muted", "author-name", "cursor-pointer"],
       textContent: "Loading name..."
     });
     if (this.video.pubkey) {
       authorName.dataset.pubkey = this.video.pubkey;
     }
-    authorName.style.cursor = "pointer";
 
     const metadata = this.createElement("div", {
       classNames: [

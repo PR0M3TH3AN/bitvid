@@ -192,6 +192,12 @@
       var(--motion-ease-out, ease-out);
   }
 
+  .cloudflare-progress__fill {
+    width: var(--cloudflare-progress-width, 0%);
+    transition: width var(--motion-duration-base, 160ms)
+      var(--motion-ease-out, ease-out);
+  }
+
   .blog-embed-shell {
     height: var(--blog-embed-height);
   }
@@ -623,7 +629,15 @@
   }
 
   .modal-nav {
-    @apply video-modal__nav;
+    @apply video-modal__nav transition-transform duration-150 translate-y-0;
+  }
+
+  .modal-nav--hidden {
+    @apply -translate-y-full;
+  }
+
+  .modal-nav--visible {
+    @apply translate-y-0;
   }
 
   .video-modal__actions {
@@ -1757,12 +1771,14 @@
     }
 
     body.sidebar-collapsed,
-    #sidebar.sidebar-collapsed {
+    #sidebar.sidebar-collapsed,
+    #app.sidebar-collapsed {
       --sidebar-width: var(--sidebar-width-collapsed);
     }
 
     body.sidebar-expanded,
-    #sidebar.sidebar-expanded {
+    #sidebar.sidebar-expanded,
+    #app.sidebar-expanded {
       --sidebar-width: var(--sidebar-width-expanded);
     }
 

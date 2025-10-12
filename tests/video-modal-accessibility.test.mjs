@@ -208,17 +208,20 @@ for (const designSystemEnabled of [false, true]) {
       scrollRegion.scrollTop = 120;
       assert.equal(modal.scrollRegion.scrollTop, 120);
       modal.modalNavScrollHandler?.();
-      assert.equal(nav.style.transform, "translateY(-100%)");
+      assert.ok(nav.classList.contains("modal-nav--hidden"));
+      assert.ok(!nav.classList.contains("modal-nav--visible"));
 
       scrollRegion.scrollTop = 60;
       assert.equal(modal.scrollRegion.scrollTop, 60);
       modal.modalNavScrollHandler?.();
-      assert.equal(nav.style.transform, "translateY(0)");
+      assert.ok(nav.classList.contains("modal-nav--visible"));
+      assert.ok(!nav.classList.contains("modal-nav--hidden"));
 
       scrollRegion.scrollTop = 10;
       assert.equal(modal.scrollRegion.scrollTop, 10);
       modal.modalNavScrollHandler?.();
-      assert.equal(nav.style.transform, "translateY(0)");
+      assert.ok(nav.classList.contains("modal-nav--visible"));
+      assert.ok(!nav.classList.contains("modal-nav--hidden"));
     }
   );
 

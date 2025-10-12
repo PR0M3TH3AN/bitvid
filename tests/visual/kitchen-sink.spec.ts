@@ -156,7 +156,7 @@ test.describe("video modal mobile regression", () => {
         }
 
         modal.classList.remove("hidden");
-        modal.style.display = "flex";
+        modal.removeAttribute("hidden");
 
         const mode = designSystemEnabled ? "new" : "legacy";
         modal.setAttribute("data-ds", mode);

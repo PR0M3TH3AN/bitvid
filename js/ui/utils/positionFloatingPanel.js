@@ -1,3 +1,8 @@
+import {
+  applyDynamicStyles,
+  clearAllDynamicStyles,
+} from "../styleSystem.js";
+
 const DEFAULT_OPTIONS = {
   placement: "bottom",
   alignment: "start",
@@ -240,18 +245,24 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
   };
 
   const applyPosition = ({ top, left, placement }) => {
-    safePanel.style.position = config.strategy;
-    safePanel.style.top = `${top}px`;
-    safePanel.style.left = `${left}px`;
-    safePanel.style.right = "auto";
-    safePanel.style.bottom = "auto";
     safePanel.dataset.placement = placement;
     const transformOrigin = computeTransformOrigin({
       placement,
       alignment: config.alignment,
       rtl,
     });
-    safePanel.style.setProperty("--floating-transform-origin", transformOrigin);
+    applyDynamicStyles(
+      safePanel,
+      {
+        position: config.strategy,
+        top: `${top}px`,
+        left: `${left}px`,
+        right: "auto",
+        bottom: "auto",
+        "--floating-transform-origin": transformOrigin,
+      },
+      { slot: "floating-position" },
+    );
     if (typeof config.onUpdate === "function") {
       config.onUpdate({ top, left, placement, alignment: config.alignment, rtl });
     }
@@ -398,6 +409,7 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
           // Ignore cleanup errors to avoid breaking consumer teardown flows.
         }
       }
+      clearAllDynamicStyles(safePanel);
     },
   };
 }
