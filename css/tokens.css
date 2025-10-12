@@ -94,6 +94,24 @@
   --color-text-frosted: rgb(226 232 240 / 0.9);
   --color-text-frosted-soft: rgb(226 232 240 / 0.82);
 
+  /* Layout & stacking */
+  --scrollbar-width: 0.5rem;
+  --scrollbar-track: var(--color-white-soft);
+  --scrollbar-thumb: var(--color-white-softer);
+  --scrollbar-thumb-hover: var(--color-white-softest);
+  /* Sidebar stack must remain below modal overlays. */
+  --z-sidebar-overlay: 10;
+  --z-sidebar: 20;
+  --z-modal-root: 100;
+  --z-modal-overlay: 110;
+  --z-modal-content: 120;
+  --z-modal-player: 130;
+  --sidebar-width-expanded: 16rem;
+  --sidebar-width-collapsed: 4rem;
+  --sidebar-width: var(--sidebar-width-expanded);
+  --sidebar-control-size: 2.75rem;
+  --sidebar-content-gap: 1rem;
+
   /* Blog palette */
   --color-blog-transparent: rgb(0 0 0 / 0);
   --color-blog-cyan-500: rgb(6 182 212);

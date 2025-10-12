@@ -4,10 +4,10 @@ bitvid's visual language is now powered by Tailwind utilities backed by our desi
 
 ## Feature Flag Rollout
 
-The new design system ships behind the `FEATURE_DESIGN_SYSTEM` runtime flag defined in `js/constants.js`. Deployments should keep the flag disabled (`false`) until the new primitives are ready for broad adoption.
+The new design system ships behind the `FEATURE_DESIGN_SYSTEM` runtime flag defined in `js/constants.js`. Deployments can temporarily disable the flag (`false`) if they need to fall back to the legacy primitives during an incident.
 
-- **Default state:** `FEATURE_DESIGN_SYSTEM` is `false`, so templates render with `data-ds="legacy"` on root containers.
-- **Runtime toggle:** Set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_DESIGN_SYSTEM = true` (or call `setFeatureDesignSystemEnabled(true)`) to opt into the new primitives. The entrypoint automatically updates every `[data-ds]` container to `data-ds="new"` and notifies controllers.
+- **Default state:** `FEATURE_DESIGN_SYSTEM` is `true`, so templates render with `data-ds="new"` on root containers.
+- **Runtime toggle:** Set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_DESIGN_SYSTEM = false` (or call `setFeatureDesignSystemEnabled(false)`) to temporarily fall back to the legacy primitives. The entrypoint automatically updates every `[data-ds]` container to `data-ds="new"` and notifies controllers.
 - **DOM contract:** Templates and partials must include `data-ds` on their root elements. Controllers should rely on the `designSystem` context (see `js/designSystem.js`) before attaching classes or behaviors that only exist in the new system.
 
 ## Theming
@@ -56,17 +56,17 @@ Never hide focus styles without providing an accessible alternative.
 The `rg "transition"` audit surfaces the components that animate by default. Keep this list in sync when new motion primitives land:
 
 - **Buttons:** `.btn` and `.btn-ghost` transition their backgrounds, borders, and shadows using the shared token durations. 【F:css/tailwind.source.css†L18-L55】
-- **Cards and watch history:** `.card`, `.watch-history-card`, and their nested controls use hover/focus transitions plus optional entry animations via `data-motion="enter"`. 【F:css/style.css†L182-L185】【F:css/tailwind.source.css†L196-L247】
-- **Popovers:** `.popover__panel` fades and scales between `[data-state]` values. 【F:css/style.css†L150-L166】
-- **Modals:** `.bv-modal__panel`, `.video-modal__panel`, and `.player-modal__content` animate in concert with the modal nav/header layout helpers. 【F:docs/kitchen-sink.html†L335-L391】【F:css/style.css†L335-L468】
-- **Feedback & loading:** `.progress-bar-fill`, `.status-spinner--inline`, and `.status-banner .status-spinner` communicate state changes with width transitions or spin animations. 【F:css/style.css†L532-L695】
-- **Sidebar controls:** `.sidebar-nav-link`, `.sidebar-dropup-trigger`, `.sidebar-collapse-toggle`, and related chevrons/toggles translate, fade, and resize during rail expansion. 【F:css/style.css†L889-L1147】
+- **Cards and watch history:** `.card`, `.watch-history-card`, and their nested controls use hover/focus transitions plus optional entry animations via `data-motion="enter"`. 【F:css/tailwind.source.css†L238-L804】
+- **Popovers:** `.popover__panel` fades and scales between `[data-state]` values. 【F:css/tailwind.source.css†L119-L141】
+- **Modals:** `.bv-modal__panel`, `.video-modal__panel`, and `.player-modal__content` animate in concert with the modal nav/header layout helpers. 【F:docs/kitchen-sink.html†L335-L391】【F:css/tailwind.source.css†L385-L640】
+- **Feedback & loading:** `.progress-bar-fill`, `.status-spinner--inline`, and `.status-banner .status-spinner` communicate state changes with width transitions or spin animations. 【F:css/tailwind.source.css†L907-L948】
+- **Sidebar controls:** `.sidebar-nav-link`, `.sidebar-dropup-trigger`, `.sidebar-collapse-toggle`, and related chevrons/toggles translate, fade, and resize during rail expansion. 【F:css/tailwind.source.css†L1164-L1598】
 
 ### Reduced-motion policy
 
-- A consolidated `@media (prefers-reduced-motion: reduce)` block now zeroes out transition and animation durations globally, removes motion-only transforms, and leaves opacity state changes in place so surfaces still show and hide instantly. 【F:css/style.css†L287-L339】
+- A consolidated `@media (prefers-reduced-motion: reduce)` block now zeroes out transition and animation durations globally, removes motion-only transforms, and leaves opacity state changes in place so surfaces still show and hide instantly. 【F:css/tailwind.source.css†L1766-L1981】
 - Motion tokens also collapse to `0s` inside Tailwind's component layer so the primitives (`.btn`, `.card`, `.popover__panel`, watch-history tiles) inherit the same behaviour without per-selector overrides. 【F:css/tailwind.source.css†L229-L270】
-- Spinners fall back to static indicators when reduced motion is requested, while focus rings remain intact because the underlying styles are unaffected—only the timing curves are reset. 【F:css/style.css†L329-L339】
+- Spinners fall back to static indicators when reduced motion is requested, while focus rings remain intact because the underlying styles are unaffected—only the timing curves are reset. 【F:css/tailwind.source.css†L1778-L1981】
 - When adding a new animated component, register its selector in this block (or reuse the tokenised durations) so reduced-motion users never see unintended transitions. Document the addition here alongside the inventory.
 
 ## Component Primitives
@@ -235,7 +235,7 @@ The helpers rely on layout utilities (`flex`, `gap-*`) so you can safely inject 
 
 ### Zap Popover
 
-Compose `.popover` with a zap-specific panel variant when you need to surface the tipping form inline. Toggle `data-state="open"` on the `.popover__panel` and remove its `hidden` attribute when the dialog is visible. The `data-variant="zap"` hook reuses the frosted-glass styling defined in `css/style.css`.
+Compose `.popover` with a zap-specific panel variant when you need to surface the tipping form inline. Toggle `data-state="open"` on the `.popover__panel` and remove its `hidden` attribute when the dialog is visible. The `data-variant="zap"` hook reuses the frosted-glass styling defined in `css/tailwind.source.css`.
 
 ```html
 <div class="popover">
@@ -277,7 +277,7 @@ Compose `.popover` with a zap-specific panel variant when you need to surface th
 
 ## Legacy Compatibility Shims
 
-During migration we keep existing selectors alive by layering `@apply` calls in `css/style.css`. Notable shims:
+During migration we keep existing selectors alive by layering `@apply` calls in `css/tailwind.source.css`. Notable shims:
 
 - `#profileModal .profile-switcher*` → `.card`, `.badge`, `.btn-ghost`
 
@@ -291,8 +291,8 @@ We continue to expose aliases such as `.profile-switcher` and nested variations 
 
 - [ ] Confirm no production templates emit `.profile-switcher*` selectors (owners: @ui-templates, @design-systems).
 - [ ] Verify the torrent beacon renders `.card`, `.btn`, `.btn-ghost`, and `.input` primitives with no fallback selectors (owner: @torrent-beacon).
-- [ ] Flip `FEATURE_DESIGN_SYSTEM` to `true` in staging and run kitchen-sink visual snapshots to ensure no regressions.
-- [ ] Delete residual `@apply` rules under "Legacy component compatibility" in `css/style.css`.
+- [ ] Verify `FEATURE_DESIGN_SYSTEM` remains `true` in staging and run kitchen-sink visual snapshots to ensure no regressions.
+- [ ] Delete residual `@apply` rules under "Legacy component compatibility" in `css/tailwind.source.css`.
 - [ ] Announce the removal in release notes and update downstream embed documentation.
 
 **Owners:** Design Systems Guild (@design-systems) with support from the Templates crew (@ui-templates) and the torrent beacon maintainers (@torrent-beacon).
