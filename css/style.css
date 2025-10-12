@@ -969,17 +969,33 @@ footer a:hover {
   position: relative;
   width: 100%;
   border-radius: 1.5rem;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  border: 1px solid var(--color-sidebar-border-strong);
+  background:
+    radial-gradient(
+      140% 140% at 15% 10%,
+      color-mix(in srgb, var(--color-sidebar-accent-start) 46%, transparent) 0%,
+      transparent 65%
+    ),
+    radial-gradient(
+      130% 130% at 82% 88%,
+      color-mix(in srgb, var(--color-sidebar-accent-end) 42%, transparent) 0%,
+      transparent 70%
+    ),
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--color-sidebar-surface) 92%, transparent) 0%,
+      color-mix(in srgb, var(--color-sidebar-surface-alt) 98%, transparent) 100%
+    );
+  box-shadow: 0 1.875rem 3.75rem -1.5rem var(--color-shadow-sidebar);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
   overflow: visible;
   isolation: isolate;
   transition:
     border-color 200ms ease,
     box-shadow 220ms ease,
-    background 220ms ease;
+    background 220ms ease,
+    backdrop-filter 220ms ease;
 }
 
 #sidebar .sidebar__inner::after {
