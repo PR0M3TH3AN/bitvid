@@ -62,7 +62,11 @@ const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
 const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
   "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
 
-const DEFAULT_ENABLE_VARIANT_TIMEOUT_MS = 7000;
+// Give the NIP-07 extension enough time to surface its approval prompt and let
+// users unlock/authorize it. Seven seconds proved too aggressive once vendors
+// started requiring an unlock step, so we extend the window substantially while
+// still allowing manual overrides via __BITVID_NIP07_ENABLE_VARIANT_TIMEOUT_MS__.
+const DEFAULT_ENABLE_VARIANT_TIMEOUT_MS = 45_000;
 
 function getEnableVariantTimeoutMs() {
   const overrideValue =
