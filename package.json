@@ -19,6 +19,7 @@
     "autoprefixer": "^10.4.19",
     "cross-env": "^7.0.3",
     "jsdom": "^24.0.0",
+    "nostr-tools": "^2.10.4",
     "pixelmatch": "^5.3.0",
     "pngjs": "^7.0.0",
     "postcss": "^8.4.41",
