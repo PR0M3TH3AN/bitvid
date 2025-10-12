@@ -4,7 +4,7 @@ const DEFAULT_FLAGS = Object.freeze({
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
   FEATURE_WATCH_HISTORY_V2: false,
   FEATURE_PUBLISH_NIP71: false,
-  FEATURE_DESIGN_SYSTEM: false,
+  FEATURE_DESIGN_SYSTEM: true,
   WSS_TRACKERS: Object.freeze([
     "wss://tracker.openwebtorrent.com",
     "wss://tracker.fastcast.nz",
