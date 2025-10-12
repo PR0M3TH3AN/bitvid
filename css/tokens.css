@@ -40,11 +40,13 @@
   --color-overlay-muted: rgb(15 23 42 / 0.55);
   --color-overlay-strong: rgb(15 23 42 / 0.75);
   --color-overlay-darker: rgb(15 23 42 / 0.88);
-  --color-overlay-panel: rgb(31 41 55 / 0.9);
-  --color-overlay-panel-soft: rgb(31 41 55 / 0.75);
+  --color-overlay-panel: rgb(26 34 52 / 0.82);
+  --color-overlay-panel-soft: rgb(26 34 52 / 0.65);
   --color-overlay-panel-tint: rgb(31 41 55 / 0.5);
-  --color-overlay-panel-glass: rgb(30 41 59 / 0.85);
-  --color-overlay-panel-glass-soft: rgb(31 41 55 / 0.6);
+  --color-overlay-panel-glass: rgb(28 37 58 / 0.72);
+  --color-overlay-panel-glass-soft: rgb(31 41 55 / 0.55);
+  --color-modal-backdrop: rgb(8 12 24 / 0.58);
+  --color-modal-surface: rgb(20 28 46 / 0.78);
   --color-overlay-veil: rgb(11 17 32 / 0.96);
   --color-overlay-banner: rgb(51 65 85 / 0.95);
   --color-overlay-panel-gradient-start: rgb(30 41 59 / 0.92);
@@ -198,6 +200,8 @@
   --color-overlay-panel: rgb(15 23 42 / 0.78);
   --color-overlay-panel-soft: rgb(15 23 42 / 0.6);
   --color-overlay-panel-tint: rgb(148 163 184 / 0.2);
+  --color-modal-backdrop: rgb(15 23 42 / 0.45);
+  --color-modal-surface: rgb(248 250 252 / 0.92);
   --color-overlay-panel-glass: rgb(255 255 255 / 0.82);
   --color-overlay-veil: rgb(148 163 184 / 0.5);
   --color-overlay-panel-gradient-start: rgb(255 255 255 / 0.92);

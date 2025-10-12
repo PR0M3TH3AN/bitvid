@@ -280,7 +280,8 @@
   }
 
   .bv-modal__panel {
-    @apply focus-ring relative z-[var(--z-modal-content)] w-full max-w-[38rem] rounded-[1.75rem] border border-border-translucent bg-overlay-panel px-8 pb-8 pt-7 text-left text-text shadow-modal transition duration-base ease-out;
+    @apply focus-ring relative z-[var(--z-modal-content)] w-full max-w-[38rem] rounded-[1.75rem] border border-border-translucent px-8 pb-8 pt-7 text-left text-text shadow-modal transition duration-base ease-out;
+    background-color: var(--color-modal-surface, var(--color-overlay-panel));
   }
 
   .bv-modal__panel:focus-visible {
@@ -288,15 +289,19 @@
   }
 
   .bv-modal-backdrop {
-    @apply absolute inset-0 z-[var(--z-modal-overlay)] bg-overlay bg-opacity-90 backdrop-blur-2xl;
+    @apply absolute inset-0 z-[var(--z-modal-overlay)] backdrop-saturate-150;
+    background-color: var(--color-modal-backdrop, var(--color-overlay-muted));
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
   }
 
   .bv-modal-backdrop[data-variant="veil"] {
-    @apply bg-overlay-veil bg-opacity-100;
+    @apply backdrop-blur-3xl;
+    background-color: var(--color-overlay-veil);
   }
 
   .bv-modal-backdrop[data-variant="muted"] {
-    @apply bg-overlay-muted;
+    background-color: var(--color-overlay-muted);
   }
 
   .modal-sheet {
@@ -362,7 +367,7 @@
   }
 
   .modal-tile {
-    @apply rounded-xl border border-border-translucent bg-overlay-panel-soft px-5 py-4 text-sm text-muted-strong;
+    @apply rounded-xl border border-border-translucent bg-overlay-panel-soft px-5 py-4 text-sm text-text-frosted;
     background-color: var(--color-overlay-panel-glass-soft);
   }
 
