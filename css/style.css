@@ -938,34 +938,104 @@ footer a:hover {
   min-width: var(--sidebar-width);
   height: 100vh;
   height: 100dvh;
-  background-color: transparent;
-  color: var(--color-text);
+  color: var(--color-text-frosted-strong);
   overflow-x: visible;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
+  background:
+    linear-gradient(
+      168deg,
+      var(--color-sidebar-surface) 0%,
+      var(--color-sidebar-surface-alt) 100%
+    );
+  border-right: 1px solid var(--color-sidebar-border);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
   transition:
     width 200ms ease,
     transform 0.3s ease,
-    box-shadow 0.3s ease;
+    box-shadow 220ms ease,
+    border-color 220ms ease,
+    background 220ms ease;
   /* Keep below modal stacks so dialogs overlay the drawer. */
   z-index: var(--z-sidebar);
-  box-shadow: none;
+  box-shadow: 0 1.5625rem 3.125rem -0.75rem var(--color-shadow-sidebar);
+  isolation: isolate;
+}
+
+#sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      120% 90% at 10% 10%,
+      var(--color-sidebar-hover) 0%,
+      transparent 55%
+    );
+  opacity: 0.65;
+  mix-blend-mode: screen;
 }
 
 #sidebar .sidebar__inner {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 1.5rem 1.25rem 1.75rem;
+  padding: 1.5rem 1.5rem 1.75rem;
   position: relative;
   width: 100%;
-  /*
-    Allow the gradient panel shadow to breathe outside the rail while a nested
-    scroll container handles overflow.
-  */
+  border-radius: 1.5rem;
+  border: 1px solid var(--color-sidebar-border);
+  background:
+    linear-gradient(
+      155deg,
+      var(--color-sidebar-surface) 0%,
+      var(--color-sidebar-surface-alt) 100%
+    );
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--color-sidebar-surface) 85%, transparent) 0%,
+      color-mix(in srgb, var(--color-sidebar-surface-alt) 60%, transparent) 100%
+    );
+  box-shadow:
+    inset 0 0 0 0.5px var(--color-sidebar-border),
+    0 1.75rem 3.25rem -1.5rem var(--color-shadow-panel);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
   overflow: visible;
+  isolation: isolate;
+  transition:
+    border-color 200ms ease,
+    box-shadow 220ms ease,
+    background 220ms ease;
+}
+
+#sidebar .sidebar__inner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      130deg,
+      transparent 0%,
+      var(--color-sidebar-hover) 38%,
+      transparent 100%
+    );
+  background:
+    linear-gradient(
+      130deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-sidebar-hover) 55%, transparent) 38%,
+      transparent 100%
+    );
+  opacity: 0.35;
+  mix-blend-mode: screen;
 }
 
 /*
@@ -975,7 +1045,7 @@ footer a:hover {
 .sidebar-scroll {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.75rem;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -984,20 +1054,55 @@ footer a:hover {
 }
 
 .sidebar-panel {
-  background: linear-gradient(
-    160deg,
-    var(--color-overlay-panel-gradient-start) 0%,
-    var(--color-overlay-panel-gradient-end) 100%
-  );
-  border: 1px solid var(--color-border-translucent);
-  border-radius: 1rem;
-  box-shadow: 0 1.25rem 2.5rem var(--color-shadow-panel);
-  padding: 1.25rem 1rem;
+  position: relative;
   width: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.35rem;
+  padding: 1.35rem 1.1rem;
+  border-radius: 1.1rem;
+  border: 1px solid var(--color-sidebar-border);
+  background:
+    linear-gradient(
+      158deg,
+      var(--color-sidebar-surface) 0%,
+      var(--color-sidebar-surface-alt) 100%
+    );
+  background:
+    linear-gradient(
+      158deg,
+      color-mix(in srgb, var(--color-sidebar-surface) 88%, transparent) 0%,
+      color-mix(in srgb, var(--color-sidebar-surface-alt) 65%, transparent) 100%
+    );
+  box-shadow:
+    inset 0 0 0 0.5px var(--color-sidebar-border),
+    0 1.5rem 3rem -1.5rem var(--color-shadow-panel);
+  color: inherit;
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    border-color 200ms ease,
+    box-shadow 220ms ease,
+    background 220ms ease;
+}
+
+.sidebar-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      120deg,
+      transparent 0%,
+      var(--color-sidebar-hover) 32%,
+      transparent 100%
+    );
+  opacity: 0.5;
+  mix-blend-mode: screen;
 }
 
 .sidebar-panel--primary {
@@ -1050,46 +1155,136 @@ footer a:hover {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.5rem;
   opacity: 1;
   transition: opacity 160ms ease;
   width: 100%;
 }
 
 .sidebar-nav-link {
+  --sidebar-nav-translate-x: 0;
+  --sidebar-nav-link-highlight-opacity: 0;
+  --sidebar-nav-link-highlight-scale: 0.96;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.625rem 0.875rem;
+  gap: 0.85rem;
+  padding: 0.7rem 1rem;
   min-height: var(--sidebar-control-size);
-  border-radius: 0.875rem;
+  border-radius: 0.95rem;
   font-size: 0.95rem;
   font-weight: 600;
+  letter-spacing: 0.015em;
   color: var(--color-text-frosted-strong);
   text-decoration: none;
-  transition:
-    background 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
   width: 100%;
   box-sizing: border-box;
+  position: relative;
+  border: 1px solid var(--color-sidebar-border);
+  background:
+    linear-gradient(
+      155deg,
+      var(--color-sidebar-surface) 0%,
+      var(--color-sidebar-surface-alt) 100%
+    );
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--color-sidebar-surface) 72%, transparent) 0%,
+      color-mix(in srgb, var(--color-sidebar-surface-alt) 48%, transparent) 100%
+    );
+  box-shadow: inset 0 0 0 0.5px var(--color-sidebar-border);
+  transform: translateX(var(--sidebar-nav-translate-x));
+  transition:
+    color 180ms ease,
+    border-color 200ms ease,
+    box-shadow 220ms ease,
+    transform 220ms ease;
+  overflow: hidden;
+  isolation: isolate;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
 }
 
-.sidebar-nav-link:hover {
-  background: var(--color-border-translucent);
-  color: var(--color-text);
+.sidebar-nav-link::before,
+.sidebar-nav-link::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  transition:
+    opacity 220ms ease,
+    transform 240ms ease;
+  z-index: -1;
+}
+
+.sidebar-nav-link::before {
+  background: linear-gradient(
+    120deg,
+    var(--color-sidebar-accent-start) 0%,
+    var(--color-sidebar-accent-end) 100%
+  );
+  opacity: var(--sidebar-nav-link-highlight-opacity);
+  transform: scale(var(--sidebar-nav-link-highlight-scale));
+  filter: saturate(140%);
+}
+
+.sidebar-nav-link::after {
+  background:
+    linear-gradient(105deg, var(--color-sidebar-hover) 0%, transparent 75%);
+  opacity: 0.22;
+  mix-blend-mode: screen;
+  z-index: -2;
+}
+
+.sidebar-nav-link:hover,
+.sidebar-nav-link:focus-visible {
+  --sidebar-nav-link-highlight-opacity: 1;
+  --sidebar-nav-link-highlight-scale: 1.02;
+  --sidebar-nav-translate-x: 0.35rem;
+  color: var(--color-white);
+  border-color: var(--color-sidebar-hover-strong);
+  box-shadow:
+    0 0 0 1px var(--color-sidebar-hover-strong),
+    0 1.65rem 3.25rem -1.35rem var(--color-sidebar-glow);
 }
 
 .sidebar-nav-link:focus-visible {
-  outline: 0.125rem solid var(--color-secondary);
-  outline-offset: 0.25rem;
+  outline: none;
+  box-shadow:
+    0 0 0 0.125rem var(--color-sidebar-glow),
+    0 0 0 0.25rem var(--color-sidebar-hover-strong),
+    0 1.65rem 3.25rem -1.35rem var(--color-sidebar-glow);
+}
+
+.sidebar-nav-link:hover::after,
+.sidebar-nav-link:focus-visible::after {
+  opacity: 0.35;
 }
 
 .sidebar-nav-link--sub {
   font-size: 0.85rem;
   font-weight: 500;
-  color: var(--color-text-frosted-soft);
+  color: var(--color-sidebar-text-muted);
   padding-block: 0.55rem;
+  letter-spacing: 0.02em;
+  --sidebar-nav-link-highlight-opacity: 0.25;
+  --sidebar-nav-link-highlight-scale: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-nav-link,
+  .sidebar-dropup-trigger {
+    transition:
+      color 180ms ease,
+      border-color 200ms ease,
+      box-shadow 220ms ease;
+  }
+
+  .sidebar-nav-link:hover,
+  .sidebar-nav-link:focus-visible {
+    --sidebar-nav-translate-x: 0;
+  }
 }
 
 .sidebar-icon {
@@ -1105,44 +1300,115 @@ footer a:hover {
 .sidebar-footer {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.85rem;
   margin-top: auto;
   position: relative;
   z-index: 2;
 }
 
 .sidebar-dropup-trigger {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.85rem;
   width: 100%;
-  padding: 0.75rem 0.875rem;
+  padding: 0.78rem 1rem;
   min-height: var(--sidebar-control-size);
-  border-radius: 0.875rem;
-  border: 1px solid var(--color-border-translucent);
-  background: var(--color-overlay-panel-glass);
+  border-radius: 0.95rem;
+  border: 1px solid var(--color-sidebar-border);
+  background:
+    linear-gradient(
+      155deg,
+      var(--color-sidebar-surface) 0%,
+      var(--color-sidebar-surface-alt) 100%
+    );
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--color-sidebar-surface) 80%, transparent) 0%,
+      color-mix(in srgb, var(--color-sidebar-surface-alt) 58%, transparent) 100%
+    );
   color: var(--color-text-frosted);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease;
   box-sizing: border-box;
   flex-shrink: 0;
+  overflow: hidden;
+  isolation: isolate;
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow:
+    inset 0 0 0 0.5px var(--color-sidebar-border),
+    0 1.25rem 2.5rem -1.35rem var(--color-shadow-panel);
+  transition:
+    border-color 200ms ease,
+    color 200ms ease,
+    box-shadow 220ms ease,
+    background 220ms ease;
 }
 
-.sidebar-dropup-trigger:hover {
-  background: var(--color-overlay-banner);
-  border-color: var(--color-border-translucent-bright);
-  color: var(--color-text);
+.sidebar-dropup-trigger::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    120deg,
+    var(--color-sidebar-accent-start) 0%,
+    var(--color-sidebar-accent-end) 100%
+  );
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 200ms ease,
+    transform 220ms ease;
+  z-index: -1;
+  filter: saturate(140%);
+}
+
+.sidebar-dropup-trigger::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(110deg, var(--color-sidebar-hover) 0%, transparent 80%);
+  opacity: 0.18;
+  mix-blend-mode: screen;
+  transition: opacity 200ms ease;
+  z-index: -2;
+}
+
+.sidebar-dropup-trigger:hover,
+.sidebar-dropup-trigger:focus-visible {
+  color: var(--color-white);
+  border-color: var(--color-sidebar-hover-strong);
+  box-shadow:
+    0 0 0 1px var(--color-sidebar-hover-strong),
+    0 1.75rem 3.25rem -1.45rem var(--color-sidebar-glow);
+}
+
+.sidebar-dropup-trigger:hover::before,
+.sidebar-dropup-trigger:focus-visible::before {
+  opacity: 1;
+  transform: scale(1.02);
+}
+
+.sidebar-dropup-trigger:hover::after,
+.sidebar-dropup-trigger:focus-visible::after {
+  opacity: 0.35;
 }
 
 .sidebar-dropup-trigger:focus-visible {
-  outline: 0.125rem solid var(--color-secondary);
-  outline-offset: 0.25rem;
+  outline: none;
+  box-shadow:
+    0 0 0 0.125rem var(--color-sidebar-glow),
+    0 0 0 0.25rem var(--color-sidebar-hover-strong),
+    0 1.75rem 3.25rem -1.45rem var(--color-sidebar-glow);
 }
 
 .sidebar-dropup-trigger__glyph {
@@ -1163,24 +1429,42 @@ footer a:hover {
 }
 
 .sidebar-dropup-panel {
-  background: var(--color-overlay-darker);
-  border: 1px solid var(--color-border-translucent);
-  border-radius: 0.875rem;
-  box-shadow: 0 1.5rem 3rem var(--color-shadow-panel);
-  padding: 0.75rem 0.5rem;
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(100% + 0.75rem);
+  bottom: calc(100% + 0.85rem);
+  border-radius: 1rem;
+  border: 1px solid var(--color-sidebar-border-strong);
+  background:
+    linear-gradient(
+      160deg,
+      var(--color-sidebar-surface) 0%,
+      var(--color-sidebar-surface-alt) 100%
+    );
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--color-sidebar-surface) 88%, transparent) 0%,
+      color-mix(in srgb, var(--color-sidebar-surface-alt) 68%, transparent) 100%
+    );
+  box-shadow:
+    inset 0 0 0 0.5px var(--color-sidebar-border),
+    0 2.25rem 4.5rem -1.85rem var(--color-shadow-sidebar);
+  padding: 0.85rem 0.65rem;
+  color: var(--color-text-frosted);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translateY(0.5rem);
+  transform: translateY(0.75rem);
   transition:
-    opacity 160ms ease,
-    transform 160ms ease,
-    visibility 160ms ease;
+    opacity 180ms ease,
+    transform 180ms ease,
+    visibility 180ms ease,
+    box-shadow 220ms ease;
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   z-index: 5;
+  isolation: isolate;
 }
 
 .sidebar-dropup-panel[data-state="expanded"] {
@@ -1193,7 +1477,7 @@ footer a:hover {
 .sidebar-dropup-panel__inner {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.45rem;
 }
 
 #sidebar[data-footer-state="expanded"] .sidebar-nav {
@@ -1206,7 +1490,9 @@ footer a:hover {
 }
 
 #sidebar.sidebar-open {
-  box-shadow: 0 0.75rem 1.5rem var(--color-shadow-panel);
+  box-shadow:
+    0 1.875rem 3.75rem -1.5rem var(--color-shadow-sidebar),
+    0 0 0 1px var(--color-sidebar-border-strong);
 }
 
 #sidebarOverlay {
@@ -1320,6 +1606,8 @@ body.sidebar-open #sidebarOverlay {
     padding: 0;
     margin-inline: auto;
     border-radius: 9999px;
+    --sidebar-nav-translate-x: 0;
+    --sidebar-nav-link-highlight-scale: 1;
   }
 
   body.sidebar-expanded #sidebar .sidebar-nav-link,
@@ -1395,6 +1683,13 @@ body.sidebar-open #sidebarOverlay {
   body.sidebar-collapsed #sidebar .sidebar-dropup-trigger__glyph,
   #sidebar.sidebar-collapsed .sidebar-dropup-trigger__glyph {
     margin: 0;
+  }
+
+  body.sidebar-collapsed #sidebar .sidebar-nav-link:hover,
+  #sidebar.sidebar-collapsed .sidebar-nav-link:hover,
+  body.sidebar-collapsed #sidebar .sidebar-nav-link:focus-visible,
+  #sidebar.sidebar-collapsed .sidebar-nav-link:focus-visible {
+    --sidebar-nav-translate-x: 0;
   }
 }
 

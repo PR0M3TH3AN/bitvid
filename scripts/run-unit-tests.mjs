@@ -6,6 +6,7 @@ import path from "node:path";
 const rootDir = path.dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const testsDir = path.join(rootDir, "tests");
 const testFiles = [];
+const setupImport = new URL("../tests/test-helpers/setup-localstorage.mjs", import.meta.url);
 
 async function collectTests(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -49,7 +50,7 @@ for (const testFile of testFiles) {
   console.log(`\n→ Running ${relativePath}`);
 
   await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [testFile], {
+    const child = spawn(process.execPath, ["--import", setupImport.href, testFile], {
       stdio: "inherit",
     });
 

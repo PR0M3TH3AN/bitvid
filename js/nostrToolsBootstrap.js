@@ -1,5 +1,6 @@
 const REMOTE_IMPORT_TIMEOUT = 4500;
 const LOCAL_IMPORT_TIMEOUT = 2500;
+const NODE_IMPORT_TIMEOUT = 1500;
 const SCRIPT_FALLBACK_TIMEOUT = 6000;
 const CDN_BUNDLE_URL =
   "https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js";
@@ -241,6 +242,26 @@ export function bootstrapNostrTools() {
 
     const attempts = [];
 
+    const isNodeLike =
+      typeof process !== "undefined" &&
+      !!process?.versions?.node &&
+      (!scope || typeof scope.document === "undefined");
+
+    const nodeImports = isNodeLike
+      ? [
+          withTimeout(
+            () => import("nostr-tools"),
+            NODE_IMPORT_TIMEOUT,
+            "node-main"
+          ),
+          withTimeout(
+            () => import("nostr-tools/nip04"),
+            NODE_IMPORT_TIMEOUT,
+            "node-nip04"
+          ),
+        ]
+      : [];
+
     const remoteImports = [
       withTimeout(
         () => import("https://esm.sh/nostr-tools@1.8.3"),
@@ -267,6 +288,7 @@ export function bootstrapNostrTools() {
     );
 
     const dynamicResults = await Promise.allSettled([
+      ...nodeImports,
       ...remoteImports,
       ...localImports,
     ]);
