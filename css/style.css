@@ -527,9 +527,9 @@ body.modal-open #sidebarOverlay {
   }
 }
 
-#modalNav.modal-nav,
-.modal-nav,
-.video-modal__nav {
+#playerModal[data-ds="legacy"] #modalNav.modal-nav,
+#playerModal[data-ds="legacy"] .modal-nav,
+#playerModal[data-ds="legacy"] .video-modal__nav {
   background-color: var(--color-bg);
   border-bottom: 0.0625rem solid var(--color-border-translucent-strong);
   box-shadow: 0 0.75rem 2rem var(--color-shadow-elevated);
