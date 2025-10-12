@@ -81,6 +81,26 @@ body {
   stroke: currentColor;
 }
 
+/* UI Grid overrides migrated from inline strings */
+.ui-grid-measure {
+  font-size: 14px;
+  width: 1px;
+  height: 1px;
+  position: absolute;
+  top: -1000px;
+  overflow: scroll;
+}
+
+.ui-grid-pinned-placeholder {
+  width: 0;
+}
+
+.ui-grid-expandable-spacing {
+  float: left;
+  margin-top: 1px;
+  margin-bottom: 1px;
+}
+
 @keyframes spinner-rotate {
   from {
     transform: rotate(0deg);
@@ -88,4 +108,26 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+[ng\:cloak],
+[ng-cloak],
+[data-ng-cloak],
+[x-ng-cloak],
+.ng-cloak,
+.x-ng-cloak,
+.ng-hide:not(.ng-hide-animate) {
+  display: none !important;
+}
+
+ng\:form {
+  display: block;
+}
+
+.ng-animate-shim {
+  visibility: hidden;
+}
+
+.ng-anchor {
+  position: absolute;
 }
