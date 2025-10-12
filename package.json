@@ -1,6 +1,7 @@
 {
   "name": "bitvid",
   "private": true,
+  "type": "module",
   "version": "1.0.0",
   "scripts": {
     "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",

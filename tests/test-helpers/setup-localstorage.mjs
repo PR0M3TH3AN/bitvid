@@ -1,3 +1,7 @@
+if (typeof globalThis.window === "undefined") {
+  globalThis.window = {};
+}
+
 if (typeof globalThis.localStorage === "undefined") {
   const store = new Map();
   globalThis.localStorage = {
@@ -14,4 +18,8 @@ if (typeof globalThis.localStorage === "undefined") {
       store.clear();
     },
   };
+}
+
+if (typeof globalThis.window.localStorage === "undefined") {
+  globalThis.window.localStorage = globalThis.localStorage;
 }
