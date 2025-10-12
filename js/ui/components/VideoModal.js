@@ -655,14 +655,20 @@ export class VideoModal {
       return;
     }
     if (typeof value === "number" && Number.isFinite(value)) {
-      this.modalProgress.style.width = `${Math.max(0, value)}%`;
+      this.modalProgress.style.setProperty(
+        "--progress-width",
+        `${Math.max(0, value)}%`,
+      );
       return;
     }
     if (typeof value === "string") {
-      this.modalProgress.style.width = value;
-      return;
+      const trimmed = value.trim();
+      if (trimmed) {
+        this.modalProgress.style.setProperty("--progress-width", trimmed);
+        return;
+      }
     }
-    this.modalProgress.style.width = "0%";
+    this.modalProgress.style.removeProperty("--progress-width");
   }
 
   setCopyEnabled(enabled) {

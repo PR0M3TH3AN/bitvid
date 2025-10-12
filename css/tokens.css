@@ -111,6 +111,7 @@
   --sidebar-width: var(--sidebar-width-expanded);
   --sidebar-control-size: 2.75rem;
   --sidebar-content-gap: 1rem;
+  --blog-embed-height: 100rem;
 
   /* Blog palette */
   --color-blog-transparent: rgb(0 0 0 / 0);

@@ -39,7 +39,7 @@
     />
     <meta name="robots" content="index,follow" />
     <title>bitvid Blog</title>
-    <link rel="stylesheet" href="./css/tokens.css" />
+    <link rel="stylesheet" href="./css/tailwind.generated.css" />
     <script src="./js/tracking.js" defer></script>
     <script type="module" crossorigin>
       var pv = Object.defineProperty;
@@ -7460,7 +7460,7 @@
               zzz: "💤",
               octocat:
                 '<img alt=":octocat:" height="20" width="20" align="absmiddle" src="https://assets-cdn.github.com/images/icons/emoji/octocat.png">',
-              showdown: `<span style="font-family: 'Anonymous Pro', monospace; text-decoration: underline; text-decoration-style: dashed; text-decoration-color: var(--color-blog-teal-accent);text-underline-position: under;">S</span>`,
+              showdown: `<span class="blog-emoji-showdown">S</span>`,
             }),
             (r.Converter = function (l) {
               var w = {},
@@ -8783,10 +8783,10 @@
                       W &&
                         w.tasklists &&
                         ((oe =
-                          ' class="task-list-item" style="list-style-type: none;"'),
+                          ' class="task-list-item blog-task-list-item"'),
                         (G = G.replace(/^[ \t]*\[(x|X| )?]/m, function () {
                           var he =
-                            '<input type="checkbox" disabled style="margin: 0px 0.35em 0.25em -1.6em; vertical-align: middle;"';
+                            '<input type="checkbox" disabled class="blog-task-checkbox"';
                           return Z && (he += " checked"), (he += ">"), he;
                         }))),
                       (G = G.replace(
@@ -9112,11 +9112,11 @@
                   /^ {0,3}\|.+\|[ \t]*\n {0,3}\|[ \t]*:?[ \t]*(?:[-=]){2,}[ \t]*:?[ \t]*\|[ \t]*\n( {0,3}\|.+\|[ \t]*\n)*(?:\n|¨0)/gm;
               function R(q) {
                 return /^:[ \t]*--*$/.test(q)
-                  ? ' style="text-align:left;"'
+                  ? ' class="blog-table-align blog-table-align--left"'
                   : /^--*[ \t]*:[ \t]*$/.test(q)
-                  ? ' style="text-align:right;"'
+                  ? ' class="blog-table-align blog-table-align--right"'
                   : /^:[ \t]*--*[ \t]*:$/.test(q)
-                  ? ' style="text-align:center;"'
+                  ? ' class="blog-table-align blog-table-align--center"'
                   : "";
               }
               function L(q, I) {
@@ -21490,7 +21490,7 @@ svg {
       }
       var IS = { decode: CS, hrpToMillisat: Lm };
       const OS = He(
-          "<div id=ztr-root><style></style><div style=float:right;opacity:0.2;>"
+          "<div id=ztr-root><style></style><div class=blog-ztr-watermark>"
         ),
         NS = He("<div id=ztr-content>"),
         RS = He("<h1>Error!"),
