@@ -12,37 +12,36 @@
 
   <!-- Outer container with wide layout, just like content-appeals-form -->
   <div class="bv-modal__panel modal-sheet flex flex-col overflow-hidden" tabindex="-1">
-    <!-- Sticky top bar, if you want a top heading or 'X' button up here -->
-    <div class="modal-header"></div>
-
     <!-- Main Content -->
     <div class="modal-body flex-1 overflow-y-auto">
-      <!-- Scrollable disclaimers area -->
-      <div class="space-y-6 text-muted-strong">
-        <!-- Example: Insert your disclaimers here -->
-
-        <div class="mb-8 flex justify-center">
+      <div class="space-y-6 text-base text-muted-strong">
+        <div class="flex justify-center pt-2">
           <img
             src="assets/svg/bitvid-logo-dark-mode.svg"
             alt="bitvid logo"
-            class="h-16"
+            class="h-14 w-auto"
           />
         </div>
-        <h2
-          id="disclaimerModalTitle"
-          class="mb-0 text-2xl font-bold text-text"
-        >
-          Welcome to bitvid
-        </h2>
-        <!-- Warning Alert -->
-        <div
-          class="mb-6 flex items-start rounded-lg border border-warning-strong/60 bg-warning-surface p-4"
-        >
+        <header class="space-y-3 text-center">
+          <h2
+            id="disclaimerModalTitle"
+            class="text-3xl font-semibold tracking-tight text-text"
+          >
+            Welcome to bitvid
+          </h2>
+          <p class="mx-auto max-w-xl text-sm text-text">
+            bitvid is a decentralized video platform where content is shared
+            directly between users. We want you to understand a few important
+            points before you continue.
+          </p>
+        </header>
+        <div class="modal-alert" role="status">
           <svg
-            class="mt-0.5 mr-3 h-5 w-5 flex-shrink-0 text-warning-strong"
+            class="modal-alert__icon"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
+            aria-hidden="true"
           >
             <path
               stroke-linecap="round"
@@ -51,56 +50,49 @@
               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
             />
           </svg>
-          <p class="text-warning">
+          <p class="text-sm">
             This platform is currently in development and only supports Chrome
             and Firefox-based browsers. Other browsers are not supported at
             this time. You may encounter bugs or missing features. Give it a
-            sec. Videos might take 10 to 60 seconds to load initially.
+            sec—videos might take 10 to 60 seconds to load initially.
           </p>
         </div>
-        <p>
-          bitvid is a decentralized video platform where content is shared
-          directly between users. We want you to understand a few important
-          points before you continue:
-        </p>
 
-        <div id="disclaimerModalDescription" class="space-y-4">
-          <div class="rounded-lg bg-panel p-4">
-            <h3 class="mb-2 font-semibold text-text">Early Access Status</h3>
-            <p class="text-muted">
+        <div id="disclaimerModalDescription" class="space-y-3">
+          <article class="modal-tile space-y-2">
+            <h3>Early Access Status</h3>
+            <p>
               Currently, video posting is invite-only as we carefully scale
               our platform. While anyone can watch videos, content creation is
               limited to approved creators. This helps us maintain quality
               content during our early stages.
             </p>
-          </div>
-          <div class="rounded-lg bg-panel p-4">
-            <h3 class="mb-2 font-semibold text-text">
-              Content Responsibility &amp; Moderation
-            </h3>
-            <p class="text-muted">
+          </article>
+          <article class="modal-tile space-y-2">
+            <h3>Content Responsibility &amp; Moderation</h3>
+            <p>
               While we don't host videos directly, we maintain community
               standards through access control. Users who violate our
               guidelines may be blocked from accessing the platform. All
               content must follow local laws and platform guidelines.
             </p>
-          </div>
-          <div class="rounded-lg bg-panel p-4">
-            <h3 class="mb-2 font-semibold text-text">Platform Status</h3>
-            <p class="text-muted">
+          </article>
+          <article class="modal-tile space-y-2">
+            <h3>Platform Status</h3>
+            <p>
               bitvid is a work in progress. Features may change or break, and
               security improvements are ongoing. Your feedback and patience
               help us build a better platform.
             </p>
-          </div>
-          <div class="rounded-lg bg-panel p-4">
-            <h3 class="mb-2 font-semibold text-text">Get Involved</h3>
-            <p class="text-muted">
+          </article>
+          <article class="modal-tile space-y-2">
+            <h3>Get Involved</h3>
+            <p>
               Are you a developer? We'd love your help! Visit our GitHub
               repository to contribute to building the future of decentralized
               video sharing.
             </p>
-          </div>
+          </article>
         </div>
       </div>
     </div>
@@ -109,7 +101,7 @@
     <div class="modal-footer">
       <button
         id="acceptDisclaimer"
-        class="btn w-full"
+        class="modal-primary"
         type="button"
       >
         I Understand

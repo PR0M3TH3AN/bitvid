@@ -22,11 +22,11 @@
   }
 
   .btn {
-    @apply focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-transparent bg-primary px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white shadow-md transition duration-base ease-in-out;
+    @apply focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-info-strong px-5 py-2.5 text-base font-semibold text-white shadow-lg transition duration-base ease-in-out;
   }
 
   .btn:hover {
-    @apply bg-info-strong shadow-lg;
+    @apply bg-info;
   }
 
   .btn:focus-visible {
@@ -276,19 +276,19 @@
   }
 
   .bv-modal {
-    @apply fixed inset-0 z-[var(--z-modal-root)] flex items-center justify-center p-4 sm:p-6;
+    @apply fixed inset-0 z-[var(--z-modal-root)] flex items-center justify-center p-6 sm:p-8;
   }
 
   .bv-modal__panel {
-    @apply focus-ring relative z-[var(--z-modal-content)] w-full max-w-3xl rounded-xl border border-border border-opacity-40 bg-surface px-6 py-8 text-left text-text shadow-modal transition duration-base ease-out;
+    @apply focus-ring relative z-[var(--z-modal-content)] w-full max-w-[38rem] rounded-[1.75rem] border border-border-translucent bg-overlay-panel px-8 pb-8 pt-7 text-left text-text shadow-modal transition duration-base ease-out;
   }
 
   .bv-modal__panel:focus-visible {
-    @apply border-info border-opacity-50;
+    @apply border-border-translucent-bright;
   }
 
   .bv-modal-backdrop {
-    @apply absolute inset-0 z-[var(--z-modal-overlay)] bg-overlay bg-opacity-80 backdrop-blur;
+    @apply absolute inset-0 z-[var(--z-modal-overlay)] bg-overlay bg-opacity-90 backdrop-blur-2xl;
   }
 
   .bv-modal-backdrop[data-variant="veil"] {
@@ -300,26 +300,18 @@
   }
 
   .modal-sheet {
-    @apply bv-modal__panel relative my-0 w-full max-w-[90%] overflow-hidden rounded-xl bg-surface lg:max-w-6xl;
+    @apply bv-modal__panel relative my-0 w-full max-w-[90%] overflow-hidden lg:max-w-4xl;
   }
 
   .modal-header {
-    @apply sticky top-0 flex items-center justify-between border-b border border-border border-opacity-60 px-4 py-4;
-    background: linear-gradient(
-      to bottom,
-      var(--color-overlay-panel-gradient-start),
-      var(--color-overlay-panel-gradient-end, transparent)
-    );
-    backdrop-filter: blur(var(--modal-header-blur, 18px));
+    @apply flex items-start justify-between gap-md px-8 pb-4 pt-7;
+    background: transparent;
+    border: 0;
   }
 
   .modal-header[data-variant="flush"] {
-    @apply border-transparent;
-    background: linear-gradient(
-      to bottom,
-      var(--color-overlay-panel-tint),
-      transparent
-    );
+    @apply px-0 pb-0 pt-0;
+    background: transparent;
   }
 
   .modal-header__title {
@@ -327,19 +319,59 @@
   }
 
   .modal-close {
-    @apply focus-ring flex h-10 w-10 items-center justify-center rounded-full bg-overlay-black bg-opacity-50 text-muted transition duration-base ease-out;
+    @apply focus-ring flex h-10 w-10 items-center justify-center rounded-full bg-overlay-black bg-opacity-40 text-muted transition duration-base ease-out;
   }
 
   .modal-close:hover {
-    @apply bg-overlay-black bg-opacity-70 text-text;
+    @apply bg-overlay-black bg-opacity-60 text-text;
   }
 
   .modal-body {
-    @apply space-y-4 p-6;
+    @apply space-y-5 px-8 pb-8 pt-2;
+  }
+
+  .modal-body {
+    scrollbar-width: thin;
+  }
+
+  .modal-body::-webkit-scrollbar {
+    width: 0.4rem;
+  }
+
+  .modal-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .modal-body::-webkit-scrollbar-thumb {
+    background: var(--color-border-translucent);
+    border-radius: 9999px;
   }
 
   .modal-footer {
-    @apply border-t border border-border border-opacity-60 bg-surface px-6 py-4;
+    @apply flex flex-col gap-3 px-8 pb-8 pt-4;
+  }
+
+  .modal-alert {
+    @apply flex items-start gap-3 rounded-md border border-warning-strong border-opacity-60 px-4 py-3 text-sm text-warning-strong;
+    backdrop-filter: blur(14px);
+    background-color: var(--color-warning-glass);
+  }
+
+  .modal-alert__icon {
+    @apply mt-0.5 h-5 w-5 flex-shrink-0 text-warning-strong;
+  }
+
+  .modal-tile {
+    @apply rounded-xl border border-border-translucent bg-overlay-panel-soft px-5 py-4 text-sm text-muted-strong;
+    background-color: var(--color-overlay-panel-glass-soft);
+  }
+
+  .modal-tile > h3 {
+    @apply text-base font-semibold text-text;
+  }
+
+  .modal-primary {
+    @apply btn w-full justify-center;
   }
 
   .grid-stack {
