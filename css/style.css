@@ -944,40 +944,21 @@ footer a:hover {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
-  background:
-    linear-gradient(
-      168deg,
-      var(--color-sidebar-surface) 0%,
-      var(--color-sidebar-surface-alt) 100%
-    );
-  border-right: 1px solid var(--color-sidebar-border);
-  backdrop-filter: blur(28px) saturate(140%);
-  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  background: transparent;
+  border-right: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transition:
     width 200ms ease,
-    transform 0.3s ease,
-    box-shadow 220ms ease,
-    border-color 220ms ease,
-    background 220ms ease;
+    transform 0.3s ease;
   /* Keep below modal stacks so dialogs overlay the drawer. */
   z-index: var(--z-sidebar);
-  box-shadow: 0 1.5625rem 3.125rem -0.75rem var(--color-shadow-sidebar);
+  box-shadow: none;
   isolation: isolate;
 }
 
 #sidebar::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      120% 90% at 10% 10%,
-      var(--color-sidebar-hover) 0%,
-      transparent 55%
-    );
-  opacity: 0.65;
-  mix-blend-mode: screen;
+  content: none;
 }
 
 #sidebar .sidebar__inner {
@@ -988,24 +969,11 @@ footer a:hover {
   position: relative;
   width: 100%;
   border-radius: 1.5rem;
-  border: 1px solid var(--color-sidebar-border);
-  background:
-    linear-gradient(
-      155deg,
-      var(--color-sidebar-surface) 0%,
-      var(--color-sidebar-surface-alt) 100%
-    );
-  background:
-    linear-gradient(
-      155deg,
-      color-mix(in srgb, var(--color-sidebar-surface) 85%, transparent) 0%,
-      color-mix(in srgb, var(--color-sidebar-surface-alt) 60%, transparent) 100%
-    );
-  box-shadow:
-    inset 0 0 0 0.5px var(--color-sidebar-border),
-    0 1.75rem 3.25rem -1.5rem var(--color-shadow-panel);
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   overflow: visible;
   isolation: isolate;
   transition:
@@ -1015,27 +983,7 @@ footer a:hover {
 }
 
 #sidebar .sidebar__inner::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background:
-    linear-gradient(
-      130deg,
-      transparent 0%,
-      var(--color-sidebar-hover) 38%,
-      transparent 100%
-    );
-  background:
-    linear-gradient(
-      130deg,
-      transparent 0%,
-      color-mix(in srgb, var(--color-sidebar-hover) 55%, transparent) 38%,
-      transparent 100%
-    );
-  opacity: 0.35;
-  mix-blend-mode: screen;
+  content: none;
 }
 
 /*
@@ -1062,25 +1010,12 @@ footer a:hover {
   gap: 1.35rem;
   padding: 1.35rem 1.1rem;
   border-radius: 1.1rem;
-  border: 1px solid var(--color-sidebar-border);
-  background:
-    linear-gradient(
-      158deg,
-      var(--color-sidebar-surface) 0%,
-      var(--color-sidebar-surface-alt) 100%
-    );
-  background:
-    linear-gradient(
-      158deg,
-      color-mix(in srgb, var(--color-sidebar-surface) 88%, transparent) 0%,
-      color-mix(in srgb, var(--color-sidebar-surface-alt) 65%, transparent) 100%
-    );
-  box-shadow:
-    inset 0 0 0 0.5px var(--color-sidebar-border),
-    0 1.5rem 3rem -1.5rem var(--color-shadow-panel);
+  border: none;
+  background: transparent;
+  box-shadow: none;
   color: inherit;
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   overflow: hidden;
   isolation: isolate;
   transition:
@@ -1090,19 +1025,7 @@ footer a:hover {
 }
 
 .sidebar-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(
-      120deg,
-      transparent 0%,
-      var(--color-sidebar-hover) 32%,
-      transparent 100%
-    );
-  opacity: 0.5;
-  mix-blend-mode: screen;
+  content: none;
 }
 
 .sidebar-panel--primary {
