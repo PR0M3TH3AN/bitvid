@@ -1346,6 +1346,12 @@ class Application {
     }
 
     const targetVideo = video || this.currentVideo;
+    if (!targetVideo) {
+      this.log(
+        "[Application] Skipping video modal open; no target video is available.",
+      );
+      return null;
+    }
 
     try {
       const { root } = await this.ensureVideoModalReady({
