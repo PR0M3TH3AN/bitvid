@@ -381,8 +381,8 @@ header img {
 
 #modalContainer > #playerModal .player-modal__container,
 #modalContainer > #playerModal .player-modal__content,
-#modalContainer > #playerModal .video-modal__container,
-#modalContainer > #playerModal .video-modal__panel {
+#modalContainer > #playerModal[data-ds="legacy"] .video-modal__container,
+#modalContainer > #playerModal[data-ds="legacy"] .video-modal__panel {
   z-index: var(--z-modal-content);
 }
 
@@ -417,25 +417,25 @@ header img {
   display: flex;
 }
 
-.video-modal__panel,
-#playerModal .player-modal__content {
+#playerModal[data-ds="legacy"] .video-modal__panel,
+#playerModal[data-ds="legacy"] .player-modal__content {
   animation: fadeIn var(--modal-motion-duration) ease-out;
 }
 
-.video-modal__video,
-#playerModal .player-modal__video {
+#playerModal[data-ds="legacy"] .video-modal__video,
+#playerModal[data-ds="legacy"] .player-modal__video {
   padding: clamp(0.75rem, 3.5vw, 2.5rem);
   border-bottom: 0.0625rem solid var(--color-border-translucent);
 }
 
-.video-modal__media,
-#playerModal .player-modal__video video {
+#playerModal[data-ds="legacy"] .video-modal__media,
+#playerModal[data-ds="legacy"] .player-modal__video video {
   box-shadow: 0 1.125rem 2.75rem var(--color-shadow-floating);
   max-height: min(80vh, calc(100vw * 9 / 16));
 }
 
-.video-modal__info,
-#playerModal .player-modal__info {
+#playerModal[data-ds="legacy"] .video-modal__info,
+#playerModal[data-ds="legacy"] .player-modal__info {
   padding: clamp(1.5rem, 3vw, 2.5rem);
   padding-bottom: clamp(2.5rem, 6vw, 4rem);
   box-shadow: inset 0 1px 0 var(--color-divider-strong);
@@ -527,9 +527,9 @@ body.modal-open #sidebarOverlay {
   }
 }
 
-#modalNav.modal-nav,
-.modal-nav,
-.video-modal__nav {
+#playerModal[data-ds="legacy"] #modalNav.modal-nav,
+#playerModal[data-ds="legacy"] .modal-nav,
+#playerModal[data-ds="legacy"] .video-modal__nav {
   background-color: var(--color-bg);
   border-bottom: 0.0625rem solid var(--color-border-translucent-strong);
   box-shadow: 0 0.75rem 2rem var(--color-shadow-elevated);
