@@ -30,17 +30,6 @@ const app = angular.module("BTorrent", [
   "ngNotify",
 ]);
 
-/**
- * Optional: inline CSS for row lines in the grid.
- */
-const styleEl = document.createElement("style");
-styleEl.textContent = `
-  .ui-grid-row {
-    border-bottom: 1px solid var(--color-border-subtle, rgb(209 213 219));
-  }
-`;
-document.head.appendChild(styleEl);
-
 // Configure Angular routes.
 app.config([
   "$compileProvider",

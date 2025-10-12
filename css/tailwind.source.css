@@ -423,11 +423,11 @@
     @apply translate-x-5;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .form-control,
-    .checkbox,
-    .checkbox::after,
-    .switch,
+@media (prefers-reduced-motion: reduce) {
+  .form-control,
+  .checkbox,
+  .checkbox::after,
+  .switch,
     .switch::before,
     .popover__panel,
     .menu__item {
@@ -2026,5 +2026,27 @@
   .status-banner .status-spinner,
   .status-spinner--inline {
     animation: none !important;
+  }
+}
+
+@layer components {
+  .ui-grid-row {
+    border-bottom: 1px solid var(--color-border-subtle, rgb(209 213 219));
+  }
+
+  .status-line {
+    @apply my-1 text-sm leading-snug text-text;
+  }
+
+  .status-line.error {
+    color: var(--color-critical-strong);
+  }
+
+  .status-line.success {
+    color: var(--color-blog-green-500);
+  }
+
+  .status-line.warn {
+    color: var(--color-warning-strong);
   }
 }
