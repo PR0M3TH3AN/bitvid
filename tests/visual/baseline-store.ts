@@ -17,9 +17,16 @@ type BaselineMap = Record<string, string>;
 const BASELINE_FILE_PATH = resolve(__dirname, "baselines.json");
 
 let dirty = false;
-const baselines: BaselineMap = JSON.parse(
-  readFileSync(BASELINE_FILE_PATH, "utf-8")
-);
+
+let baselines: BaselineMap;
+const baselineFileContents = readFileSync(BASELINE_FILE_PATH, "utf-8");
+
+try {
+  baselines = JSON.parse(baselineFileContents);
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  throw new Error(`Invalid JSON in ${BASELINE_FILE_PATH}: ${message}`);
+}
 
 export function getBaseline(key: BaselineKey): Buffer {
   const base64 = baselines[key];
