@@ -66,7 +66,43 @@ export function createAnimationFrameStub() {
 
 export function installInlineStyleGuard(document) {
   const originalCreateElement = document.createElement.bind(document);
+  const ElementConstructor = document.defaultView?.Element;
   const guardedElements = new WeakSet();
+  const attributePatches = [];
+
+  if (ElementConstructor?.prototype) {
+    const prototype = ElementConstructor.prototype;
+
+    if (typeof prototype.setAttribute === 'function') {
+      const original = prototype.setAttribute;
+      prototype.setAttribute = function inlineStyleSafeSetAttribute(name, value) {
+        if (typeof name === 'string' && name.toLowerCase() === 'style') {
+          throw new Error(
+            'Inline style attributes are disabled in blog widget tests. Use applyDynamicStyles or CSS class toggles instead.',
+          );
+        }
+        return original.call(this, name, value);
+      };
+      attributePatches.push(() => {
+        prototype.setAttribute = original;
+      });
+    }
+
+    if (typeof prototype.setAttributeNS === 'function') {
+      const original = prototype.setAttributeNS;
+      prototype.setAttributeNS = function inlineStyleSafeSetAttributeNS(namespace, name, value) {
+        if (typeof name === 'string' && name.toLowerCase() === 'style') {
+          throw new Error(
+            'Inline style attributes are disabled in blog widget tests. Use applyDynamicStyles or CSS class toggles instead.',
+          );
+        }
+        return original.call(this, namespace, name, value);
+      };
+      attributePatches.push(() => {
+        prototype.setAttributeNS = original;
+      });
+    }
+  }
 
   function guard(element) {
     if (!element || typeof element !== 'object') {
@@ -110,6 +146,13 @@ export function installInlineStyleGuard(document) {
     guard,
     restore() {
       document.createElement = originalCreateElement;
+      attributePatches.forEach((restorePatch) => {
+        try {
+          restorePatch();
+        } catch (error) {
+          // ignore failures to restore in tests
+        }
+      });
     },
   };
 }

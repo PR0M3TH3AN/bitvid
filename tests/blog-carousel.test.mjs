@@ -9,6 +9,17 @@ import {
   readDynamicStyleRules,
 } from './test-helpers/blog-dom.mjs';
 
+function assertNoInlineStyleAttributes(elements, messagePrefix = 'element') {
+  elements.forEach((element, index) => {
+    assert.ok(element, `${messagePrefix} at index ${index} should exist`);
+    assert.strictEqual(
+      element.hasAttribute('style'),
+      false,
+      `${messagePrefix} at index ${index} should not set inline style attributes`,
+    );
+  });
+}
+
 const CAROUSEL_HTML = `
   <div data-carousel>
     <div data-carousel-track>
@@ -67,6 +78,8 @@ describe('blog carousel', () => {
 
     const trackDynamicClasses = Array.from(track.classList).filter((className) => className.startsWith('bvds-'));
     assert.ok(trackDynamicClasses.length >= 1, 'track should receive dynamic style classes');
+
+    assertNoInlineStyleAttributes([container, track, ...slides], 'carousel element');
 
     for (const slide of slides) {
       assert.ok(slide.classList.contains('splide__slide'));
@@ -151,6 +164,8 @@ describe('blog carousel', () => {
     assert.ok(!container.classList.contains('is-active'));
     assert.strictEqual(state.cleanup.length, 0);
 
+    assertNoInlineStyleAttributes([container, track, ...slides], 'carousel element');
+
     const previousIndex = state.index;
     nextButton.dispatchEvent(new env.window.MouseEvent('click', { bubbles: true }));
     assert.strictEqual(state.index, previousIndex, 'clicks after destroy should not change the index');
@@ -195,6 +210,8 @@ describe('progress bar', () => {
     progress.reset();
     const cssRules = readDynamicStyleRules(env.document);
     assert.match(cssRules, /width:\s*0%/);
+
+    assertNoInlineStyleAttributes([container, wrapper, fill], 'progress element');
   });
 
   test('autoStart runs animation and triggers completion callback', () => {
@@ -203,6 +220,8 @@ describe('progress bar', () => {
     const wrapper = progress.element;
     const fill = wrapper.querySelector('.splide__progress__bar');
     assert.ok(Array.from(fill.classList).some((className) => className.startsWith('bvds-')));
+
+    assertNoInlineStyleAttributes([container, wrapper, fill], 'progress element');
 
     env.raf.step(0);
     env.raf.step(300);
@@ -232,5 +251,7 @@ describe('progress bar', () => {
 
     progress.destroy();
     assert.strictEqual(container.children.length, 0, 'destroy should remove wrapper from DOM');
+
+    assertNoInlineStyleAttributes([container], 'progress container');
   });
 });
