@@ -374,7 +374,7 @@ export function createZapthreadsRoot() {
   return root;
 }
 
-export function createZapthreadsContentContainer() {
+export function createZapthreadsContent() {
   const content = document.createElement('div');
   content.id = 'ztr-content';
   return content;
@@ -719,7 +719,7 @@ export async function initZapthreadsEmbed({
   const watermarkEl = rootEl.querySelector('.blog-ztr-watermark');
   renderWatermark(watermarkEl);
 
-  const contentEl = createZapthreadsContentContainer();
+  const contentEl = createZapthreadsContent();
   rootEl.appendChild(contentEl);
 
   const titleEl = createZapthreadsTitleHeading();
