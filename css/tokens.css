@@ -117,6 +117,21 @@
   --sidebar-width: var(--sidebar-width-expanded);
   --sidebar-control-size: 2.75rem;
   --sidebar-content-gap: 1rem;
+  --space-sidebar-shell-inline: var(--space-lg);
+  --space-sidebar-shell-block-start: var(--space-lg);
+  --space-sidebar-shell-block-end: 1.75rem;
+  --space-sidebar-scroll-gap: 1.75rem;
+  --space-sidebar-panel-gap: 1.35rem;
+  --space-sidebar-panel-padding-block: 1.35rem;
+  --space-sidebar-panel-padding-inline: 1.1rem;
+  --space-sidebar-footer-gap: 0.85rem;
+  --space-sidebar-trigger-padding-block: 0.78rem;
+  --space-sidebar-popover-offset: 0.85rem;
+  --space-sidebar-popover-padding-block: 0.85rem;
+  --space-sidebar-popover-padding-inline: 0.65rem;
+  --space-sidebar-popover-gap: 0.45rem;
+  --space-sidebar-nav-padding-block: 0.7rem;
+  --space-sidebar-subnav-padding-block: 0.55rem;
   --blog-embed-height: 100rem;
 
   /* Blog palette */
@@ -203,12 +218,22 @@
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
   --radius-full: 9999px;
+  --radius-sidebar-shell: 1.5rem;
+  --radius-sidebar-panel: 1.1rem;
+  --radius-sidebar-nav: 0.95rem;
 
   /* Shadows */
   --shadow-sm: 0 0.0625rem 0.125rem 0 rgb(0 0 0 / 5%);
   --shadow-md: 0 0.25rem 0.375rem -0.0625rem rgb(0 0 0 / 10%);
   --shadow-lg: 0 0.625rem 0.9375rem -0.1875rem rgb(0 0 0 / 10%);
   --shadow-modal: 0 2.75rem 6rem -1.25rem rgb(8 11 30 / 75%);
+  --shadow-sidebar-shell: 0 1.875rem 3.75rem -1.5rem var(--color-shadow-sidebar);
+  --shadow-sidebar-accent: 0 1.65rem 3.25rem -1.35rem var(--color-sidebar-glow);
+  --shadow-sidebar-trigger: 0 1.25rem 2.5rem -1.35rem var(--color-shadow-panel);
+  --shadow-sidebar-dropup: 0 1.75rem 3.25rem -1.45rem var(--color-sidebar-glow);
+  --shadow-sidebar-panel: 0 2.25rem 4.5rem -1.85rem var(--color-shadow-sidebar);
+  --shadow-sidebar-focus-ring: 0 0 0 0.125rem var(--color-sidebar-glow),
+    0 0 0 0.25rem var(--color-sidebar-hover-strong);
 
   /* Typography */
   --font-family-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -219,6 +244,9 @@
   --font-size-lg: 1.125rem;
   --font-size-xl: 1.5rem;
   --font-size-2xl: 2rem;
+  --font-size-sidebar-nav: 0.95rem;
+  --font-size-sidebar-subnav: 0.85rem;
+  --font-size-sidebar-trigger: 0.9rem;
   --line-height-tight: 1.1;
   --line-height-snug: 1.25;
   --line-height-base: 1.5;

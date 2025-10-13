@@ -219,6 +219,12 @@ Recommended container pattern:
 
 The motion helpers defer to the global motion tokens so Task 5 can adjust timing globally without revisiting individual components. Animations respect `prefers-reduced-motion` by collapsing to opacity-only transitions.
 
+### Sidebar shell & controls
+
+The navigation rail pulls its rhythm from dedicated sidebar tokens in `css/tokens.css`. The shell, panels, and footer reuse shared spacing primitives (`--space-sidebar-shell-inline`, `--space-sidebar-shell-block-start`, `--space-sidebar-shell-block-end`, `--space-sidebar-panel-gap`, `--space-sidebar-panel-padding-block`, `--space-sidebar-panel-padding-inline`, `--space-sidebar-footer-gap`) alongside component-specific radii and shadows (`--radius-sidebar-shell`, `--radius-sidebar-panel`, `--radius-sidebar-nav`, `--shadow-sidebar-shell`, `--shadow-sidebar-accent`, `--shadow-sidebar-trigger`, `--shadow-sidebar-dropup`, `--shadow-sidebar-panel`, `--shadow-sidebar-focus-ring`). These values also size fallback classes like `.sidebar-nav-link`, `.sidebar-dropup-trigger`, and `.sidebar-dropup-panel` so legacy templates stay legible. 【F:css/tokens.css†L94-L138】【F:css/tailwind.source.css†L1829-L2182】
+
+Tailwind now exposes matching utilities for layouts that opt into the design system directly: use `px-sidebar-shell-inline`, `pt-sidebar-shell-block-start`, `pb-sidebar-shell-block-end`, `gap-sidebar-panel-gap`, and `rounded-sidebar-shell`/`rounded-sidebar-nav` for structure, then `shadow-sidebar-shell`, `shadow-sidebar-accent`, or `shadow-sidebar-dropup` to match the bespoke glow states. Combine them with existing color utilities to compose new sidebar sections without reintroducing raw measurements. 【F:tailwind.config.cjs†L115-L155】
+
 ### Menus
 
 `.menu` normalises list-based command menus with consistent padding. Pair it with `.menu__heading` for optional section labels, `.menu__separator` for dividers, and `.menu__item` for actionable rows. Each item supports hover, active (`data-state="active"`), and critical (`data-variant="critical"`) palettes plus disabled fallbacks through either `disabled` or `aria-disabled="true"`.

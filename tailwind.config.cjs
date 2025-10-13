@@ -140,13 +140,22 @@ module.exports = {
         md: "var(--radius-md)",
         lg: "var(--radius-lg)",
         xl: "var(--radius-xl)",
-        full: "var(--radius-full)"
+        full: "var(--radius-full)",
+        "sidebar-shell": "var(--radius-sidebar-shell)",
+        "sidebar-panel": "var(--radius-sidebar-panel)",
+        "sidebar-nav": "var(--radius-sidebar-nav)"
       },
       boxShadow: {
         sm: "var(--shadow-sm)",
         md: "var(--shadow-md)",
         lg: "var(--shadow-lg)",
-        modal: "var(--shadow-modal)"
+        modal: "var(--shadow-modal)",
+        "sidebar-shell": "var(--shadow-sidebar-shell)",
+        "sidebar-accent": "var(--shadow-sidebar-accent)",
+        "sidebar-trigger": "var(--shadow-sidebar-trigger)",
+        "sidebar-dropup": "var(--shadow-sidebar-dropup)",
+        "sidebar-panel": "var(--shadow-sidebar-panel)",
+        "sidebar-focus-ring": "var(--shadow-sidebar-focus-ring)"
       },
       spacing: {
         "2xs": "var(--space-2xs)",
@@ -155,7 +164,22 @@ module.exports = {
         md: "var(--space-md)",
         lg: "var(--space-lg)",
         xl: "var(--space-xl)",
-        "2xl": "var(--space-2xl)"
+        "2xl": "var(--space-2xl)",
+        "sidebar-shell-inline": "var(--space-sidebar-shell-inline)",
+        "sidebar-shell-block-start": "var(--space-sidebar-shell-block-start)",
+        "sidebar-shell-block-end": "var(--space-sidebar-shell-block-end)",
+        "sidebar-scroll-gap": "var(--space-sidebar-scroll-gap)",
+        "sidebar-panel-gap": "var(--space-sidebar-panel-gap)",
+        "sidebar-panel-padding-block": "var(--space-sidebar-panel-padding-block)",
+        "sidebar-panel-padding-inline": "var(--space-sidebar-panel-padding-inline)",
+        "sidebar-footer-gap": "var(--space-sidebar-footer-gap)",
+        "sidebar-trigger-padding-block": "var(--space-sidebar-trigger-padding-block)",
+        "sidebar-popover-offset": "var(--space-sidebar-popover-offset)",
+        "sidebar-popover-padding-block": "var(--space-sidebar-popover-padding-block)",
+        "sidebar-popover-padding-inline": "var(--space-sidebar-popover-padding-inline)",
+        "sidebar-popover-gap": "var(--space-sidebar-popover-gap)",
+        "sidebar-nav-padding-block": "var(--space-sidebar-nav-padding-block)",
+        "sidebar-subnav-padding-block": "var(--space-sidebar-subnav-padding-block)"
       },
       fontFamily: {
         sans: ["var(--font-family-sans)"],
