@@ -171,6 +171,18 @@
   --ztr-background-color: rgba(0, 0, 0, 0.03);
   --ztr-login-button-color: var(--color-blog-gray-800);
 
+  /* Blog carousel tokens */
+  --blog-carousel-gap: var(--space-lg);
+  --blog-carousel-slide-radius: var(--radius-xl);
+  --blog-carousel-slide-min-height: 18rem;
+  --blog-carousel-slide-background: var(--color-blog-neutral-50);
+  --blog-carousel-slide-foreground: var(--color-blog-gray-900);
+  --blog-carousel-slide-scale-inactive: 0.96;
+  --blog-carousel-progress-height: 0.25rem;
+  --blog-carousel-progress-radius: var(--radius-full);
+  --blog-carousel-progress-track: var(--color-border-translucent);
+  --blog-carousel-progress-active: var(--color-blog-purple-500);
+
   /* Spacing scale */
   --space-2xs: 0.25rem;
   --space-xs: 0.5rem;
