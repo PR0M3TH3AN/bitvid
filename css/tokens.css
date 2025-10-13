@@ -172,7 +172,11 @@
   --ztr-background-color: rgba(0, 0, 0, 0.03);
   --ztr-login-button-color: var(--color-blog-gray-800);
 
-  /* Blog carousel tokens */
+  /*
+   * Blog carousel tokens
+   * Consumed by .blog-carousel component styles to control layout,
+   * slide presentation, and progress indicators without inline CSS.
+   */
   --blog-carousel-gap: var(--space-lg);
   --blog-carousel-slide-radius: var(--radius-xl);
   --blog-carousel-slide-min-height: 18rem;
