@@ -99,16 +99,19 @@ latest styles.
 
 ### Logo usage
 
-- SVG wordmarks and icons now express their fills through `currentColor` and
-  component-level variables (`--logo-wordmark-color`, `--logo-accent-color`, and
-  related background tokens) that default to palette values in
+- Wrap inline logo `<svg>` elements with the `.bv-logo` component class. It
+  seeds `--logo-wordmark-color`, `--logo-accent-color`, and
+  `--logo-background-color` with the palette tokens exported in
   `css/tokens.css`.
-- When embedding a logo, wrap the inline `<svg>` in an element that sets
-  `--logo-wordmark-color` (usually to `currentColor`) and, when needed,
-  `--logo-accent-color`. Tailwind text utilities such as `text-text-strong` or
-  `text-text` ensure the wrapper resolves to a token-backed color.
-- Avoid hard-coded hex colors in SVGs; instead, override the logo variables in
-  CSS if a deployment needs a different accent or background.
+- Adjust variants through data attributes instead of inline styles. For
+  example, `data-wordmark="current"` ties the wordmark to the wrapper’s
+  `currentColor`, `[data-variant="inverse"]` swaps in the inverse palette, and
+  `data-accent="current"` makes the accent follow the surrounding text when
+  needed.
+- Use Tailwind text utilities (such as `text-text-strong` or `text-text`) on the
+  wrapper to resolve to token-backed colors. Avoid hard-coded hex colors in the
+  SVG; customize the logo via the provided classes when deployments need a
+  different accent or background.
 
 ### Configuration
 
