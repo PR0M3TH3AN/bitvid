@@ -261,15 +261,18 @@
 </div>
 
 <!-- Processing Spinner -->
-<div class="spinner-overlay" ng-show="client.processing">
+<div
+  class="fixed inset-0 z-[60] flex items-center justify-center bg-overlay-muted/70 backdrop-blur-md"
+  ng-show="client.processing"
+>
   <svg
-    class="spinner-overlay__icon"
+    class="h-12 w-12 animate-spin text-info-strong"
     viewBox="0 0 24 24"
     role="img"
     aria-hidden="true"
   >
     <circle
-      class="spinner-overlay__track"
+      class="stroke-border-translucent opacity-40"
       cx="12"
       cy="12"
       r="9"
@@ -277,7 +280,7 @@
       stroke-width="2"
     ></circle>
     <path
-      class="spinner-overlay__indicator"
+      class="stroke-current"
       d="M21 12a9 9 0 0 0-9-9"
       fill="none"
       stroke-width="2"

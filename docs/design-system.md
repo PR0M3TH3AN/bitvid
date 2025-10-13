@@ -323,7 +323,7 @@ Angular templates under `torrent/views/` should follow the refreshed structure:
 - Wrap primary sections in `.card` and layer Tailwind utilities for layout (`grid`, `gap-xl`, `overflow-auto`).
 - Use `.input`, `.select`, `.btn`, and `.btn-ghost` (with `data-variant="critical"` for destructive actions) instead of legacy `.u-full-width`, `.button`, or `.button-danger` classes.
 - Prefer token-backed utilities for spacing and typography (`px-6`, `py-6`, `text-muted`) over ad-hoc CSS.
-- Reuse the `.spinner-overlay` markup for async states so overlays stay consistent with the new palette.
+- Reuse the fixed overlay spinner pattern (`fixed inset-0 z-[60] flex items-center justify-center bg-overlay-muted/70 backdrop-blur-md` plus an `animate-spin text-info-strong` SVG) for async states so overlays stay consistent with the new palette.
 
 When adding new torrent affordances, mirror the existing markup: inline 24×24 SVG strokes at 2px, `.focus-ring` on interactive anchors, and `.bv-stack` for vertical rhythm. This keeps the beacon aligned with the design system without reintroducing the deprecated Skeleton grid.
 

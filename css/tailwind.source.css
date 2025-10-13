@@ -105,6 +105,28 @@
     opacity: 0;
     visibility: hidden;
   }
+
+  [ng\:cloak],
+  [ng-cloak],
+  [data-ng-cloak],
+  [x-ng-cloak],
+  .ng-cloak,
+  .x-ng-cloak,
+  .ng-hide:not(.ng-hide-animate) {
+    display: none !important;
+  }
+
+  ng\:form {
+    display: block;
+  }
+
+  .ng-animate-shim {
+    visibility: hidden;
+  }
+
+  .ng-anchor {
+    position: absolute;
+  }
 }
 
 @layer components {
@@ -725,6 +747,287 @@
 
   .profile-pane.hidden {
     display: none;
+  }
+
+  /* Torrent helper classes */
+  .torrent-download-anchor {
+    display: none !important;
+  }
+
+  .torrent-clipboard-textarea {
+    position: fixed;
+    top: 0;
+    left: -9999px;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+
+  /* Angular UI Grid theming */
+  .ui-grid {
+    @apply relative w-full rounded-xl border border-border-translucent bg-surface text-sm text-text shadow-sm;
+    box-sizing: content-box;
+    transform: translateZ(0);
+  }
+
+  .ui-grid-vertical-bar {
+    position: absolute;
+    right: 0;
+    width: 0;
+  }
+
+  .ui-grid-header-cell:not(:last-child) .ui-grid-vertical-bar,
+  .ui-grid-cell:not(:last-child) .ui-grid-vertical-bar {
+    width: 1px;
+    background-color: var(--color-border-translucent-medium);
+  }
+
+  .ui-grid-contents-wrapper {
+    position: relative;
+    height: 100%;
+    width: 100%;
+  }
+
+  .ui-grid-top-panel-background,
+  .ui-grid-footer-panel-background {
+    background-color: var(--color-surface-alt);
+  }
+
+  .ui-grid-header {
+    border-bottom: 1px solid var(--color-border-translucent-medium);
+    box-sizing: border-box;
+  }
+
+  .ui-grid-top-panel {
+    position: relative;
+    overflow: hidden;
+    font-weight: 600;
+    background-color: var(--color-surface-alt);
+    color: var(--color-muted-strong);
+  }
+
+  .ui-grid-header-viewport,
+  .ui-grid-footer-viewport {
+    overflow: hidden;
+  }
+
+  .ui-grid-header-canvas,
+  .ui-grid-footer-canvas {
+    display: table;
+    width: 100%;
+  }
+
+  .ui-grid-header-cell-wrapper,
+  .ui-grid-footer-cell-wrapper {
+    position: relative;
+    display: table;
+    box-sizing: border-box;
+    height: 100%;
+    width: 100%;
+  }
+
+  .ui-grid-header-cell-row,
+  .ui-grid-footer-cell-row {
+    display: table-row;
+  }
+
+  .ui-grid-header-cell,
+  .ui-grid-footer-cell {
+    position: relative;
+    display: table-cell;
+    box-sizing: border-box;
+    border-right: 1px solid var(--color-border-translucent-medium);
+    background-color: inherit;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.75rem 1rem;
+  }
+
+  .ui-grid-header-cell:last-child,
+  .ui-grid-footer-cell:last-child {
+    border-right: 0;
+  }
+
+  .ui-grid-header-cell .sortable {
+    cursor: pointer;
+  }
+
+  .ui-grid-viewport {
+    min-height: 20px;
+    position: relative;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ui-grid-canvas {
+    position: relative;
+    padding-top: 1px;
+  }
+
+  .ui-grid-row {
+    border-bottom: 1px solid var(--color-border-translucent);
+  }
+
+  .ui-grid-row:nth-child(odd) .ui-grid-cell {
+    background-color: var(--color-surface);
+  }
+
+  .ui-grid-row:nth-child(even) .ui-grid-cell {
+    background-color: var(--color-surface-alt);
+  }
+
+  .ui-grid-row:last-child .ui-grid-cell {
+    border-bottom-color: var(--color-border-translucent-medium);
+    border-bottom-style: solid;
+  }
+
+  .ui-grid-row:hover .ui-grid-cell {
+    background-color: var(--color-panel-hover);
+  }
+
+  .ui-grid-row-selected > [ui-grid-row] > .ui-grid-cell {
+    background-color: rgba(37, 99, 235, 0.18);
+    color: var(--color-text);
+  }
+
+  .ui-grid-cell {
+    float: left;
+    overflow: hidden;
+    box-sizing: border-box;
+    border-right: 1px solid var(--color-border-translucent-medium);
+  }
+
+  .ui-grid-cell:last-child {
+    border-right: 0;
+  }
+
+  .ui-grid-cell-contents {
+    box-sizing: border-box;
+    padding: 0.75rem 1rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    height: 100%;
+  }
+
+  .ui-grid-menu-button {
+    z-index: 2;
+    position: absolute;
+    right: 0;
+    top: 0;
+    background-color: var(--color-surface-alt);
+    border: 1px solid var(--color-border-translucent-medium);
+    cursor: pointer;
+    height: 2.5rem;
+    font-weight: normal;
+  }
+
+  .ui-grid-menu {
+    z-index: 2;
+    position: absolute;
+    padding: 0.5rem 0.75rem 1rem;
+    box-sizing: border-box;
+    background-color: var(--color-surface-alt);
+    border: 1px solid var(--color-border-translucent-medium);
+    border-radius: var(--radius-md);
+    box-shadow: 0 22px 48px -18px var(--color-shadow-elevated);
+  }
+
+  /* ng-notify overrides */
+  .ngn {
+    pointer-events: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    display: none;
+    z-index: 1200;
+    padding: var(--space-md) var(--space-2xl);
+    text-align: center;
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--color-text);
+    text-shadow: none;
+    user-select: none;
+  }
+
+  .ngn.ngn-visible,
+  .ngn.ngn-enter-active,
+  .ngn.ngn-leave-active {
+    pointer-events: auto;
+  }
+
+  .ngn-component {
+    position: absolute;
+  }
+
+  .ngn-top {
+    top: 0;
+  }
+
+  .ngn-bottom {
+    bottom: 0;
+  }
+
+  .ngn-dismiss {
+    pointer-events: auto;
+    display: none;
+    margin-left: auto;
+    margin-right: var(--space-md);
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background-color: var(--color-overlay-panel);
+    color: var(--color-subtle);
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1;
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .ngn-sticky .ngn-dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ngn-dismiss:hover {
+    background-color: var(--color-overlay-panel-soft);
+  }
+
+  .ngn-info {
+    background-color: var(--color-info-strong);
+  }
+
+  .ngn-error {
+    background-color: var(--color-critical-strong);
+  }
+
+  .ngn-success {
+    background-color: var(--color-info);
+  }
+
+  .ngn-warn {
+    background-color: var(--color-warning-strong);
+    color: var(--color-text-strong);
+  }
+
+  .ngn-grimace {
+    background-color: var(--color-secondary);
+  }
+
+  @media (max-width: 30rem) {
+    .ngn {
+      font-size: var(--font-size-sm);
+      padding: var(--space-sm) var(--space-lg);
+    }
+
+    .ngn-dismiss {
+      width: 2rem;
+      height: 2rem;
+      font-size: 0.75rem;
+    }
   }
 
   .profile-switcher {
