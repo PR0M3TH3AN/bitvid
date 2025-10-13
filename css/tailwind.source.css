@@ -134,6 +134,14 @@
     @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
   }
 
+  .markdown-prose {
+    @apply prose max-w-none leading-relaxed text-text-strong;
+  }
+
+  .markdown-prose :where(pre, code) {
+    @apply font-mono;
+  }
+
   .popover {
     @apply relative inline-flex;
   }
