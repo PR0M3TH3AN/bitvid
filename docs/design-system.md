@@ -31,6 +31,18 @@ Tokens are sourced from `css/tokens.css` and consumed as CSS custom properties. 
 
 Limit overrides to variables defined in `css/tokens.css` and document any long-lived changes in this file so the design tokens remain the source of truth. Feature-flagged experiments should wrap overrides in a `data-flag-<name>` selector or toggle them via controller logic so the defaults remain stable when the flag is off.
 
+### Blog layout tokens
+
+The blog embed now consumes dedicated typography and spacing tokens alongside Tailwind utilities. `css/tokens.css` exposes the following helpers:
+
+- `--blog-font-size-root`, `--blog-font-size-display`, `--blog-font-size-title`, `--blog-font-size-body`, `--blog-font-size-meta`, and `--blog-font-size-h1-mobile` scale copy across the blog shell, hero headings, and metadata.
+- `--blog-line-height-body` and `--blog-line-height-tight` set the rhythm for long-form text and compact headers.
+- `--blog-layout-fluid-width` and `--blog-layout-max-width` define the responsive container width; pair them with Tailwind utilities (`mx-auto`, `md:w-[var(--blog-layout-fluid-width)]`, `md:max-w-[var(--blog-layout-max-width)]`) when mounting the blog root.
+- `--blog-space-compact`, `--blog-space-snug`, `--blog-space-heading-stack`, `--blog-space-heading-gap`, `--blog-space-inline-lg`, `--blog-space-media-stack-start`, `--blog-space-media-stack-end`, and `--blog-space-stack-xxl` standardise the bespoke gaps used throughout article summaries, media blocks, and footer treatments.
+- `--blog-avatar-size` and `--blog-avatar-size-compact` size topic avatars responsively.
+
+Templates should reference these tokens (directly or via Tailwind arbitrary values) instead of hard-coded measurements so the embed stays in sync with future blog refreshes.
+
 ### Previewing themes
 
 The design-system kitchen sink (`docs/kitchen-sink.html`) exposes a theme switcher that mirrors the production toggle contract. Use the "Theme" select menu in the header to flip between `default`, `light`, and any preview keys (for example, `contrast`). This control updates `document.documentElement.dataset.theme` at runtime, letting you verify hover/focus/disabled states without redeploying. When authoring new palettes, add them to `css/tokens.css`, confirm the kitchen-sink toggle picks them up, and record before/after screenshots for review so the CI snapshots have clear context.

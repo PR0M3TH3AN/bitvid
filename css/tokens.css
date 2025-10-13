@@ -158,6 +158,28 @@
   --color-blog-rust-700: rgb(124 45 18);
   --color-blog-purple-700: rgb(126 34 206);
   --color-blog-purple-accent: rgb(146 55 156);
+
+  /* Blog layout */
+  --blog-font-size-root: 1.25rem;
+  --blog-font-size-display: 3rem;
+  --blog-font-size-title: 1.1rem;
+  --blog-font-size-body: 0.9rem;
+  --blog-font-size-meta: 0.8rem;
+  --blog-font-size-h1-mobile: 1.6rem;
+  --blog-layout-fluid-width: 80%;
+  --blog-layout-max-width: 47.5rem;
+  --blog-space-compact: 0.3rem;
+  --blog-space-snug: 0.4rem;
+  --blog-space-stack-xxl: 4rem;
+  --blog-space-inline-lg: 2.5rem;
+  --blog-space-media-stack-start: 2.5rem;
+  --blog-space-media-stack-end: 3.5rem;
+  --blog-space-heading-stack: 1.4rem;
+  --blog-space-heading-gap: 0.6rem;
+  --blog-avatar-size: 2.5rem;
+  --blog-avatar-size-compact: 1.5rem;
+  --blog-line-height-body: 1.3rem;
+  --blog-line-height-tight: 0.9;
   --color-blog-purple-muted: rgb(150 96 156);
   --color-blog-gray-300: rgb(153 153 153);
   --color-blog-purple-500: rgb(168 85 247);
