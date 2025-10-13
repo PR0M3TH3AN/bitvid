@@ -14,6 +14,11 @@
   --color-border-subtle: rgb(209 213 219);
   --color-primary: rgb(254 0 50);
   --color-secondary: rgb(255 147 165);
+  --color-logo-accent: var(--color-primary);
+  --color-logo-wordmark: var(--color-neutral-700);
+  --color-logo-wordmark-inverse: var(--color-white);
+  --color-logo-background: var(--color-neutral-700);
+  --color-logo-background-inverse: var(--color-white);
   --color-info: rgb(96 165 250);
   --color-info-strong: rgb(37 99 235);
   --color-info-pressed: rgb(29 78 216);

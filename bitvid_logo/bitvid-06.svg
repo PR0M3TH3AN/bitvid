@@ -1,19 +1,13 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112.46 112.46">
-  <defs>
-    <style>
-      .cls-1 {
-        fill: #383838;
-      }
-    </style>
-  </defs>
-  <rect class="cls-1" x="15.79" y="9.53" width="5.84" height="5.48"/>
-  <rect class="cls-1" x="15.79" y="20.52" width="24.02" height="5.48"/>
-  <rect class="cls-1" x="15.79" y="31.51" width="42.85" height="5.48"/>
-  <rect class="cls-1" x="15.79" y="42.5" width="61.68" height="5.48"/>
-  <rect class="cls-1" x="15.79" y="53.49" width="80.88" height="5.48"/>
-  <rect class="cls-1" x="15.79" y="64.48" width="61.68" height="5.48"/>
-  <rect class="cls-1" x="15.79" y="75.47" width="42.85" height="5.48"/>
-  <rect class="cls-1" x="15.79" y="86.45" width="24.02" height="5.48"/>
-  <rect class="cls-1" x="15.79" y="97.44" width="5.84" height="5.48"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112.46 112.46">
+  <g fill="var(--logo-accent-color, var(--color-logo-wordmark))">
+    <rect x="15.79" y="9.53" width="5.84" height="5.48" />
+    <rect x="15.79" y="20.52" width="24.02" height="5.48" />
+    <rect x="15.79" y="31.51" width="42.85" height="5.48" />
+    <rect x="15.79" y="42.5" width="61.68" height="5.48" />
+    <rect x="15.79" y="53.49" width="80.88" height="5.48" />
+    <rect x="15.79" y="64.48" width="61.68" height="5.48" />
+    <rect x="15.79" y="75.47" width="42.85" height="5.48" />
+    <rect x="15.79" y="86.45" width="24.02" height="5.48" />
+    <rect x="15.79" y="97.44" width="5.84" height="5.48" />
+  </g>
 </svg>
