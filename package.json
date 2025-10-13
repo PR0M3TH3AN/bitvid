@@ -5,6 +5,8 @@
   "version": "1.0.0",
   "scripts": {
     "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
+    "build:beacon": "node scripts/build-beacon.mjs",
+    "ci:beacon": "npm run lint:inline-styles && npm run build:beacon",
     "format": "prettier --cache --write css/tailwind.source.css css/tokens.css \"docs/**/*.html\" tailwind.config.cjs README.md",
     "lint": "npm run lint:css && npm run lint:hex && npm run lint:inline-styles",
     "lint:css": "stylelint css/tailwind.source.css css/tokens.css",
@@ -16,10 +18,11 @@
     "test:unit": "node scripts/run-unit-tests.mjs"
   },
   "devDependencies": {
-    "@tailwindcss/typography": "^0.5.15",
     "@playwright/test": "^1.56.0",
+    "@tailwindcss/typography": "^0.5.15",
     "autoprefixer": "^10.4.19",
     "cross-env": "^7.0.3",
+    "esbuild": "^0.25.10",
     "jsdom": "^24.0.0",
     "nostr-tools": "^2.10.4",
     "pixelmatch": "^5.3.0",
@@ -31,5 +34,15 @@
     "stylelint-config-standard": "^36.0.1",
     "tailwindcss": "^3.4.13"
   },
-  "license": "GPL-3.0-or-later"
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "angular": "^1.8.3",
+    "angular-route": "^1.8.3",
+    "angular-sanitize": "^1.8.3",
+    "angular-ui-grid": "^4.12.7",
+    "moment": "^2.30.1",
+    "ng-file-upload": "^12.2.13",
+    "ng-notify": "^0.7.1",
+    "webtorrent": "^1.9.7"
+  }
 }
