@@ -2,6 +2,8 @@
 
 bitvid's visual language is now powered by Tailwind utilities backed by our design tokens. This document lists the primitives available via `css/tailwind.source.css`, how they behave across states, and when to mix them with Tailwind utilities.
 
+All templates and embeds must load `css/tailwind.generated.css`; that compiled bundle is the only stylesheet shipped with the app. Remove any lingering references to legacy `tailwind.min.css` assets when porting surfaces into the design system.
+
 ## Feature Flag Rollout
 
 The new design system ships behind the `FEATURE_DESIGN_SYSTEM` runtime flag defined in `js/constants.js`. Deployments can temporarily disable the flag (`false`) if they need to fall back to the legacy primitives during an incident.

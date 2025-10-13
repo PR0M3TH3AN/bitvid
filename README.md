@@ -95,7 +95,9 @@ The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
 emits the purged, minified stylesheet at `css/tailwind.generated.css`. Commit the
 regenerated file alongside any template changes so deployments pick up the
-latest styles.
+latest styles. This generated bundle is the only stylesheet we ship—reference
+`css/tailwind.generated.css` everywhere and avoid vendoring older `tailwind.min.css`
+artifacts.
 
 ### Logo usage
 

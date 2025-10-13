@@ -22,6 +22,7 @@
   --color-info: rgb(96 165 250);
   --color-info-strong: rgb(37 99 235);
   --color-info-pressed: rgb(29 78 216);
+  --color-info-glass: rgb(37 99 235 / 0.18);
   --color-muted-strong: rgb(107 114 128);
   --color-text: rgb(248 250 252);
   --color-text-strong: rgb(15 23 42);
