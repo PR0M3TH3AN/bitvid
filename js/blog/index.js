@@ -1,5 +1,7 @@
+import { initZapthreadsEmbed } from './zapthreadsEmbed.js';
 import { createCarousel, advanceSlide, destroyCarousel } from './carousel.js';
 import { mountProgressBar } from './progressBar.js';
+import { applyDynamicStyles } from '../ui/styleSystem.js';
 
 const CAROUSEL_AUTOPLAY_INTERVAL = 8000;
 
@@ -310,17 +312,19 @@ function renderShortNotesCarousel(notes, config) {
     autoStart: false,
   });
 
-  progress.setOnComplete(() => {
-    advanceSlide(carousel, 1, { restartProgress: true });
-  });
+  if (progress) {
+    progress.setOnComplete(() => {
+      advanceSlide(carousel, 1, { restartProgress: true });
+    });
 
-  carousel.setProgress(progress);
-  if (carousel.autoPlayInterval > 0) {
-    progress.reset();
-    progress.start(carousel.autoPlayInterval);
+    carousel.setProgress(progress);
+    if (carousel.autoPlayInterval > 0) {
+      progress.reset();
+      progress.start(carousel.autoPlayInterval);
+    }
   }
 
-  return { section, carousel };
+  return { section, carousel, progress: progress || null };
 }
 
 function renderShortNotesList(notes, config) {
@@ -378,6 +382,7 @@ function renderMainFeed(notes) {
     const article = document.createElement('article');
     article.id = note.id;
     article.className = 'flex flex-col gap-4 border-b border-blog-neutral-200 pb-8 last:border-b-0 dark:border-blog-neutral-800';
+    applyDynamicStyles(article, { scrollMarginTop: '6rem' }, { slot: 'anchor-offset' });
 
     const header = document.createElement('header');
     header.className = 'flex flex-col gap-2';
@@ -455,7 +460,7 @@ function extractZapthreadsOptions(element) {
   return options;
 }
 
-function initializeZapthreads(initZapthreadsEmbed) {
+function initializeZapthreads({ registerCleanup, isDestroyed }) {
   if (typeof initZapthreadsEmbed !== 'function') {
     return;
   }
@@ -466,91 +471,288 @@ function initializeZapthreads(initZapthreadsEmbed) {
 
   elements.forEach((element) => {
     const options = extractZapthreadsOptions(element);
-    initZapthreadsEmbed({ root: element, options });
+    try {
+      const maybeDispose = initZapthreadsEmbed({ root: element, options });
+      if (!maybeDispose) {
+        return;
+      }
+
+      if (typeof maybeDispose.then === 'function') {
+        maybeDispose
+          .then((dispose) => {
+            if (typeof dispose !== 'function') {
+              return;
+            }
+            if (isDestroyed()) {
+              try {
+                dispose();
+              } catch (error) {
+                console.error('[blog] zapthreads cleanup failed', error);
+              }
+              return;
+            }
+            registerCleanup(() => {
+              try {
+                dispose();
+              } catch (error) {
+                console.error('[blog] zapthreads cleanup failed', error);
+              }
+            });
+          })
+          .catch((error) => {
+            console.error('[blog] failed to initialise zapthreads embed', error);
+          });
+        return;
+      }
+
+      if (typeof maybeDispose === 'function') {
+        if (isDestroyed()) {
+          try {
+            maybeDispose();
+          } catch (error) {
+            console.error('[blog] zapthreads cleanup failed', error);
+          }
+          return;
+        }
+        registerCleanup(() => {
+          try {
+            maybeDispose();
+          } catch (error) {
+            console.error('[blog] zapthreads cleanup failed', error);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('[blog] failed to start zapthreads embed', error);
+    }
   });
 }
 
-export function bootstrapBlog({ initZapthreadsEmbed } = {}) {
-  const carousels = [];
+function mountBlogApp() {
+  const runtime = {
+    destroyed: false,
+    cleanupCallbacks: new Set(),
+    sliderStates: new Map(),
+  };
 
-  function mount() {
-    const root = document.querySelector('.blog-app-root');
-    if (!root) {
+  const registerCleanup = (callback) => {
+    if (typeof callback !== 'function') {
+      return () => {};
+    }
+    if (runtime.destroyed) {
+      try {
+        callback();
+      } catch (error) {
+        console.error('[blog] cleanup callback failed', error);
+      }
+      return () => {};
+    }
+    runtime.cleanupCallbacks.add(callback);
+    return () => {
+      runtime.cleanupCallbacks.delete(callback);
+    };
+  };
+
+  const destroy = () => {
+    if (runtime.destroyed) {
+      return;
+    }
+    runtime.destroyed = true;
+    runtime.cleanupCallbacks.forEach((callback) => {
+      try {
+        callback();
+      } catch (error) {
+        console.error('[blog] cleanup callback failed', error);
+      }
+    });
+    runtime.cleanupCallbacks.clear();
+    runtime.sliderStates.clear();
+  };
+
+  const root = document.querySelector('.blog-app-root');
+  if (!root) {
+    return destroy;
+  }
+
+  const config = readBlogConfig();
+  const notes = resolveNotes().slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  const hero = document.createElement('header');
+  hero.className = 'flex flex-col gap-4';
+
+  const heading = document.createElement('h1');
+  heading.className = 'text-4xl font-bold text-blog-gray-900 dark:text-blog-gray-100';
+  heading.textContent = 'bitvid updates';
+  hero.appendChild(heading);
+
+  const subheading = document.createElement('p');
+  subheading.className = 'max-w-2xl text-lg text-blog-gray-600 dark:text-blog-gray-300';
+  subheading.textContent =
+    'Shipping notes and release highlights from the decentralized video network. Expect incremental drops, roadmap checkpoints, and moderation changelogs.';
+  hero.appendChild(subheading);
+
+  if (config.topics.length > 0) {
+    hero.appendChild(createTopicsNav(config.topics));
+  }
+
+  const main = document.createElement('main');
+  main.className = 'mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12';
+  applyDynamicStyles(main, { scrollPaddingTop: '6rem' }, { slot: 'scroll-padding' });
+  main.appendChild(hero);
+
+  const topNotes = config.topNotes > 0 ? notes.slice(0, config.topNotes) : [];
+  if (topNotes.length > 0) {
+    const topSection = renderTopNotes(topNotes);
+    if (topSection) {
+      main.appendChild(topSection);
+    }
+  }
+
+  const remaining = config.topNotes > 0 ? notes.slice(config.topNotes) : notes;
+  const shortNotesCandidates = remaining.filter((note) => {
+    const length = typeof note.summary === 'string' ? note.summary.length : 0;
+    return length >= config.shortNotesMinChars;
+  });
+
+  const registerSlider = (section, { carousel, progress }) => {
+    if (!section || !carousel) {
       return;
     }
 
-    const config = readBlogConfig();
-    const notes = resolveNotes().slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const sliderState = {
+      container: section,
+      carousel,
+      progress,
+      pausedByPointer: false,
+      pausedByVisibility: document.visibilityState === 'hidden',
+    };
 
-    const hero = document.createElement('header');
-    hero.className = 'flex flex-col gap-4';
+    runtime.sliderStates.set(section, sliderState);
 
-    const heading = document.createElement('h1');
-    heading.className = 'text-4xl font-bold text-blog-gray-900 dark:text-blog-gray-100';
-    heading.textContent = 'bitvid updates';
-    hero.appendChild(heading);
-
-    const subheading = document.createElement('p');
-    subheading.className = 'max-w-2xl text-lg text-blog-gray-600 dark:text-blog-gray-300';
-    subheading.textContent =
-      'Shipping notes and release highlights from the decentralized video network. Expect incremental drops, roadmap checkpoints, and moderation changelogs.';
-    hero.appendChild(subheading);
-
-    if (config.topics.length > 0) {
-      hero.appendChild(createTopicsNav(config.topics));
-    }
-
-    const main = document.createElement('main');
-    main.className = 'mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12';
-    main.appendChild(hero);
-
-    const topNotes = config.topNotes > 0 ? notes.slice(0, config.topNotes) : [];
-    if (topNotes.length > 0) {
-      const topSection = renderTopNotes(topNotes);
-      if (topSection) {
-        main.appendChild(topSection);
+    const pause = () => {
+      if (sliderState.progress && typeof sliderState.progress.stop === 'function') {
+        sliderState.progress.stop();
       }
-    }
+    };
 
-    const remaining = config.topNotes > 0 ? notes.slice(config.topNotes) : notes;
-    const shortNotesCandidates = remaining.filter((note) => {
-      const length = typeof note.summary === 'string' ? note.summary.length : 0;
-      return length >= config.shortNotesMinChars;
+    const resume = () => {
+      if (!sliderState.progress || typeof sliderState.progress.start !== 'function') {
+        return;
+      }
+      if (sliderState.carousel.autoPlayInterval <= 0) {
+        return;
+      }
+      sliderState.progress.reset?.();
+      sliderState.progress.start(sliderState.carousel.autoPlayInterval);
+    };
+
+    const updatePlayback = () => {
+      if (sliderState.pausedByPointer || sliderState.pausedByVisibility) {
+        pause();
+        return;
+      }
+      resume();
+    };
+
+    const handlePointerEnter = () => {
+      sliderState.pausedByPointer = true;
+      pause();
+    };
+
+    const handlePointerLeave = () => {
+      sliderState.pausedByPointer = false;
+      updatePlayback();
+    };
+
+    section.addEventListener('pointerenter', handlePointerEnter);
+    section.addEventListener('pointerleave', handlePointerLeave);
+    registerCleanup(() => {
+      section.removeEventListener('pointerenter', handlePointerEnter);
+      section.removeEventListener('pointerleave', handlePointerLeave);
     });
 
-    if (config.shortNotesMode === 'carousel') {
-      const rendered = renderShortNotesCarousel(shortNotesCandidates, config);
-      if (rendered?.section) {
-        main.appendChild(rendered.section);
-        if (rendered.carousel) {
-          carousels.push(rendered.carousel);
-        }
-      }
-    } else if (config.shortNotesMode === 'main') {
-      const shortNotesSection = renderShortNotesList(shortNotesCandidates, config);
-      if (shortNotesSection) {
-        main.appendChild(shortNotesSection);
-      }
+    const handleVisibilityChange = () => {
+      sliderState.pausedByVisibility = document.visibilityState === 'hidden';
+      updatePlayback();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    registerCleanup(() => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    });
+
+    if (sliderState.pausedByVisibility) {
+      pause();
     }
 
-    const feed = renderMainFeed(remaining);
-    if (feed) {
-      main.appendChild(feed);
-    }
-
-    root.replaceChildren(main);
-    initializeZapthreads(initZapthreadsEmbed);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mount, { once: true });
-  } else {
-    mount();
-  }
-
-  return () => {
-    carousels.forEach((instance) => {
-      destroyCarousel(instance);
+    registerCleanup(() => {
+      runtime.sliderStates.delete(section);
+      destroyCarousel(sliderState.carousel);
     });
   };
+
+  if (config.shortNotesMode === 'carousel') {
+    const rendered = renderShortNotesCarousel(shortNotesCandidates, config);
+    if (rendered?.section) {
+      main.appendChild(rendered.section);
+      if (rendered.carousel) {
+        registerSlider(rendered.section, rendered);
+      }
+    }
+  } else if (config.shortNotesMode === 'main') {
+    const shortNotesSection = renderShortNotesList(shortNotesCandidates, config);
+    if (shortNotesSection) {
+      main.appendChild(shortNotesSection);
+    }
+  }
+
+  const feed = renderMainFeed(remaining);
+  if (feed) {
+    main.appendChild(feed);
+  }
+
+  root.replaceChildren(main);
+
+  registerCleanup(() => {
+    root.replaceChildren();
+  });
+
+  initializeZapthreads({
+    registerCleanup,
+    isDestroyed: () => runtime.destroyed,
+  });
+
+  return destroy;
+}
+
+let activeTeardown = null;
+
+export function bootstrapBlog() {
+  if (typeof activeTeardown === 'function') {
+    activeTeardown();
+  }
+  const destroy = mountBlogApp();
+  activeTeardown = () => {
+    destroy();
+    activeTeardown = null;
+  };
+  return activeTeardown;
+}
+
+export function teardownBlog() {
+  if (typeof activeTeardown === 'function') {
+    activeTeardown();
+  }
+}
+
+function runBlogBootstrap() {
+  bootstrapBlog();
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runBlogBootstrap, { once: true });
+  } else {
+    runBlogBootstrap();
+  }
 }
