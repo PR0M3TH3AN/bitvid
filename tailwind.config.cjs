@@ -1,10 +1,14 @@
+const typography = require("@tailwindcss/typography");
+
 module.exports = {
   content: [
     "./index.html",
     "./blog.html",
     "./components/**/*.html",
     "./views/**/*.html",
-    "./js/**/*.js"
+    "./js/**/*.js",
+    "./torrent/**/*.html",
+    "./torrent/**/*.js"
   ],
   theme: {
     extend: {
@@ -43,6 +47,7 @@ module.exports = {
           translucent: "var(--color-border-translucent)",
           "translucent-strong": "var(--color-border-translucent-strong)",
           "translucent-bright": "var(--color-border-translucent-bright)",
+          "translucent-medium": "var(--color-border-translucent-medium)",
           "translucent-stronger": "var(--color-border-translucent-stronger)",
           "translucent-strongest": "var(--color-border-translucent-strongest)",
           "translucent-glow": "var(--color-border-translucent-glow)",
@@ -181,8 +186,127 @@ module.exports = {
       transitionTimingFunction: {
         "ease-out": "var(--motion-ease-out)",
         "ease-in-out": "var(--motion-ease-in-out)"
-      }
+      },
+      typography: (theme) => ({
+        DEFAULT: {
+          css: {
+            "--tw-prose-body": "var(--color-text-strong)",
+            "--tw-prose-headings": "var(--color-text-strong)",
+            "--tw-prose-links": "var(--color-primary)",
+            "--tw-prose-bold": "var(--color-text-strong)",
+            "--tw-prose-hr": "var(--color-border-subtle)",
+            "--tw-prose-quotes": "var(--color-muted)",
+            "--tw-prose-counters": "var(--color-text-strong)",
+            "--tw-prose-bullets": "var(--color-border-subtle)",
+            "--tw-prose-code": "var(--color-secondary)",
+            "--tw-prose-th-borders": "var(--color-border-subtle)",
+            "--tw-prose-td-borders": "var(--color-border-subtle)",
+            color: "var(--color-text-strong)",
+            lineHeight: "1.6",
+            maxWidth: "none",
+            fontFamily: theme("fontFamily.sans").join(", "),
+            "h1": {
+              fontWeight: theme("fontWeight.bold"),
+              marginTop: "0.5rem",
+              marginBottom: "1rem",
+              fontSize: theme("fontSize.2xl")[0]
+            },
+            "h2": {
+              fontWeight: theme("fontWeight.bold"),
+              marginTop: "1.25rem",
+              marginBottom: "0.75rem",
+              fontSize: theme("fontSize.xl")[0]
+            },
+            "h3": {
+              fontWeight: theme("fontWeight.semibold"),
+              marginTop: "1rem",
+              marginBottom: "0.75rem",
+              fontSize: theme("fontSize.lg")[0]
+            },
+            "h4, h5, h6": {
+              fontWeight: theme("fontWeight.semibold"),
+              marginTop: "0.75rem",
+              marginBottom: "0.5rem"
+            },
+            "p": {
+              marginTop: "0",
+              marginBottom: "1rem"
+            },
+            "ul, ol": {
+              marginTop: "0",
+              marginBottom: "1rem",
+              paddingLeft: "1.25rem"
+            },
+            "li": {
+              marginTop: "0.5rem",
+              marginBottom: "0.5rem"
+            },
+            "blockquote": {
+              borderLeftWidth: "4px",
+              borderLeftColor: "var(--color-border-subtle)",
+              paddingLeft: "1rem",
+              marginTop: "1rem",
+              marginBottom: "1rem",
+              color: "var(--color-muted)"
+            },
+            "code": {
+              backgroundColor: "var(--color-page-alt)",
+              color: "var(--color-secondary)",
+              padding: "0.2rem 0.4rem",
+              borderRadius: theme("borderRadius.md"),
+              fontFamily: theme("fontFamily.mono").join(", "),
+              fontSize: theme("fontSize.sm")[0],
+              fontWeight: theme("fontWeight.medium")
+            },
+            "code::before": {
+              content: "none"
+            },
+            "code::after": {
+              content: "none"
+            },
+            "pre": {
+              backgroundColor: "var(--color-page-alt)",
+              color: "var(--color-text-strong)",
+              padding: "1rem",
+              borderRadius: theme("borderRadius.md"),
+              overflowX: "auto",
+              marginTop: "0",
+              marginBottom: "1rem",
+              fontFamily: theme("fontFamily.mono").join(", "),
+              fontSize: theme("fontSize.sm")[0]
+            },
+            "pre code": {
+              backgroundColor: "transparent",
+              padding: "0",
+              borderRadius: "0",
+              fontWeight: "inherit",
+              color: "inherit"
+            },
+            "a": {
+              color: "var(--color-primary)",
+              textDecoration: "none",
+              fontWeight: theme("fontWeight.medium")
+            },
+            "a:hover": {
+              textDecoration: "underline"
+            },
+            "hr": {
+              borderColor: "var(--color-border-subtle)",
+              borderTopWidth: "1px",
+              marginTop: "2rem",
+              marginBottom: "2rem"
+            },
+            "img": {
+              marginTop: "0",
+              marginBottom: "1rem",
+              borderRadius: theme("borderRadius.md"),
+              maxWidth: "100%",
+              height: "auto"
+            }
+          }
+        }
+      })
     }
   },
-  plugins: []
+  plugins: [typography]
 };

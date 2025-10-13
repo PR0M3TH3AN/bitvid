@@ -12,6 +12,34 @@ const trackers = [
 const torrentOpts = { announce: trackers };
 const trackerOpts = { announce: trackers };
 
+const applyDynamicStylesPromise = import("../js/ui/styleSystem.js")
+  .then((module) => module.applyDynamicStyles)
+  .catch((error) => {
+    console.warn("Failed to load style system utilities", error);
+    return null;
+  });
+
+const dynamicStyleFallbackClasses = {
+  hiddenDownload: "torrent-download-anchor",
+  clipboard: "torrent-clipboard-textarea",
+};
+
+function applyElementStyles(element, styleObject, slotKey) {
+  if (!element) {
+    return;
+  }
+
+  if (slotKey && dynamicStyleFallbackClasses[slotKey]) {
+    element.classList.add(dynamicStyleFallbackClasses[slotKey]);
+  }
+
+  applyDynamicStylesPromise.then((applyStyles) => {
+    if (typeof applyStyles === "function") {
+      applyStyles(element, styleObject, { slot: slotKey });
+    }
+  });
+}
+
 // Simple debug logger.
 function dbg(msg) {
   console.log("[DEBUG]", msg);
@@ -193,7 +221,7 @@ app.controller("BTorrentCtrl", [
           // Create an anchor to trigger the download.
           const blobUrl = URL.createObjectURL(blob);
           const a = document.createElement("a");
-          a.style.display = "none";
+          applyElementStyles(a, { display: "none" }, "hiddenDownload");
           a.href = blobUrl;
           a.download = file.name;
           // Append, click, remove, revoke.
@@ -225,8 +253,18 @@ app.controller("BTorrentCtrl", [
         try {
           const textarea = document.createElement("textarea");
           textarea.value = magnetURI;
-          textarea.style.position = "fixed";
-          textarea.style.left = "-9999px";
+          applyElementStyles(
+            textarea,
+            {
+              position: "fixed",
+              top: "0",
+              left: "-9999px",
+              width: "0",
+              height: "0",
+              opacity: "0",
+            },
+            "clipboard",
+          );
           document.body.appendChild(textarea);
           textarea.select();
           document.execCommand("copy");
@@ -247,7 +285,7 @@ app.controller("BTorrentCtrl", [
       const fileName = torrent.fileName || `${torrent.name}.torrent`;
       // Create a hidden <a> to force download of the .torrent file.
       const a = document.createElement("a");
-      a.style.display = "none";
+      applyElementStyles(a, { display: "none" }, "hiddenDownload");
       a.href = torrent.torrentFileBlobURL;
       a.download = fileName;
       document.body.appendChild(a);
