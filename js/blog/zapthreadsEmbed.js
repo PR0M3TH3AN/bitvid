@@ -482,6 +482,33 @@ export function parseDisableList(disableList = '') {
     .filter(Boolean);
 }
 
+export function parseUrlOptions(urls = '') {
+  if (!urls || typeof urls !== 'string') {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(urls);
+    if (parsed && typeof parsed === 'object') {
+      return parsed;
+    }
+  } catch (error) {
+    // Ignore JSON parse errors and fall back to manual parsing below.
+  }
+
+  const map = {};
+  for (const segment of urls.split(',')) {
+    const [rawKey, rawValue] = segment.split('=');
+    if (!rawKey || !rawValue) continue;
+    const key = rawKey.trim();
+    const value = rawValue.trim();
+    if (!key || !value) continue;
+    map[key] = value;
+  }
+
+  return map;
+}
+
 export function normalizeAnchor(anchor, { legacyUrl = false } = {}) {
   const trimmed = (anchor || '').trim();
 
@@ -537,6 +564,8 @@ export function createState(options = {}) {
     rootEventIds: [],
     anchorAuthor: undefined,
     subscription: null,
+    eventMap: new Map(),
+    events: [],
   };
 }
 
@@ -576,6 +605,10 @@ export function updateStateFromEvents(
   const rootIds = new Set(state.rootEventIds);
   const parser = typeof parseEvent === 'function' ? parseEvent : null;
 
+  if (!state.eventMap || typeof state.eventMap.set !== 'function') {
+    state.eventMap = new Map();
+  }
+
   for (const event of events) {
     if (!event) continue;
     const parsed = parser ? parser(event) : event;
@@ -595,6 +628,17 @@ export function updateStateFromEvents(
     ) {
       state.anchorAuthor = parsed.pk;
     }
+
+    const eventId = parsed.id || event.id;
+    if (!eventId) {
+      continue;
+    }
+
+    const previous = state.eventMap.get(eventId) || {};
+    state.eventMap.set(eventId, {
+      ...previous,
+      ...parsed,
+    });
   }
 
   if (rootIds.size > 0) {
@@ -607,7 +651,230 @@ export function updateStateFromEvents(
 
   updateFilterForAnchor(state);
 
+  state.events = Array.from(state.eventMap.values()).sort((a, b) => {
+    const aTs = typeof a.ts === 'number' ? a.ts : 0;
+    const bTs = typeof b.ts === 'number' ? b.ts : 0;
+    return bTs - aTs;
+  });
+
   return parsedEvents;
+}
+
+function normalizeBaseUrl(baseUrl) {
+  if (!baseUrl) {
+    return 'https://njump.me/';
+  }
+  return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+}
+
+function createProfileUrl(pubkey, baseUrl) {
+  if (!pubkey) {
+    return '#';
+  }
+  const normalized = normalizeBaseUrl(baseUrl);
+  return `${normalized}${pubkey}`;
+}
+
+function createEventUrl(eventId, baseUrl) {
+  if (!eventId) {
+    return '#';
+  }
+  const normalized = normalizeBaseUrl(baseUrl);
+  return `${normalized}${eventId}`;
+}
+
+export function formatEventTimestamp(timestamp) {
+  if (!timestamp && timestamp !== 0) {
+    return '';
+  }
+
+  const date = new Date(timestamp * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date);
+  } catch (error) {
+    return date.toISOString();
+  }
+}
+
+export function formatAuthorName(pubkey) {
+  if (!pubkey) {
+    return 'Unknown';
+  }
+
+  const trimmed = pubkey.trim();
+  if (trimmed.length <= 16) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, 8)}…${trimmed.slice(-8)}`;
+}
+
+function truncateContent(content = '', limit = 280) {
+  const text = content.trim();
+  if (text.length <= limit) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, limit - 1))}…`;
+}
+
+function convertContentToHtml(content = '') {
+  return escapeHTML(content).replace(/\n/g, '<br />');
+}
+
+function isFeatureDisabled(feature, disabled = []) {
+  return Array.isArray(disabled) && disabled.includes(feature);
+}
+
+export function renderThread(
+  threadEl,
+  events = [],
+  {
+    anchor,
+    disableFeatures = [],
+    urlOptions = {},
+  } = {},
+) {
+  if (!threadEl) {
+    return;
+  }
+
+  clearElement(threadEl);
+
+  const list = Array.isArray(events) ? [...events] : [];
+  if (list.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'ztr-thread-empty';
+    empty.textContent = 'No comments yet.';
+    threadEl.appendChild(empty);
+    return;
+  }
+
+  const profileBaseUrl = normalizeBaseUrl(
+    urlOptions.profile || urlOptions.profileBase || 'https://njump.me/',
+  );
+  const eventBaseUrl = normalizeBaseUrl(
+    urlOptions.event || urlOptions.eventBase || urlOptions.profile || 'https://njump.me/',
+  );
+
+  list.sort((a, b) => {
+    const aTs = typeof a.ts === 'number' ? a.ts : 0;
+    const bTs = typeof b.ts === 'number' ? b.ts : 0;
+    return bTs - aTs;
+  });
+
+  for (const event of list) {
+    const comment = createZapthreadsCommentContainer();
+    const pictureWrapper = comment.querySelector('.ztr-comment-info-picture');
+    const pictureImage = pictureWrapper ? pictureWrapper.querySelector('img') : null;
+    if (pictureImage) {
+      pictureImage.alt = 'User avatar';
+      pictureImage.decoding = 'async';
+      pictureImage.loading = 'lazy';
+      if (event.picture) {
+        pictureImage.src = event.picture;
+      } else {
+        pictureImage.removeAttribute('src');
+      }
+    }
+
+    const authorLink = comment.querySelector('.ztr-comment-info-author a');
+    if (authorLink) {
+      authorLink.href = createProfileUrl(event.pk, profileBaseUrl);
+      authorLink.textContent = formatAuthorName(event.pk);
+      authorLink.rel = 'noopener';
+      authorLink.target = '_blank';
+    }
+
+    const authorBadge = comment.querySelector('.ztr-comment-info-author strong');
+    if (authorBadge) {
+      authorBadge.textContent = ' posted';
+    }
+
+    const dotsLink = comment.querySelector('.ztr-comment-info-dots');
+    if (dotsLink) {
+      dotsLink.href = createEventUrl(event.id, eventBaseUrl);
+      dotsLink.textContent = 'View';
+      dotsLink.target = '_blank';
+      dotsLink.rel = 'noopener';
+    }
+
+    const infoLists = comment.querySelectorAll('.ztr-comment-info-items');
+    const metaList = infoLists[1];
+    if (metaList) {
+      clearElement(metaList);
+      const timestampItem = document.createElement('li');
+      timestampItem.textContent = formatEventTimestamp(event.ts);
+      metaList.appendChild(timestampItem);
+
+      if (event.ro && anchor && anchor.value && event.ro !== anchor.value) {
+        const bullet = createZapthreadsBulletSeparator();
+        metaList.appendChild(bullet);
+        const crossPost = createZapthreadsRepliesLabel();
+        crossPost.textContent = 'Cross-post';
+        metaList.appendChild(crossPost);
+      }
+    }
+
+    const [truncatedText, fullText] = comment.querySelectorAll('.ztr-comment-text');
+    if (truncatedText) {
+      truncatedText.innerHTML = convertContentToHtml(truncateContent(event.c));
+    }
+    if (fullText) {
+      fullText.innerHTML = convertContentToHtml(event.c);
+    }
+
+    const actions = comment.querySelector('.ztr-comment-actions');
+    if (actions) {
+      clearElement(actions);
+
+      if (!isFeatureDisabled('reply', disableFeatures)) {
+        const replyAction = createZapthreadsReplyActionItem();
+        const replySpan = replyAction.querySelector('span');
+        if (replySpan) {
+          replySpan.textContent = 'Reply';
+        }
+        actions.appendChild(replyAction);
+      }
+
+      if (!isFeatureDisabled('likes', disableFeatures)) {
+        const likeAction = createZapthreadsLikeAction();
+        const likeSpan = likeAction.querySelector('span');
+        if (likeSpan) {
+          const count = typeof event.likeCount === 'number' ? event.likeCount : 0;
+          likeSpan.textContent = `${count} likes`;
+        }
+        actions.appendChild(likeAction);
+      }
+
+      if (!isFeatureDisabled('zaps', disableFeatures)) {
+        const zapAction = createZapthreadsZapAction();
+        const zapSpan = zapAction.querySelector('span');
+        if (zapSpan) {
+          const total = typeof event.zapTotal === 'number' ? event.zapTotal : 0;
+          zapSpan.textContent = `${total} sats`;
+        }
+        actions.appendChild(zapAction);
+      }
+    }
+
+    const infoPane = createZapthreadsInfoPane();
+    const infoLink = infoPane.querySelector('a');
+    if (infoLink) {
+      infoLink.href = createEventUrl(event.id, eventBaseUrl);
+      infoLink.rel = 'noopener';
+      infoLink.target = '_blank';
+    }
+    comment.appendChild(infoPane);
+
+    threadEl.appendChild(comment);
+  }
 }
 
 export async function loadRootEvents({
@@ -775,6 +1042,9 @@ export async function initZapthreadsEmbed({
 
   const data = dataUtils || {};
   const state = createState(options);
+  const urlOptions = parseUrlOptions(
+    options && typeof options.urls === 'string' ? options.urls : '',
+  );
 
   const blogRoot = getBlogAppRoot();
   if (!blogRoot) {
@@ -809,6 +1079,14 @@ export async function initZapthreadsEmbed({
 
   const clearCacheButton = createZapthreadsClearCacheButton();
   contentEl.appendChild(clearCacheButton);
+
+  const threadEl = createZapthreadsThreadContainer();
+  contentEl.appendChild(threadEl);
+  renderThread(threadEl, state.events, {
+    anchor: state.anchor,
+    disableFeatures: state.disableFeatures,
+    urlOptions,
+  });
 
   const disposeCallbacks = new Set();
   const registerDispose = (callback) => {
@@ -906,6 +1184,11 @@ export async function initZapthreadsEmbed({
       renderThreadTitle(titleEl, currentTitle);
     }
     renderAnchorVersion(anchorVersionEl, state.version);
+    renderThread(threadEl, state.events, {
+      anchor: state.anchor,
+      disableFeatures: state.disableFeatures,
+      urlOptions,
+    });
     return parsedEvents;
   };
 
