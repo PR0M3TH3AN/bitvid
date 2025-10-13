@@ -163,6 +163,13 @@
   --color-blog-neutral-120: rgb(246 246 246);
   --color-blog-orange-500: rgb(249 115 22);
   --color-blog-neutral-50: rgb(253 253 253);
+  --ztr-font: var(--font-family-sans);
+  --ztr-font-size: var(--font-size-base);
+  --ztr-text-color: var(--color-blog-gray-800);
+  --ztr-link-color: var(--color-blog-purple-700);
+  --ztr-icon-color: var(--color-blog-gray-700);
+  --ztr-background-color: rgba(0, 0, 0, 0.03);
+  --ztr-login-button-color: var(--color-blog-gray-800);
 
   /* Spacing scale */
   --space-2xs: 0.25rem;
