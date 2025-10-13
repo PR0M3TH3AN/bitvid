@@ -42,6 +42,8 @@
     <link rel="stylesheet" href="./css/tailwind.generated.css" />
     <script src="./js/tracking.js" defer></script>
     <script type="module" crossorigin>
+      import { initZapthreadsEmbed } from "./js/blog/zapthreadsEmbed.js";
+
       var pv = Object.defineProperty;
       var gv = (e, t, n) =>
         t in e
@@ -21489,407 +21491,34 @@ svg {
         }
       }
       var IS = { decode: CS, hrpToMillisat: Lm };
-      const OS = He(
-          "<div id=ztr-root><style></style><div class=blog-ztr-watermark>"
-        ),
-        NS = He("<div id=ztr-content>"),
-        RS = He("<h1>Error!"),
-        zS = He(
-          "<div class=ztr-comment-text><pre></pre><p>Only properly formed NIP-19 naddr, note and nevent encoded entities and URLs are supported."
-        ),
-        US = He("<h2 id=ztr-title>"),
-        MS = He(
-          "<p>Powered by <a href=https://github.com/fr4nzap/zapthreads>zapthreads"
-        ),
-        HS = He("<button>Clear cache"),
-        jS = He("<p>Anchor version: "),
-        DS = (e) => {
-          Hr(() => {
-            me.anchor = (() => {
-              const N = e.anchor.trim();
-              try {
-                if (N.startsWith("http")) {
-                  const w = !e.legacyUrl;
-                  return { type: "http", value: fA(N, w) };
-                }
-                const l = ia(N);
-                switch (l.type) {
-                  case "nevent":
-                    return { type: "note", value: l.data.id };
-                  case "note":
-                    return { type: "note", value: l.data };
-                  case "naddr":
-                    const w = l.data;
-                    return {
-                      type: "naddr",
-                      value: `${w.kind}:${w.pubkey}:${w.identifier}`,
-                    };
-                }
-              } catch (l) {
-                return (
-                  console.error(l),
-                  { type: "error", value: `Malformed anchor: ${N}` }
-                );
-              }
-            })();
-            const T = "wss://relay.damus.io,wss://nos.lol";
-            (me.relays = (e.relays || T)
-              .split(",")
-              .map((N) => new URL(N).toString())),
-              (e.author || "").startsWith("npub") &&
-                (me.externalAuthor = e.author),
-              (me.disableFeatures = e.disable
-                .split(",")
-                .map((N) => N.trim())
-                .filter(m5)),
-              (me.urlPrefixes = cA(e.urls)),
-              (me.replyPlaceholder = e.replyPlaceholder);
-          });
-          const t = () => me.anchor,
-            n = () => me.relays,
-            r = () => me.disableFeatures,
-            o = () => e.version;
-          me.profiles = Ys(() => ["profiles"]);
-          const s = () => r().includes("watch");
-          Hr(
-            jr([t], () => {
-              me.version = o();
-            })
-          ),
-            Hr(
-              jr([t, n], async () => {
-                if (t().type === "error") return;
-                let T, N;
-                switch (t().type) {
-                  case "http":
-                    (N = await Ti("events", t().value, { index: "r" })),
-                      (me.rootEventIds = sa(N).map((E) => E.id)),
-                      (T = {
-                        "#r": e.legacyUrl
-                          ? [t().value]
-                          : [t().value, `${t().value}/`],
-                        kinds: [1, 8812],
-                      });
-                    break;
-                  case "note":
-                    const _ = await hi("events", IDBKeyRange.only(t().value));
-                    if (_) {
-                      (N = [_]),
-                        (me.rootEventIds = [_.id]),
-                        (me.anchorAuthor = _.pk);
-                      return;
-                    } else {
-                      (N = []), (T = { ids: [t().value] });
-                      break;
-                    }
-                  case "naddr":
-                    const [$, R, L] = t().value.split(":");
-                    (N = (await Ti("events", L, { index: "d" })).filter(
-                      (E) => E.pk === R
-                    )),
-                      N.length > 0 &&
-                        ((me.rootEventIds = sa(N).map((E) => E.id)),
-                        (me.anchorAuthor = N[0].pk)),
-                      (T = { authors: [R], kinds: [parseInt($)], "#d": [L] });
-                    break;
-                  default:
-                    throw "error";
-                }
-                const w = (await di.querySync(n(), { ...T })).map(Na);
-                for (const p of w)
-                  t().type == "http"
-                    ? ((p.k == 1 && p.c.includes("↴")) || p.k == 8812) &&
-                      un("events", p)
-                    : un("events", p);
-                switch (t().type) {
-                  case "http":
-                  case "naddr":
-                    const p = [...N, ...w],
-                      _ = sa([...p]).map(($) => $.id);
-                    (_.length > 0 && _[0]) !== me.rootEventIds[0] &&
-                      (me.rootEventIds = _);
-                    break;
-                  case "note":
-                    me.rootEventIds = w.map(($) => $.id);
-                    break;
-                }
-                w.length > 0 && (me.anchorAuthor = w[0].pk);
-              })
-            );
-          const c = () => me.rootEventIds;
-          Hr(
-            jr(
-              [c, o],
-              () => {
-                switch (t().type) {
-                  case "http":
-                  case "note":
-                    (me.filter["#e"] ?? []).toString() !== c().toString() &&
-                      (me.filter = { "#e": c() });
-                    return;
-                  case "naddr":
-                    const T = me.filter["#a"] && me.filter["#a"][0];
-                    t().value !== T && (me.filter = { "#a": [t().value] }),
-                      (me.version = o() || c()[0]);
-                    return;
-                }
-              },
-              { defer: !0 }
-            )
-          );
-          const f = De(() => me.filter, { defer: !0 });
-          let d;
-          Ei(
-            jr(
-              [f],
-              async () => {
-                const T = f(),
-                  N = n(),
-                  l = t(),
-                  w = P(),
-                  p = me.profiles();
-                if (Object.entries(T).length === 0) return;
-                d == null || d.close(),
-                  (d = null),
-                  li(() => {
-                    console.log(
-                      "[zapthreads] unsubscribing and cleaning up",
-                      l.value
-                    ),
-                      d == null || d.close(),
-                      (d = null);
-                  });
-                const _ = [1, 9802, 7, 9735];
-                console.log("[zapthreads] subscribing to", l.value);
-                const $ = await eA(l, N),
-                  R = new Set(),
-                  L = {};
-                d = di.subscribeMany(N, [{ ...T, kinds: _, since: $ }], {
-                  onevent(E) {
-                    if (E.kind === 1 || E.kind === 9802)
-                      E.content.trim() && un("events", Na(E));
-                    else if (E.kind === 7) R.add(E.id);
-                    else if (E.kind === 9735) {
-                      const x = E.tags.find((z) => z[0] === "bolt11");
-                      x && x[1] && (L[E.id] = x[1]);
-                    }
-                  },
-                  oneose() {
-                    (async () => {
-                      const E = (await hi(
-                        "aggregates",
-                        IDBKeyRange.only([l.value, 7])
-                      )) ?? { eid: l.value, ids: [], k: 7 };
-                      (E.ids = [...new Set([...E.ids, ...R])]),
-                        un("aggregates", E);
-                      const x = (await hi(
-                        "aggregates",
-                        IDBKeyRange.only([l.value, 9735])
-                      )) ?? { eid: l.value, ids: [], k: 9735, sum: 0 };
-                      (x.sum = Object.entries(L).reduce((z, q) => {
-                        if (x.ids.includes(q[0])) return z;
-                        const S = IS.decode(q[1]).sections.find(
-                            (K) => K.name === "amount"
-                          ),
-                          D = Number(S.value) / 1e3;
-                        return z + D;
-                      }, x.sum ?? 0)),
-                        (x.ids = [...new Set([...x.ids, ...Object.keys(L)])]),
-                        un("aggregates", x);
-                    })(),
-                      setTimeout(async () => {
-                        await wm([...w.map((E) => E.pk)], N, p),
-                          tA(l, w),
-                          s() && (d == null || d.close(), di.close(N));
-                      }, 96);
-                  },
-                });
-              },
-              { defer: !0 }
-            )
-          );
-          const h = () => e.user;
-          Hr(
-            jr(h, (T) => {
-              if (T) {
-                let N, l;
-                T.startsWith("nsec")
-                  ? ((l = ia(T).data), (N = ym(l)))
-                  : (N = ia(T).data),
-                  (Ut.external = {
-                    pk: N,
-                    signEvent: async (w) => {
-                      if (l) return { sig: vm(w, l).sig };
-                      if (!window.nostr)
-                        throw (
-                          (alert(
-                            "Please log in with a NIP-07 extension such as Alby or nos2x"
-                          ),
-                          (Ut.active = void 0),
-                          "No extension available")
-                        );
-                      const p = await window.nostr.getPublicKey(),
-                        _ = N;
-                      if (_ !== p) {
-                        const $ = `ERROR: Event not signed. Supplied pubkey does not match extension pubkey. ${_} !== ${p}`;
-                        throw ((Ut.active = void 0), alert($), $);
-                      } else return window.nostr.signEvent(w);
-                    },
-                  }),
-                  (Ut.active = Ut.external);
-              }
-            })
-          ),
-            Hr(
-              jr(
-                h,
-                (T) => {
-                  T || (Ut.active = void 0);
-                },
-                { defer: !0 }
-              )
-            );
-          const y = Ys(() => ["events", 30023, { index: "k" }]),
-            m = De(() => {
-              if (
-                me.disableFeatures.includes("hideContent") &&
-                t().type === "naddr"
-              ) {
-                const [T, N, l] = t().value.split(":"),
-                  w = y().find((p) => p.d === l && p.pk === N);
-                if (w) {
-                  const p = `# ${w.tl}
- ${w.c}`;
-                  return mm({ ...w, c: p }, me, []);
-                }
-              }
-            }),
-            v = De(() => {
-              switch (t().type) {
-                case "http":
-                case "note":
-                  return Ys(() => ["events", me.rootEventIds, { index: "ro" }]);
-                case "naddr":
-                  return Ys(() => ["events", t().value, { index: "a" }]);
-                default:
-                  return () => [];
-              }
-            }),
-            P = () => v()(),
-            C = De(() =>
-              me.rootEventIds && me.rootEventIds.length
-                ? bm(P()).filter(
-                    (N) => !(N.k === 9802 && N.children.length === 0)
-                  )
-                : []
-            ),
-            A = () => C().reduce((T, N) => T + Jd(N), C().length),
-            [O, M] = dt(!1);
-          return (() => {
-            const T = OS(),
-              N = T.firstChild,
-              l = N.nextSibling;
-            return (
-              xe(N, z6),
-              xe(
-                T,
-                (() => {
-                  const w = De(() => !!m());
-                  return () =>
-                    w() &&
-                    (() => {
-                      const p = NS();
-                      return cn(() => (p.innerHTML = m())), p;
-                    })();
-                })(),
-                l
-              ),
-              xe(
-                T,
-                (() => {
-                  const w = De(() => t().type === "error");
-                  return () =>
-                    w() && [
-                      RS(),
-                      (() => {
-                        const p = zS(),
-                          _ = p.firstChild;
-                        return xe(_, () => t().value), p;
-                      })(),
-                    ];
-                })(),
-                l
-              ),
-              xe(
-                T,
-                (() => {
-                  const w = De(() => t().type !== "error");
-                  return () =>
-                    w() && [
-                      De(
-                        (() => {
-                          const p = De(
-                            () => !me.disableFeatures.includes("reply")
-                          );
-                          return () => p() && mn(ZA, {});
-                        })()
-                      ),
-                      (() => {
-                        const p = US();
-                        return (
-                          xe(
-                            p,
-                            (() => {
-                              const _ = De(() => A() > 0);
-                              return () =>
-                                _() && `${A()} comment${A() == 1 ? "" : "s"}`;
-                            })()
-                          ),
-                          p
-                        );
-                      })(),
-                      mn($m, { nestedEvents: C, articles: y }),
-                    ];
-                })(),
-                l
-              ),
-              (l.$$click = () => M(!O())),
-              xe(l, xm),
-              xe(
-                T,
-                (() => {
-                  const w = De(() => !!O());
-                  return () =>
-                    w() && [
-                      MS(),
-                      De(
-                        (() => {
-                          const p = De(() => !!me.version);
-                          return () =>
-                            p() &&
-                            (() => {
-                              const _ = jS();
-                              return (
-                                _.firstChild, xe(_, () => me.version, null), _
-                              );
-                            })();
-                        })()
-                      ),
-                      (() => {
-                        const p = HS();
-                        return _6(p, "click", Q5), p;
-                      })(),
-                    ];
-                })(),
-                null
-              ),
-              T
-            );
-          })();
-        };
-      R6(
-        "zap-threads",
-        {
+      const ZAPTHREADS_ATTRIBUTE_MAP = new Map([
+        ["anchor", "anchor"],
+        ["version", "version"],
+        ["relays", "relays"],
+        ["user", "user"],
+        ["author", "author"],
+        ["disable", "disable"],
+        ["urls", "urls"],
+        ["reply-placeholder", "replyPlaceholder"],
+        ["legacy-url", "legacyUrl"],
+      ]);
+      const ZAPTHREADS_ATTRIBUTE_NAMES = [...ZAPTHREADS_ATTRIBUTE_MAP.keys()];
+      const zapthreadsInstances = new WeakMap();
+      const zapthreadsPendingMounts = new WeakSet();
+      const scheduleZapthreadsMicrotask =
+        typeof queueMicrotask == "function"
+          ? queueMicrotask
+          : (callback) => Promise.resolve().then(callback);
+      const zapthreadsDataUtils = {
+        Ti,
+        hi,
+        di,
+        un,
+        Na,
+        clearCache: Q5,
+      };
+      function getZapthreadsOptions(element) {
+        const options = {
           anchor: "",
           version: "",
           relays: "",
@@ -21897,40 +21526,117 @@ svg {
           author: "",
           disable: "",
           urls: "",
-          "reply-placeholder": "",
-          "legacy-url": "",
-        },
-        (e) =>
-          mn(DS, {
-            get anchor() {
-              return e.anchor ?? "";
-            },
-            get version() {
-              return e.version ?? "";
-            },
-            get relays() {
-              return e.relays ?? "";
-            },
-            get user() {
-              return e.user ?? "";
-            },
-            get author() {
-              return e.author ?? "";
-            },
-            get disable() {
-              return e.disable ?? "";
-            },
-            get urls() {
-              return e.urls ?? "";
-            },
-            get replyPlaceholder() {
-              return e["reply-placeholder"] ?? "";
-            },
-            get legacyUrl() {
-              return e["legacy-url"] ?? "";
-            },
-          })
-      );
+          replyPlaceholder: "",
+          legacyUrl: !1,
+        };
+        for (const [attribute, key] of ZAPTHREADS_ATTRIBUTE_MAP) {
+          const value = element.getAttribute(attribute);
+          if (value === null) continue;
+          if (key === "legacyUrl") {
+            options[key] = Boolean(value);
+          } else {
+            options[key] = value;
+          }
+        }
+        return options;
+      }
+      function cleanupZapthreadsEmbed(element) {
+        const record = zapthreadsInstances.get(element);
+        if (!record) return;
+        record.attributeObserver && record.attributeObserver.disconnect();
+        if (typeof record.cleanup === "function") {
+          try {
+            record.cleanup();
+          } catch (error) {
+            console.error("[zapthreads] cleanup failed", error);
+          }
+        }
+        zapthreadsPendingMounts.delete(element);
+        zapthreadsInstances.delete(element);
+      }
+      function scheduleZapthreadsMount(element) {
+        if (zapthreadsPendingMounts.has(element)) return;
+        zapthreadsPendingMounts.add(element);
+        scheduleZapthreadsMicrotask(() => {
+          zapthreadsPendingMounts.delete(element);
+          mountZapthreadsEmbed(element);
+        });
+      }
+      function observeZapthreadsAttributes(element) {
+        const observer = new MutationObserver((mutations) => {
+          if (
+            mutations.some(
+              (mutation) =>
+                mutation.type === "attributes" &&
+                mutation.attributeName &&
+                ZAPTHREADS_ATTRIBUTE_NAMES.includes(mutation.attributeName)
+            )
+          ) {
+            scheduleZapthreadsMount(element);
+          }
+        });
+        observer.observe(element, {
+          attributes: !0,
+          attributeFilter: ZAPTHREADS_ATTRIBUTE_NAMES,
+        });
+        return observer;
+      }
+      async function mountZapthreadsEmbed(element) {
+        cleanupZapthreadsEmbed(element);
+        if (!element.isConnected) return;
+        try {
+          const cleanup = await initZapthreadsEmbed({
+            root: element,
+            options: getZapthreadsOptions(element),
+            dataUtils: zapthreadsDataUtils,
+          });
+          const attributeObserver = observeZapthreadsAttributes(element);
+          zapthreadsInstances.set(element, { cleanup, attributeObserver });
+        } catch (error) {
+          console.error("[zapthreads] failed to initialize embed", error);
+        }
+      }
+      function handleAddedNode(node) {
+        if (!(node instanceof Element)) return;
+        if (node.tagName === "ZAP-THREADS") {
+          scheduleZapthreadsMount(node);
+        }
+        node.querySelectorAll("zap-threads").forEach((element) => {
+          scheduleZapthreadsMount(element);
+        });
+      }
+      function handleRemovedNode(node) {
+        if (!(node instanceof Element)) return;
+        if (node.tagName === "ZAP-THREADS") {
+          cleanupZapthreadsEmbed(node);
+        }
+        node.querySelectorAll("zap-threads").forEach((element) => {
+          cleanupZapthreadsEmbed(element);
+        });
+      }
+      function initializeZapthreadsEmbeds() {
+        document
+          .querySelectorAll("zap-threads")
+          .forEach((element) => scheduleZapthreadsMount(element));
+        const observer = new MutationObserver((mutations) => {
+          for (const mutation of mutations) {
+            mutation.addedNodes.forEach((node) => {
+              handleAddedNode(node);
+            });
+            mutation.removedNodes.forEach((node) => {
+              handleRemovedNode(node);
+            });
+          }
+        });
+        observer.observe(document.body, { childList: !0, subtree: !0 });
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initializeZapthreadsEmbeds, {
+          once: !0,
+        });
+      } else {
+        initializeZapthreadsEmbeds();
+      }
       zd(["click"]);
       function qS(e) {
         let t, n;
