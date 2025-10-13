@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="blog-html">
   <head>
     <!-- Configure with your npub/nprofile -->
     <meta
@@ -40,7 +40,6 @@
     <meta name="robots" content="index,follow" />
     <title>bitvid Blog</title>
     <link rel="stylesheet" href="./css/tailwind.generated.css" />
-    <link rel="stylesheet" href="./css/blog.css" />
     <script src="./js/tracking.js" defer></script>
     <script type="module" crossorigin>
       var pv = Object.defineProperty;
@@ -29604,7 +29603,7 @@ svg {
           }, 1);
         };
         const wu = document.createElement("div");
-        (wu.style.zIndex = "90000"), document.body.appendChild(wu);
+        wu.classList.add("blog-widget-shadow-host"), document.body.appendChild(wu);
         const mu = document.createElement("div");
         mu.id = "wnj";
         const $h = document.createElement("style");
@@ -29624,21 +29623,15 @@ svg {
           },
         });
         if (!((o = Ko.wnjParams) != null && o.disableOverflowFix)) {
-          var Th = document.createElement("style"),
-            D1 = `
-    html, body {
-      overflow: auto;
-      height: 100%;
-    }
-  `;
-          (Th.innerHTML = D1), document.head.appendChild(Th);
+          document.documentElement.classList.add("blog-widget-overflow-fix");
+          document.body.classList.add("blog-widget-overflow-fix");
         }
       })();
       const i$ = wv({ __proto__: null, default: dg }, [dg]);
     </script>
   </head>
-  <body>
-    <div id="app"></div>
+  <body class="blog-body">
+    <div id="app" class="blog-app-root"></div>
     <script>
       window.wnjParams = {
         position: "bottom",

@@ -1,10 +1,14 @@
+const typography = require("@tailwindcss/typography");
+
 module.exports = {
   content: [
     "./index.html",
     "./blog.html",
     "./components/**/*.html",
     "./views/**/*.html",
-    "./js/**/*.js"
+    "./js/**/*.js",
+    "./torrent/**/*.html",
+    "./torrent/**/*.js"
   ],
   theme: {
     extend: {
@@ -43,6 +47,7 @@ module.exports = {
           translucent: "var(--color-border-translucent)",
           "translucent-strong": "var(--color-border-translucent-strong)",
           "translucent-bright": "var(--color-border-translucent-bright)",
+          "translucent-medium": "var(--color-border-translucent-medium)",
           "translucent-stronger": "var(--color-border-translucent-stronger)",
           "translucent-strongest": "var(--color-border-translucent-strongest)",
           "translucent-glow": "var(--color-border-translucent-glow)",
@@ -82,7 +87,53 @@ module.exports = {
           700: "var(--color-neutral-700)"
         },
         white: "var(--color-white)",
-        black: "var(--color-black)"
+        black: "var(--color-black)",
+        blog: {
+          transparent: "var(--color-blog-transparent)",
+          "cyan-500": "var(--color-blog-cyan-500)",
+          "sky-500": "var(--color-blog-sky-500)",
+          "teal-600": "var(--color-blog-teal-600)",
+          "green-800": "var(--color-blog-green-800)",
+          "green-700": "var(--color-blog-green-700)",
+          "teal-700": "var(--color-blog-teal-700)",
+          "gray-900": "var(--color-blog-gray-900)",
+          "coffee-900": "var(--color-blog-coffee-900)",
+          "green-500": "var(--color-blog-green-500)",
+          "gray-800": "var(--color-blog-gray-800)",
+          "gray-700": "var(--color-blog-gray-700)",
+          "teal-accent": "var(--color-blog-teal-accent)",
+          "gray-650": "var(--color-blog-gray-650)",
+          "brown-700": "var(--color-blog-brown-700)",
+          "purple-900": "var(--color-blog-purple-900)",
+          "gray-500": "var(--color-blog-gray-500)",
+          "gray-450": "var(--color-blog-gray-450)",
+          "gray-440": "var(--color-blog-gray-440)",
+          "brown-500": "var(--color-blog-brown-500)",
+          "rust-700": "var(--color-blog-rust-700)",
+          "purple-700": "var(--color-blog-purple-700)",
+          "purple-accent": "var(--color-blog-purple-accent)",
+          "purple-muted": "var(--color-blog-purple-muted)",
+          "gray-300": "var(--color-blog-gray-300)",
+          "purple-500": "var(--color-blog-purple-500)",
+          "gray-275": "var(--color-blog-gray-275)",
+          "red-600": "var(--color-blog-red-600)",
+          "rust-600": "var(--color-blog-rust-600)",
+          error: "var(--color-blog-error)",
+          "gray-220": "var(--color-blog-gray-220)",
+          "gray-210": "var(--color-blog-gray-210)",
+          "gray-200": "var(--color-blog-gray-200)",
+          "amber-500": "var(--color-blog-amber-500)",
+          "gray-190": "var(--color-blog-gray-190)",
+          "orange-600": "var(--color-blog-orange-600)",
+          "gray-180": "var(--color-blog-gray-180)",
+          "gray-170": "var(--color-blog-gray-170)",
+          "red-500": "var(--color-blog-red-500)",
+          "amber-400": "var(--color-blog-amber-400)",
+          "neutral-100": "var(--color-blog-neutral-100)",
+          "neutral-120": "var(--color-blog-neutral-120)",
+          "orange-500": "var(--color-blog-orange-500)",
+          "neutral-50": "var(--color-blog-neutral-50)"
+        }
       },
       borderRadius: {
         sm: "var(--radius-sm)",
@@ -135,8 +186,127 @@ module.exports = {
       transitionTimingFunction: {
         "ease-out": "var(--motion-ease-out)",
         "ease-in-out": "var(--motion-ease-in-out)"
-      }
+      },
+      typography: (theme) => ({
+        DEFAULT: {
+          css: {
+            "--tw-prose-body": "var(--color-text-strong)",
+            "--tw-prose-headings": "var(--color-text-strong)",
+            "--tw-prose-links": "var(--color-primary)",
+            "--tw-prose-bold": "var(--color-text-strong)",
+            "--tw-prose-hr": "var(--color-border-subtle)",
+            "--tw-prose-quotes": "var(--color-muted)",
+            "--tw-prose-counters": "var(--color-text-strong)",
+            "--tw-prose-bullets": "var(--color-border-subtle)",
+            "--tw-prose-code": "var(--color-secondary)",
+            "--tw-prose-th-borders": "var(--color-border-subtle)",
+            "--tw-prose-td-borders": "var(--color-border-subtle)",
+            color: "var(--color-text-strong)",
+            lineHeight: "1.6",
+            maxWidth: "none",
+            fontFamily: theme("fontFamily.sans").join(", "),
+            "h1": {
+              fontWeight: theme("fontWeight.bold"),
+              marginTop: "0.5rem",
+              marginBottom: "1rem",
+              fontSize: theme("fontSize.2xl")[0]
+            },
+            "h2": {
+              fontWeight: theme("fontWeight.bold"),
+              marginTop: "1.25rem",
+              marginBottom: "0.75rem",
+              fontSize: theme("fontSize.xl")[0]
+            },
+            "h3": {
+              fontWeight: theme("fontWeight.semibold"),
+              marginTop: "1rem",
+              marginBottom: "0.75rem",
+              fontSize: theme("fontSize.lg")[0]
+            },
+            "h4, h5, h6": {
+              fontWeight: theme("fontWeight.semibold"),
+              marginTop: "0.75rem",
+              marginBottom: "0.5rem"
+            },
+            "p": {
+              marginTop: "0",
+              marginBottom: "1rem"
+            },
+            "ul, ol": {
+              marginTop: "0",
+              marginBottom: "1rem",
+              paddingLeft: "1.25rem"
+            },
+            "li": {
+              marginTop: "0.5rem",
+              marginBottom: "0.5rem"
+            },
+            "blockquote": {
+              borderLeftWidth: "4px",
+              borderLeftColor: "var(--color-border-subtle)",
+              paddingLeft: "1rem",
+              marginTop: "1rem",
+              marginBottom: "1rem",
+              color: "var(--color-muted)"
+            },
+            "code": {
+              backgroundColor: "var(--color-page-alt)",
+              color: "var(--color-secondary)",
+              padding: "0.2rem 0.4rem",
+              borderRadius: theme("borderRadius.md"),
+              fontFamily: theme("fontFamily.mono").join(", "),
+              fontSize: theme("fontSize.sm")[0],
+              fontWeight: theme("fontWeight.medium")
+            },
+            "code::before": {
+              content: "none"
+            },
+            "code::after": {
+              content: "none"
+            },
+            "pre": {
+              backgroundColor: "var(--color-page-alt)",
+              color: "var(--color-text-strong)",
+              padding: "1rem",
+              borderRadius: theme("borderRadius.md"),
+              overflowX: "auto",
+              marginTop: "0",
+              marginBottom: "1rem",
+              fontFamily: theme("fontFamily.mono").join(", "),
+              fontSize: theme("fontSize.sm")[0]
+            },
+            "pre code": {
+              backgroundColor: "transparent",
+              padding: "0",
+              borderRadius: "0",
+              fontWeight: "inherit",
+              color: "inherit"
+            },
+            "a": {
+              color: "var(--color-primary)",
+              textDecoration: "none",
+              fontWeight: theme("fontWeight.medium")
+            },
+            "a:hover": {
+              textDecoration: "underline"
+            },
+            "hr": {
+              borderColor: "var(--color-border-subtle)",
+              borderTopWidth: "1px",
+              marginTop: "2rem",
+              marginBottom: "2rem"
+            },
+            "img": {
+              marginTop: "0",
+              marginBottom: "1rem",
+              borderRadius: theme("borderRadius.md"),
+              maxWidth: "100%",
+              height: "auto"
+            }
+          }
+        }
+      })
     }
   },
-  plugins: []
+  plugins: [typography]
 };
