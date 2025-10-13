@@ -4,7 +4,9 @@ module.exports = {
     "./blog.html",
     "./components/**/*.html",
     "./views/**/*.html",
-    "./js/**/*.js"
+    "./js/**/*.js",
+    "./torrent/**/*.html",
+    "./torrent/**/*.js"
   ],
   theme: {
     extend: {
@@ -43,6 +45,7 @@ module.exports = {
           translucent: "var(--color-border-translucent)",
           "translucent-strong": "var(--color-border-translucent-strong)",
           "translucent-bright": "var(--color-border-translucent-bright)",
+          "translucent-medium": "var(--color-border-translucent-medium)",
           "translucent-stronger": "var(--color-border-translucent-stronger)",
           "translucent-strongest": "var(--color-border-translucent-strongest)",
           "translucent-glow": "var(--color-border-translucent-glow)",
