@@ -1,3 +1,5 @@
+import { escapeHTML } from '../utils/domUtils.js';
+
 /**
  * DOM helpers for constructing Zapthreads embed structures without relying on the
  * compiled Svelte runtime helpers that appear in blog.html.
@@ -365,9 +367,6 @@ export function createZapthreadsRoot() {
   const root = document.createElement('div');
   root.id = 'ztr-root';
 
-  const style = document.createElement('style');
-  root.appendChild(style);
-
   const watermark = document.createElement('div');
   watermark.className = 'blog-ztr-watermark';
   root.appendChild(watermark);
@@ -654,12 +653,27 @@ export function renderWatermark(watermarkEl) {
   watermarkEl.appendChild(label);
 }
 
+export function renderAnchorVersion(labelEl, version) {
+  if (!labelEl) return;
+  labelEl.innerHTML = `Anchor version: ${escapeHTML(version || 'unknown')}`;
+}
+
+export const ZAPTHREADS_EVENT_MOUNTED = 'zapthreads:mounted';
+export const ZAPTHREADS_EVENT_UNMOUNTED = 'zapthreads:unmounted';
+export const ZAPTHREADS_EVENT_CLEAR_CACHE = 'zapthreads:clear-cache';
+
 export function renderClearCache(buttonEl, clearCache) {
   if (!buttonEl) return () => {};
   const handler = () => {
     if (typeof clearCache === 'function') {
       clearCache();
     }
+    buttonEl.dispatchEvent(
+      new CustomEvent(ZAPTHREADS_EVENT_CLEAR_CACHE, {
+        bubbles: true,
+        detail: { source: 'button' },
+      })
+    );
   };
   buttonEl.addEventListener('click', handler);
   return () => {
@@ -667,9 +681,15 @@ export function renderClearCache(buttonEl, clearCache) {
   };
 }
 
-export function renderAnchorVersion(labelEl, version) {
-  if (!labelEl) return;
-  labelEl.textContent = `Anchor version: ${version || 'unknown'}`;
+function clearElement(element) {
+  if (!element) return;
+  while (element.firstChild) {
+    element.removeChild(element.firstChild);
+  }
+}
+
+function getBlogAppRoot() {
+  return document.querySelector('.blog-app-root');
 }
 
 export async function initZapthreadsEmbed({
@@ -684,11 +704,17 @@ export async function initZapthreadsEmbed({
   const data = dataUtils || {};
   const state = createState(options);
 
-  const rootEl = createZapthreadsRoot();
-  const styleEl = rootEl.querySelector('style');
-  if (styleEl) {
-    styleEl.textContent = '#ztr-root { display: block; }';
+  const blogRoot = getBlogAppRoot();
+  if (!blogRoot) {
+    throw new Error('initZapthreadsEmbed requires .blog-app-root container');
   }
+
+  const existingRoot = blogRoot.querySelector('#ztr-root');
+  if (existingRoot) {
+    existingRoot.remove();
+  }
+
+  const rootEl = createZapthreadsRoot();
 
   const watermarkEl = rootEl.querySelector('.blog-ztr-watermark');
   renderWatermark(watermarkEl);
@@ -714,25 +740,50 @@ export async function initZapthreadsEmbed({
   disposeCallbacks.add(clearCacheCleanup);
 
   const renderError = (message) => {
-    contentEl.innerHTML = '';
+    clearElement(contentEl);
     const heading = createZapthreadsErrorHeading();
     heading.textContent = 'Error!';
     const details = createZapthreadsErrorDetails();
-    details.querySelector('pre').textContent = message;
+    const pre = details.querySelector('pre');
+    if (pre) {
+      pre.innerHTML = escapeHTML(message || '');
+    }
     contentEl.appendChild(heading);
     contentEl.appendChild(details);
   };
 
   if (state.anchor.type === 'error') {
     renderError(state.anchor.value);
-    root.appendChild(rootEl);
+    blogRoot.appendChild(rootEl);
+    root.dispatchEvent(
+      new CustomEvent(ZAPTHREADS_EVENT_MOUNTED, {
+        bubbles: true,
+        detail: { anchor: state.anchor, root: rootEl },
+      })
+    );
     return () => {
       disposeCallbacks.forEach((callback) => callback());
       disposeCallbacks.clear();
+      if (blogRoot.contains(rootEl)) {
+        blogRoot.removeChild(rootEl);
+      }
+      root.dispatchEvent(
+        new CustomEvent(ZAPTHREADS_EVENT_UNMOUNTED, {
+          bubbles: true,
+          detail: { anchor: state.anchor, root: rootEl },
+        })
+      );
     };
   }
 
-  root.appendChild(rootEl);
+  blogRoot.appendChild(rootEl);
+
+  root.dispatchEvent(
+    new CustomEvent(ZAPTHREADS_EVENT_MOUNTED, {
+      bubbles: true,
+      detail: { anchor: state.anchor, root: rootEl },
+    })
+  );
 
   updateFilterForAnchor(state);
 
@@ -764,7 +815,7 @@ export async function initZapthreadsEmbed({
         if (typeof data.Na === 'function') {
           const parsed = data.Na(event);
           if (parsed) {
-            titleEl.textContent = parsed.tl || 'Thread';
+            titleEl.innerHTML = escapeHTML(parsed.tl || 'Thread');
           }
         }
       },
@@ -785,8 +836,14 @@ export async function initZapthreadsEmbed({
       }
     });
     disposeCallbacks.clear();
-    if (root.contains(rootEl)) {
-      root.removeChild(rootEl);
+    if (blogRoot.contains(rootEl)) {
+      blogRoot.removeChild(rootEl);
     }
+    root.dispatchEvent(
+      new CustomEvent(ZAPTHREADS_EVENT_UNMOUNTED, {
+        bubbles: true,
+        detail: { anchor: state.anchor, root: rootEl },
+      })
+    );
   };
 }
