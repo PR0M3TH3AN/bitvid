@@ -21013,35 +21013,25 @@
         }
         return options;
       }
-      const zapthreadsCleanupMap = new WeakMap();
-      async function initializeZapthreadsEmbed(element) {
-        if (!(element instanceof Element)) return;
-        const previousCleanup = zapthreadsCleanupMap.get(element);
-        if (typeof previousCleanup === "function") {
-          try {
-            previousCleanup();
-          } catch (error) {
-            console.error("[zapthreads] cleanup failed", error);
-          }
-          zapthreadsCleanupMap.delete(element);
+      async function mountZapthreadsEmbed(element) {
+        if (!(element instanceof Element) || !element.isConnected) {
+          return;
         }
-        if (!element.isConnected) return;
         try {
-          const cleanup = await initZapthreadsEmbed({
+          await initZapthreadsEmbed({
             root: element,
             options: getZapthreadsOptions(element),
             dataUtils: zapthreadsDataUtils,
           });
-          if (typeof cleanup === "function") {
-            zapthreadsCleanupMap.set(element, cleanup);
-          }
         } catch (error) {
           console.error("[zapthreads] failed to initialize embed", error);
         }
       }
       function initializeZapthreadsEmbeds() {
-        document.querySelectorAll("zap-threads").forEach((element) => {
-          initializeZapthreadsEmbed(element);
+        const elements = document.querySelectorAll("zap-threads");
+        if (elements.length === 0) return;
+        elements.forEach((element) => {
+          mountZapthreadsEmbed(element);
         });
       }
       if (document.readyState === "loading") {
