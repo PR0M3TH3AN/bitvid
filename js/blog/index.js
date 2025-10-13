@@ -1,4 +1,3 @@
-import { initZapthreadsEmbed } from './zapthreadsEmbed.js';
 import { createCarousel, advanceSlide, destroyCarousel } from './carousel.js';
 import { mountProgressBar } from './progressBar.js';
 import { applyDynamicStyles } from '../ui/styleSystem.js';
@@ -460,7 +459,7 @@ function extractZapthreadsOptions(element) {
   return options;
 }
 
-function initializeZapthreads({ registerCleanup, isDestroyed }) {
+function initializeZapthreads({ registerCleanup, isDestroyed, initZapthreadsEmbed }) {
   if (typeof initZapthreadsEmbed !== 'function') {
     return;
   }
@@ -528,7 +527,7 @@ function initializeZapthreads({ registerCleanup, isDestroyed }) {
   });
 }
 
-function mountBlogApp() {
+function mountBlogApp({ initZapthreadsEmbed } = {}) {
   const runtime = {
     destroyed: false,
     cleanupCallbacks: new Set(),
@@ -720,6 +719,7 @@ function mountBlogApp() {
   initializeZapthreads({
     registerCleanup,
     isDestroyed: () => runtime.destroyed,
+    initZapthreadsEmbed,
   });
 
   return destroy;
@@ -727,11 +727,11 @@ function mountBlogApp() {
 
 let activeTeardown = null;
 
-export function bootstrapBlog() {
+export function bootstrapBlog(options = {}) {
   if (typeof activeTeardown === 'function') {
     activeTeardown();
   }
-  const destroy = mountBlogApp();
+  const destroy = mountBlogApp(options);
   activeTeardown = () => {
     destroy();
     activeTeardown = null;
@@ -745,14 +745,3 @@ export function teardownBlog() {
   }
 }
 
-function runBlogBootstrap() {
-  bootstrapBlog();
-}
-
-if (typeof document !== 'undefined') {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', runBlogBootstrap, { once: true });
-  } else {
-    runBlogBootstrap();
-  }
-}

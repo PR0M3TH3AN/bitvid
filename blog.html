@@ -42,7 +42,18 @@
     <link rel="stylesheet" href="./css/tailwind.generated.css" />
     <script src="./js/tracking.js" defer></script>
     <script type="module" crossorigin>
-      import "./js/blog/index.js";
+      import { bootstrapBlog } from "./js/blog/index.js";
+      import { initZapthreadsEmbed } from "./js/blog/zapthreadsEmbed.js";
+
+      const startBlog = () => {
+        bootstrapBlog({ initZapthreadsEmbed });
+      };
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", startBlog, { once: true });
+      } else {
+        startBlog();
+      }
     </script>
   </head>
   <body class="blog-body">
