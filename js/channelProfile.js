@@ -12,6 +12,7 @@ import { accessControl } from "./accessControl.js";
 import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
 import { VideoCard } from "./ui/components/VideoCard.js";
+import { ALLOW_NSFW_CONTENT } from "./config.js";
 import {
   calculateZapShares,
   describeShareType,
@@ -1797,6 +1798,8 @@ function renderChannelVideosFromList({
     }
   };
 
+  const allowNsfw = ALLOW_NSFW_CONTENT === true;
+
   videos.forEach((video) => {
     if (!video || !video.id || !video.title) {
       return;
@@ -1809,6 +1812,10 @@ function renderChannelVideosFromList({
       normalizedVideoPubkey === normalizedViewerPubkey;
 
     if (video.isPrivate && !canEdit) {
+      return;
+    }
+
+    if (!allowNsfw && video?.isNsfw === true && !canEdit) {
       return;
     }
 
@@ -1837,8 +1844,14 @@ function renderChannelVideosFromList({
         ? app.formatTimeAgo(video.created_at)
         : new Date(video.created_at * 1000).toLocaleString();
 
-    const highlightClass =
-      canEdit && video.isPrivate ? "video-card--owner-private" : "";
+    const highlightClasses = [];
+    if (canEdit && video.isPrivate) {
+      highlightClasses.push("video-card--owner-private");
+    }
+    if (!allowNsfw && video?.isNsfw === true && canEdit) {
+      highlightClasses.push("video-card--nsfw-owner");
+    }
+    const highlightClass = highlightClasses.join(" ");
 
     const videoCard = new VideoCard({
       document,
@@ -1856,6 +1869,11 @@ function renderChannelVideosFromList({
           typeof app?.canCurrentUserManageBlacklist === "function"
             ? app.canCurrentUserManageBlacklist()
             : false,
+      },
+      nsfwContext: {
+        isNsfw: video?.isNsfw === true,
+        allowNsfw,
+        viewerIsOwner: canEdit,
       },
       helpers: {
         escapeHtml: (value) => escapeHTML(value),

@@ -160,6 +160,8 @@ export class EditModal {
       description: context.querySelector("#editVideoDescription") || null,
       isPrivate: context.querySelector("#editVideoIsPrivate") || null,
       enableComments: context.querySelector("#editEnableComments") || null,
+      isNsfw: context.querySelector("#editVideoIsNsfw") || null,
+      isForKids: context.querySelector("#editVideoIsForKids") || null,
     };
 
     this.visibility = {
@@ -247,7 +249,42 @@ export class EditModal {
       });
     }
 
+    if (this.fields.isNsfw && this.fields.isForKids) {
+      this.setupMutuallyExclusiveCheckboxes(
+        this.fields.isNsfw,
+        this.fields.isForKids
+      );
+    }
+
     this.nip71FormManager.bindSection(this.nip71SectionKey);
+  }
+
+  setupMutuallyExclusiveCheckboxes(firstInput, secondInput) {
+    if (!firstInput || !secondInput) {
+      return;
+    }
+
+    const enforceExclusion = (primary, secondary) => {
+      if (primary.checked) {
+        secondary.checked = false;
+      }
+    };
+
+    const handleFirstChange = () => enforceExclusion(firstInput, secondInput);
+    const handleSecondChange = () => enforceExclusion(secondInput, firstInput);
+
+    if (firstInput.checked && secondInput.checked) {
+      secondInput.checked = false;
+    }
+
+    firstInput.addEventListener("change", handleFirstChange);
+    secondInput.addEventListener("change", handleSecondChange);
+  }
+
+  sanitizeAudienceFlags(flags = {}) {
+    const isNsfw = flags?.isNsfw === true;
+    const isForKids = flags?.isForKids === true && !isNsfw;
+    return { isNsfw, isForKids };
   }
 
   reset() {
@@ -320,6 +357,14 @@ export class EditModal {
     const enableCommentsValue =
       typeof video.enableComments === "boolean" ? video.enableComments : true;
     const isPrivateValue = video.isPrivate === true;
+    const rawIsNsfw = typeof video.isNsfw === "boolean" ? video.isNsfw : false;
+    const rawIsForKids =
+      typeof video.isForKids === "boolean" ? video.isForKids : false;
+    const { isNsfw: isNsfwValue, isForKids: isForKidsValue } =
+      this.sanitizeAudienceFlags({
+        isNsfw: rawIsNsfw,
+        isForKids: rawIsForKids,
+      });
 
     const editContext = {
       ...video,
@@ -327,6 +372,8 @@ export class EditModal {
       xs: effectiveXs,
       enableComments: enableCommentsValue,
       isPrivate: isPrivateValue,
+      isNsfw: isNsfwValue,
+      isForKids: isForKidsValue,
     };
 
     this.applyVideoToForm(editContext);
@@ -353,6 +400,13 @@ export class EditModal {
       return;
     }
 
+    const sanitizedFlags = this.sanitizeAudienceFlags({
+      isNsfw: editContext.isNsfw,
+      isForKids: editContext.isForKids,
+    });
+    editContext.isNsfw = sanitizedFlags.isNsfw;
+    editContext.isForKids = sanitizedFlags.isForKids;
+
     const fieldMap = {
       title: editContext.title || "",
       url: editContext.url || "",
@@ -363,6 +417,8 @@ export class EditModal {
       description: editContext.description || "",
       isPrivate: editContext.isPrivate,
       enableComments: editContext.enableComments,
+      isNsfw: editContext.isNsfw,
+      isForKids: editContext.isForKids,
     };
 
     Object.entries(fieldMap).forEach(([key, rawValue]) => {
@@ -464,6 +520,10 @@ export class EditModal {
         return "editVideoIsPrivate";
       case "enableComments":
         return "editEnableComments";
+      case "isNsfw":
+        return "editVideoIsNsfw";
+      case "isForKids":
+        return "editVideoIsForKids";
       default:
         return null;
     }
@@ -720,6 +780,8 @@ export class EditModal {
     const descriptionInput = this.fields.description;
     const commentsInput = this.fields.enableComments;
     const privateInput = this.fields.isPrivate;
+    const nsfwInput = this.fields.isNsfw;
+    const forKidsInput = this.fields.isForKids;
 
     const newTitle = fieldValue("title");
     const newUrl = fieldValue("url");
@@ -762,6 +824,8 @@ export class EditModal {
     const originalEnableComments =
       typeof original.enableComments === "boolean" ? original.enableComments : true;
     const originalIsPrivate = original.isPrivate === true;
+    const originalIsNsfw = original.isNsfw === true;
+    const originalIsForKids = original.isForKids === true;
 
     const currentNip71 = this.cloneNip71Metadata(
       this.nip71FormManager.collectSection(this.nip71SectionKey)
@@ -794,6 +858,30 @@ export class EditModal {
         finalIsPrivate = this.sanitizers.checkbox(privateInput.checked);
       }
     }
+
+    let finalIsNsfw = originalIsNsfw;
+    if (nsfwInput) {
+      if (nsfwInput.disabled) {
+        finalIsNsfw = nsfwInput.dataset.originalValue === "true";
+      } else {
+        finalIsNsfw = this.sanitizers.checkbox(nsfwInput.checked);
+      }
+    }
+
+    let finalIsForKids = originalIsForKids;
+    if (forKidsInput) {
+      if (forKidsInput.disabled) {
+        finalIsForKids = forKidsInput.dataset.originalValue === "true";
+      } else {
+        finalIsForKids = this.sanitizers.checkbox(forKidsInput.checked);
+      }
+    }
+
+    ({ isNsfw: finalIsNsfw, isForKids: finalIsForKids } =
+      this.sanitizeAudienceFlags({
+        isNsfw: finalIsNsfw,
+        isForKids: finalIsForKids,
+      }));
 
     if (!finalTitle || (!finalUrl && !finalMagnet && !hasImetaSource)) {
       this.showError(
@@ -837,6 +925,8 @@ export class EditModal {
       magnetEdited: magnetWasEdited,
       enableComments: finalEnableComments,
       isPrivate: finalIsPrivate,
+      isNsfw: finalIsNsfw,
+      isForKids: finalIsForKids,
     };
 
     const currentNip71Json = JSON.stringify(currentNip71);

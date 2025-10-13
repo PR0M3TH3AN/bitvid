@@ -16,6 +16,7 @@ export class VideoCard {
     state = {},
     ensureGlobalMoreMenuHandlers,
     onRequestCloseAllMenus,
+    nsfwContext = null,
   } = {}) {
     if (!doc) {
       throw new Error("VideoCard requires a document reference.");
@@ -71,6 +72,16 @@ export class VideoCard {
       typeof onRequestCloseAllMenus === "function"
         ? onRequestCloseAllMenus
         : null;
+
+    this.nsfwContext = {
+      isNsfw: Boolean(nsfwContext?.isNsfw),
+      allowNsfw: nsfwContext?.allowNsfw !== false,
+      viewerIsOwner: nsfwContext?.viewerIsOwner === true,
+    };
+    this.shouldMaskNsfwForOwner =
+      this.nsfwContext.isNsfw &&
+      !this.nsfwContext.allowNsfw &&
+      this.nsfwContext.viewerIsOwner;
 
     this.callbacks = {
       onPlay: null,
@@ -220,6 +231,7 @@ export class VideoCard {
       root.dataset.videoId = this.video.id;
     }
 
+    this.applyNsfwContext();
     this.applyPointerDataset();
     this.applyOwnerDataset();
     this.applySourceDatasets();
@@ -339,6 +351,10 @@ export class VideoCard {
     img.alt = this.video.title || "";
 
     this.thumbnailEl = img;
+
+    if (this.shouldMaskNsfwForOwner) {
+      img.classList.add("video-card__thumbnail--blurred");
+    }
 
     const markThumbnailAsLoaded = () => {
       if (!thumbnailUrl) {
@@ -1255,6 +1271,29 @@ export class VideoCard {
     this.discussionCountEl = container;
 
     return container;
+  }
+
+  applyNsfwContext() {
+    if (!this.root) {
+      return;
+    }
+
+    if (!this.nsfwContext?.isNsfw) {
+      if (this.root.dataset.nsfwVisibility) {
+        delete this.root.dataset.nsfwVisibility;
+      }
+      return;
+    }
+
+    if (this.shouldMaskNsfwForOwner) {
+      this.root.dataset.nsfwVisibility = "owner-only";
+      this.root.classList.add("video-card--nsfw-owner");
+      return;
+    }
+
+    this.root.dataset.nsfwVisibility = this.nsfwContext.allowNsfw
+      ? "allowed"
+      : "hidden";
   }
 
   applyPointerDataset() {

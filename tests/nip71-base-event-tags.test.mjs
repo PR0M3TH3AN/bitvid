@@ -33,10 +33,16 @@ test("30078 events carry nip71 metadata tags and hydrate fallback metadata", () 
       videoRootId: "root-123",
       deleted: false,
       isPrivate: false,
+      isNsfw: false,
+      isForKids: true,
       enableComments: true,
     },
     additionalTags,
   });
+
+  const parsedContent = JSON.parse(event.content);
+  assert.equal(parsedContent.isNsfw, false);
+  assert.equal(parsedContent.isForKids, true);
 
   const hashtagValues = event.tags
     .filter((tag) => tag[0] === "t")
@@ -58,7 +64,6 @@ test("30078 events carry nip71 metadata tags and hydrate fallback metadata", () 
   assert.deepEqual(referenceTag, ["r", "https://example.com/info"]);
 
   const client = new NostrClient();
-  const parsedContent = JSON.parse(event.content);
   const video = {
     id: "event-123",
     videoRootId: parsedContent.videoRootId,

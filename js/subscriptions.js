@@ -14,6 +14,7 @@ import {
 } from "./nostrPublish.js";
 import { getApplication } from "./applicationContext.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
+import { ALLOW_NSFW_CONTENT } from "./config.js";
 
 const getApp = () => getApplication();
 
@@ -590,6 +591,7 @@ class SubscriptionsManager {
       renderers: {
         getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
       },
+      allowNsfw: ALLOW_NSFW_CONTENT === true,
     };
 
     const listView = new VideoListView(listViewConfig);

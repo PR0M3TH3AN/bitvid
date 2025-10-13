@@ -118,6 +118,8 @@ const BASE_SCHEMAS = {
         { key: "videoRootId", type: "string", required: true },
         { key: "deleted", type: "boolean", required: false },
         { key: "isPrivate", type: "boolean", required: false },
+        { key: "isNsfw", type: "boolean", required: false },
+        { key: "isForKids", type: "boolean", required: false },
         { key: "enableComments", type: "boolean", required: false },
         { key: "ws", type: "string", required: false },
         { key: "xs", type: "string", required: false },

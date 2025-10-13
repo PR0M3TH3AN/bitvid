@@ -62,7 +62,7 @@
           <p class="mt-2 text-xs text-gray-400">
             Versions are grouped by their <code class="px-1 py-0.5 bg-gray-900/60 rounded border border-gray-700 text-[0.7rem]">d</code>
             tag or shared <code class="px-1 py-0.5 bg-gray-900/60 rounded border border-gray-700 text-[0.7rem]">videoRootId</code>. This ensures legacy
-            clients see consistent history when multiple edits were published.
+            clients see consistent history when multiple edits were published, and keeps audience flags (NSFW / for kids) aligned with the Upload modal.
           </p>
         </div>
 
@@ -112,6 +112,22 @@
                   </div>
                   <div>
                     <dt class="font-semibold text-gray-300">Magnet</dt>
+                    <dd class="mt-1 text-gray-500">Awaiting selection</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Audience flags
+                </h4>
+                <dl class="grid gap-2 text-xs text-gray-400 sm:grid-cols-2">
+                  <div>
+                    <dt class="font-semibold text-gray-300">NSFW flag</dt>
+                    <dd class="mt-1 text-gray-500">Awaiting selection</dd>
+                  </div>
+                  <div>
+                    <dt class="font-semibold text-gray-300">For kids flag</dt>
                     <dd class="mt-1 text-gray-500">Awaiting selection</dd>
                   </div>
                 </dl>

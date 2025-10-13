@@ -819,6 +819,62 @@
           </div>
 
           <div class="space-y-1">
+            <label for="editVideoIsNsfw" class="block text-sm font-medium text-gray-200">
+              NSFW content
+            </label>
+            <div
+              class="flex flex-col gap-2 rounded-md border border-gray-800 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div class="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="editVideoIsNsfw"
+                  class="h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                  data-default-checked="false"
+                />
+                <span class="text-sm text-gray-300">
+                  Mark as sensitive to blur previews and gate playback.
+                </span>
+              </div>
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoIsNsfw"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label for="editVideoIsForKids" class="block text-sm font-medium text-gray-200">
+              Made for kids
+            </label>
+            <div
+              class="flex flex-col gap-2 rounded-md border border-gray-800 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div class="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="editVideoIsForKids"
+                  class="h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                  data-default-checked="false"
+                />
+                <span class="text-sm text-gray-300">
+                  Flag kid-friendly videos to adjust recommendations and controls.
+                </span>
+              </div>
+              <button
+                type="button"
+                class="edit-field-button hidden"
+                data-edit-target="editVideoIsForKids"
+              >
+                Edit field
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-1">
             <label for="editEnableComments" class="block text-sm font-medium text-gray-200">
               Enable comments
             </label>

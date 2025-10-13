@@ -571,6 +571,9 @@ export class RevertModal {
     }
 
     const chips = [];
+    const nsfwFlag = version.isNsfw === true;
+    const forKidsFlag = version.isForKids === true;
+    const conflictingAudienceFlags = nsfwFlag && forKidsFlag;
     if (version.deleted) {
       chips.push(
         '<span class="inline-flex items-center rounded-full border border-red-700/70 bg-red-900/40 px-2 py-0.5 text-xs text-red-200/90">Marked deleted</span>'
@@ -581,6 +584,22 @@ export class RevertModal {
         '<span class="inline-flex items-center rounded-full border border-purple-600/60 bg-purple-900/40 px-2 py-0.5 text-xs text-purple-200/90">Private</span>'
       );
     }
+    if (conflictingAudienceFlags) {
+      chips.push(
+        '<span class="inline-flex items-center rounded-full border border-amber-700/70 bg-amber-900/40 px-2 py-0.5 text-xs text-amber-200/90">NSFW + For kids conflict</span>'
+      );
+    } else {
+      if (nsfwFlag) {
+        chips.push(
+          '<span class="inline-flex items-center rounded-full border border-red-700/70 bg-red-900/40 px-2 py-0.5 text-xs text-red-200/90">Marked NSFW</span>'
+        );
+      }
+      if (forKidsFlag) {
+        chips.push(
+          '<span class="inline-flex items-center rounded-full border border-emerald-700/70 bg-emerald-900/40 px-2 py-0.5 text-xs text-emerald-200/90">For kids</span>'
+        );
+      }
+    }
     if (version.version !== undefined) {
       chips.push(
         `<span class="inline-flex items-center rounded-full border border-gray-700 bg-gray-800/80 px-2 py-0.5 text-xs text-gray-200">Schema v${escape(
@@ -588,6 +607,35 @@ export class RevertModal {
         )}</span>`
       );
     }
+
+    const renderFlagStatus = (value, {
+      yesLabel = "Yes",
+      noLabel = "No",
+      unspecifiedLabel = "Not specified",
+    } = {}) => {
+      if (value === true) {
+        return `<span class="text-gray-200">${escape(yesLabel)}</span>`;
+      }
+      if (value === false) {
+        return `<span class="text-gray-200">${escape(noLabel)}</span>`;
+      }
+      return this.renderPlaceholder(unspecifiedLabel);
+    };
+
+    const nsfwStatusHtml = renderFlagStatus(version.isNsfw, {
+      yesLabel: "Yes — marked NSFW",
+      noLabel: "No — not flagged as NSFW",
+      unspecifiedLabel: "Not specified",
+    });
+    const kidsStatusHtml = renderFlagStatus(version.isForKids, {
+      yesLabel: "Yes — marked for kids",
+      noLabel: "No — not marked for kids",
+      unspecifiedLabel: "Not specified",
+    });
+
+    const audienceConflictNotice = conflictingAudienceFlags
+      ? '<p class="text-xs text-amber-300">Conflicting flags detected — this revision is marked both NSFW and for kids. Review before reverting.</p>'
+      : "";
 
     const descriptionHtml = description
       ? `<p class="whitespace-pre-wrap text-gray-200">${escape(description)}</p>`
@@ -718,6 +766,11 @@ export class RevertModal {
       definition("Alt text", altHtml, { span: 2 }),
     ].join("");
 
+    const audienceRows = [
+      definition("NSFW flag", nsfwStatusHtml),
+      definition("For kids flag", kidsStatusHtml),
+    ].join("");
+
     this.details.innerHTML = `
       <div class="space-y-6">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
@@ -757,6 +810,14 @@ export class RevertModal {
         <section class="space-y-2">
           <h4 class="text-sm font-semibold text-gray-200">Description</h4>
           ${descriptionHtml}
+        </section>
+
+        <section class="space-y-2">
+          <h4 class="text-sm font-semibold text-gray-200">Audience flags</h4>
+          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+            ${audienceRows}
+          </dl>
+          ${audienceConflictNotice}
         </section>
 
         <section class="space-y-2">

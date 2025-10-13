@@ -8,6 +8,7 @@ import {
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
   MAX_WALLET_DEFAULT_ZAP,
+  ALLOW_NSFW_CONTENT,
 } from "./config.js";
 import { accessControl } from "./accessControl.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
@@ -849,6 +850,7 @@ class Application {
       renderers: {
         getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
       },
+      allowNsfw: ALLOW_NSFW_CONTENT === true,
     };
     this.videoListView =
       (typeof ui.videoListView === "function"
@@ -2163,6 +2165,16 @@ class Application {
         .filter((entry) => Boolean(entry));
     };
 
+    const normalizeBooleanFlag = (value, defaultValue = false) => {
+      if (value === true) {
+        return true;
+      }
+      if (value === false) {
+        return false;
+      }
+      return Boolean(defaultValue);
+    };
+
     const normalizeImetaVariant = (variant) => {
       if (!variant || typeof variant !== "object") {
         return null;
@@ -2377,12 +2389,14 @@ class Application {
     const description = normalizeString(legacyPayload?.description || "");
     const ws = normalizeString(legacyPayload?.ws || "");
     const xs = normalizeString(legacyPayload?.xs || "");
-    const enableComments =
-      legacyPayload?.enableComments === false
-        ? false
-        : legacyPayload?.enableComments === true
-          ? true
-          : true;
+    const enableComments = normalizeBooleanFlag(
+      legacyPayload?.enableComments,
+      true
+    );
+    const rawIsNsfw = normalizeBooleanFlag(legacyPayload?.isNsfw, false);
+    const rawIsForKids = normalizeBooleanFlag(legacyPayload?.isForKids, false);
+    const isNsfw = rawIsNsfw;
+    const isForKids = rawIsNsfw ? false : rawIsForKids;
 
     const legacyFormData = {
       version: 3,
@@ -2393,6 +2407,8 @@ class Application {
       description,
       mode: isDevMode ? "dev" : "live",
       enableComments,
+      isNsfw,
+      isForKids,
     };
 
     const normalizedNip71 = normalizeNip71Metadata(rawNip71);

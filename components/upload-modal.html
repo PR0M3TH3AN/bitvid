@@ -711,6 +711,7 @@
                 id="uploadEnableComments"
                 class="mt-1 h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
                 checked
+                data-default-checked="true"
               />
               <div>
                 <label for="uploadEnableComments" class="text-sm font-medium text-gray-200"
@@ -719,6 +720,40 @@
                 <p class="mt-1 text-xs text-gray-400">
                   Keep this on to let viewers discuss the video once comment threads launch.
                 </p>
+              </div>
+            </div>
+            <div class="grid gap-3 md:grid-cols-2">
+              <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
+                <input
+                  type="checkbox"
+                  id="uploadIsNsfw"
+                  class="mt-1 h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                  data-default-checked="false"
+                />
+                <div>
+                  <label for="uploadIsNsfw" class="text-sm font-medium text-gray-200"
+                    >Is this content NSFW?</label
+                  >
+                  <p class="mt-1 text-xs text-gray-400">
+                    Flag mature or explicit uploads so clients can warn viewers before playback.
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
+                <input
+                  type="checkbox"
+                  id="uploadIsForKids"
+                  class="mt-1 h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                  data-default-checked="false"
+                />
+                <div>
+                  <label for="uploadIsForKids" class="text-sm font-medium text-gray-200"
+                    >Is this content created for Kids?</label
+                  >
+                  <p class="mt-1 text-xs text-gray-400">
+                    Mark clearly kid-friendly videos so parental controls and playlists stay accurate.
+                  </p>
+                </div>
               </div>
             </div>
             <!--
@@ -1385,6 +1420,7 @@
                     id="cloudflareEnableComments"
                     class="mt-1 h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
                     checked
+                    data-default-checked="true"
                   />
                   <div>
                     <label for="cloudflareEnableComments" class="text-sm font-medium text-gray-200"
@@ -1393,6 +1429,40 @@
                     <p class="mt-1 text-xs text-gray-400">
                       Publish with comments switched on. Toggle off to quietly disable replies on this video.
                     </p>
+                  </div>
+                </div>
+                <div class="grid gap-3 md:grid-cols-2">
+                  <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
+                    <input
+                      type="checkbox"
+                      id="cloudflareIsNsfw"
+                      class="mt-1 h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                      data-default-checked="false"
+                    />
+                    <div>
+                      <label for="cloudflareIsNsfw" class="text-sm font-medium text-gray-200"
+                        >Is this content NSFW?</label
+                      >
+                      <p class="mt-1 text-xs text-gray-400">
+                        Turn this on to signal mature or explicit material to downstream clients.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="flex items-start gap-3 rounded-md border border-gray-800 bg-black/30 p-3">
+                    <input
+                      type="checkbox"
+                      id="cloudflareIsForKids"
+                      class="mt-1 h-5 w-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                      data-default-checked="false"
+                    />
+                    <div>
+                      <label for="cloudflareIsForKids" class="text-sm font-medium text-gray-200"
+                        >Is this content created for Kids?</label
+                      >
+                      <p class="mt-1 text-xs text-gray-400">
+                        Highlight family-safe uploads so moderation tooling and filters stay accurate.
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <div>

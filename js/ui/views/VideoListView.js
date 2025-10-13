@@ -19,6 +19,7 @@ export class VideoListView {
       state = {},
       utils = {},
       renderers = {},
+      allowNsfw = true,
     } = options;
 
     this.document = doc;
@@ -163,6 +164,8 @@ export class VideoListView {
       blacklist: null,
     };
 
+    this.allowNsfw = allowNsfw !== false;
+
     this.emitter = typeof EventTarget !== "undefined" ? new EventTarget() : null;
     this._boundClickHandler = this.handleContainerClick.bind(this);
 
@@ -270,9 +273,14 @@ export class VideoListView {
 
     const source = Array.isArray(videos) ? videos : [];
     const dedupedVideos = this.utils.dedupeVideos(source);
-    const displayVideos = dedupedVideos.filter(
-      (video) => this.utils.canEditVideo(video) || !video?.isPrivate
-    );
+    const displayVideos = dedupedVideos.filter((video) => {
+      const canEdit = this.utils.canEditVideo(video);
+      const isPrivate = video?.isPrivate === true;
+      if (!this.allowNsfw && video?.isNsfw === true && !canEdit) {
+        return false;
+      }
+      return canEdit || !isPrivate;
+    });
 
     this.syncViewCountSubscriptions(displayVideos);
     this.cleanupThumbnailCache(displayVideos);
@@ -302,6 +310,8 @@ export class VideoListView {
         : Number(video?.created_at) || 0,
       deleted: Boolean(video?.deleted),
       isPrivate: Boolean(video?.isPrivate),
+      isNsfw: Boolean(video?.isNsfw),
+      isForKids: Boolean(video?.isForKids),
       thumbnail: typeof video?.thumbnail === "string" ? video.thumbnail : "",
       url: typeof video?.url === "string" ? video.url : "",
       magnet: typeof video?.magnet === "string" ? video.magnet : "",
@@ -338,8 +348,16 @@ export class VideoListView {
       const shareUrl = this.buildShareUrl(video, shareBase);
       const canEdit = this.utils.canEditVideo(video);
       const canDelete = this.utils.canDeleteVideo(video);
-      const highlightClass =
-        canEdit && video.isPrivate ? "video-card--owner-private" : "";
+      const highlightClasses = [];
+      if (canEdit && video.isPrivate) {
+        highlightClasses.push("video-card--owner-private");
+      }
+      const viewerSeesBlockedNsfw =
+        !this.allowNsfw && video?.isNsfw === true && canEdit;
+      if (viewerSeesBlockedNsfw) {
+        highlightClasses.push("video-card--nsfw-owner");
+      }
+      const highlightClass = highlightClasses.join(" ");
       const isNewlyRendered = !previouslyRenderedIds.has(video.id);
       const animationClass = isNewlyRendered ? "video-card--enter" : "";
       const knownPostedAt = this.utils.getKnownVideoPostedAt(video);
@@ -377,6 +395,11 @@ export class VideoListView {
         postedAt: normalizedPostedAt,
         highlightClass,
         animationClass,
+        nsfwContext: {
+          isNsfw: video?.isNsfw === true,
+          allowNsfw: this.allowNsfw,
+          viewerIsOwner: canEdit,
+        },
         capabilities: {
           canEdit,
           canDelete,
