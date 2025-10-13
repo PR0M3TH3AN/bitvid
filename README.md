@@ -84,12 +84,19 @@ the shared tokens in `css/tokens.css`. Install dependencies once and lean on the
 package scripts to keep formatting, linting, and generated output consistent:
 
 ```bash
-npm install          # install Prettier, Stylelint, and Tailwind toolchain
-npm run format       # format CSS/HTML/JS/MD with Prettier + tailwindcss plugin
-npm run lint:css     # enforce token usage and forbid raw hex colors
-npm run build:css    # rebuild css/tailwind.generated.css from tailwind.source.css
-npm run check:css    # CI-friendly guard that fails if tailwind.generated.css is dirty
+npm install               # install Prettier, Stylelint, and Tailwind toolchain
+npm run format            # format CSS/HTML/JS/MD with Prettier + tailwindcss plugin
+npm run lint              # run CSS, hex color, and inline-style guards in one pass
+npm run lint:css          # enforce token usage and forbid raw hex colors
+npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
+npm run build:css         # rebuild css/tailwind.generated.css from tailwind.source.css
+npm run check:css         # CI-friendly guard that fails if tailwind.generated.css is dirty
 ```
+
+Inline styles are intentionally blocked. `npm run lint:inline-styles` scans HTML
+and scripts for `style=` attributes, `element.style`, or `style.cssText` usage
+and will fail CI until offending markup is moved into the shared CSS/token
+system.
 
 The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
