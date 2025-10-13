@@ -134,6 +134,29 @@
     @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
   }
 
+  .bv-logo {
+    --logo-wordmark-color: var(--color-logo-wordmark);
+    --logo-accent-color: var(--color-logo-accent);
+    --logo-background-color: var(--color-logo-background);
+  }
+
+  .bv-logo[data-variant="inverse"] {
+    --logo-wordmark-color: var(--color-logo-wordmark-inverse);
+    --logo-background-color: var(--color-logo-background-inverse);
+  }
+
+  .bv-logo[data-wordmark="current"] {
+    --logo-wordmark-color: currentColor;
+  }
+
+  .bv-logo[data-accent="current"] {
+    --logo-accent-color: currentColor;
+  }
+
+  .bv-logo[data-background="transparent"] {
+    --logo-background-color: transparent;
+  }
+
   .markdown-prose {
     @apply prose max-w-none leading-relaxed text-text-strong;
   }
