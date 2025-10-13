@@ -376,6 +376,13 @@ export class VideoModal {
     this.setCopyEnabled(false);
     this.setShareEnabled(false);
     this.resetStats();
+
+    if (!this.activeVideo && this.playerModal) {
+      this.playerModal.classList.add("hidden");
+      this.playerModal.setAttribute("hidden", "");
+      this.document?.body?.classList?.remove("modal-open");
+      this.document?.documentElement?.classList?.remove("modal-open");
+    }
   }
 
   bindVideoEvents() {

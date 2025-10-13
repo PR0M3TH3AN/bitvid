@@ -445,6 +445,11 @@
     @apply fixed inset-0 z-[var(--z-modal-root)] flex items-center justify-center p-6 sm:p-8;
   }
 
+  .bv-modal[hidden],
+  .bv-modal.hidden {
+    display: none !important;
+  }
+
   .bv-modal__panel {
     @apply focus-ring relative z-[var(--z-modal-content)] w-full max-w-[38rem] rounded-[1.75rem] border border-border-translucent px-8 pb-8 pt-7 text-left text-text shadow-modal transition duration-base ease-out;
     background-color: var(--color-modal-surface, var(--color-overlay-panel));
