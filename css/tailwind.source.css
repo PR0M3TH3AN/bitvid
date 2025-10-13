@@ -61,19 +61,6 @@
     color: inherit;
   }
 
-  header {
-    margin-bottom: 2rem;
-    padding: 1rem 0;
-    display: flex;
-    justify-content: flex-start;
-  }
-
-  header img {
-    height: 6rem;
-    width: auto;
-    max-width: none;
-  }
-
   html.modal-open,
   body.modal-open {
     overflow: hidden;
@@ -130,6 +117,14 @@
 }
 
 @layer components {
+  .ds-header {
+    @apply flex items-center justify-start py-md;
+  }
+
+  .ds-header__logo {
+    @apply h-24 w-auto max-w-none;
+  }
+
   .focus-ring {
     @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
   }
