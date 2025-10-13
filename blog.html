@@ -43,10 +43,9 @@
     <script src="./js/tracking.js" defer></script>
     <script type="module" crossorigin>
       import { bootstrapBlog } from "./js/blog/index.js";
-      import { initZapthreadsEmbed } from "./js/blog/zapthreadsEmbed.js";
 
       const startBlog = () => {
-        bootstrapBlog({ initZapthreadsEmbed });
+        bootstrapBlog();
       };
 
       if (document.readyState === "loading") {

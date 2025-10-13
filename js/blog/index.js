@@ -1,5 +1,6 @@
 import { createCarousel, advanceSlide, destroyCarousel } from './carousel.js';
 import { mountProgressBar } from './progressBar.js';
+import { initZapthreadsEmbed as defaultInitZapthreadsEmbed } from './zapthreadsEmbed.js';
 import { applyDynamicStyles } from '../ui/styleSystem.js';
 
 const CAROUSEL_AUTOPLAY_INTERVAL = 8000;
@@ -527,7 +528,7 @@ function initializeZapthreads({ registerCleanup, isDestroyed, initZapthreadsEmbe
   });
 }
 
-function mountBlogApp({ initZapthreadsEmbed } = {}) {
+function mountBlogApp({ initZapthreadsEmbed = defaultInitZapthreadsEmbed } = {}) {
   const runtime = {
     destroyed: false,
     cleanupCallbacks: new Set(),
