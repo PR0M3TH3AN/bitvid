@@ -42,6 +42,7 @@
     <link rel="stylesheet" href="./css/tailwind.generated.css" />
     <script src="./js/tracking.js" defer></script>
     <script type="module" crossorigin>
+      import { initZapthreadsEmbed } from "./js/blog/zapthreadsEmbed.js";
 
       var pv = Object.defineProperty;
       var gv = (e, t, n) =>
@@ -21012,13 +21013,6 @@
         }
         return options;
       }
-      let zapthreadsModulePromise;
-      function loadZapthreadsModule() {
-        if (!zapthreadsModulePromise) {
-          zapthreadsModulePromise = import("./js/blog/zapthreadsEmbed.js");
-        }
-        return zapthreadsModulePromise;
-      }
       const zapthreadsCleanupMap = new WeakMap();
       async function initializeZapthreadsEmbed(element) {
         if (!(element instanceof Element)) return;
@@ -21033,13 +21027,14 @@
         }
         if (!element.isConnected) return;
         try {
-          const { initZapthreadsEmbed } = await loadZapthreadsModule();
           const cleanup = await initZapthreadsEmbed({
             root: element,
             options: getZapthreadsOptions(element),
             dataUtils: zapthreadsDataUtils,
           });
-          zapthreadsCleanupMap.set(element, cleanup);
+          if (typeof cleanup === "function") {
+            zapthreadsCleanupMap.set(element, cleanup);
+          }
         } catch (error) {
           console.error("[zapthreads] failed to initialize embed", error);
         }
