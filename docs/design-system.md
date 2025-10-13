@@ -175,6 +175,12 @@ Action rows in login, disclaimer, and upload flows now pair `.btn-ghost` and `.b
 
 Static modal partials (login, application, feedback, etc.) should call the helpers exported from `js/ui/components/staticModalAccessibility.js`—`prepareStaticModal`, `openStaticModal`, and `closeStaticModal`—to attach focus trapping, Escape/backdrop dismissal, and the shared `data-open`/`html.modal-open` toggles without duplicating controller logic.
 
+### Headers
+
+`.ds-header` replaces the legacy `header { … }` reset. Apply it to page chrome that should inherit the shared rhythm: flex alignment (`items-center`, `justify-start`) and tokenized vertical padding (`py-md`). Layer layout utilities per surface—for example, `justify-between` on the kitchen-sink demo or `mb-8` on the app shell.
+
+Pair `.ds-header__logo` with `<img>` or inline logo wrappers to standardize sizing (`h-24`, `w-auto`, `max-w-none`) without reintroducing element selectors. Compose additional utilities (`h-16`, responsive overrides) when a view needs alternate scale.
+
 ### Popovers
 
 Use `.popover` as the relative anchor for floating content. Nest `.popover__panel` for the floating surface—it’s positioned with the shared helper, inherits the shared focus ring, and animates with opacity/scale tokens. Toggle `[data-state="open"]` on the panel to switch between the collapsed (`opacity-0 scale-95`) and expanded (`opacity-100 scale-100`) states.
