@@ -372,6 +372,30 @@ export function createZapthreadsAlertIcon() {
   return svg;
 }
 
+const ZAPTHREADS_MOUNT_CLASS = 'blog-ztr-container';
+
+function removeExistingZapthreadsMount(blogRoot) {
+  const existingRoot = blogRoot.querySelector('#ztr-root');
+  if (!existingRoot) {
+    return;
+  }
+
+  const mountContainer = existingRoot.closest(`.${ZAPTHREADS_MOUNT_CLASS}`);
+  if (mountContainer && mountContainer.parentNode) {
+    mountContainer.parentNode.removeChild(mountContainer);
+    return;
+  }
+
+  existingRoot.remove();
+}
+
+function createZapthreadsMountContainer(blogRoot) {
+  const container = document.createElement('div');
+  container.className = ZAPTHREADS_MOUNT_CLASS;
+  blogRoot.appendChild(container);
+  return container;
+}
+
 export function createZapthreadsRoot() {
   const root = document.createElement('div');
   root.id = 'ztr-root';
@@ -1031,6 +1055,18 @@ function getBlogAppRoot() {
   return document.querySelector('.blog-app-root');
 }
 
+function dispatchZapthreadsEvent(targets, type, detail) {
+  for (const target of targets) {
+    if (!target || typeof target.dispatchEvent !== 'function') continue;
+    target.dispatchEvent(
+      new CustomEvent(type, {
+        bubbles: true,
+        detail: detail ? { ...detail } : {},
+      })
+    );
+  }
+}
+
 export async function initZapthreadsEmbed({
   root,
   options,
@@ -1049,11 +1085,6 @@ export async function initZapthreadsEmbed({
   const blogRoot = getBlogAppRoot();
   if (!blogRoot) {
     throw new Error('initZapthreadsEmbed requires .blog-app-root container');
-  }
-
-  const existingRoot = blogRoot.querySelector('#ztr-root');
-  if (existingRoot) {
-    existingRoot.remove();
   }
 
   const rootEl = createZapthreadsRoot();
@@ -1098,6 +1129,17 @@ export async function initZapthreadsEmbed({
   const clearCacheCleanup = renderClearCache(clearCacheButton, data.clearCache);
   registerDispose(clearCacheCleanup);
 
+  removeExistingZapthreadsMount(blogRoot);
+  const mountContainer = createZapthreadsMountContainer(blogRoot);
+  mountContainer.appendChild(rootEl);
+
+  const lifecycleTargets = [rootEl];
+  if (root && root !== rootEl && typeof root.dispatchEvent === 'function') {
+    lifecycleTargets.push(root);
+  }
+
+  const lifecycleDetail = () => ({ anchor: state.anchor, root: rootEl });
+
   const renderError = (message) => {
     clearElement(contentEl);
     const heading = createZapthreadsErrorHeading();
@@ -1113,13 +1155,7 @@ export async function initZapthreadsEmbed({
 
   if (state.anchor.type === 'error') {
     renderError(state.anchor.value);
-    blogRoot.appendChild(rootEl);
-    root.dispatchEvent(
-      new CustomEvent(ZAPTHREADS_EVENT_MOUNTED, {
-        bubbles: true,
-        detail: { anchor: state.anchor, root: rootEl },
-      })
-    );
+    dispatchZapthreadsEvent(lifecycleTargets, ZAPTHREADS_EVENT_MOUNTED, lifecycleDetail());
     return () => {
       disposeCallbacks.forEach((callback) => {
         try {
@@ -1129,25 +1165,21 @@ export async function initZapthreadsEmbed({
         }
       });
       disposeCallbacks.clear();
-      if (blogRoot.contains(rootEl)) {
-        blogRoot.removeChild(rootEl);
-      }
-      root.dispatchEvent(
-        new CustomEvent(ZAPTHREADS_EVENT_UNMOUNTED, {
-          bubbles: true,
-          detail: { anchor: state.anchor, root: rootEl },
-        })
+      dispatchZapthreadsEvent(
+        lifecycleTargets,
+        ZAPTHREADS_EVENT_UNMOUNTED,
+        lifecycleDetail()
       );
+      if (mountContainer.parentNode) {
+        mountContainer.parentNode.removeChild(mountContainer);
+      }
     };
   }
 
-  blogRoot.appendChild(rootEl);
-
-  root.dispatchEvent(
-    new CustomEvent(ZAPTHREADS_EVENT_MOUNTED, {
-      bubbles: true,
-      detail: { anchor: state.anchor, root: rootEl },
-    })
+  dispatchZapthreadsEvent(
+    lifecycleTargets,
+    ZAPTHREADS_EVENT_MOUNTED,
+    lifecycleDetail()
   );
 
   updateFilterForAnchor(state);
@@ -1248,14 +1280,13 @@ export async function initZapthreadsEmbed({
       }
     });
     disposeCallbacks.clear();
-    if (blogRoot.contains(rootEl)) {
-      blogRoot.removeChild(rootEl);
-    }
-    root.dispatchEvent(
-      new CustomEvent(ZAPTHREADS_EVENT_UNMOUNTED, {
-        bubbles: true,
-        detail: { anchor: state.anchor, root: rootEl },
-      })
+    dispatchZapthreadsEvent(
+      lifecycleTargets,
+      ZAPTHREADS_EVENT_UNMOUNTED,
+      lifecycleDetail()
     );
+    if (mountContainer.parentNode) {
+      mountContainer.parentNode.removeChild(mountContainer);
+    }
   };
 }
