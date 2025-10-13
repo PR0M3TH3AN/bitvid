@@ -43,8 +43,8 @@ jobs:
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Run CSS lint
-        run: npm run lint:css
+      - name: Run lint suite
+        run: npm run lint
 
       - name: Build CSS
         run: npm run build:css

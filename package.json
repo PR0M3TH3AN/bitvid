@@ -6,9 +6,10 @@
   "scripts": {
     "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
     "format": "prettier --cache --write css/tailwind.source.css css/tokens.css \"docs/**/*.html\" tailwind.config.cjs README.md",
-    "lint": "npm run lint:css && npm run lint:hex",
+    "lint": "npm run lint:css && npm run lint:hex && npm run lint:inline-styles",
     "lint:css": "stylelint css/tailwind.source.css css/tokens.css",
     "lint:hex": "node scripts/check-hex.js",
+    "lint:inline-styles": "node scripts/check-inline-styles.mjs",
     "check:css": "npm run build:css && git diff --exit-code -- css/tailwind.generated.css",
     "test:visual": "npm run build:css && npx playwright test",
     "test:visual:update": "npm run build:css && cross-env UPDATE_VISUAL_BASELINES=1 npx playwright test",

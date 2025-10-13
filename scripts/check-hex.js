@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { spawnSync } = require('node:child_process');
+import { spawnSync } from "node:child_process";
 
 const SEARCH_PATTERN = '\\b#[0-9a-fA-F]{3,8}\\b';
 // Allow-list tokens and vector logos so brand assets can keep their baked colors.
