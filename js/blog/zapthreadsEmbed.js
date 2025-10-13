@@ -1,8 +1,17 @@
 import { escapeHTML } from '../utils/domUtils.js';
 
 /**
- * DOM helpers for constructing Zapthreads embed structures without relying on the
- * compiled Svelte runtime helpers that appear in blog.html.
+ * Responsibilities mirrored from the legacy DS component that ships inside
+ * blog.html:
+ *
+ * - Normalise anchors coming from HTTP URLs, note/nevent IDs, or naddr
+ *   references.
+ * - Resolve relay inputs (with defaults) and build the correct Nostr filter for
+ *   whichever anchor type we are showing.
+ * - Hydrate the thread from cache, refresh it from the network, and keep the
+ *   subscription lifecycle tidy so repeated mounts don’t leak listeners.
+ * - Expose cache clearing, watermark/title rendering, and anchor version updates
+ *   to the host document while dispatching mount/unmount events for observers.
  */
 
 function createSvg(pathD, { viewBox, className } = {}) {
@@ -407,6 +416,13 @@ export function createZapthreadsTitleHeading() {
   return heading;
 }
 
+export const DEFAULT_THREAD_TITLE = 'Thread';
+
+export function renderThreadTitle(titleEl, title = DEFAULT_THREAD_TITLE) {
+  if (!titleEl) return;
+  titleEl.innerHTML = escapeHTML(title || DEFAULT_THREAD_TITLE);
+}
+
 export function createZapthreadsPoweredByMessage() {
   const paragraph = document.createElement('p');
   paragraph.appendChild(document.createTextNode('Powered by '));
@@ -443,11 +459,20 @@ export function parseRelayList(relayList = '') {
     return [...DEFAULT_RELAYS];
   }
 
-  return relayList
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((relay) => new URL(relay).toString());
+  const relays = [];
+
+  for (const item of relayList.split(',')) {
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+
+    try {
+      relays.push(new URL(trimmed).toString());
+    } catch (error) {
+      console.warn('[zapthreads] ignored invalid relay input', trimmed, error);
+    }
+  }
+
+  return relays.length > 0 ? relays : [...DEFAULT_RELAYS];
 }
 
 export function parseDisableList(disableList = '') {
@@ -536,6 +561,53 @@ export function updateFilterForAnchor(state) {
     state.filter = { '#a': [anchor.value] };
     state.version = version || rootEventIds[0] || '';
   }
+}
+
+export function updateStateFromEvents(
+  state,
+  events = [],
+  { parseEvent = Na } = {}
+) {
+  if (!state || !Array.isArray(events) || events.length === 0) {
+    return [];
+  }
+
+  const parsedEvents = [];
+  const rootIds = new Set(state.rootEventIds);
+  const parser = typeof parseEvent === 'function' ? parseEvent : null;
+
+  for (const event of events) {
+    if (!event) continue;
+    const parsed = parser ? parser(event) : event;
+    if (!parsed) continue;
+
+    parsedEvents.push(parsed);
+
+    const rootId = parsed.ro || parsed.id || event.id;
+    if (rootId) {
+      rootIds.add(rootId);
+    }
+
+    if (
+      !state.anchorAuthor &&
+      (!parsed.ro || parsed.ro === parsed.id) &&
+      parsed.pk
+    ) {
+      state.anchorAuthor = parsed.pk;
+    }
+  }
+
+  if (rootIds.size > 0) {
+    state.rootEventIds = [...rootIds];
+  }
+
+  if (!state.version && state.rootEventIds.length > 0) {
+    state.version = state.rootEventIds[0];
+  }
+
+  updateFilterForAnchor(state);
+
+  return parsedEvents;
 }
 
 export async function loadRootEvents({
@@ -681,7 +753,7 @@ export function renderClearCache(buttonEl, clearCache) {
   };
 }
 
-function clearElement(element) {
+export function clearElement(element) {
   if (!element) return;
   while (element.firstChild) {
     element.removeChild(element.firstChild);
@@ -724,6 +796,9 @@ export async function initZapthreadsEmbed({
 
   const titleEl = createZapthreadsTitleHeading();
   contentEl.appendChild(titleEl);
+  let currentTitle = DEFAULT_THREAD_TITLE;
+  let hasCustomTitle = false;
+  renderThreadTitle(titleEl, currentTitle);
 
   const poweredByEl = createZapthreadsPoweredByMessage();
   contentEl.appendChild(poweredByEl);
@@ -736,8 +811,14 @@ export async function initZapthreadsEmbed({
   contentEl.appendChild(clearCacheButton);
 
   const disposeCallbacks = new Set();
+  const registerDispose = (callback) => {
+    if (typeof callback === 'function') {
+      disposeCallbacks.add(callback);
+    }
+  };
+
   const clearCacheCleanup = renderClearCache(clearCacheButton, data.clearCache);
-  disposeCallbacks.add(clearCacheCleanup);
+  registerDispose(clearCacheCleanup);
 
   const renderError = (message) => {
     clearElement(contentEl);
@@ -762,7 +843,13 @@ export async function initZapthreadsEmbed({
       })
     );
     return () => {
-      disposeCallbacks.forEach((callback) => callback());
+      disposeCallbacks.forEach((callback) => {
+        try {
+          callback();
+        } catch (error) {
+          console.error('[zapthreads] cleanup failed', error);
+        }
+      });
       disposeCallbacks.clear();
       if (blogRoot.contains(rootEl)) {
         blogRoot.removeChild(rootEl);
@@ -786,46 +873,88 @@ export async function initZapthreadsEmbed({
   );
 
   updateFilterForAnchor(state);
+  renderAnchorVersion(anchorVersionEl, state.version);
+
+  const parseEvent = typeof data.Na === 'function' ? data.Na : null;
+
+  let currentSubscription = null;
+  let currentFilterKey = null;
+  const closeSubscription = () => {
+    if (currentSubscription && typeof currentSubscription.close === 'function') {
+      try {
+        currentSubscription.close();
+      } catch (error) {
+        console.error('[zapthreads] failed to close subscription', error);
+      }
+    }
+    currentSubscription = null;
+    currentFilterKey = null;
+    state.subscription = null;
+  };
+  registerDispose(closeSubscription);
+
+  const processEvents = (events = []) => {
+    const parsedEvents = updateStateFromEvents(state, events, { parseEvent });
+    if (parsedEvents.length > 0) {
+      const eventWithTitle = parsedEvents.find((item) => item && item.tl);
+      if (eventWithTitle) {
+        hasCustomTitle = true;
+        currentTitle = eventWithTitle.tl || DEFAULT_THREAD_TITLE;
+        renderThreadTitle(titleEl, currentTitle);
+      }
+    } else if (!hasCustomTitle) {
+      renderThreadTitle(titleEl, currentTitle);
+    }
+    renderAnchorVersion(anchorVersionEl, state.version);
+    return parsedEvents;
+  };
+
+  const ensureSubscription = () => {
+    if (!data.di || typeof data.di.subscribeMany !== 'function') return;
+    if (!state.filter || Object.keys(state.filter).length === 0) return;
+
+    const nextKey = JSON.stringify(state.filter);
+    if (currentSubscription && currentFilterKey === nextKey) {
+      return;
+    }
+
+    closeSubscription();
+    currentFilterKey = nextKey;
+    currentSubscription = data.di.subscribeMany(state.relays, [state.filter], {
+      onevent(event) {
+        if (!event) return;
+        processEvents([event]);
+        if (typeof data.un === 'function') {
+          data.un('events', event, { immediate: true });
+        }
+      },
+    });
+    state.subscription = currentSubscription;
+  };
 
   await loadRootEvents({
     state,
     data,
     onCache(events = []) {
-      state.rootEventIds = events.map((event) => event.id).filter(Boolean);
-      updateFilterForAnchor(state);
+      processEvents(events);
+      ensureSubscription();
     },
     onNetwork(events = []) {
-      if (!Array.isArray(events)) return;
+      if (!Array.isArray(events) || events.length === 0) {
+        ensureSubscription();
+        return;
+      }
+      processEvents(events);
       for (const event of events) {
-        if (typeof data.un === 'function') {
+        if (event && typeof data.un === 'function') {
           data.un('events', event, { immediate: true });
         }
       }
+      ensureSubscription();
     },
   });
 
-  if (
-    data.di &&
-    typeof data.di.subscribeMany === 'function' &&
-    state.filter &&
-    Object.keys(state.filter).length > 0
-  ) {
-    const subscription = data.di.subscribeMany(state.relays, [state.filter], {
-      onevent(event) {
-        if (typeof data.Na === 'function') {
-          const parsed = data.Na(event);
-          if (parsed) {
-            titleEl.innerHTML = escapeHTML(parsed.tl || 'Thread');
-          }
-        }
-      },
-    });
-
-    state.subscription = subscription;
-    disposeCallbacks.add(() => {
-      subscription?.close?.();
-    });
-  }
+  ensureSubscription();
 
   return () => {
     disposeCallbacks.forEach((callback) => {
