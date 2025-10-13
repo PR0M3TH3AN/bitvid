@@ -21502,13 +21502,6 @@ svg {
         ["reply-placeholder", "replyPlaceholder"],
         ["legacy-url", "legacyUrl"],
       ]);
-      const ZAPTHREADS_ATTRIBUTE_NAMES = [...ZAPTHREADS_ATTRIBUTE_MAP.keys()];
-      const zapthreadsInstances = new WeakMap();
-      const zapthreadsPendingMounts = new WeakSet();
-      const scheduleZapthreadsMicrotask =
-        typeof queueMicrotask == "function"
-          ? queueMicrotask
-          : (callback) => Promise.resolve().then(callback);
       const zapthreadsDataUtils = {
         Ti,
         hi,
@@ -21540,49 +21533,18 @@ svg {
         }
         return options;
       }
-      function cleanupZapthreadsEmbed(element) {
-        const record = zapthreadsInstances.get(element);
-        if (!record) return;
-        record.attributeObserver && record.attributeObserver.disconnect();
-        if (typeof record.cleanup === "function") {
+      const zapthreadsCleanupMap = new WeakMap();
+      async function initializeZapthreadsEmbed(element) {
+        if (!(element instanceof Element)) return;
+        const previousCleanup = zapthreadsCleanupMap.get(element);
+        if (typeof previousCleanup === "function") {
           try {
-            record.cleanup();
+            previousCleanup();
           } catch (error) {
             console.error("[zapthreads] cleanup failed", error);
           }
+          zapthreadsCleanupMap.delete(element);
         }
-        zapthreadsPendingMounts.delete(element);
-        zapthreadsInstances.delete(element);
-      }
-      function scheduleZapthreadsMount(element) {
-        if (zapthreadsPendingMounts.has(element)) return;
-        zapthreadsPendingMounts.add(element);
-        scheduleZapthreadsMicrotask(() => {
-          zapthreadsPendingMounts.delete(element);
-          mountZapthreadsEmbed(element);
-        });
-      }
-      function observeZapthreadsAttributes(element) {
-        const observer = new MutationObserver((mutations) => {
-          if (
-            mutations.some(
-              (mutation) =>
-                mutation.type === "attributes" &&
-                mutation.attributeName &&
-                ZAPTHREADS_ATTRIBUTE_NAMES.includes(mutation.attributeName)
-            )
-          ) {
-            scheduleZapthreadsMount(element);
-          }
-        });
-        observer.observe(element, {
-          attributes: !0,
-          attributeFilter: ZAPTHREADS_ATTRIBUTE_NAMES,
-        });
-        return observer;
-      }
-      async function mountZapthreadsEmbed(element) {
-        cleanupZapthreadsEmbed(element);
         if (!element.isConnected) return;
         try {
           const cleanup = await initZapthreadsEmbed({
@@ -21590,45 +21552,15 @@ svg {
             options: getZapthreadsOptions(element),
             dataUtils: zapthreadsDataUtils,
           });
-          const attributeObserver = observeZapthreadsAttributes(element);
-          zapthreadsInstances.set(element, { cleanup, attributeObserver });
+          zapthreadsCleanupMap.set(element, cleanup);
         } catch (error) {
           console.error("[zapthreads] failed to initialize embed", error);
         }
       }
-      function handleAddedNode(node) {
-        if (!(node instanceof Element)) return;
-        if (node.tagName === "ZAP-THREADS") {
-          scheduleZapthreadsMount(node);
-        }
-        node.querySelectorAll("zap-threads").forEach((element) => {
-          scheduleZapthreadsMount(element);
-        });
-      }
-      function handleRemovedNode(node) {
-        if (!(node instanceof Element)) return;
-        if (node.tagName === "ZAP-THREADS") {
-          cleanupZapthreadsEmbed(node);
-        }
-        node.querySelectorAll("zap-threads").forEach((element) => {
-          cleanupZapthreadsEmbed(element);
-        });
-      }
       function initializeZapthreadsEmbeds() {
-        document
-          .querySelectorAll("zap-threads")
-          .forEach((element) => scheduleZapthreadsMount(element));
-        const observer = new MutationObserver((mutations) => {
-          for (const mutation of mutations) {
-            mutation.addedNodes.forEach((node) => {
-              handleAddedNode(node);
-            });
-            mutation.removedNodes.forEach((node) => {
-              handleRemovedNode(node);
-            });
-          }
+        document.querySelectorAll("zap-threads").forEach((element) => {
+          initializeZapthreadsEmbed(element);
         });
-        observer.observe(document.body, { childList: !0, subtree: !0 });
       }
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", initializeZapthreadsEmbeds, {
