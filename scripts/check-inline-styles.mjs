@@ -13,7 +13,6 @@ const IGNORED_DIRS = new Set([
   ".git",
   "node_modules",
   "vendor",
-  "torrent",
   "dist",
   "build",
   ".next",

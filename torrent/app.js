@@ -1,4 +1,5 @@
 /* global WebTorrent, angular, moment */
+import { applyBeaconDynamicStyles } from "./ui/styleHelpers.js";
 
 const VERSION = "1.1";
 
@@ -11,34 +12,6 @@ const trackers = [
 // Basic torrent options.
 const torrentOpts = { announce: trackers };
 const trackerOpts = { announce: trackers };
-
-const applyDynamicStylesPromise = import("../js/ui/styleSystem.js")
-  .then((module) => module.applyDynamicStyles)
-  .catch((error) => {
-    console.warn("Failed to load style system utilities", error);
-    return null;
-  });
-
-const dynamicStyleFallbackClasses = {
-  hiddenDownload: "torrent-download-anchor",
-  clipboard: "torrent-clipboard-textarea",
-};
-
-function applyElementStyles(element, styleObject, slotKey) {
-  if (!element) {
-    return;
-  }
-
-  if (slotKey && dynamicStyleFallbackClasses[slotKey]) {
-    element.classList.add(dynamicStyleFallbackClasses[slotKey]);
-  }
-
-  applyDynamicStylesPromise.then((applyStyles) => {
-    if (typeof applyStyles === "function") {
-      applyStyles(element, styleObject, { slot: slotKey });
-    }
-  });
-}
 
 // Simple debug logger.
 function dbg(msg) {
@@ -221,7 +194,7 @@ app.controller("BTorrentCtrl", [
           // Create an anchor to trigger the download.
           const blobUrl = URL.createObjectURL(blob);
           const a = document.createElement("a");
-          applyElementStyles(a, { display: "none" }, "hiddenDownload");
+          applyBeaconDynamicStyles(a, { display: "none" }, "hiddenDownload");
           a.href = blobUrl;
           a.download = file.name;
           // Append, click, remove, revoke.
@@ -253,7 +226,7 @@ app.controller("BTorrentCtrl", [
         try {
           const textarea = document.createElement("textarea");
           textarea.value = magnetURI;
-          applyElementStyles(
+          applyBeaconDynamicStyles(
             textarea,
             {
               position: "fixed",
@@ -285,7 +258,7 @@ app.controller("BTorrentCtrl", [
       const fileName = torrent.fileName || `${torrent.name}.torrent`;
       // Create a hidden <a> to force download of the .torrent file.
       const a = document.createElement("a");
-      applyElementStyles(a, { display: "none" }, "hiddenDownload");
+      applyBeaconDynamicStyles(a, { display: "none" }, "hiddenDownload");
       a.href = torrent.torrentFileBlobURL;
       a.download = fileName;
       document.body.appendChild(a);

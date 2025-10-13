@@ -18,11 +18,12 @@
 
     <!-- Scripts: webtorrent, angular, etc. -->
     <script src="../js/tracking.js" defer></script>
-    <script src="bundle.min.js"></script>
+    <script defer src="dist/beacon.vendor.js"></script>
     <!--<script src="https://cdn.jsdelivr.net/combine/npm/webtorrent/webtorrent.min.js,npm/moment@2,npm/angular@1.5/angular.min.js,npm/angular-route@1.5/angular-route.min.js,npm/angular-sanitize@1.5/angular-sanitize.min.js,npm/angular-ui-grid@3/ui-grid.min.js,gh/matowens/ng-notify/dist/ng-notify.min.js,npm/ng-file-upload@12.2.13/dist/ng-file-upload.min.js"></script>-->
 
     <!-- Local styles -->
     <link rel="stylesheet" href="../css/tailwind.generated.css" />
+    <link rel="stylesheet" href="dist/beacon.vendor.css" />
   </head>
 
   <body class="bg-surface font-sans text-text" ng-controller="BTorrentCtrl" ng-cloak="">
@@ -106,6 +107,6 @@
     </div>
 
     <!-- Local Angular code -->
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>
