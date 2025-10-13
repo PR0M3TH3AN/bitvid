@@ -1346,6 +1346,12 @@ class Application {
     }
 
     const targetVideo = video || this.currentVideo;
+    if (!targetVideo) {
+      this.log(
+        "[Application] Skipping video modal open; no target video is available.",
+      );
+      return null;
+    }
 
     try {
       const { root } = await this.ensureVideoModalReady({
@@ -2966,7 +2972,6 @@ class Application {
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
       this.loginButton.setAttribute("hidden", "");
-      this.loginButton.style.display = "none";
     }
 
     if (this.logoutButton) {
@@ -2980,13 +2985,11 @@ class Application {
     if (this.uploadButton) {
       this.uploadButton.classList.remove("hidden");
       this.uploadButton.removeAttribute("hidden");
-      this.uploadButton.style.display = "inline-flex";
     }
 
     if (this.profileButton) {
       this.profileButton.classList.remove("hidden");
       this.profileButton.removeAttribute("hidden");
-      this.profileButton.style.display = "inline-flex";
     }
 
     if (this.subscriptionsLink) {
@@ -2998,7 +3001,6 @@ class Application {
     if (this.loginButton) {
       this.loginButton.classList.remove("hidden");
       this.loginButton.removeAttribute("hidden");
-      this.loginButton.style.display = "";
     }
 
     if (this.logoutButton) {
@@ -3016,13 +3018,11 @@ class Application {
     if (this.uploadButton) {
       this.uploadButton.classList.add("hidden");
       this.uploadButton.setAttribute("hidden", "");
-      this.uploadButton.style.display = "none";
     }
 
     if (this.profileButton) {
       this.profileButton.classList.add("hidden");
       this.profileButton.setAttribute("hidden", "");
-      this.profileButton.style.display = "none";
     }
 
     if (this.subscriptionsLink) {
@@ -3759,7 +3759,17 @@ class Application {
           this.videoModal.updateStatus(status.textContent);
         }
         if (progress) {
-          this.videoModal.updateProgress(progress.style.width);
+          const doc = progress.ownerDocument;
+          const view = doc?.defaultView;
+          let widthValue = "";
+          if (view && typeof view.getComputedStyle === "function") {
+            const computed = view.getComputedStyle(progress);
+            widthValue =
+              computed?.getPropertyValue("--progress-width")?.trim() ||
+              computed?.getPropertyValue("width")?.trim() ||
+              "";
+          }
+          this.videoModal.updateProgress(widthValue);
         }
         if (peers) {
           this.videoModal.updatePeers(peers.textContent);

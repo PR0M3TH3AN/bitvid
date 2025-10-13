@@ -192,6 +192,12 @@
       var(--motion-ease-out, ease-out);
   }
 
+  .cloudflare-progress__fill {
+    width: var(--cloudflare-progress-width, 0%);
+    transition: width var(--motion-duration-base, 160ms)
+      var(--motion-ease-out, ease-out);
+  }
+
   .blog-embed-shell {
     height: var(--blog-embed-height);
   }
@@ -439,6 +445,11 @@
     @apply fixed inset-0 z-[var(--z-modal-root)] flex items-center justify-center p-6 sm:p-8;
   }
 
+  .bv-modal[hidden],
+  .bv-modal.hidden {
+    display: none !important;
+  }
+
   .bv-modal__panel {
     @apply focus-ring relative z-[var(--z-modal-content)] w-full max-w-[38rem] rounded-[1.75rem] border border-border-translucent px-8 pb-8 pt-7 text-left text-text shadow-modal transition duration-base ease-out;
     background-color: var(--color-modal-surface, var(--color-overlay-panel));
@@ -619,43 +630,85 @@
   }
 
   .video-modal__nav {
-    @apply sticky top-0 z-[60] border-b border-border border-opacity-40 bg-surface;
+    @apply sticky top-0 z-[60] border-b border-border border-opacity-20 bg-surface bg-opacity-95 backdrop-blur-md;
+  }
+
+  .video-modal__nav-bar {
+    @apply flex w-full items-center justify-between gap-3 px-2 py-2 sm:px-4;
+  }
+
+  .video-modal__close {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-full bg-panel text-text transition duration-base ease-out hover:bg-panel-hover;
   }
 
   .modal-nav {
-    @apply video-modal__nav;
+    @apply video-modal__nav transition-transform duration-150 translate-y-0;
   }
 
-  .video-modal__actions {
-    @apply ml-auto flex flex-nowrap items-center justify-end gap-2;
+  .modal-nav--hidden {
+    @apply -translate-y-full;
   }
 
-  .modal-actions {
-    @apply video-modal__actions;
+  .modal-nav--visible {
+    @apply translate-y-0;
+  }
+
+  .video-modal__layout {
+    @apply grid gap-6 lg:gap-8;
+  }
+
+  .video-modal__primary {
+    @apply flex flex-col gap-6;
+  }
+
+  .video-modal__secondary {
+    @apply flex flex-col gap-4;
   }
 
   .video-modal__video {
-    @apply z-[51] flex w-full flex-shrink-0 items-center justify-center border-b border-border border-opacity-20 bg-surface lg:sticky lg:top-0;
-  }
-
-  .player-modal__video {
-    @apply video-modal__video;
+    @apply relative overflow-hidden rounded-3xl bg-black shadow-2xl lg:sticky lg:top-20;
   }
 
   .video-modal__media {
-    @apply block aspect-video w-full rounded-xl bg-black object-contain shadow-2xl;
+    @apply block aspect-video w-full object-contain;
   }
 
-  .player-modal__video video {
-    @apply video-modal__media;
+  .video-modal__details {
+    @apply flex flex-col gap-6;
   }
 
-  .video-modal__info {
-    @apply flex-none border-t border-border border-opacity-20 bg-surface;
+  .video-modal__meta {
+    @apply border-b border-border border-opacity-20 pb-4;
   }
 
-  .player-modal__info {
-    @apply video-modal__info;
+  .video-modal__actions-row {
+    @apply flex flex-wrap items-center gap-3;
+  }
+
+  .video-modal__action-button {
+    @apply inline-flex h-11 min-w-[2.75rem] items-center justify-center gap-2 rounded-full border border-border border-opacity-30 bg-panel px-3 text-sm font-semibold text-text transition duration-base ease-out hover:bg-panel-hover;
+  }
+
+  .video-modal__action-label {
+    @apply hidden sm:inline;
+  }
+
+  .video-modal__action-icon {
+    @apply h-5 w-5;
+  }
+
+  .video-modal__channel,
+  .video-modal__description,
+  .video-modal__stats {
+    @apply rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5 shadow-sm;
+  }
+
+  .video-modal__progress {
+    @apply h-2 w-full overflow-hidden rounded-full bg-border-subtle;
+  }
+
+  .video-modal__stat-metrics {
+    @apply flex flex-wrap items-center justify-between gap-3 text-sm text-muted;
   }
 
   .profile-pane {
@@ -1757,12 +1810,14 @@
     }
 
     body.sidebar-collapsed,
-    #sidebar.sidebar-collapsed {
+    #sidebar.sidebar-collapsed,
+    #app.sidebar-collapsed {
       --sidebar-width: var(--sidebar-width-collapsed);
     }
 
     body.sidebar-expanded,
-    #sidebar.sidebar-expanded {
+    #sidebar.sidebar-expanded,
+    #app.sidebar-expanded {
       --sidebar-width: var(--sidebar-width-expanded);
     }
 
