@@ -431,3 +431,362 @@ export function createZapthreadsAnchorVersionLabel() {
   paragraph.textContent = 'Anchor version: ';
   return paragraph;
 }
+
+export const DEFAULT_RELAYS = [
+  'wss://relay.damus.io',
+  'wss://nos.lol',
+];
+
+export const DEFAULT_DISABLE_FEATURES = [];
+
+export function parseRelayList(relayList = '') {
+  if (!relayList.trim()) {
+    return [...DEFAULT_RELAYS];
+  }
+
+  return relayList
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((relay) => new URL(relay).toString());
+}
+
+export function parseDisableList(disableList = '') {
+  return disableList
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function normalizeAnchor(anchor, { legacyUrl = false } = {}) {
+  const trimmed = (anchor || '').trim();
+
+  if (!trimmed) {
+    return { type: 'error', value: 'Missing anchor value' };
+  }
+
+  try {
+    if (trimmed.startsWith('http')) {
+      const normalized = legacyUrl ? trimmed : normalizeHttpAnchor(trimmed);
+      return { type: 'http', value: normalized };
+    }
+
+    const decoded = decodeNostrEntity(trimmed);
+
+    if (!decoded) {
+      return { type: 'error', value: `Unsupported anchor: ${trimmed}` };
+    }
+
+    if (decoded.type === 'note' || decoded.type === 'nevent') {
+      return { type: 'note', value: decoded.id };
+    }
+
+    if (decoded.type === 'naddr') {
+      const { kind, pubkey, identifier } = decoded;
+      return { type: 'naddr', value: `${kind}:${pubkey}:${identifier}` };
+    }
+
+    return { type: 'error', value: `Unsupported anchor type: ${decoded.type}` };
+  } catch (error) {
+    return { type: 'error', value: `Malformed anchor: ${trimmed}`, error };
+  }
+}
+
+export function createState(options = {}) {
+  const {
+    anchor = '',
+    legacyUrl = false,
+    relays = '',
+    disable = '',
+    version = '',
+  } = options;
+
+  const normalizedAnchor = normalizeAnchor(anchor, { legacyUrl });
+
+  return {
+    anchor: normalizedAnchor,
+    version,
+    relays: parseRelayList(relays),
+    disableFeatures: parseDisableList(disable),
+    legacyUrl,
+    filter: {},
+    rootEventIds: [],
+    anchorAuthor: undefined,
+    subscription: null,
+  };
+}
+
+export function updateFilterForAnchor(state) {
+  if (!state || !state.anchor) {
+    return;
+  }
+
+  const { anchor, rootEventIds, version } = state;
+
+  if (anchor.type === 'http' || anchor.type === 'note') {
+    if (!rootEventIds.length) {
+      state.filter = {};
+      return;
+    }
+
+    state.filter = { '#e': [...rootEventIds] };
+    return;
+  }
+
+  if (anchor.type === 'naddr') {
+    state.filter = { '#a': [anchor.value] };
+    state.version = version || rootEventIds[0] || '';
+  }
+}
+
+export async function loadRootEvents({
+  state,
+  data,
+  onCache,
+  onNetwork,
+}) {
+  if (!state || !data) return { cache: [], network: [] };
+
+  const { anchor, relays } = state;
+
+  if (!anchor || anchor.type === 'error') {
+    return { cache: [], network: [] };
+  }
+
+  const cacheResults = [];
+  const networkResults = [];
+
+  if (anchor.type === 'http') {
+    const cached = await data.Ti('events', anchor.value, { index: 'r' });
+    cacheResults.push(...cached);
+  } else if (anchor.type === 'note') {
+    const cached = await data.Ti('events', anchor.value, { index: 'id' });
+    cacheResults.push(...cached);
+  } else if (anchor.type === 'naddr') {
+    const cached = await data.Ti('events', anchor.value, { index: 'a' });
+    cacheResults.push(...cached);
+  }
+
+  if (onCache) {
+    onCache(cacheResults);
+  }
+
+  if (data.di && typeof data.di.querySync === 'function') {
+    const filter = createFilterForAnchor(state);
+    const queryResults = await data.di.querySync(relays, filter);
+    networkResults.push(...queryResults);
+    if (onNetwork) {
+      onNetwork(queryResults);
+    }
+  }
+
+  return { cache: cacheResults, network: networkResults };
+}
+
+export function createFilterForAnchor(state) {
+  const { anchor, rootEventIds, legacyUrl } = state;
+
+  if (!anchor) return {};
+
+  if (anchor.type === 'http') {
+    const values = [anchor.value];
+    if (!legacyUrl) {
+      values.push(`${anchor.value}/`);
+    }
+    return { '#r': values, kinds: [1, 8812] };
+  }
+
+  if (anchor.type === 'note') {
+    return { ids: [anchor.value] };
+  }
+
+  if (anchor.type === 'naddr') {
+    return { '#a': [anchor.value] };
+  }
+
+  return {};
+}
+
+export function decodeNostrEntity(entity) {
+  try {
+    const { decode } = window.NostrTools?.nip19 ?? {};
+    if (!decode) return null;
+    const result = decode(entity);
+    if (!result) return null;
+
+    switch (result.type) {
+      case 'nevent':
+        return { type: 'note', id: result.data.id };
+      case 'note':
+        return { type: 'note', id: result.data };
+      case 'naddr': {
+        const { kind, pubkey, identifier } = result.data;
+        return { type: 'naddr', kind, pubkey, identifier };
+      }
+      default:
+        return { type: result.type };
+    }
+  } catch (error) {
+    return { type: 'error', error };
+  }
+
+  return null;
+}
+
+export function normalizeHttpAnchor(url) {
+  try {
+    const normalized = new URL(url);
+    normalized.hash = '';
+    return normalized.toString().replace(/\/$/, '');
+  } catch (error) {
+    throw error;
+  }
+}
+
+export function renderWatermark(watermarkEl) {
+  if (!watermarkEl) return;
+  watermarkEl.textContent = '';
+  const icon = createZapthreadsEllipsisIcon();
+  icon.classList.add('ztr-watermark-icon');
+  watermarkEl.appendChild(icon);
+  const label = document.createElement('span');
+  label.textContent = ' Zapthreads';
+  watermarkEl.appendChild(label);
+}
+
+export function renderClearCache(buttonEl, clearCache) {
+  if (!buttonEl) return () => {};
+  const handler = () => {
+    if (typeof clearCache === 'function') {
+      clearCache();
+    }
+  };
+  buttonEl.addEventListener('click', handler);
+  return () => {
+    buttonEl.removeEventListener('click', handler);
+  };
+}
+
+export function renderAnchorVersion(labelEl, version) {
+  if (!labelEl) return;
+  labelEl.textContent = `Anchor version: ${version || 'unknown'}`;
+}
+
+export async function initZapthreadsEmbed({
+  root,
+  options,
+  dataUtils,
+} = {}) {
+  if (!root) {
+    throw new Error('initZapthreadsEmbed requires a root element');
+  }
+
+  const data = dataUtils || {};
+  const state = createState(options);
+
+  const rootEl = createZapthreadsRoot();
+  const styleEl = rootEl.querySelector('style');
+  if (styleEl) {
+    styleEl.textContent = '#ztr-root { display: block; }';
+  }
+
+  const watermarkEl = rootEl.querySelector('.blog-ztr-watermark');
+  renderWatermark(watermarkEl);
+
+  const contentEl = createZapthreadsContentContainer();
+  rootEl.appendChild(contentEl);
+
+  const titleEl = createZapthreadsTitleHeading();
+  contentEl.appendChild(titleEl);
+
+  const poweredByEl = createZapthreadsPoweredByMessage();
+  contentEl.appendChild(poweredByEl);
+
+  const anchorVersionEl = createZapthreadsAnchorVersionLabel();
+  contentEl.appendChild(anchorVersionEl);
+  renderAnchorVersion(anchorVersionEl, state.version);
+
+  const clearCacheButton = createZapthreadsClearCacheButton();
+  contentEl.appendChild(clearCacheButton);
+
+  const disposeCallbacks = new Set();
+  const clearCacheCleanup = renderClearCache(clearCacheButton, data.clearCache);
+  disposeCallbacks.add(clearCacheCleanup);
+
+  const renderError = (message) => {
+    contentEl.innerHTML = '';
+    const heading = createZapthreadsErrorHeading();
+    heading.textContent = 'Error!';
+    const details = createZapthreadsErrorDetails();
+    details.querySelector('pre').textContent = message;
+    contentEl.appendChild(heading);
+    contentEl.appendChild(details);
+  };
+
+  if (state.anchor.type === 'error') {
+    renderError(state.anchor.value);
+    root.appendChild(rootEl);
+    return () => {
+      disposeCallbacks.forEach((callback) => callback());
+      disposeCallbacks.clear();
+    };
+  }
+
+  root.appendChild(rootEl);
+
+  updateFilterForAnchor(state);
+
+  await loadRootEvents({
+    state,
+    data,
+    onCache(events = []) {
+      state.rootEventIds = events.map((event) => event.id).filter(Boolean);
+      updateFilterForAnchor(state);
+    },
+    onNetwork(events = []) {
+      if (!Array.isArray(events)) return;
+      for (const event of events) {
+        if (typeof data.un === 'function') {
+          data.un('events', event, { immediate: true });
+        }
+      }
+    },
+  });
+
+  if (
+    data.di &&
+    typeof data.di.subscribeMany === 'function' &&
+    state.filter &&
+    Object.keys(state.filter).length > 0
+  ) {
+    const subscription = data.di.subscribeMany(state.relays, [state.filter], {
+      onevent(event) {
+        if (typeof data.Na === 'function') {
+          const parsed = data.Na(event);
+          if (parsed) {
+            titleEl.textContent = parsed.tl || 'Thread';
+          }
+        }
+      },
+    });
+
+    state.subscription = subscription;
+    disposeCallbacks.add(() => {
+      subscription?.close?.();
+    });
+  }
+
+  return () => {
+    disposeCallbacks.forEach((callback) => {
+      try {
+        callback();
+      } catch (error) {
+        console.error('[zapthreads] cleanup failed', error);
+      }
+    });
+    disposeCallbacks.clear();
+    if (root.contains(rootEl)) {
+      root.removeChild(rootEl);
+    }
+  };
+}
