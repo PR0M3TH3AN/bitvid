@@ -97,6 +97,19 @@ emits the purged, minified stylesheet at `css/tailwind.generated.css`. Commit th
 regenerated file alongside any template changes so deployments pick up the
 latest styles.
 
+### Logo usage
+
+- SVG wordmarks and icons now express their fills through `currentColor` and
+  component-level variables (`--logo-wordmark-color`, `--logo-accent-color`, and
+  related background tokens) that default to palette values in
+  `css/tokens.css`.
+- When embedding a logo, wrap the inline `<svg>` in an element that sets
+  `--logo-wordmark-color` (usually to `currentColor`) and, when needed,
+  `--logo-accent-color`. Tailwind text utilities such as `text-text-strong` or
+  `text-text` ensure the wrapper resolves to a token-backed color.
+- Avoid hard-coded hex colors in SVGs; instead, override the logo variables in
+  CSS if a deployment needs a different accent or background.
+
 ### Configuration
 
 - **`config/instance-config.js`**:
