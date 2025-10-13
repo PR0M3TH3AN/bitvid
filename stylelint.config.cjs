@@ -3,7 +3,7 @@ const CONTAINS_VAR_PATTERN = /var\(--.*\)/;
 const LINEAR_GRADIENT_PATTERN = /^linear-gradient\(/;
 
 module.exports = {
-  ignoreFiles: ['css/tailwind.generated.css', 'css/tailwind.min.css'],
+  ignoreFiles: ['css/tailwind.generated.css'],
   rules: {
     'at-rule-no-unknown': [true, { ignoreAtRules: ['tailwind', 'layer', 'apply'] }],
     'import-notation': 'string',

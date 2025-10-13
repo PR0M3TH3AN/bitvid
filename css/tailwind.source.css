@@ -1052,7 +1052,7 @@
   }
 
   .ui-grid-row-selected > [ui-grid-row] > .ui-grid-cell {
-    background-color: rgba(37, 99, 235, 0.18);
+    background-color: var(--color-info-glass);
     color: var(--color-text);
   }
 
