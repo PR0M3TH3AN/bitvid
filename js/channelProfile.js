@@ -139,6 +139,40 @@ const FALLBACK_CHANNEL_AVATAR = "assets/svg/default-profile.svg";
 const PROFILE_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const channelProfileMetadataCache = new Map();
+const channelBannerImageCache = new Map();
+
+function preloadBannerImage(url) {
+  if (!url) {
+    return Promise.reject(new Error("Invalid banner URL"));
+  }
+
+  if (channelBannerImageCache.has(url)) {
+    return channelBannerImageCache.get(url);
+  }
+
+  const promise = new Promise((resolve, reject) => {
+    const img = new Image();
+    if ("decoding" in img) {
+      img.decoding = img.decoding || "async";
+    }
+    if ("loading" in img) {
+      img.loading = img.loading || "eager";
+    }
+    img.onload = () => {
+      resolve(url);
+    };
+    img.onerror = (event) => {
+      const error =
+        (event && "error" in event && event.error) ||
+        new Error("Failed to load banner image");
+      reject(error);
+    };
+    img.src = url;
+  });
+
+  channelBannerImageCache.set(url, promise);
+  return promise;
+}
 
 function getChannelZapButton() {
   if (cachedZapButton && !document.body.contains(cachedZapButton)) {
@@ -2084,10 +2118,50 @@ function applyChannelProfileMetadata({
   }
 
   const normalized = normalizeChannelProfileMetadata(profile);
+  const expectedLoadToken =
+    loadToken !== null ? loadToken : currentProfileLoadToken;
 
   const bannerEl = document.getElementById("channelBanner");
   if (bannerEl) {
-    bannerEl.src = normalized.banner || FALLBACK_CHANNEL_BANNER;
+    const fallbackAttr =
+      (typeof bannerEl.dataset?.fallbackSrc === "string"
+        ? bannerEl.dataset.fallbackSrc.trim()
+        : "") ||
+      bannerEl.getAttribute("data-fallback-src") ||
+      "";
+    const fallbackSrc = fallbackAttr || FALLBACK_CHANNEL_BANNER;
+
+    if (bannerEl.dataset.fallbackSrc !== fallbackSrc) {
+      bannerEl.dataset.fallbackSrc = fallbackSrc;
+    }
+    if (!bannerEl.getAttribute("data-fallback-src") && fallbackSrc) {
+      bannerEl.setAttribute("data-fallback-src", fallbackSrc);
+    }
+
+    if (!normalized.banner) {
+      if (bannerEl.src !== fallbackSrc) {
+        bannerEl.src = fallbackSrc;
+      }
+    } else {
+      preloadBannerImage(normalized.banner)
+        .then(() => {
+          if (expectedLoadToken !== currentProfileLoadToken) {
+            return;
+          }
+          if (bannerEl.src !== normalized.banner) {
+            bannerEl.src = normalized.banner;
+          }
+        })
+        .catch(() => {
+          channelBannerImageCache.delete(normalized.banner);
+          if (expectedLoadToken !== currentProfileLoadToken) {
+            return;
+          }
+          if (bannerEl.src !== fallbackSrc) {
+            bannerEl.src = fallbackSrc;
+          }
+        });
+    }
   }
 
   const avatarEl = document.getElementById("channelAvatar");
