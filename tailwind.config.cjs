@@ -10,6 +10,7 @@ module.exports = {
     "./torrent/**/*.html",
     "./torrent/**/*.js"
   ],
+  safelist: ["bv-logo__background"],
   theme: {
     extend: {
       colors: {

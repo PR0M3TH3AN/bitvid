@@ -125,6 +125,10 @@ artifacts.
   `currentColor`, `[data-variant="inverse"]` swaps in the inverse palette, and
   `data-accent="current"` makes the accent follow the surrounding text when
   needed.
+- Inside the SVG, target elements with `.bv-logo__wordmark`,
+  `.bv-logo__accent`, and `.bv-logo__background` so fills inherit the custom
+  properties seeded by `.bv-logo`. Group paths with `<g>` wrappers where
+  possible to avoid repeating classes on every primitive.
 - Use Tailwind text utilities (such as `text-text-strong` or `text-text`) on the
   wrapper to resolve to token-backed colors. Avoid hard-coded hex colors in the
   SVG; customize the logo via the provided classes when deployments need a

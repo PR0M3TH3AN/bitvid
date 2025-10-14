@@ -239,6 +239,8 @@ Static modal partials (login, application, feedback, etc.) should call the helpe
 
 Pair `.ds-header__logo` with `<img>` or inline logo wrappers to standardize sizing (`h-24`, `w-auto`, `max-w-none`) without reintroducing element selectors. Compose additional utilities (`h-16`, responsive overrides) when a view needs alternate scale.
 
+Logo glyphs now rely on dedicated selectors inside the SVG: apply `.bv-logo__accent` to the nine-block mark, `.bv-logo__wordmark` to the lettering, and `.bv-logo__background` to any surrounding tile. These hooks read from the CSS custom properties that `.bv-logo` seeds, so themes can flip palettes purely through attributes (`data-variant`, `data-wordmark`, etc.) without reintroducing inline `fill` or `color` overrides.
+
 ### Popovers
 
 Use `.popover` as the relative anchor for floating content. Nest `.popover__panel` for the floating surface—it’s positioned with the shared helper, inherits the shared focus ring, and animates with opacity/scale tokens. Toggle `[data-state="open"]` on the panel to switch between the collapsed (`opacity-0 scale-95`) and expanded (`opacity-100 scale-100`) states.
