@@ -2158,12 +2158,27 @@ function applyChannelProfileMetadata({
 }
 
 async function fetchChannelProfileFromRelays(pubkey) {
-  if (!nostrClient?.pool || !Array.isArray(nostrClient?.relays)) {
+  try {
+    await nostrClient.ensurePool();
+  } catch (error) {
+    console.error("Failed to initialize relay pool for channel profile:", error);
+    return { event: null, profile: {} };
+  }
+
+  const pool = nostrClient?.pool;
+  const relayCandidates = Array.isArray(nostrClient?.relays)
+    ? nostrClient.relays.filter(
+        (relayUrl) => typeof relayUrl === "string" && relayUrl.trim().length > 0
+      )
+    : [];
+  const relayUrls = relayCandidates.length > 0 ? relayCandidates : DEFAULT_RELAY_URLS;
+
+  if (!pool || !Array.isArray(relayUrls) || relayUrls.length === 0) {
     return { event: null, profile: {} };
   }
 
   try {
-    const events = await nostrClient.pool.list(nostrClient.relays, [
+    const events = await pool.list(relayUrls, [
       { kinds: [0], authors: [pubkey], limit: 1 }
     ]);
 
