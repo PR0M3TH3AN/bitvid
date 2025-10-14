@@ -1376,7 +1376,7 @@
   }
 
   .profile-pane {
-    @apply flex flex-col gap-lg;
+    @apply min-h-modal-pane flex flex-col gap-lg;
   }
 
   .profile-pane.hidden {
@@ -2815,6 +2815,11 @@
 
   .status-line {
     @apply my-1 text-sm leading-snug text-text;
+  }
+
+  /* Status log containers reserve space for dynamic messages. */
+  .status-log {
+    @apply min-h-status-log;
   }
 
   .status-line.error {
