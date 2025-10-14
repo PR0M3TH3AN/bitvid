@@ -272,11 +272,22 @@
   }
 
   .popover__panel {
-    @apply focus-ring absolute left-0 top-full z-[70] mt-2 min-w-menu origin-top rounded-lg border border-border border-opacity-40 bg-panel px-popup-inline py-popup-block text-sm text-text shadow-lg transition-transform transition-opacity duration-[var(--motion-duration-base)] ease-[var(--motion-ease-out)] opacity-0 scale-95 pointer-events-none;
+    @apply focus-ring absolute left-0 top-full z-overlay-floating mt-2 min-w-menu origin-top rounded-lg border border-border border-opacity-40 bg-panel px-popup-inline py-popup-block text-sm text-text shadow-lg transition-transform transition-opacity duration-[var(--motion-duration-base)] ease-[var(--motion-ease-out)] opacity-0 scale-95 pointer-events-none;
   }
 
   .popover__panel[data-state="open"] {
     @apply pointer-events-auto opacity-100 scale-100;
+  }
+
+  .ds-overlay-backdrop {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--overlay-backdrop-color);
+    backdrop-filter: blur(var(--overlay-backdrop-blur));
+    -webkit-backdrop-filter: blur(var(--overlay-backdrop-blur));
   }
 
   .popover__panel[data-variant="zap"] {
@@ -1233,7 +1244,7 @@
   }
 
   #playerModal .modal-nav {
-    @apply sticky top-0 z-[60] transition-transform duration-150 translate-y-0;
+    @apply sticky top-0 z-overlay-nav transition-transform duration-150 translate-y-0;
     background-color: var(--color-overlay-darker);
     background-image: linear-gradient(
       180deg,
@@ -2402,13 +2413,9 @@
   }
 
   #sidebarOverlay {
-    position: fixed;
-    inset: 0;
-    background: var(--color-overlay-muted);
     opacity: 0;
     pointer-events: none;
     transition: opacity 300ms ease;
-    z-index: var(--z-sidebar-overlay);
   }
 
   body.sidebar-open #sidebarOverlay {

@@ -286,6 +286,11 @@ module.exports = {
       dropShadow: {
         intense: "0 1.5rem 3rem var(--color-shadow-intense)"
       },
+      zIndex: {
+        "overlay-nav": "var(--z-overlay-nav)",
+        "overlay-floating": "var(--z-overlay-floating)",
+        "overlay-toast": "var(--z-overlay-toast)"
+      },
       spacing: {
         "4xs": "var(--space-4xs)",
         "3xs": "var(--space-3xs)",

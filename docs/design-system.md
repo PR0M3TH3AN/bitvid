@@ -456,6 +456,19 @@ We continue to expose aliases such as `.profile-switcher` and nested variations 
 - Modal templates across the app now mount `.bv-modal`, `.bv-modal-backdrop`, and `.bv-modal__panel` primitives directly. Controllers such as `ProfileModalController` and the upload modal orchestrator were updated to expect these primitives, so any new modal should follow the same structure for consistent accessibility and animation hooks.
 - The compatibility shim keeps the `.profile-switcher` selector family alive temporarily so third-party embeds and cached HTML fragments continue to render while operators redeploy updated templates. Keep the aliases until the April 2025 removal window above, then delete the shim and update any last callers to the new `.card`/`.btn-ghost` structure.
 
+### Overlay layering scale
+
+Overlay stacks now use semantic z-index tokens. Reach for these utilities instead of raw numeric values so floating surfaces remain predictable across the app:
+
+| Token | Utility class | Primary usage |
+| --- | --- | --- |
+| `--z-overlay-nav` | `z-overlay-nav` | Mobile navigation toggles, sticky modal nav bars |
+| `--z-overlay-floating` | `z-overlay-floating` | Popovers, floating status overlays, async progress shells |
+| `--z-overlay-toast` | `z-overlay-toast` | Toast managers and transient notifications |
+| `--z-modal-root` / `--z-modal-overlay` / `--z-modal-content` | `z-[var(--z-modal-root)]` primitives | Modal scaffolding (`.bv-modal`, `.bv-modal-backdrop`, `.bv-modal__panel`) |
+
+Backdrops share a common helper: `.ds-overlay-backdrop` applies the fixed positioning, tone, and blur defined by `--overlay-backdrop-color` / `--overlay-backdrop-blur`. Pair it with the appropriate `z-overlay-*` utility when you need to tune stacking above or below other surfaces.
+
 ## Beacon client migration
 
 The torrent beacon now shares the Tailwind bundle used across bitvid. The standalone `torrent/beacon.html` drops Skeleton/FoA CDNs in favour of `css/tailwind.generated.css`, adopts the `.card`, `.btn`, `.btn-ghost`, and `.input` primitives, and relies on `.bv-stack` for spacing inside Angular partials. Inline SVG icons replace FontAwesome so controls stay lightweight while inheriting tokenised focus and hover states.
@@ -465,7 +478,7 @@ Angular templates under `torrent/views/` should follow the refreshed structure:
 - Wrap primary sections in `.card` and layer Tailwind utilities for layout (`grid`, `gap-xl`, `overflow-auto`).
 - Use `.input`, `.select`, `.btn`, and `.btn-ghost` (with `data-variant="critical"` for destructive actions) instead of legacy `.u-full-width`, `.button`, or `.button-danger` classes.
 - Prefer token-backed utilities for spacing and typography (`px-6`, `py-6`, `text-muted`) over ad-hoc CSS.
-- Reuse the fixed overlay spinner pattern (`fixed inset-0 z-[60] flex items-center justify-center bg-overlay-muted/70 backdrop-blur-md` plus an `animate-spin text-info-strong` SVG) for async states so overlays stay consistent with the new palette.
+- Reuse the fixed overlay spinner pattern (`ds-overlay-backdrop z-overlay-floating` plus an `animate-spin text-info-strong` SVG) for async states so overlays stay consistent with the new palette.
 
 When adding new torrent affordances, mirror the existing markup: inline 24×24 SVG strokes at 2px, `.focus-ring` on interactive anchors, and `.bv-stack` for vertical rhythm. This keeps the beacon aligned with the design system without reintroducing the deprecated Skeleton grid.
 

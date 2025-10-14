@@ -124,7 +124,11 @@
       <!-- components/sidebar.html gets injected here -->
     </div>
 
-    <div id="sidebarOverlay" class="md:hidden" aria-hidden="true"></div>
+    <div
+      id="sidebarOverlay"
+      class="md:hidden ds-overlay-backdrop z-overlay-nav"
+      aria-hidden="true"
+    ></div>
 
     <!--
       MAIN CONTENT:
@@ -154,7 +158,7 @@
         -->
         <button
           id="mobileMenuBtn"
-          class="focus-ring fade-in z-[60] ml-2 mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-transparent hover:bg-transparent md:hidden"
+          class="focus-ring fade-in z-overlay-nav ml-2 mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-transparent hover:bg-transparent md:hidden"
           type="button"
           aria-expanded="false"
           aria-controls="sidebar"
