@@ -1,12 +1,3 @@
-// js/utils/mediaLoader.js
-
-import { applyDynamicStyles } from "../ui/styleSystem.js";
-
-function createBackgroundImageValue(src) {
-  const safe = String(src).replace(/["\\)\n\r]/g, (match) => `\\${match}`);
-  return `url("${safe}")`;
-}
-
 /**
  * Simple IntersectionObserver-based lazy loader for images (or videos).
  *
@@ -40,24 +31,22 @@ export class MediaLoader {
           el.getAttribute("data-fallback-src") ||
           "";
 
-        if (el.tagName === "IMG" || el.tagName === "IMAGE") {
+        const tagName = typeof el.tagName === "string" ? el.tagName : "";
+
+        if (tagName === "IMG" || tagName === "IMAGE") {
           el.src = lazySrc;
           if (fallbackSrc) {
             el.onerror = () => {
               el.src = fallbackSrc;
             };
           }
-        } else if (el.tagName === "VIDEO") {
+        } else if (tagName === "VIDEO") {
           el.src = lazySrc;
           if (fallbackSrc) {
             el.poster = fallbackSrc;
           }
-        } else {
-          applyDynamicStyles(
-            el,
-            { backgroundImage: createBackgroundImageValue(lazySrc) },
-            { slot: "lazy-background" },
-          );
+        } else if ("src" in el) {
+          el.src = lazySrc;
         }
 
         delete el.dataset.lazy;
