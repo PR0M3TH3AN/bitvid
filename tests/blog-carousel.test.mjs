@@ -21,15 +21,17 @@ function assertNoInlineStyleAttributes(elements, messagePrefix = 'element') {
 }
 
 const CAROUSEL_HTML = `
-  <div data-carousel>
-    <div data-carousel-track>
-      <article data-slide="0">Slide 1</article>
-      <article data-slide="1">Slide 2</article>
-      <article data-slide="2">Slide 3</article>
+  <section class="blog-carousel" data-carousel>
+    <div data-carousel-viewport>
+      <ul data-carousel-track>
+        <li data-carousel-slide>Slide 1</li>
+        <li data-carousel-slide>Slide 2</li>
+        <li data-carousel-slide>Slide 3</li>
+      </ul>
     </div>
     <button type="button" data-carousel-prev>Prev</button>
     <button type="button" data-carousel-next>Next</button>
-  </div>
+  </section>
 `;
 
 const PROGRESS_HTML = '<div id="progress-root"></div>';
@@ -62,7 +64,7 @@ describe('blog carousel', () => {
     env.cleanup();
   });
 
-  test('initializes slides with dynamic styling and accessibility state', () => {
+  test('initializes slides with data attributes and accessibility state', () => {
     const state = createCarousel(container, {
       perPage: 1,
       loop: true,
@@ -72,27 +74,28 @@ describe('blog carousel', () => {
     assert.ok(state, 'state should be created when container markup is valid');
     assert.strictEqual(state.perPage, 1);
     assert.strictEqual(state.slides.length, 3);
-    assert.ok(container.classList.contains('splide'));
-    assert.ok(container.classList.contains('is-initialized'));
-    assert.ok(container.classList.contains('is-active'));
+    assert.strictEqual(state.pageCount, 3);
 
-    const trackDynamicClasses = Array.from(track.classList).filter((className) => className.startsWith('bvds-'));
-    assert.ok(trackDynamicClasses.length >= 1, 'track should receive dynamic style classes');
+    assert.strictEqual(container.dataset.index, '0');
+    assert.strictEqual(container.dataset.perPage, '1');
+    assert.strictEqual(container.dataset.count, '3');
+    assert.strictEqual(container.dataset.state, 'active');
+    assert.strictEqual(track.dataset.transition, 'auto');
 
     assertNoInlineStyleAttributes([container, track, ...slides], 'carousel element');
 
-    for (const slide of slides) {
-      assert.ok(slide.classList.contains('splide__slide'));
-      const dynamicClasses = Array.from(slide.classList).filter((className) => className.startsWith('bvds-'));
-      assert.ok(dynamicClasses.length >= 1, 'slide should receive dynamic sizing styles');
-    }
-
-    assert.strictEqual(slides[0].getAttribute('aria-hidden'), 'false');
-    assert.strictEqual(slides[1].getAttribute('aria-hidden'), 'true');
-    assert.strictEqual(slides[2].getAttribute('aria-hidden'), 'true');
+    slides.forEach((slide, index) => {
+      assert.strictEqual(slide.dataset.index, String(index));
+      assert.strictEqual(slide.dataset.active, index === 0 ? 'true' : 'false');
+      assert.strictEqual(slide.dataset.inert, index === 0 ? 'false' : 'true');
+      assert.strictEqual(slide.getAttribute('aria-hidden'), index === 0 ? 'false' : 'true');
+    });
 
     state.goTo(2);
     assert.strictEqual(state.index, 2);
+    assert.strictEqual(container.dataset.index, '2');
+    assert.strictEqual(slides[2].dataset.active, 'true');
+    assert.strictEqual(slides[0].dataset.active, 'false');
     assert.strictEqual(slides[2].getAttribute('aria-hidden'), 'false');
     assert.strictEqual(slides[0].getAttribute('aria-hidden'), 'true');
 
@@ -169,6 +172,7 @@ describe('blog carousel', () => {
     const previousIndex = state.index;
     nextButton.dispatchEvent(new env.window.MouseEvent('click', { bubbles: true }));
     assert.strictEqual(state.index, previousIndex, 'clicks after destroy should not change the index');
+    assert.strictEqual(container.dataset.index, undefined);
   });
 
   test('advanceSlide delegates to goTo with relative offsets', () => {
@@ -202,13 +206,14 @@ describe('progress bar', () => {
     const progress = mountProgressBar(container, { initialDuration: 500, autoStart: false });
     assert.ok(progress, 'progress instance should be returned');
 
-    const wrapper = container.querySelector('.splide__progress');
+    const wrapper = container.querySelector('.blog-carousel__progress');
     assert.ok(wrapper, 'wrapper element should be appended');
-    const meter = wrapper.querySelector('progress.splide__progress__bar');
+    const meter = wrapper.querySelector('progress.progress--blog');
     assert.ok(meter, 'progress meter should be created');
     assert.strictEqual(meter.max, 100, 'progress meter should expose a 0-100 range');
     assert.strictEqual(meter.value, 0, 'progress meter should start at zero');
     assert.strictEqual(meter.dataset.state, 'idle');
+    assert.strictEqual(wrapper.dataset.state, 'idle');
     assert.strictEqual(meter.dataset.progress, '0');
     assert.strictEqual(
       meter.getAttribute('aria-valuetext'),
@@ -228,7 +233,7 @@ describe('progress bar', () => {
     const onComplete = createSpy();
     const progress = mountProgressBar(container, { initialDuration: 600, autoStart: true, onComplete });
     const wrapper = progress.element;
-    const meter = wrapper.querySelector('progress.splide__progress__bar');
+    const meter = wrapper.querySelector('progress.progress--blog');
     assert.ok(meter, 'progress meter should exist when autoStart is enabled');
 
     assertNoInlineStyleAttributes([container, wrapper, meter], 'progress element');
@@ -252,7 +257,7 @@ describe('progress bar', () => {
   test('manual controls support stop, restart, and cleanup', () => {
     const onComplete = createSpy();
     const progress = mountProgressBar(container, { initialDuration: 800, onComplete });
-    const meter = progress.element.querySelector('progress.splide__progress__bar');
+    const meter = progress.element.querySelector('progress.progress--blog');
 
     progress.start(800);
     env.raf.step(0);

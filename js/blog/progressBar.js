@@ -7,15 +7,17 @@ export function mountProgressBar(
   }
 
   const wrapper = document.createElement('div');
-  wrapper.className =
-    'splide__progress mt-2 h-1 w-full overflow-hidden rounded-full bg-blog-neutral-100 dark:bg-blog-neutral-800';
+  wrapper.className = 'blog-carousel__progress blog-progress mt-2';
+  wrapper.dataset.state = 'idle';
+  wrapper.setAttribute('data-carousel-progress', 'true');
 
   const meter = document.createElement('progress');
-  meter.className = 'splide__progress__bar progress progress--blog transition-none';
+  meter.className = 'progress progress--blog';
   meter.max = 100;
   meter.value = 0;
   meter.dataset.progress = '0';
   meter.dataset.state = 'idle';
+  meter.setAttribute('data-progress-meter', 'true');
   meter.setAttribute('data-variant', 'blog');
   meter.setAttribute('aria-label', 'Carousel progress');
   meter.setAttribute('aria-valuetext', 'Carousel progress 0% complete');
@@ -35,6 +37,7 @@ export function mountProgressBar(
   }
 
   function setState(state) {
+    wrapper.dataset.state = state;
     meter.dataset.state = state;
   }
 

@@ -1,7 +1,6 @@
 import { createCarousel, advanceSlide, destroyCarousel } from './carousel.js';
 import { mountProgressBar } from './progressBar.js';
 import { initZapthreadsEmbed as defaultInitZapthreadsEmbed } from './zapthreadsEmbed.js';
-import { applyDynamicStyles } from '../ui/styleSystem.js';
 
 const CAROUSEL_AUTOPLAY_INTERVAL = 8000;
 
@@ -235,8 +234,18 @@ function renderTopNotes(notes) {
 function createArrowButton(direction) {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = `splide__arrow splide__arrow--${direction} flex h-10 w-10 items-center justify-center rounded-full border border-blog-neutral-200 text-xl text-blog-gray-500 transition hover:text-blog-purple dark:border-blog-neutral-700 dark:text-blog-gray-200`;
+  const sideClass =
+    direction === 'next'
+      ? 'right-0 translate-x-1/2'
+      : 'left-0 -translate-x-1/2';
+  button.className = `blog-carousel__control pointer-events-auto absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-blog-neutral-200 bg-white/80 text-xl text-blog-gray-500 shadow-sm transition hover:text-blog-purple dark:border-blog-neutral-700 dark:bg-blog-neutral-900/80 dark:text-blog-gray-200 ${sideClass}`;
   button.setAttribute('aria-label', direction === 'next' ? 'Next slide' : 'Previous slide');
+  button.setAttribute('data-carousel-control', direction);
+  if (direction === 'next') {
+    button.setAttribute('data-carousel-next', 'true');
+  } else {
+    button.setAttribute('data-carousel-prev', 'true');
+  }
   button.textContent = direction === 'next' ? '›' : '‹';
   return button;
 }
@@ -247,28 +256,31 @@ function renderShortNotesCarousel(notes, config) {
   }
 
   const section = document.createElement('section');
-  section.className = 'short-notes splide flex flex-col gap-4';
+  section.className = 'short-notes blog-carousel relative flex flex-col gap-4';
+  section.setAttribute('data-carousel', 'true');
 
   const heading = document.createElement('h2');
   heading.className = 'text-2xl font-semibold text-blog-gray-800 dark:text-blog-gray-100';
   heading.textContent = 'Short notes';
   section.appendChild(heading);
 
-  const trackWrapper = document.createElement('div');
-  trackWrapper.className = 'splide__track overflow-hidden';
-  section.appendChild(trackWrapper);
+  const viewport = document.createElement('div');
+  viewport.className = 'blog-carousel__viewport relative overflow-hidden';
+  viewport.setAttribute('data-carousel-viewport', 'true');
+  section.appendChild(viewport);
 
   const list = document.createElement('ul');
-  list.className = 'splide__list flex gap-4';
+  list.className = 'blog-carousel__track';
   list.setAttribute('data-carousel-track', 'true');
-  trackWrapper.appendChild(list);
+  viewport.appendChild(list);
 
   const perPage = Math.min(notes.length, 3);
   const summariesLimit = config.shortFeedSummaryMaxChars || 300;
 
   notes.forEach((note) => {
     const item = document.createElement('li');
-    item.className = 'splide__slide flex flex-col gap-2 rounded-lg bg-blog-neutral-50 p-4 dark:bg-blog-neutral-900';
+    item.className =
+      'blog-carousel__slide flex flex-col gap-2 rounded-lg bg-blog-neutral-50 p-4 transition-colors dark:bg-blog-neutral-900';
     item.setAttribute('data-carousel-slide', 'true');
 
     const link = document.createElement('a');
@@ -291,8 +303,8 @@ function renderShortNotesCarousel(notes, config) {
 
   const prev = createArrowButton('prev');
   const next = createArrowButton('next');
-  section.appendChild(prev);
-  section.appendChild(next);
+  viewport.appendChild(prev);
+  viewport.appendChild(next);
 
   const carousel = createCarousel(section, {
     track: list,
@@ -381,8 +393,8 @@ function renderMainFeed(notes) {
   notes.forEach((note) => {
     const article = document.createElement('article');
     article.id = note.id;
-    article.className = 'flex flex-col gap-4 border-b border-blog-neutral-200 pb-8 last:border-b-0 dark:border-blog-neutral-800';
-    applyDynamicStyles(article, { scrollMarginTop: '6rem' }, { slot: 'anchor-offset' });
+    article.className =
+      'flex scroll-mt-24 flex-col gap-4 border-b border-blog-neutral-200 pb-8 last:border-b-0 dark:border-blog-neutral-800';
 
     const header = document.createElement('header');
     header.className = 'flex flex-col gap-2';
@@ -596,8 +608,7 @@ function mountBlogApp({ initZapthreadsEmbed = defaultInitZapthreadsEmbed } = {})
   }
 
   const main = document.createElement('main');
-  main.className = 'mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12';
-  applyDynamicStyles(main, { scrollPaddingTop: '6rem' }, { slot: 'scroll-padding' });
+  main.className = 'mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12 scroll-pt-24';
   main.appendChild(hero);
 
   const topNotes = config.topNotes > 0 ? notes.slice(0, config.topNotes) : [];
