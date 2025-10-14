@@ -1302,6 +1302,26 @@
     @apply grid gap-6 lg:gap-8;
   }
 
+  @media (min-width: 1024px) {
+    .video-modal__layout {
+      grid-template-columns:
+        minmax(0, var(--video-modal-primary-fr))
+        minmax(var(--video-modal-secondary-min), var(--video-modal-secondary-fr, 1fr));
+    }
+  }
+
+  .revert-modal__layout {
+    @apply grid gap-6;
+  }
+
+  @media (min-width: 1024px) {
+    .revert-modal__layout {
+      grid-template-columns:
+        minmax(var(--revert-modal-sidebar-min), var(--revert-modal-sidebar-width))
+        minmax(0, 1fr);
+    }
+  }
+
   .video-modal__primary {
     @apply flex flex-col gap-6;
   }

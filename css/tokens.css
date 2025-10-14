@@ -228,6 +228,11 @@
   --sidebar-mobile-gutter: 3rem;
   --popup-padding-inline: 1rem;
   --popup-padding-block: 0.75rem;
+  --video-modal-primary-fr: 1.85fr;
+  --video-modal-secondary-min: 260px;
+  --video-modal-secondary-fr: 1fr;
+  --revert-modal-sidebar-min: 240px;
+  --revert-modal-sidebar-width: 280px;
   /*
    * Layout width primitives
    * Keep overlay panels and blog shells within the viewport while
