@@ -135,6 +135,15 @@
   --space-sidebar-nav-translate: 0.35rem;
   --blog-embed-height: 100rem;
 
+  /* Progress primitives */
+  --progress-height-sm: 0.25rem;
+  --progress-height-md: 0.5rem;
+  --progress-radius: var(--radius-full);
+  --progress-track-color: var(--color-border-subtle);
+  --progress-fill-color: var(--color-info);
+  --progress-transition-duration: var(--motion-duration-fast);
+  --progress-transition-ease: var(--motion-ease-out);
+
   /* Blog palette */
   --color-blog-transparent: rgb(0 0 0 / 0);
   --color-blog-cyan-500: rgb(6 182 212);
@@ -221,8 +230,8 @@
   --blog-carousel-slide-background: var(--color-blog-neutral-50);
   --blog-carousel-slide-foreground: var(--color-blog-gray-900);
   --blog-carousel-slide-scale-inactive: 0.96;
-  --blog-carousel-progress-height: 0.25rem;
-  --blog-carousel-progress-radius: var(--radius-full);
+  --blog-carousel-progress-height: var(--progress-height-sm);
+  --blog-carousel-progress-radius: var(--progress-radius);
   --blog-carousel-progress-track: var(--color-border-translucent);
   --blog-carousel-progress-active: var(--color-blog-purple-500);
 

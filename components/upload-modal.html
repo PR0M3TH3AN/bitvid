@@ -2026,15 +2026,21 @@
                   </p>
                 </div>
                 <div class="space-y-2">
-                <div
-                  id="cloudflareProgressBar"
-                  class="hidden h-2 w-full overflow-hidden rounded-full bg-panel"
-                >
-                  <div
-                    id="cloudflareProgressFill"
-                    class="cloudflare-progress__fill h-full bg-info transition-all duration-150"
-                  ></div>
-                </div>
+                  <progress
+                    id="cloudflareProgress"
+                    class="progress progress--surface"
+                    max="100"
+                    value="0"
+                    data-variant="surface"
+                    aria-label="Cloudflare upload progress"
+                    hidden
+                  ></progress>
+                  <p
+                    id="cloudflareProgressStatus"
+                    class="sr-only"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
                   <p
                     id="cloudflareUploadStatus"
                     class="text-xs text-muted"
