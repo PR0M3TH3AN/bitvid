@@ -12,6 +12,26 @@ The new design system ships behind the `FEATURE_DESIGN_SYSTEM` runtime flag defi
 - **Runtime toggle:** Set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_DESIGN_SYSTEM = false` (or call `setFeatureDesignSystemEnabled(false)`) to temporarily fall back to the legacy primitives. The entrypoint automatically updates every `[data-ds]` container to `data-ds="new"` and notifies controllers.
 - **DOM contract:** Templates and partials must include `data-ds` on their root elements. Controllers should rely on the `designSystem` context (see `js/designSystem.js`) before attaching classes or behaviors that only exist in the new system.
 
+## Dynamic runtime styling
+
+Inline styles are blocked in production builds, so runtime components that need bespoke coordinates or measurements must route their overrides through `js/designSystem/dynamicStyles.js`.
+
+- `registerScope(id, selectors)` creates (or reuses) a constructable stylesheet when supported, allocates a unique identifier, and injects empty rules scoped to `[data-ds-style-id="<id>"]`. Callers attach the attribute to any element that should inherit those rules.
+- `setVariables(id, tokens)` updates CSS custom properties on the registered scope. Pass CSS variable names (`"--floating-fallback-top"`) and string or number values—`setVariables` handles serialization and removes entries when they resolve to empty strings.
+- `releaseScope(id)` removes the generated rules and frees the identifier. Always invoke it from component teardown paths to avoid leaking rules between renders.
+
+The floating panel utility and design-system metrics both lean on this helper:
+
+- `createFloatingPanelStyles` assigns each popover a unique scope and publishes fallback coordinates through CSS variables instead of mutating `.style`. Positioning logic reads and writes the same API, and teardown releases the scope before removing dataset attributes.
+- `readDesignTokenAsPixels` measures non-`px`/`rem` tokens with an offscreen probe that ships in core CSS (`.ds-metric-probe`). The probe is registered through the helper so dynamic lengths are fed into `--ds-metric-probe-length` without touching inline styles.
+
+When introducing a new runtime feature that requires dynamic styling:
+
+1. Register a dedicated scope during setup and attach the returned attribute to the relevant DOM node.
+2. Update custom properties with `setVariables` instead of touching `.style` or appending `<style>` tags.
+3. Clean up by calling `releaseScope` when the component unmounts.
+4. Prefer reusable primitives (like `.ds-metric-probe`) for offscreen measurement or layout shims so multiple components can share the same CSS.
+
 ## Theming
 
 ### `[data-theme]` contract

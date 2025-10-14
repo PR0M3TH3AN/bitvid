@@ -39,10 +39,7 @@ const IGNORED_FILES = new Set([
   "sw.min.js",
 ]);
 
-const VIOLATION_ALLOWLIST = new Map([
-  ["js/ui/utils/floatingPanelStyles.js", new Set(["Direct .style usage"])],
-  ["js/designSystem/metrics.js", new Set(["Direct .style usage"])],
-]);
+const VIOLATION_ALLOWLIST = new Map();
 
 const TEXT_EXTENSIONS = new Set([
   ".astro",
