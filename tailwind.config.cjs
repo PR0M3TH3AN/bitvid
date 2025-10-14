@@ -328,6 +328,10 @@ module.exports = {
       height: {
         "modal-embed": "var(--modal-embed-height)"
       },
+      minHeight: {
+        "modal-pane": "var(--modal-pane-min-height)",
+        "status-log": "var(--status-log-min-height)"
+      },
       minWidth: {
         menu: "var(--menu-min-width)",
         "grid-card": "var(--grid-card-min-width)"
