@@ -188,8 +188,8 @@ test("MediaLoader clears unsupported lazy targets without inline styles", async 
   ]);
 
   assert.equal(
-    div.style.backgroundImage,
-    "",
+    div.hasAttribute("style"),
+    false,
     "background image styles should not be injected at runtime",
   );
   assert.ok(!observer.observed.has(div));

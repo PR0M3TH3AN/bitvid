@@ -3,6 +3,14 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import positionFloatingPanel from "../js/ui/utils/positionFloatingPanel.js";
 
+function getInlineStyleValue(element, property) {
+  const styleAttr = element.getAttribute("style") || "";
+  const escapedProperty = property.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+  const pattern = new RegExp(`(?:^|;)\\s*${escapedProperty}\\s*:\\s*([^;]+)`, "i");
+  const match = styleAttr.match(pattern);
+  return match ? match[1].trim() : "";
+}
+
 test("flips to top when bottom placement collides with viewport", () => {
   const dom = new JSDOM(
     `
@@ -54,9 +62,9 @@ test("flips to top when bottom placement collides with viewport", () => {
   positioner.update();
 
   assert.equal(panel.dataset.floatingPlacement, "top");
-  assert.equal(panel.style.position, "fixed");
-  assert.equal(panel.style.getPropertyValue("--floating-fallback-top"), "132px");
-  assert.equal(panel.style.getPropertyValue("--floating-fallback-left"), "100px");
+  assert.equal(getInlineStyleValue(panel, "position"), "fixed");
+  assert.equal(getInlineStyleValue(panel, "--floating-fallback-top"), "132px");
+  assert.equal(getInlineStyleValue(panel, "--floating-fallback-left"), "100px");
 
   positioner.destroy();
   assert.equal(panel.dataset.floatingPanel, undefined);
@@ -118,7 +126,7 @@ test("respects RTL alignment and clamps within the viewport", () => {
   // In RTL mode, start alignment hugs the right edge of the trigger.
   assert.equal(panel.dataset.floatingPlacement, "bottom");
   assert.equal(panel.dataset.floatingDir, "rtl");
-  assert.equal(panel.style.getPropertyValue("--floating-fallback-left"), "140px");
+  assert.equal(getInlineStyleValue(panel, "--floating-fallback-left"), "140px");
 
   positioner.destroy();
 });
@@ -182,12 +190,12 @@ test("updates when scroll containers move the trigger", async () => {
   panel.dataset.state = "open";
   positioner.update();
 
-  assert.equal(panel.style.getPropertyValue("--floating-fallback-top"), "152px");
+  assert.equal(getInlineStyleValue(panel, "--floating-fallback-top"), "152px");
   assert.ok(scrollHandler, "scroll listener should be registered");
 
   anchorTop = 60;
   scrollHandler?.({ type: "scroll" });
-  assert.equal(panel.style.getPropertyValue("--floating-fallback-top"), "112px");
+  assert.equal(getInlineStyleValue(panel, "--floating-fallback-top"), "112px");
 
   positioner.destroy();
   window.addEventListener = originalAddEventListener;
