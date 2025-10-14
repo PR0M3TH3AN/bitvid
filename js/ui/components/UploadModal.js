@@ -2,10 +2,6 @@
 
 import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
-import {
-  applyDynamicStyles,
-  removeDynamicStyles,
-} from "../styleSystem.js";
 
 export class UploadModal {
   constructor({
@@ -67,8 +63,8 @@ export class UploadModal {
     this.cloudflareFileInput = null;
     this.cloudflareUploadButton = null;
     this.cloudflareUploadStatus = null;
-    this.cloudflareProgressBar = null;
-    this.cloudflareProgressFill = null;
+    this.cloudflareProgress = null;
+    this.cloudflareProgressStatus = null;
     this.cloudflareTitleInput = null;
     this.cloudflareDescriptionInput = null;
     this.cloudflareThumbnailInput = null;
@@ -216,10 +212,10 @@ export class UploadModal {
       context.querySelector("#cloudflareUploadButton") || null;
     this.cloudflareUploadStatus =
       context.querySelector("#cloudflareUploadStatus") || null;
-    this.cloudflareProgressBar =
-      context.querySelector("#cloudflareProgressBar") || null;
-    this.cloudflareProgressFill =
-      context.querySelector("#cloudflareProgressFill") || null;
+    this.cloudflareProgress =
+      context.querySelector("#cloudflareProgress") || null;
+    this.cloudflareProgressStatus =
+      context.querySelector("#cloudflareProgressStatus") || null;
     this.cloudflareTitleInput =
       context.querySelector("#cloudflareTitle") || null;
     this.cloudflareDescriptionInput =
@@ -757,31 +753,45 @@ export class UploadModal {
   }
 
   updateCloudflareProgress(fraction) {
-    if (!this.cloudflareProgressBar || !this.cloudflareProgressFill) {
+    if (!this.cloudflareProgress) {
       this.emit("upload:r2-progress", { fraction: null });
       return;
     }
 
     if (!Number.isFinite(fraction) || fraction < 0) {
-      this.cloudflareProgressBar.classList.add("hidden");
-      this.cloudflareProgressBar.setAttribute("aria-hidden", "true");
-      removeDynamicStyles(this.cloudflareProgressFill, { slot: "r2-progress" });
-      this.cloudflareProgressFill.setAttribute("aria-valuenow", "0");
+      this.cloudflareProgress.value = 0;
+      delete this.cloudflareProgress.dataset.progress;
+      this.cloudflareProgress.dataset.state = "idle";
+      this.cloudflareProgress.hidden = true;
+      this.cloudflareProgress.setAttribute(
+        "aria-valuetext",
+        "Upload progress unavailable",
+      );
+      this.cloudflareProgress.setAttribute("aria-hidden", "true");
+      if (this.cloudflareProgressStatus) {
+        this.cloudflareProgressStatus.textContent = "";
+      }
       this.emit("upload:r2-progress", { fraction: null });
       return;
     }
 
     const clamped = Math.max(0, Math.min(1, fraction));
     const percent = Math.round(clamped * 100);
+    const state = percent >= 100 ? "complete" : "active";
+    const valueText = `Upload ${percent}% complete`;
 
-    this.cloudflareProgressBar.classList.remove("hidden");
-    this.cloudflareProgressBar.setAttribute("aria-hidden", "false");
-    applyDynamicStyles(
-      this.cloudflareProgressFill,
-      { "--cloudflare-progress-width": `${percent}%` },
-      { slot: "r2-progress" },
-    );
-    this.cloudflareProgressFill.setAttribute("aria-valuenow", `${percent}`);
+    this.cloudflareProgress.max = 100;
+    this.cloudflareProgress.value = percent;
+    this.cloudflareProgress.dataset.progress = String(percent);
+    this.cloudflareProgress.dataset.state = state;
+    this.cloudflareProgress.hidden = false;
+    this.cloudflareProgress.setAttribute("aria-hidden", "false");
+    this.cloudflareProgress.setAttribute("aria-valuetext", valueText);
+
+    if (this.cloudflareProgressStatus) {
+      this.cloudflareProgressStatus.textContent = valueText;
+    }
+
     this.emit("upload:r2-progress", { fraction: clamped });
   }
 

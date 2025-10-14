@@ -1,5 +1,3 @@
-import { applyDynamicStyles } from '../ui/styleSystem.js';
-
 export function mountProgressBar(
   container,
   { initialDuration = 0, autoStart = false, onComplete } = {},
@@ -12,9 +10,16 @@ export function mountProgressBar(
   wrapper.className =
     'splide__progress mt-2 h-1 w-full overflow-hidden rounded-full bg-blog-neutral-100 dark:bg-blog-neutral-800';
 
-  const fill = document.createElement('div');
-  fill.className = 'splide__progress__bar h-full bg-blog-purple transition-none';
-  wrapper.appendChild(fill);
+  const meter = document.createElement('progress');
+  meter.className = 'splide__progress__bar progress progress--blog transition-none';
+  meter.max = 100;
+  meter.value = 0;
+  meter.dataset.progress = '0';
+  meter.dataset.state = 'idle';
+  meter.setAttribute('data-variant', 'blog');
+  meter.setAttribute('aria-label', 'Carousel progress');
+  meter.setAttribute('aria-valuetext', 'Carousel progress 0% complete');
+  wrapper.appendChild(meter);
   container.appendChild(wrapper);
 
   let duration = Math.max(0, initialDuration);
@@ -22,22 +27,36 @@ export function mountProgressBar(
   let startTimestamp = null;
   let completeHandler = typeof onComplete === 'function' ? onComplete : null;
 
-  function updateWidth(ratio) {
-    const width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
-    applyDynamicStyles(fill, { width }, { slot: 'width' });
-  }
-
-  function stop() {
+  function cancelAnimation() {
     if (rafId !== null) {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
+  }
+
+  function setState(state) {
+    meter.dataset.state = state;
+  }
+
+  function updateMeter(ratio) {
+    const clamped = Math.max(0, Math.min(1, ratio));
+    const percent = Math.round(clamped * 100);
+    meter.value = percent;
+    meter.dataset.progress = String(percent);
+    meter.setAttribute('aria-valuetext', `Carousel progress ${percent}% complete`);
+    return clamped;
+  }
+
+  function stop() {
+    cancelAnimation();
     startTimestamp = null;
+    setState('paused');
   }
 
   function reset() {
     stop();
-    updateWidth(0);
+    updateMeter(0);
+    setState('idle');
   }
 
   function step(timestamp) {
@@ -46,16 +65,19 @@ export function mountProgressBar(
     }
     const elapsed = timestamp - startTimestamp;
     const ratio = duration > 0 ? Math.min(1, elapsed / duration) : 1;
-    updateWidth(ratio);
+    const progress = updateMeter(ratio);
 
-    if (ratio >= 1) {
-      stop();
+    if (progress >= 1) {
+      cancelAnimation();
+      startTimestamp = null;
+      setState('complete');
       if (completeHandler) {
         completeHandler();
       }
       return;
     }
 
+    setState('active');
     rafId = requestAnimationFrame(step);
   }
 
@@ -63,17 +85,19 @@ export function mountProgressBar(
     duration = Math.max(0, nextDuration);
     reset();
     if (duration === 0) {
-      updateWidth(1);
+      updateMeter(1);
+      setState('complete');
       if (completeHandler) {
         completeHandler();
       }
       return;
     }
+    setState('active');
     rafId = requestAnimationFrame(step);
   }
 
   function destroy() {
-    stop();
+    cancelAnimation();
     wrapper.remove();
   }
 
@@ -89,6 +113,7 @@ export function mountProgressBar(
 
   return {
     element: wrapper,
+    meter,
     start,
     stop,
     reset,

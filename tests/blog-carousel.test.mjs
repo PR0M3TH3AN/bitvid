@@ -198,60 +198,87 @@ describe('progress bar', () => {
     env.cleanup();
   });
 
-  test('mountProgressBar renders structure with dynamic width styles', () => {
+  test('mountProgressBar renders semantic progress meter without style injection', () => {
     const progress = mountProgressBar(container, { initialDuration: 500, autoStart: false });
     assert.ok(progress, 'progress instance should be returned');
 
     const wrapper = container.querySelector('.splide__progress');
     assert.ok(wrapper, 'wrapper element should be appended');
-    const fill = wrapper.querySelector('.splide__progress__bar');
-    assert.ok(fill, 'fill element should be created');
+    const meter = wrapper.querySelector('progress.splide__progress__bar');
+    assert.ok(meter, 'progress meter should be created');
+    assert.strictEqual(meter.max, 100, 'progress meter should expose a 0-100 range');
+    assert.strictEqual(meter.value, 0, 'progress meter should start at zero');
+    assert.strictEqual(meter.dataset.state, 'idle');
+    assert.strictEqual(meter.dataset.progress, '0');
+    assert.strictEqual(
+      meter.getAttribute('aria-valuetext'),
+      'Carousel progress 0% complete',
+      'progress meter should emit accessible status text',
+    );
 
     progress.reset();
-    const cssRules = readDynamicStyleRules(env.document);
-    assert.match(cssRules, /width:\s*0%/);
 
-    assertNoInlineStyleAttributes([container, wrapper, fill], 'progress element');
+    assert.strictEqual(readDynamicStyleRules(env.document), '', 'no dynamic style rules should be injected');
+    assert.strictEqual(env.document.getElementById('bitvid-style-system'), null);
+
+    assertNoInlineStyleAttributes([container, wrapper, meter], 'progress element');
   });
 
   test('autoStart runs animation and triggers completion callback', () => {
     const onComplete = createSpy();
     const progress = mountProgressBar(container, { initialDuration: 600, autoStart: true, onComplete });
     const wrapper = progress.element;
-    const fill = wrapper.querySelector('.splide__progress__bar');
-    assert.ok(Array.from(fill.classList).some((className) => className.startsWith('bvds-')));
+    const meter = wrapper.querySelector('progress.splide__progress__bar');
+    assert.ok(meter, 'progress meter should exist when autoStart is enabled');
 
-    assertNoInlineStyleAttributes([container, wrapper, fill], 'progress element');
+    assertNoInlineStyleAttributes([container, wrapper, meter], 'progress element');
 
     env.raf.step(0);
     env.raf.step(300);
     assert.strictEqual(onComplete.callCount, 0);
+    assert.ok(meter.value > 0 && meter.value < 100, 'meter should report intermediate progress');
+    assert.strictEqual(meter.dataset.state, 'active');
 
     env.raf.step(300);
     assert.strictEqual(onComplete.callCount, 1);
+    assert.strictEqual(meter.value, 100);
+    assert.strictEqual(meter.dataset.state, 'complete');
+    assert.strictEqual(meter.dataset.progress, '100');
 
-    const cssRules = readDynamicStyleRules(env.document);
-    assert.match(cssRules, /width:\s*100%/);
+    assert.strictEqual(readDynamicStyleRules(env.document), '', 'no dynamic style rules should be injected');
+    assert.strictEqual(env.document.getElementById('bitvid-style-system'), null);
   });
 
   test('manual controls support stop, restart, and cleanup', () => {
     const onComplete = createSpy();
     const progress = mountProgressBar(container, { initialDuration: 800, onComplete });
+    const meter = progress.element.querySelector('progress.splide__progress__bar');
 
     progress.start(800);
     env.raf.step(0);
     env.raf.step(400);
+    assert.strictEqual(meter.value, 50, 'halfway through should yield a 50% reading');
+    assert.strictEqual(meter.dataset.state, 'active');
+
     progress.stop();
+    assert.strictEqual(meter.dataset.state, 'paused');
+    const pausedValue = meter.value;
+
     env.raf.step(600);
+    assert.strictEqual(meter.value, pausedValue, 'progress should not advance after stop');
     assert.strictEqual(onComplete.callCount, 0, 'stop should cancel pending completion');
 
     progress.setOnComplete(onComplete);
     progress.start(0);
     assert.strictEqual(onComplete.callCount, 1, 'zero duration should fire completion immediately');
+    assert.strictEqual(meter.value, 100);
+    assert.strictEqual(meter.dataset.state, 'complete');
 
     progress.destroy();
     assert.strictEqual(container.children.length, 0, 'destroy should remove wrapper from DOM');
 
+    assert.strictEqual(readDynamicStyleRules(env.document), '', 'no dynamic style rules should be injected');
+    assert.strictEqual(env.document.getElementById('bitvid-style-system'), null);
     assertNoInlineStyleAttributes([container], 'progress container');
   });
 });

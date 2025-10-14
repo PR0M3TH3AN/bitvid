@@ -1,10 +1,6 @@
 import { createModalAccessibility } from "./modalAccessibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
-import {
-  applyDynamicStyles,
-  removeDynamicStyles,
-} from "../styleSystem.js";
 
 export class VideoModal {
   constructor({
@@ -39,6 +35,7 @@ export class VideoModal {
     this.modalVideo = null;
     this.modalStatus = null;
     this.modalProgress = null;
+    this.modalProgressStatus = null;
     this.modalPeers = null;
     this.modalSpeed = null;
     this.modalDownloaded = null;
@@ -240,6 +237,8 @@ export class VideoModal {
     this.modalVideo = playerModal.querySelector("#modalVideo") || null;
     this.modalStatus = playerModal.querySelector("#modalStatus") || null;
     this.modalProgress = playerModal.querySelector("#modalProgress") || null;
+    this.modalProgressStatus =
+      playerModal.querySelector("#modalProgressStatus") || null;
     this.modalPeers = playerModal.querySelector("#modalPeers") || null;
     this.modalSpeed = playerModal.querySelector("#modalSpeed") || null;
     this.modalDownloaded =
@@ -666,26 +665,46 @@ export class VideoModal {
     if (!this.modalProgress) {
       return;
     }
+
+    let nextValue = null;
+
     if (typeof value === "number" && Number.isFinite(value)) {
-      applyDynamicStyles(
-        this.modalProgress,
-        { "--progress-width": `${Math.max(0, value)}%` },
-        { slot: "progress" },
-      );
-      return;
-    }
-    if (typeof value === "string") {
+      nextValue = value;
+    } else if (typeof value === "string") {
       const trimmed = value.trim();
       if (trimmed) {
-        applyDynamicStyles(
-          this.modalProgress,
-          { "--progress-width": trimmed },
-          { slot: "progress" },
-        );
-        return;
+        const parsed = Number.parseFloat(trimmed);
+        if (Number.isFinite(parsed)) {
+          nextValue = parsed;
+        }
       }
     }
-    removeDynamicStyles(this.modalProgress, { slot: "progress" });
+
+    if (!Number.isFinite(nextValue)) {
+      this.modalProgress.value = 0;
+      delete this.modalProgress.dataset.progress;
+      this.modalProgress.dataset.state = "idle";
+      this.modalProgress.setAttribute(
+        "aria-valuetext",
+        "Download progress unavailable",
+      );
+      if (this.modalProgressStatus) {
+        this.modalProgressStatus.textContent = "";
+      }
+      return;
+    }
+
+    const clamped = Math.max(0, Math.min(100, nextValue));
+    this.modalProgress.max = 100;
+    this.modalProgress.value = clamped;
+    this.modalProgress.dataset.progress = String(clamped);
+    const state = clamped >= 100 ? "complete" : "active";
+    this.modalProgress.dataset.state = state;
+    const valueText = `Download ${clamped}% complete`;
+    this.modalProgress.setAttribute("aria-valuetext", valueText);
+    if (this.modalProgressStatus) {
+      this.modalProgressStatus.textContent = valueText;
+    }
   }
 
   setCopyEnabled(enabled) {

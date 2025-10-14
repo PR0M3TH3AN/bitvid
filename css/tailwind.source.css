@@ -197,6 +197,68 @@
     @apply pointer-events-none cursor-not-allowed opacity-60 shadow-none;
   }
 
+  .progress,
+  [data-progress-meter] {
+    --progress-height: var(--progress-height-md);
+    --progress-track: var(--progress-track-color);
+    --progress-fill: var(--progress-fill-color);
+    --progress-radius-current: var(--progress-radius);
+    display: block;
+    width: 100%;
+    height: var(--progress-height);
+    border: none;
+    border-radius: var(--progress-radius-current);
+    overflow: hidden;
+    background-color: var(--progress-track);
+    appearance: none;
+  }
+
+  .progress::-webkit-progress-bar,
+  [data-progress-meter]::-webkit-progress-bar {
+    background-color: var(--progress-track);
+    border-radius: var(--progress-radius-current);
+  }
+
+  .progress::-webkit-progress-value,
+  [data-progress-meter]::-webkit-progress-value {
+    background-color: var(--progress-fill);
+    border-radius: var(--progress-radius-current);
+    transition: width var(--progress-transition-duration)
+      var(--progress-transition-ease);
+  }
+
+  .progress::-moz-progress-bar,
+  [data-progress-meter]::-moz-progress-bar {
+    background-color: var(--progress-fill);
+    border-radius: var(--progress-radius-current);
+    transition: width var(--progress-transition-duration)
+      var(--progress-transition-ease);
+  }
+
+  .progress[data-variant="surface"],
+  [data-progress-meter][data-variant="surface"],
+  .progress.progress--surface,
+  [data-progress-meter].progress--surface {
+    --progress-track: var(--color-panel);
+  }
+
+  .progress[data-variant="accent"],
+  [data-progress-meter][data-variant="accent"],
+  .progress.progress--accent,
+  [data-progress-meter].progress--accent {
+    --progress-fill: var(--color-info-strong);
+  }
+
+  .progress[data-variant="blog"],
+  [data-progress-meter][data-variant="blog"],
+  .progress.progress--blog,
+  [data-progress-meter].progress--blog {
+    --progress-height: var(--blog-carousel-progress-height);
+    --progress-track: var(--blog-carousel-progress-track);
+    --progress-fill: var(--blog-carousel-progress-active);
+    --progress-radius-current: var(--blog-carousel-progress-radius);
+  }
+
   .btn-ghost {
     @apply btn border border-border border-opacity-60 bg-transparent text-text shadow-none;
   }
@@ -3525,8 +3587,12 @@
     display: none;
   }
 
+  .blog-app-root .splide__progress {
+    border-radius: var(--blog-carousel-progress-radius);
+  }
+
   .blog-app-root .splide__progress__bar {
-    width: 0;
+    width: 100%;
   }
 
   .blog-app-root .splide {
@@ -3734,8 +3800,8 @@
   }
 
   .blog-app-root .splide__progress__bar {
-    background: var(--color-blog-gray-210);
-    height: var(--outline-thick-width);
+    height: var(--blog-carousel-progress-height);
+    background: transparent;
   }
 
   .blog-app-root .splide__slide {

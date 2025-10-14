@@ -81,6 +81,8 @@
                   <div
                     id="modalStatus"
                     class="video-modal__status text-sm text-muted lg:text-right"
+                    role="status"
+                    aria-live="polite"
                   >
                     Initializing... Just give it a sec.
                   </div>
@@ -386,11 +388,21 @@
           <aside class="video-modal__secondary flex flex-col gap-4">
             <div class="watch-container">
               <div class="video-modal__stats rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5 shadow-sm">
-                <div class="video-modal__progress h-2 w-full overflow-hidden rounded-full bg-border-subtle">
-                  <div
+                <div class="video-modal__progress">
+                  <progress
                     id="modalProgress"
-                    class="modal-progress h-full rounded-full bg-info"
-                  ></div>
+                    class="progress"
+                    max="100"
+                    value="0"
+                    data-variant="accent"
+                    aria-label="Download progress"
+                  ></progress>
+                  <p
+                    id="modalProgressStatus"
+                    class="sr-only"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
                 </div>
                 <div class="video-modal__stat-metrics flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
                   <span id="modalPeers">Peers: 0</span>
