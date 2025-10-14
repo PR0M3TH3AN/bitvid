@@ -1,5 +1,6 @@
 import { normalizeDesignSystemContext } from "../designSystem.js";
 import positionFloatingPanel from "./utils/positionFloatingPanel.js";
+import { createFloatingPanelStyles } from "./utils/floatingPanelStyles.js";
 
 export default class MoreMenuController {
   constructor(options = {}) {
@@ -287,11 +288,13 @@ export default class MoreMenuController {
         }
 
         if (dropdown && !this.dropdownPositioners.has(dropdown)) {
+          const styles = createFloatingPanelStyles(dropdown);
           const positioner = positionFloatingPanel(button, dropdown, {
             placement: "bottom",
             alignment: "end",
             offset: 8,
             viewportPadding: 16,
+            styles,
           });
           this.dropdownPositioners.set(dropdown, positioner);
         }

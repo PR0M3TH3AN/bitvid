@@ -2,14 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import positionFloatingPanel from "../js/ui/utils/positionFloatingPanel.js";
-
-function getInlineStyleValue(element, property) {
-  const styleAttr = element.getAttribute("style") || "";
-  const escapedProperty = property.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-  const pattern = new RegExp(`(?:^|;)\\s*${escapedProperty}\\s*:\\s*([^;]+)`, "i");
-  const match = styleAttr.match(pattern);
-  return match ? match[1].trim() : "";
-}
+import { createFloatingPanelStyles } from "../js/ui/utils/floatingPanelStyles.js";
 
 test("flips to top when bottom placement collides with viewport", () => {
   const dom = new JSDOM(
@@ -52,9 +45,12 @@ test("flips to top when bottom placement collides with viewport", () => {
     offsetHeight: { value: 120 },
   });
 
+  const styles = createFloatingPanelStyles(panel);
+
   const positioner = positionFloatingPanel(trigger, panel, {
     offset: 8,
     viewportPadding: 12,
+    styles,
   });
 
   panel.hidden = false;
@@ -62,9 +58,9 @@ test("flips to top when bottom placement collides with viewport", () => {
   positioner.update();
 
   assert.equal(panel.dataset.floatingPlacement, "top");
-  assert.equal(getInlineStyleValue(panel, "position"), "fixed");
-  assert.equal(getInlineStyleValue(panel, "--floating-fallback-top"), "132px");
-  assert.equal(getInlineStyleValue(panel, "--floating-fallback-left"), "100px");
+  assert.equal(styles.getStrategy(), "fixed");
+  assert.deepEqual(styles.getFallbackPosition(), { top: 132, left: 100 });
+  assert.equal(panel.dataset.floatingMode, "fallback");
 
   positioner.destroy();
   assert.equal(panel.dataset.floatingPanel, undefined);
@@ -114,9 +110,12 @@ test("respects RTL alignment and clamps within the viewport", () => {
     offsetHeight: { value: 80 },
   });
 
+  const styles = createFloatingPanelStyles(panel);
+
   const positioner = positionFloatingPanel(trigger, panel, {
     alignment: "start",
     viewportPadding: 16,
+    styles,
   });
 
   panel.hidden = false;
@@ -126,7 +125,7 @@ test("respects RTL alignment and clamps within the viewport", () => {
   // In RTL mode, start alignment hugs the right edge of the trigger.
   assert.equal(panel.dataset.floatingPlacement, "bottom");
   assert.equal(panel.dataset.floatingDir, "rtl");
-  assert.equal(getInlineStyleValue(panel, "--floating-fallback-left"), "140px");
+  assert.deepEqual(styles.getFallbackPosition(), { top: 72 + 8, left: 140 });
 
   positioner.destroy();
 });
@@ -182,21 +181,88 @@ test("updates when scroll containers move the trigger", async () => {
     return originalAddEventListener.call(window, type, listener, options);
   };
 
+  const styles = createFloatingPanelStyles(panel);
+
   const positioner = positionFloatingPanel(trigger, panel, {
     offset: 12,
+    styles,
   });
 
   panel.hidden = false;
   panel.dataset.state = "open";
   positioner.update();
 
-  assert.equal(getInlineStyleValue(panel, "--floating-fallback-top"), "152px");
+  assert.deepEqual(styles.getFallbackPosition(), { top: 152, left: 40 });
   assert.ok(scrollHandler, "scroll listener should be registered");
 
   anchorTop = 60;
   scrollHandler?.({ type: "scroll" });
-  assert.equal(getInlineStyleValue(panel, "--floating-fallback-top"), "112px");
+  assert.deepEqual(styles.getFallbackPosition(), { top: 112, left: 40 });
 
   positioner.destroy();
   window.addEventListener = originalAddEventListener;
+});
+
+test("prefers anchor positioning when supported", () => {
+  const dom = new JSDOM(
+    `
+      <div class="popover">
+        <button id="trigger">Open</button>
+        <div id="panel" class="popover__panel" data-state="closed" hidden></div>
+      </div>
+    `,
+    { pretendToBeVisual: true },
+  );
+  const { window } = dom;
+  const { document } = window;
+
+  window.innerWidth = 640;
+  window.innerHeight = 480;
+
+  const trigger = document.getElementById("trigger");
+  const panel = document.getElementById("panel");
+
+  trigger.getBoundingClientRect = () => ({
+    top: 100,
+    bottom: 140,
+    left: 200,
+    right: 240,
+    width: 40,
+    height: 40,
+  });
+
+  panel.getBoundingClientRect = () => ({
+    top: 0,
+    bottom: 90,
+    left: 0,
+    right: 200,
+    width: 200,
+    height: 90,
+  });
+  Object.defineProperties(panel, {
+    offsetWidth: { value: 200 },
+    offsetHeight: { value: 90 },
+  });
+
+  const originalCSS = window.CSS;
+  window.CSS = {
+    supports: (value) =>
+      value === "anchor-name: --floating-panel" || value === "position-anchor: --floating-panel",
+  };
+
+  const positioner = positionFloatingPanel(trigger, panel, {
+    offset: 10,
+  });
+
+  panel.hidden = false;
+  panel.dataset.state = "open";
+  positioner.update();
+
+  assert.equal(panel.dataset.floatingMode, "anchor");
+  assert.equal(positioner.styles.getMode(), "anchor");
+  assert.equal(panel.dataset.floatingPlacement, "bottom");
+  assert.deepEqual(positioner.styles.getFallbackPosition(), { top: 150, left: 200 });
+
+  positioner.destroy();
+  window.CSS = originalCSS;
 });
