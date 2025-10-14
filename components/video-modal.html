@@ -72,14 +72,12 @@
             </div>
 
             <div class="watch-container">
-              <div class="video-modal__details flex flex-col gap-6">
+              <div class="modal-info-panel">
+                <div class="video-modal__details flex flex-col gap-6">
                 <div
                   class="video-modal__headline flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
                 >
-                  <h2
-                    id="videoTitle"
-                    class="video-modal__title text-2xl font-semibold leading-tight text-text sm:text-3xl"
-                  ></h2>
+                  <h2 id="videoTitle" class="video-modal__title"></h2>
                   <div
                     id="modalStatus"
                     class="video-modal__status text-sm text-muted lg:text-right"
@@ -91,10 +89,10 @@
                 <div
                   class="video-modal__meta flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div class="video-modal__meta-info flex flex-wrap items-center gap-3 text-sm text-muted">
-                    <span id="videoTimestamp">Posted just now</span>
-                    <span id="videoEditedTimestamp" class="hidden">Last edited just now</span>
-                    <span id="videoViewCount" class="video-modal__view-count">– views</span>
+                  <div class="video-modal__meta-info flex flex-wrap items-center gap-3">
+                    <span id="videoTimestamp" class="modal-meta">Posted just now</span>
+                    <span id="videoEditedTimestamp" class="modal-meta hidden">Last edited just now</span>
+                    <span id="videoViewCount" class="modal-meta modal-view-count">– views</span>
                   </div>
                 </div>
 
@@ -358,37 +356,29 @@
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div class="video-modal__channel flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5 shadow-sm">
-                <div class="flex items-center gap-4">
-                  <div class="video-modal__avatar h-14 w-14 overflow-hidden rounded-full bg-border-subtle">
+                <div class="channel-card">
+                  <div class="channel-card__avatar">
                     <img
                       id="creatorAvatar"
                       src=""
                       alt="Creator"
-                      class="h-full w-full cursor-pointer object-cover"
+                      class="cursor-pointer"
                     />
                   </div>
                   <div class="flex flex-col gap-1">
-                    <h3
-                      id="creatorName"
-                      class="cursor-pointer text-lg font-semibold text-text"
-                    >
+                    <h3 id="creatorName" class="channel-card__name cursor-pointer">
                       Creator Name
                     </h3>
-                    <p id="creatorNpub" class="text-sm text-muted">npub...</p>
+                    <p id="creatorNpub" class="channel-card__npub">npub...</p>
                   </div>
                 </div>
-              </div>
 
-              <div class="video-modal__description rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5">
-                <p
-                  id="videoDescription"
-                  class="whitespace-pre-wrap text-sm leading-relaxed text-text"
-                >
-                  No description available.
-                </p>
+                <div class="description-panel">
+                  <p id="videoDescription" class="whitespace-pre-wrap">
+                    No description available.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
