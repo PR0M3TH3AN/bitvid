@@ -881,20 +881,46 @@
     @apply video-modal__panel;
   }
 
-  .video-modal__nav {
-    @apply sticky top-0 z-[60] border-b border-border border-opacity-20 bg-surface bg-opacity-95 backdrop-blur-md;
+  #playerModal .modal-nav {
+    @apply sticky top-0 z-[60] transition-transform duration-150 translate-y-0;
+    background-color: var(--color-overlay-darker);
+    background-image: linear-gradient(
+      180deg,
+      var(--color-overlay-panel-gradient-start) 0%,
+      var(--color-overlay-panel-gradient-end) 100%
+    );
+    border-bottom: 1px solid var(--color-border-translucent);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
 
-  .video-modal__nav-bar {
-    @apply flex w-full items-center justify-between gap-3 px-2 py-2 sm:px-4;
+  #playerModal .modal-nav__bar {
+    @apply flex w-full items-center gap-3 px-2 py-2 sm:px-4;
   }
 
-  .video-modal__close {
-    @apply inline-flex h-10 w-10 items-center justify-center rounded-full bg-panel text-text transition duration-base ease-out hover:bg-panel-hover;
+  #playerModal .modal-nav__context {
+    @apply text-xs font-semibold uppercase tracking-wide text-muted;
   }
 
-  .modal-nav {
-    @apply video-modal__nav transition-transform duration-150 translate-y-0;
+  #playerModal .modal-nav .modal-actions {
+    @apply flex items-center gap-2;
+    margin-left: auto;
+  }
+
+  #playerModal .modal-nav .icon-button {
+    @apply inline-flex items-center justify-center rounded-full text-muted transition duration-150 ease-out;
+    width: 2.5rem;
+    height: 2.5rem;
+    background: var(--color-surface-tint-subtle);
+    border: 1px solid var(--color-border-translucent-medium);
+    color: var(--color-text-muted);
+  }
+
+  #playerModal .modal-nav .icon-button:hover,
+  #playerModal .modal-nav .icon-button:focus-visible {
+    background: var(--color-border-translucent-bright);
+    border-color: var(--color-border-translucent-strong);
+    color: var(--color-text);
   }
 
   .modal-nav--hidden {
