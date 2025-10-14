@@ -1,17 +1,51 @@
-import angular from "angular";
-import "angular-route";
-import "angular-sanitize";
-import "ng-file-upload/dist/ng-file-upload.js";
-import moment from "moment";
-import WebTorrent from "webtorrent/webtorrent.min.js";
+import { createBeaconApp } from "../app.js";
 
-// Ensure Angular modules register on the shared angular instance.
-const globalScope = typeof window !== "undefined" ? window : globalThis;
+function resolveWebTorrent() {
+  const globalScope =
+    (typeof window !== "undefined" && window) ||
+    (typeof globalThis !== "undefined" && globalThis) ||
+    null;
 
-const webTorrentInstance = WebTorrent && WebTorrent.default ? WebTorrent.default : WebTorrent;
+  if (globalScope && typeof globalScope.WebTorrent === "function") {
+    return globalScope.WebTorrent;
+  }
 
-globalScope.angular = angular;
-globalScope.moment = moment;
-globalScope.WebTorrent = webTorrentInstance;
+  throw new Error("WebTorrent runtime is not available on the global scope");
+}
 
-export { angular, moment, WebTorrent };
+let appInstance = null;
+
+function mountBeaconApp() {
+  if (appInstance) {
+    return appInstance;
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Beacon runtime requires a document environment");
+  }
+
+  const WebTorrentCtor = resolveWebTorrent();
+  appInstance = createBeaconApp({ documentRef: document, WebTorrentCtor });
+  appInstance.mount();
+  return appInstance;
+}
+
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+      try {
+        mountBeaconApp();
+      } catch (error) {
+        console.error("[beacon] Failed to mount app", error);
+      }
+    });
+  } else {
+    try {
+      mountBeaconApp();
+    } catch (error) {
+      console.error("[beacon] Failed to mount app", error);
+    }
+  }
+}
+
+export { createBeaconApp, mountBeaconApp };

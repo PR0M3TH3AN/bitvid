@@ -40,10 +40,6 @@ const IGNORED_FILES = new Set([
 ]);
 
 const VIOLATION_ALLOWLIST = new Map([
-  [
-    "torrent/dist/beacon.vendor.js",
-    new Set(["Direct .style usage", "style.cssText usage"]),
-  ],
   ["js/ui/utils/floatingPanelStyles.js", new Set(["Direct .style usage"])],
 ]);
 
