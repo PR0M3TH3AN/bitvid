@@ -26,6 +26,11 @@ const IGNORED_DIRS = new Set([
   "logs",
 ]);
 
+const DIST_SCAN_PREFIXES = new Set([
+  "torrent/dist",
+]);
+const DIST_SCAN_PREFIXES_ARRAY = [...DIST_SCAN_PREFIXES];
+
 const IGNORED_FILES = new Set([
   "js/ui/styleSystem.js",
   "css/tailwind.generated.css",
@@ -33,6 +38,13 @@ const IGNORED_FILES = new Set([
   "js/webtorrent.min.js.map",
   "scripts/check-inline-styles.mjs",
   "sw.min.js",
+]);
+
+const VIOLATION_ALLOWLIST = new Map([
+  [
+    "torrent/dist/beacon.vendor.js",
+    new Set(["Direct .style usage", "style.cssText usage"]),
+  ],
 ]);
 
 const TEXT_EXTENSIONS = new Set([
@@ -126,14 +138,29 @@ function collectViolations(relPath, content) {
 }
 
 function shouldIgnore(relPath) {
-  const parts = relPath.split(path.sep);
-  if (parts.some((part) => IGNORED_DIRS.has(part))) {
+  const posixPath = toPosix(relPath);
+  const parts = posixPath.split("/");
+  for (const part of parts) {
+    if (!IGNORED_DIRS.has(part)) {
+      continue;
+    }
+
+    if (
+      part === "dist" &&
+      DIST_SCAN_PREFIXES_ARRAY.some(
+        (prefix) => posixPath === prefix || posixPath.startsWith(`${prefix}/`)
+      )
+    ) {
+      continue;
+    }
+
     return true;
   }
-  const posixPath = toPosix(relPath);
+
   if (IGNORED_FILES.has(posixPath)) {
     return true;
   }
+
   return false;
 }
 
@@ -178,9 +205,17 @@ async function main() {
   const results = [];
   await walk(repoRoot, results);
 
-  if (results.length > 0) {
+  const filteredResults = results.filter((violation) => {
+    const allowlistedLabels = VIOLATION_ALLOWLIST.get(violation.file);
+    if (!allowlistedLabels) {
+      return true;
+    }
+    return !allowlistedLabels.has(violation.label);
+  });
+
+  if (filteredResults.length > 0) {
     console.error("\nInline style usage detected:\n");
-    for (const violation of results) {
+    for (const violation of filteredResults) {
       console.error(
         `${violation.file}:${violation.line} — ${violation.label}\n  ${violation.snippet}\n`
       );

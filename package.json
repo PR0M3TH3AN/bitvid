@@ -5,8 +5,9 @@
   "version": "1.0.0",
   "scripts": {
     "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
-    "build:beacon": "node scripts/build-beacon.mjs",
-    "ci:beacon": "npm run lint:inline-styles && npm run build:beacon",
+    "build:beacon:bundle": "node scripts/build-beacon.mjs",
+    "build:beacon": "npm run build:beacon:bundle && npm run lint:inline-styles",
+    "ci:beacon": "npm run build:beacon",
     "format": "prettier --cache --write css/tailwind.source.css css/tokens.css \"docs/**/*.html\" tailwind.config.cjs README.md",
     "lint": "npm run lint:css && npm run lint:hex && npm run lint:inline-styles",
     "lint:css": "stylelint css/tailwind.source.css css/tokens.css",

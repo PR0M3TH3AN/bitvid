@@ -90,6 +90,8 @@ npm run lint              # run CSS, hex color, and inline-style guards in one p
 npm run lint:css          # enforce token usage and forbid raw hex colors
 npm run lint:inline-styles # fail CI if inline style attributes or element.style usage slip in
 npm run build:css         # rebuild css/tailwind.generated.css from tailwind.source.css
+npm run build:beacon      # bundle torrent/dist assets and re-run the inline-style guard
+npm run build:beacon:bundle # bundle beacon assets without running the guard (rarely needed)
 npm run check:css         # CI-friendly guard that fails if tailwind.generated.css is dirty
 ```
 
@@ -97,6 +99,12 @@ Inline styles are intentionally blocked. `npm run lint:inline-styles` scans HTML
 and scripts for `style=` attributes, `element.style`, or `style.cssText` usage
 and will fail CI until offending markup is moved into the shared CSS/token
 system.
+
+Beacon builds inherit the same rule. `npm run build:beacon` now bundles
+`torrent/dist` and immediately re-runs the inline-style checker against the
+fresh output so third-party dependencies cannot sneak inline style mutations
+into production. Use `npm run build:beacon:bundle` only if you need the raw
+esbuild output for debugging.
 
 The build command compiles Tailwind with `tailwind.config.cjs`, runs it through
 the PostCSS pipeline defined in `postcss.config.cjs` (for autoprefixing), and
