@@ -11,33 +11,49 @@
   <div class="bv-modal__panel" tabindex="-1">
     <div class="player-modal__container video-modal__container">
       <div class="player-modal__content video-modal__panel flex flex-col gap-6">
-        <div
-          id="modalNav"
-          class="modal-nav modal-nav--visible video-modal__nav sticky top-0 z-60"
-        >
-          <div class="video-modal__nav-bar">
-            <button
-              id="closeModal"
-              type="button"
-              class="video-modal__close focus-ring"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="h-5 w-5"
-                aria-hidden="true"
-              >
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-              <span class="sr-only">Close player</span>
-            </button>
+        <div id="modalNav" class="modal-nav modal-nav--visible">
+          <div class="watch-container modal-nav__bar">
+            <div class="modal-nav__context">Now watching</div>
+            <div class="modal-actions">
+              <a href="/" class="icon-button focus-ring" aria-label="Return to home">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path d="M3 11L12 3l9 8" />
+                  <path d="M5 13v8h14v-8" />
+                  <path d="M9 21v-6h6v6" />
+                </svg>
+                <span class="sr-only">Return to home</span>
+              </a>
+              <button id="closeModal" type="button" class="icon-button focus-ring">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+                <span class="sr-only">Close player</span>
+              </button>
+            </div>
           </div>
         </div>
 
