@@ -41,6 +41,7 @@ const IGNORED_FILES = new Set([
 
 const VIOLATION_ALLOWLIST = new Map([
   ["js/ui/utils/floatingPanelStyles.js", new Set(["Direct .style usage"])],
+  ["js/designSystem/metrics.js", new Set(["Direct .style usage"])],
 ]);
 
 const TEXT_EXTENSIONS = new Set([

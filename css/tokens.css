@@ -134,6 +134,12 @@
   --space-sidebar-nav-padding-block: 0.7rem;
   --space-sidebar-subnav-padding-block: 0.55rem;
   --space-sidebar-nav-translate: 0.35rem;
+  --grid-card-min-width: 20rem;
+  --popover-backdrop-blur: 12px;
+  --toast-translate: 0.75rem;
+  --sidebar-mobile-gutter: 3rem;
+  --popup-padding-inline: 1rem;
+  --popup-padding-block: 0.75rem;
   --blog-embed-height: 100rem;
 
   /* Progress primitives */

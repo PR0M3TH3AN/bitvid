@@ -1,6 +1,10 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
+import {
+  getPopupOffsetPx,
+  getPopupViewportPaddingPx,
+} from "../../designSystem/metrics.js";
 
 export class VideoCard {
   constructor({
@@ -663,14 +667,25 @@ export class VideoCard {
       this.settingsButton = button;
       this.settingsDropdown = dropdown;
       this.settingsDropdownStyles = createFloatingPanelStyles(dropdown);
+      const metricsDocument =
+        dropdown?.ownerDocument ||
+        button?.ownerDocument ||
+        this.document ||
+        (typeof document !== "undefined" ? document : null);
+      const settingsOffset = getPopupOffsetPx({
+        documentRef: metricsDocument,
+      });
+      const settingsViewportPadding = getPopupViewportPaddingPx({
+        documentRef: metricsDocument,
+      });
       this.settingsDropdownPositioner = positionFloatingPanel(
         button,
         dropdown,
         {
           placement: "bottom",
           alignment: "end",
-          offset: 8,
-          viewportPadding: 16,
+          offset: settingsOffset,
+          viewportPadding: settingsViewportPadding,
           styles: this.settingsDropdownStyles,
         },
       );
@@ -877,11 +892,22 @@ export class VideoCard {
     this.moreMenuButton = button;
     this.moreMenu = dropdown;
     this.moreMenuStyles = createFloatingPanelStyles(dropdown);
+    const menuMetricsDocument =
+      dropdown?.ownerDocument ||
+      button?.ownerDocument ||
+      this.document ||
+      (typeof document !== "undefined" ? document : null);
+    const menuOffset = getPopupOffsetPx({
+      documentRef: menuMetricsDocument,
+    });
+    const menuViewportPadding = getPopupViewportPaddingPx({
+      documentRef: menuMetricsDocument,
+    });
     this.moreMenuPositioner = positionFloatingPanel(button, dropdown, {
       placement: "bottom",
       alignment: "end",
-      offset: 8,
-      viewportPadding: 16,
+      offset: menuOffset,
+      viewportPadding: menuViewportPadding,
       styles: this.moreMenuStyles,
     });
 

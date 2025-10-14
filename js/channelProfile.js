@@ -13,6 +13,10 @@ import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
 import positionFloatingPanel from "./ui/utils/positionFloatingPanel.js";
 import { createFloatingPanelStyles } from "./ui/utils/floatingPanelStyles.js";
+import {
+  getPopupOffsetPx,
+  getPopupViewportPaddingPx,
+} from "./designSystem/metrics.js";
 import { VideoCard } from "./ui/components/VideoCard.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import {
@@ -399,11 +403,19 @@ function openZapControls({ focus = false } = {}) {
   }
   if (!zapControlsPositioner) {
     const styles = createFloatingPanelStyles(controls);
+    const metricsDocument =
+      controls?.ownerDocument ||
+      zapButton?.ownerDocument ||
+      (typeof document !== "undefined" ? document : null);
+    const offset = getPopupOffsetPx({ documentRef: metricsDocument });
+    const viewportPadding = getPopupViewportPaddingPx({
+      documentRef: metricsDocument,
+    });
     zapControlsPositioner = positionFloatingPanel(zapButton, controls, {
       placement: "bottom",
       alignment: "end",
-      offset: 8,
-      viewportPadding: 16,
+      offset,
+      viewportPadding,
       styles,
     });
   }
