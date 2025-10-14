@@ -114,6 +114,10 @@ The `rg "transition"` audit surfaces the components that animate by default. Kee
 - **Feedback & loading:** `.progress-bar-fill`, `.status-spinner--inline`, and `.status-banner .status-spinner` communicate state changes with width transitions or spin animations. 【F:css/tailwind.source.css†L907-L948】
 - **Sidebar controls:** `.sidebar-nav-link`, `.sidebar-dropup-trigger`, `.sidebar-collapse-toggle`, and related chevrons/toggles translate, fade, and resize during rail expansion. 【F:css/tailwind.source.css†L1164-L1598】
 
+### Shadow inventory
+
+- `--color-shadow-intense` fuels the zap popover glow. Use `shadow-popover-intense` for matched geometry or `shadow-intense`/`drop-shadow-intense` when you only need the color component. 【F:css/tokens.css†L93-L101】【F:tailwind.config.cjs†L28-L32】【F:tailwind.config.cjs†L147-L157】
+
 ### Reduced-motion policy
 
 - A consolidated `@media (prefers-reduced-motion: reduce)` block now zeroes out transition and animation durations globally, removes motion-only transforms, and leaves opacity state changes in place so surfaces still show and hide instantly. 【F:css/tailwind.source.css†L1766-L1981】

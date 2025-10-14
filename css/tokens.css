@@ -94,6 +94,7 @@
   --color-shadow-elevated: rgb(8 11 30 / 0.45);
   --color-shadow-panel: rgb(15 23 42 / 0.35);
   --color-shadow-notification: rgb(15 23 42 / 0.3);
+  --color-shadow-intense: rgb(250 204 21 / 0.48);
   --color-shadow-sidebar: rgb(0 0 0 / 0.45);
   --color-divider-strong: rgb(15 23 42 / 0.35);
   --color-text-frosted-strong: rgb(226 232 240 / 0.94);
@@ -409,4 +410,5 @@
   --color-border-translucent-medium: rgb(148 163 184 / 0.2);
   --color-border-neutral-soft: rgb(148 163 184 / 0.25);
   --color-overlay-banner: rgb(148 163 184 / 0.7);
+  --color-shadow-intense: rgb(234 179 8 / 0.35);
 }
