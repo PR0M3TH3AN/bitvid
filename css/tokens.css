@@ -365,6 +365,7 @@
   --modal-sheet-max-height: 92vh;
   --modal-body-max-height: calc(92vh - 4rem);
   --modal-pane-max-height: 48vh;
+  --modal-embed-height: 80vh;
   --profile-history-max-height: 26.25rem;
   --layout-player-max-width: 68.75rem;
   --layout-docs-max-width: 92.5rem;
