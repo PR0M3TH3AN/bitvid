@@ -1275,7 +1275,7 @@ export class ProfileModalController {
       if (!entriesToRender.length) {
         listEl.setAttribute("data-profile-switcher-empty", "true");
         const helper = document.createElement("p");
-        helper.className = "text-sm text-gray-400";
+        helper.className = "text-sm text-muted";
         helper.textContent = "No other profiles saved yet.";
         helper.setAttribute("role", "note");
         listEl.appendChild(helper);
@@ -1309,7 +1309,7 @@ export class ProfileModalController {
 
           const avatarSpan = document.createElement("span");
           avatarSpan.className =
-            "flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-slate-500/50 bg-slate-900";
+            "flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-overlay-strong bg-overlay-panel-soft";
           const avatarImg = document.createElement("img");
           avatarImg.className = "h-full w-full object-cover";
           avatarImg.src = meta.picture || FALLBACK_PROFILE_AVATAR;
@@ -1327,23 +1327,23 @@ export class ProfileModalController {
 
           const label = document.createElement("span");
           label.className =
-            "text-3xs font-semibold uppercase tracking-extra-wide text-blue-200";
+            "text-3xs font-semibold uppercase tracking-extra-wide text-status-info";
           label.textContent =
             entry.authType === "nsec" ? "Direct key" : "Saved profile";
 
           const action = document.createElement("span");
-          action.className = "text-xs font-medium text-gray-400";
+          action.className = "text-xs font-medium text-muted";
           action.setAttribute("aria-hidden", "true");
           action.textContent = isSelected ? "Selected" : "Switch";
 
           topLine.append(label, action);
 
           const nameSpan = document.createElement("span");
-          nameSpan.className = "truncate text-sm font-semibold text-white";
+          nameSpan.className = "truncate text-sm font-semibold text-primary";
           nameSpan.textContent = cardDisplayName;
 
           const npubSpan = document.createElement("span");
-          npubSpan.className = "break-all font-mono text-xs text-gray-400";
+          npubSpan.className = "break-all font-mono text-xs text-muted";
           npubSpan.textContent = meta.npub
             ? truncate(meta.npub, 48)
             : "npub unavailable";
@@ -1507,7 +1507,7 @@ export class ProfileModalController {
     if (!relays.length) {
       const emptyState = document.createElement("li");
       emptyState.className =
-        "card border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400";
+        "card border border-dashed border-surface-strong p-4 text-center text-sm text-muted";
       emptyState.textContent = "No relays configured.";
       this.relayList.appendChild(emptyState);
       return;
@@ -1522,11 +1522,11 @@ export class ProfileModalController {
       info.className = "flex-1 min-w-0";
 
       const urlEl = document.createElement("p");
-      urlEl.className = "text-sm font-medium text-gray-100 break-all";
+      urlEl.className = "text-sm font-medium text-primary break-all";
       urlEl.textContent = entry.url;
 
       const statusEl = document.createElement("p");
-      statusEl.className = "mt-1 text-xs text-gray-400";
+      statusEl.className = "mt-1 text-xs text-muted";
       let modeLabel = "Read & write";
       if (entry.mode === "read") {
         modeLabel = "Read only";
@@ -1867,7 +1867,7 @@ export class ProfileModalController {
       info.className = "min-w-0 flex-1";
 
       const title = document.createElement("p");
-      title.className = "break-all text-sm font-medium text-gray-100";
+      title.className = "break-all text-sm font-medium text-primary";
       title.textContent = label;
 
       info.appendChild(title);
@@ -2167,13 +2167,19 @@ export class ProfileModalController {
 
     const element = this.walletStatusText;
     const variants = {
-      success: "text-green-400",
-      error: "text-red-400",
-      info: "text-gray-400",
+      success: "text-status-success",
+      error: "text-status-danger",
+      info: "text-status-info",
+      neutral: "text-status-neutral",
     };
 
-    element.classList.remove("text-gray-400", "text-green-400", "text-red-400");
-    const variantClass = variants[variant] || variants.info;
+    element.classList.remove(
+      "text-status-info",
+      "text-status-success",
+      "text-status-danger",
+      "text-status-neutral",
+    );
+    const variantClass = variants[variant] || variants.neutral;
     element.classList.add(variantClass);
     element.textContent = message || "";
   }
@@ -2644,7 +2650,7 @@ export class ProfileModalController {
         "card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between";
 
       const label = document.createElement("p");
-      label.className = "break-all text-sm font-medium text-gray-100";
+      label.className = "break-all text-sm font-medium text-primary";
       label.textContent = npub;
       item.appendChild(label);
 

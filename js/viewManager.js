@@ -118,7 +118,7 @@ export const viewInitRegistry = {
       const container = document.getElementById("subscriptionsVideoList");
       if (container) {
         container.innerHTML =
-          "<p class='text-gray-500'>Please log in to see your subscriptions.</p>";
+          "<p class='text-muted'>Please log in to see your subscriptions.</p>";
       }
       return;
     }

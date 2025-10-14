@@ -10,16 +10,17 @@ import { makeR2Client, multipartUpload } from "./storage/r2-s3.js";
 
 const STORAGE_KEY = "bitvid:quickR2Settings";
 const STATUS_CLASSNAMES = [
-  "text-gray-400",
-  "text-green-400",
-  "text-red-400",
-  "text-yellow-400",
+  "text-status-neutral",
+  "text-status-info",
+  "text-status-success",
+  "text-status-danger",
+  "text-status-warning",
 ];
 const STATUS_TONES = {
-  info: "text-gray-400",
-  success: "text-green-400",
-  error: "text-red-400",
-  warning: "text-yellow-400",
+  info: "text-status-info",
+  success: "text-status-success",
+  error: "text-status-danger",
+  warning: "text-status-warning",
 };
 
 function sanitizeDomain(value) {
@@ -71,7 +72,7 @@ function setStatus(el, message, tone = "info") {
     return;
   }
   STATUS_CLASSNAMES.forEach((cls) => el.classList.remove(cls));
-  const className = STATUS_TONES[tone] || STATUS_TONES.info;
+  const className = STATUS_TONES[tone] || "text-status-neutral";
   if (className) {
     el.classList.add(className);
   }
