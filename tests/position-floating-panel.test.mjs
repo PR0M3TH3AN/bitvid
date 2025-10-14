@@ -4,6 +4,23 @@ import { JSDOM } from "jsdom";
 import positionFloatingPanel from "../js/ui/utils/positionFloatingPanel.js";
 import { createFloatingPanelStyles } from "../js/ui/utils/floatingPanelStyles.js";
 
+function getScopeRule(document, scopeId) {
+  const styleEl = document.querySelector('style[data-ds-dynamic="true"]');
+  const rules = [];
+  if (styleEl?.sheet?.cssRules) {
+    rules.push(...Array.from(styleEl.sheet.cssRules));
+  }
+  const adoptedSheets = document.adoptedStyleSheets;
+  if (Array.isArray(adoptedSheets)) {
+    for (const sheet of adoptedSheets) {
+      if (sheet?.cssRules) {
+        rules.push(...Array.from(sheet.cssRules));
+      }
+    }
+  }
+  return rules.find((cssRule) => cssRule.selectorText === `[data-ds-style-id="${scopeId}"]`) || null;
+}
+
 test("flips to top when bottom placement collides with viewport", () => {
   const dom = new JSDOM(
     `
@@ -61,10 +78,20 @@ test("flips to top when bottom placement collides with viewport", () => {
   assert.equal(styles.getStrategy(), "fixed");
   assert.deepEqual(styles.getFallbackPosition(), { top: 132, left: 100 });
   assert.equal(panel.dataset.floatingMode, "fallback");
+  const scopeId = panel.getAttribute("data-ds-style-id");
+  assert.ok(scopeId, "panel should receive a dynamic style scope id");
+  const rule = getScopeRule(document, scopeId);
+  assert.ok(rule, "scope rule should exist for the floating panel");
+  const ruleStyleTop = rule ? rule["style"] : null;
+  assert.ok(ruleStyleTop, "floating panel rule should expose a CSSStyleDeclaration");
+  assert.equal(ruleStyleTop.getPropertyValue("--floating-fallback-top"), "132px");
+  assert.equal(ruleStyleTop.getPropertyValue("--floating-fallback-left"), "100px");
 
   positioner.destroy();
   assert.equal(panel.dataset.floatingPanel, undefined);
   assert.equal(trigger.dataset.floatingAnchor, undefined);
+  const ruleAfterDestroy = getScopeRule(document, scopeId);
+  assert.equal(ruleAfterDestroy, null);
 });
 
 test("respects RTL alignment and clamps within the viewport", () => {
@@ -194,10 +221,17 @@ test("updates when scroll containers move the trigger", async () => {
 
   assert.deepEqual(styles.getFallbackPosition(), { top: 152, left: 40 });
   assert.ok(scrollHandler, "scroll listener should be registered");
+  const scopeId = panel.getAttribute("data-ds-style-id");
+  const rule = getScopeRule(document, scopeId);
+  assert.ok(rule, "dynamic rule should be present for scroll updates");
+  const fallbackRuleStyle = rule ? rule["style"] : null;
+  assert.ok(fallbackRuleStyle, "dynamic rule should be present for scroll updates");
+  assert.equal(fallbackRuleStyle.getPropertyValue("--floating-fallback-top"), "152px");
 
   anchorTop = 60;
   scrollHandler?.({ type: "scroll" });
   assert.deepEqual(styles.getFallbackPosition(), { top: 112, left: 40 });
+  assert.equal(fallbackRuleStyle.getPropertyValue("--floating-fallback-top"), "112px");
 
   positioner.destroy();
   window.addEventListener = originalAddEventListener;

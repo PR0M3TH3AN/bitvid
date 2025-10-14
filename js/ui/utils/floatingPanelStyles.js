@@ -1,3 +1,10 @@
+import {
+  registerScope,
+  setVariables,
+  releaseScope,
+  getScopeAttributeName,
+} from "../../designSystem/dynamicStyles.js";
+
 const DEFAULT_STATE = {
   placement: "bottom",
   alignment: "start",
@@ -10,6 +17,8 @@ const DEFAULT_STATE = {
 
 const FALLBACK_TOP_VAR = "--floating-fallback-top";
 const FALLBACK_LEFT_VAR = "--floating-fallback-left";
+const SCOPE_BASE_ID = "floating-panel";
+const SCOPE_SELECTORS = [":scope"];
 
 function toCssPixel(value) {
   if (Number.isFinite(value)) {
@@ -36,18 +45,36 @@ function ensureDatasetValue(element, key, value) {
   element.dataset[key] = value;
 }
 
+function applyFallbackVariables(scopeId, variables) {
+  if (!scopeId) {
+    return;
+  }
+  setVariables(scopeId, variables);
+}
+
 export function createFloatingPanelStyles(panel) {
   const safePanel = panel || null;
   const state = { ...DEFAULT_STATE };
 
+  const documentRef = safePanel?.ownerDocument || null;
+  const scopeId = safePanel
+    ? registerScope(SCOPE_BASE_ID, SCOPE_SELECTORS, { documentRef })
+    : null;
+
   if (safePanel) {
     safePanel.dataset.floatingPanel = "true";
-    safePanel.style.setProperty(FALLBACK_TOP_VAR, "auto");
-    safePanel.style.setProperty(FALLBACK_LEFT_VAR, "auto");
+    if (scopeId) {
+      safePanel.setAttribute(getScopeAttributeName(), scopeId);
+      applyFallbackVariables(scopeId, {
+        [FALLBACK_TOP_VAR]: "auto",
+        [FALLBACK_LEFT_VAR]: "auto",
+      });
+    }
   }
 
   const api = {
     element: safePanel,
+    scopeId,
     setPlacement(value) {
       state.placement = typeof value === "string" && value ? value : DEFAULT_STATE.placement;
       ensureDatasetValue(safePanel, "floatingPlacement", state.placement);
@@ -91,9 +118,11 @@ export function createFloatingPanelStyles(panel) {
     setFallbackPosition({ top, left }) {
       state.fallbackTop = Number.isFinite(top) ? Number(top) : null;
       state.fallbackLeft = Number.isFinite(left) ? Number(left) : null;
-      if (safePanel) {
-        safePanel.style.setProperty(FALLBACK_TOP_VAR, toCssPixel(state.fallbackTop));
-        safePanel.style.setProperty(FALLBACK_LEFT_VAR, toCssPixel(state.fallbackLeft));
+      if (scopeId) {
+        applyFallbackVariables(scopeId, {
+          [FALLBACK_TOP_VAR]: toCssPixel(state.fallbackTop),
+          [FALLBACK_LEFT_VAR]: toCssPixel(state.fallbackLeft),
+        });
       }
       return { ...api.getFallbackPosition() };
     },
@@ -104,14 +133,17 @@ export function createFloatingPanelStyles(panel) {
       };
     },
     teardown() {
+      if (scopeId) {
+        applyFallbackVariables(scopeId, {
+          [FALLBACK_TOP_VAR]: "auto",
+          [FALLBACK_LEFT_VAR]: "auto",
+        });
+        releaseScope(scopeId);
+      }
       if (!safePanel) {
         return;
       }
-      safePanel.style.removeProperty(FALLBACK_TOP_VAR);
-      safePanel.style.removeProperty(FALLBACK_LEFT_VAR);
-      safePanel.style.removeProperty("right");
-      safePanel.style.removeProperty("bottom");
-      safePanel.style.removeProperty("position");
+      safePanel.removeAttribute(getScopeAttributeName());
       delete safePanel.dataset.floatingPanel;
       delete safePanel.dataset.floatingPlacement;
       delete safePanel.dataset.floatingAlignment;

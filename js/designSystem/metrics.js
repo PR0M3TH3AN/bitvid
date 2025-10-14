@@ -1,3 +1,9 @@
+import {
+  registerScope,
+  setVariables,
+  getScopeAttributeName,
+} from "./dynamicStyles.js";
+
 const TOKEN_FALLBACKS = {
   "--grid-card-min-width": "20rem",
   "--popover-backdrop-blur": "12px",
@@ -7,8 +13,13 @@ const TOKEN_FALLBACKS = {
   "--popup-padding-block": "0.75rem",
 };
 
+const PROBE_SCOPE_BASE = "metric-probe";
+const PROBE_LENGTH_VAR = "--ds-metric-probe-length";
+
+const PROBE_CACHE = new WeakMap();
+
 function resolveDocument(documentRef) {
-  if (documentRef && typeof documentRef === "object") {
+  if (documentRef && typeof documentRef === "object" && documentRef.nodeType === 9) {
     return documentRef;
   }
   return typeof globalThis.document === "object" ? globalThis.document : null;
@@ -60,10 +71,10 @@ export function readDesignToken(tokenName, { documentRef } = {}) {
     }
   }
 
-  if (doc?.documentElement?.style) {
-    const inlineValue = normalizeTokenValue(
-      doc.documentElement.style.getPropertyValue(token),
-    );
+  const root = doc?.documentElement || null;
+  const inlineStyles = root ? root["style"] : null;
+  if (inlineStyles) {
+    const inlineValue = normalizeTokenValue(inlineStyles.getPropertyValue(token));
     if (inlineValue) {
       return inlineValue;
     }
@@ -75,6 +86,47 @@ export function readDesignToken(tokenName, { documentRef } = {}) {
 function parsePixelValue(value) {
   const numeric = Number.parseFloat(value);
   return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function ensureProbe(documentRef) {
+  const doc = resolveDocument(documentRef);
+  if (!doc?.body) {
+    return null;
+  }
+
+  let record = PROBE_CACHE.get(doc);
+  if (record?.element?.isConnected) {
+    return record;
+  }
+
+  const element = doc.createElement("div");
+  element.className = "ds-metric-probe";
+
+  const scopeId = registerScope(PROBE_SCOPE_BASE, [":scope"], { documentRef: doc });
+  if (scopeId) {
+    element.setAttribute(getScopeAttributeName(), scopeId);
+    setVariables(scopeId, { [PROBE_LENGTH_VAR]: "0" });
+  }
+
+  doc.body.appendChild(element);
+  record = { element, scopeId };
+  PROBE_CACHE.set(doc, record);
+  return record;
+}
+
+function measureWithProbe(value, documentRef) {
+  const record = ensureProbe(documentRef);
+  if (!record?.element) {
+    return 0;
+  }
+  if (record.scopeId) {
+    setVariables(record.scopeId, { [PROBE_LENGTH_VAR]: value });
+  }
+  const measured = record.element.offsetHeight;
+  if (record.scopeId) {
+    setVariables(record.scopeId, { [PROBE_LENGTH_VAR]: "0" });
+  }
+  return Number.isFinite(measured) ? measured : 0;
 }
 
 function convertLengthToPixels(value, documentRef) {
@@ -107,23 +159,9 @@ function convertLengthToPixels(value, documentRef) {
     return rem * base;
   }
 
-  const doc = resolveDocument(documentRef);
-  if (doc?.createElement && doc?.body) {
-    try {
-      const probe = doc.createElement("div");
-      probe.style.position = "absolute";
-      probe.style.visibility = "hidden";
-      probe.style.width = "0";
-      probe.style.height = raw;
-      doc.body.appendChild(probe);
-      const measured = probe.offsetHeight;
-      doc.body.removeChild(probe);
-      if (Number.isFinite(measured)) {
-        return measured;
-      }
-    } catch (error) {
-      // Ignore measurement errors and fall through to numeric parsing.
-    }
+  const measured = measureWithProbe(raw, documentRef);
+  if (measured > 0) {
+    return measured;
   }
 
   return parsePixelValue(raw);
@@ -206,3 +244,4 @@ export const designMetrics = {
 };
 
 export default designMetrics;
+

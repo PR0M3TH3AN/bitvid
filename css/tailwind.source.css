@@ -121,6 +121,18 @@
     @apply flex items-center justify-start py-md;
   }
 
+  .ds-metric-probe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    pointer-events: none;
+    contain: layout size style;
+    inline-size: 0;
+    block-size: var(--ds-metric-probe-length, 0);
+    overflow: hidden;
+  }
+
   .ds-header__logo {
     @apply h-24 w-auto max-w-none;
   }
