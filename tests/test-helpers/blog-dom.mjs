@@ -78,7 +78,7 @@ export function installInlineStyleGuard(document) {
       prototype.setAttribute = function inlineStyleSafeSetAttribute(name, value) {
         if (typeof name === 'string' && name.toLowerCase() === 'style') {
           throw new Error(
-            'Inline style attributes are disabled in blog widget tests. Use applyDynamicStyles or CSS class toggles instead.',
+            'Inline style attributes are disabled in blog widget tests. Use CSS classes or data attributes instead.',
           );
         }
         return original.call(this, name, value);
@@ -93,7 +93,7 @@ export function installInlineStyleGuard(document) {
       prototype.setAttributeNS = function inlineStyleSafeSetAttributeNS(namespace, name, value) {
         if (typeof name === 'string' && name.toLowerCase() === 'style') {
           throw new Error(
-            'Inline style attributes are disabled in blog widget tests. Use applyDynamicStyles or CSS class toggles instead.',
+            'Inline style attributes are disabled in blog widget tests. Use CSS classes or data attributes instead.',
           );
         }
         return original.call(this, namespace, name, value);
@@ -116,12 +116,12 @@ export function installInlineStyleGuard(document) {
     Object.defineProperty(element, 'style', {
       get() {
         throw new Error(
-          'Inline style access is disabled in blog widget tests. Use applyDynamicStyles or CSS class toggles instead.',
+          'Inline style access is disabled in blog widget tests. Use CSS classes or data attributes instead.',
         );
       },
       set() {
         throw new Error(
-          'Inline style assignment is disabled in blog widget tests. Use applyDynamicStyles or CSS class toggles instead.',
+          'Inline style assignment is disabled in blog widget tests. Use CSS classes or data attributes instead.',
         );
       },
       configurable: true,

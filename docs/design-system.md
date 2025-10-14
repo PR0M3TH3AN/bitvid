@@ -43,6 +43,40 @@ The blog embed now consumes dedicated typography and spacing tokens alongside Ta
 
 Templates should reference these tokens (directly or via Tailwind arbitrary values) instead of hard-coded measurements so the embed stays in sync with future blog refreshes.
 
+### Blog carousel markup
+
+The short-notes carousel ships as a semantic wrapper around the `blog-carousel` primitive defined in `css/tailwind.source.css`. The runtime no longer injects inline styles or Splide classes—layout is driven entirely by data attributes that map onto tokenised CSS rules.
+
+**Structure**
+
+```html
+<section class="short-notes blog-carousel" data-carousel data-per-page="3" data-index="0">
+  <div class="blog-carousel__viewport" data-carousel-viewport>
+    <ul class="blog-carousel__track" data-carousel-track>
+      <li class="blog-carousel__slide" data-carousel-slide data-index="0" data-active="true">
+        ...
+      </li>
+      <!-- additional slides -->
+    </ul>
+    <button type="button" data-carousel-prev data-carousel-control="prev">‹</button>
+    <button type="button" data-carousel-next data-carousel-control="next">›</button>
+  </div>
+  <div class="blog-carousel__progress blog-progress" data-carousel-progress>
+    <progress class="progress progress--blog" data-progress-meter aria-label="Carousel progress"></progress>
+  </div>
+</section>
+```
+
+**State contract**
+
+- `data-per-page` controls how many columns render inside the viewport. CSS exposes variants for 1–4 slides per page; the custom property `--blog-carousel-per-page` updates automatically.
+- `data-index` represents the active *page* (zero-indexed). The track translates by `100%` for each page, so the attribute should advance in whole-number increments rather than slide indices.
+- Slides expose `data-index`, `data-active`, `data-inert`, and `data-state`. The carousel controller toggles `data-state="active"`, `"idle"`, and `"leaving"` to drive scale/opacity transitions without touching inline styles.
+- The root `section` advertises `data-state="active" | "idle"` plus `data-transition="auto" | "instant"` when short-circuiting animations (for example, during first render or programmatic jumps).
+- Progress wrappers set `data-state="idle" | "active" | "paused" | "complete"` while the inner `<progress>` leverages the shared `progress` primitive (`data-progress-meter`, `data-variant="blog"`) so theme tokens continue to drive track/fill colours.
+
+Controllers should rely on these data hooks when orchestrating autoplay, pausing on pointer/visibility changes, or syncing the segmented progress indicator. Avoid reintroducing inline `style` mutations—tests enforce the contract via the inline-style guard.
+
 ### Layout & spacing extensions
 
 The core spacing scale gained intermediate stops for tighter micro-layouts and larger hero treatments. `css/tokens.css` now exports `--space-4xs`, `--space-3xs`, `--space-xs-snug`, `--space-md-plus`, `--space-xl-compact`, `--space-xl-plus`, and `--space-2xl-plus`; Tailwind surfaces matching utilities such as `p-4xs`, `p-3xs`, `px-xs-snug`, `py-md-plus`, `gap-xl-compact`, `px-xl-plus`, and `gap-2xl-plus`. Pair them with the new layout primitives—`--menu-min-width` (`min-w-menu`), `--modal-max-width` (`max-w-modal`), `--layout-player-max-width` (`max-w-player`), and `--layout-docs-max-width` (`max-w-docs`)—to anchor consistent breakpoints across popovers, modals, and documentation shells without reintroducing raw `rem`/`px` literals. Blog-specific chrome reuses the same additions: the theme toggle knob now references `--radius-toggle-thumb`, and focus affordances draw from `--outline-thick-width` instead of hard-coded pixel outlines.
