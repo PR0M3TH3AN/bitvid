@@ -85,6 +85,22 @@ The blog embed now consumes dedicated typography and spacing tokens alongside Ta
 
 Templates should reference these tokens (directly or via Tailwind arbitrary values) instead of hard-coded measurements so the embed stays in sync with future blog refreshes.
 
+## Semantic Palette
+
+All interactive surfaces now draw from a shared semantic color map exposed through `css/tokens.css` and Tailwind utility aliases. The palette is grouped into text, surface, overlay, and status slots so controllers can swap state styles without reaching for raw Tailwind hues:
+
+- **Text:** `text-primary`, `text-inverse`, `text-muted`, `text-muted-strong`, and `text-subtle` map to `--text-*` tokens. Use them for copy, helper text, and frosted overlays instead of `text-gray-*`.
+- **Surfaces:** `bg-surface`, `bg-surface-alt`, `bg-surface-raised`, `bg-surface-muted`, and `bg-overlay-*` wrap cards, modals, and scrims. Pair them with `border-surface`, `border-overlay`, or `border-overlay-strong` when rendering shells.
+- **Statuses:** `status-*` tokens expose matching text, background, and border slots. Tailwind utilities include `text-status-success`, `bg-status-warning-surface`, `border-status-danger-border`, and chip helpers (`.pill`, `.badge`) that accept `data-variant="info" | "success" | "warning" | "critical" | "private" | "neutral"`.
+- **Overlays:** `.overlay-scrim` and `.overlay-panel` helpers consume the overlay tier tokens for modals, sheets, and popovers. Adjust the strength via `data-strength`/`data-variant` rather than applying translucent grays.
+
+### Migration guidance
+
+- Swap raw Tailwind palette utilities (for example, `text-gray-400`, `bg-amber-500/10`, `border-red-700/70`) for the matching semantic utilities above. The new lint (`npm run lint:tailwind-colors`) fails when legacy color classes appear outside deprecated directories.
+- Replace ad-hoc chips (`inline-flex ... border-red-700/70 bg-red-900/40`) with `.pill` or `.badge` plus a `data-variant`. These helpers automatically pull the correct status text/border/fill tokens.
+- Use `text-info`/`hover:text-info-strong` for links that previously relied on `text-blue-400` so anchors adapt in both light and dark modes.
+- When rendering tinted descriptions or placeholders, prefer `text-muted`, `text-muted-strong`, or `text-subtle` over semi-transparent whites. Token overrides keep the same classes usable across the default and light themes.
+
 ### Blog carousel markup
 
 The short-notes carousel ships as a semantic wrapper around the `blog-carousel` primitive defined in `css/tailwind.source.css`. The runtime no longer injects inline styles or Splide classes—layout is driven entirely by data attributes that map onto tokenised CSS rules.

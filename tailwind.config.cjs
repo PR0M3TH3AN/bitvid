@@ -16,20 +16,31 @@ module.exports = {
       colors: {
         page: "var(--color-page)",
         "page-alt": "var(--color-page-alt)",
-        surface: "var(--color-surface)",
-        "surface-alt": "var(--color-surface-alt)",
+        surface: {
+          DEFAULT: "var(--surface-base)",
+          alt: "var(--surface-alt)",
+          raised: "var(--surface-raised)",
+          "raised-private": "var(--surface-raised-private)",
+          "raised-critical": "var(--surface-raised-critical)",
+          panel: "var(--surface-panel)",
+          "panel-hover": "var(--surface-panel-hover)",
+          sunken: "var(--surface-sunken)",
+          muted: "var(--surface-muted)",
+          inverse: "var(--surface-inverse)",
+        },
         overlay: {
-          DEFAULT: "var(--color-overlay)",
-          muted: "var(--color-overlay-muted)",
-          strong: "var(--color-overlay-strong)",
-          darker: "var(--color-overlay-darker)",
-          veil: "var(--color-overlay-veil)",
-          banner: "var(--color-overlay-banner)",
-          panel: "var(--color-overlay-panel)",
-          "panel-soft": "var(--color-overlay-panel-soft)",
-          "panel-tint": "var(--color-overlay-panel-tint)",
-          "panel-glass": "var(--color-overlay-panel-glass)",
-          black: "var(--color-overlay-black)"
+          DEFAULT: "var(--surface-overlay)",
+          muted: "var(--surface-overlay-muted)",
+          strong: "var(--surface-overlay-strong)",
+          darker: "var(--surface-overlay-darker)",
+          veil: "var(--surface-veil)",
+          banner: "var(--surface-overlay-banner)",
+          panel: "var(--surface-overlay-panel)",
+          "panel-soft": "var(--surface-overlay-panel-soft)",
+          "panel-tint": "var(--surface-overlay-panel-tint)",
+          "panel-glass": "var(--surface-overlay-panel-glass)",
+          "panel-glass-soft": "var(--surface-overlay-panel-glass-soft)",
+          black: "var(--surface-overlay-black)"
         },
         shadow: {
           intense: "var(--color-shadow-intense)"
@@ -37,35 +48,39 @@ module.exports = {
         primary: "var(--color-primary)",
         secondary: "var(--color-secondary)",
         panel: {
-          DEFAULT: "var(--color-panel)",
-          hover: "var(--color-panel-hover)"
+          DEFAULT: "var(--surface-panel)",
+          hover: "var(--surface-panel-hover)"
         },
         card: {
-          DEFAULT: "var(--color-card)",
-          private: "var(--color-card-private)",
-          critical: "var(--color-card-critical)"
+          DEFAULT: "var(--surface-raised)",
+          private: "var(--surface-raised-private)",
+          critical: "var(--surface-raised-critical)"
         },
         border: {
-          DEFAULT: "var(--color-border)",
-          subtle: "var(--color-border-subtle)",
-          translucent: "var(--color-border-translucent)",
+          DEFAULT: "var(--border-default)",
+          subtle: "var(--border-subtle)",
+          strong: "var(--border-strong)",
+          translucent: "var(--border-overlay)",
           "translucent-strong": "var(--color-border-translucent-strong)",
           "translucent-bright": "var(--color-border-translucent-bright)",
           "translucent-medium": "var(--color-border-translucent-medium)",
           "translucent-stronger": "var(--color-border-translucent-stronger)",
           "translucent-strongest": "var(--color-border-translucent-strongest)",
-          "translucent-glow": "var(--color-border-translucent-glow)",
-          "info-soft": "var(--color-border-info-soft)",
-          "neutral-soft": "var(--color-border-neutral-soft)",
-          "sidebar-strong": "var(--color-border-sidebar-strong)"
+          "translucent-glow": "var(--border-overlay-glow)",
+          "info-soft": "var(--border-info-soft)",
+          "neutral-soft": "var(--border-neutral-soft)",
+          "sidebar-strong": "var(--border-sidebar-strong)"
         },
         text: {
-          DEFAULT: "var(--color-text)",
-          strong: "var(--color-text-strong)",
-          muted: "var(--color-muted)",
-          frosted: "var(--color-text-frosted)",
-          "frosted-strong": "var(--color-text-frosted-strong)",
-          "frosted-soft": "var(--color-text-frosted-soft)"
+          DEFAULT: "var(--text-primary)",
+          strong: "var(--color-white)",
+          inverse: "var(--text-inverse)",
+          muted: "var(--text-muted)",
+          "muted-strong": "var(--text-muted-strong)",
+          subtle: "var(--text-subtle)",
+          frosted: "var(--text-frosted-primary)",
+          "frosted-strong": "var(--text-frosted-strong)",
+          "frosted-soft": "var(--text-frosted-soft)"
         },
         muted: {
           DEFAULT: "var(--color-muted)",
@@ -82,9 +97,53 @@ module.exports = {
           strong: "var(--color-critical-strong)"
         },
         warning: {
-          DEFAULT: "var(--color-warning)",
-          strong: "var(--color-warning-strong)",
-          surface: "var(--color-warning-surface)"
+          DEFAULT: "var(--status-warning)",
+          strong: "var(--status-warning-strong)",
+          surface: "var(--status-warning-surface)"
+        },
+        status: {
+          info: {
+            DEFAULT: "var(--status-info)",
+            strong: "var(--status-info-strong)",
+            surface: "var(--status-info-surface)",
+            border: "var(--status-info-border)",
+            on: "var(--status-info-on)"
+          },
+          success: {
+            DEFAULT: "var(--status-success)",
+            strong: "var(--status-success-strong)",
+            surface: "var(--status-success-surface)",
+            border: "var(--status-success-border)",
+            on: "var(--status-success-on)"
+          },
+          warning: {
+            DEFAULT: "var(--status-warning)",
+            strong: "var(--status-warning-strong)",
+            surface: "var(--status-warning-surface)",
+            border: "var(--status-warning-border)",
+            on: "var(--status-warning-on)"
+          },
+          danger: {
+            DEFAULT: "var(--status-danger)",
+            strong: "var(--status-danger-strong)",
+            surface: "var(--status-danger-surface)",
+            border: "var(--status-danger-border)",
+            on: "var(--status-danger-on)"
+          },
+          private: {
+            DEFAULT: "var(--status-private)",
+            strong: "var(--status-private-strong)",
+            surface: "var(--status-private-surface)",
+            border: "var(--status-private-border)",
+            on: "var(--status-private-on)"
+          },
+          neutral: {
+            DEFAULT: "var(--status-neutral)",
+            strong: "var(--status-neutral-strong)",
+            surface: "var(--status-neutral-surface)",
+            border: "var(--status-neutral-border)",
+            on: "var(--status-neutral-on)"
+          }
         },
         neutral: {
           600: "var(--color-neutral-600)",
@@ -138,6 +197,64 @@ module.exports = {
           "orange-500": "var(--color-blog-orange-500)",
           "neutral-50": "var(--color-blog-neutral-50)"
         }
+      },
+      textColor: {
+        primary: "var(--text-primary)",
+        inverse: "var(--text-inverse)",
+        muted: "var(--text-muted)",
+        "muted-strong": "var(--text-muted-strong)",
+        subtle: "var(--text-subtle)",
+        "status-info": "var(--status-info)",
+        "status-info-on": "var(--status-info-on)",
+        "status-success": "var(--status-success)",
+        "status-success-on": "var(--status-success-on)",
+        "status-warning": "var(--status-warning)",
+        "status-warning-on": "var(--status-warning-on)",
+        "status-danger": "var(--status-danger)",
+        "status-danger-on": "var(--status-danger-on)",
+        "status-private": "var(--status-private)",
+        "status-private-on": "var(--status-private-on)",
+        "status-neutral": "var(--status-neutral)",
+        "status-neutral-on": "var(--status-neutral-on)"
+      },
+      backgroundColor: {
+        surface: "var(--surface-base)",
+        "surface-alt": "var(--surface-alt)",
+        "surface-raised": "var(--surface-raised)",
+        "surface-muted": "var(--surface-muted)",
+        "overlay-strong": "var(--surface-overlay-strong)",
+        "overlay-muted": "var(--surface-overlay-muted)",
+        "overlay-banner": "var(--surface-overlay-banner)",
+        "overlay-panel": "var(--surface-overlay-panel)",
+        "overlay-panel-soft": "var(--surface-overlay-panel-soft)",
+        "overlay-panel-glass": "var(--surface-overlay-panel-glass)",
+        "status-info-surface": "var(--status-info-surface)",
+        "status-success-surface": "var(--status-success-surface)",
+        "status-warning-surface": "var(--status-warning-surface)",
+        "status-danger-surface": "var(--status-danger-surface)",
+        "status-private-surface": "var(--status-private-surface)",
+        "status-neutral-surface": "var(--status-neutral-surface)"
+      },
+      borderColor: {
+        surface: "var(--border-default)",
+        "surface-strong": "var(--border-strong)",
+        "overlay": "var(--border-overlay)",
+        "overlay-strong": "var(--border-overlay-strong)",
+        "status-info-border": "var(--status-info-border)",
+        "status-success-border": "var(--status-success-border)",
+        "status-warning-border": "var(--status-warning-border)",
+        "status-danger-border": "var(--status-danger-border)",
+        "status-private-border": "var(--status-private-border)",
+        "status-neutral-border": "var(--status-neutral-border)"
+      },
+      ringColor: {
+        "status-danger": "var(--status-danger)",
+        "status-warning": "var(--status-warning)",
+        "status-info": "var(--status-info)",
+        "status-success": "var(--status-success)"
+      },
+      ringOffsetColor: {
+        surface: "var(--surface-base)"
       },
       borderRadius: {
         sm: "var(--radius-sm)",

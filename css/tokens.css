@@ -101,6 +101,88 @@
   --color-text-frosted: rgb(226 232 240 / 0.9);
   --color-text-frosted-soft: rgb(226 232 240 / 0.82);
 
+  /* Semantic palette */
+  --surface-base: var(--color-surface);
+  --surface-alt: var(--color-surface-alt);
+  --surface-raised: var(--color-card);
+  --surface-raised-private: var(--color-card-private);
+  --surface-raised-critical: var(--color-card-critical);
+  --surface-panel: var(--color-panel);
+  --surface-panel-hover: var(--color-panel-hover);
+  --surface-sunken: rgb(11 17 32 / 0.92);
+  --surface-muted: rgb(30 41 59 / 0.82);
+  --surface-veil: var(--color-overlay-veil);
+  --surface-inverse: var(--color-page);
+
+  --surface-overlay: var(--color-overlay);
+  --surface-overlay-muted: var(--color-overlay-muted);
+  --surface-overlay-strong: var(--color-overlay-strong);
+  --surface-overlay-darker: var(--color-overlay-darker);
+  --surface-overlay-black: var(--color-overlay-black);
+  --surface-overlay-banner: var(--color-overlay-banner);
+  --surface-overlay-panel: var(--color-overlay-panel);
+  --surface-overlay-panel-soft: var(--color-overlay-panel-soft);
+  --surface-overlay-panel-tint: var(--color-overlay-panel-tint);
+  --surface-overlay-panel-glass: var(--color-overlay-panel-glass);
+  --surface-overlay-panel-glass-soft: var(--color-overlay-panel-glass-soft);
+  --surface-modal-backdrop: var(--color-modal-backdrop);
+  --surface-modal: var(--color-modal-surface);
+
+  --border-default: var(--color-border);
+  --border-subtle: var(--color-border-subtle);
+  --border-strong: var(--color-border-translucent-stronger);
+  --border-overlay: var(--color-border-translucent);
+  --border-overlay-strong: var(--color-border-translucent-strongest);
+  --border-overlay-glow: var(--color-border-translucent-glow);
+  --border-neutral-soft: var(--color-border-neutral-soft);
+  --border-info-soft: var(--color-border-info-soft);
+  --border-sidebar-strong: var(--color-border-sidebar-strong);
+
+  --text-primary: var(--color-text);
+  --text-inverse: var(--color-text-strong);
+  --text-muted: var(--color-text-muted);
+  --text-muted-strong: var(--color-muted-strong);
+  --text-subtle: var(--color-subtle-text);
+  --text-frosted-primary: var(--color-text-frosted);
+  --text-frosted-strong: var(--color-text-frosted-strong);
+  --text-frosted-soft: var(--color-text-frosted-soft);
+
+  --status-info: var(--color-info);
+  --status-info-strong: var(--color-info-strong);
+  --status-info-surface: var(--color-info-glass);
+  --status-info-border: rgb(96 165 250 / 0.4);
+  --status-info-on: rgb(219 234 254);
+
+  --status-success: rgb(34 197 94);
+  --status-success-strong: rgb(22 163 74);
+  --status-success-surface: rgb(22 163 74 / 0.28);
+  --status-success-border: rgb(34 197 94 / 0.4);
+  --status-success-on: rgb(220 252 231);
+
+  --status-warning: var(--color-warning);
+  --status-warning-strong: var(--color-warning-strong);
+  --status-warning-surface: var(--color-warning-surface);
+  --status-warning-border: rgb(217 119 6 / 0.45);
+  --status-warning-on: rgb(254 249 195);
+
+  --status-danger: var(--color-critical);
+  --status-danger-strong: var(--color-critical-strong);
+  --status-danger-surface: rgb(127 29 29 / 0.32);
+  --status-danger-border: rgb(239 68 68 / 0.45);
+  --status-danger-on: rgb(254 202 202);
+
+  --status-private: rgb(168 85 247);
+  --status-private-strong: rgb(147 51 234);
+  --status-private-surface: rgb(91 33 182 / 0.32);
+  --status-private-border: rgb(168 85 247 / 0.45);
+  --status-private-on: rgb(233 213 255);
+
+  --status-neutral: var(--color-muted);
+  --status-neutral-strong: var(--color-muted-strong);
+  --status-neutral-surface: rgb(148 163 184 / 0.25);
+  --status-neutral-border: rgb(148 163 184 / 0.35);
+  --status-neutral-on: rgb(226 232 240);
+
   /* Layout & stacking */
   --scrollbar-width: 0.5rem;
   --scrollbar-track: var(--color-white-soft);
@@ -530,6 +612,24 @@
   --shadow-sidebar-panel: 0 2.25rem 4.5rem -1.85rem rgb(15 23 42 / 0.28);
   --shadow-sidebar-focus-ring: 0 0 0 0.125rem rgb(59 130 246 / 0.35),
     0 0 0 0.25rem rgb(59 130 246 / 0.28);
+
+  --surface-sunken: rgb(229 231 235 / 0.85);
+  --surface-muted: rgb(226 232 240 / 0.85);
+  --text-primary: var(--color-text);
+  --text-inverse: var(--color-white);
+  --text-muted: var(--color-text-muted);
+  --text-muted-strong: var(--color-muted-strong);
+  --text-subtle: var(--color-subtle-text);
+  --status-info-border: rgb(59 130 246 / 0.35);
+  --status-success-surface: rgb(34 197 94 / 0.18);
+  --status-success-border: rgb(16 185 129 / 0.32);
+  --status-warning-border: rgb(217 119 6 / 0.35);
+  --status-danger-surface: rgb(220 38 38 / 0.18);
+  --status-danger-border: rgb(220 38 38 / 0.32);
+  --status-private-surface: rgb(147 51 234 / 0.22);
+  --status-private-border: rgb(147 51 234 / 0.32);
+  --status-neutral-surface: rgb(100 116 139 / 0.18);
+  --status-neutral-border: rgb(100 116 139 / 0.3);
 }
 
 :root[data-theme="dark"] {

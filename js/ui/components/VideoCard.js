@@ -322,7 +322,7 @@ export class VideoCard {
 
     if (this.showUnsupportedTorrentBadge) {
       const warning = this.createElement("p", {
-        classNames: ["mt-3", "text-xs", "text-amber-300"],
+        classNames: ["mt-3", "text-xs", "text-status-warning-on"],
         attrs: { title: this.assets.unsupportedBtihMessage || "" },
         textContent:
           "WebTorrent fallback unavailable (magnet missing btih info hash)"
