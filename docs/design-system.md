@@ -43,6 +43,10 @@ The blog embed now consumes dedicated typography and spacing tokens alongside Ta
 
 Templates should reference these tokens (directly or via Tailwind arbitrary values) instead of hard-coded measurements so the embed stays in sync with future blog refreshes.
 
+### Layout & spacing extensions
+
+The core spacing scale gained intermediate stops for tighter micro-layouts and larger hero treatments. `css/tokens.css` now exports `--space-4xs`, `--space-3xs`, `--space-xs-snug`, `--space-md-plus`, `--space-xl-compact`, `--space-xl-plus`, and `--space-2xl-plus`; Tailwind surfaces matching utilities such as `p-4xs`, `p-3xs`, `px-xs-snug`, `py-md-plus`, `gap-xl-compact`, `px-xl-plus`, and `gap-2xl-plus`. Pair them with the new layout primitives—`--menu-min-width` (`min-w-menu`), `--modal-max-width` (`max-w-modal`), `--layout-player-max-width` (`max-w-player`), and `--layout-docs-max-width` (`max-w-docs`)—to anchor consistent breakpoints across popovers, modals, and documentation shells without reintroducing raw `rem`/`px` literals. Blog-specific chrome reuses the same additions: the theme toggle knob now references `--radius-toggle-thumb`, and focus affordances draw from `--outline-thick-width` instead of hard-coded pixel outlines.
+
 ### Previewing themes
 
 The design-system kitchen sink (`docs/kitchen-sink.html`) exposes a theme switcher that mirrors the production toggle contract. Use the "Theme" select menu in the header to flip between `default`, `light`, and any preview keys (for example, `contrast`). This control updates `document.documentElement.dataset.theme` at runtime, letting you verify hover/focus/disabled states without redeploying. When authoring new palettes, add them to `css/tokens.css`, confirm the kitchen-sink toggle picks them up, and record before/after screenshots for review so the CI snapshots have clear context.
@@ -136,10 +140,12 @@ Combine with padding utilities per layout. Interactive cards should maintain `cu
 Specialisations reuse `.form-control`:
 
 - `.input` – Standard single-line text input.
-- `.textarea` – Multi-line input with a minimum height (`min-h-[8rem]`) and `resize-y` enabled.
+- `.textarea` – Multi-line input with a minimum height (`min-h-[var(--form-textarea-min-height)]`) and `resize-y` enabled.
 - `.select` – Native `<select>` element with `appearance-none`, an integrated arrow glyph, and consistent spacing (`pr-10`).
 
 All three share hover, focus-visible, disabled, and invalid treatments. Layer on utilities (`h-12`, `text-lg`, icon padding) as needed without re-declaring tokens.
+
+Arrow and checkbox adornments now lean entirely on tokens: `--form-select-icon-offset`, `--form-select-icon-gap`, `--form-select-icon-hit-area`, and `--form-select-icon-size` position the native select chevron, while `--form-checkbox-checkmark-offset` keeps the checkmark aligned at any scale. Textareas pull their baseline from `--form-textarea-min-height`, and thin scrollbars reuse the shared `--scrollbar-thin-width` so embedded panels feel consistent across browsers.
 
 ```html
 <form class="bv-stack bv-stack--tight" aria-labelledby="zapAmountLabel">
@@ -171,6 +177,8 @@ For toggles:
 - `.bv-modal` anchors fixed overlays (full-viewport flexbox centered layout).
 - `.bv-modal-backdrop` applies the tokenized overlay color with blur.
 - `.bv-modal__panel` hosts modal content (`bg-surface`, `shadow-modal`, focus ring).
+
+Sizing now comes from dedicated tokens: `max-w-modal` and `rounded-modal-xl` map to `--modal-max-width` and `--radius-modal-xl`, while icon controls reuse `--icon-size-lg`, `--icon-size-md`, and `--icon-button-ring-width` for consistent hit targets. Progress indicators pick up `--modal-progress-height`, and the player modal inherits `max-w-player` so hero metadata never exceeds `--layout-player-max-width`.
 
 Compose them together when mounting new modal portals. If you need a drawer or sheet, start from these primitives and adjust spacing/positioning via utilities.
 
@@ -236,6 +244,8 @@ The motion helpers defer to the global motion tokens so Task 5 can adjust timing
 The navigation rail pulls its rhythm from dedicated sidebar tokens in `css/tokens.css`. The shell, panels, and footer reuse shared spacing primitives (`--space-sidebar-shell-inline`, `--space-sidebar-shell-block-start`, `--space-sidebar-shell-block-end`, `--space-sidebar-panel-gap`, `--space-sidebar-panel-padding-block`, `--space-sidebar-panel-padding-inline`, `--space-sidebar-footer-gap`) alongside component-specific radii and shadows (`--radius-sidebar-shell`, `--radius-sidebar-panel`, `--radius-sidebar-nav`, `--shadow-sidebar-shell`, `--shadow-sidebar-accent`, `--shadow-sidebar-trigger`, `--shadow-sidebar-dropup`, `--shadow-sidebar-panel`, `--shadow-sidebar-focus-ring`). These values also size fallback classes like `.sidebar-nav-link`, `.sidebar-dropup-trigger`, and `.sidebar-dropup-panel` so legacy templates stay legible. 【F:css/tokens.css†L94-L138】【F:css/tailwind.source.css†L1829-L2182】
 
 Tailwind now exposes matching utilities for layouts that opt into the design system directly: use `px-sidebar-shell-inline`, `pt-sidebar-shell-block-start`, `pb-sidebar-shell-block-end`, `gap-sidebar-panel-gap`, and `rounded-sidebar-shell`/`rounded-sidebar-nav` for structure, then `shadow-sidebar-shell`, `shadow-sidebar-accent`, or `shadow-sidebar-dropup` to match the bespoke glow states. Combine them with existing color utilities to compose new sidebar sections without reintroducing raw measurements. 【F:tailwind.config.cjs†L115-L155】
+
+Iconography and motion helpers rely on fresh tokens as well: `--icon-size-sm`, `--icon-size-md`, and `--icon-size-lg` standardise glyph sizing across nav links, collapse toggles, and dropup triggers, while `--space-sidebar-nav-translate` powers the translate offsets used when collapsing the rail. Thin overlays inherit `--scrollbar-thin-width` so modal and sidebar scroll containers feel identical.
 
 ### Menus
 
