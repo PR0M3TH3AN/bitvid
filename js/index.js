@@ -13,6 +13,10 @@ import {
   subscribeToDesignSystemChanges,
 } from "./designSystem.js";
 import {
+  initThemeController,
+  refreshThemeControls,
+} from "./themeController.js";
+import {
   prepareStaticModal,
   openStaticModal,
   closeStaticModal,
@@ -21,8 +25,10 @@ import {
 validateInstanceConfig();
 
 applyDesignSystemAttributes();
+initThemeController();
 subscribeToDesignSystemChanges(() => {
   applyDesignSystemAttributes();
+  refreshThemeControls(document);
 });
 
 let application = null;
@@ -148,6 +154,7 @@ async function loadModal(url) {
     const modalContainer = document.getElementById("modalContainer");
     if (modalContainer) {
       applyDesignSystemAttributes(modalContainer);
+      refreshThemeControls(modalContainer);
     }
     console.log(url, "loaded");
   } catch (err) {
@@ -163,6 +170,7 @@ async function loadSidebar(url, containerId) {
     if (container) {
       container.innerHTML = html;
       applyDesignSystemAttributes(container);
+      refreshThemeControls(container);
     }
     console.log(url, "loaded into", containerId);
   } catch (err) {
@@ -178,6 +186,7 @@ async function loadDisclaimer(url, containerId) {
     if (container) {
       container.insertAdjacentHTML("beforeend", html);
       applyDesignSystemAttributes(container);
+      refreshThemeControls(container);
     }
     console.log(url, "disclaimer loaded into", containerId);
   } catch (err) {
