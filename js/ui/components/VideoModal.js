@@ -2,6 +2,10 @@ import { createModalAccessibility } from "./modalAccessibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
+import {
+  getPopupOffsetPx,
+  getPopupViewportPaddingPx,
+} from "../../designSystem/metrics.js";
 
 export class VideoModal {
   constructor({
@@ -298,14 +302,25 @@ export class VideoModal {
       }
       if (this.modalZapBtn) {
         this.modalZapStyles = createFloatingPanelStyles(this.modalZapDialog);
+        const zapMetricsDocument =
+          this.modalZapDialog?.ownerDocument ||
+          this.modalZapBtn?.ownerDocument ||
+          this.document ||
+          (typeof document !== "undefined" ? document : null);
+        const zapOffset = getPopupOffsetPx({
+          documentRef: zapMetricsDocument,
+        });
+        const zapViewportPadding = getPopupViewportPaddingPx({
+          documentRef: zapMetricsDocument,
+        });
         this.modalZapPositioner = positionFloatingPanel(
           this.modalZapBtn,
           this.modalZapDialog,
           {
             placement: "bottom",
             alignment: "end",
-            offset: 8,
-            viewportPadding: 16,
+            offset: zapOffset,
+            viewportPadding: zapViewportPadding,
             styles: this.modalZapStyles,
           },
         );
@@ -325,14 +340,25 @@ export class VideoModal {
       }
       if (this.modalMoreBtn) {
         this.modalMoreMenuStyles = createFloatingPanelStyles(this.modalMoreMenu);
+        const menuMetricsDocument =
+          this.modalMoreMenu?.ownerDocument ||
+          this.modalMoreBtn?.ownerDocument ||
+          this.document ||
+          (typeof document !== "undefined" ? document : null);
+        const menuOffset = getPopupOffsetPx({
+          documentRef: menuMetricsDocument,
+        });
+        const menuViewportPadding = getPopupViewportPaddingPx({
+          documentRef: menuMetricsDocument,
+        });
         this.modalMoreMenuPositioner = positionFloatingPanel(
           this.modalMoreBtn,
           this.modalMoreMenu,
           {
             placement: "bottom",
             alignment: "end",
-            offset: 8,
-            viewportPadding: 16,
+            offset: menuOffset,
+            viewportPadding: menuViewportPadding,
             styles: this.modalMoreMenuStyles,
           },
         );

@@ -245,7 +245,7 @@
   }
 
   .popover__panel {
-    @apply focus-ring absolute left-0 top-full z-[70] mt-2 min-w-menu origin-top rounded-lg border border-border border-opacity-40 bg-panel px-4 py-3 text-sm text-text shadow-lg transition-transform transition-opacity duration-[var(--motion-duration-base)] ease-[var(--motion-ease-out)] opacity-0 scale-95 pointer-events-none;
+    @apply focus-ring absolute left-0 top-full z-[70] mt-2 min-w-menu origin-top rounded-lg border border-border border-opacity-40 bg-panel px-popup-inline py-popup-block text-sm text-text shadow-lg transition-transform transition-opacity duration-[var(--motion-duration-base)] ease-[var(--motion-ease-out)] opacity-0 scale-95 pointer-events-none;
   }
 
   .popover__panel[data-state="open"] {
@@ -257,8 +257,8 @@
     color: var(--color-subtle);
     border: 1px solid var(--color-border-translucent-stronger);
     box-shadow: 0 22px 48px -18px var(--color-shadow-intense);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(var(--popover-backdrop-blur));
+    -webkit-backdrop-filter: blur(var(--popover-backdrop-blur));
   }
 
   .btn {
@@ -945,7 +945,7 @@
 
   .bv-grid-video {
     @apply grid gap-xl py-lg;
-    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--grid-card-min-width), 1fr));
   }
 
   .card[data-alert="nsfw-owner"] {
@@ -1297,7 +1297,7 @@
     transition-property: opacity, transform;
     will-change: opacity, transform;
     opacity: 0;
-    transform: translateY(0.75rem);
+    transform: translateY(var(--toast-translate));
   }
 
   .beacon-toast-motion[data-beacon-motion="enter"],
@@ -1311,7 +1311,7 @@
   .beacon-toast-motion[data-beacon-motion="exit"],
   .torrent-toast-motion[data-beacon-motion="exit"] {
     opacity: 0;
-    transform: translateY(0.75rem);
+    transform: translateY(var(--toast-translate));
   }
 
   .torrent-toast {
@@ -2359,7 +2359,10 @@
   @media (max-width: 767px) {
     #sidebar {
       transform: translate3d(-100%, 0, 0);
-      width: min(var(--sidebar-width-expanded), calc(100vw - 3rem));
+      width: min(
+        var(--sidebar-width-expanded),
+        calc(100vw - var(--sidebar-mobile-gutter))
+      );
     }
 
     #sidebar.sidebar-open {

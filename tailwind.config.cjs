@@ -197,15 +197,25 @@ module.exports = {
         "sidebar-popover-padding-inline": "var(--space-sidebar-popover-padding-inline)",
         "sidebar-popover-gap": "var(--space-sidebar-popover-gap)",
         "sidebar-nav-padding-block": "var(--space-sidebar-nav-padding-block)",
-        "sidebar-subnav-padding-block": "var(--space-sidebar-subnav-padding-block)"
+        "sidebar-subnav-padding-block": "var(--space-sidebar-subnav-padding-block)",
+        "sidebar-mobile-gutter": "var(--sidebar-mobile-gutter)",
+        "popup-inline": "var(--popup-padding-inline)",
+        "popup-block": "var(--popup-padding-block)"
       },
       minWidth: {
-        menu: "var(--menu-min-width)"
+        menu: "var(--menu-min-width)",
+        "grid-card": "var(--grid-card-min-width)"
       },
       maxWidth: {
         modal: "var(--modal-max-width)",
         player: "var(--layout-player-max-width)",
         docs: "var(--layout-docs-max-width)"
+      },
+      translate: {
+        toast: "var(--toast-translate)"
+      },
+      backdropBlur: {
+        popover: "var(--popover-backdrop-blur)"
       },
       fontFamily: {
         sans: ["var(--font-family-sans)"],
