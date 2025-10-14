@@ -212,43 +212,52 @@
 
         <!-- Header action buttons share the fade-in treatment for consistency. -->
 
-        <div
-          class="fade-in fade-in-delay-200 ml-auto flex items-center space-x-4"
-        >
-          <!-- Login Button -->
-          <button
-            id="loginButton"
-            class="btn focus-ring h-12 w-12 rounded-full p-0"
-          >
-            <img
-              src="assets/svg/default-profile.svg"
-              alt="Profile Icon"
-              class="h-9 w-9"
-            />
-          </button>
-
-          <!-- Upload Button (hidden by default) -->
-          <button
-            id="uploadButton"
-            class="btn focus-ring hidden h-12 w-12 rounded-full p-0 text-xl font-bold leading-none"
-          >
-            +
-          </button>
-
-          <!-- Profile Button (hidden by default) -->
-          <button
-            id="profileButton"
-            class="btn-ghost focus-ring hidden h-12 w-12 rounded-full p-0"
-          >
-            <div class="h-10 w-10 overflow-hidden rounded-full">
+        <div class="ml-auto flex items-center">
+          <div class="fade-in fade-in-delay-200 flex items-center space-x-4">
+            <button
+              id="themeToggle"
+              class="btn focus-ring h-12 w-12 rounded-full p-0"
+              type="button"
+              aria-pressed="false"
+            >
+              <span class="sr-only">Toggle theme</span>
+              <span aria-hidden="true" class="text-lg leading-none">🌓</span>
+            </button>
+            <!-- Login Button -->
+            <button
+              id="loginButton"
+              class="btn focus-ring h-12 w-12 rounded-full p-0"
+            >
               <img
-                id="profileAvatar"
                 src="assets/svg/default-profile.svg"
-                alt="Profile"
-                class="h-full w-full object-cover"
+                alt="Profile Icon"
+                class="h-9 w-9"
               />
-            </div>
-          </button>
+            </button>
+
+            <!-- Upload Button (hidden by default) -->
+            <button
+              id="uploadButton"
+              class="btn focus-ring hidden h-12 w-12 rounded-full p-0 text-xl font-bold leading-none"
+            >
+              +
+            </button>
+
+            <!-- Profile Button (hidden by default) -->
+            <button
+              id="profileButton"
+              class="btn-ghost focus-ring hidden h-12 w-12 rounded-full p-0"
+            >
+              <div class="h-10 w-10 overflow-hidden rounded-full">
+                <img
+                  id="profileAvatar"
+                  src="assets/svg/default-profile.svg"
+                  alt="Profile"
+                  class="h-full w-full object-cover"
+                />
+              </div>
+            </button>
+          </div>
         </div>
       </header>
 
