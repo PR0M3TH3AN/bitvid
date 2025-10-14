@@ -132,6 +132,7 @@
   --space-sidebar-popover-gap: 0.45rem;
   --space-sidebar-nav-padding-block: 0.7rem;
   --space-sidebar-subnav-padding-block: 0.55rem;
+  --space-sidebar-nav-translate: 0.35rem;
   --blog-embed-height: 100rem;
 
   /* Blog palette */
@@ -226,13 +227,20 @@
   --blog-carousel-progress-active: var(--color-blog-purple-500);
 
   /* Spacing scale */
+  --space-4xs: 0.0625rem;
+  --space-3xs: 0.125rem;
   --space-2xs: 0.25rem;
   --space-xs: 0.5rem;
+  --space-xs-snug: 0.4rem;
   --space-sm: 0.75rem;
   --space-md: 1rem;
+  --space-md-plus: 1.25rem;
   --space-lg: 1.5rem;
   --space-xl: 2rem;
+  --space-xl-compact: 2.25rem;
+  --space-xl-plus: 2.5rem;
   --space-2xl: 3rem;
+  --space-2xl-plus: 3.5rem;
 
   /* Border radii */
   --radius-sm: 0.25rem;
@@ -240,9 +248,33 @@
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
   --radius-full: 9999px;
+  --radius-modal-xl: 1.75rem;
   --radius-sidebar-shell: 1.5rem;
   --radius-sidebar-panel: 1.1rem;
   --radius-sidebar-nav: 0.95rem;
+  --radius-toggle-thumb: 0.5625rem;
+
+  /* Component sizing */
+  --menu-min-width: 12rem;
+  --modal-max-width: 38rem;
+  --layout-player-max-width: 68.75rem;
+  --layout-docs-max-width: 92.5rem;
+  --icon-size-sm: var(--font-size-lg);
+  --icon-size-md: var(--space-md-plus);
+  --icon-size-lg: var(--space-xl-plus);
+  --avatar-size-lg: var(--space-2xl-plus);
+  --form-textarea-min-height: 8rem;
+  --scrollbar-thin-width: 0.4rem;
+  --modal-progress-height: calc(var(--space-3xs) * 3);
+  --outline-thick-width: 0.1875rem;
+  --icon-button-ring-width: var(--outline-thick-width);
+
+  /* Form controls */
+  --form-select-icon-offset: var(--space-sm);
+  --form-select-icon-gap: var(--space-xs-snug);
+  --form-select-icon-hit-area: var(--space-xl-plus);
+  --form-select-icon-size: 0.6rem;
+  --form-checkbox-checkmark-offset: calc(var(--space-3xs) * -1);
 
   /* Shadows */
   --shadow-sm: 0 0.0625rem 0.125rem 0 rgb(0 0 0 / 5%);
@@ -266,6 +298,8 @@
   --font-size-lg: 1.125rem;
   --font-size-xl: 1.5rem;
   --font-size-2xl: 2rem;
+  --font-size-xl-plus: 1.875rem;
+  --font-size-modal-title-base: 1.25rem;
   --font-size-sidebar-nav: 0.95rem;
   --font-size-sidebar-subnav: 0.85rem;
   --font-size-sidebar-trigger: 0.9rem;

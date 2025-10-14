@@ -1,6 +1,7 @@
 const VAR_PATTERN = /^var\(--.*\)$/;
 const CONTAINS_VAR_PATTERN = /var\(--.*\)/;
 const LINEAR_GRADIENT_PATTERN = /^linear-gradient\(/;
+const NON_TOKEN_LENGTH_PATTERN = /(?!.*var\().*\b\d*\.?\d+(?:px|rem)\b/;
 
 module.exports = {
   ignoreFiles: ['css/tailwind.generated.css'],
@@ -17,6 +18,11 @@ module.exports = {
       fill: [VAR_PATTERN, 'none', 'currentColor', 'inherit'],
       stroke: [VAR_PATTERN, 'none', 'currentColor', 'inherit'],
       'box-shadow': [VAR_PATTERN, CONTAINS_VAR_PATTERN, 'none']
+    },
+    'declaration-property-value-disallowed-list': {
+      '/^((margin|padding)(-.+)?|gap|row-gap|column-gap|font-size|border-radius|outline|outline-offset)$/': [
+        NON_TOKEN_LENGTH_PATTERN
+      ]
     }
   }
 };

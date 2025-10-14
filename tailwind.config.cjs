@@ -141,6 +141,7 @@ module.exports = {
         lg: "var(--radius-lg)",
         xl: "var(--radius-xl)",
         full: "var(--radius-full)",
+        "modal-xl": "var(--radius-modal-xl)",
         "sidebar-shell": "var(--radius-sidebar-shell)",
         "sidebar-panel": "var(--radius-sidebar-panel)",
         "sidebar-nav": "var(--radius-sidebar-nav)"
@@ -158,13 +159,20 @@ module.exports = {
         "sidebar-focus-ring": "var(--shadow-sidebar-focus-ring)"
       },
       spacing: {
+        "4xs": "var(--space-4xs)",
+        "3xs": "var(--space-3xs)",
         "2xs": "var(--space-2xs)",
         xs: "var(--space-xs)",
+        "xs-snug": "var(--space-xs-snug)",
         sm: "var(--space-sm)",
         md: "var(--space-md)",
+        "md-plus": "var(--space-md-plus)",
         lg: "var(--space-lg)",
         xl: "var(--space-xl)",
+        "xl-compact": "var(--space-xl-compact)",
+        "xl-plus": "var(--space-xl-plus)",
         "2xl": "var(--space-2xl)",
+        "2xl-plus": "var(--space-2xl-plus)",
         "sidebar-shell-inline": "var(--space-sidebar-shell-inline)",
         "sidebar-shell-block-start": "var(--space-sidebar-shell-block-start)",
         "sidebar-shell-block-end": "var(--space-sidebar-shell-block-end)",
@@ -180,6 +188,14 @@ module.exports = {
         "sidebar-popover-gap": "var(--space-sidebar-popover-gap)",
         "sidebar-nav-padding-block": "var(--space-sidebar-nav-padding-block)",
         "sidebar-subnav-padding-block": "var(--space-sidebar-subnav-padding-block)"
+      },
+      minWidth: {
+        menu: "var(--menu-min-width)"
+      },
+      maxWidth: {
+        modal: "var(--modal-max-width)",
+        player: "var(--layout-player-max-width)",
+        docs: "var(--layout-docs-max-width)"
       },
       fontFamily: {
         sans: ["var(--font-family-sans)"],
