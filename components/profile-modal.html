@@ -10,7 +10,7 @@
 >
   <div class="bv-modal-backdrop"></div>
 
-  <div class="modal-sheet modal-content relative flex max-h-[90vh] flex-col overflow-hidden lg:max-w-6xl" tabindex="-1">
+  <div class="modal-sheet modal-content relative flex max-h-modal-shell flex-col overflow-hidden lg:max-w-6xl" tabindex="-1">
       <!-- Modal Header -->
       <div class="modal-header">
         <h2 id="profileModalTitle" class="text-xl font-bold text-text">Profile</h2>
@@ -141,7 +141,7 @@
                   </span>
                   <div class="flex min-w-0 flex-1 flex-col gap-2">
                     <div class="flex flex-wrap items-center gap-3">
-                      <span class="text-[11px] font-semibold uppercase tracking-[0.2em] text-info">
+                      <span class="text-3xs font-semibold uppercase tracking-extra-wide text-info">
                         Active profile
                       </span>
                       <a
@@ -461,7 +461,7 @@
                 >
                   You haven’t watched any videos yet.
                 </div>
-                <div id="profileHistoryScroll" class="relative max-h-[420px] overflow-y-auto pr-1">
+                <div id="profileHistoryScroll" class="relative max-h-profile-history overflow-y-auto pr-1">
                   <div
                     id="profileHistoryGrid"
                     class="grid-stack hidden"

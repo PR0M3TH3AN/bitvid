@@ -223,6 +223,9 @@ module.exports = {
         mono: ["var(--font-family-mono)"]
       },
       fontSize: {
+        "4xs": ["var(--font-size-4xs)", { lineHeight: "var(--line-height-tight)" }],
+        "3xs": ["var(--font-size-3xs)", { lineHeight: "var(--line-height-tight)" }],
+        "2xs": ["var(--font-size-2xs)", { lineHeight: "var(--line-height-tight)" }],
         xs: ["var(--font-size-xs)", { lineHeight: "var(--line-height-tight)" }],
         sm: ["var(--font-size-sm)", { lineHeight: "var(--line-height-snug)" }],
         base: [
@@ -243,6 +246,16 @@ module.exports = {
         fast: "var(--motion-duration-fast)",
         base: "var(--motion-duration-base)",
         slow: "var(--motion-duration-slow)"
+      },
+      letterSpacing: {
+        "extra-wide": "var(--tracking-extra-wide)"
+      },
+      maxHeight: {
+        "modal-shell": "var(--modal-shell-max-height)",
+        "modal-sheet": "var(--modal-sheet-max-height)",
+        "modal-body": "var(--modal-body-max-height)",
+        "modal-pane": "var(--modal-pane-max-height)",
+        "profile-history": "var(--profile-history-max-height)"
       },
       transitionTimingFunction: {
         "ease-out": "var(--motion-ease-out)",
