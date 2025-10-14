@@ -70,6 +70,7 @@ describe("torrent/ui/styleHelpers", () => {
       beaconDynamicFallbackClasses.clipboard,
       "torrent-clipboard-textarea",
     );
+    assert.equal(beaconDynamicFallbackClasses.toast, "torrent-toast-motion");
   });
 
   it("applies dynamic styles and fallback classes", () => {

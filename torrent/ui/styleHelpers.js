@@ -3,6 +3,7 @@ import { applyDynamicStyles, removeDynamicStyles } from "../../js/ui/styleSystem
 const FALLBACK_CLASSES = {
   hiddenDownload: "torrent-download-anchor",
   clipboard: "torrent-clipboard-textarea",
+  toast: "torrent-toast-motion",
 };
 
 export function applyBeaconDynamicStyles(element, styleObject = {}, slotKey) {

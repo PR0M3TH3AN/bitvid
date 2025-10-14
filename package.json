@@ -39,10 +39,8 @@
     "angular": "^1.8.3",
     "angular-route": "^1.8.3",
     "angular-sanitize": "^1.8.3",
-    "angular-ui-grid": "^4.12.7",
     "moment": "^2.30.1",
     "ng-file-upload": "^12.2.13",
-    "ng-notify": "^0.7.1",
     "webtorrent": "^1.9.7"
   }
 }
