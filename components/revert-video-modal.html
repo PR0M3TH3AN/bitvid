@@ -14,7 +14,7 @@
     data-dismiss
   ></div>
 
-  <div class="modal-sheet max-h-[92vh] overflow-hidden lg:max-w-5xl" tabindex="-1">
+  <div class="modal-sheet max-h-modal-sheet overflow-hidden lg:max-w-5xl" tabindex="-1">
       <div class="modal-header transition-transform duration-150">
         <div class="flex flex-col">
           <h2 id="revertModalTitle" class="text-xl font-bold text-text">
@@ -47,7 +47,7 @@
         </button>
       </div>
 
-      <div class="modal-body space-y-6 overflow-y-auto max-h-[calc(92vh-4rem)]">
+      <div class="modal-body space-y-6 overflow-y-auto max-h-modal-body">
         <div
           class="rounded-md border border-border/60 bg-panel/60 p-4 text-sm text-muted-strong"
         >
@@ -58,12 +58,12 @@
           <p class="mt-2 text-xs text-muted">
             Versions are grouped by their
             <code
-              class="rounded border border-border/60 bg-surface/60 px-1 py-0.5 text-[0.7rem]"
+              class="rounded border border-border/60 bg-surface/60 px-1 py-0.5 text-2xs"
               >d</code
             >
             tag or shared
             <code
-              class="rounded border border-border/60 bg-surface/60 px-1 py-0.5 text-[0.7rem]"
+              class="rounded border border-border/60 bg-surface/60 px-1 py-0.5 text-2xs"
               >videoRootId</code
             >. This ensures legacy clients see consistent history when multiple
             edits were published, and keeps audience flags (NSFW / for kids)
@@ -84,7 +84,7 @@
             </div>
             <div
               id="revertVersionsList"
-              class="space-y-2 overflow-y-auto pr-1 max-h-[48vh]"
+              class="space-y-2 overflow-y-auto pr-1 max-h-modal-pane"
             ></div>
           </aside>
 

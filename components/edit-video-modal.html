@@ -9,7 +9,7 @@
 >
   <div id="editVideoModalOverlay" class="bv-modal-backdrop"></div>
 
-  <div class="modal-sheet modal-content max-h-[90vh] overflow-y-auto lg:max-w-4xl" tabindex="-1">
+  <div class="modal-sheet modal-content max-h-modal-shell overflow-y-auto lg:max-w-4xl" tabindex="-1">
       <div class="modal-header">
         <h2 class="text-xl font-bold text-text">Edit Video Note</h2>
         <button id="closeEditVideoModal" class="modal-close">
@@ -230,7 +230,7 @@
                         placeholder="video/mp4"
                         class="input"
                       />
-                      <p class="text-[11px] text-muted">RFC 2046 media type for this encoding.</p>
+                      <p class="text-3xs text-muted">RFC 2046 media type for this encoding.</p>
                     </div>
                     <div class="space-y-2">
                       <label class="block text-xs font-medium text-muted-strong">
@@ -242,7 +242,7 @@
                         placeholder="1920x1080"
                         class="input"
                       />
-                      <p class="text-[11px] text-muted">Formatted as widthxheight.</p>
+                      <p class="text-3xs text-muted">Formatted as widthxheight.</p>
                     </div>
                     <div class="space-y-2">
                       <label class="block text-xs font-medium text-muted-strong">
@@ -254,7 +254,7 @@
                         placeholder="https://cdn.example.com/variant.m3u8"
                         class="input"
                       />
-                      <p class="text-[11px] text-muted">HTTPS variant URL shared across clients.</p>
+                      <p class="text-3xs text-muted">HTTPS variant URL shared across clients.</p>
                     </div>
                     <div class="space-y-2">
                       <label class="block text-xs font-medium text-muted-strong">
@@ -266,7 +266,7 @@
                         placeholder="magnet:?xt=urn:btih:..."
                         class="input"
                       />
-                      <p class="text-[11px] text-muted">Optional magnet pointer if the variant is seeded via P2P.</p>
+                      <p class="text-3xs text-muted">Optional magnet pointer if the variant is seeded via P2P.</p>
                     </div>
                   </div>
 
@@ -275,7 +275,7 @@
                       <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">Image values</h4>
                       <button
                         type="button"
-                        class="btn-ghost focus-ring text-[11px] font-medium"
+                        class="btn-ghost focus-ring text-3xs font-medium"
                         data-nip71-nested-add="image"
                       >
                         Add image URL
@@ -292,7 +292,7 @@
                         />
                         <button
                           type="button"
-                          class="btn-ghost focus-ring text-[11px] font-medium"
+                          class="btn-ghost focus-ring text-3xs font-medium"
                           data-nip71-remove="nested"
                           aria-label="Remove image URL"
                         >
@@ -307,7 +307,7 @@
                       <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">Fallback URLs</h4>
                       <button
                         type="button"
-                        class="btn-ghost focus-ring text-[11px] font-medium"
+                        class="btn-ghost focus-ring text-3xs font-medium"
                         data-nip71-nested-add="fallback"
                       >
                         Add fallback
@@ -324,7 +324,7 @@
                         />
                         <button
                           type="button"
-                          class="btn-ghost focus-ring text-[11px] font-medium"
+                          class="btn-ghost focus-ring text-3xs font-medium"
                           data-nip71-remove="nested"
                           aria-label="Remove fallback URL"
                         >
@@ -339,7 +339,7 @@
                       <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">Services</h4>
                       <button
                         type="button"
-                        class="btn-ghost focus-ring text-[11px] font-medium"
+                        class="btn-ghost focus-ring text-3xs font-medium"
                         data-nip71-nested-add="service"
                       >
                         Add service
@@ -356,7 +356,7 @@
                         />
                         <button
                           type="button"
-                          class="btn-ghost focus-ring text-[11px] font-medium"
+                          class="btn-ghost focus-ring text-3xs font-medium"
                           data-nip71-remove="nested"
                           aria-label="Remove service entry"
                         >
@@ -369,7 +369,7 @@
                   <div class="flex justify-end">
                     <button
                       type="button"
-                      class="btn-ghost focus-ring text-[11px] font-medium"
+                      class="btn-ghost focus-ring text-3xs font-medium"
                       data-nip71-remove="imeta"
                     >
                       Remove variant
@@ -431,7 +431,7 @@
                   <div class="flex justify-end">
                     <button
                       type="button"
-                      class="btn-ghost focus-ring text-[11px] font-medium"
+                      class="btn-ghost focus-ring text-3xs font-medium"
                       data-nip71-remove="text-track"
                     >
                       Remove track
@@ -502,7 +502,7 @@
                   <div class="flex justify-end">
                     <button
                       type="button"
-                      class="btn-ghost focus-ring text-[11px] font-medium"
+                      class="btn-ghost focus-ring text-3xs font-medium"
                       data-nip71-remove="segment"
                     >
                       Remove segment
@@ -537,7 +537,7 @@
                   />
                   <button
                     type="button"
-                    class="btn-ghost focus-ring text-[11px] font-medium"
+                    class="btn-ghost focus-ring text-3xs font-medium"
                     data-nip71-remove="t"
                   >
                     Remove
@@ -583,7 +583,7 @@
                   <div class="flex justify-end">
                     <button
                       type="button"
-                      class="btn-ghost focus-ring text-[11px] font-medium"
+                      class="btn-ghost focus-ring text-3xs font-medium"
                       data-nip71-remove="p"
                     >
                       Remove participant
@@ -615,7 +615,7 @@
                   />
                   <button
                     type="button"
-                    class="btn-ghost focus-ring text-[11px] font-medium"
+                    class="btn-ghost focus-ring text-3xs font-medium"
                     data-nip71-remove="r"
                   >
                     Remove

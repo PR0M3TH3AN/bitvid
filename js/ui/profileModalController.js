@@ -1327,7 +1327,7 @@ export class ProfileModalController {
 
           const label = document.createElement("span");
           label.className =
-            "text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200";
+            "text-3xs font-semibold uppercase tracking-extra-wide text-blue-200";
           label.textContent =
             entry.authType === "nsec" ? "Direct key" : "Saved profile";
 

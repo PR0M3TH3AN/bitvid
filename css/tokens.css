@@ -273,6 +273,11 @@
   /* Component sizing */
   --menu-min-width: 12rem;
   --modal-max-width: 38rem;
+  --modal-shell-max-height: 90vh;
+  --modal-sheet-max-height: 92vh;
+  --modal-body-max-height: calc(92vh - 4rem);
+  --modal-pane-max-height: 48vh;
+  --profile-history-max-height: 26.25rem;
   --layout-player-max-width: 68.75rem;
   --layout-docs-max-width: 92.5rem;
   --icon-size-sm: var(--font-size-lg);
@@ -308,6 +313,9 @@
   /* Typography */
   --font-family-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-family-mono: "Fira Code", "SFMono-Regular", ui-monospace, monospace;
+  --font-size-4xs: 0.65rem;
+  --font-size-3xs: 0.6875rem;
+  --font-size-2xs: 0.7rem;
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
@@ -323,6 +331,7 @@
   --line-height-snug: 1.25;
   --line-height-base: 1.5;
   --line-height-relaxed: 1.75;
+  --tracking-extra-wide: 0.2em;
 
   /* Beacon UI tokens */
   --grid-border-width: calc(var(--space-2xs) / 4);

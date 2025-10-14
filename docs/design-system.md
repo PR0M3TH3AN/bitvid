@@ -32,6 +32,28 @@ When introducing a new runtime feature that requires dynamic styling:
 3. Clean up by calling `releaseScope` when the component unmounts.
 4. Prefer reusable primitives (like `.ds-metric-probe`) for offscreen measurement or layout shims so multiple components can share the same CSS.
 
+## Typography & Layout Tokens
+
+Small-type utilities and modal geometry are now backed by dedicated semantic tokens in `css/tokens.css`. The scale introduces
+`--font-size-4xs` (0.65rem), `--font-size-3xs` (0.6875rem), `--font-size-2xs` (0.7rem), and `--tracking-extra-wide`
+(0.2em) alongside modal measurements such as `--modal-shell-max-height`, `--modal-sheet-max-height`,
+`--modal-body-max-height`, `--modal-pane-max-height`, and `--profile-history-max-height`. Tailwind exposes the tokens through
+utility aliases including `text-4xs`, `text-3xs`, `text-2xs`, `tracking-extra-wide`, `max-h-modal-shell`, `max-h-modal-sheet`,
+`max-h-modal-body`, `max-h-modal-pane`, and `max-h-profile-history`. Use these utilities instead of arbitrary values so future
+scale adjustments can ship from a single source of truth.
+
+### Migration notes
+
+- Replace literal classes such as `text-[11px]`, `text-[0.7rem]`, and `text-[0.65rem]` with the new semantic helpers
+  (`text-3xs`, `text-2xs`, `text-4xs`). The controller logic for saved profiles and modal renderers has been updated to follow
+  the same pattern.
+- Swap bespoke tracking overrides (for example, `tracking-[0.2em]`) to `tracking-extra-wide` so the widened CTA headings stay
+  consistent across themes.
+- Move modal shells and scroll containers off arbitrary `max-h-[...]` utilities in favour of `max-h-modal-shell`,
+  `max-h-modal-sheet`, `max-h-modal-body`, `max-h-modal-pane`, and `max-h-profile-history`.
+- Keep the legacy search strings (like `text-[11px]`) in regression checklists—repositories should no longer include those
+  selectors after migrating a template or controller.
+
 ## Theming
 
 ### `[data-theme]` contract
