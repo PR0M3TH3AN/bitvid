@@ -187,10 +187,6 @@ export function createToastManager(documentRef, timeoutRef = setTimeout, clearTi
   };
 }
 
-export function registerBeaconToast(app) {
-  app.factory("beaconToast", ["$document", "$timeout", function ($document, $timeout) {
-    const doc = $document[0];
-    const manager = createToastManager(doc, $timeout, $timeout.cancel);
-    return manager;
-  }]);
+export function createBeaconToast(documentRef, timeoutRef = setTimeout, clearTimeoutRef = clearTimeout) {
+  return createToastManager(documentRef, timeoutRef, clearTimeoutRef);
 }

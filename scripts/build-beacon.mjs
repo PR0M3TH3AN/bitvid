@@ -10,19 +10,20 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const entryPoint = path.join(repoRoot, "torrent/src/beacon-vendor.js");
 const outDir = path.join(repoRoot, "torrent/dist");
+const outFile = path.join(outDir, "beacon.js");
 
 await mkdir(outDir, { recursive: true });
 
 await build({
   bundle: true,
-  entryPoints: { "beacon.vendor": entryPoint },
-  outdir: outDir,
-  format: "iife",
+  entryPoints: [entryPoint],
+  outfile: outFile,
+  format: "esm",
+  splitting: false,
   platform: "browser",
-  target: ["es2019"],
+  target: ["es2020"],
   minify: true,
   sourcemap: false,
-  entryNames: "[name]",
   loader: {
     ".css": "css",
     ".woff": "dataurl",
