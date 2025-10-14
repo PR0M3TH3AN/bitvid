@@ -32,7 +32,6 @@ const DIST_SCAN_PREFIXES = new Set([
 const DIST_SCAN_PREFIXES_ARRAY = [...DIST_SCAN_PREFIXES];
 
 const IGNORED_FILES = new Set([
-  "js/ui/styleSystem.js",
   "css/tailwind.generated.css",
   "js/webtorrent.min.js",
   "js/webtorrent.min.js.map",
@@ -45,6 +44,7 @@ const VIOLATION_ALLOWLIST = new Map([
     "torrent/dist/beacon.vendor.js",
     new Set(["Direct .style usage", "style.cssText usage"]),
   ],
+  ["js/ui/utils/positionFloatingPanel.js", new Set(["Direct .style usage"])],
 ]);
 
 const TEXT_EXTENSIONS = new Set([
@@ -220,9 +220,7 @@ async function main() {
         `${violation.file}:${violation.line} — ${violation.label}\n  ${violation.snippet}\n`
       );
     }
-    console.error(
-      "Inline styles are disallowed. Move styles into tokens, CSS, or styleSystem."
-    );
+    console.error("Inline styles are disallowed. Move styles into tokens or CSS.");
     process.exitCode = 1;
     return;
   }

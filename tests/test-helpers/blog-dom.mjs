@@ -157,22 +157,6 @@ export function installInlineStyleGuard(document) {
   };
 }
 
-export function readDynamicStyleRules(document) {
-  const styleElement = document.getElementById('bitvid-style-system');
-  const sheet = styleElement?.sheet;
-  if (!sheet) {
-    return '';
-  }
-
-  try {
-    return Array.from(sheet.cssRules)
-      .map((rule) => rule.cssText)
-      .join('\n');
-  } catch (error) {
-    return '';
-  }
-}
-
 export function createBlogDomEnvironment(html) {
   const dom = new JSDOM(html, { url: 'https://example.com' });
   const { window } = dom;

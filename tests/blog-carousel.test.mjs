@@ -3,11 +3,16 @@ import { beforeEach, afterEach, describe, test } from 'node:test';
 
 import { advanceSlide, createCarousel, destroyCarousel } from '../js/blog/carousel.js';
 import { mountProgressBar } from '../js/blog/progressBar.js';
-import {
-  createBlogDomEnvironment,
-  createSpy,
-  readDynamicStyleRules,
-} from './test-helpers/blog-dom.mjs';
+import { createBlogDomEnvironment, createSpy } from './test-helpers/blog-dom.mjs';
+
+function assertHasClasses(element, classes, messagePrefix = 'element') {
+  classes.forEach((className) => {
+    assert.ok(
+      element.classList.contains(className),
+      `${messagePrefix} should include the “${className}” class`,
+    );
+  });
+}
 
 function assertNoInlineStyleAttributes(elements, messagePrefix = 'element') {
   elements.forEach((element, index) => {
@@ -208,8 +213,12 @@ describe('progress bar', () => {
 
     const wrapper = container.querySelector('.blog-carousel__progress');
     assert.ok(wrapper, 'wrapper element should be appended');
+    assertHasClasses(wrapper, ['blog-carousel__progress', 'blog-progress', 'mt-2'], 'progress wrapper');
+    assert.strictEqual(wrapper.dataset.carouselProgress, 'true');
+    assert.strictEqual(wrapper.getAttribute('data-carousel-progress'), 'true');
     const meter = wrapper.querySelector('progress.progress--blog');
     assert.ok(meter, 'progress meter should be created');
+    assertHasClasses(meter, ['progress', 'progress--blog'], 'progress meter');
     assert.strictEqual(meter.max, 100, 'progress meter should expose a 0-100 range');
     assert.strictEqual(meter.value, 0, 'progress meter should start at zero');
     assert.strictEqual(meter.dataset.state, 'idle');
@@ -220,11 +229,11 @@ describe('progress bar', () => {
       'Carousel progress 0% complete',
       'progress meter should emit accessible status text',
     );
+    assert.strictEqual(meter.getAttribute('data-progress-meter'), 'true');
+    assert.strictEqual(meter.dataset.progressMeter, 'true');
+    assert.strictEqual(meter.getAttribute('data-variant'), 'blog');
 
     progress.reset();
-
-    assert.strictEqual(readDynamicStyleRules(env.document), '', 'no dynamic style rules should be injected');
-    assert.strictEqual(env.document.getElementById('bitvid-style-system'), null);
 
     assertNoInlineStyleAttributes([container, wrapper, meter], 'progress element');
   });
@@ -249,9 +258,6 @@ describe('progress bar', () => {
     assert.strictEqual(meter.value, 100);
     assert.strictEqual(meter.dataset.state, 'complete');
     assert.strictEqual(meter.dataset.progress, '100');
-
-    assert.strictEqual(readDynamicStyleRules(env.document), '', 'no dynamic style rules should be injected');
-    assert.strictEqual(env.document.getElementById('bitvid-style-system'), null);
   });
 
   test('manual controls support stop, restart, and cleanup', () => {
@@ -281,9 +287,11 @@ describe('progress bar', () => {
 
     progress.destroy();
     assert.strictEqual(container.children.length, 0, 'destroy should remove wrapper from DOM');
-
-    assert.strictEqual(readDynamicStyleRules(env.document), '', 'no dynamic style rules should be injected');
-    assert.strictEqual(env.document.getElementById('bitvid-style-system'), null);
+    assert.strictEqual(
+      container.querySelector('[data-carousel-progress]'),
+      null,
+      'destroy should remove declarative progress markup',
+    );
     assertNoInlineStyleAttributes([container], 'progress container');
   });
 });
