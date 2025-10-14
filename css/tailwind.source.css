@@ -913,6 +913,24 @@
     box-shadow: var(--shadow-sm);
   }
 
+  @media (max-width: 480px) {
+    #playerModal .modal-nav .icon-button {
+      width: 2rem;
+      height: 2rem;
+      min-width: 2rem;
+      min-height: 2rem;
+    }
+
+    #playerModal .watch-container {
+      padding-inline: 0.75rem;
+    }
+
+    #playerModal .channel-card {
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+    }
+  }
+
   #playerModal .channel-card__avatar {
     flex-shrink: 0;
     width: 3.5rem;
