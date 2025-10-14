@@ -188,6 +188,10 @@
   --scrollbar-track: var(--color-white-soft);
   --scrollbar-thumb: var(--color-white-softer);
   --scrollbar-thumb-hover: var(--color-white-softest);
+  /* Overlay layering */
+  --z-overlay-nav: 60;
+  --z-overlay-floating: 70;
+  --z-overlay-toast: 80;
   /* Sidebar stack must remain below modal overlays. */
   --z-sidebar-overlay: 10;
   --z-sidebar: 20;
@@ -195,6 +199,8 @@
   --z-modal-overlay: 110;
   --z-modal-content: 120;
   --z-modal-player: 130;
+  --overlay-backdrop-color: rgb(15 23 42 / 0.68);
+  --overlay-backdrop-blur: 18px;
   --sidebar-width-expanded: 16rem;
   --sidebar-width-collapsed: 4rem;
   --sidebar-width: var(--sidebar-width-expanded);
