@@ -272,7 +272,7 @@
   }
 
   .popover__panel {
-    @apply focus-ring absolute left-0 top-full z-overlay-floating mt-2 min-w-menu origin-top rounded-lg border border-border border-opacity-40 bg-panel px-popup-inline py-popup-block text-sm text-text shadow-lg transition-transform transition-opacity duration-[var(--motion-duration-base)] ease-[var(--motion-ease-out)] opacity-0 scale-95 pointer-events-none;
+    @apply focus-ring absolute left-0 top-full z-overlay-floating mt-2 min-w-menu max-w-popover-safe origin-top rounded-lg border border-border border-opacity-40 bg-panel px-popup-inline py-popup-block text-sm text-text shadow-lg transition-transform transition-opacity duration-[var(--motion-duration-base)] ease-[var(--motion-ease-out)] opacity-0 scale-95 pointer-events-none;
   }
 
   .popover__panel[data-state="open"] {

@@ -336,10 +336,15 @@ module.exports = {
         menu: "var(--menu-min-width)",
         "grid-card": "var(--grid-card-min-width)"
       },
+      width: {
+        "blog-fluid": "var(--blog-layout-fluid-width)"
+      },
       maxWidth: {
         modal: "var(--modal-max-width)",
         player: "var(--layout-player-max-width)",
-        docs: "var(--layout-docs-max-width)"
+        docs: "var(--layout-docs-max-width)",
+        "popover-safe": "var(--popover-inline-safe-max)",
+        "blog-shell": "var(--blog-layout-max-width)"
       },
       translate: {
         toast: "var(--toast-translate)"

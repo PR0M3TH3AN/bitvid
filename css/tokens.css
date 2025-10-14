@@ -228,6 +228,14 @@
   --sidebar-mobile-gutter: 3rem;
   --popup-padding-inline: 1rem;
   --popup-padding-block: 0.75rem;
+  /*
+   * Layout width primitives
+   * Keep overlay panels and blog shells within the viewport while
+   * preserving the intended component widths.
+   */
+  --popover-inline-safe-max: calc(100vw - var(--space-xl));
+  --blog-layout-fluid-width: 80%;
+  --blog-layout-max-width: 47.5rem;
   --blog-embed-height: 100rem;
 
   /* Progress primitives */
@@ -264,15 +272,13 @@
   --color-blog-purple-700: rgb(126 34 206);
   --color-blog-purple-accent: rgb(146 55 156);
 
-  /* Blog layout */
+  /* Blog layout (container widths defined in layout primitives above) */
   --blog-font-size-root: 1.25rem;
   --blog-font-size-display: 3rem;
   --blog-font-size-title: 1.1rem;
   --blog-font-size-body: 0.9rem;
   --blog-font-size-meta: 0.8rem;
   --blog-font-size-h1-mobile: 1.6rem;
-  --blog-layout-fluid-width: 80%;
-  --blog-layout-max-width: 47.5rem;
   --blog-space-compact: 0.3rem;
   --blog-space-snug: 0.4rem;
   --blog-space-stack-xxl: 4rem;
