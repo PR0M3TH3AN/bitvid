@@ -265,6 +265,14 @@ panelEl.dataset.state = "open";
 positioner.update();
 ```
 
+The helper tags the trigger and surface with floating metadata so CSS tokens can express transform-origins and fallback coordina
+tes without bespoke inline styles. Panels receive `data-floating-panel="true"` plus placement, alignment, strategy, and directio
+n hooks (`data-floating-placement`, `data-floating-alignment`, `data-floating-strategy`, `data-floating-dir`). The script updates
+CSS custom properties `--floating-fallback-top`/`--floating-fallback-left` on each measurement so `css/tailwind.source.css` can
+control layout purely through tokens. Browsers that support CSS anchor positioning flip `data-floating-mode` to `anchor`, but th
+e same fallback properties keep older engines aligned. 【F:js/ui/utils/positionFloatingPanel.js†L238-L251】【F:css/tailwind.sourc
+e.css†L163-L236】
+
 Recommended container pattern:
 
 - Wrap the trigger and panel in `.popover` so the markup stays discoverable and inherits spacing tokens.

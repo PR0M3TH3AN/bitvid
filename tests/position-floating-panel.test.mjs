@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import positionFloatingPanel from "../js/ui/utils/positionFloatingPanel.js";
-import { getAppliedDynamicStyles } from "../js/ui/styleSystem.js";
 
 test("flips to top when bottom placement collides with viewport", () => {
   const dom = new JSDOM(
@@ -54,13 +53,14 @@ test("flips to top when bottom placement collides with viewport", () => {
   panel.dataset.state = "open";
   positioner.update();
 
-  assert.equal(panel.dataset.placement, "top");
-  const styles = getAppliedDynamicStyles(panel, { slot: "floating-position" });
-  assert.ok(styles);
-  assert.equal(styles.top, "132px");
-  assert.equal(styles.left, "100px");
+  assert.equal(panel.dataset.floatingPlacement, "top");
+  assert.equal(panel.style.position, "fixed");
+  assert.equal(panel.style.getPropertyValue("--floating-fallback-top"), "132px");
+  assert.equal(panel.style.getPropertyValue("--floating-fallback-left"), "100px");
 
   positioner.destroy();
+  assert.equal(panel.dataset.floatingPanel, undefined);
+  assert.equal(trigger.dataset.floatingAnchor, undefined);
 });
 
 test("respects RTL alignment and clamps within the viewport", () => {
@@ -116,10 +116,9 @@ test("respects RTL alignment and clamps within the viewport", () => {
   positioner.update();
 
   // In RTL mode, start alignment hugs the right edge of the trigger.
-  const rtlStyles = getAppliedDynamicStyles(panel, { slot: "floating-position" });
-  assert.ok(rtlStyles);
-  assert.equal(rtlStyles.left, "140px");
-  assert.equal(panel.dataset.placement, "bottom");
+  assert.equal(panel.dataset.floatingPlacement, "bottom");
+  assert.equal(panel.dataset.floatingDir, "rtl");
+  assert.equal(panel.style.getPropertyValue("--floating-fallback-left"), "140px");
 
   positioner.destroy();
 });
@@ -183,16 +182,12 @@ test("updates when scroll containers move the trigger", async () => {
   panel.dataset.state = "open";
   positioner.update();
 
-  const initialStyles = getAppliedDynamicStyles(panel, { slot: "floating-position" });
-  assert.ok(initialStyles);
-  assert.equal(initialStyles.top, "152px");
+  assert.equal(panel.style.getPropertyValue("--floating-fallback-top"), "152px");
   assert.ok(scrollHandler, "scroll listener should be registered");
 
   anchorTop = 60;
   scrollHandler?.({ type: "scroll" });
-  const updatedStyles = getAppliedDynamicStyles(panel, { slot: "floating-position" });
-  assert.ok(updatedStyles);
-  assert.equal(updatedStyles.top, "112px");
+  assert.equal(panel.style.getPropertyValue("--floating-fallback-top"), "112px");
 
   positioner.destroy();
   window.addEventListener = originalAddEventListener;
