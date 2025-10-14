@@ -30,6 +30,9 @@ module.exports = {
           "panel-glass": "var(--color-overlay-panel-glass)",
           black: "var(--color-overlay-black)"
         },
+        shadow: {
+          intense: "var(--color-shadow-intense)"
+        },
         primary: "var(--color-primary)",
         secondary: "var(--color-secondary)",
         panel: {
@@ -156,7 +159,14 @@ module.exports = {
         "sidebar-trigger": "var(--shadow-sidebar-trigger)",
         "sidebar-dropup": "var(--shadow-sidebar-dropup)",
         "sidebar-panel": "var(--shadow-sidebar-panel)",
-        "sidebar-focus-ring": "var(--shadow-sidebar-focus-ring)"
+        "sidebar-focus-ring": "var(--shadow-sidebar-focus-ring)",
+        "popover-intense": "0 22px 48px -18px var(--color-shadow-intense)"
+      },
+      boxShadowColor: {
+        intense: "var(--color-shadow-intense)"
+      },
+      dropShadow: {
+        intense: "0 1.5rem 3rem var(--color-shadow-intense)"
       },
       spacing: {
         "4xs": "var(--space-4xs)",
