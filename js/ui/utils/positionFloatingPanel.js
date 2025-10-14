@@ -1,8 +1,3 @@
-import {
-  applyDynamicStyles,
-  clearAllDynamicStyles,
-} from "../styleSystem.js";
-
 const DEFAULT_OPTIONS = {
   placement: "bottom",
   alignment: "start",
@@ -13,6 +8,20 @@ const DEFAULT_OPTIONS = {
   rtl: null,
   onUpdate: null,
 };
+
+const PANEL_DATA_KEYS = [
+  "floatingPanel",
+  "floatingPlacement",
+  "floatingAlignment",
+  "floatingStrategy",
+  "floatingDir",
+  "floatingMode",
+];
+
+const PANEL_STYLE_PROPS = [
+  "--floating-fallback-top",
+  "--floating-fallback-left",
+];
 
 const OPPOSITE_PLACEMENT = {
   top: "bottom",
@@ -133,41 +142,6 @@ function computePosition({
   }
 }
 
-function computeTransformOrigin({ placement, alignment, rtl }) {
-  let originY = "center";
-  let originX = "center";
-
-  if (placement === "top") {
-    originY = "bottom";
-  } else if (placement === "bottom") {
-    originY = "top";
-  } else if (placement === "left") {
-    originX = "right";
-  } else if (placement === "right") {
-    originX = "left";
-  }
-
-  if (placement === "top" || placement === "bottom") {
-    if (alignment === "start") {
-      originX = rtl ? "right" : "left";
-    } else if (alignment === "end") {
-      originX = rtl ? "left" : "right";
-    } else {
-      originX = "center";
-    }
-  } else if (placement === "left" || placement === "right") {
-    if (alignment === "start") {
-      originY = "top";
-    } else if (alignment === "end") {
-      originY = "bottom";
-    } else {
-      originY = "center";
-    }
-  }
-
-  return `${originX} ${originY}`;
-}
-
 function normalizePlacement(value) {
   const normalized = typeof value === "string" ? value.toLowerCase() : "";
   if (normalized === "top" || normalized === "bottom") {
@@ -210,6 +184,21 @@ function resolvePanelSize(panel, previousSize) {
   return { width, height };
 }
 
+function detectAnchorSupport(windowRef) {
+  const css = windowRef?.CSS;
+  if (!css || typeof css.supports !== "function") {
+    return false;
+  }
+  try {
+    return (
+      css.supports("anchor-name: --floating-panel") &&
+      css.supports("position-anchor: --floating-panel")
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
 export function positionFloatingPanel(anchor, panel, options = {}) {
   const safeAnchor = anchor || null;
   const safePanel = panel || null;
@@ -239,30 +228,27 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
   config.strategy = config.strategy === "absolute" ? "absolute" : "fixed";
   const rtl = resolveDirection(safeAnchor, documentRef, config.rtl);
 
+  const anchorSupported = detectAnchorSupport(windowRef);
+
   const state = {
     lastSize: { width: 0, height: 0 },
     cleanup: [],
   };
 
+  safeAnchor.dataset.floatingAnchor = "true";
+  safePanel.dataset.floatingPanel = "true";
+  safePanel.dataset.floatingAlignment = config.alignment;
+  safePanel.dataset.floatingStrategy = config.strategy;
+  safePanel.dataset.floatingDir = rtl ? "rtl" : "ltr";
+  safePanel.dataset.floatingMode = anchorSupported ? "anchor" : "fallback";
+
   const applyPosition = ({ top, left, placement }) => {
-    safePanel.dataset.placement = placement;
-    const transformOrigin = computeTransformOrigin({
-      placement,
-      alignment: config.alignment,
-      rtl,
-    });
-    applyDynamicStyles(
-      safePanel,
-      {
-        position: config.strategy,
-        top: `${top}px`,
-        left: `${left}px`,
-        right: "auto",
-        bottom: "auto",
-        "--floating-transform-origin": transformOrigin,
-      },
-      { slot: "floating-position" },
-    );
+    safePanel.dataset.floatingPlacement = placement;
+    safePanel.style.position = config.strategy;
+    safePanel.style.removeProperty("right");
+    safePanel.style.removeProperty("bottom");
+    safePanel.style.setProperty("--floating-fallback-top", `${top}px`);
+    safePanel.style.setProperty("--floating-fallback-left", `${left}px`);
     if (typeof config.onUpdate === "function") {
       config.onUpdate({ top, left, placement, alignment: config.alignment, rtl });
     }
@@ -409,7 +395,17 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
           // Ignore cleanup errors to avoid breaking consumer teardown flows.
         }
       }
-      clearAllDynamicStyles(safePanel);
+      PANEL_STYLE_PROPS.forEach((prop) => {
+        safePanel.style.removeProperty(prop);
+      });
+      safePanel.style.removeProperty("right");
+      safePanel.style.removeProperty("bottom");
+      safePanel.style.removeProperty("position");
+      safePanel.style.position = "";
+      PANEL_DATA_KEYS.forEach((key) => {
+        delete safePanel.dataset[key];
+      });
+      delete safeAnchor.dataset.floatingAnchor;
     },
   };
 }
