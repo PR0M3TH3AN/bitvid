@@ -1,5 +1,7 @@
 /* global WebTorrent, angular, moment */
 import { applyBeaconDynamicStyles } from "./ui/styleHelpers.js";
+import { registerBeaconToast } from "./ui/toastService.js";
+import { registerTorrentTable } from "./ui/torrentTable.js";
 
 const VERSION = "1.1";
 
@@ -22,14 +24,10 @@ function dbg(msg) {
 const client = new WebTorrent({ tracker: trackerOpts });
 
 // Angular app definition.
-const app = angular.module("BTorrent", [
-  "ngRoute",
-  "ui.grid",
-  "ui.grid.resizeColumns",
-  "ui.grid.selection",
-  "ngFileUpload",
-  "ngNotify",
-]);
+const app = angular.module("BTorrent", ["ngRoute", "ngFileUpload"]);
+
+registerBeaconToast(app);
+registerTorrentTable(app);
 
 // Configure Angular routes.
 app.config([
@@ -81,12 +79,12 @@ app.controller("BTorrentCtrl", [
   "$rootScope",
   "$http",
   "$log",
-  "ngNotify",
-  function ($scope, $rootScope, $http, $log, ngNotify) {
+  "beaconToast",
+  function ($scope, $rootScope, $http, $log, beaconToast) {
     dbg("Starting app.js version " + VERSION);
 
     if (!WebTorrent.WEBRTC_SUPPORT) {
-      ngNotify.set("Please use a browser with WebRTC support.", "error");
+      beaconToast.error("Please use a browser with WebRTC support.", { sticky: true });
     }
 
     $rootScope.client = client;
@@ -96,7 +94,7 @@ app.controller("BTorrentCtrl", [
     // Global error handler.
     client.on("error", (err) => {
       dbg("Torrent client error: " + err);
-      ngNotify.set(err.message || err, "error");
+      beaconToast.error(err.message || err);
       $rootScope.processing = false;
     });
 
@@ -108,7 +106,7 @@ app.controller("BTorrentCtrl", [
       $rootScope.processing = false;
 
       if (!isSeed) {
-        ngNotify.set(`Received ${torrent.name} metadata`);
+        beaconToast.info(`Received ${torrent.name} metadata`);
       }
       if (!$rootScope.selectedTorrent) {
         $rootScope.selectedTorrent = torrent;
@@ -216,11 +214,11 @@ app.controller("BTorrentCtrl", [
         navigator.clipboard
           .writeText(magnetURI)
           .then(() =>
-            ngNotify.set("Magnet URI copied to clipboard!", "success")
+            beaconToast.success("Magnet URI copied to clipboard!")
           )
           .catch((err) => {
             console.error("Clipboard error:", err);
-            ngNotify.set("Failed to copy magnet URI", "error");
+            beaconToast.error("Failed to copy magnet URI");
           });
       } else {
         try {
@@ -242,10 +240,10 @@ app.controller("BTorrentCtrl", [
           textarea.select();
           document.execCommand("copy");
           document.body.removeChild(textarea);
-          ngNotify.set("Magnet URI copied (fallback)!", "success");
+          beaconToast.success("Magnet URI copied (fallback)!");
         } catch (err) {
           console.error("Clipboard fallback error:", err);
-          ngNotify.set("Failed to copy magnet URI", "error");
+          beaconToast.error("Failed to copy magnet URI");
         }
       }
     };
@@ -268,13 +266,13 @@ app.controller("BTorrentCtrl", [
   },
 ]);
 
-// FullCtrl: sets up the ui-grid and magnet input for /full route.
+// FullCtrl: handles the magnet input and torrent table for /full route.
 app.controller("FullCtrl", [
   "$scope",
   "$rootScope",
   "$location",
-  "ngNotify",
-  function ($scope, $rootScope, $location, ngNotify) {
+  "$interval",
+  function ($scope, $rootScope, $location, $interval) {
     // Handle magnet input
     $scope.addMagnet = function () {
       $rootScope.addMagnet($scope.torrentInput);
@@ -286,64 +284,41 @@ app.controller("FullCtrl", [
       $rootScope.addMagnet($location.hash());
     }
 
-    // Define columns for ui-grid.
-    $scope.columns = [
-      { field: "name", displayName: "Name", minWidth: 200 },
-      {
-        field: "progress",
-        displayName: "Progress",
-        cellFilter: "progress",
-        width: 100,
-      },
-      {
-        field: "downloadSpeed",
-        displayName: "↓ Speed",
-        cellFilter: "pbytes:1",
-        width: 100,
-      },
-      {
-        field: "uploadSpeed",
-        displayName: "↑ Speed",
-        cellFilter: "pbytes:1",
-        width: 100,
-      },
-      { field: "numPeers", displayName: "Peers", width: 80 },
-      {
-        field: "ratio",
-        displayName: "Ratio",
-        cellFilter: "number:2",
-        width: 80,
-      },
-    ];
+    const syncTorrents = () => {
+      const torrents = ($rootScope.client && $rootScope.client.torrents) || [];
+      $scope.torrentRows = torrents;
 
-    // Create gridOptions and update each second.
-    $scope.gridOptions = {
-      columnDefs: $scope.columns,
-      enableColumnResizing: true,
-      enableColumnMenus: false,
-      enableRowSelection: true,
-      enableRowHeaderSelection: false,
-      multiSelect: false,
-      data: [],
-    };
+      if ($rootScope.selectedTorrent) {
+        const stillPresent = torrents.some((torrent) => {
+          return (
+            torrent === $rootScope.selectedTorrent ||
+            (torrent?.magnetURI &&
+              torrent.magnetURI === $rootScope.selectedTorrent.magnetURI) ||
+            (torrent?.infoHash &&
+              torrent.infoHash === $rootScope.selectedTorrent.infoHash)
+          );
+        });
 
-    setInterval(() => {
-      $scope.gridOptions.data =
-        ($rootScope.client && $rootScope.client.torrents) || [];
-      $scope.$applyAsync();
-    }, 1000);
-
-    // On row selection, set the selectedTorrent
-    $scope.gridOptions.onRegisterApi = function (gridApi) {
-      $scope.gridApi = gridApi;
-      gridApi.selection.on.rowSelectionChanged($scope, function (row) {
-        if (row.isSelected) {
-          $rootScope.selectedTorrent = row.entity;
-        } else {
-          $rootScope.selectedTorrent = null;
+        if (!stillPresent) {
+          $rootScope.selectedTorrent = torrents[0] || null;
         }
-      });
+      } else if (torrents.length) {
+        $rootScope.selectedTorrent = torrents[0];
+      }
     };
+
+    $scope.selectTorrent = function (torrent) {
+      $rootScope.selectedTorrent = torrent;
+    };
+
+    syncTorrents();
+    const poller = $interval(syncTorrents, 1000);
+
+    $scope.$on("$destroy", function () {
+      if (poller) {
+        $interval.cancel(poller);
+      }
+    });
   },
 ]);
 

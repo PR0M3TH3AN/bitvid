@@ -73,14 +73,14 @@
     </form>
   </section>
 
-  <!-- ui-grid for active torrents (Name, Progress, Speeds, Peers, Ratio) -->
-  <section
-    class="card overflow-hidden"
-    ui-grid="gridOptions"
-    ui-grid-resize-columns="ui-grid-resize-columns"
-    ui-grid-selection="ui-grid-selection"
-    aria-label="Active torrents"
-  ></section>
+  <!-- Active torrent table using Tailwind tokens -->
+  <section class="card overflow-hidden" aria-label="Active torrents">
+    <torrent-table
+      torrents="torrentRows"
+      selected="$root.selectedTorrent"
+      on-select="selectTorrent(torrent)"
+    ></torrent-table>
+  </section>
 
   <!-- Selected torrent details: Pause/Resume, Download, Remove -->
   <section class="card p-6" ng-if="selectedTorrent">
@@ -263,7 +263,7 @@
 <!-- Processing Spinner -->
 <div
   class="fixed inset-0 z-[60] flex items-center justify-center bg-overlay-muted/70 backdrop-blur-md"
-  ng-show="client.processing"
+  ng-show="$root.processing"
 >
   <svg
     class="h-12 w-12 animate-spin text-info-strong"
