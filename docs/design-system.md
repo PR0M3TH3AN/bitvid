@@ -54,6 +54,18 @@ scale adjustments can ship from a single source of truth.
 - Keep the legacy search strings (like `text-[11px]`) in regression checklists—repositories should no longer include those
   selectors after migrating a template or controller.
 
+### Tailwind arbitrary values lint
+
+Run `npm run lint:tailwind-brackets` after touching markup or prose that embeds HTML. The lint walks `.html`, `.njk`, and `.md`
+sources and fails when Tailwind's bracket syntax introduces hard-coded measurements (`text-[11px]`, `max-w-[18rem]`, etc.).
+
+- Prefer the semantic utilities shipped alongside the tokens (`max-w-popover-safe`, `max-h-modal-shell`, `text-3xs`).
+- When you truly need an arbitrary value, drive it with a design token by referencing the CSS custom property (`w-[var(--blog-layout-fluid-width)]`, `min-h-[var(--form-textarea-min-height)]`).
+- Update the allowlist sparingly—every entry should correspond to a documented token so future adjustments cascade automatically.
+
+The lint shares the same underlying script as `npm run lint:tokens`, so both commands stay in lockstep with the design-system
+guardrails.
+
 ## Theming
 
 ### `[data-theme]` contract
@@ -385,7 +397,7 @@ Compose `.popover` with a zap-specific panel variant when you need to surface th
     <img src="assets/svg/lightning-bolt.svg" alt="Zap" class="h-5 w-5" />
   </button>
   <div
-    class="popover__panel card w-72 max-w-[calc(100vw-2rem)] space-y-4"
+    class="popover__panel card w-72 max-w-popover-safe space-y-4"
     role="dialog"
     aria-hidden="true"
     data-variant="zap"
