@@ -325,6 +325,9 @@ module.exports = {
         "popup-inline": "var(--popup-padding-inline)",
         "popup-block": "var(--popup-padding-block)"
       },
+      height: {
+        "modal-embed": "var(--modal-embed-height)"
+      },
       minWidth: {
         menu: "var(--menu-min-width)",
         "grid-card": "var(--grid-card-min-width)"
@@ -377,6 +380,7 @@ module.exports = {
         "modal-sheet": "var(--modal-sheet-max-height)",
         "modal-body": "var(--modal-body-max-height)",
         "modal-pane": "var(--modal-pane-max-height)",
+        "modal-embed": "var(--modal-embed-height)",
         "profile-history": "var(--profile-history-max-height)"
       },
       transitionTimingFunction: {
