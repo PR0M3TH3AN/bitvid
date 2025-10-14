@@ -43,10 +43,67 @@
     />
     <link rel="manifest" href="/site.webmanifest" />
     <!--
-      Use the surface token so browsers pick up theme updates without editing
-      hex values in multiple places.
+      Use theme tokens so browsers pick up palette updates without hard-coded
+      hex values scattered across templates.
     -->
-    <meta name="theme-color" content="rgb(15 23 42)" />
+    <meta name="theme-color" content="var(--color-page)" />
+    <script>
+      (() => {
+        try {
+          const STORAGE_KEY = "bitvid:theme";
+          const root = document.documentElement;
+          const themeMeta = document.querySelector('meta[name="theme-color"]');
+          const fallbackColors = {
+            dark: "#0f172a",
+            light: "#f8fafc",
+          };
+          const prefersDark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const storedTheme = window.localStorage.getItem(STORAGE_KEY);
+          let resolvedTheme = storedTheme || (prefersDark ? "dark" : "light");
+
+          if (resolvedTheme === "default") {
+            resolvedTheme = "dark";
+          }
+
+          if (resolvedTheme) {
+            root.dataset.theme = resolvedTheme;
+          }
+
+          const updateThemeColor = () => {
+            if (!themeMeta) {
+              return;
+            }
+
+            const computedThemeColor =
+              (window.getComputedStyle &&
+                getComputedStyle(root).getPropertyValue("--color-page").trim()) ||
+              "";
+            const metaColor =
+              computedThemeColor ||
+              fallbackColors[resolvedTheme] ||
+              fallbackColors[prefersDark ? "dark" : "light"];
+
+            if (metaColor) {
+              themeMeta.content = metaColor;
+            }
+          };
+
+          updateThemeColor();
+
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", updateThemeColor, {
+              once: true,
+            });
+          } else if ("requestAnimationFrame" in window) {
+            window.requestAnimationFrame(updateThemeColor);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+    </script>
 
     <!-- Styles -->
     <!--
