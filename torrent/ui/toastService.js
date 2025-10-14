@@ -1,5 +1,3 @@
-import { applyBeaconDynamicStyles } from "./styleHelpers.js";
-
 const TOAST_TYPE_CLASSES = {
   info: "torrent-toast torrent-toast--info",
   success: "torrent-toast torrent-toast--success",
@@ -8,6 +6,19 @@ const TOAST_TYPE_CLASSES = {
 };
 
 const TRANSITION_CLASSES = "transition duration-200 ease-out";
+const MOTION_CLASS = "beacon-toast-motion";
+const MOTION_ATTR = "data-beacon-motion";
+
+function scheduleMotionFrame(documentRef, callback) {
+  const view = documentRef?.defaultView;
+
+  if (view && typeof view.requestAnimationFrame === "function") {
+    view.requestAnimationFrame(callback);
+    return;
+  }
+
+  setTimeout(callback, 16);
+}
 
 function ensureContainer(doc) {
   const documentRef = doc || (typeof document !== "undefined" ? document : null);
@@ -76,9 +87,9 @@ function buildToastElement(documentRef, message, typeClass) {
     "relative",
     "w-full",
     TRANSITION_CLASSES,
-    "translate-y-3",
-    "opacity-0",
+    MOTION_CLASS,
   ].join(" ");
+  wrapper.setAttribute(MOTION_ATTR, "exit");
 
   wrapper.appendChild(toast);
   toast.appendChild(closeButton);
@@ -108,11 +119,13 @@ export function createToastManager(documentRef, timeoutRef = setTimeout, clearTi
 
       container.appendChild(wrapper);
 
-      applyBeaconDynamicStyles(wrapper, { opacity: "1", transform: "translateY(0)" }, "toast");
+      scheduleMotionFrame(documentRef, () => {
+        wrapper.setAttribute(MOTION_ATTR, "enter");
+      });
 
       const duration = typeof options.duration === "number" ? options.duration : 3500;
       const cleanup = () => {
-        applyBeaconDynamicStyles(wrapper, { opacity: "0", transform: "translateY(0.75rem)" }, "toast");
+        wrapper.setAttribute(MOTION_ATTR, "exit");
         const removalTimer = timeoutRef(() => {
           if (wrapper.parentNode) {
             wrapper.parentNode.removeChild(wrapper);

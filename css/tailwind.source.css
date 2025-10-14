@@ -1268,10 +1268,15 @@
   }
 
   /* Torrent helper classes */
+  .beacon-hidden-download,
+  [data-beacon-hidden-download],
   .torrent-download-anchor {
     display: none !important;
   }
 
+  .beacon-clipboard-offscreen,
+  [data-beacon-clipboard-state="offscreen"],
+  [data-beacon-clipboard="offscreen"],
   .torrent-clipboard-textarea {
     position: fixed;
     top: 0;
@@ -1282,9 +1287,26 @@
     pointer-events: none;
   }
 
+  .beacon-toast-motion,
   .torrent-toast-motion {
     transition-property: opacity, transform;
     will-change: opacity, transform;
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+
+  .beacon-toast-motion[data-beacon-motion="enter"],
+  .beacon-toast-motion[data-beacon-motion="show"],
+  .torrent-toast-motion[data-beacon-motion="enter"],
+  .torrent-toast-motion[data-beacon-motion="show"] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .beacon-toast-motion[data-beacon-motion="exit"],
+  .torrent-toast-motion[data-beacon-motion="exit"] {
+    opacity: 0;
+    transform: translateY(0.75rem);
   }
 
   .torrent-toast {

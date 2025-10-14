@@ -22,6 +22,7 @@ describe("torrent/ui/toastService", () => {
 
   it("renders a toast with Tailwind token classes and removes it on dismiss", async () => {
     const documentRef = dom.window.document;
+    documentRef.defaultView.requestAnimationFrame = (cb) => cb();
     const toastManager = createToastManager(documentRef);
     const handle = toastManager.success("Magnet copied", { sticky: true });
 
@@ -31,7 +32,8 @@ describe("torrent/ui/toastService", () => {
 
     const wrapper = container.firstElementChild;
     assert.ok(wrapper, "toast wrapper should exist");
-    assert.equal(wrapper.classList.contains("torrent-toast-motion"), true);
+    assert.equal(wrapper.classList.contains("beacon-toast-motion"), true);
+    assert.equal(wrapper.getAttribute("data-beacon-motion"), "enter");
 
     const toast = wrapper.querySelector("div[role='status']");
     assert.ok(toast, "toast element should be present");
@@ -43,6 +45,7 @@ describe("torrent/ui/toastService", () => {
     assert.ok(closeButton, "close button should be rendered");
 
     handle.dismiss();
+    assert.equal(wrapper.getAttribute("data-beacon-motion"), "exit");
 
     await new Promise((resolve) => setTimeout(resolve, 250));
 

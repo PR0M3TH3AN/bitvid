@@ -1,5 +1,4 @@
 /* global WebTorrent, angular, moment */
-import { applyBeaconDynamicStyles } from "./ui/styleHelpers.js";
 import { registerBeaconToast } from "./ui/toastService.js";
 import { registerTorrentTable } from "./ui/torrentTable.js";
 
@@ -192,7 +191,8 @@ app.controller("BTorrentCtrl", [
           // Create an anchor to trigger the download.
           const blobUrl = URL.createObjectURL(blob);
           const a = document.createElement("a");
-          applyBeaconDynamicStyles(a, { display: "none" }, "hiddenDownload");
+          a.classList.add("beacon-hidden-download");
+          a.setAttribute("data-beacon-hidden-download", "true");
           a.href = blobUrl;
           a.download = file.name;
           // Append, click, remove, revoke.
@@ -224,18 +224,8 @@ app.controller("BTorrentCtrl", [
         try {
           const textarea = document.createElement("textarea");
           textarea.value = magnetURI;
-          applyBeaconDynamicStyles(
-            textarea,
-            {
-              position: "fixed",
-              top: "0",
-              left: "-9999px",
-              width: "0",
-              height: "0",
-              opacity: "0",
-            },
-            "clipboard",
-          );
+          textarea.classList.add("beacon-clipboard-offscreen");
+          textarea.setAttribute("data-beacon-clipboard-state", "offscreen");
           document.body.appendChild(textarea);
           textarea.select();
           document.execCommand("copy");
@@ -256,7 +246,8 @@ app.controller("BTorrentCtrl", [
       const fileName = torrent.fileName || `${torrent.name}.torrent`;
       // Create a hidden <a> to force download of the .torrent file.
       const a = document.createElement("a");
-      applyBeaconDynamicStyles(a, { display: "none" }, "hiddenDownload");
+      a.classList.add("beacon-hidden-download");
+      a.setAttribute("data-beacon-hidden-download", "true");
       a.href = torrent.torrentFileBlobURL;
       a.download = fileName;
       document.body.appendChild(a);
