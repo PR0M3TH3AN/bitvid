@@ -1,5 +1,6 @@
 import { createModalAccessibility } from "./modalAccessibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
+import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
 
 export class VideoModal {
@@ -260,6 +261,7 @@ export class VideoModal {
     this.modalMoreBtn = playerModal.querySelector("#modalMoreBtn") || null;
     this.modalMoreMenu =
       playerModal.querySelector("#moreDropdown-modal") || null;
+    this.modalMoreMenuStyles = null;
 
     this.modalZapDialog = playerModal.querySelector("#modalZapDialog") || null;
     this.modalZapForm = playerModal.querySelector("#modalZapForm") || null;
@@ -281,6 +283,7 @@ export class VideoModal {
       playerModal.querySelector("#modalZapWalletPrompt") || null;
     this.modalZapWalletLink =
       playerModal.querySelector("#modalZapWalletLink") || null;
+    this.modalZapStyles = null;
 
     if (this.modalZapDialog) {
       if (!this.modalZapDialog.dataset.state) {
@@ -294,6 +297,7 @@ export class VideoModal {
         this.modalZapDialog.setAttribute("aria-hidden", "true");
       }
       if (this.modalZapBtn) {
+        this.modalZapStyles = createFloatingPanelStyles(this.modalZapDialog);
         this.modalZapPositioner = positionFloatingPanel(
           this.modalZapBtn,
           this.modalZapDialog,
@@ -302,6 +306,7 @@ export class VideoModal {
             alignment: "end",
             offset: 8,
             viewportPadding: 16,
+            styles: this.modalZapStyles,
           },
         );
       }
@@ -319,6 +324,7 @@ export class VideoModal {
         this.modalMoreMenu.setAttribute("aria-hidden", "true");
       }
       if (this.modalMoreBtn) {
+        this.modalMoreMenuStyles = createFloatingPanelStyles(this.modalMoreMenu);
         this.modalMoreMenuPositioner = positionFloatingPanel(
           this.modalMoreBtn,
           this.modalMoreMenu,
@@ -327,6 +333,7 @@ export class VideoModal {
             alignment: "end",
             offset: 8,
             viewportPadding: 16,
+            styles: this.modalMoreMenuStyles,
           },
         );
       }

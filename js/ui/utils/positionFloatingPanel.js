@@ -1,3 +1,5 @@
+import { createFloatingPanelStyles } from "./floatingPanelStyles.js";
+
 const DEFAULT_OPTIONS = {
   placement: "bottom",
   alignment: "start",
@@ -8,20 +10,6 @@ const DEFAULT_OPTIONS = {
   rtl: null,
   onUpdate: null,
 };
-
-const PANEL_DATA_KEYS = [
-  "floatingPanel",
-  "floatingPlacement",
-  "floatingAlignment",
-  "floatingStrategy",
-  "floatingDir",
-  "floatingMode",
-];
-
-const PANEL_STYLE_PROPS = [
-  "--floating-fallback-top",
-  "--floating-fallback-left",
-];
 
 const OPPOSITE_PLACEMENT = {
   top: "bottom",
@@ -213,9 +201,10 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
   const documentRef = safeAnchor.ownerDocument || safePanel.ownerDocument || globalThis.document;
   const windowRef = documentRef?.defaultView || globalThis;
 
+  const { styles: providedStyles, ...optionOverrides } = options || {};
   const config = {
     ...DEFAULT_OPTIONS,
-    ...options,
+    ...optionOverrides,
   };
   config.placement = normalizePlacement(config.placement);
   config.alignment = normalizeAlignment(config.alignment);
@@ -235,20 +224,21 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
     cleanup: [],
   };
 
+  const styles =
+    providedStyles && providedStyles.element === safePanel
+      ? providedStyles
+      : createFloatingPanelStyles(safePanel);
+
   safeAnchor.dataset.floatingAnchor = "true";
-  safePanel.dataset.floatingPanel = "true";
-  safePanel.dataset.floatingAlignment = config.alignment;
-  safePanel.dataset.floatingStrategy = config.strategy;
-  safePanel.dataset.floatingDir = rtl ? "rtl" : "ltr";
-  safePanel.dataset.floatingMode = anchorSupported ? "anchor" : "fallback";
+  styles.setAlignment(config.alignment);
+  styles.setStrategy(config.strategy);
+  styles.setDirection(rtl ? "rtl" : "ltr");
+  styles.setMode(anchorSupported ? "anchor" : "fallback");
+  styles.setPlacement(config.placement);
 
   const applyPosition = ({ top, left, placement }) => {
-    safePanel.dataset.floatingPlacement = placement;
-    safePanel.style.position = config.strategy;
-    safePanel.style.removeProperty("right");
-    safePanel.style.removeProperty("bottom");
-    safePanel.style.setProperty("--floating-fallback-top", `${top}px`);
-    safePanel.style.setProperty("--floating-fallback-left", `${left}px`);
+    styles.setPlacement(placement);
+    styles.setFallbackPosition({ top, left });
     if (typeof config.onUpdate === "function") {
       config.onUpdate({ top, left, placement, alignment: config.alignment, rtl });
     }
@@ -395,18 +385,10 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
           // Ignore cleanup errors to avoid breaking consumer teardown flows.
         }
       }
-      PANEL_STYLE_PROPS.forEach((prop) => {
-        safePanel.style.removeProperty(prop);
-      });
-      safePanel.style.removeProperty("right");
-      safePanel.style.removeProperty("bottom");
-      safePanel.style.removeProperty("position");
-      safePanel.style.position = "";
-      PANEL_DATA_KEYS.forEach((key) => {
-        delete safePanel.dataset[key];
-      });
+      styles.teardown();
       delete safeAnchor.dataset.floatingAnchor;
     },
+    styles,
   };
 }
 

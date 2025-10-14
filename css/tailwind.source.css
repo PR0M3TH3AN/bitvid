@@ -160,6 +160,10 @@
     @apply font-mono;
   }
 
+  [data-floating-anchor="true"] {
+    anchor-name: --floating-panel;
+  }
+
   [data-floating-panel] {
     --floating-transform-origin-inline: 50%;
     --floating-transform-origin-block: 50%;
@@ -167,6 +171,10 @@
     --floating-fallback-left: auto;
     position: fixed;
     inset: auto;
+    top: var(--floating-fallback-top);
+    left: var(--floating-fallback-left);
+    right: auto;
+    bottom: auto;
     transform-origin: var(--floating-transform-origin-inline)
       var(--floating-transform-origin-block);
   }
@@ -175,11 +183,8 @@
     position: absolute;
   }
 
-  [data-floating-panel] {
-    top: var(--floating-fallback-top);
-    left: var(--floating-fallback-left);
-    right: auto;
-    bottom: auto;
+  [data-floating-panel][data-floating-mode="anchor"] {
+    position-anchor: --floating-panel;
   }
 
   [data-floating-panel][data-floating-placement="top"] {

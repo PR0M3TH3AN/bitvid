@@ -1,5 +1,6 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
+import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
 
 export class VideoCard {
   constructor({
@@ -661,6 +662,7 @@ export class VideoCard {
 
       this.settingsButton = button;
       this.settingsDropdown = dropdown;
+      this.settingsDropdownStyles = createFloatingPanelStyles(dropdown);
       this.settingsDropdownPositioner = positionFloatingPanel(
         button,
         dropdown,
@@ -669,6 +671,7 @@ export class VideoCard {
           alignment: "end",
           offset: 8,
           viewportPadding: 16,
+          styles: this.settingsDropdownStyles,
         },
       );
     }
@@ -873,11 +876,13 @@ export class VideoCard {
 
     this.moreMenuButton = button;
     this.moreMenu = dropdown;
+    this.moreMenuStyles = createFloatingPanelStyles(dropdown);
     this.moreMenuPositioner = positionFloatingPanel(button, dropdown, {
       placement: "bottom",
       alignment: "end",
       offset: 8,
       viewportPadding: 16,
+      styles: this.moreMenuStyles,
     });
 
     return wrapper;

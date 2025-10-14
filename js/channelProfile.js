@@ -12,6 +12,7 @@ import { accessControl } from "./accessControl.js";
 import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
 import positionFloatingPanel from "./ui/utils/positionFloatingPanel.js";
+import { createFloatingPanelStyles } from "./ui/utils/floatingPanelStyles.js";
 import { VideoCard } from "./ui/components/VideoCard.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import {
@@ -397,11 +398,13 @@ function openZapControls({ focus = false } = {}) {
     return false;
   }
   if (!zapControlsPositioner) {
+    const styles = createFloatingPanelStyles(controls);
     zapControlsPositioner = positionFloatingPanel(zapButton, controls, {
       placement: "bottom",
       alignment: "end",
       offset: 8,
       viewportPadding: 16,
+      styles,
     });
   }
   if (!zapControlsOpen) {
