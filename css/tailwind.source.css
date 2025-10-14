@@ -944,11 +944,30 @@
   }
 
   .video-modal__video {
-    @apply relative overflow-hidden rounded-3xl bg-black shadow-2xl lg:sticky lg:top-20;
+    position: relative;
+    background-color: var(--color-black);
+    padding-block: clamp(0.5rem, 2.5vw, 1.25rem);
+  }
+
+  @media (min-width: 1024px) {
+    .video-modal__video {
+      position: sticky;
+      top: 5rem;
+    }
+  }
+
+  #playerModal .video-modal__video video {
+    border-radius: 0.75rem;
+    box-shadow: 0 1rem 2.25rem var(--color-shadow-elevated);
+    max-height: min(80vh, calc(100vw * 9 / 16));
+    object-fit: contain;
   }
 
   .video-modal__media {
-    @apply block aspect-video w-full object-contain;
+    display: block;
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    object-fit: contain;
   }
 
   .video-modal__details {
