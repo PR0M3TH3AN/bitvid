@@ -274,6 +274,38 @@
   --line-height-base: 1.5;
   --line-height-relaxed: 1.75;
 
+  /* Beacon UI tokens */
+  --grid-border-width: calc(var(--space-2xs) / 4);
+  --grid-canvas-padding-top: var(--grid-border-width);
+  --grid-viewport-min-height: calc(var(--space-xl) - var(--space-sm));
+  --grid-cell-padding-block: var(--space-sm);
+  --grid-cell-padding-inline: var(--space-md);
+  --grid-header-font-size: var(--font-size-xs);
+  --grid-header-letter-spacing: 0.08em;
+  --grid-overlay-margin: 10%;
+  --grid-overlay-padding-block: var(--space-md);
+  --grid-overlay-padding-inline: var(--space-xl);
+  --grid-overlay-radius: var(--radius-lg);
+  --grid-overlay-font-size: var(--font-size-lg);
+  --grid-overlay-text-opacity: 0.66;
+  --grid-resizer-width: calc(var(--space-2xs) * 1.25);
+  --grid-resize-overlay-width: var(--grid-border-width);
+  --grid-sort-indicator-size: calc(var(--space-lg) - var(--space-2xs));
+  --grid-sort-indicator-offset: var(--space-xs);
+  --grid-sort-indicator-stroke: calc(var(--space-2xs) / 2);
+  --grid-sort-indicator-thickness: var(--grid-border-width);
+  --notify-padding-block: var(--space-md);
+  --notify-padding-inline: var(--space-2xl);
+  --notify-font-size: var(--font-size-base);
+  --notify-dismiss-size: calc(var(--space-xl) + var(--space-xs));
+  --notify-dismiss-size-compact: calc(var(--space-lg) + var(--space-2xs));
+  --notify-dismiss-font-size: var(--font-size-sm);
+  --notify-dismiss-radius: var(--radius-full);
+  --notify-dismiss-color: var(--color-subtle);
+  --notify-dismiss-background: var(--color-overlay-panel);
+  --notify-dismiss-background-hover: var(--color-overlay-panel-soft);
+  --z-notify: 1200;
+
   /* Motion */
   --motion-duration-fast: 120ms;
   --motion-duration-base: 160ms;
