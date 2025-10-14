@@ -152,6 +152,21 @@
     --logo-background-color: transparent;
   }
 
+  .bv-logo__wordmark {
+    fill: var(--logo-wordmark-color);
+    color: var(--logo-wordmark-color);
+  }
+
+  .bv-logo__accent {
+    fill: var(--logo-accent-color);
+    color: var(--logo-accent-color);
+  }
+
+  .bv-logo__background {
+    fill: var(--logo-background-color);
+    color: var(--logo-background-color);
+  }
+
   .markdown-prose {
     @apply prose max-w-none leading-relaxed text-text-strong;
   }
