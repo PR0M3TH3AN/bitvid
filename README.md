@@ -170,6 +170,11 @@ artifacts.
   - Central place for instance-specific values like the Super Admin npub and the
     default whitelist-only mode setting. Update the documented exports here when
     preparing a new deployment.
+  - Flip `IS_DEV_MODE` to `false` before shipping production builds. The flag
+    flows into `js/config.js` as `isDevMode`, seeds the
+    `window.__BITVID_DEV_MODE__` global for inline scripts, and gates whether the
+    dev logging channel emits to the console. See
+    [`docs/logging.md`](docs/logging.md) for rollout guidance.
   - Tune `PLATFORM_FEE_PERCENT` (0–100) to keep a percentage of Lightning tips.
     When the fee is positive, bitvid routes the platform’s split to
     `PLATFORM_LUD16_OVERRIDE`, so set it to the Lightning address that should
@@ -177,8 +182,15 @@ artifacts.
     the fee at `0` to pass through every satoshi.
   - Populate `DEFAULT_RELAY_URLS_OVERRIDE` with WSS URLs to replace the bundled
     relay bootstrap list. Keep it empty to stick with the upstream defaults.
-- **`config.js`**:
-  - Toggle `isDevMode` for development (`true`) or production (`false`).
+- **`js/config.js`**:
+  - Re-exports `isDevMode` (derived from `IS_DEV_MODE`) for modules, publishes
+    `window.__BITVID_DEV_MODE__`, and centralizes the global configuration
+    surface.
+- **`js/utils/logger.js`**:
+  - Provides the shared `logger` utility. Route user-facing errors through
+    `logger.user` and keep experimental diagnostics on `logger.dev` so operators
+    can quiet development noise in production. Details live in
+    [`docs/logging.md`](docs/logging.md).
 - **`js/constants.js`**:
   - Source for browser-safe tracker lists and feature flags that govern WebTorrent behavior.
 - **Magnet helpers**:

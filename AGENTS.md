@@ -10,6 +10,13 @@ This guide tells AI agents how to keep bitvid aligned with the current product d
 * **Unstable** is our experimentation lane. Gate risky behavior behind feature flags defined in `js/constants.js` and document the toggle/rollback plan in PR descriptions.
 * **Emergency response:** If a change regresses URL-first playback or breaks magnet parsing, revert immediately, call this out in the PR, and annotate the AGENTS.md changelog with remediation tips. **Note:** These regressions usually surface in dev logs and tests around playback/magnet helpers—reference them when triaging so future agents don’t repeat the mistake.
 
+### Browser logging policy
+
+* Route every browser log through `js/utils/logger.js`. Do **not** call `console.*` directly.
+* Use `logger.dev.*` for diagnostics that should disappear in production (flagged by `IS_DEV_MODE`/`isDevMode`). Use `logger.user.*` for operator-facing warnings and errors that must reach production consoles.
+* Before promoting a build, flip `IS_DEV_MODE` in `config/instance-config.js` to match the target environment so `window.__BITVID_DEV_MODE__` and the logger channels behave correctly.
+* Review and follow [`docs/logging.md`](docs/logging.md) whenever you add new logging or touch inline scripts.
+
 ## 2. Mission: URL‑First Playback with WebTorrent Fallback
 
 * **Goal:** Always deliver smooth playback while keeping hosting costs low.
