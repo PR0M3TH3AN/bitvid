@@ -941,8 +941,8 @@
   .bv-modal-backdrop {
     @apply absolute inset-0 z-[var(--z-modal-overlay)] backdrop-saturate-150;
     background-color: var(--color-modal-backdrop, var(--color-overlay-muted));
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
+    backdrop-filter: blur(var(--blur-modal-backdrop));
+    -webkit-backdrop-filter: blur(var(--blur-modal-backdrop));
   }
 
   .bv-modal-backdrop[data-variant="veil"] {
@@ -1013,7 +1013,7 @@
 
   .modal-alert {
     @apply flex items-start gap-3 rounded-md border border-warning-strong border-opacity-60 px-4 py-3 text-sm text-warning-strong;
-    backdrop-filter: blur(14px);
+    backdrop-filter: blur(var(--blur-modal-alert));
     background-color: var(--color-warning-glass);
   }
 
@@ -1069,7 +1069,7 @@
 
   .card img[data-thumbnail-state="blurred"] {
     @apply transition duration-base ease-in-out;
-    filter: blur(18px);
+    filter: blur(var(--blur-thumbnail-blur));
     transform: scale(1.05);
   }
 
@@ -2067,8 +2067,10 @@
         color-mix(in srgb, var(--color-sidebar-surface-alt) 98%, transparent) 100%
       );
     box-shadow: var(--shadow-sidebar-shell);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(var(--sidebar-backdrop-blur))
+      saturate(var(--sidebar-shell-backdrop-saturation));
+    -webkit-backdrop-filter: blur(var(--sidebar-backdrop-blur))
+      saturate(var(--sidebar-shell-backdrop-saturation));
     overflow: visible;
     isolation: isolate;
     transition: border-color 200ms ease, box-shadow 220ms ease, background 220ms ease,
@@ -2189,8 +2191,10 @@
       transform 220ms ease;
     overflow: hidden;
     isolation: isolate;
-    backdrop-filter: blur(18px) saturate(160%);
-    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    backdrop-filter: blur(var(--sidebar-backdrop-blur))
+      saturate(var(--sidebar-nav-backdrop-saturation));
+    -webkit-backdrop-filter: blur(var(--sidebar-backdrop-blur))
+      saturate(var(--sidebar-nav-backdrop-saturation));
   }
 
   .sidebar-nav-link::before,
@@ -2300,8 +2304,10 @@
     flex-shrink: 0;
     overflow: hidden;
     isolation: isolate;
-    backdrop-filter: blur(18px) saturate(150%);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    backdrop-filter: blur(var(--sidebar-backdrop-blur))
+      saturate(var(--sidebar-trigger-backdrop-saturation));
+    -webkit-backdrop-filter: blur(var(--sidebar-backdrop-blur))
+      saturate(var(--sidebar-trigger-backdrop-saturation));
     box-shadow: inset 0 0 0 0.5px var(--color-sidebar-border),
       var(--shadow-sidebar-trigger);
     transition: border-color 200ms ease, color 200ms ease, box-shadow 220ms ease,
@@ -2404,8 +2410,10 @@
     transform: translateY(var(--space-sm));
     transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease,
       box-shadow 220ms ease;
-    backdrop-filter: blur(20px) saturate(150%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    backdrop-filter: blur(var(--sidebar-panel-backdrop-blur))
+      saturate(var(--sidebar-panel-backdrop-saturation));
+    -webkit-backdrop-filter: blur(var(--sidebar-panel-backdrop-blur))
+      saturate(var(--sidebar-panel-backdrop-saturation));
     z-index: 5;
     isolation: isolate;
   }
