@@ -8,10 +8,7 @@ import { setApplication, setApplicationReady } from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
-import {
-  applyDesignSystemAttributes,
-  subscribeToDesignSystemChanges,
-} from "./designSystem.js";
+import { applyDesignSystemAttributes } from "./designSystem.js";
 import {
   initThemeController,
   refreshThemeControls,
@@ -26,10 +23,6 @@ validateInstanceConfig();
 
 applyDesignSystemAttributes();
 initThemeController();
-subscribeToDesignSystemChanges(() => {
-  applyDesignSystemAttributes();
-  refreshThemeControls(document);
-});
 
 let application = null;
 let applicationReadyPromise = Promise.resolve();

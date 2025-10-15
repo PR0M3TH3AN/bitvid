@@ -15,18 +15,7 @@ const THEMES: { name: KitchenSinkTheme; value?: string }[] = [
   { name: "contrast", value: "contrast" }
 ];
 
-const VIDEO_MODAL_VARIANTS = [
-  {
-    label: "legacy",
-    baselineKey: "video-modal-mobile-legacy" as BaselineKey,
-    designSystemEnabled: false
-  },
-  {
-    label: "design-system",
-    baselineKey: "video-modal-mobile-design-system" as BaselineKey,
-    designSystemEnabled: true
-  }
-] as const;
+const VIDEO_MODAL_BASELINE_KEY = "video-modal-mobile" as BaselineKey;
 
 const MAX_DIFF_RATIO = 0.001;
 const UPDATE_BASELINES = process.env.UPDATE_VISUAL_BASELINES === "1";
@@ -135,11 +124,7 @@ test.describe("video modal mobile regression", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
   });
 
-  for (const variant of VIDEO_MODAL_VARIANTS) {
-    test(`renders ${variant.label} video modal without regressions`, async (
-      { page },
-      testInfo
-    ) => {
+  test("renders video modal without regressions", async ({ page }, testInfo) => {
       await page.goto("/components/video-modal.html", {
         waitUntil: "networkidle"
       });
@@ -149,7 +134,7 @@ test.describe("video modal mobile regression", () => {
           "*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; caret-color: transparent !important; }"
       });
 
-      await page.evaluate(({ designSystemEnabled }) => {
+      await page.evaluate(() => {
         const modal = document.getElementById("playerModal");
         if (!modal) {
           throw new Error("Missing player modal root element");
@@ -158,19 +143,18 @@ test.describe("video modal mobile regression", () => {
         modal.classList.remove("hidden");
         modal.removeAttribute("hidden");
 
-        const mode = designSystemEnabled ? "new" : "legacy";
-        modal.setAttribute("data-ds", mode);
+        modal.setAttribute("data-ds", "new");
 
         const html = document.documentElement;
         if (html) {
-          html.setAttribute("data-ds", mode);
+          html.setAttribute("data-ds", "new");
         }
         if (document.body) {
-          document.body.setAttribute("data-ds", mode);
+          document.body.setAttribute("data-ds", "new");
         }
 
         window.scrollTo(0, 0);
-      }, variant);
+      });
 
       await page.waitForTimeout(100);
 
@@ -181,15 +165,15 @@ test.describe("video modal mobile regression", () => {
       });
 
       if (UPDATE_BASELINES) {
-        setBaseline(variant.baselineKey, screenshotBuffer);
-        await testInfo.attach(`${variant.baselineKey}-actual.png`, {
+        setBaseline(VIDEO_MODAL_BASELINE_KEY, screenshotBuffer);
+        await testInfo.attach(`${VIDEO_MODAL_BASELINE_KEY}-actual.png`, {
           body: screenshotBuffer,
           contentType: "image/png"
         });
         return;
       }
 
-      const baselineBuffer = getBaseline(variant.baselineKey);
+      const baselineBuffer = getBaseline(VIDEO_MODAL_BASELINE_KEY);
       const actual = PNG.sync.read(screenshotBuffer);
       const expected = PNG.sync.read(baselineBuffer);
 
@@ -225,5 +209,4 @@ test.describe("video modal mobile regression", () => {
 
       expect(diffRatio).toBeLessThanOrEqual(MAX_DIFF_RATIO);
     });
-  }
 });

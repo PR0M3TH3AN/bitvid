@@ -7,10 +7,7 @@ const __dirname = dirname(__filename);
 
 export type KitchenSinkTheme = "default" | "light" | "contrast";
 
-export type BaselineKey =
-  | KitchenSinkTheme
-  | "video-modal-mobile-legacy"
-  | "video-modal-mobile-design-system";
+export type BaselineKey = KitchenSinkTheme | "video-modal-mobile";
 
 type BaselineMap = Record<string, string>;
 

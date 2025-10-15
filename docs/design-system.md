@@ -4,13 +4,9 @@ bitvid's visual language is now powered by Tailwind utilities backed by our desi
 
 All templates and embeds must load `css/tailwind.generated.css`; that compiled bundle is the only stylesheet shipped with the app. Remove any lingering references to legacy `tailwind.min.css` assets when porting surfaces into the design system.
 
-## Feature Flag Rollout
+## Runtime contract
 
-The new design system ships behind the `FEATURE_DESIGN_SYSTEM` runtime flag defined in `js/constants.js`. Deployments can temporarily disable the flag (`false`) if they need to fall back to the legacy primitives during an incident.
-
-- **Default state:** `FEATURE_DESIGN_SYSTEM` is `true`, so templates render with `data-ds="new"` on root containers.
-- **Runtime toggle:** Set `window.__BITVID_RUNTIME_FLAGS__.FEATURE_DESIGN_SYSTEM = false` (or call `setFeatureDesignSystemEnabled(false)`) to temporarily fall back to the legacy primitives. The entrypoint automatically updates every `[data-ds]` container to `data-ds="new"` and notifies controllers.
-- **DOM contract:** Templates and partials must include `data-ds` on their root elements. Controllers should rely on the `designSystem` context (see `js/designSystem.js`) before attaching classes or behaviors that only exist in the new system.
+The design system is now the canonical styling path across bitvid—there is no runtime flag or rollback toggle. Every template renders with `data-ds="new"` on its root container, and controllers always receive the "new" mode from the `designSystem` context (see `js/designSystem.js`). When migrating surfaces, ensure their root nodes include `data-ds` so the entrypoint can stamp the attribute during bootstrap.
 
 ## Dynamic runtime styling
 
@@ -445,7 +441,7 @@ We continue to expose aliases such as `.profile-switcher` and nested variations 
 
 - [ ] Confirm no production templates emit `.profile-switcher*` selectors (owners: @ui-templates, @design-systems).
 - [ ] Verify the torrent beacon renders `.card`, `.btn`, `.btn-ghost`, and `.input` primitives with no fallback selectors (owner: @torrent-beacon).
-- [ ] Verify `FEATURE_DESIGN_SYSTEM` remains `true` in staging and run kitchen-sink visual snapshots to ensure no regressions.
+- [ ] Verify staging renders with `data-ds="new"` across surfaces and run kitchen-sink visual snapshots to ensure no regressions.
 - [ ] Delete residual `@apply` rules under "Legacy component compatibility" in `css/tailwind.source.css`.
 - [ ] Announce the removal in release notes and update downstream embed documentation.
 
@@ -457,11 +453,11 @@ We continue to expose aliases such as `.profile-switcher` and nested variations 
 
 | Legacy selector | Replacement primitive(s) | Beacon / app notes | Feature-flag strategy |
 | --- | --- | --- | --- |
-| `.video-card`, `.video-card__meta`, `.video-card--loading` | `.card` with `data-state` + utility classes | Removed in web app; ensure beacon dashboards render `.card` with skeleton states instead of `.video-card--loading`. | Ship markup updates behind `FEATURE_DESIGN_SYSTEM`, defaulting to legacy HTML until verified.
-| `.profile-switcher`, `.profile-switcher__item` | `.card` rows + `.btn-ghost` toggles | Keep shim until profile modal Reactors deploy; beacon does not consume this selector. | Enable flag per environment after QA verifies profile modals in the kitchen sink.
-| `.button`, `.button-danger` (Skeleton) | `.btn`, `.btn-ghost[data-variant="critical"]` | Critical for torrent beacon—replace the Angular templates before removing Skeleton CDN. | Roll out under `FEATURE_DESIGN_SYSTEM` in beacon build; leave fallback until beacon release 2025.03 ships.
-| `.u-full-width`, `.input-text` | `.input`, `.select`, `.form-control` | Applies to upload forms and beacon filter controls; also update tests that target legacy classes. | Toggle per route: controllers read `designSystem.isEnabled()` before rendering new markup.
-| `.modal-container`, `.modal-content` | `.bv-modal`, `.bv-modal-backdrop`, `.bv-modal__panel` | Already removed in core app; verify beacon modals use the primitives before deleting helper styles. | No flag required—templates should ship the primitives outright while flag protects unrelated surfaces.
+| `.video-card`, `.video-card__meta`, `.video-card--loading` | `.card` with `data-state` + utility classes | Removed in web app; ensure beacon dashboards render `.card` with skeleton states instead of `.video-card--loading`. | Deploy directly and validate in staging before rolling to beacon.
+| `.profile-switcher`, `.profile-switcher__item` | `.card` rows + `.btn-ghost` toggles | Keep shim until profile modal Reactors deploy; beacon does not consume this selector. | Roll out once QA signs off; no flag gating remains.
+| `.button`, `.button-danger` (Skeleton) | `.btn`, `.btn-ghost[data-variant="critical"]` | Critical for torrent beacon—replace the Angular templates before removing Skeleton CDN. | Coordinate a staged deploy; the design system is always on so fallbacks must ship in a separate release if required.
+| `.u-full-width`, `.input-text` | `.input`, `.select`, `.form-control` | Applies to upload forms and beacon filter controls; also update tests that target legacy classes. | Update markup globally; controllers now always run in the design system mode.
+| `.modal-container`, `.modal-content` | `.bv-modal`, `.bv-modal-backdrop`, `.bv-modal__panel` | Already removed in core app; verify beacon modals use the primitives before deleting helper styles. | Ship the primitives outright; there is no fallback mode.
 
 ### Migration Notes (Q4 2024)
 
@@ -510,7 +506,7 @@ Avoid re-declaring token values manually. If a new pattern repeats, promote it i
 Continuous integration captures Playwright-powered screenshots of `docs/kitchen-sink.html` (`tests/visual/kitchen-sink.spec.ts`) on every pull request. When a snapshot job fails:
 
 1. Read the diff produced by Playwright (attached as an artifact) and compare it with your local preview. The harness highlights per-pixel changes so reviewers can distinguish deliberate theme updates from regressions.
-2. Reproduce locally with `npm run test:visual -- --update-snapshots` to refresh the expected images after verifying the change in the kitchen sink. Always run the command with the same feature flag configuration used in CI (`FEATURE_DESIGN_SYSTEM=true`).
+2. Reproduce locally with `npm run test:visual -- --update-snapshots` to refresh the expected images after verifying the change in the kitchen sink.
 3. Document the intent in the PR description (include before/after screenshots or reference the kitchen-sink toggle state) so reviewers and QA know the snapshot change is expected.
 
 The design system doc is the single source of truth for reviewing these failures—if a diff contradicts the guidance above, treat it as a regression, request updates, and block the merge until the visual snapshot stabilises.
