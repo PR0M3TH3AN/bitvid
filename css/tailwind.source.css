@@ -118,7 +118,7 @@
 
 @layer components {
   .ds-header {
-    @apply flex items-center justify-start py-md;
+    @apply flex items-center justify-start py-sm;
   }
 
   .ds-metric-probe {
@@ -134,7 +134,7 @@
   }
 
   .ds-header__logo {
-    @apply h-24 w-auto max-w-none;
+    @apply h-2xl-plus w-auto max-w-none;
   }
 
   .focus-ring {
