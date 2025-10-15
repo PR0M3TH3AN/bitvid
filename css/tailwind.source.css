@@ -279,6 +279,12 @@
     @apply pointer-events-auto opacity-100 scale-100;
   }
 
+  [data-floating-panel][data-floating-mode="fallback"],
+  .popover__panel[data-floating-mode="fallback"] {
+    top: var(--floating-fallback-top);
+    left: var(--floating-fallback-left);
+  }
+
   .card[data-floating-menu-open="true"] {
     z-index: var(--z-overlay-floating-raised);
   }
