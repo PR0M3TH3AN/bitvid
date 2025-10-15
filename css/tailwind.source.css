@@ -294,7 +294,7 @@
     background: var(--color-overlay-veil);
     color: var(--color-subtle);
     border: 1px solid var(--color-border-translucent-stronger);
-    box-shadow: 0 22px 48px -18px var(--color-shadow-intense);
+    box-shadow: var(--shadow-popover-zap);
     backdrop-filter: blur(var(--popover-backdrop-blur));
     -webkit-backdrop-filter: blur(var(--popover-backdrop-blur));
   }
@@ -1373,7 +1373,7 @@
 
   #playerModal .video-modal__video video {
     border-radius: var(--radius-lg);
-    box-shadow: 0 1rem 2.25rem var(--color-shadow-elevated);
+    box-shadow: var(--shadow-video-modal);
     max-height: min(80vh, calc(100vw * 9 / 16));
     object-fit: contain;
   }
