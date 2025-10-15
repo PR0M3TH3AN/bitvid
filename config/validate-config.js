@@ -7,6 +7,7 @@ import {
   ADMIN_SUPER_NPUB,
   PLATFORM_FEE_PERCENT,
   PLATFORM_LUD16_OVERRIDE,
+  THEME_ACCENT_OVERRIDES,
 } from "./instance-config.js";
 
 function assertSuperAdminConfigured(value) {
@@ -56,6 +57,50 @@ function getPlatformLud16Override(value) {
   return value.trim();
 }
 
+const ACCENT_HEX_PATTERN = /^#(?:[0-9a-fA-F]{6})$/;
+
+function assertThemeAccentOverrides(overrides) {
+  const source =
+    overrides && typeof overrides === "object"
+      ? overrides
+      : THEME_ACCENT_OVERRIDES;
+
+  const allowedThemes = new Set(["light", "dark"]);
+  const allowedTokens = ["accent", "accentStrong", "accentPressed"];
+
+  Object.entries(source).forEach(([theme, themeOverrides]) => {
+    if (!allowedThemes.has(theme) || themeOverrides == null) {
+      return;
+    }
+
+    if (typeof themeOverrides !== "object") {
+      throw new Error(
+        `THEME_ACCENT_OVERRIDES.${theme} must be an object with accent overrides.`
+      );
+    }
+
+    allowedTokens.forEach((token) => {
+      const rawValue = themeOverrides[token];
+      if (rawValue == null || rawValue === "") {
+        return;
+      }
+
+      if (typeof rawValue !== "string") {
+        throw new Error(
+          `THEME_ACCENT_OVERRIDES.${theme}.${token} must be a hex string (e.g., '#2563eb').`
+        );
+      }
+
+      const trimmed = rawValue.trim();
+      if (!ACCENT_HEX_PATTERN.test(trimmed)) {
+        throw new Error(
+          `THEME_ACCENT_OVERRIDES.${theme}.${token} must be a #RRGGBB hex color.`
+        );
+      }
+    });
+  });
+}
+
 function resolveConfig(overrides = {}) {
   return {
     adminSuperNpub:
@@ -64,6 +109,8 @@ function resolveConfig(overrides = {}) {
       overrides.PLATFORM_FEE_PERCENT ?? PLATFORM_FEE_PERCENT,
     platformLud16Override:
       overrides.PLATFORM_LUD16_OVERRIDE ?? PLATFORM_LUD16_OVERRIDE,
+    themeAccentOverrides:
+      overrides.THEME_ACCENT_OVERRIDES ?? THEME_ACCENT_OVERRIDES,
   };
 }
 
@@ -82,4 +129,6 @@ export function validateInstanceConfig(overrides) {
       "PLATFORM_FEE_PERCENT is positive but PLATFORM_LUD16_OVERRIDE is empty. Set PLATFORM_LUD16_OVERRIDE to the Lightning address that should receive the platform's split, or publish a lud16 value on the Super Admin profile so bitvid can route platform fees."
     );
   }
+
+  assertThemeAccentOverrides(config.themeAccentOverrides);
 }

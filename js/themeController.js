@@ -1,3 +1,4 @@
+import { THEME_ACCENT_OVERRIDES } from "../config/instance-config.js";
 import { userLogger } from "./utils/logger.js";
 const STORAGE_KEY = "bitvid:theme";
 const FALLBACK_THEME = "dark";
@@ -12,6 +13,12 @@ const TOGGLE_SELECTORS = [
   ".js-theme-toggle",
   "#themeToggle",
 ];
+
+const ACCENT_CSS_VARIABLES = Object.freeze({
+  accent: "--color-accent",
+  accentStrong: "--color-accent-strong",
+  accentPressed: "--color-accent-pressed",
+});
 
 const boundToggles = new WeakSet();
 const registeredToggles = new Set();
@@ -68,6 +75,34 @@ const getRootElement = () => {
     return documentElement;
   }
   return null;
+};
+
+const normalizeAccentValue = (value) =>
+  typeof value === "string" ? value.trim() : "";
+
+const applyAccentOverrides = (root, theme) => {
+  if (!root) {
+    return;
+  }
+
+  const themeOverrides =
+    THEME_ACCENT_OVERRIDES &&
+    typeof THEME_ACCENT_OVERRIDES === "object" &&
+    THEME_ACCENT_OVERRIDES[theme] &&
+    typeof THEME_ACCENT_OVERRIDES[theme] === "object"
+      ? THEME_ACCENT_OVERRIDES[theme]
+      : null;
+
+  Object.entries(ACCENT_CSS_VARIABLES).forEach(([token, cssVariable]) => {
+    const overrideValue = themeOverrides ? themeOverrides[token] : null;
+    const normalized = normalizeAccentValue(overrideValue);
+
+    if (normalized) {
+      root.style.setProperty(cssVariable, normalized);
+    } else {
+      root.style.removeProperty(cssVariable);
+    }
+  });
 };
 
 const updateThemeColorMeta = (theme) => {
@@ -202,6 +237,7 @@ const applyTheme = (theme, { persist = true } = {}) => {
   const root = getRootElement();
   if (root) {
     root.dataset.theme = normalized;
+    applyAccentOverrides(root, normalized);
   }
 
   if (persist) {
