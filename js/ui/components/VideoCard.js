@@ -1,4 +1,5 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
+import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
 import {
@@ -1388,6 +1389,8 @@ export class VideoCard {
     } else if (this.magnetProvided && this.magnetSupported) {
       this.root.dataset.torrentSupported = "true";
     }
+
+    updateVideoCardSourceVisibility(this.root);
   }
 
   applyPlaybackDatasets() {

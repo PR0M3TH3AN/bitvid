@@ -1,5 +1,6 @@
 import { createCardObserver } from "./dom/cardObserver.js";
 import { infoHashFromMagnet } from "./magnets.js";
+import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { TorrentClient, torrentClient } from "./webtorrent.js";
 
 const badgeUpdateListeners = new Set();
@@ -427,6 +428,8 @@ function setBadge(card, state, details) {
   } else if (card.dataset.streamHealthReason) {
     delete card.dataset.streamHealthReason;
   }
+
+  updateVideoCardSourceVisibility(card);
 
   const badge = card.querySelector(".torrent-health-badge");
   if (!badge) {
