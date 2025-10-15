@@ -9,8 +9,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 
-const TARGET_DIRECTORIES = ["js/ui"];
+const TARGET_DIRECTORIES = ["js/blog", "js/ui", "torrent/ui"];
 const TARGET_FILES = ["js/channelProfile.js", "css/tailwind.source.css"];
+const IGNORED_DIRECTORIES = new Set(["dist", "vendor"]);
 const IGNORED_EXTENSIONS = new Set([".min.js", ".map"]);
 const ALLOWED_FILES = new Set([
   "js/ui/components/RevertModal.js",
@@ -112,6 +113,9 @@ async function walkDirectory(dir, results) {
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (IGNORED_DIRECTORIES.has(entry.name)) {
+        continue;
+      }
       await walkDirectory(fullPath, results);
       continue;
     }
