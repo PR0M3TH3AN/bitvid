@@ -158,5 +158,4 @@ if (typeof window !== "undefined") {
 Object.freeze(logger);
 
 export default logger;
-export const devLogger = logger.dev;
-export const userLogger = logger.user;
+export { devLogger, userLogger };
