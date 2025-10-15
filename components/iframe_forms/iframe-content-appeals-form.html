@@ -141,6 +141,22 @@
       </div>
     </div>
     <script>
+      // Fallback loggers keep embeds functional without bitvidLogger while surfacing warnings/errors via the console.
+      const fallbackDev = {
+        log: () => {},
+        info: () => {},
+        warn: (...args) => console.warn(...args),
+        error: (...args) => console.error(...args),
+      };
+      const fallbackUser = {
+        log: () => {},
+        info: () => {},
+        warn: (...args) => console.warn(...args),
+        error: (...args) => console.error(...args),
+      };
+      const dev = window.bitvidLogger?.dev || fallbackDev;
+      const user = window.bitvidLogger?.user || fallbackUser;
+
       document.addEventListener("DOMContentLoaded", () => {
         // Logging functions for both on-page and console output.
         function log(msg, type = "info") {
@@ -151,7 +167,18 @@
           if (type === "warn") div.classList.add("warn");
           div.textContent = msg;
           document.getElementById("status").appendChild(div);
-          console.log(`[${type.toUpperCase()}] ${msg}`);
+          const formatted = `[${type.toUpperCase()}] ${msg}`;
+          if (type === "error") {
+            user.error(formatted);
+          } else if (type === "warn") {
+            user.warn(formatted);
+          } else if (type === "success") {
+            user.log(formatted);
+          } else if (type === "info") {
+            dev.info(formatted);
+          } else {
+            dev.log(formatted);
+          }
         }
         function clear() {
           document.getElementById("status").innerHTML = "";
@@ -354,7 +381,7 @@ For further questions, reach out through bitvid’s Nostr support channels.
               );
             } catch (err) {
               log("Error: " + err.message, "error");
-              console.error(err);
+              user.error(err);
             }
           });
       });

@@ -16,6 +16,22 @@
 </section>
 
 <script>
+  // Fallback loggers keep embeds functional without bitvidLogger while surfacing warnings/errors via the console.
+  const fallbackDev = {
+    log: () => {},
+    info: () => {},
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+  };
+  const fallbackUser = {
+    log: () => {},
+    info: () => {},
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+  };
+  const dev = window.bitvidLogger?.dev || fallbackDev;
+  const user = window.bitvidLogger?.user || fallbackUser;
+
   (async () => {
     try {
       // Fetch the Markdown file
@@ -40,7 +56,7 @@
         hljs.highlightBlock(block);
       });
     } catch (err) {
-      console.error("Error loading 'Getting Started' content:", err);
+      user.error("Error loading 'Getting Started' content:", err);
       const container = document.getElementById("markdown-container");
       if (container) {
         container.innerHTML = `
