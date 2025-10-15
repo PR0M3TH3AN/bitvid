@@ -2858,7 +2858,7 @@
 @layer components {
   .ui-grid-row {
     border-bottom: var(--border-width-hairline)
-      solid var(--color-border-subtle, rgb(209 213 219));
+      solid var(--color-border-subtle, var(--color-border));
   }
 
   .status-line {
