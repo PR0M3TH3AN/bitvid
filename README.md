@@ -83,6 +83,23 @@ Tailwind utilities are generated from `css/tailwind.source.css` and themed via
 the shared tokens in `css/tokens.css`. Install dependencies once and lean on the
 package scripts to keep formatting, linting, and generated output consistent:
 
+- **Token imports:** `css/tokens.css` feeds `css/style.css`, which in turn seeds
+  `tailwind.config.cjs` so utilities inherit the same palette, spacing, and
+  typography primitives across the stack.
+- **Core scripts:**
+
+  ```bash
+  npm run format    # normalize CSS/HTML/JS/MD sources with Prettier + tailwindcss plugin
+  npm run lint:css  # enforce design token usage and guard against raw hex colors
+  npm run build:css # rebuild css/tailwind.generated.css from tailwind.source.css
+  npm run check:css # fail CI if tailwind.generated.css is out of date
+  ```
+
+- **No hard-coded colors:** Follow the token-first rules in `AGENTS.md`—reach
+  for semantic tokens instead of literal HEX/RGB values.
+- **Theme scopes:** Apply tokens by toggling the `data-theme` attribute on
+  scope wrappers so components stay palette-agnostic.
+
 ```bash
 npm install               # install Prettier, Stylelint, and Tailwind toolchain
 npm run format            # format CSS/HTML/JS/MD with Prettier + tailwindcss plugin
