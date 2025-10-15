@@ -18,6 +18,7 @@ import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
+import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
@@ -4179,6 +4180,7 @@ class Application {
     const cardEl = badgeEl.closest(".card[data-video-id]");
     if (cardEl) {
       cardEl.dataset.urlHealthState = status;
+      updateVideoCardSourceVisibility(cardEl);
     }
     badgeEl.setAttribute("aria-live", "polite");
     badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
