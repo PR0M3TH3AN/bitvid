@@ -182,7 +182,9 @@ The `rg "transition"` audit surfaces the components that animate by default. Kee
 
 ### Shadow inventory
 
-- `--color-shadow-intense` fuels the zap popover glow. Use `shadow-popover-intense` for matched geometry or `shadow-intense`/`drop-shadow-intense` when you only need the color component. 【F:css/tokens.css†L93-L101】【F:tailwind.config.cjs†L28-L32】【F:tailwind.config.cjs†L147-L157】
+- `--shadow-popover-zap` keeps the zap tip elevation consistent across themes; apply it to `.popover__panel[data-variant="zap"]` or related toast surfaces when you need the intense popover glow. 【F:css/tokens.css†L406-L415】【F:css/tailwind.source.css†L293-L298】
+- `--shadow-video-modal` anchors modal playback chrome so large embeds reuse the same lift as `#playerModal .video-modal__video video`. 【F:css/tokens.css†L406-L415】【F:css/tailwind.source.css†L1374-L1378】
+- `--color-shadow-intense` still exposes the raw color for bespoke drop-shadow recipes—pair it with `drop-shadow-intense` utilities when only the hue needs to change. 【F:css/tokens.css†L93-L101】【F:tailwind.config.cjs†L28-L32】【F:tailwind.config.cjs†L147-L157】
 
 ### Reduced-motion policy
 

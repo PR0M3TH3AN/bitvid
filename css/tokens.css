@@ -415,6 +415,8 @@
   --shadow-sidebar-panel: 0 2.25rem 4.5rem -1.85rem var(--color-shadow-sidebar);
   --shadow-sidebar-focus-ring: 0 0 0 0.125rem var(--color-sidebar-glow),
     0 0 0 0.25rem var(--color-sidebar-hover-strong);
+  --shadow-popover-zap: 0 22px 48px -18px var(--color-shadow-intense);
+  --shadow-video-modal: 0 1rem 2.25rem var(--color-shadow-elevated);
 
   /* Typography */
   --font-family-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -636,6 +638,8 @@
   --shadow-sidebar-panel: 0 2.25rem 4.5rem -1.85rem rgb(15 23 42 / 0.28);
   --shadow-sidebar-focus-ring: 0 0 0 0.125rem rgb(59 130 246 / 0.35),
     0 0 0 0.25rem rgb(59 130 246 / 0.28);
+  --shadow-popover-zap: 0 22px 48px -18px var(--color-shadow-intense);
+  --shadow-video-modal: 0 1rem 2.25rem var(--color-shadow-elevated);
 
   --surface-sunken: rgb(229 231 235 / 0.85);
   --surface-muted: rgb(226 232 240 / 0.85);
@@ -818,4 +822,6 @@
   --shadow-sidebar-panel: 0 2.25rem 4.5rem -1.85rem var(--color-shadow-sidebar);
   --shadow-sidebar-focus-ring: 0 0 0 0.125rem var(--color-sidebar-glow),
     0 0 0 0.25rem var(--color-sidebar-hover-strong);
+  --shadow-popover-zap: 0 22px 48px -18px var(--color-shadow-intense);
+  --shadow-video-modal: 0 1rem 2.25rem var(--color-shadow-elevated);
 }
