@@ -7,6 +7,8 @@ import {
   getPopupViewportPaddingPx,
 } from "../../designSystem/metrics.js";
 
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
 export class VideoCard {
   constructor({
     document: doc,
@@ -549,8 +551,61 @@ export class VideoCard {
     return wrapper;
   }
 
+  createEllipsisIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const addCircle = (cx) => {
+      const circle = this.document.createElementNS(SVG_NAMESPACE, "circle");
+      circle.setAttribute("cx", String(cx));
+      circle.setAttribute("cy", "12");
+      circle.setAttribute("r", "2");
+      circle.setAttribute("fill", "currentColor");
+      svg.appendChild(circle);
+    };
+
+    addCircle(5);
+    addCircle(12);
+    addCircle(19);
+
+    return svg;
+  }
+
+  createSettingsIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute(
+      "d",
+      "M24,13.616L24,10.384C22.349,9.797 21.306,9.632 20.781,8.365L20.781,8.364C20.254,7.093 20.881,6.23 21.628,4.657L19.343,2.372C17.782,3.114 16.91,3.747 15.636,3.219L15.635,3.219C14.366,2.693 14.2,1.643 13.616,0L10.384,0C9.802,1.635 9.635,2.692 8.365,3.219L8.364,3.219C7.093,3.747 6.232,3.121 4.657,2.372L2.372,4.657C3.117,6.225 3.747,7.091 3.219,8.364C2.692,9.635 1.635,9.802 0,10.384L0,13.616C1.632,14.196 2.692,14.365 3.219,15.635C3.749,16.917 3.105,17.801 2.372,19.342L4.657,21.628C6.219,20.885 7.091,20.253 8.364,20.781L8.365,20.781C9.635,21.307 9.801,22.36 10.384,24L13.616,24C14.198,22.364 14.366,21.31 15.643,20.778L15.644,20.778C16.906,20.254 17.764,20.879 19.342,21.629L21.627,19.343C20.883,17.78 20.252,16.91 20.779,15.637C21.306,14.366 22.367,14.197 24,13.616ZM12,16C9.791,16 8,14.209 8,12C8,9.791 9.791,8 12,8C14.209,8 16,9.791 16,12C16,14.209 14.209,16 12,16Z"
+    );
+    path.setAttribute("fill", "currentColor");
+    path.setAttribute("fill-rule", "evenodd");
+    path.setAttribute("clip-rule", "evenodd");
+
+    svg.appendChild(path);
+
+    return svg;
+  }
+
   buildControls() {
-    const doc = this.document;
     const container = this.createElement("div", {
       classNames: ["flex", "items-center"]
     });
@@ -582,10 +637,7 @@ export class VideoCard {
       });
       button.dataset.settingsDropdown = String(this.index);
 
-      const icon = doc.createElement("img");
-      icon.src = "assets/svg/video-settings-gear.svg";
-      icon.alt = "Settings";
-      icon.classList.add("h-5", "w-5");
+      const icon = this.createSettingsIcon(["h-5", "w-5"]);
       button.appendChild(icon);
 
       const dropdown = this.createElement("div", {
@@ -720,10 +772,7 @@ export class VideoCard {
     button.dataset.moreDropdown = String(this.index);
     button.dataset.moreMenuToggleBound = "true";
 
-    const icon = this.document.createElement("img");
-    icon.src = "assets/svg/ellipsis.svg";
-    icon.alt = "More";
-    icon.classList.add("w-5", "h-5", "object-contain");
+    const icon = this.createEllipsisIcon(["w-5", "h-5", "object-contain"]);
     button.appendChild(icon);
 
     const dropdown = this.createElement("div", {
