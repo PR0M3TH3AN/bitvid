@@ -96,6 +96,11 @@ module.exports = {
           strong: "var(--color-info-strong)",
           pressed: "var(--color-info-pressed)"
         },
+        accent: {
+          DEFAULT: "var(--color-accent)",
+          strong: "var(--color-accent-strong)",
+          pressed: "var(--color-accent-pressed)"
+        },
         critical: {
           DEFAULT: "var(--color-critical)",
           strong: "var(--color-critical-strong)"
