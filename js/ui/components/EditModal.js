@@ -148,10 +148,7 @@ export class EditModal {
       context.querySelector("#editVideoModalOverlay") ||
       context.querySelector(".bv-modal-backdrop") ||
       null;
-    this.panel =
-      context.querySelector(".bv-modal__panel") ||
-      context.querySelector(".modal-content") ||
-      null;
+    this.panel = context.querySelector(".bv-modal__panel") || null;
     this.form = context.querySelector("#editVideoForm") || null;
     this.closeButton = context.querySelector("#closeEditVideoModal") || null;
     this.cancelButton = context.querySelector("#cancelEditVideo") || null;

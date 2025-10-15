@@ -40,7 +40,7 @@ const MOTION_CASES: MotionCase[] = [
   },
   {
     name: "modal panel",
-    html: '<div class="bv-modal__panel modal-content"></div>',
+    html: '<div class="bv-modal__panel"></div>',
     selector: ".bv-modal__panel",
     expectations: { checkTransitions: true }
   },

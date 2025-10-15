@@ -361,11 +361,11 @@
               Profile &amp; Edit Modal Shells
             </h2>
             <p class="text-sm text-muted">
-              Both shells share the `.bv-modal` overlay and tokenized primitives
-              (`.card`, `.btn`, `.btn-ghost`, `.badge`, `.grid-stack`,
-              `.focus-ring`). Compatibility hooks like `modal-content` remain on
-              the panels so legacy CSS selectors keep working alongside the new
-              primitives.
+              Both shells share the `.bv-modal` overlay, `.bv-modal__panel`
+              surface, and tokenized primitives (`.card`, `.btn`, `.btn-ghost`,
+              `.badge`, `.grid-stack`, `.focus-ring`). The templates below match
+              the production markup so controller behaviour and documentation
+              stay aligned.
             </p>
           </div>
           <div class="grid gap-lg lg:grid-cols-2">
@@ -386,7 +386,7 @@
                   >
                     <div class="bv-modal-backdrop"></div>
                     <div
-                      class="bv-modal__panel modal-content flex max-h-modal-embed flex-col gap-lg"
+                      class="bv-modal__panel flex max-h-modal-embed flex-col gap-lg"
                       role="dialog"
                       aria-labelledby="profileModalTitle"
                     >
@@ -526,10 +526,9 @@
             <div class="space-y-sm">
               <h3 class="text-lg font-semibold">Edit Video Modal</h3>
               <p class="text-sm text-muted">
-                Layout reflects `components/edit-video-modal.html`. The
-                `.bv-modal__panel.modal-content` pairing keeps backwards
-                selectors alive while new primitives manage spacing and
-                typography.
+                Layout reflects `components/edit-video-modal.html` with the
+                `.bv-modal__panel` shell controlling spacing and typography. Use
+                the modal primitives directly when composing new flows.
               </p>
               <div
                 class="relative isolate overflow-hidden rounded-xl bg-surface-alt p-lg text-text shadow-inner"
@@ -543,7 +542,7 @@
                   >
                     <div class="bv-modal-backdrop"></div>
                     <div
-                      class="bv-modal__panel modal-content flex max-h-modal-embed flex-col gap-lg"
+                      class="bv-modal__panel flex max-h-modal-embed flex-col gap-lg"
                       data-modal="edit"
                     >
                       <header

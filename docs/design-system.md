@@ -435,7 +435,7 @@ During migration we keep existing selectors alive by layering `@apply` calls in 
 
 We continue to expose aliases such as `.profile-switcher` and nested variations (for example, `.profile-switcher__item`) so existing profile and admin controllers stay functional while downstream templates finish their migration. These shims live under the "Legacy component compatibility" section and will be removed once templates switch to the new primitives.
 
-> **Update (Q1 2025):** The modal shim that mapped `.modal-container`/`.modal-content` to the new primitives has been removed. All modal templates must mount `.bv-modal`, `.bv-modal-backdrop`, and `.bv-modal__panel` directly.
+> **Modal primitives:** Always mount `.bv-modal`, `.bv-modal-backdrop`, and `.bv-modal__panel` together. Controllers expect this trio, so there is no compatibility layer for alternate selectors.
 
 **Shim removal checklist (Task DS-742):**
 
@@ -457,7 +457,7 @@ We continue to expose aliases such as `.profile-switcher` and nested variations 
 | `.profile-switcher`, `.profile-switcher__item` | `.card` rows + `.btn-ghost` toggles | Keep shim until profile modal Reactors deploy; beacon does not consume this selector. | Roll out once QA signs off; no flag gating remains.
 | `.button`, `.button-danger` (Skeleton) | `.btn`, `.btn-ghost[data-variant="critical"]` | Critical for torrent beacon—replace the Angular templates before removing Skeleton CDN. | Coordinate a staged deploy; the design system is always on so fallbacks must ship in a separate release if required.
 | `.u-full-width`, `.input-text` | `.input`, `.select`, `.form-control` | Applies to upload forms and beacon filter controls; also update tests that target legacy classes. | Update markup globally; controllers now always run in the design system mode.
-| `.modal-container`, `.modal-content` | `.bv-modal`, `.bv-modal-backdrop`, `.bv-modal__panel` | Already removed in core app; verify beacon modals use the primitives before deleting helper styles. | Ship the primitives outright; there is no fallback mode.
+| `.modal-container`, `.modal-content` | `.bv-modal`, `.bv-modal-backdrop`, `.bv-modal__panel` | Retired selectors—emit the primitives exactly so accessibility, animation, and controller hooks stay wired. | N/A — unified primitives only. |
 
 ### Migration Notes (Q4 2024)
 
