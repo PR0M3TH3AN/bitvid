@@ -93,6 +93,8 @@ The blog embed now consumes dedicated typography and spacing tokens alongside Ta
 
 Templates should reference these tokens (directly or via Tailwind arbitrary values) instead of hard-coded measurements so the embed stays in sync with future blog refreshes.
 
+The blog palette now resolves from the base `:root` scope, making color and layout tokens theme-agnostic. Neither the light nor dark theme overrides these variables, so any future blog-specific deltas should be called out explicitly in this guide if they return.
+
 ## Semantic Palette
 
 All interactive surfaces now draw from a shared semantic color map exposed through `css/tokens.css` and Tailwind utility aliases. The palette is grouped into text, surface, overlay, and status slots so controllers can swap state styles without reaching for raw Tailwind hues:
