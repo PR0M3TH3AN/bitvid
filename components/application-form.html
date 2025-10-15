@@ -1,91 +1,56 @@
-<!-- components/application-form.html 
+<!-- components/application-form.html
      https://bitvid.network?modal=application => open nostrFormModal
 -->
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Application Form</title>
-    <!-- Include Tailwind CSS -->
-    <link href="css/tailwind.generated.css" rel="stylesheet" />
-  </head>
-  <body class="bg-surface text-text" data-ds="new">
-    <!-- Application Form Modal -->
-    <div
-      id="nostrFormModal"
-      class="bv-modal hidden items-start justify-center overflow-y-auto"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="nostrFormModalTitle"
-      aria-describedby="nostrFormModalDescription"
-    >
-      <div class="bv-modal-backdrop" data-dismiss></div>
+<div
+  id="nostrFormModal"
+  class="bv-modal hidden items-start justify-center overflow-y-auto"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="nostrFormModalTitle"
+  aria-describedby="nostrFormModalDescription"
+  data-ds="new"
+>
+  <div class="bv-modal-backdrop" data-dismiss></div>
 
-      <!-- Inner content container -->
-      <div class="bv-modal__panel modal-sheet" tabindex="-1">
-          <!-- Header bar with updated styling -->
-          <div class="modal-header">
-            <h2
-              id="nostrFormModalTitle"
-              class="pb-2 text-3xl font-extrabold tracking-wide text-text"
-            >
-              Application Form
-            </h2>
-            <button
-              id="closeNostrFormModal"
-              class="modal-close"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-6 w-6 text-muted"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          </div>
-
-          <!-- Main Content -->
-          <div id="nostrFormModalDescription" class="modal-body">
-            <div class="modal-embed-frame">
-              <iframe
-                src="./components/iframe_forms/iframe-application-form.html"
-                class="h-full w-full rounded-lg border border-border/30 shadow-sm"
-                frameborder="0"
-              ></iframe>
-            </div>
-          </div>
-        </div>
-      </div>
+  <div class="bv-modal__panel modal-sheet" tabindex="-1">
+    <!-- Header bar with updated styling -->
+    <div class="modal-header">
+      <h2
+        id="nostrFormModalTitle"
+        class="pb-2 text-3xl font-extrabold tracking-wide text-text"
+      >
+        Application Form
+      </h2>
+      <button
+        id="closeNostrFormModal"
+        class="modal-close"
+        aria-label="Close application form modal"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6 text-muted"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      </button>
     </div>
 
-    <!-- Optional Script for Opening/Closing the Modal -->
-    <script>
-      const openBtn = document.getElementById("openNostrForm");
-      const appModal = document.getElementById("nostrFormModal");
-      const closeBtn = document.getElementById("closeNostrFormModal");
-
-      // Open the modal when the designated button is clicked.
-      if (openBtn) {
-        openBtn.addEventListener("click", () => {
-          appModal.classList.remove("hidden");
-        });
-      }
-
-      // Close the modal when the close button is clicked.
-      if (closeBtn) {
-        closeBtn.addEventListener("click", () => {
-          appModal.classList.add("hidden");
-        });
-      }
-    </script>
-  </body>
-</html>
+    <div id="nostrFormModalDescription" class="modal-body">
+      <div class="modal-embed-frame">
+        <iframe
+          src="./components/iframe_forms/iframe-application-form.html"
+          class="h-full w-full rounded-lg border border-border/30 shadow-sm"
+          frameborder="0"
+        ></iframe>
+      </div>
+    </div>
+  </div>
+</div>
