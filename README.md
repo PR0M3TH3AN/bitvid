@@ -109,6 +109,10 @@ hairline borders or browser reset quirks) add an explicit allowlist entry in
 `scripts/check-design-tokens.mjs` so future contributors understand why the
 constant exists.
 
+The script now crawls every markup-emitting module under `js/blog`, `js/ui`,
+`js/channelProfile.js`, and `torrent/ui`, so UI tweaks anywhere in the repo
+benefit from the guard without manual configuration.
+
 Beacon builds inherit the same rule. `npm run build:beacon` now bundles
 `torrent/dist` and immediately re-runs the inline-style checker against the
 fresh output so third-party dependencies cannot sneak inline style mutations
