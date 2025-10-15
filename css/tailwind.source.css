@@ -141,6 +141,33 @@
     @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
   }
 
+  .header-icon-toggle {
+    @apply focus-ring inline-flex items-center justify-center rounded-full transition-colors duration-150 ease-out;
+    width: var(--icon-size-lg);
+    height: var(--icon-size-lg);
+    min-width: var(--icon-size-lg);
+    min-height: var(--icon-size-lg);
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    line-height: 1;
+  }
+
+  .header-icon-toggle:hover,
+  .header-icon-toggle:focus-visible {
+    color: var(--color-text);
+  }
+
+  .header-icon-toggle[aria-pressed="true"] {
+    color: var(--color-text-strong);
+  }
+
+  .header-icon-toggle[aria-pressed="true"]:hover,
+  .header-icon-toggle[aria-pressed="true"]:focus-visible {
+    color: var(--color-text-strong);
+  }
+
   .bv-logo {
     --logo-wordmark-color: var(--color-logo-wordmark);
     --logo-accent-color: var(--color-logo-accent);
