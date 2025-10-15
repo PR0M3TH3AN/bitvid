@@ -2220,32 +2220,14 @@
       var(--space-sidebar-shell-block-end);
     width: 100%;
     border-radius: var(--radius-sidebar-shell);
-    border: var(--border-width-hairline) solid var(--color-sidebar-border-strong);
-    background:
-      radial-gradient(
-        140% 140% at 15% 10%,
-        color-mix(in srgb, var(--color-sidebar-accent-start) 46%, transparent) 0%,
-        transparent 65%
-      ),
-      radial-gradient(
-        130% 130% at 82% 88%,
-        color-mix(in srgb, var(--color-sidebar-accent-end) 42%, transparent) 0%,
-        transparent 70%
-      ),
-      linear-gradient(
-        160deg,
-        color-mix(in srgb, var(--color-sidebar-surface) 92%, transparent) 0%,
-        color-mix(in srgb, var(--color-sidebar-surface-alt) 98%, transparent) 100%
-      );
-    box-shadow: var(--shadow-sidebar-shell);
-    backdrop-filter: blur(var(--sidebar-backdrop-blur))
-      saturate(var(--sidebar-shell-backdrop-saturation));
-    -webkit-backdrop-filter: blur(var(--sidebar-backdrop-blur))
-      saturate(var(--sidebar-shell-backdrop-saturation));
+    border: none;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     overflow: visible;
     isolation: isolate;
-    transition: border-color 200ms ease, box-shadow 220ms ease, background 220ms ease,
-      backdrop-filter 220ms ease;
+    transition: color 200ms ease;
   }
 
   .sidebar-scroll {
@@ -2345,27 +2327,20 @@
     font-size: var(--font-size-sidebar-nav);
     font-weight: 600;
     letter-spacing: 0.015em;
-    color: var(--color-text-frosted-strong);
+    color: var(--color-text);
     text-decoration: none;
     width: 100%;
     position: relative;
-    border: var(--border-width-hairline) solid var(--color-sidebar-border);
-    background:
-      linear-gradient(
-        155deg,
-        color-mix(in srgb, var(--color-sidebar-surface) 72%, transparent) 0%,
-        color-mix(in srgb, var(--color-sidebar-surface-alt) 48%, transparent) 100%
-      );
-    box-shadow: inset 0 0 0 var(--border-width-fine) var(--color-sidebar-border);
+    border: var(--border-width-hairline) solid transparent;
+    background: none;
+    box-shadow: none;
     transform: translateX(var(--sidebar-nav-translate-x));
     transition: color 180ms ease, border-color 200ms ease, box-shadow 220ms ease,
       transform 220ms ease;
     overflow: hidden;
     isolation: isolate;
-    backdrop-filter: blur(var(--sidebar-backdrop-blur))
-      saturate(var(--sidebar-nav-backdrop-saturation));
-    -webkit-backdrop-filter: blur(var(--sidebar-backdrop-blur))
-      saturate(var(--sidebar-nav-backdrop-saturation));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .sidebar-nav-link::before,
@@ -2439,6 +2414,8 @@
     min-height: var(--space-lg);
     flex-shrink: 0;
     display: block;
+    filter: var(--sidebar-icon-filter);
+    transition: filter 180ms ease;
   }
 
   .sidebar-footer {
@@ -2460,14 +2437,9 @@
     padding: var(--space-sidebar-trigger-padding-block) var(--space-md);
     min-height: var(--sidebar-control-size);
     border-radius: var(--radius-sidebar-nav);
-    border: var(--border-width-hairline) solid var(--color-sidebar-border);
-    background:
-      linear-gradient(
-        155deg,
-        color-mix(in srgb, var(--color-sidebar-surface) 80%, transparent) 0%,
-        color-mix(in srgb, var(--color-sidebar-surface-alt) 58%, transparent) 100%
-      );
-    color: var(--color-text-frosted);
+    border: var(--border-width-hairline) solid transparent;
+    background: none;
+    color: var(--color-text);
     font-size: var(--font-size-sidebar-trigger);
     font-weight: 600;
     cursor: pointer;
@@ -2475,14 +2447,10 @@
     flex-shrink: 0;
     overflow: hidden;
     isolation: isolate;
-    backdrop-filter: blur(var(--sidebar-backdrop-blur))
-      saturate(var(--sidebar-trigger-backdrop-saturation));
-    -webkit-backdrop-filter: blur(var(--sidebar-backdrop-blur))
-      saturate(var(--sidebar-trigger-backdrop-saturation));
-    box-shadow: inset 0 0 0 var(--border-width-fine) var(--color-sidebar-border),
-      var(--shadow-sidebar-trigger);
-    transition: border-color 200ms ease, color 200ms ease, box-shadow 220ms ease,
-      background 220ms ease;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    transition: border-color 200ms ease, color 200ms ease, box-shadow 220ms ease;
   }
 
   .sidebar-dropup-trigger::before {
@@ -2612,8 +2580,7 @@
   }
 
   #sidebar.sidebar-open {
-    box-shadow: var(--shadow-sidebar-shell),
-      0 0 0 var(--border-width-hairline) var(--color-sidebar-border-strong);
+    box-shadow: none;
   }
 
   #sidebarOverlay {
