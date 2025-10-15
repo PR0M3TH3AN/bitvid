@@ -100,6 +100,15 @@ and scripts for `style=` attributes, `element.style`, or `style.cssText` usage
 and will fail CI until offending markup is moved into the shared CSS/token
 system.
 
+#### Design token guard
+
+`npm run lint:tokens` inspects JavaScript **and** `css/tailwind.source.css`
+for raw `px`/`rem` measurements. Prefer design tokens, Tailwind `theme()` calls,
+or existing utilities over hard-coded lengths. When unavoidable (for example
+hairline borders or browser reset quirks) add an explicit allowlist entry in
+`scripts/check-design-tokens.mjs` so future contributors understand why the
+constant exists.
+
 Beacon builds inherit the same rule. `npm run build:beacon` now bundles
 `torrent/dist` and immediately re-runs the inline-style checker against the
 fresh output so third-party dependencies cannot sneak inline style mutations

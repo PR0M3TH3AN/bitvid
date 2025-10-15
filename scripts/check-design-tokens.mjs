@@ -10,10 +10,30 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 
 const TARGET_DIRECTORIES = ["js/ui"];
-const TARGET_FILES = ["js/channelProfile.js"];
+const TARGET_FILES = ["js/channelProfile.js", "css/tailwind.source.css"];
 const IGNORED_EXTENSIONS = new Set([".min.js", ".map"]);
-const ALLOWED_FILES = new Set(["js/ui/components/RevertModal.js"]);
+const ALLOWED_FILES = new Set([
+  "js/ui/components/RevertModal.js",
+  "css/tokens.css",
+]);
 const LENGTH_PATTERN = /\d+(?:\.\d+)?(?:px|rem)\b/gim;
+
+const GLOBAL_VALUE_ALLOWLIST = [
+  (value) => /^0+(?:\.0+)?(?:px|rem)$/i.test(value),
+];
+
+const VALUE_ALLOWLIST = new Map([
+  [
+    "css/tailwind.source.css",
+    [
+      // Hairline borders and reset styles that intentionally rely on raw pixels.
+      (value, snippet) =>
+        /^0?\.5px$/i.test(value) && /box-shadow/i.test(snippet),
+      (value, snippet) =>
+        /^1px$/i.test(value) && /(border|box-shadow|outline)/i.test(snippet),
+    ],
+  ],
+]);
 
 const MARKUP_EXTENSIONS = new Set([".html", ".md", ".mdx", ".markdown", ".njk", ".nunjucks"]);
 const MARKUP_IGNORED_DIRECTORIES = new Set(["node_modules", ".git"]);
@@ -23,6 +43,40 @@ const CHECK_MODES = new Set(["all", "tokens", "brackets"]);
 
 function toPosix(relPath) {
   return relPath.split(path.sep).join("/");
+}
+
+function getAllowlistEntries(filePath) {
+  const entries = [...GLOBAL_VALUE_ALLOWLIST];
+  const relPath = toPosix(path.relative(repoRoot, filePath));
+  const fileSpecific = VALUE_ALLOWLIST.get(relPath);
+  if (fileSpecific) {
+    entries.push(...fileSpecific);
+  }
+  return entries;
+}
+
+function isValueAllowed(filePath, value, snippet) {
+  const entries = getAllowlistEntries(filePath);
+  for (const entry of entries) {
+    if (entry instanceof RegExp) {
+      if (entry.test(value)) {
+        return true;
+      }
+      continue;
+    }
+    if (typeof entry === "function") {
+      if (entry(value, snippet, filePath)) {
+        return true;
+      }
+      continue;
+    }
+    if (typeof entry === "string") {
+      if (entry.toLowerCase() === value.toLowerCase()) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 async function collectScriptFiles() {
@@ -174,14 +228,15 @@ function collectViolations(filePath, content) {
       continue;
     }
     const value = match[0];
-    if (/^0+(?:\.0+)?(?:px|rem)$/i.test(value)) {
+    const snippet = getLineSnippet(content, index);
+    if (isValueAllowed(filePath, value, snippet)) {
       continue;
     }
     violations.push({
       file: toPosix(path.relative(repoRoot, filePath)),
       line: getLineNumber(lineBreaks, index),
       value,
-      snippet: getLineSnippet(content, index),
+      snippet,
     });
   }
   return violations;
