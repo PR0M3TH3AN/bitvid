@@ -249,6 +249,8 @@ Specialisations reuse `.form-control`:
 
 All three share hover, focus-visible, disabled, and invalid treatments. Layer on utilities (`h-12`, `text-lg`, icon padding) as needed without re-declaring tokens.
 
+Controllers can mark read-only fields by setting `data-state="locked"` alongside the existing `readonly` attribute. The attribute shifts the background to `bg-overlay-panel-soft`, deepens the border (`border-border-sidebar-strong`), and suppresses the focus ring so locked inputs stay visually distinct without falling back to `!important` overrides. The same hook works on `.input`, `.textarea`, `.select`, and any raw `.form-control` element—disabled states keep the locked palette.
+
 Arrow and checkbox adornments now lean entirely on tokens: `--form-select-icon-offset`, `--form-select-icon-gap`, `--form-select-icon-hit-area`, and `--form-select-icon-size` position the native select chevron, while `--form-checkbox-checkmark-offset` keeps the checkmark aligned at any scale. Textareas pull their baseline from `--form-textarea-min-height`, and thin scrollbars reuse the shared `--scrollbar-thin-width` so embedded panels feel consistent across browsers.
 
 ```html
