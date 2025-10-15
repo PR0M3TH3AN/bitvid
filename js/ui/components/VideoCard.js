@@ -123,6 +123,7 @@ export class VideoCard {
     this.moreMenu = null;
     this.settingsDropdownPositioner = null;
     this.moreMenuPositioner = null;
+    this.openFloatingMenuCount = 0;
     this.urlHealthBadgeEl = null;
     this.torrentHealthBadgeEl = null;
     this.viewCountEl = null;
@@ -216,6 +217,7 @@ export class VideoCard {
   }
 
   closeMoreMenu() {
+    const wasOpen = this.moreMenu?.dataset.state === "open";
     if (this.moreMenu) {
       this.moreMenu.dataset.state = "closed";
       this.moreMenu.setAttribute("aria-hidden", "true");
@@ -224,9 +226,13 @@ export class VideoCard {
     if (this.moreMenuButton) {
       this.moreMenuButton.setAttribute("aria-expanded", "false");
     }
+    if (wasOpen) {
+      this.releaseCardFloatingMenu();
+    }
   }
 
   closeSettingsMenu() {
+    const wasOpen = this.settingsDropdown?.dataset.state === "open";
     if (this.settingsDropdown) {
       this.settingsDropdown.dataset.state = "closed";
       this.settingsDropdown.setAttribute("aria-hidden", "true");
@@ -234,6 +240,42 @@ export class VideoCard {
     }
     if (this.settingsButton) {
       this.settingsButton.setAttribute("aria-expanded", "false");
+    }
+    if (wasOpen) {
+      this.releaseCardFloatingMenu();
+    }
+  }
+
+  elevateCardForFloatingMenu() {
+    if (!this.root) {
+      return;
+    }
+
+    if (!Number.isFinite(this.openFloatingMenuCount)) {
+      this.openFloatingMenuCount = 0;
+    }
+
+    this.openFloatingMenuCount += 1;
+    this.root.dataset.floatingMenuOpen = "true";
+  }
+
+  releaseCardFloatingMenu() {
+    if (!Number.isFinite(this.openFloatingMenuCount)) {
+      this.openFloatingMenuCount = 0;
+    }
+
+    if (this.openFloatingMenuCount > 0) {
+      this.openFloatingMenuCount -= 1;
+    }
+
+    if (!this.root) {
+      this.openFloatingMenuCount = Math.max(this.openFloatingMenuCount, 0);
+      return;
+    }
+
+    if (this.openFloatingMenuCount <= 0) {
+      delete this.root.dataset.floatingMenuOpen;
+      this.openFloatingMenuCount = 0;
     }
   }
 
@@ -1653,6 +1695,7 @@ export class VideoCard {
           this.settingsDropdown.setAttribute("aria-hidden", "false");
           this.settingsButton.setAttribute("aria-expanded", "true");
           this.settingsDropdownPositioner?.update();
+          this.elevateCardForFloatingMenu();
         }
       });
     }
@@ -1716,6 +1759,7 @@ export class VideoCard {
           this.moreMenu.setAttribute("aria-hidden", "false");
           this.moreMenuButton.setAttribute("aria-expanded", "true");
           this.moreMenuPositioner?.update();
+          this.elevateCardForFloatingMenu();
         }
       });
 

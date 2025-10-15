@@ -279,9 +279,18 @@
     @apply pointer-events-auto opacity-100 scale-100;
   }
 
+  .card[data-floating-menu-open="true"] {
+    z-index: var(--z-overlay-floating-raised);
+  }
+
   .card :is([data-floating-panel], .popover__panel),
   .video-modal__actions-row :is([data-floating-panel], .popover__panel) {
-    z-index: var(--z-modal-content);
+    z-index: var(--z-overlay-floating-raised);
+  }
+
+  .video-modal__actions-row [data-more-menu-wrapper] {
+    position: relative;
+    z-index: var(--z-overlay-floating-raised);
   }
 
   .ds-overlay-backdrop {

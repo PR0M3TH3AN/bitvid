@@ -298,6 +298,7 @@ module.exports = {
       zIndex: {
         "overlay-nav": "var(--z-overlay-nav)",
         "overlay-floating": "var(--z-overlay-floating)",
+        "overlay-floating-raised": "var(--z-overlay-floating-raised)",
         "overlay-toast": "var(--z-overlay-toast)"
       },
       spacing: {

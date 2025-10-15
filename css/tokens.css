@@ -94,6 +94,7 @@
   --scrollbar-thumb-hover: var(--color-white-softest);
   --z-overlay-nav: 60;
   --z-overlay-floating: 70;
+  --z-overlay-floating-raised: 160;
   --z-overlay-toast: 180;
   --z-sidebar-overlay: 10;
   --z-sidebar: 20;
