@@ -84,10 +84,7 @@ import {
   applyRootTimestampToVideosMap,
   syncActiveVideoRootTimestamp,
 } from "./utils/videoTimestamps.js";
-import {
-  getDesignSystemMode as readDesignSystemMode,
-  subscribeToDesignSystemChanges,
-} from "./designSystem.js";
+import { getDesignSystemMode as getCanonicalDesignSystemMode } from "./designSystem.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -186,21 +183,10 @@ class Application {
     this.watchHistoryTelemetry = null;
     this.authEventUnsubscribes = [];
     this.unsubscribeFromNostrService = null;
-    this.unsubscribeFromDesignSystem = null;
-    this.designSystemMode = readDesignSystemMode();
     this.designSystemContext = {
-      getMode: () => this.getDesignSystemMode(),
-      isNew: () => this.isDesignSystemNew(),
+      getMode: () => "new",
+      isNew: () => true,
     };
-    this.unsubscribeFromDesignSystem = subscribeToDesignSystemChanges(
-      ({ mode }) => {
-        if (typeof mode === "string" && mode) {
-          this.designSystemMode = mode;
-        } else {
-          this.designSystemMode = readDesignSystemMode();
-        }
-      }
-    );
     this.videoModalReadyPromise = null;
     this.boundUploadSubmitHandler = null;
     this.boundEditModalSubmitHandler = null;
@@ -1326,11 +1312,11 @@ class Application {
   }
 
   getDesignSystemMode() {
-    return this.designSystemMode === "new" ? "new" : "legacy";
+    return getCanonicalDesignSystemMode();
   }
 
   isDesignSystemNew() {
-    return this.getDesignSystemMode() === "new";
+    return true;
   }
 
   /**
@@ -6635,18 +6621,6 @@ class Application {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
     this.videoModalReadyPromise = null;
-
-    if (typeof this.unsubscribeFromDesignSystem === "function") {
-      try {
-        this.unsubscribeFromDesignSystem();
-      } catch (error) {
-        console.warn(
-          "[Application] Failed to unsubscribe design system listener:",
-          error
-        );
-      }
-      this.unsubscribeFromDesignSystem = null;
-    }
 
     if (this.watchHistoryTelemetry) {
       try {

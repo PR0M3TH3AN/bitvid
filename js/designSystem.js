@@ -1,26 +1,16 @@
-import {
-  DESIGN_SYSTEM_EVENT_NAME,
-  getFeatureDesignSystemEnabled,
-} from "./constants.js";
-
-const LEGACY_MODE = "legacy";
 const NEW_MODE = "new";
 
 const FALLBACK_CONTEXT = Object.freeze({
-  getMode: () => LEGACY_MODE,
-  isNew: () => false,
+  getMode: () => NEW_MODE,
+  isNew: () => true,
 });
 
-function normalizeMode(mode) {
-  return mode === NEW_MODE ? NEW_MODE : LEGACY_MODE;
-}
-
 export function getDesignSystemMode() {
-  return normalizeMode(getFeatureDesignSystemEnabled() ? NEW_MODE : LEGACY_MODE);
+  return NEW_MODE;
 }
 
 export function isDesignSystemNew() {
-  return getFeatureDesignSystemEnabled() === true;
+  return true;
 }
 
 export function normalizeDesignSystemContext(candidate) {
@@ -28,19 +18,15 @@ export function normalizeDesignSystemContext(candidate) {
     return FALLBACK_CONTEXT;
   }
 
-  const resolvedGetMode =
-    typeof candidate.getMode === "function"
-      ? candidate.getMode
-      : FALLBACK_CONTEXT.getMode;
-
-  const resolvedIsNew =
-    typeof candidate.isNew === "function"
-      ? candidate.isNew
-      : () => normalizeMode(resolvedGetMode()) === NEW_MODE;
-
   return {
-    getMode: resolvedGetMode,
-    isNew: resolvedIsNew,
+    getMode:
+      typeof candidate.getMode === "function"
+        ? candidate.getMode
+        : FALLBACK_CONTEXT.getMode,
+    isNew:
+      typeof candidate.isNew === "function"
+        ? candidate.isNew
+        : FALLBACK_CONTEXT.isNew,
   };
 }
 
@@ -111,26 +97,6 @@ export function applyDesignSystemAttributes(root = null) {
 }
 
 export function subscribeToDesignSystemChanges(listener) {
-  if (typeof window !== "object" || window === null) {
-    return () => {};
-  }
-
-  if (typeof listener !== "function") {
-    return () => {};
-  }
-
-  const handler = (event) => {
-    listener({
-      mode: getDesignSystemMode(),
-      event,
-    });
-  };
-
-  window.addEventListener(DESIGN_SYSTEM_EVENT_NAME, handler);
-
-  return () => {
-    window.removeEventListener(DESIGN_SYSTEM_EVENT_NAME, handler);
-  };
+  void listener;
+  return () => {};
 }
-
-export { DESIGN_SYSTEM_EVENT_NAME };

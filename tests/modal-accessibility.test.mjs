@@ -11,10 +11,7 @@ import {
   openStaticModal,
   closeStaticModal,
 } from "../js/ui/components/staticModalAccessibility.js";
-import {
-  setFeatureDesignSystemEnabled,
-  resetRuntimeFlags,
-} from "../js/constants.js";
+import { resetRuntimeFlags } from "../js/constants.js";
 import { applyDesignSystemAttributes } from "../js/designSystem.js";
 
 const uploadMarkupPromise = readFile(
@@ -95,11 +92,10 @@ async function flushMicrotasks() {
   await Promise.resolve();
 }
 
-for (const designSystemEnabled of [false, true]) {
-  const modeLabel = designSystemEnabled ? "design-system" : "legacy";
+for (const _ of [0]) {
 
   test(
-    `[${modeLabel}] UploadModal closes on Escape and restores trigger focus`,
+    "UploadModal closes on Escape and restores trigger focus",
     async (t) => {
       const markup = await uploadMarkupPromise;
       const cleanups = [];
@@ -111,8 +107,6 @@ for (const designSystemEnabled of [false, true]) {
       cleanups.push(
         stubFetch(new Map([["components/upload-modal.html", markup]])),
       );
-
-      setFeatureDesignSystemEnabled(designSystemEnabled);
 
       const modal = new UploadModal({
         removeTrackingScripts: () => {},
@@ -149,7 +143,7 @@ for (const designSystemEnabled of [false, true]) {
   );
 
   test(
-    `[${modeLabel}] UploadModal backdrop click closes and restores trigger focus`,
+    "UploadModal backdrop click closes and restores trigger focus",
     async (t) => {
       const markup = await uploadMarkupPromise;
       const cleanups = [];
@@ -161,8 +155,6 @@ for (const designSystemEnabled of [false, true]) {
       cleanups.push(
         stubFetch(new Map([["components/upload-modal.html", markup]])),
       );
-
-      setFeatureDesignSystemEnabled(designSystemEnabled);
 
       const modal = new UploadModal({
         removeTrackingScripts: () => {},
@@ -198,7 +190,7 @@ for (const designSystemEnabled of [false, true]) {
   );
 
   test(
-    `[${modeLabel}] UploadModal mode toggle updates button states`,
+    "UploadModal mode toggle updates button states",
     async (t) => {
       const markup = await uploadMarkupPromise;
       const cleanups = [];
@@ -210,8 +202,6 @@ for (const designSystemEnabled of [false, true]) {
       cleanups.push(
         stubFetch(new Map([["components/upload-modal.html", markup]])),
       );
-
-      setFeatureDesignSystemEnabled(designSystemEnabled);
 
       const modal = new UploadModal({
         removeTrackingScripts: () => {},
@@ -255,11 +245,10 @@ for (const designSystemEnabled of [false, true]) {
   );
 }
 
-for (const designSystemEnabled of [false, true]) {
-  const modeLabel = designSystemEnabled ? "design-system" : "legacy";
+for (const _ of [0]) {
 
   test(
-    `[${modeLabel}] EditModal Escape closes and restores trigger focus`,
+    "EditModal Escape closes and restores trigger focus",
     async (t) => {
       const markup = await editMarkupPromise;
       const cleanups = [];
@@ -273,8 +262,6 @@ for (const designSystemEnabled of [false, true]) {
           new Map([["components/edit-video-modal.html", markup]]),
         ),
       );
-
-      setFeatureDesignSystemEnabled(designSystemEnabled);
 
       const modal = new EditModal({
         removeTrackingScripts: () => {},
@@ -329,7 +316,7 @@ for (const designSystemEnabled of [false, true]) {
   );
 
   test(
-    `[${modeLabel}] EditModal backdrop click closes and restores trigger focus`,
+    "EditModal backdrop click closes and restores trigger focus",
     async (t) => {
       const markup = await editMarkupPromise;
       const cleanups = [];
@@ -343,8 +330,6 @@ for (const designSystemEnabled of [false, true]) {
           new Map([["components/edit-video-modal.html", markup]]),
         ),
       );
-
-      setFeatureDesignSystemEnabled(designSystemEnabled);
 
       const modal = new EditModal({
         removeTrackingScripts: () => {},
@@ -398,7 +383,7 @@ for (const designSystemEnabled of [false, true]) {
   );
 
   test(
-    `[${modeLabel}] EditModal visibility toggle updates button state`,
+    "EditModal visibility toggle updates button state",
     async (t) => {
       const markup = await editMarkupPromise;
       const cleanups = [];
@@ -412,8 +397,6 @@ for (const designSystemEnabled of [false, true]) {
           new Map([["components/edit-video-modal.html", markup]]),
         ),
       );
-
-      setFeatureDesignSystemEnabled(designSystemEnabled);
 
       const modal = new EditModal({
         removeTrackingScripts: () => {},

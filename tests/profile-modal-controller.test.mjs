@@ -3,10 +3,7 @@ import { strict as assert } from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import ProfileModalController from '../js/ui/profileModalController.js';
-import {
-  setFeatureDesignSystemEnabled,
-  resetRuntimeFlags,
-} from '../js/constants.js';
+import { resetRuntimeFlags } from '../js/constants.js';
 import { applyDesignSystemAttributes } from '../js/designSystem.js';
 
 const profileModalHtml = await readFile(
@@ -174,13 +171,11 @@ function createController(options = {}) {
   });
 }
 
-for (const designSystemEnabled of [false, true]) {
-  const modeLabel = designSystemEnabled ? 'design-system' : 'legacy';
+for (const _ of [0]) {
 
   test(
-    `[${modeLabel}] Profile modal Escape closes and restores trigger focus`,
+    'Profile modal Escape closes and restores trigger focus',
     async (t) => {
-      setFeatureDesignSystemEnabled(designSystemEnabled);
       const controller = createController();
       await controller.load();
       applyDesignSystemAttributes(document);
@@ -241,9 +236,8 @@ for (const designSystemEnabled of [false, true]) {
   );
 
   test(
-    `[${modeLabel}] Profile modal navigation buttons toggle active state`,
+    'Profile modal navigation buttons toggle active state',
     async (t) => {
-      setFeatureDesignSystemEnabled(designSystemEnabled);
       const controller = createController();
       await controller.load();
       applyDesignSystemAttributes(document);

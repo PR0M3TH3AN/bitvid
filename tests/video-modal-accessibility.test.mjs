@@ -4,10 +4,7 @@ import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 
 import { VideoModal } from "../js/ui/components/VideoModal.js";
-import {
-  setFeatureDesignSystemEnabled,
-  resetRuntimeFlags,
-} from "../js/constants.js";
+import { resetRuntimeFlags } from "../js/constants.js";
 import { applyDesignSystemAttributes } from "../js/designSystem.js";
 
 const modalMarkupPromise = readFile(
@@ -15,7 +12,7 @@ const modalMarkupPromise = readFile(
   "utf8"
 );
 
-async function setupModal({ designSystemEnabled = false, lazyLoad = false } = {}) {
+async function setupModal({ lazyLoad = false } = {}) {
   const markup = await modalMarkupPromise;
   const modalMarkup = lazyLoad ? "" : markup;
   const dom = new JSDOM(
@@ -40,7 +37,6 @@ async function setupModal({ designSystemEnabled = false, lazyLoad = false } = {}
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;
 
-  setFeatureDesignSystemEnabled(designSystemEnabled);
   applyDesignSystemAttributes(document);
 
   let restoreFetch = null;
@@ -176,14 +172,13 @@ test("Escape key closes the modal and returns focus to the trigger", async (t) =
   assert.strictEqual(document.activeElement, trigger);
 });
 
-for (const designSystemEnabled of [false, true]) {
-  const modeLabel = designSystemEnabled ? "design-system" : "legacy";
+for (const _ of [0]) {
 
   test(
-    `[${modeLabel}] video modal sticky navigation responds to scroll direction`,
+    "video modal sticky navigation responds to scroll direction",
     async (t) => {
       const { window, modal, playerModal, trigger, cleanup } =
-        await setupModal({ designSystemEnabled });
+        await setupModal();
       t.after(cleanup);
 
       modal.open(null, { triggerElement: trigger });
@@ -226,10 +221,10 @@ for (const designSystemEnabled of [false, true]) {
   );
 
   test(
-    `[${modeLabel}] video modal video shell is not sticky at mobile breakpoints`,
+    "video modal video shell is not sticky at mobile breakpoints",
     async (t) => {
       const { window, modal, playerModal, trigger, cleanup } =
-        await setupModal({ designSystemEnabled });
+        await setupModal();
       t.after(cleanup);
 
       const originalInnerWidth = window.innerWidth;
@@ -261,11 +256,9 @@ for (const designSystemEnabled of [false, true]) {
   );
 
   test(
-    `[${modeLabel}] video modal toggles document scroll locking on open/close`,
+    "video modal toggles document scroll locking on open/close",
     async (t) => {
-      const { document, modal, trigger, cleanup } = await setupModal({
-        designSystemEnabled,
-      });
+      const { document, modal, trigger, cleanup } = await setupModal();
       t.after(cleanup);
 
       modal.open(null, { triggerElement: trigger });
@@ -290,16 +283,10 @@ for (const designSystemEnabled of [false, true]) {
   );
 
   test(
-    `[${modeLabel}] video modal zap dialog updates aria state while toggling`,
+    "video modal zap dialog updates aria state while toggling",
     async (t) => {
-      const {
-        window,
-        document,
-        modal,
-        playerModal,
-        trigger,
-        cleanup,
-      } = await setupModal({ designSystemEnabled });
+      const { window, document, modal, playerModal, trigger, cleanup } =
+        await setupModal();
       t.after(cleanup);
 
       modal.open(null, { triggerElement: trigger });
@@ -344,18 +331,13 @@ for (const designSystemEnabled of [false, true]) {
     }
   );
 
-  if (designSystemEnabled) {
-    test(
-      `[${modeLabel}] video modal inherits design system mode when loaded dynamically`,
-      async (t) => {
-        const { playerModal, cleanup } = await setupModal({
-          designSystemEnabled,
-          lazyLoad: true,
-        });
-        t.after(cleanup);
+  test(
+    "video modal inherits design system mode when loaded dynamically",
+    async (t) => {
+      const { playerModal, cleanup } = await setupModal({ lazyLoad: true });
+      t.after(cleanup);
 
-        assert.strictEqual(playerModal.getAttribute("data-ds"), "new");
-      }
-    );
-  }
+      assert.strictEqual(playerModal.getAttribute("data-ds"), "new");
+    }
+  );
 }

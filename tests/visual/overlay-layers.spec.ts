@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 declare global {
   interface Window {
@@ -9,12 +10,51 @@ declare global {
 }
 
 test.describe("overlay layering tokens", () => {
+  async function dismissDisclaimerModal(page: Page) {
+    const modal = page.locator("#disclaimerModal");
+    if ((await modal.count()) === 0) {
+      return;
+    }
+
+    await page.evaluate(() => {
+      try {
+        window.localStorage?.setItem("hasSeenDisclaimer", "true");
+      } catch (error) {
+        console.warn("Failed to persist disclaimer state", error);
+      }
+      document
+        .querySelectorAll<HTMLElement>("#disclaimerModal")
+        .forEach((node) => {
+          node.classList.add("hidden");
+          node.setAttribute("data-open", "false");
+        });
+      document.documentElement?.classList.remove("modal-open");
+      document.body?.classList.remove("modal-open");
+    });
+
+    await page.waitForFunction(() =>
+      Array.from(
+        document.querySelectorAll("#disclaimerModal")
+      ).every((modalElement) => modalElement.classList.contains("hidden"))
+    );
+  }
+
   test("mobile nav overlay uses nav layer", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/index.html", { waitUntil: "networkidle" });
 
+    await dismissDisclaimerModal(page);
+
     await page.waitForSelector("#mobileMenuBtn");
     await page.click("#mobileMenuBtn");
+    await page.waitForFunction(() => {
+      const overlay = document.getElementById("sidebarOverlay");
+      if (!overlay) {
+        return false;
+      }
+      const styles = window.getComputedStyle(overlay);
+      return styles.opacity === "1" && styles.pointerEvents === "auto";
+    });
     await page.waitForFunction(() =>
       document.body.classList.contains("sidebar-open")
     );

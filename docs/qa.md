@@ -4,13 +4,13 @@ Run this checklist before publishing releases or merging changes that touch uplo
 
 Before starting, open `docs/kitchen-sink.html` in a browser to review the modal surface reference. With that page as your visual baseline, perform this quick accessibility spot check in the running app:
 
-Automated regression coverage now exercises these flows across both the legacy and design-system variants:
+Automated regression coverage now exercises these flows on the unified design-system variant:
 
 * `tests/video-modal-accessibility.test.mjs` validates sticky header transitions, scroll locking, zap popover accessibility, and now verifies the video shell drops sticky positioning on mobile breakpoints.
 * `tests/modal-accessibility.test.mjs` mirrors upload/edit modal accessibility along with their form validation and mode toggles.
 * `tests/profile-modal-controller.test.mjs` verifies profile modal focus restoration and navigation button state changes.
 
-`tests/visual/kitchen-sink.spec.ts` captures design-system snapshots for the kitchen sink and the video modal. When modal styles change, run `npm run test:visual:update` to refresh both the desktop and mobile baselines with `FEATURE_DESIGN_SYSTEM` toggled on and off.
+`tests/visual/kitchen-sink.spec.ts` captures design-system snapshots for the kitchen sink and the video modal. When modal styles change, run `npm run test:visual:update` to refresh both the desktop and mobile baselines.
 
 * Launch the site, trigger any video card or thumbnail to open the playback modal, and keep track of the element you used to open it.
 * Scroll the modal content down and back up; confirm the sticky navigation bar hides on downward scroll and reappears when you reverse direction.
