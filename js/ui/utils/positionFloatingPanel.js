@@ -9,6 +9,7 @@ const DEFAULT_OPTIONS = {
   strategy: "fixed",
   rtl: null,
   onUpdate: null,
+  preferAnchors: false,
 };
 
 const OPPOSITE_PLACEMENT = {
@@ -256,9 +257,10 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
     Number.MAX_SAFE_INTEGER,
   );
   config.strategy = config.strategy === "absolute" ? "absolute" : "fixed";
+  config.preferAnchors = optionOverrides.preferAnchors === true;
   const rtl = resolveDirection(safeAnchor, documentRef, config.rtl);
 
-  const anchorSupported = detectAnchorSupport(windowRef);
+  const anchorSupported = config.preferAnchors && detectAnchorSupport(windowRef);
 
   const state = {
     lastSize: { width: 0, height: 0 },

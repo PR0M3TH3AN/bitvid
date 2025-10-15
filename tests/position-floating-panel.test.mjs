@@ -452,7 +452,7 @@ test("clamps inline overflow when the surface is wider than the viewport gutter"
   positioner.destroy();
 });
 
-test("prefers anchor positioning when supported", () => {
+test("falls back to computed positioning when anchors are supported but not preferred", () => {
   const dom = new JSDOM(
     `
       <div class="popover">
@@ -501,6 +501,71 @@ test("prefers anchor positioning when supported", () => {
 
   const positioner = positionFloatingPanel(trigger, panel, {
     offset: 10,
+  });
+
+  panel.hidden = false;
+  panel.dataset.state = "open";
+  positioner.update();
+
+  assert.equal(panel.dataset.floatingMode, "fallback");
+  assert.equal(positioner.styles.getMode(), "fallback");
+  assert.equal(panel.dataset.floatingPlacement, "bottom");
+  assert.deepEqual(positioner.styles.getFallbackPosition(), { top: 150, left: 200 });
+
+  positioner.destroy();
+  window.CSS = originalCSS;
+});
+
+test("opts into anchor positioning when supported and preferred", () => {
+  const dom = new JSDOM(
+    `
+      <div class="popover">
+        <button id="trigger">Open</button>
+        <div id="panel" class="popover__panel" data-state="closed" hidden></div>
+      </div>
+    `,
+    { pretendToBeVisual: true },
+  );
+  const { window } = dom;
+  const { document } = window;
+
+  window.innerWidth = 640;
+  window.innerHeight = 480;
+
+  const trigger = document.getElementById("trigger");
+  const panel = document.getElementById("panel");
+
+  trigger.getBoundingClientRect = () => ({
+    top: 100,
+    bottom: 140,
+    left: 200,
+    right: 240,
+    width: 40,
+    height: 40,
+  });
+
+  panel.getBoundingClientRect = () => ({
+    top: 0,
+    bottom: 90,
+    left: 0,
+    right: 200,
+    width: 200,
+    height: 90,
+  });
+  Object.defineProperties(panel, {
+    offsetWidth: { value: 200 },
+    offsetHeight: { value: 90 },
+  });
+
+  const originalCSS = window.CSS;
+  window.CSS = {
+    supports: (value) =>
+      value === "anchor-name: --floating-panel" || value === "position-anchor: --floating-panel",
+  };
+
+  const positioner = positionFloatingPanel(trigger, panel, {
+    offset: 10,
+    preferAnchors: true,
   });
 
   panel.hidden = false;
