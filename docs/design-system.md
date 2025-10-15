@@ -4,6 +4,8 @@ bitvid's visual language is now powered by Tailwind utilities backed by our desi
 
 All templates and embeds must load `css/tailwind.generated.css`; that compiled bundle is the only stylesheet shipped with the app. Remove any lingering references to legacy `tailwind.min.css` assets when porting surfaces into the design system.
 
+> **UI Styling:** For day-to-day decisions, start with the [Styling & Theming Rules](../AGENTS.md#styling--theming-rules-token-first) in `AGENTS.md` and the [CSS build pipeline overview](../README.md#css-build-pipeline). Run `npm run lint:css` before committing so design-token regressions are caught early.
+
 ## Runtime contract
 
 The design system is now the canonical styling path across bitvid—there is no runtime flag or rollback toggle. Every template renders with `data-ds="new"` on its root container, and controllers always receive the "new" mode from the `designSystem` context (see `js/designSystem.js`). When migrating surfaces, ensure their root nodes include `data-ds` so the entrypoint can stamp the attribute during bootstrap.
