@@ -1,4 +1,5 @@
 import {
+import { devLogger } from "./utils/logger.js";
   ADMIN_LIST_NAMESPACE,
   isDevMode,
   WATCH_HISTORY_KIND,
@@ -46,12 +47,10 @@ function ensureValidUtf8Content(value) {
       const stringified = JSON.stringify(value);
       normalized = typeof stringified === "string" ? stringified : "";
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[nostrEventSchemas] Failed to serialize view event content:",
-          error
-        );
-      }
+      devLogger.warn(
+        "[nostrEventSchemas] Failed to serialize view event content:",
+        error
+      );
       normalized = "";
     }
   } else {
@@ -66,12 +65,10 @@ function ensureValidUtf8Content(value) {
     try {
       cachedUtf8Encoder.encode(normalized);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[nostrEventSchemas] Dropping invalid UTF-8 characters from event content",
-          error
-        );
-      }
+      devLogger.warn(
+        "[nostrEventSchemas] Dropping invalid UTF-8 characters from event content",
+        error
+      );
       const sanitized = Array.from(normalized)
         .filter((char) => {
           const code = char.charCodeAt(0);
@@ -82,12 +79,10 @@ function ensureValidUtf8Content(value) {
         cachedUtf8Encoder.encode(sanitized);
         normalized = sanitized;
       } catch (encodeError) {
-        if (isDevMode) {
-          console.warn(
-            "[nostrEventSchemas] Failed to normalize view event content; defaulting to empty string",
-            encodeError
-          );
-        }
+        devLogger.warn(
+                    "[nostrEventSchemas] Failed to normalize view event content; defaulting to empty string",
+                    encodeError
+                  );
         normalized = "";
       }
     }
@@ -835,8 +830,7 @@ function resolveAdminNoteType(listKey) {
 export function buildAdminListEvent(listKey, { pubkey, created_at, hexPubkeys = [] }) {
   const schema = getNostrEventSchema(resolveAdminNoteType(listKey));
   if (!schema) {
-    if (isDevMode) {
-      console.warn(`[nostrEventSchemas] Unknown admin list key: ${listKey}`);
+    devLogger.warn(`[nostrEventSchemas] Unknown admin list key: ${listKey`);
     }
     return {
       kind: 30000,

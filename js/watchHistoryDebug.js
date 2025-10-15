@@ -1,5 +1,7 @@
 // js/watchHistoryDebug.js
 
+import { devLogger } from "./utils/logger.js";
+
 const WATCH_HISTORY_DEBUG_STORAGE_KEY =
   "bitvid:debug:watch-history";
 
@@ -168,36 +170,24 @@ export function logWatchHistoryDebug(namespace, level, message, details) {
     return;
   }
 
-  const scopeConsole =
-    (globalScope && globalScope.console) || (typeof console !== "undefined" ? console : null);
-  if (!scopeConsole) {
-    return;
-  }
-
   const methodName =
-    typeof level === "string" && level && typeof scopeConsole[level] === "function"
+    typeof level === "string" && level && typeof devLogger[level] === "function"
       ? level
-      : typeof scopeConsole.info === "function"
-      ? "info"
-      : "log";
+      : typeof devLogger.info === "function"
+        ? "info"
+        : "log";
 
   const prefix = namespace ? `[${namespace}] ${message}` : message;
 
   try {
     if (details && typeof details === "object") {
-      scopeConsole[methodName](prefix, details);
+      devLogger[methodName](prefix, details);
     } else {
-      scopeConsole[methodName](prefix);
+      devLogger[methodName](prefix);
     }
   } catch (error) {
-    try {
-      if (details && typeof details === "object") {
-        scopeConsole.log(prefix, details);
-      } else {
-        scopeConsole.log(prefix);
-      }
-    } catch (fallbackError) {
-      // Swallow logging errors entirely.
+    if (typeof devLogger.log === "function") {
+      devLogger.log(prefix);
     }
   }
 }

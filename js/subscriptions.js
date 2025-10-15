@@ -15,6 +15,7 @@ import {
 import { getApplication } from "./applicationContext.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 
 const getApp = () => getApplication();
 
@@ -40,7 +41,7 @@ class SubscriptionsManager {
    */
   async loadSubscriptions(userPubkey) {
     if (!userPubkey) {
-      console.warn("[SubscriptionsManager] No pubkey => cannot load subs.");
+      userLogger.warn("[SubscriptionsManager] No pubkey => cannot load subs.");
       return;
     }
     try {
@@ -59,7 +60,7 @@ class SubscriptionsManager {
             events.push(...result);
           }
         } catch (err) {
-          console.error(`[SubscriptionsManager] Relay error at ${url}`, err);
+          userLogger.error(`[SubscriptionsManager] Relay error at ${url}`, err);
         }
       }
 
@@ -82,7 +83,7 @@ class SubscriptionsManager {
           newest.content
         );
       } catch (errDecrypt) {
-        console.error("[SubscriptionsManager] Decryption failed:", errDecrypt);
+        userLogger.error("[SubscriptionsManager] Decryption failed:", errDecrypt);
         this.subscribedPubkeys.clear();
         this.subsEventId = null;
         this.loaded = true;
@@ -97,7 +98,7 @@ class SubscriptionsManager {
 
       this.loaded = true;
     } catch (err) {
-      console.error("[SubscriptionsManager] Failed to load subs:", err);
+      userLogger.error("[SubscriptionsManager] Failed to load subs:", err);
     }
   }
 
@@ -114,18 +115,16 @@ class SubscriptionsManager {
       throw new Error("No user pubkey => cannot addChannel.");
     }
     if (this.subscribedPubkeys.has(channelHex)) {
-      console.log("Already subscribed to", channelHex);
+      devLogger.log("Already subscribed to", channelHex);
       return;
     }
     this.subscribedPubkeys.add(channelHex);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
-      if (typeof console !== "undefined") {
-        console.warn(
-          "[SubscriptionsManager] Failed to refresh after adding subscription:",
-          error
-        );
-      }
+      userLogger.warn(
+        "[SubscriptionsManager] Failed to refresh after adding subscription:",
+        error
+      );
     });
   }
 
@@ -134,18 +133,16 @@ class SubscriptionsManager {
       throw new Error("No user pubkey => cannot removeChannel.");
     }
     if (!this.subscribedPubkeys.has(channelHex)) {
-      console.log("Channel not found in subscription list:", channelHex);
+      devLogger.log("Channel not found in subscription list:", channelHex);
       return;
     }
     this.subscribedPubkeys.delete(channelHex);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
-      if (typeof console !== "undefined") {
-        console.warn(
-          "[SubscriptionsManager] Failed to refresh after removing subscription:",
-          error
-        );
-      }
+      userLogger.warn(
+        "[SubscriptionsManager] Failed to refresh after removing subscription:",
+        error
+      );
     });
   }
 
@@ -173,7 +170,7 @@ class SubscriptionsManager {
     try {
       cipherText = await window.nostr.nip04.encrypt(userPubkey, plainStr);
     } catch (err) {
-      console.error("Encryption failed:", err);
+      userLogger.error("Encryption failed:", err);
       throw err;
     }
 
@@ -187,7 +184,7 @@ class SubscriptionsManager {
     try {
       signedEvent = await window.nostr.signEvent(evt);
     } catch (signErr) {
-      console.error("Failed to sign subscription list:", signErr);
+      userLogger.error("Failed to sign subscription list:", signErr);
       throw signErr;
     }
 
@@ -206,7 +203,7 @@ class SubscriptionsManager {
       if (publishError?.relayFailures?.length) {
         publishError.relayFailures.forEach(
           ({ url, error: relayError, reason }) => {
-            console.error(
+            userLogger.error(
               `[SubscriptionsManager] Subscription list rejected by ${url}: ${reason}`,
               relayError || reason
             );
@@ -224,7 +221,7 @@ class SubscriptionsManager {
             : relayError
               ? String(relayError)
               : "publish failed";
-        console.warn(
+        userLogger.warn(
           `[SubscriptionsManager] Subscription list not accepted by ${url}: ${reason}`,
           relayError
         );
@@ -233,7 +230,7 @@ class SubscriptionsManager {
 
     this.subsEventId = signedEvent.id;
     const acceptedUrls = publishSummary.accepted.map(({ url }) => url);
-    console.log(
+    devLogger.log(
       "Subscription list published, event id:",
       signedEvent.id,
       "accepted relays:",
@@ -348,7 +345,7 @@ class SubscriptionsManager {
       this.renderSameGridStyle(result, containerId, { limit, reason });
       return result;
     } catch (error) {
-      console.error(
+      userLogger.error(
         "[SubscriptionsManager] Failed to run subscriptions feed:",
         error
       );
@@ -365,7 +362,7 @@ class SubscriptionsManager {
       try {
         app.registerSubscriptionsFeed();
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[SubscriptionsManager] Failed to register subscriptions feed:",
           error
         );
@@ -607,7 +604,7 @@ class SubscriptionsManager {
             magnet: detail.magnet
           })
         ).catch((error) => {
-          console.error(
+          userLogger.error(
             "[SubscriptionsManager] Failed to play by event id:",
             error
           );
@@ -617,7 +614,7 @@ class SubscriptionsManager {
       Promise.resolve(
         app?.playVideoWithFallback?.({ url: detail.url, magnet: detail.magnet })
       ).catch((error) => {
-        console.error(
+        userLogger.error(
           "[SubscriptionsManager] Failed to start playback:",
           error
         );

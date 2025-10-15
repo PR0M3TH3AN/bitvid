@@ -40,6 +40,7 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 import { nostrToolsReady } from "./nostrToolsBootstrap.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 
 /**
  * The default relay set bitvid bootstraps with before loading a user's
@@ -207,7 +208,7 @@ let cachedNostrTools = __nostrToolsBootstrapResult.toolkit || null;
 const nostrToolsBootstrapFailure = __nostrToolsBootstrapResult.failure || null;
 
 if (!cachedNostrTools && nostrToolsBootstrapFailure && isDevMode) {
-  console.warn(
+  userLogger.warn(
     "[nostr] nostr-tools helpers unavailable after bootstrap.",
     nostrToolsBootstrapFailure
   );
@@ -239,9 +240,7 @@ async function ensureNostrTools() {
     const result = await nostrToolsReadySource;
     rememberNostrTools(result);
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[nostr] Failed to resolve nostr-tools helpers.", error);
-    }
+    devLogger.warn("[nostr] Failed to resolve nostr-tools helpers.", error);
   }
 
   if (!cachedNostrTools) {
@@ -334,12 +333,10 @@ async function loadIngestLocalViewEvent() {
       return ingestLocalViewEventRef;
     }
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        "[nostr] Failed to load view counter ingest helper:",
-        error
-      );
-    }
+    devLogger.warn(
+      "[nostr] Failed to load view counter ingest helper:",
+      error
+    );
   }
   return null;
 }
@@ -349,14 +346,14 @@ let errorLogCount = 0;
 const MAX_ERROR_LOGS = 100;
 function logErrorOnce(message, eventContent = null) {
   if (errorLogCount < MAX_ERROR_LOGS) {
-    console.error(message);
+    userLogger.error(message);
     if (eventContent) {
-      console.log(`Event Content: ${eventContent}`);
+      devLogger.log(`Event Content: ${eventContent}`);
     }
     errorLogCount++;
   }
   if (errorLogCount === MAX_ERROR_LOGS) {
-    console.error(
+    userLogger.error(
       "Maximum error log limit reached. Further errors will be suppressed."
     );
   }
@@ -446,11 +443,9 @@ async function runNip07WithRetry(
       Math.round(timeoutMs * retryMultiplier),
     );
 
-    if (isDevMode) {
-      console.warn(
-        `[nostr] ${label} taking longer than ${timeoutMs}ms. Waiting up to ${extendedTimeout}ms for extension response.`,
-      );
-    }
+    devLogger.warn(
+    `[nostr] ${label} taking longer than ${timeoutMs}ms. Waiting up to ${extendedTimeout}ms for extension response.`,
+    );
 
     return withNip07Timeout(getOrStartOperation, {
       timeoutMs: extendedTimeout,
@@ -481,9 +476,7 @@ function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request ti
         try {
           onTimeout();
         } catch (cleanupError) {
-          if (isDevMode) {
-            console.warn("[nostr] COUNT timeout cleanup failed:", cleanupError);
-          }
+          devLogger.warn("[nostr] COUNT timeout cleanup failed:", cleanupError);
         }
       }
       reject(new Error(message));
@@ -1285,9 +1278,7 @@ function cloneNip71Metadata(metadata) {
   try {
     return JSON.parse(JSON.stringify(metadata));
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[nostr] Failed to clone NIP-71 metadata", error);
-    }
+    devLogger.warn("[nostr] Failed to clone NIP-71 metadata", error);
     return { ...metadata };
   }
 }
@@ -1629,8 +1620,7 @@ function normalizePointerInput(pointer) {
         }
       }
     } catch (err) {
-      if (isDevMode) {
-        console.warn(`[nostr] Failed to decode pointer ${trimmed}:`, err);
+      devLogger.warn(`[nostr] Failed to decode pointer ${trimmed:`, err);
       }
     }
   }
@@ -1748,9 +1738,7 @@ function generateViewEventEntropy() {
         value.toString(16).padStart(8, "0")
       ).join("");
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to gather crypto entropy for view event:", error);
-      }
+      devLogger.warn("[nostr] Failed to gather crypto entropy for view event:", error);
     }
   }
 
@@ -1803,9 +1791,7 @@ function hasRecentViewPublish(scope, bucketIndex) {
   try {
     rawValue = localStorage.getItem(storageKey);
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[nostr] Failed to read view guard entry:", error);
-    }
+    devLogger.warn("[nostr] Failed to read view guard entry:", error);
     return false;
   }
 
@@ -1821,9 +1807,7 @@ function hasRecentViewPublish(scope, bucketIndex) {
     try {
       localStorage.removeItem(storageKey);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to clear corrupt view guard entry:", error);
-      }
+      devLogger.warn("[nostr] Failed to clear corrupt view guard entry:", error);
     }
     return false;
   }
@@ -1832,9 +1816,7 @@ function hasRecentViewPublish(scope, bucketIndex) {
     try {
       localStorage.removeItem(storageKey);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to remove expired view guard entry:", error);
-      }
+      devLogger.warn("[nostr] Failed to remove expired view guard entry:", error);
     }
     return false;
   }
@@ -1872,9 +1854,7 @@ function rememberViewPublish(scope, bucketIndex) {
   try {
     localStorage.setItem(storageKey, `${bucketIndex}:${now}`);
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[nostr] Failed to persist view guard entry:", error);
-    }
+    devLogger.warn("[nostr] Failed to persist view guard entry:", error);
   }
 }
 
@@ -1939,9 +1919,7 @@ function readRebroadcastGuardEntry(scope) {
   try {
     rawValue = localStorage.getItem(storageKey);
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[nostr] Failed to read rebroadcast guard entry:", error);
-    }
+    devLogger.warn("[nostr] Failed to read rebroadcast guard entry:", error);
     return null;
   }
 
@@ -1957,9 +1935,7 @@ function readRebroadcastGuardEntry(scope) {
     try {
       localStorage.removeItem(storageKey);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to clear corrupt rebroadcast guard entry:", error);
-      }
+      devLogger.warn("[nostr] Failed to clear corrupt rebroadcast guard entry:", error);
     }
     return null;
   }
@@ -1968,9 +1944,7 @@ function readRebroadcastGuardEntry(scope) {
     try {
       localStorage.removeItem(storageKey);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to remove expired rebroadcast guard entry:", error);
-      }
+      devLogger.warn("[nostr] Failed to remove expired rebroadcast guard entry:", error);
     }
     return null;
   }
@@ -2015,9 +1989,7 @@ function rememberRebroadcastAttempt(scope, bucketIndex) {
   try {
     localStorage.setItem(storageKey, `${bucketIndex}:${now}`);
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[nostr] Failed to persist rebroadcast guard entry:", error);
-    }
+    devLogger.warn("[nostr] Failed to persist rebroadcast guard entry:", error);
   }
 }
 
@@ -2202,9 +2174,7 @@ function parseWatchHistoryPayload(plaintext) {
       : 1;
     return { version, items, snapshot, chunkIndex, totalChunks };
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[nostr] Failed to parse watch history payload:", error);
-    }
+    devLogger.warn("[nostr] Failed to parse watch history payload:", error);
     return {
       version: 0,
       items: [],
@@ -2423,9 +2393,7 @@ function sanitizeWatchHistoryMetadata(metadata) {
   try {
     return JSON.parse(JSON.stringify(metadata));
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[nostr] Failed to sanitize watch history metadata:", error);
-    }
+    devLogger.warn("[nostr] Failed to sanitize watch history metadata:", error);
     return {};
   }
 }
@@ -2530,9 +2498,7 @@ async function computeWatchHistoryFingerprintForItems(items) {
       const digest = await window.crypto.subtle.digest("SHA-256", data);
       return bytesToHex(new Uint8Array(digest));
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to hash watch history fingerprint:", error);
-      }
+      devLogger.warn("[nostr] Failed to hash watch history fingerprint:", error);
     }
   }
 
@@ -2773,7 +2739,7 @@ function decodeNpubToHex(npub) {
   }
 
   if (isDevMode && warnableNpub) {
-    console.warn(
+    userLogger.warn(
       `[nostr] Failed to decode npub: ${trimmed}`,
       decodeError || new Error("invalid-npub"),
     );
@@ -3191,7 +3157,7 @@ export class NostrClient {
       } catch (error) {
         lastError = error;
         if (options && isDevMode) {
-          console.warn(
+          userLogger.warn(
             "[nostr] extension.enable request with explicit permissions failed:",
             error,
           );
@@ -3287,9 +3253,7 @@ export class NostrClient {
     try {
       raw = localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to read session actor from storage:", error);
-      }
+      devLogger.warn("[nostr] Failed to read session actor from storage:", error);
       return null;
     }
 
@@ -3318,18 +3282,14 @@ export class NostrClient {
           : Date.now(),
       };
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to parse stored session actor:", error);
-      }
+      devLogger.warn("[nostr] Failed to parse stored session actor:", error);
       try {
         localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
       } catch (cleanupError) {
-        if (isDevMode) {
-          console.warn(
-            "[nostr] Failed to clear corrupt session actor entry:",
-            cleanupError
-          );
-        }
+        devLogger.warn(
+          "[nostr] Failed to clear corrupt session actor entry:",
+          cleanupError
+        );
       }
     }
 
@@ -3365,9 +3325,7 @@ export class NostrClient {
         JSON.stringify(payload)
       );
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to persist session actor:", error);
-      }
+      devLogger.warn("[nostr] Failed to persist session actor:", error);
     }
   }
 
@@ -3378,29 +3336,23 @@ export class NostrClient {
     try {
       localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to clear stored session actor:", error);
-      }
+      devLogger.warn("[nostr] Failed to clear stored session actor:", error);
     }
   }
 
   mintSessionActor() {
     const tools = getCachedNostrTools();
     if (!tools) {
-      if (isDevMode) {
-        console.warn("[nostr] Cannot mint session actor without NostrTools.");
-      }
+      devLogger.warn("[nostr] Cannot mint session actor without NostrTools.");
       return null;
     }
 
     const getPublicKey =
       typeof tools.getPublicKey === "function" ? tools.getPublicKey : null;
     if (!getPublicKey) {
-      if (isDevMode) {
-        console.warn(
-          "[nostr] Cannot mint session actor: missing getPublicKey helper."
-        );
-      }
+      devLogger.warn(
+        "[nostr] Cannot mint session actor: missing getPublicKey helper."
+      );
       return null;
     }
 
@@ -3416,9 +3368,7 @@ export class NostrClient {
           .join("");
       }
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to mint session private key:", error);
-      }
+      devLogger.warn("[nostr] Failed to mint session private key:", error);
       privateKey = "";
     }
 
@@ -3435,9 +3385,7 @@ export class NostrClient {
     try {
       pubkey = getPublicKey(normalizedPrivateKey);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to derive session pubkey:", error);
-      }
+      devLogger.warn("[nostr] Failed to derive session pubkey:", error);
       return null;
     }
 
@@ -3540,9 +3488,7 @@ export class NostrClient {
           return parsed;
         }
       } catch (err) {
-        if (isDevMode) {
-          console.warn("[nostr] Failed to parse cached events:", err);
-        }
+        devLogger.warn("[nostr] Failed to parse cached events:", err);
       }
       return null;
     };
@@ -3563,9 +3509,7 @@ export class NostrClient {
         try {
           localStorage.removeItem(LEGACY_EVENTS_STORAGE_KEY);
         } catch (err) {
-          if (isDevMode) {
-            console.warn("[nostr] Failed to remove legacy cache:", err);
-          }
+          devLogger.warn("[nostr] Failed to remove legacy cache:", err);
         }
       }
     }
@@ -3582,9 +3526,7 @@ export class NostrClient {
       try {
         localStorage.removeItem(EVENTS_CACHE_STORAGE_KEY);
       } catch (err) {
-        if (isDevMode) {
-          console.warn("[nostr] Failed to clear expired cache:", err);
-        }
+        devLogger.warn("[nostr] Failed to clear expired cache:", err);
       }
       return false;
     }
@@ -3680,9 +3622,7 @@ export class NostrClient {
     try {
       raw = localStorage.getItem(WATCH_HISTORY_STORAGE_KEY);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to read watch history storage:", error);
-      }
+      devLogger.warn("[nostr] Failed to read watch history storage:", error);
       this.watchHistoryStorage = emptyStorage;
       return this.watchHistoryStorage;
     }
@@ -3696,9 +3636,7 @@ export class NostrClient {
     try {
       parsed = JSON.parse(raw);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to parse watch history storage:", error);
-      }
+      devLogger.warn("[nostr] Failed to parse watch history storage:", error);
       this.watchHistoryStorage = emptyStorage;
       return this.watchHistoryStorage;
     }
@@ -3755,9 +3693,7 @@ export class NostrClient {
       try {
         localStorage.setItem(WATCH_HISTORY_STORAGE_KEY, JSON.stringify(storage));
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[nostr] Failed to rewrite watch history storage:", error);
-        }
+        devLogger.warn("[nostr] Failed to rewrite watch history storage:", error);
       }
     }
 
@@ -3828,9 +3764,7 @@ export class NostrClient {
     try {
       localStorage.setItem(WATCH_HISTORY_STORAGE_KEY, JSON.stringify(payload));
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to persist watch history entry:", error);
-      }
+      devLogger.warn("[nostr] Failed to persist watch history entry:", error);
     }
   }
 
@@ -3904,12 +3838,10 @@ export class NostrClient {
       try {
         onSchedule({ snapshotId: key, attempt: attempt + 1, delay });
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            `[nostr] Failed to notify watch history republish schedule for ${key}:`,
-            error,
-          );
-        }
+        devLogger.warn(
+        `[nostr] Failed to notify watch history republish schedule for ${key}:`,
+        error,
+        );
       }
     }
 
@@ -3923,18 +3855,14 @@ export class NostrClient {
               attempt: attempt + 1,
               onSchedule,
             });
-          } else if (isDevMode) {
-            console.warn(
-              `[nostr] Watch history republish aborted for ${key}: max attempts reached.`,
-            );
-          }
+          } else devLogger.warn(
+ `[nostr] Watch history republish aborted for ${key}: max attempts reached.`,
+ );
         } else {
           this.cancelWatchHistoryRepublish(key);
         }
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[nostr] Watch history republish attempt failed:", error);
-        }
+        devLogger.warn("[nostr] Watch history republish attempt failed:", error);
         if (attempt + 1 <= WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS) {
           this.scheduleWatchHistoryRepublish(key, operation, {
             attempt: attempt + 1,
@@ -3979,7 +3907,7 @@ export class NostrClient {
     const fingerprint = await computeWatchHistoryFingerprintForItems(items);
     const previous = this.watchHistoryFingerprints.get(actorKey);
     if (previous && previous !== fingerprint) {
-      console.info(`[nostr] Watch history fingerprint changed for ${actorKey}.`);
+      devLogger.info(`[nostr] Watch history fingerprint changed for ${actorKey}.`);
     }
     this.watchHistoryFingerprints.set(actorKey, fingerprint);
     return fingerprint;
@@ -4069,9 +3997,7 @@ export class NostrClient {
       };
     })()
       .catch((error) => {
-        if (isDevMode) {
-          console.warn("[nostr] Watch history background refresh failed:", error);
-        }
+        devLogger.warn("[nostr] Watch history background refresh failed:", error);
         throw error;
       })
       .finally(() => {
@@ -4151,9 +4077,9 @@ export class NostrClient {
     );
 
     if (skipped.length) {
-      console.warn(
+      userLogger.warn(
         `[nostr] Watch history snapshot skipped ${skipped.length} oversize entr${
-          skipped.length === 1 ? "y" : "ies"
+        skipped.length === 1 ? "y" : "ies"
         }.`,
       );
     }
@@ -4172,16 +4098,16 @@ export class NostrClient {
       relays = Array.from(RELAY_URLS);
     }
 
-    console.info(
+    devLogger.info(
       "[nostr] Preparing to publish watch history snapshot.",
       {
-        actor: actorKey,
-        snapshotId,
-        itemCount: canonicalItems.length,
-        chunkCount: chunks.length,
-        relaysRequested: relays,
-        attempt: options.attempt || 0,
-        source: options.source || "unknown",
+      actor: actorKey,
+      snapshotId,
+      itemCount: canonicalItems.length,
+      chunkCount: chunks.length,
+      relaysRequested: relays,
+      attempt: options.attempt || 0,
+      source: options.source || "unknown",
       }
     );
 
@@ -4284,14 +4210,14 @@ export class NostrClient {
         return tag;
       });
 
-      console.info(
+      devLogger.info(
         "[nostr] Publishing watch history chunk.",
         {
-          actor: actorKey,
-          snapshotId,
-          chunkIndex: index,
-          chunkSize: chunkItems.length,
-          relays,
+        actor: actorKey,
+        snapshotId,
+        chunkIndex: index,
+        chunkSize: chunkItems.length,
+        relays,
         }
       );
 
@@ -4307,7 +4233,7 @@ export class NostrClient {
       try {
         ciphertext = await encryptChunk(plaintext);
       } catch (error) {
-        console.warn("[nostr] Failed to encrypt watch history chunk:", error);
+        userLogger.warn("[nostr] Failed to encrypt watch history chunk:", error);
         return { ok: false, error: "encryption-failed", retryable: false };
       }
 
@@ -4329,7 +4255,7 @@ export class NostrClient {
       try {
         signedEvent = await signEvent(event);
       } catch (error) {
-        console.warn("[nostr] Failed to sign watch history chunk:", error);
+        userLogger.warn("[nostr] Failed to sign watch history chunk:", error);
         return { ok: false, error: "signing-failed", retryable: false };
       }
 
@@ -4343,7 +4269,7 @@ export class NostrClient {
 
       if (acceptedCount === 0) {
         anyChunkRejected = true;
-        console.warn(
+        userLogger.warn(
           `[nostr] Watch history chunk ${index} rejected by all relays:`,
           publishResults,
         );
@@ -4353,12 +4279,12 @@ export class NostrClient {
             ? "accepted"
             : "partially accepted";
         if (acceptedCount === relays.length) {
-          console.info(
+          devLogger.info(
             `[nostr] Watch history chunk ${index} accepted by ${acceptedCount}/${relays.length} relay(s).`,
           );
         } else {
           anyChunkPartial = true;
-          console.warn(
+          userLogger.warn(
             `[nostr] Watch history chunk ${index} ${logMessage} by ${acceptedCount}/${relays.length} relay(s).`,
             publishResults,
           );
@@ -4391,16 +4317,16 @@ export class NostrClient {
     try {
       signedPointerEvent = await signEvent(pointerEvent);
     } catch (error) {
-      console.warn("[nostr] Failed to sign watch history pointer event:", error);
+      userLogger.warn("[nostr] Failed to sign watch history pointer event:", error);
       return { ok: false, error: "signing-failed", retryable: false };
     }
 
-    console.info(
+    devLogger.info(
       "[nostr] Publishing watch history pointer event.",
       {
-        actor: actorKey,
-        snapshotId,
-        relays,
+      actor: actorKey,
+      snapshotId,
+      relays,
       }
     );
 
@@ -4415,16 +4341,16 @@ export class NostrClient {
     const pointerAccepted = pointerAcceptedCount > 0;
 
     if (pointerAcceptedCount === relays.length) {
-      console.info(
+      devLogger.info(
         `[nostr] Watch history pointer accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
       );
     } else if (pointerAccepted) {
-      console.warn(
+      userLogger.warn(
         `[nostr] Watch history pointer partially accepted by ${pointerAcceptedCount}/${relays.length} relay(s).`,
         pointerResults,
       );
     } else {
-      console.warn(
+      userLogger.warn(
         "[nostr] Watch history pointer rejected by all relays:",
         pointerResults,
       );
@@ -4488,7 +4414,7 @@ export class NostrClient {
       result.error = errorCode;
     }
 
-    console.info("[nostr] Watch history snapshot publish result.", {
+    devLogger.info("[nostr] Watch history snapshot publish result.", {
       actor: actorKey,
       snapshotId,
       success,
@@ -4538,12 +4464,12 @@ export class NostrClient {
       canonicalItems,
     );
 
-    console.info("[nostr] Updating watch history list.", {
+    devLogger.info("[nostr] Updating watch history list.", {
       actor: resolvedActor,
       incomingItemCount: incomingItems.length,
       finalItemCount: canonicalItems.length,
       replace: options.replace === true,
-    });
+      });
 
     const publishResult = await this.publishWatchHistorySnapshot(
       canonicalItems,
@@ -4554,12 +4480,12 @@ export class NostrClient {
       },
     );
 
-    console.info("[nostr] Watch history list publish attempt finished.", {
+    devLogger.info("[nostr] Watch history list publish attempt finished.", {
       actor: resolvedActor,
       snapshotId: publishResult.snapshotId || null,
       success: !!publishResult.ok,
       retryable: !!publishResult.retryable,
-    });
+      });
 
     const metadata = sanitizeWatchHistoryMetadata(cachedEntry.metadata);
     metadata.updatedAt = Date.now();
@@ -4660,10 +4586,10 @@ export class NostrClient {
 
     const actorKeyIsHex = /^[0-9a-f]{64}$/.test(actorKey);
 
-    console.info("[nostr] Fetching watch history from relays.", {
+    devLogger.info("[nostr] Fetching watch history from relays.", {
       actor: resolvedActor,
       forceRefresh: options.forceRefresh === true,
-    });
+      });
 
     const extension = window?.nostr;
 
@@ -4697,7 +4623,7 @@ export class NostrClient {
     };
 
     if (!actorKeyIsHex) {
-      console.warn(
+      userLogger.warn(
         `[nostr] Cannot normalize watch history actor key to hex. Aborting relay fetch for ${resolvedActor}.`,
       );
       if (
@@ -4721,11 +4647,11 @@ export class NostrClient {
       Number.isFinite(existingEntry.savedAt) &&
       now - existingEntry.savedAt < ttl
     ) {
-      console.info("[nostr] Using cached watch history entry.", {
+      devLogger.info("[nostr] Using cached watch history entry.", {
         actor: resolvedActor,
         itemCount: Array.isArray(existingEntry.items) ? existingEntry.items.length : 0,
         cacheAgeMs: now - existingEntry.savedAt,
-      });
+        });
       return {
         pointerEvent: existingEntry.pointerEvent || null,
         items: existingEntry.items || [],
@@ -4734,7 +4660,7 @@ export class NostrClient {
     }
 
     if (!this.pool) {
-      console.warn("[nostr] Cannot fetch watch history because relay pool is unavailable. Returning cached values.");
+      userLogger.warn("[nostr] Cannot fetch watch history because relay pool is unavailable. Returning cached values.");
       return {
         pointerEvent: existingEntry?.pointerEvent || null,
         items: existingEntry?.items || [],
@@ -4779,9 +4705,7 @@ export class NostrClient {
             .filter((event) => event && typeof event === "object")
         : [];
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to fetch watch history pointer:", error);
-      }
+      devLogger.warn("[nostr] Failed to fetch watch history pointer:", error);
     }
 
     const pointerEvent = pointerEvents.reduce((latest, current) => {
@@ -4801,10 +4725,10 @@ export class NostrClient {
     }, null);
 
     if (!pointerEvent) {
-      console.info(
+      devLogger.info(
         "[nostr] No watch history pointer event found on relays. Falling back to storage.",
         {
-          actor: resolvedActor,
+        actor: resolvedActor,
         }
       );
       return await loadFromStorage();
@@ -4882,9 +4806,7 @@ export class NostrClient {
               .filter((event) => event && typeof event === "object")
           : [];
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[nostr] Failed to fetch watch history chunks:", error);
-        }
+        devLogger.warn("[nostr] Failed to fetch watch history chunks:", error);
       }
     }
 
@@ -4922,10 +4844,10 @@ export class NostrClient {
       const tools = await ensureNostrTools();
       if (tools?.nip04 && typeof tools.nip04.decrypt === "function") {
         cachedDecryptTools = tools;
-        console.info("[nostr] Loaded nostr-tools nip04 helpers for watch history decryption.");
+        devLogger.info("[nostr] Loaded nostr-tools nip04 helpers for watch history decryption.");
         return cachedDecryptTools;
       }
-      console.warn("[nostr] Unable to load nostr-tools nip04 helpers for watch history decryption.");
+      userLogger.warn("[nostr] Unable to load nostr-tools nip04 helpers for watch history decryption.");
       return null;
     };
 
@@ -4934,80 +4856,80 @@ export class NostrClient {
         throw new Error("empty-ciphertext");
       }
       const ciphertextPreview = ciphertext.slice(0, 32);
-      console.info("[nostr] Attempting to decrypt watch history chunk.", {
+      devLogger.info("[nostr] Attempting to decrypt watch history chunk.", {
         actorKey,
         chunkIdentifier: context.chunkIdentifier ?? null,
         eventId: context.eventId ?? null,
         ciphertextPreview,
         ciphertextFormat: "base64 NIP-04 ciphertext",
         expectedPlaintextFormat:
-          "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
-      });
+        "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+        });
       const extensionDecrypt =
         extension &&
         typeof extension?.nip04?.decrypt === "function" &&
         normalizeActorKey(this.pubkey) === actorKey;
       if (extensionDecrypt) {
         await this.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS);
-        console.info(
+        devLogger.info(
           "[nostr] Using logged in user's extension key to decrypt watch history chunk.",
           {
-            actorKey,
-            chunkIdentifier: context.chunkIdentifier ?? null,
-            eventId: context.eventId ?? null,
-          },
-        );
-        const plaintext = await extension.nip04.decrypt(actorKey, ciphertext);
-        console.info("[nostr] Successfully decrypted watch history chunk via extension key.", {
           actorKey,
           chunkIdentifier: context.chunkIdentifier ?? null,
           eventId: context.eventId ?? null,
-        });
+          },
+        );
+        const plaintext = await extension.nip04.decrypt(actorKey, ciphertext);
+        devLogger.info("[nostr] Successfully decrypted watch history chunk via extension key.", {
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
+          });
         return plaintext;
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
-        console.info(
+        devLogger.info(
           "[nostr] Session actor mismatch while decrypting watch history chunk. Ensuring session actor matches requested key.",
           {
-            actorKey,
-            chunkIdentifier: context.chunkIdentifier ?? null,
-            eventId: context.eventId ?? null,
-            currentSessionActor: this.sessionActor?.pubkey ?? null,
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
+          currentSessionActor: this.sessionActor?.pubkey ?? null,
           },
         );
         await this.ensureSessionActor();
       }
       if (!this.sessionActor || this.sessionActor.pubkey !== actorKey) {
-        console.error(
+        userLogger.error(
           "[nostr] Watch history decrypt failed: session actor key unavailable after ensure.",
           {
-            actorKey,
-            chunkIdentifier: context.chunkIdentifier ?? null,
-            eventId: context.eventId ?? null,
-            currentSessionActor: this.sessionActor?.pubkey ?? null,
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
+          currentSessionActor: this.sessionActor?.pubkey ?? null,
           },
         );
         throw new Error("missing-session-key");
       }
       const tools = await ensureDecryptTools();
       if (!tools?.nip04 || typeof tools.nip04.decrypt !== "function") {
-        console.error(
+        userLogger.error(
           "[nostr] Watch history decrypt failed: nip04 helpers unavailable.",
           {
-            actorKey,
-            chunkIdentifier: context.chunkIdentifier ?? null,
-            eventId: context.eventId ?? null,
+          actorKey,
+          chunkIdentifier: context.chunkIdentifier ?? null,
+          eventId: context.eventId ?? null,
           },
         );
         throw new Error("nip04-unavailable");
       }
-      console.info(
+      devLogger.info(
         "[nostr] Using session actor private key to decrypt watch history chunk.",
         {
-          actorKey,
-          chunkIdentifier: context.chunkIdentifier ?? null,
-          eventId: context.eventId ?? null,
-          sessionActor: this.sessionActor?.pubkey ?? null,
+        actorKey,
+        chunkIdentifier: context.chunkIdentifier ?? null,
+        eventId: context.eventId ?? null,
+        sessionActor: this.sessionActor?.pubkey ?? null,
         },
       );
       const plaintext = await tools.nip04.decrypt(
@@ -5015,11 +4937,11 @@ export class NostrClient {
         actorKey,
         ciphertext,
       );
-      console.info("[nostr] Successfully decrypted watch history chunk via session actor key.", {
+      devLogger.info("[nostr] Successfully decrypted watch history chunk via session actor key.", {
         actorKey,
         chunkIdentifier: context.chunkIdentifier ?? null,
         eventId: context.eventId ?? null,
-      });
+        });
       return plaintext;
     };
 
@@ -5042,19 +4964,19 @@ export class NostrClient {
         eventId: event.id ?? null,
       };
       if (isNip04EncryptedWatchHistoryEvent(event, ciphertext)) {
-        console.info("[nostr] Watch history chunk is marked as NIP-04 encrypted. Beginning decrypt flow.", {
+        devLogger.info("[nostr] Watch history chunk is marked as NIP-04 encrypted. Beginning decrypt flow.", {
           actorKey,
           ...chunkContext,
-        });
+          });
         try {
           const plaintext = await decryptChunk(ciphertext, chunkContext);
-          console.info("[nostr] Decrypted watch history chunk. Parsing plaintext payload.", {
+          devLogger.info("[nostr] Decrypted watch history chunk. Parsing plaintext payload.", {
             actorKey,
             ...chunkContext,
             plaintextPreview: typeof plaintext === "string" ? plaintext.slice(0, 64) : null,
             expectedPlaintextFormat:
-              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
-          });
+            "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+            });
           payload = parseWatchHistoryContentWithFallback(
             plaintext,
             fallbackPointers,
@@ -5068,30 +4990,30 @@ export class NostrClient {
           );
         } catch (error) {
           decryptErrors.push(error);
-          console.error("[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.", {
+          userLogger.error("[nostr] Decrypt failed for watch history chunk. Falling back to pointer items.", {
             actorKey,
             ...chunkContext,
             error: error?.message || error,
             ciphertextPreview,
             fallbackPointerCount: Array.isArray(fallbackPointers)
-              ? fallbackPointers.length
-              : 0,
+            ? fallbackPointers.length
+            : 0,
             expectedPlaintextFormat:
-              "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
-          });
+            "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+            });
           payload = {
             version: 0,
             items: fallbackPointers,
           };
         }
       } else {
-        console.info("[nostr] Watch history chunk is plaintext. Attempting to parse expected payload format.", {
+        devLogger.info("[nostr] Watch history chunk is plaintext. Attempting to parse expected payload format.", {
           actorKey,
           ...chunkContext,
           ciphertextPreview,
           expectedPlaintextFormat:
-            "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
-        });
+          "JSON string with { version, items, snapshot, chunkIndex, totalChunks }",
+          });
         payload = parseWatchHistoryContentWithFallback(
           ciphertext,
           fallbackPointers,
@@ -5110,7 +5032,7 @@ export class NostrClient {
     }
 
     if (decryptErrors.length) {
-      console.warn(
+      userLogger.warn(
         `[nostr] Failed to decrypt ${decryptErrors.length} watch history chunk(s) for ${actorKey}. Using fallback pointers.`,
       );
     }
@@ -5162,10 +5084,10 @@ export class NostrClient {
       return [];
     }
 
-    console.info("[nostr] Resolving watch history for actor.", {
+    devLogger.info("[nostr] Resolving watch history for actor.", {
       actor: resolvedActor,
       forceRefresh: options.forceRefresh === true,
-    });
+      });
 
     const storage = this.getWatchHistoryStorage();
     const fallbackItems = Array.isArray(storage.actors?.[actorKey]?.items)
@@ -5210,18 +5132,18 @@ export class NostrClient {
       canonicalItems,
     );
 
-    console.info("[nostr] Watch history fetch complete.", {
+    devLogger.info("[nostr] Watch history fetch complete.", {
       actor: resolvedActor,
       snapshotId: fetchResult.snapshotId || null,
       pointerFound: !!fetchResult.pointerEvent,
       itemCount: canonicalItems.length,
-    });
+      });
 
-    console.info("[nostr] Watch history resolved and cached.", {
+    devLogger.info("[nostr] Watch history resolved and cached.", {
       actor: resolvedActor,
       itemCount: canonicalItems.length,
       snapshotId: fetchResult.snapshotId || null,
-    });
+      });
 
     const entry = {
       actor: resolvedActor,
@@ -5275,9 +5197,7 @@ export class NostrClient {
     try {
       rawResults = await this.pool.list(relayList, filters);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to list video view events:", error);
-      }
+      devLogger.warn("[nostr] Failed to list video view events:", error);
       return [];
     }
 
@@ -5352,9 +5272,7 @@ export class NostrClient {
 
   subscribeVideoViewEvents(pointer, options = {}) {
     if (!this.pool) {
-      if (isDevMode) {
-        console.warn("[nostr] Unable to subscribe to view events: pool missing.");
-      }
+      devLogger.warn("[nostr] Unable to subscribe to view events: pool missing.");
       return () => {};
     }
 
@@ -5382,9 +5300,7 @@ export class NostrClient {
     try {
       subscription = this.pool.sub(relayList, filters);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to open video view subscription:", error);
-      }
+      devLogger.warn("[nostr] Failed to open video view subscription:", error);
       return () => {};
     }
 
@@ -5394,9 +5310,7 @@ export class NostrClient {
           try {
             onEvent(event);
           } catch (error) {
-            if (isDevMode) {
-              console.warn("[nostr] Video view event handler threw:", error);
-            }
+            devLogger.warn("[nostr] Video view event handler threw:", error);
           }
         }
       });
@@ -5417,12 +5331,10 @@ export class NostrClient {
         try {
           originalUnsub();
         } catch (error) {
-          if (isDevMode) {
-            console.warn(
-              "[nostr] Failed to unsubscribe from video view events:",
-              error
-            );
-          }
+          devLogger.warn(
+            "[nostr] Failed to unsubscribe from video view events:",
+            error
+          );
         }
       }
     };
@@ -5514,9 +5426,7 @@ export class NostrClient {
         return { ...result, fallback: false };
       }
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] COUNT view request failed:", error);
-      }
+      devLogger.warn("[nostr] COUNT view request failed:", error);
     }
 
     if (signal?.aborted) {
@@ -5589,9 +5499,7 @@ export class NostrClient {
     const guardScope = deriveViewEventPointerScope(pointer);
     const guardBucket = deriveViewEventBucketIndex(createdAt);
     if (guardScope && hasRecentViewPublish(guardScope, guardBucket)) {
-      if (isDevMode) {
-        console.info("[nostr] Skipping duplicate view publish for scope", guardScope);
-      }
+      devLogger.info("[nostr] Skipping duplicate view publish for scope", guardScope);
       return {
         ok: true,
         duplicate: true,
@@ -5634,12 +5542,10 @@ export class NostrClient {
       try {
         content = JSON.stringify(options.content);
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[nostr] Failed to serialize custom view event content:",
-            error
-          );
-        }
+        devLogger.warn(
+          "[nostr] Failed to serialize custom view event content:",
+          error
+        );
         content = "";
       }
     }
@@ -5658,12 +5564,10 @@ export class NostrClient {
       try {
         content = JSON.stringify(payload);
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[nostr] Failed to serialize default view event content:",
-            error
-          );
-        }
+        devLogger.warn(
+          "[nostr] Failed to serialize default view event content:",
+          error
+        );
         content = "";
       }
     }
@@ -5689,7 +5593,7 @@ export class NostrClient {
       try {
         signedEvent = await window.nostr.signEvent(event);
       } catch (error) {
-        console.warn("[nostr] Failed to sign view event with extension:", error);
+        userLogger.warn("[nostr] Failed to sign view event with extension:", error);
         return { ok: false, error: "signing-failed", details: error };
       }
     } else {
@@ -5703,7 +5607,7 @@ export class NostrClient {
         const privateKey = this.sessionActor.privateKey;
         signedEvent = signEventWithPrivateKey(event, privateKey);
       } catch (error) {
-        console.warn("[nostr] Failed to sign view event with session key:", error);
+        userLogger.warn("[nostr] Failed to sign view event with session key:", error);
         return { ok: false, error: "signing-failed", details: error };
       }
     }
@@ -5728,12 +5632,12 @@ export class NostrClient {
       if (guardScope) {
         rememberViewPublish(guardScope, guardBucket);
       }
-      console.info(
+      devLogger.info(
         `[nostr] View event accepted by ${acceptedRelays.length} relay(s):`,
         acceptedRelays.join(", ")
       );
     } else {
-      console.warn("[nostr] View event rejected by relays:", publishResults);
+      userLogger.warn("[nostr] View event rejected by relays:", publishResults);
     }
 
     return {
@@ -5759,12 +5663,10 @@ export class NostrClient {
           ingest({ event: view.event, pointer });
         }
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[nostr] Failed to ingest optimistic view event:",
-            error
-          );
-        }
+        devLogger.warn(
+          "[nostr] Failed to ingest optimistic view event:",
+          error
+        );
       }
     }
 
@@ -5775,7 +5677,7 @@ export class NostrClient {
    * Connect to the configured relays
    */
   async init() {
-    if (isDevMode) console.log("Connecting to relays...");
+    devLogger.log("Connecting to relays...");
 
     this.restoreLocalData();
 
@@ -5788,11 +5690,10 @@ export class NostrClient {
       if (successfulRelays.length === 0) {
         throw new Error("No relays connected");
       }
-      if (isDevMode) {
-        console.log(`Connected to ${successfulRelays.length} relay(s)`);
+      devLogger.log(`Connected to ${successfulRelays.length relay(s)`);
       }
     } catch (err) {
-      console.error("Nostr init failed:", err);
+      userLogger.error("Nostr init failed:", err);
       throw err;
     }
   }
@@ -5810,24 +5711,22 @@ export class NostrClient {
     const SimplePool = resolveSimplePoolConstructor(tools);
 
     if (typeof SimplePool !== "function") {
-      if (isDevMode) {
-        if (tools && typeof tools === "object") {
-          const availableKeys = Object.keys(tools).join(", ");
-          console.warn(
-            "[nostr] NostrTools helpers did not expose SimplePool. Available keys:",
-            availableKeys
-          );
-        } else {
-          console.warn(
-            "[nostr] NostrTools helpers were unavailable. Check that nostr-tools bundles can load on this domain."
-          );
-        }
-        if (nostrToolsBootstrapFailure) {
-          console.warn(
-            "[nostr] nostr-tools bootstrap failure details:",
-            nostrToolsBootstrapFailure
-          );
-        }
+      if (tools && typeof tools === "object") {
+        const availableKeys = Object.keys(tools).join(", ");
+        devLogger.warn(
+          "[nostr] NostrTools helpers did not expose SimplePool. Available keys:",
+          availableKeys
+        );
+      } else {
+        userLogger.warn(
+          "[nostr] NostrTools helpers were unavailable. Check that nostr-tools bundles can load on this domain."
+        );
+      }
+      if (nostrToolsBootstrapFailure) {
+        userLogger.warn(
+          "[nostr] nostr-tools bootstrap failure details:",
+          nostrToolsBootstrapFailure
+        );
       }
       const error = new Error(
         "NostrTools SimplePool is unavailable. Verify that nostr-tools resources can load on this domain."
@@ -5896,7 +5795,7 @@ export class NostrClient {
     try {
       const extension = window.nostr;
       if (!extension) {
-        console.log("No Nostr extension found");
+        devLogger.log("No Nostr extension found");
         throw new Error(
           "Please install a Nostr extension (Alby, nos2x, etc.)."
         );
@@ -5916,9 +5815,7 @@ export class NostrClient {
       }
 
       if (typeof extension.enable === "function") {
-        if (isDevMode) {
-          console.log("Requesting permissions from NIP-07 extension...");
-        }
+        devLogger.log("Requesting permissions from NIP-07 extension...");
         const requestedPermissionMethods = Array.from(
           DEFAULT_NIP07_PERMISSION_METHODS,
         );
@@ -5966,7 +5863,7 @@ export class NostrClient {
           } catch (error) {
             enableError = error;
             if (options && isDevMode) {
-              console.warn(
+              userLogger.warn(
                 "[nostr] extension.enable request with explicit permissions failed:",
                 error,
               );
@@ -6033,12 +5930,10 @@ export class NostrClient {
       }
       const npub = npubEncode(pubkey);
 
-      if (isDevMode) {
-        console.log("Got pubkey:", pubkey);
-        console.log("Converted to npub:", npub);
-        console.log("Whitelist:", accessControl.getWhitelist());
-        console.log("Blacklist:", accessControl.getBlacklist());
-      }
+      devLogger.log("Got pubkey:", pubkey);
+              devLogger.log("Converted to npub:", npub);
+              devLogger.log("Whitelist:", accessControl.getWhitelist());
+              devLogger.log("Blacklist:", accessControl.getBlacklist());
       // Access control
       if (!accessControl.canAccess(npub)) {
         if (accessControl.isBlacklisted(npub)) {
@@ -6048,12 +5943,10 @@ export class NostrClient {
         }
       }
       this.pubkey = pubkey;
-      if (isDevMode) {
-        console.log("Logged in with extension. Pubkey:", this.pubkey);
-      }
+      devLogger.log("Logged in with extension. Pubkey:", this.pubkey);
       return this.pubkey;
     } catch (err) {
-      console.error("Login error:", err);
+      userLogger.error("Login error:", err);
       throw err;
     }
   }
@@ -6075,7 +5968,7 @@ export class NostrClient {
     this.watchHistoryRefreshPromises.clear();
     this.watchHistoryLastCreatedAt = 0;
     this.watchHistoryStorage = null;
-    if (isDevMode) console.log("User logged out.");
+    devLogger.log("User logged out.");
   }
 
   async sendDirectMessage(targetNpub, message, actorPubkeyOverride = null) {
@@ -6121,12 +6014,10 @@ export class NostrClient {
       try {
         actorHex = await extension.getPublicKey();
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[nostr] Failed to fetch actor pubkey from extension:",
-            error
-          );
-        }
+        devLogger.warn(
+          "[nostr] Failed to fetch actor pubkey from extension:",
+          error
+        );
       }
     }
 
@@ -6263,7 +6154,7 @@ export class NostrClient {
         );
         signerPubkey = sessionActor.pubkey;
       } catch (error) {
-        console.warn("[nostr] Failed to sign event with session key:", error);
+        userLogger.warn("[nostr] Failed to sign event with session key:", error);
         throw error;
       }
     }
@@ -6272,8 +6163,7 @@ export class NostrClient {
       signerPubkey = signedEvent.pubkey;
     }
 
-    if (isDevMode) {
-      console.log(`Signed ${devLogLabel} event:`, signedEvent);
+    devLogger.log(`Signed ${devLogLabel event:`, signedEvent);
     }
 
     let targetRelays = sanitizeRelayList(
@@ -6302,7 +6192,8 @@ export class NostrClient {
         const logLevel = rejectionLogLevel === "warn" ? "warn" : "error";
         publishError.relayFailures.forEach(
           ({ url, error: relayError, reason }) => {
-            console[logLevel](
+            const logFn = logLevel === "warn" ? userLogger.warn : userLogger.error;
+            logFn(
               `[nostr] ${logName} rejected by ${url}: ${reason}`,
               relayError || reason
             );
@@ -6312,11 +6203,9 @@ export class NostrClient {
       throw publishError;
     }
 
-    if (isDevMode) {
-      publishSummary.accepted.forEach(({ url }) => {
-        console.log(`${logName} published to ${url}`);
-      });
-    }
+    publishSummary.accepted.forEach(({ url }) => {
+      devLogger.log(`${logName} published to ${url}`);
+    });
 
     if (publishSummary.failed.length) {
       publishSummary.failed.forEach(({ url, error: relayError }) => {
@@ -6326,7 +6215,7 @@ export class NostrClient {
             : relayError
             ? String(relayError)
             : "publish failed";
-        console.warn(
+        userLogger.warn(
           `[nostr] ${logName} not accepted by ${url}: ${reason}`,
           relayError
         );
@@ -6349,11 +6238,9 @@ export class NostrClient {
     // NOTE: Keep the Upload, Edit, and Revert flows synchronized when
     // updating shared fields. Changes here must be reflected in the modal
     // controllers and revert helpers so all paths stay in lockstep.
-    if (isDevMode) {
-      console.log("Publishing new video with data:", videoData);
-      if (nip71Metadata) {
-        console.log("Including NIP-71 metadata:", nip71Metadata);
-      }
+    devLogger.log("Publishing new video with data:", videoData);
+    if (nip71Metadata) {
+    devLogger.log("Including NIP-71 metadata:", nip71Metadata);
     }
 
     const rawMagnet = typeof videoData.magnet === "string" ? videoData.magnet : "";
@@ -6425,10 +6312,8 @@ export class NostrClient {
       additionalTags: nip71Tags,
     });
 
-    if (isDevMode) {
-      console.log("Publish event with brand-new root:", videoRootId);
-      console.log("Event content:", event.content);
-    }
+    devLogger.log("Publish event with brand-new root:", videoRootId);
+          devLogger.log("Event content:", event.content);
 
     try {
       const { signedEvent } = await this.signAndPublishEvent(event, {
@@ -6467,9 +6352,7 @@ export class NostrClient {
           content: altText,
         });
 
-        if (isDevMode) {
-          console.log("Prepared NIP-94 mirror event:", mirrorEvent);
-        }
+        devLogger.log("Prepared NIP-94 mirror event:", mirrorEvent);
 
         try {
           await this.signAndPublishEvent(mirrorEvent, {
@@ -6479,23 +6362,17 @@ export class NostrClient {
             rejectionLogLevel: "warn",
           });
 
-          if (isDevMode) {
-            console.log(
-              "NIP-94 mirror dispatched for hosted URL:",
-              finalUrl
-            );
-          }
+          devLogger.log(
+            "NIP-94 mirror dispatched for hosted URL:",
+            finalUrl
+          );
         } catch (mirrorError) {
-          if (isDevMode) {
-            console.warn(
-              "[nostr] NIP-94 mirror rejected by all relays:",
-              mirrorError
-            );
-          }
+          devLogger.warn(
+            "[nostr] NIP-94 mirror rejected by all relays:",
+            mirrorError
+          );
         }
-      } else if (isDevMode) {
-        console.log("Skipping NIP-94 mirror: no hosted URL provided.");
-      }
+      } else devLogger.log("Skipping NIP-94 mirror: no hosted URL provided.");
       const hasMetadataObject =
         nip71Metadata && typeof nip71Metadata === "object";
       const metadataWasEdited =
@@ -6538,7 +6415,7 @@ export class NostrClient {
             }
           );
         } catch (nip71Error) {
-          console.warn(
+          userLogger.warn(
             "[nostr] Failed to publish NIP-71 metadata for edit:",
             nip71Error
           );
@@ -6547,7 +6424,7 @@ export class NostrClient {
 
       return signedEvent;
     } catch (err) {
-      if (isDevMode) console.error("Failed to sign/publish:", err);
+      devLogger.error("Failed to sign/publish:", err);
       throw err;
     }
   }
@@ -6564,9 +6441,7 @@ export class NostrClient {
     const { videoData, nip71Metadata } = extractVideoPublishPayload(videoPayload);
 
     if (!nip71Metadata || typeof nip71Metadata !== "object") {
-      if (isDevMode) {
-        console.log("[nostr] Skipping NIP-71 publish: metadata missing.");
-      }
+      devLogger.log("[nostr] Skipping NIP-71 publish: metadata missing.");
       return null;
     }
 
@@ -6592,15 +6467,11 @@ export class NostrClient {
     });
 
     if (!event) {
-      if (isDevMode) {
-        console.warn("[nostr] Skipping NIP-71 publish: builder produced no event.");
-      }
+      devLogger.warn("[nostr] Skipping NIP-71 publish: builder produced no event.");
       return null;
     }
 
-    if (isDevMode) {
-      console.log("Prepared NIP-71 video event:", event);
-    }
+    devLogger.log("Prepared NIP-71 video event:", event);
 
     const { signedEvent } = await this.signAndPublishEvent(event, {
       context: "NIP-71 video",
@@ -6776,16 +6647,12 @@ export class NostrClient {
       additionalTags: nip71Tags,
     });
 
-    if (isDevMode) {
-      console.log("Creating edited event with root ID:", oldRootId);
-      console.log("Event content:", event.content);
-    }
+    devLogger.log("Creating edited event with root ID:", oldRootId);
+          devLogger.log("Event content:", event.content);
 
     try {
       const signedEvent = await window.nostr.signEvent(event);
-      if (isDevMode) {
-        console.log("Signed edited event:", signedEvent);
-      }
+      devLogger.log("Signed edited event:", signedEvent);
 
       const publishResults = await publishEventToRelays(
         this.pool,
@@ -6802,7 +6669,7 @@ export class NostrClient {
         if (publishError?.relayFailures?.length) {
           publishError.relayFailures.forEach(
             ({ url, error: relayError, reason }) => {
-              console.error(
+              userLogger.error(
                 `[nostr] Edited video rejected by ${url}: ${reason}`,
                 relayError || reason
               );
@@ -6812,11 +6679,9 @@ export class NostrClient {
         throw publishError;
       }
 
-      if (isDevMode) {
-        publishSummary.accepted.forEach(({ url }) =>
-          console.log(`Edited video published to ${url}`)
-        );
-      }
+      publishSummary.accepted.forEach(({ url }) =>
+        devLogger.log(`Edited video published to ${url}`)
+      );
 
       if (publishSummary.failed.length) {
         publishSummary.failed.forEach(({ url, error: relayError }) => {
@@ -6826,7 +6691,7 @@ export class NostrClient {
               : relayError
               ? String(relayError)
               : "publish failed";
-          console.warn(
+          userLogger.warn(
             `[nostr] Edited video not accepted by ${url}: ${reason}`,
             relayError
           );
@@ -6835,7 +6700,7 @@ export class NostrClient {
 
       return signedEvent;
     } catch (err) {
-      console.error("Edit failed:", err);
+      userLogger.error("Edit failed:", err);
       throw err;
     }
   }
@@ -6885,9 +6750,7 @@ export class NostrClient {
     try {
       oldContent = JSON.parse(baseEvent.content || "{}");
     } catch (err) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to parse baseEvent.content while reverting:", err);
-      }
+      devLogger.warn("[nostr] Failed to parse baseEvent.content while reverting:", err);
       oldContent = {};
     }
     const oldVersion = oldContent.version ?? 1;
@@ -6945,7 +6808,7 @@ export class NostrClient {
       if (publishError?.relayFailures?.length) {
         publishError.relayFailures.forEach(
           ({ url, error: relayError, reason }) => {
-            console.error(
+            userLogger.error(
               `[nostr] Video revert rejected by ${url}: ${reason}`,
               relayError || reason
             );
@@ -6955,11 +6818,9 @@ export class NostrClient {
       throw publishError;
     }
 
-    if (isDevMode) {
-      publishSummary.accepted.forEach(({ url }) =>
-        console.log(`Revert event published to ${url}`)
-      );
-    }
+    publishSummary.accepted.forEach(({ url }) =>
+      devLogger.log(`Revert event published to ${url}`)
+    );
 
     if (publishSummary.failed.length) {
       publishSummary.failed.forEach(({ url, error: relayError }) => {
@@ -6969,7 +6830,7 @@ export class NostrClient {
             : relayError
             ? String(relayError)
             : "publish failed";
-        console.warn(
+        userLogger.warn(
           `[nostr] Video revert not accepted by ${url}: ${reason}`,
           relayError
         );
@@ -7000,7 +6861,7 @@ export class NostrClient {
     }
 
     if (!confirmed) {
-      console.log("Deletion cancelled by user.");
+      devLogger.log("Deletion cancelled by user.");
       return null; // Cancel deletion if user clicks "Cancel"
     }
 
@@ -7068,9 +6929,7 @@ export class NostrClient {
       localStorage.setItem(EVENTS_CACHE_STORAGE_KEY, JSON.stringify(payload));
       localStorage.removeItem(LEGACY_EVENTS_STORAGE_KEY);
     } catch (err) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to persist events cache:", err);
-      }
+      devLogger.warn("[nostr] Failed to persist events cache:", err);
     }
   }
 
@@ -7087,9 +6946,7 @@ export class NostrClient {
       since: 0,
     };
 
-    if (isDevMode) {
-      console.log("[subscribeVideos] Subscribing with filter:", filter);
-    }
+    devLogger.log("[subscribeVideos] Subscribing with filter:", filter);
 
     const sub = this.pool.sub(this.relays, [filter]);
     const invalidDuringSub = [];
@@ -7143,18 +7000,14 @@ export class NostrClient {
                 this.applyRootCreatedAt(video);
               })
               .catch((error) => {
-                if (isDevMode) {
-                  console.warn(
-                    "[nostr] Failed to hydrate NIP-71 metadata for live video:",
-                    error
-                  );
-                }
+                devLogger.warn(
+                  "[nostr] Failed to hydrate NIP-71 metadata for live video:",
+                  error
+                );
               });
           }
         } catch (err) {
-          if (isDevMode) {
-            console.error("[subscribeVideos] Error processing event:", err);
-          }
+          devLogger.error("[subscribeVideos] Error processing event:", err);
         }
       }
 
@@ -7191,16 +7044,14 @@ export class NostrClient {
     // You can still use sub.on("eose") if needed
     sub.on("eose", () => {
       if (isDevMode && invalidDuringSub.length > 0) {
-        console.warn(
+        userLogger.warn(
           `[subscribeVideos] found ${invalidDuringSub.length} invalid video notes (with reasons):`,
           invalidDuringSub
         );
       }
-      if (isDevMode) {
-        console.log(
-          "[subscribeVideos] Reached EOSE for all relays (historical load done)"
-        );
-      }
+      devLogger.log(
+        "[subscribeVideos] Reached EOSE for all relays (historical load done)"
+      );
       scheduleFlush(true);
     });
 
@@ -7222,7 +7073,7 @@ export class NostrClient {
       try {
         return originalUnsub();
       } catch (err) {
-        console.error("[subscribeVideos] Failed to unsub from pool:", err);
+        userLogger.error("[subscribeVideos] Failed to unsub from pool:", err);
         return undefined;
       }
     };
@@ -7523,8 +7374,7 @@ export class NostrClient {
             const events = await this.pool.list([url], [filter]);
             return Array.isArray(events) ? events : [];
           } catch (error) {
-            if (isDevMode) {
-              console.warn(`[nostr] NIP-71 fetch failed on ${url}:`, error);
+            devLogger.warn(`[nostr] NIP-71 fetch failed on ${url:`, error);
             }
             return [];
           }
@@ -7540,9 +7390,7 @@ export class NostrClient {
 
       this.processNip71Events(Array.from(deduped.values()), pointerMap);
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Failed to fetch NIP-71 metadata:", error);
-      }
+      devLogger.warn("[nostr] Failed to fetch NIP-71 metadata:", error);
     } finally {
       pointerValues.forEach((pointerValue) => {
         const info = pointerMap.get(pointerValue);
@@ -7664,7 +7512,7 @@ export class NostrClient {
 
       // OPTIONAL: Log invalid stats
       if (invalidNotes.length > 0 && isDevMode) {
-        console.warn(
+        userLogger.warn(
           `Skipped ${invalidNotes.length} invalid video notes:\n`,
           invalidNotes.map((n) => `${n.id.slice(0, 8)}.. => ${n.reason}`)
         );
@@ -7677,7 +7525,7 @@ export class NostrClient {
       activeVideos.forEach((video) => this.applyRootCreatedAt(video));
       return activeVideos;
     } catch (err) {
-      console.error("fetchVideos error:", err);
+      userLogger.error("fetchVideos error:", err);
       return [];
     }
   }
@@ -7706,9 +7554,7 @@ export class NostrClient {
     try {
       await this.ensurePool();
     } catch (error) {
-      if (isDevMode) {
-        console.warn("fetchRawEventById ensurePool error:", error);
-      }
+      devLogger.warn("fetchRawEventById ensurePool error:", error);
       return null;
     }
 
@@ -7770,9 +7616,7 @@ export class NostrClient {
           return remember(evt);
         }
       } catch (error) {
-        if (isDevMode) {
-          console.warn("fetchRawEventById pool.get error:", error);
-        }
+        devLogger.warn("fetchRawEventById pool.get error:", error);
       }
     }
 
@@ -7791,9 +7635,7 @@ export class NostrClient {
           }
         }
       } catch (error) {
-        if (isDevMode) {
-          console.warn("fetchRawEventById pool.list error:", error);
-        }
+        devLogger.warn("fetchRawEventById pool.list error:", error);
       }
     }
 
@@ -8007,9 +7849,7 @@ export class NostrClient {
         const ensured = await this.ensureSessionActor();
         actorPubkey = ensured || "";
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[nostr] Failed to ensure session actor before repost:", error);
-        }
+        devLogger.warn("[nostr] Failed to ensure session actor before repost:", error);
         return { ok: false, error: "missing-actor", details: error };
       }
     }
@@ -8022,9 +7862,7 @@ export class NostrClient {
       try {
         await this.ensurePool();
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[nostr] Failed to ensure pool before repost:", error);
-        }
+        devLogger.warn("[nostr] Failed to ensure pool before repost:", error);
         return { ok: false, error: "pool-unavailable", details: error };
       }
     }
@@ -8083,9 +7921,7 @@ export class NostrClient {
         signerPubkey,
       };
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Repost publish failed:", error);
-      }
+      devLogger.warn("[nostr] Repost publish failed:", error);
       const relayFailure =
         error && typeof error === "object" && Array.isArray(error.relayFailures);
       return {
@@ -8186,9 +8022,7 @@ export class NostrClient {
         const ensured = await this.ensureSessionActor();
         actorPubkey = ensured || "";
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[nostr] Failed to ensure session actor before mirror:", error);
-        }
+        devLogger.warn("[nostr] Failed to ensure session actor before mirror:", error);
         return { ok: false, error: "missing-actor", details: error };
       }
     }
@@ -8201,9 +8035,7 @@ export class NostrClient {
       try {
         await this.ensurePool();
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[nostr] Failed to ensure pool before mirror:", error);
-        }
+        devLogger.warn("[nostr] Failed to ensure pool before mirror:", error);
         return { ok: false, error: "pool-unavailable", details: error };
       }
     }
@@ -8264,9 +8096,7 @@ export class NostrClient {
         signerPubkey,
       };
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Mirror publish failed:", error);
-      }
+      devLogger.warn("[nostr] Mirror publish failed:", error);
       const relayFailure =
         error && typeof error === "object" && Array.isArray(error.relayFailures);
       return {
@@ -8325,9 +8155,7 @@ export class NostrClient {
       try {
         await this.ensurePool();
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[nostr] Failed to ensure pool before rebroadcast:", error);
-        }
+        devLogger.warn("[nostr] Failed to ensure pool before rebroadcast:", error);
         return { ok: false, error: "pool-unavailable", details: error };
       }
     }
@@ -8366,9 +8194,7 @@ export class NostrClient {
           timeoutMs: options.timeoutMs,
         });
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[nostr] COUNT request for rebroadcast failed:", error);
-        }
+        devLogger.warn("[nostr] COUNT request for rebroadcast failed:", error);
       }
 
       if (countResult?.total && Number(countResult.total) > 0) {
@@ -8393,9 +8219,7 @@ export class NostrClient {
         cooldown: guardScope ? getRebroadcastCooldownState(guardScope) : null,
       };
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[nostr] Rebroadcast rejected by relays:", error);
-      }
+      devLogger.warn("[nostr] Rebroadcast rejected by relays:", error);
       return {
         ok: false,
         error: "publish-rejected",
@@ -8718,8 +8542,7 @@ export class NostrClient {
           const isUnsupported = error?.code === "count-unsupported";
           if (isUnsupported) {
             this.countUnsupportedRelays.add(url);
-          } else if (isDevMode) {
-            console.warn(`[nostr] COUNT request failed on ${url}:`, error);
+          } else devLogger.warn(`[nostr] COUNT request failed on ${url:`, error);
           }
           return { url, ok: false, error, unsupported: isUnsupported };
         }
@@ -8887,12 +8710,10 @@ export class NostrClient {
           }
         }
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            `[nostr] Failed to fetch root event ${normalizedRoot} for history:`,
-            error
-          );
-        }
+        devLogger.warn(
+        `[nostr] Failed to fetch root event ${normalizedRoot} for history:`,
+        error
+        );
       }
     };
 
@@ -8919,8 +8740,7 @@ export class NostrClient {
               const events = await this.pool.list([url], [filter]);
               return events || [];
             } catch (err) {
-              if (isDevMode) {
-                console.warn(`[nostr] History fetch failed on ${url}:`, err);
+              devLogger.warn(`[nostr] History fetch failed on ${url:`, err);
               }
               return [];
             }
@@ -8940,15 +8760,11 @@ export class NostrClient {
               this.allEvents.set(evt.id, parsed);
             }
           } catch (err) {
-            if (isDevMode) {
-              console.warn("[nostr] Failed to convert historical event:", err);
-            }
+            devLogger.warn("[nostr] Failed to convert historical event:", err);
           }
         }
       } catch (err) {
-        if (isDevMode) {
-          console.warn("[nostr] hydrateVideoHistory relay fetch error:", err);
-        }
+        devLogger.warn("[nostr] hydrateVideoHistory relay fetch error:", err);
       }
 
       localMatches = collectLocalMatches();

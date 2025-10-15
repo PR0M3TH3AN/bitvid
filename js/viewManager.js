@@ -4,6 +4,7 @@ import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
 import { applyDesignSystemAttributes } from "./designSystem.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 
@@ -55,7 +56,7 @@ export async function loadView(viewUrl) {
       container.appendChild(newScript);
     });
   } catch (err) {
-    console.error("View loading error:", err);
+    userLogger.error("View loading error:", err);
     const fallbackMarkup = `
       <div class="bv-stack">
         <article class="card p-md" data-state="critical">
@@ -92,7 +93,7 @@ export const viewInitRegistry = {
     }
   },
   explore: () => {
-    console.log("Explore view loaded.");
+    devLogger.log("Explore view loaded.");
   },
   history: async () => {
     try {
@@ -101,7 +102,7 @@ export const viewInitRegistry = {
         await module.initHistoryView();
       }
     } catch (error) {
-      console.error("Failed to initialize history view:", error);
+      userLogger.error("Failed to initialize history view:", error);
     }
   },
 
@@ -111,7 +112,7 @@ export const viewInitRegistry = {
    *   which loads subs if needed and renders the video grid in #subscriptionsVideoList
    */
   subscriptions: async () => {
-    console.log("Subscriptions view loaded.");
+    devLogger.log("Subscriptions view loaded.");
 
     const app = getApplication();
     if (!app?.pubkey) {

@@ -1,3 +1,4 @@
+import { userLogger } from "./utils/logger.js";
 const NEW_MODE = "new";
 
 const FALLBACK_CONTEXT = Object.freeze({
@@ -87,9 +88,7 @@ export function applyDesignSystemAttributes(root = null) {
     try {
       element.setAttribute("data-ds", mode);
     } catch (error) {
-      if (typeof console !== "undefined" && console && console.warn) {
-        console.warn("[design-system] Failed to set data-ds attribute:", error);
-      }
+      userLogger.warn("[design-system] Failed to set data-ds attribute:", error);
     }
   });
 

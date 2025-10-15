@@ -2,6 +2,7 @@ import { createModalAccessibility } from "./modalAccessibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
+import { devLogger } from "../../utils/logger.js";
 import {
   getPopupOffsetPx,
   getPopupViewportPaddingPx,
@@ -12,7 +13,7 @@ export class VideoModal {
     removeTrackingScripts,
     setGlobalModalState,
     document: doc,
-    logger
+    logger,
   } = {}) {
     if (!doc) {
       throw new Error("VideoModal requires a document reference.");
@@ -28,7 +29,14 @@ export class VideoModal {
         ? removeTrackingScripts
         : () => {};
     this.setGlobalModalState = setGlobalModalState;
-    this.logger = logger || console;
+    const providedLogger = logger ?? devLogger;
+    if (typeof providedLogger === "function") {
+      this.logger = { log: providedLogger };
+    } else if (providedLogger && typeof providedLogger.log === "function") {
+      this.logger = providedLogger;
+    } else {
+      this.logger = devLogger;
+    }
     this.eventTarget = new EventTarget();
 
     this.loaded = false;
@@ -101,7 +109,7 @@ export class VideoModal {
       this.logger(message, ...args);
       return;
     }
-    console.log(message, ...args);
+    devLogger.log(message, ...args);
   }
 
   addEventListener(type, listener, options) {

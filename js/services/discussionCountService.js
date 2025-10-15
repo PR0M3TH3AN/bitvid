@@ -1,4 +1,4 @@
-import { isDevMode } from "../config.js";
+import { devLogger } from "../utils/logger.js";
 
 const DEFAULT_MAX_DISCUSSION_COUNT_VIDEOS = 24;
 const COUNT_UNSUPPORTED_TITLE = "Relay does not support NIP-45 COUNT queries.";
@@ -14,10 +14,10 @@ function toPositiveInteger(value, fallback) {
 export default class DiscussionCountService {
   constructor({
     maxVideos = DEFAULT_MAX_DISCUSSION_COUNT_VIDEOS,
-    logger = typeof console !== "undefined" ? console : null,
+    logger = devLogger,
   } = {}) {
     this.maxVideos = toPositiveInteger(maxVideos, DEFAULT_MAX_DISCUSSION_COUNT_VIDEOS);
-    this.logger = logger;
+    this.logger = logger && typeof logger.warn === "function" ? logger : devLogger;
     this.videoDiscussionCountCache = new Map();
     this.inFlightDiscussionCounts = new Map();
   }
@@ -104,7 +104,7 @@ export default class DiscussionCountService {
           return result;
         })
         .catch((error) => {
-          if (isDevMode && this.logger?.warn) {
+          if (this.logger?.warn) {
             this.logger.warn(
               `[counts] Failed to fetch discussion count for ${video.id}:`,
               error

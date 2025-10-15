@@ -3,6 +3,7 @@ import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibilit
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
 import {
+import { userLogger } from "../../utils/logger.js";
   getPopupOffsetPx,
   getPopupViewportPaddingPx,
 } from "../../designSystem/metrics.js";
@@ -1566,8 +1567,8 @@ export class VideoCard {
         const formatted = this.formatters.formatTimeAgo(normalized);
         return typeof formatted === "string" ? formatted : "";
       } catch (error) {
-        if (this.window?.console?.warn) {
-          this.window.console.warn(
+        if (this.window?.userLogger?.warn) {
+          this.window.userLogger.warn(
             "[VideoCard] formatTimeAgo formatter threw",
             error
           );

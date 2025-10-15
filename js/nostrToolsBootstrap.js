@@ -1,3 +1,4 @@
+import { devLogger, userLogger } from "./utils/logger.js";
 const REMOTE_IMPORT_TIMEOUT = 4500;
 const LOCAL_IMPORT_TIMEOUT = 2500;
 const NODE_IMPORT_TIMEOUT = 1500;
@@ -416,7 +417,7 @@ export function bootstrapNostrTools() {
         reason: "Failed to resolve any nostr-tools helpers.",
         attempts,
       };
-      console.warn("[bitvid] nostr-tools bootstrap failed", failure);
+      userLogger.warn("[bitvid] nostr-tools bootstrap failed", failure);
       return failure;
     }
 
@@ -446,9 +447,9 @@ export function bootstrapNostrTools() {
 
     if (resolvedNip04) {
       canonicalTools.nip04 = resolvedNip04;
-      console.info("[bitvid] Initialized nostr nip04 helpers.");
+      devLogger.info("[bitvid] Initialized nostr nip04 helpers.");
     } else {
-      console.warn(
+      userLogger.warn(
         "[bitvid] NIP-04 helpers unavailable after bootstrap attempts."
       );
     }
@@ -507,7 +508,7 @@ export function bootstrapNostrTools() {
         },
       });
     } catch (error) {
-      console.warn("[bitvid] Failed to install NostrTools guard.", error);
+      userLogger.warn("[bitvid] Failed to install NostrTools guard.", error);
     }
 
     applyActive(existingGlobalTools);
