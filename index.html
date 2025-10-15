@@ -268,6 +268,7 @@
       <!-- Notification Portal -->
       <div
         id="notificationPortal"
+        class="notification-portal"
         role="region"
         aria-live="polite"
         aria-label="System notifications"
@@ -275,14 +276,14 @@
         <!-- Error Container -->
         <div
           id="errorContainer"
-          class="card mb-4 hidden p-md text-sm text-critical-strong"
+          class="notification-banner notification-banner--critical hidden"
           data-state="critical"
         ></div>
 
         <!-- Status Container -->
         <div
           id="statusContainer"
-          class="status-banner hidden"
+          class="notification-banner notification-banner--info status-banner hidden"
           role="status"
           aria-live="polite"
         >
@@ -293,7 +294,7 @@
         <!-- Success Container -->
         <div
           id="successContainer"
-          class="card mb-4 hidden p-md text-sm text-info-strong"
+          class="notification-banner notification-banner--success hidden"
         ></div>
       </div>
 

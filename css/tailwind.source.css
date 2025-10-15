@@ -1885,24 +1885,166 @@
     background-color: var(--color-black);
   }
 
-  .status-banner {
+  .notification-portal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--z-overlay-toast);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+    padding: calc(var(--space-xl) + env(safe-area-inset-top, 0px)) var(--space-lg)
+      var(--space-lg);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(var(--toast-translate));
+    transition: transform var(--motion-duration-base) var(--motion-ease-out),
+      opacity var(--motion-duration-base) var(--motion-ease-out);
+  }
+
+  @media (min-width: 640px) {
+    .notification-portal {
+      align-items: flex-end;
+      padding-inline: var(--space-xl);
+    }
+  }
+
+  .notification-portal:has(.notification-banner:not(.hidden)) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .notification-banner,
+  .torrent-toast {
+    --notify-accent: var(--color-accent-strong);
+    --notify-accent-strong: var(--color-accent);
+    --notify-border: var(--surface-overlay-panel-tint);
+    --notify-background: var(--surface-overlay-panel);
+    --notify-foreground: var(--color-text);
+
+    position: relative;
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-md);
-    padding: var(--space-md);
-    border-radius: var(--radius-md);
-    background-color: var(--color-overlay-panel);
-    color: var(--color-subtle);
+    gap: var(--space-md);
+    width: min(28rem, 100%);
+    padding: var(--space-md) var(--space-xl);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--notify-border);
+    background: var(--notify-background);
+    color: var(--notify-foreground);
+    box-shadow: 0 32px 64px var(--color-shadow-notification);
+    backdrop-filter: blur(var(--overlay-backdrop-blur));
+    pointer-events: auto;
+    isolation: isolate;
+    @apply text-sm font-semibold leading-snug;
+    transition: transform var(--motion-duration-base) var(--motion-ease-out),
+      opacity var(--motion-duration-base) var(--motion-ease-out);
+  }
+
+  .notification-banner::before,
+  .torrent-toast::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      var(--notify-accent) 0%,
+      var(--notify-accent-strong) 100%
+    );
+    opacity: 0.18;
+    pointer-events: none;
+  }
+
+  .notification-banner > *,
+  .torrent-toast > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .notification-dismiss {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent transition duration-base ease-out;
+    color: inherit;
+    opacity: 0.75;
+    background-color: var(--notify-dismiss-background);
+  }
+
+  .notification-dismiss:hover,
+  .notification-dismiss:focus-visible {
+    opacity: 1;
+    background-color: var(--notify-dismiss-background-hover);
+  }
+
+  .notification-dismiss svg {
+    @apply h-4 w-4;
+  }
+
+  .notification-banner:not(.hidden) {
+    animation: notification-slide-in var(--motion-duration-base)
+      var(--motion-ease-out);
+  }
+
+  .notification-banner--critical,
+  .torrent-toast--error {
+    --notify-accent: var(--color-critical-strong);
+    --notify-accent-strong: var(--color-critical);
+    --notify-border: var(--color-ring-critical-soft);
+    --notify-background: var(--color-card-critical);
+    --notify-foreground: var(--color-critical-strong);
+  }
+
+  .notification-banner--success,
+  .torrent-toast--success {
+    --notify-accent: var(--status-success-strong);
+    --notify-accent-strong: var(--status-success);
+    --notify-border: var(--status-success-border);
+    --notify-background: var(--status-success-surface);
+    --notify-foreground: var(--status-success-on);
+  }
+
+  .notification-banner--info,
+  .torrent-toast--info {
+    --notify-accent: var(--color-info-strong);
+    --notify-accent-strong: var(--color-info);
+    --notify-border: var(--color-info-border);
+    --notify-background: var(--status-info-surface);
+  }
+
+  .notification-banner--warning,
+  .torrent-toast--warn {
+    --notify-accent: var(--color-warning-strong);
+    --notify-accent-strong: var(--color-warning);
+    --notify-border: var(--status-warning-border);
+    --notify-background: var(--status-warning-surface);
+    --notify-foreground: var(--status-warning-on);
   }
 
   .status-banner .status-spinner {
     animation: spin 1s linear infinite;
-    border: var(--space-3xs) solid var(--color-border-neutral-soft);
+    border: var(--space-3xs) solid var(--color-info-border);
     border-radius: var(--radius-full);
-    border-top-color: var(--color-page-alt);
+    border-top-color: var(--color-info);
+    flex-shrink: 0;
     height: var(--icon-size-md);
     width: var(--icon-size-md);
+  }
+
+  .status-banner .status-message {
+    flex: 1 1 auto;
+  }
+
+  @keyframes notification-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(var(--toast-translate));
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .status-spinner--inline {
@@ -2802,6 +2944,9 @@
   .modal-nav,
   .popover__panel,
   .progress-bar-fill,
+  .notification-banner,
+  .notification-portal,
+  .torrent-toast,
   .status-banner .status-spinner,
   .status-spinner--inline,
   .video-modal__panel,
@@ -2849,9 +2994,16 @@
     opacity: 1;
   }
 
+  .notification-banner,
+  .torrent-toast,
   .status-banner .status-spinner,
   .status-spinner--inline {
     animation: none !important;
+  }
+
+  .notification-portal {
+    transform: none !important;
+    opacity: 1 !important;
   }
 }
 

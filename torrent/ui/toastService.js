@@ -38,13 +38,18 @@ function ensureContainer(doc) {
       "pointer-events-none",
       "fixed",
       "inset-x-0",
-      "top-4",
+      "top-0",
       "z-overlay-toast",
       "flex",
+      "w-full",
       "flex-col",
       "items-center",
       "gap-3",
       "px-4",
+      "pt-6",
+      "sm:items-end",
+      "sm:px-6",
+      "sm:pt-8",
     ].join(" ");
 
     const body = documentRef.body || documentRef.getElementsByTagName?.("body")?.[0];
@@ -66,17 +71,11 @@ function buildToastElement(documentRef, message, typeClass) {
   const closeButton = documentRef.createElement("button");
   closeButton.type = "button";
   closeButton.className = [
+    "notification-dismiss",
+    "focus-ring",
     "absolute",
     "right-3",
     "top-3",
-    "rounded",
-    "p-1",
-    "text-current/70",
-    "hover:text-current",
-    "focus-visible:outline",
-    "focus-visible:outline-2",
-    "focus-visible:outline-offset-2",
-    "focus-visible:outline-info",
   ].join(" ");
   closeButton.setAttribute("aria-label", "Dismiss notification");
   closeButton.innerHTML =

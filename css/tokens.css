@@ -94,7 +94,7 @@
   --scrollbar-thumb-hover: var(--color-white-softest);
   --z-overlay-nav: 60;
   --z-overlay-floating: 70;
-  --z-overlay-toast: 80;
+  --z-overlay-toast: 180;
   --z-sidebar-overlay: 10;
   --z-sidebar: 20;
   --z-modal-root: 100;
@@ -126,7 +126,7 @@
   --space-sidebar-nav-translate: 0.35rem;
   --grid-card-min-width: 20rem;
   --popover-backdrop-blur: 12px;
-  --toast-translate: 0.75rem;
+  --toast-translate: -1.5rem;
   --sidebar-mobile-gutter: 3rem;
   --popup-padding-inline: 1rem;
   --popup-padding-block: 0.75rem;
