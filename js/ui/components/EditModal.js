@@ -339,12 +339,13 @@ export class EditModal {
         input.disabled = false;
         input.removeAttribute("disabled");
         delete input.dataset.isEditing;
+        delete input.dataset.state;
       } else {
         input.value = "";
         input.readOnly = false;
         input.removeAttribute("readonly");
-        input.classList.remove("locked-input");
         delete input.dataset.isEditing;
+        delete input.dataset.state;
       }
       delete input.dataset.originalValue;
     });
@@ -516,11 +517,11 @@ export class EditModal {
       if (hasValue) {
         input.readOnly = true;
         input.setAttribute("readonly", "readonly");
-        input.classList.add("locked-input");
+        input.dataset.state = "locked";
       } else {
         input.readOnly = false;
         input.removeAttribute("readonly");
-        input.classList.remove("locked-input");
+        delete input.dataset.state;
       }
 
       if (button) {
@@ -613,11 +614,12 @@ export class EditModal {
         input.disabled = false;
         input.removeAttribute("disabled");
         input.dataset.isEditing = "true";
+        delete input.dataset.state;
       } else {
         input.disabled = false;
         input.readOnly = false;
         input.removeAttribute("readonly");
-        input.classList.remove("locked-input");
+        delete input.dataset.state;
         input.dataset.isEditing = "true";
       }
       button.dataset.mode = "editing";
@@ -659,14 +661,14 @@ export class EditModal {
     if (originalValue) {
       input.readOnly = true;
       input.setAttribute("readonly", "readonly");
-      input.classList.add("locked-input");
+      input.dataset.state = "locked";
       input.dataset.isEditing = "false";
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
     } else {
       input.readOnly = false;
       input.removeAttribute("readonly");
-      input.classList.remove("locked-input");
+      delete input.dataset.state;
       input.dataset.isEditing = "true";
       button.classList.add("hidden");
       button.dataset.mode = "locked";

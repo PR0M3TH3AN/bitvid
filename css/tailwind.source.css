@@ -817,6 +817,33 @@
     @apply border-critical border-opacity-60;
   }
 
+  .form-control[data-state="locked"],
+  .input[data-state="locked"],
+  .textarea[data-state="locked"],
+  .select[data-state="locked"],
+  textarea.form-control[data-state="locked"],
+  select.form-control[data-state="locked"] {
+    @apply cursor-default border-border-sidebar-strong bg-overlay-panel-soft text-muted;
+  }
+
+  .form-control[data-state="locked"]:focus-visible,
+  .input[data-state="locked"]:focus-visible,
+  .textarea[data-state="locked"]:focus-visible,
+  .select[data-state="locked"]:focus-visible,
+  textarea.form-control[data-state="locked"]:focus-visible,
+  select.form-control[data-state="locked"]:focus-visible {
+    @apply border-border-sidebar-strong outline-none ring-0 ring-offset-0 shadow-none;
+  }
+
+  .form-control[data-state="locked"]:disabled,
+  .input[data-state="locked"]:disabled,
+  .textarea[data-state="locked"]:disabled,
+  .select[data-state="locked"]:disabled,
+  textarea.form-control[data-state="locked"]:disabled,
+  select.form-control[data-state="locked"]:disabled {
+    @apply cursor-default opacity-100;
+  }
+
   .input {
     @apply form-control;
   }
@@ -2477,18 +2504,6 @@
 
   .sidebar-loading-text {
     white-space: nowrap;
-  }
-
-  .locked-input {
-    background-color: var(--color-overlay-panel-soft) !important;
-    border-color: var(--color-border-sidebar-strong) !important;
-    color: var(--color-muted) !important;
-    cursor: default;
-  }
-
-  .locked-input:focus {
-    outline: none;
-    box-shadow: none;
   }
 
   @media (max-width: 767px) {
