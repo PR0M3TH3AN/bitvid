@@ -13,6 +13,22 @@
 </section>
 
 <script>
+  // Fallback loggers keep embeds functional without bitvidLogger while surfacing warnings/errors via the console.
+  const fallbackDev = {
+    log: () => {},
+    info: () => {},
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+  };
+  const fallbackUser = {
+    log: () => {},
+    info: () => {},
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+  };
+  const dev = window.bitvidLogger?.dev || fallbackDev;
+  const user = window.bitvidLogger?.user || fallbackUser;
+
   (async () => {
     try {
       const response = await fetch("content/ipns.md");
@@ -35,7 +51,7 @@
         hljs.highlightBlock(block);
       });
     } catch (err) {
-      console.error("Error loading IPNS content:", err);
+      user.error("Error loading IPNS content:", err);
       const container = document.getElementById("markdown-container");
       if (container) {
         container.innerHTML = `
