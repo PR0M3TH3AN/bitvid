@@ -126,6 +126,28 @@ export const DEFAULT_WHITELIST_MODE_ENABLED = true;
 export const ALLOW_NSFW_CONTENT = false;
 
 /**
+ * Optional theme accent overrides for light and dark mode.
+ *
+ * Operators can provide hex color strings (e.g., `"#2563eb"`) to customize the
+ * accent tokens without editing the generated CSS bundle. Leave values as
+ * `null` to keep the upstream defaults defined in `css/tokens.css`. Each theme
+ * accepts overrides for the base accent color as well as the stronger and
+ * pressed states used for hover/active presentations.
+ */
+export const THEME_ACCENT_OVERRIDES = Object.freeze({
+  light: Object.freeze({
+    accent: null,
+    accentStrong: null,
+    accentPressed: null,
+  }),
+  dark: Object.freeze({
+    accent: null,
+    accentStrong: null,
+    accentPressed: null,
+  }),
+});
+
+/**
  * Nostr kind used when persisting watch history events.
  *
  * bitvid’s roadmap standardizes on kind 30079 so that watch events, view logs,

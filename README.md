@@ -182,6 +182,10 @@ artifacts.
     the fee at `0` to pass through every satoshi.
   - Populate `DEFAULT_RELAY_URLS_OVERRIDE` with WSS URLs to replace the bundled
     relay bootstrap list. Keep it empty to stick with the upstream defaults.
+  - Customize `THEME_ACCENT_OVERRIDES` with `#RRGGBB` hex strings when you want
+    light or dark mode to use different accent, accent-strong, or
+    accent-pressed colors. Leave the values `null` to inherit the defaults from
+    `css/tokens.css`.
 - **`js/config.js`**:
   - Re-exports `isDevMode` (derived from `IS_DEV_MODE`) for modules, publishes
     `window.__BITVID_DEV_MODE__`, and centralizes the global configuration
