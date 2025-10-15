@@ -6,7 +6,7 @@ const DEFAULT_OPTIONS = {
   offset: 8,
   flip: true,
   viewportPadding: 12,
-  strategy: "fixed",
+  strategy: "auto",
   rtl: null,
   onUpdate: null,
   preferAnchors: false,
@@ -191,6 +191,85 @@ function normalizeAlignment(value) {
   return "start";
 }
 
+function normalizeStrategy(value) {
+  const normalized = typeof value === "string" ? value.toLowerCase() : "";
+  if (normalized === "absolute" || normalized === "fixed") {
+    return normalized;
+  }
+  return "auto";
+}
+
+function createsFixedContainingBlock(style) {
+  if (!style) {
+    return false;
+  }
+
+  const {
+    transform,
+    perspective,
+    filter,
+    backdropFilter,
+    contain,
+    willChange,
+  } = style;
+
+  if (transform && transform !== "none") {
+    return true;
+  }
+  if (perspective && perspective !== "none") {
+    return true;
+  }
+  if (filter && filter !== "none") {
+    return true;
+  }
+  if (backdropFilter && backdropFilter !== "none") {
+    return true;
+  }
+  if (contain && /(paint|layout|strict|content)/.test(contain)) {
+    return true;
+  }
+  if (typeof willChange === "string") {
+    const tokenized = willChange.split(",").map((token) => token.trim().toLowerCase());
+    if (
+      tokenized.includes("transform") ||
+      tokenized.includes("perspective") ||
+      tokenized.includes("filter") ||
+      tokenized.includes("backdrop-filter")
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function resolveStrategy({ anchor, documentRef, windowRef, requested }) {
+  if (requested === "absolute" || requested === "fixed") {
+    return requested;
+  }
+
+  if (!anchor || !windowRef?.getComputedStyle) {
+    return "fixed";
+  }
+
+  const root = documentRef?.documentElement || null;
+  let current = anchor.parentElement;
+
+  while (current && current !== root) {
+    try {
+      const style = windowRef.getComputedStyle(current);
+      if (createsFixedContainingBlock(style)) {
+        return "absolute";
+      }
+    } catch (error) {
+      // Ignore getComputedStyle errors triggered by detached nodes.
+    }
+    current = current.parentElement;
+  }
+
+  return "fixed";
+}
+
 function getViewportSize(windowRef, documentRef) {
   const width = windowRef?.innerWidth || documentRef?.documentElement?.clientWidth || 0;
   const height = windowRef?.innerHeight || documentRef?.documentElement?.clientHeight || 0;
@@ -256,11 +335,18 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
     0,
     Number.MAX_SAFE_INTEGER,
   );
-  config.strategy = config.strategy === "absolute" ? "absolute" : "fixed";
+  const requestedStrategy = normalizeStrategy(config.strategy);
   config.preferAnchors = optionOverrides.preferAnchors === true;
   const rtl = resolveDirection(safeAnchor, documentRef, config.rtl);
 
   const anchorSupported = config.preferAnchors && detectAnchorSupport(windowRef);
+
+  config.strategy = resolveStrategy({
+    anchor: safeAnchor,
+    documentRef,
+    windowRef,
+    requested: requestedStrategy,
+  });
 
   const state = {
     lastSize: { width: 0, height: 0 },

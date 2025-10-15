@@ -94,6 +94,113 @@ test("flips to top when bottom placement collides with viewport", () => {
   assert.equal(ruleAfterDestroy, null);
 });
 
+test("switches to absolute positioning when a transformed ancestor would capture fixed panels", () => {
+  const dom = new JSDOM(
+    `
+      <div id="card">
+        <div class="popover">
+          <button id="trigger">Open</button>
+          <div id="panel" class="popover__panel" data-state="closed" hidden></div>
+        </div>
+      </div>
+    `,
+    { pretendToBeVisual: true },
+  );
+  const { window } = dom;
+  const { document } = window;
+
+  window.innerWidth = 1024;
+  window.innerHeight = 768;
+
+  const trigger = document.getElementById("trigger");
+  const panel = document.getElementById("panel");
+  const wrapper = panel.parentElement;
+  const card = document.getElementById("card");
+
+  trigger.getBoundingClientRect = () => ({
+    top: 120,
+    bottom: 160,
+    left: 320,
+    right: 360,
+    width: 40,
+    height: 40,
+  });
+
+  panel.getBoundingClientRect = () => ({
+    top: 0,
+    bottom: 120,
+    left: 0,
+    right: 180,
+    width: 180,
+    height: 120,
+  });
+  Object.defineProperties(panel, {
+    offsetWidth: { value: 180 },
+    offsetHeight: { value: 120 },
+  });
+
+  wrapper.getBoundingClientRect = () => ({
+    top: 80,
+    bottom: 200,
+    left: 280,
+    right: 440,
+    width: 160,
+    height: 120,
+  });
+
+  const originalGetComputedStyle = window.getComputedStyle.bind(window);
+  let positioner = null;
+
+  try {
+    window.getComputedStyle = (element) => {
+      if (element === card) {
+        return {
+          transform: "matrix(1, 0, 0, 1, 0, 0)",
+          perspective: "none",
+          filter: "none",
+          backdropFilter: "none",
+          contain: "none",
+          willChange: "",
+          direction: "ltr",
+        };
+      }
+      if (element === trigger) {
+        return {
+          transform: "none",
+          perspective: "none",
+          filter: "none",
+          backdropFilter: "none",
+          contain: "none",
+          willChange: "",
+          direction: "ltr",
+        };
+      }
+      return originalGetComputedStyle(element);
+    };
+
+    const styles = createFloatingPanelStyles(panel);
+
+    positioner = positionFloatingPanel(trigger, panel, {
+      offset: 8,
+      viewportPadding: 12,
+      styles,
+    });
+
+    panel.hidden = false;
+    panel.dataset.state = "open";
+    positioner.update();
+
+    assert.equal(styles.getStrategy(), "absolute");
+    assert.equal(panel.dataset.floatingStrategy, "absolute");
+    assert.deepEqual(styles.getFallbackPosition(), { top: 88, left: 40 });
+  } finally {
+    if (positioner) {
+      positioner.destroy();
+    }
+    window.getComputedStyle = originalGetComputedStyle;
+  }
+});
+
 test("retries measurement when the panel reports zero size", async () => {
   const dom = new JSDOM(
     `
