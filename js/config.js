@@ -1,7 +1,7 @@
 // js/config.js
 
-import {
 import { userLogger } from "./utils/logger.js";
+import {
   IS_DEV_MODE,
   ADMIN_SUPER_NPUB,
   ADMIN_DM_IMAGE_URL,

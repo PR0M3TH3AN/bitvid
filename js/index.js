@@ -13,8 +13,8 @@ import {
   initThemeController,
   refreshThemeControls,
 } from "./themeController.js";
-import {
 import { devLogger, userLogger } from "./utils/logger.js";
+import {
   prepareStaticModal,
   openStaticModal,
   closeStaticModal,

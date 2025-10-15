@@ -1,8 +1,8 @@
 // js/userBlocks.js
 import { nostrClient } from "./nostr.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
-import {
 import { userLogger } from "./utils/logger.js";
+import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";

@@ -1,5 +1,5 @@
-import {
 import { devLogger } from "./utils/logger.js";
+import {
   ADMIN_LIST_NAMESPACE,
   isDevMode,
   WATCH_HISTORY_KIND,
@@ -830,8 +830,9 @@ function resolveAdminNoteType(listKey) {
 export function buildAdminListEvent(listKey, { pubkey, created_at, hexPubkeys = [] }) {
   const schema = getNostrEventSchema(resolveAdminNoteType(listKey));
   if (!schema) {
-    devLogger.warn(`[nostrEventSchemas] Unknown admin list key: ${listKey`);
-    }
+    devLogger.warn(
+      `[nostrEventSchemas] Unknown admin list key: ${listKey}`,
+    );
     return {
       kind: 30000,
       pubkey,

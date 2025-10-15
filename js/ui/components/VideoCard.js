@@ -2,8 +2,8 @@ import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
-import {
 import { userLogger } from "../../utils/logger.js";
+import {
   getPopupOffsetPx,
   getPopupViewportPaddingPx,
 } from "../../designSystem/metrics.js";

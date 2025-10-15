@@ -81,6 +81,7 @@ import { pointerArrayToKey } from "./utils/pointer.js";
 import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
 import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
+import { buildServiceWorkerFallbackStatus } from "./utils/serviceWorkerFallbackMessages.js";
 import {
   getVideoRootIdentifier,
   applyRootTimestampToVideosMap,
@@ -5635,6 +5636,24 @@ class Application {
         this.modalVideo,
         { urlList: sanitizedUrlList }
       );
+
+      if (torrentClient.isServiceWorkerUnavailable()) {
+        const swError = torrentClient.getServiceWorkerInitError();
+        const statusMessage = buildServiceWorkerFallbackStatus(swError);
+        this.log(
+          "[playViaWebTorrent] Service worker unavailable; streaming directly via WebTorrent.",
+          swError
+        );
+        if (swError) {
+          userLogger.warn(
+            "[playViaWebTorrent] Service worker unavailable; direct streaming engaged.",
+            swError
+          );
+        }
+        if (this.videoModal) {
+          this.videoModal.updateStatus(statusMessage);
+        }
+      }
       if (torrentInstance && torrentInstance.ready) {
         // Some browsers delay `playing` events for MediaSource-backed torrents.
         // Clearing the poster here prevents the historic "GIF stuck over the

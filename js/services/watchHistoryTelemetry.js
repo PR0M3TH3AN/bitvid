@@ -1,7 +1,7 @@
 import { isDevMode } from "../config.js";
 import { pointerArrayToKey } from "../utils/pointer.js";
-import {
 import { devLogger, userLogger } from "../utils/logger.js";
+import {
   ingestLocalViewEvent as defaultIngestLocalViewEvent,
 } from "../viewCounter.js";
 

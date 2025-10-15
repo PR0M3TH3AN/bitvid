@@ -1620,8 +1620,7 @@ function normalizePointerInput(pointer) {
         }
       }
     } catch (err) {
-      devLogger.warn(`[nostr] Failed to decode pointer ${trimmed:`, err);
-      }
+      devLogger.warn(`[nostr] Failed to decode pointer ${trimmed}:`, err);
     }
   }
 
@@ -5681,17 +5680,18 @@ export class NostrClient {
 
     this.restoreLocalData();
 
-    try {
-      await this.ensurePool();
-      const results = await this.connectToRelays();
-      const successfulRelays = results
-        .filter((r) => r.success)
-        .map((r) => r.url);
-      if (successfulRelays.length === 0) {
-        throw new Error("No relays connected");
-      }
-      devLogger.log(`Connected to ${successfulRelays.length relay(s)`);
-      }
+      try {
+        await this.ensurePool();
+        const results = await this.connectToRelays();
+        const successfulRelays = results
+          .filter((r) => r.success)
+          .map((r) => r.url);
+        if (successfulRelays.length === 0) {
+          throw new Error("No relays connected");
+        }
+        devLogger.log(
+          `Connected to ${successfulRelays.length} relay(s)`,
+        );
     } catch (err) {
       userLogger.error("Nostr init failed:", err);
       throw err;
@@ -6159,12 +6159,11 @@ export class NostrClient {
       }
     }
 
-    if (!signerPubkey && signedEvent && typeof signedEvent.pubkey === "string") {
-      signerPubkey = signedEvent.pubkey;
-    }
+      if (!signerPubkey && signedEvent && typeof signedEvent.pubkey === "string") {
+        signerPubkey = signedEvent.pubkey;
+      }
 
-    devLogger.log(`Signed ${devLogLabel event:`, signedEvent);
-    }
+      devLogger.log(`Signed ${devLogLabel} event:`, signedEvent);
 
     let targetRelays = sanitizeRelayList(
       Array.isArray(relaysOverride) && relaysOverride.length
@@ -7373,11 +7372,13 @@ export class NostrClient {
           try {
             const events = await this.pool.list([url], [filter]);
             return Array.isArray(events) ? events : [];
-          } catch (error) {
-            devLogger.warn(`[nostr] NIP-71 fetch failed on ${url:`, error);
+            } catch (error) {
+              devLogger.warn(
+                `[nostr] NIP-71 fetch failed on ${url}:`,
+                error,
+              );
+              return [];
             }
-            return [];
-          }
         })
       );
 
@@ -8538,14 +8539,18 @@ export class NostrClient {
           });
           const count = this.extractCountValue(frame?.[2]);
           return { url, ok: true, frame, count };
-        } catch (error) {
-          const isUnsupported = error?.code === "count-unsupported";
-          if (isUnsupported) {
-            this.countUnsupportedRelays.add(url);
-          } else devLogger.warn(`[nostr] COUNT request failed on ${url:`, error);
+          } catch (error) {
+            const isUnsupported = error?.code === "count-unsupported";
+            if (isUnsupported) {
+              this.countUnsupportedRelays.add(url);
+            } else {
+              devLogger.warn(
+                `[nostr] COUNT request failed on ${url}:`,
+                error,
+              );
+            }
+            return { url, ok: false, error, unsupported: isUnsupported };
           }
-          return { url, ok: false, error, unsupported: isUnsupported };
-        }
       })
     );
 
@@ -8735,16 +8740,18 @@ export class NostrClient {
 
       try {
         const perRelay = await Promise.all(
-          this.relays.map(async (url) => {
-            try {
-              const events = await this.pool.list([url], [filter]);
-              return events || [];
-            } catch (err) {
-              devLogger.warn(`[nostr] History fetch failed on ${url:`, err);
+            this.relays.map(async (url) => {
+              try {
+                const events = await this.pool.list([url], [filter]);
+                return events || [];
+              } catch (err) {
+                devLogger.warn(
+                  `[nostr] History fetch failed on ${url}:`,
+                  err,
+                );
+                return [];
               }
-              return [];
-            }
-          })
+            })
         );
 
         const merged = perRelay.flat();

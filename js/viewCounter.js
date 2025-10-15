@@ -16,8 +16,8 @@ import {
   VIEW_COUNT_CACHE_TTL_MS,
   VIEW_COUNT_DEDUPE_WINDOW_SECONDS,
 } from "./config.js";
-import {
 import { userLogger } from "./utils/logger.js";
+import {
   countVideoViewEvents,
   listVideoViewEvents,
   subscribeVideoViewEvents,
