@@ -1,3 +1,4 @@
+import { devLogger, userLogger } from "../js/utils/logger.js";
 import { createBeaconApp } from "../app.js";
 
 function resolveGlobalScope() {
@@ -22,6 +23,7 @@ let appInstance = null;
 
 function mountBeaconApp() {
   if (appInstance) {
+    devLogger.info("[beacon] Reusing existing beacon app instance");
     return appInstance;
   }
 
@@ -30,6 +32,7 @@ function mountBeaconApp() {
   }
 
   const WebTorrentCtor = resolveWebTorrent();
+  devLogger.info("[beacon] Creating beacon app instance");
   appInstance = createBeaconApp({ documentRef: document, WebTorrentCtor });
   appInstance.mount();
   return appInstance;
@@ -41,14 +44,14 @@ if (typeof document !== "undefined") {
       try {
         mountBeaconApp();
       } catch (error) {
-        console.error("[beacon] Failed to mount app", error);
+        userLogger.error("[beacon] Failed to mount app", error);
       }
     });
   } else {
     try {
       mountBeaconApp();
     } catch (error) {
-      console.error("[beacon] Failed to mount app", error);
+      userLogger.error("[beacon] Failed to mount app", error);
     }
   }
 }
