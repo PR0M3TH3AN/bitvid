@@ -154,6 +154,13 @@
     line-height: 1;
   }
 
+  .header-icon-toggle__icon {
+    inline-size: var(--icon-size-md);
+    block-size: var(--icon-size-md);
+    display: block;
+    vector-effect: non-scaling-stroke;
+  }
+
   .header-icon-toggle:hover,
   .header-icon-toggle:focus-visible {
     color: var(--color-text);
