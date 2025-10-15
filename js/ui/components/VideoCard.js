@@ -751,6 +751,7 @@ export class VideoCard {
       const wrapper = this.createElement("div", {
         classNames: ["popover", "ml-2"]
       });
+      wrapper.dataset.floatingTrigger = "true";
       const button = this.createElement("button", {
         classNames: [
           "btn-ghost",
@@ -884,6 +885,7 @@ export class VideoCard {
       classNames: ["popover", "ml-1"]
     });
     wrapper.dataset.moreMenuWrapper = "true";
+    wrapper.dataset.floatingTrigger = "true";
 
     const button = this.createElement("button", {
       classNames: [

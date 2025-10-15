@@ -283,13 +283,18 @@
     z-index: var(--z-overlay-floating-raised);
   }
 
-  .card :is([data-floating-panel], .popover__panel),
-  .video-modal__actions-row :is([data-floating-panel], .popover__panel) {
+  [data-floating-trigger] {
+    position: relative;
+    z-index: var(--z-overlay-floating);
+  }
+
+  .card[data-floating-menu-open="true"] [data-floating-trigger],
+  .video-modal__actions-row [data-floating-trigger] {
     z-index: var(--z-overlay-floating-raised);
   }
 
-  .video-modal__actions-row [data-more-menu-wrapper] {
-    position: relative;
+  .card :is([data-floating-panel], .popover__panel),
+  .video-modal__actions-row :is([data-floating-panel], .popover__panel) {
     z-index: var(--z-overlay-floating-raised);
   }
 
