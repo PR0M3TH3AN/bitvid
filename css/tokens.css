@@ -500,7 +500,8 @@
   --color-sidebar-glow: rgb(99 102 241 / 0.28);
   --color-sidebar-accent-start: rgb(129 140 248 / 0.88);
   --color-sidebar-accent-end: rgb(99 102 241 / 0.85);
-  --color-sidebar-text-muted: rgb(102 112 133 / 0.8);
+  --color-sidebar-text-muted: var(--color-text-muted);
+  --sidebar-icon-filter: brightness(0) saturate(100%);
 
   --color-surface-tint-subtle: rgb(15 23 42 / 0.08);
   --color-border-translucent: rgb(148 163 184 / 0.18);
@@ -650,7 +651,8 @@
   --color-sidebar-glow: rgb(129 140 248 / 0.38);
   --color-sidebar-accent-start: rgb(56 189 248 / 0.92);
   --color-sidebar-accent-end: rgb(129 140 248 / 0.88);
-  --color-sidebar-text-muted: rgb(196 207 228 / 0.75);
+  --color-sidebar-text-muted: var(--color-text-muted);
+  --sidebar-icon-filter: brightness(0) invert(1);
 
   --color-surface-tint-subtle: rgb(94 113 161 / 0.12);
   --color-border-translucent: rgb(99 114 144 / 0.22);
