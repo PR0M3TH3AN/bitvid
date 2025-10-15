@@ -350,13 +350,17 @@ export default class WatchHistoryController {
     try {
       const result = this.watchHistoryService.snapshot(undefined, { reason });
       return Promise.resolve(result).catch((error) => {
-        devLogger.warn(`[${context] Watch history flush failed:`, error);
-        }
+        devLogger.warn(
+          `[${context}] Watch history flush failed:`,
+          error,
+        );
         throw error;
       });
     } catch (error) {
-      devLogger.warn(`[${context] Failed to queue watch history flush:`, error);
-      }
+      devLogger.warn(
+        `[${context}] Failed to queue watch history flush:`,
+        error,
+      );
       return Promise.reject(error);
     }
   }

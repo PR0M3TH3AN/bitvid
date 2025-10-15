@@ -4,8 +4,8 @@ import {
 } from "../nostr.js";
 import { accessControl } from "../accessControl.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
-import {
 import { userLogger } from "../utils/logger.js";
+import {
   getVideosMap as getStoredVideosMap,
   setVideosMap as setStoredVideosMap,
   getVideoSubscription as getStoredVideoSubscription,

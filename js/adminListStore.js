@@ -8,8 +8,8 @@ import {
   isDevMode,
 } from "./config.js";
 import { nostrClient } from "./nostr.js";
-import {
 import { devLogger, userLogger } from "./utils/logger.js";
+import {
   buildAdminListEvent,
   ADMIN_LIST_IDENTIFIERS,
 } from "./nostrEventSchemas.js";
@@ -151,8 +151,10 @@ function readJsonListFromStorage(key) {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : null;
   } catch (error) {
-    devLogger.warn(`[adminListStore] Failed to parse legacy list for ${key:`, error);
-    }
+    devLogger.warn(
+      `[adminListStore] Failed to parse legacy list for ${key}:`,
+      error,
+    );
     return null;
   }
 }
@@ -198,8 +200,10 @@ function clearLegacyStorageFor(listKey) {
     try {
       localStorage.removeItem(key);
     } catch (error) {
-      devLogger.warn(`[adminListStore] Failed to clear legacy storage for ${key:`, error);
-      }
+      devLogger.warn(
+        `[adminListStore] Failed to clear legacy storage for ${key}:`,
+        error,
+      );
     }
   }
 }

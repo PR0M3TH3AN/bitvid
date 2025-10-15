@@ -18,8 +18,8 @@ import {
   requestInvoice,
 } from "../payments/lnurl.js";
 import { getPlatformLightningAddress } from "../payments/platformAddress.js";
-import {
 import { devLogger, userLogger } from "../utils/logger.js";
+import {
   ensureWallet as ensureWalletDefault,
   sendPayment as sendPaymentDefault,
 } from "../payments/nwcClient.js";

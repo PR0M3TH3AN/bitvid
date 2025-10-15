@@ -1,8 +1,8 @@
 import { isDevMode } from "./config.js";
 import { DEFAULT_RELAY_URLS, nostrClient } from "./nostr.js";
 import { buildRelayListEvent } from "./nostrEventSchemas.js";
-import {
 import { devLogger, userLogger } from "./utils/logger.js";
+import {
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";

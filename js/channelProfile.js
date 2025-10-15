@@ -40,8 +40,8 @@ import {
   requestInvoice
 } from "./payments/lnurl.js";
 import { getPlatformLightningAddress } from "./payments/platformAddress.js";
-import {
 import { userLogger } from "./utils/logger.js";
+import {
   ensureWallet,
   sendPayment as sendWalletPayment
 } from "./payments/nwcClient.js";

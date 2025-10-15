@@ -6,8 +6,8 @@ import {
   getPubkey,
   getCurrentUserNpub,
 } from "../state/appState.js";
-import {
 import { userLogger } from "../utils/logger.js";
+import {
   getSavedProfiles,
   getActiveProfilePubkey,
   setActiveProfilePubkey,

@@ -10,8 +10,8 @@ import {
 } from "./lnurl.js";
 import { ensureWallet, sendPayment } from "./nwcClient.js";
 import { getPlatformLightningAddress } from "./platformAddress.js";
-import {
 import { userLogger } from "../utils/logger.js";
+import {
   clampPercent,
   parsePercentValue,
   resolvePlatformFeePercent,
