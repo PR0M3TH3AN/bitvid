@@ -1,6 +1,7 @@
 import PQueue from "https://esm.sh/p-queue@7.4.1";
 import { trackerPing } from "./trackerPing.js";
 import { infoHashFromMagnet } from "./magnets.js";
+import { userLogger } from "./utils/logger.js";
 import { HEALTH_TTL_MS, CONCURRENCY } from "./trackerConfig.js";
 
 const queue = new PQueue({ concurrency: CONCURRENCY });
@@ -72,7 +73,7 @@ export function queueHealthCheck(magnet, onResult) {
         setHealthCache(infoHash, health);
         return health;
       } catch (err) {
-        console.warn("trackerPing failed", err);
+        userLogger.warn("trackerPing failed", err);
         return getDefaultHealth();
       }
     })

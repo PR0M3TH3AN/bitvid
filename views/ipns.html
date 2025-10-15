@@ -14,6 +14,15 @@
 
 <script>
   (async () => {
+    const fallbackChannel = {
+      error: () => {},
+      warn: () => {},
+      info: () => {},
+      log: () => {},
+    };
+    const fallbackLogger = { dev: fallbackChannel, user: fallbackChannel };
+    const bitvidLogger =
+      (typeof window !== "undefined" && window.bitvidLogger) || fallbackLogger;
     try {
       const response = await fetch("content/ipns.md");
       if (!response.ok) {
@@ -35,7 +44,7 @@
         hljs.highlightBlock(block);
       });
     } catch (err) {
-      console.error("Error loading IPNS content:", err);
+      bitvidLogger.user.error("Error loading IPNS content:", err);
       const container = document.getElementById("markdown-container");
       if (container) {
         container.innerHTML = `

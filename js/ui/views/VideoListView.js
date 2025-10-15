@@ -1,4 +1,5 @@
 import { VideoCard } from "../components/VideoCard.js";
+import { userLogger } from "../../utils/logger.js";
 import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
@@ -540,7 +541,7 @@ export class VideoListView {
           })
           .catch((error) => {
             if (this.window?.console?.warn) {
-              this.window.console.warn(
+              this.window.userLogger.warn(
                 "[VideoListView] Failed to resolve posted timestamp:",
                 error
               );
@@ -766,7 +767,7 @@ export class VideoListView {
         try {
           unsubscribeFromVideoViewCount(entry.pointer, entry.token);
         } catch (error) {
-          console.warn(
+          userLogger.warn(
             `[viewCount] Failed to unsubscribe from stale pointer ${key}:`,
             error
           );
@@ -920,7 +921,7 @@ export class VideoListView {
       this.viewCountSubscriptions.set(pointerInfo.key, entry);
       return entry;
     } catch (error) {
-      console.warn("[viewCount] Failed to subscribe to view counter:", error);
+      userLogger.warn("[viewCount] Failed to subscribe to view counter:", error);
       return null;
     }
   }
@@ -972,7 +973,7 @@ export class VideoListView {
         try {
           unsubscribeFromVideoViewCount(entry.pointer, entry.token);
         } catch (error) {
-          console.warn(
+          userLogger.warn(
             `[viewCount] Failed to unsubscribe from pointer ${key}:`,
             error
           );

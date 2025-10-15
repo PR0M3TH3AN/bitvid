@@ -167,6 +167,26 @@
     </div>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
+        const fallbackChannel = {
+          log: () => {},
+          info: () => {},
+          warn: () => {},
+          error: () => {},
+        };
+        const embeddedLogger =
+          (typeof window !== "undefined" && window.bitvidLogger) || {};
+        const devChannel = embeddedLogger.dev || fallbackChannel;
+        const userChannel = embeddedLogger.user || fallbackChannel;
+        const emitDev = (method, ...args) => {
+          if (typeof devChannel[method] === "function") {
+            devChannel[method](...args);
+          }
+        };
+        const emitUser = (method, ...args) => {
+          if (typeof userChannel[method] === "function") {
+            userChannel[method](...args);
+          }
+        };
         // Logging function
         function log(msg, type = "info") {
           const div = document.createElement("div");
@@ -176,7 +196,14 @@
           if (type === "warn") div.classList.add("warn");
           div.textContent = msg;
           document.getElementById("status").appendChild(div);
-          console.log(`[${type.toUpperCase()}] ${msg}`);
+          const normalized = type.toLowerCase();
+          if (normalized === "error") {
+            emitUser("error", `[${type.toUpperCase()}] ${msg}`);
+          } else if (normalized === "warn") {
+            emitUser("warn", `[${type.toUpperCase()}] ${msg}`);
+          } else {
+            emitDev("info", `[${type.toUpperCase()}] ${msg}`);
+          }
         }
         function clear() {
           document.getElementById("status").innerHTML = "";
@@ -379,7 +406,7 @@ For further discussions, reach out through bitvid’s Nostr support channels.
               );
             } catch (err) {
               log("Error: " + err.message, "error");
-              console.error(err);
+              emitUser("error", err);
             }
           });
       });

@@ -1,3 +1,4 @@
+import { devLogger, userLogger } from "./utils/logger.js";
 //js/webtorrent.js
 
 import WebTorrent from "./webtorrent.min.js";
@@ -288,7 +289,7 @@ export class TorrentClient {
   }
 
   log(msg) {
-    console.log(msg);
+    devLogger.log(msg);
   }
 
   async isBrave() {
@@ -608,20 +609,20 @@ export class TorrentClient {
           err.message.includes("CORS") ||
           err.message.includes("Access-Control-Allow-Origin")
         ) {
-          console.warn(
+          userLogger.warn(
             "CORS warning detected. Attempting to remove the failing webseed/tracker."
           );
           if (torrent._opts?.urlList?.length) {
             torrent._opts.urlList = torrent._opts.urlList.filter((url) => {
               return !url.includes("distribution.bbb3d.renderfarming.net");
             });
-            console.warn("Cleaned up webseeds =>", torrent._opts.urlList);
+            userLogger.warn("Cleaned up webseeds =>", torrent._opts.urlList);
           }
           if (torrent._opts?.announce?.length) {
             torrent._opts.announce = torrent._opts.announce.filter((url) => {
               return !url.includes("fastcast.nz");
             });
-            console.warn("Cleaned up trackers =>", torrent._opts.announce);
+            userLogger.warn("Cleaned up trackers =>", torrent._opts.announce);
           }
         }
       }

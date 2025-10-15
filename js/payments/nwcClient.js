@@ -1,3 +1,4 @@
+import { userLogger } from "../utils/logger.js";
 // js/payments/nwcClient.js
 
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
@@ -119,7 +120,7 @@ let cachedNostrTools = __nwcNostrToolsBootstrap.toolkit || null;
 const nostrToolsInitializationFailure = __nwcNostrToolsBootstrap.failure || null;
 
 if (!cachedNostrTools && nostrToolsInitializationFailure) {
-  console.warn(
+  userLogger.warn(
     "[nwcClient] nostr-tools helpers unavailable after bootstrap.",
     nostrToolsInitializationFailure
   );
@@ -150,7 +151,7 @@ async function ensureNostrTools() {
     const result = await nostrToolsReadySource;
     rememberNostrTools(result);
   } catch (error) {
-    console.warn("[nwcClient] Failed to resolve nostr-tools helpers.", error);
+    userLogger.warn("[nwcClient] Failed to resolve nostr-tools helpers.", error);
   }
   if (!cachedNostrTools) {
     rememberNostrTools(readToolkitFromScope());
@@ -200,7 +201,7 @@ function assertNostrTools(methods = []) {
         const available = Array.isArray(Object.keys(tools))
           ? Object.keys(tools)
           : [];
-        console.error(
+        userLogger.error(
           "[nwcClient] Required NostrTools capability is missing.",
           {
             missingMethod: method,
@@ -208,7 +209,7 @@ function assertNostrTools(methods = []) {
           }
         );
       } catch (loggingError) {
-        console.error(
+        userLogger.error(
           "[nwcClient] Failed to enumerate available NostrTools methods.",
           loggingError
         );
@@ -454,7 +455,7 @@ function createNip44Encryption(context) {
         const secretBytes = hexToBytesCompat(context.secretKey);
         cachedKey = resolved.getConversationKey(secretBytes, context.walletPubkey);
       } catch (error) {
-        console.warn("[nwcClient] Failed to derive nip44 conversation key", error);
+        userLogger.warn("[nwcClient] Failed to derive nip44 conversation key", error);
         throw error;
       }
     }
@@ -527,7 +528,7 @@ function settleInfoRequest(result) {
     try {
       resolver(result || null);
     } catch (error) {
-      console.warn("[nwcClient] Failed to resolve wallet info request", error);
+      userLogger.warn("[nwcClient] Failed to resolve wallet info request", error);
     }
   }
 }
@@ -571,7 +572,7 @@ function requestInfoEvent(context) {
   try {
     socket.send(JSON.stringify(["REQ", infoSubscriptionId, filters]));
   } catch (error) {
-    console.warn("[nwcClient] Failed to request wallet info event", error);
+    userLogger.warn("[nwcClient] Failed to request wallet info event", error);
     settleInfoRequest(null);
     return Promise.resolve(null);
   }
@@ -619,7 +620,7 @@ async function ensureEncryption(context) {
     try {
       infoEvent = await requestInfoEvent(context);
     } catch (error) {
-      console.warn("[nwcClient] Failed to load wallet info event", error);
+      userLogger.warn("[nwcClient] Failed to load wallet info event", error);
     }
     if (infoEvent) {
       context.infoEvent = infoEvent;
@@ -735,12 +736,12 @@ function isSocketOpen() {
 }
 
 function handleSocketError(error) {
-  console.warn("[nwcClient] WebSocket error", error);
+  userLogger.warn("[nwcClient] WebSocket error", error);
   closeSocket({ keepState: true });
 }
 
 function handleSocketClose() {
-  console.warn("[nwcClient] Wallet connection closed.");
+  userLogger.warn("[nwcClient] Wallet connection closed.");
   closeSocket({ keepState: true });
 }
 
@@ -782,7 +783,7 @@ async function handleSocketMessage(messageEvent) {
   try {
     payload = JSON.parse(messageEvent.data);
   } catch (error) {
-    console.warn("[nwcClient] Failed to parse relay message", error);
+    userLogger.warn("[nwcClient] Failed to parse relay message", error);
     return;
   }
 
@@ -815,7 +816,7 @@ async function handleSocketMessage(messageEvent) {
         finalizePendingRequest(pending);
         pending.reject(error);
       } else {
-        console.warn("[nwcClient] Failed to decrypt wallet response", error);
+        userLogger.warn("[nwcClient] Failed to decrypt wallet response", error);
       }
       return;
     }
@@ -860,7 +861,7 @@ async function handleSocketMessage(messageEvent) {
   }
 
   if (type === "NOTICE" && payload.length >= 2) {
-    console.warn("[nwcClient] Relay notice:", payload[1]);
+    userLogger.warn("[nwcClient] Relay notice:", payload[1]);
     return;
   }
 }

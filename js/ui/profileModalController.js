@@ -1,3 +1,4 @@
+import { devLogger, userLogger } from "../utils/logger.js";
 import {
   isDevMode,
   ADMIN_SUPER_NPUB as CONFIG_ADMIN_SUPER_NPUB,
@@ -940,7 +941,7 @@ export class ProfileModalController {
     try {
       this.profileHistoryRenderer = this.createWatchHistoryRenderer(config);
     } catch (error) {
-      console.error(
+      userLogger.error(
         "[profileModal] Failed to create watch history renderer:",
         error,
       );
@@ -1372,7 +1373,7 @@ export class ProfileModalController {
           try {
             await this.switchProfile(entry.pubkey, { entry });
           } catch (error) {
-            console.error("Failed to switch profile:", error);
+            userLogger.error("Failed to switch profile:", error);
           } finally {
             button.dataset.loading = "false";
             button.setAttribute("aria-busy", "false");
@@ -1427,7 +1428,7 @@ export class ProfileModalController {
       try {
         this.profileHistoryRenderer?.pause();
       } catch (error) {
-        console.warn("[profileModal] Failed to pause history renderer:", error);
+        userLogger.warn("[profileModal] Failed to pause history renderer:", error);
       }
     }
 
@@ -1990,7 +1991,7 @@ export class ProfileModalController {
       }
       this.populateBlockedList();
     } catch (error) {
-      console.error("Failed to add creator to personal block list:", error);
+      userLogger.error("Failed to add creator to personal block list:", error);
       context.error = error;
       context.reason = error?.code || "service-error";
       const message =
@@ -2026,7 +2027,7 @@ export class ProfileModalController {
     }
 
     if (!targetHex) {
-      console.warn("No valid pubkey to remove from block list:", candidate);
+      userLogger.warn("No valid pubkey to remove from block list:", candidate);
       return;
     }
 
@@ -2055,7 +2056,7 @@ export class ProfileModalController {
 
       this.populateBlockedList();
     } catch (error) {
-      console.error(
+      userLogger.error(
         "Failed to remove creator from personal block list:",
         error,
       );
@@ -2111,7 +2112,7 @@ export class ProfileModalController {
         renderer.resume();
       }
     } catch (error) {
-      console.error(
+      userLogger.error(
         "[profileModal] Failed to populate watch history pane:",
         error,
       );
@@ -2769,11 +2770,11 @@ export class ProfileModalController {
 
     if (loadError) {
       if (loadError?.code === "nostr-unavailable") {
-        console.info("Moderation lists are still syncing with relays.");
+        devLogger.info("Moderation lists are still syncing with relays.");
         return;
       }
 
-      console.error("Failed to load admin lists:", loadError);
+      userLogger.error("Failed to load admin lists:", loadError);
       this.showStatus(null);
       this.showError("Unable to load moderation lists. Please try again.");
       this.clearAdminLists();
@@ -2866,7 +2867,7 @@ export class ProfileModalController {
       }
     } catch (error) {
       preloadError = error;
-      console.error("Failed to load admin lists before adding moderator:", error);
+      userLogger.error("Failed to load admin lists before adding moderator:", error);
     }
 
     if (preloadError) {
@@ -2970,7 +2971,7 @@ export class ProfileModalController {
       }
     } catch (error) {
       preloadError = error;
-      console.error("Failed to load admin lists before removing moderator:", error);
+      userLogger.error("Failed to load admin lists before removing moderator:", error);
     }
 
     if (preloadError) {
@@ -3077,7 +3078,7 @@ export class ProfileModalController {
       }
     } catch (error) {
       preloadError = error;
-      console.error("Failed to load admin lists before updating entries:", error);
+      userLogger.error("Failed to load admin lists before updating entries:", error);
     }
 
     if (preloadError) {
@@ -3162,7 +3163,7 @@ export class ProfileModalController {
             this.showError(errorMessage);
           }
           if (isDevMode && notifyResult?.error) {
-            console.warn(
+            userLogger.warn(
               "[admin] Failed to send list notification DM:",
               notifyResult,
             );
@@ -3178,9 +3179,9 @@ export class ProfileModalController {
         }
       } catch (error) {
         context.notificationError = error;
-        console.error("Failed to send list notification DM:", error);
+        userLogger.error("Failed to send list notification DM:", error);
         if (isDevMode) {
-          console.warn(
+          userLogger.warn(
             "List update succeeded, but DM notification threw an unexpected error.",
             error,
           );
@@ -3468,7 +3469,7 @@ export class ProfileModalController {
             targetHex,
           });
         } catch (refreshError) {
-          console.warn(
+          userLogger.warn(
             "[ProfileModalController] Failed to refresh videos after blocklist mutation:",
             refreshError,
           );
@@ -3776,7 +3777,7 @@ export class ProfileModalController {
     try {
       await this.refreshAdminPaneState();
     } catch (error) {
-      console.error(
+      userLogger.error(
         "Failed to refresh admin pane while opening profile modal:",
         error,
       );
@@ -3793,7 +3794,7 @@ export class ProfileModalController {
         const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
         await this.services.userBlocks.ensureLoaded(activeHex);
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "Failed to refresh user block list while opening profile modal:",
           error,
         );
@@ -3886,7 +3887,7 @@ export class ProfileModalController {
           this.profileHistoryRenderer.destroy();
         }
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to reset watch history renderer on close:",
           error,
         );
@@ -3913,7 +3914,7 @@ export class ProfileModalController {
           try {
             previous.focus();
           } catch (error) {
-            console.warn(
+            userLogger.warn(
               "[profileModal] Failed to restore focus after closing modal:",
               error,
             );
@@ -3926,7 +3927,7 @@ export class ProfileModalController {
       try {
         this.callbacks.onClose(this);
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] onClose callback threw while hiding modal:",
           error,
         );
@@ -3950,7 +3951,7 @@ export class ProfileModalController {
           persistActive: false,
         });
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to sync saved profiles during login:",
           error,
         );
@@ -3970,7 +3971,7 @@ export class ProfileModalController {
     try {
       await this.refreshAdminPaneState();
     } catch (error) {
-      console.warn("Failed to refresh admin pane after login:", error);
+      userLogger.warn("Failed to refresh admin pane after login:", error);
     }
 
     this.populateBlockedList();
@@ -3984,7 +3985,7 @@ export class ProfileModalController {
         this.refreshWalletPaneState();
       })
       .catch((error) => {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to hydrate deferred login data:",
           error,
         );
@@ -4004,7 +4005,7 @@ export class ProfileModalController {
           persistActive: false,
         });
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to sync saved profiles during logout:",
           error,
         );
@@ -4023,7 +4024,7 @@ export class ProfileModalController {
     try {
       await this.refreshAdminPaneState();
     } catch (error) {
-      console.warn("Failed to refresh admin pane after logout:", error);
+      userLogger.warn("Failed to refresh admin pane after logout:", error);
     }
 
     this.populateBlockedList();
@@ -4041,7 +4042,7 @@ export class ProfileModalController {
           persistActive: false,
         });
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to sync saved profiles after profile update:",
           error,
         );
@@ -4066,7 +4067,7 @@ export class ProfileModalController {
     try {
       result = this.services.removeSavedProfile(pubkey) || { removed: false };
     } catch (error) {
-      console.error("Failed to remove saved profile:", error);
+      userLogger.error("Failed to remove saved profile:", error);
       result = { removed: false, error };
     }
 
@@ -4099,7 +4100,7 @@ export class ProfileModalController {
     try {
       return await hydrate(normalized);
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         `[ProfileModalController] Failed to hydrate wallet settings for ${normalized}:`,
         error,
       );
@@ -4155,7 +4156,7 @@ export class ProfileModalController {
       try {
         return this.services.persistSavedProfiles(...args);
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[ProfileModalController] Persist saved profiles service threw:",
           error,
         );
