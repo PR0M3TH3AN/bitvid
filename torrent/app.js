@@ -214,8 +214,20 @@ export function createBeaconApp({
 
   function setProcessing(flag) {
     state.processing = Boolean(flag);
-    if (elements.overlay) {
-      elements.overlay.hidden = !state.processing;
+
+    if (!elements.overlay) {
+      return;
+    }
+
+    const isActive = state.processing;
+
+    elements.overlay.hidden = !isActive;
+    elements.overlay.setAttribute("aria-hidden", isActive ? "false" : "true");
+
+    if (isActive) {
+      elements.overlay.style.removeProperty("display");
+    } else {
+      elements.overlay.style.display = "none";
     }
   }
 
