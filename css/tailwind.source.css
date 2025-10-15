@@ -774,10 +774,51 @@
   }
 
   .card {
+    --video-card-lift-translate-y: 0;
+    --video-card-backdrop-opacity: 0;
+    --video-card-backdrop-translate-y: 1.25rem;
+    --video-card-backdrop-scale: 1.08;
+    --video-card-backdrop-blur: var(--blur-thumbnail-blur);
     @apply focus-ring relative rounded-lg border border-transparent bg-card text-text shadow-md transition duration-base ease-in-out;
+    transform: translate3d(0, var(--video-card-lift-translate-y), 0);
+    transition-property: transform, box-shadow, border-color, background-color, color;
+    will-change: transform;
+    isolation: isolate;
   }
 
-  .card:hover {
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    opacity: var(--video-card-backdrop-opacity);
+    background-image: var(--video-card-thumb-url, none);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    transform: translate3d(0, var(--video-card-backdrop-translate-y), 0)
+      scale(var(--video-card-backdrop-scale));
+    filter: blur(var(--video-card-backdrop-blur));
+    transition:
+      opacity var(--motion-duration-base) var(--motion-ease-in-out),
+      transform var(--motion-duration-base) var(--motion-ease-in-out),
+      filter var(--motion-duration-base) var(--motion-ease-in-out);
+    pointer-events: none;
+    will-change: opacity, transform, filter;
+  }
+
+  .card > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .card:hover,
+  .card:focus-within {
+    --video-card-lift-translate-y: -0.35rem;
+    --video-card-backdrop-opacity: 0.85;
+    --video-card-backdrop-translate-y: 0.15rem;
+    --video-card-backdrop-scale: 1.12;
+    --video-card-backdrop-blur: 24px;
     @apply shadow-lg;
   }
 

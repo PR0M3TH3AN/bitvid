@@ -341,6 +341,70 @@ export class VideoCard {
     this.bindEvents();
   }
 
+  setCardBackdropImage(src) {
+    if (!this.root || !this.root.style) {
+      return;
+    }
+
+    const style = this.root.style;
+
+    const normalizeSource = (raw) => {
+      if (typeof raw !== "string") {
+        return "";
+      }
+
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return "";
+      }
+
+      if (/^javascript:/i.test(trimmed) || /^vbscript:/i.test(trimmed)) {
+        return "";
+      }
+
+      if (/^(?:https?:|data:|blob:)/i.test(trimmed)) {
+        return trimmed;
+      }
+
+      if (
+        trimmed.startsWith("/") ||
+        trimmed.startsWith("./") ||
+        trimmed.startsWith("../") ||
+        trimmed.startsWith("assets/")
+      ) {
+        return trimmed;
+      }
+
+      try {
+        const base =
+          typeof this.document?.baseURI === "string" && this.document.baseURI
+            ? this.document.baseURI
+            : this.window?.location?.href || "";
+        if (!base) {
+          return "";
+        }
+
+        const resolved = new URL(trimmed, base);
+        if (/^(?:https?:|data:|blob:)/i.test(resolved.protocol)) {
+          return resolved.href;
+        }
+      } catch {
+        return "";
+      }
+
+      return "";
+    };
+
+    const sanitized = normalizeSource(src);
+
+    if (sanitized) {
+      const escaped = sanitized.replace(/(["\\])/g, "\\$1");
+      style.setProperty("--video-card-thumb-url", `url("${escaped}")`);
+    } else {
+      style.removeProperty("--video-card-thumb-url");
+    }
+  }
+
   buildThumbnail() {
     const img = this.createElement("img");
     img.dataset.videoThumbnail = "true";
@@ -359,12 +423,18 @@ export class VideoCard {
       if (fallbackSrc) {
         img.src = fallbackSrc;
         img.dataset.fallbackSrc = fallbackSrc;
+        this.setCardBackdropImage(fallbackSrc);
       }
       img.dataset.lazy = thumbnailUrl;
     } else {
       img.src = thumbnailUrl || fallbackSrc;
       if (fallbackSrc) {
         img.dataset.fallbackSrc = fallbackSrc;
+      }
+      if (!thumbnailUrl && fallbackSrc) {
+        this.setCardBackdropImage(fallbackSrc);
+      } else if (thumbnailUrl) {
+        this.setCardBackdropImage(thumbnailUrl);
       }
     }
 
@@ -408,10 +478,6 @@ export class VideoCard {
         return;
       }
 
-      if (img.dataset.thumbnailFailed || !thumbnailUrl) {
-        return;
-      }
-
       const fallbackAttr =
         (typeof img.dataset.fallbackSrc === "string"
           ? img.dataset.fallbackSrc.trim()
@@ -426,10 +492,20 @@ export class VideoCard {
         (currentSrc === fallbackAttr || currentSrc.endsWith(fallbackAttr));
 
       if (isFallback) {
+        this.setCardBackdropImage(fallbackAttr || currentSrc);
+      } else {
+        this.setCardBackdropImage(currentSrc);
+      }
+
+      if (img.dataset.thumbnailFailed || !thumbnailUrl) {
         return;
       }
 
       if ((img.naturalWidth === 0 && img.naturalHeight === 0) || !currentSrc) {
+        return;
+      }
+
+      if (isFallback) {
         return;
       }
 
@@ -447,6 +523,19 @@ export class VideoCard {
 
       if (img.dataset.thumbnailLoaded) {
         delete img.dataset.thumbnailLoaded;
+      }
+
+      const fallbackAttr =
+        (typeof img.dataset.fallbackSrc === "string"
+          ? img.dataset.fallbackSrc.trim()
+          : "") ||
+        fallbackSrc ||
+        "";
+
+      if (fallbackAttr) {
+        this.setCardBackdropImage(fallbackAttr);
+      } else {
+        this.setCardBackdropImage("");
       }
 
       img.removeEventListener("load", handleLoad);
