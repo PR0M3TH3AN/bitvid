@@ -982,7 +982,8 @@
   }
 
   .modal-sheet {
-    @apply bv-modal__panel relative my-0 w-full max-w-[90%] overflow-hidden lg:max-w-4xl;
+    @apply bv-modal__panel relative my-0 w-full overflow-hidden lg:max-w-4xl;
+    max-width: var(--modal-sheet-inline-max);
   }
 
   .modal-header {

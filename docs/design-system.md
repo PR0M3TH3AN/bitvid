@@ -286,6 +286,8 @@ For toggles:
 
 Sizing now comes from dedicated tokens: `max-w-modal` and `rounded-modal-xl` map to `--modal-max-width` and `--radius-modal-xl`, while icon controls reuse `--icon-size-lg`, `--icon-size-md`, and `--icon-button-ring-width` for consistent hit targets. Progress indicators pick up `--modal-progress-height`, and the player modal inherits `max-w-player` so hero metadata never exceeds `--layout-player-max-width`.
 
+Use `--modal-sheet-inline-max` when you need a sheet to breathe on narrow viewports without exceeding the standard modal width. The token resolves to the smaller of `90vw` and `--modal-max-width`, so base sheet templates hug the viewport while large-screen overrides (for example, `lg:max-w-4xl`) can still opt into broader layouts. Reach for `--modal-max-width` directly when the panel should stay anchored to the canonical modal width across breakpoints.
+
 Compose them together when mounting new modal portals. If you need a drawer or sheet, start from these primitives and adjust spacing/positioning via utilities.
 
 #### Modal Actions
