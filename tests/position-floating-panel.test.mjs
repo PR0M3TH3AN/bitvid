@@ -142,6 +142,7 @@ test("respects RTL alignment and clamps within the viewport", () => {
   const positioner = positionFloatingPanel(trigger, panel, {
     alignment: "start",
     viewportPadding: 16,
+    flip: false,
     styles,
   });
 
@@ -153,6 +154,69 @@ test("respects RTL alignment and clamps within the viewport", () => {
   assert.equal(panel.dataset.floatingPlacement, "bottom");
   assert.equal(panel.dataset.floatingDir, "rtl");
   assert.deepEqual(styles.getFallbackPosition(), { top: 72 + 8, left: 140 });
+
+  positioner.destroy();
+});
+
+test("shifts inline alignment to keep panels inside the viewport", () => {
+  const dom = new JSDOM(
+    `
+      <div class="popover">
+        <button id="trigger">Open</button>
+        <div id="panel" class="popover__panel" data-state="closed" hidden></div>
+      </div>
+    `,
+    { pretendToBeVisual: true },
+  );
+  const { window } = dom;
+  const { document } = window;
+
+  window.innerWidth = 320;
+  window.innerHeight = 320;
+
+  const trigger = document.getElementById("trigger");
+  const panel = document.getElementById("panel");
+
+  trigger.getBoundingClientRect = () => ({
+    top: 120,
+    bottom: 160,
+    left: 250,
+    right: 290,
+    width: 40,
+    height: 40,
+  });
+
+  panel.getBoundingClientRect = () => ({
+    top: 0,
+    bottom: 140,
+    left: 0,
+    right: 180,
+    width: 180,
+    height: 140,
+  });
+  Object.defineProperties(panel, {
+    offsetWidth: { value: 180 },
+    offsetHeight: { value: 140 },
+  });
+
+  const styles = createFloatingPanelStyles(panel);
+
+  const positioner = positionFloatingPanel(trigger, panel, {
+    alignment: "start",
+    viewportPadding: 16,
+    styles,
+  });
+
+  panel.hidden = false;
+  panel.dataset.state = "open";
+  positioner.update();
+
+  const position = styles.getFallbackPosition();
+  assert.ok(position.left >= 16, "panel should respect inline viewport padding");
+  assert.ok(
+    position.left + 180 <= 320 - 16,
+    "panel should fit within the viewport width",
+  );
 
   positioner.destroy();
 });
@@ -235,6 +299,67 @@ test("updates when scroll containers move the trigger", async () => {
 
   positioner.destroy();
   window.addEventListener = originalAddEventListener;
+});
+
+test("clamps inline overflow when the surface is wider than the viewport gutter", () => {
+  const dom = new JSDOM(
+    `
+      <div class="popover">
+        <button id="trigger">Open</button>
+        <div id="panel" class="popover__panel" data-state="closed" hidden></div>
+      </div>
+    `,
+    { pretendToBeVisual: true },
+  );
+  const { window } = dom;
+  const { document } = window;
+
+  window.innerWidth = 280;
+  window.innerHeight = 240;
+
+  const trigger = document.getElementById("trigger");
+  const panel = document.getElementById("panel");
+
+  trigger.getBoundingClientRect = () => ({
+    top: 80,
+    bottom: 120,
+    left: 220,
+    right: 260,
+    width: 40,
+    height: 40,
+  });
+
+  panel.getBoundingClientRect = () => ({
+    top: 0,
+    bottom: 160,
+    left: 0,
+    right: 260,
+    width: 260,
+    height: 160,
+  });
+  Object.defineProperties(panel, {
+    offsetWidth: { value: 260 },
+    offsetHeight: { value: 160 },
+  });
+
+  const styles = createFloatingPanelStyles(panel);
+
+  const positioner = positionFloatingPanel(trigger, panel, {
+    alignment: "start",
+    viewportPadding: 12,
+    flip: false,
+    styles,
+  });
+
+  panel.hidden = false;
+  panel.dataset.state = "open";
+  positioner.update();
+
+  const position = styles.getFallbackPosition();
+  assert.equal(position.left, 12);
+  assert.ok(position.left >= 12, "panel should clamp to the viewport padding");
+
+  positioner.destroy();
 });
 
 test("prefers anchor positioning when supported", () => {

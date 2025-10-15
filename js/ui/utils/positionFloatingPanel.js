@@ -53,6 +53,47 @@ function clamp(value, min, max) {
   return value;
 }
 
+function uniquePush(list, value) {
+  if (!value || list.includes(value)) {
+    return;
+  }
+  list.push(value);
+}
+
+function getAlignmentsToTry({ placement, preferred, fallback }) {
+  const values = [];
+  uniquePush(values, preferred);
+  uniquePush(values, fallback);
+  if (placement === "top" || placement === "bottom" || placement === "left" || placement === "right") {
+    uniquePush(values, "center");
+    uniquePush(values, "start");
+    uniquePush(values, "end");
+  }
+  return values;
+}
+
+function measureViewportOverflow({
+  top,
+  left,
+  panelWidth,
+  panelHeight,
+  viewport,
+  padding,
+}) {
+  const inlineStart = Math.max(padding - left, 0);
+  const inlineEnd = Math.max(left + panelWidth - (viewport.width - padding), 0);
+  const blockStart = Math.max(padding - top, 0);
+  const blockEnd = Math.max(top + panelHeight - (viewport.height - padding), 0);
+  const total = inlineStart + inlineEnd + blockStart + blockEnd;
+  return {
+    inlineStart,
+    inlineEnd,
+    blockStart,
+    blockEnd,
+    total,
+  };
+}
+
 function computeAlignmentX({
   alignment,
   anchorRect,
@@ -221,6 +262,8 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
 
   const state = {
     lastSize: { width: 0, height: 0 },
+    lastPlacement: null,
+    lastAlignment: null,
     cleanup: [],
   };
 
@@ -235,12 +278,24 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
   styles.setDirection(rtl ? "rtl" : "ltr");
   styles.setMode(anchorSupported ? "anchor" : "fallback");
   styles.setPlacement(config.placement);
+  state.lastPlacement = styles.getPlacement();
+  state.lastAlignment = styles.getAlignment();
 
-  const applyPosition = ({ top, left, placement }) => {
+  const applyPosition = ({ top, left, placement, alignment }) => {
+    const resolvedAlignment = alignment || config.alignment;
     styles.setPlacement(placement);
+    styles.setAlignment(resolvedAlignment);
     styles.setFallbackPosition({ top, left });
+    state.lastPlacement = placement;
+    state.lastAlignment = resolvedAlignment;
     if (typeof config.onUpdate === "function") {
-      config.onUpdate({ top, left, placement, alignment: config.alignment, rtl });
+      config.onUpdate({
+        top,
+        left,
+        placement,
+        alignment: resolvedAlignment,
+        rtl,
+      });
     }
   };
 
@@ -263,53 +318,84 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
 
     const viewport = getViewportSize(windowRef, documentRef);
 
-    const placementsToTry = [config.placement];
-    if (config.flip !== false) {
-      const opposite = OPPOSITE_PLACEMENT[config.placement];
-      if (opposite) {
-        placementsToTry.push(opposite);
+    const placementsToTry = [];
+    const pushPlacement = (value) => {
+      if (value && !placementsToTry.includes(value)) {
+        placementsToTry.push(value);
       }
-      if (config.placement === "bottom" || config.placement === "top") {
-        placementsToTry.push("right", "left");
+    };
+    pushPlacement(state.lastPlacement || config.placement);
+    if (config.flip !== false) {
+      const initial = state.lastPlacement || config.placement;
+      const opposite = OPPOSITE_PLACEMENT[initial];
+      if (opposite) {
+        pushPlacement(opposite);
+      }
+      if (initial === "bottom" || initial === "top") {
+        pushPlacement("right");
+        pushPlacement("left");
       } else {
-        placementsToTry.push("bottom", "top");
+        pushPlacement("bottom");
+        pushPlacement("top");
       }
     }
 
-    let chosenPlacement = config.placement;
+    let chosenPlacement = state.lastPlacement || config.placement;
+    let chosenAlignment = state.lastAlignment || config.alignment;
     let chosenPosition = computePosition({
       placement: chosenPlacement,
-      alignment: config.alignment,
+      alignment: chosenAlignment,
       anchorRect,
       panelSize: [panelWidth, panelHeight],
       offset: config.offset,
       rtl,
     });
 
-    const fitsViewport = ({ top, left }) => {
-      const withinVertical =
-        top >= config.viewportPadding &&
-        top + panelHeight <= viewport.height - config.viewportPadding;
-      const withinHorizontal =
-        left >= config.viewportPadding &&
-        left + panelWidth <= viewport.width - config.viewportPadding;
-      return withinVertical && withinHorizontal;
-    };
+    let bestOverflow = measureViewportOverflow({
+      top: chosenPosition.top,
+      left: chosenPosition.left,
+      panelWidth,
+      panelHeight,
+      viewport,
+      padding: config.viewportPadding,
+    });
 
-    for (const placement of placementsToTry) {
-      const position = computePosition({
+    outer: for (const placement of placementsToTry) {
+      const alignmentsToTry = getAlignmentsToTry({
         placement,
-        alignment: config.alignment,
-        anchorRect,
-        panelSize: [panelWidth, panelHeight],
-        offset: config.offset,
-        rtl,
+        preferred: state.lastAlignment || config.alignment,
+        fallback: config.alignment,
       });
 
-      if (fitsViewport(position)) {
-        chosenPlacement = placement;
-        chosenPosition = position;
-        break;
+      for (const alignment of alignmentsToTry) {
+        const position = computePosition({
+          placement,
+          alignment,
+          anchorRect,
+          panelSize: [panelWidth, panelHeight],
+          offset: config.offset,
+          rtl,
+        });
+
+        const overflow = measureViewportOverflow({
+          top: position.top,
+          left: position.left,
+          panelWidth,
+          panelHeight,
+          viewport,
+          padding: config.viewportPadding,
+        });
+
+        if (overflow.total < bestOverflow.total) {
+          bestOverflow = overflow;
+          chosenPlacement = placement;
+          chosenAlignment = alignment;
+          chosenPosition = position;
+        }
+
+        if (overflow.total === 0) {
+          break outer;
+        }
       }
     }
 
@@ -338,7 +424,12 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
       left = left - parentRect.left + scrollLeft;
     }
 
-    applyPosition({ top, left, placement: chosenPlacement });
+    applyPosition({
+      top,
+      left,
+      placement: chosenPlacement,
+      alignment: chosenAlignment,
+    });
   };
 
   const handleScroll = () => update();
