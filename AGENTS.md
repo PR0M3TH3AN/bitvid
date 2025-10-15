@@ -18,6 +18,17 @@ This guide tells AI agents how to keep bitvid aligned with the current product d
 * **Runtime behavior:** Call `bitvidApp.playVideoWithFallback({ url, magnet })` in `js/app.js`. This function orchestrates URL probing and magnet fallback, delegating low-level stream handling to `js/services/playbackService.js`. `js/playbackUtils.js` now provides magnet/session helper utilities rather than the playback entry point itself.
 * **Content contract:** bitvid posts (Nostr kind `30078`) must include a `title` and at least one of `url` or `magnet`. Prefer to publish both along with optional `thumbnail`, `description`, and `mode` fields. When mirroring to NIP‑94 (`kind 1063`), copy the hosted URL and (optionally) the magnet so other clients can discover the same asset.
 
+## Styling & Theming Rules (token-first)
+
+* **Single source of truth:** All colors, spacing, radii, and typography decisions must flow through our design tokens; never reach for ad-hoc HEX/RGB values when a token exists.
+* **Theme scopes:** Tokens live at three levels—`core` (global primitives), `theme` (light/dark surface/background mappings), and `component` (contextual overrides). Additions must document their scope and consumers.
+* **Semantic tokens:** Maintain this canonical list: `bg`, `bg-muted`, `bg-raised`, `text`, `text-muted`, `border`, `border-strong`, `accent`, `accent-hover`, `accent-active`, `accent-muted`, `accent-contrast`, `danger`, `warning`, `success`, `info`, `overlay`, `overlay-strong`.
+* **Palette guidance:** Map semantic tokens to palette primitives defined in the CSS build pipeline; when a new primitive is needed, extend the palette once and remap consumers rather than hard-coding colors downstream.
+* **Icon contrast rule:** Icons and glyph-only buttons must meet a minimum 3:1 contrast ratio against their background; prefer `accent-contrast` or `text` tokens when in doubt.
+* **Accessibility expectations:** Default themes must satisfy WCAG 2.1 AA contrast ratios for text and controls, and preserve focus outlines sourced from the token set.
+* **Prohibitions:** Do not commit inline styles, `<font>` tags, or CSS variables whose values are literal colors; always reference the appropriate token variables.
+* **Theme toggling:** Implement new themes through token swaps only (e.g., toggling the `data-theme` attribute) and keep component logic agnostic to specific palette values. Document toggles alongside the [README CSS build pipeline](README.md#css-build-pipeline).
+
 ---
 
 ## 3. Magnet Handling — Do’s & Don’ts
