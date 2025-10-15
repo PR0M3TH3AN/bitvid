@@ -1218,7 +1218,7 @@ export class VideoCard {
     badge.className = ["badge", "url-health-badge"].join(" ");
 
     const variantMap = {
-      healthy: "info",
+      healthy: "success",
       offline: "critical",
       unknown: "neutral",
       timeout: "neutral",

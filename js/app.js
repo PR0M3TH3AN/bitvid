@@ -4193,7 +4193,7 @@ class Application {
     badgeEl.className = classes.join(" ");
 
     const variantMap = {
-      healthy: "info",
+      healthy: "success",
       offline: "critical",
       unknown: "neutral",
       timeout: "neutral",
