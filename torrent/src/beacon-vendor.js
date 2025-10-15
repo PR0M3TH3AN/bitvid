@@ -1,10 +1,15 @@
 import { createBeaconApp } from "../app.js";
 
-function resolveWebTorrent() {
-  const globalScope =
+function resolveGlobalScope() {
+  return (
     (typeof window !== "undefined" && window) ||
     (typeof globalThis !== "undefined" && globalThis) ||
-    null;
+    null
+  );
+}
+
+function resolveWebTorrent() {
+  const globalScope = resolveGlobalScope();
 
   if (globalScope && typeof globalScope.WebTorrent === "function") {
     return globalScope.WebTorrent;
