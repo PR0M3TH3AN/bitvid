@@ -17,15 +17,6 @@
 
 <script>
   (async () => {
-    const fallbackChannel = {
-      error: () => {},
-      warn: () => {},
-      info: () => {},
-      log: () => {},
-    };
-    const fallbackLogger = { dev: fallbackChannel, user: fallbackChannel };
-    const bitvidLogger =
-      (typeof window !== "undefined" && window.bitvidLogger) || fallbackLogger;
     try {
       // Fetch the markdown file (change path if needed)
       const response = await fetch("content/community-guidelines.md");
@@ -48,7 +39,7 @@
         hljs.highlightBlock(block);
       });
     } catch (err) {
-      bitvidLogger.user.error("Error loading community guidelines:", err);
+      console.error("Error loading community guidelines:", err);
       const container = document.getElementById("markdown-container");
       if (container) {
         container.innerHTML = `

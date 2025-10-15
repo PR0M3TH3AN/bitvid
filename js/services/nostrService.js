@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 import {
   nostrClient,
   convertEventToVideo,
@@ -54,7 +53,7 @@ class SimpleEventEmitter {
           try {
             this.logger(`nostrService listener for "${eventName}" threw`, error);
           } catch (logError) {
-            userLogger.warn("[nostrService] listener logger threw", logError);
+            console.warn("[nostrService] listener logger threw", logError);
           }
         }
       }
@@ -109,7 +108,7 @@ export class NostrService {
       try {
         this.logger(message, error);
       } catch (logError) {
-        userLogger.warn("[nostrService] logger threw", logError);
+        console.warn("[nostrService] logger threw", logError);
       }
     });
     this.videosMap = null;
@@ -119,7 +118,7 @@ export class NostrService {
     try {
       this.logger(...args);
     } catch (error) {
-      userLogger.warn("[nostrService] logger threw", error);
+      console.warn("[nostrService] logger threw", error);
     }
   }
 
@@ -165,7 +164,7 @@ export class NostrService {
       try {
         current.unsub();
       } catch (error) {
-        userLogger.warn("[nostrService] Failed to unsubscribe from video feed:", error);
+        console.warn("[nostrService] Failed to unsubscribe from video feed:", error);
       }
     }
     this.setVideoSubscription(null);
@@ -210,7 +209,7 @@ export class NostrService {
           return false;
         }
       } catch (error) {
-        userLogger.warn("[nostrService] isAuthorBlocked handler threw", error);
+        console.warn("[nostrService] isAuthorBlocked handler threw", error);
       }
     }
 
@@ -224,7 +223,7 @@ export class NostrService {
           return false;
         }
       } catch (error) {
-        userLogger.warn("[nostrService] access control check failed", error);
+        console.warn("[nostrService] access control check failed", error);
         return false;
       }
     }
@@ -255,7 +254,7 @@ export class NostrService {
     try {
       await this.accessControl.ensureReady();
     } catch (error) {
-      userLogger.warn(
+      console.warn(
         "[nostrService] Failed to ensure access control lists are ready:",
         error
       );
@@ -289,7 +288,7 @@ export class NostrService {
         try {
           onVideos(filtered, { reason });
         } catch (error) {
-          userLogger.warn("[nostrService] onVideos handler threw", error);
+          console.warn("[nostrService] onVideos handler threw", error);
         }
       }
       this.emit("videos:updated", { videos: filtered, reason });
@@ -319,7 +318,7 @@ export class NostrService {
       this.emit("videos:fetched", { videos: filtered });
       return filtered;
     } catch (error) {
-      userLogger.error("[nostrService] Failed to fetch videos:", error);
+      console.error("[nostrService] Failed to fetch videos:", error);
       return [];
     }
   }
@@ -363,11 +362,11 @@ export class NostrService {
           collected.set(video.id, video);
           this.nostrClient.allEvents.set(video.id, video);
         } catch (error) {
-          userLogger.warn("[nostrService] Failed to convert older event", error);
+          console.warn("[nostrService] Failed to convert older event", error);
         }
       }
     } catch (error) {
-      userLogger.error("[nostrService] Failed to load older videos:", error);
+      console.error("[nostrService] Failed to load older videos:", error);
       return [];
     }
 

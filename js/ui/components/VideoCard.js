@@ -1,7 +1,6 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
-import { userLogger } from "../../utils/logger.js";
 import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
 import {
   getPopupOffsetPx,
@@ -1568,7 +1567,7 @@ export class VideoCard {
         return typeof formatted === "string" ? formatted : "";
       } catch (error) {
         if (this.window?.console?.warn) {
-          this.window.userLogger.warn(
+          this.window.console.warn(
             "[VideoCard] formatTimeAgo formatter threw",
             error
           );

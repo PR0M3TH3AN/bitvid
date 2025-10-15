@@ -1,4 +1,3 @@
-import { devLogger, userLogger } from "./utils/logger.js";
 // js/index.js
 
 import { validateInstanceConfig } from "../config/validate-config.js";
@@ -54,7 +53,7 @@ function startApplication() {
   setApplicationReady(startupPromise);
 
   startupPromise.catch((error) => {
-    userLogger.error("Application failed to initialize:", error);
+    console.error("Application failed to initialize:", error);
   });
 
   return startupPromise;
@@ -150,9 +149,9 @@ async function loadModal(url) {
       applyDesignSystemAttributes(modalContainer);
       refreshThemeControls(modalContainer);
     }
-    devLogger.log(url, "loaded");
+    console.log(url, "loaded");
   } catch (err) {
-    userLogger.error(err);
+    console.error(err);
   }
 }
 
@@ -166,9 +165,9 @@ async function loadSidebar(url, containerId) {
       applyDesignSystemAttributes(container);
       refreshThemeControls(container);
     }
-    devLogger.log(url, "loaded into", containerId);
+    console.log(url, "loaded into", containerId);
   } catch (err) {
-    userLogger.error(err);
+    console.error(err);
   }
 }
 
@@ -182,9 +181,9 @@ async function loadDisclaimer(url, containerId) {
       applyDesignSystemAttributes(container);
       refreshThemeControls(container);
     }
-    devLogger.log(url, "disclaimer loaded into", containerId);
+    console.log(url, "disclaimer loaded into", containerId);
   } catch (err) {
-    userLogger.error(err);
+    console.error(err);
   }
 }
 
@@ -198,7 +197,7 @@ async function bootstrapInterface() {
     loadModal("components/bug-fix-form.html"),
   ]);
 
-  devLogger.log("Modals loaded.");
+  console.log("Modals loaded.");
 
   [
     "loginModal",
@@ -212,7 +211,7 @@ async function bootstrapInterface() {
   });
 
   await loadSidebar("components/sidebar.html", "sidebarContainer");
-  devLogger.log("Sidebar loaded.");
+  console.log("Sidebar loaded.");
 
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");
@@ -220,7 +219,7 @@ async function bootstrapInterface() {
     sidebar.setAttribute("data-footer-state", "collapsed");
   }
   if (!collapseToggle) {
-    userLogger.warn("Sidebar collapse toggle not found; skipping density controls.");
+    console.warn("Sidebar collapse toggle not found; skipping density controls.");
   }
 
   const mobileMenuBtn = document.getElementById("mobileMenuBtn");
@@ -242,7 +241,7 @@ async function bootstrapInterface() {
       }
       return storedValue === "true";
     } catch (error) {
-      userLogger.warn("Unable to read sidebar collapse state from storage:", error);
+      console.warn("Unable to read sidebar collapse state from storage:", error);
       return DEFAULT_SIDEBAR_COLLAPSED;
     }
   };
@@ -254,7 +253,7 @@ async function bootstrapInterface() {
         collapsed ? "true" : "false",
       );
     } catch (error) {
-      userLogger.warn("Unable to persist sidebar collapse state:", error);
+      console.warn("Unable to persist sidebar collapse state:", error);
     }
   };
 
@@ -470,11 +469,11 @@ async function bootstrapInterface() {
       sidebarModule.setupSidebarNavigation({ closeSidebar });
     }
   } catch (error) {
-    userLogger.error("Failed to set up sidebar navigation:", error);
+    console.error("Failed to set up sidebar navigation:", error);
   }
 
   await loadDisclaimer("components/disclaimer.html", "modalContainer");
-  devLogger.log("Disclaimer loaded.");
+  console.log("Disclaimer loaded.");
   prepareStaticModal({ id: "disclaimerModal" });
 
   const loginNavBtn = document.getElementById("loginButton");
@@ -539,13 +538,13 @@ async function initializeInterface() {
   try {
     await bootstrapInterface();
   } catch (error) {
-    userLogger.error("Failed to bootstrap bitvid interface:", error);
+    console.error("Failed to bootstrap bitvid interface:", error);
   }
 }
 
 function onDomReady() {
   initializeInterface().catch((error) => {
-    userLogger.error("Unhandled error during bitvid initialization:", error);
+    console.error("Unhandled error during bitvid initialization:", error);
   });
 }
 
@@ -677,12 +676,12 @@ function handleQueryParams() {
 }
 
 async function handleHashChange() {
-  devLogger.log("handleHashChange called, current hash =", window.location.hash);
+  console.log("handleHashChange called, current hash =", window.location.hash);
 
   try {
     await applicationReadyPromise;
   } catch (error) {
-    userLogger.warn(
+    console.warn(
       "Proceeding with hash handling despite application initialization failure:",
       error
     );
@@ -716,6 +715,6 @@ async function handleHashChange() {
       await initFn();
     }
   } catch (error) {
-    userLogger.error("Failed to handle hash change:", error);
+    console.error("Failed to handle hash change:", error);
   }
 }

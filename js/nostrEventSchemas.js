@@ -1,4 +1,3 @@
-import { userLogger } from "./utils/logger.js";
 import {
   ADMIN_LIST_NAMESPACE,
   isDevMode,
@@ -48,7 +47,7 @@ function ensureValidUtf8Content(value) {
       normalized = typeof stringified === "string" ? stringified : "";
     } catch (error) {
       if (isDevMode) {
-        userLogger.warn(
+        console.warn(
           "[nostrEventSchemas] Failed to serialize view event content:",
           error
         );
@@ -68,7 +67,7 @@ function ensureValidUtf8Content(value) {
       cachedUtf8Encoder.encode(normalized);
     } catch (error) {
       if (isDevMode) {
-        userLogger.warn(
+        console.warn(
           "[nostrEventSchemas] Dropping invalid UTF-8 characters from event content",
           error
         );
@@ -84,7 +83,7 @@ function ensureValidUtf8Content(value) {
         normalized = sanitized;
       } catch (encodeError) {
         if (isDevMode) {
-          userLogger.warn(
+          console.warn(
             "[nostrEventSchemas] Failed to normalize view event content; defaulting to empty string",
             encodeError
           );
@@ -837,7 +836,7 @@ export function buildAdminListEvent(listKey, { pubkey, created_at, hexPubkeys = 
   const schema = getNostrEventSchema(resolveAdminNoteType(listKey));
   if (!schema) {
     if (isDevMode) {
-      userLogger.warn(`[nostrEventSchemas] Unknown admin list key: ${listKey}`);
+      console.warn(`[nostrEventSchemas] Unknown admin list key: ${listKey}`);
     }
     return {
       kind: 30000,

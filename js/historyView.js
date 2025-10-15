@@ -1,4 +1,3 @@
-import { userLogger } from "./utils/logger.js";
 // js/historyView.js
 
 import watchHistoryService from "./watchHistoryService.js";
@@ -54,7 +53,7 @@ function resolveElement(selector) {
   try {
     return document.querySelector(selector);
   } catch (error) {
-    userLogger.warn("[historyView] Failed to query selector:", selector, error);
+    console.warn("[historyView] Failed to query selector:", selector, error);
     return null;
   }
 }
@@ -265,7 +264,7 @@ async function defaultRemoveHandler({
     }
   } catch (error) {
     if (isDevEnv) {
-      userLogger.warn("[historyView] Failed to update watch history list:", error);
+      console.warn("[historyView] Failed to update watch history list:", error);
     }
     throw error;
   }
@@ -308,7 +307,7 @@ function writePreference(key, value) {
     storage.setItem(key, value);
   } catch (error) {
     if (isDevEnv) {
-      userLogger.warn("[historyView] Failed to persist preference:", error);
+      console.warn("[historyView] Failed to persist preference:", error);
     }
   }
 }
@@ -733,7 +732,7 @@ export function createWatchHistoryRenderer(config = {}) {
         unsubscribe();
       } catch (error) {
         if (isDevEnv) {
-          userLogger.warn(
+          console.warn(
             "[historyView] Failed to unsubscribe from watch history event:",
             error
           );
@@ -1134,7 +1133,7 @@ export function createWatchHistoryRenderer(config = {}) {
           return result.trim();
         }
       } catch (error) {
-        userLogger.warn(
+        console.warn(
           "[historyView] Failed to resolve actor via getActor:",
           error
         );
@@ -1178,7 +1177,7 @@ export function createWatchHistoryRenderer(config = {}) {
             watchHistoryService.getLocalMetadata(pointerKeyValue) || null;
         } catch (error) {
           if (isDevEnv) {
-            userLogger.warn(
+            console.warn(
               "[historyView] Failed to read stored metadata for pointer:",
               pointerKeyValue,
               error
@@ -1214,7 +1213,7 @@ export function createWatchHistoryRenderer(config = {}) {
             });
           } catch (error) {
             if (isDevEnv) {
-              userLogger.warn(
+              console.warn(
                 "[historyView] Failed to persist metadata for pointer:",
                 pointerKeyValue,
                 error
@@ -1228,7 +1227,7 @@ export function createWatchHistoryRenderer(config = {}) {
             watchHistoryService.removeLocalMetadata(pointerKeyValue);
           } catch (error) {
             if (isDevEnv) {
-              userLogger.warn(
+              console.warn(
                 "[historyView] Failed to remove cached metadata for pointer:",
                 pointerKeyValue,
                 error
@@ -1269,7 +1268,7 @@ export function createWatchHistoryRenderer(config = {}) {
     } catch (error) {
       state.isRendering = false;
       if (isDevEnv) {
-        userLogger.warn("[historyView] Failed to hydrate batch:", error);
+        console.warn("[historyView] Failed to hydrate batch:", error);
       }
       return;
     }
@@ -1442,7 +1441,7 @@ export function createWatchHistoryRenderer(config = {}) {
             watchHistoryService.clearLocalMetadata?.();
           } catch (error) {
             if (isDevEnv) {
-              userLogger.warn(
+              console.warn(
                 "[historyView] Failed to clear stored metadata while resetting progress:",
                 error
               );
@@ -1485,7 +1484,7 @@ export function createWatchHistoryRenderer(config = {}) {
           const app = getAppInstance();
           app?.showError?.("Failed to publish watch history. Try again later.");
           if (isDevEnv) {
-            userLogger.warn("[historyView] Republish failed:", error);
+            console.warn("[historyView] Republish failed:", error);
           }
         }
       };
@@ -1561,7 +1560,7 @@ export function createWatchHistoryRenderer(config = {}) {
         }
       } catch (error) {
         if (isDevEnv) {
-          userLogger.warn(
+          console.warn(
             "[historyView] Failed to set metadata preference:",
             error
           );
@@ -1577,7 +1576,7 @@ export function createWatchHistoryRenderer(config = {}) {
           watchHistoryService.clearLocalMetadata?.();
         } catch (error) {
           if (isDevEnv) {
-            userLogger.warn(
+            console.warn(
               "[historyView] Failed to clear stored metadata after disabling preference:",
               error
             );
@@ -1910,7 +1909,7 @@ export function createWatchHistoryRenderer(config = {}) {
         watchHistoryService.removeLocalMetadata?.(pointerKeyValue);
       } catch (error) {
         if (isDevEnv) {
-          userLogger.warn(
+          console.warn(
             "[historyView] Failed to drop cached metadata for pointer:",
             pointerKeyValue,
             error
@@ -1949,7 +1948,7 @@ export function createWatchHistoryRenderer(config = {}) {
           app?.showError?.("Failed to remove from history. Reloading list.");
         }
         if (isDevEnv) {
-          userLogger.warn("[historyView] Removal failed:", error);
+          console.warn("[historyView] Removal failed:", error);
         }
       } finally {
         if (parentDay instanceof HTMLElement) {
@@ -1960,7 +1959,7 @@ export function createWatchHistoryRenderer(config = {}) {
             await this.refresh({ force: true });
           } catch (error) {
             if (isDevEnv) {
-              userLogger.warn(
+              console.warn(
                 "[historyView] Failed to refresh watch history after removal:",
                 error
               );

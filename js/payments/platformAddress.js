@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 // js/payments/platformAddress.js
 
 import { PLATFORM_LUD16_OVERRIDE, ADMIN_SUPER_NPUB } from "../config.js";
@@ -107,7 +106,7 @@ const nostrToolsInitializationFailure =
   __platformNostrToolsBootstrap.failure || null;
 
 if (!cachedNostrTools && nostrToolsInitializationFailure) {
-  userLogger.warn(
+  console.warn(
     "[platformAddress] nostr-tools helpers unavailable after bootstrap.",
     nostrToolsInitializationFailure
   );
@@ -138,7 +137,7 @@ async function ensureNostrTools() {
     const result = await nostrToolsReadySource;
     rememberNostrTools(result);
   } catch (error) {
-    userLogger.warn(
+    console.warn(
       "[platformAddress] Failed to resolve nostr-tools helpers.",
       error
     );
@@ -199,7 +198,7 @@ function decodeAdminPubkey() {
         }
       }
     } catch (error) {
-      userLogger.warn("[platformAddress] Failed to decode ADMIN_SUPER_NPUB", error);
+      console.warn("[platformAddress] Failed to decode ADMIN_SUPER_NPUB", error);
     }
   }
 
@@ -234,7 +233,7 @@ async function fetchAdminMetadata(adminPubkey) {
   try {
     pool = await nostrClient.ensurePool();
   } catch (error) {
-    userLogger.warn("[platformAddress] Failed to initialize Nostr pool", error);
+    console.warn("[platformAddress] Failed to initialize Nostr pool", error);
     return null;
   }
 
@@ -246,7 +245,7 @@ async function fetchAdminMetadata(adminPubkey) {
     ? nostrClient.relays
     : [];
   if (relayUrls.length === 0) {
-    userLogger.warn("[platformAddress] Nostr client is not ready.");
+    console.warn("[platformAddress] Nostr client is not ready.");
     return null;
   }
 
@@ -287,7 +286,7 @@ async function fetchAdminMetadata(adminPubkey) {
 
     return lightningAddress || null;
   } catch (error) {
-    userLogger.warn("[platformAddress] Failed to fetch admin metadata", error);
+    console.warn("[platformAddress] Failed to fetch admin metadata", error);
     return null;
   }
 }

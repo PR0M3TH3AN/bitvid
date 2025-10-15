@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 import { escapeHTML } from '../utils/domUtils.js';
 
 /**
@@ -493,7 +492,7 @@ export function parseRelayList(relayList = '') {
     try {
       relays.push(new URL(trimmed).toString());
     } catch (error) {
-      userLogger.warn('[zapthreads] ignored invalid relay input', trimmed, error);
+      console.warn('[zapthreads] ignored invalid relay input', trimmed, error);
     }
   }
 
@@ -1162,7 +1161,7 @@ export async function initZapthreadsEmbed({
         try {
           callback();
         } catch (error) {
-          userLogger.error('[zapthreads] cleanup failed', error);
+          console.error('[zapthreads] cleanup failed', error);
         }
       });
       disposeCallbacks.clear();
@@ -1195,7 +1194,7 @@ export async function initZapthreadsEmbed({
       try {
         currentSubscription.close();
       } catch (error) {
-        userLogger.error('[zapthreads] failed to close subscription', error);
+        console.error('[zapthreads] failed to close subscription', error);
       }
     }
     currentSubscription = null;
@@ -1277,7 +1276,7 @@ export async function initZapthreadsEmbed({
       try {
         callback();
       } catch (error) {
-        userLogger.error('[zapthreads] cleanup failed', error);
+        console.error('[zapthreads] cleanup failed', error);
       }
     });
     disposeCallbacks.clear();

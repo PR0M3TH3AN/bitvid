@@ -1,6 +1,5 @@
 import { createCarousel, advanceSlide, destroyCarousel } from './carousel.js';
 import { mountProgressBar } from './progressBar.js';
-import { userLogger } from "../utils/logger.js";
 import { initZapthreadsEmbed as defaultInitZapthreadsEmbed } from './zapthreadsEmbed.js';
 
 const CAROUSEL_AUTOPLAY_INTERVAL = 8000;
@@ -500,7 +499,7 @@ function initializeZapthreads({ registerCleanup, isDestroyed, initZapthreadsEmbe
               try {
                 dispose();
               } catch (error) {
-                userLogger.error('[blog] zapthreads cleanup failed', error);
+                console.error('[blog] zapthreads cleanup failed', error);
               }
               return;
             }
@@ -508,12 +507,12 @@ function initializeZapthreads({ registerCleanup, isDestroyed, initZapthreadsEmbe
               try {
                 dispose();
               } catch (error) {
-                userLogger.error('[blog] zapthreads cleanup failed', error);
+                console.error('[blog] zapthreads cleanup failed', error);
               }
             });
           })
           .catch((error) => {
-            userLogger.error('[blog] failed to initialise zapthreads embed', error);
+            console.error('[blog] failed to initialise zapthreads embed', error);
           });
         return;
       }
@@ -523,7 +522,7 @@ function initializeZapthreads({ registerCleanup, isDestroyed, initZapthreadsEmbe
           try {
             maybeDispose();
           } catch (error) {
-            userLogger.error('[blog] zapthreads cleanup failed', error);
+            console.error('[blog] zapthreads cleanup failed', error);
           }
           return;
         }
@@ -531,12 +530,12 @@ function initializeZapthreads({ registerCleanup, isDestroyed, initZapthreadsEmbe
           try {
             maybeDispose();
           } catch (error) {
-            userLogger.error('[blog] zapthreads cleanup failed', error);
+            console.error('[blog] zapthreads cleanup failed', error);
           }
         });
       }
     } catch (error) {
-      userLogger.error('[blog] failed to start zapthreads embed', error);
+      console.error('[blog] failed to start zapthreads embed', error);
     }
   });
 }
@@ -556,7 +555,7 @@ function mountBlogApp({ initZapthreadsEmbed = defaultInitZapthreadsEmbed } = {})
       try {
         callback();
       } catch (error) {
-        userLogger.error('[blog] cleanup callback failed', error);
+        console.error('[blog] cleanup callback failed', error);
       }
       return () => {};
     }
@@ -575,7 +574,7 @@ function mountBlogApp({ initZapthreadsEmbed = defaultInitZapthreadsEmbed } = {})
       try {
         callback();
       } catch (error) {
-        userLogger.error('[blog] cleanup callback failed', error);
+        console.error('[blog] cleanup callback failed', error);
       }
     });
     runtime.cleanupCallbacks.clear();
@@ -757,3 +756,4 @@ export function teardownBlog() {
     activeTeardown();
   }
 }
+

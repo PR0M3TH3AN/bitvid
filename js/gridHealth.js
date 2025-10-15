@@ -1,7 +1,6 @@
 import { createCardObserver } from "./dom/cardObserver.js";
 import { infoHashFromMagnet } from "./magnets.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
-import { userLogger } from "./utils/logger.js";
 import { TorrentClient, torrentClient } from "./webtorrent.js";
 
 const badgeUpdateListeners = new Set();
@@ -18,7 +17,7 @@ function notifyBadgeUpdate(payload) {
     try {
       listener(payload);
     } catch (err) {
-      userLogger.warn("[gridHealth] badge listener failed", err);
+      console.warn("[gridHealth] badge listener failed", err);
     }
   });
 }
@@ -582,7 +581,7 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
       setBadge(card, "unhealthy", result);
     })
     .catch((err) => {
-      userLogger.warn("[gridHealth] probe failed", err);
+      console.warn("[gridHealth] probe failed", err);
       pendingByCard.delete(card);
       if (!card.isConnected) {
         return;

@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 // js/services/authService.js
 
 import {
@@ -95,7 +94,7 @@ export default class AuthService {
       try {
         this.logger(message, error);
       } catch (logError) {
-        userLogger.warn("[AuthService] logger threw", logError);
+        console.warn("[AuthService] logger threw", logError);
       }
     });
   }
@@ -104,7 +103,7 @@ export default class AuthService {
     try {
       this.logger(...args);
     } catch (error) {
-      userLogger.warn("[AuthService] logger threw", error);
+      console.warn("[AuthService] logger threw", error);
     }
   }
 

@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 // js/payments/zapSplit.js
 
 import { ADMIN_SUPER_NPUB } from "../config.js";
@@ -125,7 +124,7 @@ let cachedNostrTools = __zapNostrToolsBootstrap.toolkit || null;
 const nostrToolsInitializationFailure = __zapNostrToolsBootstrap.failure || null;
 
 if (!cachedNostrTools && nostrToolsInitializationFailure) {
-  userLogger.warn(
+  console.warn(
     "[zapSplit] nostr-tools helpers unavailable after bootstrap.",
     nostrToolsInitializationFailure
   );
@@ -156,7 +155,7 @@ async function ensureNostrTools() {
     const result = await nostrToolsReadySource;
     rememberNostrTools(result);
   } catch (error) {
-    userLogger.warn("[zapSplit] Failed to resolve nostr-tools helpers.", error);
+    console.warn("[zapSplit] Failed to resolve nostr-tools helpers.", error);
   }
   if (!cachedNostrTools) {
     rememberNostrTools(readToolkitFromScope());

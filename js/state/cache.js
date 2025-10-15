@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 import {
   readUrlHealthFromStorage,
   removeUrlHealthFromStorage,
@@ -188,7 +187,7 @@ export function readSavedProfilesPayloadFromStorage() {
     }
     return parsed;
   } catch (error) {
-    userLogger.warn(
+    console.warn(
       "[cache.readSavedProfilesPayloadFromStorage] Failed to parse payload:",
       error
     );
@@ -211,12 +210,12 @@ function writeSavedProfilesPayloadToStorage(payload) {
         error.code === 22 ||
         error.code === 1014);
     if (isQuotaError) {
-      userLogger.warn(
+      console.warn(
         "[cache.writeSavedProfilesPayloadToStorage] Storage quota exceeded; keeping in-memory copy only.",
         error
       );
     } else {
-      userLogger.warn(
+      console.warn(
         "[cache.writeSavedProfilesPayloadToStorage] Failed to persist saved profiles:",
         error
       );
@@ -233,7 +232,7 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
     try {
       localStorage.removeItem(SAVED_PROFILES_STORAGE_KEY);
     } catch (error) {
-      userLogger.warn(
+      console.warn(
         "[cache.persistSavedProfiles] Failed to remove empty payload:",
         error
       );
@@ -350,7 +349,7 @@ export function loadSavedProfilesFromStorage() {
       needsRewrite = true;
     }
   } catch (error) {
-    userLogger.warn("[cache.loadSavedProfilesFromStorage] Failed to parse payload:", error);
+    console.warn("[cache.loadSavedProfilesFromStorage] Failed to parse payload:", error);
     needsRewrite = true;
   }
 
@@ -494,7 +493,7 @@ export function loadProfileCacheFromStorage() {
       });
     }
   } catch (error) {
-    userLogger.warn("[cache.loadProfileCacheFromStorage] Failed to parse payload:", error);
+    console.warn("[cache.loadProfileCacheFromStorage] Failed to parse payload:", error);
   }
 }
 
@@ -533,7 +532,7 @@ export function persistProfileCacheToStorage() {
     try {
       localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY);
     } catch (error) {
-      userLogger.warn(
+      console.warn(
         "[cache.persistProfileCacheToStorage] Failed to clear storage:",
         error
       );
@@ -544,7 +543,7 @@ export function persistProfileCacheToStorage() {
   try {
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
-    userLogger.warn("[cache.persistProfileCacheToStorage] Failed to persist cache:", error);
+    console.warn("[cache.persistProfileCacheToStorage] Failed to persist cache:", error);
   }
 }
 

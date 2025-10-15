@@ -1,5 +1,4 @@
 import { isDevMode } from "../config.js";
-import { userLogger } from "../utils/logger.js";
 import {
   normalizePointerInput,
   pointerKey as derivePointerKey,
@@ -24,7 +23,7 @@ function safeInvoke(callback, payload) {
     callback(payload);
   } catch (error) {
     if (isDevMode) {
-      userLogger.warn(
+      console.warn(
         "[watchHistoryController] onStateChange handler failed:",
         error,
       );
@@ -106,7 +105,7 @@ export default class WatchHistoryController {
       return derivePointerKey(normalized) || "";
     } catch (error) {
       if (isDevMode) {
-        userLogger.warn(
+        console.warn(
           "[watchHistoryController] Failed to derive pointer key:",
           error,
         );
@@ -323,7 +322,7 @@ export default class WatchHistoryController {
         });
       } catch (updateError) {
         if (isDevMode) {
-          userLogger.warn(
+          console.warn(
             "[watchHistoryController] Failed to update local watch history list:",
             updateError,
           );
@@ -357,13 +356,13 @@ export default class WatchHistoryController {
       const result = this.watchHistoryService.snapshot(undefined, { reason });
       return Promise.resolve(result).catch((error) => {
         if (isDevMode) {
-          userLogger.warn(`[${context}] Watch history flush failed:`, error);
+          console.warn(`[${context}] Watch history flush failed:`, error);
         }
         throw error;
       });
     } catch (error) {
       if (isDevMode) {
-        userLogger.warn(`[${context}] Failed to queue watch history flush:`, error);
+        console.warn(`[${context}] Failed to queue watch history flush:`, error);
       }
       return Promise.reject(error);
     }

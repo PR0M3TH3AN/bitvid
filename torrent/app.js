@@ -1,6 +1,5 @@
 import { createBeaconToast } from "./ui/toastService.js";
 import { createTorrentTable } from "./ui/torrentTable.js";
-import { devLogger, userLogger } from "../js/utils/logger.js";
 
 const VERSION = "2.0";
 
@@ -94,7 +93,7 @@ function prepareTorrentFiles(torrent) {
         torrent.fileName = `${name}.torrent`;
       }
     } catch (error) {
-      userLogger.warn("[beacon] Failed to create torrent blob URL", error);
+      console.warn("[beacon] Failed to create torrent blob URL", error);
     }
   }
 }
@@ -403,7 +402,7 @@ export function createBeaconApp({
 
       file.getBlob((err, blob) => {
         if (err || !blob) {
-          userLogger.error("[beacon] Failed to get blob for file", file?.name, err);
+          console.error("[beacon] Failed to get blob for file", file?.name, err);
           toast.error("Failed to prepare file for download.");
           return;
         }
@@ -437,7 +436,7 @@ export function createBeaconApp({
           toast.success("Magnet URI copied to clipboard!");
         })
         .catch((error) => {
-          userLogger.error("[beacon] Clipboard error", error);
+          console.error("[beacon] Clipboard error", error);
           toast.error("Failed to copy magnet URI");
         });
       return;
@@ -454,7 +453,7 @@ export function createBeaconApp({
       documentRef.body.removeChild(textarea);
       toast.success("Magnet URI copied (fallback)!");
     } catch (error) {
-      userLogger.error("[beacon] Clipboard fallback error", error);
+      console.error("[beacon] Clipboard fallback error", error);
       toast.error("Failed to copy magnet URI");
     }
   }
@@ -466,7 +465,7 @@ export function createBeaconApp({
 
     torrent.destroy((error) => {
       if (error) {
-        userLogger.error("[beacon] Failed to destroy torrent", error);
+        console.error("[beacon] Failed to destroy torrent", error);
         toast.error("Failed to remove torrent");
       }
 
@@ -478,10 +477,10 @@ export function createBeaconApp({
   }
 
   function mount() {
-    devLogger.log(`[beacon] Starting beacon runtime v${VERSION}`);
+    console.log(`[beacon] Starting beacon runtime v${VERSION}`);
 
     if (!toast) {
-      userLogger.warn("[beacon] Toast service unavailable");
+      console.warn("[beacon] Toast service unavailable");
     }
 
     if (!WebTorrentClass.WEBRTC_SUPPORT) {
@@ -558,7 +557,7 @@ export function createBeaconApp({
     }
 
     const errorHandler = (error) => {
-      userLogger.error("[beacon] Torrent client error", error);
+      console.error("[beacon] Torrent client error", error);
       toast?.error(error?.message || String(error));
       setProcessing(false);
     };
@@ -605,7 +604,7 @@ export function createBeaconApp({
       try {
         task();
       } catch (error) {
-        userLogger.warn("[beacon] Cleanup task failed", error);
+        console.warn("[beacon] Cleanup task failed", error);
       }
     });
     cleanupTasks.length = 0;
@@ -615,7 +614,7 @@ export function createBeaconApp({
     try {
       client.destroy();
     } catch (error) {
-      userLogger.warn("[beacon] Failed to destroy client", error);
+      console.warn("[beacon] Failed to destroy client", error);
     }
   }
 

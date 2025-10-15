@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 const DEFAULT_CARD_SELECTOR = ".card[data-video-id]";
 
 function defaultIsCardVisible(entry) {
@@ -79,7 +78,7 @@ export function createCardObserver(options = {}) {
           return prepared;
         }
       } catch (err) {
-        userLogger.warn("[cardObserver] prepareEntries failed", err);
+        console.warn("[cardObserver] prepareEntries failed", err);
       }
     }
 
@@ -123,7 +122,7 @@ export function createCardObserver(options = {}) {
           state: state.customState,
         }));
       } catch (err) {
-        userLogger.warn("[cardObserver] isCardVisible failed", err);
+        console.warn("[cardObserver] isCardVisible failed", err);
         visible = false;
       }
 
@@ -143,7 +142,7 @@ export function createCardObserver(options = {}) {
           },
         });
       } catch (err) {
-        userLogger.warn("[cardObserver] onCardVisible failed", err);
+        console.warn("[cardObserver] onCardVisible failed", err);
       }
     });
   }
@@ -171,7 +170,7 @@ export function createCardObserver(options = {}) {
             context: { container },
           });
         } catch (err) {
-          userLogger.warn("[cardObserver] onCardRegister failed", err);
+          console.warn("[cardObserver] onCardRegister failed", err);
         }
       }
       state.observer.observe(card);

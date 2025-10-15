@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 import {
   loadR2Settings,
   saveR2Settings,
@@ -70,7 +69,7 @@ class R2Service {
       try {
         handler(detail);
       } catch (err) {
-        userLogger.error("[r2Service] Listener error for", event, err);
+        console.error("[r2Service] Listener error for", event, err);
       }
     }
   }
@@ -226,7 +225,7 @@ class R2Service {
       this.populateCloudflareSettingsInputs(settings);
       return settings;
     } catch (err) {
-      userLogger.error("Failed to load Cloudflare settings:", err);
+      console.error("Failed to load Cloudflare settings:", err);
       this.setSettings(createDefaultSettings());
       this.populateCloudflareSettingsInputs(this.getSettings());
       this.setCloudflareSettingsStatus(
@@ -286,7 +285,7 @@ class R2Service {
       }
       return true;
     } catch (err) {
-      userLogger.error("Failed to save Cloudflare settings:", err);
+      console.error("Failed to save Cloudflare settings:", err);
       if (!quiet) {
         this.setCloudflareSettingsStatus(
           "Failed to save settings. Check console for details.",
@@ -311,7 +310,7 @@ class R2Service {
       this.setCloudflareSettingsStatus("Settings cleared.", "success");
       return true;
     } catch (err) {
-      userLogger.error("Failed to clear Cloudflare settings:", err);
+      console.error("Failed to clear Cloudflare settings:", err);
       this.setCloudflareSettingsStatus("Failed to clear settings.", "error");
       return false;
     }
@@ -339,7 +338,7 @@ class R2Service {
     try {
       return deriveShortSubdomain(npub);
     } catch (err) {
-      userLogger.warn("Failed to derive short subdomain, falling back:", err);
+      console.warn("Failed to derive short subdomain, falling back:", err);
     }
 
     const base = String(npub || "user")
@@ -383,7 +382,7 @@ class R2Service {
             origins: corsOrigins,
           });
         } catch (err) {
-          userLogger.warn("Failed to refresh bucket configuration:", err);
+          console.warn("Failed to refresh bucket configuration:", err);
         }
       } else if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
         try {
@@ -398,7 +397,7 @@ class R2Service {
             origins: corsOrigins,
           });
         } catch (err) {
-          userLogger.warn("Failed to refresh bucket CORS via access keys:", err);
+          console.warn("Failed to refresh bucket CORS via access keys:", err);
         }
       }
       return {
@@ -445,7 +444,7 @@ class R2Service {
             origins: corsOrigins,
           });
         } catch (corsErr) {
-          userLogger.warn(
+          console.warn(
             "Failed to ensure R2 CORS rules via access keys. Configure the bucket's CORS policy manually if uploads continue to fail.",
             corsErr
           );
@@ -486,7 +485,7 @@ class R2Service {
         origins: corsOrigins,
       });
     } catch (err) {
-      userLogger.warn("Failed to apply R2 CORS rules:", err);
+      console.warn("Failed to apply R2 CORS rules:", err);
     }
 
     let publicBaseUrl = entry?.publicBaseUrl || "";
@@ -518,7 +517,7 @@ class R2Service {
               enabled: false,
             });
           } catch (disableErr) {
-            userLogger.warn("Failed to disable managed domain:", disableErr);
+            console.warn("Failed to disable managed domain:", disableErr);
           }
         } else {
           usedManagedFallback = true;
@@ -536,10 +535,10 @@ class R2Service {
               enabled: false,
             });
           } catch (disableErr) {
-            userLogger.warn("Failed to disable managed domain:", disableErr);
+            console.warn("Failed to disable managed domain:", disableErr);
           }
         } else {
-          userLogger.warn("Failed to attach custom domain, falling back:", err);
+          console.warn("Failed to attach custom domain, falling back:", err);
           usedManagedFallback = true;
           customDomainStatus = "error";
         }
@@ -700,7 +699,7 @@ class R2Service {
     try {
       bucketResult = await this.ensureBucketConfigForNpub(npub);
     } catch (err) {
-      userLogger.error("Failed to prepare R2 bucket:", err);
+      console.error("Failed to prepare R2 bucket:", err);
       this.setCloudflareUploadStatus(
         err?.message ? `Bucket setup failed: ${err.message}` : "Bucket setup failed.",
         "error"
@@ -761,7 +760,7 @@ class R2Service {
       let publishOutcome = true;
 
       if (typeof publishVideoNote !== "function") {
-        userLogger.warn(
+        console.warn(
           "publishVideoNote handler missing; skipping publish step."
         );
         publishOutcome = false;
@@ -806,7 +805,7 @@ class R2Service {
 
       return publishOutcome;
     } catch (err) {
-      userLogger.error("Cloudflare upload failed:", err);
+      console.error("Cloudflare upload failed:", err);
       this.setCloudflareUploadStatus(
         err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
         "error"
