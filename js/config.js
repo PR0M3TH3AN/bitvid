@@ -1,6 +1,7 @@
 // js/config.js
 
 import {
+  IS_DEV_MODE,
   ADMIN_SUPER_NPUB,
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
@@ -26,7 +27,12 @@ import {
   ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
 } from "../config/instance-config.js";
 
-export const isDevMode = true; // Set to false for production
+export const isDevMode = Boolean(IS_DEV_MODE);
+export { IS_DEV_MODE };
+
+if (typeof window !== "undefined") {
+  window.__BITVID_DEV_MODE__ = isDevMode;
+}
 
 // -----------------------------------------------------------------------------
 // Admin governance — production defaults rely on remote Nostr lists

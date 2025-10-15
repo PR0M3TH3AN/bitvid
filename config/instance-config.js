@@ -14,6 +14,16 @@
 // contributors can follow along.
 
 /**
+ * Whether the current deployment should enable developer-centric behavior.
+ *
+ * When `true`, bitvid surfaces extra logging, debug helpers, and experimental
+ * UI affordances intended for development environments. Set the value to
+ * `false` before deploying to production so that end users receive the stable
+ * experience. Downstream modules read this flag via `js/config.js`.
+ */
+export const IS_DEV_MODE = true;
+
+/**
  * The primary administrator for this bitvid instance.
  *
  * bitvid treats this Nostr public key (npub) as the "Super Admin". This user
