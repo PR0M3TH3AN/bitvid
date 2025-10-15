@@ -9,6 +9,7 @@ import {
 } from "./config.js";
 import { nostrClient } from "./nostr.js";
 import {
+import { devLogger, userLogger } from "./utils/logger.js";
   buildAdminListEvent,
   ADMIN_LIST_IDENTIFIERS,
 } from "./nostrEventSchemas.js";
@@ -150,8 +151,7 @@ function readJsonListFromStorage(key) {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : null;
   } catch (error) {
-    if (isDevMode) {
-      console.warn(`[adminListStore] Failed to parse legacy list for ${key}:`, error);
+    devLogger.warn(`[adminListStore] Failed to parse legacy list for ${key:`, error);
     }
     return null;
   }
@@ -198,8 +198,7 @@ function clearLegacyStorageFor(listKey) {
     try {
       localStorage.removeItem(key);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(`[adminListStore] Failed to clear legacy storage for ${key}:`, error);
+      devLogger.warn(`[adminListStore] Failed to clear legacy storage for ${key:`, error);
       }
     }
   }
@@ -244,9 +243,7 @@ function encodeHexToNpub(hex) {
   try {
     return window?.NostrTools?.nip19?.npubEncode(hex) || "";
   } catch (error) {
-    if (isDevMode) {
-      console.warn("Failed to encode hex pubkey to npub:", error);
-    }
+    devLogger.warn("Failed to encode hex pubkey to npub:", error);
     return "";
   }
 }
@@ -333,12 +330,10 @@ async function loadNostrList(identifier) {
       events = combined;
     }
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        `[adminListStore] Combined relay fetch failed for ${identifier}:`,
-        error
-      );
-    }
+    devLogger.warn(
+    `[adminListStore] Combined relay fetch failed for ${identifier}:`,
+    error
+    );
   }
 
   if (!events.length) {
@@ -348,12 +343,10 @@ async function loadNostrList(identifier) {
           const result = await nostrClient.pool.list([url], [filter]);
           return Array.isArray(result) ? result : [];
         } catch (error) {
-          if (isDevMode) {
-            console.warn(
-              `[adminListStore] Relay fetch failed for ${identifier} on ${url}:`,
-              error
-            );
-          }
+          devLogger.warn(
+          `[adminListStore] Relay fetch failed for ${identifier} on ${url}:`,
+          error
+          );
           return [];
         }
       })
@@ -394,12 +387,10 @@ function buildListEvent(listKey, npubs, actorHex) {
       try {
         return decodeNpubToHex(npub);
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            `[adminListStore] Failed to decode npub while publishing ${listKey}:`,
-            error
-          );
-        }
+        devLogger.warn(
+        `[adminListStore] Failed to decode npub while publishing ${listKey}:`,
+        error
+        );
         return "";
       }
     }).filter((hex) => !!hex))
@@ -412,9 +403,7 @@ function buildListEvent(listKey, npubs, actorHex) {
         hexPubkeys.push(superHex);
       }
     } catch (error) {
-      if (isDevMode) {
-        console.warn("Failed to ensure super admin presence:", error);
-      }
+      devLogger.warn("Failed to ensure super admin presence:", error);
     }
   }
 
@@ -457,12 +446,10 @@ function publishToRelay(url, signedEvent, listKey) {
             pub.on(eventName, handler);
             return true;
           } catch (error) {
-            if (isDevMode) {
-              console.warn(
-                `[adminListStore] Relay publish rejected ${eventName} listener:`,
-                error
-              );
-            }
+            devLogger.warn(
+            `[adminListStore] Relay publish rejected ${eventName} listener:`,
+            error
+            );
             return false;
           }
         };
@@ -500,7 +487,7 @@ function publishToRelay(url, signedEvent, listKey) {
     finalize(true);
   }).then((result) => {
     if (!result.success && isDevMode) {
-      console.warn(
+      userLogger.warn(
         `[adminListStore] Publish failed for ${listKey} on ${result.url}:`,
         result.error
       );
@@ -605,7 +592,7 @@ async function persistNostrState(actorNpub, updates = {}) {
 
 export async function loadAdminState() {
   if (ADMIN_LIST_MODE !== "nostr" && isDevMode) {
-    console.warn(
+    userLogger.warn(
       `[adminListStore] ADMIN_LIST_MODE "${ADMIN_LIST_MODE}" is deprecated. Defaulting to remote Nostr lists.`
     );
   }
@@ -614,7 +601,7 @@ export async function loadAdminState() {
   if (!hasAnyEntries(state)) {
     const legacy = loadLegacyAdminState();
     if (legacy && isDevMode) {
-      console.warn(
+      userLogger.warn(
         "[adminListStore] Ignoring legacy admin lists because remote mode is enforced. Publish them to Nostr to retain access.",
         legacy
       );
@@ -626,7 +613,7 @@ export async function loadAdminState() {
 
 export async function persistAdminState(actorNpub, updates) {
   if (ADMIN_LIST_MODE !== "nostr" && isDevMode) {
-    console.warn(
+    userLogger.warn(
       `[adminListStore] ADMIN_LIST_MODE "${ADMIN_LIST_MODE}" is deprecated. Remote lists are enforced.`
     );
   }

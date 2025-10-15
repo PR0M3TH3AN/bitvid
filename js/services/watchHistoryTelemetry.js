@@ -1,6 +1,7 @@
 import { isDevMode } from "../config.js";
 import { pointerArrayToKey } from "../utils/pointer.js";
 import {
+import { devLogger, userLogger } from "../utils/logger.js";
   ingestLocalViewEvent as defaultIngestLocalViewEvent,
 } from "../viewCounter.js";
 
@@ -108,12 +109,10 @@ export default class WatchHistoryTelemetry {
               try {
                 this.watchHistoryService?.clearLocalMetadata?.();
               } catch (error) {
-                if (isDevMode) {
-                  console.warn(
-                    "[watchHistoryTelemetry] Failed to clear cached metadata after toggle off:",
-                    error,
-                  );
-                }
+                devLogger.warn(
+                  "[watchHistoryTelemetry] Failed to clear cached metadata after toggle off:",
+                  error,
+                );
               }
             }
           },
@@ -122,12 +121,10 @@ export default class WatchHistoryTelemetry {
           this.watchHistoryPreferenceUnsubscribe = unsubscribe;
         }
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[watchHistoryTelemetry] Failed to subscribe to metadata preference changes:",
-            error,
-          );
-        }
+        devLogger.warn(
+          "[watchHistoryTelemetry] Failed to subscribe to metadata preference changes:",
+          error,
+        );
       }
     }
 
@@ -153,12 +150,10 @@ export default class WatchHistoryTelemetry {
         enabled = this.watchHistoryService.shouldStoreMetadata() !== false;
       }
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryTelemetry] Failed to read metadata settings:",
-          error,
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryTelemetry] Failed to read metadata settings:",
+        error,
+      );
       enabled = true;
     }
 
@@ -168,12 +163,10 @@ export default class WatchHistoryTelemetry {
       try {
         this.watchHistoryService?.clearLocalMetadata?.();
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[watchHistoryTelemetry] Failed to purge metadata cache while preference disabled:",
-            error,
-          );
-        }
+        devLogger.warn(
+          "[watchHistoryTelemetry] Failed to purge metadata cache while preference disabled:",
+          error,
+        );
       }
     }
 
@@ -205,13 +198,11 @@ export default class WatchHistoryTelemetry {
     try {
       this.watchHistoryService.setLocalMetadata(pointerInfo.key, metadata);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryTelemetry] Failed to persist local metadata for pointer:",
-          pointerInfo.key,
-          error,
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryTelemetry] Failed to persist local metadata for pointer:",
+        pointerInfo.key,
+        error,
+      );
     }
   }
 
@@ -227,13 +218,11 @@ export default class WatchHistoryTelemetry {
     try {
       this.watchHistoryService.removeLocalMetadata(pointerKey);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryTelemetry] Failed to remove cached metadata for pointer:",
-          pointerKey,
-          error,
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryTelemetry] Failed to remove cached metadata for pointer:",
+        pointerKey,
+        error,
+      );
     }
   }
 
@@ -277,12 +266,10 @@ export default class WatchHistoryTelemetry {
         try {
           state.videoEl.removeEventListener(eventName, handler);
         } catch (error) {
-          if (isDevMode) {
-            console.warn(
-              `[watchHistoryTelemetry] Failed to detach ${eventName} listener:`,
-              error,
-            );
-          }
+          devLogger.warn(
+          `[watchHistoryTelemetry] Failed to detach ${eventName} listener:`,
+          error,
+          );
         }
       }
     }
@@ -423,12 +410,10 @@ export default class WatchHistoryTelemetry {
             viewResult = { ok: false, error: "view-logging-unavailable" };
           }
         } catch (error) {
-          if (isDevMode) {
-            console.warn(
-              "[watchHistoryTelemetry] Exception while recording video view:",
-              error,
-            );
-          }
+          devLogger.warn(
+            "[watchHistoryTelemetry] Exception while recording video view:",
+            error,
+          );
         }
 
         const viewOk = !!viewResult?.ok;
@@ -451,27 +436,23 @@ export default class WatchHistoryTelemetry {
                 pointer: thresholdPointer,
               });
             } catch (error) {
-              if (isDevMode) {
-                console.warn(
-                  "[watchHistoryTelemetry] Failed to ingest local view event:",
-                  error,
-                );
-              }
+              devLogger.warn(
+                "[watchHistoryTelemetry] Failed to ingest local view event:",
+                error,
+              );
             }
           }
         } else if (isDevMode && viewResult) {
-          console.warn(
+          userLogger.warn(
             "[watchHistoryTelemetry] View event rejected by relays:",
             viewResult,
           );
         }
       })().catch((error) => {
-        if (isDevMode) {
-          console.warn(
-            "[watchHistoryTelemetry] Unexpected error while recording video view:",
-            error,
-          );
-        }
+        devLogger.warn(
+          "[watchHistoryTelemetry] Unexpected error while recording video view:",
+          error,
+        );
       });
     };
 
@@ -581,7 +562,7 @@ export default class WatchHistoryTelemetry {
       try {
         this.watchHistoryPreferenceUnsubscribe();
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[watchHistoryTelemetry] Failed to unsubscribe watch history preference:",
           error,
         );

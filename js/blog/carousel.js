@@ -1,3 +1,4 @@
+import { userLogger } from "../utils/logger.js";
 function toArray(value) {
   if (!value) {
     return [];
@@ -196,7 +197,7 @@ export function destroyCarousel(state) {
     try {
       dispose();
     } catch (error) {
-      console.warn('Failed to dispose carousel listener', error);
+      userLogger.warn('Failed to dispose carousel listener', error);
     }
   });
   state.cleanup = [];

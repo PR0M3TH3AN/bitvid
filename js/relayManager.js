@@ -2,6 +2,7 @@ import { isDevMode } from "./config.js";
 import { DEFAULT_RELAY_URLS, nostrClient } from "./nostr.js";
 import { buildRelayListEvent } from "./nostrEventSchemas.js";
 import {
+import { devLogger, userLogger } from "./utils/logger.js";
   publishEventToRelays,
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
@@ -537,17 +538,13 @@ class RelayPreferencesManager {
           } else {
             const reason = outcome.reason;
             if (reason?.code === "timeout") {
-              if (isDevMode) {
-                console.warn(
-                  `[relayManager] Relay ${reason.relay} timed out while loading relay list (${reason.timeoutMs}ms)`
-                );
-              }
-            } else if (isDevMode) {
-              console.warn(
-                `[relayManager] Relay ${reason?.relay || "unknown"} failed while loading relay list:`,
-                reason
+              devLogger.warn(
+              `[relayManager] Relay ${reason.relay} timed out while loading relay list (${reason.timeoutMs}ms)`
               );
-            }
+            } else devLogger.warn(
+ `[relayManager] Relay ${reason?.relay || "unknown"} failed while loading relay list:`,
+ reason
+ );
           }
         });
 
@@ -558,9 +555,7 @@ class RelayPreferencesManager {
         applyEvents(aggregated, { skipIfEmpty: true });
       })
       .catch((error) => {
-        if (isDevMode) {
-          console.warn("[relayManager] Background relay refresh failed", error);
-        }
+        devLogger.warn("[relayManager] Background relay refresh failed", error);
       });
 
     let fastResult = null;
@@ -571,14 +566,12 @@ class RelayPreferencesManager {
         if (error instanceof AggregateError) {
           error.errors?.forEach((err) => {
             if (err?.code === "timeout" && isDevMode) {
-              console.warn(
+              userLogger.warn(
                 `[relayManager] Relay ${err.relay} timed out while loading relay list (${err.timeoutMs}ms)`
               );
             }
           });
-        } else if (isDevMode) {
-          console.warn("[relayManager] Fast relay fetch failed", error);
-        }
+        } else devLogger.warn("[relayManager] Fast relay fetch failed", error);
       }
     }
 
@@ -657,7 +650,7 @@ class RelayPreferencesManager {
       if (publishError?.relayFailures?.length) {
         publishError.relayFailures.forEach(
           ({ url, error: relayError, reason }) => {
-            console.error(
+            userLogger.error(
               `[RelayPreferencesManager] Relay ${url} rejected relay list: ${reason}`,
               relayError || reason
             );
@@ -675,7 +668,7 @@ class RelayPreferencesManager {
             : relayError
             ? String(relayError)
             : "publish failed";
-        console.warn(
+        userLogger.warn(
           `[RelayPreferencesManager] Relay ${url} did not acknowledge relay list: ${reason}`,
           relayError
         );

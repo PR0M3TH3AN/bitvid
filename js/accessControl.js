@@ -8,6 +8,7 @@ import {
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
 } from "./config.js";
 import { loadAdminState, persistAdminState } from "./adminListStore.js";
+import { userLogger } from "./utils/logger.js";
 
 function normalizeNpub(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -126,7 +127,7 @@ class AccessControl {
 
     const operation = this._performRefresh();
     const tracked = operation.catch((error) => {
-      console.error("Failed to refresh admin lists:", error);
+      userLogger.error("Failed to refresh admin lists:", error);
       throw error;
     });
     this._refreshPromise = tracked;

@@ -1,6 +1,7 @@
 // js/config.js
 
 import {
+import { userLogger } from "./utils/logger.js";
   IS_DEV_MODE,
   ADMIN_SUPER_NPUB,
   ADMIN_DM_IMAGE_URL,
@@ -61,7 +62,7 @@ export function getWhitelistMode() {
     }
     return raw === "true";
   } catch (error) {
-    console.warn("Failed to read whitelist mode from storage:", error);
+    userLogger.warn("Failed to read whitelist mode from storage:", error);
     return DEFAULT_WHITELIST_ENABLED;
   }
 }
@@ -70,7 +71,7 @@ export function setWhitelistMode(enabled) {
   try {
     localStorage.setItem(WHITELIST_MODE_KEY, enabled ? "true" : "false");
   } catch (error) {
-    console.warn("Failed to persist whitelist mode to storage:", error);
+    userLogger.warn("Failed to persist whitelist mode to storage:", error);
   }
 }
 
