@@ -13,6 +13,10 @@ module.exports = {
   safelist: ["bv-logo__background"],
   theme: {
     extend: {
+      screens: {
+        xs: "30rem",
+        compact: "25rem",
+      },
       colors: {
         page: "var(--color-page)",
         "page-alt": "var(--color-page-alt)",

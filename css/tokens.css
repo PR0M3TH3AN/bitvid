@@ -136,6 +136,7 @@
   --blur-modal-backdrop: 28px;
   --blur-modal-alert: 14px;
   --blur-thumbnail-blur: 18px;
+  --modal-nav-backdrop-blur: 6px;
 
   --border-default: var(--color-border);
   --border-subtle: var(--color-border-subtle);
@@ -146,6 +147,8 @@
   --border-neutral-soft: var(--color-border-neutral-soft);
   --border-info-soft: var(--color-border-info-soft);
   --border-sidebar-strong: var(--color-border-sidebar-strong);
+  --border-width-hairline: 1px;
+  --border-width-fine: 0.5px;
 
   --text-primary: var(--color-text);
   --text-inverse: var(--color-text-strong);
@@ -349,6 +352,13 @@
   --blog-carousel-progress-radius: var(--progress-radius);
   --blog-carousel-progress-track: var(--color-border-translucent);
   --blog-carousel-progress-active: var(--color-blog-purple-500);
+  --blog-loader-border-width: 6px;
+  --blog-loader-dimension-lg: 92px;
+  --blog-loader-dimension-md: 64px;
+  --blog-theme-toggle-shadow-offset: 6px;
+  --blog-theme-toggle-shadow: inset calc(var(--blog-theme-toggle-shadow-offset) * -1)
+      calc(var(--blog-theme-toggle-shadow-offset) * -1)
+      var(--border-width-hairline) var(--border-width-hairline) var(--color-card);
 
   /* Spacing scale */
   --space-4xs: 0.0625rem;
@@ -392,6 +402,8 @@
   --status-log-min-height: 5rem;
   --layout-player-max-width: 68.75rem;
   --layout-docs-max-width: 92.5rem;
+  --layout-blog-max-width: 46.875rem;
+  --blog-top-note-image-height: 12.5rem;
   --icon-size-sm: var(--font-size-lg);
   --icon-size-md: var(--space-md-plus);
   --icon-size-lg: var(--space-xl-plus);
@@ -399,6 +411,7 @@
   --form-textarea-min-height: 8rem;
   --scrollbar-thin-width: 0.4rem;
   --modal-progress-height: calc(var(--space-3xs) * 3);
+  --video-modal-action-min-width: 2.75rem;
   --outline-thick-width: 0.1875rem;
   --icon-button-ring-width: var(--outline-thick-width);
 
@@ -407,7 +420,15 @@
   --form-select-icon-gap: var(--space-xs-snug);
   --form-select-icon-hit-area: var(--space-xl-plus);
   --form-select-icon-size: 0.6rem;
+  --form-select-divider-width: var(--border-width-hairline);
   --form-checkbox-checkmark-offset: calc(var(--space-3xs) * -1);
+
+  /* Utility measurements */
+  --offscreen-offset: -9999px;
+
+  /* Motion */
+  --motion-card-enter-translate: var(--space-xs);
+  --motion-fade-in-translate: var(--space-md-plus);
 
   /* Shadows */
   --shadow-sm: 0 0.0625rem 0.125rem 0 rgb(0 0 0 / 5%);
