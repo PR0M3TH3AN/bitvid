@@ -127,6 +127,9 @@
   --surface-overlay-panel-glass-soft: var(--color-overlay-panel-glass-soft);
   --surface-modal-backdrop: var(--color-modal-backdrop);
   --surface-modal: var(--color-modal-surface);
+  --blur-modal-backdrop: 28px;
+  --blur-modal-alert: 14px;
+  --blur-thumbnail-blur: 18px;
 
   --border-default: var(--color-border);
   --border-subtle: var(--color-border-subtle);
@@ -718,6 +721,12 @@
   --color-sidebar-accent-start: rgb(56 189 248 / 0.9);
   --color-sidebar-accent-end: rgb(129 140 248 / 0.85);
   --color-sidebar-text-muted: rgb(203 213 225 / 0.75);
+  --sidebar-backdrop-blur: 18px;
+  --sidebar-shell-backdrop-saturation: 140%;
+  --sidebar-nav-backdrop-saturation: 160%;
+  --sidebar-trigger-backdrop-saturation: 150%;
+  --sidebar-panel-backdrop-blur: 20px;
+  --sidebar-panel-backdrop-saturation: 150%;
   --color-overlay-panel-gradient-start: rgb(30 41 59 / 0.92);
   --color-overlay-panel-gradient-end: rgb(15 23 42 / 0.92);
   --color-surface-tint-subtle: rgb(148 163 184 / 0.08);
