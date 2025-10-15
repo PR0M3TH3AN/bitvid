@@ -1,3 +1,4 @@
+import { devLogger, userLogger } from "./utils/logger.js";
 // js/app.js
 
 import { nostrClient } from "./nostr.js";
@@ -223,15 +224,15 @@ class Application {
       }
       try {
         if (rest.length) {
-          console.info(prefix, ...rest);
+          devLogger.info(prefix, ...rest);
         } else {
-          console.info(prefix);
+          devLogger.info(prefix);
         }
       } catch (error) {
         if (rest.length) {
-          console.log(prefix, ...rest);
+          devLogger.log(prefix, ...rest);
         } else {
-          console.log(prefix);
+          devLogger.log(prefix);
         }
       }
     };
@@ -256,7 +257,7 @@ class Application {
         getActivePubkey: () => this.pubkey,
         payments: this.payments,
         logger: {
-          warn: (...args) => console.warn(...args),
+          warn: (...args) => userLogger.warn(...args),
         },
         notifyError: (message) => this.showError(message),
         maxWalletDefaultZap: MAX_WALLET_DEFAULT_ZAP,
@@ -559,12 +560,12 @@ class Application {
           designSystem: this.designSystemContext,
         });
       } else {
-        console.warn(
+        userLogger.warn(
           "[Application] Profile modal controller disabled: modal container not found.",
         );
       }
     } catch (error) {
-      console.error("Failed to initialize profile modal controller:", error);
+      userLogger.error("Failed to initialize profile modal controller:", error);
     }
 
 
@@ -712,7 +713,7 @@ class Application {
             try {
               this.profileController.populateBlockedList();
             } catch (error) {
-              console.warn(
+              userLogger.warn(
                 "[profileModal] Failed to refresh blocked list after update:",
                 error,
               );
@@ -884,7 +885,7 @@ class Application {
         Promise.resolve(
           this.playVideoByEventId(videoId, { url, magnet, trigger })
         ).catch((error) => {
-          console.error("[VideoListView] Failed to play by event id:", error);
+          userLogger.error("[VideoListView] Failed to play by event id:", error);
         });
         return;
       }
@@ -892,7 +893,7 @@ class Application {
         this.playVideoWithFallback({ url, magnet, trigger })
       ).catch(
         (error) => {
-          console.error("[VideoListView] Failed to start playback:", error);
+          userLogger.error("[VideoListView] Failed to start playback:", error);
         }
       );
     };
@@ -954,7 +955,7 @@ class Application {
           this.blacklistedEventIds.add(decoded.data.id);
         }
       } catch (err) {
-        console.error(
+        userLogger.error(
           "[Application] Invalid nevent in blacklist:",
           neventStr,
           err
@@ -1063,7 +1064,7 @@ class Application {
         return userBlocks.isBlocked(pubkey);
       }
     } catch (error) {
-      console.warn("[Application] Failed to evaluate block status:", error);
+      userLogger.warn("[Application] Failed to evaluate block status:", error);
     }
 
     return false;
@@ -1096,7 +1097,7 @@ class Application {
       const uploadModalPromise = this.uploadModal
         .load()
         .catch((error) => {
-          console.error("initUploadModal failed:", error);
+          userLogger.error("initUploadModal failed:", error);
           this.showError(`Failed to initialize upload modal: ${error.message}`);
         })
         .finally(() => {
@@ -1104,7 +1105,7 @@ class Application {
         });
 
       const editModalPromise = this.editModal.load().catch((error) => {
-        console.error("Failed to load edit modal:", error);
+        userLogger.error("Failed to load edit modal:", error);
         this.showError(`Failed to initialize edit modal: ${error.message}`);
       });
 
@@ -1115,7 +1116,7 @@ class Application {
               try {
                 this.renderSavedProfiles();
               } catch (error) {
-                console.warn(
+                userLogger.warn(
                   "[profileModal] Failed to render saved profiles after load:",
                   error,
                 );
@@ -1124,7 +1125,7 @@ class Application {
               try {
                 this.profileController.refreshWalletPaneState();
               } catch (error) {
-                console.warn(
+                userLogger.warn(
                   "[profileModal] Failed to refresh wallet pane after load:",
                   error,
                 );
@@ -1132,7 +1133,7 @@ class Application {
               return true;
             })
             .catch((error) => {
-              console.error("Failed to load profile modal:", error);
+              userLogger.error("Failed to load profile modal:", error);
               return false;
             })
         : Promise.resolve(false);
@@ -1151,13 +1152,13 @@ class Application {
       try {
         initViewCounter({ nostrClient });
       } catch (error) {
-        console.warn("Failed to initialize view counter:", error);
+        userLogger.warn("Failed to initialize view counter:", error);
       }
 
       const accessControlPromise = accessControl
         .refresh()
         .then(() => {
-          console.assert(
+          devLogger.assert(
             !accessControl.lastError ||
               accessControl.lastError?.code !== "nostr-unavailable",
             "[app.init()] Access control refresh should not run before nostrClient.init()",
@@ -1165,7 +1166,7 @@ class Application {
           );
         })
         .catch((error) => {
-          console.warn(
+          userLogger.warn(
             "Failed to refresh admin lists after connecting to Nostr:",
             error
           );
@@ -1175,7 +1176,7 @@ class Application {
         ? Promise.resolve()
             .then(() => this.profileController.refreshAdminPaneState())
             .catch((error) => {
-              console.warn(
+              userLogger.warn(
                 "Failed to update admin pane after connecting to Nostr:",
                 error,
               );
@@ -1195,26 +1196,24 @@ class Application {
         try {
           await this.authService.login(savedPubKey, { persistActive: false });
         } catch (error) {
-          console.error("Auto-login failed:", error);
+          userLogger.error("Auto-login failed:", error);
         }
       }
 
       // 5. Setup general event listeners
       this.setupEventListeners();
 
-      const watchHistoryInitPromise =
-        this.watchHistoryTelemetry?.initPreferenceSync?.().catch((error) => {
-          if (isDevMode) {
-            console.warn(
-              "[app.init()] Failed to initialize watch history metadata sync:",
-              error
-            );
-          }
-        }) || Promise.resolve();
+    const watchHistoryInitPromise =
+      this.watchHistoryTelemetry?.initPreferenceSync?.().catch((error) => {
+        devLogger.warn(
+          "[app.init()] Failed to initialize watch history metadata sync:",
+          error
+        );
+      }) || Promise.resolve();
 
       // 6) Load the default view ONLY if there's no #view= already
       if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
-        console.log(
+        devLogger.log(
           "[app.init()] No #view= in the URL, loading default home view"
         );
         if (typeof this.loadView === "function") {
@@ -1226,7 +1225,7 @@ class Application {
           await watchHistoryInitPromise;
         }
       } else {
-        console.log(
+        devLogger.log(
           "[app.init()] Found hash:",
           window.location.hash,
           "so skipping default load"
@@ -1244,7 +1243,7 @@ class Application {
       this.checkUrlParams();
 
     } catch (error) {
-      console.error("Init failed:", error);
+      userLogger.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
     }
   }
@@ -1259,7 +1258,7 @@ class Application {
       // Switch to channel profile view
       window.location.hash = `#view=channel-profile&npub=${npub}`;
     } catch (err) {
-      console.error("Failed to go to channel:", err);
+      userLogger.error("Failed to go to channel:", err);
       this.showError("Could not open channel.");
     }
   }
@@ -1280,7 +1279,7 @@ class Application {
       // Switch to channel profile view
       window.location.hash = `#view=channel-profile&npub=${npub}`;
     } catch (err) {
-      console.error("Failed to open creator channel:", err);
+      userLogger.error("Failed to open creator channel:", err);
       this.showError("Could not open channel.");
     }
   }
@@ -1361,7 +1360,7 @@ class Application {
           : null)
       );
     } catch (error) {
-      console.error(
+      userLogger.error(
         "[Application] Failed to open the video modal before playback:",
         error
       );
@@ -1517,7 +1516,7 @@ class Application {
       try {
         this.modalViewCountUnsub();
       } catch (error) {
-        console.warn("[viewCount] Failed to tear down modal subscription:", error);
+        userLogger.warn("[viewCount] Failed to tear down modal subscription:", error);
       }
     }
     this.modalViewCountUnsub = null;
@@ -1575,7 +1574,7 @@ class Application {
         try {
           unsubscribeFromVideoViewCount(pointer, token);
         } catch (error) {
-          console.warn(
+          userLogger.warn(
             "[viewCount] Failed to unsubscribe modal view counter:",
             error
           );
@@ -1584,7 +1583,7 @@ class Application {
         }
       };
     } catch (error) {
-      console.warn("[viewCount] Failed to subscribe modal view counter:", error);
+      userLogger.warn("[viewCount] Failed to subscribe modal view counter:", error);
       if (this.videoModal) {
         this.videoModal.updateViewCountLabel("– views");
         this.videoModal.setViewCountPointer(null);
@@ -1612,7 +1611,7 @@ class Application {
           });
         }
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to synchronize saved profiles with controller:",
           error,
         );
@@ -1628,7 +1627,7 @@ class Application {
           );
         }
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to synchronize active profile with controller:",
           error,
         );
@@ -1644,7 +1643,7 @@ class Application {
     try {
       this.profileController.renderSavedProfiles();
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         "[profileModal] Failed to render saved profiles:",
         error,
       );
@@ -1783,7 +1782,7 @@ class Application {
 
       this.showSuccess("Profile added. Select it when you're ready to switch.");
     } catch (error) {
-      console.error("Failed to add profile via NIP-07:", error);
+      userLogger.error("Failed to add profile via NIP-07:", error);
       const message =
         error && typeof error.message === "string" && error.message.trim()
           ? error.message.trim()
@@ -1802,7 +1801,7 @@ class Application {
     try {
       return accessControl.canEditAdminLists(actorNpub);
     } catch (error) {
-      console.warn("Unable to verify blacklist permissions:", error);
+      userLogger.warn("Unable to verify blacklist permissions:", error);
       return false;
     }
   }
@@ -1862,12 +1861,12 @@ class Application {
       try {
         await this.profileController.refreshAdminPaneState();
       } catch (error) {
-        console.error("Failed to refresh admin pane after update:", error);
+        userLogger.error("Failed to refresh admin pane after update:", error);
       }
     }
 
     this.loadVideos(true).catch((error) => {
-      console.error("Failed to refresh videos after admin update:", error);
+      userLogger.error("Failed to refresh videos after admin update:", error);
     });
     window.dispatchEvent(new CustomEvent("bitvid:access-control-updated"));
   }
@@ -1877,7 +1876,7 @@ class Application {
       await this.loadVideos(true);
     } catch (error) {
       const context = reason ? ` after ${reason}` : "";
-      console.error(`Failed to refresh videos${context}:`, error);
+      userLogger.error(`Failed to refresh videos${context}:`, error);
     }
   }
 
@@ -1891,7 +1890,7 @@ class Application {
         try {
           await this.authService.logout();
         } catch (error) {
-          console.error("Logout failed:", error);
+          userLogger.error("Logout failed:", error);
           this.showError("Failed to logout. Please try again.");
         }
       });
@@ -1907,7 +1906,7 @@ class Application {
         this.profileController
           .show()
           .catch((error) => {
-            console.error("Failed to open profile modal:", error);
+            userLogger.error("Failed to open profile modal:", error);
           });
       });
     }
@@ -1925,7 +1924,7 @@ class Application {
     // 4) Login button => show the login modal
     if (this.loginButton) {
       this.loginButton.addEventListener("click", (event) => {
-        console.log("Login button clicked!");
+        devLogger.log("Login button clicked!");
         const loginModal =
           prepareStaticModal({ id: "loginModal" }) || document.getElementById("loginModal");
         const trigger = event?.currentTarget || event?.target || null;
@@ -1938,7 +1937,7 @@ class Application {
     // 5) Close login modal button => hide modal
     if (this.closeLoginModalBtn) {
       this.closeLoginModalBtn.addEventListener("click", () => {
-        console.log("[app.js] closeLoginModal button clicked!");
+        devLogger.log("[app.js] closeLoginModal button clicked!");
         if (closeStaticModal("loginModal")) {
           setGlobalModalState("login", false);
         }
@@ -1987,12 +1986,12 @@ class Application {
         }
 
         setLoadingState(true);
-        console.log(
+        devLogger.log(
           "[app.js] loginNIP07 clicked! Attempting extension login..."
         );
         try {
           const { pubkey, detail } = await this.authService.requestLogin();
-          console.log("[NIP-07] login returned pubkey:", pubkey);
+          devLogger.log("[NIP-07] login returned pubkey:", pubkey);
 
           if (pubkey) {
             if (
@@ -2003,7 +2002,7 @@ class Application {
               try {
                 await this.handleAuthLogin(detail);
               } catch (error) {
-                console.error(
+                userLogger.error(
                   "[NIP-07] handleAuthLogin fallback failed:",
                   error,
                 );
@@ -2015,7 +2014,7 @@ class Application {
             }
           }
         } catch (err) {
-          console.error("[NIP-07 login error]", err);
+          userLogger.error("[NIP-07 login error]", err);
           const message =
             err && typeof err.message === "string" && err.message.trim()
               ? err.message.trim()
@@ -2030,12 +2029,10 @@ class Application {
     // 7) Cleanup on page unload
     window.addEventListener("beforeunload", () => {
       this.flushWatchHistory("session-end", "beforeunload").catch((error) => {
-        if (isDevMode) {
-          console.warn("[beforeunload] Watch history flush failed:", error);
-        }
+        devLogger.warn("[beforeunload] Watch history flush failed:", error);
       });
       this.cleanup().catch((err) => {
-        console.error("Cleanup before unload failed:", err);
+        userLogger.error("Cleanup before unload failed:", err);
       });
     });
 
@@ -2043,12 +2040,10 @@ class Application {
       if (document.visibilityState === "hidden") {
         this.flushWatchHistory("session-end", "visibilitychange").catch(
           (error) => {
-            if (isDevMode) {
-              console.warn(
-                "[visibilitychange] Watch history flush failed:",
-                error
-              );
-            }
+            devLogger.warn(
+              "[visibilitychange] Watch history flush failed:",
+              error
+            );
           }
         );
       }
@@ -2056,7 +2051,7 @@ class Application {
 
     // 8) Handle back/forward navigation => hide video modal
     window.addEventListener("popstate", async () => {
-      console.log("[popstate] user navigated back/forward; cleaning modal...");
+      devLogger.log("[popstate] user navigated back/forward; cleaning modal...");
       await this.hideModal();
     });
 
@@ -2105,7 +2100,7 @@ class Application {
     try {
       this.videoListView.destroy();
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         "[Application] Failed to destroy VideoListView during reinitialization:",
         error,
       );
@@ -2190,11 +2185,11 @@ class Application {
           this.setProfileCacheEntry(pubkey, profile);
           this.updateProfileInDOM(pubkey, profile);
         } catch (err) {
-          console.error("Profile parse error:", err);
+          userLogger.error("Profile parse error:", err);
         }
       }
     } catch (err) {
-      console.error("Batch profile fetch error:", err);
+      userLogger.error("Batch profile fetch error:", err);
     }
   }
 
@@ -2586,7 +2581,7 @@ class Application {
       this.showSuccess("Video shared successfully!");
       return true;
     } catch (err) {
-      console.error("Failed to publish video:", err);
+      userLogger.error("Failed to publish video:", err);
       this.showError("Failed to share video. Please try again later.");
       return false;
     }
@@ -2629,7 +2624,7 @@ class Application {
       try {
         await this.loadVideos(true);
       } catch (error) {
-        console.error("Failed to refresh videos after switching profiles:", error);
+        userLogger.error("Failed to refresh videos after switching profiles:", error);
       }
     }
 
@@ -2710,12 +2705,10 @@ class Application {
       try {
         await this.onVideosShouldRefresh({ reason: refreshReason });
       } catch (refreshError) {
-        if (isDevMode) {
-          console.warn(
-            "[Profile] Failed to refresh videos after relay update:",
-            refreshError,
-          );
-        }
+        devLogger.warn(
+          "[Profile] Failed to refresh videos after relay update:",
+          refreshError,
+        );
       }
 
       return context;
@@ -2727,12 +2720,10 @@ class Application {
           relayManager.setEntries(previous, { allowEmpty: false });
         }
       } catch (restoreError) {
-        if (isDevMode) {
-          console.warn(
-            "[Profile] Failed to restore relay preferences after publish error:",
-            restoreError,
-          );
-        }
+        devLogger.warn(
+          "[Profile] Failed to restore relay preferences after publish error:",
+          restoreError,
+        );
       }
       return context;
     }
@@ -2787,7 +2778,7 @@ class Application {
         try {
           await this.onVideosShouldRefresh({ reason: `blocklist-${action}` });
         } catch (refreshError) {
-          console.error(
+          userLogger.error(
             "Failed to refresh videos after blocklist mutation:",
             refreshError,
           );
@@ -2884,7 +2875,7 @@ class Application {
     if (!error) {
       return;
     }
-    console.warn("[admin] Notification dispatch issue:", error);
+    userLogger.warn("[admin] Notification dispatch issue:", error);
   }
 
   handleProfileHistoryEvent() {
@@ -3054,7 +3045,7 @@ class Application {
     const nwcPromise = Promise.resolve()
       .then(() => this.nwcSettingsService.onLogin(loginContext))
       .catch((error) => {
-        console.error("Failed to process NWC settings during login:", error);
+        userLogger.error("Failed to process NWC settings during login:", error);
         return null;
       });
 
@@ -3063,14 +3054,14 @@ class Application {
         const maybePromise = this.profileController.handleAuthLogin(detail);
         if (maybePromise && typeof maybePromise.then === "function") {
           maybePromise.catch((error) => {
-            console.error(
+            userLogger.error(
               "Failed to process login within the profile controller:",
               error,
             );
           });
         }
       } catch (error) {
-        console.error(
+        userLogger.error(
           "Failed to process login within the profile controller:",
           error,
         );
@@ -3088,14 +3079,14 @@ class Application {
         this.forceRefreshAllProfiles();
       })
       .catch((error) => {
-        console.error("Post-login hydration failed:", error);
+        userLogger.error("Post-login hydration failed:", error);
       });
 
     let postLoginResult = null;
     try {
       postLoginResult = await postLoginPromise;
     } catch (error) {
-      console.error("Post-login processing failed:", error);
+      userLogger.error("Post-login processing failed:", error);
     }
 
     await nwcPromise;
@@ -3103,13 +3094,13 @@ class Application {
     try {
       this.reinitializeVideoListView({ reason: "login", postLoginResult });
     } catch (error) {
-      console.warn("Failed to reinitialize video list view after login:", error);
+      userLogger.warn("Failed to reinitialize video list view after login:", error);
     }
 
     try {
       await this.loadVideos(true);
     } catch (error) {
-      console.error("Failed to refresh videos after login:", error);
+      userLogger.error("Failed to refresh videos after login:", error);
     }
 
     this.forceRefreshAllProfiles();
@@ -3131,7 +3122,7 @@ class Application {
       try {
         await this.profileController.handleAuthLogout(detail);
       } catch (error) {
-        console.error(
+        userLogger.error(
           "Failed to process logout within the profile controller:",
           error,
         );
@@ -3145,7 +3136,7 @@ class Application {
     try {
       await this.loadVideos(true);
     } catch (error) {
-      console.error("Failed to refresh videos after logout:", error);
+      userLogger.error("Failed to refresh videos after logout:", error);
     }
     this.forceRefreshAllProfiles();
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
@@ -3190,7 +3181,7 @@ class Application {
       try {
         await this.cleanupPromise;
       } catch (err) {
-        console.warn("Previous cleanup rejected:", err);
+        userLogger.warn("Previous cleanup rejected:", err);
       }
     }
 
@@ -3241,7 +3232,7 @@ class Application {
           try {
             this.videoModal.clearPosterCleanup();
           } catch (err) {
-            console.warn("[cleanup] video modal poster cleanup threw:", err);
+            userLogger.warn("[cleanup] video modal poster cleanup threw:", err);
           }
         }
 
@@ -3259,7 +3250,7 @@ class Application {
               try {
                 this.videoModal.setVideoElement(refreshedModal);
               } catch (err) {
-                console.warn(
+                userLogger.warn(
                   "[cleanup] Failed to sync video modal element after replacement:",
                   err
                 );
@@ -3271,7 +3262,7 @@ class Application {
         await torrentClient.cleanup();
         this.log("[cleanup] WebTorrent cleanup resolved.");
       } catch (err) {
-        console.error("Cleanup error:", err);
+        userLogger.error("Cleanup error:", err);
       } finally {
         this.log("[cleanup] Finished.");
       }
@@ -3299,7 +3290,7 @@ class Application {
       await this.cleanupPromise;
       this.log("[waitForCleanup] Previous cleanup completed.");
     } catch (err) {
-      console.warn("waitForCleanup observed a rejected cleanup:", err);
+      userLogger.warn("waitForCleanup observed a rejected cleanup:", err);
     }
   }
 
@@ -3349,13 +3340,11 @@ class Application {
     try {
       watchHistoryService.setLocalMetadata(pointerInfo.key, metadata);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistory] Failed to persist local metadata for pointer:",
-          pointerInfo.key,
-          error,
-        );
-      }
+      devLogger.warn(
+        "[watchHistory] Failed to persist local metadata for pointer:",
+        pointerInfo.key,
+        error,
+      );
     }
   }
 
@@ -3374,13 +3363,11 @@ class Application {
     try {
       watchHistoryService.removeLocalMetadata(pointerKey);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistory] Failed to remove cached metadata for pointer:",
-          pointerKey,
-          error,
-        );
-      }
+      devLogger.warn(
+        "[watchHistory] Failed to remove cached metadata for pointer:",
+        pointerKey,
+        error,
+      );
     }
   }
 
@@ -3518,7 +3505,7 @@ class Application {
       try {
         fn();
       } catch (err) {
-        console.warn("[teardownVideoElement]", err);
+        userLogger.warn("[teardownVideoElement]", err);
       }
     };
 
@@ -3666,7 +3653,7 @@ class Application {
           return base;
         }
       }
-      console.warn("Unable to determine share URL base:", err);
+      userLogger.warn("Unable to determine share URL base:", err);
       return "";
     }
   }
@@ -3691,7 +3678,7 @@ class Application {
       const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
       return this.buildShareUrlFromNevent(nevent);
     } catch (err) {
-      console.error("Error generating nevent for share URL:", err);
+      userLogger.error("Error generating nevent for share URL:", err);
       return "";
     }
   }
@@ -3794,9 +3781,7 @@ class Application {
         modalVideoElement.removeAttribute("src");
         modalVideoElement.load();
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[hideModal] Failed to reset modal video element:", error);
-        }
+        devLogger.warn("[hideModal] Failed to reset modal video element:", error);
       }
     }
 
@@ -3804,7 +3789,7 @@ class Application {
       try {
         this.videoModal.close();
       } catch (error) {
-        console.warn("[hideModal] Failed to close video modal immediately:", error);
+        userLogger.warn("[hideModal] Failed to close video modal immediately:", error);
       }
     }
 
@@ -3819,9 +3804,7 @@ class Application {
       try {
         await fetch("/webtorrent/cancel/", { mode: "no-cors" });
       } catch (err) {
-        if (isDevMode) {
-          console.warn("[hideModal] webtorrent cancel fetch failed:", err);
-        }
+        devLogger.warn("[hideModal] webtorrent cancel fetch failed:", err);
       }
 
       await this.cleanup({
@@ -3839,7 +3822,7 @@ class Application {
     try {
       await performCleanup();
     } catch (error) {
-      console.error("[hideModal] Cleanup failed:", error);
+      userLogger.error("[hideModal] Cleanup failed:", error);
     }
   }
 
@@ -3874,7 +3857,7 @@ class Application {
         sorter: createChronologicalSorter(),
       });
     } catch (error) {
-      console.warn("[Application] Failed to register recent feed:", error);
+      userLogger.warn("[Application] Failed to register recent feed:", error);
       return null;
     }
   }
@@ -3912,7 +3895,7 @@ class Application {
         },
       });
     } catch (error) {
-      console.warn("[Application] Failed to register subscriptions feed:", error);
+      userLogger.warn("[Application] Failed to register subscriptions feed:", error);
       return null;
     }
   }
@@ -3936,7 +3919,7 @@ class Application {
         nostr: this.nostrService,
       });
     } catch (error) {
-      console.warn("[Application] Failed to register watch history feed:", error);
+      userLogger.warn("[Application] Failed to register watch history feed:", error);
       return null;
     }
   }
@@ -3994,7 +3977,7 @@ class Application {
         return payload;
       })
       .catch((error) => {
-        console.error("[Application] Failed to run recent feed:", error);
+        userLogger.error("[Application] Failed to run recent feed:", error);
         const metadata = {
           reason: normalizedReason || "error:recent-feed",
           error: true,
@@ -4014,7 +3997,7 @@ class Application {
    * Subscribe to videos (older + new) and render them as they come in.
    */
   async loadVideos(forceFetch = false) {
-    console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
+    devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
     const container = this.mountVideoListView();
     if (this.videoListView && container) {
@@ -4252,7 +4235,7 @@ class Application {
           }
         })
         .catch((err) => {
-          console.warn(
+          userLogger.warn(
             `[urlHealth] cached probe promise rejected for ${trimmedUrl}:`,
             err
           );
@@ -4292,7 +4275,7 @@ class Application {
         return this.storeUrlHealth(eventId, trimmedUrl, entry, ttlOverride);
       })
       .catch((err) => {
-        console.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
+        userLogger.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
         const entry = {
           status: "offline",
           message: "❌ CDN",
@@ -4309,7 +4292,7 @@ class Application {
         }
       })
       .catch((err) => {
-        console.warn(
+        userLogger.warn(
           `[urlHealth] probe promise rejected post-cache for ${trimmedUrl}:`,
           err
         );
@@ -4694,9 +4677,7 @@ class Application {
 
       this.showSuccess(fragments.join(" ").trim());
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[app] Repost action failed:", error);
-      }
+      devLogger.warn("[app] Repost action failed:", error);
       this.showError("Failed to repost the video. Please try again later.");
     }
   }
@@ -4837,9 +4818,7 @@ class Application {
 
       this.showSuccess(fragments.join(" ").trim());
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[app] Mirror action failed:", error);
-      }
+      devLogger.warn("[app] Mirror action failed:", error);
       this.showError("Failed to mirror the video. Please try again later.");
     }
   }
@@ -4920,9 +4899,7 @@ class Application {
 
       this.showSuccess("Rebroadcast requested across relays.");
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[app] Rebroadcast action failed:", error);
-      }
+      devLogger.warn("[app] Rebroadcast action failed:", error);
       this.showError("Failed to rebroadcast. Please try again later.");
     }
   }
@@ -4933,10 +4910,10 @@ class Application {
    * and do not re-trigger recursion here (no setTimeout).
    */
   updateTorrentStatus(torrent) {
-    console.log("[DEBUG] updateTorrentStatus called with torrent:", torrent);
+    devLogger.log("[DEBUG] updateTorrentStatus called with torrent:", torrent);
 
     if (!torrent) {
-      console.log("[DEBUG] torrent is null/undefined!");
+      devLogger.log("[DEBUG] torrent is null/undefined!");
       return;
     }
 
@@ -4950,12 +4927,12 @@ class Application {
     }
 
     // Log only fields that actually exist on the torrent:
-    console.log("[DEBUG] torrent.progress =", torrent.progress);
-    console.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
-    console.log("[DEBUG] torrent.downloadSpeed =", torrent.downloadSpeed);
-    console.log("[DEBUG] torrent.downloaded =", torrent.downloaded);
-    console.log("[DEBUG] torrent.length =", torrent.length);
-    console.log("[DEBUG] torrent.ready =", torrent.ready);
+    devLogger.log("[DEBUG] torrent.progress =", torrent.progress);
+    devLogger.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
+    devLogger.log("[DEBUG] torrent.downloadSpeed =", torrent.downloadSpeed);
+    devLogger.log("[DEBUG] torrent.downloaded =", torrent.downloaded);
+    devLogger.log("[DEBUG] torrent.length =", torrent.length);
+    devLogger.log("[DEBUG] torrent.ready =", torrent.ready);
 
     // Use "Complete" vs. "Downloading" as the textual status.
     if (this.videoModal) {
@@ -5137,7 +5114,7 @@ class Application {
       this.editModal.close();
       this.forceRefreshAllProfiles();
     } catch (error) {
-      console.error("Failed to edit video:", error);
+      userLogger.error("Failed to edit video:", error);
       this.showError("Failed to edit video. Please try again.");
       if (this.editModal?.setSubmitState) {
         this.editModal.setSubmitState({ pending: false });
@@ -5173,7 +5150,7 @@ class Application {
       try {
         await this.editModal.load();
       } catch (error) {
-        console.error("Failed to load edit modal:", error);
+        userLogger.error("Failed to load edit modal:", error);
         this.showError(`Failed to initialize edit modal: ${error.message}`);
         return;
       }
@@ -5181,11 +5158,11 @@ class Application {
       try {
         await this.editModal.open(video, { triggerElement });
       } catch (error) {
-        console.error("Failed to open edit modal:", error);
+        userLogger.error("Failed to open edit modal:", error);
         this.showError("Edit modal is not available right now.");
       }
     } catch (err) {
-      console.error("Failed to edit video:", err);
+      userLogger.error("Failed to edit video:", err);
       this.showError("Failed to edit video. Please try again.");
     }
   }
@@ -5230,7 +5207,7 @@ class Application {
       this.revertModal.setHistory(video, history);
       this.revertModal.open({ video }, { triggerElement });
     } catch (err) {
-      console.error("Failed to revert video:", err);
+      userLogger.error("Failed to revert video:", err);
       this.showError("Failed to load revision history. Please try again.");
     }
   }
@@ -5277,7 +5254,7 @@ class Application {
       this.revertModal.close();
       this.forceRefreshAllProfiles();
     } catch (err) {
-      console.error("Failed to revert video:", err);
+      userLogger.error("Failed to revert video:", err);
       this.showError("Failed to revert video. Please try again.");
     } finally {
       this.revertModal.setBusy(false);
@@ -5332,7 +5309,7 @@ class Application {
       this.showSuccess("All versions deleted successfully!");
       this.forceRefreshAllProfiles();
     } catch (err) {
-      console.error("Failed to delete all versions:", err);
+      userLogger.error("Failed to delete all versions:", err);
       this.showError("Failed to delete all versions. Please try again.");
     }
   }
@@ -5364,13 +5341,13 @@ class Application {
               }
             })
             .catch((err) => {
-              console.error("Error fetching older event by ID:", err);
+              userLogger.error("Error fetching older event by ID:", err);
               this.showError("Could not load videos for the share link.");
             });
         }
       }
     } catch (err) {
-      console.error("Error decoding nevent:", err);
+      userLogger.error("Error decoding nevent:", err);
       this.showError("Invalid share link.");
     }
   }
@@ -5470,7 +5447,7 @@ class Application {
             return result;
           }
         } catch (err) {
-          console.warn(
+          userLogger.warn(
             `[probeUrl] Video element probe threw for ${trimmed}:`,
             err
           );
@@ -5534,7 +5511,7 @@ class Application {
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      console.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
+      userLogger.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
       const fallback = await confirmWithVideoElement();
       if (fallback) {
         return fallback;
@@ -5614,7 +5591,7 @@ class Application {
       await target.play();
       return true;
     } catch (err) {
-      console.warn("[playHttp] Direct URL playback failed:", err);
+      userLogger.warn("[playHttp] Direct URL playback failed:", err);
       return false;
     }
   }
@@ -5786,7 +5763,7 @@ class Application {
       try {
         this.videoModal.clearPosterCleanup();
       } catch (err) {
-        console.warn(
+        userLogger.warn(
           "[playVideoWithFallback] video modal poster cleanup threw:",
           err
         );
@@ -5900,7 +5877,7 @@ class Application {
           try {
             off();
           } catch (err) {
-            console.warn(
+            userLogger.warn(
               "[playVideoWithFallback] Listener cleanup error:",
               err
             );
@@ -5980,7 +5957,7 @@ class Application {
     try {
       await accessControl.ensureReady();
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         "Failed to ensure admin lists were loaded before playback:",
         error
       );
@@ -6266,12 +6243,10 @@ class Application {
       try {
         nostrClient.applyRootCreatedAt(video);
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[Application] Failed to sync cached root timestamp with nostrClient:",
-            error
-          );
-        }
+        devLogger.warn(
+          "[Application] Failed to sync cached root timestamp with nostrClient:",
+          error
+        );
       }
     }
   }
@@ -6328,12 +6303,10 @@ class Application {
         }
       }
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[Application] Failed to hydrate video history for timestamps:",
-          error
-        );
-      }
+      devLogger.warn(
+        "[Application] Failed to hydrate video history for timestamps:",
+        error
+      );
     }
 
     const fallback = Number.isFinite(video.created_at)
@@ -6615,8 +6588,8 @@ class Application {
     }, 5000);
   }
 
-  log(msg) {
-    console.log(msg);
+  log(...args) {
+    devLogger.log(...args);
   }
 
   destroy() {
@@ -6628,7 +6601,7 @@ class Application {
       try {
         this.watchHistoryTelemetry.destroy();
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[Application] Failed to destroy watch history telemetry:",
           error
         );
@@ -6640,7 +6613,7 @@ class Application {
       try {
         this.unsubscribeFromPubkeyState();
       } catch (error) {
-        console.warn("[Application] Failed to unsubscribe pubkey state:", error);
+        userLogger.warn("[Application] Failed to unsubscribe pubkey state:", error);
       }
       this.unsubscribeFromPubkeyState = null;
     }
@@ -6649,7 +6622,7 @@ class Application {
       try {
         this.unsubscribeFromCurrentUserState();
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[Application] Failed to unsubscribe current user state:",
           error
         );
@@ -6681,7 +6654,7 @@ class Application {
         try {
           unsubscribe();
         } catch (error) {
-          console.warn("[Application] Auth listener unsubscribe failed:", error);
+          userLogger.warn("[Application] Auth listener unsubscribe failed:", error);
         }
       }
     });
@@ -6691,7 +6664,7 @@ class Application {
       try {
         this.unsubscribeFromNostrService();
       } catch (error) {
-        console.warn("[Application] Failed to unsubscribe nostr service:", error);
+        userLogger.warn("[Application] Failed to unsubscribe nostr service:", error);
       }
       this.unsubscribeFromNostrService = null;
     }
@@ -6707,7 +6680,7 @@ class Application {
       try {
         this.uploadModal.destroy();
       } catch (error) {
-        console.warn("[Application] Failed to destroy upload modal:", error);
+        userLogger.warn("[Application] Failed to destroy upload modal:", error);
       }
     }
 
@@ -6730,7 +6703,7 @@ class Application {
         try {
           this.editModal.destroy();
         } catch (error) {
-          console.warn("[Application] Failed to destroy edit modal:", error);
+          userLogger.warn("[Application] Failed to destroy edit modal:", error);
         }
       }
     }
@@ -6746,7 +6719,7 @@ class Application {
       try {
         this.revertModal.destroy();
       } catch (error) {
-        console.warn("[Application] Failed to destroy revert modal:", error);
+        userLogger.warn("[Application] Failed to destroy revert modal:", error);
       }
     }
 
@@ -6825,7 +6798,7 @@ class Application {
         try {
           this.videoModal.destroy();
         } catch (error) {
-          console.warn("[Application] Failed to destroy video modal:", error);
+          userLogger.warn("[Application] Failed to destroy video modal:", error);
         }
       }
     }
@@ -6845,7 +6818,7 @@ class Application {
       try {
         this.videoListView.destroy();
       } catch (error) {
-        console.warn("[Application] Failed to destroy VideoListView:", error);
+        userLogger.warn("[Application] Failed to destroy VideoListView:", error);
       }
       this.videoListView = null;
     }
@@ -6861,7 +6834,7 @@ class Application {
         try {
           this.profileController.destroy();
         } catch (error) {
-          console.warn(
+          userLogger.warn(
             "[Application] Failed to destroy profile controller:",
             error,
           );
@@ -6912,7 +6885,7 @@ class Application {
       navigator.clipboard.writeText(this.currentVideo.magnet);
       this.showSuccess("Magnet link copied to clipboard!");
     } catch (err) {
-      console.error("Failed to copy magnet link:", err);
+      userLogger.error("Failed to copy magnet link:", err);
       this.showError("Could not copy magnet link. Please copy it manually.");
     }
   }

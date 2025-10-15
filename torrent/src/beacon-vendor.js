@@ -1,4 +1,5 @@
 import { createBeaconApp } from "../app.js";
+import { userLogger } from "../../js/utils/logger.js";
 
 function resolveWebTorrent() {
   const globalScope =
@@ -36,14 +37,14 @@ if (typeof document !== "undefined") {
       try {
         mountBeaconApp();
       } catch (error) {
-        console.error("[beacon] Failed to mount app", error);
+        userLogger.error("[beacon] Failed to mount app", error);
       }
     });
   } else {
     try {
       mountBeaconApp();
     } catch (error) {
-      console.error("[beacon] Failed to mount app", error);
+      userLogger.error("[beacon] Failed to mount app", error);
     }
   }
 }

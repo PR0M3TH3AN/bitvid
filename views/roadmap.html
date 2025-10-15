@@ -14,6 +14,15 @@
 
 <script>
   (async () => {
+    const fallbackChannel = {
+      error: () => {},
+      warn: () => {},
+      info: () => {},
+      log: () => {},
+    };
+    const fallbackLogger = { dev: fallbackChannel, user: fallbackChannel };
+    const bitvidLogger =
+      (typeof window !== "undefined" && window.bitvidLogger) || fallbackLogger;
     try {
       // Fetch your roadmap markdown
       const response = await fetch("content/roadmap.md");
@@ -36,7 +45,7 @@
         hljs.highlightBlock(block);
       });
     } catch (err) {
-      console.error("Error loading roadmap:", err);
+      bitvidLogger.user.error("Error loading roadmap:", err);
       const container = document.getElementById("markdown-container");
       if (container) {
         container.innerHTML = `

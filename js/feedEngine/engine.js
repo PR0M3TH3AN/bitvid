@@ -1,3 +1,4 @@
+import { userLogger } from "../utils/logger.js";
 // js/feedEngine/engine.js
 
 import { isPlainObject } from "./utils.js";
@@ -93,7 +94,7 @@ function createExecutionContext(entry, { config, hooks, runtime, logger }) {
       try {
         resolvedLogger(`[feed:${entry.name}]`, ...args);
       } catch (error) {
-        console.warn(`[feed:${entry.name}] logger threw`, error);
+        userLogger.warn(`[feed:${entry.name}] logger threw`, error);
       }
     },
     addWhy: (detail) => {

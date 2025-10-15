@@ -2,6 +2,7 @@ import { createModalAccessibility } from "./modalAccessibility.js";
 import positionFloatingPanel from "../utils/positionFloatingPanel.js";
 import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
+import { devLogger } from "../../utils/logger.js";
 import {
   getPopupOffsetPx,
   getPopupViewportPaddingPx,
@@ -101,7 +102,7 @@ export class VideoModal {
       this.logger(message, ...args);
       return;
     }
-    console.log(message, ...args);
+    devLogger.log(message, ...args);
   }
 
   addEventListener(type, listener, options) {

@@ -1,3 +1,4 @@
+import { userLogger } from "../../utils/logger.js";
 // NOTE: Keep the Upload, Edit, and Revert modals in lockstep when updating NIP-71 form features.
 
 import { createModalAccessibility } from "./modalAccessibility.js";
@@ -439,7 +440,7 @@ export class UploadModal {
             unsubscribe();
           }
         } catch (error) {
-          console.warn("[UploadModal] Failed to remove R2 listener", error);
+          userLogger.warn("[UploadModal] Failed to remove R2 listener", error);
         }
       });
     }
@@ -855,7 +856,7 @@ export class UploadModal {
         await this.refreshCloudflareBucketPreview();
       }
     } catch (error) {
-      console.error("[UploadModal] Failed to save Cloudflare settings", error);
+      userLogger.error("[UploadModal] Failed to save Cloudflare settings", error);
     }
   }
 
@@ -869,7 +870,7 @@ export class UploadModal {
         await this.refreshCloudflareBucketPreview();
       }
     } catch (error) {
-      console.error("[UploadModal] Failed to clear Cloudflare settings", error);
+      userLogger.error("[UploadModal] Failed to clear Cloudflare settings", error);
     }
   }
 
@@ -934,7 +935,7 @@ export class UploadModal {
         onReset: () => this.resetCloudflareUploadForm()
       });
     } catch (error) {
-      console.error("[UploadModal] Cloudflare upload failed", error);
+      userLogger.error("[UploadModal] Cloudflare upload failed", error);
     }
   }
 
@@ -953,7 +954,7 @@ export class UploadModal {
             cleanup();
           }
         } catch (error) {
-          console.warn("[UploadModal] Failed to remove handler", error);
+          userLogger.warn("[UploadModal] Failed to remove handler", error);
         }
       });
       this.cleanupHandlers = [];
@@ -966,7 +967,7 @@ export class UploadModal {
             unsubscribe();
           }
         } catch (error) {
-          console.warn("[UploadModal] Failed to cleanup R2 listener", error);
+          userLogger.warn("[UploadModal] Failed to cleanup R2 listener", error);
         }
       });
     }

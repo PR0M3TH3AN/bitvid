@@ -1,3 +1,4 @@
+import { userLogger } from "./utils/logger.js";
 // js/analytics.js
 import { ANALYTICS_CONFIG } from "./analyticsConfig.js";
 
@@ -30,7 +31,7 @@ function flushPendingCalls() {
     try {
       fn.apply(umami, args);
     } catch (err) {
-      console.warn("[analytics] Failed to call", method, err);
+      userLogger.warn("[analytics] Failed to call", method, err);
     }
   }
 }
@@ -103,7 +104,7 @@ function invokeUmami(method, args) {
     try {
       umami[method].apply(umami, args);
     } catch (err) {
-      console.warn("[analytics] Failed to call", method, err);
+      userLogger.warn("[analytics] Failed to call", method, err);
     }
     return;
   }

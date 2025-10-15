@@ -1,3 +1,4 @@
+import { devLogger, userLogger } from "./utils/logger.js";
 // js/watchHistoryService.js
 
 import {
@@ -44,7 +45,7 @@ function resolveFlagEnabled() {
     }
   } catch (error) {
     if (isDevMode) {
-      console.warn(
+      userLogger.warn(
         "[watchHistoryService] Failed to read FEATURE_WATCH_HISTORY_V2 flag:",
         error,
       );
@@ -73,7 +74,7 @@ function getLoggedInActorKey() {
           }
         } catch (error) {
           if (isDevMode) {
-            console.warn(
+            userLogger.warn(
               "[watchHistoryService] Failed to normalize app login pubkey:",
               error
             );
@@ -169,7 +170,7 @@ function getSessionStorage() {
     }
   } catch (error) {
     if (isDevMode) {
-      console.warn("[watchHistoryService] sessionStorage unavailable:", error);
+      userLogger.warn("[watchHistoryService] sessionStorage unavailable:", error);
     }
   }
   return null;
@@ -182,7 +183,7 @@ function getLocalStorage() {
     }
   } catch (error) {
     if (isDevMode) {
-      console.warn("[watchHistoryService] localStorage unavailable:", error);
+      userLogger.warn("[watchHistoryService] localStorage unavailable:", error);
     }
   }
   return null;
@@ -206,7 +207,7 @@ function ensureMetadataPreference() {
     }
   } catch (error) {
     if (isDevMode) {
-      console.warn(
+      userLogger.warn(
         "[watchHistoryService] Failed to read metadata preference:",
         error,
       );
@@ -229,7 +230,7 @@ function persistMetadataPreference(value) {
     }
   } catch (error) {
     if (isDevMode) {
-      console.warn(
+      userLogger.warn(
         "[watchHistoryService] Failed to persist metadata preference:",
         error,
       );
@@ -316,7 +317,7 @@ function restoreMetadataCache() {
     raw = storage.getItem(METADATA_STORAGE_KEY);
   } catch (error) {
     if (isDevMode) {
-      console.warn(
+      userLogger.warn(
         "[watchHistoryService] Failed to read metadata cache:",
         error,
       );
@@ -333,7 +334,7 @@ function restoreMetadataCache() {
     parsed = JSON.parse(raw);
   } catch (error) {
     if (isDevMode) {
-      console.warn(
+      userLogger.warn(
         "[watchHistoryService] Failed to parse metadata cache:",
         error,
       );
@@ -342,7 +343,7 @@ function restoreMetadataCache() {
       storage.removeItem(METADATA_STORAGE_KEY);
     } catch (cleanupError) {
       if (isDevMode) {
-        console.warn(
+        userLogger.warn(
           "[watchHistoryService] Failed to clear corrupt metadata cache:",
           cleanupError,
         );
@@ -356,7 +357,7 @@ function restoreMetadataCache() {
       storage.removeItem(METADATA_STORAGE_KEY);
     } catch (cleanupError) {
       if (isDevMode) {
-        console.warn(
+        userLogger.warn(
           "[watchHistoryService] Failed to clear outdated metadata cache:",
           cleanupError,
         );
@@ -429,7 +430,7 @@ function persistMetadataCache() {
       storage.removeItem(METADATA_STORAGE_KEY);
     } catch (error) {
       if (isDevMode) {
-        console.warn(
+        userLogger.warn(
           "[watchHistoryService] Failed to clear metadata cache:",
           error,
         );
@@ -450,7 +451,7 @@ function persistMetadataCache() {
     storage.setItem(METADATA_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
     if (isDevMode) {
-      console.warn(
+      userLogger.warn(
         "[watchHistoryService] Failed to persist metadata cache:",
         error,
       );
@@ -551,7 +552,7 @@ function emit(eventName, payload) {
         callback(payload);
       } catch (error) {
         if (isDevMode) {
-          console.warn(
+          userLogger.warn(
             `[watchHistoryService] Listener for ${eventName} failed:`,
             error
           );
@@ -567,7 +568,7 @@ function emit(eventName, payload) {
         callback({ event: eventName, payload });
       } catch (error) {
         if (isDevMode) {
-          console.warn(
+          userLogger.warn(
             `[watchHistoryService] Wildcard listener error for ${eventName}:`,
             error
           );
@@ -583,7 +584,7 @@ function emit(eventName, payload) {
       window.dispatchEvent(evt);
     } catch (error) {
       if (isDevMode) {
-        console.warn(
+        userLogger.warn(
           `[watchHistoryService] Failed to dispatch window event for ${eventName}:`,
           error
         );
@@ -640,7 +641,7 @@ function restoreQueueState() {
     raw = storage.getItem(SESSION_STORAGE_KEY);
   } catch (error) {
     if (isDevMode) {
-      console.warn("[watchHistoryService] Failed to read session cache:", error);
+      userLogger.warn("[watchHistoryService] Failed to read session cache:", error);
     }
     return;
   }
@@ -654,13 +655,13 @@ function restoreQueueState() {
     parsed = JSON.parse(raw);
   } catch (error) {
     if (isDevMode) {
-      console.warn("[watchHistoryService] Failed to parse session cache:", error);
+      userLogger.warn("[watchHistoryService] Failed to parse session cache:", error);
     }
     try {
       storage.removeItem(SESSION_STORAGE_KEY);
     } catch (cleanupError) {
       if (isDevMode) {
-        console.warn(
+        userLogger.warn(
           "[watchHistoryService] Failed to clear corrupt session cache:",
           cleanupError
         );
@@ -674,7 +675,7 @@ function restoreQueueState() {
       storage.removeItem(SESSION_STORAGE_KEY);
     } catch (cleanupError) {
       if (isDevMode) {
-        console.warn(
+        userLogger.warn(
           "[watchHistoryService] Failed to clear outdated session cache:",
           cleanupError
         );
@@ -771,7 +772,7 @@ function persistQueueState() {
       storage.removeItem(SESSION_STORAGE_KEY);
     } catch (error) {
       if (isDevMode) {
-        console.warn(
+        userLogger.warn(
           "[watchHistoryService] Failed to clear empty session cache:",
           error
         );
@@ -784,7 +785,7 @@ function persistQueueState() {
     storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
     if (isDevMode) {
-      console.warn("[watchHistoryService] Failed to persist session cache:", error);
+      userLogger.warn("[watchHistoryService] Failed to persist session cache:", error);
     }
   }
 }
@@ -978,7 +979,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   const viewResult = await nostrClient.recordVideoView(pointerInput, recordOptions);
 
-  console.info(
+  devLogger.info(
     "[watchHistoryService] Video view recorded. Preparing watch list update.",
     {
       pointer: pointerInput,
@@ -989,7 +990,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   const pointer = normalizePointerInput(pointerInput);
   if (!pointer) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Skipping watch list update because pointer normalization failed.",
       { pointerInput }
     );
@@ -1004,7 +1005,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     "";
   const actorKey = normalizeActorKey(actorCandidate);
   if (!actorKey) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Unable to resolve actor for watch list update.",
       { actorCandidate }
     );
@@ -1013,7 +1014,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   const queue = ensureQueue(actorKey);
   if (!queue) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Failed to resolve queue for actor.",
       { actorKey }
     );
@@ -1024,7 +1025,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   const normalizedPointer = normalizePointerInput(pointer);
   if (!normalizedPointer) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Pointer normalization failed during queue preparation.",
       { pointerInput }
     );
@@ -1064,7 +1065,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   }
 
   const key = pointerKey(normalizedPointer);
-  console.info(
+  devLogger.info(
     "[watchHistoryService] Watch list process triggered by video view.",
     {
       actor: actorKey,
@@ -1084,7 +1085,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   }
 
   if (!key) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Pointer key generation failed. Skipping queue update.",
       { pointer: normalizedPointer }
     );
@@ -1114,7 +1115,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     queue.throttle.set(key, now);
     persistQueueState();
     notifyQueueChange(actorKey);
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Updated existing watch list entry.",
       {
         actor: actorKey,
@@ -1128,7 +1129,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   if (throttled) {
     queue.throttle.set(key, now);
     if (isDevMode) {
-      console.info(
+      devLogger.info(
         `[watchHistoryService] Throttled pointer ${key} for actor ${actorKey}.`
       );
     }
@@ -1144,7 +1145,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   persistQueueState();
   notifyQueueChange(actorKey);
 
-  console.info(
+  devLogger.info(
     "[watchHistoryService] Added pointer to pending watch list snapshot queue.",
     {
       actor: actorKey,
@@ -1154,7 +1155,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   );
 
   if (!remoteEnabled) {
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Watch history sync unavailable for this actor; retaining pointer in local session queue only.",
       {
         actor: actorKey,
@@ -1175,7 +1176,7 @@ async function snapshot(items, options = {}) {
   }
 
   if (!isFeatureEnabled(actorKey)) {
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Snapshot skipped because watch history sync is unavailable for this actor.",
       {
         actor: actorKey,
@@ -1207,7 +1208,7 @@ async function snapshot(items, options = {}) {
 
   const queue = ensureQueue(actorKey);
 
-  console.info(
+  devLogger.info(
     "[watchHistoryService] Initiating watch list snapshot publish.",
     {
       actor: actorKey,
@@ -1227,7 +1228,7 @@ async function snapshot(items, options = {}) {
       }
     );
 
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Watch list snapshot publish completed.",
       {
         actor: actorKey,
@@ -1264,7 +1265,7 @@ async function snapshot(items, options = {}) {
 
     await updateFingerprintCache(actorKey, publishResult.items || payloadItems);
     emit("snapshot-complete", { actor: actorKey, reason, result: publishResult });
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Watch list snapshot processed and fingerprint cache updated.",
       {
         actor: actorKey,
@@ -1276,7 +1277,7 @@ async function snapshot(items, options = {}) {
   })()
     .catch((error) => {
       if (isDevMode) {
-        console.warn("[watchHistoryService] Snapshot failed:", error);
+        userLogger.warn("[watchHistoryService] Snapshot failed:", error);
       }
       throw error;
     })
@@ -1306,7 +1307,7 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
     })
     .catch((error) => {
       if (isDevMode) {
-        console.warn("[watchHistoryService] Failed to load watch history:", error);
+        userLogger.warn("[watchHistoryService] Failed to load watch history:", error);
       }
       throw error;
     })
@@ -1317,7 +1318,7 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
       }
     });
 
-  console.info("[watchHistoryService] Triggered nostr watch list refresh.", {
+  devLogger.info("[watchHistoryService] Triggered nostr watch list refresh.", {
     actor: actorKey,
   });
 
@@ -1348,7 +1349,7 @@ async function loadLatest(actorInput, options = {}) {
       restoreQueueState();
     }
     const items = collectQueueItems(actorKey);
-    console.info(
+    devLogger.info(
       "[watchHistoryService] loadLatest returning local-only watch history queue.",
       {
         actor: actorKey,
@@ -1360,7 +1361,7 @@ async function loadLatest(actorInput, options = {}) {
 
   const now = Date.now();
   const cacheEntry = state.fingerprintCache.get(actorKey);
-  console.info(
+  devLogger.info(
     "[watchHistoryService] loadLatest invoked.",
     {
       actor: actorKey,
@@ -1375,7 +1376,7 @@ async function loadLatest(actorInput, options = {}) {
     cacheEntry.expiresAt > now;
 
   if (cacheIsFresh) {
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Returning cached watch list items.",
       {
         actor: actorKey,
@@ -1386,14 +1387,14 @@ async function loadLatest(actorInput, options = {}) {
   }
 
   if (cacheEntry?.promise) {
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Awaiting in-flight watch list refresh.",
       {
         actor: actorKey,
       }
     );
     if (allowStale && hasCachedItems) {
-      console.info(
+      devLogger.info(
         "[watchHistoryService] Returning stale watch list items while refresh completes.",
         {
           actor: actorKey,
@@ -1412,7 +1413,7 @@ async function loadLatest(actorInput, options = {}) {
   const refreshPromise = scheduleWatchHistoryRefresh(actorKey, cacheEntry);
   refreshPromise.catch(() => {});
 
-  console.info(
+  devLogger.info(
     "[watchHistoryService] Returning stale watch list items while refresh is pending.",
     {
       actor: actorKey,

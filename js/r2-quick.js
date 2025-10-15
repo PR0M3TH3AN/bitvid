@@ -1,4 +1,5 @@
 import { buildR2Key, buildPublicUrl } from "./r2.js";
+import { userLogger } from "./utils/logger.js";
 import {
   sanitizeBucketName,
   ensureBucket,
@@ -46,7 +47,7 @@ function loadSavedSettings() {
     }
     return parsed;
   } catch (err) {
-    console.warn("Failed to read quick R2 settings:", err);
+    userLogger.warn("Failed to read quick R2 settings:", err);
     return null;
   }
 }
@@ -55,7 +56,7 @@ function persistSettings(settings) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch (err) {
-    console.warn("Failed to store quick R2 settings:", err);
+    userLogger.warn("Failed to store quick R2 settings:", err);
   }
 }
 
@@ -63,7 +64,7 @@ function clearSavedSettings() {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (err) {
-    console.warn("Failed to clear quick R2 settings:", err);
+    userLogger.warn("Failed to clear quick R2 settings:", err);
   }
 }
 
@@ -258,7 +259,7 @@ export function initQuickR2Upload(app) {
             origins: getCorsOrigins(),
           });
         } catch (corsErr) {
-          console.warn("Quick R2 CORS update failed:", corsErr);
+          userLogger.warn("Quick R2 CORS update failed:", corsErr);
         }
       }
 
@@ -292,7 +293,7 @@ export function initQuickR2Upload(app) {
                   enabled: false,
                 });
               } catch (disableErr) {
-                console.warn("Quick R2 managed domain disable failed:", disableErr);
+                userLogger.warn("Quick R2 managed domain disable failed:", disableErr);
               }
             } else {
               setStatus(
@@ -302,7 +303,7 @@ export function initQuickR2Upload(app) {
               );
             }
           } catch (err) {
-            console.warn("Quick R2 custom domain error:", err);
+            userLogger.warn("Quick R2 custom domain error:", err);
             setStatus(
               elements.status,
               err?.message
@@ -332,7 +333,7 @@ export function initQuickR2Upload(app) {
             usedManagedFallback = true;
           }
         } catch (err) {
-          console.warn("Quick R2 managed domain enable failed:", err);
+          userLogger.warn("Quick R2 managed domain enable failed:", err);
           setStatus(
             elements.status,
             err?.message
@@ -393,7 +394,7 @@ export function initQuickR2Upload(app) {
         elements.form.requestSubmit();
       }
     } catch (err) {
-      console.error("Quick R2 upload failed:", err);
+      userLogger.error("Quick R2 upload failed:", err);
       setStatus(
         elements.status,
         err?.message ? `Upload failed: ${err.message}` : "Upload failed.",

@@ -1,3 +1,4 @@
+import { userLogger } from "./utils/logger.js";
 // js/channelProfile.js
 
 import {
@@ -109,7 +110,7 @@ function logZapError(stage, details = {}, error) {
         ? details.retryAttempt
         : undefined
   };
-  console.error("[zap] Channel zap failure", summary, error);
+  userLogger.error("[zap] Channel zap failure", summary, error);
 }
 let currentChannelProfileEvent = null;
 
@@ -1289,7 +1290,7 @@ function buildChannelShareUrl() {
     url.hash = `#view=channel-profile&npub=${currentChannelNpub}`;
     return url.toString();
   } catch (error) {
-    console.warn("Falling back to basic channel share URL:", error);
+    userLogger.warn("Falling back to basic channel share URL:", error);
     const origin = window.location?.origin || "";
     const pathname = window.location?.pathname || "";
     if (!origin && !pathname) {
@@ -1361,7 +1362,7 @@ async function updateChannelMenuState() {
   try {
     await accessControl.ensureReady();
   } catch (error) {
-    console.warn("Failed to refresh moderation lists for channel menu:", error);
+    userLogger.warn("Failed to refresh moderation lists for channel menu:", error);
   }
 
   const canBlacklist =
@@ -1431,7 +1432,7 @@ export async function initChannelProfileView() {
   const hashParams = new URLSearchParams(window.location.hash.slice(1));
   const npub = hashParams.get("npub");
   if (!npub) {
-    console.error(
+    userLogger.error(
       "No npub found in hash (e.g. #view=channel-profile&npub=...)"
     );
     return;
@@ -1456,7 +1457,7 @@ export async function initChannelProfileView() {
       throw new Error("Invalid npub decoding result.");
     }
   } catch (err) {
-    console.error("Error decoding npub:", err);
+    userLogger.error("Error decoding npub:", err);
     return;
   }
 
@@ -1469,7 +1470,7 @@ export async function initChannelProfileView() {
   setupChannelMoreMenu();
 
   const initialMenuRefresh = updateChannelMenuState().catch((error) => {
-    console.error("Failed to prepare channel menu state:", error);
+    userLogger.error("Failed to prepare channel menu state:", error);
   });
 
   let subscriptionsTask = null;
@@ -1478,7 +1479,7 @@ export async function initChannelProfileView() {
     subscriptionsTask = subscriptions
       .loadSubscriptions(app.pubkey)
       .catch((error) => {
-        console.error("Failed to load subscriptions for channel view:", error);
+        userLogger.error("Failed to load subscriptions for channel view:", error);
       })
       .finally(() => {
         renderSubscribeButton(hexPub);
@@ -1495,14 +1496,14 @@ export async function initChannelProfileView() {
   const profilePromise = loadUserProfile(hexPub)
     .then(() => updateChannelMenuState())
     .catch((error) => {
-      console.error("Failed to load channel profile:", error);
+      userLogger.error("Failed to load channel profile:", error);
     })
     .finally(() => {
       syncChannelShareButtonState();
     });
 
   const videosPromise = loadUserVideos(hexPub).catch((error) => {
-    console.error("Failed to load channel videos:", error);
+    userLogger.error("Failed to load channel videos:", error);
   });
 
   const pendingTasks = [profilePromise, videosPromise];
@@ -1609,7 +1610,7 @@ function renderSubscribeButton(channelHex) {
   if (toggleBtn) {
     toggleBtn.addEventListener("click", async () => {
       if (!app?.pubkey) {
-        console.error("Not logged in => cannot subscribe/unsubscribe.");
+        userLogger.error("Not logged in => cannot subscribe/unsubscribe.");
         return;
       }
       try {
@@ -1621,7 +1622,7 @@ function renderSubscribeButton(channelHex) {
         // Re-render the button so it toggles state
         renderSubscribeButton(channelHex);
       } catch (err) {
-        console.error("Failed to update subscription:", err);
+        userLogger.error("Failed to update subscription:", err);
       }
     });
   }
@@ -1905,7 +1906,7 @@ function renderChannelVideosFromList({
           description: detail.video?.description
         })
       ).catch((error) => {
-        console.error("Failed to play channel video via event id:", error);
+        userLogger.error("Failed to play channel video via event id:", error);
         if (typeof app?.playVideoWithFallback === "function") {
           app.playVideoWithFallback({
             url: detail.url,
@@ -1920,7 +1921,7 @@ function renderChannelVideosFromList({
       Promise.resolve(
         app.playVideoWithFallback({ url: detail.url, magnet: detail.magnet })
       ).catch((error) => {
-        console.error(
+        userLogger.error(
           "Failed to start fallback playback for channel video:",
           error
         );
@@ -2235,7 +2236,7 @@ async function fetchChannelProfileFromRelays(pubkey) {
   try {
     await nostrClient.ensurePool();
   } catch (error) {
-    console.error("Failed to initialize relay pool for channel profile:", error);
+    userLogger.error("Failed to initialize relay pool for channel profile:", error);
     return { event: null, profile: {} };
   }
 
@@ -2271,7 +2272,7 @@ async function fetchChannelProfileFromRelays(pubkey) {
         const meta = JSON.parse(newestEvent.content);
         return { event: newestEvent, profile: meta };
       } catch (error) {
-        console.warn("Failed to parse channel metadata payload:", error);
+        userLogger.warn("Failed to parse channel metadata payload:", error);
         return { event: newestEvent, profile: {} };
       }
     }
@@ -2343,7 +2344,7 @@ async function loadUserProfile(pubkey) {
             ""
         });
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "Failed to persist channel profile metadata to cache:",
           error
         );
@@ -2359,7 +2360,7 @@ async function loadUserProfile(pubkey) {
     });
   } catch (error) {
     if (loadToken === currentProfileLoadToken) {
-      console.error("Failed to fetch user profile data:", error);
+      userLogger.error("Failed to fetch user profile data:", error);
       const lnEl = document.getElementById("channelLightning");
       if (lnEl && !currentChannelLightningAddress) {
         lnEl.textContent = "No lightning address found.";
@@ -2416,7 +2417,7 @@ async function loadUserVideos(pubkey) {
   }
 
   const ensureAccessPromise = accessControl.ensureReady().catch((error) => {
-    console.warn(
+    userLogger.warn(
       "Failed to ensure admin lists were loaded before channel fetch:",
       error
     );
@@ -2448,7 +2449,7 @@ async function loadUserVideos(pubkey) {
           events.push(...fallbackEvents);
         }
       } catch (error) {
-        console.error("Relay error (default pool):", error);
+        userLogger.error("Relay error (default pool):", error);
       }
     } else {
       const relayPromises = relayList.map((url) =>
@@ -2466,7 +2467,7 @@ async function loadUserVideos(pubkey) {
         }
 
         if (result.reason) {
-          console.error(`Relay error (${relayUrl}):`, result.reason);
+          userLogger.error(`Relay error (${relayUrl}):`, result.reason);
         }
       });
     }
@@ -2478,7 +2479,7 @@ async function loadUserVideos(pubkey) {
     }
 
     if (!container) {
-      console.warn("channelVideoList element not found in DOM.");
+      userLogger.warn("channelVideoList element not found in DOM.");
       return;
     }
 
@@ -2503,7 +2504,7 @@ async function loadUserVideos(pubkey) {
         <p class="text-critical">Failed to load videos. Please try again.</p>
       `;
     }
-    console.error("Error loading user videos:", err);
+    userLogger.error("Error loading user videos:", err);
   } finally {
     await ensureAccessPromise;
     if (loadToken === currentVideoLoadToken && container) {
@@ -2528,7 +2529,7 @@ window.addEventListener("bitvid:access-control-updated", () => {
   }
 
   loadUserVideos(currentChannelHex).catch((error) => {
-    console.error(
+    userLogger.error(
       "Failed to refresh channel videos after admin update:",
       error
     );

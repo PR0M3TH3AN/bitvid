@@ -1,3 +1,4 @@
+import { userLogger } from "./utils/logger.js";
 import { isDevMode } from "./config.js";
 
 export const RELAY_PUBLISH_TIMEOUT_MS = 10_000;
@@ -89,7 +90,7 @@ export function publishEventToRelay(pool, url, event, options = {}) {
             return true;
           } catch (error) {
             if (isDevMode) {
-              console.warn(
+              userLogger.warn(
                 `[nostrPublish] Relay publish handle rejected ${eventName} listener:`,
                 error,
               );
