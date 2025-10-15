@@ -154,6 +154,14 @@
     line-height: 1;
   }
 
+  .header-icon-toggle[data-theme-state="light"] {
+    color: var(--color-text-strong);
+  }
+
+  .header-icon-toggle[data-theme-state="dark"] {
+    color: var(--color-text);
+  }
+
   .header-icon-toggle__icon {
     inline-size: var(--icon-size-md);
     block-size: var(--icon-size-md);
@@ -161,9 +169,14 @@
     vector-effect: non-scaling-stroke;
   }
 
-  .header-icon-toggle:hover,
-  .header-icon-toggle:focus-visible {
+  .header-icon-toggle[data-theme-state="light"]:hover,
+  .header-icon-toggle[data-theme-state="light"]:focus-visible {
     color: var(--color-text);
+  }
+
+  .header-icon-toggle[data-theme-state="dark"]:hover,
+  .header-icon-toggle[data-theme-state="dark"]:focus-visible {
+    color: var(--color-text-strong);
   }
 
   .header-icon-toggle[aria-pressed="true"] {
