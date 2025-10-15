@@ -1,4 +1,3 @@
-import { userLogger } from "./utils/logger.js";
 // js/userBlocks.js
 import { nostrClient } from "./nostr.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
@@ -75,7 +74,7 @@ class UserBlockListManager {
     }
 
     if (!window?.nostr?.nip04?.decrypt) {
-      userLogger.warn(
+      console.warn(
         "[UserBlockList] nip04.decrypt is unavailable; treating block list as empty."
       );
       this.reset();
@@ -203,7 +202,7 @@ class UserBlockListManager {
         try {
           decrypted = await window.nostr.nip04.decrypt(normalized, newest.content);
         } catch (err) {
-          userLogger.error("[UserBlockList] Failed to decrypt block list:", err);
+          console.error("[UserBlockList] Failed to decrypt block list:", err);
           this.blockedPubkeys.clear();
           return;
         }
@@ -226,7 +225,7 @@ class UserBlockListManager {
             });
           this.blockedPubkeys = new Set(sanitized);
         } catch (err) {
-          userLogger.error("[UserBlockList] Failed to parse block list:", err);
+          console.error("[UserBlockList] Failed to parse block list:", err);
           this.blockedPubkeys.clear();
         }
       };
@@ -248,12 +247,12 @@ class UserBlockListManager {
             } else {
               const reason = outcome.reason;
               if (reason?.code === "timeout") {
-                userLogger.warn(
+                console.warn(
                   `[UserBlockList] Relay ${reason.relay} timed out while loading block list (${reason.timeoutMs}ms)`
                 );
               } else {
                 const relay = reason?.relay || reason?.relayUrl;
-                userLogger.error(
+                console.error(
                   `[UserBlockList] Relay error at ${relay}:`,
                   reason?.error ?? reason
                 );
@@ -268,7 +267,7 @@ class UserBlockListManager {
           await applyEvents(aggregated, { skipIfEmpty: true });
         })
         .catch((error) => {
-          userLogger.error("[UserBlockList] background block list refresh failed:", error);
+          console.error("[UserBlockList] background block list refresh failed:", error);
         });
 
       let fastResult = null;
@@ -279,13 +278,13 @@ class UserBlockListManager {
           if (error instanceof AggregateError) {
             error.errors?.forEach((err) => {
               if (err?.code === "timeout") {
-                userLogger.warn(
+                console.warn(
                   `[UserBlockList] Relay ${err.relay} timed out while loading block list (${err.timeoutMs}ms)`
                 );
               }
             });
           } else {
-            userLogger.error("[UserBlockList] Fast block list fetch failed:", error);
+            console.error("[UserBlockList] Fast block list fetch failed:", error);
           }
         }
       }
@@ -300,7 +299,7 @@ class UserBlockListManager {
       this.blockEventId = null;
       background.catch(() => {});
     } catch (error) {
-      userLogger.error("[UserBlockList] loadBlocks failed:", error);
+      console.error("[UserBlockList] loadBlocks failed:", error);
       this.blockedPubkeys.clear();
     } finally {
       this.loaded = true;
@@ -432,7 +431,7 @@ class UserBlockListManager {
       if (publishError?.relayFailures?.length) {
         publishError.relayFailures.forEach(
           ({ url, error: relayError, reason }) => {
-            userLogger.error(
+            console.error(
               `[UserBlockList] Block list rejected by ${url}: ${reason}`,
               relayError || reason
             );
@@ -450,7 +449,7 @@ class UserBlockListManager {
             : relayError
             ? String(relayError)
             : "publish failed";
-        userLogger.warn(
+        console.warn(
           `[UserBlockList] Block list not accepted by ${url}: ${reason}`,
           relayError
         );

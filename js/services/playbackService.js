@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 // js/services/playbackService.js
 
 class SimpleEventEmitter {
@@ -74,7 +73,7 @@ export class PlaybackService {
     try {
       this.logger(...args);
     } catch (err) {
-      userLogger.warn("[PlaybackService] logger threw", err);
+      console.warn("[PlaybackService] logger threw", err);
     }
   }
 

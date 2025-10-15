@@ -1,6 +1,5 @@
 import { isDevMode } from "../config.js";
 import { pointerArrayToKey } from "../utils/pointer.js";
-import { userLogger } from "../utils/logger.js";
 import {
   ingestLocalViewEvent as defaultIngestLocalViewEvent,
 } from "../viewCounter.js";
@@ -110,7 +109,7 @@ export default class WatchHistoryTelemetry {
                 this.watchHistoryService?.clearLocalMetadata?.();
               } catch (error) {
                 if (isDevMode) {
-                  userLogger.warn(
+                  console.warn(
                     "[watchHistoryTelemetry] Failed to clear cached metadata after toggle off:",
                     error,
                   );
@@ -124,7 +123,7 @@ export default class WatchHistoryTelemetry {
         }
       } catch (error) {
         if (isDevMode) {
-          userLogger.warn(
+          console.warn(
             "[watchHistoryTelemetry] Failed to subscribe to metadata preference changes:",
             error,
           );
@@ -155,7 +154,7 @@ export default class WatchHistoryTelemetry {
       }
     } catch (error) {
       if (isDevMode) {
-        userLogger.warn(
+        console.warn(
           "[watchHistoryTelemetry] Failed to read metadata settings:",
           error,
         );
@@ -170,7 +169,7 @@ export default class WatchHistoryTelemetry {
         this.watchHistoryService?.clearLocalMetadata?.();
       } catch (error) {
         if (isDevMode) {
-          userLogger.warn(
+          console.warn(
             "[watchHistoryTelemetry] Failed to purge metadata cache while preference disabled:",
             error,
           );
@@ -207,7 +206,7 @@ export default class WatchHistoryTelemetry {
       this.watchHistoryService.setLocalMetadata(pointerInfo.key, metadata);
     } catch (error) {
       if (isDevMode) {
-        userLogger.warn(
+        console.warn(
           "[watchHistoryTelemetry] Failed to persist local metadata for pointer:",
           pointerInfo.key,
           error,
@@ -229,7 +228,7 @@ export default class WatchHistoryTelemetry {
       this.watchHistoryService.removeLocalMetadata(pointerKey);
     } catch (error) {
       if (isDevMode) {
-        userLogger.warn(
+        console.warn(
           "[watchHistoryTelemetry] Failed to remove cached metadata for pointer:",
           pointerKey,
           error,
@@ -279,7 +278,7 @@ export default class WatchHistoryTelemetry {
           state.videoEl.removeEventListener(eventName, handler);
         } catch (error) {
           if (isDevMode) {
-            userLogger.warn(
+            console.warn(
               `[watchHistoryTelemetry] Failed to detach ${eventName} listener:`,
               error,
             );
@@ -425,7 +424,7 @@ export default class WatchHistoryTelemetry {
           }
         } catch (error) {
           if (isDevMode) {
-            userLogger.warn(
+            console.warn(
               "[watchHistoryTelemetry] Exception while recording video view:",
               error,
             );
@@ -453,7 +452,7 @@ export default class WatchHistoryTelemetry {
               });
             } catch (error) {
               if (isDevMode) {
-                userLogger.warn(
+                console.warn(
                   "[watchHistoryTelemetry] Failed to ingest local view event:",
                   error,
                 );
@@ -461,14 +460,14 @@ export default class WatchHistoryTelemetry {
             }
           }
         } else if (isDevMode && viewResult) {
-          userLogger.warn(
+          console.warn(
             "[watchHistoryTelemetry] View event rejected by relays:",
             viewResult,
           );
         }
       })().catch((error) => {
         if (isDevMode) {
-          userLogger.warn(
+          console.warn(
             "[watchHistoryTelemetry] Unexpected error while recording video view:",
             error,
           );
@@ -582,7 +581,7 @@ export default class WatchHistoryTelemetry {
       try {
         this.watchHistoryPreferenceUnsubscribe();
       } catch (error) {
-        userLogger.warn(
+        console.warn(
           "[watchHistoryTelemetry] Failed to unsubscribe watch history preference:",
           error,
         );

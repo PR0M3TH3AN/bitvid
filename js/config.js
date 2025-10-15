@@ -53,28 +53,6 @@ export { ALLOW_NSFW_CONTENT };
 const WHITELIST_MODE_KEY = ADMIN_WHITELIST_MODE_STORAGE_KEY;
 const DEFAULT_WHITELIST_ENABLED = DEFAULT_WHITELIST_MODE_ENABLED;
 
-const fallbackConsole =
-  (typeof globalThis !== "undefined" && globalThis["console"]) || null;
-const fallbackWarn = (...args) => {
-  if (fallbackConsole && typeof fallbackConsole.warn === "function") {
-    fallbackConsole.warn(...args);
-  }
-};
-const embeddedUserLogger =
-  (typeof globalThis !== "undefined" &&
-    globalThis.bitvidLogger &&
-    globalThis.bitvidLogger.user) ||
-  null;
-const configLogger = {
-  warn: (...args) => {
-    if (embeddedUserLogger && typeof embeddedUserLogger.warn === "function") {
-      embeddedUserLogger.warn(...args);
-      return;
-    }
-    fallbackWarn(...args);
-  },
-};
-
 export function getWhitelistMode() {
   try {
     const raw = localStorage.getItem(WHITELIST_MODE_KEY);
@@ -83,7 +61,7 @@ export function getWhitelistMode() {
     }
     return raw === "true";
   } catch (error) {
-    configLogger.warn("Failed to read whitelist mode from storage:", error);
+    console.warn("Failed to read whitelist mode from storage:", error);
     return DEFAULT_WHITELIST_ENABLED;
   }
 }
@@ -92,7 +70,7 @@ export function setWhitelistMode(enabled) {
   try {
     localStorage.setItem(WHITELIST_MODE_KEY, enabled ? "true" : "false");
   } catch (error) {
-    configLogger.warn("Failed to persist whitelist mode to storage:", error);
+    console.warn("Failed to persist whitelist mode to storage:", error);
   }
 }
 

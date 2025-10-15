@@ -1,4 +1,3 @@
-import { userLogger } from "../utils/logger.js";
 const state = {
   pubkey: null,
   currentUserNpub: null,
@@ -30,7 +29,7 @@ function notifyKey(key, value, previousValue) {
       try {
         callback(value, previousValue, createSnapshot());
       } catch (error) {
-        userLogger.warn(`[appState] subscriber for key "${key}" threw:`, error);
+        console.warn(`[appState] subscriber for key "${key}" threw:`, error);
       }
     }
   }
@@ -41,7 +40,7 @@ function notifyKey(key, value, previousValue) {
       try {
         callback(snapshot, { key, value, previousValue });
       } catch (error) {
-        userLogger.warn("[appState] global subscriber threw:", error);
+        console.warn("[appState] global subscriber threw:", error);
       }
     }
   }
@@ -159,7 +158,7 @@ function notifyModal(name, value, previousValue) {
     try {
       callback(value, previousValue, createSnapshot());
     } catch (error) {
-      userLogger.warn(`[appState] modal subscriber for "${name}" threw:`, error);
+      console.warn(`[appState] modal subscriber for "${name}" threw:`, error);
     }
   }
 }

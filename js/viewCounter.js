@@ -1,4 +1,3 @@
-import { userLogger } from "./utils/logger.js";
 /**
  * @module viewCounter
  * @description Public API for tracking and formatting bitvid video view totals.
@@ -165,7 +164,7 @@ function normalizePointer(pointer) {
           }
         }
       } catch (error) {
-        userLogger.warn("[viewCounter] Failed to decode NIP-19 pointer:", error);
+        console.warn("[viewCounter] Failed to decode NIP-19 pointer:", error);
       }
     }
   }
@@ -280,7 +279,7 @@ function restoreCacheSnapshot() {
       });
     }
   } catch (error) {
-    userLogger.warn("[viewCounter] Failed to restore cached view counts:", error);
+    console.warn("[viewCounter] Failed to restore cached view counts:", error);
   }
 }
 
@@ -308,7 +307,7 @@ function persistCacheSnapshot() {
     };
     localStorage.setItem(VIEW_COUNTER_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
-    userLogger.warn("[viewCounter] Failed to persist view count cache:", error);
+    console.warn("[viewCounter] Failed to persist view count cache:", error);
   }
 }
 
@@ -377,7 +376,7 @@ function notifyHandlers(key) {
     try {
       handler(snapshot);
     } catch (error) {
-      userLogger.warn("[viewCounter] View handler threw:", error);
+      console.warn("[viewCounter] View handler threw:", error);
     }
   }
 }
@@ -469,15 +468,15 @@ async function hydratePointer(key, listeners) {
   try {
     listResult = await listPromise;
   } catch (error) {
-    userLogger.warn("[viewCounter] Failed to hydrate view events via list:", error);
+    console.warn("[viewCounter] Failed to hydrate view events via list:", error);
   }
   try {
     countResult = await countPromise;
   } catch (error) {
     if (error?.name === "AbortError") {
-      userLogger.warn("[viewCounter] View count hydration aborted:", error);
+      console.warn("[viewCounter] View count hydration aborted:", error);
     } else {
-      userLogger.warn("[viewCounter] Failed to count view events:", error);
+      console.warn("[viewCounter] Failed to count view events:", error);
     }
   }
   let mutated = false;
@@ -550,7 +549,7 @@ function ensureLiveSubscription(key, listeners) {
       try {
         unsubscribe();
       } catch (error) {
-        userLogger.warn("[viewCounter] Failed to unsubscribe from view events:", error);
+        console.warn("[viewCounter] Failed to unsubscribe from view events:", error);
       }
       listeners.liveUnsub = null;
       if (!listeners.hydrationPromise) {
@@ -559,7 +558,7 @@ function ensureLiveSubscription(key, listeners) {
     };
     setPointerStatus(key, "live");
   } catch (error) {
-    userLogger.warn("[viewCounter] Failed to open live view subscription:", error);
+    console.warn("[viewCounter] Failed to open live view subscription:", error);
   }
 }
 
@@ -584,7 +583,7 @@ export function subscribeToVideoViewCount(pointerInput, handler, options = {}) {
       status: state.status,
     });
   } catch (error) {
-    userLogger.warn("[viewCounter] Initial handler invocation threw:", error);
+    console.warn("[viewCounter] Initial handler invocation threw:", error);
   }
   ensureHydration(key, listeners);
   ensureLiveSubscription(key, listeners);
@@ -618,7 +617,7 @@ export function ingestLocalViewEvent({ event, pointer }) {
       notifyHandlers(key);
     }
   } catch (error) {
-    userLogger.warn("[viewCounter] Failed to ingest local view event:", error);
+    console.warn("[viewCounter] Failed to ingest local view event:", error);
   }
 }
 

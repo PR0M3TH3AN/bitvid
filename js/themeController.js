@@ -1,4 +1,3 @@
-import { userLogger } from "./utils/logger.js";
 const STORAGE_KEY = "bitvid:theme";
 const FALLBACK_THEME = "dark";
 const VALID_THEMES = new Set(["light", "dark"]);
@@ -43,7 +42,7 @@ const readStoredTheme = () => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     return normalizeTheme(stored);
   } catch (error) {
-    userLogger.warn("Unable to read stored theme preference:", error);
+    console.warn("Unable to read stored theme preference:", error);
     return null;
   }
 };
@@ -55,7 +54,7 @@ const persistTheme = (theme) => {
   try {
     window.localStorage.setItem(STORAGE_KEY, theme);
   } catch (error) {
-    userLogger.warn("Unable to persist theme preference:", error);
+    console.warn("Unable to persist theme preference:", error);
   }
 };
 
@@ -93,7 +92,7 @@ const updateThemeColorMeta = (theme) => {
         .trim();
     }
   } catch (error) {
-    userLogger.warn("Unable to compute theme color token:", error);
+    console.warn("Unable to compute theme color token:", error);
   }
 
   const fallback = FALLBACK_META_COLORS[theme] || FALLBACK_META_COLORS[FALLBACK_THEME];
@@ -180,7 +179,7 @@ const collectToggleElements = (root = document) => {
         }
       });
     } catch (error) {
-      userLogger.warn(`Invalid selector for theme toggle: ${selector}`, error);
+      console.warn(`Invalid selector for theme toggle: ${selector}`, error);
     }
   });
 
@@ -270,3 +269,4 @@ export const initThemeController = () => {
   applyTheme(initialTheme, { persist: true });
   refreshThemeControls(document);
 };
+

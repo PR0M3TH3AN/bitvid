@@ -1,6 +1,5 @@
 import { normalizeDesignSystemContext } from "../designSystem.js";
 import positionFloatingPanel from "./utils/positionFloatingPanel.js";
-import { userLogger } from "../utils/logger.js";
 import { createFloatingPanelStyles } from "./utils/floatingPanelStyles.js";
 import {
   getPopupOffsetPx,
@@ -461,7 +460,7 @@ export default class MoreMenuController {
           await this.clipboard.writeText(valueToCopy);
           this.callbacks.showSuccess("Channel npub copied to clipboard!");
         } catch (error) {
-          userLogger.error("Failed to copy npub:", error);
+          console.error("Failed to copy npub:", error);
           this.callbacks.showError("Failed to copy the npub.");
         }
         break;
@@ -478,7 +477,7 @@ export default class MoreMenuController {
         try {
           await this.accessControl?.ensureReady?.();
         } catch (error) {
-          userLogger.warn(
+          console.warn(
             "Failed to refresh moderation state before blacklisting:",
             error,
           );
@@ -522,7 +521,7 @@ export default class MoreMenuController {
               });
             } catch (error) {
               if (this.isDevMode) {
-                userLogger.warn(
+                console.warn(
                   "[Subscriptions] Failed to refresh after blacklist update:",
                   error,
                 );
@@ -553,7 +552,7 @@ export default class MoreMenuController {
             }
           }
         } catch (error) {
-          userLogger.error("Failed to add creator to blacklist:", error);
+          console.error("Failed to add creator to blacklist:", error);
           this.callbacks.showError(
             "Failed to update the blacklist. Please try again.",
           );
@@ -609,7 +608,7 @@ export default class MoreMenuController {
           try {
             this.callbacks.onUserBlocksUpdated();
           } catch (error) {
-            userLogger.warn(
+            console.warn(
               "[MoreMenu] Failed to refresh blocked list after update:",
               error,
             );
@@ -622,14 +621,14 @@ export default class MoreMenuController {
             });
           } catch (error) {
             if (this.isDevMode) {
-              userLogger.warn(
+              console.warn(
                 "[Subscriptions] Failed to refresh after user block update:",
                 error,
               );
             }
           }
         } catch (error) {
-          userLogger.error("Failed to update personal block list:", error);
+          console.error("Failed to update personal block list:", error);
           const message =
             error?.code === "nip04-missing"
               ? "Your Nostr extension must support NIP-04 to manage private lists."

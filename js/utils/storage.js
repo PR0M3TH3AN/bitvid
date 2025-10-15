@@ -1,4 +1,3 @@
-import { userLogger } from "logger.js";
 // js/utils/storage.js
 
 const URL_HEALTH_STORAGE_PREFIX = "bitvid:urlHealth:";
@@ -22,7 +21,7 @@ export function readUrlHealthFromStorage(eventId) {
       return parsed;
     }
   } catch (err) {
-    userLogger.warn(`Failed to parse stored URL health for ${eventId}:`, err);
+    console.warn(`Failed to parse stored URL health for ${eventId}:`, err);
   }
 
   removeUrlHealthFromStorage(eventId);
@@ -40,7 +39,7 @@ export function writeUrlHealthToStorage(eventId, entry) {
       JSON.stringify(entry)
     );
   } catch (err) {
-    userLogger.warn(`Failed to persist URL health for ${eventId}:`, err);
+    console.warn(`Failed to persist URL health for ${eventId}:`, err);
   }
 }
 
@@ -52,6 +51,6 @@ export function removeUrlHealthFromStorage(eventId) {
   try {
     localStorage.removeItem(getUrlHealthStorageKey(eventId));
   } catch (err) {
-    userLogger.warn(`Failed to remove URL health for ${eventId}:`, err);
+    console.warn(`Failed to remove URL health for ${eventId}:`, err);
   }
 }

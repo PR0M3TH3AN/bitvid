@@ -1,4 +1,3 @@
-import { userLogger } from "./utils/logger.js";
 // js/accessControl.js
 
 import {
@@ -127,7 +126,7 @@ class AccessControl {
 
     const operation = this._performRefresh();
     const tracked = operation.catch((error) => {
-      userLogger.error("Failed to refresh admin lists:", error);
+      console.error("Failed to refresh admin lists:", error);
       throw error;
     });
     this._refreshPromise = tracked;

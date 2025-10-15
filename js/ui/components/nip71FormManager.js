@@ -1,4 +1,3 @@
-import { userLogger } from "../../utils/logger.js";
 // NOTE: Keep the Upload, Edit, and Revert modals in lockstep when updating NIP-71 form features.
 
 const REPEATER_KEYS = ["imeta", "text-track", "segment", "t", "p", "r"];
@@ -37,7 +36,7 @@ export class Nip71FormManager {
       try {
         store.root.removeEventListener("click", store.handlers.click);
       } catch (error) {
-        userLogger.warn("[Nip71FormManager] Failed to detach previous handler", error);
+        console.warn("[Nip71FormManager] Failed to detach previous handler", error);
       }
     }
 
@@ -780,3 +779,4 @@ export class Nip71FormManager {
     return this.sections.get(key) || null;
   }
 }
+
