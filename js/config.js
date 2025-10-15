@@ -2,7 +2,6 @@
 
 import {
   IS_DEV_MODE,
-  isDEVMODE,
   ADMIN_SUPER_NPUB,
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
@@ -30,7 +29,6 @@ import {
 
 export const isDevMode = Boolean(IS_DEV_MODE);
 export { IS_DEV_MODE };
-export { isDEVMODE };
 
 if (typeof window !== "undefined") {
   window.__BITVID_DEV_MODE__ = isDevMode;
