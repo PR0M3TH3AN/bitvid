@@ -207,21 +207,15 @@
       </div>
     </div>
     <script>
-      // Fallback loggers keep embeds functional without bitvidLogger while surfacing warnings/errors via the console.
-      const fallbackDev = {
+      // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
+      const noopLogger = {
         log: () => {},
         info: () => {},
-        warn: (...args) => console.warn(...args),
-        error: (...args) => console.error(...args),
+        warn: () => {},
+        error: () => {},
       };
-      const fallbackUser = {
-        log: () => {},
-        info: () => {},
-        warn: (...args) => console.warn(...args),
-        error: (...args) => console.error(...args),
-      };
-      const dev = window.bitvidLogger?.dev || fallbackDev;
-      const user = window.bitvidLogger?.user || fallbackUser;
+      const dev = window.bitvidLogger?.dev || noopLogger;
+      const user = window.bitvidLogger?.user || noopLogger;
 
       document.addEventListener("DOMContentLoaded", () => {
         // Logging functions for both on-page and console output.
