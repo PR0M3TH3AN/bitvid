@@ -206,8 +206,14 @@
       var(--floating-transform-origin-block);
   }
 
-  [data-floating-panel][data-floating-strategy="absolute"] {
+  [data-floating-panel][data-floating-strategy="absolute"],
+  .popover__panel[data-floating-strategy="absolute"] {
     position: absolute;
+  }
+
+  [data-floating-panel][data-floating-strategy="fixed"],
+  .popover__panel[data-floating-strategy="fixed"] {
+    position: fixed;
   }
 
   [data-floating-panel][data-floating-mode="anchor"] {
