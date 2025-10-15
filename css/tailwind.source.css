@@ -279,6 +279,11 @@
     @apply pointer-events-auto opacity-100 scale-100;
   }
 
+  .card :is([data-floating-panel], .popover__panel),
+  .video-modal__actions-row :is([data-floating-panel], .popover__panel) {
+    z-index: var(--z-modal-content);
+  }
+
   .ds-overlay-backdrop {
     position: fixed;
     inset: 0;
@@ -1436,6 +1441,7 @@
 
   .video-modal__actions-row {
     @apply flex flex-wrap items-center gap-3;
+    overflow: visible;
   }
 
   .video-modal__action-button {

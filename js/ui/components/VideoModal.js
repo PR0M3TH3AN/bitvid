@@ -84,6 +84,7 @@ export class VideoModal {
     this.modalZapPending = false;
     this.modalZapPositioner = null;
     this.modalMoreMenuPositioner = null;
+    this.pendingMoreMenuUpdateFrame = null;
 
     this.modalPosterCleanup = null;
     this.videoEventCleanup = null;
@@ -93,6 +94,7 @@ export class VideoModal {
     this.handleCopyRequest = this.handleCopyRequest.bind(this);
     this.handleShareRequest = this.handleShareRequest.bind(this);
     this.handleCreatorNavigation = this.handleCreatorNavigation.bind(this);
+    this.handleWindowResize = this.handleWindowResize.bind(this);
 
     this.MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
   }
@@ -123,6 +125,41 @@ export class VideoModal {
   dispatch(type, detail) {
     const event = new CustomEvent(type, { detail });
     this.eventTarget.dispatchEvent(event);
+  }
+
+  clearPendingMoreMenuUpdate() {
+    if (
+      this.pendingMoreMenuUpdateFrame !== null &&
+      this.window &&
+      typeof this.window.cancelAnimationFrame === "function"
+    ) {
+      this.window.cancelAnimationFrame(this.pendingMoreMenuUpdateFrame);
+    }
+    this.pendingMoreMenuUpdateFrame = null;
+  }
+
+  requestMoreMenuUpdate() {
+    if (!this.modalMoreMenuPositioner?.update) {
+      return;
+    }
+
+    const raf = this.window?.requestAnimationFrame;
+    if (typeof raf === "function") {
+      if (this.pendingMoreMenuUpdateFrame !== null) {
+        this.clearPendingMoreMenuUpdate();
+      }
+      this.pendingMoreMenuUpdateFrame = raf(() => {
+        this.pendingMoreMenuUpdateFrame = null;
+        this.modalMoreMenuPositioner?.update();
+      });
+      return;
+    }
+
+    this.modalMoreMenuPositioner.update();
+  }
+
+  handleWindowResize() {
+    this.requestMoreMenuUpdate();
   }
 
   getRoot() {
@@ -233,6 +270,11 @@ export class VideoModal {
     }
     this.modalZapPositioner = null;
     this.modalMoreMenuPositioner = null;
+    this.clearPendingMoreMenuUpdate();
+
+    if (this.window && typeof this.window.removeEventListener === "function") {
+      this.window.removeEventListener("resize", this.handleWindowResize);
+    }
 
     const previousScrollRegion = this.scrollRegion;
     if (previousScrollRegion && this.modalNavScrollHandler) {
@@ -370,6 +412,7 @@ export class VideoModal {
             styles: this.modalMoreMenuStyles,
           },
         );
+        this.requestMoreMenuUpdate();
       }
     }
 
@@ -416,6 +459,10 @@ export class VideoModal {
     this.setCopyEnabled(false);
     this.setShareEnabled(false);
     this.resetStats();
+
+    if (this.window && typeof this.window.addEventListener === "function") {
+      this.window.addEventListener("resize", this.handleWindowResize);
+    }
 
     if (!this.activeVideo && this.playerModal) {
       this.playerModal.classList.add("hidden");
@@ -599,6 +646,7 @@ export class VideoModal {
     }
     this.setGlobalModalState("player", true);
     this.applyLoadingPoster();
+    this.requestMoreMenuUpdate();
   }
 
   close() {
@@ -756,6 +804,7 @@ export class VideoModal {
     this.copyMagnetBtn.setAttribute("aria-disabled", (!enabled).toString());
     this.copyMagnetBtn.classList.toggle("opacity-50", !enabled);
     this.copyMagnetBtn.classList.toggle("cursor-not-allowed", !enabled);
+    this.requestMoreMenuUpdate();
   }
 
   setShareEnabled(enabled) {
@@ -766,6 +815,7 @@ export class VideoModal {
     this.shareBtn.setAttribute("aria-disabled", (!enabled).toString());
     this.shareBtn.classList.toggle("opacity-50", !enabled);
     this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
+    this.requestMoreMenuUpdate();
   }
 
   setZapVisibility(visible) {
@@ -794,6 +844,8 @@ export class VideoModal {
     if (!shouldShow) {
       this.closeZapDialog({ silent: true });
     }
+
+    this.requestMoreMenuUpdate();
   }
 
   setWalletPromptVisible(visible) {

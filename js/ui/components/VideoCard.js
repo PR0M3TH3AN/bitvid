@@ -697,7 +697,7 @@ export class VideoCard {
 
   buildControls() {
     const container = this.createElement("div", {
-      classNames: ["flex", "items-center"]
+      classNames: ["flex", "items-center", "overflow-visible"]
     });
 
     const moreMenu = this.buildMoreMenu();
