@@ -94,6 +94,96 @@ test("flips to top when bottom placement collides with viewport", () => {
   assert.equal(ruleAfterDestroy, null);
 });
 
+test("retries measurement when the panel reports zero size", async () => {
+  const dom = new JSDOM(
+    `
+      <div class="popover">
+        <button id="trigger">Open</button>
+        <div id="panel" class="popover__panel" data-state="closed" hidden></div>
+      </div>
+    `,
+    { pretendToBeVisual: true },
+  );
+  const { window } = dom;
+  const { document } = window;
+
+  window.innerWidth = 640;
+  window.innerHeight = 480;
+
+  const trigger = document.getElementById("trigger");
+  const panel = document.getElementById("panel");
+
+  trigger.getBoundingClientRect = () => ({
+    top: 100,
+    bottom: 140,
+    left: 360,
+    right: 400,
+    width: 40,
+    height: 40,
+  });
+
+  let measurementCount = 0;
+  const zeroRect = {
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: 0,
+    height: 0,
+  };
+  const actualRect = {
+    top: 0,
+    bottom: 120,
+    left: 0,
+    right: 160,
+    width: 160,
+    height: 120,
+  };
+
+  panel.getBoundingClientRect = () => {
+    measurementCount += 1;
+    return measurementCount === 1 ? zeroRect : actualRect;
+  };
+  Object.defineProperties(panel, {
+    offsetWidth: {
+      get() {
+        return measurementCount === 1 ? 0 : 160;
+      },
+    },
+    offsetHeight: {
+      get() {
+        return measurementCount === 1 ? 0 : 120;
+      },
+    },
+  });
+
+  const styles = createFloatingPanelStyles(panel);
+
+  const positioner = positionFloatingPanel(trigger, panel, {
+    alignment: "end",
+    styles,
+  });
+
+  panel.hidden = false;
+  panel.dataset.state = "open";
+
+  positioner.update();
+
+  assert.deepEqual(styles.getFallbackPosition(), { top: null, left: null });
+
+  await new Promise((resolve) =>
+    window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => {
+        resolve();
+      }),
+    ),
+  );
+
+  assert.deepEqual(styles.getFallbackPosition(), { top: 148, left: 240 });
+
+  positioner.destroy();
+});
+
 test("respects RTL alignment and clamps within the viewport", () => {
   const dom = new JSDOM(
     `

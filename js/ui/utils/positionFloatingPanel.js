@@ -265,7 +265,15 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
     lastPlacement: null,
     lastAlignment: null,
     cleanup: [],
+    pendingFrame: null,
   };
+
+  state.cleanup.push(() => {
+    if (state.pendingFrame !== null && windowRef?.cancelAnimationFrame) {
+      windowRef.cancelAnimationFrame(state.pendingFrame);
+    }
+    state.pendingFrame = null;
+  });
 
   const styles =
     providedStyles && providedStyles.element === safePanel
@@ -299,6 +307,20 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
     }
   };
 
+  const scheduleNextFrame = () => {
+    if (!windowRef?.requestAnimationFrame) {
+      return false;
+    }
+    if (state.pendingFrame !== null) {
+      return true;
+    }
+    state.pendingFrame = windowRef.requestAnimationFrame(() => {
+      state.pendingFrame = null;
+      update();
+    });
+    return true;
+  };
+
   const update = () => {
     if (!safeAnchor.isConnected || !safePanel.isConnected) {
       return;
@@ -311,6 +333,7 @@ export function positionFloatingPanel(anchor, panel, options = {}) {
     );
 
     if (!panelWidth && !panelHeight) {
+      scheduleNextFrame();
       return;
     }
 
