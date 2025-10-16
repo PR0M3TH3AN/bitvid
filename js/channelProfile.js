@@ -2074,6 +2074,36 @@ function renderChannelVideosFromList({
       }
     };
 
+    videoCard.onRequestMoreMenu = (detail = {}) => {
+      if (typeof app?.requestMoreMenu === "function") {
+        app.requestMoreMenu({
+          ...detail,
+          video: detail.video || video,
+          pointerInfo: detail.pointerInfo || pointerInfo,
+        });
+      }
+    };
+
+    videoCard.onCloseMoreMenu = (detail = {}) => {
+      if (typeof app?.closeMoreMenu === "function") {
+        return app.closeMoreMenu(detail);
+      }
+      return false;
+    };
+
+    videoCard.onRequestSettingsMenu = (detail = {}) => {
+      if (typeof app?.requestVideoSettingsMenu === "function") {
+        app.requestVideoSettingsMenu(detail);
+      }
+    };
+
+    videoCard.onCloseSettingsMenu = (detail = {}) => {
+      if (typeof app?.closeVideoSettingsMenu === "function") {
+        return app.closeVideoSettingsMenu(detail);
+      }
+      return false;
+    };
+
     const cardEl = videoCard.getRoot();
     if (cardEl) {
       fragment.appendChild(cardEl);
