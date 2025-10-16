@@ -40,6 +40,7 @@
   },
   "license": "GPL-3.0-or-later",
   "dependencies": {
+    "@floating-ui/dom": "^1.6.10",
     "path": "^0.12.7",
     "webtorrent": "^1.9.7"
   }
