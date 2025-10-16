@@ -3126,13 +3126,16 @@ export class NostrClient {
       return { ok: true, code: "enable-unavailable" };
     }
 
-    const permissionVariants = [null];
+    // Always request the full set of methods first so extensions surface the
+    // "All Access" prompt instead of defaulting to "Get Public Key" only.
+    const permissionVariants = [];
     if (outstanding.length) {
       permissionVariants.push({
         permissions: outstanding.map((method) => ({ method })),
       });
       permissionVariants.push({ permissions: outstanding });
     }
+    permissionVariants.push(null);
 
     let lastError = null;
     for (const options of permissionVariants) {
