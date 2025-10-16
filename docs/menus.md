@@ -167,3 +167,8 @@ Then open `http://localhost:8000/views/dev/popover-demo.html` to interact with a
 sample video card and modal wired to the popover engine. The page ensures the
 overlay root exists, demonstrates Tailwind overlay helpers, and exercises both
 card and modal action menus without relying on production data.
+
+- ✅ **Anchored alignment check:** Open the video-card “More” menu and the
+  modal action menu. Each panel’s right edge should stay flush with the trigger
+  button. Playwright now verifies this via `tests/e2e/popover.spec.ts`, but QA
+  should still confirm the alignment while running the manual demo.

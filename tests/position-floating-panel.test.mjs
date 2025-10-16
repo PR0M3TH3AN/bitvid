@@ -1,11 +1,15 @@
-import test, { beforeEach, afterEach } from "node:test";
+import test, { beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import createPopover from "../js/ui/overlay/popoverEngine.js";
+import { register } from "node:module";
 
 let dom;
 let documentRef;
 let windowRef;
+let createPopover;
+let computePositionStub;
+let autoUpdateStub;
+let mockedPosition;
 
 class StubObserver {
   constructor() {
@@ -32,7 +36,18 @@ function attachFocus(element, activeElementRef) {
   };
 }
 
-beforeEach(() => {
+function setMockedPosition(overrides = {}) {
+  mockedPosition = {
+    x: 0,
+    y: 0,
+    placement: "bottom-start",
+    middlewareData: {},
+    strategy: "fixed",
+    ...overrides,
+  };
+}
+
+beforeEach(async () => {
   dom = new JSDOM(
     `<!DOCTYPE html><html><body data-ds="new"><div id="root"></div></body></html>`,
     {
@@ -65,6 +80,38 @@ beforeEach(() => {
   if (!global.PointerEvent) {
     global.PointerEvent = windowRef.PointerEvent || windowRef.Event;
   }
+  windowRef.scrollTo = () => {};
+  documentRef.documentElement.style.setProperty(
+    "--popover-inline-safe-max",
+    "calc(100vw - var(--space-xl))",
+  );
+  documentRef.documentElement.style.setProperty(
+    "--overlay-panel-padding-block",
+    "240px",
+  );
+
+  setMockedPosition();
+
+  computePositionStub = mock.fn(async () => ({ ...mockedPosition }));
+  autoUpdateStub = mock.fn((reference, floating, update) => {
+    if (typeof update === "function") {
+      update();
+    }
+    return () => {};
+  });
+
+  globalThis.__floatingUiMock = {
+    arrow: (...args) => ({ name: "arrow", args }),
+    autoUpdate: autoUpdateStub,
+    computePosition: computePositionStub,
+    flip: (...args) => ({ name: "flip", args }),
+    offset: (...args) => ({ name: "offset", args }),
+    shift: (...args) => ({ name: "shift", args }),
+  };
+
+  register(new URL("./ui/mocks/floating-ui-test-loader.mjs", import.meta.url));
+
+  ({ default: createPopover } = await import("../js/ui/overlay/popoverEngine.js"));
 });
 
 afterEach(() => {
@@ -75,12 +122,18 @@ afterEach(() => {
   delete global.Node;
   delete global.getComputedStyle;
   delete global.ResizeObserver;
+  delete globalThis.__floatingUiMock;
+  mock.restoreAll();
   if (dom) {
     dom.window.close();
   }
   dom = null;
   documentRef = null;
   windowRef = null;
+  createPopover = null;
+  computePositionStub = null;
+  autoUpdateStub = null;
+  mockedPosition = null;
 });
 
 test("flips placement when bottom placement would collide with viewport", async () => {
@@ -104,6 +157,8 @@ test("flips placement when bottom placement would collide with viewport", async 
     width: 40,
     height: 40,
   });
+
+  setMockedPosition({ x: 96.3, y: 80.7, placement: "top-start" });
 
   const popover = createPopover(
     trigger,
@@ -154,6 +209,8 @@ test("flips placement when bottom placement would collide with viewport", async 
   assert.equal(panel.dataset.state, "open");
   assert.equal(panel.dataset.popoverPlacement, "top-start");
   assert.equal(panel.style.position, "fixed");
+  assert.equal(panel.style.left, "96px");
+  assert.equal(panel.style.top, "81px");
   assert.equal(panel.style.maxWidth, "calc(100vw - var(--space-xl))");
 
   const top = Number.parseInt(panel.style.top, 10);
