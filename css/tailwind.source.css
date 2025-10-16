@@ -50,6 +50,17 @@
     overflow-x: hidden;
   }
 
+  #uiOverlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: var(--z-overlay-popover);
+  }
+
+  #uiOverlay > * {
+    pointer-events: auto;
+  }
+
   #nip71TagsFieldset > legend,
   #editNip71TagsFieldset > legend {
     margin-left: 0;
@@ -348,12 +359,23 @@
     @apply relative inline-flex;
   }
 
+  .popover-panel,
   .popover__panel {
-    @apply focus-ring absolute left-0 top-full z-overlay-floating mt-2 min-w-menu max-w-popover-safe origin-top rounded-lg border border-border border-opacity-40 bg-panel px-popup-inline py-popup-block text-sm text-text shadow-lg transition-transform transition-opacity duration-[var(--motion-duration-base)] ease-[var(--motion-ease-out)] opacity-0 scale-95 pointer-events-none;
+    @apply focus-ring z-overlay-popover min-w-menu max-w-popover-safe rounded-overlay border border-border border-opacity-40 bg-overlay-panel px-overlay-panel-inline py-overlay-panel-block text-sm text-text shadow-overlay-panel transition-transform transition-opacity duration-base ease-out opacity-0 scale-95 pointer-events-none;
   }
 
+  .popover-panel[data-state="open"],
   .popover__panel[data-state="open"] {
     @apply pointer-events-auto opacity-100 scale-100;
+  }
+
+  .popover-panel[data-state="closed"],
+  .popover__panel[data-state="closed"] {
+    @apply pointer-events-none opacity-0 scale-95;
+  }
+
+  .p-overlay-panel {
+    @apply px-overlay-panel-inline py-overlay-panel-block;
   }
 
   .ds-overlay-backdrop {
@@ -367,6 +389,7 @@
     -webkit-backdrop-filter: blur(var(--overlay-backdrop-blur));
   }
 
+  .popover-panel[data-variant="zap"],
   .popover__panel[data-variant="zap"] {
     background: var(--color-overlay-veil);
     color: var(--color-subtle);
@@ -1059,6 +1082,7 @@
   .checkbox::after,
   .switch,
     .switch::before,
+    .popover-panel,
     .popover__panel,
     .menu__item {
       transition: none !important;
@@ -3077,6 +3101,7 @@
   .icon-button,
   .menu__item,
   .modal-nav,
+  .popover-panel,
   .popover__panel,
   .progress-bar-fill,
   .notification-banner,
@@ -3106,14 +3131,17 @@
     transition-property: none !important;
   }
 
+  .popover-panel,
   .popover__panel {
     transform: none !important;
   }
 
+  .popover-panel[data-state="open"],
   .popover__panel[data-state="open"] {
     opacity: 1;
   }
 
+  .popover-panel[data-state="closed"],
   .popover__panel[data-state="closed"] {
     opacity: 0;
   }

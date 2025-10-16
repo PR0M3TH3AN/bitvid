@@ -271,6 +271,7 @@ module.exports = {
         lg: "var(--radius-lg)",
         xl: "var(--radius-xl)",
         full: "var(--radius-full)",
+        overlay: "var(--overlay-panel-radius)",
         "modal-xl": "var(--radius-modal-xl)",
         "sidebar-shell": "var(--radius-sidebar-shell)",
         "sidebar-panel": "var(--radius-sidebar-panel)",
@@ -280,6 +281,7 @@ module.exports = {
         sm: "var(--shadow-sm)",
         md: "var(--shadow-md)",
         lg: "var(--shadow-lg)",
+        "overlay-panel": "var(--overlay-panel-shadow)",
         modal: "var(--shadow-modal)",
         "sidebar-shell": "var(--shadow-sidebar-shell)",
         "sidebar-accent": "var(--shadow-sidebar-accent)",
@@ -298,6 +300,7 @@ module.exports = {
       zIndex: {
         "overlay-nav": "var(--z-overlay-nav)",
         "overlay-floating": "var(--z-overlay-floating)",
+        "overlay-popover": "var(--z-overlay-popover)",
         "overlay-toast": "var(--z-overlay-toast)"
       },
       spacing: {
@@ -332,7 +335,9 @@ module.exports = {
         "sidebar-subnav-padding-block": "var(--space-sidebar-subnav-padding-block)",
         "sidebar-mobile-gutter": "var(--sidebar-mobile-gutter)",
         "popup-inline": "var(--popup-padding-inline)",
-        "popup-block": "var(--popup-padding-block)"
+        "popup-block": "var(--popup-padding-block)",
+        "overlay-panel-inline": "var(--overlay-panel-padding-inline)",
+        "overlay-panel-block": "var(--overlay-panel-padding-block)"
       },
       height: {
         "modal-embed": "var(--modal-embed-height)"
