@@ -608,6 +608,24 @@ class Application {
       "video:share",
       this.boundVideoModalShareHandler
     );
+    this.boundVideoModalContextActionHandler = (event) => {
+      const detail = event?.detail || {};
+      const action = typeof detail.action === "string" ? detail.action : "";
+      if (!action) {
+        return;
+      }
+      const dataset = {
+        ...(detail.dataset || {}),
+      };
+      if (!dataset.context) {
+        dataset.context = "modal";
+      }
+      this.handleMoreMenuAction(action, dataset);
+    };
+    this.videoModal.addEventListener(
+      "video:context-action",
+      this.boundVideoModalContextActionHandler
+    );
     this.boundVideoModalCreatorHandler = () => {
       this.openCreatorChannel();
     };
