@@ -15,12 +15,11 @@ The design system is now the canonical styling path across bitvid—there is no 
 Inline styles are blocked in production builds, so runtime components that need bespoke coordinates or measurements must route their overrides through `js/designSystem/dynamicStyles.js`.
 
 - `registerScope(id, selectors)` creates (or reuses) a constructable stylesheet when supported, allocates a unique identifier, and injects empty rules scoped to `[data-ds-style-id="<id>"]`. Callers attach the attribute to any element that should inherit those rules.
-- `setVariables(id, tokens)` updates CSS custom properties on the registered scope. Pass CSS variable names (`"--floating-fallback-top"`) and string or number values—`setVariables` handles serialization and removes entries when they resolve to empty strings.
+- `setVariables(id, tokens)` updates CSS custom properties on the registered scope. Pass CSS variable names (for example, `"--ds-metric-probe-length"`) and string or number values—`setVariables` handles serialization and removes entries when they resolve to empty strings.
 - `releaseScope(id)` removes the generated rules and frees the identifier. Always invoke it from component teardown paths to avoid leaking rules between renders.
 
-The floating panel utility and design-system metrics both lean on this helper:
+Design-system metrics lean on this helper to keep runtime measurements inline-style free:
 
-- `createFloatingPanelStyles` assigns each popover a unique scope and publishes fallback coordinates through CSS variables instead of mutating `.style`. Positioning logic reads and writes the same API, and teardown releases the scope before removing dataset attributes.
 - `readDesignTokenAsPixels` measures non-`px`/`rem` tokens with an offscreen probe that ships in core CSS (`.ds-metric-probe`). The probe is registered through the helper so dynamic lengths are fed into `--ds-metric-probe-length` without touching inline styles.
 
 When introducing a new runtime feature that requires dynamic styling:
@@ -319,7 +318,7 @@ Logo glyphs now rely on dedicated selectors inside the SVG: apply `.bv-logo__acc
 
 ### Popovers
 
-Use `.popover` as the relative anchor for floating content. Nest `.popover__panel` for the floating surface—it’s positioned with the shared helper, inherits the shared focus ring, and animates with opacity/scale tokens. Toggle `[data-state="open"]` on the panel to switch between the collapsed (`opacity-0 scale-95`) and expanded (`opacity-100 scale-100`) states.
+Use `.popover` as the relative anchor for floating content. Nest `.popover__panel` for the floating surface—it’s positioned with the shared popover engine, inherits the shared focus ring, and animates with opacity/scale tokens. Toggle `[data-state="open"]` on the panel to switch between the collapsed (`opacity-0 scale-95`) and expanded (`opacity-100 scale-100`) states.
 
 ```html
 <div class="popover">
@@ -330,36 +329,38 @@ Use `.popover` as the relative anchor for floating content. Nest `.popover__pane
 </div>
 ```
 
-Use the shared positioning helper (`js/ui/utils/positionFloatingPanel.js`) instead of manual utility offsets. It calculates placement, flips when the surface collides with the viewport, and clamps to an optional padding gutter—all while listening for scroll/resize events and using `ResizeObserver` when available. Call it with the trigger and panel elements, then invoke `positioner.update()` once the panel is visible:
+Use the shared popover engine (`js/ui/overlay/popoverEngine.js`) instead of manual offsets. The helper attaches panels to the overlay root, flips placement when they collide with the viewport, and toggles `aria` + `data-popover-state` attributes as visibility changes. Width and height clamps can be sourced from design tokens (`maxWidthToken`, `maxHeightToken`) so surfaces inherit theme-specific limits without inline constants. 【F:js/ui/overlay/popoverEngine.js†L252-L266】【F:js/ui/overlay/popoverEngine.js†L633-L706】【F:css/tailwind.source.css†L358-L399】
 
 ```js
-import positionFloatingPanel from "../utils/positionFloatingPanel.js";
+import createPopover from "../overlay/popoverEngine.js";
 
-const positioner = positionFloatingPanel(triggerEl, panelEl, {
-  placement: "bottom", // top | bottom | left | right
-  alignment: "end",    // start | center | end (RTL aware)
-  offset: 8,
-  viewportPadding: 16,
+const popover = createPopover(triggerEl, ({ container }) => {
+  const panel = document.createElement("div");
+  panel.className = "popover__panel card";
+  panel.dataset.state = "closed";
+  panel.innerHTML = "<p class=\"text-sm text-muted\">Filters</p>";
+  container.appendChild(panel);
+  return panel;
+}, {
+  placement: "bottom-start",
+  maxWidthToken: "--popover-inline-safe-max",
 });
 
-panelEl.hidden = false;
-panelEl.dataset.state = "open";
-positioner.update();
+await popover.open();
+panel.dataset.state = "open"; // reveal animation hooks
+
+// Later, close the surface and restore focus.
+panel.dataset.state = "closed";
+popover.close();
 ```
 
-The helper tags the trigger and surface with floating metadata so CSS tokens can express transform-origins and fallback coordina
-tes without bespoke inline styles. Panels receive `data-floating-panel="true"` plus placement, alignment, strategy, and directio
-n hooks (`data-floating-placement`, `data-floating-alignment`, `data-floating-strategy`, `data-floating-dir`). The script updates
-CSS custom properties `--floating-fallback-top`/`--floating-fallback-left` on each measurement so `css/tailwind.source.css` can
-control layout purely through tokens. Browsers that support CSS anchor positioning flip `data-floating-mode` to `anchor`, but th
-e same fallback properties keep older engines aligned. 【F:js/ui/utils/positionFloatingPanel.js†L238-L251】【F:css/tailwind.sourc
-e.css†L163-L236】
+The render callback runs once the engine has created its portal container. Return the panel (and optional arrow) element so the helper can manage focus targets, `aria-controls`, and collision handling. Consumers remain responsible for their own visual state toggles (`data-state`) so Tailwind transitions continue to apply. Use `popover.update()` when the trigger or panel size changes, and call `popover.destroy()` during teardown to drop listeners and portals. 【F:js/ui/overlay/popoverEngine.js†L420-L583】【F:js/ui/overlay/popoverEngine.js†L888-L1014】
 
 Recommended container pattern:
 
 - Wrap the trigger and panel in `.popover` so the markup stays discoverable and inherits spacing tokens.
 - Leave the wrapper’s overflow visible; the helper defaults to `position: fixed`, so floating surfaces escape scroll containers without getting clipped. Opt into `{ strategy: "absolute" }` if you intentionally want the panel constrained.
-- When tearing down a component, call `positioner.destroy()` to drop scroll/resize listeners.
+- When tearing down a component, call `popover.destroy()` to drop scroll/resize listeners and remove the portal container.
 
 The motion helpers defer to the global motion tokens so Task 5 can adjust timing globally without revisiting individual components. Animations respect `prefers-reduced-motion` by collapsing to opacity-only transitions.
 
