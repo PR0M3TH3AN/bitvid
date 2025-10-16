@@ -1096,9 +1096,33 @@
   }
 
   .modal-sheet {
-    @apply bv-modal__panel relative my-0 w-full overflow-hidden lg:max-w-4xl;
+    @apply bv-modal__panel relative my-0 w-full overflow-hidden;
     max-width: var(--modal-sheet-inline-max);
     overscroll-behavior: contain;
+  }
+
+  @media (max-width: calc(theme("screens.lg") - 0.02px)) {
+    .bv-modal {
+      align-items: stretch;
+      justify-content: stretch;
+      padding: 0;
+    }
+
+    .bv-modal__panel,
+    .modal-sheet {
+      inline-size: 100vw;
+      block-size: 100vh;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      border-radius: 0;
+      border: 0;
+      padding-top: calc(var(--space-lg) + env(safe-area-inset-top));
+      padding-right: calc(var(--space-lg) + env(safe-area-inset-right));
+      padding-bottom: calc(var(--space-lg) + env(safe-area-inset-bottom));
+      padding-left: calc(var(--space-lg) + env(safe-area-inset-left));
+      overflow: auto;
+    }
   }
 
   .modal-header {

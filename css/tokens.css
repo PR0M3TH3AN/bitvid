@@ -225,8 +225,8 @@
 
   /* Component sizing */
   --menu-min-width: 12rem;
-  --modal-max-width: 38rem;
-  --modal-sheet-inline-max: min(90vw, var(--modal-max-width));
+  --modal-max-width: 62.5rem;
+  --modal-sheet-inline-max: var(--modal-max-width);
   --modal-shell-max-height: 90vh;
   --modal-sheet-max-height: 92vh;
   --modal-body-max-height: calc(92vh - 4rem);
