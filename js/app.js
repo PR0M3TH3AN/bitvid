@@ -46,6 +46,8 @@ import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
 import { isWatchHistoryDebugEnabled } from "./watchHistoryDebug.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import createPopover from "./ui/overlay/popoverEngine.js";
+import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -703,6 +705,7 @@ class Application {
       },
     });
     this.moreMenuController.setVideoModal(this.videoModal);
+    this.videoSettingsPopovers = new Map();
 
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
@@ -4504,12 +4507,199 @@ class Application {
     if (this.moreMenuController) {
       this.moreMenuController.closeAllMoreMenus(options);
     }
+
+    this.closeVideoSettingsMenu({ restoreFocus: options?.restoreFocus !== false });
   }
 
   attachMoreMenuHandlers(container) {
     if (this.moreMenuController) {
       this.moreMenuController.attachMoreMenuHandlers(container);
     }
+  }
+
+  requestMoreMenu(detail = {}) {
+    if (!this.moreMenuController) {
+      return;
+    }
+
+    const trigger = detail.trigger || null;
+    if (!trigger) {
+      return;
+    }
+
+    const capabilities = detail.capabilities || {};
+    const canManage =
+      typeof capabilities.canManageBlacklist === "boolean"
+        ? capabilities.canManageBlacklist
+        : this.canCurrentUserManageBlacklist();
+
+    this.moreMenuController.toggleMoreMenu({
+      trigger,
+      video: detail.video || null,
+      pointerInfo: detail.pointerInfo || null,
+      playbackUrl: detail.playbackUrl || "",
+      playbackMagnet: detail.playbackMagnet || "",
+      context: detail.context || "card",
+      canManageBlacklist: canManage,
+      designSystem: detail.designSystem || this.designSystemContext,
+      onAction: detail.onAction || null,
+      onClose: detail.onClose || null,
+      restoreFocusOnClose: detail.restoreFocus !== false,
+    });
+  }
+
+  closeMoreMenu(detail = {}) {
+    if (!this.moreMenuController) {
+      return false;
+    }
+
+    const trigger = detail.trigger || null;
+    if (trigger) {
+      return this.moreMenuController.closePopoverForTrigger(trigger, {
+        restoreFocus: detail.restoreFocus !== false,
+      });
+    }
+
+    this.moreMenuController.closeAllMoreMenus({
+      restoreFocus: detail.restoreFocus !== false,
+      skipView: detail.skipView === true,
+    });
+    return true;
+  }
+
+  ensureSettingsPopover(detail = {}) {
+    const trigger = detail.trigger || null;
+    if (!trigger) {
+      return null;
+    }
+
+    let entry = this.videoSettingsPopovers.get(trigger);
+    if (!entry) {
+      entry = {
+        trigger,
+        context: {
+          card: detail.card || null,
+          video: detail.video || null,
+          index: Number.isFinite(detail.index) ? Math.floor(detail.index) : 0,
+          capabilities: detail.capabilities || {},
+          restoreFocusOnClose: detail.restoreFocus !== false,
+        },
+        popover: null,
+      };
+
+      const render = ({ document: documentRef, close }) => {
+        const panel = createVideoSettingsMenuPanel({
+          document: documentRef,
+          video: entry.context.video,
+          index: entry.context.index,
+          capabilities: entry.context.capabilities,
+          designSystem: this.designSystemContext,
+        });
+
+        if (!panel) {
+          return null;
+        }
+
+        const buttons = panel.querySelectorAll("button[data-action]");
+        buttons.forEach((button) => {
+          button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const action = button.dataset.action || "";
+            const handled = entry.context.card?.handleSettingsMenuAction?.(
+              action,
+              { event },
+            );
+
+            if (!handled && this.isDevMode) {
+              userLogger.warn(`[SettingsMenu] Unhandled action: ${action}`);
+            }
+
+            close();
+          });
+        });
+
+        return panel;
+      };
+
+      const documentRef =
+        trigger.ownerDocument ||
+        (typeof document !== "undefined" ? document : null);
+
+      const popover = createPopover(trigger, render, {
+        document: documentRef,
+        placement: "bottom-end",
+      });
+
+      const originalDestroy = popover.destroy?.bind(popover);
+      if (typeof originalDestroy === "function") {
+        popover.destroy = (...args) => {
+          originalDestroy(...args);
+          if (this.videoSettingsPopovers.get(trigger) === entry) {
+            this.videoSettingsPopovers.delete(trigger);
+          }
+        };
+      }
+
+      entry.popover = popover;
+      this.videoSettingsPopovers.set(trigger, entry);
+    }
+
+    entry.context = {
+      ...entry.context,
+      card: detail.card || entry.context.card,
+      video: detail.video || entry.context.video,
+      index: Number.isFinite(detail.index)
+        ? Math.floor(detail.index)
+        : entry.context.index,
+      capabilities: detail.capabilities || entry.context.capabilities,
+      restoreFocusOnClose: detail.restoreFocus !== false,
+    };
+
+    return entry;
+  }
+
+  requestVideoSettingsMenu(detail = {}) {
+    const entry = this.ensureSettingsPopover(detail);
+    if (!entry?.popover) {
+      return;
+    }
+
+    if (typeof entry.popover.isOpen === "function" && entry.popover.isOpen()) {
+      entry.popover.close({
+        restoreFocus: entry.context.restoreFocusOnClose !== false,
+      });
+      return;
+    }
+
+    entry.popover
+      .open()
+      .catch((error) =>
+        userLogger.error("[SettingsMenu] Failed to open popover:", error),
+      );
+  }
+
+  closeVideoSettingsMenu(detail = {}) {
+    const trigger = detail.trigger || null;
+    const restoreFocus = detail.restoreFocus !== false;
+
+    if (trigger) {
+      const entry = this.videoSettingsPopovers.get(trigger);
+      if (entry?.popover && typeof entry.popover.close === "function") {
+        return entry.popover.close({ restoreFocus });
+      }
+      return false;
+    }
+
+    let closed = false;
+    this.videoSettingsPopovers.forEach((entry) => {
+      if (entry?.popover && typeof entry.popover.close === "function") {
+        const result = entry.popover.close({ restoreFocus });
+        closed = closed || result;
+      }
+    });
+    return closed;
   }
 
   syncModalMoreMenuData() {

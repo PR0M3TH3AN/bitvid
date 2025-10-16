@@ -150,6 +150,22 @@ export class VideoListView {
           : () => {},
       closeAllMenus:
         typeof utils.closeAllMenus === "function" ? utils.closeAllMenus : () => {},
+      requestMoreMenu:
+        typeof utils.requestMoreMenu === "function"
+          ? utils.requestMoreMenu
+          : () => {},
+      closeMoreMenu:
+        typeof utils.closeMoreMenu === "function"
+          ? utils.closeMoreMenu
+          : () => false,
+      requestSettingsMenu:
+        typeof utils.requestSettingsMenu === "function"
+          ? utils.requestSettingsMenu
+          : () => {},
+      closeSettingsMenu:
+        typeof utils.closeSettingsMenu === "function"
+          ? utils.closeSettingsMenu
+          : () => false,
     };
 
     this.renderedVideoIds = new Set();
@@ -502,6 +518,38 @@ export class VideoListView {
           video,
           dataset: { author: pubkey || video.pubkey || "", context: "card" },
         });
+      };
+
+      videoCard.onRequestMoreMenu = (detail = {}) => {
+        if (typeof this.utils.requestMoreMenu !== "function") {
+          return;
+        }
+        const payload = {
+          ...detail,
+          video: detail.video || video,
+          pointerInfo: detail.pointerInfo || pointerInfo,
+        };
+        this.utils.requestMoreMenu(payload);
+      };
+
+      videoCard.onCloseMoreMenu = (detail = {}) => {
+        if (typeof this.utils.closeMoreMenu === "function") {
+          return this.utils.closeMoreMenu(detail);
+        }
+        return false;
+      };
+
+      videoCard.onRequestSettingsMenu = (detail = {}) => {
+        if (typeof this.utils.requestSettingsMenu === "function") {
+          this.utils.requestSettingsMenu(detail);
+        }
+      };
+
+      videoCard.onCloseSettingsMenu = (detail = {}) => {
+        if (typeof this.utils.closeSettingsMenu === "function") {
+          return this.utils.closeSettingsMenu(detail);
+        }
+        return false;
       };
 
       const cardEl = videoCard.getRoot();

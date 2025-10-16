@@ -1,12 +1,6 @@
 import { normalizeDesignSystemContext } from "../../designSystem.js";
 import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
-import positionFloatingPanel from "../utils/positionFloatingPanel.js";
-import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
 import { userLogger } from "../../utils/logger.js";
-import {
-  getPopupOffsetPx,
-  getPopupViewportPaddingPx,
-} from "../../designSystem/metrics.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -107,7 +101,11 @@ export class VideoCard {
       onRevert: null,
       onDelete: null,
       onMoreAction: null,
-      onAuthorNavigate: null
+      onAuthorNavigate: null,
+      onRequestMoreMenu: null,
+      onCloseMoreMenu: null,
+      onRequestSettingsMenu: null,
+      onCloseSettingsMenu: null
     };
 
     this.root = null;
@@ -115,14 +113,7 @@ export class VideoCard {
     this.titleEl = null;
     this.thumbnailEl = null;
     this.settingsButton = null;
-    this.settingsDropdown = null;
-    this.editButton = null;
-    this.revertButton = null;
-    this.deleteButton = null;
     this.moreMenuButton = null;
-    this.moreMenu = null;
-    this.settingsDropdownPositioner = null;
-    this.moreMenuPositioner = null;
     this.urlHealthBadgeEl = null;
     this.torrentHealthBadgeEl = null;
     this.viewCountEl = null;
@@ -195,6 +186,24 @@ export class VideoCard {
     this.callbacks.onAuthorNavigate = typeof fn === "function" ? fn : null;
   }
 
+  set onRequestMoreMenu(fn) {
+    this.callbacks.onRequestMoreMenu = typeof fn === "function" ? fn : null;
+  }
+
+  set onCloseMoreMenu(fn) {
+    this.callbacks.onCloseMoreMenu = typeof fn === "function" ? fn : null;
+  }
+
+  set onRequestSettingsMenu(fn) {
+    this.callbacks.onRequestSettingsMenu =
+      typeof fn === "function" ? fn : null;
+  }
+
+  set onCloseSettingsMenu(fn) {
+    this.callbacks.onCloseSettingsMenu =
+      typeof fn === "function" ? fn : null;
+  }
+
   getRoot() {
     return this.root;
   }
@@ -215,25 +224,67 @@ export class VideoCard {
     return this.discussionCountEl;
   }
 
-  closeMoreMenu() {
-    if (this.moreMenu) {
-      this.moreMenu.dataset.state = "closed";
-      this.moreMenu.setAttribute("aria-hidden", "true");
-      this.moreMenu.hidden = true;
+  closeMoreMenu(options = {}) {
+    const restoreFocus = options?.restoreFocus !== false;
+    const detail = {
+      trigger: this.moreMenuButton,
+      video: this.video,
+      card: this,
+      restoreFocus,
+    };
+
+    let handled = false;
+    if (this.callbacks.onCloseMoreMenu) {
+      try {
+        handled = this.callbacks.onCloseMoreMenu(detail) === true;
+      } catch (error) {
+        if (this.window?.userLogger?.warn) {
+          this.window.userLogger.warn(
+            "[VideoCard] onCloseMoreMenu callback failed",
+            error,
+          );
+        }
+      }
     }
-    if (this.moreMenuButton) {
-      this.moreMenuButton.setAttribute("aria-expanded", "false");
+
+    if (!handled && restoreFocus && this.moreMenuButton?.focus) {
+      try {
+        this.moreMenuButton.focus();
+      } catch (error) {
+        /* noop */
+      }
     }
   }
 
-  closeSettingsMenu() {
-    if (this.settingsDropdown) {
-      this.settingsDropdown.dataset.state = "closed";
-      this.settingsDropdown.setAttribute("aria-hidden", "true");
-      this.settingsDropdown.hidden = true;
+  closeSettingsMenu(options = {}) {
+    const restoreFocus = options?.restoreFocus !== false;
+    const detail = {
+      trigger: this.settingsButton,
+      video: this.video,
+      card: this,
+      restoreFocus,
+    };
+
+    let handled = false;
+    if (this.callbacks.onCloseSettingsMenu) {
+      try {
+        handled = this.callbacks.onCloseSettingsMenu(detail) === true;
+      } catch (error) {
+        if (this.window?.userLogger?.warn) {
+          this.window.userLogger.warn(
+            "[VideoCard] onCloseSettingsMenu callback failed",
+            error,
+          );
+        }
+      }
     }
-    if (this.settingsButton) {
-      this.settingsButton.setAttribute("aria-expanded", "false");
+
+    if (!handled && restoreFocus && this.settingsButton?.focus) {
+      try {
+        this.settingsButton.focus();
+      } catch (error) {
+        /* noop */
+      }
     }
   }
 
@@ -706,9 +757,6 @@ export class VideoCard {
     }
 
     if (this.capabilities.canEdit) {
-      const wrapper = this.createElement("div", {
-        classNames: ["popover", "ml-2"]
-      });
       const button = this.createElement("button", {
         classNames: [
           "btn-ghost",
@@ -716,133 +764,28 @@ export class VideoCard {
           "w-10",
           "rounded-full",
           "p-0",
-          "text-muted"
+          "text-muted",
+          "ml-2",
         ],
         attrs: {
           type: "button",
           "aria-haspopup": "true",
           "aria-expanded": "false",
-          "aria-label": "Video settings"
-        }
+          "aria-label": "Video settings",
+        },
       });
-      button.dataset.settingsDropdown = String(this.index);
 
       const icon = this.createSettingsIcon(["h-5", "w-5"]);
       button.appendChild(icon);
 
-      const dropdown = this.createElement("div", {
-        classNames: ["popover__panel", "w-44", "p-0"],
-        attrs: {
-          hidden: "",
-          "data-state": "closed",
-          "aria-hidden": "true"
-        }
-      });
-      dropdown.id = `settingsDropdown-${this.index}`;
-      dropdown.setAttribute("role", "menu");
-
-      const list = this.createElement("div", {
-        classNames: ["menu"],
-        attrs: { role: "none" }
-      });
-
-      const addMenuItem = ({ text, variant = null, dataset = {} }) => {
-        const item = this.createElement("button", {
-          classNames: ["menu__item", "justify-start"],
-          textContent: text,
-          attrs: {
-            type: "button",
-            role: "menuitem"
-          }
-        });
-        if (variant) {
-          item.dataset.variant = variant;
-        }
-        Object.entries(dataset).forEach(([key, value]) => {
-          if (value === undefined || value === null) {
-            return;
-          }
-          item.dataset[key] = String(value);
-        });
-        list.appendChild(item);
-        return item;
-      };
-
-      const editButton = addMenuItem({
-        text: "Edit",
-        dataset: {
-          editIndex: String(this.index),
-          editEventId: this.video.id
-        }
-      });
-      this.editButton = editButton;
-
-      if (this.capabilities.canRevert) {
-        const revertButton = addMenuItem({
-          text: "Revert",
-          variant: "critical",
-          dataset: {
-            revertIndex: String(this.index),
-            revertEventId: this.video.id
-          }
-        });
-        this.revertButton = revertButton;
-      }
-
-      if (this.capabilities.canDelete) {
-        const deleteButton = addMenuItem({
-          text: "Delete All",
-          variant: "critical",
-          dataset: {
-            deleteAllIndex: String(this.index),
-            deleteAllEventId: this.video.id
-          }
-        });
-        this.deleteButton = deleteButton;
-      }
-
-      dropdown.appendChild(list);
-      wrapper.appendChild(button);
-      wrapper.appendChild(dropdown);
-
-      container.appendChild(wrapper);
-
       this.settingsButton = button;
-      this.settingsDropdown = dropdown;
-      this.settingsDropdownStyles = createFloatingPanelStyles(dropdown);
-      const metricsDocument =
-        dropdown?.ownerDocument ||
-        button?.ownerDocument ||
-        this.document ||
-        (typeof document !== "undefined" ? document : null);
-      const settingsOffset = getPopupOffsetPx({
-        documentRef: metricsDocument,
-      });
-      const settingsViewportPadding = getPopupViewportPaddingPx({
-        documentRef: metricsDocument,
-      });
-      this.settingsDropdownPositioner = positionFloatingPanel(
-        button,
-        dropdown,
-        {
-          placement: "bottom",
-          alignment: "end",
-          offset: settingsOffset,
-          viewportPadding: settingsViewportPadding,
-          styles: this.settingsDropdownStyles,
-        },
-      );
+      container.appendChild(button);
     }
 
     return container;
   }
 
   buildMoreMenu() {
-    const wrapper = this.createElement("div", {
-      classNames: ["popover", "ml-1"]
-    });
-    wrapper.dataset.moreMenuWrapper = "true";
-
     const button = this.createElement("button", {
       classNames: [
         "btn-ghost",
@@ -850,208 +793,23 @@ export class VideoCard {
         "w-10",
         "rounded-full",
         "p-0",
-        "text-muted"
+        "text-muted",
+        "ml-1",
       ],
       attrs: {
         type: "button",
         "aria-haspopup": "true",
         "aria-expanded": "false",
-        "aria-label": "More options"
-      }
+        "aria-label": "More options",
+      },
     });
-    button.dataset.moreDropdown = String(this.index);
-    button.dataset.moreMenuToggleBound = "true";
 
     const icon = this.createEllipsisIcon(["w-5", "h-5", "object-contain"]);
     button.appendChild(icon);
 
-    const dropdown = this.createElement("div", {
-      classNames: ["popover__panel", "w-40", "p-0"],
-      attrs: {
-        hidden: "",
-        "data-state": "closed",
-        "aria-hidden": "true"
-      }
-    });
-    dropdown.id = `moreDropdown-${this.index}`;
-    dropdown.dataset.moreMenu = "true";
-    dropdown.setAttribute("role", "menu");
-
-    const list = this.createElement("div", {
-      classNames: ["menu"],
-      attrs: { role: "none" }
-    });
-
-    const addActionButton = (text, action, extraDataset = {}, options = {}) => {
-      const { variant = null } = options || {};
-      const btn = this.createElement("button", {
-        classNames: ["menu__item", "justify-start"],
-        textContent: text,
-        attrs: {
-          type: "button",
-          role: "menuitem"
-        }
-      });
-      if (variant) {
-        btn.dataset.variant = variant;
-      }
-      btn.dataset.action = action;
-      Object.entries(extraDataset || {}).forEach(([key, value]) => {
-        if (value === undefined || value === null) {
-          return;
-        }
-        btn.dataset[key] = String(value);
-      });
-      list.appendChild(btn);
-      return btn;
-    };
-
-    addActionButton("Open channel", "open-channel", {
-      author: this.video.pubkey || ""
-    });
-
-    addActionButton("Copy link", "copy-link", {
-      eventId: this.video.id || ""
-    });
-
-    const pointer = Array.isArray(this.pointerInfo?.pointer)
-      ? this.pointerInfo.pointer
-      : null;
-    const pointerType = pointer && pointer.length >= 2 ? pointer[0] : "";
-    const pointerValue = pointer && pointer.length >= 2 ? pointer[1] : "";
-    const pointerRelay = pointer && pointer.length >= 3 ? pointer[2] || "" : "";
-    const numericKind =
-      Number.isFinite(this.video.kind) && this.video.kind > 0
-        ? Math.floor(this.video.kind)
-        : null;
-
-    const baseBoostDataset = {
-      eventId: this.video.id || "",
-      author: this.video.pubkey || ""
-    };
-
-    if (pointerType && pointerValue) {
-      baseBoostDataset.pointerType = pointerType;
-      baseBoostDataset.pointerValue = pointerValue;
-    }
-    if (pointerRelay) {
-      baseBoostDataset.pointerRelay = pointerRelay;
-    }
-    if (Number.isFinite(numericKind)) {
-      baseBoostDataset.kind = String(numericKind);
-    }
-
-    const boostLabel = this.createElement("div", {
-      classNames: ["menu__heading"],
-      textContent: "Boost on Nostr…"
-    });
-    list.appendChild(boostLabel);
-
-    addActionButton("Repost (kind 6)", "repost-event", baseBoostDataset);
-
-    if (this.playbackUrl && this.video.isPrivate !== true) {
-      const mirrorDataset = {
-        ...baseBoostDataset,
-        url: this.playbackUrl,
-        magnet: this.playbackMagnet || "",
-        thumbnail:
-          typeof this.video.thumbnail === "string" ? this.video.thumbnail : "",
-        description:
-          typeof this.video.description === "string"
-            ? this.video.description
-            : "",
-        title: typeof this.video.title === "string" ? this.video.title : "",
-        isPrivate: this.video.isPrivate === true ? "true" : "false"
-      };
-
-      addActionButton("Mirror (kind 1063)", "mirror-video", mirrorDataset);
-    }
-
-    const ensureDataset = {
-      ...baseBoostDataset,
-      pubkey: this.video.pubkey || ""
-    };
-
-    addActionButton("Rebroadcast", "ensure-presence", ensureDataset);
-
-    list.appendChild(
-      this.createElement("div", {
-        classNames: ["menu__separator"],
-        attrs: { role: "separator" }
-      })
-    );
-
-    if (this.pointerInfo && this.pointerInfo.key && this.pointerInfo.pointer) {
-      const [historyPointerType, historyPointerValue, historyPointerRelay] =
-        this.pointerInfo.pointer;
-      if (historyPointerType && historyPointerValue) {
-        const removeButton = addActionButton(
-          "Remove from history",
-          "remove-history",
-          {
-            pointerKey: this.pointerInfo.key,
-            pointerType: historyPointerType,
-            pointerValue: historyPointerValue,
-            pointerRelay: historyPointerRelay || "",
-            reason: "remove-item"
-          }
-        );
-        removeButton.setAttribute(
-          "title",
-          "Remove this entry from your encrypted history. Relay sync may take a moment."
-        );
-        removeButton.setAttribute(
-          "aria-label",
-          "Remove from history (updates encrypted history and may take a moment to sync to relays)"
-        );
-      }
-    }
-
-    if (this.capabilities.canManageBlacklist) {
-      addActionButton(
-        "Blacklist creator",
-        "blacklist-author",
-        { author: this.video.pubkey || "" },
-        { variant: "critical" }
-      );
-    }
-
-    addActionButton(
-      "Block creator",
-      "block-author",
-      { author: this.video.pubkey || "" },
-      { variant: "critical" }
-    );
-
-    addActionButton("Report", "report", { eventId: this.video.id || "" });
-
-    dropdown.appendChild(list);
-    wrapper.appendChild(button);
-    wrapper.appendChild(dropdown);
-
     this.moreMenuButton = button;
-    this.moreMenu = dropdown;
-    this.moreMenuStyles = createFloatingPanelStyles(dropdown);
-    const menuMetricsDocument =
-      dropdown?.ownerDocument ||
-      button?.ownerDocument ||
-      this.document ||
-      (typeof document !== "undefined" ? document : null);
-    const menuOffset = getPopupOffsetPx({
-      documentRef: menuMetricsDocument,
-    });
-    const menuViewportPadding = getPopupViewportPaddingPx({
-      documentRef: menuMetricsDocument,
-    });
-    this.moreMenuPositioner = positionFloatingPanel(button, dropdown, {
-      placement: "bottom",
-      alignment: "end",
-      offset: menuOffset,
-      viewportPadding: menuViewportPadding,
-      styles: this.moreMenuStyles,
-    });
 
-    return wrapper;
+    return button;
   }
 
   buildBadgesContainer() {
@@ -1637,106 +1395,70 @@ export class VideoCard {
       });
     });
 
-    if (this.settingsButton && this.settingsDropdown) {
+    if (this.settingsButton) {
       this.settingsButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const willOpen = this.settingsDropdown.dataset.state !== "open";
+
         if (this.onRequestCloseAllMenus) {
           this.onRequestCloseAllMenus(this);
         } else {
-          this.closeSettingsMenu();
+          this.closeSettingsMenu({ restoreFocus: false });
         }
-        if (willOpen) {
-          this.settingsDropdown.hidden = false;
-          this.settingsDropdown.dataset.state = "open";
-          this.settingsDropdown.setAttribute("aria-hidden", "false");
-          this.settingsButton.setAttribute("aria-expanded", "true");
-          this.settingsDropdownPositioner?.update();
-        }
-      });
-    }
 
-    if (this.editButton) {
-      this.editButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.closeSettingsMenu();
-        if (this.callbacks.onEdit) {
-          this.callbacks.onEdit({
+        if (this.callbacks.onRequestSettingsMenu) {
+          const detail = {
             event,
+            trigger: this.settingsButton,
             video: this.video,
+            card: this,
             index: this.index,
-            card: this
-          });
+            capabilities: { ...this.capabilities },
+            designSystem: this.designSystem,
+          };
+          this.callbacks.onRequestSettingsMenu(detail);
         }
       });
     }
 
-    if (this.revertButton) {
-      this.revertButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.closeSettingsMenu();
-        if (this.callbacks.onRevert) {
-          this.callbacks.onRevert({
-            event,
-            video: this.video,
-            index: this.index,
-            card: this
-          });
-        }
-      });
-    }
-
-    if (this.deleteButton) {
-      this.deleteButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.closeSettingsMenu();
-        if (this.callbacks.onDelete) {
-          this.callbacks.onDelete({
-            event,
-            video: this.video,
-            index: this.index,
-            card: this
-          });
-        }
-      });
-    }
-
-    if (this.moreMenuButton && this.moreMenu) {
+    if (this.moreMenuButton) {
       this.moreMenuButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const willOpen = this.moreMenu.dataset.state !== "open";
+
         if (this.onRequestCloseAllMenus) {
           this.onRequestCloseAllMenus(this);
         }
-        if (willOpen) {
-          this.moreMenu.hidden = false;
-          this.moreMenu.dataset.state = "open";
-          this.moreMenu.setAttribute("aria-hidden", "false");
-          this.moreMenuButton.setAttribute("aria-expanded", "true");
-          this.moreMenuPositioner?.update();
-        }
-      });
 
-      const actionButtons = this.moreMenu.querySelectorAll(
-        "button[data-action]"
-      );
-      actionButtons.forEach((button) => {
-        button.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (this.callbacks.onMoreAction) {
-            const dataset = { ...button.dataset };
-            this.callbacks.onMoreAction({
-              event,
-              video: this.video,
-              card: this,
-              dataset
-            });
-          }
-          this.closeMoreMenu();
-        });
+        if (this.callbacks.onRequestMoreMenu) {
+          const actionForwarder = this.callbacks.onMoreAction
+            ? ({ action, dataset, event: actionEvent }) => {
+                const payload = {
+                  ...dataset,
+                  action: action || dataset?.action || "",
+                };
+                this.callbacks.onMoreAction({
+                  event: actionEvent,
+                  video: this.video,
+                  card: this,
+                  dataset: payload,
+                });
+              }
+            : null;
+
+          this.callbacks.onRequestMoreMenu({
+            event,
+            trigger: this.moreMenuButton,
+            video: this.video,
+            card: this,
+            pointerInfo: this.pointerInfo,
+            playbackUrl: this.playbackUrl,
+            playbackMagnet: this.playbackMagnet,
+            capabilities: { ...this.capabilities },
+            designSystem: this.designSystem,
+            onAction: actionForwarder,
+          });
+        }
       });
     }
 
@@ -1781,6 +1503,45 @@ export class VideoCard {
     if (this.root.dataset.motion) {
       delete this.root.dataset.motion;
     }
+  }
+
+  handleSettingsMenuAction(action, { event = null } = {}) {
+    const normalized = typeof action === "string" ? action.trim() : "";
+    if (!normalized) {
+      return false;
+    }
+
+    if (normalized === "edit" && this.callbacks.onEdit) {
+      this.callbacks.onEdit({
+        event,
+        video: this.video,
+        index: this.index,
+        card: this,
+      });
+      return true;
+    }
+
+    if (normalized === "revert" && this.callbacks.onRevert) {
+      this.callbacks.onRevert({
+        event,
+        video: this.video,
+        index: this.index,
+        card: this,
+      });
+      return true;
+    }
+
+    if (normalized === "delete" && this.callbacks.onDelete) {
+      this.callbacks.onDelete({
+        event,
+        video: this.video,
+        index: this.index,
+        card: this,
+      });
+      return true;
+    }
+
+    return false;
   }
 
   createElement(tagName, { classNames = [], attrs = {}, textContent } = {}) {
