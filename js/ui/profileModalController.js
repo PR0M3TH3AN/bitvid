@@ -701,6 +701,8 @@ export class ProfileModalController {
     this.profileRestoreRelaysBtn = null;
     this.blockList = null;
     this.blockListEmpty = null;
+    this.blockListStatus = null;
+    this.blockListLoadingState = "idle";
     this.blockInput = null;
     this.addBlockedButton = null;
     this.profileBlockedList = null;
@@ -870,6 +872,9 @@ export class ProfileModalController {
     this.profileBlockedEmpty = this.blockListEmpty;
     this.profileBlockedInput = this.blockInput;
     this.profileAddBlockedBtn = this.addBlockedButton;
+    this.blockListStatus =
+      this.panes.blocked?.querySelector("[data-role=\"blocked-list-status\"]") ||
+      null;
     this.profileWalletStatusText = this.walletStatusText;
 
     this.moderatorSection =
@@ -1769,8 +1774,105 @@ export class ProfileModalController {
     );
   }
 
+  ensureBlockListStatusElement() {
+    if (this.blockListStatus instanceof HTMLElement) {
+      return this.blockListStatus;
+    }
+
+    const anchor =
+      this.blockList instanceof HTMLElement
+        ? this.blockList
+        : this.blockListEmpty instanceof HTMLElement
+        ? this.blockListEmpty
+        : null;
+
+    if (!anchor || !(anchor.parentElement instanceof HTMLElement)) {
+      return null;
+    }
+
+    const existing = anchor.parentElement.querySelector(
+      '[data-role="blocked-list-status"]',
+    );
+    if (existing instanceof HTMLElement) {
+      this.blockListStatus = existing;
+      return existing;
+    }
+
+    const status = document.createElement("div");
+    status.dataset.role = "blocked-list-status";
+    status.className = "mt-4 flex items-center gap-3 text-sm text-muted hidden";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+
+    if (this.blockList instanceof HTMLElement) {
+      anchor.parentElement.insertBefore(status, this.blockList);
+    } else {
+      anchor.parentElement.appendChild(status);
+    }
+
+    this.blockListStatus = status;
+    return status;
+  }
+
+  setBlockListLoadingState(state = "idle", options = {}) {
+    const statusEl = this.ensureBlockListStatusElement();
+    if (!statusEl) {
+      this.blockListLoadingState = state;
+      return;
+    }
+
+    const message =
+      typeof options.message === "string" && options.message.trim()
+        ? options.message.trim()
+        : "";
+
+    statusEl.innerHTML = "";
+    statusEl.classList.remove("text-status-warning");
+    statusEl.classList.add("text-muted");
+    statusEl.classList.add("hidden");
+
+    this.blockListLoadingState = state;
+
+    if (state === "loading") {
+      if (this.blockListEmpty instanceof HTMLElement) {
+        this.blockListEmpty.classList.add("hidden");
+      }
+
+      const spinner = document.createElement("span");
+      spinner.className = "status-spinner status-spinner--inline";
+      spinner.setAttribute("aria-hidden", "true");
+
+      const text = document.createElement("span");
+      text.textContent = message || "Loading blocked creators…";
+
+      statusEl.appendChild(spinner);
+      statusEl.appendChild(text);
+      statusEl.classList.remove("hidden");
+      return;
+    }
+
+    if (state === "error") {
+      statusEl.classList.remove("text-muted");
+      statusEl.classList.add("text-status-warning");
+
+      if (this.blockListEmpty instanceof HTMLElement) {
+        this.blockListEmpty.classList.add("hidden");
+      }
+
+      const text = document.createElement("span");
+      text.textContent =
+        message || "Blocked creators may be out of date. Try again later.";
+
+      statusEl.appendChild(text);
+      statusEl.classList.remove("hidden");
+    }
+  }
+
   populateBlockedList(blocked = null) {
     if (!this.blockList || !this.blockListEmpty) {
+      if (this.blockListLoadingState === "loading") {
+        this.setBlockListLoadingState("idle");
+      }
       return;
     }
 
@@ -1853,6 +1955,9 @@ export class ProfileModalController {
     if (!deduped.length) {
       this.blockListEmpty.classList.remove("hidden");
       this.blockList.classList.add("hidden");
+      if (this.blockListLoadingState === "loading") {
+        this.setBlockListLoadingState("idle");
+      }
       return;
     }
 
@@ -1888,6 +1993,10 @@ export class ProfileModalController {
 
       this.blockList.appendChild(item);
     });
+
+    if (this.blockListLoadingState === "loading") {
+      this.setBlockListLoadingState("idle");
+    }
   }
 
   async handleAddBlockedCreator() {
@@ -3771,37 +3880,89 @@ export class ProfileModalController {
     }
 
     this.renderSavedProfiles();
+    this.refreshWalletPaneState();
+    const hasBlockHydrator =
+      this.services.userBlocks &&
+      typeof this.services.userBlocks.ensureLoaded === "function";
 
-    try {
-      await this.refreshAdminPaneState();
-    } catch (error) {
-      userLogger.error(
-        "Failed to refresh admin pane while opening profile modal:",
-        error,
+    if (hasBlockHydrator) {
+      this.setBlockListLoadingState("loading");
+    } else {
+      this.populateBlockedList();
+    }
+
+    this.open(pane);
+
+    const backgroundTasks = [];
+
+    backgroundTasks.push(
+      Promise.resolve()
+        .then(() => this.refreshAdminPaneState())
+        .catch((error) => {
+          userLogger.error(
+            "Failed to refresh admin pane while opening profile modal:",
+            error,
+          );
+        }),
+    );
+
+    backgroundTasks.push(
+      Promise.resolve().then(() => {
+        try {
+          this.populateProfileRelays();
+        } catch (error) {
+          userLogger.warn(
+            "Failed to populate relay list while opening profile modal:",
+            error,
+          );
+        }
+      }),
+    );
+
+    if (hasBlockHydrator) {
+      const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+      backgroundTasks.push(
+        Promise.resolve()
+          .then(() => this.services.userBlocks.ensureLoaded(activeHex))
+          .then(() => {
+            try {
+              this.populateBlockedList();
+            } catch (error) {
+              userLogger.warn(
+                "Failed to render blocked creators after hydration:",
+                error,
+              );
+              this.setBlockListLoadingState("error", {
+                message:
+                  "Blocked creators may be out of date. Try again later.",
+              });
+            }
+          })
+          .catch((error) => {
+            userLogger.warn(
+              "Failed to refresh user block list while opening profile modal:",
+              error,
+            );
+            this.setBlockListLoadingState("error", {
+              message:
+                "Blocked creators may be out of date. Try again later.",
+            });
+            try {
+              this.populateBlockedList();
+            } catch (populateError) {
+              userLogger.warn(
+                "Failed to render blocked creators after hydration failure:",
+                populateError,
+              );
+            }
+          }),
       );
     }
 
-    this.refreshWalletPaneState();
-    this.populateProfileRelays();
-
-    if (
-      this.services.userBlocks &&
-      typeof this.services.userBlocks.ensureLoaded === "function"
-    ) {
-      try {
-        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
-        await this.services.userBlocks.ensureLoaded(activeHex);
-      } catch (error) {
-        userLogger.warn(
-          "Failed to refresh user block list while opening profile modal:",
-          error,
-        );
-      }
+    if (backgroundTasks.length) {
+      void Promise.allSettled(backgroundTasks);
     }
 
-    this.populateBlockedList();
-
-    this.open(pane);
     return true;
   }
 
