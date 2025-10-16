@@ -124,6 +124,7 @@ test("opens a popover in the overlay root and positions the panel", async () => 
   assert.ok(panel, "panel should be rendered");
   assert.equal(trigger.getAttribute("aria-controls"), panel.id);
   assert.equal(panel.dataset.popoverState, "open");
+  assert.equal(panel.dataset.state, "open");
   assert.equal(panel.dataset.popoverPlacement, "bottom-start");
   assert.equal(panel.style.position, "fixed");
   assert.equal(panel.style.left, "100px");
@@ -134,6 +135,7 @@ test("opens a popover in the overlay root and positions the panel", async () => 
 
   popover.close();
   assert.equal(panel.dataset.popoverState, "closed");
+  assert.equal(panel.dataset.state, "closed");
   assert.equal(trigger.getAttribute("aria-expanded"), "false");
 
   popover.destroy();
@@ -369,6 +371,7 @@ test("escape closes the popover and restores trigger focus", async () => {
 
   assert.equal(popover.isOpen(), false);
   assert.equal(panel.dataset.popoverState, "closed");
+  assert.equal(panel.dataset.state, "closed");
   assert.equal(panel.getAttribute("aria-activedescendant"), null);
   assert.equal(documentRef.activeElement, trigger);
 
@@ -496,6 +499,8 @@ test("ensures only one popover is open at a time", async () => {
   const panelB = documentRef.getElementById("panel-b");
   assert.equal(panelA.dataset.popoverState, "closed");
   assert.equal(panelB.dataset.popoverState, "open");
+  assert.equal(panelA.dataset.state, "closed");
+  assert.equal(panelB.dataset.state, "open");
 
   popoverA.destroy();
   popoverB.destroy();

@@ -151,6 +151,7 @@ test("flips placement when bottom placement would collide with viewport", async 
   const panel = documentRef.querySelector('[data-test-panel="collision"]');
   assert.ok(panel, "panel should render");
   assert.equal(panel.dataset.popoverState, "open");
+  assert.equal(panel.dataset.state, "open");
   assert.equal(panel.dataset.popoverPlacement, "top-start");
   assert.equal(panel.style.position, "fixed");
   assert.equal(panel.style.maxWidth, "calc(100vw - var(--space-xl))");
@@ -254,15 +255,18 @@ test("closes previously open popovers without restoring focus", async () => {
   assert.equal(popoverA.isOpen(), true);
   assert.equal(triggerA.getAttribute("aria-expanded"), "true");
   assert.equal(panelA?.dataset.popoverState, "open");
+  assert.equal(panelA?.dataset.state, "open");
 
   await popoverB.open();
   assert.equal(popoverB.isOpen(), true);
   assert.equal(triggerB.getAttribute("aria-expanded"), "true");
   assert.equal(panelB?.dataset.popoverState, "open");
+  assert.equal(panelB?.dataset.state, "open");
 
   assert.equal(popoverA.isOpen(), false, "first popover should close");
   assert.equal(triggerA.getAttribute("aria-expanded"), "false");
   assert.equal(panelA?.dataset.popoverState, "closed");
+  assert.equal(panelA?.dataset.state, "closed");
   assert.notEqual(active.active, triggerA, "focus should not jump back to first trigger");
 
   popoverA.destroy();

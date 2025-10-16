@@ -29,7 +29,7 @@ dev surface without worrying about duplicates.
 `createPopover(trigger, render, options)` wires focus management, aria
 attributes, collision detection, and auto updates. The render callback receives
 a portal `container` inside the overlay root. Return the panel element so the
-engine can toggle `data-popover-state` values while it opens and closes.
+engine toggles `data-popover-state` / `data-state` values while it opens and closes.
 
 ```js
 import createPopover from "../js/ui/overlay/popoverEngine.js";

@@ -756,6 +756,7 @@ export function createPopover(trigger, render, options = {}) {
     panelElement.hidden = false;
     panelElement.setAttribute("aria-hidden", "false");
     panelElement.dataset.popoverState = "open";
+    panelElement.dataset.state = "open";
     setExpandedAttribute(anchor, true);
 
     bindGlobalHandlers();
@@ -809,6 +810,7 @@ export function createPopover(trigger, render, options = {}) {
       panel.setAttribute("aria-hidden", "true");
       panel.hidden = true;
       panel.dataset.popoverState = "closed";
+      panel.dataset.state = "closed";
       updateAriaActiveDescendant(panel, null);
       if (menuState.items.length) {
         menuState.items.forEach((item) => {
