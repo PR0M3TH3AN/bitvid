@@ -441,7 +441,7 @@ export class VideoListView {
         },
         ensureGlobalMoreMenuHandlers: () =>
           this.utils.ensureGlobalMoreMenuHandlers(),
-        onRequestCloseAllMenus: () => this.closeAllMenus(),
+        onRequestCloseAllMenus: () => this.closeAllMenus({ restoreFocus: false }),
         formatters: {
           formatTimeAgo: this.formatters.formatTimeAgo,
         },
@@ -1032,16 +1032,18 @@ export class VideoListView {
   }
 
   closeAllMenus(options = {}) {
+    const restoreFocus = options?.restoreFocus !== false;
+
     if (Array.isArray(this.videoCardInstances) && this.videoCardInstances.length) {
       this.videoCardInstances.forEach((card) => {
         if (!card) {
           return;
         }
         if (typeof card.closeMoreMenu === "function") {
-          card.closeMoreMenu();
+          card.closeMoreMenu({ restoreFocus });
         }
         if (typeof card.closeSettingsMenu === "function") {
-          card.closeSettingsMenu();
+          card.closeSettingsMenu({ restoreFocus });
         }
       });
     }
@@ -1051,7 +1053,7 @@ export class VideoListView {
     }
 
     if (typeof this.utils.closeAllMenus === "function") {
-      this.utils.closeAllMenus({ skipView: true });
+      this.utils.closeAllMenus({ skipView: true, restoreFocus });
     }
   }
 

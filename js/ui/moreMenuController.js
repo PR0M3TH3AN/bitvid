@@ -424,12 +424,14 @@ export default class MoreMenuController {
 
   closeAllMoreMenus(options = {}) {
     const skipView = options?.skipView === true;
+    const restoreFocus = options?.restoreFocus !== false;
 
     if (!skipView && this.videoListView && typeof this.videoListView.closeAllMenus === "function") {
-      this.videoListView.closeAllMenus({ skipController: true });
+      this.videoListView.closeAllMenus({
+        skipController: true,
+        restoreFocus,
+      });
     }
-
-    const restoreFocus = options?.restoreFocus !== false;
 
     this.popoversByTrigger.forEach((entry) => {
       if (entry?.popover && typeof entry.popover.close === "function") {
