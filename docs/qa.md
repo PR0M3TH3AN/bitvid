@@ -4,7 +4,7 @@ Run this checklist before publishing releases or merging changes that touch uplo
 
 > **Note:** Align every UI styling review with the token-first rules in [`AGENTS.md`](../AGENTS.md) and the [README CSS build pipeline](../README.md#css-build-pipeline). When QA covers styling changes, run `npm run lint:css` (and any related build/test scripts) to catch regressions early.
 
-Before starting, open `docs/kitchen-sink.html` in a browser to review the modal surface reference. With that page as your visual baseline, perform this quick accessibility spot check in the running app:
+Before starting, open `docs/kitchen-sink.html` in a browser to review the modal surface reference. Spin up the static dev server (`python -m http.server 8000` or `npx serve`) and load `views/dev/popover-demo.html` to sanity-check overlay menus following [docs/menus.md](./menus.md). With those pages as your visual baseline, perform this quick accessibility spot check in the running app:
 
 Automated regression coverage now exercises these flows on the unified design-system variant:
 
