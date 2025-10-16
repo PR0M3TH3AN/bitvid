@@ -110,6 +110,9 @@ test("opens a popover in the overlay root and positions the panel", async () => 
     { document: documentRef },
   );
 
+  assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
+  assert.equal(trigger.getAttribute("aria-expanded"), "false");
+
   await popover.open();
 
   const overlayRoot = documentRef.getElementById("uiOverlay");
@@ -119,11 +122,14 @@ test("opens a popover in the overlay root and positions the panel", async () => 
 
   const panel = documentRef.getElementById("popover-panel");
   assert.ok(panel, "panel should be rendered");
+  assert.equal(trigger.getAttribute("aria-controls"), panel.id);
   assert.equal(panel.dataset.popoverState, "open");
   assert.equal(panel.dataset.popoverPlacement, "bottom-start");
   assert.equal(panel.style.position, "fixed");
   assert.equal(panel.style.left, "100px");
   assert.equal(panel.style.top, "148px");
+  assert.equal(panel.getAttribute("role"), "menu");
+  assert.equal(documentRef.activeElement, panel);
   assert.equal(trigger.getAttribute("aria-expanded"), "true");
 
   popover.close();
@@ -182,6 +188,246 @@ test("closes on outside pointer events and restores focus", async () => {
 
   assert.equal(popover.isOpen(), false);
   assert.equal(documentRef.activeElement, trigger);
+
+  popover.destroy();
+});
+
+test("supports roving focus, home/end navigation, and typeahead", async () => {
+  const trigger = documentRef.getElementById("trigger");
+  trigger.setAttribute("tabindex", "0");
+
+  setupBoundingClientRect(trigger, {
+    x: 40,
+    y: 40,
+    top: 40,
+    bottom: 80,
+    left: 40,
+    right: 80,
+    width: 40,
+    height: 40,
+  });
+
+  const popover = createPopover(
+    trigger,
+    ({ container }) => {
+      const panel = documentRef.createElement("div");
+      panel.className = "popover__panel";
+      setupBoundingClientRect(panel, {
+        x: 0,
+        y: 0,
+        top: 0,
+        bottom: 120,
+        left: 0,
+        right: 200,
+        width: 200,
+        height: 120,
+      });
+
+      const list = documentRef.createElement("div");
+      panel.appendChild(list);
+
+      const disabled = documentRef.createElement("button");
+      disabled.className = "menu__item";
+      disabled.type = "button";
+      disabled.textContent = "Disabled";
+      disabled.disabled = true;
+      list.appendChild(disabled);
+
+      const copy = documentRef.createElement("button");
+      copy.className = "menu__item";
+      copy.type = "button";
+      copy.textContent = "Copy link";
+      list.appendChild(copy);
+
+      const deleteBtn = documentRef.createElement("button");
+      deleteBtn.className = "menu__item";
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "Delete video";
+      list.appendChild(deleteBtn);
+
+      const share = documentRef.createElement("button");
+      share.className = "menu__item";
+      share.type = "button";
+      share.textContent = "Share";
+      list.appendChild(share);
+
+      container.appendChild(panel);
+      return panel;
+    },
+    { document: documentRef },
+  );
+
+  await popover.open();
+
+  const panel = documentRef.querySelector(".popover__panel");
+  const items = panel.querySelectorAll(".menu__item");
+  const [disabled, copy, deleteBtn, share] = items;
+
+  assert.equal(documentRef.activeElement, copy);
+  assert.equal(panel.getAttribute("aria-activedescendant"), copy.id);
+  assert.equal(copy.getAttribute("tabindex"), "0");
+  assert.equal(disabled.getAttribute("tabindex"), "-1");
+
+  copy.dispatchEvent(
+    new windowRef.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+  );
+  assert.equal(documentRef.activeElement, deleteBtn);
+  assert.equal(panel.getAttribute("aria-activedescendant"), deleteBtn.id);
+
+  deleteBtn.dispatchEvent(
+    new windowRef.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+  );
+  assert.equal(documentRef.activeElement, share);
+
+  share.dispatchEvent(
+    new windowRef.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+  );
+  assert.equal(documentRef.activeElement, copy);
+
+  copy.dispatchEvent(
+    new windowRef.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+  );
+  assert.equal(documentRef.activeElement, share);
+
+  share.dispatchEvent(
+    new windowRef.KeyboardEvent("keydown", { key: "Home", bubbles: true }),
+  );
+  assert.equal(documentRef.activeElement, copy);
+
+  copy.dispatchEvent(
+    new windowRef.KeyboardEvent("keydown", { key: "End", bubbles: true }),
+  );
+  assert.equal(documentRef.activeElement, share);
+
+  share.dispatchEvent(
+    new windowRef.KeyboardEvent("keydown", { key: "d", bubbles: true }),
+  );
+  assert.equal(documentRef.activeElement, deleteBtn);
+  assert.equal(panel.getAttribute("aria-activedescendant"), deleteBtn.id);
+
+  popover.destroy();
+});
+
+test("escape closes the popover and restores trigger focus", async () => {
+  const trigger = documentRef.getElementById("trigger");
+  trigger.setAttribute("tabindex", "0");
+
+  setupBoundingClientRect(trigger, {
+    x: 60,
+    y: 60,
+    top: 60,
+    bottom: 100,
+    left: 60,
+    right: 100,
+    width: 40,
+    height: 40,
+  });
+
+  const popover = createPopover(
+    trigger,
+    ({ container }) => {
+      const panel = documentRef.createElement("div");
+      panel.className = "popover__panel";
+      setupBoundingClientRect(panel, {
+        x: 0,
+        y: 0,
+        top: 0,
+        bottom: 90,
+        left: 0,
+        right: 180,
+        width: 180,
+        height: 90,
+      });
+
+      const first = documentRef.createElement("button");
+      first.className = "menu__item";
+      first.type = "button";
+      first.textContent = "First";
+      panel.appendChild(first);
+
+      const second = documentRef.createElement("button");
+      second.className = "menu__item";
+      second.type = "button";
+      second.textContent = "Second";
+      panel.appendChild(second);
+
+      container.appendChild(panel);
+      return panel;
+    },
+    { document: documentRef },
+  );
+
+  await popover.open();
+
+  const panel = documentRef.querySelector(".popover__panel");
+  const first = panel.querySelector(".menu__item");
+  assert.equal(documentRef.activeElement, first);
+
+  first.dispatchEvent(
+    new windowRef.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+  );
+
+  assert.equal(popover.isOpen(), false);
+  assert.equal(panel.dataset.popoverState, "closed");
+  assert.equal(panel.getAttribute("aria-activedescendant"), null);
+  assert.equal(documentRef.activeElement, trigger);
+
+  popover.destroy();
+});
+
+test("close respects restoreFocus option for contextual menus", async () => {
+  const trigger = documentRef.getElementById("trigger");
+  trigger.setAttribute("tabindex", "0");
+
+  setupBoundingClientRect(trigger, {
+    x: 80,
+    y: 80,
+    top: 80,
+    bottom: 120,
+    left: 80,
+    right: 120,
+    width: 40,
+    height: 40,
+  });
+
+  const popover = createPopover(
+    trigger,
+    ({ container }) => {
+      const panel = documentRef.createElement("div");
+      panel.className = "popover__panel";
+      setupBoundingClientRect(panel, {
+        x: 0,
+        y: 0,
+        top: 0,
+        bottom: 90,
+        left: 0,
+        right: 180,
+        width: 180,
+        height: 90,
+      });
+
+      const action = documentRef.createElement("button");
+      action.className = "menu__item";
+      action.type = "button";
+      action.textContent = "Action";
+      panel.appendChild(action);
+
+      container.appendChild(panel);
+      return panel;
+    },
+    { document: documentRef },
+  );
+
+  await popover.open();
+
+  const action = documentRef.querySelector(".menu__item");
+  assert.equal(documentRef.activeElement, action);
+
+  popover.close({ restoreFocus: false });
+
+  assert.equal(popover.isOpen(), false);
+  assert.notEqual(documentRef.activeElement, trigger);
+  assert.equal(documentRef.activeElement, action);
 
   popover.destroy();
 });
