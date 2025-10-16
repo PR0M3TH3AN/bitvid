@@ -1,12 +1,8 @@
 import { createModalAccessibility } from "./modalAccessibility.js";
-import positionFloatingPanel from "../utils/positionFloatingPanel.js";
-import { createFloatingPanelStyles } from "../utils/floatingPanelStyles.js";
+import createPopover from "../overlay/popoverEngine.js";
+import { createVideoMoreMenuPanel } from "./videoMenuRenderers.js";
 import { applyDesignSystemAttributes } from "../../designSystem.js";
 import { devLogger } from "../../utils/logger.js";
-import {
-  getPopupOffsetPx,
-  getPopupViewportPaddingPx,
-} from "../../designSystem/metrics.js";
 
 export class VideoModal {
   constructor({
@@ -64,7 +60,6 @@ export class VideoModal {
     this.shareBtn = null;
     this.modalZapBtn = null;
     this.modalMoreBtn = null;
-    this.modalMoreMenu = null;
 
     this.modalAccessibility = null;
     this.modalNavScrollHandler = null;
@@ -82,8 +77,17 @@ export class VideoModal {
     this.modalZapWalletLink = null;
     this.modalZapDialogOpen = false;
     this.modalZapPending = false;
-    this.modalZapPositioner = null;
-    this.modalMoreMenuPositioner = null;
+    this.modalZapPopover = null;
+
+    this.modalMorePopover = null;
+    this.modalMoreMenuPanel = null;
+    this.modalMoreMenuContext = {
+      video: null,
+      pointerInfo: null,
+      playbackUrl: "",
+      playbackMagnet: "",
+      canManageBlacklist: false,
+    };
 
     this.modalPosterCleanup = null;
     this.videoEventCleanup = null;
@@ -93,6 +97,7 @@ export class VideoModal {
     this.handleCopyRequest = this.handleCopyRequest.bind(this);
     this.handleShareRequest = this.handleShareRequest.bind(this);
     this.handleCreatorNavigation = this.handleCreatorNavigation.bind(this);
+    this.handleModalMoreButtonClick = this.handleModalMoreButtonClick.bind(this);
 
     this.MODAL_LOADING_POSTER = "assets/gif/please-stand-by.gif";
   }
@@ -225,14 +230,15 @@ export class VideoModal {
     }
     this.modalAccessibility = null;
 
-    if (this.modalZapPositioner?.destroy) {
-      this.modalZapPositioner.destroy();
+    if (this.modalZapPopover?.destroy) {
+      this.modalZapPopover.destroy();
     }
-    if (this.modalMoreMenuPositioner?.destroy) {
-      this.modalMoreMenuPositioner.destroy();
+    if (this.modalMorePopover?.destroy) {
+      this.modalMorePopover.destroy();
     }
-    this.modalZapPositioner = null;
-    this.modalMoreMenuPositioner = null;
+    this.modalZapPopover = null;
+    this.modalMorePopover = null;
+    this.modalMoreMenuPanel = null;
 
     const previousScrollRegion = this.scrollRegion;
     if (previousScrollRegion && this.modalNavScrollHandler) {
@@ -271,9 +277,6 @@ export class VideoModal {
     this.shareBtn = playerModal.querySelector("#shareBtn") || null;
     this.modalZapBtn = playerModal.querySelector("#modalZapBtn") || null;
     this.modalMoreBtn = playerModal.querySelector("#modalMoreBtn") || null;
-    this.modalMoreMenu =
-      playerModal.querySelector("#moreDropdown-modal") || null;
-    this.modalMoreMenuStyles = null;
 
     this.modalZapDialog = playerModal.querySelector("#modalZapDialog") || null;
     this.modalZapForm = playerModal.querySelector("#modalZapForm") || null;
@@ -295,83 +298,9 @@ export class VideoModal {
       playerModal.querySelector("#modalZapWalletPrompt") || null;
     this.modalZapWalletLink =
       playerModal.querySelector("#modalZapWalletLink") || null;
-    this.modalZapStyles = null;
-
-    if (this.modalZapDialog) {
-      if (!this.modalZapDialog.dataset.state) {
-        const isHidden =
-          this.modalZapDialog.hasAttribute("hidden") ||
-          this.modalZapDialog.getAttribute("aria-hidden") === "true";
-        this.modalZapDialog.dataset.state = isHidden ? "closed" : "open";
-      }
-      if (this.modalZapDialog.dataset.state !== "open") {
-        this.modalZapDialog.hidden = true;
-        this.modalZapDialog.setAttribute("aria-hidden", "true");
-      }
-      if (this.modalZapBtn) {
-        this.modalZapStyles = createFloatingPanelStyles(this.modalZapDialog);
-        const zapMetricsDocument =
-          this.modalZapDialog?.ownerDocument ||
-          this.modalZapBtn?.ownerDocument ||
-          this.document ||
-          (typeof document !== "undefined" ? document : null);
-        const zapOffset = getPopupOffsetPx({
-          documentRef: zapMetricsDocument,
-        });
-        const zapViewportPadding = getPopupViewportPaddingPx({
-          documentRef: zapMetricsDocument,
-        });
-        this.modalZapPositioner = positionFloatingPanel(
-          this.modalZapBtn,
-          this.modalZapDialog,
-          {
-            placement: "bottom",
-            alignment: "end",
-            offset: zapOffset,
-            viewportPadding: zapViewportPadding,
-            styles: this.modalZapStyles,
-          },
-        );
-      }
-    }
-
-    if (this.modalMoreMenu) {
-      if (!this.modalMoreMenu.dataset.state) {
-        const isHidden =
-          this.modalMoreMenu.hasAttribute("hidden") ||
-          this.modalMoreMenu.getAttribute("aria-hidden") === "true";
-        this.modalMoreMenu.dataset.state = isHidden ? "closed" : "open";
-      }
-      if (this.modalMoreMenu.dataset.state !== "open") {
-        this.modalMoreMenu.hidden = true;
-        this.modalMoreMenu.setAttribute("aria-hidden", "true");
-      }
-      if (this.modalMoreBtn) {
-        this.modalMoreMenuStyles = createFloatingPanelStyles(this.modalMoreMenu);
-        const menuMetricsDocument =
-          this.modalMoreMenu?.ownerDocument ||
-          this.modalMoreBtn?.ownerDocument ||
-          this.document ||
-          (typeof document !== "undefined" ? document : null);
-        const menuOffset = getPopupOffsetPx({
-          documentRef: menuMetricsDocument,
-        });
-        const menuViewportPadding = getPopupViewportPaddingPx({
-          documentRef: menuMetricsDocument,
-        });
-        this.modalMoreMenuPositioner = positionFloatingPanel(
-          this.modalMoreBtn,
-          this.modalMoreMenu,
-          {
-            placement: "bottom",
-            alignment: "end",
-            offset: menuOffset,
-            viewportPadding: menuViewportPadding,
-            styles: this.modalMoreMenuStyles,
-          },
-        );
-      }
-    }
+    this.modalZapDialogOpen = false;
+    this.setupModalZapPopover();
+    this.setupModalMorePopover();
 
     const closeButton = playerModal.querySelector("#closeModal");
     if (closeButton) {
@@ -487,6 +416,11 @@ export class VideoModal {
       });
     }
 
+    if (this.modalMoreBtn && this.modalMoreBtn.dataset.modalMenuHandler !== "true") {
+      this.modalMoreBtn.dataset.modalMenuHandler = "true";
+      this.modalMoreBtn.addEventListener("click", this.handleModalMoreButtonClick);
+    }
+
     if (this.modalZapCloseBtn) {
       this.modalZapCloseBtn.addEventListener("click", (event) => {
         event?.preventDefault?.();
@@ -560,6 +494,232 @@ export class VideoModal {
     }
   }
 
+  setupModalZapPopover() {
+    if (!this.modalZapDialog) {
+      this.modalZapPopover = null;
+      return;
+    }
+
+    if (!this.modalZapDialog.dataset.state) {
+      const isHidden =
+        this.modalZapDialog.hasAttribute("hidden") ||
+        this.modalZapDialog.getAttribute("aria-hidden") === "true";
+      this.modalZapDialog.dataset.state = isHidden ? "closed" : "open";
+    }
+
+    if (this.modalZapDialog.dataset.state !== "open") {
+      this.modalZapDialog.hidden = true;
+      this.modalZapDialog.setAttribute("aria-hidden", "true");
+      this.modalZapDialogOpen = false;
+    }
+
+    if (!this.modalZapBtn) {
+      this.modalZapPopover = null;
+      return;
+    }
+
+    const documentRef =
+      this.modalZapDialog.ownerDocument ||
+      this.modalZapBtn.ownerDocument ||
+      this.document ||
+      (typeof document !== "undefined" ? document : null);
+
+    const popover = createPopover(
+      this.modalZapBtn,
+      () => this.modalZapDialog,
+      {
+        document: documentRef,
+        placement: "bottom-end",
+        restoreFocusOnClose: true,
+      },
+    );
+
+    if (!popover) {
+      this.modalZapPopover = null;
+      return;
+    }
+
+    const originalOpen = popover.open?.bind(popover);
+    if (originalOpen) {
+      popover.open = async (...args) => {
+        const result = await originalOpen(...args);
+        if (result) {
+          this.modalZapDialog.dataset.state = "open";
+          this.modalZapDialog.hidden = false;
+          this.modalZapDialog.setAttribute("aria-hidden", "false");
+          this.modalZapDialogOpen = true;
+          this.focusZapAmount();
+        }
+        return result;
+      };
+    }
+
+    const originalClose = popover.close?.bind(popover);
+    if (originalClose) {
+      popover.close = (options = {}) => {
+        const { silent = false, ...rest } = options;
+        const wasOpen = popover.isOpen?.() === true;
+        const result = originalClose(rest);
+        if (wasOpen && result) {
+          this.modalZapDialog.dataset.state = "closed";
+          this.modalZapDialog.setAttribute("aria-hidden", "true");
+          this.modalZapDialog.hidden = true;
+          this.modalZapDialogOpen = false;
+          if (!silent) {
+            this.dispatch("zap:close", { video: this.activeVideo });
+          }
+        }
+        return result;
+      };
+    }
+
+    const originalDestroy = popover.destroy?.bind(popover);
+    if (originalDestroy) {
+      popover.destroy = (...args) => {
+        originalDestroy(...args);
+        if (this.modalZapPopover === popover) {
+          this.modalZapPopover = null;
+        }
+      };
+    }
+
+    this.modalZapPopover = popover;
+  }
+
+  setupModalMorePopover() {
+    if (!this.modalMoreBtn) {
+      this.modalMorePopover = null;
+      this.modalMoreMenuPanel = null;
+      return;
+    }
+
+    const documentRef =
+      this.modalMoreBtn.ownerDocument ||
+      this.document ||
+      (typeof document !== "undefined" ? document : null);
+
+    const render = ({ document: doc, close }) => {
+      const panel = this.buildModalMoreMenuPanel({ document: doc, close });
+      this.modalMoreMenuPanel = panel;
+      return panel;
+    };
+
+    const popover = createPopover(this.modalMoreBtn, render, {
+      document: documentRef,
+      placement: "bottom-end",
+      restoreFocusOnClose: true,
+    });
+
+    if (!popover) {
+      this.modalMorePopover = null;
+      this.modalMoreMenuPanel = null;
+      return;
+    }
+
+    const originalOpen = popover.open?.bind(popover);
+    if (originalOpen) {
+      popover.open = async (...args) => {
+        this.refreshModalMoreMenuPanel();
+        return originalOpen(...args);
+      };
+    }
+
+    const originalDestroy = popover.destroy?.bind(popover);
+    if (originalDestroy) {
+      popover.destroy = (...args) => {
+        originalDestroy(...args);
+        if (this.modalMorePopover === popover) {
+          this.modalMorePopover = null;
+          this.modalMoreMenuPanel = null;
+        }
+      };
+    }
+
+    this.modalMoreBtn.dataset.moreMenuToggleBound = "true";
+    this.modalMorePopover = popover;
+  }
+
+  buildModalMoreMenuPanel({ document: doc, close }) {
+    const panel = createVideoMoreMenuPanel({
+      document: doc,
+      video: this.modalMoreMenuContext.video,
+      pointerInfo: this.modalMoreMenuContext.pointerInfo,
+      playbackUrl: this.modalMoreMenuContext.playbackUrl,
+      playbackMagnet: this.modalMoreMenuContext.playbackMagnet,
+      canManageBlacklist: this.modalMoreMenuContext.canManageBlacklist,
+      context: "modal",
+    });
+
+    if (!panel) {
+      return null;
+    }
+
+    const buttons = panel.querySelectorAll("button[data-action]");
+    buttons.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const dataset = {};
+        Object.entries(button.dataset || {}).forEach(([key, value]) => {
+          dataset[key] = value;
+        });
+        if (!dataset.context) {
+          dataset.context = "modal";
+        }
+
+        const action = dataset.action || "";
+        this.dispatch("video:context-action", {
+          action,
+          dataset,
+        });
+
+        if (typeof close === "function") {
+          close({ reason: "action" });
+        }
+      });
+    });
+
+    return panel;
+  }
+
+  refreshModalMoreMenuPanel() {
+    if (!this.modalMorePopover) {
+      return;
+    }
+
+    const existingPanel =
+      this.modalMorePopover.getPanel?.() || this.modalMoreMenuPanel;
+
+    const documentRef =
+      existingPanel?.ownerDocument ||
+      this.modalMoreBtn?.ownerDocument ||
+      this.document ||
+      (typeof document !== "undefined" ? document : null);
+
+    if (!documentRef) {
+      return;
+    }
+
+    const nextPanel = this.buildModalMoreMenuPanel({
+      document: documentRef,
+      close: (options) => this.modalMorePopover?.close(options),
+    });
+
+    if (!nextPanel) {
+      return;
+    }
+
+    const currentPanel = this.modalMorePopover.getPanel?.();
+    if (currentPanel && currentPanel.parentNode) {
+      currentPanel.parentNode.replaceChild(nextPanel, currentPanel);
+    } else if (existingPanel?.parentNode) {
+      existingPanel.parentNode.replaceChild(nextPanel, existingPanel);
+    }
+
+    this.modalMoreMenuPanel = nextPanel;
+  }
+
   handleCopyRequest(event) {
     event?.preventDefault?.();
     if (this.copyMagnetBtn?.disabled) {
@@ -579,6 +739,23 @@ export class VideoModal {
   handleCreatorNavigation(event) {
     event?.preventDefault?.();
     this.dispatch("creator:navigate", { video: this.activeVideo });
+  }
+
+  handleModalMoreButtonClick(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (this.modalMoreBtn?.disabled) {
+      return;
+    }
+    if (this.modalMorePopover?.toggle) {
+      this.modalMorePopover.toggle();
+      return;
+    }
+    if (this.modalMorePopover?.isOpen?.()) {
+      this.modalMorePopover.close?.();
+    } else {
+      this.modalMorePopover?.open?.();
+    }
   }
 
   open(video, options = {}) {
@@ -611,6 +788,10 @@ export class VideoModal {
     this.document.documentElement.classList.remove("modal-open");
     this.modalAccessibility?.deactivate();
     this.setGlobalModalState("player", false);
+    this.closeZapDialog({ silent: true, restoreFocus: false });
+    if (this.modalMorePopover?.close) {
+      this.modalMorePopover.close({ restoreFocus: false });
+    }
     this.forceRemovePoster("close");
   }
 
@@ -792,7 +973,7 @@ export class VideoModal {
     }
 
     if (!shouldShow) {
-      this.closeZapDialog({ silent: true });
+      this.closeZapDialog({ silent: true, restoreFocus: false });
     }
   }
 
@@ -808,22 +989,49 @@ export class VideoModal {
     );
   }
 
-  openZapDialog() {
+  async openZapDialog() {
+    if (this.modalZapPopover?.open) {
+      try {
+        const opened = await this.modalZapPopover.open();
+        if (opened) {
+          this.modalZapDialogOpen = true;
+          if (this.modalZapDialog) {
+            this.modalZapDialog.dataset.state = "open";
+            this.modalZapDialog.hidden = false;
+            this.modalZapDialog.setAttribute("aria-hidden", "false");
+          }
+          this.focusZapAmount();
+        }
+        return;
+      } catch (error) {
+        this.log("[VideoModal] Failed to open zap popover", error);
+      }
+    }
+
     if (!this.modalZapDialog) {
       return;
     }
+
     this.modalZapDialog.hidden = false;
     this.modalZapDialog.dataset.state = "open";
-    this.modalZapDialogOpen = true;
     this.modalZapDialog.setAttribute("aria-hidden", "false");
+    this.modalZapDialogOpen = true;
     if (this.modalZapBtn) {
       this.modalZapBtn.setAttribute("aria-expanded", "true");
     }
-    this.modalZapPositioner?.update();
     this.focusZapAmount();
   }
 
-  closeZapDialog({ silent = false } = {}) {
+  closeZapDialog({ silent = false, restoreFocus } = {}) {
+    if (this.modalZapPopover?.close) {
+      const options = { silent };
+      if (restoreFocus !== undefined) {
+        options.restoreFocus = restoreFocus;
+      }
+      this.modalZapPopover.close(options);
+      return;
+    }
+
     if (!this.modalZapDialog) {
       return;
     }
@@ -842,6 +1050,9 @@ export class VideoModal {
   }
 
   isZapDialogOpen() {
+    if (typeof this.modalZapPopover?.isOpen === "function") {
+      return this.modalZapPopover.isOpen();
+    }
     return !!this.modalZapDialogOpen;
   }
 
@@ -1237,158 +1448,45 @@ export class VideoModal {
   }
 
   syncMoreMenuData({ currentVideo, canManageBlacklist }) {
-    if (!this.modalMoreMenu) {
-      return;
-    }
+    this.modalMoreMenuContext.video = currentVideo || null;
+    this.modalMoreMenuContext.canManageBlacklist = !!canManageBlacklist;
 
-    const buttons = this.modalMoreMenu.querySelectorAll("button[data-action]");
-    const HTMLElementCtor =
-      this.window && typeof this.window.HTMLElement !== "undefined"
-        ? this.window.HTMLElement
+    const pointerArray =
+      Array.isArray(currentVideo?.pointer) && currentVideo.pointer.length >= 2
+        ? currentVideo.pointer
         : null;
+    const pointerKey =
+      typeof currentVideo?.pointerKey === "string"
+        ? currentVideo.pointerKey
+        : "";
 
-    buttons.forEach((button) => {
-      if (HTMLElementCtor && !(button instanceof HTMLElementCtor)) {
-        return;
+    this.modalMoreMenuContext.pointerInfo = pointerArray
+      ? { pointer: pointerArray, key: pointerKey }
+      : null;
+
+    this.modalMoreMenuContext.playbackUrl =
+      typeof currentVideo?.url === "string" ? currentVideo.url : "";
+
+    const magnetCandidate = (() => {
+      if (typeof currentVideo?.magnet === "string" && currentVideo.magnet) {
+        return currentVideo.magnet;
       }
-
-      const action = button.dataset.action || "";
-      if (action === "blacklist-author") {
-        if (canManageBlacklist && currentVideo?.pubkey) {
-          button.dataset.author = currentVideo.pubkey;
-          button.removeAttribute("hidden");
-          button.setAttribute("aria-hidden", "false");
-        } else {
-          delete button.dataset.author;
-          button.setAttribute("aria-hidden", "true");
-          button.setAttribute("hidden", "");
-        }
-        return;
+      if (
+        typeof currentVideo?.originalMagnet === "string" &&
+        currentVideo.originalMagnet
+      ) {
+        return currentVideo.originalMagnet;
       }
-
-      if (action === "repost-event") {
-        if (currentVideo?.id) {
-          button.dataset.eventId = currentVideo.id;
-        } else {
-          delete button.dataset.eventId;
-        }
-
-        if (currentVideo?.pubkey) {
-          button.dataset.author = currentVideo.pubkey;
-        } else {
-          delete button.dataset.author;
-        }
-
-        if (
-          Array.isArray(currentVideo?.pointer) &&
-          currentVideo.pointer.length >= 2
-        ) {
-          const [pointerType, pointerValue, pointerRelay] =
-            currentVideo.pointer;
-          button.dataset.pointerType = pointerType || "";
-          button.dataset.pointerValue = pointerValue || "";
-          if (pointerRelay) {
-            button.dataset.pointerRelay = pointerRelay;
-          } else {
-            delete button.dataset.pointerRelay;
-          }
-        } else {
-          delete button.dataset.pointerType;
-          delete button.dataset.pointerValue;
-          delete button.dataset.pointerRelay;
-        }
-
-        if (Number.isFinite(currentVideo?.kind)) {
-          button.dataset.kind = String(Math.floor(currentVideo.kind));
-        } else {
-          delete button.dataset.kind;
-        }
-        return;
+      if (typeof currentVideo?.infoHash === "string" && currentVideo.infoHash) {
+        return currentVideo.infoHash;
       }
+      return "";
+    })();
 
-      if (action === "mirror-video") {
-        const hasUrl =
-          typeof currentVideo?.url === "string" && currentVideo.url.trim();
-        const isPrivate = currentVideo?.isPrivate === true;
+    this.modalMoreMenuContext.playbackMagnet = magnetCandidate;
 
-        if (hasUrl && !isPrivate) {
-          button.removeAttribute("hidden");
-          button.setAttribute("aria-hidden", "false");
-          button.dataset.eventId = currentVideo.id || "";
-          button.dataset.author = currentVideo.pubkey || "";
-          button.dataset.url = currentVideo.url || "";
-          button.dataset.magnet =
-            currentVideo.magnet || currentVideo.originalMagnet || "";
-          button.dataset.thumbnail = currentVideo.thumbnail || "";
-          button.dataset.description = currentVideo.description || "";
-          button.dataset.title = currentVideo.title || "";
-          button.dataset.isPrivate = "false";
-        } else {
-          delete button.dataset.eventId;
-          delete button.dataset.author;
-          delete button.dataset.url;
-          delete button.dataset.magnet;
-          delete button.dataset.thumbnail;
-          delete button.dataset.description;
-          delete button.dataset.title;
-          button.dataset.isPrivate = "true";
-          button.setAttribute("aria-hidden", "true");
-          button.setAttribute("hidden", "");
-        }
-        return;
-      }
-
-      if (action === "ensure-presence") {
-        if (currentVideo?.id) {
-          button.dataset.eventId = currentVideo.id;
-        } else {
-          delete button.dataset.eventId;
-        }
-
-        if (currentVideo?.pubkey) {
-          button.dataset.author = currentVideo.pubkey;
-          button.dataset.pubkey = currentVideo.pubkey;
-        } else {
-          delete button.dataset.author;
-          delete button.dataset.pubkey;
-        }
-
-        if (
-          Array.isArray(currentVideo?.pointer) &&
-          currentVideo.pointer.length >= 2
-        ) {
-          const [pointerType, pointerValue, pointerRelay] =
-            currentVideo.pointer;
-          button.dataset.pointerType = pointerType || "";
-          button.dataset.pointerValue = pointerValue || "";
-          if (pointerRelay) {
-            button.dataset.pointerRelay = pointerRelay;
-          } else {
-            delete button.dataset.pointerRelay;
-          }
-        } else {
-          delete button.dataset.pointerType;
-          delete button.dataset.pointerValue;
-          delete button.dataset.pointerRelay;
-        }
-        return;
-      }
-
-      if (action === "open-channel" || action === "block-author") {
-        if (currentVideo?.pubkey) {
-          button.dataset.author = currentVideo.pubkey;
-        } else {
-          delete button.dataset.author;
-        }
-      }
-
-      if (action === "copy-link" || action === "report") {
-        if (currentVideo?.id) {
-          button.dataset.eventId = currentVideo.id;
-        } else {
-          delete button.dataset.eventId;
-        }
-      }
-    });
+    if (this.modalMorePopover?.isOpen?.()) {
+      this.refreshModalMoreMenuPanel();
+    }
   }
 }
