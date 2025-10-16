@@ -495,11 +495,11 @@
   --color-sidebar-surface-alt: rgb(236 240 247 / 0.72);
   --color-sidebar-border: rgb(184 194 212 / 0.28);
   --color-sidebar-border-strong: rgb(148 163 184 / 0.36);
-  --color-sidebar-hover: rgb(99 102 241 / 0.14);
-  --color-sidebar-hover-strong: rgb(79 70 229 / 0.2);
-  --color-sidebar-glow: rgb(99 102 241 / 0.28);
-  --color-sidebar-accent-start: rgb(129 140 248 / 0.88);
-  --color-sidebar-accent-end: rgb(99 102 241 / 0.85);
+  --color-sidebar-hover: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  --color-sidebar-hover-strong: color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
+  --color-sidebar-glow: color-mix(in srgb, var(--color-accent) 36%, transparent);
+  --color-sidebar-accent-start: color-mix(in srgb, var(--color-accent-strong) 88%, transparent);
+  --color-sidebar-accent-end: color-mix(in srgb, var(--color-accent) 82%, transparent);
   --color-sidebar-text-muted: var(--color-text-muted);
   --sidebar-icon-filter: brightness(0) saturate(100%);
 
@@ -646,11 +646,11 @@
   --color-sidebar-surface-alt: rgb(10 18 32 / 0.8);
   --color-sidebar-border: rgb(86 106 142 / 0.26);
   --color-sidebar-border-strong: rgb(112 133 170 / 0.42);
-  --color-sidebar-hover: rgb(56 189 248 / 0.22);
-  --color-sidebar-hover-strong: rgb(129 140 248 / 0.32);
-  --color-sidebar-glow: rgb(129 140 248 / 0.38);
-  --color-sidebar-accent-start: rgb(56 189 248 / 0.92);
-  --color-sidebar-accent-end: rgb(129 140 248 / 0.88);
+  --color-sidebar-hover: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  --color-sidebar-hover-strong: color-mix(in srgb, var(--color-accent-strong) 32%, transparent);
+  --color-sidebar-glow: color-mix(in srgb, var(--color-accent) 42%, transparent);
+  --color-sidebar-accent-start: color-mix(in srgb, var(--color-accent) 92%, transparent);
+  --color-sidebar-accent-end: color-mix(in srgb, var(--color-accent-strong) 88%, transparent);
   --color-sidebar-text-muted: var(--color-text-muted);
   --sidebar-icon-filter: brightness(0) invert(1);
 
