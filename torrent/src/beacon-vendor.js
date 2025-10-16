@@ -1,4 +1,5 @@
 import { devLogger, userLogger } from "../js/utils/logger.js";
+import { initThemeController } from "../../js/themeController.js";
 import { createBeaconApp } from "../app.js";
 
 function resolveGlobalScope() {
@@ -20,6 +21,16 @@ function resolveWebTorrent() {
 }
 
 let appInstance = null;
+
+const initializeThemeController = () => {
+  try {
+    initThemeController();
+  } catch (error) {
+    devLogger.warn("[beacon] Failed to initialize theme controller", error);
+  }
+};
+
+initializeThemeController();
 
 function mountBeaconApp() {
   if (appInstance) {
