@@ -164,8 +164,8 @@
 
   .header-icon-toggle__icon-wrapper {
     @apply inline-flex items-center justify-center;
-    inline-size: var(--icon-size-md);
-    block-size: var(--icon-size-md);
+    inline-size: var(--space-lg);
+    block-size: var(--space-lg);
   }
 
   .header-icon-toggle__icon {
