@@ -329,7 +329,7 @@ Use `.popover` as the relative anchor for floating content. Nest `.popover__pane
 </div>
 ```
 
-Use the shared popover engine (`js/ui/overlay/popoverEngine.js`) instead of manual offsets. The helper attaches panels to the overlay root, flips placement when they collide with the viewport, and toggles `aria` + `data-popover-state` attributes as visibility changes. Width and height clamps can be sourced from design tokens (`maxWidthToken`, `maxHeightToken`) so surfaces inherit theme-specific limits without inline constants. 【F:js/ui/overlay/popoverEngine.js†L252-L266】【F:js/ui/overlay/popoverEngine.js†L633-L706】【F:css/tailwind.source.css†L358-L399】
+Use the shared popover engine (`js/ui/overlay/popoverEngine.js`) instead of manual offsets. The helper attaches panels to the overlay root, flips placement when they collide with the viewport, and toggles `aria` + `data-popover-state` attributes as visibility changes. Width and height clamps can be sourced from design tokens (`maxWidthToken`, `maxHeightToken`) so surfaces inherit theme-specific limits without inline constants. Consult [docs/menus.md](./menus.md) for overlay-root wiring, Tailwind overlay helpers, and the manual QA surface that exercises card and modal menus. 【F:js/ui/overlay/popoverEngine.js†L252-L266】【F:js/ui/overlay/popoverEngine.js†L633-L706】【F:css/tailwind.source.css†L358-L399】
 
 ```js
 import createPopover from "../overlay/popoverEngine.js";
