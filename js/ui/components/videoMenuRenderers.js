@@ -282,6 +282,54 @@ export function createVideoMoreMenuPanel({
   return panel;
 }
 
+export function createChannelProfileMenuPanel({
+  document: documentRef = null,
+  context = "channel-profile",
+  designSystem = null,
+} = {}) {
+  const doc = resolveDocument(documentRef);
+  if (!doc) {
+    return null;
+  }
+
+  normalizeDesignSystemContext(designSystem);
+
+  const normalizedContext =
+    typeof context === "string" && context ? context : "channel-profile";
+
+  const { panel, list } = ensureMenuContainer(doc, ["w-48", "p-0"]);
+  panel.dataset.menu = "channel-profile";
+  panel.dataset.menuContext = normalizedContext;
+
+  appendMenuAction(doc, list, {
+    text: "Copy npub",
+    action: "copy-npub",
+    dataset: { context: normalizedContext },
+  });
+
+  appendMenuAction(doc, list, {
+    text: "Blacklist channel",
+    action: "blacklist-author",
+    variant: "critical",
+    dataset: { context: normalizedContext },
+  });
+
+  appendMenuAction(doc, list, {
+    text: "Block channel",
+    action: "block-author",
+    variant: "critical",
+    dataset: { context: normalizedContext },
+  });
+
+  appendMenuAction(doc, list, {
+    text: "Report",
+    action: "report",
+    dataset: { context: normalizedContext },
+  });
+
+  return panel;
+}
+
 export function createVideoSettingsMenuPanel({
   document: documentRef = null,
   video = null,
