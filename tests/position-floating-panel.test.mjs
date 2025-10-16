@@ -1,302 +1,351 @@
-import test from "node:test";
+import test, { beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import positionFloatingPanel from "../js/ui/utils/positionFloatingPanel.js";
-import { createFloatingPanelStyles } from "../js/ui/utils/floatingPanelStyles.js";
+import createPopover from "../js/ui/overlay/popoverEngine.js";
 
-function getScopeRule(document, scopeId) {
-  const styleEl = document.querySelector('style[data-ds-dynamic="true"]');
-  const rules = [];
-  if (styleEl?.sheet?.cssRules) {
-    rules.push(...Array.from(styleEl.sheet.cssRules));
+let dom;
+let documentRef;
+let windowRef;
+
+class StubObserver {
+  constructor() {
+    this.observe = () => {};
+    this.unobserve = () => {};
+    this.disconnect = () => {};
   }
-  const adoptedSheets = document.adoptedStyleSheets;
-  if (Array.isArray(adoptedSheets)) {
-    for (const sheet of adoptedSheets) {
-      if (sheet?.cssRules) {
-        rules.push(...Array.from(sheet.cssRules));
-      }
-    }
-  }
-  return rules.find((cssRule) => cssRule.selectorText === `[data-ds-style-id="${scopeId}"]`) || null;
 }
 
-test("flips to top when bottom placement collides with viewport", () => {
-  const dom = new JSDOM(
-    `
-      <div class="popover">
-        <button id="trigger">Open</button>
-        <div id="panel" class="popover__panel" data-state="closed" hidden></div>
-      </div>
-    `,
-    { pretendToBeVisual: true },
+function setupBoundingClientRect(element, rect) {
+  element.getBoundingClientRect = () => ({ ...rect });
+  Object.defineProperties(element, {
+    offsetWidth: { value: rect.width, configurable: true },
+    offsetHeight: { value: rect.height, configurable: true },
+  });
+}
+
+function attachFocus(element, activeElementRef) {
+  element.focus = () => {
+    activeElementRef.active = element;
+    if (typeof element.setAttribute === "function") {
+      element.setAttribute("data-focused", "true");
+    }
+  };
+}
+
+beforeEach(() => {
+  dom = new JSDOM(
+    `<!DOCTYPE html><html><body data-ds="new"><div id="root"></div></body></html>`,
+    {
+      pretendToBeVisual: true,
+      url: "https://example.com",
+    },
   );
-  const { window } = dom;
-  const { document } = window;
 
-  window.innerWidth = 360;
-  window.innerHeight = 320;
+  windowRef = dom.window;
+  documentRef = windowRef.document;
 
-  const trigger = document.getElementById("trigger");
-  const panel = document.getElementById("panel");
+  windowRef.innerWidth = 320;
+  windowRef.innerHeight = 320;
+  Object.defineProperty(documentRef.documentElement, "clientWidth", {
+    value: 320,
+    configurable: true,
+  });
+  Object.defineProperty(documentRef.documentElement, "clientHeight", {
+    value: 320,
+    configurable: true,
+  });
 
-  trigger.getBoundingClientRect = () => ({
+  global.window = windowRef;
+  global.document = documentRef;
+  global.HTMLElement = windowRef.HTMLElement;
+  global.Element = windowRef.Element;
+  global.Node = windowRef.Node;
+  global.getComputedStyle = windowRef.getComputedStyle.bind(windowRef);
+  global.ResizeObserver = StubObserver;
+  if (!global.PointerEvent) {
+    global.PointerEvent = windowRef.PointerEvent || windowRef.Event;
+  }
+});
+
+afterEach(() => {
+  delete global.window;
+  delete global.document;
+  delete global.HTMLElement;
+  delete global.Element;
+  delete global.Node;
+  delete global.getComputedStyle;
+  delete global.ResizeObserver;
+  if (dom) {
+    dom.window.close();
+  }
+  dom = null;
+  documentRef = null;
+  windowRef = null;
+});
+
+test("flips placement when bottom placement would collide with viewport", async () => {
+  const trigger = documentRef.createElement("button");
+  trigger.id = "trigger";
+  trigger.type = "button";
+  trigger.textContent = "Open";
+  trigger.setAttribute("tabindex", "0");
+  documentRef.body.appendChild(trigger);
+
+  const active = { active: null };
+  attachFocus(trigger, active);
+
+  setupBoundingClientRect(trigger, {
+    x: 180,
+    y: 260,
     top: 260,
     bottom: 300,
-    left: 100,
-    right: 140,
+    left: 180,
+    right: 220,
     width: 40,
     height: 40,
   });
 
-  panel.getBoundingClientRect = () => ({
-    top: 0,
-    bottom: 120,
-    left: 0,
-    right: 200,
-    width: 200,
-    height: 120,
-  });
-  Object.defineProperties(panel, {
-    offsetWidth: { value: 200 },
-    offsetHeight: { value: 120 },
-  });
+  const popover = createPopover(
+    trigger,
+    ({ container }) => {
+      const panel = documentRef.createElement("div");
+      panel.className = "popover__panel card";
+      panel.dataset.testPanel = "collision";
+      setupBoundingClientRect(panel, {
+        x: 0,
+        y: 0,
+        top: 0,
+        bottom: 140,
+        left: 0,
+        right: 220,
+        width: 220,
+        height: 140,
+      });
 
-  const styles = createFloatingPanelStyles(panel);
+      panel.focus = () => {
+        active.active = panel;
+      };
 
-  const positioner = positionFloatingPanel(trigger, panel, {
-    offset: 8,
-    viewportPadding: 12,
-    styles,
-  });
+      const menu = documentRef.createElement("ul");
+      menu.className = "menu";
+      for (let index = 0; index < 2; index += 1) {
+        const item = documentRef.createElement("button");
+        item.className = "menu__item";
+        item.setAttribute("role", "menuitem");
+        item.textContent = `Action ${index + 1}`;
+        item.focus = () => {
+          active.active = item;
+        };
+        menu.appendChild(item);
+      }
+      panel.appendChild(menu);
+      container.appendChild(panel);
+      return panel;
+    },
+    { document: documentRef },
+  );
 
-  panel.hidden = false;
-  panel.dataset.state = "open";
-  positioner.update();
+  const opened = await popover.open();
+  assert.equal(opened, true, "popover should open");
 
-  assert.equal(panel.dataset.floatingPlacement, "top");
-  assert.equal(styles.getStrategy(), "fixed");
-  assert.deepEqual(styles.getFallbackPosition(), { top: 132, left: 100 });
-  assert.equal(panel.dataset.floatingMode, "fallback");
-  const scopeId = panel.getAttribute("data-ds-style-id");
-  assert.ok(scopeId, "panel should receive a dynamic style scope id");
-  const rule = getScopeRule(document, scopeId);
-  assert.ok(rule, "scope rule should exist for the floating panel");
-  const ruleStyleTop = rule ? rule["style"] : null;
-  assert.ok(ruleStyleTop, "floating panel rule should expose a CSSStyleDeclaration");
-  assert.equal(ruleStyleTop.getPropertyValue("--floating-fallback-top"), "132px");
-  assert.equal(ruleStyleTop.getPropertyValue("--floating-fallback-left"), "100px");
+  const panel = documentRef.querySelector('[data-test-panel="collision"]');
+  assert.ok(panel, "panel should render");
+  assert.equal(panel.dataset.popoverState, "open");
+  assert.equal(panel.dataset.popoverPlacement, "top-start");
+  assert.equal(panel.style.position, "fixed");
+  assert.equal(panel.style.maxWidth, "calc(100vw - var(--space-xl))");
 
-  positioner.destroy();
-  assert.equal(panel.dataset.floatingPanel, undefined);
-  assert.equal(trigger.dataset.floatingAnchor, undefined);
-  const ruleAfterDestroy = getScopeRule(document, scopeId);
-  assert.equal(ruleAfterDestroy, null);
+  const top = Number.parseInt(panel.style.top, 10);
+  const left = Number.parseInt(panel.style.left, 10);
+  assert.ok(Number.isFinite(top));
+  assert.ok(Number.isFinite(left));
+  assert.ok(top >= 0, "top should stay within viewport");
+  assert.ok(left >= 0, "left should stay within viewport");
+  assert.ok(top + panel.offsetHeight <= windowRef.innerHeight);
+  assert.ok(left + panel.offsetWidth <= windowRef.innerWidth);
+
+  popover.destroy();
 });
 
-test("respects RTL alignment and clamps within the viewport", () => {
-  const dom = new JSDOM(
-    `
-      <div dir="rtl" class="popover">
-        <button id="trigger">Open</button>
-        <div id="panel" class="popover__panel" data-state="closed" hidden></div>
-      </div>
-    `,
-    { pretendToBeVisual: true, url: "https://example.com" },
+test("closes previously open popovers without restoring focus", async () => {
+  const container = documentRef.getElementById("root");
+  const active = { active: null };
+
+  const createTrigger = (id, rectLeft) => {
+    const button = documentRef.createElement("button");
+    button.id = id;
+    button.type = "button";
+    button.textContent = id;
+    button.setAttribute("tabindex", "0");
+    attachFocus(button, active);
+    setupBoundingClientRect(button, {
+      x: rectLeft,
+      y: 80,
+      top: 80,
+      bottom: 120,
+      left: rectLeft,
+      right: rectLeft + 40,
+      width: 40,
+      height: 40,
+    });
+    container.appendChild(button);
+    return button;
+  };
+
+  const triggerA = createTrigger("triggerA", 40);
+  const triggerB = createTrigger("triggerB", 160);
+
+  let panelA;
+  let panelB;
+
+  const popoverA = createPopover(
+    triggerA,
+    ({ container: portal }) => {
+      const panel = documentRef.createElement("div");
+      panel.className = "popover__panel";
+      panel.dataset.testPanel = "panel-a";
+      setupBoundingClientRect(panel, {
+        x: 0,
+        y: 0,
+        top: 0,
+        bottom: 100,
+        left: 0,
+        right: 160,
+        width: 160,
+        height: 100,
+      });
+      panel.focus = () => {
+        active.active = panel;
+      };
+      portal.appendChild(panel);
+      panelA = panel;
+      return panel;
+    },
+    { document: documentRef },
   );
-  const { window } = dom;
-  const { document } = window;
 
-  window.innerWidth = 320;
-  window.innerHeight = 240;
-  document.documentElement.dir = "rtl";
-  document.body.dir = "rtl";
+  const popoverB = createPopover(
+    triggerB,
+    ({ container: portal }) => {
+      const panel = documentRef.createElement("div");
+      panel.className = "popover__panel";
+      panel.dataset.testPanel = "panel-b";
+      setupBoundingClientRect(panel, {
+        x: 0,
+        y: 0,
+        top: 0,
+        bottom: 100,
+        left: 0,
+        right: 160,
+        width: 160,
+        height: 100,
+      });
+      panel.focus = () => {
+        active.active = panel;
+      };
+      portal.appendChild(panel);
+      panelB = panel;
+      return panel;
+    },
+    { document: documentRef },
+  );
 
-  const trigger = document.getElementById("trigger");
-  const panel = document.getElementById("panel");
+  await popoverA.open();
+  assert.equal(popoverA.isOpen(), true);
+  assert.equal(triggerA.getAttribute("aria-expanded"), "true");
+  assert.equal(panelA?.dataset.popoverState, "open");
 
-  trigger.getBoundingClientRect = () => ({
-    top: 32,
-    bottom: 72,
-    left: 220,
-    right: 260,
-    width: 40,
-    height: 40,
-  });
+  await popoverB.open();
+  assert.equal(popoverB.isOpen(), true);
+  assert.equal(triggerB.getAttribute("aria-expanded"), "true");
+  assert.equal(panelB?.dataset.popoverState, "open");
 
-  panel.getBoundingClientRect = () => ({
-    top: 0,
+  assert.equal(popoverA.isOpen(), false, "first popover should close");
+  assert.equal(triggerA.getAttribute("aria-expanded"), "false");
+  assert.equal(panelA?.dataset.popoverState, "closed");
+  assert.notEqual(active.active, triggerA, "focus should not jump back to first trigger");
+
+  popoverA.destroy();
+  popoverB.destroy();
+});
+
+test("restores focus to the trigger when closed", async () => {
+  const trigger = documentRef.createElement("button");
+  trigger.id = "restoreTrigger";
+  trigger.type = "button";
+  trigger.textContent = "Restore";
+  trigger.setAttribute("tabindex", "0");
+  documentRef.body.appendChild(trigger);
+
+  const active = { active: null };
+  attachFocus(trigger, active);
+
+  setupBoundingClientRect(trigger, {
+    x: 40,
+    y: 40,
+    top: 40,
     bottom: 80,
-    left: 0,
-    right: 120,
-    width: 120,
-    height: 80,
-  });
-  Object.defineProperties(panel, {
-    offsetWidth: { value: 120 },
-    offsetHeight: { value: 80 },
-  });
-
-  const styles = createFloatingPanelStyles(panel);
-
-  const positioner = positionFloatingPanel(trigger, panel, {
-    alignment: "start",
-    viewportPadding: 16,
-    styles,
-  });
-
-  panel.hidden = false;
-  panel.dataset.state = "open";
-  positioner.update();
-
-  // In RTL mode, start alignment hugs the right edge of the trigger.
-  assert.equal(panel.dataset.floatingPlacement, "bottom");
-  assert.equal(panel.dataset.floatingDir, "rtl");
-  assert.deepEqual(styles.getFallbackPosition(), { top: 72 + 8, left: 140 });
-
-  positioner.destroy();
-});
-
-test("updates when scroll containers move the trigger", async () => {
-  const dom = new JSDOM(
-    `
-      <div class="popover">
-        <button id="trigger">Open</button>
-        <div id="panel" class="popover__panel" data-state="closed" hidden></div>
-      </div>
-    `,
-    { pretendToBeVisual: true },
-  );
-  const { window } = dom;
-  const { document } = window;
-
-  window.innerWidth = 480;
-  window.innerHeight = 360;
-
-  const trigger = document.getElementById("trigger");
-  const panel = document.getElementById("panel");
-
-  let anchorTop = 100;
-  trigger.getBoundingClientRect = () => ({
-    top: anchorTop,
-    bottom: anchorTop + 40,
     left: 40,
     right: 80,
     width: 40,
     height: 40,
   });
 
-  panel.getBoundingClientRect = () => ({
-    top: 0,
-    bottom: 60,
-    left: 0,
-    right: 180,
-    width: 180,
-    height: 60,
-  });
-  Object.defineProperties(panel, {
-    offsetWidth: { value: 180 },
-    offsetHeight: { value: 60 },
-  });
+  let firstItem = null;
+  const popover = createPopover(
+    trigger,
+    ({ container }) => {
+      const panel = documentRef.createElement("div");
+      panel.className = "popover__panel";
+      panel.dataset.testPanel = "restore";
+      setupBoundingClientRect(panel, {
+        x: 0,
+        y: 0,
+        top: 0,
+        bottom: 80,
+        left: 0,
+        right: 160,
+        width: 160,
+        height: 80,
+      });
+      panel.focus = () => {
+        active.active = panel;
+      };
 
-  let scrollHandler = null;
-  const originalAddEventListener = window.addEventListener;
-  window.addEventListener = (type, listener, options) => {
-    if (type === "scroll" && options === true) {
-      scrollHandler = listener;
-    }
-    return originalAddEventListener.call(window, type, listener, options);
-  };
+      const menu = documentRef.createElement("ul");
+      menu.className = "menu";
 
-  const styles = createFloatingPanelStyles(panel);
+      firstItem = documentRef.createElement("button");
+      firstItem.className = "menu__item";
+      firstItem.setAttribute("role", "menuitem");
+      firstItem.textContent = "Play";
+      attachFocus(firstItem, active);
+      menu.appendChild(firstItem);
 
-  const positioner = positionFloatingPanel(trigger, panel, {
-    offset: 12,
-    styles,
-  });
+      const secondItem = documentRef.createElement("button");
+      secondItem.className = "menu__item";
+      secondItem.setAttribute("role", "menuitem");
+      secondItem.textContent = "Share";
+      attachFocus(secondItem, active);
+      menu.appendChild(secondItem);
 
-  panel.hidden = false;
-  panel.dataset.state = "open";
-  positioner.update();
-
-  assert.deepEqual(styles.getFallbackPosition(), { top: 152, left: 40 });
-  assert.ok(scrollHandler, "scroll listener should be registered");
-  const scopeId = panel.getAttribute("data-ds-style-id");
-  const rule = getScopeRule(document, scopeId);
-  assert.ok(rule, "dynamic rule should be present for scroll updates");
-  const fallbackRuleStyle = rule ? rule["style"] : null;
-  assert.ok(fallbackRuleStyle, "dynamic rule should be present for scroll updates");
-  assert.equal(fallbackRuleStyle.getPropertyValue("--floating-fallback-top"), "152px");
-
-  anchorTop = 60;
-  scrollHandler?.({ type: "scroll" });
-  assert.deepEqual(styles.getFallbackPosition(), { top: 112, left: 40 });
-  assert.equal(fallbackRuleStyle.getPropertyValue("--floating-fallback-top"), "112px");
-
-  positioner.destroy();
-  window.addEventListener = originalAddEventListener;
-});
-
-test("prefers anchor positioning when supported", () => {
-  const dom = new JSDOM(
-    `
-      <div class="popover">
-        <button id="trigger">Open</button>
-        <div id="panel" class="popover__panel" data-state="closed" hidden></div>
-      </div>
-    `,
-    { pretendToBeVisual: true },
+      panel.appendChild(menu);
+      container.appendChild(panel);
+      return panel;
+    },
+    { document: documentRef },
   );
-  const { window } = dom;
-  const { document } = window;
 
-  window.innerWidth = 640;
-  window.innerHeight = 480;
+  trigger.focus();
+  await popover.open();
+  assert.equal(popover.isOpen(), true);
+  assert.equal(active.active, firstItem);
 
-  const trigger = document.getElementById("trigger");
-  const panel = document.getElementById("panel");
+  const closed = popover.close();
+  assert.equal(closed, true);
+  assert.equal(popover.isOpen(), false);
+  assert.equal(trigger.getAttribute("aria-expanded"), "false");
+  assert.equal(active.active, trigger, "focus should return to trigger");
 
-  trigger.getBoundingClientRect = () => ({
-    top: 100,
-    bottom: 140,
-    left: 200,
-    right: 240,
-    width: 40,
-    height: 40,
-  });
-
-  panel.getBoundingClientRect = () => ({
-    top: 0,
-    bottom: 90,
-    left: 0,
-    right: 200,
-    width: 200,
-    height: 90,
-  });
-  Object.defineProperties(panel, {
-    offsetWidth: { value: 200 },
-    offsetHeight: { value: 90 },
-  });
-
-  const originalCSS = window.CSS;
-  window.CSS = {
-    supports: (value) =>
-      value === "anchor-name: --floating-panel" || value === "position-anchor: --floating-panel",
-  };
-
-  const positioner = positionFloatingPanel(trigger, panel, {
-    offset: 10,
-  });
-
-  panel.hidden = false;
-  panel.dataset.state = "open";
-  positioner.update();
-
-  assert.equal(panel.dataset.floatingMode, "anchor");
-  assert.equal(positioner.styles.getMode(), "anchor");
-  assert.equal(panel.dataset.floatingPlacement, "bottom");
-  assert.deepEqual(positioner.styles.getFallbackPosition(), { top: 150, left: 200 });
-
-  positioner.destroy();
-  window.CSS = originalCSS;
+  popover.destroy();
 });

@@ -5,7 +5,8 @@ const PORT = Number.parseInt(process.env.PLAYWRIGHT_PORT ?? "4173", 10);
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://${HOST}:${PORT}`;
 
 export default defineConfig({
-  testDir: "./tests/visual",
+  testDir: "./tests",
+  testMatch: ["visual/**/*.spec.ts", "e2e/**/*.spec.ts"],
   timeout: 60_000,
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }]]
