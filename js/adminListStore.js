@@ -7,7 +7,10 @@ import {
   ADMIN_EDITORS_NPUBS,
   isDevMode,
 } from "./config.js";
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostr.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
   buildAdminListEvent,
@@ -502,6 +505,14 @@ function publishToRelay(url, signedEvent, listKey) {
 
 async function persistNostrState(actorNpub, updates = {}) {
   ensureNostrReady();
+  const permissionResult = await requestDefaultExtensionPermissions();
+  if (!permissionResult.ok) {
+    throw createError(
+      "extension-permission-denied",
+      "The NIP-07 extension must allow signing before updating admin lists.",
+      permissionResult.error,
+    );
+  }
   const extension = window?.nostr;
   if (!extension || typeof extension.signEvent !== "function") {
     throw createError(

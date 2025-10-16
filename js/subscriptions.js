@@ -1,7 +1,8 @@
 // js/subscriptions.js
 import {
   nostrClient,
-  convertEventToVideo as sharedConvertEventToVideo
+  convertEventToVideo as sharedConvertEventToVideo,
+  requestDefaultExtensionPermissions,
 } from "./nostr.js";
 import {
   buildSubscriptionListEvent,
@@ -75,6 +76,18 @@ class SubscriptionsManager {
       events.sort((a, b) => b.created_at - a.created_at);
       const newest = events[0];
       this.subsEventId = newest.id;
+
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[SubscriptionsManager] Extension permissions denied while loading subscriptions; treating list as empty.",
+          permissionResult.error,
+        );
+        this.subscribedPubkeys.clear();
+        this.subsEventId = null;
+        this.loaded = true;
+        return;
+      }
 
       let decryptedStr = "";
       try {
@@ -153,6 +166,20 @@ class SubscriptionsManager {
   async publishSubscriptionList(userPubkey) {
     if (!userPubkey) {
       throw new Error("No pubkey => cannot publish subscription list.");
+    }
+
+    const permissionResult = await requestDefaultExtensionPermissions();
+    if (!permissionResult.ok) {
+      userLogger.warn(
+        "[SubscriptionsManager] Extension permissions denied while updating subscriptions.",
+        permissionResult.error,
+      );
+      const error = new Error(
+        "The NIP-07 extension must allow encryption and signing before updating subscriptions.",
+      );
+      error.code = "extension-permission-denied";
+      error.cause = permissionResult.error;
+      throw error;
     }
 
     const plainObj = { subPubkeys: Array.from(this.subscribedPubkeys) };

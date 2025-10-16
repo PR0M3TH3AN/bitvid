@@ -1,5 +1,9 @@
 import { isDevMode } from "./config.js";
-import { DEFAULT_RELAY_URLS, nostrClient } from "./nostr.js";
+import {
+  DEFAULT_RELAY_URLS,
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostr.js";
 import { buildRelayListEvent } from "./nostrEventSchemas.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import {
@@ -593,6 +597,20 @@ class RelayPreferencesManager {
         "A valid pubkey is required to publish relay preferences."
       );
       error.code = "invalid-pubkey";
+      throw error;
+    }
+
+    const permissionResult = await requestDefaultExtensionPermissions();
+    if (!permissionResult.ok) {
+      userLogger.warn(
+        "[RelayPreferencesManager] Extension permissions denied while publishing relay preferences.",
+        permissionResult.error,
+      );
+      const error = new Error(
+        "The NIP-07 extension must allow signing before publishing relay preferences.",
+      );
+      error.code = "extension-permission-denied";
+      error.cause = permissionResult.error;
       throw error;
     }
 

@@ -5,6 +5,7 @@ import {
   normalizePointerInput,
   pointerKey,
   normalizeActorKey,
+  requestDefaultExtensionPermissions,
 } from "./nostr.js";
 import {
   WATCH_HISTORY_CACHE_TTL_MS,
@@ -96,6 +97,56 @@ function getSessionActorKey() {
     return "";
   }
   return normalizeActorKey(nostrClient?.sessionActor?.pubkey);
+}
+
+function shouldUseExtensionForHistory(actorKey) {
+  const normalizedActor = normalizeActorKey(actorKey);
+  if (!normalizedActor) {
+    return false;
+  }
+
+  const loggedActor = normalizeActorKey(nostrClient?.pubkey);
+  if (!loggedActor || loggedActor !== normalizedActor) {
+    return false;
+  }
+
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const extension = window.nostr;
+  if (!extension || !extension.nip04) {
+    return false;
+  }
+
+  return typeof extension.nip04.decrypt === "function";
+}
+
+async function ensureWatchHistoryExtensionPermissions(actorKey) {
+  if (!shouldUseExtensionForHistory(actorKey)) {
+    return { ok: true };
+  }
+
+  const permissionResult = await requestDefaultExtensionPermissions();
+  if (permissionResult.ok) {
+    return { ok: true };
+  }
+
+  const message =
+    "Approve your NIP-07 extension to decrypt encrypted watch history.";
+  const error = new Error(message);
+  error.code = "watch-history-extension-permission-denied";
+  error.cause = permissionResult.error;
+
+  userLogger.warn(
+    "[watchHistoryService] Extension denied decrypt permission required for watch history.",
+    {
+      actor: normalizeActorKey(actorKey) || null,
+      error: permissionResult.error,
+    },
+  );
+
+  return { ok: false, error };
 }
 
 function resolveEffectiveActorKey(actorInput) {
@@ -1252,8 +1303,16 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
     return cacheEntry.promise;
   }
 
-  const promise = nostrClient
-    .resolveWatchHistory(actorKey, { forceRefresh: true })
+  const promise = Promise.resolve()
+    .then(async () => {
+      const permissionResult = await ensureWatchHistoryExtensionPermissions(
+        actorKey,
+      );
+      if (!permissionResult.ok) {
+        throw permissionResult.error;
+      }
+      return nostrClient.resolveWatchHistory(actorKey, { forceRefresh: true });
+    })
     .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
     .then(() => {
       const latest = state.fingerprintCache.get(actorKey);

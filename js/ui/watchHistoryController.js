@@ -285,7 +285,11 @@ export default class WatchHistoryController {
           ? latest.map(normalizeEntry).filter(Boolean)
           : [];
       } catch (error) {
-        this.showError("Failed to load watch history. Please try again.");
+        const message =
+          error?.code === "watch-history-extension-permission-denied"
+            ? error.message
+            : "Failed to load watch history. Please try again.";
+        this.showError(message);
         if (error && typeof error === "object") {
           error.handled = true;
         }
