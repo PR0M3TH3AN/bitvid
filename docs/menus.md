@@ -167,3 +167,13 @@ Then open `http://localhost:8000/views/dev/popover-demo.html` to interact with a
 sample video card and modal wired to the popover engine. The page ensures the
 overlay root exists, demonstrates Tailwind overlay helpers, and exercises both
 card and modal action menus without relying on production data.
+
+### Anchored alignment checks
+
+QA should confirm anchored menus stay flush with their triggers:
+
+- Open the video card's "More" menu and compare the panel's right edge with the
+  trigger's — the two edges should align so the menu appears anchored.
+- Open the modal gear menu and ensure its right edge lines up with the gear
+  trigger. Re-open after resizing the viewport if needed; the alignment should
+  remain within a pixel.

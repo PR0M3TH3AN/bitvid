@@ -3,6 +3,73 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import createPopover from "../js/ui/overlay/popoverEngine.js";
 
+function createFloatingUiMock() {
+  const baseDefaults = {
+    x: 96,
+    y: 136,
+    placement: "bottom-start",
+    strategy: "fixed",
+    middlewareData: {},
+  };
+
+  const state = {
+    defaultPosition: { ...baseDefaults },
+    nextPosition: null,
+    computePositionCalls: [],
+    autoUpdateCalls: [],
+    autoUpdateCleanupCalls: 0,
+  };
+
+  return {
+    state,
+    reset() {
+      state.defaultPosition = { ...baseDefaults };
+      state.nextPosition = null;
+      state.computePositionCalls = [];
+      state.autoUpdateCalls = [];
+      state.autoUpdateCleanupCalls = 0;
+    },
+    queueResult(overrides = {}) {
+      state.nextPosition = {
+        ...state.defaultPosition,
+        ...overrides,
+        middlewareData: {
+          ...(state.defaultPosition.middlewareData || {}),
+          ...(overrides.middlewareData || {}),
+        },
+      };
+    },
+    api: {
+      arrow: (options = {}) => ({ name: "arrow", options }),
+      offset: (value = 0) => ({ name: "offset", options: value }),
+      flip: (options = {}) => ({ name: "flip", options }),
+      shift: (options = {}) => ({ name: "shift", options }),
+      autoUpdate: (...args) => {
+        state.autoUpdateCalls.push(args);
+        return () => {
+          state.autoUpdateCleanupCalls += 1;
+        };
+      },
+      computePosition: async (...args) => {
+        state.computePositionCalls.push(args);
+        const result = state.nextPosition || state.defaultPosition;
+        state.nextPosition = null;
+        return result;
+      },
+    },
+  };
+}
+
+const floatingUiMock = createFloatingUiMock();
+
+function resetFloatingUiMock() {
+  floatingUiMock.reset();
+}
+
+function queueComputePositionResult(overrides = {}) {
+  floatingUiMock.queueResult(overrides);
+}
+
 let dom;
 let documentRef;
 let windowRef;
@@ -33,6 +100,8 @@ function attachFocus(element, activeElementRef) {
 }
 
 beforeEach(() => {
+  resetFloatingUiMock();
+
   dom = new JSDOM(
     `<!DOCTYPE html><html><body data-ds="new"><div id="root"></div></body></html>`,
     {
@@ -142,8 +211,16 @@ test("flips placement when bottom placement would collide with viewport", async 
       container.appendChild(panel);
       return panel;
     },
-    { document: documentRef },
+    { document: documentRef, floatingUi: floatingUiMock.api },
   );
+
+  queueComputePositionResult({
+    x: 84.5,
+    y: 92.4,
+    placement: "top-start",
+    strategy: "fixed",
+    middlewareData: {},
+  });
 
   const opened = await popover.open();
   assert.equal(opened, true, "popover should open");
@@ -160,10 +237,86 @@ test("flips placement when bottom placement would collide with viewport", async 
   const left = Number.parseInt(panel.style.left, 10);
   assert.ok(Number.isFinite(top));
   assert.ok(Number.isFinite(left));
+  assert.equal(top, Math.round(92.4));
+  assert.equal(left, Math.round(84.5));
   assert.ok(top >= 0, "top should stay within viewport");
   assert.ok(left >= 0, "left should stay within viewport");
   assert.ok(top + panel.offsetHeight <= windowRef.innerHeight);
   assert.ok(left + panel.offsetWidth <= windowRef.innerWidth);
+
+  popover.destroy();
+});
+
+test("aligns bottom-end panels with their trigger's right edge", async () => {
+  const trigger = documentRef.createElement("button");
+  trigger.id = "trigger";
+  trigger.type = "button";
+  trigger.textContent = "Open";
+  trigger.setAttribute("tabindex", "0");
+  documentRef.body.appendChild(trigger);
+
+  const triggerRect = {
+    x: 220,
+    y: 180,
+    top: 180,
+    bottom: 220,
+    left: 220,
+    right: 268,
+    width: 48,
+    height: 40,
+  };
+
+  setupBoundingClientRect(trigger, triggerRect);
+
+  const popover = createPopover(
+    trigger,
+    ({ container }) => {
+      const panel = documentRef.createElement("div");
+      panel.className = "popover__panel card";
+      panel.dataset.testPanel = "alignment";
+      const panelRect = {
+        x: 0,
+        y: 0,
+        top: 0,
+        bottom: 160,
+        left: 0,
+        right: 220,
+        width: 220,
+        height: 160,
+      };
+      setupBoundingClientRect(panel, panelRect);
+      container.appendChild(panel);
+      return panel;
+    },
+    { document: documentRef, placement: "bottom-end", floatingUi: floatingUiMock.api },
+  );
+
+  const panelWidth = 220;
+  const expectedLeft = triggerRect.right - panelWidth;
+
+  queueComputePositionResult({
+    x: expectedLeft,
+    y: triggerRect.bottom + 12,
+    placement: "bottom-end",
+    strategy: "fixed",
+    middlewareData: {},
+  });
+
+  const opened = await popover.open();
+  assert.equal(opened, true, "popover should open");
+
+  const panel = documentRef.querySelector('[data-test-panel="alignment"]');
+  assert.ok(panel, "panel should render");
+  assert.equal(panel.dataset.popoverPlacement, "bottom-end");
+
+  const left = Number.parseInt(panel.style.left, 10);
+  const top = Number.parseInt(panel.style.top, 10);
+  assert.equal(left, Math.round(expectedLeft));
+  assert.equal(top, Math.round(triggerRect.bottom + 12));
+
+  const panelRight = left + panel.offsetWidth;
+  const triggerRight = Math.round(triggerRect.right);
+  assert.equal(panelRight, triggerRight);
 
   popover.destroy();
 });
@@ -222,7 +375,7 @@ test("closes previously open popovers without restoring focus", async () => {
       panelA = panel;
       return panel;
     },
-    { document: documentRef },
+    { document: documentRef, floatingUi: floatingUiMock.api },
   );
 
   const popoverB = createPopover(
@@ -248,7 +401,7 @@ test("closes previously open popovers without restoring focus", async () => {
       panelB = panel;
       return panel;
     },
-    { document: documentRef },
+    { document: documentRef, floatingUi: floatingUiMock.api },
   );
 
   await popoverA.open();
@@ -337,7 +490,7 @@ test("restores focus to the trigger when closed", async () => {
       container.appendChild(panel);
       return panel;
     },
-    { document: documentRef },
+    { document: documentRef, floatingUi: floatingUiMock.api },
   );
 
   trigger.focus();

@@ -19,6 +19,15 @@ const DEFAULT_STRATEGY = "fixed";
 const DEFAULT_MAX_WIDTH_TOKEN = "--popover-inline-safe-max";
 const MENU_TYPEAHEAD_RESET_MS = 500;
 
+const defaultFloatingUi = {
+  arrow: arrowMiddleware,
+  autoUpdate,
+  computePosition,
+  flip,
+  offset,
+  shift,
+};
+
 let popoverPanelIdCounter = 0;
 
 let activePopoverInstance = null;
@@ -185,8 +194,24 @@ function setExpandedAttribute(trigger, value) {
 }
 
 export function createPopover(trigger, render, options = {}) {
+  const { floatingUi: floatingOverrides, ...optionRest } = options || {};
+  const floatingUi = {
+    ...defaultFloatingUi,
+    ...(floatingOverrides || {}),
+  };
+  const {
+    arrow: arrowFn,
+    autoUpdate: autoUpdateFn,
+    computePosition: computePositionFn,
+    flip: flipFn,
+    offset: offsetFn,
+    shift: shiftFn,
+  } = floatingUi;
+
+  const resolvedOptions = optionRest;
+
   const anchor = isElement(trigger) ? trigger : null;
-  const documentRef = resolveDocument(anchor, options.document);
+  const documentRef = resolveDocument(anchor, resolvedOptions.document);
 
   if (anchor && typeof anchor.setAttribute === "function") {
     anchor.setAttribute("aria-haspopup", "menu");
@@ -199,27 +224,27 @@ export function createPopover(trigger, render, options = {}) {
   }
 
   const placement =
-    typeof options.placement === "string" && options.placement
-      ? options.placement
+    typeof resolvedOptions.placement === "string" && resolvedOptions.placement
+      ? resolvedOptions.placement
       : DEFAULT_PLACEMENT;
   const strategy = DEFAULT_STRATEGY;
   const gap = resolveNumber(
-    options.gap,
+    resolvedOptions.gap,
     getPopupOffsetPx({ documentRef }) || 0,
   );
   const viewportPadding = resolveNumber(
-    options.viewportPadding,
+    resolvedOptions.viewportPadding,
     getPopupViewportPaddingPx({ documentRef }) || 0,
   );
   const maxWidthToken =
-    typeof options.maxWidthToken === "string" && options.maxWidthToken
-      ? options.maxWidthToken
+    typeof resolvedOptions.maxWidthToken === "string" && resolvedOptions.maxWidthToken
+      ? resolvedOptions.maxWidthToken
       : DEFAULT_MAX_WIDTH_TOKEN;
   const maxHeightToken =
-    typeof options.maxHeightToken === "string" && options.maxHeightToken
-      ? options.maxHeightToken
+    typeof resolvedOptions.maxHeightToken === "string" && resolvedOptions.maxHeightToken
+      ? resolvedOptions.maxHeightToken
       : null;
-  const restoreFocusOnClose = options.restoreFocusOnClose !== false;
+  const restoreFocusOnClose = resolvedOptions.restoreFocusOnClose !== false;
 
   let panel = null;
   let arrowElement = null;
@@ -630,7 +655,7 @@ export function createPopover(trigger, render, options = {}) {
 
     ensureMenu(panel);
 
-    arrowElement = resolveArrow(options.arrow, panel) || arrowElement;
+    arrowElement = resolveArrow(resolvedOptions.arrow, panel) || arrowElement;
 
     applyPanelTokens();
 
@@ -646,14 +671,14 @@ export function createPopover(trigger, render, options = {}) {
       const effectiveGap = Number.isFinite(gap) ? gap : 0;
       const safePadding = Number.isFinite(viewportPadding) ? viewportPadding : 0;
       const middleware = [
-        offset(effectiveGap),
-        flip({ padding: safePadding }),
-        shift({ padding: safePadding }),
+        offsetFn(effectiveGap),
+        flipFn({ padding: safePadding }),
+        shiftFn({ padding: safePadding }),
       ];
 
       if (arrowElement) {
         middleware.push(
-          arrowMiddleware({
+          arrowFn({
             element: arrowElement,
           }),
         );
@@ -665,7 +690,7 @@ export function createPopover(trigger, render, options = {}) {
         placement: resolvedPlacement,
         middlewareData,
         strategy: resolvedStrategy,
-      } = await computePosition(anchor, panel, {
+      } = await computePositionFn(anchor, panel, {
         placement,
         strategy,
         middleware,
@@ -766,7 +791,7 @@ export function createPopover(trigger, render, options = {}) {
       autoUpdateCleanup = null;
     }
 
-    autoUpdateCleanup = autoUpdate(
+    autoUpdateCleanup = autoUpdateFn(
       anchor,
       panelElement,
       () => {

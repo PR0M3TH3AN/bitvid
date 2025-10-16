@@ -3,6 +3,73 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import createPopover from "../../js/ui/overlay/popoverEngine.js";
 
+function createFloatingUiMock() {
+  const baseDefaults = {
+    x: 120,
+    y: 160,
+    placement: "bottom-start",
+    strategy: "fixed",
+    middlewareData: {},
+  };
+
+  const state = {
+    defaultPosition: { ...baseDefaults },
+    nextPosition: null,
+    computePositionCalls: [],
+    autoUpdateCalls: [],
+    autoUpdateCleanupCalls: 0,
+  };
+
+  return {
+    state,
+    reset() {
+      state.defaultPosition = { ...baseDefaults };
+      state.nextPosition = null;
+      state.computePositionCalls = [];
+      state.autoUpdateCalls = [];
+      state.autoUpdateCleanupCalls = 0;
+    },
+    queueResult(overrides = {}) {
+      state.nextPosition = {
+        ...state.defaultPosition,
+        ...overrides,
+        middlewareData: {
+          ...(state.defaultPosition.middlewareData || {}),
+          ...(overrides.middlewareData || {}),
+        },
+      };
+    },
+    api: {
+      arrow: (options = {}) => ({ name: "arrow", options }),
+      offset: (value = 0) => ({ name: "offset", options: value }),
+      flip: (options = {}) => ({ name: "flip", options }),
+      shift: (options = {}) => ({ name: "shift", options }),
+      autoUpdate: (...args) => {
+        state.autoUpdateCalls.push(args);
+        return () => {
+          state.autoUpdateCleanupCalls += 1;
+        };
+      },
+      computePosition: async (...args) => {
+        state.computePositionCalls.push(args);
+        const result = state.nextPosition || state.defaultPosition;
+        state.nextPosition = null;
+        return result;
+      },
+    },
+  };
+}
+
+const floatingUiMock = createFloatingUiMock();
+
+function resetFloatingUiMock() {
+  floatingUiMock.reset();
+}
+
+function queueComputePositionResult(overrides = {}) {
+  floatingUiMock.queueResult(overrides);
+}
+
 let dom;
 let documentRef;
 let windowRef;
@@ -24,6 +91,8 @@ function setupBoundingClientRect(element, rect) {
 }
 
 beforeEach(() => {
+  resetFloatingUiMock();
+
   dom = new JSDOM(
     `<!DOCTYPE html><html><body><div id="app"><button id="trigger">Open</button></div></body></html>`,
     {
@@ -74,7 +143,7 @@ afterEach(() => {
   windowRef = null;
 });
 
-test("opens a popover in the overlay root and positions the panel", async () => {
+test("opens a popover in the overlay root and applies computed coordinates", async () => {
   const trigger = documentRef.getElementById("trigger");
   trigger.setAttribute("tabindex", "0");
 
@@ -107,11 +176,21 @@ test("opens a popover in the overlay root and positions the panel", async () => 
       container.appendChild(panel);
       return panel;
     },
-    { document: documentRef },
+    { document: documentRef, floatingUi: floatingUiMock.api },
   );
 
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
   assert.equal(trigger.getAttribute("aria-expanded"), "false");
+
+  const computedPosition = {
+    x: 212.6,
+    y: 188.4,
+    placement: "top-end",
+    strategy: "fixed",
+    middlewareData: {},
+  };
+
+  queueComputePositionResult(computedPosition);
 
   await popover.open();
 
@@ -125,10 +204,10 @@ test("opens a popover in the overlay root and positions the panel", async () => 
   assert.equal(trigger.getAttribute("aria-controls"), panel.id);
   assert.equal(panel.dataset.popoverState, "open");
   assert.equal(panel.dataset.state, "open");
-  assert.equal(panel.dataset.popoverPlacement, "bottom-start");
+  assert.equal(panel.dataset.popoverPlacement, computedPosition.placement);
   assert.equal(panel.style.position, "fixed");
-  assert.equal(panel.style.left, "100px");
-  assert.equal(panel.style.top, "148px");
+  assert.equal(panel.style.left, `${Math.round(computedPosition.x)}px`);
+  assert.equal(panel.style.top, `${Math.round(computedPosition.y)}px`);
   assert.equal(panel.getAttribute("role"), "menu");
   assert.equal(documentRef.activeElement, panel);
   assert.equal(trigger.getAttribute("aria-expanded"), "true");
@@ -173,7 +252,7 @@ test("closes on outside pointer events and restores focus", async () => {
       container.appendChild(panel);
       return panel;
     },
-    { document: documentRef },
+    { document: documentRef, floatingUi: floatingUiMock.api },
   );
 
   trigger.focus();
@@ -256,7 +335,7 @@ test("supports roving focus, home/end navigation, and typeahead", async () => {
       container.appendChild(panel);
       return panel;
     },
-    { document: documentRef },
+    { document: documentRef, floatingUi: floatingUiMock.api },
   );
 
   await popover.open();
@@ -356,7 +435,7 @@ test("escape closes the popover and restores trigger focus", async () => {
       container.appendChild(panel);
       return panel;
     },
-    { document: documentRef },
+    { document: documentRef, floatingUi: floatingUiMock.api },
   );
 
   await popover.open();
@@ -418,7 +497,7 @@ test("close respects restoreFocus option for contextual menus", async () => {
       container.appendChild(panel);
       return panel;
     },
-    { document: documentRef },
+    { document: documentRef, floatingUi: floatingUiMock.api },
   );
 
   await popover.open();
@@ -483,9 +562,11 @@ test("ensures only one popover is open at a time", async () => {
 
   const popoverA = createPopover(trigger, makePanel("panel-a"), {
     document: documentRef,
+    floatingUi: floatingUiMock.api,
   });
   const popoverB = createPopover(secondTrigger, makePanel("panel-b"), {
     document: documentRef,
+    floatingUi: floatingUiMock.api,
   });
 
   await popoverA.open();
@@ -561,6 +642,7 @@ test("applies token-based sizing and arrow positioning", async () => {
       maxWidthToken: "--popover-inline-safe-max",
       maxHeightToken: "--overlay-panel-padding-block",
       arrow: (panel) => panel.querySelector(".arrow"),
+      floatingUi: floatingUiMock.api,
     },
   );
 
