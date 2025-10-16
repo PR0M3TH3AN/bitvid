@@ -1,11 +1,3 @@
-import {
-  computePosition,
-  offset,
-  flip,
-  shift,
-  autoUpdate,
-  arrow as arrowMiddleware,
-} from "@floating-ui/dom";
 import logger from "../../utils/logger.js";
 import {
   getPopupOffsetPx,
@@ -17,12 +9,6 @@ import { ensureOverlayRoot } from "./overlayRoot.js";
 const DEFAULT_PLACEMENT = "bottom-start";
 const DEFAULT_STRATEGY = "fixed";
 const DEFAULT_MAX_WIDTH_TOKEN = "--popover-inline-safe-max";
-const STATIC_SIDE_MAP = Object.freeze({
-  top: "bottom",
-  right: "left",
-  bottom: "top",
-  left: "right",
-});
 
 let activePopoverInstance = null;
 
@@ -82,32 +68,61 @@ function resolveArrow(option, panel) {
   return null;
 }
 
-function applyArrowStyles(arrowElement, placement, middlewareData) {
-  if (!arrowElement) {
+function applyArrowStyles({
+  arrowElement,
+  side,
+  panelLeft,
+  panelTop,
+  panelWidth,
+  panelHeight,
+  anchorRect,
+}) {
+  if (!arrowElement || !side || !anchorRect) {
     return;
   }
 
-  const arrowData = middlewareData?.arrow || {};
+  const arrowRect =
+    typeof arrowElement.getBoundingClientRect === "function"
+      ? arrowElement.getBoundingClientRect()
+      : null;
+  const arrowWidth = arrowRect?.width ?? arrowElement.offsetWidth ?? 0;
+  const arrowHeight = arrowRect?.height ?? arrowElement.offsetHeight ?? 0;
 
-  arrowElement.style.left =
-    arrowData.x !== undefined && arrowData.x !== null ? `${arrowData.x}px` : "";
-  arrowElement.style.top =
-    arrowData.y !== undefined && arrowData.y !== null ? `${arrowData.y}px` : "";
+  const anchorCenterX = anchorRect.left + anchorRect.width / 2;
+  const anchorCenterY = anchorRect.top + anchorRect.height / 2;
+
+  arrowElement.style.left = "";
   arrowElement.style.right = "";
+  arrowElement.style.top = "";
   arrowElement.style.bottom = "";
 
-  const [side] = placement.split("-");
-  const staticSide = STATIC_SIDE_MAP[side];
-
-  if (staticSide) {
-    const size =
-      staticSide === "top" || staticSide === "bottom"
-        ? arrowElement.offsetHeight || 0
-        : arrowElement.offsetWidth || 0;
-    arrowElement.style[staticSide] = `${-Math.max(size, 0)}px`;
+  if (side === "top" || side === "bottom") {
+    let arrowLeft = anchorCenterX - panelLeft - arrowWidth / 2;
+    arrowLeft = Math.min(
+      Math.max(arrowLeft, 0),
+      Math.max(panelWidth - arrowWidth, 0),
+    );
+    arrowElement.style.left = `${Math.round(arrowLeft)}px`;
+    if (side === "bottom") {
+      arrowElement.style.top = `${-Math.round(arrowHeight)}px`;
+    } else {
+      arrowElement.style.bottom = `${-Math.round(arrowHeight)}px`;
+    }
+  } else if (side === "left" || side === "right") {
+    let arrowTop = anchorCenterY - panelTop - arrowHeight / 2;
+    arrowTop = Math.min(
+      Math.max(arrowTop, 0),
+      Math.max(panelHeight - arrowHeight, 0),
+    );
+    arrowElement.style.top = `${Math.round(arrowTop)}px`;
+    if (side === "right") {
+      arrowElement.style.left = `${-Math.round(arrowWidth)}px`;
+    } else {
+      arrowElement.style.right = `${-Math.round(arrowWidth)}px`;
+    }
   }
 
-  arrowElement.dataset.popoverArrowSide = side || "";
+  arrowElement.dataset.popoverArrowSide = side;
 }
 
 function containsTarget(root, target) {
@@ -125,6 +140,85 @@ function setExpandedAttribute(trigger, value) {
     return;
   }
   trigger.setAttribute("aria-expanded", value ? "true" : "false");
+}
+
+function createAutoUpdate({ documentRef, anchor, panel, update }) {
+  if (!documentRef || !anchor || !panel || typeof update !== "function") {
+    return null;
+  }
+
+  const cleanupFns = [];
+  const safeUpdate = () => {
+    try {
+      const result = update();
+      if (result && typeof result.then === "function") {
+        result.catch((error) => {
+          logger.dev.warn("[popover] auto-update failed", error);
+        });
+      }
+    } catch (error) {
+      logger.dev.warn("[popover] auto-update failed", error);
+    }
+  };
+
+  const view = documentRef.defaultView || globalThis;
+  if (view && typeof view.addEventListener === "function") {
+    const resizeHandler = () => safeUpdate();
+    view.addEventListener("resize", resizeHandler);
+    cleanupFns.push(() => view.removeEventListener("resize", resizeHandler));
+
+    const scrollHandler = () => safeUpdate();
+    view.addEventListener("scroll", scrollHandler, true);
+    cleanupFns.push(() => view.removeEventListener("scroll", scrollHandler, true));
+  }
+
+  const scrollTarget = documentRef.scrollingElement || documentRef;
+  if (scrollTarget && typeof scrollTarget.addEventListener === "function") {
+    const docScrollHandler = () => safeUpdate();
+    scrollTarget.addEventListener("scroll", docScrollHandler, true);
+    cleanupFns.push(() =>
+      scrollTarget.removeEventListener("scroll", docScrollHandler, true),
+    );
+  }
+
+  const observers = [];
+  if (typeof ResizeObserver === "function") {
+    try {
+      const anchorObserver = new ResizeObserver(safeUpdate);
+      anchorObserver.observe(anchor);
+      observers.push(anchorObserver);
+    } catch (error) {
+      logger.dev.warn("[popover] anchor resize observer failed", error);
+    }
+
+    if (panel !== anchor) {
+      try {
+        const panelObserver = new ResizeObserver(safeUpdate);
+        panelObserver.observe(panel);
+        observers.push(panelObserver);
+      } catch (error) {
+        logger.dev.warn("[popover] panel resize observer failed", error);
+      }
+    }
+  }
+
+  return () => {
+    cleanupFns.forEach((cleanup) => {
+      try {
+        cleanup();
+      } catch (error) {
+        logger.dev.warn("[popover] auto-update cleanup failed", error);
+      }
+    });
+
+    observers.forEach((observer) => {
+      try {
+        observer.disconnect();
+      } catch (error) {
+        logger.dev.warn("[popover] observer disconnect failed", error);
+      }
+    });
+  };
 }
 
 export function createPopover(trigger, render, options = {}) {
@@ -231,35 +325,125 @@ export function createPopover(trigger, render, options = {}) {
   }
 
   async function updatePosition() {
-    if (!anchor || !panel) {
+    if (!anchor || !panel || !documentRef) {
       return;
     }
 
     try {
-      const middleware = [
-        offset(gap),
-        flip({ padding: viewportPadding }),
-        shift({ padding: viewportPadding }),
-      ];
-
-      if (arrowElement) {
-        middleware.push(arrowMiddleware({ element: arrowElement }));
+      const anchorRect =
+        typeof anchor.getBoundingClientRect === "function"
+          ? anchor.getBoundingClientRect()
+          : null;
+      if (!anchorRect) {
+        return;
       }
 
-      const { x, y, placement: resolvedPlacement, middlewareData } =
-        await computePosition(anchor, panel, {
-          placement,
-          strategy,
-          middleware,
-        });
+      const view = documentRef.defaultView || globalThis;
+      const docEl = documentRef.documentElement || null;
+      const viewportWidth =
+        docEl?.clientWidth ?? view?.innerWidth ?? panel.offsetWidth ?? 0;
+      const viewportHeight =
+        docEl?.clientHeight ?? view?.innerHeight ?? panel.offsetHeight ?? 0;
+
+      const panelRect =
+        typeof panel.getBoundingClientRect === "function"
+          ? panel.getBoundingClientRect()
+          : null;
+      const panelWidth = panelRect?.width ?? panel.offsetWidth ?? 0;
+      const panelHeight = panelRect?.height ?? panel.offsetHeight ?? 0;
+
+      let [side, alignment = "start"] = placement.split("-");
+      if (!side || !["top", "bottom", "left", "right"].includes(side)) {
+        side = "bottom";
+      }
+      if (!["start", "end", "center"].includes(alignment)) {
+        alignment = "start";
+      }
+
+      const effectiveGap = Number.isFinite(gap) ? gap : 0;
+      const safePadding = Number.isFinite(viewportPadding) ? viewportPadding : 0;
+
+      function clamp(value, min, max, fallback) {
+        if (!Number.isFinite(value)) {
+          return fallback ?? min;
+        }
+        if (min > max) {
+          return fallback ?? (min + max) / 2;
+        }
+        return Math.min(Math.max(value, min), max);
+      }
+
+      if (side === "bottom") {
+        const fitsBelow =
+          anchorRect.bottom + effectiveGap + panelHeight <=
+          viewportHeight - safePadding;
+        const fitsAbove =
+          anchorRect.top - effectiveGap - panelHeight >= safePadding;
+        if (!fitsBelow && fitsAbove) {
+          side = "top";
+        }
+      } else if (side === "top") {
+        const fitsAbove =
+          anchorRect.top - effectiveGap - panelHeight >= safePadding;
+        const fitsBelow =
+          anchorRect.bottom + effectiveGap + panelHeight <=
+          viewportHeight - safePadding;
+        if (!fitsAbove && fitsBelow) {
+          side = "bottom";
+        }
+      }
+
+      let top = 0;
+      let left = 0;
+
+      if (side === "top") {
+        top = anchorRect.top - panelHeight - effectiveGap;
+      } else if (side === "bottom") {
+        top = anchorRect.bottom + effectiveGap;
+      } else if (side === "left") {
+        top = anchorRect.top + anchorRect.height / 2 - panelHeight / 2;
+      } else if (side === "right") {
+        top = anchorRect.top + anchorRect.height / 2 - panelHeight / 2;
+      }
+
+      if (side === "left") {
+        left = anchorRect.left - panelWidth - effectiveGap;
+      } else if (side === "right") {
+        left = anchorRect.right + effectiveGap;
+      } else if (alignment === "end") {
+        left = anchorRect.right - panelWidth;
+      } else if (alignment === "center") {
+        left = anchorRect.left + anchorRect.width / 2 - panelWidth / 2;
+      } else {
+        left = anchorRect.left;
+      }
+
+      const minTop = safePadding;
+      const maxTop = viewportHeight - safePadding - panelHeight;
+      const minLeft = safePadding;
+      const maxLeft = viewportWidth - safePadding - panelWidth;
+
+      const fallbackTop = viewportHeight / 2 - panelHeight / 2;
+      const fallbackLeft = viewportWidth / 2 - panelWidth / 2;
+
+      top = clamp(top, minTop, maxTop, fallbackTop);
+      left = clamp(left, minLeft, maxLeft, fallbackLeft);
 
       panel.style.position = strategy;
-      panel.style.left = `${x}px`;
-      panel.style.top = `${y}px`;
-      panel.dataset.popoverPlacement = resolvedPlacement;
+      panel.style.left = `${Math.round(left)}px`;
+      panel.style.top = `${Math.round(top)}px`;
+      panel.dataset.popoverPlacement = `${side}-${alignment}`;
 
       if (arrowElement) {
-        applyArrowStyles(arrowElement, resolvedPlacement, middlewareData);
+        applyArrowStyles({
+          arrowElement,
+          side,
+          panelLeft: left,
+          panelTop: top,
+          panelWidth,
+          panelHeight,
+          anchorRect,
+        });
       }
     } catch (error) {
       logger.user.error("[popover] positioning failed", error);
@@ -336,8 +520,11 @@ export function createPopover(trigger, render, options = {}) {
       autoUpdateCleanup = null;
     }
 
-    autoUpdateCleanup = autoUpdate(anchor, panelElement, updatePosition, {
-      animationFrame: false,
+    autoUpdateCleanup = createAutoUpdate({
+      documentRef,
+      anchor,
+      panel: panelElement,
+      update: () => updatePosition(),
     });
 
     await updatePosition();
