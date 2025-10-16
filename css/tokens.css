@@ -25,7 +25,7 @@
   --surface-overlay-panel-glass-soft: var(--color-overlay-panel-glass-soft);
   --surface-modal-backdrop: var(--color-modal-backdrop);
   --surface-modal: var(--color-modal-surface);
-  --blur-modal-backdrop: 28px;
+  --blur-modal-backdrop: 18px;
   --blur-modal-alert: 14px;
   --blur-thumbnail-blur: 18px;
   --modal-nav-backdrop-blur: 6px;
@@ -102,7 +102,7 @@
   --z-modal-content: 120;
   --z-modal-player: 130;
   --overlay-backdrop-color: var(--color-overlay-backdrop);
-  --overlay-backdrop-blur: 18px;
+  --overlay-backdrop-blur: 12px;
   --sidebar-width-expanded: 16rem;
   --sidebar-width-collapsed: 4rem;
   --sidebar-width: var(--sidebar-width-expanded);

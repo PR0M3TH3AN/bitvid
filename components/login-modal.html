@@ -9,7 +9,7 @@
 >
   <div class="bv-modal-backdrop" data-dismiss></div>
 
-  <div class="modal-sheet overflow-hidden" tabindex="-1">
+  <div class="modal-sheet max-h-modal-shell overflow-hidden" tabindex="-1">
     <!-- Header with the special exit button (unchanged) -->
     <div class="modal-header">
       <h2 id="loginModalTitle" class="text-xl font-bold text-text">
@@ -37,7 +37,7 @@
     </div>
 
     <!-- Body with buttons (unchanged) -->
-    <div id="loginModalDescription" class="modal-body space-y-4">
+    <div id="loginModalDescription" class="modal-body space-y-4 overflow-y-auto">
       <!-- Application Form button -->
       <button
         id="openApplicationModal"
