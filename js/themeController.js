@@ -159,9 +159,18 @@ const syncTogglePresentation = (toggle, theme) => {
   const iconTarget =
     toggle.querySelector("[data-theme-toggle-icon]") || toggle.querySelector('[aria-hidden="true"]');
   if (iconTarget) {
-    const iconForLight = toggle.dataset.iconLight || "☀️";
-    const iconForDark = toggle.dataset.iconDark || "🌙";
-    iconTarget.textContent = theme === "dark" ? iconForLight : iconForDark;
+    const svgCtor = typeof SVGElement !== "undefined" ? SVGElement : null;
+    const isVectorIcon =
+      (svgCtor && iconTarget instanceof svgCtor) ||
+      (iconTarget instanceof Element && Boolean(iconTarget.querySelector("svg")));
+
+    if (!isVectorIcon) {
+      const iconForLight = toggle.dataset.iconLight || "☀️";
+      const iconForDark = toggle.dataset.iconDark || "🌙";
+      iconTarget.textContent = theme === "dark" ? iconForLight : iconForDark;
+    } else if (iconTarget instanceof Element) {
+      iconTarget.setAttribute("data-theme-icon-state", theme);
+    }
   }
 };
 

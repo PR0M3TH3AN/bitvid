@@ -141,6 +141,79 @@
     @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
   }
 
+  .header-icon-toggle {
+    @apply focus-ring inline-flex items-center justify-center rounded-full transition-colors duration-150 ease-out;
+    width: var(--icon-size-lg);
+    height: var(--icon-size-lg);
+    min-width: var(--icon-size-lg);
+    min-height: var(--icon-size-lg);
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    line-height: 1;
+  }
+
+  .header-icon-toggle[data-theme-state="light"] {
+    color: var(--color-text-strong);
+  }
+
+  .header-icon-toggle[data-theme-state="dark"] {
+    color: var(--color-text);
+  }
+
+  .header-icon-toggle__icon-wrapper {
+    @apply inline-flex items-center justify-center;
+    inline-size: var(--space-lg);
+    block-size: var(--space-lg);
+  }
+
+  .header-icon-toggle__icon {
+    inline-size: 100%;
+    block-size: 100%;
+    display: none;
+    fill: currentColor;
+  }
+
+  .header-icon-toggle__icon-wrapper:not([data-theme-icon-state]),
+  .header-icon-toggle__icon-wrapper[data-theme-icon-state="light"] {
+    color: inherit;
+  }
+
+  .header-icon-toggle__icon-wrapper[data-theme-icon-state="light"]
+    .header-icon-toggle__icon--dark {
+    display: block;
+  }
+
+  .header-icon-toggle__icon-wrapper[data-theme-icon-state="dark"]
+    .header-icon-toggle__icon--light {
+    display: block;
+  }
+
+  .header-icon-toggle__icon-wrapper:not([data-theme-icon-state])
+    .header-icon-toggle__icon--dark {
+    display: block;
+  }
+
+  .header-icon-toggle[data-theme-state="light"]:hover,
+  .header-icon-toggle[data-theme-state="light"]:focus-visible {
+    color: var(--color-text);
+  }
+
+  .header-icon-toggle[data-theme-state="dark"]:hover,
+  .header-icon-toggle[data-theme-state="dark"]:focus-visible {
+    color: var(--color-text-strong);
+  }
+
+  .header-icon-toggle[aria-pressed="true"] {
+    color: var(--color-text-strong);
+  }
+
+  .header-icon-toggle[aria-pressed="true"]:hover,
+  .header-icon-toggle[aria-pressed="true"]:focus-visible {
+    color: var(--color-text-strong);
+  }
+
   .bv-logo {
     --logo-wordmark-color: var(--color-logo-wordmark);
     --logo-accent-color: var(--color-logo-accent);
