@@ -243,6 +243,48 @@ export function createPopover(trigger, render, options = {}) {
     return documentRef?.defaultView || globalThis;
   }
 
+  function focusWithoutScroll(node) {
+    if (!node || typeof node.focus !== "function") {
+      return;
+    }
+
+    const view = getView();
+    const scrollX = view?.scrollX ?? view?.pageXOffset ?? 0;
+    const scrollY = view?.scrollY ?? view?.pageYOffset ?? 0;
+
+    let preventScrollSupported = true;
+
+    try {
+      node.focus({ preventScroll: true });
+    } catch (error) {
+      preventScrollSupported = false;
+      node.focus();
+    }
+
+    if (!view || typeof view.scrollTo !== "function") {
+      return;
+    }
+
+    const restoreScroll = () => {
+      view.scrollTo(scrollX, scrollY);
+    };
+
+    restoreScroll();
+
+    if (preventScrollSupported) {
+      return;
+    }
+
+    if (typeof view.requestAnimationFrame === "function") {
+      view.requestAnimationFrame(restoreScroll);
+      return;
+    }
+
+    if (typeof view.setTimeout === "function") {
+      view.setTimeout(restoreScroll, 0);
+    }
+  }
+
   function resetTypeaheadBuffer() {
     const view = getView();
     if (menuState.typeaheadTimeout) {
@@ -337,11 +379,7 @@ export function createPopover(trigger, render, options = {}) {
     updateAriaActiveDescendant(panelElement, target);
 
     if (focus) {
-      try {
-        target.focus({ preventScroll: true });
-      } catch (error) {
-        target.focus();
-      }
+      focusWithoutScroll(target);
     }
   }
 
@@ -363,11 +401,7 @@ export function createPopover(trigger, render, options = {}) {
 
     if (focusPanelFallback) {
       panelElement.setAttribute("tabindex", panelElement.getAttribute("tabindex") || "-1");
-      try {
-        panelElement.focus({ preventScroll: true });
-      } catch (error) {
-        panelElement.focus();
-      }
+      focusWithoutScroll(panelElement);
     }
   }
 
@@ -837,20 +871,12 @@ export function createPopover(trigger, render, options = {}) {
 
   function restoreTriggerFocus() {
     if (anchor && typeof anchor.focus === "function") {
-      try {
-        anchor.focus({ preventScroll: true });
-        return;
-      } catch (error) {
-        anchor.focus();
-      }
+      focusWithoutScroll(anchor);
+      return;
     }
 
     if (previousActiveElement && typeof previousActiveElement.focus === "function") {
-      try {
-        previousActiveElement.focus({ preventScroll: true });
-      } catch (error) {
-        previousActiveElement.focus();
-      }
+      focusWithoutScroll(previousActiveElement);
     }
   }
 

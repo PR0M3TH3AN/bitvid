@@ -139,3 +139,114 @@ test("VideoCard hides cards without playable sources until a healthy CDN update 
   assert.equal(root.hidden, false, "a healthy CDN update should unhide the card");
   assert.equal(root.dataset.sourceVisibility, "visible", "visibility dataset should reflect the restored state");
 });
+
+test("VideoCard.closeMoreMenu only restores focus when the trigger was expanded", (t) => {
+  const { document } = setupDom(t);
+
+  const card = new VideoCard({
+    document,
+    video: {
+      id: "event-focus",
+      title: "Focusable clip",
+    },
+    formatters: {
+      formatTimeAgo: () => "just now",
+    },
+    helpers: {
+      isMagnetSupported: () => true,
+    },
+  });
+
+  const root = card.getRoot();
+  document.body.appendChild(root);
+
+  const trigger = card.moreMenuButton;
+  assert.ok(trigger, "the more menu trigger should exist");
+
+  let focusCalls = 0;
+  trigger.focus = () => {
+    focusCalls += 1;
+  };
+
+  card.onCloseMoreMenu = () => false;
+
+  card.closeMoreMenu();
+  assert.equal(
+    focusCalls,
+    0,
+    "collapsed menus should not restore focus when closing",
+  );
+
+  trigger.setAttribute("aria-expanded", "true");
+  card.closeMoreMenu();
+  assert.equal(
+    focusCalls,
+    1,
+    "expanded menus should restore focus back to the trigger",
+  );
+
+  trigger.setAttribute("aria-expanded", "true");
+  card.closeMoreMenu({ restoreFocus: false });
+  assert.equal(
+    focusCalls,
+    1,
+    "restoreFocus=false should suppress focus restoration",
+  );
+});
+
+test("VideoCard.closeSettingsMenu only restores focus when the trigger was expanded", (t) => {
+  const { document } = setupDom(t);
+
+  const card = new VideoCard({
+    document,
+    video: {
+      id: "event-settings",
+      title: "Editable clip",
+    },
+    capabilities: {
+      canEdit: true,
+    },
+    formatters: {
+      formatTimeAgo: () => "just now",
+    },
+    helpers: {
+      isMagnetSupported: () => true,
+    },
+  });
+
+  const root = card.getRoot();
+  document.body.appendChild(root);
+
+  const trigger = card.settingsButton;
+  assert.ok(trigger, "the settings trigger should exist when canEdit is true");
+
+  let focusCalls = 0;
+  trigger.focus = () => {
+    focusCalls += 1;
+  };
+
+  card.onCloseSettingsMenu = () => false;
+
+  card.closeSettingsMenu();
+  assert.equal(
+    focusCalls,
+    0,
+    "collapsed settings menus should not restore focus when closing",
+  );
+
+  trigger.setAttribute("aria-expanded", "true");
+  card.closeSettingsMenu();
+  assert.equal(
+    focusCalls,
+    1,
+    "expanded settings menus should restore focus back to the trigger",
+  );
+
+  trigger.setAttribute("aria-expanded", "true");
+  card.closeSettingsMenu({ restoreFocus: false });
+  assert.equal(
+    focusCalls,
+    1,
+    "restoreFocus=false should suppress settings focus restoration",
+  );
+});
