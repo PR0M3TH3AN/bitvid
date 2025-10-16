@@ -248,18 +248,40 @@ export function createPopover(trigger, render, options = {}) {
       return;
     }
 
-    const view = documentRef?.defaultView || null;
+    const view = getView();
     const scrollX = view?.scrollX ?? view?.pageXOffset ?? 0;
     const scrollY = view?.scrollY ?? view?.pageYOffset ?? 0;
+
+    let preventScrollSupported = true;
 
     try {
       node.focus({ preventScroll: true });
     } catch (error) {
+      preventScrollSupported = false;
       node.focus();
-    } finally {
-      if (view && typeof view.scrollTo === "function") {
-        view.scrollTo(scrollX, scrollY);
-      }
+    }
+
+    if (!view || typeof view.scrollTo !== "function") {
+      return;
+    }
+
+    const restoreScroll = () => {
+      view.scrollTo(scrollX, scrollY);
+    };
+
+    restoreScroll();
+
+    if (preventScrollSupported) {
+      return;
+    }
+
+    if (typeof view.requestAnimationFrame === "function") {
+      view.requestAnimationFrame(restoreScroll);
+      return;
+    }
+
+    if (typeof view.setTimeout === "function") {
+      view.setTimeout(restoreScroll, 0);
     }
   }
 

@@ -219,17 +219,36 @@ test("supports roving focus, home/end navigation, and typeahead", async () => {
 
   const scrollCalls = [];
   const originalScrollTo = windowRef.scrollTo;
+  const originalRequestAnimationFrame = windowRef.requestAnimationFrame;
+  const rafCalls = [];
   windowRef.scrollTo = (x, y) => {
     scrollCalls.push({ x, y });
     windowRef.scrollX = x;
     windowRef.scrollY = y;
   };
+  windowRef.requestAnimationFrame = (callback) => {
+    rafCalls.push(true);
+    if (typeof callback === "function") {
+      callback();
+    }
+    return rafCalls.length;
+  };
 
   const focusMutations = [];
   const originalFocus = windowRef.HTMLElement.prototype.focus;
-  const registerFocusMutation = (element, mutatedX, mutatedY) => {
+  const registerFocusMutation = (
+    element,
+    mutatedX,
+    mutatedY,
+    { supportsPreventScroll = true } = {},
+  ) => {
     element.focus = function focus(options = {}) {
       focusMutations.push({ id: element.id || element.textContent, options });
+
+      if (!supportsPreventScroll && options && typeof options === "object" && "preventScroll" in options) {
+        throw new TypeError("preventScroll not supported");
+      }
+
       windowRef.scrollX = mutatedX;
       windowRef.scrollY = mutatedY;
       if (typeof originalFocus === "function") {
@@ -268,7 +287,7 @@ test("supports roving focus, home/end navigation, and typeahead", async () => {
       copy.className = "menu__item";
       copy.type = "button";
       copy.textContent = "Copy link";
-      registerFocusMutation(copy, 400, 500);
+      registerFocusMutation(copy, 400, 500, { supportsPreventScroll: false });
       list.appendChild(copy);
 
       const deleteBtn = documentRef.createElement("button");
@@ -344,11 +363,13 @@ test("supports roving focus, home/end navigation, and typeahead", async () => {
   scrollCalls.forEach((call) => {
     assert.deepEqual(call, initialScroll);
   });
+  assert.ok(rafCalls.length >= 1, "should schedule scroll restoration when preventScroll unsupported");
   assert.equal(windowRef.scrollX, initialScroll.x);
   assert.equal(windowRef.scrollY, initialScroll.y);
 
   popover.destroy();
   windowRef.scrollTo = originalScrollTo;
+  windowRef.requestAnimationFrame = originalRequestAnimationFrame;
 });
 
 test("escape closes the popover and restores trigger focus", async () => {
