@@ -31,115 +31,21 @@
       </div>
       <div class="flex flex-col items-end gap-3 self-start sm:self-end">
         <div class="flex items-center gap-2">
-          <div class="popover" data-channel-zap-wrapper>
-            <button
-              id="zapButton"
-              type="button"
-              class="icon-button"
-              aria-label="Open zap dialog"
-              aria-haspopup="dialog"
-              aria-expanded="false"
-              aria-controls="zapControls"
-            >
-              <img
-                src="assets/svg/lightning-bolt.svg"
-                alt="Zap"
-                class="icon-image"
-              />
-            </button>
-            <div
-              id="zapControls"
-              class="popover__panel card w-72 max-w-popover-safe p-4"
-              data-variant="zap"
-              role="dialog"
-              aria-hidden="true"
-              aria-label="Channel zap dialog"
-              data-state="closed"
-              hidden
-            >
-              <div class="grid gap-4">
-                <div class="flex items-center justify-between gap-4">
-                  <h3
-                    class="text-xs font-semibold uppercase tracking-wide text-muted-strong"
-                  >
-                    Send a zap
-                  </h3>
-                  <button
-                    type="button"
-                    id="zapCloseBtn"
-                    class="btn-ghost px-2 py-1 text-xs"
-                    aria-label="Close zap dialog"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <p
-                  id="zapWalletPrompt"
-                  class="text-sm text-muted"
-                  aria-hidden="true"
-                  hidden
-                >
-                  Connect a wallet in
-                  <button
-                    type="button"
-                    id="zapWalletLink"
-                    class="btn-ghost px-2 py-1 text-xs"
-                  >
-                    Wallet Connect settings
-                  </button>
-                  to send zaps.
-                </p>
-                <form id="zapForm" class="bv-stack bv-stack--tight">
-                  <div>
-                    <label
-                      for="zapAmountInput"
-                      id="zapAmountLabel"
-                      class="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-strong"
-                    >
-                      Zap amount (sats)
-                    </label>
-                    <input
-                      id="zapAmountInput"
-                      type="number"
-                      min="1"
-                      step="1"
-                      inputmode="numeric"
-                      class="input"
-                      placeholder="Enter sats"
-                      aria-labelledby="zapAmountLabel"
-                    />
-                  </div>
-                  <p
-                    id="zapSplitSummary"
-                    class="text-sm text-muted"
-                    aria-live="polite"
-                  >
-                    Enter an amount to view the split.
-                  </p>
-                  <p
-                    id="zapStatus"
-                    class="text-xs text-muted"
-                    role="status"
-                    aria-live="polite"
-                  ></p>
-                  <ul
-                    id="zapReceipts"
-                    class="space-y-2 text-xs text-muted"
-                  ></ul>
-                  <div class="flex items-center justify-end gap-2">
-                    <button
-                      type="submit"
-                      id="zapSendBtn"
-                      class="btn"
-                      aria-label="Send a zap"
-                    >
-                      Send
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
+          <button
+            id="zapButton"
+            type="button"
+            class="icon-button"
+            aria-label="Open zap dialog"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls="zapControls"
+          >
+            <img
+              src="assets/svg/lightning-bolt.svg"
+              alt="Zap"
+              class="icon-image"
+            />
+          </button>
           <button
             id="channelShareBtn"
             type="button"
@@ -152,70 +58,17 @@
               class="icon-image"
             />
           </button>
-          <div class="popover" data-more-menu-wrapper="true">
-            <button
-              id="channelMoreBtn"
-              type="button"
-              class="icon-button"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-label="Channel options"
-              data-more-dropdown="channel-profile"
-            >
-              <img src="assets/svg/ellipsis.svg" alt="More" class="h-5 w-5" />
-            </button>
-            <div
-              id="moreDropdown-channel-profile"
-              class="popover__panel w-48"
-              role="menu"
-              data-more-menu="true"
-              data-state="closed"
-              aria-hidden="true"
-              hidden
-            >
-              <div class="menu" role="none">
-                <button
-                  type="button"
-                  class="menu__item justify-start"
-                  role="menuitem"
-                  data-action="copy-npub"
-                  data-context="channel-profile"
-                >
-                  Copy npub
-                </button>
-                <button
-                  type="button"
-                  class="menu__item justify-start"
-                  role="menuitem"
-                  data-action="blacklist-author"
-                  data-context="channel-profile"
-                  data-blacklist-menu="true"
-                  data-variant="critical"
-                >
-                  Blacklist channel
-                </button>
-                <button
-                  type="button"
-                  class="menu__item justify-start"
-                  role="menuitem"
-                  data-action="block-author"
-                  data-context="channel-profile"
-                  data-variant="critical"
-                >
-                  Block channel
-                </button>
-                <button
-                  type="button"
-                  class="menu__item justify-start"
-                  role="menuitem"
-                  data-action="report"
-                  data-context="channel-profile"
-                >
-                  Report
-                </button>
-              </div>
-            </div>
-          </div>
+          <button
+            id="channelMoreBtn"
+            type="button"
+            class="icon-button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="Channel options"
+            aria-controls="channelProfileMoreMenu"
+          >
+            <img src="assets/svg/ellipsis.svg" alt="More" class="h-5 w-5" />
+          </button>
         </div>
       </div>
     </div>
