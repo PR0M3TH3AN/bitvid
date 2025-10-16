@@ -1,5 +1,8 @@
 // js/userBlocks.js
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostr.js";
 import { buildBlockListEvent, BLOCK_LIST_IDENTIFIER } from "./nostrEventSchemas.js";
 import { userLogger } from "./utils/logger.js";
 import {
@@ -69,6 +72,17 @@ class UserBlockListManager {
   async loadBlocks(userPubkey) {
     const normalized = normalizeHex(userPubkey);
     if (!normalized) {
+      this.reset();
+      this.loaded = true;
+      return;
+    }
+
+    const permissionResult = await requestDefaultExtensionPermissions();
+    if (!permissionResult.ok) {
+      userLogger.warn(
+        "[UserBlockList] Unable to load block list without extension permissions.",
+        permissionResult.error,
+      );
       this.reset();
       this.loaded = true;
       return;
@@ -374,6 +388,20 @@ class UserBlockListManager {
   }
 
   async publishBlockList(userPubkey) {
+    const permissionResult = await requestDefaultExtensionPermissions();
+    if (!permissionResult.ok) {
+      userLogger.warn(
+        "[UserBlockList] Extension permissions denied while updating the block list.",
+        permissionResult.error,
+      );
+      const err = new Error(
+        "The NIP-07 extension must allow encryption and signing before updating the block list.",
+      );
+      err.code = "extension-permission-denied";
+      err.cause = permissionResult.error;
+      throw err;
+    }
+
     if (!window?.nostr?.nip04?.encrypt) {
       const err = new Error(
         "NIP-04 encryption is required to update the block list."

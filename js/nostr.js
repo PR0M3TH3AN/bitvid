@@ -94,7 +94,7 @@ const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
 
-const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
+export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
   "get_public_key",
   "sign_event",
   "nip04.encrypt",
@@ -5589,13 +5589,28 @@ export class NostrClient {
       window?.nostr &&
       typeof window.nostr.signEvent === "function"
     ) {
-      try {
-        signedEvent = await window.nostr.signEvent(event);
-      } catch (error) {
-        userLogger.warn("[nostr] Failed to sign view event with extension:", error);
-        return { ok: false, error: "signing-failed", details: error };
+      const permissionResult = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
+      if (permissionResult.ok) {
+        try {
+          signedEvent = await window.nostr.signEvent(event);
+        } catch (error) {
+          userLogger.warn(
+            "[nostr] Failed to sign view event with extension:",
+            error,
+          );
+          return { ok: false, error: "signing-failed", details: error };
+        }
+      } else {
+        userLogger.warn(
+          "[nostr] Extension permissions missing; signing view event with session key.",
+          permissionResult.error,
+        );
       }
-    } else {
+    }
+
+    if (!signedEvent) {
       try {
         if (!this.sessionActor || this.sessionActor.pubkey !== actorPubkey) {
           await this.ensureSessionActor(true);
@@ -5814,72 +5829,17 @@ export class NostrClient {
         );
       }
 
-      if (typeof extension.enable === "function") {
-        devLogger.log("Requesting permissions from NIP-07 extension...");
-        const requestedPermissionMethods = Array.from(
-          DEFAULT_NIP07_PERMISSION_METHODS,
-        );
-
-        const permissionVariants = [null];
-        const objectPermissions = requestedPermissionMethods
-          .map((method) =>
-            typeof method === "string" && method.trim()
-              ? { method: method.trim() }
-              : null,
-          )
-          .filter(Boolean);
-        if (objectPermissions.length) {
-          permissionVariants.push({ permissions: objectPermissions });
+      const permissionResult = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
+      if (!permissionResult.ok) {
+        const denialMessage =
+          'The NIP-07 extension reported "permission denied". Please approve the prompt and try again.';
+        const denialError = new Error(denialMessage);
+        if (permissionResult.error) {
+          denialError.cause = permissionResult.error;
         }
-        const stringPermissions = Array.from(
-          new Set(objectPermissions.map((entry) => entry.method)),
-        );
-        if (stringPermissions.length) {
-          permissionVariants.push({ permissions: stringPermissions });
-        }
-        let enableError = null;
-        for (const options of permissionVariants) {
-          try {
-            await runNip07WithRetry(
-              () =>
-                options
-                  ? extension.enable(options)
-                  : extension.enable(),
-              {
-                label: "extension.enable",
-                ...(options
-                  ? {
-                      timeoutMs: Math.min(
-                        NIP07_LOGIN_TIMEOUT_MS,
-                        getEnableVariantTimeoutMs(),
-                      ),
-                    }
-                  : {}),
-                retryMultiplier: 1,
-              },
-            );
-            enableError = null;
-            break;
-          } catch (error) {
-            enableError = error;
-            if (options && isDevMode) {
-              userLogger.warn(
-                "[nostr] extension.enable request with explicit permissions failed:",
-                error,
-              );
-            }
-          }
-        }
-
-        if (enableError) {
-          throw new Error(
-            enableError && enableError.message
-              ? enableError.message
-              : "The NIP-07 extension denied the permission request.",
-          );
-        }
-
-        this.markExtensionPermissions(requestedPermissionMethods);
+        throw denialError;
       }
 
       if (allowAccountSelection && typeof extension.selectAccounts === "function") {
@@ -5944,6 +5904,16 @@ export class NostrClient {
       }
       this.pubkey = pubkey;
       devLogger.log("Logged in with extension. Pubkey:", this.pubkey);
+
+      const postLoginPermissions = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
+      if (!postLoginPermissions.ok && postLoginPermissions.error) {
+        userLogger.warn(
+          "[nostr] Extension permissions were not fully granted after login:",
+          postLoginPermissions.error,
+        );
+      }
       return this.pubkey;
     } catch (err) {
       userLogger.error("Login error:", err);
@@ -5990,6 +5960,21 @@ export class NostrClient {
     const extension = window?.nostr;
     if (!extension) {
       return { ok: false, error: "nostr-extension-missing" };
+    }
+
+    const permissionResult = await this.ensureExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+    if (!permissionResult.ok) {
+      userLogger.warn(
+        "[nostr] Cannot send direct message without extension permissions.",
+        permissionResult.error,
+      );
+      return {
+        ok: false,
+        error: "extension-permission-denied",
+        details: permissionResult.error,
+      };
     }
 
     const nip04 = extension.nip04;
@@ -6110,8 +6095,27 @@ export class NostrClient {
       normalizedEventPubkey &&
       normalizedEventPubkey === normalizedLogged
     ) {
-      signedEvent = await extensionSigner(event);
-    } else {
+      const permissionResult = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
+      if (permissionResult.ok) {
+        try {
+          signedEvent = await extensionSigner(event);
+        } catch (error) {
+          userLogger.warn(
+            "[nostr] Failed to sign event with extension:",
+            error,
+          );
+        }
+      } else {
+        userLogger.warn(
+          "[nostr] Extension permissions missing; falling back to session signer.",
+          permissionResult.error,
+        );
+      }
+    }
+
+    if (!signedEvent) {
       try {
         const currentSessionPubkey =
           typeof this.sessionActor?.pubkey === "string"
@@ -6649,8 +6653,31 @@ export class NostrClient {
     devLogger.log("Creating edited event with root ID:", oldRootId);
           devLogger.log("Event content:", event.content);
 
+    const extensionSigner = window?.nostr?.signEvent;
+    if (typeof extensionSigner !== "function") {
+      const error = new Error("A NIP-07 extension with signEvent support is required to edit videos.");
+      error.code = "nostr-extension-missing";
+      throw error;
+    }
+
+    const permissionResult = await this.ensureExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+    if (!permissionResult.ok) {
+      userLogger.warn(
+        "[nostr] Extension permissions denied while editing a video.",
+        permissionResult.error,
+      );
+      const error = new Error(
+        "The NIP-07 extension must grant decrypt and sign permissions before editing a video.",
+      );
+      error.code = "extension-permission-denied";
+      error.cause = permissionResult.error;
+      throw error;
+    }
+
     try {
-      const signedEvent = await window.nostr.signEvent(event);
+      const signedEvent = await extensionSigner(event);
       devLogger.log("Signed edited event:", signedEvent);
 
       const publishResults = await publishEventToRelays(
@@ -6791,7 +6818,32 @@ export class NostrClient {
       content: JSON.stringify(contentObject),
     };
 
-    const signedEvent = await window.nostr.signEvent(event);
+    const extensionSigner = window?.nostr?.signEvent;
+    if (typeof extensionSigner !== "function") {
+      const error = new Error(
+        "A NIP-07 extension with signEvent support is required to revert videos.",
+      );
+      error.code = "nostr-extension-missing";
+      throw error;
+    }
+
+    const permissionResult = await this.ensureExtensionPermissions(
+      DEFAULT_NIP07_PERMISSION_METHODS,
+    );
+    if (!permissionResult.ok) {
+      userLogger.warn(
+        "[nostr] Extension permissions denied while reverting a video.",
+        permissionResult.error,
+      );
+      const error = new Error(
+        "The NIP-07 extension must grant decrypt and sign permissions before reverting a video.",
+      );
+      error.code = "extension-permission-denied";
+      error.cause = permissionResult.error;
+      throw error;
+    }
+
+    const signedEvent = await extensionSigner(event);
     const publishResults = await publishEventToRelays(
       this.pool,
       this.relays,
@@ -8900,6 +8952,12 @@ function isNip04EncryptedWatchHistoryEvent(pointerEvent, ciphertext) {
 }
 
 export const nostrClient = new NostrClient();
+
+export function requestDefaultExtensionPermissions() {
+  return nostrClient.ensureExtensionPermissions(
+    DEFAULT_NIP07_PERMISSION_METHODS,
+  );
+}
 
 export const recordVideoView = (...args) =>
   nostrClient.recordVideoView(...args);

@@ -7,6 +7,7 @@ import {
   getCurrentUserNpub,
 } from "../state/appState.js";
 import { userLogger } from "../utils/logger.js";
+import { requestDefaultExtensionPermissions } from "../nostr.js";
 import {
   getSavedProfiles,
   getActiveProfilePubkey,
@@ -245,6 +246,15 @@ export default class AuthService {
     }
 
     const result = await this.nostrClient.login(options);
+    const permissionResult = await requestDefaultExtensionPermissions();
+    if (!permissionResult.ok) {
+      const error = new Error(
+        "The NIP-07 extension denied the permission request required to finish logging in.",
+      );
+      error.code = "extension-permission-denied";
+      error.cause = permissionResult.error;
+      throw error;
+    }
     const pubkey =
       typeof result === "string"
         ? result
