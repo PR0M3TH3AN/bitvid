@@ -983,7 +983,7 @@ export class VideoListView {
     });
   }
 
-  closeAllMenus() {
+  closeAllMenus(options = {}) {
     if (Array.isArray(this.videoCardInstances) && this.videoCardInstances.length) {
       this.videoCardInstances.forEach((card) => {
         if (!card) {
@@ -998,25 +998,13 @@ export class VideoListView {
       });
     }
 
-    if (!this.document) {
+    if (options?.skipController) {
       return;
     }
 
-    const menus = this.document.querySelectorAll("[data-more-menu]");
-    menus.forEach((menu) => {
-      if (menu instanceof HTMLElement) {
-        menu.dataset.state = "closed";
-        menu.setAttribute("aria-hidden", "true");
-        menu.hidden = true;
-      }
-    });
-
-    const buttons = this.document.querySelectorAll("[data-more-dropdown]");
-    buttons.forEach((btn) => {
-      if (btn instanceof HTMLElement) {
-        btn.setAttribute("aria-expanded", "false");
-      }
-    });
+    if (typeof this.utils.closeAllMenus === "function") {
+      this.utils.closeAllMenus({ skipView: true });
+    }
   }
 
   handleContainerClick(event) {

@@ -1,11 +1,6 @@
 import { normalizeDesignSystemContext } from "../designSystem.js";
-import positionFloatingPanel from "./utils/positionFloatingPanel.js";
-import { createFloatingPanelStyles } from "./utils/floatingPanelStyles.js";
 import { userLogger } from "../utils/logger.js";
-import {
-  getPopupOffsetPx,
-  getPopupViewportPaddingPx,
-} from "../designSystem/metrics.js";
+import createPopover from "./overlay/popoverEngine.js";
 
 export default class MoreMenuController {
   constructor(options = {}) {
@@ -64,7 +59,8 @@ export default class MoreMenuController {
     this.boundVideoListShareListener = null;
     this.boundVideoListContextListener = null;
     this.boundVideoListBlacklistHandler = null;
-    this.dropdownPositioners = new Map();
+    this.popoversByTrigger = new Map();
+    this.activePopover = null;
   }
 
   setVideoModal(videoModal) {
@@ -171,6 +167,20 @@ export default class MoreMenuController {
     this.detachVideoListView();
     this.setVideoModal(null);
 
+    this.closeAllMoreMenus({ skipView: true });
+
+    this.popoversByTrigger.forEach((popover) => {
+      try {
+        popover?.destroy?.();
+      } catch (error) {
+        if (this.isDevMode) {
+          userLogger.warn("[MoreMenu] Failed to destroy popover:", error);
+        }
+      }
+    });
+    this.popoversByTrigger.clear();
+    this.activePopover = null;
+
     if (this.document && this.boundDocumentClick) {
       this.document.removeEventListener("click", this.boundDocumentClick);
     }
@@ -219,37 +229,189 @@ export default class MoreMenuController {
     this.document.addEventListener("keydown", this.boundDocumentKeydown);
   }
 
-  closeAllMoreMenus() {
-    if (
-      this.videoListView &&
-      typeof this.videoListView.closeAllMenus === "function"
-    ) {
-      this.videoListView.closeAllMenus();
+  getHTMLElementConstructor(documentRef) {
+    return (
+      documentRef?.defaultView?.HTMLElement ||
+      (typeof HTMLElement !== "undefined" ? HTMLElement : null)
+    );
+  }
+
+  resolveMenuTemplate(key, documentRef) {
+    if (!documentRef || typeof documentRef.getElementById !== "function") {
+      return null;
     }
 
-    if (!this.document || typeof this.document.querySelectorAll !== "function") {
+    const identifier = typeof key === "string" && key ? key : "";
+    if (!identifier) {
+      return null;
+    }
+
+    const template = documentRef.getElementById(`moreDropdown-${identifier}`);
+    const HTMLElementCtor = this.getHTMLElementConstructor(documentRef);
+    if (HTMLElementCtor && !(template instanceof HTMLElementCtor)) {
+      return null;
+    }
+
+    return template || null;
+  }
+
+  resetMenuTemplateState(template) {
+    if (!template) {
       return;
     }
 
-    const HTMLElementCtor =
-      this.document?.defaultView?.HTMLElement ||
-      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+    template.hidden = true;
+    template.setAttribute("aria-hidden", "true");
+    template.dataset.state = "closed";
+  }
 
-    const menus = this.document.querySelectorAll("[data-more-menu]");
-    menus.forEach((menu) => {
-      if (!HTMLElementCtor || menu instanceof HTMLElementCtor) {
-        menu.dataset.state = "closed";
-        menu.setAttribute("aria-hidden", "true");
-        menu.hidden = true;
-      }
+  createMenuRenderFactory({ template }) {
+    if (!template) {
+      return null;
+    }
+
+    return ({ close }) => {
+      const panel = template.cloneNode(true);
+      panel.removeAttribute("id");
+      panel.hidden = false;
+      panel.setAttribute("aria-hidden", "false");
+      panel.dataset.state = "open";
+
+      const buttons = panel.querySelectorAll("button[data-action]");
+      buttons.forEach((button) => {
+        const HTMLElementCtor = this.getHTMLElementConstructor(button?.ownerDocument);
+        if (HTMLElementCtor && !(button instanceof HTMLElementCtor)) {
+          return;
+        }
+
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const dataset = { ...button.dataset };
+          const action = dataset.action || "";
+          if (typeof close === "function") {
+            close();
+          }
+          this.handleMoreMenuAction(action, dataset);
+        });
+      });
+
+      return panel;
+    };
+  }
+
+  decoratePopoverLifecycle(popover, trigger) {
+    if (!popover) {
+      return null;
+    }
+
+    const originalOpen = popover.open?.bind(popover);
+    const originalClose = popover.close?.bind(popover);
+    const originalDestroy = popover.destroy?.bind(popover);
+
+    if (typeof originalOpen === "function") {
+      popover.open = async (...args) => {
+        const result = await originalOpen(...args);
+        if (result) {
+          this.activePopover = popover;
+        }
+        return result;
+      };
+    }
+
+    if (typeof originalClose === "function") {
+      popover.close = (options) => {
+        const result = originalClose(options);
+        if (result && this.activePopover === popover) {
+          this.activePopover = null;
+        }
+        return result;
+      };
+    }
+
+    if (typeof originalDestroy === "function") {
+      popover.destroy = (...args) => {
+        if (this.activePopover === popover) {
+          this.activePopover = null;
+        }
+        originalDestroy(...args);
+        if (trigger && this.popoversByTrigger.get(trigger) === popover) {
+          this.popoversByTrigger.delete(trigger);
+        }
+      };
+    }
+
+    return popover;
+  }
+
+  ensurePopoverForTrigger({ trigger, key }) {
+    if (!trigger) {
+      return null;
+    }
+
+    if (this.popoversByTrigger.has(trigger)) {
+      return this.popoversByTrigger.get(trigger);
+    }
+
+    const documentRef =
+      trigger?.ownerDocument ||
+      this.document ||
+      (typeof document !== "undefined" ? document : null);
+
+    const template = this.resolveMenuTemplate(key, documentRef);
+    if (!template) {
+      return null;
+    }
+
+    this.resetMenuTemplateState(template);
+
+    const render = this.createMenuRenderFactory({ template });
+    if (typeof render !== "function") {
+      return null;
+    }
+
+    const popover = createPopover(trigger, render, {
+      document: documentRef,
+      placement: "bottom-end",
     });
 
-    const buttons = this.document.querySelectorAll("[data-more-dropdown]");
-    buttons.forEach((button) => {
-      if (!HTMLElementCtor || button instanceof HTMLElementCtor) {
-        button.setAttribute("aria-expanded", "false");
+    const decorated = this.decoratePopoverLifecycle(popover, trigger) || popover;
+    this.popoversByTrigger.set(trigger, decorated);
+    return decorated;
+  }
+
+  async toggleMoreMenu({ trigger, key }) {
+    const popover = this.ensurePopoverForTrigger({ trigger, key });
+    if (!popover) {
+      return;
+    }
+
+    if (typeof popover.isOpen === "function" && popover.isOpen()) {
+      popover.close();
+      return;
+    }
+
+    try {
+      await popover.open();
+    } catch (error) {
+      userLogger.error("[MoreMenu] Failed to open popover:", error);
+    }
+  }
+
+  closeAllMoreMenus(options = {}) {
+    const skipView = options?.skipView === true;
+
+    if (!skipView && this.videoListView && typeof this.videoListView.closeAllMenus === "function") {
+      this.videoListView.closeAllMenus({ skipController: true });
+    }
+
+    const currentPopover = this.activePopover;
+    if (currentPopover && typeof currentPopover.close === "function") {
+      currentPopover.close();
+      if (this.activePopover === currentPopover) {
+        this.activePopover = null;
       }
-    });
+    }
   }
 
   attachMoreMenuHandlers(container) {
@@ -268,9 +430,7 @@ export default class MoreMenuController {
 
     this.ensureGlobalMoreMenuHandlers();
 
-    const HTMLElementCtor =
-      this.document?.defaultView?.HTMLElement ||
-      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+    const HTMLElementCtor = this.getHTMLElementConstructor(this.document);
 
     buttons.forEach((button) => {
       if (HTMLElementCtor && !(button instanceof HTMLElementCtor)) {
@@ -287,76 +447,7 @@ export default class MoreMenuController {
         event.stopPropagation();
 
         const key = button.getAttribute("data-more-dropdown") || "";
-        const dropdown = this.document.getElementById(`moreDropdown-${key}`);
-        if (HTMLElementCtor && !(dropdown instanceof HTMLElementCtor)) {
-          return;
-        }
-
-        if (dropdown && !this.dropdownPositioners.has(dropdown)) {
-          const styles = createFloatingPanelStyles(dropdown);
-          const metricsDocument =
-            dropdown?.ownerDocument ||
-            button?.ownerDocument ||
-            this.document ||
-            (typeof document !== "undefined" ? document : null);
-          const offset = getPopupOffsetPx({ documentRef: metricsDocument });
-          const viewportPadding = getPopupViewportPaddingPx({
-            documentRef: metricsDocument,
-          });
-          const positioner = positionFloatingPanel(button, dropdown, {
-            placement: "bottom",
-            alignment: "end",
-            offset,
-            viewportPadding,
-            styles,
-          });
-          this.dropdownPositioners.set(dropdown, positioner);
-        }
-
-        if (dropdown && !dropdown.dataset.state) {
-          const isHidden =
-            dropdown.hasAttribute("hidden") ||
-            dropdown.getAttribute("aria-hidden") === "true";
-          dropdown.dataset.state = isHidden ? "closed" : "open";
-        }
-
-        if (dropdown && dropdown.dataset.state !== "open") {
-          dropdown.hidden = true;
-          dropdown.setAttribute("aria-hidden", "true");
-        }
-
-        const willOpen = dropdown?.dataset.state !== "open";
-        this.closeAllMoreMenus();
-
-        if (willOpen) {
-          dropdown.hidden = false;
-          dropdown.dataset.state = "open";
-          dropdown.setAttribute("aria-hidden", "false");
-          button.setAttribute("aria-expanded", "true");
-          const positioner = this.dropdownPositioners.get(dropdown);
-          positioner?.update();
-        }
-      });
-    });
-
-    const actionButtons = container.querySelectorAll(
-      "[data-more-menu] button[data-action]",
-    );
-    actionButtons.forEach((button) => {
-      if (HTMLElementCtor && !(button instanceof HTMLElementCtor)) {
-        return;
-      }
-      if (button.dataset.moreMenuActionBound === "true") {
-        return;
-      }
-      button.dataset.moreMenuActionBound = "true";
-
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const { action } = button.dataset;
-        this.handleMoreMenuAction(action, button.dataset);
-        this.closeAllMoreMenus();
+        this.toggleMoreMenu({ trigger: button, key });
       });
     });
   }
