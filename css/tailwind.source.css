@@ -2727,10 +2727,15 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 300ms ease;
+    z-index: var(--z-sidebar-overlay);
+    --sidebar-overlay-open-opacity: 1;
+    --sidebar-overlay-backdrop-blur: var(--overlay-backdrop-blur);
+    backdrop-filter: blur(var(--sidebar-overlay-backdrop-blur));
+    -webkit-backdrop-filter: blur(var(--sidebar-overlay-backdrop-blur));
   }
 
-  body.sidebar-open #sidebarOverlay {
-    opacity: 1;
+  body.sidebar-open:not(.modal-open) #sidebarOverlay {
+    opacity: var(--sidebar-overlay-open-opacity);
     pointer-events: auto;
   }
 
@@ -2774,6 +2779,13 @@
 
     body.sidebar-open {
       overflow: hidden;
+    }
+
+    body.sidebar-open:not(.modal-open) #sidebarOverlay {
+      --sidebar-overlay-open-opacity: 0.85;
+      --sidebar-overlay-backdrop-blur: calc(
+        var(--overlay-backdrop-blur) * 0.75
+      );
     }
   }
 
