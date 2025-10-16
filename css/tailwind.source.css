@@ -141,6 +141,10 @@
     @apply outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
   }
 
+  .focus-ring:focus-visible {
+    --tw-ring-color: var(--color-accent);
+  }
+
   .header-icon-toggle {
     @apply focus-ring inline-flex items-center justify-center rounded-full transition-colors duration-150 ease-out;
     width: var(--icon-size-lg);
@@ -1683,7 +1687,9 @@
   }
 
   .profile-card--active .profile-card__avatar {
-    @apply border-accent border-opacity-70 ring-2 ring-accent ring-opacity-20;
+    @apply border-accent border-opacity-70 ring-2;
+    --tw-ring-color: color-mix(in srgb, var(--color-accent) 32%, transparent);
+    --tw-ring-opacity: 1;
   }
 
   .profile-card__meta {
@@ -1712,7 +1718,12 @@
   }
 
   .profile-switcher__add {
-    @apply card hover:bg-accent/10 flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-accent hover:border-opacity-60 hover:text-text focus-visible:border-accent focus-visible:border-opacity-60;
+    @apply card flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-accent hover:border-opacity-60 hover:text-text focus-visible:border-accent focus-visible:border-opacity-60;
+  }
+
+  .profile-switcher__add:hover,
+  .profile-switcher__add:focus-visible {
+    background-color: color-mix(in srgb, var(--color-accent) 14%, transparent);
   }
 
   .profile-switcher__addAvatar {
@@ -1801,7 +1812,12 @@
   }
 
   .watch-history-card__creatorAvatar {
-    @apply flex h-10 w-10 items-center justify-center rounded-full bg-panel transition duration-base ease-out hover:ring-2 hover:ring-accent hover:ring-opacity-50 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-opacity-50;
+    @apply flex h-10 w-10 items-center justify-center rounded-full bg-panel transition duration-base ease-out hover:ring-2 hover:ring-opacity-50 focus-visible:ring-2 focus-visible:ring-opacity-50;
+  }
+
+  .watch-history-card__creatorAvatar:hover,
+  .watch-history-card__creatorAvatar:focus-visible {
+    --tw-ring-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
   }
 
   .watch-history-card__creatorAvatar img {
