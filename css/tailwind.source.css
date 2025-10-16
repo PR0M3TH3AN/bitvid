@@ -138,7 +138,7 @@
   }
 
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-opacity-70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:transition-shadow focus-visible:duration-fast focus-visible:ease-out;
   }
 
   .header-icon-toggle {
@@ -373,15 +373,15 @@
   }
 
   .btn {
-    @apply focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-info-strong px-5 py-2.5 text-base font-semibold text-white shadow-lg transition duration-base ease-in-out;
+    @apply focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-accent-strong px-5 py-2.5 text-base font-semibold text-white shadow-lg transition duration-base ease-in-out;
   }
 
   .btn:hover {
-    @apply bg-info;
+    @apply bg-accent;
   }
 
   .btn:focus-visible {
-    @apply bg-info-pressed;
+    @apply bg-accent-pressed;
   }
 
   .btn:disabled {
@@ -484,7 +484,7 @@
   .btn-ghost[data-state="active"]:focus-visible,
   .btn-ghost[aria-pressed="true"]:hover,
   .btn-ghost[aria-pressed="true"]:focus-visible {
-    @apply bg-info-strong;
+    @apply bg-accent-strong;
   }
 
   .modal-progress {
@@ -825,7 +825,7 @@
   }
 
   .menu__item[data-state="active"] {
-    @apply bg-info bg-opacity-20 text-info-strong;
+    @apply bg-accent bg-opacity-20 text-accent-strong;
   }
 
   .menu__item[data-variant="critical"] {
@@ -896,7 +896,7 @@
   }
 
   .card:focus-visible {
-    @apply border-info border-opacity-40 shadow-lg;
+    @apply border-accent border-opacity-40 shadow-lg;
   }
 
   .card[data-state="critical"] {
@@ -920,7 +920,7 @@
   }
 
   .form-control:focus-visible {
-    @apply border-info-strong;
+    @apply border-accent-strong;
   }
 
   .form-control:disabled {
@@ -986,7 +986,7 @@
   }
 
   .select:focus-visible {
-    --select-arrow-color: var(--color-info-strong);
+    --select-arrow-color: var(--color-accent-strong);
   }
 
   .select:disabled {
@@ -1017,7 +1017,7 @@
 
   .checkbox:checked,
   .checkbox[aria-checked="true"] {
-    @apply border-info-strong bg-info-strong;
+    @apply border-accent-strong bg-accent-strong;
   }
 
   .checkbox:checked::after,
@@ -1041,7 +1041,7 @@
 
   .switch[aria-checked="true"],
   .switch.is-on {
-    @apply border-info-strong bg-info-strong;
+    @apply border-accent-strong bg-accent-strong;
   }
 
   .switch[aria-checked="true"]::before,
@@ -1258,7 +1258,7 @@
   }
 
   .video-visibility-toggle__option[data-active="true"] {
-    @apply border border-info border-opacity-60 text-text shadow-lg;
+    @apply border border-accent border-opacity-60 text-text shadow-lg;
   }
 
   .video-visibility-toggle__option.is-disabled {
@@ -1667,11 +1667,11 @@
   }
 
   .profile-card {
-    @apply card relative flex cursor-pointer flex-col gap-md p-4 text-text transition duration-base ease-out hover:shadow-lg focus-visible:border-info focus-visible:border-opacity-60 focus-visible:shadow-lg sm:flex-row sm:items-center;
+    @apply card relative flex cursor-pointer flex-col gap-md p-4 text-text transition duration-base ease-out hover:shadow-lg focus-visible:border-accent focus-visible:border-opacity-60 focus-visible:shadow-lg sm:flex-row sm:items-center;
   }
 
   .profile-card--active {
-    @apply border-info border-opacity-60 shadow-lg;
+    @apply border-accent border-opacity-60 shadow-lg;
   }
 
   .profile-card__avatar {
@@ -1683,7 +1683,7 @@
   }
 
   .profile-card--active .profile-card__avatar {
-    @apply border-info border-opacity-70 ring-2 ring-info ring-opacity-20;
+    @apply border-accent border-opacity-70 ring-2 ring-accent ring-opacity-20;
   }
 
   .profile-card__meta {
@@ -1695,7 +1695,7 @@
   }
 
   .profile-card__label {
-    @apply text-xs font-semibold uppercase tracking-wide text-info;
+    @apply text-xs font-semibold uppercase tracking-wide text-accent;
   }
 
   .profile-card__name {
@@ -1712,7 +1712,7 @@
   }
 
   .profile-switcher__add {
-    @apply card hover:bg-info/10 flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-info hover:border-opacity-60 hover:text-text focus-visible:border-info focus-visible:border-opacity-60;
+    @apply card hover:bg-accent/10 flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-accent hover:border-opacity-60 hover:text-text focus-visible:border-accent focus-visible:border-opacity-60;
   }
 
   .profile-switcher__addAvatar {
@@ -1781,7 +1781,7 @@
 
   .watch-history-card__title:hover,
   .watch-history-card__title:focus {
-    @apply text-info;
+    @apply text-accent;
   }
 
   .watch-history-card__created {
@@ -1801,7 +1801,7 @@
   }
 
   .watch-history-card__creatorAvatar {
-    @apply flex h-10 w-10 items-center justify-center rounded-full bg-panel transition duration-base ease-out hover:ring-2 hover:ring-info hover:ring-opacity-50 focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-opacity-50;
+    @apply flex h-10 w-10 items-center justify-center rounded-full bg-panel transition duration-base ease-out hover:ring-2 hover:ring-accent hover:ring-opacity-50 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-opacity-50;
   }
 
   .watch-history-card__creatorAvatar img {
@@ -1809,7 +1809,7 @@
   }
 
   .watch-history-card__creatorName {
-    @apply cursor-pointer bg-transparent p-0 text-left text-base font-medium text-muted transition duration-base ease-out hover:text-info focus-visible:text-info;
+    @apply cursor-pointer bg-transparent p-0 text-left text-base font-medium text-muted transition duration-base ease-out hover:text-accent focus-visible:text-accent;
   }
 
   .watch-history-card__actions {
@@ -1821,7 +1821,7 @@
   }
 
   .watch-history-card__action--primary {
-    @apply bg-info-strong text-white hover:bg-info-pressed focus-visible:bg-info-pressed;
+    @apply bg-accent-strong text-white hover:bg-accent-pressed focus-visible:bg-accent-pressed;
   }
 
   .watch-history-card__action--danger {
@@ -2278,7 +2278,7 @@
   }
 
   body.iframe-form .radio-group input[type="radio"] {
-    accent-color: var(--color-info-strong);
+    accent-color: var(--color-accent-strong);
   }
 
   body.iframe-form button.btn {
