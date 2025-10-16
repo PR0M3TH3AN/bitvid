@@ -53,6 +53,9 @@ beforeEach(() => {
   global.Node = windowRef.Node;
   global.getComputedStyle = windowRef.getComputedStyle.bind(windowRef);
   global.ResizeObserver = StubObserver;
+  global.IntersectionObserver = StubObserver;
+  windowRef.IntersectionObserver = StubObserver;
+  windowRef.scrollTo = () => {};
   if (!global.PointerEvent) {
     global.PointerEvent = windowRef.PointerEvent || windowRef.Event;
   }
@@ -66,6 +69,7 @@ afterEach(() => {
   delete global.Node;
   delete global.getComputedStyle;
   delete global.ResizeObserver;
+  delete global.IntersectionObserver;
   if (dom) {
     dom.window.close();
   }
@@ -209,6 +213,31 @@ test("supports roving focus, home/end navigation, and typeahead", async () => {
     height: 40,
   });
 
+  const initialScroll = { x: 64, y: 128 };
+  windowRef.scrollX = initialScroll.x;
+  windowRef.scrollY = initialScroll.y;
+
+  const scrollCalls = [];
+  const originalScrollTo = windowRef.scrollTo;
+  windowRef.scrollTo = (x, y) => {
+    scrollCalls.push({ x, y });
+    windowRef.scrollX = x;
+    windowRef.scrollY = y;
+  };
+
+  const focusMutations = [];
+  const originalFocus = windowRef.HTMLElement.prototype.focus;
+  const registerFocusMutation = (element, mutatedX, mutatedY) => {
+    element.focus = function focus(options = {}) {
+      focusMutations.push({ id: element.id || element.textContent, options });
+      windowRef.scrollX = mutatedX;
+      windowRef.scrollY = mutatedY;
+      if (typeof originalFocus === "function") {
+        originalFocus.call(this, options);
+      }
+    };
+  };
+
   const popover = createPopover(
     trigger,
     ({ container }) => {
@@ -239,18 +268,21 @@ test("supports roving focus, home/end navigation, and typeahead", async () => {
       copy.className = "menu__item";
       copy.type = "button";
       copy.textContent = "Copy link";
+      registerFocusMutation(copy, 400, 500);
       list.appendChild(copy);
 
       const deleteBtn = documentRef.createElement("button");
       deleteBtn.className = "menu__item";
       deleteBtn.type = "button";
       deleteBtn.textContent = "Delete video";
+      registerFocusMutation(deleteBtn, 420, 520);
       list.appendChild(deleteBtn);
 
       const share = documentRef.createElement("button");
       share.className = "menu__item";
       share.type = "button";
       share.textContent = "Share";
+      registerFocusMutation(share, 440, 540);
       list.appendChild(share);
 
       container.appendChild(panel);
@@ -307,7 +339,16 @@ test("supports roving focus, home/end navigation, and typeahead", async () => {
   assert.equal(documentRef.activeElement, deleteBtn);
   assert.equal(panel.getAttribute("aria-activedescendant"), deleteBtn.id);
 
+  assert.ok(focusMutations.length >= 1, "focus mutations should occur");
+  assert.ok(scrollCalls.length >= focusMutations.length);
+  scrollCalls.forEach((call) => {
+    assert.deepEqual(call, initialScroll);
+  });
+  assert.equal(windowRef.scrollX, initialScroll.x);
+  assert.equal(windowRef.scrollY, initialScroll.y);
+
   popover.destroy();
+  windowRef.scrollTo = originalScrollTo;
 });
 
 test("escape closes the popover and restores trigger focus", async () => {

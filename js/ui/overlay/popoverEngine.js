@@ -243,6 +243,26 @@ export function createPopover(trigger, render, options = {}) {
     return documentRef?.defaultView || globalThis;
   }
 
+  function focusWithoutScroll(node) {
+    if (!node || typeof node.focus !== "function") {
+      return;
+    }
+
+    const view = documentRef?.defaultView || null;
+    const scrollX = view?.scrollX ?? view?.pageXOffset ?? 0;
+    const scrollY = view?.scrollY ?? view?.pageYOffset ?? 0;
+
+    try {
+      node.focus({ preventScroll: true });
+    } catch (error) {
+      node.focus();
+    } finally {
+      if (view && typeof view.scrollTo === "function") {
+        view.scrollTo(scrollX, scrollY);
+      }
+    }
+  }
+
   function resetTypeaheadBuffer() {
     const view = getView();
     if (menuState.typeaheadTimeout) {
@@ -337,11 +357,7 @@ export function createPopover(trigger, render, options = {}) {
     updateAriaActiveDescendant(panelElement, target);
 
     if (focus) {
-      try {
-        target.focus({ preventScroll: true });
-      } catch (error) {
-        target.focus();
-      }
+      focusWithoutScroll(target);
     }
   }
 
@@ -363,11 +379,7 @@ export function createPopover(trigger, render, options = {}) {
 
     if (focusPanelFallback) {
       panelElement.setAttribute("tabindex", panelElement.getAttribute("tabindex") || "-1");
-      try {
-        panelElement.focus({ preventScroll: true });
-      } catch (error) {
-        panelElement.focus();
-      }
+      focusWithoutScroll(panelElement);
     }
   }
 
@@ -837,20 +849,12 @@ export function createPopover(trigger, render, options = {}) {
 
   function restoreTriggerFocus() {
     if (anchor && typeof anchor.focus === "function") {
-      try {
-        anchor.focus({ preventScroll: true });
-        return;
-      } catch (error) {
-        anchor.focus();
-      }
+      focusWithoutScroll(anchor);
+      return;
     }
 
     if (previousActiveElement && typeof previousActiveElement.focus === "function") {
-      try {
-        previousActiveElement.focus({ preventScroll: true });
-      } catch (error) {
-        previousActiveElement.focus();
-      }
+      focusWithoutScroll(previousActiveElement);
     }
   }
 
