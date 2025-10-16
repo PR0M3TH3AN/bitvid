@@ -76,6 +76,18 @@ Pass `document`, `placement`, and other floating-ui options through the third
 argument. The helper exposes `open()`, `close()`, `toggle()`, `isOpen()`, and
 `destroy()` for lifecycle control.
 
+### Floating UI dependency
+
+The shared popover engine standardizes on
+[`@floating-ui/dom`](https://floating-ui.com/) for positioning. The module is
+vendored to `vendor/floating-ui.dom.bundle.min.js` by
+`npm run build:beacon`, which bundles dependencies and copies the upstream
+license alongside `nostr-tools`. Run that build whenever you bump Floating UI so
+the checked-in vendor artifact stays in sync. New overlays should lean on the
+engine rather than re-implementing manual gap, flip, or viewport clamp math—the
+middleware layer already applies the configured gap and viewport padding via
+`offset()`, `flip()`, and `shift()` helpers.
+
 ## Tailwind overlay classes
 
 Tailwind ships token-backed overlay helpers that keep surfaces aligned with the
