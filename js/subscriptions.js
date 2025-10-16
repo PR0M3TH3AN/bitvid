@@ -610,7 +610,7 @@ class SubscriptionsManager {
           }),
         ensureGlobalMoreMenuHandlers: () =>
           app?.ensureGlobalMoreMenuHandlers?.(),
-        closeAllMenus: () => app?.closeAllMoreMenus?.()
+        closeAllMenus: (options) => app?.closeAllMoreMenus?.(options)
       },
       renderers: {
         getLoadingMarkup: (message) => getSidebarLoadingMarkup(message)

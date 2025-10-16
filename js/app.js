@@ -472,7 +472,7 @@ class Application {
           watchHistoryService,
           authService: this.authService,
           log: (...args) => this.log(...args),
-          closeAllMoreMenus: () => this.closeAllMoreMenus(),
+          closeAllMoreMenus: (options) => this.closeAllMoreMenus(options),
         };
 
         const profileModalState = {
@@ -841,7 +841,7 @@ class Application {
             videoListRoot: container || this.videoList || null,
           }),
         ensureGlobalMoreMenuHandlers: () => this.ensureGlobalMoreMenuHandlers(),
-        closeAllMenus: () => this.closeAllMoreMenus(),
+        closeAllMenus: (options) => this.closeAllMoreMenus(options),
       },
       renderers: {
         getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
@@ -4500,9 +4500,9 @@ class Application {
     }
   }
 
-  closeAllMoreMenus() {
+  closeAllMoreMenus(options = {}) {
     if (this.moreMenuController) {
-      this.moreMenuController.closeAllMoreMenus();
+      this.moreMenuController.closeAllMoreMenus(options);
     }
   }
 
