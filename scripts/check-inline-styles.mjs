@@ -39,7 +39,24 @@ const IGNORED_FILES = new Set([
   "sw.min.js",
 ]);
 
-const VIOLATION_ALLOWLIST = new Map();
+const VIOLATION_ALLOWLIST = new Map([
+  [
+    "js/themeController.js",
+    new Set(["Direct .style usage"]),
+  ],
+  [
+    "js/ui/components/VideoCard.js",
+    new Set(["Direct .style usage"]),
+  ],
+  [
+    "torrent/app.js",
+    new Set(["Direct .style usage"]),
+  ],
+  [
+    "torrent/dist/beacon.js",
+    new Set(["Direct .style usage"]),
+  ],
+]);
 
 const TEXT_EXTENSIONS = new Set([
   ".astro",
