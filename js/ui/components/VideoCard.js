@@ -226,8 +226,13 @@ export class VideoCard {
 
   closeMoreMenu(options = {}) {
     const restoreFocus = options?.restoreFocus !== false;
+    const trigger = this.moreMenuButton;
+    const wasExpanded =
+      typeof trigger?.getAttribute === "function" &&
+      trigger.getAttribute("aria-expanded") === "true";
+
     const detail = {
-      trigger: this.moreMenuButton,
+      trigger,
       video: this.video,
       card: this,
       restoreFocus,
@@ -247,9 +252,14 @@ export class VideoCard {
       }
     }
 
-    if (!handled && restoreFocus && this.moreMenuButton?.focus) {
+    if (
+      !handled &&
+      restoreFocus &&
+      wasExpanded &&
+      typeof trigger?.focus === "function"
+    ) {
       try {
-        this.moreMenuButton.focus();
+        trigger.focus();
       } catch (error) {
         /* noop */
       }
@@ -258,8 +268,13 @@ export class VideoCard {
 
   closeSettingsMenu(options = {}) {
     const restoreFocus = options?.restoreFocus !== false;
+    const trigger = this.settingsButton;
+    const wasExpanded =
+      typeof trigger?.getAttribute === "function" &&
+      trigger.getAttribute("aria-expanded") === "true";
+
     const detail = {
-      trigger: this.settingsButton,
+      trigger,
       video: this.video,
       card: this,
       restoreFocus,
@@ -279,9 +294,14 @@ export class VideoCard {
       }
     }
 
-    if (!handled && restoreFocus && this.settingsButton?.focus) {
+    if (
+      !handled &&
+      restoreFocus &&
+      wasExpanded &&
+      typeof trigger?.focus === "function"
+    ) {
       try {
-        this.settingsButton.focus();
+        trigger.focus();
       } catch (error) {
         /* noop */
       }
