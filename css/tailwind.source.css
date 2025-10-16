@@ -1080,7 +1080,7 @@
   }
 
   .bv-modal-backdrop {
-    @apply absolute inset-0 z-[var(--z-modal-overlay)] backdrop-saturate-150;
+    @apply fixed inset-0 z-[var(--z-modal-overlay)] backdrop-saturate-150;
     background-color: var(--color-modal-backdrop, var(--color-overlay-muted));
     backdrop-filter: blur(var(--blur-modal-backdrop));
     -webkit-backdrop-filter: blur(var(--blur-modal-backdrop));
@@ -1098,6 +1098,7 @@
   .modal-sheet {
     @apply bv-modal__panel relative my-0 w-full overflow-hidden lg:max-w-4xl;
     max-width: var(--modal-sheet-inline-max);
+    overscroll-behavior: contain;
   }
 
   .modal-header {
@@ -1125,6 +1126,7 @@
 
   .modal-body {
     @apply space-y-5 px-8 pb-8 pt-2;
+    overscroll-behavior: contain;
   }
 
   .modal-body {
