@@ -1,11 +1,15 @@
-import test, { beforeEach, afterEach } from "node:test";
+import test, { beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import createPopover from "../../js/ui/overlay/popoverEngine.js";
+import { register } from "node:module";
 
 let dom;
 let documentRef;
 let windowRef;
+let createPopover;
+let computePositionStub;
+let autoUpdateStub;
+let mockedPosition;
 
 class StubObserver {
   constructor() {
@@ -23,7 +27,18 @@ function setupBoundingClientRect(element, rect) {
   });
 }
 
-beforeEach(() => {
+function setMockedPosition(overrides = {}) {
+  mockedPosition = {
+    x: 0,
+    y: 0,
+    placement: "bottom-start",
+    middlewareData: {},
+    strategy: "fixed",
+    ...overrides,
+  };
+}
+
+beforeEach(async () => {
   dom = new JSDOM(
     `<!DOCTYPE html><html><body><div id="app"><button id="trigger">Open</button></div></body></html>`,
     {
@@ -59,6 +74,29 @@ beforeEach(() => {
   if (!global.PointerEvent) {
     global.PointerEvent = windowRef.PointerEvent || windowRef.Event;
   }
+
+  setMockedPosition();
+
+  computePositionStub = mock.fn(async () => ({ ...mockedPosition }));
+  autoUpdateStub = mock.fn((reference, floating, update) => {
+    if (typeof update === "function") {
+      update();
+    }
+    return () => {};
+  });
+
+  globalThis.__floatingUiMock = {
+    arrow: (...args) => ({ name: "arrow", args }),
+    autoUpdate: autoUpdateStub,
+    computePosition: computePositionStub,
+    flip: (...args) => ({ name: "flip", args }),
+    offset: (...args) => ({ name: "offset", args }),
+    shift: (...args) => ({ name: "shift", args }),
+  };
+
+  register(new URL("./mocks/floating-ui-test-loader.mjs", import.meta.url));
+
+  ({ default: createPopover } = await import("../../js/ui/overlay/popoverEngine.js"));
 });
 
 afterEach(() => {
@@ -70,12 +108,18 @@ afterEach(() => {
   delete global.getComputedStyle;
   delete global.ResizeObserver;
   delete global.IntersectionObserver;
+  delete globalThis.__floatingUiMock;
+  mock.restoreAll();
   if (dom) {
     dom.window.close();
   }
   dom = null;
   documentRef = null;
   windowRef = null;
+  createPopover = null;
+  computePositionStub = null;
+  autoUpdateStub = null;
+  mockedPosition = null;
 });
 
 test("opens a popover in the overlay root and positions the panel", async () => {
@@ -92,6 +136,8 @@ test("opens a popover in the overlay root and positions the panel", async () => 
     width: 40,
     height: 40,
   });
+
+  setMockedPosition({ x: 172.6, y: 248.4, placement: "bottom-start" });
 
   const popover = createPopover(
     trigger,
@@ -131,8 +177,8 @@ test("opens a popover in the overlay root and positions the panel", async () => 
   assert.equal(panel.dataset.state, "open");
   assert.equal(panel.dataset.popoverPlacement, "bottom-start");
   assert.equal(panel.style.position, "fixed");
-  assert.equal(panel.style.left, "100px");
-  assert.equal(panel.style.top, "148px");
+  assert.equal(panel.style.left, "173px");
+  assert.equal(panel.style.top, "248px");
   assert.equal(panel.getAttribute("role"), "menu");
   assert.equal(documentRef.activeElement, panel);
   assert.equal(trigger.getAttribute("aria-expanded"), "true");
@@ -144,6 +190,65 @@ test("opens a popover in the overlay root and positions the panel", async () => 
 
   popover.destroy();
 });
+
+test("positions bottom-end panels flush with the trigger's right edge", async () => {
+  const trigger = documentRef.getElementById("trigger");
+  trigger.setAttribute("tabindex", "0");
+
+  setupBoundingClientRect(trigger, {
+    x: 240,
+    y: 180,
+    top: 180,
+    bottom: 220,
+    left: 240,
+    right: 340,
+    width: 100,
+    height: 40,
+  });
+
+  const panelWidth = 220;
+  setMockedPosition({
+    x: 120.3,
+    y: 264.7,
+    placement: "bottom-end",
+  });
+
+  const popover = createPopover(
+    trigger,
+    ({ container }) => {
+      const panel = documentRef.createElement("div");
+      panel.id = "popover-bottom-end";
+      setupBoundingClientRect(panel, {
+        x: 0,
+        y: 0,
+        top: 0,
+        bottom: 140,
+        left: 0,
+        right: panelWidth,
+        width: panelWidth,
+        height: 140,
+      });
+      container.appendChild(panel);
+      return panel;
+    },
+    { document: documentRef, placement: "bottom-end" },
+  );
+
+  await popover.open();
+
+  const panel = documentRef.getElementById("popover-bottom-end");
+  assert.ok(panel);
+  assert.equal(panel.dataset.popoverPlacement, "bottom-end");
+  assert.equal(panel.style.left, "120px");
+  assert.equal(panel.style.top, "265px");
+
+  const triggerRight = Math.round(trigger.getBoundingClientRect().right);
+  const panelRight = Number.parseInt(panel.style.left, 10) + panel.offsetWidth;
+  assert.equal(panelRight, triggerRight);
+
+  popover.destroy();
+});
+
 
 test("closes on outside pointer events and restores focus", async () => {
   const trigger = documentRef.getElementById("trigger");
@@ -625,6 +730,11 @@ test("applies token-based sizing and arrow positioning", async () => {
       arrow: (panel) => panel.querySelector(".arrow"),
     },
   );
+
+  setMockedPosition({
+    placement: "bottom",
+    middlewareData: { arrow: { x: 12.4, y: 8.6 } },
+  });
 
   await popover.open();
 
