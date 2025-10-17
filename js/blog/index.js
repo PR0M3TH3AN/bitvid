@@ -157,8 +157,45 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
   let pendingFrame = null;
 
   const measureAndPost = (force = false) => {
-    const rect = element.getBoundingClientRect();
-    const height = Math.max(0, Math.ceil(rect.height));
+    const docElement = document.documentElement;
+    const body = document.body;
+
+    const candidates = [];
+    const addCandidate = (value) => {
+      if (typeof value !== 'number') {
+        return;
+      }
+      const rounded = Math.max(0, Math.ceil(value));
+      if (Number.isFinite(rounded)) {
+        candidates.push(rounded);
+      }
+    };
+
+    const addElementMetrics = (node) => {
+      if (!node) {
+        return;
+      }
+      addCandidate(node.scrollHeight);
+      addCandidate(node.offsetHeight);
+      addCandidate(node.clientHeight);
+    };
+
+    try {
+      const rect = element.getBoundingClientRect();
+      addCandidate(rect.height);
+    } catch (error) {
+      userLogger.error('[blog] failed to compute embed rect for resize messaging', error);
+    }
+
+    addElementMetrics(element);
+    if (body && body !== element) {
+      addElementMetrics(body);
+    }
+    if (docElement && docElement !== element && docElement !== body) {
+      addElementMetrics(docElement);
+    }
+
+    const height = candidates.length > 0 ? Math.max(...candidates) : null;
     if (!Number.isFinite(height)) {
       return;
     }
@@ -199,13 +236,30 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
     }
   });
 
+  const observedNodes = new Set();
+
+  const observeNode = (observer, node) => {
+    if (!node || observedNodes.has(node)) {
+      return;
+    }
+    observer.observe(node);
+    observedNodes.add(node);
+  };
+
   if (typeof ResizeObserver === 'function') {
     const observer = new ResizeObserver(() => {
       queueMeasurement();
     });
-    observer.observe(element);
+    observeNode(observer, element);
+    if (document.body) {
+      observeNode(observer, document.body);
+    }
+    if (document.documentElement) {
+      observeNode(observer, document.documentElement);
+    }
     registerCleanup(() => {
       observer.disconnect();
+      observedNodes.clear();
     });
   } else {
     const intervalId = window.setInterval(() => {
@@ -213,6 +267,30 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
     }, 500);
     registerCleanup(() => {
       window.clearInterval(intervalId);
+    });
+  }
+
+  const mutationTargets = [element];
+  if (document.body && document.body !== element) {
+    mutationTargets.push(document.body);
+  }
+  if (document.documentElement && document.documentElement !== element && document.documentElement !== document.body) {
+    mutationTargets.push(document.documentElement);
+  }
+
+  if (typeof MutationObserver === 'function' && mutationTargets.length > 0) {
+    const mutationObserver = new MutationObserver(() => {
+      queueMeasurement();
+    });
+    mutationTargets.forEach((target) => {
+      mutationObserver.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: false,
+      });
+    });
+    registerCleanup(() => {
+      mutationObserver.disconnect();
     });
   }
 
@@ -231,6 +309,14 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
   window.addEventListener('message', handleMessage);
   registerCleanup(() => {
     window.removeEventListener('message', handleMessage);
+  });
+
+  const handleResize = () => {
+    queueMeasurement();
+  };
+  window.addEventListener('resize', handleResize);
+  registerCleanup(() => {
+    window.removeEventListener('resize', handleResize);
   });
 
   const handleLoad = () => {
