@@ -38,12 +38,25 @@
       const container = document.getElementById("markdown-container");
       if (container) {
         container.innerHTML = html;
-      }
 
-      // (Optional) Highlight code blocks if "hljs" is available globally
-      document.querySelectorAll("pre code").forEach((block) => {
-        hljs.highlightBlock(block);
-      });
+        const highlighter = window.hljs;
+        const highlight =
+          highlighter && typeof highlighter.highlightElement === "function"
+            ? (block) => highlighter.highlightElement(block)
+            : highlighter && typeof highlighter.highlightBlock === "function"
+              ? (block) => highlighter.highlightBlock(block)
+              : null;
+
+        if (highlight) {
+          container.querySelectorAll("pre code").forEach((block) => {
+            try {
+              highlight(block);
+            } catch (highlightError) {
+              dev.warn("Failed to highlight code block.", highlightError);
+            }
+          });
+        }
+      }
     } catch (err) {
       user.error("Error loading About content:", err);
       const container = document.getElementById("markdown-container");
