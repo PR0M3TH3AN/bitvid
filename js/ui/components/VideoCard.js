@@ -989,10 +989,17 @@ export class VideoCard {
       typeof entry?.status === "string" && entry.status
         ? entry.status
         : "checking";
+    const fallbackMessages = {
+      healthy: "✅ CDN",
+      offline: "❌ CDN",
+      unknown: "⚠️ CDN",
+      timeout: "⚠️ CDN timed out",
+      checking: "⏳ CDN"
+    };
     const message =
       typeof entry?.message === "string" && entry.message
         ? entry.message
-        : "Checking hosted URL…";
+        : fallbackMessages[status] || fallbackMessages.checking;
 
     badge.className = ["badge", "url-health-badge"].join(" ");
 

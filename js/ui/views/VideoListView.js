@@ -645,7 +645,7 @@ export class VideoListView {
       message:
         typeof entry.message === "string" && entry.message
           ? entry.message
-          : "Checking hosted URL…",
+          : "⏳ CDN",
     };
 
     if (Number.isFinite(entry.lastCheckedAt)) {

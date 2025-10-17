@@ -685,7 +685,7 @@ export function storeUrlHealth(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) 
   const now = Date.now();
   const entry = {
     status: result?.status || "checking",
-    message: result?.message || "Checking hosted URL…",
+    message: result?.message || "⏳ CDN",
     url: url || result?.url || "",
     expiresAt: now + ttl,
     lastCheckedAt: now,
