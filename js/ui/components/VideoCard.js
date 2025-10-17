@@ -1420,16 +1420,35 @@ export class VideoCard {
         event.preventDefault();
         event.stopPropagation();
 
+        const trigger = this.settingsButton;
+        const isExpanded =
+          typeof trigger?.getAttribute === "function" &&
+          trigger.getAttribute("aria-expanded") === "true";
+
         if (this.onRequestCloseAllMenus) {
-          this.onRequestCloseAllMenus({ restoreFocus: false });
-        } else {
+          const options = { restoreFocus: false };
+          if (isExpanded) {
+            options.skipCard = this;
+            options.skipTrigger = trigger;
+          }
+          this.onRequestCloseAllMenus(options);
+        } else if (!isExpanded) {
+          this.closeMoreMenu({ restoreFocus: false });
           this.closeSettingsMenu({ restoreFocus: false });
         }
+
+        if (isExpanded) {
+          this.closeMoreMenu({ restoreFocus: false });
+          this.closeSettingsMenu({ restoreFocus: false });
+          return;
+        }
+
+        this.closeMoreMenu({ restoreFocus: false });
 
         if (this.callbacks.onRequestSettingsMenu) {
           const detail = {
             event,
-            trigger: this.settingsButton,
+            trigger,
             video: this.video,
             card: this,
             index: this.index,

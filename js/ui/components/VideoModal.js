@@ -411,6 +411,15 @@ export class VideoModal {
         if (this.modalZapBtn?.disabled) {
           return;
         }
+
+        const isExpanded =
+          this.modalZapBtn.getAttribute("aria-expanded") === "true";
+
+        if (isExpanded) {
+          this.closeZapDialog();
+          return;
+        }
+
         this.openZapDialog();
         this.dispatch("zap:open", { video: this.activeVideo });
       });
