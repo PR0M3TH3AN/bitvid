@@ -9,6 +9,7 @@ export {
   createDedupeByRootStage,
   createBlacklistFilterStage,
   createWatchHistorySuppressionStage,
+  createModerationStage,
 } from "./stages.js";
 export { createChronologicalSorter } from "./sorters.js";
 export {

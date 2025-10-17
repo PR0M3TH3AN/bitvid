@@ -27,6 +27,7 @@ import {
   createActiveNostrSource,
   createBlacklistFilterStage,
   createDedupeByRootStage,
+  createModerationStage,
   createChronologicalSorter,
   createSubscriptionAuthorsSource,
   registerWatchHistoryFeed,
@@ -3701,6 +3702,10 @@ class Application {
   }
 
   autoplayModalVideo() {
+    if (this.currentVideo?.moderation?.blockAutoplay) {
+      this.log("[moderation] Skipping autoplay due to trusted reports.");
+      return;
+    }
     if (!this.modalVideo) return;
     this.modalVideo.play().catch((err) => {
       this.log("Autoplay failed:", err);
@@ -3863,6 +3868,9 @@ class Application {
           createDedupeByRootStage({
             dedupe: (videos) => this.dedupeVideosByRoot(videos),
           }),
+          createModerationStage({
+            getService: () => this.nostrService.getModerationService(),
+          }),
         ],
         sorter: createChronologicalSorter(),
       });
@@ -3895,6 +3903,9 @@ class Application {
           }),
           createDedupeByRootStage({
             dedupe: (videos) => this.dedupeVideosByRoot(videos),
+          }),
+          createModerationStage({
+            getService: () => this.nostrService.getModerationService(),
           }),
         ],
         sorter: createChronologicalSorter(),

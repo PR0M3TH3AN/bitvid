@@ -2,6 +2,7 @@
 
 import { getApplication } from "../applicationContext.js";
 import nostrService from "../services/nostrService.js";
+import moderationService from "../services/moderationService.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
 import { isPlainObject, toSet } from "./utils.js";
 
@@ -179,6 +180,142 @@ export function createWatchHistorySuppressionStage({
         }
         context?.addWhy?.(detail);
         continue;
+      }
+
+      results.push(item);
+    }
+
+    return results;
+  };
+}
+
+export function createModerationStage({
+  stageName = "moderation",
+  autoplayThreshold = 2,
+  blurThreshold = 3,
+  reportType = "nudity",
+  service = null,
+  getService,
+} = {}) {
+  const normalizedAutoplayThreshold = Number.isFinite(autoplayThreshold)
+    ? Math.max(0, Math.floor(autoplayThreshold))
+    : 2;
+  const normalizedBlurThreshold = Number.isFinite(blurThreshold)
+    ? Math.max(0, Math.floor(blurThreshold))
+    : 3;
+  const normalizedReportType = typeof reportType === "string" ? reportType.trim().toLowerCase() : "nudity";
+
+  return async function moderationStage(items = [], context = {}) {
+    let resolvedService = null;
+    try {
+      resolvedService =
+        typeof getService === "function"
+          ? getService({ context })
+          : service || nostrService.getModerationService?.() || moderationService;
+    } catch (error) {
+      context?.log?.(`[${stageName}] Failed to resolve moderation service`, error);
+      resolvedService = service || moderationService;
+    }
+
+    if (!resolvedService) {
+      return items;
+    }
+
+    try {
+      if (typeof resolvedService.refreshViewerFromClient === "function") {
+        await resolvedService.refreshViewerFromClient();
+      }
+    } catch (error) {
+      context?.log?.(`[${stageName}] Failed to refresh viewer context`, error);
+    }
+
+    const activeIds = new Set();
+    for (const item of items) {
+      const videoId = typeof item?.video?.id === "string" ? item.video.id : "";
+      if (videoId) {
+        activeIds.add(videoId);
+      }
+    }
+
+    try {
+      if (typeof resolvedService.setActiveEventIds === "function") {
+        await resolvedService.setActiveEventIds(activeIds);
+      }
+    } catch (error) {
+      context?.log?.(`[${stageName}] Failed to prime report subscriptions`, error);
+    }
+
+    const results = [];
+
+    for (const item of items) {
+      if (!item || typeof item !== "object") {
+        results.push(item);
+        continue;
+      }
+
+      const video = item.video;
+      if (!video || typeof video !== "object") {
+        results.push(item);
+        continue;
+      }
+
+      const videoId = typeof video.id === "string" ? video.id : "";
+
+      let summary = null;
+      let trustedCount = 0;
+      if (videoId) {
+        try {
+          if (typeof resolvedService.getTrustedReportSummary === "function") {
+            summary = resolvedService.getTrustedReportSummary(videoId);
+          }
+          if (typeof resolvedService.trustedReportCount === "function") {
+            trustedCount = resolvedService.trustedReportCount(videoId, normalizedReportType) || 0;
+          }
+        } catch (error) {
+          context?.log?.(`[${stageName}] Failed to fetch moderation summary`, error);
+          summary = null;
+          trustedCount = 0;
+        }
+      }
+
+      const blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
+      const blurThumbnail = trustedCount >= normalizedBlurThreshold;
+
+      if (!item.metadata || typeof item.metadata !== "object") {
+        item.metadata = {};
+      }
+
+      const metadataModeration =
+        item.metadata.moderation && typeof item.metadata.moderation === "object"
+          ? { ...item.metadata.moderation }
+          : {};
+
+      metadataModeration.blockAutoplay = blockAutoplay;
+      metadataModeration.blurThumbnail = blurThumbnail;
+      metadataModeration.summary = summary;
+      item.metadata.moderation = metadataModeration;
+
+      if (!video.moderation || typeof video.moderation !== "object") {
+        video.moderation = {};
+      }
+
+      video.moderation.blockAutoplay = blockAutoplay;
+      video.moderation.blurThumbnail = blurThumbnail;
+      if (summary) {
+        video.moderation.summary = summary;
+      } else if (video.moderation.summary) {
+        delete video.moderation.summary;
+      }
+
+      if (blockAutoplay || blurThumbnail) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "moderation",
+          reason: blurThumbnail ? "blur" : "autoplay-block",
+          videoId: videoId || null,
+          reportType: normalizedReportType,
+          trustedCount,
+        });
       }
 
       results.push(item);

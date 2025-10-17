@@ -328,6 +328,7 @@ export class VideoCard {
     this.applyPointerDataset();
     this.applyOwnerDataset();
     this.applySourceDatasets();
+    this.applyModerationDatasets();
 
     const anchor = this.createElement("a", {
       classNames: [
@@ -516,7 +517,9 @@ export class VideoCard {
 
     this.thumbnailEl = img;
 
-    if (this.shouldMaskNsfwForOwner) {
+    const shouldBlurForModeration = this.video?.moderation?.blurThumbnail === true;
+
+    if (this.shouldMaskNsfwForOwner || shouldBlurForModeration) {
       img.dataset.thumbnailState = "blurred";
     }
 
@@ -1315,6 +1318,58 @@ export class VideoCard {
     }
 
     updateVideoCardSourceVisibility(this.root);
+  }
+
+  applyModerationDatasets() {
+    if (!this.root) {
+      return;
+    }
+
+    const moderation =
+      this.video?.moderation && typeof this.video.moderation === "object"
+        ? this.video.moderation
+        : null;
+
+    const blockAutoplay = moderation?.blockAutoplay === true;
+    const blurThumbnail = moderation?.blurThumbnail === true;
+    const summary =
+      moderation && typeof moderation.summary === "object"
+        ? moderation.summary
+        : null;
+
+    if (blockAutoplay) {
+      this.root.dataset.autoplayPolicy = "blocked";
+    } else if (this.root.dataset.autoplayPolicy === "blocked") {
+      delete this.root.dataset.autoplayPolicy;
+    }
+
+    if (this.thumbnailEl && !this.shouldMaskNsfwForOwner) {
+      if (blurThumbnail) {
+        this.thumbnailEl.dataset.thumbnailState = "blurred";
+      } else if (this.thumbnailEl.dataset.thumbnailState === "blurred") {
+        delete this.thumbnailEl.dataset.thumbnailState;
+      }
+    }
+
+    let nudityTrustedCount = 0;
+    if (summary && summary.types && typeof summary.types === "object") {
+      const nudityEntry = summary.types.nudity || summary.types["nudity"];
+      if (nudityEntry && Number.isFinite(nudityEntry.trusted)) {
+        nudityTrustedCount = nudityEntry.trusted;
+      }
+    }
+
+    if (nudityTrustedCount > 0) {
+      this.root.dataset.moderationReportType = "nudity";
+      this.root.dataset.moderationReportCount = String(nudityTrustedCount);
+    } else {
+      if (this.root.dataset.moderationReportType) {
+        delete this.root.dataset.moderationReportType;
+      }
+      if (this.root.dataset.moderationReportCount) {
+        delete this.root.dataset.moderationReportCount;
+      }
+    }
   }
 
   applyPlaybackDatasets() {
