@@ -91,6 +91,8 @@ export class UploadModal {
     this.modalAccessibility = null;
     this.modalBackdrop = null;
     this.modalPanel = null;
+    this.loadPromise = null;
+    this.eventsBound = false;
   }
 
   addEventListener(type, listener, options) {
@@ -123,49 +125,85 @@ export class UploadModal {
       return this.root;
     }
 
-    const targetContainer =
-      container || this.container || document.getElementById("modalContainer");
-    if (!targetContainer) {
-      throw new Error("Modal container element not found!");
+    if (this.loadPromise) {
+      return this.loadPromise;
     }
 
-    const response = await fetch("components/upload-modal.html");
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const html = await response.text();
+    this.loadPromise = (async () => {
+      const targetContainer =
+        container || this.container || document.getElementById("modalContainer");
+      if (!targetContainer) {
+        throw new Error("Modal container element not found!");
+      }
 
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = html;
-    this.removeTrackingScripts(wrapper);
-    targetContainer.appendChild(wrapper);
+      const existingModals = targetContainer.querySelectorAll("#uploadModal");
+      let modal = existingModals[0] || null;
+      if (existingModals.length > 1) {
+        existingModals.forEach((node, index) => {
+          if (index > 0) {
+            node.remove();
+          }
+        });
+      }
 
-    this.container = targetContainer;
-    this.root = wrapper.querySelector("#uploadModal");
-    if (!this.root) {
-      throw new Error("Upload modal markup missing after load.");
-    }
+      if (!modal) {
+        const response = await fetch("components/upload-modal.html");
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const html = await response.text();
 
-    this.cacheElements(wrapper);
-    this.setupModalAccessibility();
-    this.bindEvents();
-    this.registerR2Subscriptions();
+        const doc = targetContainer.ownerDocument || document;
+        const wrapper = doc.createElement("div");
+        wrapper.innerHTML = html;
+        this.removeTrackingScripts(wrapper);
 
-    this.renderCloudflareAdvancedVisibility(
-      this.r2Service?.getCloudflareAdvancedVisibility?.()
-    );
+        const fragment = doc.createDocumentFragment();
+        while (wrapper.firstChild) {
+          fragment.appendChild(wrapper.firstChild);
+        }
+        targetContainer.appendChild(fragment);
+
+        modal = targetContainer.querySelector("#uploadModal");
+      }
+
+      if (!modal) {
+        throw new Error("Upload modal markup missing after load.");
+      }
+
+      this.container = targetContainer;
+      this.root = modal;
+
+      this.cacheElements(modal);
+      this.setupModalAccessibility();
+      if (!this.eventsBound) {
+        this.bindEvents();
+        this.eventsBound = true;
+      }
+      this.registerR2Subscriptions();
+
+      this.renderCloudflareAdvancedVisibility(
+        this.r2Service?.getCloudflareAdvancedVisibility?.()
+      );
+
+      try {
+        await this.loadR2Settings();
+      } catch (error) {
+        // Errors already surfaced via the service listeners.
+      }
+
+      await this.refreshCloudflareBucketPreview();
+      this.setMode(this.activeMode);
+      this.updateCloudflareProgress(Number.NaN);
+
+      return this.root;
+    })();
 
     try {
-      await this.loadR2Settings();
-    } catch (error) {
-      // Errors already surfaced via the service listeners.
+      return await this.loadPromise;
+    } finally {
+      this.loadPromise = null;
     }
-
-    await this.refreshCloudflareBucketPreview();
-    this.setMode(this.activeMode);
-    this.updateCloudflareProgress(Number.NaN);
-
-    return this.root;
   }
 
   cacheElements(context) {
@@ -972,5 +1010,9 @@ export class UploadModal {
       });
     }
     this.r2Unsubscribes = [];
+    this.eventsBound = false;
+    this.loadPromise = null;
+    this.root = null;
+    this.container = null;
   }
 }
