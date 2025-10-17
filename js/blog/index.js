@@ -168,7 +168,7 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
   };
 
   const rafId = window.requestAnimationFrame(() => {
-    postHeight();
+    postHeight(true);
   });
   registerCleanup(() => {
     window.cancelAnimationFrame(rafId);

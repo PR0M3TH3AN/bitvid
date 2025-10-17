@@ -9,7 +9,7 @@
         <iframe
           id="blog-iframe"
           src="https://beta.bitvid.network/blog.html"
-          class="h-full w-full border-none"
+          class="w-full border-none"
         ></iframe>
         <script type="module">
           const iframe = document.querySelector('#blog-iframe');
@@ -35,6 +35,9 @@
               iframe.style.removeProperty('max-height');
             };
 
+            let stopRetryLoop = () => {};
+            let receivedFirstHeight = false;
+
             const handleMessage = (event) => {
               if (event.source !== iframe.contentWindow) {
                 return;
@@ -44,6 +47,8 @@
               }
               if (event.data?.type === 'bitvid-blog-resize') {
                 applyHeight(event.data.height);
+                receivedFirstHeight = true;
+                stopRetryLoop();
               }
             };
 
@@ -65,7 +70,7 @@
               const retryIntervalMs = 200;
               const intervalId = window.setInterval(() => {
                 attempts += 1;
-                if (attempts > maxAttempts) {
+                if (attempts > maxAttempts || receivedFirstHeight) {
                   window.clearInterval(intervalId);
                   return;
                 }
@@ -81,9 +86,20 @@
               } else {
                 signal.addEventListener('abort', stop, { once: true });
               }
+
+              stopRetryLoop = () => {
+                stop();
+                stopRetryLoop = () => {};
+              };
             };
 
+            let hasStarted = false;
+
             const runInitialRequests = () => {
+              if (hasStarted) {
+                return;
+              }
+              hasStarted = true;
               requestHeight();
               startRetryLoop();
             };
