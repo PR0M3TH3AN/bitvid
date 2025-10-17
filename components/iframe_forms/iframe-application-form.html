@@ -8,6 +8,11 @@
         const VALID_THEMES = new Set(["light", "dark"]);
         const STORAGE_KEY = "bitvid:theme";
         const FALLBACK_THEME = "dark";
+        const ACCENT_CSS_VARIABLES = Object.freeze({
+          accent: "--color-accent",
+          accentStrong: "--color-accent-strong",
+          accentPressed: "--color-accent-pressed",
+        });
         const { documentElement: root } = document;
 
         if (!(root instanceof HTMLElement)) {
@@ -62,10 +67,34 @@
           }
         };
 
+        const applyAccentOverridesFromParent = () => {
+          const parentRoot = getParentRoot();
+          if (!parentRoot) {
+            Object.values(ACCENT_CSS_VARIABLES).forEach((cssVariable) => {
+              root.style.removeProperty(cssVariable);
+            });
+            return;
+          }
+
+          Object.values(ACCENT_CSS_VARIABLES).forEach((cssVariable) => {
+            try {
+              const value = parentRoot.style.getPropertyValue(cssVariable);
+              if (typeof value === "string" && value.trim() !== "") {
+                root.style.setProperty(cssVariable, value.trim());
+              } else {
+                root.style.removeProperty(cssVariable);
+              }
+            } catch (error) {
+              root.style.removeProperty(cssVariable);
+            }
+          });
+        };
+
         const syncTheme = () => {
           const resolvedTheme =
             readParentTheme() ?? readStoredTheme() ?? FALLBACK_THEME;
           applyTheme(resolvedTheme);
+          applyAccentOverridesFromParent();
         };
 
         syncTheme();
