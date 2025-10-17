@@ -102,6 +102,9 @@
             };
 
             iframe.addEventListener('load', () => {
+              receivedFirstHeight = false;
+              stopRequestLoop();
+              hasStarted = false;
               runInitialRequests();
             }, { signal });
 
