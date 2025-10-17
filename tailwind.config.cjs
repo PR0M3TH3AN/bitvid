@@ -413,18 +413,18 @@ module.exports = {
       typography: (theme) => ({
         DEFAULT: {
           css: {
-            "--tw-prose-body": "var(--color-text-strong)",
+            "--tw-prose-body": "var(--color-text)",
             "--tw-prose-headings": "var(--color-text-strong)",
             "--tw-prose-links": "var(--color-primary)",
             "--tw-prose-bold": "var(--color-text-strong)",
             "--tw-prose-hr": "var(--color-border-subtle)",
             "--tw-prose-quotes": "var(--color-muted)",
-            "--tw-prose-counters": "var(--color-text-strong)",
-            "--tw-prose-bullets": "var(--color-border-subtle)",
+            "--tw-prose-counters": "var(--color-text-muted)",
+            "--tw-prose-bullets": "var(--color-text-muted)",
             "--tw-prose-code": "var(--color-secondary)",
             "--tw-prose-th-borders": "var(--color-border-subtle)",
             "--tw-prose-td-borders": "var(--color-border-subtle)",
-            color: "var(--color-text-strong)",
+            color: "var(--color-text)",
             lineHeight: "1.6",
             maxWidth: "none",
             fontFamily: theme("fontFamily.sans").join(", "),
