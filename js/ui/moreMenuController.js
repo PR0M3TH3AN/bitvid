@@ -425,23 +425,32 @@ export default class MoreMenuController {
   closeAllMoreMenus(options = {}) {
     const skipView = options?.skipView === true;
     const restoreFocus = options?.restoreFocus !== false;
+    const skipTrigger = options?.skipTrigger || null;
 
-    if (!skipView && this.videoListView && typeof this.videoListView.closeAllMenus === "function") {
-      this.videoListView.closeAllMenus({
+    if (
+      !skipView &&
+      this.videoListView &&
+      typeof this.videoListView.closeAllMenus === "function"
+    ) {
+      const viewOptions = {
         skipController: true,
         restoreFocus,
-      });
+      };
+      if (skipTrigger) {
+        viewOptions.skipTrigger = skipTrigger;
+      }
+      this.videoListView.closeAllMenus(viewOptions);
     }
 
     this.popoversByTrigger.forEach((entry) => {
-      if (entry?.popover && typeof entry.popover.close === "function") {
-        entry.popover.close({ restoreFocus });
+      if (!entry?.popover || typeof entry.popover.close !== "function") {
+        return;
       }
+      if (skipTrigger && entry.trigger === skipTrigger) {
+        return;
+      }
+      entry.popover.close({ restoreFocus });
     });
-
-    if (this.activePopover) {
-      this.activePopover = null;
-    }
   }
 
   attachMoreMenuHandlers(container) {

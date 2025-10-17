@@ -1421,7 +1421,7 @@ export class VideoCard {
         event.stopPropagation();
 
         if (this.onRequestCloseAllMenus) {
-          this.onRequestCloseAllMenus(this);
+          this.onRequestCloseAllMenus({ restoreFocus: false });
         } else {
           this.closeSettingsMenu({ restoreFocus: false });
         }
@@ -1446,9 +1446,27 @@ export class VideoCard {
         event.preventDefault();
         event.stopPropagation();
 
+        const trigger = this.moreMenuButton;
+        const isExpanded =
+          typeof trigger?.getAttribute === "function" &&
+          trigger.getAttribute("aria-expanded") === "true";
+
         if (this.onRequestCloseAllMenus) {
-          this.onRequestCloseAllMenus(this);
+          const options = { restoreFocus: false };
+          if (isExpanded) {
+            options.skipCard = this;
+            options.skipTrigger = trigger;
+          }
+          this.onRequestCloseAllMenus(options);
         }
+
+        if (isExpanded) {
+          this.closeSettingsMenu({ restoreFocus: false });
+          this.closeMoreMenu({ restoreFocus: false });
+          return;
+        }
+
+        this.closeSettingsMenu({ restoreFocus: false });
 
         if (this.callbacks.onRequestMoreMenu) {
           const actionForwarder = this.callbacks.onMoreAction
@@ -1468,7 +1486,7 @@ export class VideoCard {
 
           this.callbacks.onRequestMoreMenu({
             event,
-            trigger: this.moreMenuButton,
+            trigger,
             video: this.video,
             card: this,
             pointerInfo: this.pointerInfo,

@@ -441,7 +441,8 @@ export class VideoListView {
         },
         ensureGlobalMoreMenuHandlers: () =>
           this.utils.ensureGlobalMoreMenuHandlers(),
-        onRequestCloseAllMenus: () => this.closeAllMenus({ restoreFocus: false }),
+        onRequestCloseAllMenus: (detail = {}) =>
+          this.closeAllMenus({ restoreFocus: false, ...detail }),
         formatters: {
           formatTimeAgo: this.formatters.formatTimeAgo,
         },
@@ -1033,12 +1034,22 @@ export class VideoListView {
 
   closeAllMenus(options = {}) {
     const restoreFocus = options?.restoreFocus !== false;
+    const skipCard = options?.skipCard || null;
+    const skipTrigger = options?.skipTrigger || null;
 
     if (Array.isArray(this.videoCardInstances) && this.videoCardInstances.length) {
       this.videoCardInstances.forEach((card) => {
         if (!card) {
           return;
         }
+
+        if (skipCard && card === skipCard) {
+          if (typeof card.closeSettingsMenu === "function") {
+            card.closeSettingsMenu({ restoreFocus });
+          }
+          return;
+        }
+
         if (typeof card.closeMoreMenu === "function") {
           card.closeMoreMenu({ restoreFocus });
         }
@@ -1053,7 +1064,11 @@ export class VideoListView {
     }
 
     if (typeof this.utils.closeAllMenus === "function") {
-      this.utils.closeAllMenus({ skipView: true, restoreFocus });
+      const payload = { skipView: true, restoreFocus };
+      if (skipTrigger) {
+        payload.skipTrigger = skipTrigger;
+      }
+      this.utils.closeAllMenus(payload);
     }
   }
 
