@@ -2775,7 +2775,7 @@
   .sidebar-dropup-panel {
     position: absolute;
     left: 0;
-    right: 0;
+    right: calc(var(--space-sidebar-dropup-scroll-reserve) * -1);
     bottom: calc(100% + var(--space-sidebar-popover-offset));
     border-radius: var(--radius-xl);
     border: var(--border-width-hairline) solid var(--color-sidebar-border-strong);
@@ -2816,6 +2816,7 @@
     flex-direction: column;
     gap: var(--space-sidebar-popover-gap);
     width: 100%;
+    padding-inline-end: var(--space-sidebar-dropup-scroll-reserve);
     max-height: var(--sidebar-dropup-max-height);
     overflow-y: auto;
     overflow-x: hidden;
