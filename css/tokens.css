@@ -122,6 +122,10 @@
   --space-sidebar-popover-padding-block: 0.85rem;
   --space-sidebar-popover-padding-inline: 0.65rem;
   --space-sidebar-popover-gap: 0.45rem;
+  --space-sidebar-dropup-scroll-reserve: calc(
+    var(--scrollbar-thin-width) + var(--space-xs) + (var(--space-2xs) / 2)
+  );
+  --sidebar-dropup-max-height: calc(3rem * 6);
   --space-sidebar-nav-padding-block: 0.7rem;
   --space-sidebar-subnav-padding-block: 0.55rem;
   --space-sidebar-nav-translate: 0.35rem;
