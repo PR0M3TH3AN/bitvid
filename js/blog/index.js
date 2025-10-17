@@ -133,9 +133,35 @@ function resolveNotes() {
 }
 
 function setupEmbedHeightBroadcast({ root, registerCleanup }) {
-  if (typeof window === 'undefined' || !root || window.parent === window) {
+  if (typeof window === 'undefined' || window.parent === window) {
     return;
   }
+
+  const element = root || document.querySelector('.blog-app-root');
+  if (!element) {
+    return;
+  }
+
+  const parsePixelValue = (value) => {
+    if (typeof value !== 'string') {
+      return 0;
+    }
+    const numeric = Number.parseFloat(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+
+  const measureMargins = (node) => {
+    try {
+      const styles = window.getComputedStyle(node);
+      if (!styles) {
+        return 0;
+      }
+      return parsePixelValue(styles.marginTop) + parsePixelValue(styles.marginBottom);
+    } catch (error) {
+      userLogger.error('[blog] failed to read embed margin styles', error);
+    }
+    return 0;
+  };
 
   const parentOrigin = (() => {
     try {
@@ -149,11 +175,72 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
   })();
 
   let lastHeight = null;
+  let pendingFrame = null;
 
-  const postHeight = (force = false) => {
-    const rect = root.getBoundingClientRect();
-    const height = Math.ceil(rect.height);
-    if (!Number.isFinite(height) || height < 0) {
+  const measureAndPost = (force = false) => {
+    const docElement = document.documentElement;
+    const body = document.body;
+
+    const candidates = [];
+    const addCandidate = (value) => {
+      if (typeof value !== 'number') {
+        return;
+      }
+      const rounded = Math.max(0, Math.ceil(value));
+      if (Number.isFinite(rounded)) {
+        candidates.push(rounded);
+      }
+    };
+
+    const addElementMetrics = (node) => {
+      if (!node) {
+        return;
+      }
+      addCandidate(node.scrollHeight);
+      addCandidate(node.offsetHeight);
+      addCandidate(node.clientHeight);
+    };
+
+    let elementMargins = 0;
+    let rect = null;
+    try {
+      rect = element.getBoundingClientRect();
+      addCandidate(rect.height);
+      elementMargins = measureMargins(element);
+      addCandidate(rect.height + elementMargins);
+    } catch (error) {
+      userLogger.error('[blog] failed to compute embed rect for resize messaging', error);
+    }
+
+    addElementMetrics(element);
+    if (rect) {
+      const docRect = (() => {
+        try {
+          return document.documentElement?.getBoundingClientRect() ?? null;
+        } catch (error) {
+          userLogger.error('[blog] failed to compute document rect for resize messaging', error);
+          return null;
+        }
+      })();
+      if (docRect) {
+        const relativeTop = rect.top - docRect.top;
+        addCandidate(relativeTop + rect.height + elementMargins);
+      }
+    }
+    if (body && body !== element) {
+      const bodyMargins = measureMargins(body);
+      addElementMetrics(body);
+      addCandidate(body.scrollHeight + bodyMargins);
+    }
+    if (docElement && docElement !== element && docElement !== body) {
+      addElementMetrics(docElement);
+      const docMargins = measureMargins(docElement);
+      addCandidate(docElement.scrollHeight + docMargins);
+    }
+    addCandidate(window.innerHeight);
+
+    const height = candidates.length > 0 ? Math.max(...candidates) : null;
+    if (!Number.isFinite(height)) {
       return;
     }
     if (!force && height === lastHeight) {
@@ -167,20 +254,94 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
     }
   };
 
-  const rafId = window.requestAnimationFrame(() => {
-    postHeight(true);
+  const queueMeasurement = (force = false) => {
+    if (force) {
+      measureAndPost(true);
+      return;
+    }
+    if (pendingFrame != null) {
+      return;
+    }
+    pendingFrame = window.requestAnimationFrame(() => {
+      pendingFrame = null;
+      measureAndPost(false);
+    });
+  };
+
+  pendingFrame = window.requestAnimationFrame(() => {
+    pendingFrame = null;
+    measureAndPost(true);
   });
+
   registerCleanup(() => {
-    window.cancelAnimationFrame(rafId);
+    if (pendingFrame != null) {
+      window.cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+    }
   });
+
+  const observedNodes = new Set();
+
+  const observeNode = (observer, node) => {
+    if (!node || observedNodes.has(node)) {
+      return;
+    }
+    observer.observe(node);
+    observedNodes.add(node);
+  };
 
   if (typeof ResizeObserver === 'function') {
     const observer = new ResizeObserver(() => {
-      postHeight();
+      queueMeasurement();
     });
-    observer.observe(root);
+    observeNode(observer, element);
+    if (document.body) {
+      observeNode(observer, document.body);
+    }
+    if (document.documentElement) {
+      observeNode(observer, document.documentElement);
+    }
     registerCleanup(() => {
       observer.disconnect();
+      observedNodes.clear();
+    });
+  } else {
+    const intervalId = window.setInterval(() => {
+      queueMeasurement();
+    }, 500);
+    registerCleanup(() => {
+      window.clearInterval(intervalId);
+    });
+  }
+
+  const pollIntervalId = window.setInterval(() => {
+    queueMeasurement();
+  }, 750);
+  registerCleanup(() => {
+    window.clearInterval(pollIntervalId);
+  });
+
+  const mutationTargets = [element];
+  if (document.body && document.body !== element) {
+    mutationTargets.push(document.body);
+  }
+  if (document.documentElement && document.documentElement !== element && document.documentElement !== document.body) {
+    mutationTargets.push(document.documentElement);
+  }
+
+  if (typeof MutationObserver === 'function' && mutationTargets.length > 0) {
+    const mutationObserver = new MutationObserver(() => {
+      queueMeasurement();
+    });
+    mutationTargets.forEach((target) => {
+      mutationObserver.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: false,
+      });
+    });
+    registerCleanup(() => {
+      mutationObserver.disconnect();
     });
   }
 
@@ -192,7 +353,7 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
       return;
     }
     if (event?.data?.type === 'bitvid-blog-request-height') {
-      postHeight(true);
+      queueMeasurement(true);
     }
   };
 
@@ -200,6 +361,42 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
   registerCleanup(() => {
     window.removeEventListener('message', handleMessage);
   });
+
+  const handleResize = () => {
+    queueMeasurement();
+  };
+  window.addEventListener('resize', handleResize);
+  registerCleanup(() => {
+    window.removeEventListener('resize', handleResize);
+  });
+
+  const handleLoad = () => {
+    queueMeasurement(true);
+  };
+  window.addEventListener('load', handleLoad, { once: true });
+  registerCleanup(() => {
+    window.removeEventListener('load', handleLoad);
+  });
+
+  const fontSet = document.fonts;
+  if (fontSet) {
+    const handleFontEvent = () => {
+      queueMeasurement(true);
+    };
+
+    if (typeof fontSet.addEventListener === 'function') {
+      fontSet.addEventListener('loadingdone', handleFontEvent);
+      fontSet.addEventListener('loadingerror', handleFontEvent);
+      registerCleanup(() => {
+        fontSet.removeEventListener('loadingdone', handleFontEvent);
+        fontSet.removeEventListener('loadingerror', handleFontEvent);
+      });
+    } else if (typeof fontSet.ready?.then === 'function') {
+      fontSet.ready.then(() => {
+        queueMeasurement(true);
+      });
+    }
+  }
 }
 
 function formatDate(unixSeconds, { includeTime = false } = {}) {
