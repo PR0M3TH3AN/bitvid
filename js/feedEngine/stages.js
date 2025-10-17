@@ -88,6 +88,7 @@ export function createBlacklistFilterStage({
         : () => false;
 
     const options = { blacklistedEventIds: blacklist, isAuthorBlocked };
+
     const results = [];
 
     for (const item of items) {
@@ -245,6 +246,85 @@ export function createModerationStage({
       context?.log?.(`[${stageName}] Failed to prime report subscriptions`, error);
     }
 
+    const toStringSet = (input, { lowercase = false } = {}) => {
+      const output = new Set();
+      if (input instanceof Set) {
+        for (const value of input) {
+          if (typeof value !== "string") {
+            continue;
+          }
+          const trimmed = value.trim();
+          if (!trimmed) {
+            continue;
+          }
+          output.add(lowercase ? trimmed.toLowerCase() : trimmed);
+        }
+        return output;
+      }
+      if (Array.isArray(input)) {
+        for (const value of input) {
+          if (typeof value !== "string") {
+            continue;
+          }
+          const trimmed = value.trim();
+          if (!trimmed) {
+            continue;
+          }
+          output.add(lowercase ? trimmed.toLowerCase() : trimmed);
+        }
+      }
+      return output;
+    };
+
+    let adminSnapshot = {
+      whitelist: new Set(),
+      whitelistHex: new Set(),
+      blacklist: new Set(),
+      blacklistHex: new Set(),
+    };
+
+    try {
+      if (typeof resolvedService.getAdminListSnapshot === "function") {
+        const snapshot = resolvedService.getAdminListSnapshot();
+        if (snapshot && typeof snapshot === "object") {
+          adminSnapshot = {
+            whitelist: toStringSet(snapshot.whitelist),
+            whitelistHex: toStringSet(snapshot.whitelistHex, { lowercase: true }),
+            blacklist: toStringSet(snapshot.blacklist),
+            blacklistHex: toStringSet(snapshot.blacklistHex, { lowercase: true }),
+          };
+        }
+      }
+    } catch (error) {
+      context?.log?.(`[${stageName}] Failed to load admin list snapshot`, error);
+    }
+
+    const resolveAdminStatus =
+      typeof resolvedService.getAccessControlStatus === "function"
+        ? (identifier) => {
+            try {
+              return (
+                resolvedService.getAccessControlStatus(identifier, adminSnapshot) || {
+                  hex: "",
+                  whitelisted: false,
+                  blacklisted: false,
+                }
+              );
+            } catch (error) {
+              context?.log?.(`[${stageName}] getAccessControlStatus threw`, error);
+              return { hex: "", whitelisted: false, blacklisted: false };
+            }
+          }
+        : () => ({ hex: "", whitelisted: false, blacklisted: false });
+
+    const feedName =
+      typeof context?.feedName === "string" ? context.feedName.trim().toLowerCase() : "";
+    const runtimeVariant =
+      typeof context?.runtime?.feedVariant === "string"
+        ? context.runtime.feedVariant.trim().toLowerCase()
+        : "";
+    const isDiscoveryFeed = feedName === "discovery" || runtimeVariant === "discovery";
+
     const results = [];
 
     for (const item of items) {
@@ -260,6 +340,46 @@ export function createModerationStage({
       }
 
       const videoId = typeof video.id === "string" ? video.id : "";
+      const authorPubkey = typeof video.pubkey === "string" ? video.pubkey : "";
+
+      let viewerBlocked = false;
+      if (authorPubkey && typeof context?.runtime?.isAuthorBlocked === "function") {
+        try {
+          viewerBlocked = !!context.runtime.isAuthorBlocked(authorPubkey);
+        } catch (error) {
+          context?.log?.(`[${stageName}] isAuthorBlocked threw`, error);
+        }
+      }
+
+      const adminStatus = resolveAdminStatus(authorPubkey);
+      const authorHex =
+        (adminStatus?.hex && typeof adminStatus.hex === "string"
+          ? adminStatus.hex
+          : authorPubkey)
+          ?.trim()
+          .toLowerCase() || "";
+
+      if (viewerBlocked) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "filter",
+          reason: "viewer-block",
+          videoId: videoId || null,
+          pubkey: authorHex || authorPubkey || null,
+        });
+        continue;
+      }
+
+      if (adminStatus?.blacklisted) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "filter",
+          reason: "admin-blacklist",
+          videoId: videoId || null,
+          pubkey: authorHex || authorPubkey || null,
+        });
+        continue;
+      }
 
       let summary = null;
       let trustedCount = 0;
@@ -303,8 +423,13 @@ export function createModerationStage({
         }
       }
 
-      const blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
-      const blurThumbnail = trustedCount >= normalizedBlurThreshold;
+      let blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
+      let blurThumbnail = trustedCount >= normalizedBlurThreshold;
+      const adminWhitelistBypass = isDiscoveryFeed && adminStatus?.whitelisted === true;
+      if (adminWhitelistBypass) {
+        blockAutoplay = false;
+        blurThumbnail = false;
+      }
 
       if (!item.metadata || typeof item.metadata !== "object") {
         item.metadata = {};
@@ -323,6 +448,8 @@ export function createModerationStage({
       metadataModeration.trustedReporters = Array.isArray(trustedReporters)
         ? trustedReporters.slice()
         : [];
+      metadataModeration.adminWhitelist = adminStatus?.whitelisted === true;
+      metadataModeration.adminWhitelistBypass = adminWhitelistBypass;
       item.metadata.moderation = metadataModeration;
 
       if (!video.moderation || typeof video.moderation !== "object") {
@@ -333,6 +460,8 @@ export function createModerationStage({
       video.moderation.blurThumbnail = blurThumbnail;
       video.moderation.trustedCount = trustedCount;
       video.moderation.reportType = normalizedReportType;
+      video.moderation.adminWhitelist = adminStatus?.whitelisted === true;
+      video.moderation.adminWhitelistBypass = adminWhitelistBypass;
       if (Array.isArray(trustedReporters) && trustedReporters.length) {
         video.moderation.trustedReporters = trustedReporters.slice();
       } else if (video.moderation.trustedReporters) {

@@ -1,5 +1,7 @@
 import { nostrClient } from "../nostr.js";
 import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js";
+import { accessControl } from "../accessControl.js";
+import { userBlocks } from "../userBlocks.js";
 import logger from "../utils/logger.js";
 
 class SimpleEventEmitter {
@@ -115,6 +117,97 @@ function cloneSummary(summary) {
   };
 }
 
+function getNostrTools() {
+  if (typeof window !== "undefined" && window?.NostrTools) {
+    return window.NostrTools;
+  }
+  if (typeof globalThis !== "undefined" && globalThis?.NostrTools) {
+    return globalThis.NostrTools;
+  }
+  return null;
+}
+
+function bytesToHex(bytes) {
+  if (!bytes || typeof bytes.length !== "number") {
+    return "";
+  }
+
+  let hex = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    const value = bytes[index];
+    if (typeof value !== "number") {
+      return "";
+    }
+    const normalized = value & 0xff;
+    hex += normalized.toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+function decodeToHex(candidate) {
+  if (typeof candidate !== "string") {
+    return "";
+  }
+
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const tools = getNostrTools();
+    const decoder = tools?.nip19?.decode;
+    if (typeof decoder !== "function") {
+      return "";
+    }
+    const decoded = decoder(trimmed);
+    if (!decoded || decoded.type !== "npub") {
+      return "";
+    }
+    const data = decoded.data;
+    if (typeof data === "string") {
+      return normalizeHex(data);
+    }
+    return bytesToHex(data);
+  } catch (error) {
+    return "";
+  }
+}
+
+function encodeToNpub(hex) {
+  const normalized = normalizeHex(hex);
+  if (!normalized) {
+    return "";
+  }
+  try {
+    const tools = getNostrTools();
+    const encoder = tools?.nip19?.npubEncode;
+    if (typeof encoder !== "function") {
+      return "";
+    }
+    return encoder(normalized) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function normalizeToHex(candidate) {
+  const direct = normalizeHex(candidate);
+  if (direct) {
+    return direct;
+  }
+  return decodeToHex(candidate);
+}
+
+function createEmptyAdminSnapshot() {
+  return {
+    whitelist: new Set(),
+    whitelistHex: new Set(),
+    blacklist: new Set(),
+    blacklistHex: new Set(),
+  };
+}
+
 function resolveRelayList(client, { write = false } = {}) {
   if (!client) {
     return [];
@@ -212,12 +305,19 @@ function ensureNumber(value) {
 }
 
 export class ModerationService {
-  constructor({ nostrClient: client = null, logger: log = null } = {}) {
+  constructor({
+    nostrClient: client = null,
+    logger: log = null,
+    userBlocks: userBlockManager = null,
+    accessControl: accessControlService = null,
+  } = {}) {
     this.nostrClient = client;
     this.log = normalizeLogger(log);
 
     this.viewerPubkey = "";
     this.trustedContacts = new Set();
+    this.userBlocks = userBlockManager;
+    this.accessControl = accessControlService;
 
     this.contactSubscription = null;
     this.contactListPromise = null;
@@ -246,12 +346,185 @@ export class ModerationService {
     }
   }
 
+  setUserBlocks(manager) {
+    if (manager && manager !== this.userBlocks) {
+      this.userBlocks = manager;
+    }
+  }
+
+  setAccessControl(control) {
+    if (control && control !== this.accessControl) {
+      this.accessControl = control;
+    }
+  }
+
   on(eventName, handler) {
     return this.emitter.on(eventName, handler);
   }
 
   emit(eventName, detail) {
     this.emitter.emit(eventName, detail);
+  }
+
+  async ensureUserBlocksLoaded(pubkey) {
+    if (!this.userBlocks || typeof this.userBlocks.ensureLoaded !== "function") {
+      return;
+    }
+
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return;
+    }
+
+    try {
+      await this.userBlocks.ensureLoaded(normalized);
+    } catch (error) {
+      this.log("[moderationService] failed to load user block list", error);
+    }
+  }
+
+  isPubkeyBlockedByViewer(pubkey) {
+    if (!this.userBlocks || typeof this.userBlocks.isBlocked !== "function") {
+      return false;
+    }
+
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return false;
+    }
+
+    try {
+      return this.userBlocks.isBlocked(normalized) === true;
+    } catch (error) {
+      this.log("[moderationService] user block lookup failed", error);
+      return false;
+    }
+  }
+
+  getAdminListSnapshot() {
+    const snapshot = createEmptyAdminSnapshot();
+
+    if (!this.accessControl) {
+      return snapshot;
+    }
+
+    let whitelist = [];
+    let blacklist = [];
+
+    if (typeof this.accessControl.getWhitelist === "function") {
+      try {
+        whitelist = this.accessControl.getWhitelist() || [];
+      } catch (error) {
+        this.log("[moderationService] accessControl.getWhitelist threw", error);
+      }
+    }
+
+    if (typeof this.accessControl.getBlacklist === "function") {
+      try {
+        blacklist = this.accessControl.getBlacklist() || [];
+      } catch (error) {
+        this.log("[moderationService] accessControl.getBlacklist threw", error);
+      }
+    }
+
+    for (const entry of whitelist) {
+      if (typeof entry !== "string") {
+        continue;
+      }
+      const trimmed = entry.trim();
+      if (!trimmed) {
+        continue;
+      }
+      snapshot.whitelist.add(trimmed);
+      const decoded = decodeToHex(trimmed);
+      if (decoded) {
+        snapshot.whitelistHex.add(decoded);
+      }
+    }
+
+    for (const entry of blacklist) {
+      if (typeof entry !== "string") {
+        continue;
+      }
+      const trimmed = entry.trim();
+      if (!trimmed) {
+        continue;
+      }
+      snapshot.blacklist.add(trimmed);
+      const decoded = decodeToHex(trimmed);
+      if (decoded) {
+        snapshot.blacklistHex.add(decoded);
+      }
+    }
+
+    return snapshot;
+  }
+
+  getAccessControlStatus(candidate, snapshot = null) {
+    const resolvedSnapshot = snapshot && typeof snapshot === "object" ? snapshot : this.getAdminListSnapshot();
+    const whitelist =
+      resolvedSnapshot?.whitelist instanceof Set
+        ? resolvedSnapshot.whitelist
+        : new Set();
+    const whitelistHex =
+      resolvedSnapshot?.whitelistHex instanceof Set
+        ? resolvedSnapshot.whitelistHex
+        : new Set();
+    const blacklist =
+      resolvedSnapshot?.blacklist instanceof Set
+        ? resolvedSnapshot.blacklist
+        : new Set();
+    const blacklistHex =
+      resolvedSnapshot?.blacklistHex instanceof Set
+        ? resolvedSnapshot.blacklistHex
+        : new Set();
+
+    const hex = normalizeToHex(candidate);
+    const status = {
+      hex,
+      whitelisted: false,
+      blacklisted: false,
+      npub: "",
+    };
+
+    if (hex) {
+      if (blacklistHex.has(hex)) {
+        status.blacklisted = true;
+        return status;
+      }
+      if (whitelistHex.has(hex)) {
+        status.whitelisted = true;
+        status.npub = encodeToNpub(hex) || "";
+        return status;
+      }
+    }
+
+    const encoded = hex ? encodeToNpub(hex) : "";
+    if (encoded) {
+      status.npub = encoded;
+      if (blacklist.has(encoded)) {
+        status.blacklisted = true;
+        return status;
+      }
+      if (whitelist.has(encoded)) {
+        status.whitelisted = true;
+        return status;
+      }
+    }
+
+    if (typeof candidate === "string" && !status.npub) {
+      const trimmed = candidate.trim();
+      if (trimmed && (blacklist.has(trimmed) || whitelist.has(trimmed))) {
+        status.npub = trimmed;
+        if (blacklist.has(trimmed)) {
+          status.blacklisted = true;
+        } else if (whitelist.has(trimmed)) {
+          status.whitelisted = true;
+        }
+      }
+    }
+
+    return status;
   }
 
   async ensurePool() {
@@ -284,6 +557,7 @@ export class ModerationService {
       } catch (error) {
         this.log("[moderationService] contact hydration failed", error);
       }
+      await this.ensureUserBlocksLoaded(normalized);
       return this.viewerPubkey;
     }
 
@@ -301,6 +575,7 @@ export class ModerationService {
     this.contactSubscription = null;
 
     if (!normalized) {
+      await this.ensureUserBlocksLoaded(normalized);
       return this.viewerPubkey;
     }
 
@@ -323,6 +598,7 @@ export class ModerationService {
       this.log("[moderationService] failed to subscribe to contact list", error);
     });
 
+    await this.ensureUserBlocksLoaded(normalized);
     return this.viewerPubkey;
   }
 
@@ -611,9 +887,25 @@ export class ModerationService {
 
     const typeStats = new Map();
     let totalTrusted = 0;
+    const adminSnapshot = this.getAdminListSnapshot();
 
     for (const [reporter, typeMap] of eventReports.entries()) {
-      const isTrusted = this.trustedContacts.has(reporter);
+      const status = this.getAccessControlStatus(reporter, adminSnapshot);
+      const reporterHex = status.hex || normalizeHex(reporter);
+      if (!reporterHex) {
+        continue;
+      }
+
+      if (this.isPubkeyBlockedByViewer(reporterHex)) {
+        continue;
+      }
+
+      if (status.blacklisted) {
+        continue;
+      }
+
+      const isTrustedReporter = status.whitelisted || this.trustedContacts.has(reporterHex);
+
       for (const [type, detail] of typeMap.entries()) {
         let stats = typeStats.get(type);
         if (!stats) {
@@ -625,7 +917,7 @@ export class ModerationService {
         if (createdAt > stats.latest) {
           stats.latest = createdAt;
         }
-        if (isTrusted) {
+        if (isTrustedReporter) {
           stats.trusted += 1;
           totalTrusted += 1;
         }
@@ -678,8 +970,25 @@ export class ModerationService {
     const normalizedType = normalizeReportType(type);
     const results = [];
 
+    const adminSnapshot = this.getAdminListSnapshot();
+
     for (const [reporter, typeMap] of eventReports.entries()) {
-      if (!this.trustedContacts.has(reporter)) {
+      const status = this.getAccessControlStatus(reporter, adminSnapshot);
+      const reporterHex = status.hex || normalizeHex(reporter);
+      if (!reporterHex) {
+        continue;
+      }
+
+      if (this.isPubkeyBlockedByViewer(reporterHex)) {
+        continue;
+      }
+
+      if (status.blacklisted) {
+        continue;
+      }
+
+      const isTrustedReporter = status.whitelisted || this.trustedContacts.has(reporterHex);
+      if (!isTrustedReporter) {
         continue;
       }
 
@@ -689,7 +998,7 @@ export class ModerationService {
           continue;
         }
         results.push({
-          pubkey: reporter,
+          pubkey: reporterHex,
           latest: ensureNumber(detail?.created_at),
         });
         continue;
@@ -702,7 +1011,7 @@ export class ModerationService {
           latest = candidate;
         }
       }
-      results.push({ pubkey: reporter, latest });
+      results.push({ pubkey: reporterHex, latest });
     }
 
     if (!results.length) {
@@ -831,6 +1140,8 @@ export class ModerationService {
 const moderationService = new ModerationService({
   nostrClient,
   logger,
+  userBlocks,
+  accessControl,
 });
 
 export default moderationService;
