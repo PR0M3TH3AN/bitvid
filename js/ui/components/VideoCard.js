@@ -1051,7 +1051,7 @@ export class VideoCard {
       healthy: {
         icon: "🟢",
         aria: "WebTorrent peers available",
-        variant: "info",
+        variant: "success",
         role: "status"
       },
       unhealthy: {

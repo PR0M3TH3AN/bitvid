@@ -450,7 +450,7 @@ function setBadge(card, state, details) {
     healthy: {
       icon: "🟢",
       aria: "WebTorrent peers available",
-      variant: "info",
+      variant: "success",
       role: "status",
     },
     unhealthy: {
