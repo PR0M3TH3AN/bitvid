@@ -15,6 +15,7 @@ import createPopover from "./ui/overlay/popoverEngine.js";
 import { VideoCard } from "./ui/components/VideoCard.js";
 import { createChannelProfileMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
+import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import {
   calculateZapShares,
   describeShareType,
@@ -2097,73 +2098,26 @@ function trimProfileString(value) {
   return value.trim();
 }
 
-function normalizeProfileMediaUrl(value) {
-  const trimmed = trimProfileString(value);
-  if (!trimmed) {
-    return "";
-  }
-
-  if (/^data:image\//i.test(trimmed)) {
-    return trimmed;
-  }
-
-  if (/^blob:/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-
-  if (trimmed.startsWith("//")) {
-    return `https:${trimmed}`;
-  }
-
-  if (/^ipfs:\/\//i.test(trimmed)) {
-    const ipfsPath = trimmed
-      .replace(/^ipfs:\/\//i, "")
-      .replace(/^ipfs\//i, "");
-    if (!ipfsPath) {
-      return "";
-    }
-    return `https://ipfs.io/ipfs/${encodeURI(ipfsPath)}`;
-  }
-
-  if (/^(?:\.\.\/|\.\/|\/)/.test(trimmed)) {
-    return trimmed;
-  }
-
-  if (/^assets\//i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const localhostPattern = /^(?:localhost|(?:\d{1,3}\.){3}\d{1,3})(?::\d+)?(?:[/?#].*)?$/i;
-  if (localhostPattern.test(trimmed)) {
-    return `http://${trimmed}`;
-  }
-
-  const domainPattern =
-    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,}(?::\d+)?(?:[/?#].*)?$/i;
-  if (domainPattern.test(trimmed)) {
-    return `https://${trimmed}`;
-  }
-
-  return "";
-}
-
 function normalizeChannelProfileMetadata(raw = {}) {
   const name =
     trimProfileString(raw.display_name) ||
     trimProfileString(raw.name) ||
     "Unknown User";
   const picture =
-    normalizeProfileMediaUrl(raw.picture) ||
-    normalizeProfileMediaUrl(raw.image) ||
+    sanitizeProfileMediaUrl(raw.picture) ||
+    sanitizeProfileMediaUrl(raw.image) ||
     FALLBACK_CHANNEL_AVATAR;
   const about = trimProfileString(raw.about || raw.bio);
   const website = trimProfileString(raw.website || raw.url);
   const banner =
-    normalizeProfileMediaUrl(raw.banner || raw.header || raw.background) || "";
+    sanitizeProfileMediaUrl(
+      raw.banner ||
+        raw.header ||
+        raw.background ||
+        raw.cover ||
+        raw.cover_image ||
+        raw.coverImage
+    ) || "";
   const lud16 = trimProfileString(raw.lud16);
   const lud06 = trimProfileString(raw.lud06);
   const lightningAddress =

@@ -1,4 +1,5 @@
 import { userLogger } from "../utils/logger.js";
+import { sanitizeProfileMediaUrl } from "../utils/profileMedia.js";
 import {
   readUrlHealthFromStorage,
   removeUrlHealthFromStorage,
@@ -577,7 +578,9 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
 
   const normalized = {
     name: profile.name || profile.display_name || "Unknown",
-    picture: profile.picture || "assets/svg/default-profile.svg",
+    picture:
+      sanitizeProfileMediaUrl(profile.picture || profile.image) ||
+      "assets/svg/default-profile.svg",
   };
 
   const about = sanitizeProfileString(profile.about || profile.aboutMe);
@@ -590,7 +593,14 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
     normalized.website = website;
   }
 
-  const banner = sanitizeProfileString(profile.banner || profile.header);
+  const banner = sanitizeProfileMediaUrl(
+    profile.banner ||
+      profile.header ||
+      profile.background ||
+      profile.cover ||
+      profile.cover_image ||
+      profile.coverImage
+  );
   if (banner) {
     normalized.banner = banner;
   }
