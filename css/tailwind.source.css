@@ -2815,6 +2815,9 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-sidebar-popover-gap);
+    max-height: var(--sidebar-dropup-max-height);
+    overflow-y: auto;
+    scrollbar-gutter: stable both-edges;
   }
 
   #sidebar[data-footer-state="expanded"] .sidebar-nav {
