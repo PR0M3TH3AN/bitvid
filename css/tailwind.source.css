@@ -1136,11 +1136,16 @@
   }
 
   .modal-close {
-    @apply focus-ring flex h-10 w-10 items-center justify-center rounded-full bg-overlay-black bg-opacity-40 text-muted transition duration-base ease-out;
+    @apply focus-ring flex h-10 w-10 items-center justify-center rounded-full transition duration-base ease-out;
+    border: var(--border-width-hairline) solid var(--color-border-translucent-medium);
+    background: var(--color-surface-tint-subtle);
+    color: var(--color-text-frosted-strong);
   }
 
   .modal-close:hover {
-    @apply bg-overlay-black bg-opacity-60 text-text;
+    background: var(--color-border-translucent);
+    border-color: var(--color-border-translucent-stronger);
+    color: var(--color-text);
   }
 
   .modal-body {
