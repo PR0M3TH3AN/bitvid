@@ -10,7 +10,7 @@
 >
   <div class="bv-modal-backdrop"></div>
 
-  <div class="bv-modal__panel modal-sheet relative flex max-h-modal-shell flex-col overflow-hidden" tabindex="-1">
+  <div class="bv-modal__panel modal-sheet profile-modal" tabindex="-1">
       <!-- Modal Header -->
       <div class="modal-header">
         <h2 id="profileModalTitle" class="text-xl font-bold text-text">Profile</h2>
@@ -33,13 +33,10 @@
       </div>
 
       <!-- Modal Body -->
-      <div class="p-6 flex-1 overflow-hidden">
-        <div class="flex flex-col lg:flex-row gap-6 h-full">
+      <div class="profile-modal__body">
+        <div class="profile-modal__layout">
           <!-- Left navigation column -->
-          <nav
-            class="flex flex-wrap gap-2 flex-shrink-0 lg:flex-col"
-            aria-label="Profile sections"
-          >
+          <nav class="profile-modal__nav" aria-label="Profile sections">
             <button
               id="profileNavAccount"
               type="button"
@@ -98,7 +95,7 @@
           </nav>
 
           <!-- Right content panes -->
-          <div class="flex-1 min-h-modal-pane overflow-y-auto pr-1">
+          <div class="profile-modal__panes">
             <section
               id="profilePaneAccount"
               class="profile-pane space-y-6"

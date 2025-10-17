@@ -790,8 +790,7 @@ export class ProfileModalController {
 
     this.cacheDomReferences();
     this.registerEventListeners();
-    this.updateFocusTrap();
-    this.callbacks.onPaneShown(this.getActivePane(), { controller: this });
+    this.selectPane(this.getActivePane());
 
     return true;
   }
@@ -2873,8 +2872,14 @@ export class ProfileModalController {
     }
 
     if (adminPane instanceof HTMLElement) {
-      adminPane.classList.toggle("hidden", !canEdit);
-      adminPane.setAttribute("aria-hidden", (!canEdit).toString());
+      if (!canEdit) {
+        adminPane.classList.add("hidden");
+        adminPane.setAttribute("aria-hidden", "true");
+      } else {
+        const isActive = this.getActivePane() === "admin";
+        adminPane.classList.toggle("hidden", !isActive);
+        adminPane.setAttribute("aria-hidden", (!isActive).toString());
+      }
     }
 
     if (loadError) {

@@ -237,6 +237,9 @@
   --modal-body-max-height: calc(92vh - 4rem);
   --modal-pane-max-height: 48vh;
   --modal-pane-min-height: 20rem;
+  --profile-modal-nav-min-width: max-content;
+  --profile-modal-nav-max-width: max-content;
+  --profile-modal-scrollbar-offset: var(--space-2xs);
   --modal-embed-height: 80vh;
   --profile-history-max-height: 26.25rem;
   --status-log-min-height: 5rem;
