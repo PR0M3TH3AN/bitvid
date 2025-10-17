@@ -25,6 +25,8 @@
               }
             })();
 
+            iframe.style.display = 'block';
+
             const applyHeight = (height) => {
               const numeric = Math.max(0, Math.round(Number(height)));
               if (!Number.isFinite(numeric)) {
@@ -35,8 +37,51 @@
               iframe.style.removeProperty('max-height');
             };
 
-            let stopRetryLoop = () => {};
             let receivedFirstHeight = false;
+            let retryIntervalId = null;
+            let heartbeatIntervalId = null;
+
+            const stopRequestLoop = () => {
+              if (retryIntervalId === null) {
+                return;
+              }
+              window.clearInterval(retryIntervalId);
+              retryIntervalId = null;
+            };
+
+            const stopHeartbeat = () => {
+              if (heartbeatIntervalId === null) {
+                return;
+              }
+              window.clearInterval(heartbeatIntervalId);
+              heartbeatIntervalId = null;
+            };
+
+            const startRequestLoop = () => {
+              if (retryIntervalId !== null) {
+                return;
+              }
+              retryIntervalId = window.setInterval(() => {
+                if (receivedFirstHeight || signal.aborted) {
+                  stopRequestLoop();
+                  return;
+                }
+                requestHeight();
+              }, 250);
+            };
+
+            const startHeartbeat = () => {
+              if (heartbeatIntervalId !== null || signal.aborted) {
+                return;
+              }
+              heartbeatIntervalId = window.setInterval(() => {
+                if (signal.aborted) {
+                  stopHeartbeat();
+                  return;
+                }
+                requestHeight();
+              }, 8000);
+            };
 
             const handleMessage = (event) => {
               if (event.source !== iframe.contentWindow) {
@@ -48,7 +93,8 @@
               if (event.data?.type === 'bitvid-blog-resize') {
                 applyHeight(event.data.height);
                 receivedFirstHeight = true;
-                stopRetryLoop();
+                stopRequestLoop();
+                startHeartbeat();
               }
             };
 
@@ -64,35 +110,6 @@
               );
             };
 
-            const startRetryLoop = () => {
-              const maxAttempts = 5;
-              let attempts = 0;
-              const retryIntervalMs = 200;
-              const intervalId = window.setInterval(() => {
-                attempts += 1;
-                if (attempts > maxAttempts || receivedFirstHeight) {
-                  window.clearInterval(intervalId);
-                  return;
-                }
-                requestHeight();
-              }, retryIntervalMs);
-
-              const stop = () => {
-                window.clearInterval(intervalId);
-              };
-
-              if (signal.aborted) {
-                stop();
-              } else {
-                signal.addEventListener('abort', stop, { once: true });
-              }
-
-              stopRetryLoop = () => {
-                stop();
-                stopRetryLoop = () => {};
-              };
-            };
-
             let hasStarted = false;
 
             const runInitialRequests = () => {
@@ -101,7 +118,16 @@
               }
               hasStarted = true;
               requestHeight();
-              startRetryLoop();
+              startRequestLoop();
+              if (signal.aborted) {
+                stopRequestLoop();
+                stopHeartbeat();
+              } else {
+                signal.addEventListener('abort', () => {
+                  stopRequestLoop();
+                  stopHeartbeat();
+                }, { once: true });
+              }
             };
 
             iframe.addEventListener('load', () => {
@@ -117,8 +143,40 @@
               runInitialRequests();
             }
 
+            const retriggerHeightRequest = ({ forceLoop = false } = {}) => {
+              if (signal.aborted) {
+                return;
+              }
+              requestHeight();
+              if (forceLoop) {
+                receivedFirstHeight = false;
+                stopRequestLoop();
+                startRequestLoop();
+              }
+            };
+
+            window.addEventListener('resize', () => {
+              retriggerHeightRequest({ forceLoop: true });
+            }, { signal });
+
+            window.addEventListener('orientationchange', () => {
+              retriggerHeightRequest({ forceLoop: true });
+            }, { signal });
+
+            document.addEventListener('visibilitychange', () => {
+              if (document.visibilityState === 'visible') {
+                retriggerHeightRequest({});
+              }
+            }, { signal });
+
+            window.addEventListener('pageshow', () => {
+              retriggerHeightRequest({ forceLoop: true });
+            }, { signal, once: true });
+
             window.addEventListener('pagehide', () => {
               abortController.abort();
+              stopRequestLoop();
+              stopHeartbeat();
             }, { once: true });
           }
         </script>

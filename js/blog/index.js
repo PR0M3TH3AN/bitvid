@@ -133,7 +133,12 @@ function resolveNotes() {
 }
 
 function setupEmbedHeightBroadcast({ root, registerCleanup }) {
-  if (typeof window === 'undefined' || !root || window.parent === window) {
+  if (typeof window === 'undefined' || window.parent === window) {
+    return;
+  }
+
+  const element = root || document.querySelector('.blog-app-root');
+  if (!element) {
     return;
   }
 
@@ -149,11 +154,75 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
   })();
 
   let lastHeight = null;
+  let pendingFrame = null;
+  let settlingFrameCount = 0;
 
-  const postHeight = (force = false) => {
-    const rect = root.getBoundingClientRect();
-    const height = Math.ceil(rect.height);
-    if (!Number.isFinite(height) || height < 0) {
+  const collectElementMetrics = (node, { includeMargins = false } = {}) => {
+    if (!node) {
+      return [];
+    }
+
+    const numbers = [];
+
+    const pushValue = (value) => {
+      if (typeof value !== 'number') {
+        return;
+      }
+      const rounded = Math.max(0, Math.ceil(value));
+      if (Number.isFinite(rounded)) {
+        numbers.push(rounded);
+      }
+    };
+
+    try {
+      const rect = node.getBoundingClientRect();
+      pushValue(rect.height);
+      if (includeMargins) {
+        const computed = window.getComputedStyle(node);
+        const marginTop = Number.parseFloat(computed.marginTop) || 0;
+        const marginBottom = Number.parseFloat(computed.marginBottom) || 0;
+        pushValue(rect.height + marginTop + marginBottom);
+      }
+    } catch (error) {
+      userLogger.error('[blog] failed to compute embed rect for resize messaging', error);
+    }
+
+    pushValue(node.scrollHeight);
+    pushValue(node.offsetHeight);
+    pushValue(node.clientHeight);
+
+    return numbers;
+  };
+
+  const measureHeight = () => {
+    const docElement = document.documentElement;
+    const body = document.body;
+    const scrollingElement = document.scrollingElement;
+
+    const candidates = [
+      ...collectElementMetrics(element, { includeMargins: true }),
+      ...collectElementMetrics(body),
+      ...collectElementMetrics(docElement),
+      ...collectElementMetrics(scrollingElement),
+    ];
+
+    if (typeof window.innerHeight === 'number') {
+      const scrollTop =
+        typeof window.scrollY === 'number'
+          ? window.scrollY
+          : typeof window.pageYOffset === 'number'
+            ? window.pageYOffset
+            : 0;
+      candidates.push(Math.max(0, Math.ceil(window.innerHeight + scrollTop)));
+    }
+
+    const height = candidates.length > 0 ? Math.max(...candidates) : null;
+    return Number.isFinite(height) ? height : null;
+  };
+
+  const measureAndPost = ({ force = false } = {}) => {
+    const height = measureHeight();
+    if (!Number.isFinite(height)) {
       return;
     }
     if (!force && height === lastHeight) {
@@ -167,20 +236,104 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
     }
   };
 
-  const rafId = window.requestAnimationFrame(() => {
-    postHeight(true);
-  });
+  const queueMeasurement = ({ force = false, immediate = false } = {}) => {
+    if (immediate) {
+      measureAndPost({ force });
+      return;
+    }
+
+    if (force) {
+      measureAndPost({ force: true });
+      return;
+    }
+
+    if (pendingFrame != null) {
+      return;
+    }
+
+    pendingFrame = window.requestAnimationFrame(() => {
+      pendingFrame = null;
+      measureAndPost({ force: false });
+    });
+  };
+
+  const runInitialBurst = () => {
+    const MAX_INITIAL_FRAMES = 24;
+    const step = () => {
+      pendingFrame = null;
+      measureAndPost({ force: settlingFrameCount < 2 });
+      settlingFrameCount += 1;
+      if (settlingFrameCount < MAX_INITIAL_FRAMES) {
+        pendingFrame = window.requestAnimationFrame(step);
+      }
+    };
+    pendingFrame = window.requestAnimationFrame(step);
+  };
+
+  runInitialBurst();
+
   registerCleanup(() => {
-    window.cancelAnimationFrame(rafId);
+    if (pendingFrame != null) {
+      window.cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+    }
   });
+
+  const observedNodes = new Set();
+
+  const observeNode = (observer, node) => {
+    if (!node || observedNodes.has(node)) {
+      return;
+    }
+    observer.observe(node);
+    observedNodes.add(node);
+  };
 
   if (typeof ResizeObserver === 'function') {
     const observer = new ResizeObserver(() => {
-      postHeight();
+      queueMeasurement({});
     });
-    observer.observe(root);
+    observeNode(observer, element);
+    if (document.body) {
+      observeNode(observer, document.body);
+    }
+    if (document.documentElement) {
+      observeNode(observer, document.documentElement);
+    }
     registerCleanup(() => {
       observer.disconnect();
+      observedNodes.clear();
+    });
+  } else {
+    const intervalId = window.setInterval(() => {
+      queueMeasurement({});
+    }, 500);
+    registerCleanup(() => {
+      window.clearInterval(intervalId);
+    });
+  }
+
+  const mutationTargets = [element];
+  if (document.body && document.body !== element) {
+    mutationTargets.push(document.body);
+  }
+  if (document.documentElement && document.documentElement !== element && document.documentElement !== document.body) {
+    mutationTargets.push(document.documentElement);
+  }
+
+  if (typeof MutationObserver === 'function' && mutationTargets.length > 0) {
+    const mutationObserver = new MutationObserver(() => {
+      queueMeasurement({});
+    });
+    mutationTargets.forEach((target) => {
+      mutationObserver.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: false,
+      });
+    });
+    registerCleanup(() => {
+      mutationObserver.disconnect();
     });
   }
 
@@ -192,13 +345,88 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
       return;
     }
     if (event?.data?.type === 'bitvid-blog-request-height') {
-      postHeight(true);
+      queueMeasurement({ force: true });
     }
   };
 
   window.addEventListener('message', handleMessage);
   registerCleanup(() => {
     window.removeEventListener('message', handleMessage);
+  });
+
+  const handleResize = () => {
+    queueMeasurement({});
+  };
+  window.addEventListener('resize', handleResize);
+  registerCleanup(() => {
+    window.removeEventListener('resize', handleResize);
+  });
+
+  const handleLoad = () => {
+    queueMeasurement({ force: true });
+  };
+  window.addEventListener('load', handleLoad, { once: true });
+  registerCleanup(() => {
+    window.removeEventListener('load', handleLoad);
+  });
+
+  const handleOrientation = () => {
+    queueMeasurement({ force: true });
+  };
+  window.addEventListener('orientationchange', handleOrientation);
+  registerCleanup(() => {
+    window.removeEventListener('orientationchange', handleOrientation);
+  });
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      queueMeasurement({ force: true });
+    }
+  };
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  registerCleanup(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  });
+
+  const handleTransitionEnd = () => {
+    queueMeasurement({});
+  };
+  window.addEventListener('transitionend', handleTransitionEnd, true);
+  window.addEventListener('animationend', handleTransitionEnd, true);
+  registerCleanup(() => {
+    window.removeEventListener('transitionend', handleTransitionEnd, true);
+    window.removeEventListener('animationend', handleTransitionEnd, true);
+  });
+
+  if (document.fonts && typeof document.fonts.addEventListener === 'function') {
+    const handleFontEvent = () => {
+      queueMeasurement({ force: true });
+    };
+    document.fonts.addEventListener('loadingdone', handleFontEvent);
+    document.fonts.addEventListener('loadingerror', handleFontEvent);
+    registerCleanup(() => {
+      document.fonts.removeEventListener('loadingdone', handleFontEvent);
+      document.fonts.removeEventListener('loadingerror', handleFontEvent);
+    });
+  }
+
+  const fastIntervalId = window.setInterval(() => {
+    queueMeasurement({});
+  }, 500);
+
+  const slowIntervalTimeout = window.setTimeout(() => {
+    window.clearInterval(fastIntervalId);
+    const slowIntervalId = window.setInterval(() => {
+      queueMeasurement({});
+    }, 3000);
+    registerCleanup(() => {
+      window.clearInterval(slowIntervalId);
+    });
+  }, 15000);
+
+  registerCleanup(() => {
+    window.clearInterval(fastIntervalId);
+    window.clearTimeout(slowIntervalTimeout);
   });
 }
 
