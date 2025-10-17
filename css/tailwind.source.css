@@ -2815,9 +2815,16 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-sidebar-popover-gap);
+    width: 100%;
     max-height: var(--sidebar-dropup-max-height);
     overflow-y: auto;
+    overflow-x: hidden;
     scrollbar-gutter: stable both-edges;
+  }
+
+  .sidebar-dropup-panel__inner > * {
+    width: 100%;
+    min-width: 0;
   }
 
   #sidebar[data-footer-state="expanded"] .sidebar-nav {
