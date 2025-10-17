@@ -862,6 +862,12 @@ class Application {
             videoListRoot: container || this.videoList || null,
           }),
         ensureGlobalMoreMenuHandlers: () => this.ensureGlobalMoreMenuHandlers(),
+        requestMoreMenu: (detail = {}) => this.requestMoreMenu(detail),
+        closeMoreMenu: (detail = {}) => this.closeMoreMenu(detail),
+        requestSettingsMenu: (detail = {}) =>
+          this.requestVideoSettingsMenu(detail),
+        closeSettingsMenu: (detail = {}) =>
+          this.closeVideoSettingsMenu(detail),
         closeAllMenus: (options) => this.closeAllMoreMenus(options),
       },
       renderers: {
