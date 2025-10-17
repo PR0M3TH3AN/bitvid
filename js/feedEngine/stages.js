@@ -263,6 +263,7 @@ export function createModerationStage({
 
       let summary = null;
       let trustedCount = 0;
+      let trustedReporters = [];
       if (videoId) {
         try {
           if (typeof resolvedService.getTrustedReportSummary === "function") {
@@ -271,10 +272,34 @@ export function createModerationStage({
           if (typeof resolvedService.trustedReportCount === "function") {
             trustedCount = resolvedService.trustedReportCount(videoId, normalizedReportType) || 0;
           }
+          if (typeof resolvedService.getTrustedReporters === "function") {
+            const reporterEntries = resolvedService.getTrustedReporters(
+              videoId,
+              normalizedReportType
+            );
+            if (Array.isArray(reporterEntries) && reporterEntries.length) {
+              trustedReporters = reporterEntries
+                .map((entry) => {
+                  if (!entry || typeof entry !== "object") {
+                    return null;
+                  }
+                  const pubkey = typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
+                  if (!pubkey) {
+                    return null;
+                  }
+                  const latest = Number.isFinite(entry.latest)
+                    ? Math.floor(entry.latest)
+                    : 0;
+                  return { pubkey, latest };
+                })
+                .filter(Boolean);
+            }
+          }
         } catch (error) {
           context?.log?.(`[${stageName}] Failed to fetch moderation summary`, error);
           summary = null;
           trustedCount = 0;
+          trustedReporters = [];
         }
       }
 
@@ -293,6 +318,11 @@ export function createModerationStage({
       metadataModeration.blockAutoplay = blockAutoplay;
       metadataModeration.blurThumbnail = blurThumbnail;
       metadataModeration.summary = summary;
+      metadataModeration.trustedCount = trustedCount;
+      metadataModeration.reportType = normalizedReportType;
+      metadataModeration.trustedReporters = Array.isArray(trustedReporters)
+        ? trustedReporters.slice()
+        : [];
       item.metadata.moderation = metadataModeration;
 
       if (!video.moderation || typeof video.moderation !== "object") {
@@ -301,6 +331,13 @@ export function createModerationStage({
 
       video.moderation.blockAutoplay = blockAutoplay;
       video.moderation.blurThumbnail = blurThumbnail;
+      video.moderation.trustedCount = trustedCount;
+      video.moderation.reportType = normalizedReportType;
+      if (Array.isArray(trustedReporters) && trustedReporters.length) {
+        video.moderation.trustedReporters = trustedReporters.slice();
+      } else if (video.moderation.trustedReporters) {
+        delete video.moderation.trustedReporters;
+      }
       if (summary) {
         video.moderation.summary = summary;
       } else if (video.moderation.summary) {

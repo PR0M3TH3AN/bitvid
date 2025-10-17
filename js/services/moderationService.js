@@ -664,6 +664,58 @@ export class ModerationService {
     return cloneSummary(summary);
   }
 
+  getTrustedReporters(eventId, type) {
+    const normalizedEventId = normalizeEventId(eventId);
+    if (!normalizedEventId) {
+      return [];
+    }
+
+    const eventReports = this.reportEvents.get(normalizedEventId);
+    if (!eventReports || !eventReports.size) {
+      return [];
+    }
+
+    const normalizedType = normalizeReportType(type);
+    const results = [];
+
+    for (const [reporter, typeMap] of eventReports.entries()) {
+      if (!this.trustedContacts.has(reporter)) {
+        continue;
+      }
+
+      if (normalizedType) {
+        const detail = typeMap.get(normalizedType);
+        if (!detail) {
+          continue;
+        }
+        results.push({
+          pubkey: reporter,
+          latest: ensureNumber(detail?.created_at),
+        });
+        continue;
+      }
+
+      let latest = 0;
+      for (const entry of typeMap.values()) {
+        const candidate = ensureNumber(entry?.created_at);
+        if (candidate > latest) {
+          latest = candidate;
+        }
+      }
+      results.push({ pubkey: reporter, latest });
+    }
+
+    if (!results.length) {
+      return [];
+    }
+
+    results.sort((a, b) => ensureNumber(b.latest) - ensureNumber(a.latest));
+    return results.map((entry) => ({
+      pubkey: entry.pubkey,
+      latest: ensureNumber(entry.latest),
+    }));
+  }
+
   trustedReportCount(eventId, type) {
     const normalizedEventId = normalizeEventId(eventId);
     if (!normalizedEventId) {

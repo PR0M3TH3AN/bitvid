@@ -20,6 +20,9 @@ const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
+const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
+const MODERATION_OVERRIDE_STORAGE_VERSION = 1;
+
 function sanitizeProfileString(value) {
   if (typeof value !== "string") {
     return "";
@@ -34,6 +37,7 @@ let activeProfilePubkey = null;
 const profileCache = new Map();
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
+const moderationOverrides = new Map();
 
 function hasSavedProfilesChanged(previousProfiles, nextProfiles) {
   if (previousProfiles === nextProfiles) {
@@ -111,6 +115,19 @@ function normalizeHexPubkey(pubkey) {
   }
 
   return null;
+}
+
+function normalizeEventId(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+
+  return HEX64_REGEX.test(trimmed) ? trimmed : null;
 }
 
 export function getSavedProfiles() {
@@ -635,6 +652,178 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
   }
 
   return entry;
+}
+
+export function getModerationOverridesMap() {
+  return moderationOverrides;
+}
+
+export function getModerationOverride(eventId) {
+  const normalized = normalizeEventId(eventId);
+  if (!normalized) {
+    return null;
+  }
+
+  const entry = moderationOverrides.get(normalized);
+  if (!entry) {
+    return null;
+  }
+
+  return { ...entry };
+}
+
+export function loadModerationOverridesFromStorage() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const raw = localStorage.getItem(MODERATION_OVERRIDE_STORAGE_KEY);
+  if (!raw) {
+    return;
+  }
+
+  try {
+    const payload = JSON.parse(raw);
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+
+    if (payload.version !== MODERATION_OVERRIDE_STORAGE_VERSION) {
+      return;
+    }
+
+    const entries = payload.entries && typeof payload.entries === "object"
+      ? payload.entries
+      : {};
+
+    moderationOverrides.clear();
+
+    for (const [eventId, entry] of Object.entries(entries)) {
+      const normalized = normalizeEventId(eventId);
+      if (!normalized) {
+        continue;
+      }
+      if (!entry || entry.showAnyway !== true) {
+        continue;
+      }
+      const updatedAt = Number.isFinite(entry.updatedAt)
+        ? Math.floor(entry.updatedAt)
+        : Date.now();
+      moderationOverrides.set(normalized, {
+        showAnyway: true,
+        updatedAt,
+      });
+    }
+  } catch (error) {
+    moderationOverrides.clear();
+    userLogger.warn(
+      "[cache.loadModerationOverridesFromStorage] Failed to parse payload:",
+      error,
+    );
+  }
+}
+
+export function persistModerationOverridesToStorage() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const entries = {};
+  for (const [eventId, entry] of moderationOverrides.entries()) {
+    if (!entry || entry.showAnyway !== true) {
+      continue;
+    }
+    const updatedAt = Number.isFinite(entry.updatedAt)
+      ? Math.floor(entry.updatedAt)
+      : Date.now();
+    entries[eventId] = {
+      showAnyway: true,
+      updatedAt,
+    };
+  }
+
+  if (Object.keys(entries).length === 0) {
+    try {
+      localStorage.removeItem(MODERATION_OVERRIDE_STORAGE_KEY);
+    } catch (error) {
+      userLogger.warn(
+        "[cache.persistModerationOverridesToStorage] Failed to clear overrides:",
+        error,
+      );
+    }
+    return;
+  }
+
+  const payload = {
+    version: MODERATION_OVERRIDE_STORAGE_VERSION,
+    savedAt: Date.now(),
+    entries,
+  };
+
+  try {
+    localStorage.setItem(
+      MODERATION_OVERRIDE_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  } catch (error) {
+    userLogger.warn(
+      "[cache.persistModerationOverridesToStorage] Failed to persist overrides:",
+      error,
+    );
+  }
+}
+
+export function setModerationOverride(
+  eventId,
+  override = {},
+  { persist = true } = {},
+) {
+  const normalized = normalizeEventId(eventId);
+  if (!normalized) {
+    return null;
+  }
+
+  const showAnyway = override?.showAnyway === true;
+  if (!showAnyway) {
+    const removed = moderationOverrides.delete(normalized);
+    if (removed && persist) {
+      persistModerationOverridesToStorage();
+    }
+    return null;
+  }
+
+  const updatedAt = Number.isFinite(override?.updatedAt)
+    ? Math.floor(override.updatedAt)
+    : Date.now();
+
+  const existing = moderationOverrides.get(normalized);
+  const nextEntry = { showAnyway: true, updatedAt };
+  const changed =
+    !existing ||
+    existing.showAnyway !== nextEntry.showAnyway ||
+    existing.updatedAt !== nextEntry.updatedAt;
+
+  moderationOverrides.set(normalized, nextEntry);
+
+  if (persist && changed) {
+    persistModerationOverridesToStorage();
+  }
+
+  return { ...nextEntry };
+}
+
+export function clearModerationOverride(eventId, { persist = true } = {}) {
+  const normalized = normalizeEventId(eventId);
+  if (!normalized) {
+    return false;
+  }
+
+  const removed = moderationOverrides.delete(normalized);
+  if (removed && persist) {
+    persistModerationOverridesToStorage();
+  }
+
+  return removed;
 }
 
 function buildUrlProbeKey(url, options = {}) {
