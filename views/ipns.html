@@ -13,58 +13,62 @@
 </section>
 
 <script>
-  // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
-  const noopLogger = {
-    log: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-  };
-  const dev = window.bitvidLogger?.dev || noopLogger;
-  const user = window.bitvidLogger?.user || noopLogger;
+  (() => {
+    // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
+    const noopLogger = {
+      log: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    };
+    const dev = window.bitvidLogger?.dev || noopLogger;
+    const user = window.bitvidLogger?.user || noopLogger;
 
-  (async () => {
-    try {
-      const response = await fetch("content/ipns.md");
-      if (!response.ok) {
-        throw new Error("Failed to load IPNS markdown file.");
-      }
-      const markdownText = await response.text();
+    const loadMarkdown = async () => {
+      try {
+        const response = await fetch("content/ipns.md");
+        if (!response.ok) {
+          throw new Error("Failed to load IPNS markdown file.");
+        }
+        const markdownText = await response.text();
 
-      // Convert to HTML with Marked (make sure "marked" is loaded globally)
-      const html = marked.parse(markdownText);
+        // Convert to HTML with Marked (make sure "marked" is loaded globally)
+        const html = marked.parse(markdownText);
 
-      // Insert final HTML into #markdown-container
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = html;
+        // Insert final HTML into #markdown-container
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = html;
 
-        const highlighter = window.hljs;
-        const highlight =
-          highlighter && typeof highlighter.highlightElement === "function"
-            ? (block) => highlighter.highlightElement(block)
-            : highlighter && typeof highlighter.highlightBlock === "function"
-              ? (block) => highlighter.highlightBlock(block)
-              : null;
+          const highlighter = window.hljs;
+          const highlight =
+            highlighter && typeof highlighter.highlightElement === "function"
+              ? (block) => highlighter.highlightElement(block)
+              : highlighter && typeof highlighter.highlightBlock === "function"
+                ? (block) => highlighter.highlightBlock(block)
+                : null;
 
-        if (highlight) {
-          container.querySelectorAll("pre code").forEach((block) => {
-            try {
-              highlight(block);
-            } catch (highlightError) {
-              dev.warn("Failed to highlight code block.", highlightError);
-            }
-          });
+          if (highlight) {
+            container.querySelectorAll("pre code").forEach((block) => {
+              try {
+                highlight(block);
+              } catch (highlightError) {
+                dev.warn("Failed to highlight code block.", highlightError);
+              }
+            });
+          }
+        }
+      } catch (err) {
+        user.error("Error loading IPNS content:", err);
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = `
+            <p class="text-critical-strong">Error loading content. Please try again later.</p>
+          `;
         }
       }
-    } catch (err) {
-      user.error("Error loading IPNS content:", err);
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = `
-          <p class="text-critical-strong">Error loading content. Please try again later.</p>
-        `;
-      }
-    }
+    };
+
+    loadMarkdown();
   })();
 </script>
