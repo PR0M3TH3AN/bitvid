@@ -1600,6 +1600,9 @@
     .profile-modal__nav {
       flex-direction: column;
       flex-wrap: nowrap;
+      justify-self: start;
+      inline-size: var(--profile-modal-nav-max-width);
+      min-inline-size: var(--profile-modal-nav-min-width);
     }
   }
 

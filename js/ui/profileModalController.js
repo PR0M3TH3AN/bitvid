@@ -790,8 +790,7 @@ export class ProfileModalController {
 
     this.cacheDomReferences();
     this.registerEventListeners();
-    this.updateFocusTrap();
-    this.callbacks.onPaneShown(this.getActivePane(), { controller: this });
+    this.selectPane(this.getActivePane());
 
     return true;
   }
