@@ -136,13 +136,13 @@ export const ALLOW_NSFW_CONTENT = false;
  */
 export const THEME_ACCENT_OVERRIDES = Object.freeze({
   light: Object.freeze({
-    accent: "#fe0032",
-    accentStrong: "#540011",
+    accent: "#540011",
+    accentStrong: "#fe0032",
     accentPressed: "#a90021",
   }),
   dark: Object.freeze({
-    accent: "#fe0032",
-    accentStrong: "#540011",
+    accent: "#540011",
+    accentStrong: "#fe0032",
     accentPressed: "#a90021",
   }),
 });
