@@ -5,6 +5,7 @@ import {
 import { accessControl } from "../accessControl.js";
 import { ALLOW_NSFW_CONTENT } from "../config.js";
 import { userLogger } from "../utils/logger.js";
+import moderationService from "./moderationService.js";
 import {
   getVideosMap as getStoredVideosMap,
   setVideosMap as setStoredVideosMap,
@@ -113,6 +114,14 @@ export class NostrService {
       }
     });
     this.videosMap = null;
+    this.moderationService = moderationService || null;
+    try {
+      if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
+        this.moderationService.setNostrClient(this.nostrClient);
+      }
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to attach moderation service", error);
+    }
   }
 
   log(...args) {
@@ -129,6 +138,29 @@ export class NostrService {
 
   emit(eventName, detail) {
     this.emitter.emit(eventName, detail);
+  }
+
+  getModerationService() {
+    if (!this.moderationService) {
+      return null;
+    }
+
+    try {
+      if (
+        typeof this.moderationService.setNostrClient === "function" &&
+        this.moderationService.nostrClient !== this.nostrClient
+      ) {
+        this.moderationService.setNostrClient(this.nostrClient);
+      }
+
+      if (typeof this.moderationService.refreshViewerFromClient === "function") {
+        this.moderationService.refreshViewerFromClient();
+      }
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to synchronize moderation service", error);
+    }
+
+    return this.moderationService;
   }
 
   ensureVideosMap() {
@@ -518,6 +550,11 @@ export class NostrService {
   }
 
   isViewerVideoAuthor(video) {
+    try {
+      this.getModerationService();
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to refresh moderation context", error);
+    }
     if (!video || typeof video !== "object") {
       return false;
     }

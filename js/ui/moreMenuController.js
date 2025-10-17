@@ -1,9 +1,25 @@
 import { normalizeDesignSystemContext } from "../designSystem.js";
-import { userLogger } from "../utils/logger.js";
+import logger, { userLogger } from "../utils/logger.js";
+import moderationService from "../services/moderationService.js";
 import {
   createVideoMoreMenuPanel,
 } from "./components/videoMenuRenderers.js";
 import createPopover from "./overlay/popoverEngine.js";
+import {
+  prepareStaticModal,
+  openStaticModal,
+  closeStaticModal,
+} from "./components/staticModalAccessibility.js";
+
+const REPORT_CATEGORIES = Object.freeze([
+  { value: "nudity", label: "Nudity or sexual content" },
+  { value: "spam", label: "Spam or misleading" },
+  { value: "illegal", label: "Illegal or dangerous content" },
+  { value: "impersonation", label: "Impersonation or scam" },
+  { value: "malware", label: "Malware or phishing" },
+  { value: "profanity", label: "Profanity or hate speech" },
+  { value: "other", label: "Other" },
+]);
 
 export default class MoreMenuController {
   constructor(options = {}) {
@@ -25,6 +41,7 @@ export default class MoreMenuController {
     this.clipboard = clipboard;
     this.isDevMode = Boolean(isDevMode);
     this.designSystem = normalizeDesignSystemContext(designSystem);
+    this.moderationService = options?.moderationService || moderationService;
 
     this.callbacks = {
       getCurrentVideo: callbacks.getCurrentVideo || (() => null),
@@ -62,6 +79,17 @@ export default class MoreMenuController {
     this.boundVideoListBlacklistHandler = null;
     this.popoversByTrigger = new Map();
     this.activePopover = null;
+
+    this.reportModal = null;
+    this.reportModalPrepared = false;
+    this.reportForm = null;
+    this.reportStatusEl = null;
+    this.reportSubmitButton = null;
+    this.reportCancelButton = null;
+    this.reportCategoryInputs = [];
+    this.reportCleanupHandlers = [];
+    this.activeReportContext = null;
+    this.isReportSubmitting = false;
   }
 
   setVideoModal(videoModal) {
@@ -167,6 +195,7 @@ export default class MoreMenuController {
   destroy() {
     this.detachVideoListView();
     this.setVideoModal(null);
+    this.destroyReportModal();
 
     this.closeAllMoreMenus({ skipView: true });
 
@@ -186,6 +215,364 @@ export default class MoreMenuController {
 
   ensureGlobalMoreMenuHandlers() {
     this.moreMenuGlobalHandlerBound = true;
+  }
+
+  buildReportModalMarkup() {
+    const options = REPORT_CATEGORIES.map((category, index) => {
+      const inputId = `reportCategory-${category.value}`;
+      const checkedAttr = index === 0 ? " checked" : "";
+      const requiredAttr = index === 0 ? " required" : "";
+      return `
+        <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-border/60 bg-panel/80 p-3 text-sm" for="${inputId}">
+          <input
+            id="${inputId}"
+            type="radio"
+            name="report-category"
+            value="${category.value}"
+            class="h-4 w-4"
+            ${checkedAttr}${requiredAttr}
+          />
+          <span>${category.label}</span>
+        </label>
+      `;
+    }).join("");
+
+    return `
+      <div class="bv-modal-backdrop" data-report-dismiss></div>
+      <div class="modal-sheet w-full max-w-md space-y-4" role="document">
+        <form data-report-form class="modal-body space-y-4">
+          <header class="space-y-2">
+            <h2 id="reportModalTitle" class="text-lg font-semibold text-text">Report video</h2>
+            <p id="reportModalDescription" class="text-sm text-muted">
+              Choose the category that best describes the issue. Reports from people you follow help improve recommendations.
+            </p>
+          </header>
+          <fieldset class="space-y-2">
+            <legend class="text-sm font-semibold text-text">Category</legend>
+            <div class="space-y-2" role="radiogroup" aria-labelledby="reportModalTitle">
+              ${options}
+            </div>
+          </fieldset>
+          <p class="hidden text-sm" data-report-status role="status"></p>
+          <div class="flex justify-end gap-3">
+            <button type="button" class="btn-ghost focus-ring" data-report-cancel>Cancel</button>
+            <button type="submit" class="btn focus-ring" data-report-submit>Submit report</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }
+
+  ensureReportModal() {
+    if (this.reportModal && this.reportModalPrepared) {
+      return this.reportModal;
+    }
+
+    const doc = this.document;
+    if (!doc) {
+      return null;
+    }
+
+    const container = doc.getElementById("modalContainer") || doc.body || null;
+    if (!container) {
+      return null;
+    }
+
+    let modal = container.querySelector("#reportModal");
+    if (!modal) {
+      modal = doc.createElement("div");
+      modal.id = "reportModal";
+      modal.className = "bv-modal hidden items-center justify-center";
+      modal.setAttribute("role", "dialog");
+      modal.setAttribute("aria-modal", "true");
+      modal.setAttribute("aria-labelledby", "reportModalTitle");
+      modal.setAttribute("aria-describedby", "reportModalDescription");
+      modal.innerHTML = this.buildReportModalMarkup();
+      container.appendChild(modal);
+    }
+
+    this.reportModal = modal;
+    this.reportForm = modal.querySelector("[data-report-form]");
+    this.reportStatusEl = modal.querySelector("[data-report-status]");
+    this.reportSubmitButton = modal.querySelector("[data-report-submit]");
+    this.reportCancelButton = modal.querySelector("[data-report-cancel]");
+    this.reportCategoryInputs = Array.from(
+      modal.querySelectorAll("input[name='report-category']"),
+    );
+
+    if (!this.reportModalPrepared) {
+      if (this.reportForm) {
+        const submitHandler = (event) => this.handleReportSubmit(event);
+        this.reportForm.addEventListener("submit", submitHandler);
+        this.reportCleanupHandlers.push(() => {
+          this.reportForm?.removeEventListener("submit", submitHandler);
+        });
+      }
+
+      if (this.reportCancelButton) {
+        const cancelHandler = (event) => {
+          event?.preventDefault?.();
+          this.closeReportModal();
+        };
+        this.reportCancelButton.addEventListener("click", cancelHandler);
+        this.reportCleanupHandlers.push(() => {
+          this.reportCancelButton?.removeEventListener("click", cancelHandler);
+        });
+      }
+
+      const backdrop = modal.querySelector("[data-report-dismiss]");
+      if (backdrop) {
+        const backdropHandler = (event) => {
+          event?.preventDefault?.();
+          this.closeReportModal();
+        };
+        backdrop.addEventListener("click", backdropHandler);
+        this.reportCleanupHandlers.push(() => {
+          backdrop.removeEventListener("click", backdropHandler);
+        });
+      }
+
+      prepareStaticModal({ root: modal, document: doc });
+      this.reportModalPrepared = true;
+    }
+
+    return modal;
+  }
+
+  openReportModal({ eventId, authorPubkey = "", trigger = null } = {}) {
+    const modal = this.ensureReportModal();
+    if (!modal) {
+      this.callbacks.showError(
+        "Reporting is unavailable right now. Please try again later.",
+      );
+      return false;
+    }
+
+    this.activeReportContext = {
+      eventId: typeof eventId === "string" ? eventId : "",
+      authorPubkey: typeof authorPubkey === "string" ? authorPubkey : "",
+    };
+    this.isReportSubmitting = false;
+    this.setReportModalBusy(false);
+    this.showReportStatus("");
+
+    if (Array.isArray(this.reportCategoryInputs) && this.reportCategoryInputs.length) {
+      this.reportCategoryInputs.forEach((input, index) => {
+        if (!input) {
+          return;
+        }
+        try {
+          input.checked = index === 0;
+          input.disabled = false;
+        } catch (_) {
+          /* noop */
+        }
+      });
+    }
+
+    const opened = openStaticModal(modal, {
+      triggerElement:
+        trigger && typeof trigger.focus === "function" ? trigger : null,
+      document: this.document,
+    });
+
+    if (opened && this.reportCategoryInputs.length > 0) {
+      const firstInput = this.reportCategoryInputs[0];
+      try {
+        firstInput.focus();
+      } catch (_) {
+        /* noop */
+      }
+    }
+
+    try {
+      const service = this.moderationService || moderationService;
+      if (service && typeof service.refreshViewerFromClient === "function") {
+        service.refreshViewerFromClient();
+      }
+    } catch (error) {
+      if (this.isDevMode) {
+        userLogger.warn(
+          "[MoreMenu] Failed to refresh moderation context before reporting:",
+          error,
+        );
+      }
+    }
+
+    return opened;
+  }
+
+  closeReportModal() {
+    if (!this.reportModal) {
+      return false;
+    }
+    const result = closeStaticModal(this.reportModal, { document: this.document });
+    this.activeReportContext = null;
+    this.isReportSubmitting = false;
+    this.showReportStatus("");
+    return result;
+  }
+
+  setReportModalBusy(isBusy) {
+    const disabled = Boolean(isBusy);
+    this.isReportSubmitting = disabled;
+
+    if (Array.isArray(this.reportCategoryInputs)) {
+      this.reportCategoryInputs.forEach((input) => {
+        if (input && typeof input.disabled === "boolean") {
+          input.disabled = disabled;
+        }
+      });
+    }
+
+    if (this.reportSubmitButton && typeof this.reportSubmitButton.disabled === "boolean") {
+      this.reportSubmitButton.disabled = disabled;
+    }
+
+    if (this.reportCancelButton && typeof this.reportCancelButton.disabled === "boolean") {
+      this.reportCancelButton.disabled = disabled;
+    }
+  }
+
+  showReportStatus(message, { variant = "info" } = {}) {
+    if (!this.reportStatusEl) {
+      return;
+    }
+
+    const trimmed = typeof message === "string" ? message.trim() : "";
+    if (!trimmed) {
+      this.reportStatusEl.classList.add("hidden");
+      this.reportStatusEl.textContent = "";
+      if (this.reportStatusEl.dataset.state) {
+        delete this.reportStatusEl.dataset.state;
+      }
+      return;
+    }
+
+    this.reportStatusEl.classList.remove("hidden");
+    this.reportStatusEl.textContent = trimmed;
+    this.reportStatusEl.dataset.state = variant;
+  }
+
+  showReportError(message) {
+    this.showReportStatus(message, { variant: "error" });
+  }
+
+  async handleReportSubmit(event) {
+    if (event && typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+
+    if (this.isReportSubmitting) {
+      return;
+    }
+
+    const context = this.activeReportContext || {};
+    const eventId = typeof context.eventId === "string" ? context.eventId : "";
+    if (!eventId) {
+      this.showReportError("Unable to determine which video to report.");
+      return;
+    }
+
+    let category = "";
+    if (Array.isArray(this.reportCategoryInputs)) {
+      const selected = this.reportCategoryInputs.find((input) => input && input.checked);
+      if (selected && typeof selected.value === "string") {
+        category = selected.value.trim().toLowerCase();
+      }
+    }
+
+    if (!category) {
+      this.showReportError("Please choose a category before submitting.");
+      return;
+    }
+
+    const viewerPubkey = this.callbacks.getCurrentUserPubkey?.();
+    if (!viewerPubkey) {
+      this.closeReportModal();
+      this.callbacks.showError("Connect a Nostr account before reporting videos.");
+      return;
+    }
+
+    this.setReportModalBusy(true);
+    this.showReportStatus("Sending report…", { variant: "info" });
+
+    const service = this.moderationService || moderationService;
+
+    try {
+      if (!service || typeof service.submitReport !== "function") {
+        const svcError = new Error("service-unavailable");
+        svcError.code = "service-unavailable";
+        throw svcError;
+      }
+
+      await service.submitReport({
+        eventId,
+        type: category,
+        targetPubkey: context.authorPubkey || "",
+      });
+
+      this.callbacks.showSuccess(
+        "Report submitted. Thank you for keeping bitvid safe.",
+      );
+      this.closeReportModal();
+    } catch (error) {
+      logger.user.error("[MoreMenu] Failed to publish report:", error);
+      const code = error?.code || "unknown";
+      let message = "Unable to send your report. Please try again.";
+      if (code === "nostr-extension-missing") {
+        message = "A Nostr extension is required to report videos.";
+      } else if (code === "extension-permission-denied") {
+        message = "Approve the permission request in your Nostr extension and try again.";
+      } else if (code === "viewer-not-logged-in") {
+        message = "Connect a Nostr account before reporting videos.";
+      } else if (code === "service-unavailable") {
+        message = "Reporting is unavailable right now. Please try again later.";
+      }
+
+      this.showReportError(message);
+    } finally {
+      this.setReportModalBusy(false);
+    }
+  }
+
+  destroyReportModal() {
+    if (Array.isArray(this.reportCleanupHandlers) && this.reportCleanupHandlers.length) {
+      for (const cleanup of this.reportCleanupHandlers) {
+        try {
+          if (typeof cleanup === "function") {
+            cleanup();
+          }
+        } catch (error) {
+          if (this.isDevMode) {
+            userLogger.warn(
+              "[MoreMenu] Failed to teardown report modal listener:",
+              error,
+            );
+          }
+        }
+      }
+    }
+
+    this.reportCleanupHandlers = [];
+    this.reportModalPrepared = false;
+    this.reportForm = null;
+    this.reportStatusEl = null;
+    this.reportSubmitButton = null;
+    this.reportCancelButton = null;
+    this.reportCategoryInputs = [];
+    this.activeReportContext = null;
+    this.isReportSubmitting = false;
+
+    if (this.reportModal) {
+      try {
+        closeStaticModal(this.reportModal, { document: this.document });
+      } catch (_) {
+        /* noop */
+      }
+    }
+
+    this.reportModal = null;
   }
 
   getHTMLElementConstructor(documentRef) {
@@ -814,7 +1201,38 @@ export default class MoreMenuController {
         break;
       }
       case "report": {
-        this.callbacks.showSuccess("Reporting coming soon.");
+        const viewerPubkey = this.callbacks.getCurrentUserPubkey?.();
+        if (!viewerPubkey) {
+          this.callbacks.showError(
+            "Connect a Nostr account before reporting videos.",
+          );
+          break;
+        }
+
+        const eventId =
+          dataset.eventId ||
+          (context === "modal" ? currentVideo?.id : "") ||
+          currentVideo?.id || "";
+
+        if (!eventId) {
+          this.callbacks.showError(
+            "Unable to determine which video to report.",
+          );
+          break;
+        }
+
+        const authorPubkey =
+          dataset.author ||
+          (context === "modal" && currentVideo?.pubkey
+            ? currentVideo.pubkey
+            : "") ||
+          currentVideo?.pubkey || "";
+
+        this.openReportModal({
+          eventId,
+          authorPubkey,
+          trigger: dataset.triggerElement || null,
+        });
         break;
       }
       default:
