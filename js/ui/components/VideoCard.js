@@ -105,8 +105,16 @@ export class VideoCard {
       onRequestMoreMenu: null,
       onCloseMoreMenu: null,
       onRequestSettingsMenu: null,
-      onCloseSettingsMenu: null
+      onCloseSettingsMenu: null,
+      onModerationOverride: null,
     };
+
+    this.moderationBadgeEl = null;
+    this.moderationBadgeTextEl = null;
+    this.moderationActionButton = null;
+    this.moderationBadgeId = "";
+    this.badgesContainerEl = null;
+    this.boundShowAnywayHandler = (event) => this.handleShowAnywayClick(event);
 
     this.root = null;
     this.anchorEl = null;
@@ -176,6 +184,10 @@ export class VideoCard {
 
   set onDelete(fn) {
     this.callbacks.onDelete = typeof fn === "function" ? fn : null;
+  }
+
+  set onModerationOverride(fn) {
+    this.callbacks.onModerationOverride = typeof fn === "function" ? fn : null;
   }
 
   set onMoreAction(fn) {
@@ -356,6 +368,7 @@ export class VideoCard {
     const content = this.createElement("div", {
       classNames: ["p-md", "bv-stack", "bv-stack--tight"]
     });
+    this.contentEl = content;
 
     const title = this.createElement("h3", {
       classNames: [
@@ -863,6 +876,11 @@ export class VideoCard {
       pieces.push(badge);
     }
 
+    const moderationBadge = this.buildModerationBadge();
+    if (moderationBadge) {
+      pieces.push(moderationBadge);
+    }
+
     if (!pieces.length) {
       return null;
     }
@@ -871,7 +889,405 @@ export class VideoCard {
       classNames: ["flex", "flex-wrap", "items-center", "gap-sm"]
     });
     pieces.forEach((el) => container.appendChild(el));
+    this.badgesContainerEl = container;
+    this.updateModerationAria();
     return container;
+  }
+
+  getModerationBadgeId() {
+    if (this.moderationBadgeId) {
+      return this.moderationBadgeId;
+    }
+
+    const baseId =
+      typeof this.video?.id === "string" && this.video.id
+        ? this.video.id
+        : `index-${this.index}`;
+    const sanitized = baseId.replace(/[^a-zA-Z0-9_-]/g, "");
+    const id = `video-card-${sanitized}-moderation`;
+    this.moderationBadgeId = id;
+    return id;
+  }
+
+  getModerationContext() {
+    const moderation =
+      this.video?.moderation && typeof this.video.moderation === "object"
+        ? this.video.moderation
+        : null;
+
+    const summary =
+      moderation?.summary && typeof moderation.summary === "object"
+        ? moderation.summary
+        : null;
+
+    let reportType = "";
+    if (typeof moderation?.reportType === "string" && moderation.reportType.trim()) {
+      reportType = moderation.reportType.trim().toLowerCase();
+    }
+
+    if (!reportType && summary && summary.types && typeof summary.types === "object") {
+      for (const [type, stats] of Object.entries(summary.types)) {
+        if (stats && Number.isFinite(stats.trusted) && Math.floor(stats.trusted) > 0) {
+          reportType = String(type).toLowerCase();
+          break;
+        }
+      }
+    }
+
+    let trustedCount = Number.isFinite(moderation?.trustedCount)
+      ? Math.max(0, Math.floor(moderation.trustedCount))
+      : 0;
+
+    if (!trustedCount && summary && summary.types && typeof summary.types === "object") {
+      for (const stats of Object.values(summary.types)) {
+        if (stats && Number.isFinite(stats.trusted)) {
+          trustedCount = Math.max(trustedCount, Math.floor(stats.trusted));
+        }
+      }
+    }
+
+    const reporterDisplayNames = Array.isArray(moderation?.reporterDisplayNames)
+      ? moderation.reporterDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    const original =
+      moderation?.original && typeof moderation.original === "object"
+        ? moderation.original
+        : {};
+
+    const context = {
+      reportType,
+      friendlyType: reportType ? reportType.replace(/[_-]+/g, " ").trim() : "",
+      trustedCount,
+      reporterDisplayNames,
+      originalBlur: original.blurThumbnail === true,
+      originalBlockAutoplay: original.blockAutoplay === true,
+      activeBlur: moderation?.blurThumbnail === true,
+      activeBlockAutoplay: moderation?.blockAutoplay === true,
+      overrideActive: moderation?.viewerOverride?.showAnyway === true,
+    };
+
+    context.shouldShow =
+      context.originalBlur ||
+      context.originalBlockAutoplay ||
+      context.trustedCount > 0 ||
+      context.overrideActive;
+
+    return context;
+  }
+
+  buildModerationReasonText(context) {
+    if (!context) {
+      return "";
+    }
+
+    const typeLabel = context.friendlyType || "this video";
+    const count = Math.max(0, Number(context.trustedCount) || 0);
+
+    if (count <= 0) {
+      return context.friendlyType ? `reports of ${typeLabel}` : "reports";
+    }
+
+    const friendLabel = count === 1 ? "friend" : "friends";
+    return `${count} ${friendLabel} reported ${typeLabel}`;
+  }
+
+  buildModerationBadgeText(context) {
+    if (!context) {
+      return "";
+    }
+
+    const reason = this.buildModerationReasonText(context);
+    if (context.overrideActive) {
+      if (reason) {
+        return `Showing despite ${reason}`;
+      }
+      return "Showing despite reports";
+    }
+
+    const parts = [];
+    if (context.originalBlur) {
+      parts.push("Blurred");
+    }
+    if (context.originalBlockAutoplay) {
+      parts.push("Autoplay blocked");
+    }
+    if (reason) {
+      parts.push(reason);
+    }
+
+    return parts.join(" · ");
+  }
+
+  createModerationOverrideButton() {
+    const button = this.createElement("button", {
+      classNames: [
+        "inline-flex",
+        "items-center",
+        "rounded-full",
+        "border",
+        "border-status-warning-border",
+        "px-3",
+        "py-1",
+        "text-2xs",
+        "font-semibold",
+        "uppercase",
+        "tracking-extra-wide",
+        "text-status-warning-on",
+        "bg-transparent",
+        "hover:bg-status-warning-surface",
+        "transition",
+        "duration-150",
+        "focus-visible:outline",
+        "focus-visible:outline-2",
+        "focus-visible:outline-offset-2",
+        "focus-visible:outline-status-warning-border",
+      ],
+      attrs: {
+        type: "button",
+        "data-moderation-action": "override",
+        "aria-pressed": "false",
+        "aria-describedby": this.getModerationBadgeId(),
+      },
+      textContent: "Show anyway",
+    });
+    button.addEventListener("click", this.boundShowAnywayHandler);
+    return button;
+  }
+
+  handleShowAnywayClick(event) {
+    if (event) {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      if (typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+    }
+
+    const button = this.moderationActionButton;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+
+    if (!this.callbacks.onModerationOverride) {
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    let result;
+    try {
+      result = this.callbacks.onModerationOverride({
+        event,
+        video: this.video,
+        card: this,
+      });
+    } catch (error) {
+      userLogger.warn("[VideoCard] onModerationOverride callback threw", error);
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    Promise.resolve(result)
+      .then((handled) => {
+        if (handled === false) {
+          if (button) {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+          }
+          return;
+        }
+        this.refreshModerationUi();
+      })
+      .catch((error) => {
+        userLogger.warn("[VideoCard] Moderation override failed", error);
+        if (button) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      });
+  }
+
+  buildModerationBadge() {
+    const context = this.getModerationContext();
+    if (!context.shouldShow) {
+      this.moderationBadgeEl = null;
+      this.moderationBadgeTextEl = null;
+      if (this.moderationActionButton) {
+        this.moderationActionButton.removeEventListener(
+          "click",
+          this.boundShowAnywayHandler,
+        );
+      }
+      this.moderationActionButton = null;
+      return null;
+    }
+
+    const badge = this.createElement("div", {
+      classNames: ["badge", "flex", "flex-wrap", "items-center", "gap-sm"],
+    });
+    badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
+    badge.dataset.moderationBadge = "true";
+    badge.dataset.moderationState = context.overrideActive ? "override" : "blocked";
+
+    const badgeId = this.getModerationBadgeId();
+    badge.id = badgeId;
+    badge.setAttribute("role", "status");
+    badge.setAttribute("aria-live", "polite");
+    badge.setAttribute("aria-atomic", "true");
+
+    const text = this.createElement("span", {
+      classNames: ["whitespace-nowrap"],
+      textContent: this.buildModerationBadgeText(context),
+    });
+    badge.appendChild(text);
+
+    const names = context.reporterDisplayNames;
+    if (names.length) {
+      const joined = names.join(", ");
+      badge.title = `Reported by ${joined}`;
+      badge.setAttribute(
+        "aria-label",
+        `${text.textContent}. Reported by ${joined}.`,
+      );
+    } else {
+      badge.removeAttribute("title");
+      badge.setAttribute("aria-label", `${text.textContent}.`);
+    }
+
+    this.moderationBadgeEl = badge;
+    this.moderationBadgeTextEl = text;
+
+    if (!context.overrideActive) {
+      const button = this.createModerationOverrideButton();
+      badge.appendChild(button);
+      this.moderationActionButton = button;
+    } else {
+      this.moderationActionButton = null;
+    }
+
+    return badge;
+  }
+
+  updateModerationBadge() {
+    const context = this.getModerationContext();
+    const badge = this.moderationBadgeEl;
+
+    if (!context.shouldShow) {
+      if (badge && badge.parentElement) {
+        badge.parentElement.removeChild(badge);
+      }
+      if (this.moderationActionButton) {
+        this.moderationActionButton.removeEventListener(
+          "click",
+          this.boundShowAnywayHandler,
+        );
+      }
+      this.moderationBadgeEl = null;
+      this.moderationBadgeTextEl = null;
+      this.moderationActionButton = null;
+      this.updateModerationAria();
+      return;
+    }
+
+    if (!badge) {
+      const nextBadge = this.buildModerationBadge();
+      if (nextBadge) {
+        if (!this.badgesContainerEl) {
+          this.badgesContainerEl = this.createElement("div", {
+            classNames: ["flex", "flex-wrap", "items-center", "gap-sm"],
+          });
+          if (this.contentEl) {
+            if (
+              this.discussionCountEl &&
+              this.discussionCountEl.parentElement === this.contentEl
+            ) {
+              this.contentEl.insertBefore(
+                this.badgesContainerEl,
+                this.discussionCountEl,
+              );
+            } else {
+              this.contentEl.appendChild(this.badgesContainerEl);
+            }
+          }
+        }
+        this.badgesContainerEl.appendChild(nextBadge);
+      }
+      this.updateModerationAria();
+      return;
+    }
+
+    badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
+    badge.dataset.moderationState = context.overrideActive ? "override" : "blocked";
+
+    const textContent = this.buildModerationBadgeText(context);
+    if (this.moderationBadgeTextEl) {
+      this.moderationBadgeTextEl.textContent = textContent;
+    }
+
+    const names = context.reporterDisplayNames;
+    if (names.length) {
+      const joined = names.join(", ");
+      badge.title = `Reported by ${joined}`;
+      badge.setAttribute("aria-label", `${textContent}. Reported by ${joined}.`);
+    } else {
+      badge.removeAttribute("title");
+      badge.setAttribute("aria-label", `${textContent}.`);
+    }
+
+    if (context.overrideActive) {
+      if (this.moderationActionButton) {
+        this.moderationActionButton.removeEventListener(
+          "click",
+          this.boundShowAnywayHandler,
+        );
+        this.moderationActionButton.remove();
+      }
+      this.moderationActionButton = null;
+    } else if (!this.moderationActionButton) {
+      const button = this.createModerationOverrideButton();
+      badge.appendChild(button);
+      this.moderationActionButton = button;
+    } else {
+      this.moderationActionButton.disabled = false;
+      this.moderationActionButton.removeAttribute("aria-busy");
+    }
+  }
+
+  updateModerationAria() {
+    const badgeId = this.moderationBadgeEl ? this.getModerationBadgeId() : "";
+    const elements = [this.anchorEl, this.titleEl].filter(Boolean);
+    elements.forEach((el) => {
+      if (!el || typeof el.getAttribute !== "function") {
+        return;
+      }
+      const attr = el.getAttribute("aria-describedby") || "";
+      const tokens = attr.split(/\s+/).filter(Boolean);
+      const filtered = tokens.filter((token) => token !== this.moderationBadgeId);
+      if (badgeId) {
+        filtered.push(badgeId);
+      }
+      if (filtered.length) {
+        el.setAttribute("aria-describedby", Array.from(new Set(filtered)).join(" "));
+      } else {
+        el.removeAttribute("aria-describedby");
+      }
+    });
+  }
+
+  refreshModerationUi() {
+    this.applyModerationDatasets();
+    this.updateModerationBadge();
+    this.updateModerationAria();
   }
 
   getCachedUrlHealthEntry() {
@@ -1325,43 +1741,36 @@ export class VideoCard {
       return;
     }
 
-    const moderation =
-      this.video?.moderation && typeof this.video.moderation === "object"
-        ? this.video.moderation
-        : null;
+    const moderationContext = this.getModerationContext();
 
-    const blockAutoplay = moderation?.blockAutoplay === true;
-    const blurThumbnail = moderation?.blurThumbnail === true;
-    const summary =
-      moderation && typeof moderation.summary === "object"
-        ? moderation.summary
-        : null;
-
-    if (blockAutoplay) {
+    if (moderationContext.originalBlockAutoplay && !moderationContext.overrideActive) {
       this.root.dataset.autoplayPolicy = "blocked";
-    } else if (this.root.dataset.autoplayPolicy === "blocked") {
+    } else if (this.root.dataset.autoplayPolicy) {
       delete this.root.dataset.autoplayPolicy;
     }
 
+    if (moderationContext.overrideActive) {
+      this.root.dataset.moderationOverride = "show-anyway";
+    } else if (this.root.dataset.moderationOverride) {
+      delete this.root.dataset.moderationOverride;
+    }
+
     if (this.thumbnailEl && !this.shouldMaskNsfwForOwner) {
-      if (blurThumbnail) {
+      if (moderationContext.activeBlur) {
         this.thumbnailEl.dataset.thumbnailState = "blurred";
       } else if (this.thumbnailEl.dataset.thumbnailState === "blurred") {
         delete this.thumbnailEl.dataset.thumbnailState;
       }
     }
 
-    let nudityTrustedCount = 0;
-    if (summary && summary.types && typeof summary.types === "object") {
-      const nudityEntry = summary.types.nudity || summary.types["nudity"];
-      if (nudityEntry && Number.isFinite(nudityEntry.trusted)) {
-        nudityTrustedCount = nudityEntry.trusted;
+    const reportCount = Math.max(0, Number(moderationContext.trustedCount) || 0);
+    if (reportCount > 0) {
+      this.root.dataset.moderationReportCount = String(reportCount);
+      if (moderationContext.reportType) {
+        this.root.dataset.moderationReportType = moderationContext.reportType;
+      } else if (this.root.dataset.moderationReportType) {
+        delete this.root.dataset.moderationReportType;
       }
-    }
-
-    if (nudityTrustedCount > 0) {
-      this.root.dataset.moderationReportType = "nudity";
-      this.root.dataset.moderationReportCount = String(nudityTrustedCount);
     } else {
       if (this.root.dataset.moderationReportType) {
         delete this.root.dataset.moderationReportType;

@@ -181,6 +181,7 @@ export class VideoListView {
       revert: null,
       delete: null,
       blacklist: null,
+      moderationOverride: null,
     };
 
     this.allowNsfw = allowNsfw !== false;
@@ -277,6 +278,10 @@ export class VideoListView {
     this.handlers.blacklist = typeof handler === "function" ? handler : null;
   }
 
+  setModerationOverrideHandler(handler) {
+    this.handlers.moderationOverride = typeof handler === "function" ? handler : null;
+  }
+
   render(videos, metadata = null) {
     if (!this.container) {
       return [];
@@ -364,6 +369,15 @@ export class VideoListView {
       }
 
       authorSet.add(video.pubkey);
+
+      const reporterPubkeys = Array.isArray(video?.moderation?.reporterPubkeys)
+        ? video.moderation.reporterPubkeys
+        : [];
+      reporterPubkeys.forEach((pubkey) => {
+        if (typeof pubkey === "string" && pubkey.trim()) {
+          authorSet.add(pubkey.trim());
+        }
+      });
 
       const shareUrl = this.buildShareUrl(video, shareBase);
       const canEdit = this.utils.canEditVideo(video);
@@ -453,6 +467,20 @@ export class VideoListView {
         const trigger = domEvent?.currentTarget || domEvent?.target;
         const detail = this.extractPlaybackDetail(trigger, cardVideo || video);
         this.emitSelected(detail);
+      };
+
+      videoCard.onModerationOverride = ({ event: overrideEvent }) => {
+        if (!this.handlers.moderationOverride) {
+          return false;
+        }
+        const trigger =
+          overrideEvent?.currentTarget || overrideEvent?.target || null;
+        return this.handlers.moderationOverride({
+          event: overrideEvent,
+          video,
+          card: videoCard,
+          trigger,
+        });
       };
 
       videoCard.onEdit = ({ event: editEvent, video: editVideo, index: editIndex }) => {

@@ -112,6 +112,9 @@ import {
   storeUrlHealth as persistUrlHealth,
   setInFlightUrlProbe,
   getInFlightUrlProbe,
+  getModerationOverride,
+  setModerationOverride,
+  loadModerationOverridesFromStorage,
   URL_PROBE_TIMEOUT_MS,
   urlHealthConstants,
 } from "./state/cache.js";
@@ -942,6 +945,10 @@ class Application {
     };
     this.videoListView.setDeleteHandler(this.videoListViewDeleteHandler);
 
+    this.videoListView.setModerationOverrideHandler((detail = {}) =>
+      this.handleModerationOverride(detail)
+    );
+
     if (this.moreMenuController) {
       this.moreMenuController.attachVideoListView(this.videoListView);
     }
@@ -1094,6 +1101,8 @@ class Application {
 
       this.authService.hydrateFromStorage();
       this.renderSavedProfiles();
+
+      loadModerationOverridesFromStorage();
 
       const videoModalPromise = this.videoModal.load().then(() => {
         const modalRoot = this.videoModal.getRoot();
@@ -4379,9 +4388,9 @@ class Application {
       if (Array.isArray(payload.videos)) {
         videos = payload.videos;
       }
-      if (payload.metadata && typeof payload.metadata === "object") {
-        metadata = { ...payload.metadata };
-      }
+    if (payload.metadata && typeof payload.metadata === "object") {
+      metadata = { ...payload.metadata };
+    }
     }
 
     this.latestFeedMetadata = metadata;
@@ -4389,7 +4398,11 @@ class Application {
       this.videoListView.state.feedMetadata = metadata;
     }
 
-    this.videoListView.render(videos, metadata);
+    const decoratedVideos = Array.isArray(videos)
+      ? videos.map((video) => this.decorateVideoModeration(video))
+      : [];
+
+    this.videoListView.render(decoratedVideos, metadata);
   }
 
   refreshVideoDiscussionCounts(videos = [], options = {}) {
@@ -4403,6 +4416,247 @@ class Application {
       videoListRoot,
       nostrClient,
     });
+  }
+
+  deriveModerationReportType(summary) {
+    if (!summary || typeof summary !== "object") {
+      return "";
+    }
+
+    const types = summary.types && typeof summary.types === "object" ? summary.types : null;
+    if (!types) {
+      return "";
+    }
+
+    let bestType = "";
+    let bestScore = -1;
+    for (const [type, stats] of Object.entries(types)) {
+      if (!stats || typeof stats !== "object") {
+        continue;
+      }
+      const trusted = Number.isFinite(stats.trusted) ? Math.floor(stats.trusted) : 0;
+      if (trusted > bestScore) {
+        bestScore = trusted;
+        bestType = typeof type === "string" ? type : bestType;
+      }
+    }
+
+    return typeof bestType === "string" ? bestType.toLowerCase() : "";
+  }
+
+  deriveModerationTrustedCount(summary, reportType) {
+    if (!summary || typeof summary !== "object") {
+      return 0;
+    }
+
+    const normalizedType = typeof reportType === "string" ? reportType.toLowerCase() : "";
+    const types = summary.types && typeof summary.types === "object" ? summary.types : {};
+
+    if (normalizedType && types[normalizedType]) {
+      const entry = types[normalizedType];
+      if (entry && Number.isFinite(entry.trusted)) {
+        return Math.max(0, Math.floor(entry.trusted));
+      }
+    }
+
+    if (Number.isFinite(summary.totalTrusted)) {
+      return Math.max(0, Math.floor(summary.totalTrusted));
+    }
+
+    for (const stats of Object.values(types)) {
+      if (stats && Number.isFinite(stats.trusted)) {
+        return Math.max(0, Math.floor(stats.trusted));
+      }
+    }
+
+    return 0;
+  }
+
+  getReporterDisplayName(pubkey) {
+    if (typeof pubkey !== "string") {
+      return "";
+    }
+
+    const trimmed = pubkey.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    const cachedProfile = this.getProfileCacheEntry(trimmed);
+    const cachedName = cachedProfile?.profile?.name;
+    if (typeof cachedName === "string" && cachedName.trim()) {
+      return cachedName.trim();
+    }
+
+    try {
+      if (typeof window !== "undefined" && window.NostrTools?.nip19?.npubEncode) {
+        const encoded = window.NostrTools.nip19.npubEncode(trimmed);
+        if (encoded && typeof encoded === "string") {
+          return `${encoded.slice(0, 8)}…${encoded.slice(-4)}`;
+        }
+      }
+    } catch (error) {
+      userLogger.warn("[Application] Failed to encode reporter npub", error);
+    }
+
+    if (trimmed.length > 12) {
+      return `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
+    }
+
+    return trimmed;
+  }
+
+  decorateVideoModeration(video) {
+    if (!video || typeof video !== "object") {
+      return video;
+    }
+
+    const existingModeration =
+      video.moderation && typeof video.moderation === "object"
+        ? { ...video.moderation }
+        : {};
+
+    const summary =
+      existingModeration.summary && typeof existingModeration.summary === "object"
+        ? existingModeration.summary
+        : null;
+
+    const rawReportType =
+      typeof existingModeration.reportType === "string" &&
+      existingModeration.reportType.trim()
+        ? existingModeration.reportType.trim().toLowerCase()
+        : "";
+
+    const reportType = rawReportType || this.deriveModerationReportType(summary) || "";
+
+    const sanitizedReporters = Array.isArray(existingModeration.trustedReporters)
+      ? existingModeration.trustedReporters
+          .map((entry) => {
+            if (!entry || typeof entry !== "object") {
+              return null;
+            }
+            const pubkey =
+              typeof entry.pubkey === "string" ? entry.pubkey.trim().toLowerCase() : "";
+            if (!pubkey) {
+              return null;
+            }
+            const latest = Number.isFinite(entry.latest)
+              ? Math.floor(entry.latest)
+              : 0;
+            return { pubkey, latest };
+          })
+          .filter(Boolean)
+      : [];
+
+    const reporterPubkeys = sanitizedReporters.map((entry) => entry.pubkey);
+
+    const reporterDisplayNames = [];
+    const seenNames = new Set();
+    for (const reporterPubkey of reporterPubkeys) {
+      const name = this.getReporterDisplayName(reporterPubkey);
+      if (!name) {
+        continue;
+      }
+      const normalizedName = name.trim();
+      if (!normalizedName) {
+        continue;
+      }
+      const key = normalizedName.toLowerCase();
+      if (seenNames.has(key)) {
+        continue;
+      }
+      seenNames.add(key);
+      reporterDisplayNames.push(normalizedName);
+    }
+
+    const trustedCount = Number.isFinite(existingModeration.trustedCount)
+      ? Math.max(0, Math.floor(existingModeration.trustedCount))
+      : this.deriveModerationTrustedCount(summary, reportType);
+
+    const overrideEntry = getModerationOverride(video.id);
+    const overrideActive = overrideEntry?.showAnyway === true;
+    const overrideUpdatedAt = Number.isFinite(overrideEntry?.updatedAt)
+      ? Math.floor(overrideEntry.updatedAt)
+      : Date.now();
+
+    const originalState =
+      existingModeration.original && typeof existingModeration.original === "object"
+        ? {
+            blockAutoplay: existingModeration.original.blockAutoplay === true,
+            blurThumbnail: existingModeration.original.blurThumbnail === true,
+          }
+        : {
+            blockAutoplay: existingModeration.blockAutoplay === true,
+            blurThumbnail: existingModeration.blurThumbnail === true,
+          };
+
+    const decoratedModeration = {
+      ...existingModeration,
+      reportType,
+      trustedCount,
+      trustedReporters: sanitizedReporters,
+      reporterPubkeys,
+      reporterDisplayNames,
+      original: {
+        blockAutoplay: originalState.blockAutoplay,
+        blurThumbnail: originalState.blurThumbnail,
+      },
+    };
+
+    if (overrideActive) {
+      decoratedModeration.blockAutoplay = false;
+      decoratedModeration.blurThumbnail = false;
+      decoratedModeration.viewerOverride = {
+        showAnyway: true,
+        updatedAt: overrideUpdatedAt,
+      };
+    } else {
+      decoratedModeration.blockAutoplay = originalState.blockAutoplay;
+      decoratedModeration.blurThumbnail = originalState.blurThumbnail;
+      if (decoratedModeration.viewerOverride) {
+        delete decoratedModeration.viewerOverride;
+      }
+    }
+
+    video.moderation = decoratedModeration;
+    return video;
+  }
+
+  handleModerationOverride({ video, card }) {
+    if (!video || typeof video !== "object" || !video.id) {
+      return false;
+    }
+
+    try {
+      setModerationOverride(video.id, {
+        showAnyway: true,
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      devLogger.warn("[Application] Failed to persist moderation override:", error);
+    }
+
+    const storedVideo =
+      this.videosMap instanceof Map && video.id ? this.videosMap.get(video.id) : null;
+    const target = storedVideo || video;
+
+    if (target) {
+      this.decorateVideoModeration(target);
+    }
+
+    if (this.currentVideo && this.currentVideo.id === video.id) {
+      this.decorateVideoModeration(this.currentVideo);
+    }
+
+    if (card && typeof card.refreshModerationUi === "function") {
+      try {
+        card.refreshModerationUi();
+      } catch (error) {
+        devLogger.warn("[Application] Failed to refresh moderation UI:", error);
+      }
+    }
+
+    return true;
   }
 
   getVideoAddressPointer(video) {
@@ -6200,6 +6454,8 @@ class Application {
       return;
     }
 
+    this.decorateVideoModeration(video);
+
     let trimmedUrl = typeof video.url === "string" ? video.url.trim() : "";
     if (!trimmedUrl && fallbackUrl) {
       trimmedUrl = fallbackUrl;
@@ -6254,6 +6510,8 @@ class Application {
       lightningAddress: null,
       lastEditedAt: normalizedEditedAt,
     };
+
+    this.decorateVideoModeration(this.currentVideo);
 
     if (Number.isFinite(knownPostedAt)) {
       this.cacheVideoRootCreatedAt(this.currentVideo, knownPostedAt);
@@ -6630,6 +6888,8 @@ class Application {
       pointer: null,
       pointerKey: null,
     };
+
+    this.decorateVideoModeration(this.currentVideo);
 
     this.syncModalMoreMenuData();
 
