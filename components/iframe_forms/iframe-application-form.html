@@ -3,6 +3,109 @@
   <head>
     <meta charset="utf-8" />
     <title>bitvid Whitelist Application Form</title>
+    <script>
+      (() => {
+        const VALID_THEMES = new Set(["light", "dark"]);
+        const STORAGE_KEY = "bitvid:theme";
+        const FALLBACK_THEME = "dark";
+        const { documentElement: root } = document;
+
+        if (!(root instanceof HTMLElement)) {
+          return;
+        }
+
+        const normalizeTheme = (value) => {
+          if (typeof value !== "string") {
+            return null;
+          }
+          const normalized = value.trim().toLowerCase();
+          if (normalized === "" || normalized === "default") {
+            return FALLBACK_THEME;
+          }
+          return VALID_THEMES.has(normalized) ? normalized : null;
+        };
+
+        const getParentRoot = () => {
+          try {
+            if (window.parent && window.parent !== window) {
+              const parentDocument = window.parent.document;
+              const parentRoot = parentDocument?.documentElement;
+              return parentRoot instanceof HTMLElement ? parentRoot : null;
+            }
+          } catch (error) {
+            return null;
+          }
+          return null;
+        };
+
+        const readParentTheme = () => {
+          const parentRoot = getParentRoot();
+          if (!parentRoot) {
+            return null;
+          }
+          return normalizeTheme(parentRoot.dataset?.theme);
+        };
+
+        const readStoredTheme = () => {
+          try {
+            return normalizeTheme(window.localStorage.getItem(STORAGE_KEY));
+          } catch (error) {
+            return null;
+          }
+        };
+
+        const applyTheme = (theme) => {
+          if (theme && VALID_THEMES.has(theme)) {
+            root.dataset.theme = theme;
+          } else {
+            root.removeAttribute("data-theme");
+          }
+        };
+
+        const syncTheme = () => {
+          const resolvedTheme =
+            readParentTheme() ?? readStoredTheme() ?? FALLBACK_THEME;
+          applyTheme(resolvedTheme);
+        };
+
+        syncTheme();
+
+        const parentRoot = getParentRoot();
+        let observer;
+
+        if (parentRoot && typeof MutationObserver !== "undefined") {
+          observer = new MutationObserver(syncTheme);
+          observer.observe(parentRoot, {
+            attributes: true,
+            attributeFilter: ["data-theme"],
+          });
+        }
+
+        window.addEventListener("storage", (event) => {
+          if (event?.key === STORAGE_KEY) {
+            syncTheme();
+          }
+        });
+
+        window.addEventListener(
+          "pageshow",
+          () => {
+            syncTheme();
+          },
+          { once: true }
+        );
+
+        window.addEventListener(
+          "beforeunload",
+          () => {
+            if (observer) {
+              observer.disconnect();
+            }
+          },
+          { once: true }
+        );
+      })();
+    </script>
     <!-- Link to your main stylesheet -->
 
     <link rel="stylesheet" href="../../css/tailwind.generated.css" />
