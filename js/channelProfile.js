@@ -2043,19 +2043,73 @@ function trimProfileString(value) {
   return value.trim();
 }
 
+function normalizeProfileMediaUrl(value) {
+  const trimmed = trimProfileString(value);
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/^data:image\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^blob:/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
+  }
+
+  if (/^ipfs:\/\//i.test(trimmed)) {
+    const ipfsPath = trimmed
+      .replace(/^ipfs:\/\//i, "")
+      .replace(/^ipfs\//i, "");
+    if (!ipfsPath) {
+      return "";
+    }
+    return `https://ipfs.io/ipfs/${encodeURI(ipfsPath)}`;
+  }
+
+  if (/^(?:\.\.\/|\.\/|\/)/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^assets\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const localhostPattern = /^(?:localhost|(?:\d{1,3}\.){3}\d{1,3})(?::\d+)?(?:[/?#].*)?$/i;
+  if (localhostPattern.test(trimmed)) {
+    return `http://${trimmed}`;
+  }
+
+  const domainPattern =
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,}(?::\d+)?(?:[/?#].*)?$/i;
+  if (domainPattern.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+
+  return "";
+}
+
 function normalizeChannelProfileMetadata(raw = {}) {
   const name =
     trimProfileString(raw.display_name) ||
     trimProfileString(raw.name) ||
     "Unknown User";
   const picture =
-    trimProfileString(raw.picture) ||
-    trimProfileString(raw.image) ||
+    normalizeProfileMediaUrl(raw.picture) ||
+    normalizeProfileMediaUrl(raw.image) ||
     FALLBACK_CHANNEL_AVATAR;
   const about = trimProfileString(raw.about || raw.bio);
   const website = trimProfileString(raw.website || raw.url);
   const banner =
-    trimProfileString(raw.banner || raw.header || raw.background) || "";
+    normalizeProfileMediaUrl(raw.banner || raw.header || raw.background) || "";
   const lud16 = trimProfileString(raw.lud16);
   const lud06 = trimProfileString(raw.lud06);
   const lightningAddress =
