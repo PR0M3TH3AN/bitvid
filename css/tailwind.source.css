@@ -502,9 +502,10 @@
       var(--motion-ease-out, ease-out);
   }
 
-  .blog-embed-shell {
-    height: var(--blog-embed-height);
-  }
+  /*
+   * Blog embed heights are now driven by the iframe content via postMessage.
+   * Styling lives inline so the shell can expand naturally with its card.
+   */
 
   /*
    * Blog carousel component styles
