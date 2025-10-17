@@ -835,7 +835,7 @@
   .card:hover,
   .card:focus-within {
     --video-card-lift-translate-y: -0.35rem;
-    --video-card-backdrop-opacity: 0.85;
+    --video-card-backdrop-opacity: 0.425;
     --video-card-backdrop-translate-y: 0.15rem;
     --video-card-backdrop-scale: 1.12;
     --video-card-backdrop-blur: 24px;
