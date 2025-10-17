@@ -1,6 +1,6 @@
 # Feed Engine Architecture
 
-The feed engine is a lightweight pipeline for composing Bitvid feeds from one
+The feed engine is a lightweight pipeline for composing bitvid feeds from one
 or more data sources. It lives in `js/feedEngine/` and exposes factories for
 sources, stages, sorters, and the engine itself. The goal is to make it easy to
 register new feeds today while leaving room for future "open algorithm" work

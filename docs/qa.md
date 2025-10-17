@@ -1,6 +1,24 @@
-# Bitvid Manual QA Script
+# bitvid Manual QA Script
 
 Run this checklist before publishing releases or merging changes that touch upload or playback flows. Copy/paste the steps into QA tickets when requesting validation.
+
+> **Note:** Align every UI styling review with the token-first rules in [`AGENTS.md`](../AGENTS.md) and the [README CSS build pipeline](../README.md#css-build-pipeline). When QA covers styling changes, run `npm run lint:css` (and any related build/test scripts) to catch regressions early.
+
+Before starting, open `docs/kitchen-sink.html` in a browser to review the modal surface reference. Spin up the static dev server (`python -m http.server 8000` or `npx serve`) and load `views/dev/popover-demo.html` to sanity-check overlay menus following [docs/menus.md](./menus.md). With those pages as your visual baseline, perform this quick accessibility spot check in the running app:
+
+Automated regression coverage now exercises these flows on the unified design-system variant:
+
+* `tests/video-modal-accessibility.test.mjs` validates sticky header transitions, scroll locking, zap popover accessibility, and now verifies the video shell drops sticky positioning on mobile breakpoints.
+* `tests/modal-accessibility.test.mjs` mirrors upload/edit modal accessibility along with their form validation and mode toggles.
+* `tests/profile-modal-controller.test.mjs` verifies profile modal focus restoration and navigation button state changes.
+
+`tests/visual/kitchen-sink.spec.ts` captures design-system snapshots for the kitchen sink and the video modal. When modal styles change, run `npm run test:visual:update` to refresh both the desktop and mobile baselines.
+
+* Launch the site, trigger any video card or thumbnail to open the playback modal, and keep track of the element you used to open it.
+* Scroll the modal content down and back up; confirm the sticky navigation bar hides on downward scroll and reappears when you reverse direction.
+* Activate the zap button to display the popover and tab through its fields to confirm focus stays within the dialog; press `Escape` to close it and ensure focus returns to the zap trigger.
+* Close the video modal first with `Escape` and again by clicking the dimmed backdrop; in both cases, focus should move back to the original trigger element you used to open the modal.
+* Repeat the accessibility spot check for the Upload, Edit, and Revert modals along with static dialogs (Login, Application form, Content appeals, Feedback, Feature request, Bug report, and Disclaimer). Ensure `Tab`/`Shift+Tab` stay within each modal and that pressing `Escape` or clicking a dismissible backdrop closes the dialog and restores focus to the opener.
 
 1. **Upload Modal Smoke Test**
    - Open the Upload modal, verify title is required, and ensure either a hosted URL or a magnet (or both) must be supplied.

@@ -7,19 +7,21 @@ import {
   setManagedDomain,
 } from "./storage/r2-mgmt.js";
 import { makeR2Client, multipartUpload } from "./storage/r2-s3.js";
+import { userLogger } from "./utils/logger.js";
 
 const STORAGE_KEY = "bitvid:quickR2Settings";
 const STATUS_CLASSNAMES = [
-  "text-gray-400",
-  "text-green-400",
-  "text-red-400",
-  "text-yellow-400",
+  "text-status-neutral",
+  "text-status-info",
+  "text-status-success",
+  "text-status-danger",
+  "text-status-warning",
 ];
 const STATUS_TONES = {
-  info: "text-gray-400",
-  success: "text-green-400",
-  error: "text-red-400",
-  warning: "text-yellow-400",
+  info: "text-status-info",
+  success: "text-status-success",
+  error: "text-status-danger",
+  warning: "text-status-warning",
 };
 
 function sanitizeDomain(value) {
@@ -45,7 +47,7 @@ function loadSavedSettings() {
     }
     return parsed;
   } catch (err) {
-    console.warn("Failed to read quick R2 settings:", err);
+    userLogger.warn("Failed to read quick R2 settings:", err);
     return null;
   }
 }
@@ -54,7 +56,7 @@ function persistSettings(settings) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch (err) {
-    console.warn("Failed to store quick R2 settings:", err);
+    userLogger.warn("Failed to store quick R2 settings:", err);
   }
 }
 
@@ -62,7 +64,7 @@ function clearSavedSettings() {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (err) {
-    console.warn("Failed to clear quick R2 settings:", err);
+    userLogger.warn("Failed to clear quick R2 settings:", err);
   }
 }
 
@@ -71,7 +73,7 @@ function setStatus(el, message, tone = "info") {
     return;
   }
   STATUS_CLASSNAMES.forEach((cls) => el.classList.remove(cls));
-  const className = STATUS_TONES[tone] || STATUS_TONES.info;
+  const className = STATUS_TONES[tone] || "text-status-neutral";
   if (className) {
     el.classList.add(className);
   }
@@ -257,7 +259,7 @@ export function initQuickR2Upload(app) {
             origins: getCorsOrigins(),
           });
         } catch (corsErr) {
-          console.warn("Quick R2 CORS update failed:", corsErr);
+          userLogger.warn("Quick R2 CORS update failed:", corsErr);
         }
       }
 
@@ -291,7 +293,7 @@ export function initQuickR2Upload(app) {
                   enabled: false,
                 });
               } catch (disableErr) {
-                console.warn("Quick R2 managed domain disable failed:", disableErr);
+                userLogger.warn("Quick R2 managed domain disable failed:", disableErr);
               }
             } else {
               setStatus(
@@ -301,7 +303,7 @@ export function initQuickR2Upload(app) {
               );
             }
           } catch (err) {
-            console.warn("Quick R2 custom domain error:", err);
+            userLogger.warn("Quick R2 custom domain error:", err);
             setStatus(
               elements.status,
               err?.message
@@ -331,7 +333,7 @@ export function initQuickR2Upload(app) {
             usedManagedFallback = true;
           }
         } catch (err) {
-          console.warn("Quick R2 managed domain enable failed:", err);
+          userLogger.warn("Quick R2 managed domain enable failed:", err);
           setStatus(
             elements.status,
             err?.message
@@ -392,7 +394,7 @@ export function initQuickR2Upload(app) {
         elements.form.requestSubmit();
       }
     } catch (err) {
-      console.error("Quick R2 upload failed:", err);
+      userLogger.error("Quick R2 upload failed:", err);
       setStatus(
         elements.status,
         err?.message ? `Upload failed: ${err.message}` : "Upload failed.",

@@ -1,6 +1,7 @@
 // js/feedEngine/engine.js
 
 import { isPlainObject } from "./utils.js";
+import { userLogger } from "../utils/logger.js";
 
 const DEFAULT_FEED_CONFIG = Object.freeze({
   timeWindow: null,
@@ -93,7 +94,7 @@ function createExecutionContext(entry, { config, hooks, runtime, logger }) {
       try {
         resolvedLogger(`[feed:${entry.name}]`, ...args);
       } catch (error) {
-        console.warn(`[feed:${entry.name}] logger threw`, error);
+        userLogger.warn(`[feed:${entry.name}] logger threw`, error);
       }
     },
     addWhy: (detail) => {

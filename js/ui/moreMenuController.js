@@ -1,3 +1,10 @@
+import { normalizeDesignSystemContext } from "../designSystem.js";
+import { userLogger } from "../utils/logger.js";
+import {
+  createVideoMoreMenuPanel,
+} from "./components/videoMenuRenderers.js";
+import createPopover from "./overlay/popoverEngine.js";
+
 export default class MoreMenuController {
   constructor(options = {}) {
     const {
@@ -8,6 +15,7 @@ export default class MoreMenuController {
       clipboard = typeof navigator !== "undefined" ? navigator.clipboard : null,
       isDevMode = false,
       callbacks = {},
+      designSystem = null,
     } = options;
 
     this.document = doc;
@@ -16,6 +24,7 @@ export default class MoreMenuController {
     this.subscriptions = subscriptions;
     this.clipboard = clipboard;
     this.isDevMode = Boolean(isDevMode);
+    this.designSystem = normalizeDesignSystemContext(designSystem);
 
     this.callbacks = {
       getCurrentVideo: callbacks.getCurrentVideo || (() => null),
@@ -44,8 +53,6 @@ export default class MoreMenuController {
     };
 
     this.moreMenuGlobalHandlerBound = false;
-    this.boundDocumentClick = null;
-    this.boundDocumentKeydown = null;
 
     this.videoListView = null;
     this.videoModal = null;
@@ -53,6 +60,8 @@ export default class MoreMenuController {
     this.boundVideoListShareListener = null;
     this.boundVideoListContextListener = null;
     this.boundVideoListBlacklistHandler = null;
+    this.popoversByTrigger = new Map();
+    this.activePopover = null;
   }
 
   setVideoModal(videoModal) {
@@ -159,82 +168,288 @@ export default class MoreMenuController {
     this.detachVideoListView();
     this.setVideoModal(null);
 
-    if (this.document && this.boundDocumentClick) {
-      this.document.removeEventListener("click", this.boundDocumentClick);
-    }
-    if (this.document && this.boundDocumentKeydown) {
-      this.document.removeEventListener("keydown", this.boundDocumentKeydown);
-    }
+    this.closeAllMoreMenus({ skipView: true });
 
-    this.boundDocumentClick = null;
-    this.boundDocumentKeydown = null;
+    this.popoversByTrigger.forEach((entry) => {
+      try {
+        entry?.popover?.destroy?.();
+      } catch (error) {
+        if (this.isDevMode) {
+          userLogger.warn("[MoreMenu] Failed to destroy popover:", error);
+        }
+      }
+    });
+    this.popoversByTrigger.clear();
+    this.activePopover = null;
     this.moreMenuGlobalHandlerBound = false;
   }
 
   ensureGlobalMoreMenuHandlers() {
-    if (this.moreMenuGlobalHandlerBound) {
-      return;
-    }
-
-    if (!this.document) {
-      return;
-    }
-
     this.moreMenuGlobalHandlerBound = true;
-
-    this.boundDocumentClick = (event) => {
-      const target = event?.target;
-      if (!target || typeof target.closest !== "function") {
-        this.closeAllMoreMenus();
-        return;
-      }
-      if (
-        target.closest("[data-more-menu-wrapper]") ||
-        target.closest("[data-more-menu]")
-      ) {
-        return;
-      }
-      this.closeAllMoreMenus();
-    };
-
-    this.boundDocumentKeydown = (event) => {
-      if (event?.key === "Escape") {
-        this.closeAllMoreMenus();
-      }
-    };
-
-    this.document.addEventListener("click", this.boundDocumentClick);
-    this.document.addEventListener("keydown", this.boundDocumentKeydown);
   }
 
-  closeAllMoreMenus() {
+  getHTMLElementConstructor(documentRef) {
+    return (
+      documentRef?.defaultView?.HTMLElement ||
+      (typeof HTMLElement !== "undefined" ? HTMLElement : null)
+    );
+  }
+
+  createPopoverRender(entry) {
+    return ({ document: documentRef, close }) => {
+      const panel = createVideoMoreMenuPanel({
+        document: documentRef,
+        video: entry.context.video,
+        pointerInfo: entry.context.pointerInfo,
+        playbackUrl: entry.context.playbackUrl,
+        playbackMagnet: entry.context.playbackMagnet,
+        canManageBlacklist: entry.context.canManageBlacklist,
+        context: entry.context.context || "card",
+        designSystem: entry.context.designSystem || this.designSystem,
+      });
+
+      if (!panel) {
+        return null;
+      }
+
+      const buttons = panel.querySelectorAll("button[data-action]");
+      buttons.forEach((button) => {
+        const HTMLElementCtor = this.getHTMLElementConstructor(button?.ownerDocument);
+        if (HTMLElementCtor && !(button instanceof HTMLElementCtor)) {
+          return;
+        }
+
+        button.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          const dataset = { ...button.dataset };
+          const action = dataset.action || "";
+
+          try {
+            await this.handleMoreMenuAction(action, dataset);
+          } catch (error) {
+            userLogger.error("[MoreMenu] Failed to handle action:", error);
+          }
+
+          if (typeof entry.context.onAction === "function") {
+            try {
+              entry.context.onAction({ action, dataset, event });
+            } catch (callbackError) {
+              if (this.isDevMode) {
+                userLogger.warn(
+                  "[MoreMenu] onAction callback failed",
+                  callbackError,
+                );
+              }
+            }
+          }
+
+          if (typeof close === "function") {
+            close();
+          }
+        });
+      });
+
+      return panel;
+    };
+  }
+
+  decoratePopoverLifecycle(popover, trigger, entry) {
+    if (!popover) {
+      return null;
+    }
+
+    const originalOpen = popover.open?.bind(popover);
+    const originalClose = popover.close?.bind(popover);
+    const originalDestroy = popover.destroy?.bind(popover);
+
+    if (typeof originalOpen === "function") {
+      popover.open = async (...args) => {
+        const result = await originalOpen(...args);
+        if (result) {
+          this.activePopover = popover;
+        }
+        return result;
+      };
+    }
+
+    if (typeof originalClose === "function") {
+      popover.close = (options = {}) => {
+        const restoreFocus =
+          options?.restoreFocus !== undefined
+            ? options.restoreFocus
+            : entry?.context?.restoreFocusOnClose !== false;
+        const result = originalClose({ restoreFocus });
+        if (result && this.activePopover === popover) {
+          this.activePopover = null;
+        }
+        if (result && typeof entry?.context?.onClose === "function") {
+          try {
+            entry.context.onClose({
+              trigger,
+              reason: options?.reason || "close",
+              restoreFocus,
+            });
+          } catch (error) {
+            if (this.isDevMode) {
+              userLogger.warn("[MoreMenu] onClose callback failed", error);
+            }
+          }
+        }
+        return result;
+      };
+    }
+
+    if (typeof originalDestroy === "function") {
+      popover.destroy = (...args) => {
+        if (this.activePopover === popover) {
+          this.activePopover = null;
+        }
+        originalDestroy(...args);
+        if (trigger && this.popoversByTrigger.get(trigger) === entry) {
+          this.popoversByTrigger.delete(trigger);
+        }
+      };
+    }
+
+    return popover;
+  }
+
+  ensurePopoverForTrigger({ trigger }) {
+    if (!trigger) {
+      return null;
+    }
+
+    if (this.popoversByTrigger.has(trigger)) {
+      return this.popoversByTrigger.get(trigger);
+    }
+
+    const documentRef =
+      trigger?.ownerDocument ||
+      this.document ||
+      (typeof document !== "undefined" ? document : null);
+
+    const entry = {
+      trigger,
+      context: {
+        video: null,
+        pointerInfo: null,
+        playbackUrl: "",
+        playbackMagnet: "",
+        canManageBlacklist: false,
+        context: "card",
+        designSystem: this.designSystem,
+        onAction: null,
+        onClose: null,
+        restoreFocusOnClose: true,
+      },
+      popover: null,
+    };
+
+    const render = this.createPopoverRender(entry);
+
+    const popover = createPopover(trigger, render, {
+      document: documentRef,
+      placement: "bottom-end",
+    });
+
+    const decorated = this.decoratePopoverLifecycle(popover, trigger, entry) || popover;
+    entry.popover = decorated;
+    this.popoversByTrigger.set(trigger, entry);
+    return entry;
+  }
+
+  async toggleMoreMenu(detail = {}) {
+    const {
+      trigger = null,
+      video = null,
+      pointerInfo = null,
+      playbackUrl = "",
+      playbackMagnet = "",
+      context = "card",
+      canManageBlacklist = this.callbacks.canCurrentUserManageBlacklist(),
+      designSystem = null,
+      onAction = null,
+      onClose = null,
+      restoreFocusOnClose = true,
+    } = detail;
+
+    const entry = this.ensurePopoverForTrigger({ trigger });
+    if (!entry?.popover) {
+      return;
+    }
+
+    entry.context = {
+      ...entry.context,
+      video,
+      pointerInfo,
+      playbackUrl,
+      playbackMagnet,
+      canManageBlacklist,
+      context,
+      designSystem: designSystem || this.designSystem,
+      onAction,
+      onClose,
+      restoreFocusOnClose: restoreFocusOnClose !== false,
+    };
+
+    if (typeof entry.popover.isOpen === "function" && entry.popover.isOpen()) {
+      entry.popover.close({
+        restoreFocus: entry.context.restoreFocusOnClose !== false,
+      });
+      return;
+    }
+
+    try {
+      await entry.popover.open();
+    } catch (error) {
+      userLogger.error("[MoreMenu] Failed to open popover:", error);
+    }
+  }
+
+  closePopoverForTrigger(trigger, options = {}) {
+    const entry = trigger ? this.popoversByTrigger.get(trigger) : null;
+    if (!entry?.popover || typeof entry.popover.close !== "function") {
+      return false;
+    }
+
+    const restoreFocus =
+      options?.restoreFocus !== undefined
+        ? options.restoreFocus
+        : entry.context?.restoreFocusOnClose !== false;
+
+    return entry.popover.close({ restoreFocus });
+  }
+
+  closeAllMoreMenus(options = {}) {
+    const skipView = options?.skipView === true;
+    const restoreFocus = options?.restoreFocus !== false;
+    const skipTrigger = options?.skipTrigger || null;
+
     if (
+      !skipView &&
       this.videoListView &&
       typeof this.videoListView.closeAllMenus === "function"
     ) {
-      this.videoListView.closeAllMenus();
+      const viewOptions = {
+        skipController: true,
+        restoreFocus,
+      };
+      if (skipTrigger) {
+        viewOptions.skipTrigger = skipTrigger;
+      }
+      this.videoListView.closeAllMenus(viewOptions);
     }
 
-    if (!this.document || typeof this.document.querySelectorAll !== "function") {
-      return;
-    }
-
-    const HTMLElementCtor =
-      this.document?.defaultView?.HTMLElement ||
-      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
-
-    const menus = this.document.querySelectorAll("[data-more-menu]");
-    menus.forEach((menu) => {
-      if (!HTMLElementCtor || menu instanceof HTMLElementCtor) {
-        menu.classList.add("hidden");
+    this.popoversByTrigger.forEach((entry) => {
+      if (!entry?.popover || typeof entry.popover.close !== "function") {
+        return;
       }
-    });
-
-    const buttons = this.document.querySelectorAll("[data-more-dropdown]");
-    buttons.forEach((button) => {
-      if (!HTMLElementCtor || button instanceof HTMLElementCtor) {
-        button.setAttribute("aria-expanded", "false");
+      if (skipTrigger && entry.trigger === skipTrigger) {
+        return;
       }
+      entry.popover.close({ restoreFocus });
     });
   }
 
@@ -254,9 +469,7 @@ export default class MoreMenuController {
 
     this.ensureGlobalMoreMenuHandlers();
 
-    const HTMLElementCtor =
-      this.document?.defaultView?.HTMLElement ||
-      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+    const HTMLElementCtor = this.getHTMLElementConstructor(this.document);
 
     buttons.forEach((button) => {
       if (HTMLElementCtor && !(button instanceof HTMLElementCtor)) {
@@ -266,46 +479,59 @@ export default class MoreMenuController {
         return;
       }
       button.dataset.moreMenuToggleBound = "true";
-      button.setAttribute("aria-expanded", "false");
-
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
 
-        const key = button.getAttribute("data-more-dropdown") || "";
-        const dropdown = this.document.getElementById(`moreDropdown-${key}`);
-        if (HTMLElementCtor && !(dropdown instanceof HTMLElementCtor)) {
-          return;
+        const context = button.getAttribute("data-context") || "card";
+
+        let video = null;
+        let pointerInfo = null;
+        let playbackUrl = "";
+        let playbackMagnet = "";
+
+        if (context === "modal") {
+          video = this.callbacks.getCurrentVideo();
+          if (Array.isArray(video?.pointer) && video.pointer.length >= 2) {
+            pointerInfo = { pointer: video.pointer };
+          }
+          playbackUrl = typeof video?.url === "string" ? video.url : "";
+          playbackMagnet = (() => {
+            if (typeof video?.magnet === "string" && video.magnet) {
+              return video.magnet;
+            }
+            if (typeof video?.infoHash === "string" && video.infoHash) {
+              return video.infoHash;
+            }
+            return "";
+          })();
         }
 
-        const willOpen = dropdown.classList.contains("hidden");
-        this.closeAllMoreMenus();
-
-        if (willOpen) {
-          dropdown.classList.remove("hidden");
-          button.setAttribute("aria-expanded", "true");
+        if (!pointerInfo) {
+          const pointerType = button.getAttribute("data-pointer-type") || "";
+          const pointerValue = button.getAttribute("data-pointer-value") || "";
+          const pointerRelay = button.getAttribute("data-pointer-relay") || "";
+          const pointerKey = button.getAttribute("data-pointer-key") || "";
+          if (pointerType && pointerValue) {
+            pointerInfo = {
+              pointer: pointerRelay
+                ? [pointerType, pointerValue, pointerRelay]
+                : [pointerType, pointerValue],
+              key: pointerKey,
+            };
+          }
         }
-      });
-    });
 
-    const actionButtons = container.querySelectorAll(
-      "[data-more-menu] button[data-action]",
-    );
-    actionButtons.forEach((button) => {
-      if (HTMLElementCtor && !(button instanceof HTMLElementCtor)) {
-        return;
-      }
-      if (button.dataset.moreMenuActionBound === "true") {
-        return;
-      }
-      button.dataset.moreMenuActionBound = "true";
-
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const { action } = button.dataset;
-        this.handleMoreMenuAction(action, button.dataset);
-        this.closeAllMoreMenus();
+        this.toggleMoreMenu({
+          trigger: button,
+          video,
+          pointerInfo,
+          playbackUrl,
+          playbackMagnet,
+          context,
+          canManageBlacklist: this.callbacks.canCurrentUserManageBlacklist(),
+          designSystem: this.designSystem,
+        });
       });
     });
   }
@@ -410,7 +636,7 @@ export default class MoreMenuController {
           await this.clipboard.writeText(valueToCopy);
           this.callbacks.showSuccess("Channel npub copied to clipboard!");
         } catch (error) {
-          console.error("Failed to copy npub:", error);
+          userLogger.error("Failed to copy npub:", error);
           this.callbacks.showError("Failed to copy the npub.");
         }
         break;
@@ -427,7 +653,7 @@ export default class MoreMenuController {
         try {
           await this.accessControl?.ensureReady?.();
         } catch (error) {
-          console.warn(
+          userLogger.warn(
             "Failed to refresh moderation state before blacklisting:",
             error,
           );
@@ -471,7 +697,7 @@ export default class MoreMenuController {
               });
             } catch (error) {
               if (this.isDevMode) {
-                console.warn(
+                userLogger.warn(
                   "[Subscriptions] Failed to refresh after blacklist update:",
                   error,
                 );
@@ -502,7 +728,7 @@ export default class MoreMenuController {
             }
           }
         } catch (error) {
-          console.error("Failed to add creator to blacklist:", error);
+          userLogger.error("Failed to add creator to blacklist:", error);
           this.callbacks.showError(
             "Failed to update the blacklist. Please try again.",
           );
@@ -558,7 +784,7 @@ export default class MoreMenuController {
           try {
             this.callbacks.onUserBlocksUpdated();
           } catch (error) {
-            console.warn(
+            userLogger.warn(
               "[MoreMenu] Failed to refresh blocked list after update:",
               error,
             );
@@ -571,14 +797,14 @@ export default class MoreMenuController {
             });
           } catch (error) {
             if (this.isDevMode) {
-              console.warn(
+              userLogger.warn(
                 "[Subscriptions] Failed to refresh after user block update:",
                 error,
               );
             }
           }
         } catch (error) {
-          console.error("Failed to update personal block list:", error);
+          userLogger.error("Failed to update personal block list:", error);
           const message =
             error?.code === "nip04-missing"
               ? "Your Nostr extension must support NIP-04 to manage private lists."

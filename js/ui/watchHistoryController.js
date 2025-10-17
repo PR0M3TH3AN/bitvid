@@ -3,6 +3,8 @@ import {
   normalizePointerInput,
   pointerKey as derivePointerKey,
 } from "../nostr.js";
+import { normalizeDesignSystemContext } from "../designSystem.js";
+import { devLogger } from "../utils/logger.js";
 
 const noop = () => {};
 
@@ -10,7 +12,7 @@ function resolveCardElement(trigger) {
   if (!(trigger instanceof HTMLElement)) {
     return null;
   }
-  const candidate = trigger.closest(".video-card");
+  const candidate = trigger.closest("[data-history-card]");
   return candidate instanceof HTMLElement ? candidate : null;
 }
 
@@ -21,12 +23,10 @@ function safeInvoke(callback, payload) {
   try {
     callback(payload);
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        "[watchHistoryController] onStateChange handler failed:",
-        error,
-      );
-    }
+    devLogger.warn(
+      "[watchHistoryController] onStateChange handler failed:",
+      error,
+    );
   }
 }
 
@@ -38,6 +38,7 @@ export default class WatchHistoryController {
     showSuccess,
     dropWatchHistoryMetadata,
     getActivePubkey,
+    designSystem,
   } = {}) {
     this.watchHistoryService = watchHistoryService || null;
     this.nostrClient = nostrClient || null;
@@ -49,6 +50,7 @@ export default class WatchHistoryController {
         : noop;
     this.getActivePubkey =
       typeof getActivePubkey === "function" ? getActivePubkey : () => "";
+    this.designSystem = normalizeDesignSystemContext(designSystem);
   }
 
   buildPointerFromDataset(dataset = {}) {
@@ -101,12 +103,10 @@ export default class WatchHistoryController {
     try {
       return derivePointerKey(normalized) || "";
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryController] Failed to derive pointer key:",
-          error,
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryController] Failed to derive pointer key:",
+        error,
+      );
       return "";
     }
   }
@@ -285,7 +285,11 @@ export default class WatchHistoryController {
           ? latest.map(normalizeEntry).filter(Boolean)
           : [];
       } catch (error) {
-        this.showError("Failed to load watch history. Please try again.");
+        const message =
+          error?.code === "watch-history-extension-permission-denied"
+            ? error.message
+            : "Failed to load watch history. Please try again.";
+        this.showError(message);
         if (error && typeof error === "object") {
           error.handled = true;
         }
@@ -318,12 +322,10 @@ export default class WatchHistoryController {
           source: reason,
         });
       } catch (updateError) {
-        if (isDevMode) {
-          console.warn(
-            "[watchHistoryController] Failed to update local watch history list:",
-            updateError,
-          );
-        }
+        devLogger.warn(
+          "[watchHistoryController] Failed to update local watch history list:",
+          updateError,
+        );
       }
 
       this.showSuccess(
@@ -352,15 +354,17 @@ export default class WatchHistoryController {
     try {
       const result = this.watchHistoryService.snapshot(undefined, { reason });
       return Promise.resolve(result).catch((error) => {
-        if (isDevMode) {
-          console.warn(`[${context}] Watch history flush failed:`, error);
-        }
+        devLogger.warn(
+          `[${context}] Watch history flush failed:`,
+          error,
+        );
         throw error;
       });
     } catch (error) {
-      if (isDevMode) {
-        console.warn(`[${context}] Failed to queue watch history flush:`, error);
-      }
+      devLogger.warn(
+        `[${context}] Failed to queue watch history flush:`,
+        error,
+      );
       return Promise.reject(error);
     }
   }

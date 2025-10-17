@@ -1,4 +1,4 @@
-# NIPs Bitvid uses (Moderation-Relevant)
+# NIPs bitvid uses (Moderation-Relevant)
 
 ## Required
 - **NIP-56 — Reporting**  

@@ -11,7 +11,12 @@ class DummyElement {
       toggle: noop,
       contains: () => false,
     };
-    this.style = {};
+    Object.defineProperty(this, "style", {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: {},
+    });
     this.dataset = {};
     this.children = [];
   }

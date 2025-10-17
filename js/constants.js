@@ -2,7 +2,7 @@ const DEFAULT_FLAGS = Object.freeze({
   URL_FIRST_ENABLED: true, // try URL before magnet in the player
   ACCEPT_LEGACY_V1: true, // accept v1 magnet-only notes
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
-  FEATURE_WATCH_HISTORY_V2: false,
+  FEATURE_WATCH_HISTORY_V2: true,
   FEATURE_PUBLISH_NIP71: false,
   WSS_TRACKERS: Object.freeze([
     "wss://tracker.openwebtorrent.com",

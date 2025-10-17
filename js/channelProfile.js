@@ -3,7 +3,7 @@
 import {
   nostrClient,
   DEFAULT_RELAY_URLS,
-  convertEventToVideo as sharedConvertEventToVideo,
+  convertEventToVideo as sharedConvertEventToVideo
 } from "./nostr.js";
 import { subscriptions } from "./subscriptions.js"; // <-- NEW import
 import { attachHealthBadges } from "./gridHealth.js";
@@ -11,8 +11,11 @@ import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
 import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
+import createPopover from "./ui/overlay/popoverEngine.js";
 import { VideoCard } from "./ui/components/VideoCard.js";
+import { createChannelProfileMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
+import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
 import {
   calculateZapShares,
   describeShareType,
@@ -25,16 +28,20 @@ import {
   normalizeLightningAddressKey,
   rememberLightningMetadata,
   setCachedPlatformLightningAddress,
-  validateInvoiceAmount,
+  validateInvoiceAmount
 } from "./payments/zapSharedState.js";
 import { splitAndZap } from "./payments/zapSplit.js";
 import {
   resolveLightningAddress,
   fetchPayServiceData,
-  requestInvoice,
+  requestInvoice
 } from "./payments/lnurl.js";
 import { getPlatformLightningAddress } from "./payments/platformAddress.js";
-import { ensureWallet, sendPayment as sendWalletPayment } from "./payments/nwcClient.js";
+import { userLogger } from "./utils/logger.js";
+import {
+  ensureWallet,
+  sendPayment as sendWalletPayment
+} from "./payments/nwcClient.js";
 
 const getApp = () => getApplication();
 
@@ -57,8 +64,8 @@ const summarizeZapTracker = (tracker) =>
           typeof entry?.error?.message === "string"
             ? entry.error.message
             : entry?.error
-            ? String(entry.error)
-            : undefined,
+              ? String(entry.error)
+              : undefined
       }))
     : undefined;
 
@@ -84,23 +91,23 @@ function logZapError(stage, details = {}, error) {
             details.walletSettings.type ||
             details.walletSettings.name ||
             details.walletSettings.client ||
-            undefined,
+            undefined
         }
       : undefined,
     shares: details?.context?.shares
       ? {
           total: details.context.shares.total,
           creator: details.context.shares.creatorShare,
-          platform: details.context.shares.platformShare,
+          platform: details.context.shares.platformShare
         }
       : undefined,
     tracker: summarizeZapTracker(details?.tracker),
     retryAttempt:
       Number.isInteger(details?.retryAttempt) && details.retryAttempt >= 0
         ? details.retryAttempt
-        : undefined,
+        : undefined
   };
-  console.error("[zap] Channel zap failure", summary, error);
+  userLogger.error("[zap] Channel zap failure", summary, error);
 }
 let currentChannelProfileEvent = null;
 
@@ -121,6 +128,10 @@ let cachedZapSendBtn = null;
 let pendingZapRetry = null;
 let zapInFlight = false;
 let zapControlsOpen = false;
+let zapPopover = null;
+let zapShouldFocusOnOpen = false;
+let channelMenuPopover = null;
+let channelMenuOpen = false;
 let currentVideoLoadToken = 0;
 let currentProfileLoadToken = 0;
 
@@ -129,6 +140,64 @@ const FALLBACK_CHANNEL_AVATAR = "assets/svg/default-profile.svg";
 const PROFILE_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const channelProfileMetadataCache = new Map();
+const channelBannerImageCache = new Map();
+
+function preloadBannerImage(url) {
+  if (!url) {
+    return Promise.reject(new Error("Invalid banner URL"));
+  }
+
+  if (channelBannerImageCache.has(url)) {
+    return channelBannerImageCache.get(url);
+  }
+
+  const promise = new Promise((resolve, reject) => {
+    const img = new Image();
+    if ("decoding" in img) {
+      img.decoding = img.decoding || "async";
+    }
+    if ("loading" in img) {
+      img.loading = img.loading || "eager";
+    }
+    img.onload = () => {
+      resolve(url);
+    };
+    img.onerror = (event) => {
+      const error =
+        (event && "error" in event && event.error) ||
+        new Error("Failed to load banner image");
+      reject(error);
+    };
+    img.src = url;
+  });
+
+  channelBannerImageCache.set(url, promise);
+  return promise;
+}
+
+function setBannerVisual(el, url) {
+  if (!el) {
+    return;
+  }
+
+  const resolvedUrl = typeof url === "string" ? url : "";
+  const tagName = el.tagName ? el.tagName.toLowerCase() : "";
+
+  if (tagName === "img") {
+    if (el.src !== resolvedUrl) {
+      el.src = resolvedUrl;
+    }
+  } else {
+    const value = resolvedUrl ? `url("${resolvedUrl}")` : "";
+    if (el.style.backgroundImage !== value) {
+      el.style.backgroundImage = value;
+    }
+  }
+
+  if (el.dataset.bannerSrc !== resolvedUrl) {
+    el.dataset.bannerSrc = resolvedUrl;
+  }
+}
 
 function getChannelZapButton() {
   if (cachedZapButton && !document.body.contains(cachedZapButton)) {
@@ -154,7 +223,7 @@ function setChannelZapVisibility(visible) {
       ? app.isUserLoggedIn()
       : Boolean(app?.normalizeHexPubkey?.(app?.pubkey));
   const shouldShow = !!visible && isLoggedIn;
-  zapButton.classList.toggle("hidden", !shouldShow);
+  zapButton.toggleAttribute("hidden", !shouldShow);
   zapButton.disabled = !shouldShow;
   zapButton.setAttribute("aria-disabled", (!shouldShow).toString());
   zapButton.setAttribute("aria-hidden", (!shouldShow).toString());
@@ -171,6 +240,7 @@ function setChannelZapVisibility(visible) {
   closeZapControls();
   if (controls) {
     controls.setAttribute("aria-hidden", "true");
+    controls.hidden = true;
   }
   if (amountInput) {
     amountInput.disabled = !shouldShow;
@@ -181,9 +251,10 @@ function setChannelZapVisibility(visible) {
     if (shouldShow) {
       sendButton.removeAttribute("tabindex");
       sendButton.removeAttribute("aria-busy");
-      sendButton.classList.remove("opacity-50", "pointer-events-none");
+      delete sendButton.dataset.state;
     } else {
       sendButton.setAttribute("tabindex", "-1");
+      delete sendButton.dataset.state;
     }
   }
 
@@ -206,7 +277,10 @@ function setChannelZapVisibility(visible) {
 }
 
 function getChannelShareButton() {
-  if (cachedChannelShareButton && !document.body.contains(cachedChannelShareButton)) {
+  if (
+    cachedChannelShareButton &&
+    !document.body.contains(cachedChannelShareButton)
+  ) {
     cachedChannelShareButton = null;
   }
   if (!cachedChannelShareButton) {
@@ -216,113 +290,216 @@ function getChannelShareButton() {
 }
 
 function getChannelMenuElement() {
-  if (cachedChannelMenu && !document.body.contains(cachedChannelMenu)) {
-    cachedChannelMenu = null;
+  if (cachedChannelMenu && cachedChannelMenu.isConnected) {
+    return cachedChannelMenu;
   }
-  if (!cachedChannelMenu) {
-    cachedChannelMenu = document.getElementById("moreDropdown-channel-profile");
+
+  const doc = typeof document !== "undefined" ? document : null;
+  const existing = doc?.getElementById("channelProfileMoreMenu") || null;
+  const HTMLElementCtor =
+    doc?.defaultView?.HTMLElement ||
+    (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+  if (HTMLElementCtor && existing instanceof HTMLElementCtor) {
+    cachedChannelMenu = existing;
+  } else {
+    cachedChannelMenu = null;
   }
   return cachedChannelMenu;
 }
 
 function getZapControlsContainer() {
-  if (cachedZapControls && !document.body.contains(cachedZapControls)) {
-    cachedZapControls = null;
+  if (cachedZapControls && cachedZapControls.isConnected) {
+    return cachedZapControls;
   }
-  if (!cachedZapControls) {
-    cachedZapControls = document.getElementById("zapControls");
+
+  const doc = typeof document !== "undefined" ? document : null;
+  const existing = doc?.getElementById("zapControls") || null;
+  const HTMLElementCtor =
+    doc?.defaultView?.HTMLElement ||
+    (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+  if (HTMLElementCtor && existing instanceof HTMLElementCtor) {
+    cachedZapControls = existing;
+  } else {
+    cachedZapControls = null;
   }
   return cachedZapControls;
 }
 
 function getZapFormElement() {
-  if (cachedZapForm && !document.body.contains(cachedZapForm)) {
-    cachedZapForm = null;
+  if (cachedZapForm && cachedZapForm.isConnected) {
+    return cachedZapForm;
   }
-  if (!cachedZapForm) {
-    cachedZapForm = document.getElementById("zapForm");
-  }
+  const container = getZapControlsContainer();
+  cachedZapForm = container?.querySelector("#zapForm") || null;
   return cachedZapForm;
 }
 
 function getZapAmountInput() {
-  if (cachedZapAmountInput && !document.body.contains(cachedZapAmountInput)) {
-    cachedZapAmountInput = null;
+  if (cachedZapAmountInput && cachedZapAmountInput.isConnected) {
+    return cachedZapAmountInput;
   }
-  if (!cachedZapAmountInput) {
-    cachedZapAmountInput = document.getElementById("zapAmountInput");
-  }
+  const container = getZapControlsContainer();
+  cachedZapAmountInput = container?.querySelector("#zapAmountInput") || null;
   return cachedZapAmountInput;
 }
 
 function getZapSplitSummaryElement() {
-  if (cachedZapSplitSummary && !document.body.contains(cachedZapSplitSummary)) {
-    cachedZapSplitSummary = null;
+  if (cachedZapSplitSummary && cachedZapSplitSummary.isConnected) {
+    return cachedZapSplitSummary;
   }
-  if (!cachedZapSplitSummary) {
-    cachedZapSplitSummary = document.getElementById("zapSplitSummary");
-  }
+  const container = getZapControlsContainer();
+  cachedZapSplitSummary = container?.querySelector("#zapSplitSummary") || null;
   return cachedZapSplitSummary;
 }
 
 function getZapStatusElement() {
-  if (cachedZapStatus && !document.body.contains(cachedZapStatus)) {
-    cachedZapStatus = null;
+  if (cachedZapStatus && cachedZapStatus.isConnected) {
+    return cachedZapStatus;
   }
-  if (!cachedZapStatus) {
-    cachedZapStatus = document.getElementById("zapStatus");
-  }
+  const container = getZapControlsContainer();
+  cachedZapStatus = container?.querySelector("#zapStatus") || null;
   return cachedZapStatus;
 }
 
 function getZapReceiptsList() {
-  if (cachedZapReceipts && !document.body.contains(cachedZapReceipts)) {
-    cachedZapReceipts = null;
+  if (cachedZapReceipts && cachedZapReceipts.isConnected) {
+    return cachedZapReceipts;
   }
-  if (!cachedZapReceipts) {
-    cachedZapReceipts = document.getElementById("zapReceipts");
-  }
+  const container = getZapControlsContainer();
+  cachedZapReceipts = container?.querySelector("#zapReceipts") || null;
   return cachedZapReceipts;
 }
 
 function getZapSendButton() {
-  if (cachedZapSendBtn && !document.body.contains(cachedZapSendBtn)) {
-    cachedZapSendBtn = null;
+  if (cachedZapSendBtn && cachedZapSendBtn.isConnected) {
+    return cachedZapSendBtn;
   }
-  if (!cachedZapSendBtn) {
-    cachedZapSendBtn = document.getElementById("zapSendBtn");
-  }
+  const container = getZapControlsContainer();
+  cachedZapSendBtn = container?.querySelector("#zapSendBtn") || null;
   return cachedZapSendBtn;
 }
 
 function getZapWalletPrompt() {
-  if (cachedZapWalletPrompt && !document.body.contains(cachedZapWalletPrompt)) {
-    cachedZapWalletPrompt = null;
+  if (cachedZapWalletPrompt && cachedZapWalletPrompt.isConnected) {
+    return cachedZapWalletPrompt;
   }
-  if (!cachedZapWalletPrompt) {
-    cachedZapWalletPrompt = document.getElementById("zapWalletPrompt");
-  }
+  const container = getZapControlsContainer();
+  cachedZapWalletPrompt = container?.querySelector("#zapWalletPrompt") || null;
   return cachedZapWalletPrompt;
 }
 
 function getZapWalletLink() {
-  if (cachedZapWalletLink && !document.body.contains(cachedZapWalletLink)) {
-    cachedZapWalletLink = null;
+  if (cachedZapWalletLink && cachedZapWalletLink.isConnected) {
+    return cachedZapWalletLink;
   }
-  if (!cachedZapWalletLink) {
-    cachedZapWalletLink = document.getElementById("zapWalletLink");
-  }
+  const container = getZapControlsContainer();
+  cachedZapWalletLink = container?.querySelector("#zapWalletLink") || null;
   return cachedZapWalletLink;
 }
 
 function getZapCloseButton() {
-  if (cachedZapCloseBtn && !document.body.contains(cachedZapCloseBtn)) {
-    cachedZapCloseBtn = null;
+  if (cachedZapCloseBtn && cachedZapCloseBtn.isConnected) {
+    return cachedZapCloseBtn;
   }
-  if (!cachedZapCloseBtn) {
-    cachedZapCloseBtn = document.getElementById("zapCloseBtn");
-  }
+  const container = getZapControlsContainer();
+  cachedZapCloseBtn = container?.querySelector("#zapCloseBtn") || null;
   return cachedZapCloseBtn;
+}
+
+function cacheZapPanelElements(panel) {
+  if (!panel || panel.nodeType !== 1) {
+    cachedZapControls = null;
+    cachedZapForm = null;
+    cachedZapAmountInput = null;
+    cachedZapSplitSummary = null;
+    cachedZapStatus = null;
+    cachedZapReceipts = null;
+    cachedZapWalletPrompt = null;
+    cachedZapWalletLink = null;
+    cachedZapCloseBtn = null;
+    cachedZapSendBtn = null;
+    return;
+  }
+
+  cachedZapControls = panel;
+  cachedZapForm = panel.querySelector("#zapForm");
+  cachedZapAmountInput = panel.querySelector("#zapAmountInput");
+  cachedZapSplitSummary = panel.querySelector("#zapSplitSummary");
+  cachedZapStatus = panel.querySelector("#zapStatus");
+  cachedZapReceipts = panel.querySelector("#zapReceipts");
+  cachedZapWalletPrompt = panel.querySelector("#zapWalletPrompt");
+  cachedZapWalletLink = panel.querySelector("#zapWalletLink");
+  cachedZapCloseBtn = panel.querySelector("#zapCloseBtn");
+  cachedZapSendBtn = panel.querySelector("#zapSendBtn");
+}
+
+function initializeZapPanel() {
+  const zapButton = getChannelZapButton();
+  const amountInput = getZapAmountInput();
+  const zapForm = getZapFormElement();
+  const sendButton = getZapSendButton();
+  if (!zapButton || !amountInput || !zapForm || !sendButton) {
+    return;
+  }
+
+  zapButton.setAttribute("aria-expanded", "false");
+
+  if (zapForm.dataset.initialized !== "true") {
+    zapForm.addEventListener("submit", handleZapSend);
+    zapForm.dataset.initialized = "true";
+  }
+
+  if (amountInput.dataset.initialized !== "true") {
+    amountInput.addEventListener("input", handleZapAmountChange);
+    amountInput.addEventListener("change", handleZapAmountChange);
+    amountInput.dataset.initialized = "true";
+  }
+
+  const closeBtn = getZapCloseButton();
+  if (closeBtn && closeBtn.dataset.initialized !== "true") {
+    closeBtn.addEventListener("click", (event) => {
+      event?.preventDefault?.();
+      closeZapControls({ focusButton: true });
+    });
+    closeBtn.dataset.initialized = "true";
+  }
+
+  setupZapWalletLink();
+
+  const app = getApp();
+  const activeSettings =
+    typeof app?.getActiveNwcSettings === "function"
+      ? app.getActiveNwcSettings()
+      : {};
+
+  const hasWallet =
+    typeof app?.hasActiveWalletConnection === "function"
+      ? app.hasActiveWalletConnection()
+      : (() => {
+          const settings =
+            typeof app?.getActiveNwcSettings === "function"
+              ? app.getActiveNwcSettings()
+              : {};
+          const uri =
+            typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
+          return uri.length > 0;
+        })();
+
+  const shouldShowPrompt = !zapButton.hasAttribute("hidden") && !hasWallet;
+  setZapWalletPromptVisible(shouldShowPrompt);
+
+  if (
+    Number.isFinite(activeSettings?.defaultZap) &&
+    activeSettings.defaultZap > 0
+  ) {
+    amountInput.value = Math.max(0, Math.round(activeSettings.defaultZap));
+  } else if (!amountInput.value) {
+    amountInput.value = "";
+  }
+
+  updateZapSplitSummary();
+  setZapStatus("", "neutral");
+  clearZapReceipts();
 }
 
 function setZapWalletPromptVisible(visible) {
@@ -331,7 +508,7 @@ function setZapWalletPromptVisible(visible) {
     return;
   }
   const shouldShow = !!visible;
-  prompt.classList.toggle("hidden", !shouldShow);
+  prompt.toggleAttribute("hidden", !shouldShow);
   prompt.setAttribute("aria-hidden", (!shouldShow).toString());
 }
 
@@ -365,42 +542,57 @@ function focusZapAmountField() {
 }
 
 function isZapControlsOpen() {
+  if (typeof zapPopover?.isOpen === "function") {
+    return zapPopover.isOpen();
+  }
   return zapControlsOpen;
 }
 
 function openZapControls({ focus = false } = {}) {
-  const controls = getZapControlsContainer();
   const zapButton = getChannelZapButton();
-  if (!controls || !zapButton) {
+  if (!zapButton || !zapPopover) {
     return false;
   }
-  if (!zapControlsOpen) {
-    controls.classList.remove("hidden");
-    controls.setAttribute("aria-hidden", "false");
-    zapButton.setAttribute("aria-expanded", "true");
-    zapControlsOpen = true;
+  zapShouldFocusOnOpen = focus;
+  const result = zapPopover.open();
+  if (result && typeof result.then === "function") {
+    result.catch(() => {}).finally(() => {
+      zapShouldFocusOnOpen = false;
+    });
+    return true;
   }
-  if (focus) {
-    focusZapAmountField();
-  }
-  return true;
+  zapShouldFocusOnOpen = false;
+  return Boolean(result);
 }
 
 function closeZapControls({ focusButton = false } = {}) {
-  const controls = getZapControlsContainer();
   const zapButton = getChannelZapButton();
-  if (controls) {
-    controls.classList.add("hidden");
-    controls.setAttribute("aria-hidden", "true");
+  zapShouldFocusOnOpen = false;
+
+  if (zapPopover) {
+    const result = zapPopover.close({ restoreFocus: focusButton });
+    if (!result && focusButton && zapButton && typeof zapButton.focus === "function") {
+      try {
+        zapButton.focus({ preventScroll: true });
+      } catch (error) {
+        zapButton.focus();
+      }
+    }
+    return Boolean(result);
   }
+
+  zapControlsOpen = false;
   if (zapButton) {
     zapButton.setAttribute("aria-expanded", "false");
     if (focusButton && typeof zapButton.focus === "function") {
-      zapButton.focus();
+      try {
+        zapButton.focus({ preventScroll: true });
+      } catch (error) {
+        zapButton.focus();
+      }
     }
   }
-  zapControlsOpen = false;
-  return Boolean(controls && zapButton);
+  return false;
 }
 
 function updateZapSplitSummary({ overrideFee = null } = {}) {
@@ -451,30 +643,30 @@ function setZapStatus(message, tone = "neutral") {
   const normalizedTone = typeof tone === "string" ? tone : "neutral";
   statusEl.textContent = message || "";
   statusEl.classList.remove(
-    "text-gray-300",
-    "text-gray-400",
-    "text-green-300",
-    "text-red-300",
-    "text-yellow-300"
+    "text-text",
+    "text-muted",
+    "text-info",
+    "text-critical",
+    "text-warning-strong"
   );
 
   if (!message) {
-    statusEl.classList.add("text-gray-400");
+    statusEl.classList.add("text-muted");
     return;
   }
 
   switch (normalizedTone) {
     case "success":
-      statusEl.classList.add("text-green-300");
+      statusEl.classList.add("text-info");
       break;
     case "error":
-      statusEl.classList.add("text-red-300");
+      statusEl.classList.add("text-critical");
       break;
     case "warning":
-      statusEl.classList.add("text-yellow-300");
+      statusEl.classList.add("text-warning-strong");
       break;
     default:
-      statusEl.classList.add("text-gray-300");
+      statusEl.classList.add("text-text");
       break;
   }
 }
@@ -495,10 +687,13 @@ function renderZapReceipts(receipts, { partial = false } = {}) {
 
   list.innerHTML = "";
 
+  const doc = list.ownerDocument || (typeof document !== "undefined" ? document : null);
+
   if (!Array.isArray(receipts) || receipts.length === 0) {
     if (partial) {
-      const emptyItem = document.createElement("li");
-      emptyItem.className = "rounded border border-gray-700 bg-gray-800/70 p-3 text-gray-300";
+      const emptyItem = doc?.createElement?.("li");
+      emptyItem.className =
+        "rounded border border-border bg-panel/70 p-3 text-text";
       emptyItem.textContent = "No receipts were returned for this attempt.";
       list.appendChild(emptyItem);
     }
@@ -510,40 +705,55 @@ function renderZapReceipts(receipts, { partial = false } = {}) {
       return;
     }
 
-    const li = document.createElement("li");
-    li.className = "rounded border border-gray-700 bg-gray-800/70 p-3";
+    const li = doc?.createElement?.("li");
+    if (!li) {
+      return;
+    }
+    li.className = "rounded border border-border bg-panel/70 p-3";
 
-    const header = document.createElement("div");
-    header.className = "flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-200";
+    const header = doc?.createElement?.("div");
+    if (!header) {
+      return;
+    }
+    header.className =
+      "flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-text";
 
     const shareType = receipt.recipientType || receipt.type || "creator";
-    const shareLabel = document.createElement("span");
+    const shareLabel = doc?.createElement?.("span");
     shareLabel.textContent = `${describeShareType(shareType)} • ${Math.max(
       0,
       Math.round(Number(receipt.amount || 0))
     )} sats`;
 
-    const status = document.createElement("span");
+    const status = doc?.createElement?.("span");
+    if (!shareLabel || !status) {
+      return;
+    }
     const isSuccess = receipt.status
       ? receipt.status === "success"
       : !receipt.error;
     status.textContent = isSuccess ? "Success" : "Failed";
-    status.className = isSuccess ? "text-green-300" : "text-red-300";
+    status.className = isSuccess ? "text-info" : "text-critical";
 
     header.appendChild(shareLabel);
     header.appendChild(status);
     li.appendChild(header);
 
-    const address = document.createElement("p");
-    address.className = "mt-1 text-xs text-gray-300 break-all";
+    const address = doc?.createElement?.("p");
+    if (address) {
+      address.className = "mt-1 text-xs text-text break-all";
+    }
     const addressValue = receipt.address || "";
-    if (addressValue) {
+    if (address && addressValue) {
       address.textContent = addressValue;
       li.appendChild(address);
     }
 
-    const detail = document.createElement("p");
-    detail.className = "mt-2 text-xs text-gray-400";
+    const detail = doc?.createElement?.("p");
+    if (!detail) {
+      return;
+    }
+    detail.className = "mt-2 text-xs text-muted";
     if (isSuccess) {
       let detailMessage = "Invoice settled.";
       const preimage = receipt.payment?.result?.preimage;
@@ -620,7 +830,7 @@ function getZapVideoEvent() {
     tags: Array.isArray(baseEvent.tags) ? [...baseEvent.tags] : [],
     content: typeof baseEvent.content === "string" ? baseEvent.content : "",
     created_at: baseEvent.created_at || Math.floor(Date.now() / 1000),
-    lightningAddress,
+    lightningAddress
   };
 }
 
@@ -634,7 +844,9 @@ async function prepareLightningContext({ amount, overrideFee = null }) {
     throw new Error("Enter a zap amount greater than zero.");
   }
 
-  const creatorEntry = await fetchLightningMetadata(currentChannelLightningAddress);
+  const creatorEntry = await fetchLightningMetadata(
+    currentChannelLightningAddress
+  );
   if (shares.creatorShare > 0) {
     try {
       validateInvoiceAmount(creatorEntry.metadata, shares.creatorShare);
@@ -649,7 +861,9 @@ async function prepareLightningContext({ amount, overrideFee = null }) {
   if (shares.platformShare > 0) {
     platformAddress = getCachedPlatformLightningAddress();
     if (!platformAddress) {
-      platformAddress = await getPlatformLightningAddress({ forceRefresh: false });
+      platformAddress = await getPlatformLightningAddress({
+        forceRefresh: false
+      });
       setCachedPlatformLightningAddress(platformAddress || "");
     }
     if (!platformAddress) {
@@ -671,7 +885,7 @@ async function prepareLightningContext({ amount, overrideFee = null }) {
     shares,
     creatorEntry,
     platformEntry,
-    platformAddress,
+    platformAddress
   };
 }
 
@@ -680,7 +894,7 @@ function createZapDependencies({
   platformEntry,
   shares,
   shareTracker,
-  walletSettings,
+  walletSettings
 }) {
   const creatorKey = normalizeLightningAddressKey(
     creatorEntry?.address || currentChannelLightningAddress
@@ -715,7 +929,7 @@ function createZapDependencies({
             key: normalized,
             address: resolved.address || value,
             resolved,
-            fetchedAt: Date.now(),
+            fetchedAt: Date.now()
           });
         }
         return resolved;
@@ -731,13 +945,13 @@ function createZapDependencies({
           rememberLightningMetadata({
             ...cached,
             metadata,
-            fetchedAt: Date.now(),
+            fetchedAt: Date.now()
           });
         }
         return metadata;
       },
       validateInvoiceAmount,
-      requestInvoice,
+      requestInvoice
     },
     wallet: {
       ensureWallet: async (options) => {
@@ -749,7 +963,7 @@ function createZapDependencies({
             {
               tracker: shareTracker,
               context: { shares },
-              walletSettings: options?.settings,
+              walletSettings: options?.settings
             },
             error
           );
@@ -759,17 +973,18 @@ function createZapDependencies({
       sendPayment: async (bolt11, params) => {
         const shareType = activeShare || "unknown";
         const shareAmount =
-          shareType === "platform"
-            ? shares.platformShare
-            : shares.creatorShare;
+          shareType === "platform" ? shares.platformShare : shares.creatorShare;
         const address =
           shareType === "platform"
             ? platformEntry?.address || getCachedPlatformLightningAddress()
             : creatorEntry?.address || currentChannelLightningAddress;
         const normalizedParams = {
-          ...(params || {}),
+          ...(params || {})
         };
-        if (!Number.isFinite(normalizedParams.amountSats) && Number.isFinite(shareAmount)) {
+        if (
+          !Number.isFinite(normalizedParams.amountSats) &&
+          Number.isFinite(shareAmount)
+        ) {
           normalizedParams.amountSats = shareAmount;
         }
         if (!normalizedParams.settings && walletSettings) {
@@ -783,7 +998,7 @@ function createZapDependencies({
               status: "success",
               amount: shareAmount,
               address,
-              payment,
+              payment
             });
           }
           return payment;
@@ -794,7 +1009,7 @@ function createZapDependencies({
               status: "error",
               amount: shareAmount,
               address,
-              error,
+              error
             });
           }
           logZapError(
@@ -804,7 +1019,7 @@ function createZapDependencies({
               amount: shareAmount,
               address,
               tracker: shareTracker,
-              context: { shares },
+              context: { shares }
             },
             error
           );
@@ -812,7 +1027,7 @@ function createZapDependencies({
         } finally {
           activeShare = null;
         }
-      },
+      }
     },
     platformAddress: {
       getPlatformLightningAddress: async () => {
@@ -823,11 +1038,13 @@ function createZapDependencies({
         if (cachedAddress) {
           return cachedAddress;
         }
-        const fallback = await getPlatformLightningAddress({ forceRefresh: false });
+        const fallback = await getPlatformLightningAddress({
+          forceRefresh: false
+        });
         setCachedPlatformLightningAddress(fallback || "");
         return fallback;
-      },
-    },
+      }
+    }
   };
 }
 
@@ -848,7 +1065,7 @@ function getWalletSettingsOrPrompt() {
   }
   return {
     ...settings,
-    nwcUri: normalizedUri,
+    nwcUri: normalizedUri
   };
 }
 
@@ -867,7 +1084,7 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
       {
         amount,
         overrideFee,
-        walletSettings: settings,
+        walletSettings: settings
       },
       error
     );
@@ -877,13 +1094,17 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
   const dependencies = createZapDependencies({
     ...context,
     shareTracker,
-    walletSettings: settings,
+    walletSettings: settings
   });
   const videoEvent = getZapVideoEvent();
 
   let previousOverride;
   const hasGlobal = typeof globalThis !== "undefined";
-  if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
+  if (
+    hasGlobal &&
+    typeof overrideFee === "number" &&
+    Number.isFinite(overrideFee)
+  ) {
     previousOverride = globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
     globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = overrideFee;
   }
@@ -893,7 +1114,7 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
       {
         videoEvent,
         amountSats: context.shares.total,
-        walletSettings: settings,
+        walletSettings: settings
       },
       dependencies
     );
@@ -909,16 +1130,23 @@ async function runZapAttempt({ amount, overrideFee = null, walletSettings }) {
         overrideFee,
         walletSettings: settings,
         context,
-        tracker: shareTracker,
+        tracker: shareTracker
       },
       error
     );
     throw error;
   } finally {
-    if (hasGlobal && typeof overrideFee === "number" && Number.isFinite(overrideFee)) {
+    if (
+      hasGlobal &&
+      typeof overrideFee === "number" &&
+      Number.isFinite(overrideFee)
+    ) {
       if (typeof previousOverride === "number") {
         globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__ = previousOverride;
-      } else if (globalThis && "__BITVID_PLATFORM_FEE_OVERRIDE__" in globalThis) {
+      } else if (
+        globalThis &&
+        "__BITVID_PLATFORM_FEE_OVERRIDE__" in globalThis
+      ) {
         delete globalThis.__BITVID_PLATFORM_FEE_OVERRIDE__;
       }
     }
@@ -954,7 +1182,7 @@ async function executePendingRetry({ walletSettings }) {
       const attempt = await runZapAttempt({
         amount: share.amount,
         overrideFee,
-        walletSettings,
+        walletSettings
       });
       if (!attempt) {
         setZapStatus("", "neutral");
@@ -976,7 +1204,7 @@ async function executePendingRetry({ walletSettings }) {
           amount: share?.amount,
           address: share?.address,
           walletSettings,
-          tracker,
+          tracker
         },
         error
       );
@@ -990,9 +1218,12 @@ async function executePendingRetry({ walletSettings }) {
       const message = error?.message || "Retry failed.";
       setZapStatus(message, "error");
       app?.showError?.(message);
-      renderZapReceipts(aggregatedTracker.length ? aggregatedTracker : tracker, {
-        partial: true,
-      });
+      renderZapReceipts(
+        aggregatedTracker.length ? aggregatedTracker : tracker,
+        {
+          partial: true
+        }
+      );
       return;
     }
   }
@@ -1070,7 +1301,7 @@ async function handleZapSend(event) {
   }
   sendButton.disabled = true;
   sendButton.setAttribute("aria-busy", "true");
-  sendButton.classList.add("opacity-50", "pointer-events-none");
+  sendButton.dataset.state = "loading";
   amountInput.disabled = true;
 
   let attemptedAmount = null;
@@ -1121,9 +1352,10 @@ async function handleZapSend(event) {
         walletSettings,
         tracker,
         retryAttempt:
-          Array.isArray(pendingZapRetry?.shares) && pendingZapRetry.shares.length
+          Array.isArray(pendingZapRetry?.shares) &&
+          pendingZapRetry.shares.length
             ? pendingZapRetry.shares.length
-            : undefined,
+            : undefined
       },
       error
     );
@@ -1160,7 +1392,7 @@ async function handleZapSend(event) {
     }
     sendButton.disabled = false;
     sendButton.removeAttribute("aria-busy");
-    sendButton.classList.remove("opacity-50", "pointer-events-none");
+    delete sendButton.dataset.state;
     amountInput.disabled = false;
   }
 }
@@ -1183,7 +1415,7 @@ function buildChannelShareUrl() {
     url.hash = `#view=channel-profile&npub=${currentChannelNpub}`;
     return url.toString();
   } catch (error) {
-    console.warn("Falling back to basic channel share URL:", error);
+    userLogger.warn("Falling back to basic channel share URL:", error);
     const origin = window.location?.origin || "";
     const pathname = window.location?.pathname || "";
     if (!origin && !pathname) {
@@ -1236,12 +1468,185 @@ function setupChannelShareButton() {
 }
 
 function setupChannelMoreMenu() {
-  const container = document.querySelector(".channel-profile-container");
-  if (!container) {
+  const doc = typeof document !== "undefined" ? document : null;
+  const moreBtn = doc?.getElementById("channelMoreBtn") || null;
+
+  if (!moreBtn) {
+    if (channelMenuPopover?.destroy) {
+      channelMenuPopover.destroy();
+    }
+    channelMenuPopover = null;
+    cachedChannelMenu = null;
+    channelMenuOpen = false;
     return;
   }
+
+  if (channelMenuPopover?.destroy) {
+    channelMenuPopover.destroy();
+    channelMenuPopover = null;
+  }
+
+  const documentRef =
+    moreBtn.ownerDocument || (typeof document !== "undefined" ? document : null);
+
+  const render = ({ document: docRef }) => {
+    const panel = createChannelProfileMenuPanel({
+      document: docRef,
+      context: "channel-profile",
+    });
+
+    if (!panel) {
+      return null;
+    }
+
+    panel.id = "channelProfileMoreMenu";
+    panel.dataset.state = panel.dataset.state || "closed";
+    panel.setAttribute("aria-hidden", "true");
+    panel.hidden = true;
+
+    cachedChannelMenu = panel;
+
+    const buttons = panel.querySelectorAll("button[data-action]");
+    buttons.forEach((button) => {
+      if (button.dataset.channelMenuBound === "true") {
+        return;
+      }
+      button.dataset.channelMenuBound = "true";
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const dataset = {};
+        Object.entries(button.dataset || {}).forEach(([key, value]) => {
+          if (key === "channelMenuBound") {
+            return;
+          }
+          dataset[key] = value;
+        });
+        if (!dataset.context) {
+          dataset.context = "channel-profile";
+        }
+        if (!dataset.author && currentChannelHex) {
+          dataset.author = currentChannelHex;
+        }
+        if (!dataset.npub && currentChannelNpub) {
+          dataset.npub = currentChannelNpub;
+        }
+
+        const action = dataset.action || "";
+        try {
+          await handleChannelMenuAction(action, dataset);
+        } finally {
+          channelMenuPopover?.close();
+        }
+      });
+    });
+
+    updateChannelMenuState();
+
+    return panel;
+  };
+
+  const popover = createPopover(moreBtn, render, {
+    document: documentRef,
+    placement: "bottom-end",
+    restoreFocusOnClose: true,
+  });
+
+  if (!popover) {
+    return;
+  }
+
+  const originalOpen = popover.open?.bind(popover);
+  if (originalOpen) {
+    popover.open = async (...args) => {
+      const result = await originalOpen(...args);
+      if (result) {
+        channelMenuOpen = true;
+        const panel = getChannelMenuElement();
+        if (panel) {
+          panel.dataset.state = "open";
+          panel.hidden = false;
+          panel.setAttribute("aria-hidden", "false");
+        }
+        moreBtn.setAttribute("aria-expanded", "true");
+      }
+      return result;
+    };
+  }
+
+  const originalClose = popover.close?.bind(popover);
+  if (originalClose) {
+    popover.close = (options = {}) => {
+      const wasOpen = typeof popover.isOpen === "function" && popover.isOpen();
+      const result = originalClose(options);
+      if (wasOpen && result) {
+        channelMenuOpen = false;
+        const panel = getChannelMenuElement();
+        if (panel) {
+          panel.dataset.state = "closed";
+          panel.hidden = true;
+          panel.setAttribute("aria-hidden", "true");
+        }
+        moreBtn.setAttribute("aria-expanded", "false");
+      }
+      return result;
+    };
+  }
+
+  const originalDestroy = popover.destroy?.bind(popover);
+  if (originalDestroy) {
+    popover.destroy = (...args) => {
+      originalDestroy(...args);
+      if (channelMenuPopover === popover) {
+        channelMenuPopover = null;
+      }
+      channelMenuOpen = false;
+      cachedChannelMenu = null;
+    };
+  }
+
+  channelMenuPopover = popover;
+
+  if (moreBtn.dataset.initialized !== "true") {
+    moreBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!channelMenuPopover) {
+        return;
+      }
+      channelMenuPopover.toggle();
+    });
+    moreBtn.dataset.initialized = "true";
+  }
+
+  moreBtn.setAttribute("aria-expanded", "false");
+}
+
+async function handleChannelMenuAction(action, dataset = {}) {
+  const normalized = typeof action === "string" ? action.trim() : "";
+  if (!normalized) {
+    return;
+  }
+
+  const detail = { ...dataset };
+  if (!detail.context) {
+    detail.context = "channel-profile";
+  }
+  if (!detail.author && currentChannelHex) {
+    detail.author = currentChannelHex;
+  }
+  if (!detail.npub && currentChannelNpub) {
+    detail.npub = currentChannelNpub;
+  }
+
   const app = getApp();
-  app?.attachMoreMenuHandlers?.(container);
+
+  try {
+    await app?.handleMoreMenuAction?.(normalized, detail);
+  } catch (error) {
+    userLogger.error("Failed to handle channel menu action:", error);
+  }
 }
 
 async function updateChannelMenuState() {
@@ -1255,7 +1660,7 @@ async function updateChannelMenuState() {
   try {
     await accessControl.ensureReady();
   } catch (error) {
-    console.warn("Failed to refresh moderation lists for channel menu:", error);
+    userLogger.warn("Failed to refresh moderation lists for channel menu:", error);
   }
 
   const canBlacklist =
@@ -1265,7 +1670,7 @@ async function updateChannelMenuState() {
 
   const buttons = menu.querySelectorAll("button[data-action]");
   buttons.forEach((button) => {
-    if (!(button instanceof HTMLElement)) {
+    if (!button || button.nodeType !== 1) {
       return;
     }
 
@@ -1273,12 +1678,12 @@ async function updateChannelMenuState() {
     if (action === "copy-npub") {
       if (currentChannelNpub) {
         button.dataset.npub = currentChannelNpub;
-        button.classList.remove("hidden");
+        button.removeAttribute("hidden");
         button.setAttribute("aria-hidden", "false");
       } else {
         delete button.dataset.npub;
-        button.classList.add("hidden");
         button.setAttribute("aria-hidden", "true");
+        button.setAttribute("hidden", "");
       }
       return;
     }
@@ -1286,12 +1691,12 @@ async function updateChannelMenuState() {
     if (action === "block-author") {
       if (currentChannelHex) {
         button.dataset.author = currentChannelHex;
-        button.classList.remove("hidden");
+        button.removeAttribute("hidden");
         button.setAttribute("aria-hidden", "false");
       } else {
         delete button.dataset.author;
-        button.classList.add("hidden");
         button.setAttribute("aria-hidden", "true");
+        button.setAttribute("hidden", "");
       }
       return;
     }
@@ -1304,13 +1709,13 @@ async function updateChannelMenuState() {
         } else {
           delete button.dataset.npub;
         }
-        button.classList.remove("hidden");
+        button.removeAttribute("hidden");
         button.setAttribute("aria-hidden", "false");
       } else {
         delete button.dataset.author;
         delete button.dataset.npub;
-        button.classList.add("hidden");
         button.setAttribute("aria-hidden", "true");
+        button.setAttribute("hidden", "");
       }
     }
   });
@@ -1325,7 +1730,7 @@ export async function initChannelProfileView() {
   const hashParams = new URLSearchParams(window.location.hash.slice(1));
   const npub = hashParams.get("npub");
   if (!npub) {
-    console.error(
+    userLogger.error(
       "No npub found in hash (e.g. #view=channel-profile&npub=...)"
     );
     return;
@@ -1345,12 +1750,42 @@ export async function initChannelProfileView() {
   try {
     const decoded = window.NostrTools.nip19.decode(npub);
     if (decoded.type === "npub" && decoded.data) {
-      hexPub = decoded.data;
+      if (typeof decoded.data === "string") {
+        hexPub = decoded.data;
+      } else {
+        let bufferSource = null;
+        if (decoded.data instanceof Uint8Array) {
+          bufferSource = decoded.data;
+        } else if (Array.isArray(decoded.data)) {
+          bufferSource = Uint8Array.from(decoded.data);
+        } else if (
+          decoded.data?.type === "Buffer" &&
+          Array.isArray(decoded.data?.data)
+        ) {
+          bufferSource = Uint8Array.from(decoded.data.data);
+        }
+
+        if (bufferSource) {
+          if (typeof window?.NostrTools?.utils?.bytesToHex === "function") {
+            hexPub = window.NostrTools.utils.bytesToHex(bufferSource);
+          } else {
+            hexPub = Array.from(bufferSource)
+              .map((byte) => byte.toString(16).padStart(2, "0"))
+              .join("");
+          }
+        }
+      }
+
+      if (typeof hexPub !== "string" || !hexPub) {
+        throw new Error("Unable to normalize npub to hex string.");
+      }
+
+      hexPub = hexPub.trim().toLowerCase();
     } else {
       throw new Error("Invalid npub decoding result.");
     }
   } catch (err) {
-    console.error("Error decoding npub:", err);
+    userLogger.error("Error decoding npub:", err);
     return;
   }
 
@@ -1363,7 +1798,7 @@ export async function initChannelProfileView() {
   setupChannelMoreMenu();
 
   const initialMenuRefresh = updateChannelMenuState().catch((error) => {
-    console.error("Failed to prepare channel menu state:", error);
+    userLogger.error("Failed to prepare channel menu state:", error);
   });
 
   let subscriptionsTask = null;
@@ -1372,7 +1807,7 @@ export async function initChannelProfileView() {
     subscriptionsTask = subscriptions
       .loadSubscriptions(app.pubkey)
       .catch((error) => {
-        console.error("Failed to load subscriptions for channel view:", error);
+        userLogger.error("Failed to load subscriptions for channel view:", error);
       })
       .finally(() => {
         renderSubscribeButton(hexPub);
@@ -1389,14 +1824,14 @@ export async function initChannelProfileView() {
   const profilePromise = loadUserProfile(hexPub)
     .then(() => updateChannelMenuState())
     .catch((error) => {
-      console.error("Failed to load channel profile:", error);
+      userLogger.error("Failed to load channel profile:", error);
     })
     .finally(() => {
       syncChannelShareButtonState();
     });
 
   const videosPromise = loadUserVideos(hexPub).catch((error) => {
-    console.error("Failed to load channel videos:", error);
+    userLogger.error("Failed to load channel videos:", error);
   });
 
   const pendingTasks = [profilePromise, videosPromise];
@@ -1412,55 +1847,199 @@ export async function initChannelProfileView() {
 
 function setupZapButton() {
   const zapButton = getChannelZapButton();
-  const amountInput = getZapAmountInput();
-  const controls = getZapControlsContainer();
-  const zapForm = getZapFormElement();
-  if (!zapButton || !amountInput || !controls || !zapForm || !getZapSendButton()) {
+  if (!zapButton) {
     return;
+  }
+
+  if (zapPopover?.destroy) {
+    zapPopover.destroy();
+    zapPopover = null;
+  }
+
+  const documentRef =
+    zapButton.ownerDocument ||
+    (typeof document !== "undefined" ? document : null);
+
+  const render = ({ document: doc }) => {
+    if (!doc || typeof doc.createElement !== "function") {
+      return null;
+    }
+
+    const panel = doc.createElement("div");
+    panel.id = "zapControls";
+    panel.className = "popover__panel card w-72 max-w-popover-safe p-4";
+    panel.dataset.variant = "zap";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-label", "Channel zap dialog");
+    panel.setAttribute("aria-hidden", "true");
+    panel.dataset.state = panel.dataset.state || "closed";
+    panel.hidden = true;
+
+    panel.innerHTML = `
+      <div class="grid gap-4">
+        <div class="flex items-center justify-between gap-4">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-strong">
+            Send a zap
+          </h3>
+          <button
+            type="button"
+            id="zapCloseBtn"
+            class="btn-ghost px-2 py-1 text-xs"
+            aria-label="Close zap dialog"
+          >
+            ✕
+          </button>
+        </div>
+        <p
+          id="zapWalletPrompt"
+          class="text-sm text-muted"
+          aria-hidden="true"
+          hidden
+        >
+          Connect a wallet in
+          <button
+            type="button"
+            id="zapWalletLink"
+            class="btn-ghost px-2 py-1 text-xs"
+          >
+            Wallet Connect settings
+          </button>
+          to send zaps.
+        </p>
+        <form id="zapForm" class="bv-stack bv-stack--tight">
+          <div>
+            <label
+              for="zapAmountInput"
+              id="zapAmountLabel"
+              class="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-strong"
+            >
+              Zap amount (sats)
+            </label>
+            <input
+              id="zapAmountInput"
+              type="number"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              class="input"
+              placeholder="Enter sats"
+              aria-labelledby="zapAmountLabel"
+            />
+          </div>
+          <p
+            id="zapSplitSummary"
+            class="text-sm text-muted"
+            aria-live="polite"
+          >
+            Enter an amount to view the split.
+          </p>
+          <p
+            id="zapStatus"
+            class="text-xs text-muted"
+            role="status"
+            aria-live="polite"
+          ></p>
+          <ul
+            id="zapReceipts"
+            class="space-y-2 text-xs text-muted"
+          ></ul>
+          <div class="flex items-center justify-end gap-2">
+            <button
+              type="submit"
+              id="zapSendBtn"
+              class="btn"
+              aria-label="Send a zap"
+            >
+              Send
+            </button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    cacheZapPanelElements(panel);
+    initializeZapPanel();
+
+    return panel;
+  };
+
+  const popover = createPopover(zapButton, render, {
+    document: documentRef,
+    placement: "bottom-end",
+    restoreFocusOnClose: true,
+    maxWidthToken: "max-w-popover-safe",
+  });
+
+  if (!popover) {
+    return;
+  }
+
+  const originalOpen = popover.open?.bind(popover);
+  if (originalOpen) {
+    popover.open = async (...args) => {
+      const result = await originalOpen(...args);
+      if (result) {
+        zapControlsOpen = true;
+        const controls = getZapControlsContainer();
+        if (controls) {
+          controls.dataset.state = "open";
+          controls.hidden = false;
+          controls.setAttribute("aria-hidden", "false");
+        }
+        zapButton.setAttribute("aria-expanded", "true");
+        if (zapShouldFocusOnOpen) {
+          focusZapAmountField();
+        }
+      }
+      zapShouldFocusOnOpen = false;
+      return result;
+    };
+  }
+
+  const originalClose = popover.close?.bind(popover);
+  if (originalClose) {
+    popover.close = (options = {}) => {
+      const wasOpen = typeof popover.isOpen === "function" && popover.isOpen();
+      const result = originalClose(options);
+      if (wasOpen && result) {
+        zapControlsOpen = false;
+        const controls = getZapControlsContainer();
+        if (controls) {
+          controls.dataset.state = "closed";
+          controls.hidden = true;
+          controls.setAttribute("aria-hidden", "true");
+        }
+        zapButton.setAttribute("aria-expanded", "false");
+      }
+      zapShouldFocusOnOpen = false;
+      return result;
+    };
+  }
+
+  const originalDestroy = popover.destroy?.bind(popover);
+  if (originalDestroy) {
+    popover.destroy = (...args) => {
+      originalDestroy(...args);
+      if (zapPopover === popover) {
+        zapPopover = null;
+      }
+      cacheZapPanelElements(null);
+    };
+  }
+
+  zapPopover = popover;
+
+  if (zapButton.dataset.initialized !== "true") {
+    zapButton.addEventListener("click", handleZapButtonClick);
+    zapButton.dataset.initialized = "true";
   }
 
   setChannelZapVisibility(false);
-  controls.classList.add("hidden");
-  controls.setAttribute("aria-hidden", "true");
-  zapButton.setAttribute("aria-expanded", "false");
-  setupZapWalletLink();
-  const closeBtn = getZapCloseButton();
-  if (closeBtn && closeBtn.dataset.initialized !== "true") {
-    closeBtn.addEventListener("click", (event) => {
-      event?.preventDefault?.();
-      closeZapControls({ focusButton: true });
-    });
-    closeBtn.dataset.initialized = "true";
-  }
-
-  if (zapButton.dataset.initialized === "true") {
-    updateZapSplitSummary();
-    return;
-  }
-
-  const app = getApp();
-  const activeSettings =
-    typeof app?.getActiveNwcSettings === "function"
-      ? app.getActiveNwcSettings()
-      : {};
-  if (Number.isFinite(activeSettings?.defaultZap) && activeSettings.defaultZap > 0) {
-    amountInput.value = Math.max(0, Math.round(activeSettings.defaultZap));
-  }
-
-  updateZapSplitSummary();
-  amountInput.addEventListener("input", handleZapAmountChange);
-  amountInput.addEventListener("change", handleZapAmountChange);
-  if (zapForm.dataset.initialized !== "true") {
-    zapForm.addEventListener("submit", handleZapSend);
-    zapForm.dataset.initialized = "true";
-  }
-  zapButton.addEventListener("click", handleZapButtonClick);
-  zapButton.dataset.initialized = "true";
 }
 
 /**
  * Renders a Subscribe / Unsubscribe button with an icon,
- * using color #fe0032 and the subscribe-button-icon.svg on the left.
+ * using the primary button token styling and the subscribe icon on the left.
  */
 function renderSubscribeButton(channelHex) {
   const container = document.getElementById("subscribeBtnArea");
@@ -1471,14 +2050,14 @@ function renderSubscribeButton(channelHex) {
   container.classList.remove("hidden");
   const alreadySubscribed = subscriptions.isSubscribed(channelHex);
 
-  // We'll use #fe0032 for both subscribe/unsubscribe,
-  // and the same icon. If you prefer separate logic for unsub, you can do it here.
+  // Both subscribe/unsubscribe states share the primary styling and icon.
+  // If you prefer separate logic for unsub, you can do it here.
   container.innerHTML = `
     <button
       id="subscribeToggleBtn"
-      class="flex items-center gap-2 px-4 py-2 rounded text-white
-             hover:opacity-90 focus:outline-none"
-      style="background-color: #fe0032;"
+      type="button"
+      class="btn normal-case rounded hover:opacity-90 focus-visible:bg-primary"
+      data-state="${alreadySubscribed ? "subscribed" : "unsubscribed"}"
     >
       <img
         src="assets/svg/subscribe-button-icon.svg"
@@ -1493,7 +2072,7 @@ function renderSubscribeButton(channelHex) {
   if (toggleBtn) {
     toggleBtn.addEventListener("click", async () => {
       if (!app?.pubkey) {
-        console.error("Not logged in => cannot subscribe/unsubscribe.");
+        userLogger.error("Not logged in => cannot subscribe/unsubscribe.");
         return;
       }
       try {
@@ -1505,7 +2084,7 @@ function renderSubscribeButton(channelHex) {
         // Re-render the button so it toggles state
         renderSubscribeButton(channelHex);
       } catch (err) {
-        console.error("Failed to update subscription:", err);
+        userLogger.error("Failed to update subscription:", err);
       }
     });
   }
@@ -1525,11 +2104,20 @@ function normalizeChannelProfileMetadata(raw = {}) {
     trimProfileString(raw.name) ||
     "Unknown User";
   const picture =
-    trimProfileString(raw.picture) || trimProfileString(raw.image) || FALLBACK_CHANNEL_AVATAR;
+    sanitizeProfileMediaUrl(raw.picture) ||
+    sanitizeProfileMediaUrl(raw.image) ||
+    FALLBACK_CHANNEL_AVATAR;
   const about = trimProfileString(raw.about || raw.bio);
   const website = trimProfileString(raw.website || raw.url);
   const banner =
-    trimProfileString(raw.banner || raw.header || raw.background) || "";
+    sanitizeProfileMediaUrl(
+      raw.banner ||
+        raw.header ||
+        raw.background ||
+        raw.cover ||
+        raw.cover_image ||
+        raw.coverImage
+    ) || "";
   const lud16 = trimProfileString(raw.lud16);
   const lud06 = trimProfileString(raw.lud06);
   const lightningAddress =
@@ -1543,7 +2131,7 @@ function normalizeChannelProfileMetadata(raw = {}) {
     banner,
     lud16,
     lud06,
-    lightningAddress,
+    lightningAddress
   };
 }
 
@@ -1555,7 +2143,7 @@ function rememberChannelProfile(pubkey, { profile = {}, event = null } = {}) {
   channelProfileMetadataCache.set(pubkey, {
     timestamp: Date.now(),
     profile: normalizeChannelProfileMetadata(profile),
-    event: event ? { ...event } : null,
+    event: event ? { ...event } : null
   });
 }
 
@@ -1575,7 +2163,7 @@ function getCachedChannelProfile(pubkey) {
 
   return {
     profile: entry.profile,
-    event: entry.event ? { ...entry.event } : null,
+    event: entry.event ? { ...entry.event } : null
   };
 }
 
@@ -1606,11 +2194,15 @@ function isValidRelayUrl(url) {
 }
 
 function getCachedChannelVideoEvents(pubkey) {
-  if (!nostrClient?.allEvents || typeof nostrClient.allEvents.forEach !== "function") {
+  if (
+    !nostrClient?.allEvents ||
+    typeof nostrClient.allEvents.forEach !== "function"
+  ) {
     return [];
   }
 
-  const normalized = typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
+  const normalized =
+    typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
   if (!normalized) {
     return [];
   }
@@ -1653,7 +2245,8 @@ function buildRenderableChannelVideos({ events = [], app } = {}) {
   const uniqueVideos = Array.from(dedupedById.values());
 
   const newestByRoot =
-    app?.dedupeVideosByRoot?.(uniqueVideos) ?? dedupeToNewestByRoot(uniqueVideos);
+    app?.dedupeVideosByRoot?.(uniqueVideos) ??
+    dedupeToNewestByRoot(uniqueVideos);
 
   let videos = newestByRoot.filter((video) => !video.deleted);
   videos = videos.filter((video) => {
@@ -1681,7 +2274,7 @@ function renderChannelVideosFromList({
   container,
   app,
   loadToken,
-  allowEmptyMessage = true,
+  allowEmptyMessage = true
 } = {}) {
   if (!container || loadToken !== currentVideoLoadToken) {
     return false;
@@ -1690,7 +2283,7 @@ function renderChannelVideosFromList({
   if (!Array.isArray(videos) || videos.length === 0) {
     if (allowEmptyMessage) {
       container.dataset.hasChannelVideos = "false";
-      container.innerHTML = `<p class="text-gray-500">No videos to display.</p>`;
+      container.innerHTML = `<p class="text-muted-strong">No videos to display.</p>`;
       return true;
     }
     return false;
@@ -1709,12 +2302,11 @@ function renderChannelVideosFromList({
       : "This magnet link is missing a compatible BitTorrent v1 info hash.";
 
   const fallbackNormalizePubkey = (value) =>
-    typeof value === "string" && value
-      ? value.trim().toLowerCase()
-      : "";
+    typeof value === "string" && value ? value.trim().toLowerCase() : "";
   const normalizePubkey =
     typeof app?.normalizeHexPubkey === "function"
-      ? (value) => app.normalizeHexPubkey(value) || fallbackNormalizePubkey(value)
+      ? (value) =>
+          app.normalizeHexPubkey(value) || fallbackNormalizePubkey(value)
       : fallbackNormalizePubkey;
   const normalizedViewerPubkey = normalizePubkey(app?.pubkey);
   let renderIndex = 0;
@@ -1728,16 +2320,21 @@ function renderChannelVideosFromList({
     }
 
     const element = trigger instanceof HTMLElement ? trigger : null;
-    const target = element?.closest("[data-play-url],[data-play-magnet]") || element;
+    const target =
+      element?.closest("[data-play-url],[data-play-magnet]") || element;
 
     const rawUrlValue =
       (target?.dataset && typeof target.dataset.playUrl === "string"
         ? target.dataset.playUrl
-        : null) ?? target?.getAttribute?.("data-play-url") ?? "";
+        : null) ??
+      target?.getAttribute?.("data-play-url") ??
+      "";
     const rawMagnetValue =
       (target?.dataset && typeof target.dataset.playMagnet === "string"
         ? target.dataset.playMagnet
-        : null) ?? target?.getAttribute?.("data-play-magnet") ?? "";
+        : null) ??
+      target?.getAttribute?.("data-play-magnet") ??
+      "";
 
     let url = "";
     if (rawUrlValue) {
@@ -1775,14 +2372,14 @@ function renderChannelVideosFromList({
           url: detail.url,
           magnet: detail.magnet,
           title: detail.video?.title,
-          description: detail.video?.description,
+          description: detail.video?.description
         })
       ).catch((error) => {
-        console.error("Failed to play channel video via event id:", error);
+        userLogger.error("Failed to play channel video via event id:", error);
         if (typeof app?.playVideoWithFallback === "function") {
           app.playVideoWithFallback({
             url: detail.url,
-            magnet: detail.magnet,
+            magnet: detail.magnet
           });
         }
       });
@@ -1793,7 +2390,10 @@ function renderChannelVideosFromList({
       Promise.resolve(
         app.playVideoWithFallback({ url: detail.url, magnet: detail.magnet })
       ).catch((error) => {
-        console.error("Failed to start fallback playback for channel video:", error);
+        userLogger.error(
+          "Failed to start fallback playback for channel video:",
+          error
+        );
       });
     }
   };
@@ -1831,7 +2431,10 @@ function renderChannelVideosFromList({
       typeof app?.deriveVideoPointerInfo === "function"
         ? app.deriveVideoPointerInfo(video)
         : null;
-    if (pointerInfo && typeof app?.persistWatchHistoryMetadataForVideo === "function") {
+    if (
+      pointerInfo &&
+      typeof app?.persistWatchHistoryMetadataForVideo === "function"
+    ) {
       app.persistWatchHistoryMetadataForVideo(video, pointerInfo);
     }
 
@@ -1844,14 +2447,13 @@ function renderChannelVideosFromList({
         ? app.formatTimeAgo(video.created_at)
         : new Date(video.created_at * 1000).toLocaleString();
 
-    const highlightClasses = [];
+    let cardState = "";
     if (canEdit && video.isPrivate) {
-      highlightClasses.push("video-card--owner-private");
+      cardState = "private";
     }
     if (!allowNsfw && video?.isNsfw === true && canEdit) {
-      highlightClasses.push("video-card--nsfw-owner");
+      cardState = "critical";
     }
-    const highlightClass = highlightClasses.join(" ");
 
     const videoCard = new VideoCard({
       document,
@@ -1860,7 +2462,7 @@ function renderChannelVideosFromList({
       shareUrl,
       pointerInfo,
       timeAgo,
-      highlightClass,
+      cardState,
       capabilities: {
         canEdit,
         canDelete: canEdit,
@@ -1868,22 +2470,22 @@ function renderChannelVideosFromList({
         canManageBlacklist:
           typeof app?.canCurrentUserManageBlacklist === "function"
             ? app.canCurrentUserManageBlacklist()
-            : false,
+            : false
       },
       nsfwContext: {
         isNsfw: video?.isNsfw === true,
         allowNsfw,
-        viewerIsOwner: canEdit,
+        viewerIsOwner: canEdit
       },
       helpers: {
         escapeHtml: (value) => escapeHTML(value),
         isMagnetSupported: (magnet) => app?.isMagnetUriSupported?.(magnet),
         toLocaleString: (value) =>
-          typeof value === "number" ? value.toLocaleString() : value,
+          typeof value === "number" ? value.toLocaleString() : value
       },
       assets: {
         fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
-        unsupportedBtihMessage,
+        unsupportedBtihMessage
       },
       state: { loadedThumbnails },
       ensureGlobalMoreMenuHandlers: () => app?.ensureGlobalMoreMenuHandlers?.(),
@@ -1892,8 +2494,8 @@ function renderChannelVideosFromList({
         formatTimeAgo: (ts) =>
           typeof app?.formatTimeAgo === "function"
             ? app.formatTimeAgo(ts)
-            : new Date(ts * 1000).toLocaleString(),
-      },
+            : new Date(ts * 1000).toLocaleString()
+      }
     });
 
     videoCard.onPlay = ({ event: domEvent, video: cardVideo }) => {
@@ -1906,21 +2508,21 @@ function renderChannelVideosFromList({
     videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
       app?.handleEditVideo?.({
         eventId: editVideo?.id || "",
-        index: Number.isFinite(editIndex) ? editIndex : null,
+        index: Number.isFinite(editIndex) ? editIndex : null
       });
     };
 
     videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
       app?.handleRevertVideo?.({
         eventId: revertVideo?.id || "",
-        index: Number.isFinite(revertIndex) ? revertIndex : null,
+        index: Number.isFinite(revertIndex) ? revertIndex : null
       });
     };
 
     videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
       app?.handleFullDeleteVideo?.({
         eventId: deleteVideo?.id || "",
-        index: Number.isFinite(deleteIndex) ? deleteIndex : null,
+        index: Number.isFinite(deleteIndex) ? deleteIndex : null
       });
     };
 
@@ -1929,7 +2531,7 @@ function renderChannelVideosFromList({
       const detail = {
         ...dataset,
         eventId: dataset.eventId || video.id || "",
-        context: dataset.context || "channel-grid",
+        context: dataset.context || "channel-grid"
       };
       app?.handleMoreMenuAction?.(action || "copy-link", detail);
     };
@@ -1941,6 +2543,36 @@ function renderChannelVideosFromList({
       }
     };
 
+    videoCard.onRequestMoreMenu = (detail = {}) => {
+      if (typeof app?.requestMoreMenu === "function") {
+        app.requestMoreMenu({
+          ...detail,
+          video: detail.video || video,
+          pointerInfo: detail.pointerInfo || pointerInfo,
+        });
+      }
+    };
+
+    videoCard.onCloseMoreMenu = (detail = {}) => {
+      if (typeof app?.closeMoreMenu === "function") {
+        return app.closeMoreMenu(detail);
+      }
+      return false;
+    };
+
+    videoCard.onRequestSettingsMenu = (detail = {}) => {
+      if (typeof app?.requestVideoSettingsMenu === "function") {
+        app.requestVideoSettingsMenu(detail);
+      }
+    };
+
+    videoCard.onCloseSettingsMenu = (detail = {}) => {
+      if (typeof app?.closeVideoSettingsMenu === "function") {
+        return app.closeVideoSettingsMenu(detail);
+      }
+      return false;
+    };
+
     const cardEl = videoCard.getRoot();
     if (cardEl) {
       fragment.appendChild(cardEl);
@@ -1950,7 +2582,7 @@ function renderChannelVideosFromList({
   if (renderIndex === 0) {
     if (allowEmptyMessage) {
       container.dataset.hasChannelVideos = "false";
-      container.innerHTML = `<p class="text-gray-500">No videos to display.</p>`;
+      container.innerHTML = `<p class="text-muted-strong">No videos to display.</p>`;
       return true;
     }
     return false;
@@ -1979,17 +2611,51 @@ function applyChannelProfileMetadata({
   event = null,
   pubkey = "",
   npub = "",
-  loadToken = null,
+  loadToken = null
 } = {}) {
   if (loadToken !== null && loadToken !== currentProfileLoadToken) {
     return;
   }
 
   const normalized = normalizeChannelProfileMetadata(profile);
+  const expectedLoadToken =
+    loadToken !== null ? loadToken : currentProfileLoadToken;
 
   const bannerEl = document.getElementById("channelBanner");
   if (bannerEl) {
-    bannerEl.src = normalized.banner || FALLBACK_CHANNEL_BANNER;
+    const fallbackAttr =
+      (typeof bannerEl.dataset?.fallbackSrc === "string"
+        ? bannerEl.dataset.fallbackSrc.trim()
+        : "") ||
+      bannerEl.getAttribute("data-fallback-src") ||
+      "";
+    const fallbackSrc = fallbackAttr || FALLBACK_CHANNEL_BANNER;
+
+    if (bannerEl.dataset.fallbackSrc !== fallbackSrc) {
+      bannerEl.dataset.fallbackSrc = fallbackSrc;
+    }
+    if (!bannerEl.getAttribute("data-fallback-src") && fallbackSrc) {
+      bannerEl.setAttribute("data-fallback-src", fallbackSrc);
+    }
+
+    if (!normalized.banner) {
+      setBannerVisual(bannerEl, fallbackSrc);
+    } else {
+      preloadBannerImage(normalized.banner)
+        .then(() => {
+          if (expectedLoadToken !== currentProfileLoadToken) {
+            return;
+          }
+          setBannerVisual(bannerEl, normalized.banner);
+        })
+        .catch(() => {
+          channelBannerImageCache.delete(normalized.banner);
+          if (expectedLoadToken !== currentProfileLoadToken) {
+            return;
+          }
+          setBannerVisual(bannerEl, fallbackSrc);
+        });
+    }
   }
 
   const avatarEl = document.getElementById("channelAvatar");
@@ -2037,8 +2703,7 @@ function applyChannelProfileMetadata({
 
   const lnEl = document.getElementById("channelLightning");
   if (lnEl) {
-    lnEl.textContent =
-      lightningAddress || "No lightning address found.";
+    lnEl.textContent = lightningAddress || "No lightning address found.";
   }
 
   if (event) {
@@ -2061,13 +2726,28 @@ function applyChannelProfileMetadata({
 }
 
 async function fetchChannelProfileFromRelays(pubkey) {
-  if (!nostrClient?.pool || !Array.isArray(nostrClient?.relays)) {
+  try {
+    await nostrClient.ensurePool();
+  } catch (error) {
+    userLogger.error("Failed to initialize relay pool for channel profile:", error);
+    return { event: null, profile: {} };
+  }
+
+  const pool = nostrClient?.pool;
+  const relayCandidates = Array.isArray(nostrClient?.relays)
+    ? nostrClient.relays.filter(
+        (relayUrl) => typeof relayUrl === "string" && relayUrl.trim().length > 0
+      )
+    : [];
+  const relayUrls = relayCandidates.length > 0 ? relayCandidates : DEFAULT_RELAY_URLS;
+
+  if (!pool || !Array.isArray(relayUrls) || relayUrls.length === 0) {
     return { event: null, profile: {} };
   }
 
   try {
-    const events = await nostrClient.pool.list(nostrClient.relays, [
-      { kinds: [0], authors: [pubkey], limit: 1 },
+    const events = await pool.list(relayUrls, [
+      { kinds: [0], authors: [pubkey], limit: 1 }
     ]);
 
     let newestEvent = null;
@@ -2085,7 +2765,7 @@ async function fetchChannelProfileFromRelays(pubkey) {
         const meta = JSON.parse(newestEvent.content);
         return { event: newestEvent, profile: meta };
       } catch (error) {
-        console.warn("Failed to parse channel metadata payload:", error);
+        userLogger.warn("Failed to parse channel metadata payload:", error);
         return { event: newestEvent, profile: {} };
       }
     }
@@ -2112,7 +2792,7 @@ async function loadUserProfile(pubkey) {
       event: cachedEntry.event,
       pubkey,
       npub: currentChannelNpub,
-      loadToken,
+      loadToken
     });
   } else {
     const stateEntry =
@@ -2125,7 +2805,7 @@ async function loadUserProfile(pubkey) {
         event: null,
         pubkey,
         npub: currentChannelNpub,
-        loadToken,
+        loadToken
       });
     } else {
       applyChannelProfileMetadata({
@@ -2133,7 +2813,7 @@ async function loadUserProfile(pubkey) {
         event: null,
         pubkey,
         npub: currentChannelNpub,
-        loadToken,
+        loadToken
       });
     }
   }
@@ -2154,10 +2834,10 @@ async function loadUserProfile(pubkey) {
             result.profile?.lightningAddress ||
             result.profile?.lud16 ||
             result.profile?.lud06 ||
-            "",
+            ""
         });
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "Failed to persist channel profile metadata to cache:",
           error
         );
@@ -2169,11 +2849,11 @@ async function loadUserProfile(pubkey) {
       event: result.event,
       pubkey,
       npub: currentChannelNpub,
-      loadToken,
+      loadToken
     });
   } catch (error) {
     if (loadToken === currentProfileLoadToken) {
-      console.error("Failed to fetch user profile data:", error);
+      userLogger.error("Failed to fetch user profile data:", error);
       const lnEl = document.getElementById("channelLightning");
       if (lnEl && !currentChannelLightningAddress) {
         lnEl.textContent = "No lightning address found.";
@@ -2202,7 +2882,7 @@ async function loadUserVideos(pubkey) {
     if (!hadExistingContent) {
       container.innerHTML = `
         <div class="py-16 flex justify-center">
-          <span class="text-gray-400 animate-pulse">Loading videos…</span>
+        <span class="text-muted animate-pulse">Loading videos…</span>
         </div>
       `;
     }
@@ -2214,7 +2894,7 @@ async function loadUserVideos(pubkey) {
     if (cachedEvents.length) {
       const cachedVideos = buildRenderableChannelVideos({
         events: cachedEvents,
-        app,
+        app
       });
       if (cachedVideos.length) {
         renderedFromCache =
@@ -2223,20 +2903,18 @@ async function loadUserVideos(pubkey) {
             container,
             app,
             loadToken,
-            allowEmptyMessage: false,
+            allowEmptyMessage: false
           }) || renderedFromCache;
       }
     }
   }
 
-  const ensureAccessPromise = accessControl
-    .ensureReady()
-    .catch((error) => {
-      console.warn(
-        "Failed to ensure admin lists were loaded before channel fetch:",
-        error
-      );
-    });
+  const ensureAccessPromise = accessControl.ensureReady().catch((error) => {
+    userLogger.warn(
+      "Failed to ensure admin lists were loaded before channel fetch:",
+      error
+    );
+  });
 
   try {
     // 1) Build filter for videos from this pubkey
@@ -2244,7 +2922,7 @@ async function loadUserVideos(pubkey) {
       kinds: [30078],
       authors: [pubkey],
       "#t": ["video"],
-      limit: 200,
+      limit: 200
     };
 
     // 2) Collect raw events from all relays
@@ -2264,7 +2942,7 @@ async function loadUserVideos(pubkey) {
           events.push(...fallbackEvents);
         }
       } catch (error) {
-        console.error("Relay error (default pool):", error);
+        userLogger.error("Relay error (default pool):", error);
       }
     } else {
       const relayPromises = relayList.map((url) =>
@@ -2276,15 +2954,13 @@ async function loadUserVideos(pubkey) {
         const relayUrl = relayList[index];
 
         if (result.status === "fulfilled") {
-          const relayEvents = Array.isArray(result.value)
-            ? result.value
-            : [];
+          const relayEvents = Array.isArray(result.value) ? result.value : [];
           events.push(...relayEvents);
           return;
         }
 
         if (result.reason) {
-          console.error(`Relay error (${relayUrl}):`, result.reason);
+          userLogger.error(`Relay error (${relayUrl}):`, result.reason);
         }
       });
     }
@@ -2296,7 +2972,7 @@ async function loadUserVideos(pubkey) {
     }
 
     if (!container) {
-      console.warn("channelVideoList element not found in DOM.");
+      userLogger.warn("channelVideoList element not found in DOM.");
       return;
     }
 
@@ -2306,18 +2982,22 @@ async function loadUserVideos(pubkey) {
       container,
       app,
       loadToken,
-      allowEmptyMessage: true,
+      allowEmptyMessage: true
     });
 
     renderedFromCache = rendered || renderedFromCache;
   } catch (err) {
-    if (loadToken === currentVideoLoadToken && container && !renderedFromCache) {
+    if (
+      loadToken === currentVideoLoadToken &&
+      container &&
+      !renderedFromCache
+    ) {
       container.dataset.hasChannelVideos = "false";
       container.innerHTML = `
-        <p class="text-red-400">Failed to load videos. Please try again.</p>
+        <p class="text-critical">Failed to load videos. Please try again.</p>
       `;
     }
-    console.error("Error loading user videos:", err);
+    userLogger.error("Error loading user videos:", err);
   } finally {
     await ensureAccessPromise;
     if (loadToken === currentVideoLoadToken && container) {
@@ -2342,7 +3022,10 @@ window.addEventListener("bitvid:access-control-updated", () => {
   }
 
   loadUserVideos(currentChannelHex).catch((error) => {
-    console.error("Failed to refresh channel videos after admin update:", error);
+    userLogger.error(
+      "Failed to refresh channel videos after admin update:",
+      error
+    );
   });
 });
 
@@ -2360,4 +3043,3 @@ function dedupeToNewestByRoot(videos) {
   }
   return Array.from(map.values());
 }
-

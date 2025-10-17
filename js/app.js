@@ -18,6 +18,7 @@ import { URL_FIRST_ENABLED } from "./constants.js";
 import { trackVideoView } from "./analytics.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
+import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { ADMIN_INITIAL_EVENT_BLACKLIST } from "./lists.js";
 import { userBlocks } from "./userBlocks.js";
 import { relayManager } from "./relayManager.js";
@@ -44,6 +45,9 @@ import WatchHistoryTelemetry from "./services/watchHistoryTelemetry.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
 import { isWatchHistoryDebugEnabled } from "./watchHistoryDebug.js";
+import { devLogger, userLogger } from "./utils/logger.js";
+import createPopover from "./ui/overlay/popoverEngine.js";
+import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -65,6 +69,11 @@ import { VideoModal } from "./ui/components/VideoModal.js";
 import { UploadModal } from "./ui/components/UploadModal.js";
 import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
+import {
+  prepareStaticModal,
+  openStaticModal,
+  closeStaticModal,
+} from "./ui/components/staticModalAccessibility.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
 import MoreMenuController from "./ui/moreMenuController.js";
 import ProfileModalController from "./ui/profileModalController.js";
@@ -74,11 +83,13 @@ import { pointerArrayToKey } from "./utils/pointer.js";
 import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
 import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
+import { buildServiceWorkerFallbackStatus } from "./utils/serviceWorkerFallbackMessages.js";
 import {
   getVideoRootIdentifier,
   applyRootTimestampToVideosMap,
   syncActiveVideoRootTimestamp,
 } from "./utils/videoTimestamps.js";
+import { getDesignSystemMode as getCanonicalDesignSystemMode } from "./designSystem.js";
 import {
   getPubkey as getStoredPubkey,
   setPubkey as setStoredPubkey,
@@ -177,6 +188,10 @@ class Application {
     this.watchHistoryTelemetry = null;
     this.authEventUnsubscribes = [];
     this.unsubscribeFromNostrService = null;
+    this.designSystemContext = {
+      getMode: () => "new",
+      isNew: () => true,
+    };
     this.videoModalReadyPromise = null;
     this.boundUploadSubmitHandler = null;
     this.boundEditModalSubmitHandler = null;
@@ -194,40 +209,20 @@ class Application {
     this.videoListViewDeleteHandler = null;
     this.moreMenuController = null;
     this.latestFeedMetadata = null;
+    this.lastModalTrigger = null;
 
     this.nostrService = services.nostrService || nostrService;
     this.r2Service = services.r2Service || r2Service;
 
-    const feedEngineLogger = (...args) => {
-      if (!isWatchHistoryDebugEnabled()) {
-        return;
-      }
-      if (!Array.isArray(args) || args.length === 0) {
-        return;
-      }
-      const [prefix, ...rest] = args;
-      if (typeof prefix === "string" && !prefix.includes("watch-history")) {
-        return;
-      }
-      try {
-        if (rest.length) {
-          console.info(prefix, ...rest);
-        } else {
-          console.info(prefix);
-        }
-      } catch (error) {
-        if (rest.length) {
-          console.log(prefix, ...rest);
-        } else {
-          console.log(prefix);
-        }
-      }
-    };
-
     this.feedEngine =
       services.feedEngine ||
       createFeedEngine({
-        logger: feedEngineLogger,
+        logger: (...args) => {
+          if (!isWatchHistoryDebugEnabled()) {
+            return;
+          }
+          devLogger.info(...args);
+        },
       });
     this.payments = services.payments || null;
     this.splitAndZap =
@@ -244,7 +239,7 @@ class Application {
         getActivePubkey: () => this.pubkey,
         payments: this.payments,
         logger: {
-          warn: (...args) => console.warn(...args),
+          warn: (...args) => devLogger.warn(...args),
         },
         notifyError: (message) => this.showError(message),
         maxWalletDefaultZap: MAX_WALLET_DEFAULT_ZAP,
@@ -281,6 +276,7 @@ class Application {
         this.dropWatchHistoryMetadata(pointerKey),
       getActivePubkey: () =>
         typeof this.pubkey === "string" && this.pubkey ? this.pubkey : "",
+      designSystem: this.designSystemContext,
     });
 
     this.watchHistoryTelemetry = new WatchHistoryTelemetry({
@@ -296,7 +292,7 @@ class Application {
     this.playbackService =
       services.playbackService ||
       new PlaybackService({
-        logger: (message, ...args) => this.log(message, ...args),
+        logger: devLogger,
         torrentClient,
         deriveTorrentPlaybackConfig,
         isValidMagnetUri,
@@ -333,7 +329,7 @@ class Application {
         nostrClient,
         userBlocks,
         relayManager,
-        logger: (message, ...args) => this.log(message, ...args),
+        logger: devLogger,
       });
     this.authEventUnsubscribes.push(
       this.authService.on("auth:login", (detail) => this.handleAuthLogin(detail))
@@ -478,7 +474,7 @@ class Application {
           watchHistoryService,
           authService: this.authService,
           log: (...args) => this.log(...args),
-          closeAllMoreMenus: () => this.closeAllMoreMenus(),
+          closeAllMoreMenus: (options) => this.closeAllMoreMenus(options),
         };
 
         const profileModalState = {
@@ -543,14 +539,15 @@ class Application {
           services: profileModalServices,
           state: profileModalState,
           callbacks: profileModalCallbacks,
+          designSystem: this.designSystemContext,
         });
       } else {
-        console.warn(
+        devLogger.warn(
           "[Application] Profile modal controller disabled: modal container not found.",
         );
       }
     } catch (error) {
-      console.error("Failed to initialize profile modal controller:", error);
+      devLogger.error("Failed to initialize profile modal controller:", error);
     }
 
 
@@ -610,6 +607,24 @@ class Application {
     this.videoModal.addEventListener(
       "video:share",
       this.boundVideoModalShareHandler
+    );
+    this.boundVideoModalContextActionHandler = (event) => {
+      const detail = event?.detail || {};
+      const action = typeof detail.action === "string" ? detail.action : "";
+      if (!action) {
+        return;
+      }
+      const dataset = {
+        ...(detail.dataset || {}),
+      };
+      if (!dataset.context) {
+        dataset.context = "modal";
+      }
+      this.handleMoreMenuAction(action, dataset);
+    };
+    this.videoModal.addEventListener(
+      "video:context-action",
+      this.boundVideoModalContextActionHandler
     );
     this.boundVideoModalCreatorHandler = () => {
       this.openCreatorChannel();
@@ -671,6 +686,7 @@ class Application {
           ? navigator.clipboard
           : null,
       isDevMode,
+      designSystem: this.designSystemContext,
       callbacks: {
         getCurrentVideo: () => this.currentVideo,
         getCurrentUserNpub: () => this.getCurrentUserNpub(),
@@ -697,7 +713,7 @@ class Application {
             try {
               this.profileController.populateBlockedList();
             } catch (error) {
-              console.warn(
+              devLogger.warn(
                 "[profileModal] Failed to refresh blocked list after update:",
                 error,
               );
@@ -707,6 +723,7 @@ class Application {
       },
     });
     this.moreMenuController.setVideoModal(this.videoModal);
+    this.videoSettingsPopovers = new Map();
 
     // Hide/Show Subscriptions Link
     this.subscriptionsLink = null;
@@ -845,12 +862,19 @@ class Application {
             videoListRoot: container || this.videoList || null,
           }),
         ensureGlobalMoreMenuHandlers: () => this.ensureGlobalMoreMenuHandlers(),
-        closeAllMenus: () => this.closeAllMoreMenus(),
+        requestMoreMenu: (detail = {}) => this.requestMoreMenu(detail),
+        closeMoreMenu: (detail = {}) => this.closeMoreMenu(detail),
+        requestSettingsMenu: (detail = {}) =>
+          this.requestVideoSettingsMenu(detail),
+        closeSettingsMenu: (detail = {}) =>
+          this.closeVideoSettingsMenu(detail),
+        closeAllMenus: (options) => this.closeAllMoreMenus(options),
       },
       renderers: {
         getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
       },
       allowNsfw: ALLOW_NSFW_CONTENT === true,
+      designSystem: this.designSystemContext,
     };
     this.videoListView =
       (typeof ui.videoListView === "function"
@@ -858,41 +882,50 @@ class Application {
         : ui.videoListView) ||
       new VideoListView(videoListViewConfig);
 
-    this.videoListViewPlaybackHandler = ({ videoId, url, magnet }) => {
+    this.videoListViewPlaybackHandler = ({
+      videoId,
+      url,
+      magnet,
+      trigger,
+    }) => {
       if (videoId) {
         Promise.resolve(
-          this.playVideoByEventId(videoId, { url, magnet })
+          this.playVideoByEventId(videoId, { url, magnet, trigger })
         ).catch((error) => {
-          console.error("[VideoListView] Failed to play by event id:", error);
+          devLogger.error("[VideoListView] Failed to play by event id:", error);
         });
         return;
       }
-      Promise.resolve(this.playVideoWithFallback({ url, magnet })).catch(
+      Promise.resolve(
+        this.playVideoWithFallback({ url, magnet, trigger })
+      ).catch(
         (error) => {
-          console.error("[VideoListView] Failed to start playback:", error);
+          devLogger.error("[VideoListView] Failed to start playback:", error);
         }
       );
     };
     this.videoListView.setPlaybackHandler(this.videoListViewPlaybackHandler);
 
-    this.videoListViewEditHandler = ({ video, index }) => {
+    this.videoListViewEditHandler = ({ video, index, trigger }) => {
       if (!video?.id) {
         return;
       }
       this.handleEditVideo({
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
+        triggerElement: trigger,
       });
     };
     this.videoListView.setEditHandler(this.videoListViewEditHandler);
 
-    this.videoListViewRevertHandler = ({ video, index }) => {
+    this.videoListViewRevertHandler = ({ video, index, trigger }) => {
       if (!video?.id) {
         return;
       }
       this.handleRevertVideo({
         eventId: video.id,
         index: Number.isFinite(index) ? index : null,
+        triggerElement: trigger,
       });
     };
     this.videoListView.setRevertHandler(this.videoListViewRevertHandler);
@@ -929,7 +962,7 @@ class Application {
           this.blacklistedEventIds.add(decoded.data.id);
         }
       } catch (err) {
-        console.error(
+        devLogger.error(
           "[Application] Invalid nevent in blacklist:",
           neventStr,
           err
@@ -1038,7 +1071,7 @@ class Application {
         return userBlocks.isBlocked(pubkey);
       }
     } catch (error) {
-      console.warn("[Application] Failed to evaluate block status:", error);
+      devLogger.warn("[Application] Failed to evaluate block status:", error);
     }
 
     return false;
@@ -1071,7 +1104,7 @@ class Application {
       const uploadModalPromise = this.uploadModal
         .load()
         .catch((error) => {
-          console.error("initUploadModal failed:", error);
+          devLogger.error("initUploadModal failed:", error);
           this.showError(`Failed to initialize upload modal: ${error.message}`);
         })
         .finally(() => {
@@ -1079,7 +1112,7 @@ class Application {
         });
 
       const editModalPromise = this.editModal.load().catch((error) => {
-        console.error("Failed to load edit modal:", error);
+        devLogger.error("Failed to load edit modal:", error);
         this.showError(`Failed to initialize edit modal: ${error.message}`);
       });
 
@@ -1090,7 +1123,7 @@ class Application {
               try {
                 this.renderSavedProfiles();
               } catch (error) {
-                console.warn(
+                devLogger.warn(
                   "[profileModal] Failed to render saved profiles after load:",
                   error,
                 );
@@ -1099,7 +1132,7 @@ class Application {
               try {
                 this.profileController.refreshWalletPaneState();
               } catch (error) {
-                console.warn(
+                devLogger.warn(
                   "[profileModal] Failed to refresh wallet pane after load:",
                   error,
                 );
@@ -1107,7 +1140,7 @@ class Application {
               return true;
             })
             .catch((error) => {
-              console.error("Failed to load profile modal:", error);
+              devLogger.error("Failed to load profile modal:", error);
               return false;
             })
         : Promise.resolve(false);
@@ -1126,21 +1159,24 @@ class Application {
       try {
         initViewCounter({ nostrClient });
       } catch (error) {
-        console.warn("Failed to initialize view counter:", error);
+        devLogger.warn("Failed to initialize view counter:", error);
       }
 
       const accessControlPromise = accessControl
         .refresh()
         .then(() => {
-          console.assert(
-            !accessControl.lastError ||
-              accessControl.lastError?.code !== "nostr-unavailable",
-            "[app.init()] Access control refresh should not run before nostrClient.init()",
-            accessControl.lastError
-          );
+          if (
+            accessControl.lastError &&
+            accessControl.lastError?.code === "nostr-unavailable"
+          ) {
+            devLogger.warn(
+              "[app.init()] Access control refresh should not run before nostrClient.init()",
+              accessControl.lastError
+            );
+          }
         })
         .catch((error) => {
-          console.warn(
+          devLogger.warn(
             "Failed to refresh admin lists after connecting to Nostr:",
             error
           );
@@ -1150,7 +1186,7 @@ class Application {
         ? Promise.resolve()
             .then(() => this.profileController.refreshAdminPaneState())
             .catch((error) => {
-              console.warn(
+              devLogger.warn(
                 "Failed to update admin pane after connecting to Nostr:",
                 error,
               );
@@ -1170,7 +1206,7 @@ class Application {
         try {
           await this.authService.login(savedPubKey, { persistActive: false });
         } catch (error) {
-          console.error("Auto-login failed:", error);
+          devLogger.error("Auto-login failed:", error);
         }
       }
 
@@ -1179,17 +1215,15 @@ class Application {
 
       const watchHistoryInitPromise =
         this.watchHistoryTelemetry?.initPreferenceSync?.().catch((error) => {
-          if (isDevMode) {
-            console.warn(
-              "[app.init()] Failed to initialize watch history metadata sync:",
-              error
-            );
-          }
+          devLogger.warn(
+            "[app.init()] Failed to initialize watch history metadata sync:",
+            error
+          );
         }) || Promise.resolve();
 
       // 6) Load the default view ONLY if there's no #view= already
       if (!window.location.hash || !window.location.hash.startsWith("#view=")) {
-        console.log(
+        devLogger.log(
           "[app.init()] No #view= in the URL, loading default home view"
         );
         if (typeof this.loadView === "function") {
@@ -1201,7 +1235,7 @@ class Application {
           await watchHistoryInitPromise;
         }
       } else {
-        console.log(
+        devLogger.log(
           "[app.init()] Found hash:",
           window.location.hash,
           "so skipping default load"
@@ -1219,7 +1253,7 @@ class Application {
       this.checkUrlParams();
 
     } catch (error) {
-      console.error("Init failed:", error);
+      devLogger.error("Init failed:", error);
       this.showError("Failed to connect to Nostr relay");
     }
   }
@@ -1234,7 +1268,7 @@ class Application {
       // Switch to channel profile view
       window.location.hash = `#view=channel-profile&npub=${npub}`;
     } catch (err) {
-      console.error("Failed to go to channel:", err);
+      devLogger.error("Failed to go to channel:", err);
       this.showError("Could not open channel.");
     }
   }
@@ -1255,20 +1289,65 @@ class Application {
       // Switch to channel profile view
       window.location.hash = `#view=channel-profile&npub=${npub}`;
     } catch (err) {
-      console.error("Failed to open creator channel:", err);
+      devLogger.error("Failed to open creator channel:", err);
       this.showError("Could not open channel.");
     }
+  }
+
+  normalizeModalTrigger(candidate) {
+    if (!candidate) {
+      return null;
+    }
+    const doc =
+      (this.videoModal && this.videoModal.document) ||
+      (typeof document !== "undefined" ? document : null);
+    const isElement =
+      typeof candidate === "object" &&
+      candidate !== null &&
+      typeof candidate.nodeType === "number" &&
+      candidate.nodeType === 1 &&
+      typeof candidate.focus === "function";
+    if (!isElement) {
+      return null;
+    }
+    if (doc && typeof doc.contains === "function" && !doc.contains(candidate)) {
+      return null;
+    }
+    return candidate;
+  }
+
+  setLastModalTrigger(candidate) {
+    this.lastModalTrigger = this.normalizeModalTrigger(candidate);
+    return this.lastModalTrigger;
+  }
+
+  getDesignSystemMode() {
+    return getCanonicalDesignSystemMode();
+  }
+
+  isDesignSystemNew() {
+    return true;
   }
 
   /**
    * Show the modal and set the "Please stand by" poster on the video.
    */
-  async showModalWithPoster(video = this.currentVideo) {
+  async showModalWithPoster(video = this.currentVideo, options = {}) {
     if (!this.videoModal) {
       return null;
     }
 
+    if (Object.prototype.hasOwnProperty.call(options || {}, "trigger")) {
+      this.setLastModalTrigger(options.trigger);
+    }
+
     const targetVideo = video || this.currentVideo;
+    if (!targetVideo) {
+      this.log(
+        "[Application] Skipping video modal open; no target video is available.",
+      );
+      return null;
+    }
 
     try {
       const { root } = await this.ensureVideoModalReady({
@@ -1279,7 +1358,9 @@ class Application {
         return root || null;
       }
 
-      this.videoModal.open(targetVideo);
+      this.videoModal.open(targetVideo, {
+        triggerElement: this.lastModalTrigger,
+      });
       this.applyModalLoadingPoster();
 
       return (
@@ -1289,7 +1370,7 @@ class Application {
           : null)
       );
     } catch (error) {
-      console.error(
+      devLogger.error(
         "[Application] Failed to open the video modal before playback:",
         error
       );
@@ -1445,7 +1526,7 @@ class Application {
       try {
         this.modalViewCountUnsub();
       } catch (error) {
-        console.warn("[viewCount] Failed to tear down modal subscription:", error);
+        devLogger.warn("[viewCount] Failed to tear down modal subscription:", error);
       }
     }
     this.modalViewCountUnsub = null;
@@ -1503,7 +1584,7 @@ class Application {
         try {
           unsubscribeFromVideoViewCount(pointer, token);
         } catch (error) {
-          console.warn(
+          devLogger.warn(
             "[viewCount] Failed to unsubscribe modal view counter:",
             error
           );
@@ -1512,7 +1593,7 @@ class Application {
         }
       };
     } catch (error) {
-      console.warn("[viewCount] Failed to subscribe modal view counter:", error);
+      devLogger.warn("[viewCount] Failed to subscribe modal view counter:", error);
       if (this.videoModal) {
         this.videoModal.updateViewCountLabel("– views");
         this.videoModal.setViewCountPointer(null);
@@ -1540,7 +1621,7 @@ class Application {
           });
         }
       } catch (error) {
-        console.warn(
+        devLogger.warn(
           "[profileModal] Failed to synchronize saved profiles with controller:",
           error,
         );
@@ -1556,7 +1637,7 @@ class Application {
           );
         }
       } catch (error) {
-        console.warn(
+        devLogger.warn(
           "[profileModal] Failed to synchronize active profile with controller:",
           error,
         );
@@ -1572,7 +1653,7 @@ class Application {
     try {
       this.profileController.renderSavedProfiles();
     } catch (error) {
-      console.warn(
+      devLogger.warn(
         "[profileModal] Failed to render saved profiles:",
         error,
       );
@@ -1610,12 +1691,12 @@ class Application {
     if (!(button instanceof HTMLElement)) {
       return;
     }
-    if (button.dataset.loading === "true") {
+    if (button.dataset.state === "loading") {
       return;
     }
 
-    const titleEl = button.querySelector(".profile-switcher__addTitle");
-    const hintEl = button.querySelector(".profile-switcher__addHint");
+    const titleEl = button.querySelector('[data-profile-add-title]');
+    const hintEl = button.querySelector('[data-profile-add-hint]');
     const originalTitle = titleEl ? titleEl.textContent : "";
     const originalHint = hintEl ? hintEl.textContent : "";
     const originalAriaLabel = button.getAttribute("aria-label");
@@ -1623,7 +1704,11 @@ class Application {
 
     const setLoadingState = (isLoading) => {
       button.disabled = isLoading ? true : originalDisabled;
-      button.dataset.loading = isLoading ? "true" : "false";
+      if (isLoading) {
+        button.dataset.state = "loading";
+      } else {
+        delete button.dataset.state;
+      }
       button.setAttribute("aria-busy", isLoading ? "true" : "false");
       if (isLoading) {
         button.setAttribute("aria-disabled", "true");
@@ -1707,7 +1792,7 @@ class Application {
 
       this.showSuccess("Profile added. Select it when you're ready to switch.");
     } catch (error) {
-      console.error("Failed to add profile via NIP-07:", error);
+      devLogger.error("Failed to add profile via NIP-07:", error);
       const message =
         error && typeof error.message === "string" && error.message.trim()
           ? error.message.trim()
@@ -1726,7 +1811,7 @@ class Application {
     try {
       return accessControl.canEditAdminLists(actorNpub);
     } catch (error) {
-      console.warn("Unable to verify blacklist permissions:", error);
+      devLogger.warn("Unable to verify blacklist permissions:", error);
       return false;
     }
   }
@@ -1786,12 +1871,12 @@ class Application {
       try {
         await this.profileController.refreshAdminPaneState();
       } catch (error) {
-        console.error("Failed to refresh admin pane after update:", error);
+        devLogger.error("Failed to refresh admin pane after update:", error);
       }
     }
 
     this.loadVideos(true).catch((error) => {
-      console.error("Failed to refresh videos after admin update:", error);
+      devLogger.error("Failed to refresh videos after admin update:", error);
     });
     window.dispatchEvent(new CustomEvent("bitvid:access-control-updated"));
   }
@@ -1801,7 +1886,7 @@ class Application {
       await this.loadVideos(true);
     } catch (error) {
       const context = reason ? ` after ${reason}` : "";
-      console.error(`Failed to refresh videos${context}:`, error);
+      devLogger.error(`Failed to refresh videos${context}:`, error);
     }
   }
 
@@ -1815,7 +1900,7 @@ class Application {
         try {
           await this.authService.logout();
         } catch (error) {
-          console.error("Logout failed:", error);
+          devLogger.error("Logout failed:", error);
           this.showError("Failed to logout. Please try again.");
         }
       });
@@ -1831,27 +1916,29 @@ class Application {
         this.profileController
           .show()
           .catch((error) => {
-            console.error("Failed to open profile modal:", error);
+            devLogger.error("Failed to open profile modal:", error);
           });
       });
     }
 
     // 3) Upload button => show upload modal
     if (this.uploadButton) {
-      this.uploadButton.addEventListener("click", () => {
+      this.uploadButton.addEventListener("click", (event) => {
         if (this.uploadModal) {
-          this.uploadModal.open();
+          const trigger = event?.currentTarget || event?.target || null;
+          this.uploadModal.open({ triggerElement: trigger });
         }
       });
     }
 
     // 4) Login button => show the login modal
     if (this.loginButton) {
-      this.loginButton.addEventListener("click", () => {
-        console.log("Login button clicked!");
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.remove("hidden");
+      this.loginButton.addEventListener("click", (event) => {
+        devLogger.log("Login button clicked!");
+        const loginModal =
+          prepareStaticModal({ id: "loginModal" }) || document.getElementById("loginModal");
+        const trigger = event?.currentTarget || event?.target || null;
+        if (loginModal && openStaticModal(loginModal, { triggerElement: trigger })) {
           setGlobalModalState("login", true);
         }
       });
@@ -1860,10 +1947,8 @@ class Application {
     // 5) Close login modal button => hide modal
     if (this.closeLoginModalBtn) {
       this.closeLoginModalBtn.addEventListener("click", () => {
-        console.log("[app.js] closeLoginModal button clicked!");
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.add("hidden");
+        devLogger.log("[app.js] closeLoginModal button clicked!");
+        if (closeStaticModal("loginModal")) {
           setGlobalModalState("login", false);
         }
       });
@@ -1886,19 +1971,19 @@ class Application {
       const setLoadingState = (isLoading) => {
         if (isLoading) {
           nip07Button.disabled = true;
-          nip07Button.dataset.loading = "true";
+          nip07Button.dataset.state = "loading";
           nip07Button.setAttribute("aria-busy", "true");
           nip07Button.textContent = "Connecting to NIP-07 extension...";
 
           clearSlowExtensionTimer();
           slowExtensionTimer = window.setTimeout(() => {
-            if (nip07Button.dataset.loading === "true") {
+            if (nip07Button.dataset.state === "loading") {
               nip07Button.textContent = "Waiting for the extension prompt…";
             }
           }, slowExtensionDelayMs);
         } else {
           nip07Button.disabled = false;
-          nip07Button.dataset.loading = "false";
+          delete nip07Button.dataset.state;
           nip07Button.setAttribute("aria-busy", "false");
           clearSlowExtensionTimer();
           nip07Button.textContent = originalLabel;
@@ -1906,17 +1991,17 @@ class Application {
       };
 
       nip07Button.addEventListener("click", async () => {
-        if (nip07Button.dataset.loading === "true") {
+        if (nip07Button.dataset.state === "loading") {
           return;
         }
 
         setLoadingState(true);
-        console.log(
+        devLogger.log(
           "[app.js] loginNIP07 clicked! Attempting extension login..."
         );
         try {
           const { pubkey, detail } = await this.authService.requestLogin();
-          console.log("[NIP-07] login returned pubkey:", pubkey);
+          devLogger.log("[NIP-07] login returned pubkey:", pubkey);
 
           if (pubkey) {
             if (
@@ -1927,21 +2012,19 @@ class Application {
               try {
                 await this.handleAuthLogin(detail);
               } catch (error) {
-                console.error(
+                devLogger.error(
                   "[NIP-07] handleAuthLogin fallback failed:",
                   error,
                 );
               }
             }
 
-            const loginModal = document.getElementById("loginModal");
-            if (loginModal) {
-              loginModal.classList.add("hidden");
+            if (closeStaticModal("loginModal")) {
               setGlobalModalState("login", false);
             }
           }
         } catch (err) {
-          console.error("[NIP-07 login error]", err);
+          devLogger.error("[NIP-07 login error]", err);
           const message =
             err && typeof err.message === "string" && err.message.trim()
               ? err.message.trim()
@@ -1956,12 +2039,10 @@ class Application {
     // 7) Cleanup on page unload
     window.addEventListener("beforeunload", () => {
       this.flushWatchHistory("session-end", "beforeunload").catch((error) => {
-        if (isDevMode) {
-          console.warn("[beforeunload] Watch history flush failed:", error);
-        }
+        devLogger.warn("[beforeunload] Watch history flush failed:", error);
       });
       this.cleanup().catch((err) => {
-        console.error("Cleanup before unload failed:", err);
+        devLogger.error("Cleanup before unload failed:", err);
       });
     });
 
@@ -1969,12 +2050,10 @@ class Application {
       if (document.visibilityState === "hidden") {
         this.flushWatchHistory("session-end", "visibilitychange").catch(
           (error) => {
-            if (isDevMode) {
-              console.warn(
-                "[visibilitychange] Watch history flush failed:",
-                error
-              );
-            }
+            devLogger.warn(
+              "[visibilitychange] Watch history flush failed:",
+              error
+            );
           }
         );
       }
@@ -1982,7 +2061,7 @@ class Application {
 
     // 8) Handle back/forward navigation => hide video modal
     window.addEventListener("popstate", async () => {
-      console.log("[popstate] user navigated back/forward; cleaning modal...");
+      devLogger.log("[popstate] user navigated back/forward; cleaning modal...");
       await this.hideModal();
     });
 
@@ -1990,15 +2069,15 @@ class Application {
     document.addEventListener("click", (event) => {
       if (event.target && event.target.id === "openApplicationModal") {
         // Hide the login modal
-        const loginModal = document.getElementById("loginModal");
-        if (loginModal) {
-          loginModal.classList.add("hidden");
+        if (closeStaticModal("loginModal")) {
           setGlobalModalState("login", false);
         }
         // Show the application modal
-        const appModal = document.getElementById("nostrFormModal");
+        const appModal =
+          prepareStaticModal({ id: "nostrFormModal" }) ||
+          document.getElementById("nostrFormModal");
         if (appModal) {
-          appModal.classList.remove("hidden");
+          openStaticModal(appModal, { triggerElement: event.target });
         }
       }
     });
@@ -2014,6 +2093,39 @@ class Application {
     this.videoList = target || null;
     this.videoListView.mount(this.videoList || null);
     return this.videoList;
+  }
+
+  reinitializeVideoListView({ reason, postLoginResult } = {}) {
+    if (!this.videoListView) {
+      return;
+    }
+
+    const isElement = (value) =>
+      typeof HTMLElement !== "undefined" && value instanceof HTMLElement;
+
+    const container = isElement(this.videoList)
+      ? this.videoList
+      : document.getElementById("videoList");
+
+    try {
+      this.videoListView.destroy();
+    } catch (error) {
+      devLogger.warn(
+        "[Application] Failed to destroy VideoListView during reinitialization:",
+        error,
+      );
+    }
+
+    const messageContext =
+      reason === "login" && postLoginResult?.blocksLoaded !== false
+        ? "Applying your filters…"
+        : "Refreshing videos…";
+
+    this.videoList = isElement(container) ? container : null;
+
+    if (this.videoList) {
+      this.videoList.innerHTML = getSidebarLoadingMarkup(messageContext);
+    }
   }
 
   /**
@@ -2083,11 +2195,11 @@ class Application {
           this.setProfileCacheEntry(pubkey, profile);
           this.updateProfileInDOM(pubkey, profile);
         } catch (err) {
-          console.error("Profile parse error:", err);
+          devLogger.error("Profile parse error:", err);
         }
       }
     } catch (err) {
-      console.error("Batch profile fetch error:", err);
+      devLogger.error("Batch profile fetch error:", err);
     }
   }
 
@@ -2479,7 +2591,7 @@ class Application {
       this.showSuccess("Video shared successfully!");
       return true;
     } catch (err) {
-      console.error("Failed to publish video:", err);
+      devLogger.error("Failed to publish video:", err);
       this.showError("Failed to share video. Please try again later.");
       return false;
     }
@@ -2522,7 +2634,7 @@ class Application {
       try {
         await this.loadVideos(true);
       } catch (error) {
-        console.error("Failed to refresh videos after switching profiles:", error);
+        devLogger.error("Failed to refresh videos after switching profiles:", error);
       }
     }
 
@@ -2603,12 +2715,10 @@ class Application {
       try {
         await this.onVideosShouldRefresh({ reason: refreshReason });
       } catch (refreshError) {
-        if (isDevMode) {
-          console.warn(
-            "[Profile] Failed to refresh videos after relay update:",
-            refreshError,
-          );
-        }
+        devLogger.warn(
+          "[Profile] Failed to refresh videos after relay update:",
+          refreshError,
+        );
       }
 
       return context;
@@ -2620,12 +2730,10 @@ class Application {
           relayManager.setEntries(previous, { allowEmpty: false });
         }
       } catch (restoreError) {
-        if (isDevMode) {
-          console.warn(
-            "[Profile] Failed to restore relay preferences after publish error:",
-            restoreError,
-          );
-        }
+        devLogger.warn(
+          "[Profile] Failed to restore relay preferences after publish error:",
+          restoreError,
+        );
       }
       return context;
     }
@@ -2680,7 +2788,7 @@ class Application {
         try {
           await this.onVideosShouldRefresh({ reason: `blocklist-${action}` });
         } catch (refreshError) {
-          console.error(
+          devLogger.error(
             "Failed to refresh videos after blocklist mutation:",
             refreshError,
           );
@@ -2777,7 +2885,7 @@ class Application {
     if (!error) {
       return;
     }
-    console.warn("[admin] Notification dispatch issue:", error);
+    devLogger.warn("[admin] Notification dispatch issue:", error);
   }
 
   handleProfileHistoryEvent() {
@@ -2852,7 +2960,6 @@ class Application {
     if (this.loginButton) {
       this.loginButton.classList.add("hidden");
       this.loginButton.setAttribute("hidden", "");
-      this.loginButton.style.display = "none";
     }
 
     if (this.logoutButton) {
@@ -2866,13 +2973,11 @@ class Application {
     if (this.uploadButton) {
       this.uploadButton.classList.remove("hidden");
       this.uploadButton.removeAttribute("hidden");
-      this.uploadButton.style.display = "inline-flex";
     }
 
     if (this.profileButton) {
       this.profileButton.classList.remove("hidden");
       this.profileButton.removeAttribute("hidden");
-      this.profileButton.style.display = "inline-flex";
     }
 
     if (this.subscriptionsLink) {
@@ -2884,7 +2989,6 @@ class Application {
     if (this.loginButton) {
       this.loginButton.classList.remove("hidden");
       this.loginButton.removeAttribute("hidden");
-      this.loginButton.style.display = "";
     }
 
     if (this.logoutButton) {
@@ -2902,13 +3006,11 @@ class Application {
     if (this.uploadButton) {
       this.uploadButton.classList.add("hidden");
       this.uploadButton.setAttribute("hidden", "");
-      this.uploadButton.style.display = "none";
     }
 
     if (this.profileButton) {
       this.profileButton.classList.add("hidden");
       this.profileButton.setAttribute("hidden", "");
-      this.profileButton.style.display = "none";
     }
 
     if (this.subscriptionsLink) {
@@ -2950,11 +3052,11 @@ class Application {
       identityChanged: Boolean(detail?.identityChanged),
     };
 
-    const nwcPromise = this.nwcSettingsService
-      .onLogin(loginContext)
+    const nwcPromise = Promise.resolve()
+      .then(() => this.nwcSettingsService.onLogin(loginContext))
       .catch((error) => {
-        console.error("Failed to process NWC settings during login:", error);
-        throw error;
+        devLogger.error("Failed to process NWC settings during login:", error);
+        return null;
       });
 
     if (this.profileController) {
@@ -2962,14 +3064,14 @@ class Application {
         const maybePromise = this.profileController.handleAuthLogin(detail);
         if (maybePromise && typeof maybePromise.then === "function") {
           maybePromise.catch((error) => {
-            console.error(
+            devLogger.error(
               "Failed to process login within the profile controller:",
               error,
             );
           });
         }
       } catch (error) {
-        console.error(
+        devLogger.error(
           "Failed to process login within the profile controller:",
           error,
         );
@@ -2987,19 +3089,28 @@ class Application {
         this.forceRefreshAllProfiles();
       })
       .catch((error) => {
-        console.error("Post-login hydration failed:", error);
+        devLogger.error("Post-login hydration failed:", error);
       });
 
+    let postLoginResult = null;
     try {
-      await nwcPromise;
+      postLoginResult = await postLoginPromise;
     } catch (error) {
-      // Error already logged above; continue so UI can recover.
+      devLogger.error("Post-login processing failed:", error);
+    }
+
+    await nwcPromise;
+
+    try {
+      this.reinitializeVideoListView({ reason: "login", postLoginResult });
+    } catch (error) {
+      devLogger.warn("Failed to reinitialize video list view after login:", error);
     }
 
     try {
       await this.loadVideos(true);
     } catch (error) {
-      console.error("Failed to refresh videos after login:", error);
+      devLogger.error("Failed to refresh videos after login:", error);
     }
 
     this.forceRefreshAllProfiles();
@@ -3021,7 +3132,7 @@ class Application {
       try {
         await this.profileController.handleAuthLogout(detail);
       } catch (error) {
-        console.error(
+        devLogger.error(
           "Failed to process logout within the profile controller:",
           error,
         );
@@ -3035,7 +3146,7 @@ class Application {
     try {
       await this.loadVideos(true);
     } catch (error) {
-      console.error("Failed to refresh videos after logout:", error);
+      devLogger.error("Failed to refresh videos after logout:", error);
     }
     this.forceRefreshAllProfiles();
     if (this.uploadModal?.refreshCloudflareBucketPreview) {
@@ -3080,7 +3191,7 @@ class Application {
       try {
         await this.cleanupPromise;
       } catch (err) {
-        console.warn("Previous cleanup rejected:", err);
+        devLogger.warn("Previous cleanup rejected:", err);
       }
     }
 
@@ -3131,7 +3242,7 @@ class Application {
           try {
             this.videoModal.clearPosterCleanup();
           } catch (err) {
-            console.warn("[cleanup] video modal poster cleanup threw:", err);
+            devLogger.warn("[cleanup] video modal poster cleanup threw:", err);
           }
         }
 
@@ -3149,7 +3260,7 @@ class Application {
               try {
                 this.videoModal.setVideoElement(refreshedModal);
               } catch (err) {
-                console.warn(
+                devLogger.warn(
                   "[cleanup] Failed to sync video modal element after replacement:",
                   err
                 );
@@ -3161,7 +3272,7 @@ class Application {
         await torrentClient.cleanup();
         this.log("[cleanup] WebTorrent cleanup resolved.");
       } catch (err) {
-        console.error("Cleanup error:", err);
+        devLogger.error("Cleanup error:", err);
       } finally {
         this.log("[cleanup] Finished.");
       }
@@ -3189,7 +3300,7 @@ class Application {
       await this.cleanupPromise;
       this.log("[waitForCleanup] Previous cleanup completed.");
     } catch (err) {
-      console.warn("waitForCleanup observed a rejected cleanup:", err);
+      devLogger.warn("waitForCleanup observed a rejected cleanup:", err);
     }
   }
 
@@ -3239,13 +3350,11 @@ class Application {
     try {
       watchHistoryService.setLocalMetadata(pointerInfo.key, metadata);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistory] Failed to persist local metadata for pointer:",
-          pointerInfo.key,
-          error,
-        );
-      }
+      devLogger.warn(
+        "[watchHistory] Failed to persist local metadata for pointer:",
+        pointerInfo.key,
+        error,
+      );
     }
   }
 
@@ -3264,13 +3373,11 @@ class Application {
     try {
       watchHistoryService.removeLocalMetadata(pointerKey);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistory] Failed to remove cached metadata for pointer:",
-          pointerKey,
-          error,
-        );
-      }
+      devLogger.warn(
+        "[watchHistory] Failed to remove cached metadata for pointer:",
+        pointerKey,
+        error,
+      );
     }
   }
 
@@ -3408,7 +3515,7 @@ class Application {
       try {
         fn();
       } catch (err) {
-        console.warn("[teardownVideoElement]", err);
+        devLogger.warn("[teardownVideoElement]", err);
       }
     };
 
@@ -3556,7 +3663,7 @@ class Application {
           return base;
         }
       }
-      console.warn("Unable to determine share URL base:", err);
+      devLogger.warn("Unable to determine share URL base:", err);
       return "";
     }
   }
@@ -3581,7 +3688,7 @@ class Application {
       const nevent = window.NostrTools.nip19.neventEncode({ id: eventId });
       return this.buildShareUrlFromNevent(nevent);
     } catch (err) {
-      console.error("Error generating nevent for share URL:", err);
+      devLogger.error("Error generating nevent for share URL:", err);
       return "";
     }
   }
@@ -3636,7 +3743,17 @@ class Application {
           this.videoModal.updateStatus(status.textContent);
         }
         if (progress) {
-          this.videoModal.updateProgress(progress.style.width);
+          const doc = progress.ownerDocument;
+          const view = doc?.defaultView;
+          let widthValue = "";
+          if (view && typeof view.getComputedStyle === "function") {
+            const computed = view.getComputedStyle(progress);
+            widthValue =
+              computed?.getPropertyValue("--progress-width")?.trim() ||
+              computed?.getPropertyValue("width")?.trim() ||
+              "";
+          }
+          this.videoModal.updateProgress(widthValue);
         }
         if (peers) {
           this.videoModal.updatePeers(peers.textContent);
@@ -3674,9 +3791,7 @@ class Application {
         modalVideoElement.removeAttribute("src");
         modalVideoElement.load();
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[hideModal] Failed to reset modal video element:", error);
-        }
+        devLogger.warn("[hideModal] Failed to reset modal video element:", error);
       }
     }
 
@@ -3684,9 +3799,11 @@ class Application {
       try {
         this.videoModal.close();
       } catch (error) {
-        console.warn("[hideModal] Failed to close video modal immediately:", error);
+        devLogger.warn("[hideModal] Failed to close video modal immediately:", error);
       }
     }
+
+    this.lastModalTrigger = null;
 
     this.currentMagnetUri = null;
 
@@ -3697,9 +3814,7 @@ class Application {
       try {
         await fetch("/webtorrent/cancel/", { mode: "no-cors" });
       } catch (err) {
-        if (isDevMode) {
-          console.warn("[hideModal] webtorrent cancel fetch failed:", err);
-        }
+        devLogger.warn("[hideModal] webtorrent cancel fetch failed:", err);
       }
 
       await this.cleanup({
@@ -3717,7 +3832,7 @@ class Application {
     try {
       await performCleanup();
     } catch (error) {
-      console.error("[hideModal] Cleanup failed:", error);
+      devLogger.error("[hideModal] Cleanup failed:", error);
     }
   }
 
@@ -3752,7 +3867,7 @@ class Application {
         sorter: createChronologicalSorter(),
       });
     } catch (error) {
-      console.warn("[Application] Failed to register recent feed:", error);
+      devLogger.warn("[Application] Failed to register recent feed:", error);
       return null;
     }
   }
@@ -3790,7 +3905,7 @@ class Application {
         },
       });
     } catch (error) {
-      console.warn("[Application] Failed to register subscriptions feed:", error);
+      devLogger.warn("[Application] Failed to register subscriptions feed:", error);
       return null;
     }
   }
@@ -3814,7 +3929,7 @@ class Application {
         nostr: this.nostrService,
       });
     } catch (error) {
-      console.warn("[Application] Failed to register watch history feed:", error);
+      devLogger.warn("[Application] Failed to register watch history feed:", error);
       return null;
     }
   }
@@ -3872,7 +3987,7 @@ class Application {
         return payload;
       })
       .catch((error) => {
-        console.error("[Application] Failed to run recent feed:", error);
+        devLogger.error("[Application] Failed to run recent feed:", error);
         const metadata = {
           reason: normalizedReason || "error:recent-feed",
           error: true,
@@ -3892,7 +4007,7 @@ class Application {
    * Subscribe to videos (older + new) and render them as they come in.
    */
   async loadVideos(forceFetch = false) {
-    console.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
+    devLogger.log("Starting loadVideos... (forceFetch =", forceFetch, ")");
 
     const container = this.mountVideoListView();
     if (this.videoListView && container) {
@@ -3969,65 +4084,41 @@ class Application {
    */
   getUrlHealthPlaceholderMarkup(options = {}) {
     const includeMargin = options?.includeMargin !== false;
-    const classes = [
-      "url-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "inline-flex",
-      "items-center",
-      "gap-1",
-      "bg-gray-800",
-      "text-gray-300",
-    ];
+    const classes = ["badge", "url-health-badge", "text-muted"];
     if (includeMargin) {
-      classes.splice(1, 0, "mt-3");
+      classes.push("mt-sm");
     }
 
     return `
-      <div
+      <span
         class="${classes.join(" ")}"
         data-url-health-state="checking"
+        data-variant="neutral"
         aria-live="polite"
         role="status"
       >
-        Checking hosted URL…
-      </div>
+        ⏳ CDN
+      </span>
     `;
   }
 
   getTorrentHealthBadgeMarkup(options = {}) {
     const includeMargin = options?.includeMargin !== false;
-    const classes = [
-      "torrent-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "inline-flex",
-      "items-center",
-      "gap-1",
-      "bg-gray-800",
-      "text-gray-300",
-      "transition-colors",
-      "duration-200",
-    ];
+    const classes = ["badge", "torrent-health-badge"];
     if (includeMargin) {
-      classes.unshift("mt-3");
+      classes.push("mt-sm");
     }
 
     return `
-      <div
+      <span
         class="${classes.join(" ")}"
         data-stream-health-state="checking"
+        data-variant="neutral"
         aria-live="polite"
         role="status"
       >
         ⏳ Torrent
-      </div>
+      </span>
     `;
   }
 
@@ -4064,76 +4155,48 @@ class Application {
     }
 
     const status = state?.status || "checking";
+    const fallbackMessages = {
+      healthy: "✅ CDN",
+      offline: "❌ CDN",
+      unknown: "⚠️ CDN",
+      timeout: "⚠️ CDN timed out",
+      checking: "⏳ CDN",
+    };
     const message =
       state?.message ||
-      (status === "healthy"
-        ? "✅ CDN"
-        : status === "offline"
-        ? "❌ CDN"
-        : status === "unknown"
-        ? "⚠️ CDN"
-        : status === "timeout"
-        ? "⚠️ CDN timed out"
-        : "Checking hosted URL…");
+      fallbackMessages[status] ||
+      fallbackMessages.checking;
 
-    const hadMargin = badgeEl.classList.contains("mt-3");
-
+    const hadCompactMargin =
+      badgeEl.classList.contains("mt-sm") || badgeEl.classList.contains("mt-3");
     badgeEl.dataset.urlHealthState = status;
-    const cardEl = badgeEl.closest(".video-card");
+    const cardEl = badgeEl.closest(".card[data-video-id]");
     if (cardEl) {
       cardEl.dataset.urlHealthState = status;
+      updateVideoCardSourceVisibility(cardEl);
     }
     badgeEl.setAttribute("aria-live", "polite");
     badgeEl.setAttribute("role", status === "offline" ? "alert" : "status");
     badgeEl.textContent = message;
 
-    const baseClasses = [
-      "url-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "transition-colors",
-      "duration-200",
-    ];
-    if (hadMargin) {
-      baseClasses.unshift("mt-3");
+    const classes = ["badge", "url-health-badge"];
+    if (hadCompactMargin) {
+      classes.push("mt-sm");
     }
-    badgeEl.className = baseClasses.join(" ");
+    badgeEl.className = classes.join(" ");
 
-    if (status === "healthy") {
-      badgeEl.classList.add(
-        "inline-flex",
-        "items-center",
-        "gap-1",
-        "bg-green-900",
-        "text-green-200"
-      );
-    } else if (status === "offline") {
-      badgeEl.classList.add(
-        "inline-flex",
-        "items-center",
-        "gap-1",
-        "bg-red-900",
-        "text-red-200"
-      );
-    } else if (status === "unknown" || status === "timeout") {
-      badgeEl.classList.add(
-        "inline-flex",
-        "items-center",
-        "gap-1",
-        "bg-amber-900",
-        "text-amber-200"
-      );
-    } else {
-      badgeEl.classList.add(
-        "inline-flex",
-        "items-center",
-        "gap-1",
-        "bg-gray-800",
-        "text-gray-300"
-      );
+    const variantMap = {
+      healthy: "success",
+      offline: "critical",
+      unknown: "neutral",
+      timeout: "neutral",
+      checking: "neutral",
+    };
+    const variant = variantMap[status];
+    if (variant) {
+      badgeEl.dataset.variant = variant;
+    } else if (badgeEl.dataset.variant) {
+      delete badgeEl.dataset.variant;
     }
 
     if (
@@ -4182,7 +4245,7 @@ class Application {
           }
         })
         .catch((err) => {
-          console.warn(
+          devLogger.warn(
             `[urlHealth] cached probe promise rejected for ${trimmedUrl}:`,
             err
           );
@@ -4222,7 +4285,7 @@ class Application {
         return this.storeUrlHealth(eventId, trimmedUrl, entry, ttlOverride);
       })
       .catch((err) => {
-        console.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
+        devLogger.warn(`[urlHealth] probe failed for ${trimmedUrl}:`, err);
         const entry = {
           status: "offline",
           message: "❌ CDN",
@@ -4239,7 +4302,7 @@ class Application {
         }
       })
       .catch((err) => {
-        console.warn(
+        devLogger.warn(
           `[urlHealth] probe promise rejected post-cache for ${trimmedUrl}:`,
           err
         );
@@ -4464,16 +4527,203 @@ class Application {
     }
   }
 
-  closeAllMoreMenus() {
+  closeAllMoreMenus(options = {}) {
     if (this.moreMenuController) {
-      this.moreMenuController.closeAllMoreMenus();
+      this.moreMenuController.closeAllMoreMenus(options);
     }
+
+    this.closeVideoSettingsMenu({ restoreFocus: options?.restoreFocus !== false });
   }
 
   attachMoreMenuHandlers(container) {
     if (this.moreMenuController) {
       this.moreMenuController.attachMoreMenuHandlers(container);
     }
+  }
+
+  requestMoreMenu(detail = {}) {
+    if (!this.moreMenuController) {
+      return;
+    }
+
+    const trigger = detail.trigger || null;
+    if (!trigger) {
+      return;
+    }
+
+    const capabilities = detail.capabilities || {};
+    const canManage =
+      typeof capabilities.canManageBlacklist === "boolean"
+        ? capabilities.canManageBlacklist
+        : this.canCurrentUserManageBlacklist();
+
+    this.moreMenuController.toggleMoreMenu({
+      trigger,
+      video: detail.video || null,
+      pointerInfo: detail.pointerInfo || null,
+      playbackUrl: detail.playbackUrl || "",
+      playbackMagnet: detail.playbackMagnet || "",
+      context: detail.context || "card",
+      canManageBlacklist: canManage,
+      designSystem: detail.designSystem || this.designSystemContext,
+      onAction: detail.onAction || null,
+      onClose: detail.onClose || null,
+      restoreFocusOnClose: detail.restoreFocus !== false,
+    });
+  }
+
+  closeMoreMenu(detail = {}) {
+    if (!this.moreMenuController) {
+      return false;
+    }
+
+    const trigger = detail.trigger || null;
+    if (trigger) {
+      return this.moreMenuController.closePopoverForTrigger(trigger, {
+        restoreFocus: detail.restoreFocus !== false,
+      });
+    }
+
+    this.moreMenuController.closeAllMoreMenus({
+      restoreFocus: detail.restoreFocus !== false,
+      skipView: detail.skipView === true,
+    });
+    return true;
+  }
+
+  ensureSettingsPopover(detail = {}) {
+    const trigger = detail.trigger || null;
+    if (!trigger) {
+      return null;
+    }
+
+    let entry = this.videoSettingsPopovers.get(trigger);
+    if (!entry) {
+      entry = {
+        trigger,
+        context: {
+          card: detail.card || null,
+          video: detail.video || null,
+          index: Number.isFinite(detail.index) ? Math.floor(detail.index) : 0,
+          capabilities: detail.capabilities || {},
+          restoreFocusOnClose: detail.restoreFocus !== false,
+        },
+        popover: null,
+      };
+
+      const render = ({ document: documentRef, close }) => {
+        const panel = createVideoSettingsMenuPanel({
+          document: documentRef,
+          video: entry.context.video,
+          index: entry.context.index,
+          capabilities: entry.context.capabilities,
+          designSystem: this.designSystemContext,
+        });
+
+        if (!panel) {
+          return null;
+        }
+
+        const buttons = panel.querySelectorAll("button[data-action]");
+        buttons.forEach((button) => {
+          button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const action = button.dataset.action || "";
+            const handled = entry.context.card?.handleSettingsMenuAction?.(
+              action,
+              { event },
+            );
+
+            if (!handled && this.isDevMode) {
+              userLogger.warn(`[SettingsMenu] Unhandled action: ${action}`);
+            }
+
+            close();
+          });
+        });
+
+        return panel;
+      };
+
+      const documentRef =
+        trigger.ownerDocument ||
+        (typeof document !== "undefined" ? document : null);
+
+      const popover = createPopover(trigger, render, {
+        document: documentRef,
+        placement: "bottom-end",
+      });
+
+      const originalDestroy = popover.destroy?.bind(popover);
+      if (typeof originalDestroy === "function") {
+        popover.destroy = (...args) => {
+          originalDestroy(...args);
+          if (this.videoSettingsPopovers.get(trigger) === entry) {
+            this.videoSettingsPopovers.delete(trigger);
+          }
+        };
+      }
+
+      entry.popover = popover;
+      this.videoSettingsPopovers.set(trigger, entry);
+    }
+
+    entry.context = {
+      ...entry.context,
+      card: detail.card || entry.context.card,
+      video: detail.video || entry.context.video,
+      index: Number.isFinite(detail.index)
+        ? Math.floor(detail.index)
+        : entry.context.index,
+      capabilities: detail.capabilities || entry.context.capabilities,
+      restoreFocusOnClose: detail.restoreFocus !== false,
+    };
+
+    return entry;
+  }
+
+  requestVideoSettingsMenu(detail = {}) {
+    const entry = this.ensureSettingsPopover(detail);
+    if (!entry?.popover) {
+      return;
+    }
+
+    if (typeof entry.popover.isOpen === "function" && entry.popover.isOpen()) {
+      entry.popover.close({
+        restoreFocus: entry.context.restoreFocusOnClose !== false,
+      });
+      return;
+    }
+
+    entry.popover
+      .open()
+      .catch((error) =>
+        userLogger.error("[SettingsMenu] Failed to open popover:", error),
+      );
+  }
+
+  closeVideoSettingsMenu(detail = {}) {
+    const trigger = detail.trigger || null;
+    const restoreFocus = detail.restoreFocus !== false;
+
+    if (trigger) {
+      const entry = this.videoSettingsPopovers.get(trigger);
+      if (entry?.popover && typeof entry.popover.close === "function") {
+        return entry.popover.close({ restoreFocus });
+      }
+      return false;
+    }
+
+    let closed = false;
+    this.videoSettingsPopovers.forEach((entry) => {
+      if (entry?.popover && typeof entry.popover.close === "function") {
+        const result = entry.popover.close({ restoreFocus });
+        closed = closed || result;
+      }
+    });
+    return closed;
   }
 
   syncModalMoreMenuData() {
@@ -4624,9 +4874,7 @@ class Application {
 
       this.showSuccess(fragments.join(" ").trim());
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[app] Repost action failed:", error);
-      }
+      devLogger.warn("[app] Repost action failed:", error);
       this.showError("Failed to repost the video. Please try again later.");
     }
   }
@@ -4767,9 +5015,7 @@ class Application {
 
       this.showSuccess(fragments.join(" ").trim());
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[app] Mirror action failed:", error);
-      }
+      devLogger.warn("[app] Mirror action failed:", error);
       this.showError("Failed to mirror the video. Please try again later.");
     }
   }
@@ -4850,9 +5096,7 @@ class Application {
 
       this.showSuccess("Rebroadcast requested across relays.");
     } catch (error) {
-      if (isDevMode) {
-        console.warn("[app] Rebroadcast action failed:", error);
-      }
+      devLogger.warn("[app] Rebroadcast action failed:", error);
       this.showError("Failed to rebroadcast. Please try again later.");
     }
   }
@@ -4863,10 +5107,10 @@ class Application {
    * and do not re-trigger recursion here (no setTimeout).
    */
   updateTorrentStatus(torrent) {
-    console.log("[DEBUG] updateTorrentStatus called with torrent:", torrent);
+    devLogger.log("[DEBUG] updateTorrentStatus called with torrent:", torrent);
 
     if (!torrent) {
-      console.log("[DEBUG] torrent is null/undefined!");
+      devLogger.log("[DEBUG] torrent is null/undefined!");
       return;
     }
 
@@ -4880,12 +5124,12 @@ class Application {
     }
 
     // Log only fields that actually exist on the torrent:
-    console.log("[DEBUG] torrent.progress =", torrent.progress);
-    console.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
-    console.log("[DEBUG] torrent.downloadSpeed =", torrent.downloadSpeed);
-    console.log("[DEBUG] torrent.downloaded =", torrent.downloaded);
-    console.log("[DEBUG] torrent.length =", torrent.length);
-    console.log("[DEBUG] torrent.ready =", torrent.ready);
+    devLogger.log("[DEBUG] torrent.progress =", torrent.progress);
+    devLogger.log("[DEBUG] torrent.numPeers =", torrent.numPeers);
+    devLogger.log("[DEBUG] torrent.downloadSpeed =", torrent.downloadSpeed);
+    devLogger.log("[DEBUG] torrent.downloaded =", torrent.downloaded);
+    devLogger.log("[DEBUG] torrent.length =", torrent.length);
+    devLogger.log("[DEBUG] torrent.ready =", torrent.ready);
 
     // Use "Complete" vs. "Downloading" as the textual status.
     if (this.videoModal) {
@@ -4912,6 +5156,9 @@ class Application {
   }
 
   normalizeActionTarget(target) {
+    const isElement = (value) =>
+      typeof Element !== "undefined" && value instanceof Element;
+    let triggerElement = null;
     if (target && typeof target === "object") {
       const eventId =
         typeof target.eventId === "string" ? target.eventId.trim() : "";
@@ -4924,26 +5171,35 @@ class Application {
         const parsed = Number.parseInt(target.index.trim(), 10);
         index = Number.isNaN(parsed) ? null : parsed;
       }
-      return { eventId, index };
+      if (isElement(target.triggerElement)) {
+        triggerElement = target.triggerElement;
+      } else if (isElement(target.trigger)) {
+        triggerElement = target.trigger;
+      }
+      return { eventId, index, triggerElement };
     }
 
     if (typeof target === "string") {
       const trimmed = target.trim();
       if (!trimmed) {
-        return { eventId: "", index: null };
+        return { eventId: "", index: null, triggerElement };
       }
       if (/^-?\d+$/.test(trimmed)) {
         const parsed = Number.parseInt(trimmed, 10);
-        return { eventId: "", index: Number.isNaN(parsed) ? null : parsed };
+        return {
+          eventId: "",
+          index: Number.isNaN(parsed) ? null : parsed,
+          triggerElement,
+        };
       }
-      return { eventId: trimmed, index: null };
+      return { eventId: trimmed, index: null, triggerElement };
     }
 
     if (typeof target === "number" && Number.isInteger(target)) {
-      return { eventId: "", index: target };
+      return { eventId: "", index: target, triggerElement };
     }
 
-    return { eventId: "", index: null };
+    return { eventId: "", index: null, triggerElement };
   }
 
   async resolveVideoActionTarget({
@@ -5055,7 +5311,7 @@ class Application {
       this.editModal.close();
       this.forceRefreshAllProfiles();
     } catch (error) {
-      console.error("Failed to edit video:", error);
+      devLogger.error("Failed to edit video:", error);
       this.showError("Failed to edit video. Please try again.");
       if (this.editModal?.setSubmitState) {
         this.editModal.setSubmitState({ pending: false });
@@ -5066,6 +5322,7 @@ class Application {
   async handleEditVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
+      const { triggerElement } = normalizedTarget;
       const latestVideos = await this.nostrService.fetchVideos({
         blacklistedEventIds: this.blacklistedEventIds,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
@@ -5090,19 +5347,19 @@ class Application {
       try {
         await this.editModal.load();
       } catch (error) {
-        console.error("Failed to load edit modal:", error);
+        devLogger.error("Failed to load edit modal:", error);
         this.showError(`Failed to initialize edit modal: ${error.message}`);
         return;
       }
 
       try {
-        await this.editModal.open(video);
+        await this.editModal.open(video, { triggerElement });
       } catch (error) {
-        console.error("Failed to open edit modal:", error);
+        devLogger.error("Failed to open edit modal:", error);
         this.showError("Edit modal is not available right now.");
       }
     } catch (err) {
-      console.error("Failed to edit video:", err);
+      devLogger.error("Failed to edit video:", err);
       this.showError("Failed to edit video. Please try again.");
     }
   }
@@ -5110,6 +5367,7 @@ class Application {
   async handleRevertVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
+      const { triggerElement } = normalizedTarget;
       const activeVideos = await this.nostrService.fetchVideos({
         blacklistedEventIds: this.blacklistedEventIds,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
@@ -5144,9 +5402,9 @@ class Application {
       const history = await nostrClient.hydrateVideoHistory(video);
 
       this.revertModal.setHistory(video, history);
-      this.revertModal.open({ video });
+      this.revertModal.open({ video }, { triggerElement });
     } catch (err) {
-      console.error("Failed to revert video:", err);
+      devLogger.error("Failed to revert video:", err);
       this.showError("Failed to load revision history. Please try again.");
     }
   }
@@ -5193,7 +5451,7 @@ class Application {
       this.revertModal.close();
       this.forceRefreshAllProfiles();
     } catch (err) {
-      console.error("Failed to revert video:", err);
+      devLogger.error("Failed to revert video:", err);
       this.showError("Failed to revert video. Please try again.");
     } finally {
       this.revertModal.setBusy(false);
@@ -5248,7 +5506,7 @@ class Application {
       this.showSuccess("All versions deleted successfully!");
       this.forceRefreshAllProfiles();
     } catch (err) {
-      console.error("Failed to delete all versions:", err);
+      devLogger.error("Failed to delete all versions:", err);
       this.showError("Failed to delete all versions. Please try again.");
     }
   }
@@ -5280,13 +5538,13 @@ class Application {
               }
             })
             .catch((err) => {
-              console.error("Error fetching older event by ID:", err);
+              devLogger.error("Error fetching older event by ID:", err);
               this.showError("Could not load videos for the share link.");
             });
         }
       }
     } catch (err) {
-      console.error("Error decoding nevent:", err);
+      devLogger.error("Error decoding nevent:", err);
       this.showError("Invalid share link.");
     }
   }
@@ -5386,7 +5644,7 @@ class Application {
             return result;
           }
         } catch (err) {
-          console.warn(
+          devLogger.warn(
             `[probeUrl] Video element probe threw for ${trimmed}:`,
             err
           );
@@ -5450,7 +5708,7 @@ class Application {
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      console.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
+      devLogger.warn(`[probeUrl] HEAD request failed for ${trimmed}:`, err);
       const fallback = await confirmWithVideoElement();
       if (fallback) {
         return fallback;
@@ -5530,7 +5788,7 @@ class Application {
       await target.play();
       return true;
     } catch (err) {
-      console.warn("[playHttp] Direct URL playback failed:", err);
+      devLogger.warn("[playHttp] Direct URL playback failed:", err);
       return false;
     }
   }
@@ -5592,6 +5850,24 @@ class Application {
         this.modalVideo,
         { urlList: sanitizedUrlList }
       );
+
+      if (torrentClient.isServiceWorkerUnavailable()) {
+        const swError = torrentClient.getServiceWorkerInitError();
+        const statusMessage = buildServiceWorkerFallbackStatus(swError);
+        this.log(
+          "[playViaWebTorrent] Service worker unavailable; streaming directly via WebTorrent.",
+          swError
+        );
+        if (swError) {
+          userLogger.warn(
+            "[playViaWebTorrent] Service worker unavailable; direct streaming engaged.",
+            swError
+          );
+        }
+        if (this.videoModal) {
+          this.videoModal.updateStatus(statusMessage);
+        }
+      }
       if (torrentInstance && torrentInstance.ready) {
         // Some browsers delay `playing` events for MediaSource-backed torrents.
         // Clearing the poster here prevents the historic "GIF stuck over the
@@ -5633,7 +5909,15 @@ class Application {
    * Unified playback helper that prefers HTTP URL sources
    * and falls back to WebTorrent when needed.
    */
-  async playVideoWithFallback({ url = "", magnet = "" } = {}) {
+  async playVideoWithFallback(options = {}) {
+    const { url = "", magnet = "", trigger } = options || {};
+    const hasTrigger = Object.prototype.hasOwnProperty.call(
+      options || {},
+      "trigger"
+    );
+    if (hasTrigger) {
+      this.setLastModalTrigger(trigger);
+    }
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
     const requestSignature = JSON.stringify({
@@ -5694,7 +5978,7 @@ class Application {
       try {
         this.videoModal.clearPosterCleanup();
       } catch (err) {
-        console.warn(
+        devLogger.warn(
           "[playVideoWithFallback] video modal poster cleanup threw:",
           err
         );
@@ -5808,7 +6092,7 @@ class Application {
           try {
             off();
           } catch (err) {
-            console.warn(
+            devLogger.warn(
               "[playVideoWithFallback] Listener cleanup error:",
               err
             );
@@ -5835,22 +6119,28 @@ class Application {
       return;
     }
 
+    const hint = playbackHint && typeof playbackHint === "object"
+      ? playbackHint
+      : {};
     const fallbackUrl =
-      typeof playbackHint?.url === "string" ? playbackHint.url.trim() : "";
+      typeof hint.url === "string" ? hint.url.trim() : "";
     const fallbackTitle =
-      typeof playbackHint?.title === "string" ? playbackHint.title : "";
+      typeof hint.title === "string" ? hint.title : "";
     const fallbackDescription =
-      typeof playbackHint?.description === "string"
-        ? playbackHint.description
-        : "";
+      typeof hint.description === "string" ? hint.description : "";
     const fallbackMagnetRaw =
-      typeof playbackHint?.magnet === "string"
-        ? playbackHint.magnet.trim()
-        : "";
+      typeof hint.magnet === "string" ? hint.magnet.trim() : "";
     let fallbackMagnetCandidate = "";
     if (fallbackMagnetRaw) {
       const decoded = safeDecodeMagnet(fallbackMagnetRaw);
       fallbackMagnetCandidate = decoded || fallbackMagnetRaw;
+    }
+
+    const hasTrigger = Object.prototype.hasOwnProperty.call(hint, "trigger");
+    if (hasTrigger) {
+      this.setLastModalTrigger(hint.trigger);
+    } else {
+      this.setLastModalTrigger(null);
     }
 
     this.currentVideoPointer = null;
@@ -5872,6 +6162,7 @@ class Application {
           magnet: fallbackMagnetCandidate,
           title: fallbackTitle || "Untitled",
           description: fallbackDescription || "",
+          trigger: hasTrigger ? hint.trigger : null,
         });
       }
       this.showError("Video not found or has been removed.");
@@ -5881,7 +6172,7 @@ class Application {
     try {
       await accessControl.ensureReady();
     } catch (error) {
-      console.warn(
+      devLogger.warn(
         "Failed to ensure admin lists were loaded before playback:",
         error
       );
@@ -6012,6 +6303,7 @@ class Application {
     const playbackPromise = this.playVideoWithFallback({
       url: trimmedUrl,
       magnet: magnetInput,
+      trigger: hasTrigger ? this.lastModalTrigger : null,
     });
 
     let lightningAddress = "";
@@ -6166,12 +6458,10 @@ class Application {
       try {
         nostrClient.applyRootCreatedAt(video);
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            "[Application] Failed to sync cached root timestamp with nostrClient:",
-            error
-          );
-        }
+        devLogger.warn(
+          "[Application] Failed to sync cached root timestamp with nostrClient:",
+          error
+        );
       }
     }
   }
@@ -6228,12 +6518,10 @@ class Application {
         }
       }
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[Application] Failed to hydrate video history for timestamps:",
-          error
-        );
-      }
+      devLogger.warn(
+        "[Application] Failed to hydrate video history for timestamps:",
+        error
+      );
     }
 
     const fallback = Number.isFinite(video.created_at)
@@ -6269,12 +6557,23 @@ class Application {
     this.videoModal.updateMetadata({ timestamps: payload });
   }
 
-  async playVideoWithoutEvent({
-    url = "",
-    magnet = "",
-    title = "Untitled",
-    description = "",
-  } = {}) {
+  async playVideoWithoutEvent(options = {}) {
+    const {
+      url = "",
+      magnet = "",
+      title = "Untitled",
+      description = "",
+      trigger,
+    } = options || {};
+    const hasTrigger = Object.prototype.hasOwnProperty.call(
+      options || {},
+      "trigger"
+    );
+    if (hasTrigger) {
+      this.setLastModalTrigger(trigger);
+    } else {
+      this.setLastModalTrigger(null);
+    }
     this.currentVideoPointer = null;
     this.currentVideoPointerKey = null;
     this.subscribeModalViewCount(null, null);
@@ -6341,7 +6640,7 @@ class Application {
       });
     }
 
-    await this.showModalWithPoster(this.currentVideo);
+    await this.showModalWithPoster(this.currentVideo, hasTrigger ? { trigger } : {});
 
     const urlObj = new URL(window.location.href);
     urlObj.searchParams.delete("v");
@@ -6351,6 +6650,7 @@ class Application {
     return this.playVideoWithFallback({
       url: sanitizedUrl,
       magnet: usableMagnet,
+      trigger: hasTrigger ? this.lastModalTrigger : null,
     });
   }
 
@@ -6459,6 +6759,8 @@ class Application {
     this.errorContainer.textContent = msg;
     this.errorContainer.classList.remove("hidden");
 
+    userLogger.error(msg);
+
     // Optional auto-hide after 5 seconds
     setTimeout(() => {
       this.errorContainer.textContent = "";
@@ -6503,8 +6805,18 @@ class Application {
     }, 5000);
   }
 
-  log(msg) {
-    console.log(msg);
+  log(message, ...args) {
+    if (arguments.length === 0) {
+      return;
+    }
+
+    if (typeof message === "string") {
+      const prefix = message.startsWith("[") ? message : `[app] ${message}`;
+      devLogger.log(prefix, ...args);
+      return;
+    }
+
+    devLogger.log("[app]", message, ...args);
   }
 
   destroy() {
@@ -6516,7 +6828,7 @@ class Application {
       try {
         this.watchHistoryTelemetry.destroy();
       } catch (error) {
-        console.warn(
+        devLogger.warn(
           "[Application] Failed to destroy watch history telemetry:",
           error
         );
@@ -6528,7 +6840,7 @@ class Application {
       try {
         this.unsubscribeFromPubkeyState();
       } catch (error) {
-        console.warn("[Application] Failed to unsubscribe pubkey state:", error);
+        devLogger.warn("[Application] Failed to unsubscribe pubkey state:", error);
       }
       this.unsubscribeFromPubkeyState = null;
     }
@@ -6537,7 +6849,7 @@ class Application {
       try {
         this.unsubscribeFromCurrentUserState();
       } catch (error) {
-        console.warn(
+        devLogger.warn(
           "[Application] Failed to unsubscribe current user state:",
           error
         );
@@ -6569,7 +6881,7 @@ class Application {
         try {
           unsubscribe();
         } catch (error) {
-          console.warn("[Application] Auth listener unsubscribe failed:", error);
+          devLogger.warn("[Application] Auth listener unsubscribe failed:", error);
         }
       }
     });
@@ -6579,7 +6891,7 @@ class Application {
       try {
         this.unsubscribeFromNostrService();
       } catch (error) {
-        console.warn("[Application] Failed to unsubscribe nostr service:", error);
+        devLogger.warn("[Application] Failed to unsubscribe nostr service:", error);
       }
       this.unsubscribeFromNostrService = null;
     }
@@ -6595,7 +6907,7 @@ class Application {
       try {
         this.uploadModal.destroy();
       } catch (error) {
-        console.warn("[Application] Failed to destroy upload modal:", error);
+        devLogger.warn("[Application] Failed to destroy upload modal:", error);
       }
     }
 
@@ -6618,7 +6930,7 @@ class Application {
         try {
           this.editModal.destroy();
         } catch (error) {
-          console.warn("[Application] Failed to destroy edit modal:", error);
+          devLogger.warn("[Application] Failed to destroy edit modal:", error);
         }
       }
     }
@@ -6634,7 +6946,7 @@ class Application {
       try {
         this.revertModal.destroy();
       } catch (error) {
-        console.warn("[Application] Failed to destroy revert modal:", error);
+        devLogger.warn("[Application] Failed to destroy revert modal:", error);
       }
     }
 
@@ -6713,7 +7025,7 @@ class Application {
         try {
           this.videoModal.destroy();
         } catch (error) {
-          console.warn("[Application] Failed to destroy video modal:", error);
+          devLogger.warn("[Application] Failed to destroy video modal:", error);
         }
       }
     }
@@ -6733,7 +7045,7 @@ class Application {
       try {
         this.videoListView.destroy();
       } catch (error) {
-        console.warn("[Application] Failed to destroy VideoListView:", error);
+        devLogger.warn("[Application] Failed to destroy VideoListView:", error);
       }
       this.videoListView = null;
     }
@@ -6749,7 +7061,7 @@ class Application {
         try {
           this.profileController.destroy();
         } catch (error) {
-          console.warn(
+          devLogger.warn(
             "[Application] Failed to destroy profile controller:",
             error,
           );
@@ -6800,7 +7112,7 @@ class Application {
       navigator.clipboard.writeText(this.currentVideo.magnet);
       this.showSuccess("Magnet link copied to clipboard!");
     } catch (err) {
-      console.error("Failed to copy magnet link:", err);
+      devLogger.error("Failed to copy magnet link:", err);
       this.showError("Could not copy magnet link. Please copy it manually.");
     }
   }

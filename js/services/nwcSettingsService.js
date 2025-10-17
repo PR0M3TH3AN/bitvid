@@ -5,6 +5,7 @@ import {
   createDefaultNwcSettings,
 } from "../nwcSettings.js";
 import { MAX_WALLET_DEFAULT_ZAP } from "../config.js";
+import { devLogger, userLogger } from "../utils/logger.js";
 
 const NWC_URI_SCHEME = "nostr+walletconnect://";
 
@@ -17,7 +18,7 @@ export default class NwcSettingsService {
     normalizeHexPubkey,
     getActivePubkey,
     payments = null,
-    logger = console,
+    logger = { dev: devLogger, user: userLogger },
     notifyError,
     maxWalletDefaultZap = MAX_WALLET_DEFAULT_ZAP,
     loadSettings = loadNwcSettings,
@@ -32,7 +33,9 @@ export default class NwcSettingsService {
       ? getActivePubkey
       : () => null;
     this.payments = payments || null;
-    this.logger = logger || console;
+    const devChannel = logger?.dev && typeof logger.dev.warn === "function" ? logger.dev : devLogger;
+    const userChannel = logger?.user && typeof logger.user.warn === "function" ? logger.user : userLogger;
+    this.logger = { dev: devChannel, user: userChannel };
     this.notifyError = isFunction(notifyError) ? notifyError : null;
     this.maxWalletDefaultZap =
       Number.isFinite(maxWalletDefaultZap) && maxWalletDefaultZap > 0
@@ -78,8 +81,8 @@ export default class NwcSettingsService {
     try {
       return this.normalizeHexPubkey(pubkey);
     } catch (error) {
-      if (this.logger && isFunction(this.logger.warn)) {
-        this.logger.warn("[nwcSettings] Failed to normalize pubkey:", error);
+      if (isFunction(this.logger.user?.warn)) {
+        this.logger.user.warn("[nwcSettings] Failed to normalize pubkey:", error);
       }
       return null;
     }
@@ -100,8 +103,8 @@ export default class NwcSettingsService {
       this.cache.set(normalized, record);
       return this.cloneSettings(record);
     } catch (error) {
-      if (this.logger && isFunction(this.logger.warn)) {
-        this.logger.warn(
+      if (isFunction(this.logger.user?.warn)) {
+        this.logger.user.warn(
           `[nwcSettings] Failed to load settings for ${normalized}:`,
           error,
         );
@@ -160,8 +163,8 @@ export default class NwcSettingsService {
   async updateActiveNwcSettings(partial = {}) {
     const normalized = this.getNormalizedPubkey(this.getActivePubkey());
     if (!normalized) {
-      if (this.logger && isFunction(this.logger.warn)) {
-        this.logger.warn(
+      if (isFunction(this.logger.user?.warn)) {
+        this.logger.user.warn(
           "[nwcSettings] Cannot update settings without an active pubkey.",
         );
       }
@@ -177,8 +180,8 @@ export default class NwcSettingsService {
       this.cache.set(normalized, record);
       return this.cloneSettings(record);
     } catch (error) {
-      if (this.logger && isFunction(this.logger.warn)) {
-        this.logger.warn(
+      if (isFunction(this.logger.user?.warn)) {
+        this.logger.user.warn(
           `[nwcSettings] Failed to save settings for ${normalized}:`,
           error,
         );
@@ -239,8 +242,8 @@ export default class NwcSettingsService {
       return this.payments.ensureWallet({ settings: merged });
     }
 
-    if (this.logger && isFunction(this.logger.warn)) {
-      this.logger.warn(
+    if (isFunction(this.logger.dev?.warn)) {
+      this.logger.dev.warn(
         "[wallet] Falling back to stub ensureWallet implementation. Returning settings without performing a connection test.",
       );
     }
@@ -256,8 +259,8 @@ export default class NwcSettingsService {
     try {
       await this.clearSettings(normalized);
     } catch (error) {
-      if (this.logger && isFunction(this.logger.warn)) {
-        this.logger.warn(
+      if (isFunction(this.logger.user?.warn)) {
+        this.logger.user.warn(
           `[nwcSettings] Failed to clear settings for ${normalized}:`,
           error,
         );
@@ -268,8 +271,8 @@ export default class NwcSettingsService {
       try {
         await this.saveSettings(normalized, this.createDefaultNwcSettings());
       } catch (persistError) {
-        if (this.logger && isFunction(this.logger.warn)) {
-          this.logger.warn(
+        if (isFunction(this.logger.user?.warn)) {
+          this.logger.user.warn(
             `[nwcSettings] Failed to overwrite settings for ${normalized}:`,
             persistError,
           );

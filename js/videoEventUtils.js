@@ -1,7 +1,7 @@
 // js/videoEventUtils.js
 
 /**
- * Extracts normalized fields from a Bitvid video event while
+ * Extracts normalized fields from a bitvid video event while
  * tolerating legacy payloads that may omit version >= 2 metadata.
  */
 const MAGNET_URI_PATTERN = /^magnet:\?/i;
@@ -194,7 +194,7 @@ export function parseVideoEventPayload(event = {}) {
       // Keep this guard so we don't duplicate thumbnail URLs in the playable URL list.
       pushUnique(urlCandidates, parsedUrl);
     }
-    // Legacy Bitvid events sometimes embedded magnets/info-hashes in the URL field, so treat it accordingly.
+    // Legacy bitvid events sometimes embedded magnets/info-hashes in the URL field, so treat it accordingly.
     collectMagnetOrInfoHash(parsedUrl);
   }
 

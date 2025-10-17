@@ -1,6 +1,8 @@
 // NOTE: Keep the Upload, Edit, and Revert modals in lockstep when updating NIP-71 form features.
 
+import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
+import { userLogger } from "../../utils/logger.js";
 
 export class UploadModal {
   constructor({
@@ -14,20 +16,29 @@ export class UploadModal {
     getCurrentPubkey,
     safeEncodeNpub,
     eventTarget,
-    container,
+    container
   } = {}) {
     this.authService = authService || null;
     this.r2Service = r2Service || null;
-    this.publishVideoNote = typeof publishVideoNote === "function" ? publishVideoNote : null;
+    this.publishVideoNote =
+      typeof publishVideoNote === "function" ? publishVideoNote : null;
     this.removeTrackingScripts =
-      typeof removeTrackingScripts === "function" ? removeTrackingScripts : () => {};
+      typeof removeTrackingScripts === "function"
+        ? removeTrackingScripts
+        : () => {};
     this.setGlobalModalState =
-      typeof setGlobalModalState === "function" ? setGlobalModalState : () => {};
+      typeof setGlobalModalState === "function"
+        ? setGlobalModalState
+        : () => {};
     this.showError = typeof showError === "function" ? showError : () => {};
-    this.showSuccess = typeof showSuccess === "function" ? showSuccess : () => {};
-    this.getCurrentPubkey = typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
-    this.safeEncodeNpub = typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
-    this.eventTarget = eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
+    this.showSuccess =
+      typeof showSuccess === "function" ? showSuccess : () => {};
+    this.getCurrentPubkey =
+      typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
+    this.safeEncodeNpub =
+      typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
+    this.eventTarget =
+      eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
     this.container = container || null;
 
     this.root = null;
@@ -53,8 +64,8 @@ export class UploadModal {
     this.cloudflareFileInput = null;
     this.cloudflareUploadButton = null;
     this.cloudflareUploadStatus = null;
-    this.cloudflareProgressBar = null;
-    this.cloudflareProgressFill = null;
+    this.cloudflareProgress = null;
+    this.cloudflareProgressStatus = null;
     this.cloudflareTitleInput = null;
     this.cloudflareDescriptionInput = null;
     this.cloudflareThumbnailInput = null;
@@ -77,6 +88,11 @@ export class UploadModal {
 
     this.nip71FormManager = new Nip71FormManager();
     this.cleanupHandlers = [];
+    this.modalAccessibility = null;
+    this.modalBackdrop = null;
+    this.modalPanel = null;
+    this.loadPromise = null;
+    this.eventsBound = false;
   }
 
   addEventListener(type, listener, options) {
@@ -109,56 +125,99 @@ export class UploadModal {
       return this.root;
     }
 
-    const targetContainer =
-      container || this.container || document.getElementById("modalContainer");
-    if (!targetContainer) {
-      throw new Error("Modal container element not found!");
+    if (this.loadPromise) {
+      return this.loadPromise;
     }
 
-    const response = await fetch("components/upload-modal.html");
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const html = await response.text();
+    this.loadPromise = (async () => {
+      const targetContainer =
+        container || this.container || document.getElementById("modalContainer");
+      if (!targetContainer) {
+        throw new Error("Modal container element not found!");
+      }
 
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = html;
-    this.removeTrackingScripts(wrapper);
-    targetContainer.appendChild(wrapper);
+      const existingModals = targetContainer.querySelectorAll("#uploadModal");
+      let modal = existingModals[0] || null;
+      if (existingModals.length > 1) {
+        existingModals.forEach((node, index) => {
+          if (index > 0) {
+            node.remove();
+          }
+        });
+      }
 
-    this.container = targetContainer;
-    this.root = wrapper.querySelector("#uploadModal");
-    if (!this.root) {
-      throw new Error("Upload modal markup missing after load.");
-    }
+      if (!modal) {
+        const response = await fetch("components/upload-modal.html");
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const html = await response.text();
 
-    this.cacheElements(wrapper);
-    this.bindEvents();
-    this.registerR2Subscriptions();
+        const doc = targetContainer.ownerDocument || document;
+        const wrapper = doc.createElement("div");
+        wrapper.innerHTML = html;
+        this.removeTrackingScripts(wrapper);
 
-    this.renderCloudflareAdvancedVisibility(
-      this.r2Service?.getCloudflareAdvancedVisibility?.()
-    );
+        const fragment = doc.createDocumentFragment();
+        while (wrapper.firstChild) {
+          fragment.appendChild(wrapper.firstChild);
+        }
+        targetContainer.appendChild(fragment);
+
+        modal = targetContainer.querySelector("#uploadModal");
+      }
+
+      if (!modal) {
+        throw new Error("Upload modal markup missing after load.");
+      }
+
+      this.container = targetContainer;
+      this.root = modal;
+
+      this.cacheElements(modal);
+      this.setupModalAccessibility();
+      if (!this.eventsBound) {
+        this.bindEvents();
+        this.eventsBound = true;
+      }
+      this.registerR2Subscriptions();
+
+      this.renderCloudflareAdvancedVisibility(
+        this.r2Service?.getCloudflareAdvancedVisibility?.()
+      );
+
+      try {
+        await this.loadR2Settings();
+      } catch (error) {
+        // Errors already surfaced via the service listeners.
+      }
+
+      await this.refreshCloudflareBucketPreview();
+      this.setMode(this.activeMode);
+      this.updateCloudflareProgress(Number.NaN);
+
+      return this.root;
+    })();
 
     try {
-      await this.loadR2Settings();
-    } catch (error) {
-      // Errors already surfaced via the service listeners.
+      return await this.loadPromise;
+    } finally {
+      this.loadPromise = null;
     }
-
-    await this.refreshCloudflareBucketPreview();
-    this.setMode(this.activeMode);
-    this.updateCloudflareProgress(Number.NaN);
-
-    return this.root;
   }
 
   cacheElements(context) {
+    const scope = this.root || context;
+    this.modalBackdrop = scope?.querySelector?.(".bv-modal-backdrop") || null;
+    this.modalPanel =
+      scope?.querySelector?.(".bv-modal__panel") || scope || null;
+
     this.uploadModeButtons = Array.from(
       context.querySelectorAll(".upload-mode-toggle[data-upload-mode]")
     );
     this.customSection = context.querySelector("#customUploadSection") || null;
-    this.cloudflareSection = context.querySelector("#cloudflareUploadSection") || null;
+    this.cloudflareSection =
+      context.querySelector("#cloudflareUploadSection") || null;
 
     this.customForm = context.querySelector("#uploadForm") || null;
     this.customFormInputs = {
@@ -172,36 +231,44 @@ export class UploadModal {
       enableComments: context.querySelector("#uploadEnableComments") || null,
       isNsfw: context.querySelector("#uploadIsNsfw") || null,
       isForKids: context.querySelector("#uploadIsForKids") || null,
-      isPrivate: context.querySelector("#uploadIsPrivate") || null,
+      isPrivate: context.querySelector("#uploadIsPrivate") || null
     };
 
     this.closeButton = context.querySelector("#closeUploadModal") || null;
 
-    this.cloudflareSettingsForm = context.querySelector("#cloudflareSettingsForm") || null;
+    this.cloudflareSettingsForm =
+      context.querySelector("#cloudflareSettingsForm") || null;
     this.cloudflareClearSettingsButton =
       context.querySelector("#cloudflareClearSettings") || null;
     this.cloudflareSettingsStatus =
       context.querySelector("#cloudflareSettingsStatus") || null;
     this.cloudflareBucketPreview =
       context.querySelector("#cloudflareBucketPreview") || null;
-    this.cloudflareUploadForm = context.querySelector("#cloudflareUploadForm") || null;
+    this.cloudflareUploadForm =
+      context.querySelector("#cloudflareUploadForm") || null;
     this.cloudflareFileInput = context.querySelector("#cloudflareFile") || null;
-    this.cloudflareUploadButton = context.querySelector("#cloudflareUploadButton") || null;
+    this.cloudflareUploadButton =
+      context.querySelector("#cloudflareUploadButton") || null;
     this.cloudflareUploadStatus =
       context.querySelector("#cloudflareUploadStatus") || null;
-    this.cloudflareProgressBar = context.querySelector("#cloudflareProgressBar") || null;
-    this.cloudflareProgressFill = context.querySelector("#cloudflareProgressFill") || null;
-    this.cloudflareTitleInput = context.querySelector("#cloudflareTitle") || null;
+    this.cloudflareProgress =
+      context.querySelector("#cloudflareProgress") || null;
+    this.cloudflareProgressStatus =
+      context.querySelector("#cloudflareProgressStatus") || null;
+    this.cloudflareTitleInput =
+      context.querySelector("#cloudflareTitle") || null;
     this.cloudflareDescriptionInput =
       context.querySelector("#cloudflareDescription") || null;
     this.cloudflareThumbnailInput =
       context.querySelector("#cloudflareThumbnail") || null;
-    this.cloudflareMagnetInput = context.querySelector("#cloudflareMagnet") || null;
+    this.cloudflareMagnetInput =
+      context.querySelector("#cloudflareMagnet") || null;
     this.cloudflareWsInput = context.querySelector("#cloudflareWs") || null;
     this.cloudflareXsInput = context.querySelector("#cloudflareXs") || null;
     this.cloudflareEnableCommentsInput =
       context.querySelector("#cloudflareEnableComments") || null;
-    this.cloudflareIsNsfwInput = context.querySelector("#cloudflareIsNsfw") || null;
+    this.cloudflareIsNsfwInput =
+      context.querySelector("#cloudflareIsNsfw") || null;
     this.cloudflareIsForKidsInput =
       context.querySelector("#cloudflareIsForKids") || null;
     this.cloudflareAdvancedToggle =
@@ -214,7 +281,8 @@ export class UploadModal {
       context.querySelector("#cloudflareAdvancedFields") || null;
     this.r2AccountIdInput = context.querySelector("#r2AccountId") || null;
     this.r2AccessKeyIdInput = context.querySelector("#r2AccessKeyId") || null;
-    this.r2SecretAccessKeyInput = context.querySelector("#r2SecretAccessKey") || null;
+    this.r2SecretAccessKeyInput =
+      context.querySelector("#r2SecretAccessKey") || null;
     this.r2ApiTokenInput = context.querySelector("#r2ApiToken") || null;
     this.r2ZoneIdInput = context.querySelector("#r2ZoneId") || null;
     this.r2BaseDomainInput = context.querySelector("#r2BaseDomain") || null;
@@ -292,7 +360,7 @@ export class UploadModal {
       image: [],
       fallback: [],
       service: [],
-      autoGenerated: true,
+      autoGenerated: true
     };
   }
 
@@ -342,12 +410,16 @@ export class UploadModal {
 
     if (this.cloudflareAdvancedToggle) {
       this.cloudflareAdvancedToggle.addEventListener("click", () => {
-        if (this.r2Service?.setCloudflareAdvancedVisibility &&
-            this.r2Service?.getCloudflareAdvancedVisibility) {
+        if (
+          this.r2Service?.setCloudflareAdvancedVisibility &&
+          this.r2Service?.getCloudflareAdvancedVisibility
+        ) {
           const nextState = !this.r2Service.getCloudflareAdvancedVisibility();
           this.r2Service.setCloudflareAdvancedVisibility(nextState);
         } else {
-          this.renderCloudflareAdvancedVisibility(!this.cloudflareAdvancedVisible);
+          this.renderCloudflareAdvancedVisibility(
+            !this.cloudflareAdvancedVisible
+          );
         }
       });
     }
@@ -370,6 +442,30 @@ export class UploadModal {
     this.nip71FormManager.bindSection("cloudflare");
   }
 
+  setupModalAccessibility() {
+    if (!this.root) {
+      return;
+    }
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+
+    this.modalAccessibility = createModalAccessibility({
+      root: this.root,
+      backdrop: this.modalBackdrop || this.root,
+      panel: this.modalPanel || this.root,
+      onRequestClose: () => this.close()
+    });
+
+    this.cleanupHandlers.push(() => {
+      if (this.modalAccessibility?.destroy) {
+        this.modalAccessibility.destroy();
+      }
+      this.modalAccessibility = null;
+    });
+  }
+
   registerR2Subscriptions() {
     if (!this.r2Service?.on) {
       return;
@@ -382,7 +478,7 @@ export class UploadModal {
             unsubscribe();
           }
         } catch (error) {
-          console.warn("[UploadModal] Failed to remove R2 listener", error);
+          userLogger.warn("[UploadModal] Failed to remove R2 listener", error);
         }
       });
     }
@@ -402,13 +498,21 @@ export class UploadModal {
 
     register(
       this.r2Service.on("settingsStatus", ({ message, variant } = {}) => {
-        this.applyCloudflareStatus(this.cloudflareSettingsStatus, message, variant);
+        this.applyCloudflareStatus(
+          this.cloudflareSettingsStatus,
+          message,
+          variant
+        );
       })
     );
 
     register(
       this.r2Service.on("uploadStatus", ({ message, variant } = {}) => {
-        this.applyCloudflareStatus(this.cloudflareUploadStatus, message, variant);
+        this.applyCloudflareStatus(
+          this.cloudflareUploadStatus,
+          message,
+          variant
+        );
       })
     );
 
@@ -443,24 +547,25 @@ export class UploadModal {
     );
   }
 
-  open() {
+  open({ triggerElement } = {}) {
     if (!this.root) {
       return;
     }
-    if (!this.root.classList.contains("hidden")) {
-      this.isVisible = true;
-      return;
+    const wasHidden = this.root.classList.contains("hidden");
+    if (wasHidden) {
+      this.root.classList.remove("hidden");
+      this.setGlobalModalState("upload", true);
+      this.emit("upload:open", { mode: this.activeMode });
     }
-    this.root.classList.remove("hidden");
     this.isVisible = true;
-    this.setGlobalModalState("upload", true);
-    this.emit("upload:open", { mode: this.activeMode });
+    this.modalAccessibility?.activate({ triggerElement });
   }
 
   close() {
     if (!this.root) {
       return;
     }
+    this.modalAccessibility?.deactivate();
     if (this.root.classList.contains("hidden")) {
       this.isVisible = false;
       return;
@@ -497,10 +602,11 @@ export class UploadModal {
           return;
         }
         const isActive = button.dataset.uploadMode === normalized;
-        button.classList.toggle("bg-blue-500", isActive);
-        button.classList.toggle("text-white", isActive);
-        button.classList.toggle("shadow", isActive);
-        button.classList.toggle("text-gray-300", !isActive);
+        if (isActive) {
+          button.dataset.state = "active";
+        } else {
+          delete button.dataset.state;
+        }
         button.setAttribute("aria-pressed", isActive ? "true" : "false");
       });
     }
@@ -513,7 +619,7 @@ export class UploadModal {
   handleCustomSubmit() {
     const audienceFlags = this.sanitizeAudienceFlags({
       isNsfw: this.readCheckboxValue(this.customFormInputs.isNsfw, false),
-      isForKids: this.readCheckboxValue(this.customFormInputs.isForKids, false),
+      isForKids: this.readCheckboxValue(this.customFormInputs.isForKids, false)
     });
     const payload = {
       title: this.customFormInputs.title?.value?.trim() || "",
@@ -527,7 +633,7 @@ export class UploadModal {
         this.customFormInputs.enableComments,
         true
       ),
-      ...audienceFlags,
+      ...audienceFlags
     };
 
     if (this.customFormInputs.isPrivate) {
@@ -552,7 +658,7 @@ export class UploadModal {
       secretAccessKey: this.r2SecretAccessKeyInput?.value?.trim() || "",
       apiToken: this.r2ApiTokenInput?.value?.trim() || "",
       zoneId: this.r2ZoneIdInput?.value?.trim() || "",
-      baseDomain: this.r2BaseDomainInput?.value || "",
+      baseDomain: this.r2BaseDomainInput?.value || ""
     };
   }
 
@@ -563,24 +669,24 @@ export class UploadModal {
 
     element.textContent = message || "";
     element.classList.remove(
-      "text-green-400",
-      "text-red-400",
-      "text-yellow-400",
-      "text-gray-400"
+      "text-info-strong",
+      "text-critical",
+      "text-warning-strong",
+      "text-muted"
     );
 
     if (!message) {
-      element.classList.add("text-gray-400");
+      element.classList.add("text-muted");
       return;
     }
 
-    let className = "text-gray-400";
+    let className = "text-muted";
     if (variant === "success") {
-      className = "text-green-400";
+      className = "text-info-strong";
     } else if (variant === "error") {
-      className = "text-red-400";
+      className = "text-critical";
     } else if (variant === "warning") {
-      className = "text-yellow-400";
+      className = "text-warning-strong";
     }
     element.classList.add(className);
   }
@@ -611,7 +717,10 @@ export class UploadModal {
     }
 
     if (this.cloudflareAdvancedToggleIcon) {
-      this.cloudflareAdvancedToggleIcon.classList.toggle("rotate-90", isVisible);
+      this.cloudflareAdvancedToggleIcon.classList.toggle(
+        "rotate-90",
+        isVisible
+      );
     }
   }
 
@@ -683,33 +792,52 @@ export class UploadModal {
   }
 
   updateCloudflareProgress(fraction) {
-    if (!this.cloudflareProgressBar || !this.cloudflareProgressFill) {
+    if (!this.cloudflareProgress) {
       this.emit("upload:r2-progress", { fraction: null });
       return;
     }
 
     if (!Number.isFinite(fraction) || fraction < 0) {
-      this.cloudflareProgressBar.classList.add("hidden");
-      this.cloudflareProgressBar.setAttribute("aria-hidden", "true");
-      this.cloudflareProgressFill.style.width = "0%";
-      this.cloudflareProgressFill.setAttribute("aria-valuenow", "0");
+      this.cloudflareProgress.value = 0;
+      delete this.cloudflareProgress.dataset.progress;
+      this.cloudflareProgress.dataset.state = "idle";
+      this.cloudflareProgress.hidden = true;
+      this.cloudflareProgress.setAttribute(
+        "aria-valuetext",
+        "Upload progress unavailable",
+      );
+      this.cloudflareProgress.setAttribute("aria-hidden", "true");
+      if (this.cloudflareProgressStatus) {
+        this.cloudflareProgressStatus.textContent = "";
+      }
       this.emit("upload:r2-progress", { fraction: null });
       return;
     }
 
     const clamped = Math.max(0, Math.min(1, fraction));
     const percent = Math.round(clamped * 100);
+    const state = percent >= 100 ? "complete" : "active";
+    const valueText = `Upload ${percent}% complete`;
 
-    this.cloudflareProgressBar.classList.remove("hidden");
-    this.cloudflareProgressBar.setAttribute("aria-hidden", "false");
-    this.cloudflareProgressFill.style.width = `${percent}%`;
-    this.cloudflareProgressFill.setAttribute("aria-valuenow", `${percent}`);
+    this.cloudflareProgress.max = 100;
+    this.cloudflareProgress.value = percent;
+    this.cloudflareProgress.dataset.progress = String(percent);
+    this.cloudflareProgress.dataset.state = state;
+    this.cloudflareProgress.hidden = false;
+    this.cloudflareProgress.setAttribute("aria-hidden", "false");
+    this.cloudflareProgress.setAttribute("aria-valuetext", valueText);
+
+    if (this.cloudflareProgressStatus) {
+      this.cloudflareProgressStatus.textContent = valueText;
+    }
+
     this.emit("upload:r2-progress", { fraction: clamped });
   }
 
   resetCloudflareUploadForm() {
     if (this.cloudflareTitleInput) this.cloudflareTitleInput.value = "";
-    if (this.cloudflareDescriptionInput) this.cloudflareDescriptionInput.value = "";
+    if (this.cloudflareDescriptionInput)
+      this.cloudflareDescriptionInput.value = "";
     if (this.cloudflareThumbnailInput) this.cloudflareThumbnailInput.value = "";
     if (this.cloudflareMagnetInput) this.cloudflareMagnetInput.value = "";
     if (this.cloudflareWsInput) this.cloudflareWsInput.value = "";
@@ -731,7 +859,8 @@ export class UploadModal {
     if (this.customFormInputs.magnet) this.customFormInputs.magnet.value = "";
     if (this.customFormInputs.ws) this.customFormInputs.ws.value = "";
     if (this.customFormInputs.xs) this.customFormInputs.xs.value = "";
-    if (this.customFormInputs.thumbnail) this.customFormInputs.thumbnail.value = "";
+    if (this.customFormInputs.thumbnail)
+      this.customFormInputs.thumbnail.value = "";
     if (this.customFormInputs.description)
       this.customFormInputs.description.value = "";
     if (this.customFormInputs.enableComments)
@@ -765,7 +894,7 @@ export class UploadModal {
         await this.refreshCloudflareBucketPreview();
       }
     } catch (error) {
-      console.error("[UploadModal] Failed to save Cloudflare settings", error);
+      userLogger.error("[UploadModal] Failed to save Cloudflare settings", error);
     }
   }
 
@@ -779,7 +908,7 @@ export class UploadModal {
         await this.refreshCloudflareBucketPreview();
       }
     } catch (error) {
-      console.error("[UploadModal] Failed to clear Cloudflare settings", error);
+      userLogger.error("[UploadModal] Failed to clear Cloudflare settings", error);
     }
   }
 
@@ -800,7 +929,7 @@ export class UploadModal {
     const file = this.cloudflareFileInput?.files?.[0] || null;
     const audienceFlags = this.sanitizeAudienceFlags({
       isNsfw: this.readCheckboxValue(this.cloudflareIsNsfwInput, false),
-      isForKids: this.readCheckboxValue(this.cloudflareIsForKidsInput, false),
+      isForKids: this.readCheckboxValue(this.cloudflareIsForKidsInput, false)
     });
     const metadata = {
       title: this.cloudflareTitleInput?.value?.trim() || "",
@@ -813,7 +942,7 @@ export class UploadModal {
         this.cloudflareEnableCommentsInput,
         true
       ),
-      ...audienceFlags,
+      ...audienceFlags
     };
 
     const nip71Metadata = this.nip71FormManager.collectSection("cloudflare");
@@ -827,7 +956,7 @@ export class UploadModal {
       }
       metadata.nip71 = {
         ...nip71Metadata,
-        imeta: imetaList,
+        imeta: imetaList
       };
     }
 
@@ -838,15 +967,24 @@ export class UploadModal {
         metadata,
         settingsInput: this.collectCloudflareSettingsFormValues(),
         publishVideoNote: (payload, options) =>
-          this.publishVideoNote ? this.publishVideoNote(payload, options) : null,
-        onReset: () => this.resetCloudflareUploadForm(),
+          this.publishVideoNote
+            ? this.publishVideoNote(payload, options)
+            : null,
+        onReset: () => this.resetCloudflareUploadForm()
       });
     } catch (error) {
-      console.error("[UploadModal] Cloudflare upload failed", error);
+      userLogger.error("[UploadModal] Cloudflare upload failed", error);
     }
   }
 
   destroy() {
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+    this.modalAccessibility = null;
+    this.modalBackdrop = null;
+    this.modalPanel = null;
+
     if (Array.isArray(this.cleanupHandlers)) {
       this.cleanupHandlers.forEach((cleanup) => {
         try {
@@ -854,7 +992,7 @@ export class UploadModal {
             cleanup();
           }
         } catch (error) {
-          console.warn("[UploadModal] Failed to remove handler", error);
+          userLogger.warn("[UploadModal] Failed to remove handler", error);
         }
       });
       this.cleanupHandlers = [];
@@ -867,10 +1005,14 @@ export class UploadModal {
             unsubscribe();
           }
         } catch (error) {
-          console.warn("[UploadModal] Failed to cleanup R2 listener", error);
+          userLogger.warn("[UploadModal] Failed to cleanup R2 listener", error);
         }
       });
     }
     this.r2Unsubscribes = [];
+    this.eventsBound = false;
+    this.loadPromise = null;
+    this.root = null;
+    this.container = null;
   }
 }

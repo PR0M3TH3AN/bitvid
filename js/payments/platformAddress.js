@@ -4,6 +4,7 @@ import { PLATFORM_LUD16_OVERRIDE, ADMIN_SUPER_NPUB } from "../config.js";
 import { nostrClient } from "../nostr.js";
 import { setProfileCacheEntry } from "../state/cache.js";
 import { nostrToolsReady } from "../nostrToolsBootstrap.js";
+import { userLogger } from "../utils/logger.js";
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -106,7 +107,7 @@ const nostrToolsInitializationFailure =
   __platformNostrToolsBootstrap.failure || null;
 
 if (!cachedNostrTools && nostrToolsInitializationFailure) {
-  console.warn(
+  userLogger.warn(
     "[platformAddress] nostr-tools helpers unavailable after bootstrap.",
     nostrToolsInitializationFailure
   );
@@ -137,7 +138,7 @@ async function ensureNostrTools() {
     const result = await nostrToolsReadySource;
     rememberNostrTools(result);
   } catch (error) {
-    console.warn(
+    userLogger.warn(
       "[platformAddress] Failed to resolve nostr-tools helpers.",
       error
     );
@@ -198,7 +199,7 @@ function decodeAdminPubkey() {
         }
       }
     } catch (error) {
-      console.warn("[platformAddress] Failed to decode ADMIN_SUPER_NPUB", error);
+      userLogger.warn("[platformAddress] Failed to decode ADMIN_SUPER_NPUB", error);
     }
   }
 
@@ -233,7 +234,7 @@ async function fetchAdminMetadata(adminPubkey) {
   try {
     pool = await nostrClient.ensurePool();
   } catch (error) {
-    console.warn("[platformAddress] Failed to initialize Nostr pool", error);
+    userLogger.warn("[platformAddress] Failed to initialize Nostr pool", error);
     return null;
   }
 
@@ -245,7 +246,7 @@ async function fetchAdminMetadata(adminPubkey) {
     ? nostrClient.relays
     : [];
   if (relayUrls.length === 0) {
-    console.warn("[platformAddress] Nostr client is not ready.");
+    userLogger.warn("[platformAddress] Nostr client is not ready.");
     return null;
   }
 
@@ -286,7 +287,7 @@ async function fetchAdminMetadata(adminPubkey) {
 
     return lightningAddress || null;
   } catch (error) {
-    console.warn("[platformAddress] Failed to fetch admin metadata", error);
+    userLogger.warn("[platformAddress] Failed to fetch admin metadata", error);
     return null;
   }
 }

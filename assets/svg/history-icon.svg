@@ -9,13 +9,13 @@
   xmlns:xlink="http://www.w3.org/1999/xlink"
   xml:space="preserve"
   xmlns:serif="http://www.serif.com/"
-  style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;"
+  fill-rule="evenodd" clip-rule="evenodd" stroke-linejoin="round" stroke-miterlimit="2"
 >
   <g transform="matrix(1,0,0,1,12,12)">
     <g transform="matrix(1,0,0,1,-12,-12)">
       <path
         d="M12,2C6.486,2 2,6.486 2,12C2,17.514 6.486,22 12,22C17.514,22 22,17.514 22,12C22,6.486 17.514,2 12,2ZM12,4C16.411,4 20,7.589 20,12C20,16.411 16.411,20 12,20C7.589,20 4,16.411 4,12C4,7.589 7.589,4 12,4ZM11,7C10.448,7 10,7.448 10,8L10,13C10,13.266 10.105,13.52 10.293,13.707L13.293,16.707C13.683,17.098 14.317,17.098 14.707,16.707C15.098,16.317 15.098,15.683 14.707,15.293L12,12.586L12,8C12,7.448 11.552,7 11,7Z"
-        style="fill:rgb(92,111,138);fill-rule:nonzero;"
+        fill="#5C6F8A" fill-rule="nonzero"
       />
     </g>
   </g>

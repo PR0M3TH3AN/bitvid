@@ -105,7 +105,7 @@ magnet:?xt=urn:btih:abc123def...&tr=wss%3A%2F%2Ftracker.webtorrent.io&tr=udp%3A%
    ```jsonc
    ["tracker", "wss://tracker.webtorrent.io"]
    ```
-2. **Active WebRTC seeder**: Even with a `wss://` tracker, the torrent must be seeded in real time by at least one WebTorrent/WebRTC peer. Without a WebRTC seed, browser-based clients (like Bitvid or other WebTorrent-powered apps) cannot download or stream.
+2. **Active WebRTC seeder**: Even with a `wss://` tracker, the torrent must be seeded in real time by at least one WebTorrent/WebRTC peer. Without a WebRTC seed, browser-based clients (like bitvid or other WebTorrent-powered apps) cannot download or stream.
 
 3. **No `.torrent` file on Nostr**: This NIP is purely metadata (info hash, tracker URLs). Traditional BitTorrent clients can still use the magnet link if it has UDP/HTTP trackers.
 
@@ -202,4 +202,4 @@ Below is a more complete JSON example following NIP-35 conventions, demonstratin
 
 ### End of Updated Spec Sheet
 
-This revision aims to integrate WebTorrent/WebRTC considerations seamlessly into the existing NIP-35 structure. It remains optional to provide `wss://` trackers, but doing so is strongly recommended if you want real-time streaming in browser-based clients like Bitvid or other WebTorrent-powered frontends.
+This revision aims to integrate WebTorrent/WebRTC considerations seamlessly into the existing NIP-35 structure. It remains optional to provide `wss://` trackers, but doing so is strongly recommended if you want real-time streaming in browser-based clients like bitvid or other WebTorrent-powered frontends.

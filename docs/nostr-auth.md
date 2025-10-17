@@ -1,6 +1,6 @@
 # Nostr authentication storage
 
-Bitvid keeps lightweight state in `localStorage` so the UI can remember which
+bitvid keeps lightweight state in `localStorage` so the UI can remember which
 accounts signed in recently. This document explains the storage schema so future
 updates can evolve it without breaking existing users.
 

@@ -1,3 +1,4 @@
+import { userLogger } from "./utils/logger.js";
 const DB_NAME = "bitvidSettings";
 const DB_VERSION = 1;
 const STORE_NAME = "kv";
@@ -104,7 +105,7 @@ export async function loadR2Settings() {
       });
     }
   } catch (err) {
-    console.warn("Failed to open IndexedDB for settings, falling back:", err);
+    userLogger.warn("Failed to open IndexedDB for settings, falling back:", err);
   }
 
   try {
@@ -115,7 +116,7 @@ export async function loadR2Settings() {
       }
     }
   } catch (err) {
-    console.warn("Failed to read fallback settings:", err);
+    userLogger.warn("Failed to read fallback settings:", err);
   }
 
   return normalizeSettings(null);
@@ -128,7 +129,7 @@ export async function saveR2Settings(settings) {
   try {
     db = await openSettingsDb();
   } catch (err) {
-    console.warn("Unable to open IndexedDB, continuing with fallback:", err);
+    userLogger.warn("Unable to open IndexedDB, continuing with fallback:", err);
   }
 
   if (db) {
@@ -165,7 +166,7 @@ export async function clearR2Settings() {
       cleared = true;
     }
   } catch (err) {
-    console.warn("Failed to clear IndexedDB settings:", err);
+    userLogger.warn("Failed to clear IndexedDB settings:", err);
   }
 
   try {
@@ -174,7 +175,7 @@ export async function clearR2Settings() {
       cleared = true;
     }
   } catch (err) {
-    console.warn("Failed to clear fallback settings:", err);
+    userLogger.warn("Failed to clear fallback settings:", err);
   }
 
   return cleared;

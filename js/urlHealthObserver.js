@@ -1,5 +1,6 @@
 import { createCardObserver } from "./dom/cardObserver.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
+import { userLogger } from "./utils/logger.js";
 
 const ROOT_MARGIN = "0px";
 const THRESHOLD = 0.25;
@@ -49,7 +50,7 @@ const urlCardObserver = createCardObserver({
     try {
       state.onCheck({ card, badgeEl, url, eventId });
     } catch (err) {
-      console.warn("[urlHealthObserver] onCheck handler failed", err);
+      userLogger.warn("[urlHealthObserver] onCheck handler failed", err);
     }
   },
 });

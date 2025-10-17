@@ -1,3 +1,5 @@
+import { userLogger } from "../utils/logger.js";
+import { sanitizeProfileMediaUrl } from "../utils/profileMedia.js";
 import {
   readUrlHealthFromStorage,
   removeUrlHealthFromStorage,
@@ -187,7 +189,7 @@ export function readSavedProfilesPayloadFromStorage() {
     }
     return parsed;
   } catch (error) {
-    console.warn(
+    userLogger.warn(
       "[cache.readSavedProfilesPayloadFromStorage] Failed to parse payload:",
       error
     );
@@ -210,12 +212,12 @@ function writeSavedProfilesPayloadToStorage(payload) {
         error.code === 22 ||
         error.code === 1014);
     if (isQuotaError) {
-      console.warn(
+      userLogger.warn(
         "[cache.writeSavedProfilesPayloadToStorage] Storage quota exceeded; keeping in-memory copy only.",
         error
       );
     } else {
-      console.warn(
+      userLogger.warn(
         "[cache.writeSavedProfilesPayloadToStorage] Failed to persist saved profiles:",
         error
       );
@@ -232,7 +234,7 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
     try {
       localStorage.removeItem(SAVED_PROFILES_STORAGE_KEY);
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         "[cache.persistSavedProfiles] Failed to remove empty payload:",
         error
       );
@@ -349,7 +351,7 @@ export function loadSavedProfilesFromStorage() {
       needsRewrite = true;
     }
   } catch (error) {
-    console.warn("[cache.loadSavedProfilesFromStorage] Failed to parse payload:", error);
+    userLogger.warn("[cache.loadSavedProfilesFromStorage] Failed to parse payload:", error);
     needsRewrite = true;
   }
 
@@ -493,7 +495,7 @@ export function loadProfileCacheFromStorage() {
       });
     }
   } catch (error) {
-    console.warn("[cache.loadProfileCacheFromStorage] Failed to parse payload:", error);
+    userLogger.warn("[cache.loadProfileCacheFromStorage] Failed to parse payload:", error);
   }
 }
 
@@ -532,7 +534,7 @@ export function persistProfileCacheToStorage() {
     try {
       localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY);
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         "[cache.persistProfileCacheToStorage] Failed to clear storage:",
         error
       );
@@ -543,7 +545,7 @@ export function persistProfileCacheToStorage() {
   try {
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
-    console.warn("[cache.persistProfileCacheToStorage] Failed to persist cache:", error);
+    userLogger.warn("[cache.persistProfileCacheToStorage] Failed to persist cache:", error);
   }
 }
 
@@ -576,7 +578,9 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
 
   const normalized = {
     name: profile.name || profile.display_name || "Unknown",
-    picture: profile.picture || "assets/svg/default-profile.svg",
+    picture:
+      sanitizeProfileMediaUrl(profile.picture || profile.image) ||
+      "assets/svg/default-profile.svg",
   };
 
   const about = sanitizeProfileString(profile.about || profile.aboutMe);
@@ -589,7 +593,14 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
     normalized.website = website;
   }
 
-  const banner = sanitizeProfileString(profile.banner || profile.header);
+  const banner = sanitizeProfileMediaUrl(
+    profile.banner ||
+      profile.header ||
+      profile.background ||
+      profile.cover ||
+      profile.cover_image ||
+      profile.coverImage
+  );
   if (banner) {
     normalized.banner = banner;
   }
@@ -684,7 +695,7 @@ export function storeUrlHealth(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) 
   const now = Date.now();
   const entry = {
     status: result?.status || "checking",
-    message: result?.message || "Checking hosted URL…",
+    message: result?.message || "⏳ CDN",
     url: url || result?.url || "",
     expiresAt: now + ttl,
     lastCheckedAt: now,

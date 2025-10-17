@@ -3,6 +3,8 @@ import {
   subscribeToVideoViewCount,
   unsubscribeFromVideoViewCount,
 } from "../../viewCounter.js";
+import { normalizeDesignSystemContext } from "../../designSystem.js";
+import { userLogger } from "../../utils/logger.js";
 
 const EMPTY_VIDEO_LIST_SIGNATURE = "__EMPTY__";
 
@@ -20,6 +22,7 @@ export class VideoListView {
       utils = {},
       renderers = {},
       allowNsfw = true,
+      designSystem = null,
     } = options;
 
     this.document = doc;
@@ -147,6 +150,22 @@ export class VideoListView {
           : () => {},
       closeAllMenus:
         typeof utils.closeAllMenus === "function" ? utils.closeAllMenus : () => {},
+      requestMoreMenu:
+        typeof utils.requestMoreMenu === "function"
+          ? utils.requestMoreMenu
+          : () => {},
+      closeMoreMenu:
+        typeof utils.closeMoreMenu === "function"
+          ? utils.closeMoreMenu
+          : () => false,
+      requestSettingsMenu:
+        typeof utils.requestSettingsMenu === "function"
+          ? utils.requestSettingsMenu
+          : () => {},
+      closeSettingsMenu:
+        typeof utils.closeSettingsMenu === "function"
+          ? utils.closeSettingsMenu
+          : () => false,
     };
 
     this.renderedVideoIds = new Set();
@@ -165,6 +184,7 @@ export class VideoListView {
     };
 
     this.allowNsfw = allowNsfw !== false;
+    this.designSystem = normalizeDesignSystemContext(designSystem);
 
     this.emitter = typeof EventTarget !== "undefined" ? new EventTarget() : null;
     this._boundClickHandler = this.handleContainerClick.bind(this);
@@ -294,7 +314,7 @@ export class VideoListView {
       }
       this.lastRenderedVideoSignature = EMPTY_VIDEO_LIST_SIGNATURE;
       this.container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
+        <p class="flex justify-center items-center h-full w-full text-center text-subtle">
           No public videos available yet. Be the first to upload one!
         </p>`;
       return displayVideos;
@@ -348,18 +368,17 @@ export class VideoListView {
       const shareUrl = this.buildShareUrl(video, shareBase);
       const canEdit = this.utils.canEditVideo(video);
       const canDelete = this.utils.canDeleteVideo(video);
-      const highlightClasses = [];
+      let cardState = "";
       if (canEdit && video.isPrivate) {
-        highlightClasses.push("video-card--owner-private");
+        cardState = "private";
       }
       const viewerSeesBlockedNsfw =
         !this.allowNsfw && video?.isNsfw === true && canEdit;
       if (viewerSeesBlockedNsfw) {
-        highlightClasses.push("video-card--nsfw-owner");
+        cardState = "critical";
       }
-      const highlightClass = highlightClasses.join(" ");
       const isNewlyRendered = !previouslyRenderedIds.has(video.id);
-      const animationClass = isNewlyRendered ? "video-card--enter" : "";
+      const motionState = isNewlyRendered ? "enter" : "";
       const knownPostedAt = this.utils.getKnownVideoPostedAt(video);
       const normalizedPostedAt = Number.isFinite(knownPostedAt)
         ? Math.floor(knownPostedAt)
@@ -393,8 +412,8 @@ export class VideoListView {
         pointerInfo,
         timeAgo,
         postedAt: normalizedPostedAt,
-        highlightClass,
-        animationClass,
+        cardState,
+        motionState,
         nsfwContext: {
           isNsfw: video?.isNsfw === true,
           allowNsfw: this.allowNsfw,
@@ -422,10 +441,12 @@ export class VideoListView {
         },
         ensureGlobalMoreMenuHandlers: () =>
           this.utils.ensureGlobalMoreMenuHandlers(),
-        onRequestCloseAllMenus: () => this.closeAllMenus(),
+        onRequestCloseAllMenus: (detail = {}) =>
+          this.closeAllMenus({ restoreFocus: false, ...detail }),
         formatters: {
           formatTimeAgo: this.formatters.formatTimeAgo,
         },
+        designSystem: this.designSystem,
       });
 
       videoCard.onPlay = ({ event: domEvent, video: cardVideo }) => {
@@ -434,21 +455,44 @@ export class VideoListView {
         this.emitSelected(detail);
       };
 
-      videoCard.onEdit = ({ video: editVideo, index: editIndex }) => {
+      videoCard.onEdit = ({ event: editEvent, video: editVideo, index: editIndex }) => {
         if (this.handlers.edit) {
-          this.handlers.edit({ video: editVideo, index: editIndex });
+          const trigger = editEvent?.currentTarget || editEvent?.target || null;
+          this.handlers.edit({
+            video: editVideo,
+            index: editIndex,
+            trigger,
+          });
         }
       };
 
-      videoCard.onRevert = ({ video: revertVideo, index: revertIndex }) => {
+      videoCard.onRevert = ({
+        event: revertEvent,
+        video: revertVideo,
+        index: revertIndex,
+      }) => {
         if (this.handlers.revert) {
-          this.handlers.revert({ video: revertVideo, index: revertIndex });
+          const trigger = revertEvent?.currentTarget || revertEvent?.target || null;
+          this.handlers.revert({
+            video: revertVideo,
+            index: revertIndex,
+            trigger,
+          });
         }
       };
 
-      videoCard.onDelete = ({ video: deleteVideo, index: deleteIndex }) => {
+      videoCard.onDelete = ({
+        event: deleteEvent,
+        video: deleteVideo,
+        index: deleteIndex,
+      }) => {
         if (this.handlers.delete) {
-          this.handlers.delete({ video: deleteVideo, index: deleteIndex });
+          const trigger = deleteEvent?.currentTarget || deleteEvent?.target || null;
+          this.handlers.delete({
+            video: deleteVideo,
+            index: deleteIndex,
+            trigger,
+          });
         }
       };
 
@@ -475,6 +519,38 @@ export class VideoListView {
           video,
           dataset: { author: pubkey || video.pubkey || "", context: "card" },
         });
+      };
+
+      videoCard.onRequestMoreMenu = (detail = {}) => {
+        if (typeof this.utils.requestMoreMenu !== "function") {
+          return;
+        }
+        const payload = {
+          ...detail,
+          video: detail.video || video,
+          pointerInfo: detail.pointerInfo || pointerInfo,
+        };
+        this.utils.requestMoreMenu(payload);
+      };
+
+      videoCard.onCloseMoreMenu = (detail = {}) => {
+        if (typeof this.utils.closeMoreMenu === "function") {
+          return this.utils.closeMoreMenu(detail);
+        }
+        return false;
+      };
+
+      videoCard.onRequestSettingsMenu = (detail = {}) => {
+        if (typeof this.utils.requestSettingsMenu === "function") {
+          this.utils.requestSettingsMenu(detail);
+        }
+      };
+
+      videoCard.onCloseSettingsMenu = (detail = {}) => {
+        if (typeof this.utils.closeSettingsMenu === "function") {
+          return this.utils.closeSettingsMenu(detail);
+        }
+        return false;
       };
 
       const cardEl = videoCard.getRoot();
@@ -513,8 +589,8 @@ export class VideoListView {
             videoCard.updatePostedAt(Math.floor(resolvedPostedAt));
           })
           .catch((error) => {
-            if (this.window?.console?.warn) {
-              this.window.console.warn(
+            if (this.window?.userLogger?.warn) {
+              this.window.userLogger.warn(
                 "[VideoListView] Failed to resolve posted timestamp:",
                 error
               );
@@ -569,7 +645,7 @@ export class VideoListView {
       message:
         typeof entry.message === "string" && entry.message
           ? entry.message
-          : "Checking hosted URL…",
+          : "⏳ CDN",
     };
 
     if (Number.isFinite(entry.lastCheckedAt)) {
@@ -740,7 +816,7 @@ export class VideoListView {
         try {
           unsubscribeFromVideoViewCount(entry.pointer, entry.token);
         } catch (error) {
-          console.warn(
+          userLogger.warn(
             `[viewCount] Failed to unsubscribe from stale pointer ${key}:`,
             error
           );
@@ -796,7 +872,7 @@ export class VideoListView {
     const videoId =
       target?.dataset?.videoId || target?.getAttribute?.("data-video-id") || video?.id || "";
 
-    return { videoId, url, magnet, video };
+    return { videoId, url, magnet, video, trigger: element };
   }
 
   emitSelected(detail) {
@@ -894,7 +970,7 @@ export class VideoListView {
       this.viewCountSubscriptions.set(pointerInfo.key, entry);
       return entry;
     } catch (error) {
-      console.warn("[viewCount] Failed to subscribe to view counter:", error);
+      userLogger.warn("[viewCount] Failed to subscribe to view counter:", error);
       return null;
     }
   }
@@ -946,7 +1022,7 @@ export class VideoListView {
         try {
           unsubscribeFromVideoViewCount(entry.pointer, entry.token);
         } catch (error) {
-          console.warn(
+          userLogger.warn(
             `[viewCount] Failed to unsubscribe from pointer ${key}:`,
             error
           );
@@ -956,38 +1032,44 @@ export class VideoListView {
     });
   }
 
-  closeAllMenus() {
+  closeAllMenus(options = {}) {
+    const restoreFocus = options?.restoreFocus !== false;
+    const skipCard = options?.skipCard || null;
+    const skipTrigger = options?.skipTrigger || null;
+
     if (Array.isArray(this.videoCardInstances) && this.videoCardInstances.length) {
       this.videoCardInstances.forEach((card) => {
         if (!card) {
           return;
         }
+
+        if (skipCard && card === skipCard) {
+          if (typeof card.closeSettingsMenu === "function") {
+            card.closeSettingsMenu({ restoreFocus });
+          }
+          return;
+        }
+
         if (typeof card.closeMoreMenu === "function") {
-          card.closeMoreMenu();
+          card.closeMoreMenu({ restoreFocus });
         }
         if (typeof card.closeSettingsMenu === "function") {
-          card.closeSettingsMenu();
+          card.closeSettingsMenu({ restoreFocus });
         }
       });
     }
 
-    if (!this.document) {
+    if (options?.skipController) {
       return;
     }
 
-    const menus = this.document.querySelectorAll("[data-more-menu]");
-    menus.forEach((menu) => {
-      if (menu instanceof HTMLElement) {
-        menu.classList.add("hidden");
+    if (typeof this.utils.closeAllMenus === "function") {
+      const payload = { skipView: true, restoreFocus };
+      if (skipTrigger) {
+        payload.skipTrigger = skipTrigger;
       }
-    });
-
-    const buttons = this.document.querySelectorAll("[data-more-dropdown]");
-    buttons.forEach((btn) => {
-      if (btn instanceof HTMLElement) {
-        btn.setAttribute("aria-expanded", "false");
-      }
-    });
+      this.utils.closeAllMenus(payload);
+    }
   }
 
   handleContainerClick(event) {

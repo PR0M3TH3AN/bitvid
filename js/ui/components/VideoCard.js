@@ -1,3 +1,9 @@
+import { normalizeDesignSystemContext } from "../../designSystem.js";
+import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
+import { userLogger } from "../../utils/logger.js";
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
 export class VideoCard {
   constructor({
     document: doc,
@@ -7,8 +13,8 @@ export class VideoCard {
     timeAgo = "",
     postedAt = null,
     pointerInfo = null,
-    highlightClass = "",
-    animationClass = "",
+    cardState = "",
+    motionState = "",
     capabilities = {},
     formatters = {},
     helpers = {},
@@ -17,6 +23,7 @@ export class VideoCard {
     ensureGlobalMoreMenuHandlers,
     onRequestCloseAllMenus,
     nsfwContext = null,
+    designSystem = null,
   } = {}) {
     if (!doc) {
       throw new Error("VideoCard requires a document reference.");
@@ -30,39 +37,42 @@ export class VideoCard {
     this.video = video;
     this.index = index;
     this.shareUrl = shareUrl;
-    this.highlightClass =
-      typeof highlightClass === "string" ? highlightClass : "";
-    this.animationClass = animationClass || "";
+    this.cardState =
+      typeof cardState === "string" ? cardState.trim() : "";
+    this.motionState =
+      typeof motionState === "string" ? motionState.trim() : "";
     this.pointerInfo = pointerInfo;
     this.capabilities = {
       canEdit: false,
       canDelete: false,
       canRevert: false,
       canManageBlacklist: false,
-      ...capabilities,
+      ...capabilities
     };
     this.formatters = {
       formatTimeAgo: formatters.formatTimeAgo,
-      formatNumber: formatters.formatNumber,
+      formatNumber: formatters.formatNumber
     };
     this.helpers = {
       escapeHtml: helpers.escapeHtml,
       isMagnetSupported: helpers.isMagnetSupported,
-      toLocaleString: helpers.toLocaleString,
+      toLocaleString: helpers.toLocaleString
     };
     this.assets = {
       fallbackThumbnailSrc: assets.fallbackThumbnailSrc || "",
-      unsupportedBtihMessage: assets.unsupportedBtihMessage || "",
+      unsupportedBtihMessage: assets.unsupportedBtihMessage || ""
     };
     this.state = {
       loadedThumbnails:
         state.loadedThumbnails instanceof Map ? state.loadedThumbnails : null,
       urlHealthByVideoId:
-        state.urlHealthByVideoId instanceof Map ? state.urlHealthByVideoId : null,
+        state.urlHealthByVideoId instanceof Map
+          ? state.urlHealthByVideoId
+          : null,
       streamHealthByVideoId:
         state.streamHealthByVideoId instanceof Map
           ? state.streamHealthByVideoId
-          : null,
+          : null
     };
     this.ensureGlobalMoreMenuHandlers =
       typeof ensureGlobalMoreMenuHandlers === "function"
@@ -73,10 +83,12 @@ export class VideoCard {
         ? onRequestCloseAllMenus
         : null;
 
+    this.designSystem = normalizeDesignSystemContext(designSystem);
+
     this.nsfwContext = {
       isNsfw: Boolean(nsfwContext?.isNsfw),
       allowNsfw: nsfwContext?.allowNsfw !== false,
-      viewerIsOwner: nsfwContext?.viewerIsOwner === true,
+      viewerIsOwner: nsfwContext?.viewerIsOwner === true
     };
     this.shouldMaskNsfwForOwner =
       this.nsfwContext.isNsfw &&
@@ -90,6 +102,10 @@ export class VideoCard {
       onDelete: null,
       onMoreAction: null,
       onAuthorNavigate: null,
+      onRequestMoreMenu: null,
+      onCloseMoreMenu: null,
+      onRequestSettingsMenu: null,
+      onCloseSettingsMenu: null
     };
 
     this.root = null;
@@ -97,12 +113,7 @@ export class VideoCard {
     this.titleEl = null;
     this.thumbnailEl = null;
     this.settingsButton = null;
-    this.settingsDropdown = null;
-    this.editButton = null;
-    this.revertButton = null;
-    this.deleteButton = null;
     this.moreMenuButton = null;
-    this.moreMenu = null;
     this.urlHealthBadgeEl = null;
     this.torrentHealthBadgeEl = null;
     this.viewCountEl = null;
@@ -111,8 +122,7 @@ export class VideoCard {
     this.authorNameEl = null;
     this.timestampEl = null;
 
-    this.playbackUrl =
-      typeof video.url === "string" ? video.url.trim() : "";
+    this.playbackUrl = typeof video.url === "string" ? video.url.trim() : "";
     const magnet =
       (typeof video.magnet === "string" ? video.magnet.trim() : "") ||
       (typeof video.infoHash === "string" ? video.infoHash.trim() : "");
@@ -129,7 +139,11 @@ export class VideoCard {
       : null;
     this.postedAt = normalizedPostedAt;
 
-    if (this.postedAt !== null && this.video && typeof this.video === "object") {
+    if (
+      this.postedAt !== null &&
+      this.video &&
+      typeof this.video === "object"
+    ) {
       this.video.rootCreatedAt = this.postedAt;
     }
 
@@ -172,6 +186,24 @@ export class VideoCard {
     this.callbacks.onAuthorNavigate = typeof fn === "function" ? fn : null;
   }
 
+  set onRequestMoreMenu(fn) {
+    this.callbacks.onRequestMoreMenu = typeof fn === "function" ? fn : null;
+  }
+
+  set onCloseMoreMenu(fn) {
+    this.callbacks.onCloseMoreMenu = typeof fn === "function" ? fn : null;
+  }
+
+  set onRequestSettingsMenu(fn) {
+    this.callbacks.onRequestSettingsMenu =
+      typeof fn === "function" ? fn : null;
+  }
+
+  set onCloseSettingsMenu(fn) {
+    this.callbacks.onCloseSettingsMenu =
+      typeof fn === "function" ? fn : null;
+  }
+
   getRoot() {
     return this.root;
   }
@@ -192,18 +224,87 @@ export class VideoCard {
     return this.discussionCountEl;
   }
 
-  closeMoreMenu() {
-    if (this.moreMenu) {
-      this.moreMenu.classList.add("hidden");
+  closeMoreMenu(options = {}) {
+    const restoreFocus = options?.restoreFocus !== false;
+    const trigger = this.moreMenuButton;
+    const wasExpanded =
+      typeof trigger?.getAttribute === "function" &&
+      trigger.getAttribute("aria-expanded") === "true";
+
+    const detail = {
+      trigger,
+      video: this.video,
+      card: this,
+      restoreFocus,
+    };
+
+    let handled = false;
+    if (this.callbacks.onCloseMoreMenu) {
+      try {
+        handled = this.callbacks.onCloseMoreMenu(detail) === true;
+      } catch (error) {
+        if (this.window?.userLogger?.warn) {
+          this.window.userLogger.warn(
+            "[VideoCard] onCloseMoreMenu callback failed",
+            error,
+          );
+        }
+      }
     }
-    if (this.moreMenuButton) {
-      this.moreMenuButton.setAttribute("aria-expanded", "false");
+
+    if (
+      !handled &&
+      restoreFocus &&
+      wasExpanded &&
+      typeof trigger?.focus === "function"
+    ) {
+      try {
+        trigger.focus();
+      } catch (error) {
+        /* noop */
+      }
     }
   }
 
-  closeSettingsMenu() {
-    if (this.settingsDropdown) {
-      this.settingsDropdown.classList.add("hidden");
+  closeSettingsMenu(options = {}) {
+    const restoreFocus = options?.restoreFocus !== false;
+    const trigger = this.settingsButton;
+    const wasExpanded =
+      typeof trigger?.getAttribute === "function" &&
+      trigger.getAttribute("aria-expanded") === "true";
+
+    const detail = {
+      trigger,
+      video: this.video,
+      card: this,
+      restoreFocus,
+    };
+
+    let handled = false;
+    if (this.callbacks.onCloseSettingsMenu) {
+      try {
+        handled = this.callbacks.onCloseSettingsMenu(detail) === true;
+      } catch (error) {
+        if (this.window?.userLogger?.warn) {
+          this.window.userLogger.warn(
+            "[VideoCard] onCloseSettingsMenu callback failed",
+            error,
+          );
+        }
+      }
+    }
+
+    if (
+      !handled &&
+      restoreFocus &&
+      wasExpanded &&
+      typeof trigger?.focus === "function"
+    ) {
+      try {
+        trigger.focus();
+      } catch (error) {
+        /* noop */
+      }
     }
   }
 
@@ -211,22 +312,14 @@ export class VideoCard {
     const doc = this.document;
 
     const root = this.createElement("div", {
-      classNames: [
-        "video-card",
-        "bg-gray-900",
-        "rounded-lg",
-        "shadow-lg",
-        "hover:shadow-2xl",
-        "transition-all",
-        "duration-300",
-      ],
+      classNames: ["card"]
     });
-
-    this.applyClassListFromString(root, this.highlightClass);
-    this.applyClassListFromString(root, this.animationClass);
 
     this.root = root;
 
+    this.root.dataset.component = "video-card";
+    this.syncCardState();
+    this.syncMotionState();
     if (this.video?.id) {
       root.dataset.videoId = this.video.id;
     }
@@ -243,41 +336,42 @@ export class VideoCard {
         "relative",
         "group",
         "rounded-t-lg",
-        "overflow-hidden",
+        "overflow-hidden"
       ],
       attrs: {
-        href: this.shareUrl,
-      },
+        href: this.shareUrl
+      }
     });
     anchor.dataset.videoId = this.video.id;
     this.anchorEl = anchor;
 
     const ratio = this.createElement("div", {
-      classNames: ["ratio-16-9"],
+      classNames: ["ratio-16-9"]
     });
     const thumbnail = this.buildThumbnail();
     ratio.appendChild(thumbnail);
     anchor.appendChild(ratio);
 
-    const content = this.createElement("div", { classNames: ["p-4"] });
+    const content = this.createElement("div", {
+      classNames: ["p-md", "bv-stack", "bv-stack--tight"]
+    });
 
     const title = this.createElement("h3", {
       classNames: [
         "text-lg",
         "font-bold",
-        "text-white",
+        "text-text",
         "line-clamp-2",
-        "hover:text-blue-400",
-        "cursor-pointer",
-        "mb-3",
+        "hover:text-info-strong",
+        "cursor-pointer"
       ],
-      textContent: this.video.title,
+      textContent: this.video.title
     });
     title.dataset.videoId = this.video.id;
     this.titleEl = title;
 
     const header = this.createElement("div", {
-      classNames: ["flex", "items-center", "justify-between"],
+      classNames: ["flex", "items-center", "justify-between"]
     });
 
     const authorSection = this.buildAuthorSection();
@@ -303,10 +397,10 @@ export class VideoCard {
 
     if (this.showUnsupportedTorrentBadge) {
       const warning = this.createElement("p", {
-        classNames: ["mt-3", "text-xs", "text-amber-300"],
+        classNames: ["mt-3", "text-xs", "text-status-warning-on"],
         attrs: { title: this.assets.unsupportedBtihMessage || "" },
         textContent:
-          "WebTorrent fallback unavailable (magnet missing btih info hash)",
+          "WebTorrent fallback unavailable (magnet missing btih info hash)"
       });
       warning.dataset.torrentStatus = "unsupported";
       content.appendChild(warning);
@@ -317,6 +411,70 @@ export class VideoCard {
 
     this.applyPlaybackDatasets();
     this.bindEvents();
+  }
+
+  setCardBackdropImage(src) {
+    if (!this.root || !this.root.style) {
+      return;
+    }
+
+    const style = this.root.style;
+
+    const normalizeSource = (raw) => {
+      if (typeof raw !== "string") {
+        return "";
+      }
+
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return "";
+      }
+
+      if (/^javascript:/i.test(trimmed) || /^vbscript:/i.test(trimmed)) {
+        return "";
+      }
+
+      if (/^(?:https?:|data:|blob:)/i.test(trimmed)) {
+        return trimmed;
+      }
+
+      if (
+        trimmed.startsWith("/") ||
+        trimmed.startsWith("./") ||
+        trimmed.startsWith("../") ||
+        trimmed.startsWith("assets/")
+      ) {
+        return trimmed;
+      }
+
+      try {
+        const base =
+          typeof this.document?.baseURI === "string" && this.document.baseURI
+            ? this.document.baseURI
+            : this.window?.location?.href || "";
+        if (!base) {
+          return "";
+        }
+
+        const resolved = new URL(trimmed, base);
+        if (/^(?:https?:|data:|blob:)/i.test(resolved.protocol)) {
+          return resolved.href;
+        }
+      } catch {
+        return "";
+      }
+
+      return "";
+    };
+
+    const sanitized = normalizeSource(src);
+
+    if (sanitized) {
+      const escaped = sanitized.replace(/(["\\])/g, "\\$1");
+      style.setProperty("--video-card-thumb-url", `url("${escaped}")`);
+    } else {
+      style.removeProperty("--video-card-thumb-url");
+    }
   }
 
   buildThumbnail() {
@@ -337,12 +495,18 @@ export class VideoCard {
       if (fallbackSrc) {
         img.src = fallbackSrc;
         img.dataset.fallbackSrc = fallbackSrc;
+        this.setCardBackdropImage(fallbackSrc);
       }
       img.dataset.lazy = thumbnailUrl;
     } else {
       img.src = thumbnailUrl || fallbackSrc;
       if (fallbackSrc) {
         img.dataset.fallbackSrc = fallbackSrc;
+      }
+      if (!thumbnailUrl && fallbackSrc) {
+        this.setCardBackdropImage(fallbackSrc);
+      } else if (thumbnailUrl) {
+        this.setCardBackdropImage(thumbnailUrl);
       }
     }
 
@@ -353,7 +517,7 @@ export class VideoCard {
     this.thumbnailEl = img;
 
     if (this.shouldMaskNsfwForOwner) {
-      img.classList.add("video-card__thumbnail--blurred");
+      img.dataset.thumbnailState = "blurred";
     }
 
     const markThumbnailAsLoaded = () => {
@@ -386,14 +550,12 @@ export class VideoCard {
         return;
       }
 
-      if (img.dataset.thumbnailFailed || !thumbnailUrl) {
-        return;
-      }
-
       const fallbackAttr =
         (typeof img.dataset.fallbackSrc === "string"
           ? img.dataset.fallbackSrc.trim()
-          : "") || fallbackSrc || "";
+          : "") ||
+        fallbackSrc ||
+        "";
 
       const currentSrc = img.currentSrc || img.src || "";
       const isFallback =
@@ -402,10 +564,20 @@ export class VideoCard {
         (currentSrc === fallbackAttr || currentSrc.endsWith(fallbackAttr));
 
       if (isFallback) {
+        this.setCardBackdropImage(fallbackAttr || currentSrc);
+      } else {
+        this.setCardBackdropImage(currentSrc);
+      }
+
+      if (img.dataset.thumbnailFailed || !thumbnailUrl) {
         return;
       }
 
       if ((img.naturalWidth === 0 && img.naturalHeight === 0) || !currentSrc) {
+        return;
+      }
+
+      if (isFallback) {
         return;
       }
 
@@ -425,6 +597,19 @@ export class VideoCard {
         delete img.dataset.thumbnailLoaded;
       }
 
+      const fallbackAttr =
+        (typeof img.dataset.fallbackSrc === "string"
+          ? img.dataset.fallbackSrc.trim()
+          : "") ||
+        fallbackSrc ||
+        "";
+
+      if (fallbackAttr) {
+        this.setCardBackdropImage(fallbackAttr);
+      } else {
+        this.setCardBackdropImage("");
+      }
+
       img.removeEventListener("load", handleLoad);
     };
 
@@ -440,7 +625,7 @@ export class VideoCard {
 
   buildAuthorSection() {
     const wrapper = this.createElement("div", {
-      classNames: ["flex", "items-center", "space-x-3"],
+      classNames: ["flex", "items-center", "space-x-3"]
     });
 
     const avatarWrapper = this.createElement("div", {
@@ -448,59 +633,63 @@ export class VideoCard {
         "w-8",
         "h-8",
         "rounded-full",
-        "bg-gray-700",
+        "bg-panel",
         "overflow-hidden",
         "flex",
         "items-center",
-        "justify-center",
-      ],
+        "justify-center"
+      ]
     });
 
     const avatar = this.createElement("img", {
       attrs: {
         src: "assets/svg/default-profile.svg",
-        alt: "Placeholder",
-      },
+        alt: "Placeholder"
+      }
     });
-    avatar.classList.add("author-pic");
+    avatar.classList.add("author-pic", "cursor-pointer");
     if (this.video.pubkey) {
       avatar.dataset.pubkey = this.video.pubkey;
     }
-    avatar.style.cursor = "pointer";
 
     avatarWrapper.appendChild(avatar);
 
     const authorMeta = this.createElement("div", { classNames: ["min-w-0"] });
 
     const authorName = this.createElement("p", {
-      classNames: ["text-sm", "text-gray-400", "author-name"],
-      textContent: "Loading name...",
+      classNames: ["text-sm", "text-muted", "author-name", "cursor-pointer"],
+      textContent: "Loading name..."
     });
     if (this.video.pubkey) {
       authorName.dataset.pubkey = this.video.pubkey;
     }
-    authorName.style.cursor = "pointer";
 
     const metadata = this.createElement("div", {
-      classNames: ["flex", "items-center", "text-xs", "text-gray-500", "mt-1"],
+      classNames: [
+        "flex",
+        "items-center",
+        "text-xs",
+        "text-muted-strong",
+        "mt-1"
+      ]
     });
 
     const timeEl = this.createElement("span", {
-      textContent: this.timeAgo,
+      textContent: this.timeAgo
     });
     metadata.appendChild(timeEl);
     this.timestampEl = timeEl;
 
     if (this.pointerInfo && this.pointerInfo.key) {
       const dot = this.createElement("span", {
-        classNames: ["mx-1", "text-gray-600"],
-        textContent: "•",
+        classNames: ["mx-1", "text-muted-strong"],
+        textContent: "•"
       });
       dot.setAttribute("aria-hidden", "true");
 
       const view = this.createElement("span", {
         classNames: ["view-count-text"],
-        textContent: "– views",
+        textContent: "– views"
       });
       view.dataset.viewCount = "";
       view.dataset.viewPointer = this.pointerInfo.key;
@@ -523,10 +712,63 @@ export class VideoCard {
     return wrapper;
   }
 
+  createEllipsisIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const addCircle = (cx) => {
+      const circle = this.document.createElementNS(SVG_NAMESPACE, "circle");
+      circle.setAttribute("cx", String(cx));
+      circle.setAttribute("cy", "12");
+      circle.setAttribute("r", "2");
+      circle.setAttribute("fill", "currentColor");
+      svg.appendChild(circle);
+    };
+
+    addCircle(5);
+    addCircle(12);
+    addCircle(19);
+
+    return svg;
+  }
+
+  createSettingsIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute(
+      "d",
+      "M24,13.616L24,10.384C22.349,9.797 21.306,9.632 20.781,8.365L20.781,8.364C20.254,7.093 20.881,6.23 21.628,4.657L19.343,2.372C17.782,3.114 16.91,3.747 15.636,3.219L15.635,3.219C14.366,2.693 14.2,1.643 13.616,0L10.384,0C9.802,1.635 9.635,2.692 8.365,3.219L8.364,3.219C7.093,3.747 6.232,3.121 4.657,2.372L2.372,4.657C3.117,6.225 3.747,7.091 3.219,8.364C2.692,9.635 1.635,9.802 0,10.384L0,13.616C1.632,14.196 2.692,14.365 3.219,15.635C3.749,16.917 3.105,17.801 2.372,19.342L4.657,21.628C6.219,20.885 7.091,20.253 8.364,20.781L8.365,20.781C9.635,21.307 9.801,22.36 10.384,24L13.616,24C14.198,22.364 14.366,21.31 15.643,20.778L15.644,20.778C16.906,20.254 17.764,20.879 19.342,21.629L21.627,19.343C20.883,17.78 20.252,16.91 20.779,15.637C21.306,14.366 22.367,14.197 24,13.616ZM12,16C9.791,16 8,14.209 8,12C8,9.791 9.791,8 12,8C14.209,8 16,9.791 16,12C16,14.209 14.209,16 12,16Z"
+    );
+    path.setAttribute("fill", "currentColor");
+    path.setAttribute("fill-rule", "evenodd");
+    path.setAttribute("clip-rule", "evenodd");
+
+    svg.appendChild(path);
+
+    return svg;
+  }
+
   buildControls() {
-    const doc = this.document;
     const container = this.createElement("div", {
-      classNames: ["flex", "items-center"],
+      classNames: ["flex", "items-center"]
     });
 
     const moreMenu = this.buildMoreMenu();
@@ -535,151 +777,44 @@ export class VideoCard {
     }
 
     if (this.capabilities.canEdit) {
-      const wrapper = this.createElement("div", {
-        classNames: ["relative", "inline-block", "ml-3", "overflow-visible"],
-      });
       const button = this.createElement("button", {
         classNames: [
-          "inline-flex",
-          "items-center",
-          "p-2",
+          "btn-ghost",
+          "h-10",
+          "w-10",
           "rounded-full",
-          "text-gray-400",
-          "hover:text-gray-200",
-          "hover:bg-gray-800",
-          "focus:outline-none",
-          "focus:ring-2",
-          "focus:ring-blue-500",
+          "p-0",
+          "text-muted",
+          "ml-2",
         ],
         attrs: {
           type: "button",
+          "aria-haspopup": "true",
+          "aria-expanded": "false",
+          "aria-label": "Video settings",
         },
       });
-      button.dataset.settingsDropdown = String(this.index);
 
-      const icon = doc.createElement("img");
-      icon.src = "assets/svg/video-settings-gear.svg";
-      icon.alt = "Settings";
-      icon.classList.add("w-5", "h-5");
+      const icon = this.createSettingsIcon(["h-5", "w-5"]);
       button.appendChild(icon);
 
-      const dropdown = this.createElement("div", {
-        classNames: [
-          "hidden",
-          "absolute",
-          "right-0",
-          "bottom-full",
-          "mb-2",
-          "w-32",
-          "rounded-md",
-          "shadow-lg",
-          "bg-gray-800",
-          "ring-1",
-          "ring-black",
-          "ring-opacity-5",
-          "z-50",
-        ],
-      });
-      dropdown.id = `settingsDropdown-${this.index}`;
-
-      const list = this.createElement("div", {
-        classNames: ["py-1"],
-      });
-
-      const editButton = this.createElement("button", {
-        classNames: [
-          "block",
-          "w-full",
-          "text-left",
-          "px-4",
-          "py-2",
-          "text-sm",
-          "text-gray-100",
-          "hover:bg-gray-700",
-        ],
-        textContent: "Edit",
-      });
-      editButton.dataset.editIndex = String(this.index);
-      editButton.dataset.editEventId = this.video.id;
-      list.appendChild(editButton);
-      this.editButton = editButton;
-
-      if (this.capabilities.canRevert) {
-        const revertButton = this.createElement("button", {
-          classNames: [
-            "block",
-            "w-full",
-            "text-left",
-            "px-4",
-            "py-2",
-            "text-sm",
-            "text-red-400",
-            "hover:bg-red-700",
-            "hover:text-white",
-          ],
-          textContent: "Revert",
-        });
-        revertButton.dataset.revertIndex = String(this.index);
-        revertButton.dataset.revertEventId = this.video.id;
-        list.appendChild(revertButton);
-        this.revertButton = revertButton;
-      }
-
-      if (this.capabilities.canDelete) {
-        const deleteButton = this.createElement("button", {
-          classNames: [
-            "block",
-            "w-full",
-            "text-left",
-            "px-4",
-            "py-2",
-            "text-sm",
-            "text-red-400",
-            "hover:bg-red-700",
-            "hover:text-white",
-          ],
-          textContent: "Delete All",
-        });
-        deleteButton.dataset.deleteAllIndex = String(this.index);
-        deleteButton.dataset.deleteAllEventId = this.video.id;
-        list.appendChild(deleteButton);
-        this.deleteButton = deleteButton;
-      }
-
-      dropdown.appendChild(list);
-      wrapper.appendChild(button);
-      wrapper.appendChild(dropdown);
-
-      container.appendChild(wrapper);
-
       this.settingsButton = button;
-      this.settingsDropdown = dropdown;
+      container.appendChild(button);
     }
 
     return container;
   }
 
   buildMoreMenu() {
-    const wrapper = this.createElement("div", {
-      classNames: ["relative", "inline-block", "ml-1", "overflow-visible"],
-    });
-    wrapper.dataset.moreMenuWrapper = "true";
-
     const button = this.createElement("button", {
       classNames: [
-        "inline-flex",
-        "items-center",
-        "justify-center",
-        "w-10",
+        "btn-ghost",
         "h-10",
-        "p-2",
+        "w-10",
         "rounded-full",
-        "text-gray-400",
-        "hover:text-gray-200",
-        "hover:bg-gray-800",
-        "focus:outline-none",
-        "focus:ring-2",
-        "focus:ring-blue-500",
+        "p-0",
+        "text-muted",
+        "ml-1",
       ],
       attrs: {
         type: "button",
@@ -688,234 +823,21 @@ export class VideoCard {
         "aria-label": "More options",
       },
     });
-    button.dataset.moreDropdown = String(this.index);
-    button.dataset.moreMenuToggleBound = "true";
 
-    const icon = this.document.createElement("img");
-    icon.src = "assets/svg/ellipsis.svg";
-    icon.alt = "More";
-    icon.classList.add("w-5", "h-5", "object-contain");
+    const icon = this.createEllipsisIcon(["w-5", "h-5", "object-contain"]);
     button.appendChild(icon);
 
-    const dropdown = this.createElement("div", {
-      classNames: [
-        "hidden",
-        "absolute",
-        "right-0",
-        "bottom-full",
-        "mb-2",
-        "w-40",
-        "rounded-md",
-        "shadow-lg",
-        "bg-gray-800",
-        "ring-1",
-        "ring-black",
-        "ring-opacity-5",
-        "z-50",
-      ],
-    });
-    dropdown.id = `moreDropdown-${this.index}`;
-    dropdown.dataset.moreMenu = "true";
-    dropdown.setAttribute("role", "menu");
-
-    const list = this.createElement("div", {
-      classNames: ["py-1"],
-    });
-
-    const addActionButton = (text, action, extraDataset = {}, classes = []) => {
-      const btn = this.createElement("button", {
-        classNames: [
-          "block",
-          "w-full",
-          "text-left",
-          "px-4",
-          "py-2",
-          "text-sm",
-          ...classes,
-        ],
-        textContent: text,
-      });
-      btn.dataset.action = action;
-      Object.entries(extraDataset || {}).forEach(([key, value]) => {
-        if (value === undefined || value === null) {
-          return;
-        }
-        btn.dataset[key] = String(value);
-      });
-      list.appendChild(btn);
-      return btn;
-    };
-
-    addActionButton("Open channel", "open-channel", {
-      author: this.video.pubkey || "",
-    }, ["text-gray-100", "hover:bg-gray-700"]);
-
-    addActionButton("Copy link", "copy-link", {
-      eventId: this.video.id || "",
-    }, ["text-gray-100", "hover:bg-gray-700"]);
-
-    const pointer = Array.isArray(this.pointerInfo?.pointer)
-      ? this.pointerInfo.pointer
-      : null;
-    const pointerType = pointer && pointer.length >= 2 ? pointer[0] : "";
-    const pointerValue = pointer && pointer.length >= 2 ? pointer[1] : "";
-    const pointerRelay = pointer && pointer.length >= 3 ? pointer[2] || "" : "";
-    const numericKind =
-      Number.isFinite(this.video.kind) && this.video.kind > 0
-        ? Math.floor(this.video.kind)
-        : null;
-
-    const baseBoostDataset = {
-      eventId: this.video.id || "",
-      author: this.video.pubkey || "",
-    };
-
-    if (pointerType && pointerValue) {
-      baseBoostDataset.pointerType = pointerType;
-      baseBoostDataset.pointerValue = pointerValue;
-    }
-    if (pointerRelay) {
-      baseBoostDataset.pointerRelay = pointerRelay;
-    }
-    if (Number.isFinite(numericKind)) {
-      baseBoostDataset.kind = String(numericKind);
-    }
-
-    const boostLabel = this.createElement("div", {
-      classNames: [
-        "px-4",
-        "pt-2",
-        "pb-1",
-        "text-xs",
-        "font-semibold",
-        "uppercase",
-        "tracking-wide",
-        "text-gray-400",
-      ],
-      textContent: "Boost on Nostr…",
-    });
-    list.appendChild(boostLabel);
-
-    addActionButton(
-      "Repost (kind 6)",
-      "repost-event",
-      baseBoostDataset,
-      ["text-gray-100", "hover:bg-gray-700"],
-    );
-
-    if (this.playbackUrl && this.video.isPrivate !== true) {
-      const mirrorDataset = {
-        ...baseBoostDataset,
-        url: this.playbackUrl,
-        magnet: this.playbackMagnet || "",
-        thumbnail: typeof this.video.thumbnail === "string" ? this.video.thumbnail : "",
-        description:
-          typeof this.video.description === "string" ? this.video.description : "",
-        title: typeof this.video.title === "string" ? this.video.title : "",
-        isPrivate: this.video.isPrivate === true ? "true" : "false",
-      };
-
-      addActionButton(
-        "Mirror (kind 1063)",
-        "mirror-video",
-        mirrorDataset,
-        ["text-gray-100", "hover:bg-gray-700"],
-      );
-    }
-
-    const ensureDataset = {
-      ...baseBoostDataset,
-      pubkey: this.video.pubkey || "",
-    };
-
-    addActionButton(
-      "Rebroadcast",
-      "ensure-presence",
-      ensureDataset,
-      ["text-gray-100", "hover:bg-gray-700"],
-    );
-
-    list.appendChild(
-      this.createElement("div", {
-        classNames: ["my-1", "border-t", "border-gray-700", "opacity-70"],
-      })
-    );
-
-    if (this.pointerInfo && this.pointerInfo.key && this.pointerInfo.pointer) {
-      const [historyPointerType, historyPointerValue, historyPointerRelay] =
-        this.pointerInfo.pointer;
-      if (historyPointerType && historyPointerValue) {
-        const removeButton = addActionButton(
-          "Remove from history",
-          "remove-history",
-          {
-            pointerKey: this.pointerInfo.key,
-            pointerType: historyPointerType,
-            pointerValue: historyPointerValue,
-            pointerRelay: historyPointerRelay || "",
-            reason: "remove-item",
-          },
-          ["text-gray-100", "hover:bg-gray-700"]
-        );
-        removeButton.setAttribute(
-          "title",
-          "Remove this entry from your encrypted history. Relay sync may take a moment."
-        );
-        removeButton.setAttribute(
-          "aria-label",
-          "Remove from history (updates encrypted history and may take a moment to sync to relays)"
-        );
-      }
-    }
-
-    if (this.capabilities.canManageBlacklist) {
-      addActionButton(
-        "Blacklist creator",
-        "blacklist-author",
-        { author: this.video.pubkey || "" },
-        ["text-red-400", "hover:bg-red-700", "hover:text-white"]
-      );
-    }
-
-    addActionButton(
-      "Block creator",
-      "block-author",
-      { author: this.video.pubkey || "" },
-      ["text-red-400", "hover:bg-red-700", "hover:text-white"]
-    );
-
-    addActionButton(
-      "Report",
-      "report",
-      { eventId: this.video.id || "" },
-      ["text-gray-100", "hover:bg-gray-700"]
-    );
-
-    dropdown.appendChild(list);
-    wrapper.appendChild(button);
-    wrapper.appendChild(dropdown);
-
     this.moreMenuButton = button;
-    this.moreMenu = dropdown;
 
-    return wrapper;
+    return button;
   }
 
   buildBadgesContainer() {
     const pieces = [];
 
     if (this.playbackUrl) {
-      const badge = this.createElement("div", {
-        classNames: [
-          "url-health-badge",
-          "text-xs",
-          "font-semibold",
-          "px-2",
-          "py-1",
-          "rounded",
-          "transition-colors",
-          "duration-200",
-        ],
+      const badge = this.createElement("span", {
+        classNames: ["badge", "url-health-badge"]
       });
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
@@ -925,21 +847,15 @@ export class VideoCard {
     }
 
     if (this.magnetSupported && this.magnetProvided) {
-      const badge = this.createElement("div", {
-        classNames: [
-          "torrent-health-badge",
-          "text-xs",
-          "font-semibold",
-          "px-2",
-          "py-1",
-          "rounded",
-          "transition-colors",
-          "duration-200",
-        ],
+      const badge = this.createElement("span", {
+        classNames: ["badge", "torrent-health-badge"]
       });
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
-      this.applyStreamBadgeVisualState(badge, this.getCachedStreamHealthEntry());
+      this.applyStreamBadgeVisualState(
+        badge,
+        this.getCachedStreamHealthEntry()
+      );
       this.torrentHealthBadgeEl = badge;
       pieces.push(badge);
     }
@@ -949,7 +865,7 @@ export class VideoCard {
     }
 
     const container = this.createElement("div", {
-      classNames: ["mt-3", "flex", "flex-wrap", "items-center", "gap-2"],
+      classNames: ["flex", "flex-wrap", "items-center", "gap-sm"]
     });
     pieces.forEach((el) => container.appendChild(el));
     return container;
@@ -1070,41 +986,35 @@ export class VideoCard {
     }
 
     const status =
-      typeof entry?.status === "string" && entry.status ? entry.status : "checking";
+      typeof entry?.status === "string" && entry.status
+        ? entry.status
+        : "checking";
+    const fallbackMessages = {
+      healthy: "✅ CDN",
+      offline: "❌ CDN",
+      unknown: "⚠️ CDN",
+      timeout: "⚠️ CDN timed out",
+      checking: "⏳ CDN"
+    };
     const message =
       typeof entry?.message === "string" && entry.message
         ? entry.message
-        : "Checking hosted URL…";
+        : fallbackMessages[status] || fallbackMessages.checking;
 
-    const hadMargin = badge.classList.contains("mt-3");
-    const baseClasses = [
-      "url-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "transition-colors",
-      "duration-200",
-    ];
-    if (hadMargin) {
-      baseClasses.unshift("mt-3");
-    }
-    badge.className = baseClasses.join(" ");
+    badge.className = ["badge", "url-health-badge"].join(" ");
 
-    const common = ["inline-flex", "items-center", "gap-1"];
-    const addClasses = (classes) => {
-      classes.forEach((cls) => badge.classList.add(cls));
+    const variantMap = {
+      healthy: "success",
+      offline: "critical",
+      unknown: "neutral",
+      timeout: "neutral",
+      checking: "neutral"
     };
-
-    if (status === "healthy") {
-      addClasses([...common, "bg-green-900", "text-green-200"]);
-    } else if (status === "offline") {
-      addClasses([...common, "bg-red-900", "text-red-200"]);
-    } else if (status === "unknown" || status === "timeout") {
-      addClasses([...common, "bg-amber-900", "text-amber-200"]);
-    } else {
-      addClasses([...common, "bg-gray-800", "text-gray-300"]);
+    const variant = variantMap[status];
+    if (variant) {
+      badge.dataset.variant = variant;
+    } else if (badge.dataset.variant) {
+      delete badge.dataset.variant;
     }
 
     badge.dataset.urlHealthState = status;
@@ -1119,72 +1029,66 @@ export class VideoCard {
     }
 
     const state =
-      typeof entry?.state === "string" && entry.state ? entry.state : "checking";
+      typeof entry?.state === "string" && entry.state
+        ? entry.state
+        : "checking";
     const peersValue = Number.isFinite(entry?.peers)
       ? Math.max(0, Number(entry.peers))
       : null;
-    const reason = typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
-    const text = typeof entry?.text === "string" && entry.text ? entry.text : null;
+    const reason =
+      typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
+    const text =
+      typeof entry?.text === "string" && entry.text ? entry.text : null;
     const tooltip =
-      typeof entry?.tooltip === "string" && entry.tooltip ? entry.tooltip : null;
-    const role = entry?.role === "alert" || entry?.role === "status" ? entry.role : null;
+      typeof entry?.tooltip === "string" && entry.tooltip
+        ? entry.tooltip
+        : null;
+    const role =
+      entry?.role === "alert" || entry?.role === "status" ? entry.role : null;
     const ariaLive =
       entry?.ariaLive === "assertive" || entry?.ariaLive === "polite"
         ? entry.ariaLive
         : role === "alert"
-        ? "assertive"
-        : "polite";
+          ? "assertive"
+          : "polite";
 
-    const hadMargin = badge.classList.contains("mt-3");
-    const baseClasses = [
-      "torrent-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "transition-colors",
-      "duration-200",
-    ];
-    if (hadMargin) {
-      baseClasses.unshift("mt-3");
-    }
-    badge.className = baseClasses.join(" ");
-
-    const common = ["inline-flex", "items-center", "gap-1"];
-    const addClasses = (classes) => {
-      classes.forEach((cls) => badge.classList.add(cls));
-    };
-
-    if (state === "healthy") {
-      addClasses([...common, "bg-green-900", "text-green-200"]);
-    } else if (state === "unhealthy") {
-      addClasses([...common, "bg-red-900", "text-red-200"]);
-    } else {
-      addClasses([...common, "bg-gray-800", "text-gray-300"]);
-    }
+    badge.className = ["badge", "torrent-health-badge"].join(" ");
 
     const map = {
       healthy: {
         icon: "🟢",
         aria: "WebTorrent peers available",
+        variant: "success",
+        role: "status"
       },
       unhealthy: {
         icon: "🔴",
         aria: "WebTorrent peers unavailable",
+        variant: "critical",
+        role: "alert"
       },
       checking: {
         icon: "⏳",
         aria: "Checking WebTorrent peers",
+        variant: "neutral",
+        role: "status"
       },
       unknown: {
         icon: "⚪",
         aria: "WebTorrent status unknown",
-      },
+        variant: "neutral",
+        role: "status"
+      }
     };
 
     const descriptor = map[state] || map.unknown;
-    const peersText = state === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
+    if (descriptor.variant) {
+      badge.dataset.variant = descriptor.variant;
+    } else if (badge.dataset.variant) {
+      delete badge.dataset.variant;
+    }
+    const peersText =
+      state === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
     const iconPrefix = descriptor.icon ? `${descriptor.icon} ` : "";
     const computedText = `${iconPrefix}WebTorrent${peersText}`;
     badge.textContent = text || computedText;
@@ -1195,14 +1099,19 @@ export class VideoCard {
         ? descriptor.aria
         : this.buildTorrentTooltip({
             peers: peersValue,
-            checkedAt: Number.isFinite(entry?.checkedAt) ? entry.checkedAt : null,
-            reason,
+            checkedAt: Number.isFinite(entry?.checkedAt)
+              ? entry.checkedAt
+              : null,
+            reason
           }));
 
     badge.setAttribute("aria-label", tooltipValue);
     badge.setAttribute("title", tooltipValue);
     badge.setAttribute("aria-live", ariaLive);
-    badge.setAttribute("role", role || (state === "unhealthy" ? "alert" : "status"));
+    badge.setAttribute(
+      "role",
+      role || (state === "unhealthy" ? "alert" : "status")
+    );
 
     badge.dataset.streamHealthState = state;
     if (reason) {
@@ -1250,19 +1159,19 @@ export class VideoCard {
       : safeCount.toLocaleString();
 
     const container = this.createElement("div", {
-      classNames: ["flex", "items-center", "text-xs", "text-gray-500", "mt-3"],
+      classNames: ["flex", "items-center", "text-xs", "text-muted-strong"]
     });
     container.dataset.discussionCount = this.video.id;
     container.dataset.countState = "ready";
 
     const valueEl = this.createElement("span", {
-      textContent: displayValue,
+      textContent: displayValue
     });
     valueEl.dataset.discussionCountValue = "";
 
     const labelEl = this.createElement("span", {
       classNames: ["ml-1"],
-      textContent: "notes",
+      textContent: "notes"
     });
 
     container.appendChild(valueEl);
@@ -1282,18 +1191,27 @@ export class VideoCard {
       if (this.root.dataset.nsfwVisibility) {
         delete this.root.dataset.nsfwVisibility;
       }
+      if (this.root.dataset.alert) {
+        delete this.root.dataset.alert;
+      }
+      this.syncCardState();
       return;
     }
 
     if (this.shouldMaskNsfwForOwner) {
       this.root.dataset.nsfwVisibility = "owner-only";
-      this.root.classList.add("video-card--nsfw-owner");
+      this.root.dataset.alert = "nsfw-owner";
+      this.root.dataset.state = "critical";
       return;
     }
 
     this.root.dataset.nsfwVisibility = this.nsfwContext.allowNsfw
       ? "allowed"
       : "hidden";
+    if (this.root.dataset.alert) {
+      delete this.root.dataset.alert;
+    }
+    this.syncCardState();
   }
 
   applyPointerDataset() {
@@ -1324,7 +1242,9 @@ export class VideoCard {
     if (!this.root) {
       return;
     }
-    this.root.dataset.ownerIsViewer = this.capabilities.canEdit ? "true" : "false";
+    this.root.dataset.ownerIsViewer = this.capabilities.canEdit
+      ? "true"
+      : "false";
     if (this.video.pubkey) {
       this.root.dataset.ownerPubkey = this.video.pubkey;
     }
@@ -1355,7 +1275,8 @@ export class VideoCard {
     const cachedStreamHealth = this.getCachedStreamHealthEntry();
     if (this.magnetProvided && this.magnetSupported) {
       const state =
-        typeof cachedStreamHealth?.state === "string" && cachedStreamHealth.state
+        typeof cachedStreamHealth?.state === "string" &&
+        cachedStreamHealth.state
           ? cachedStreamHealth.state
           : "checking";
       this.root.dataset.streamHealthState = state;
@@ -1392,6 +1313,8 @@ export class VideoCard {
     } else if (this.magnetProvided && this.magnetSupported) {
       this.root.dataset.torrentSupported = "true";
     }
+
+    updateVideoCardSourceVisibility(this.root);
   }
 
   applyPlaybackDatasets() {
@@ -1429,8 +1352,8 @@ export class VideoCard {
         const formatted = this.formatters.formatTimeAgo(normalized);
         return typeof formatted === "string" ? formatted : "";
       } catch (error) {
-        if (this.window?.console?.warn) {
-          this.window.console.warn(
+        if (this.window?.userLogger?.warn) {
+          this.window.userLogger.warn(
             "[VideoCard] formatTimeAgo formatter threw",
             error
           );
@@ -1476,7 +1399,8 @@ export class VideoCard {
         }
 
         const isMouseEvent =
-          typeof MouseEventCtor !== "undefined" && event instanceof MouseEventCtor;
+          typeof MouseEventCtor !== "undefined" &&
+          event instanceof MouseEventCtor;
         if (isMouseEvent) {
           const isPrimaryClick =
             typeof event.button !== "number" || event.button === 0;
@@ -1498,99 +1422,107 @@ export class VideoCard {
       });
     });
 
-    if (this.settingsButton && this.settingsDropdown) {
+    if (this.settingsButton) {
       this.settingsButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const willOpen = this.settingsDropdown.classList.contains("hidden");
+
+        const trigger = this.settingsButton;
+        const isExpanded =
+          typeof trigger?.getAttribute === "function" &&
+          trigger.getAttribute("aria-expanded") === "true";
+
         if (this.onRequestCloseAllMenus) {
-          this.onRequestCloseAllMenus(this);
-        } else {
-          this.closeSettingsMenu();
+          const options = { restoreFocus: false };
+          if (isExpanded) {
+            options.skipCard = this;
+            options.skipTrigger = trigger;
+          }
+          this.onRequestCloseAllMenus(options);
+        } else if (!isExpanded) {
+          this.closeMoreMenu({ restoreFocus: false });
+          this.closeSettingsMenu({ restoreFocus: false });
         }
-        if (willOpen) {
-          this.settingsDropdown.classList.remove("hidden");
-        }
-      });
-    }
 
-    if (this.editButton) {
-      this.editButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.closeSettingsMenu();
-        if (this.callbacks.onEdit) {
-          this.callbacks.onEdit({
+        if (isExpanded) {
+          this.closeMoreMenu({ restoreFocus: false });
+          this.closeSettingsMenu({ restoreFocus: false });
+          return;
+        }
+
+        this.closeMoreMenu({ restoreFocus: false });
+
+        if (this.callbacks.onRequestSettingsMenu) {
+          const detail = {
             event,
+            trigger,
             video: this.video,
-            index: this.index,
             card: this,
-          });
+            index: this.index,
+            capabilities: { ...this.capabilities },
+            designSystem: this.designSystem,
+          };
+          this.callbacks.onRequestSettingsMenu(detail);
         }
       });
     }
 
-    if (this.revertButton) {
-      this.revertButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.closeSettingsMenu();
-        if (this.callbacks.onRevert) {
-          this.callbacks.onRevert({
-            event,
-            video: this.video,
-            index: this.index,
-            card: this,
-          });
-        }
-      });
-    }
-
-    if (this.deleteButton) {
-      this.deleteButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.closeSettingsMenu();
-        if (this.callbacks.onDelete) {
-          this.callbacks.onDelete({
-            event,
-            video: this.video,
-            index: this.index,
-            card: this,
-          });
-        }
-      });
-    }
-
-    if (this.moreMenuButton && this.moreMenu) {
+    if (this.moreMenuButton) {
       this.moreMenuButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const willOpen = this.moreMenu.classList.contains("hidden");
-        if (this.onRequestCloseAllMenus) {
-          this.onRequestCloseAllMenus(this);
-        }
-        if (willOpen) {
-          this.moreMenu.classList.remove("hidden");
-          this.moreMenuButton.setAttribute("aria-expanded", "true");
-        }
-      });
 
-      const actionButtons = this.moreMenu.querySelectorAll(
-        "button[data-action]"
-      );
-      actionButtons.forEach((button) => {
-        button.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (this.callbacks.onMoreAction) {
-            const dataset = { ...button.dataset };
-            this.callbacks.onMoreAction({
-              event,
-              video: this.video,
-              card: this,
-              dataset,
-            });
+        const trigger = this.moreMenuButton;
+        const isExpanded =
+          typeof trigger?.getAttribute === "function" &&
+          trigger.getAttribute("aria-expanded") === "true";
+
+        if (this.onRequestCloseAllMenus) {
+          const options = { restoreFocus: false };
+          if (isExpanded) {
+            options.skipCard = this;
+            options.skipTrigger = trigger;
           }
-          this.closeMoreMenu();
-        });
+          this.onRequestCloseAllMenus(options);
+        }
+
+        if (isExpanded) {
+          this.closeSettingsMenu({ restoreFocus: false });
+          this.closeMoreMenu({ restoreFocus: false });
+          return;
+        }
+
+        this.closeSettingsMenu({ restoreFocus: false });
+
+        if (this.callbacks.onRequestMoreMenu) {
+          const actionForwarder = this.callbacks.onMoreAction
+            ? ({ action, dataset, event: actionEvent }) => {
+                const payload = {
+                  ...dataset,
+                  action: action || dataset?.action || "",
+                };
+                this.callbacks.onMoreAction({
+                  event: actionEvent,
+                  video: this.video,
+                  card: this,
+                  dataset: payload,
+                });
+              }
+            : null;
+
+          this.callbacks.onRequestMoreMenu({
+            event,
+            trigger,
+            video: this.video,
+            card: this,
+            pointerInfo: this.pointerInfo,
+            playbackUrl: this.playbackUrl,
+            playbackMagnet: this.playbackMagnet,
+            capabilities: { ...this.capabilities },
+            designSystem: this.designSystem,
+            onAction: actionForwarder,
+          });
+        }
       });
     }
 
@@ -1604,22 +1536,76 @@ export class VideoCard {
             event,
             video: this.video,
             card: this,
-            pubkey: this.video.pubkey || "",
+            pubkey: this.video.pubkey || ""
           });
         }
       });
     });
   }
 
-  applyClassListFromString(el, classString) {
-    if (!el || !classString) {
+  syncCardState() {
+    if (!this.root) {
       return;
     }
-    classString
-      .split(/\s+/)
-      .map((cls) => cls.trim())
-      .filter(Boolean)
-      .forEach((cls) => el.classList.add(cls));
+    if (this.cardState) {
+      this.root.dataset.state = this.cardState;
+      return;
+    }
+    if (this.root.dataset.state && !this.shouldMaskNsfwForOwner) {
+      delete this.root.dataset.state;
+    }
+  }
+
+  syncMotionState() {
+    if (!this.root) {
+      return;
+    }
+    if (this.motionState) {
+      this.root.dataset.motion = this.motionState;
+      return;
+    }
+    if (this.root.dataset.motion) {
+      delete this.root.dataset.motion;
+    }
+  }
+
+  handleSettingsMenuAction(action, { event = null } = {}) {
+    const normalized = typeof action === "string" ? action.trim() : "";
+    if (!normalized) {
+      return false;
+    }
+
+    if (normalized === "edit" && this.callbacks.onEdit) {
+      this.callbacks.onEdit({
+        event,
+        video: this.video,
+        index: this.index,
+        card: this,
+      });
+      return true;
+    }
+
+    if (normalized === "revert" && this.callbacks.onRevert) {
+      this.callbacks.onRevert({
+        event,
+        video: this.video,
+        index: this.index,
+        card: this,
+      });
+      return true;
+    }
+
+    if (normalized === "delete" && this.callbacks.onDelete) {
+      this.callbacks.onDelete({
+        event,
+        video: this.video,
+        index: this.index,
+        card: this,
+      });
+      return true;
+    }
+
+    return false;
   }
 
   createElement(tagName, { classNames = [], attrs = {}, textContent } = {}) {

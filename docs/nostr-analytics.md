@@ -1,6 +1,6 @@
 # Nostr Analytics Knobs
 
-BitVid's view counter emits Nostr events so operators can track engagement without duplicating storage. Tune the following exports in `config/instance-config.js` to match your retention and performance goals:
+bitvid's view counter emits Nostr events so operators can track engagement without duplicating storage. Tune the following exports in `config/instance-config.js` to match your retention and performance goals:
 
 - `VIEW_COUNT_DEDUPE_WINDOW_SECONDS` (default: `86_400`): repeat plays from the same viewer inside this window are treated as duplicates so stalled reloads do not inflate totals. Shorten the window to count more aggressive replays, or extend it if you want conservative numbers.
 - `VIEW_COUNT_BACKFILL_MAX_DAYS` (default: `90`): controls how far back hydrators should walk history when a new analytics worker boots. Longer windows deliver deeper trend lines at the cost of heavier relay scans.
@@ -16,7 +16,7 @@ Playback telemetry runs even when a viewer has not connected a Nostr account. Th
 
 ### Publish latency expectations
 
-When a player crosses the 12-second watch threshold, BitVid invokes [`publishViewEvent`](../js/nostr.js#L2159-L2323) through the view-only [`recordVideoView`](../js/nostr.js#L4516-L4555) contract. The helper considers the publish successful as soon as any configured relay acknowledges the event, which in practice keeps latency under a second on public relays. The UI optimistically increments totals by feeding the signed event into [`ingestLocalViewEvent`](../js/viewCounter.js#L608-L640), so cards and modals reflect the new view immediately even while other relays finish syncing.
+When a player crosses the 12-second watch threshold, bitvid invokes [`publishViewEvent`](../js/nostr.js#L2159-L2323) through the view-only [`recordVideoView`](../js/nostr.js#L4516-L4555) contract. The helper considers the publish successful as soon as any configured relay acknowledges the event, which in practice keeps latency under a second on public relays. The UI optimistically increments totals by feeding the signed event into [`ingestLocalViewEvent`](../js/viewCounter.js#L608-L640), so cards and modals reflect the new view immediately even while other relays finish syncing.
 
 The watch history pipeline has been retired; `recordVideoView` now focuses solely on analytics publishing.
 

@@ -1,4 +1,5 @@
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "../../magnet.js";
+import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
 
 export class EditModal {
@@ -43,6 +44,7 @@ export class EditModal {
 
     this.root = null;
     this.overlay = null;
+    this.panel = null;
     this.form = null;
     this.closeButton = null;
     this.cancelButton = null;
@@ -53,6 +55,7 @@ export class EditModal {
       container: null,
       buttons: [],
     };
+    this.modalAccessibility = null;
 
     this.activeVideo = null;
     this.isVisible = false;
@@ -123,6 +126,7 @@ export class EditModal {
       this.root = modal;
 
       this.cacheElements(modal);
+      this.setupModalAccessibility();
       if (!this.eventsBound) {
         this.bindEvents();
         this.eventsBound = true;
@@ -140,7 +144,11 @@ export class EditModal {
   }
 
   cacheElements(context) {
-    this.overlay = context.querySelector("#editVideoModalOverlay") || null;
+    this.overlay =
+      context.querySelector("#editVideoModalOverlay") ||
+      context.querySelector(".bv-modal-backdrop") ||
+      null;
+    this.panel = context.querySelector(".bv-modal__panel") || null;
     this.form = context.querySelector("#editVideoForm") || null;
     this.closeButton = context.querySelector("#closeEditVideoModal") || null;
     this.cancelButton = context.querySelector("#cancelEditVideo") || null;
@@ -179,6 +187,23 @@ export class EditModal {
 
     const nip71Context = this.form || context;
     this.nip71FormManager.registerSection(this.nip71SectionKey, nip71Context);
+  }
+
+  setupModalAccessibility() {
+    if (!this.root) {
+      return;
+    }
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+
+    this.modalAccessibility = createModalAccessibility({
+      root: this.root,
+      panel: this.panel || this.root,
+      backdrop: this.overlay || this.root,
+      onRequestClose: () => this.close({ emitCancel: true }),
+    });
   }
 
   bindEvents() {
@@ -314,12 +339,13 @@ export class EditModal {
         input.disabled = false;
         input.removeAttribute("disabled");
         delete input.dataset.isEditing;
+        delete input.dataset.state;
       } else {
         input.value = "";
         input.readOnly = false;
         input.removeAttribute("readonly");
-        input.classList.remove("locked-input");
         delete input.dataset.isEditing;
+        delete input.dataset.state;
       }
       delete input.dataset.originalValue;
     });
@@ -341,7 +367,7 @@ export class EditModal {
     this.setSubmitState({ pending: false });
   }
 
-  async open(video) {
+  async open(video, { triggerElement } = {}) {
     await this.load();
 
     if (!video) {
@@ -387,9 +413,23 @@ export class EditModal {
     this.activeVideo = editContext;
 
     if (this.root) {
-      this.root.classList.remove("hidden");
+      const wasHidden = this.root.classList.contains("hidden");
+      if (wasHidden) {
+        this.root.classList.remove("hidden");
+        this.root.setAttribute("aria-hidden", "false");
+        this.setGlobalModalState("editVideo", true);
+        const focusTarget =
+          this.form?.querySelector("[data-initial-focus]") ||
+          this.panel ||
+          this.root;
+        window.requestAnimationFrame(() => {
+          if (typeof focusTarget?.focus === "function") {
+            focusTarget.focus();
+          }
+        });
+      }
       this.isVisible = true;
-      this.setGlobalModalState("editVideo", true);
+      this.modalAccessibility?.activate({ triggerElement });
     }
 
     return true;
@@ -477,11 +517,11 @@ export class EditModal {
       if (hasValue) {
         input.readOnly = true;
         input.setAttribute("readonly", "readonly");
-        input.classList.add("locked-input");
+        input.dataset.state = "locked";
       } else {
         input.readOnly = false;
         input.removeAttribute("readonly");
-        input.classList.remove("locked-input");
+        delete input.dataset.state;
       }
 
       if (button) {
@@ -532,8 +572,10 @@ export class EditModal {
   close({ emitCancel = false } = {}) {
     if (this.root) {
       this.root.classList.add("hidden");
+      this.root.setAttribute("aria-hidden", "true");
     }
     this.isVisible = false;
+    this.modalAccessibility?.deactivate();
     this.setGlobalModalState("editVideo", false);
     const cancelledVideo = this.activeVideo;
     this.reset();
@@ -572,11 +614,12 @@ export class EditModal {
         input.disabled = false;
         input.removeAttribute("disabled");
         input.dataset.isEditing = "true";
+        delete input.dataset.state;
       } else {
         input.disabled = false;
         input.readOnly = false;
         input.removeAttribute("readonly");
-        input.classList.remove("locked-input");
+        delete input.dataset.state;
         input.dataset.isEditing = "true";
       }
       button.dataset.mode = "editing";
@@ -618,14 +661,14 @@ export class EditModal {
     if (originalValue) {
       input.readOnly = true;
       input.setAttribute("readonly", "readonly");
-      input.classList.add("locked-input");
+      input.dataset.state = "locked";
       input.dataset.isEditing = "false";
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
     } else {
       input.readOnly = false;
       input.removeAttribute("readonly");
-      input.classList.remove("locked-input");
+      delete input.dataset.state;
       input.dataset.isEditing = "true";
       button.classList.add("hidden");
       button.dataset.mode = "locked";
@@ -971,5 +1014,12 @@ export class EditModal {
       this.submitButton.disabled = false;
       this.submitButton.removeAttribute("disabled");
     }
+  }
+
+  destroy() {
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+    this.modalAccessibility = null;
   }
 }

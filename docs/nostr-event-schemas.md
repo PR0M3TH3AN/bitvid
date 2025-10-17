@@ -1,6 +1,6 @@
 # Nostr event schemas
 
-BitVid now centralizes every note that it publishes to Nostr in
+bitvid now centralizes every note that it publishes to Nostr in
 [`js/nostrEventSchemas.js`](../js/nostrEventSchemas.js). The module defines the
 kind, required tags, and content format for each note type so troubleshooting
 no longer requires hunting through the codebase. It also exposes helpers for
@@ -36,7 +36,7 @@ const event = buildVideoPostEvent({
 ```
 
 In the browser you can call the same helpers from DevTools via
-`window.BitVidNostrEvents` and `window.BitVidNostrEventOverrides`.
+`window.bitvidNostrEvents` and `window.bitvidNostrEventOverrides`.
 
 When managing relay metadata, use `buildRelayListEvent` so the resulting
 replaceable event follows NIP-65 (`kind:10002`) with `"r"` tags describing the
@@ -56,7 +56,7 @@ const { video, rawEvent } = await nostrClient.getEventById(eventId, {
   includeRaw: true,
 });
 
-// `video` is the normalized BitVid object and `rawEvent` is the original
+// `video` is the normalized bitvid object and `rawEvent` is the original
 // Nostr event with `sig`, `id`, and relay metadata intact.
 ```
 
@@ -95,7 +95,7 @@ builders inherit the same debugging knobs.
 
 ### NIP-71 rollout
 
-BitVid now emits a paired NIP-71 event (kind `21` for long-form, `22` for short
+bitvid now emits a paired NIP-71 event (kind `21` for long-form, `22` for short
 form) whenever the `FEATURE_PUBLISH_NIP71` flag is enabled. The builder converts
 structured upload metadata—image variants, captions, segments, hashtags, and
 participant pointers—into canonical tags so other clients can discover the same

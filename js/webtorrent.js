@@ -3,6 +3,7 @@
 import WebTorrent from "./webtorrent.min.js";
 import { WSS_TRACKERS } from "./constants.js";
 import { safeDecodeURIComponent } from "./utils/safeDecode.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 
 const DEFAULT_PROBE_TRACKERS = Object.freeze([...WSS_TRACKERS]);
 
@@ -124,7 +125,9 @@ function toError(err) {
 }
 
 export class TorrentClient {
-  constructor() {
+  constructor({ webTorrentClass } = {}) {
+    this.WebTorrentClass =
+      typeof webTorrentClass === "function" ? webTorrentClass : WebTorrent;
     // Reusable objects and flags
     this.client = null;
     this.currentTorrent = null;
@@ -134,13 +137,16 @@ export class TorrentClient {
     this.swRegistration = null;
     this.serverCreated = false; // Indicates if we've called createServer on this.client
 
+    this.serviceWorkerDisabled = false;
+    this.serviceWorkerError = null;
+
     // Timeout for SW operations
     this.TIMEOUT_DURATION = 60000;
   }
 
   ensureClientForProbe() {
     if (!this.probeClient) {
-      this.probeClient = new WebTorrent();
+      this.probeClient = new this.WebTorrentClass();
     }
     return this.probeClient;
   }
@@ -287,8 +293,16 @@ export class TorrentClient {
     });
   }
 
-  log(msg) {
-    console.log(msg);
+  log(...args) {
+    devLogger.log(...args);
+  }
+
+  isServiceWorkerUnavailable() {
+    return this.serviceWorkerDisabled;
+  }
+
+  getServiceWorkerInitError() {
+    return this.serviceWorkerError || null;
   }
 
   async isBrave() {
@@ -306,21 +320,52 @@ export class TorrentClient {
    * Called once from streamVideo.
    */
   async init() {
-    // 1) If the client doesn't exist, create it
     if (!this.client) {
-      this.client = new WebTorrent();
+      this.client = new this.WebTorrentClass();
     }
 
-    // 2) If we haven’t registered the service worker yet, do it now
-    if (!this.swRegistration) {
-      this.swRegistration = await this.setupServiceWorker();
-    } else {
-      // Even with an existing registration we still wait for control so that a
-      // transient controller drop (e.g. Chrome devtools unregister/reload) does
-      // not resurrect the grey-screen regression mentioned in
-      // waitForActiveController().
-      this.requestClientsClaim(this.swRegistration);
-      await this.waitForActiveController(this.swRegistration);
+    if (this.serviceWorkerDisabled) {
+      return {
+        serviceWorkerReady: false,
+        registration: null,
+        error: this.serviceWorkerError,
+      };
+    }
+
+    try {
+      if (!this.swRegistration) {
+        this.swRegistration = await this.setupServiceWorker();
+      } else {
+        // Even with an existing registration we still wait for control so that a
+        // transient controller drop (e.g. Chrome devtools unregister/reload) does
+        // not resurrect the grey-screen regression mentioned in
+        // waitForActiveController().
+        this.requestClientsClaim(this.swRegistration);
+        await this.waitForActiveController(this.swRegistration);
+      }
+
+      return {
+        serviceWorkerReady: !!this.swRegistration,
+        registration: this.swRegistration,
+      };
+    } catch (error) {
+      const normalizedError = toError(error);
+      this.log(
+        "[WebTorrent] Service worker setup failed; continuing without it:",
+        normalizedError
+      );
+      userLogger.warn(
+        "[WebTorrent] Service worker unavailable; falling back to direct streaming.",
+        normalizedError
+      );
+      this.serviceWorkerDisabled = true;
+      this.serviceWorkerError = normalizedError;
+      this.swRegistration = null;
+      return {
+        serviceWorkerReady: false,
+        registration: null,
+        error: normalizedError,
+      };
     }
   }
 
@@ -608,20 +653,20 @@ export class TorrentClient {
           err.message.includes("CORS") ||
           err.message.includes("Access-Control-Allow-Origin")
         ) {
-          console.warn(
+          userLogger.warn(
             "CORS warning detected. Attempting to remove the failing webseed/tracker."
           );
           if (torrent._opts?.urlList?.length) {
             torrent._opts.urlList = torrent._opts.urlList.filter((url) => {
               return !url.includes("distribution.bbb3d.renderfarming.net");
             });
-            console.warn("Cleaned up webseeds =>", torrent._opts.urlList);
+            userLogger.warn("Cleaned up webseeds =>", torrent._opts.urlList);
           }
           if (torrent._opts?.announce?.length) {
             torrent._opts.announce = torrent._opts.announce.filter((url) => {
               return !url.includes("fastcast.nz");
             });
-            console.warn("Cleaned up trackers =>", torrent._opts.announce);
+            userLogger.warn("Cleaned up trackers =>", torrent._opts.announce);
           }
         }
       }
@@ -776,10 +821,12 @@ export class TorrentClient {
   async streamVideo(magnetURI, videoElement, opts = {}) {
     try {
       // 1) Make sure we have a WebTorrent client and a valid SW registration.
-      await this.init();
+      const initResult = await this.init();
+      const serviceWorkerReady =
+        !!(initResult?.serviceWorkerReady && this.swRegistration);
 
       // 2) Create the server once if not already created.
-      if (!this.serverCreated) {
+      if (serviceWorkerReady && !this.serverCreated) {
         this.client.createServer({
           controller: this.swRegistration,
           pathPrefix: location.origin + "/webtorrent",
