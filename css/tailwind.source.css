@@ -268,11 +268,67 @@
   }
 
   .markdown-prose {
-    @apply prose max-w-none leading-relaxed text-text-strong;
+    @apply prose max-w-none leading-relaxed text-text;
+    --tw-prose-body: var(--color-text);
+    --tw-prose-headings: var(--color-text-strong);
+    --tw-prose-invert-headings: var(--color-text-strong);
+    --tw-prose-lead: var(--color-text);
+    --tw-prose-links: var(--color-accent-strong);
+    --tw-prose-bold: var(--color-text-strong);
+    --tw-prose-counters: var(--color-text-muted);
+    --tw-prose-bullets: var(--color-text-muted);
+    --tw-prose-hr: var(--color-border-translucent-strong);
+    --tw-prose-quotes: var(--color-text-strong);
+    --tw-prose-quote-borders: var(--color-border-subtle);
+    --tw-prose-captions: var(--color-text-muted);
+    --tw-prose-code: var(--color-text-strong);
+    --tw-prose-pre-code: var(--color-text);
+    --tw-prose-pre-bg: var(--surface-muted);
+    --tw-prose-th-borders: var(--color-border);
+    --tw-prose-td-borders: var(--color-border-subtle);
+  }
+
+  .markdown-prose :where(h1, h2, h3, h4, h5, h6) {
+    color: var(--color-text-strong);
+  }
+
+  .markdown-prose :where(h1, h2, h3, h4, h5, h6) strong {
+    color: inherit;
+  }
+
+  .markdown-prose a {
+    color: var(--color-accent-strong);
+    text-decoration-color: color-mix(in srgb, var(--color-accent-strong) 65%, transparent);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.2em;
+  }
+
+  .markdown-prose a:hover,
+  .markdown-prose a:focus-visible {
+    color: var(--color-accent);
+    text-decoration-line: underline;
+  }
+
+  .markdown-prose blockquote {
+    @apply border-l-4 border-border-subtle bg-surface-muted bg-opacity-50 text-muted px-4 py-2 rounded-md;
   }
 
   .markdown-prose :where(pre, code) {
     @apply font-mono;
+  }
+
+  .markdown-prose code {
+    @apply bg-surface-muted text-accent-strong px-1 py-0.5 rounded-md;
+  }
+
+  .markdown-prose pre {
+    @apply bg-surface-muted text-text border border-border-subtle rounded-lg p-4 overflow-x-auto;
+  }
+
+  .markdown-prose pre code {
+    background-color: transparent;
+    color: inherit;
+    padding: 0;
   }
 
   .popover {
@@ -446,9 +502,10 @@
       var(--motion-ease-out, ease-out);
   }
 
-  .blog-embed-shell {
-    height: var(--blog-embed-height);
-  }
+  /*
+   * Blog embed heights are now driven by the iframe content via postMessage.
+   * Styling lives inline so the shell can expand naturally with its card.
+   */
 
   /*
    * Blog carousel component styles
@@ -1089,11 +1146,16 @@
   }
 
   .modal-close {
-    @apply focus-ring flex h-10 w-10 items-center justify-center rounded-full bg-overlay-black bg-opacity-40 text-muted transition duration-base ease-out;
+    @apply focus-ring flex h-10 w-10 items-center justify-center rounded-full transition duration-base ease-out;
+    border: var(--border-width-hairline) solid var(--color-border-translucent-medium);
+    background: var(--color-surface-tint-subtle);
+    color: var(--color-text-frosted-strong);
   }
 
   .modal-close:hover {
-    @apply bg-overlay-black bg-opacity-60 text-text;
+    background: var(--color-border-translucent);
+    border-color: var(--color-border-translucent-stronger);
+    color: var(--color-text);
   }
 
   .modal-body {
@@ -1253,9 +1315,9 @@
 
   #playerModal .watch-container {
     width: 100%;
-    max-width: var(--layout-player-max-width);
-    margin-inline: auto;
-    padding-inline: clamp(var(--space-md), 3vw, var(--space-xl));
+    max-width: none;
+    margin-inline: 0;
+    padding-inline: 0;
   }
 
   #playerModal .modal-info-panel {
@@ -1307,7 +1369,7 @@
     }
 
     #playerModal .watch-container {
-      padding-inline: var(--space-sm);
+      padding-inline: 0;
     }
 
     #playerModal .channel-card {
@@ -2714,7 +2776,7 @@
   .sidebar-dropup-panel {
     position: absolute;
     left: 0;
-    right: 0;
+    right: calc(var(--space-sidebar-dropup-scroll-reserve) * -1);
     bottom: calc(100% + var(--space-sidebar-popover-offset));
     border-radius: var(--radius-xl);
     border: var(--border-width-hairline) solid var(--color-sidebar-border-strong);
@@ -2754,6 +2816,17 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-sidebar-popover-gap);
+    width: 100%;
+    padding-inline-end: var(--space-sidebar-dropup-scroll-reserve);
+    max-height: var(--sidebar-dropup-max-height);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .sidebar-dropup-panel__inner > * {
+    width: 100%;
+    min-width: 0;
   }
 
   #sidebar[data-footer-state="expanded"] .sidebar-nav {

@@ -13,46 +13,63 @@
 </section>
 
 <script>
-  // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
-  const noopLogger = {
-    log: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-  };
-  const dev = window.bitvidLogger?.dev || noopLogger;
-  const user = window.bitvidLogger?.user || noopLogger;
+  (() => {
+    // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
+    const noopLogger = {
+      log: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    };
+    const dev = window.bitvidLogger?.dev || noopLogger;
+    const user = window.bitvidLogger?.user || noopLogger;
 
-  (async () => {
-    try {
-      // Fetch your roadmap markdown
-      const response = await fetch("content/roadmap.md");
-      if (!response.ok) {
-        throw new Error("Failed to load roadmap.md");
+    const loadMarkdown = async () => {
+      try {
+        // Fetch your roadmap markdown
+        const response = await fetch("content/roadmap.md");
+        if (!response.ok) {
+          throw new Error("Failed to load roadmap.md");
+        }
+        const markdownText = await response.text();
+
+        // Convert markdown to HTML (marked must be globally available)
+        const html = marked.parse(markdownText);
+
+        // Insert into the container
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = html;
+
+          const highlighter = window.hljs;
+          const highlight =
+            highlighter && typeof highlighter.highlightElement === "function"
+              ? (block) => highlighter.highlightElement(block)
+              : highlighter && typeof highlighter.highlightBlock === "function"
+                ? (block) => highlighter.highlightBlock(block)
+                : null;
+
+          if (highlight) {
+            container.querySelectorAll("pre code").forEach((block) => {
+              try {
+                highlight(block);
+              } catch (highlightError) {
+                dev.warn("Failed to highlight code block.", highlightError);
+              }
+            });
+          }
+        }
+      } catch (err) {
+        user.error("Error loading roadmap:", err);
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = `
+            <p class="text-critical-strong">Error loading content. Please try again later.</p>
+          `;
+        }
       }
-      const markdownText = await response.text();
+    };
 
-      // Convert markdown to HTML (marked must be globally available)
-      const html = marked.parse(markdownText);
-
-      // Insert into the container
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = html;
-      }
-
-      // Optional: highlight code blocks if highlight.js is globally available
-      document.querySelectorAll("pre code").forEach((block) => {
-        hljs.highlightBlock(block);
-      });
-    } catch (err) {
-      user.error("Error loading roadmap:", err);
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = `
-          <p class="text-critical-strong">Error loading content. Please try again later.</p>
-        `;
-      }
-    }
+    loadMarkdown();
   })();
 </script>
