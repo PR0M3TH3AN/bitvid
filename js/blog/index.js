@@ -133,7 +133,12 @@ function resolveNotes() {
 }
 
 function setupEmbedHeightBroadcast({ root, registerCleanup }) {
-  if (typeof window === 'undefined' || !root || window.parent === window) {
+  if (typeof window === 'undefined' || window.parent === window) {
+    return;
+  }
+
+  const element = root || document.querySelector('.blog-app-root');
+  if (!element) {
     return;
   }
 
@@ -148,12 +153,91 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
     return '*';
   })();
 
-  let lastHeight = null;
+  let destroyed = false;
+  registerCleanup(() => {
+    destroyed = true;
+  });
 
-  const postHeight = (force = false) => {
-    const rect = root.getBoundingClientRect();
-    const height = Math.ceil(rect.height);
-    if (!Number.isFinite(height) || height < 0) {
+  const parseCssNumber = (value) => {
+    if (typeof value !== 'string') {
+      return 0;
+    }
+    const numeric = Number.parseFloat(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+
+  const computeMarginAdjustment = (node) => {
+    if (!node || typeof window.getComputedStyle !== 'function') {
+      return 0;
+    }
+    let topMargin = 0;
+    let bottomMargin = 0;
+    try {
+      const first = node.firstElementChild;
+      const last = node.lastElementChild;
+      if (first) {
+        topMargin = parseCssNumber(window.getComputedStyle(first).marginTop);
+      }
+      if (last) {
+        bottomMargin = parseCssNumber(window.getComputedStyle(last).marginBottom);
+      }
+    } catch (error) {
+      userLogger.error('[blog] failed to compute margin adjustment for resize messaging', error);
+    }
+    const adjustment = Math.max(0, topMargin) + Math.max(0, bottomMargin);
+    return Number.isFinite(adjustment) ? adjustment : 0;
+  };
+
+  let lastHeight = null;
+  let pendingFrame = null;
+
+  const measureAndPost = (force = false) => {
+    if (destroyed) {
+      return;
+    }
+    const docElement = document.documentElement;
+    const body = document.body;
+
+    const candidates = [];
+    const addCandidate = (value) => {
+      if (typeof value !== 'number') {
+        return;
+      }
+      const rounded = Math.max(0, Math.ceil(value));
+      if (Number.isFinite(rounded)) {
+        candidates.push(rounded);
+      }
+    };
+
+    const addElementMetrics = (node) => {
+      if (!node) {
+        return;
+      }
+      const marginAdjustment = computeMarginAdjustment(node);
+      addCandidate(node.scrollHeight + marginAdjustment);
+      addCandidate(node.offsetHeight + marginAdjustment);
+      addCandidate(node.clientHeight + marginAdjustment);
+      try {
+        const rect = node.getBoundingClientRect();
+        addCandidate(rect.height + marginAdjustment);
+      } catch (error) {
+        userLogger.error('[blog] failed to compute element rect for resize messaging', error);
+      }
+    };
+
+    addElementMetrics(element);
+    if (body && body !== element) {
+      addElementMetrics(body);
+    }
+    if (docElement && docElement !== element && docElement !== body) {
+      addElementMetrics(docElement);
+    }
+    if (document.scrollingElement && document.scrollingElement !== body && document.scrollingElement !== docElement) {
+      addElementMetrics(document.scrollingElement);
+    }
+
+    const height = candidates.length > 0 ? Math.max(...candidates) : null;
+    if (!Number.isFinite(height)) {
       return;
     }
     if (!force && height === lastHeight) {
@@ -167,20 +251,162 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
     }
   };
 
-  const rafId = window.requestAnimationFrame(() => {
-    postHeight(true);
+  const queueMeasurement = (force = false) => {
+    if (destroyed) {
+      return;
+    }
+    if (force) {
+      measureAndPost(true);
+      return;
+    }
+    if (pendingFrame != null) {
+      return;
+    }
+    pendingFrame = window.requestAnimationFrame(() => {
+      pendingFrame = null;
+      measureAndPost(false);
+    });
+  };
+
+  pendingFrame = window.requestAnimationFrame(() => {
+    pendingFrame = null;
+    measureAndPost(true);
   });
+
   registerCleanup(() => {
-    window.cancelAnimationFrame(rafId);
+    if (pendingFrame != null) {
+      window.cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+    }
   });
+
+  const observedNodes = new Set();
+
+  const observeNode = (observer, node) => {
+    if (!node || observedNodes.has(node)) {
+      return;
+    }
+    observer.observe(node);
+    observedNodes.add(node);
+  };
 
   if (typeof ResizeObserver === 'function') {
     const observer = new ResizeObserver(() => {
-      postHeight();
+      queueMeasurement();
     });
-    observer.observe(root);
+    observeNode(observer, element);
+    if (document.body) {
+      observeNode(observer, document.body);
+    }
+    if (document.documentElement) {
+      observeNode(observer, document.documentElement);
+    }
+    if (document.scrollingElement) {
+      observeNode(observer, document.scrollingElement);
+    }
     registerCleanup(() => {
       observer.disconnect();
+      observedNodes.clear();
+    });
+  }
+
+  const pollingIntervalId = window.setInterval(() => {
+    queueMeasurement();
+  }, 750);
+  registerCleanup(() => {
+    window.clearInterval(pollingIntervalId);
+  });
+
+  const mutationTargets = [element];
+  if (document.body && document.body !== element) {
+    mutationTargets.push(document.body);
+  }
+  if (document.documentElement && document.documentElement !== element && document.documentElement !== document.body) {
+    mutationTargets.push(document.documentElement);
+  }
+  if (
+    document.scrollingElement &&
+    document.scrollingElement !== element &&
+    document.scrollingElement !== document.body &&
+    document.scrollingElement !== document.documentElement
+  ) {
+    mutationTargets.push(document.scrollingElement);
+  }
+
+  const trackedMediaNodes = new WeakSet();
+  const MEDIA_SELECTOR = 'img, picture, video, audio, iframe, object, embed';
+
+  const watchMediaNode = (node) => {
+    if (!(node instanceof Element)) {
+      return;
+    }
+    const candidates = [];
+    if (node.matches(MEDIA_SELECTOR)) {
+      candidates.push(node);
+    }
+    candidates.push(...node.querySelectorAll(MEDIA_SELECTOR));
+    candidates.forEach((media) => {
+      if (trackedMediaNodes.has(media)) {
+        return;
+      }
+      trackedMediaNodes.add(media);
+      const handleMediaEvent = () => {
+        queueMeasurement(true);
+      };
+      const mediaEvents = ['load', 'loadeddata', 'loadedmetadata', 'readystatechange', 'error'];
+      mediaEvents.forEach((eventName) => {
+        media.addEventListener(eventName, handleMediaEvent);
+      });
+      registerCleanup(() => {
+        mediaEvents.forEach((eventName) => {
+          media.removeEventListener(eventName, handleMediaEvent);
+        });
+      });
+      if (
+        (media instanceof HTMLImageElement && media.complete) ||
+        (media instanceof HTMLVideoElement && media.readyState >= 1) ||
+        (media instanceof HTMLAudioElement && media.readyState >= 1) ||
+        (media instanceof HTMLIFrameElement && media.contentWindow)
+      ) {
+        queueMeasurement(true);
+      }
+    });
+  };
+
+  watchMediaNode(element);
+
+  if (typeof MutationObserver === 'function' && mutationTargets.length > 0) {
+    const mutationObserver = new MutationObserver((mutations) => {
+      let shouldMeasure = false;
+      mutations.forEach((mutation) => {
+        for (const node of mutation.addedNodes) {
+          watchMediaNode(node);
+        }
+        if (mutation.type === 'attributes') {
+          watchMediaNode(mutation.target);
+        }
+        if (
+          mutation.type === 'childList' ||
+          mutation.type === 'attributes' ||
+          mutation.type === 'characterData'
+        ) {
+          shouldMeasure = true;
+        }
+      });
+      if (shouldMeasure) {
+        queueMeasurement();
+      }
+    });
+    mutationTargets.forEach((target) => {
+      mutationObserver.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        characterData: true,
+      });
+    });
+    registerCleanup(() => {
+      mutationObserver.disconnect();
     });
   }
 
@@ -192,7 +418,7 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
       return;
     }
     if (event?.data?.type === 'bitvid-blog-request-height') {
-      postHeight(true);
+      queueMeasurement(true);
     }
   };
 
@@ -200,6 +426,72 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
   registerCleanup(() => {
     window.removeEventListener('message', handleMessage);
   });
+
+  const handleResize = () => {
+    queueMeasurement();
+  };
+  window.addEventListener('resize', handleResize);
+  registerCleanup(() => {
+    window.removeEventListener('resize', handleResize);
+  });
+
+  const handleOrientationChange = () => {
+    queueMeasurement(true);
+  };
+  window.addEventListener('orientationchange', handleOrientationChange);
+  registerCleanup(() => {
+    window.removeEventListener('orientationchange', handleOrientationChange);
+  });
+
+  const handleTransitionEnd = () => {
+    queueMeasurement();
+  };
+  element.addEventListener('transitionend', handleTransitionEnd, true);
+  element.addEventListener('animationend', handleTransitionEnd, true);
+  registerCleanup(() => {
+    element.removeEventListener('transitionend', handleTransitionEnd, true);
+    element.removeEventListener('animationend', handleTransitionEnd, true);
+  });
+
+  const handleLoad = () => {
+    queueMeasurement(true);
+  };
+  window.addEventListener('load', handleLoad, { once: true });
+  registerCleanup(() => {
+    window.removeEventListener('load', handleLoad);
+  });
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      queueMeasurement(true);
+    }
+  };
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  registerCleanup(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  });
+
+  if (document.fonts && typeof document.fonts.addEventListener === 'function') {
+    const handleFontLoad = () => {
+      queueMeasurement(true);
+    };
+    document.fonts.addEventListener('loadingdone', handleFontLoad);
+    document.fonts.addEventListener('loadingerror', handleFontLoad);
+    registerCleanup(() => {
+      document.fonts.removeEventListener('loadingdone', handleFontLoad);
+      document.fonts.removeEventListener('loadingerror', handleFontLoad);
+    });
+  }
+
+  if (document.fonts?.ready && typeof document.fonts.ready.then === 'function') {
+    document.fonts.ready
+      .then(() => {
+        queueMeasurement(true);
+      })
+      .catch(() => {
+        queueMeasurement(true);
+      });
+  }
 }
 
 function formatDate(unixSeconds, { includeTime = false } = {}) {
