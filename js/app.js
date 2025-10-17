@@ -4097,7 +4097,7 @@ class Application {
         aria-live="polite"
         role="status"
       >
-        Checking hosted URL…
+        ⏳ CDN
       </span>
     `;
   }
@@ -4155,17 +4155,17 @@ class Application {
     }
 
     const status = state?.status || "checking";
+    const fallbackMessages = {
+      healthy: "✅ CDN",
+      offline: "❌ CDN",
+      unknown: "⚠️ CDN",
+      timeout: "⚠️ CDN timed out",
+      checking: "⏳ CDN",
+    };
     const message =
       state?.message ||
-      (status === "healthy"
-        ? "✅ CDN"
-        : status === "offline"
-        ? "❌ CDN"
-        : status === "unknown"
-        ? "⚠️ CDN"
-        : status === "timeout"
-        ? "⚠️ CDN timed out"
-        : "Checking hosted URL…");
+      fallbackMessages[status] ||
+      fallbackMessages.checking;
 
     const hadCompactMargin =
       badgeEl.classList.contains("mt-sm") || badgeEl.classList.contains("mt-3");
