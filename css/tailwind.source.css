@@ -1512,12 +1512,91 @@
     @apply flex flex-wrap items-center justify-between gap-3 text-sm text-muted;
   }
 
+  .profile-modal {
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+    max-block-size: var(--modal-shell-max-height);
+    overflow: hidden;
+  }
+
+  .profile-modal__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-lg);
+    min-block-size: 0;
+    overflow: hidden;
+    padding-block-start: var(--space-md);
+    padding-block-end: var(--space-lg);
+    padding-inline: var(--space-lg);
+  }
+
+  .profile-modal__layout {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-lg);
+    min-block-size: 0;
+  }
+
+  .profile-modal__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .profile-modal__panes {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-block-size: 0;
+    overflow-y: auto;
+    padding-inline-end: var(--profile-modal-scrollbar-offset);
+    scrollbar-gutter: stable;
+  }
+
   .profile-pane {
-    @apply min-h-modal-pane flex flex-col gap-lg;
+    display: flex;
+    flex-direction: column;
+    min-block-size: auto;
   }
 
   .profile-pane.hidden {
-    display: none;
+    display: none !important;
+  }
+
+  @supports not (scrollbar-gutter: stable) {
+    .profile-modal__panes {
+      padding-inline-end: calc(
+        var(--profile-modal-scrollbar-offset) + var(--space-2xs)
+      );
+    }
+  }
+
+  @media (min-width: theme("screens.lg")) {
+    .profile-modal__body {
+      gap: var(--space-xl);
+      padding-inline: var(--space-xl);
+    }
+
+    .profile-modal__layout {
+      display: grid;
+      align-items: flex-start;
+      block-size: 100%;
+      gap: var(--space-xl);
+      grid-template-columns:
+        minmax(
+          var(--profile-modal-nav-min-width),
+          var(--profile-modal-nav-max-width)
+        )
+        minmax(0, 1fr);
+    }
+
+    .profile-modal__nav {
+      flex-direction: column;
+      flex-wrap: nowrap;
+    }
   }
 
   /* Torrent helper classes */
