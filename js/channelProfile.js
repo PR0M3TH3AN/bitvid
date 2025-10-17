@@ -174,6 +174,30 @@ function preloadBannerImage(url) {
   return promise;
 }
 
+function setBannerVisual(el, url) {
+  if (!el) {
+    return;
+  }
+
+  const resolvedUrl = typeof url === "string" ? url : "";
+  const tagName = el.tagName ? el.tagName.toLowerCase() : "";
+
+  if (tagName === "img") {
+    if (el.src !== resolvedUrl) {
+      el.src = resolvedUrl;
+    }
+  } else {
+    const value = resolvedUrl ? `url("${resolvedUrl}")` : "";
+    if (el.style.backgroundImage !== value) {
+      el.style.backgroundImage = value;
+    }
+  }
+
+  if (el.dataset.bannerSrc !== resolvedUrl) {
+    el.dataset.bannerSrc = resolvedUrl;
+  }
+}
+
 function getChannelZapButton() {
   if (cachedZapButton && !document.body.contains(cachedZapButton)) {
     cachedZapButton = null;
@@ -1725,7 +1749,37 @@ export async function initChannelProfileView() {
   try {
     const decoded = window.NostrTools.nip19.decode(npub);
     if (decoded.type === "npub" && decoded.data) {
-      hexPub = decoded.data;
+      if (typeof decoded.data === "string") {
+        hexPub = decoded.data;
+      } else {
+        let bufferSource = null;
+        if (decoded.data instanceof Uint8Array) {
+          bufferSource = decoded.data;
+        } else if (Array.isArray(decoded.data)) {
+          bufferSource = Uint8Array.from(decoded.data);
+        } else if (
+          decoded.data?.type === "Buffer" &&
+          Array.isArray(decoded.data?.data)
+        ) {
+          bufferSource = Uint8Array.from(decoded.data.data);
+        }
+
+        if (bufferSource) {
+          if (typeof window?.NostrTools?.utils?.bytesToHex === "function") {
+            hexPub = window.NostrTools.utils.bytesToHex(bufferSource);
+          } else {
+            hexPub = Array.from(bufferSource)
+              .map((byte) => byte.toString(16).padStart(2, "0"))
+              .join("");
+          }
+        }
+      }
+
+      if (typeof hexPub !== "string" || !hexPub) {
+        throw new Error("Unable to normalize npub to hex string.");
+      }
+
+      hexPub = hexPub.trim().toLowerCase();
     } else {
       throw new Error("Invalid npub decoding result.");
     }
@@ -2631,27 +2685,21 @@ function applyChannelProfileMetadata({
     }
 
     if (!normalized.banner) {
-      if (bannerEl.src !== fallbackSrc) {
-        bannerEl.src = fallbackSrc;
-      }
+      setBannerVisual(bannerEl, fallbackSrc);
     } else {
       preloadBannerImage(normalized.banner)
         .then(() => {
           if (expectedLoadToken !== currentProfileLoadToken) {
             return;
           }
-          if (bannerEl.src !== normalized.banner) {
-            bannerEl.src = normalized.banner;
-          }
+          setBannerVisual(bannerEl, normalized.banner);
         })
         .catch(() => {
           channelBannerImageCache.delete(normalized.banner);
           if (expectedLoadToken !== currentProfileLoadToken) {
             return;
           }
-          if (bannerEl.src !== fallbackSrc) {
-            bannerEl.src = fallbackSrc;
-          }
+          setBannerVisual(bannerEl, fallbackSrc);
         });
     }
   }
