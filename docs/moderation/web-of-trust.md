@@ -28,6 +28,12 @@
   - `['d','bitvid:admin:editors']` → trusted channel editors.
 - Users can subscribe/unsubscribe any time.
 
+### Decision precedence
+
+1. **Personal blocks win first.** If a viewer blocks an author or reporter, we ignore their content and reports regardless of admin lists.
+2. **Admin blacklist applies next.** Entries on `bitvid:admin:blacklist` are hard-hidden and their reports suppressed before looking at thresholds.
+3. **F1 thresholds run last.** Blur/autoplay gating only evaluates trusted-report counts after personal blocks and admin blacklists. Admin whitelists may bypass Discovery gating, but never override a viewer block.
+
 ## Pseudocode
 
 ```ts
