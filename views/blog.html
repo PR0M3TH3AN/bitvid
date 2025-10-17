@@ -11,6 +11,101 @@
           src="https://beta.bitvid.network/blog.html"
           class="h-full w-full border-none"
         ></iframe>
+        <script type="module">
+          const iframe = document.querySelector('#blog-iframe');
+          if (iframe) {
+            const abortController = new AbortController();
+            const { signal } = abortController;
+
+            const targetOrigin = (() => {
+              try {
+                return new URL(iframe.src, window.location.href).origin;
+              } catch (error) {
+                return window.location.origin;
+              }
+            })();
+
+            const applyHeight = (height) => {
+              const numeric = Math.max(0, Math.round(Number(height)));
+              if (!Number.isFinite(numeric)) {
+                return;
+              }
+              iframe.style.height = `${numeric}px`;
+              iframe.style.removeProperty('min-height');
+              iframe.style.removeProperty('max-height');
+            };
+
+            const handleMessage = (event) => {
+              if (event.source !== iframe.contentWindow) {
+                return;
+              }
+              if (event.origin !== targetOrigin) {
+                return;
+              }
+              if (event.data?.type === 'bitvid-blog-resize') {
+                applyHeight(event.data.height);
+              }
+            };
+
+            window.addEventListener('message', handleMessage, { signal });
+
+            const requestHeight = () => {
+              if (!iframe.contentWindow) {
+                return;
+              }
+              iframe.contentWindow.postMessage(
+                { type: 'bitvid-blog-request-height' },
+                targetOrigin,
+              );
+            };
+
+            const startRetryLoop = () => {
+              const maxAttempts = 5;
+              let attempts = 0;
+              const retryIntervalMs = 200;
+              const intervalId = window.setInterval(() => {
+                attempts += 1;
+                if (attempts > maxAttempts) {
+                  window.clearInterval(intervalId);
+                  return;
+                }
+                requestHeight();
+              }, retryIntervalMs);
+
+              const stop = () => {
+                window.clearInterval(intervalId);
+              };
+
+              if (signal.aborted) {
+                stop();
+              } else {
+                signal.addEventListener('abort', stop, { once: true });
+              }
+            };
+
+            const runInitialRequests = () => {
+              requestHeight();
+              startRetryLoop();
+            };
+
+            iframe.addEventListener('load', () => {
+              runInitialRequests();
+            }, { signal });
+
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', runInitialRequests, {
+                once: true,
+                signal,
+              });
+            } else {
+              runInitialRequests();
+            }
+
+            window.addEventListener('pagehide', () => {
+              abortController.abort();
+            }, { once: true });
+          }
+        </script>
       </div>
     </div>
   </article>

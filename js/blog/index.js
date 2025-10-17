@@ -132,6 +132,76 @@ function resolveNotes() {
   return buildDefaultNotes();
 }
 
+function setupEmbedHeightBroadcast({ root, registerCleanup }) {
+  if (typeof window === 'undefined' || !root || window.parent === window) {
+    return;
+  }
+
+  const parentOrigin = (() => {
+    try {
+      if (document.referrer) {
+        return new URL(document.referrer).origin;
+      }
+    } catch (error) {
+      userLogger.error('[blog] failed to parse parent origin for resize messaging', error);
+    }
+    return '*';
+  })();
+
+  let lastHeight = null;
+
+  const postHeight = (force = false) => {
+    const rect = root.getBoundingClientRect();
+    const height = Math.ceil(rect.height);
+    if (!Number.isFinite(height) || height < 0) {
+      return;
+    }
+    if (!force && height === lastHeight) {
+      return;
+    }
+    lastHeight = height;
+    try {
+      window.parent.postMessage({ type: 'bitvid-blog-resize', height }, parentOrigin);
+    } catch (error) {
+      userLogger.error('[blog] failed to post resize message', error);
+    }
+  };
+
+  const rafId = window.requestAnimationFrame(() => {
+    postHeight();
+  });
+  registerCleanup(() => {
+    window.cancelAnimationFrame(rafId);
+  });
+
+  if (typeof ResizeObserver === 'function') {
+    const observer = new ResizeObserver(() => {
+      postHeight();
+    });
+    observer.observe(root);
+    registerCleanup(() => {
+      observer.disconnect();
+    });
+  }
+
+  const handleMessage = (event) => {
+    if (event.source !== window.parent) {
+      return;
+    }
+    if (parentOrigin !== '*' && event.origin !== parentOrigin) {
+      return;
+    }
+    if (event?.data?.type === 'bitvid-blog-request-height') {
+      postHeight(true);
+    }
+  };
+
+  window.addEventListener('message', handleMessage);
+  registerCleanup(() => {
+    window.removeEventListener('message', handleMessage);
+  });
+}
+
 function formatDate(unixSeconds, { includeTime = false } = {}) {
   if (!unixSeconds) {
     return '';
@@ -724,6 +794,7 @@ function mountBlogApp({ initZapthreadsEmbed = defaultInitZapthreadsEmbed } = {})
   }
 
   root.replaceChildren(main);
+  setupEmbedHeightBroadcast({ root, registerCleanup });
 
   registerCleanup(() => {
     root.replaceChildren();

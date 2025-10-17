@@ -143,7 +143,7 @@
   --popover-inline-safe-max: calc(100vw - var(--space-xl));
   --blog-layout-fluid-width: 80%;
   --blog-layout-max-width: 47.5rem;
-  --blog-embed-height: 100rem;
+  --blog-embed-height: auto;
 
   /* Progress primitives */
   --progress-height-sm: 0.25rem;
