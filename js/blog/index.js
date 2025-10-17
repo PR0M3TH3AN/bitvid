@@ -133,7 +133,12 @@ function resolveNotes() {
 }
 
 function setupEmbedHeightBroadcast({ root, registerCleanup }) {
-  if (typeof window === 'undefined' || !root || window.parent === window) {
+  if (typeof window === 'undefined' || window.parent === window) {
+    return;
+  }
+
+  const element = root || document.querySelector('.blog-app-root');
+  if (!element) {
     return;
   }
 
@@ -149,11 +154,12 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
   })();
 
   let lastHeight = null;
+  let pendingFrame = null;
 
-  const postHeight = (force = false) => {
-    const rect = root.getBoundingClientRect();
-    const height = Math.ceil(rect.height);
-    if (!Number.isFinite(height) || height < 0) {
+  const measureAndPost = (force = false) => {
+    const rect = element.getBoundingClientRect();
+    const height = Math.max(0, Math.ceil(rect.height));
+    if (!Number.isFinite(height)) {
       return;
     }
     if (!force && height === lastHeight) {
@@ -167,20 +173,46 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
     }
   };
 
-  const rafId = window.requestAnimationFrame(() => {
-    postHeight(true);
+  const queueMeasurement = (force = false) => {
+    if (force) {
+      measureAndPost(true);
+      return;
+    }
+    if (pendingFrame != null) {
+      return;
+    }
+    pendingFrame = window.requestAnimationFrame(() => {
+      pendingFrame = null;
+      measureAndPost(false);
+    });
+  };
+
+  pendingFrame = window.requestAnimationFrame(() => {
+    pendingFrame = null;
+    measureAndPost(true);
   });
+
   registerCleanup(() => {
-    window.cancelAnimationFrame(rafId);
+    if (pendingFrame != null) {
+      window.cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+    }
   });
 
   if (typeof ResizeObserver === 'function') {
     const observer = new ResizeObserver(() => {
-      postHeight();
+      queueMeasurement();
     });
-    observer.observe(root);
+    observer.observe(element);
     registerCleanup(() => {
       observer.disconnect();
+    });
+  } else {
+    const intervalId = window.setInterval(() => {
+      queueMeasurement();
+    }, 500);
+    registerCleanup(() => {
+      window.clearInterval(intervalId);
     });
   }
 
@@ -192,13 +224,21 @@ function setupEmbedHeightBroadcast({ root, registerCleanup }) {
       return;
     }
     if (event?.data?.type === 'bitvid-blog-request-height') {
-      postHeight(true);
+      queueMeasurement(true);
     }
   };
 
   window.addEventListener('message', handleMessage);
   registerCleanup(() => {
     window.removeEventListener('message', handleMessage);
+  });
+
+  const handleLoad = () => {
+    queueMeasurement(true);
+  };
+  window.addEventListener('load', handleLoad, { once: true });
+  registerCleanup(() => {
+    window.removeEventListener('load', handleLoad);
   });
 }
 

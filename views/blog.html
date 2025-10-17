@@ -35,8 +35,29 @@
               iframe.style.removeProperty('max-height');
             };
 
-            let stopRetryLoop = () => {};
             let receivedFirstHeight = false;
+            let retryIntervalId = null;
+
+            const stopRequestLoop = () => {
+              if (retryIntervalId === null) {
+                return;
+              }
+              window.clearInterval(retryIntervalId);
+              retryIntervalId = null;
+            };
+
+            const startRequestLoop = () => {
+              if (retryIntervalId !== null) {
+                return;
+              }
+              retryIntervalId = window.setInterval(() => {
+                if (receivedFirstHeight || signal.aborted) {
+                  stopRequestLoop();
+                  return;
+                }
+                requestHeight();
+              }, 250);
+            };
 
             const handleMessage = (event) => {
               if (event.source !== iframe.contentWindow) {
@@ -48,7 +69,7 @@
               if (event.data?.type === 'bitvid-blog-resize') {
                 applyHeight(event.data.height);
                 receivedFirstHeight = true;
-                stopRetryLoop();
+                stopRequestLoop();
               }
             };
 
@@ -64,35 +85,6 @@
               );
             };
 
-            const startRetryLoop = () => {
-              const maxAttempts = 5;
-              let attempts = 0;
-              const retryIntervalMs = 200;
-              const intervalId = window.setInterval(() => {
-                attempts += 1;
-                if (attempts > maxAttempts || receivedFirstHeight) {
-                  window.clearInterval(intervalId);
-                  return;
-                }
-                requestHeight();
-              }, retryIntervalMs);
-
-              const stop = () => {
-                window.clearInterval(intervalId);
-              };
-
-              if (signal.aborted) {
-                stop();
-              } else {
-                signal.addEventListener('abort', stop, { once: true });
-              }
-
-              stopRetryLoop = () => {
-                stop();
-                stopRetryLoop = () => {};
-              };
-            };
-
             let hasStarted = false;
 
             const runInitialRequests = () => {
@@ -101,7 +93,12 @@
               }
               hasStarted = true;
               requestHeight();
-              startRetryLoop();
+              startRequestLoop();
+              if (signal.aborted) {
+                stopRequestLoop();
+              } else {
+                signal.addEventListener('abort', stopRequestLoop, { once: true });
+              }
             };
 
             iframe.addEventListener('load', () => {
@@ -119,6 +116,7 @@
 
             window.addEventListener('pagehide', () => {
               abortController.abort();
+              stopRequestLoop();
             }, { once: true });
           }
         </script>
