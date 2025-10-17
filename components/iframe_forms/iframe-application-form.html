@@ -3,7 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <title>bitvid Whitelist Application Form</title>
-    <script>
+    <script type="module">
+      import { THEME_ACCENT_OVERRIDES } from "../../config/instance-config.js";
+
       (() => {
         const VALID_THEMES = new Set(["light", "dark"]);
         const STORAGE_KEY = "bitvid:theme";
@@ -13,11 +15,48 @@
           accentStrong: "--color-accent-strong",
           accentPressed: "--color-accent-pressed",
         });
+        const ACCENT_TOKENS = Object.keys(ACCENT_CSS_VARIABLES);
         const { documentElement: root } = document;
 
         if (!(root instanceof HTMLElement)) {
           return;
         }
+
+        const sanitizeConfigOverrides = (overrides) => {
+          if (!overrides || typeof overrides !== "object") {
+            return {};
+          }
+
+          const sanitized = {};
+
+          Object.entries(overrides).forEach(([theme, themeOverrides]) => {
+            if (!VALID_THEMES.has(theme) || typeof themeOverrides !== "object") {
+              return;
+            }
+
+            const normalized = {};
+
+            ACCENT_TOKENS.forEach((token) => {
+              const value = themeOverrides[token];
+              if (typeof value === "string") {
+                const trimmed = value.trim();
+                if (trimmed !== "") {
+                  normalized[token] = trimmed;
+                }
+              }
+            });
+
+            if (Object.keys(normalized).length > 0) {
+              sanitized[theme] = normalized;
+            }
+          });
+
+          return sanitized;
+        };
+
+        const CONFIG_ACCENT_OVERRIDES = sanitizeConfigOverrides(
+          THEME_ACCENT_OVERRIDES
+        );
 
         const normalizeTheme = (value) => {
           if (typeof value !== "string") {
@@ -67,24 +106,46 @@
           }
         };
 
-        const applyAccentOverridesFromParent = () => {
+        const readParentAccentOverrides = () => {
           const parentRoot = getParentRoot();
           if (!parentRoot) {
-            Object.values(ACCENT_CSS_VARIABLES).forEach((cssVariable) => {
-              root.style.removeProperty(cssVariable);
-            });
-            return;
+            return null;
           }
+
+          const overrides = {};
+          let hasOverride = false;
 
           Object.values(ACCENT_CSS_VARIABLES).forEach((cssVariable) => {
             try {
               const value = parentRoot.style.getPropertyValue(cssVariable);
-              if (typeof value === "string" && value.trim() !== "") {
-                root.style.setProperty(cssVariable, value.trim());
-              } else {
-                root.style.removeProperty(cssVariable);
+              if (typeof value === "string") {
+                const trimmed = value.trim();
+                if (trimmed !== "") {
+                  overrides[cssVariable] = trimmed;
+                  hasOverride = true;
+                }
               }
             } catch (error) {
+              /* noop */
+            }
+          });
+
+          return hasOverride ? overrides : null;
+        };
+
+        const applyAccentOverrides = (theme) => {
+          const parentOverrides = readParentAccentOverrides();
+          const configOverrides = CONFIG_ACCENT_OVERRIDES[theme] || null;
+
+          ACCENT_TOKENS.forEach((token) => {
+            const cssVariable = ACCENT_CSS_VARIABLES[token];
+            const parentValue = parentOverrides?.[cssVariable];
+            const configValue = configOverrides?.[token];
+            const nextValue = parentValue || configValue || "";
+
+            if (typeof nextValue === "string" && nextValue.trim() !== "") {
+              root.style.setProperty(cssVariable, nextValue.trim());
+            } else {
               root.style.removeProperty(cssVariable);
             }
           });
@@ -94,7 +155,7 @@
           const resolvedTheme =
             readParentTheme() ?? readStoredTheme() ?? FALLBACK_THEME;
           applyTheme(resolvedTheme);
-          applyAccentOverridesFromParent();
+          applyAccentOverrides(resolvedTheme);
         };
 
         syncTheme();
@@ -106,7 +167,7 @@
           observer = new MutationObserver(syncTheme);
           observer.observe(parentRoot, {
             attributes: true,
-            attributeFilter: ["data-theme"],
+            attributeFilter: ["data-theme", "style"],
           });
         }
 
