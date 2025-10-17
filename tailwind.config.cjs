@@ -77,7 +77,7 @@ module.exports = {
         },
         text: {
           DEFAULT: "var(--text-primary)",
-          strong: "var(--color-white)",
+          strong: "var(--color-text-strong)",
           inverse: "var(--text-inverse)",
           muted: "var(--text-muted)",
           "muted-strong": "var(--text-muted-strong)",
