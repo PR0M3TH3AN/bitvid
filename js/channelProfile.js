@@ -3671,6 +3671,7 @@ async function loadUserVideos(pubkey) {
   const loadToken = ++currentVideoLoadToken;
   const hadExistingContent =
     !!container && container.querySelector("[data-video-id]");
+  let hasVisibleContent = Boolean(hadExistingContent);
 
   if (container) {
     container.dataset.loading = "true";
@@ -3692,14 +3693,17 @@ async function loadUserVideos(pubkey) {
         app
       });
       if (cachedVideos.length) {
-        renderedFromCache =
-          renderChannelVideosFromList({
-            videos: cachedVideos,
-            container,
-            app,
-            loadToken,
-            allowEmptyMessage: false
-          }) || renderedFromCache;
+        const rendered = renderChannelVideosFromList({
+          videos: cachedVideos,
+          container,
+          app,
+          loadToken,
+          allowEmptyMessage: false
+        });
+        if (rendered) {
+          hasVisibleContent = true;
+        }
+        renderedFromCache = rendered || renderedFromCache;
       }
     }
   }
@@ -3777,15 +3781,20 @@ async function loadUserVideos(pubkey) {
       container,
       app,
       loadToken,
-      allowEmptyMessage: true
+      allowEmptyMessage: !hasVisibleContent
     });
+
+    if (rendered) {
+      hasVisibleContent = true;
+    }
 
     renderedFromCache = rendered || renderedFromCache;
   } catch (err) {
     if (
       loadToken === currentVideoLoadToken &&
       container &&
-      !renderedFromCache
+      !renderedFromCache &&
+      !hasVisibleContent
     ) {
       container.dataset.hasChannelVideos = "false";
       container.innerHTML = `
