@@ -38,7 +38,7 @@ import {
   requestInvoice
 } from "./payments/lnurl.js";
 import { getPlatformLightningAddress } from "./payments/platformAddress.js";
-import { userLogger } from "./utils/logger.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 import {
   ensureWallet,
   sendPayment as sendWalletPayment
@@ -142,42 +142,153 @@ const FALLBACK_CHANNEL_AVATAR = "assets/svg/default-profile.svg";
 const PROFILE_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const channelProfileMetadataCache = new Map();
-const channelBannerImageCache = new Map();
 
-function preloadBannerImage(url) {
-  if (!url) {
-    return Promise.reject(new Error("Invalid banner URL"));
+const SUPPORTED_BANNER_REFERRER_POLICIES = new Set([
+  "no-referrer",
+  "origin",
+  "origin-when-cross-origin",
+  "same-origin",
+  "strict-origin",
+  "strict-origin-when-cross-origin",
+  "unsafe-url"
+]);
+
+const DEFAULT_BANNER_REFERRER_POLICY_SEQUENCE = [
+  "no-referrer",
+  "strict-origin-when-cross-origin",
+  "origin-when-cross-origin",
+  "unsafe-url"
+];
+
+const bannerLoadStates = new WeakMap();
+
+function resolveToAbsoluteUrl(url) {
+  if (typeof url !== "string") {
+    return "";
   }
 
-  if (channelBannerImageCache.has(url)) {
-    return channelBannerImageCache.get(url);
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return "";
   }
 
-  const promise = new Promise((resolve, reject) => {
-    const img = new Image();
-    if ("decoding" in img) {
-      img.decoding = img.decoding || "async";
+  try {
+    if (typeof window !== "undefined" && window.location) {
+      return new URL(trimmed, window.location.href).href;
     }
-    if ("loading" in img) {
-      img.loading = img.loading || "eager";
-    }
-    img.onload = () => {
-      resolve(url);
-    };
-    img.onerror = (event) => {
-      const error =
-        (event && "error" in event && event.error) ||
-        new Error("Failed to load banner image");
-      reject(error);
-    };
-    img.src = url;
-  });
-
-  channelBannerImageCache.set(url, promise);
-  return promise;
+    return new URL(trimmed).href;
+  } catch (error) {
+    return trimmed;
+  }
 }
 
-function setBannerVisual(el, url) {
+function normalizeReferrerPolicy(policy) {
+  if (policy === null) {
+    return null;
+  }
+
+  if (typeof policy !== "string") {
+    return undefined;
+  }
+
+  const trimmed = policy.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.toLowerCase() === "default") {
+    return null;
+  }
+
+  if (!SUPPORTED_BANNER_REFERRER_POLICIES.has(trimmed)) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+function buildBannerPolicySequence(policies) {
+  const normalized = [];
+  const source = Array.isArray(policies) ? policies : [];
+  const seen = new Set();
+
+  for (const entry of source) {
+    if (entry === null) {
+      continue;
+    }
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const trimmed = entry.trim();
+    if (!trimmed || trimmed.toLowerCase() === "default") {
+      continue;
+    }
+    if (!SUPPORTED_BANNER_REFERRER_POLICIES.has(trimmed)) {
+      continue;
+    }
+    if (seen.has(trimmed)) {
+      continue;
+    }
+    normalized.push(trimmed);
+    seen.add(trimmed);
+  }
+
+  normalized.push(null);
+  return normalized;
+}
+
+function attemptBannerPolicy(bannerEl) {
+  const state = bannerLoadStates.get(bannerEl);
+  if (!state) {
+    return false;
+  }
+
+  if (state.loadToken !== currentProfileLoadToken) {
+    return false;
+  }
+
+  if (!state.url) {
+    bannerLoadStates.delete(bannerEl);
+    if (state.fallbackSrc) {
+      setBannerVisual(bannerEl, state.fallbackSrc, { referrerPolicy: null });
+    } else {
+      setBannerVisual(bannerEl, "", { referrerPolicy: null });
+    }
+    return false;
+  }
+
+  while (state.attemptIndex < state.policies.length) {
+    const candidate = state.policies[state.attemptIndex];
+    state.attemptIndex += 1;
+
+    const normalizedPolicy = normalizeReferrerPolicy(candidate);
+    if (normalizedPolicy === undefined) {
+      continue;
+    }
+
+    bannerLoadStates.set(bannerEl, state);
+    setBannerVisual(bannerEl, state.url, { referrerPolicy: normalizedPolicy });
+    return true;
+  }
+
+  bannerLoadStates.delete(bannerEl);
+  if (state.url) {
+    devLogger.warn(
+      "[channelProfile.banner] Exhausted referrer policies for banner",
+      { url: state.url }
+    );
+  }
+
+  if (state.fallbackSrc) {
+    setBannerVisual(bannerEl, state.fallbackSrc, { referrerPolicy: null });
+  } else {
+    setBannerVisual(bannerEl, "", { referrerPolicy: null });
+  }
+
+  return false;
+}
+
+function setBannerVisual(el, url, { referrerPolicy } = {}) {
   if (!el) {
     return;
   }
@@ -186,6 +297,34 @@ function setBannerVisual(el, url) {
   const tagName = el.tagName ? el.tagName.toLowerCase() : "";
 
   if (tagName === "img") {
+    if (referrerPolicy !== undefined) {
+      const normalizedPolicy =
+        referrerPolicy === null
+          ? ""
+          : typeof referrerPolicy === "string"
+            ? referrerPolicy
+            : "";
+
+      if ("referrerPolicy" in el) {
+        try {
+          el.referrerPolicy = normalizedPolicy;
+        } catch (error) {
+          devLogger.warn(
+            "[channelProfile.banner] Failed to set banner referrer policy",
+            error
+          );
+        }
+      }
+
+      if (normalizedPolicy) {
+        el.setAttribute("referrerpolicy", normalizedPolicy);
+      } else {
+        el.removeAttribute("referrerpolicy");
+      }
+
+      el.dataset.bannerReferrerPolicy = normalizedPolicy;
+    }
+
     if (el.src !== resolvedUrl) {
       el.src = resolvedUrl;
     }
@@ -199,6 +338,111 @@ function setBannerVisual(el, url) {
   if (el.dataset.bannerSrc !== resolvedUrl) {
     el.dataset.bannerSrc = resolvedUrl;
   }
+}
+
+function ensureBannerFallbackHandler(bannerEl) {
+  if (!bannerEl) {
+    return;
+  }
+
+  const tagName = bannerEl.tagName ? bannerEl.tagName.toLowerCase() : "";
+  if (tagName !== "img") {
+    return;
+  }
+
+  if (!bannerEl.dataset.bannerReferrerPolicy) {
+    const initialPolicy = bannerEl.getAttribute("referrerpolicy") || "";
+    bannerEl.dataset.bannerReferrerPolicy = initialPolicy;
+  }
+
+  if (bannerEl.dataset.bannerFallbackAttached === "true") {
+    return;
+  }
+
+  const handleError = () => {
+    const state = bannerLoadStates.get(bannerEl);
+    if (state && state.loadToken !== currentProfileLoadToken) {
+      return;
+    }
+
+    const activeSrc = bannerEl.currentSrc || bannerEl.src || "";
+    const normalizedActive = resolveToAbsoluteUrl(activeSrc);
+
+    if (
+      state &&
+      state.resolvedUrl &&
+      normalizedActive &&
+      normalizedActive === state.resolvedUrl
+    ) {
+      const retried = attemptBannerPolicy(bannerEl);
+      if (retried) {
+        return;
+      }
+      return;
+    }
+
+    const fallbackAttr =
+      (typeof bannerEl.dataset?.fallbackSrc === "string"
+        ? bannerEl.dataset.fallbackSrc.trim()
+        : "") ||
+      bannerEl.getAttribute("data-fallback-src") ||
+      "";
+    const fallbackSrc =
+      (state && state.fallbackSrc) || fallbackAttr || FALLBACK_CHANNEL_BANNER;
+    const fallbackResolved =
+      (state && state.resolvedFallback) || resolveToAbsoluteUrl(fallbackSrc);
+
+    bannerLoadStates.delete(bannerEl);
+
+    if (fallbackSrc && normalizedActive !== fallbackResolved) {
+      setBannerVisual(bannerEl, fallbackSrc, { referrerPolicy: null });
+    } else if (!fallbackSrc) {
+      setBannerVisual(bannerEl, "", { referrerPolicy: null });
+    }
+  };
+
+  bannerEl.addEventListener("error", handleError, { passive: true });
+  bannerEl.dataset.bannerFallbackAttached = "true";
+}
+
+function applyBannerWithPolicies({
+  bannerEl,
+  url,
+  fallbackSrc,
+  policies = DEFAULT_BANNER_REFERRER_POLICY_SEQUENCE,
+  loadToken
+} = {}) {
+  if (!bannerEl) {
+    return;
+  }
+
+  const normalizedUrl =
+    typeof url === "string" && url.trim() ? url.trim() : "";
+  const fallbackCandidate =
+    (typeof fallbackSrc === "string" && fallbackSrc.trim()) ||
+    FALLBACK_CHANNEL_BANNER;
+  const normalizedPolicies = buildBannerPolicySequence(policies);
+  const expectedToken = Number.isInteger(loadToken)
+    ? loadToken
+    : currentProfileLoadToken;
+
+  if (!normalizedUrl) {
+    bannerLoadStates.delete(bannerEl);
+    setBannerVisual(bannerEl, fallbackCandidate, { referrerPolicy: null });
+    return;
+  }
+
+  bannerLoadStates.set(bannerEl, {
+    url: normalizedUrl,
+    resolvedUrl: resolveToAbsoluteUrl(normalizedUrl),
+    fallbackSrc: fallbackCandidate,
+    resolvedFallback: resolveToAbsoluteUrl(fallbackCandidate),
+    policies: normalizedPolicies,
+    attemptIndex: 0,
+    loadToken: expectedToken
+  });
+
+  attemptBannerPolicy(bannerEl);
 }
 
 function getChannelZapButton() {
@@ -2837,23 +3081,18 @@ function applyChannelProfileMetadata({
       bannerEl.setAttribute("data-fallback-src", fallbackSrc);
     }
 
+    ensureBannerFallbackHandler(bannerEl);
+
     if (!normalized.banner) {
-      setBannerVisual(bannerEl, fallbackSrc);
+      bannerLoadStates.delete(bannerEl);
+      setBannerVisual(bannerEl, fallbackSrc, { referrerPolicy: null });
     } else {
-      preloadBannerImage(normalized.banner)
-        .then(() => {
-          if (expectedLoadToken !== currentProfileLoadToken) {
-            return;
-          }
-          setBannerVisual(bannerEl, normalized.banner);
-        })
-        .catch(() => {
-          channelBannerImageCache.delete(normalized.banner);
-          if (expectedLoadToken !== currentProfileLoadToken) {
-            return;
-          }
-          setBannerVisual(bannerEl, fallbackSrc);
-        });
+      applyBannerWithPolicies({
+        bannerEl,
+        url: normalized.banner,
+        fallbackSrc,
+        loadToken: expectedLoadToken
+      });
     }
   }
 
