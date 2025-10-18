@@ -327,6 +327,10 @@ export class ModerationService {
     this.activeSubscriptions = new Map();
     this.activeEventIds = new Set();
 
+    this.trustedMuteLists = new Map();
+    this.trustedMutedAuthors = new Map();
+    this.trustedMuteSubscriptions = new Map();
+
     this.emitter = new SimpleEventEmitter((message, error) => {
       try {
         this.log(message, error);
@@ -366,6 +370,53 @@ export class ModerationService {
     this.emitter.emit(eventName, detail);
   }
 
+  clearTrustedMuteTracking() {
+    for (const [pubkey, entry] of this.trustedMuteSubscriptions.entries()) {
+      if (entry && typeof entry.unsub === "function") {
+        try {
+          entry.unsub();
+        } catch (error) {
+          this.log(`(moderationService) failed to teardown mute subscription for ${pubkey}`, error);
+        }
+      }
+    }
+
+    this.trustedMuteSubscriptions.clear();
+
+    for (const [author, aggregate] of this.trustedMutedAuthors.entries()) {
+      if (aggregate && aggregate.muters instanceof Set) {
+        aggregate.muters.clear();
+      }
+    }
+
+    this.trustedMuteLists.clear();
+    this.trustedMutedAuthors.clear();
+
+    this.emit("trusted-mutes", { total: 0 });
+  }
+
+  reconcileTrustedMuteSubscriptions(previousSet, nextSet) {
+    const previous = previousSet instanceof Set ? previousSet : new Set();
+    const next = nextSet instanceof Set ? nextSet : new Set();
+
+    for (const value of previous) {
+      if (!next.has(value)) {
+        this.teardownTrustedMuteSubscription(value);
+      }
+    }
+
+    for (const value of next) {
+      if (!previous.has(value)) {
+        this.subscribeToTrustedMuteList(value).catch((error) => {
+          this.log(
+            `(moderationService) failed to subscribe to trusted mute list for ${value}`,
+            error,
+          );
+        });
+      }
+    }
+  }
+
   async ensureUserBlocksLoaded(pubkey) {
     if (!this.userBlocks || typeof this.userBlocks.ensureLoaded !== "function") {
       return;
@@ -381,6 +432,265 @@ export class ModerationService {
     } catch (error) {
       this.log("[moderationService] failed to load user block list", error);
     }
+  }
+
+  async subscribeToTrustedMuteList(pubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized || !this.trustedContacts.has(normalized)) {
+      return;
+    }
+
+    let record = this.trustedMuteSubscriptions.get(normalized);
+    if (!record) {
+      record = { unsub: null, promise: null };
+      this.trustedMuteSubscriptions.set(normalized, record);
+    } else if (record.promise) {
+      try {
+        await record.promise;
+      } catch {
+        /* noop */
+      }
+      return;
+    } else if (typeof record.unsub === "function") {
+      return;
+    }
+
+    record.promise = (async () => {
+      try {
+        await this.ensurePool();
+      } catch (error) {
+        this.log(
+          `(moderationService) ensurePool failed while subscribing to trusted mute list for ${normalized}`,
+          error,
+        );
+        return;
+      }
+
+      if (!this.trustedContacts.has(normalized)) {
+        return;
+      }
+
+      const relays = resolveRelayList(this.nostrClient);
+      if (!relays.length) {
+        return;
+      }
+
+      const filter = { kinds: [10000], authors: [normalized], limit: 1 };
+
+      let events = [];
+      try {
+        events = await this.nostrClient.pool.list(relays, [filter]);
+      } catch (error) {
+        this.log(
+          `(moderationService) failed to backfill trusted mute list for ${normalized}`,
+          error,
+        );
+        events = [];
+      }
+
+      if (Array.isArray(events) && events.length) {
+        let latest = null;
+        for (const event of events) {
+          if (!event || ensureNumber(event.created_at) <= 0) {
+            continue;
+          }
+          if (!latest || ensureNumber(event.created_at) > ensureNumber(latest.created_at)) {
+            latest = event;
+          }
+        }
+        if (latest) {
+          this.ingestTrustedMuteEvent(latest);
+        }
+      }
+
+      if (!this.trustedContacts.has(normalized)) {
+        return;
+      }
+
+      try {
+        const sub = this.nostrClient.pool.sub(relays, [filter]);
+        sub.on("event", (event) => {
+          this.ingestTrustedMuteEvent(event);
+        });
+        sub.on("eose", () => {});
+        record.unsub = typeof sub.unsub === "function" ? () => sub.unsub() : null;
+      } catch (error) {
+        this.log(
+          `(moderationService) failed to subscribe to trusted mute list for ${normalized}`,
+          error,
+        );
+      }
+    })();
+
+    try {
+      await record.promise;
+    } catch (error) {
+      this.log("[moderationService] trusted mute subscription promise rejected", error);
+    } finally {
+      record.promise = null;
+    }
+  }
+
+  teardownTrustedMuteSubscription(pubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return;
+    }
+
+    const record = this.trustedMuteSubscriptions.get(normalized);
+    if (record && typeof record.unsub === "function") {
+      try {
+        record.unsub();
+      } catch (error) {
+        this.log("[moderationService] failed to teardown trusted mute subscription", error);
+      }
+    }
+    this.trustedMuteSubscriptions.delete(normalized);
+    this.replaceTrustedMuteList(normalized, new Set(), { createdAt: 0, eventId: "" });
+  }
+
+  replaceTrustedMuteList(ownerPubkey, mutedAuthors, { createdAt = 0, eventId = "" } = {}) {
+    const owner = normalizeHex(ownerPubkey);
+    if (!owner) {
+      return;
+    }
+
+    const sanitizedAuthors = new Set();
+    if (mutedAuthors instanceof Set || Array.isArray(mutedAuthors)) {
+      for (const candidate of mutedAuthors) {
+        const normalized = normalizeToHex(candidate);
+        if (!normalized) {
+          continue;
+        }
+        sanitizedAuthors.add(normalized);
+      }
+    } else if (mutedAuthors && typeof mutedAuthors[Symbol.iterator] === "function") {
+      for (const candidate of mutedAuthors) {
+        const normalized = normalizeToHex(candidate);
+        if (!normalized) {
+          continue;
+        }
+        sanitizedAuthors.add(normalized);
+      }
+    }
+
+    const previous = this.trustedMuteLists.get(owner);
+    if (previous && previous.authors instanceof Set) {
+      for (const author of previous.authors) {
+        const aggregate = this.trustedMutedAuthors.get(author);
+        if (!aggregate || !(aggregate.muters instanceof Set)) {
+          continue;
+        }
+        aggregate.muters.delete(owner);
+        if (!aggregate.muters.size) {
+          this.trustedMutedAuthors.delete(author);
+        } else {
+          aggregate.count = aggregate.muters.size;
+        }
+      }
+    }
+
+    if (!sanitizedAuthors.size) {
+      this.trustedMuteLists.delete(owner);
+    } else {
+      this.trustedMuteLists.set(owner, {
+        authors: sanitizedAuthors,
+        updatedAt: ensureNumber(createdAt),
+        eventId: normalizeEventId(eventId),
+      });
+
+      for (const author of sanitizedAuthors) {
+        let aggregate = this.trustedMutedAuthors.get(author);
+        if (!aggregate) {
+          aggregate = { muters: new Set(), count: 0 };
+          this.trustedMutedAuthors.set(author, aggregate);
+        }
+        aggregate.muters.add(owner);
+        aggregate.count = aggregate.muters.size;
+      }
+    }
+
+    this.emit("trusted-mutes", { total: this.trustedMutedAuthors.size, owner });
+  }
+
+  applyTrustedMuteEvent(ownerPubkey, event) {
+    const owner = normalizeHex(ownerPubkey);
+    if (!owner || !this.trustedContacts.has(owner)) {
+      return;
+    }
+
+    if (!event || event.kind !== 10000) {
+      this.replaceTrustedMuteList(owner, new Set(), { createdAt: 0, eventId: "" });
+      return;
+    }
+
+    const createdAt = ensureNumber(event.created_at);
+    const eventId = typeof event.id === "string" ? event.id : "";
+
+    const existing = this.trustedMuteLists.get(owner);
+    if (existing) {
+      const existingEventId = typeof existing.eventId === "string" ? existing.eventId : "";
+      if (existingEventId && normalizeEventId(existingEventId) === normalizeEventId(eventId)) {
+        return;
+      }
+      if (ensureNumber(existing.updatedAt) > createdAt && normalizeEventId(eventId)) {
+        return;
+      }
+    }
+
+    const mutedAuthors = new Set();
+    if (Array.isArray(event.tags)) {
+      for (const tag of event.tags) {
+        if (!Array.isArray(tag) || tag.length < 2) {
+          continue;
+        }
+        if (tag[0] !== "p") {
+          continue;
+        }
+        const normalized = normalizeToHex(tag[1]);
+        if (normalized) {
+          mutedAuthors.add(normalized);
+        }
+      }
+    }
+
+    this.replaceTrustedMuteList(owner, mutedAuthors, { createdAt, eventId });
+  }
+
+  ingestTrustedMuteEvent(event) {
+    if (!event || event.kind !== 10000) {
+      return;
+    }
+
+    const owner = normalizeHex(event.pubkey);
+    if (!owner || !this.trustedContacts.has(owner)) {
+      return;
+    }
+
+    this.applyTrustedMuteEvent(owner, event);
+  }
+
+  isAuthorMutedByTrusted(pubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return false;
+    }
+    const entry = this.trustedMutedAuthors.get(normalized);
+    return Boolean(entry && entry.muters instanceof Set && entry.muters.size > 0);
+  }
+
+  getTrustedMutersForAuthor(pubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return [];
+    }
+
+    const entry = this.trustedMutedAuthors.get(normalized);
+    if (!entry || !(entry.muters instanceof Set)) {
+      return [];
+    }
+
+    return Array.from(entry.muters);
   }
 
   isPubkeyBlockedByViewer(pubkey) {
@@ -562,6 +872,7 @@ export class ModerationService {
     }
 
     this.viewerPubkey = normalized;
+    this.clearTrustedMuteTracking();
     this.trustedContacts.clear();
     this.recomputeAllSummaries();
 
@@ -604,7 +915,10 @@ export class ModerationService {
 
   async fetchTrustedContacts(pubkey) {
     const normalized = normalizeHex(pubkey);
+    const previousContacts =
+      this.trustedContacts instanceof Set ? new Set(this.trustedContacts) : new Set();
     if (!normalized) {
+      this.clearTrustedMuteTracking();
       this.trustedContacts.clear();
       this.emit("contacts", { size: 0 });
       return;
@@ -619,6 +933,7 @@ export class ModerationService {
 
     const relays = resolveRelayList(this.nostrClient);
     if (!relays.length) {
+      this.clearTrustedMuteTracking();
       this.trustedContacts.clear();
       this.emit("contacts", { size: 0 });
       return;
@@ -635,9 +950,11 @@ export class ModerationService {
     }
 
     if (!Array.isArray(events) || !events.length) {
+      this.clearTrustedMuteTracking();
       this.trustedContacts.clear();
       this.emit("contacts", { size: 0 });
       this.recomputeAllSummaries();
+      this.reconcileTrustedMuteSubscriptions(previousContacts, new Set());
       return;
     }
 
@@ -651,14 +968,17 @@ export class ModerationService {
       }
     }
 
-    this.applyContactEvent(latest);
+    this.applyContactEvent(latest, { previous: previousContacts });
   }
 
-  applyContactEvent(event) {
+  applyContactEvent(event, { previous = null } = {}) {
+    const previousContacts = previous instanceof Set ? previous : new Set(this.trustedContacts);
     if (!event || !Array.isArray(event.tags)) {
+      this.clearTrustedMuteTracking();
       this.trustedContacts.clear();
       this.emit("contacts", { size: 0 });
       this.recomputeAllSummaries();
+      this.reconcileTrustedMuteSubscriptions(previousContacts, new Set());
       return;
     }
 
@@ -676,6 +996,7 @@ export class ModerationService {
     this.trustedContacts = nextSet;
     this.emit("contacts", { size: nextSet.size });
     this.recomputeAllSummaries();
+    this.reconcileTrustedMuteSubscriptions(previousContacts, nextSet);
   }
 
   async subscribeToContactList(pubkey) {

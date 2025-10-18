@@ -4550,6 +4550,18 @@ class Application {
 
     const reporterPubkeys = sanitizedReporters.map((entry) => entry.pubkey);
 
+    const rawTrustedMuters = Array.isArray(existingModeration.trustedMuters)
+      ? existingModeration.trustedMuters
+          .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
+          .filter(Boolean)
+      : [];
+
+    const trustedMuteCount = Number.isFinite(existingModeration.trustedMuteCount)
+      ? Math.max(0, Math.floor(existingModeration.trustedMuteCount))
+      : rawTrustedMuters.length;
+
+    const trustedMuted = existingModeration.trustedMuted === true || trustedMuteCount > 0;
+
     const reporterDisplayNames = [];
     const seenNames = new Set();
     for (const reporterPubkey of reporterPubkeys) {
@@ -4567,6 +4579,27 @@ class Application {
       }
       seenNames.add(key);
       reporterDisplayNames.push(normalizedName);
+    }
+
+    const trustedMuterDisplayNames = [];
+    if (trustedMuted) {
+      const seenMuteNames = new Set();
+      for (const muterPubkey of rawTrustedMuters) {
+        const name = this.getReporterDisplayName(muterPubkey);
+        if (!name) {
+          continue;
+        }
+        const normalizedName = name.trim();
+        if (!normalizedName) {
+          continue;
+        }
+        const key = normalizedName.toLowerCase();
+        if (seenMuteNames.has(key)) {
+          continue;
+        }
+        seenMuteNames.add(key);
+        trustedMuterDisplayNames.push(normalizedName);
+      }
     }
 
     const trustedCount = Number.isFinite(existingModeration.trustedCount)
@@ -4597,6 +4630,10 @@ class Application {
       trustedReporters: sanitizedReporters,
       reporterPubkeys,
       reporterDisplayNames,
+      trustedMuted,
+      trustedMuters: rawTrustedMuters,
+      trustedMuteCount,
+      trustedMuterDisplayNames,
       original: {
         blockAutoplay: originalState.blockAutoplay,
         blurThumbnail: originalState.blurThumbnail,

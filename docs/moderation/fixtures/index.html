@@ -119,6 +119,25 @@
             { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 },
           ],
         },
+        {
+          key: "trusted-mute",
+          heading: "Trusted mute (F1 mute list)",
+          description:
+            "Card should explain that a trusted contact muted this author without enabling overrides.",
+          video: {
+            id: "4".repeat(64),
+            title: "Fixture: Trusted Mute",
+            pubkey: "aa".repeat(32),
+            thumbnail: "/assets/jpg/video-thumbnail-fallback.jpg",
+          },
+          moderation: {
+            blockAutoplay: false,
+            blurThumbnail: false,
+            trustedMuted: true,
+            trustedMuteCount: 1,
+          },
+          muters: [{ name: "Jess F1", pubkey: "b".repeat(64) }],
+        },
       ];
 
       window.__MODERATION_FIXTURE_STORAGE_KEY__ = STORAGE_KEY;
@@ -197,6 +216,25 @@
         const summary = buildSummary(fixture);
         if (summary) {
           base.summary = summary;
+        }
+
+        if (fixture.moderation.trustedMuted) {
+          base.trustedMuted = true;
+          const muterPubkeys = Array.isArray(fixture.muters)
+            ? fixture.muters
+                .map((muter) => (typeof muter?.pubkey === "string" ? muter.pubkey : ""))
+                .filter(Boolean)
+            : [];
+          base.trustedMuters = muterPubkeys;
+          const muteCount = Number.isFinite(fixture.moderation.trustedMuteCount)
+            ? Math.max(0, Math.floor(fixture.moderation.trustedMuteCount))
+            : muterPubkeys.length;
+          base.trustedMuteCount = muteCount;
+          base.trustedMuterDisplayNames = Array.isArray(fixture.muters)
+            ? fixture.muters
+                .map((muter) => (typeof muter?.name === "string" ? muter.name : ""))
+                .filter(Boolean)
+            : [];
         }
 
         if (overrideEntry?.showAnyway) {

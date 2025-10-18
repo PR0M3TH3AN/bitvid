@@ -952,6 +952,24 @@ export class VideoCard {
           .filter(Boolean)
       : [];
 
+    const trustedMuted = moderation?.trustedMuted === true;
+    let trustedMuteCount = Number.isFinite(moderation?.trustedMuteCount)
+      ? Math.max(0, Math.floor(moderation.trustedMuteCount))
+      : 0;
+
+    if (!trustedMuteCount && Array.isArray(moderation?.trustedMuters)) {
+      const muters = moderation.trustedMuters
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean);
+      trustedMuteCount = muters.length;
+    }
+
+    const trustedMuteDisplayNames = Array.isArray(moderation?.trustedMuterDisplayNames)
+      ? moderation.trustedMuterDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+
     const original =
       moderation?.original && typeof moderation.original === "object"
         ? moderation.original
@@ -962,6 +980,9 @@ export class VideoCard {
       friendlyType: reportType ? reportType.replace(/[_-]+/g, " ").trim() : "",
       trustedCount,
       reporterDisplayNames,
+      trustedMuted,
+      trustedMuteCount,
+      trustedMuteDisplayNames,
       originalBlur: original.blurThumbnail === true,
       originalBlockAutoplay: original.blockAutoplay === true,
       activeBlur: moderation?.blurThumbnail === true,
@@ -973,7 +994,10 @@ export class VideoCard {
       context.originalBlur ||
       context.originalBlockAutoplay ||
       context.trustedCount > 0 ||
+      context.trustedMuted ||
       context.overrideActive;
+
+    context.allowOverride = context.originalBlur || context.originalBlockAutoplay;
 
     return context;
   }
@@ -983,15 +1007,29 @@ export class VideoCard {
       return "";
     }
 
-    const typeLabel = context.friendlyType || "this video";
-    const count = Math.max(0, Number(context.trustedCount) || 0);
+    const reasons = [];
 
-    if (count <= 0) {
-      return context.friendlyType ? `reports of ${typeLabel}` : "reports";
+    if (context.trustedMuted) {
+      const muteCount = Math.max(1, Number(context.trustedMuteCount) || 0);
+      const muteLabel = muteCount === 1 ? "trusted contact" : "trusted contacts";
+      reasons.push(`muted by ${muteCount === 1 ? "a" : muteCount} ${muteLabel}`);
     }
 
-    const friendLabel = count === 1 ? "friend" : "friends";
-    return `${count} ${friendLabel} reported ${typeLabel}`;
+    const typeLabel = context.friendlyType || "this video";
+    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
+    if (reportCount > 0) {
+      const friendLabel = reportCount === 1 ? "friend" : "friends";
+      reasons.push(`${reportCount} ${friendLabel} reported ${typeLabel}`);
+    } else if (!context.trustedMuted) {
+      reasons.push(context.friendlyType ? `reports of ${typeLabel}` : "reports");
+    }
+
+    if (!reasons.length) {
+      return "";
+    }
+
+    const combined = reasons.join(" · ");
+    return combined.charAt(0).toUpperCase() + combined.slice(1);
   }
 
   buildModerationBadgeText(context) {
@@ -1014,7 +1052,9 @@ export class VideoCard {
     if (context.originalBlockAutoplay) {
       parts.push("Autoplay blocked");
     }
-    if (reason) {
+    if (context.trustedMuted && !context.originalBlur && !context.originalBlockAutoplay) {
+      parts.push(reason || "Muted by trusted contacts");
+    } else if (reason) {
       parts.push(reason);
     }
 
@@ -1137,7 +1177,12 @@ export class VideoCard {
     });
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
     badge.dataset.moderationBadge = "true";
-    badge.dataset.moderationState = context.overrideActive ? "override" : "blocked";
+    const state = context.overrideActive
+      ? "override"
+      : context.trustedMuted
+        ? "trusted-mute"
+        : "blocked";
+    badge.dataset.moderationState = state;
 
     const badgeId = this.getModerationBadgeId();
     badge.id = badgeId;
@@ -1151,14 +1196,39 @@ export class VideoCard {
     });
     badge.appendChild(text);
 
-    const names = context.reporterDisplayNames;
-    if (names.length) {
-      const joined = names.join(", ");
-      badge.title = `Reported by ${joined}`;
-      badge.setAttribute(
-        "aria-label",
-        `${text.textContent}. Reported by ${joined}.`,
-      );
+    const muteNames = Array.isArray(context.trustedMuteDisplayNames)
+      ? context.trustedMuteDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+    const reporterNames = Array.isArray(context.reporterDisplayNames)
+      ? context.reporterDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    const allNames = [...muteNames, ...reporterNames];
+    const uniqueNames = [];
+    const seenNameKeys = new Set();
+    for (const name of allNames) {
+      if (typeof name !== "string" || !name.trim()) {
+        continue;
+      }
+      const key = name.trim().toLowerCase();
+      if (seenNameKeys.has(key)) {
+        continue;
+      }
+      seenNameKeys.add(key);
+      uniqueNames.push(name.trim());
+    }
+
+    if (uniqueNames.length) {
+      const joined = uniqueNames.join(", ");
+      const hasMutedNames = muteNames.length > 0;
+      const hasReporterNames = reporterNames.length > 0;
+      const prefix = hasMutedNames && hasReporterNames ? "Muted/Reported by" : hasMutedNames ? "Muted by" : "Reported by";
+      badge.title = `${prefix} ${joined}`;
+      badge.setAttribute("aria-label", `${text.textContent}. ${prefix} ${joined}.`);
     } else {
       badge.removeAttribute("title");
       badge.setAttribute("aria-label", `${text.textContent}.`);
@@ -1167,7 +1237,7 @@ export class VideoCard {
     this.moderationBadgeEl = badge;
     this.moderationBadgeTextEl = text;
 
-    if (!context.overrideActive) {
+    if (!context.overrideActive && context.allowOverride) {
       const button = this.createModerationOverrideButton();
       badge.appendChild(button);
       this.moderationActionButton = button;
@@ -1227,24 +1297,57 @@ export class VideoCard {
     }
 
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
-    badge.dataset.moderationState = context.overrideActive ? "override" : "blocked";
+    const state = context.overrideActive
+      ? "override"
+      : context.trustedMuted
+        ? "trusted-mute"
+        : "blocked";
+    badge.dataset.moderationState = state;
 
     const textContent = this.buildModerationBadgeText(context);
     if (this.moderationBadgeTextEl) {
       this.moderationBadgeTextEl.textContent = textContent;
     }
 
-    const names = context.reporterDisplayNames;
-    if (names.length) {
-      const joined = names.join(", ");
-      badge.title = `Reported by ${joined}`;
-      badge.setAttribute("aria-label", `${textContent}. Reported by ${joined}.`);
+    const muteNames = Array.isArray(context.trustedMuteDisplayNames)
+      ? context.trustedMuteDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+    const reporterNames = Array.isArray(context.reporterDisplayNames)
+      ? context.reporterDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    const allNames = [...muteNames, ...reporterNames];
+    const uniqueNames = [];
+    const seenNameKeys = new Set();
+    for (const name of allNames) {
+      if (typeof name !== "string" || !name.trim()) {
+        continue;
+      }
+      const key = name.trim().toLowerCase();
+      if (seenNameKeys.has(key)) {
+        continue;
+      }
+      seenNameKeys.add(key);
+      uniqueNames.push(name.trim());
+    }
+
+    if (uniqueNames.length) {
+      const joined = uniqueNames.join(", ");
+      const hasMutedNames = muteNames.length > 0;
+      const hasReporterNames = reporterNames.length > 0;
+      const prefix = hasMutedNames && hasReporterNames ? "Muted/Reported by" : hasMutedNames ? "Muted by" : "Reported by";
+      badge.title = `${prefix} ${joined}`;
+      badge.setAttribute("aria-label", `${textContent}. ${prefix} ${joined}.`);
     } else {
       badge.removeAttribute("title");
       badge.setAttribute("aria-label", `${textContent}.`);
     }
 
-    if (context.overrideActive) {
+    if (context.overrideActive || !context.allowOverride) {
       if (this.moderationActionButton) {
         this.moderationActionButton.removeEventListener(
           "click",
@@ -1777,6 +1880,23 @@ export class VideoCard {
       }
       if (this.root.dataset.moderationReportCount) {
         delete this.root.dataset.moderationReportCount;
+      }
+    }
+
+    if (moderationContext.trustedMuted) {
+      this.root.dataset.moderationTrustedMute = "true";
+      const muteCount = Math.max(0, Number(moderationContext.trustedMuteCount) || 0);
+      if (muteCount > 0) {
+        this.root.dataset.moderationTrustedMuteCount = String(muteCount);
+      } else if (this.root.dataset.moderationTrustedMuteCount) {
+        delete this.root.dataset.moderationTrustedMuteCount;
+      }
+    } else {
+      if (this.root.dataset.moderationTrustedMute) {
+        delete this.root.dataset.moderationTrustedMute;
+      }
+      if (this.root.dataset.moderationTrustedMuteCount) {
+        delete this.root.dataset.moderationTrustedMuteCount;
       }
     }
   }

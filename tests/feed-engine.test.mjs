@@ -214,9 +214,35 @@ async function testBlacklistOrderingWithRuntimeChanges() {
   ]);
 }
 
+async function testTrustedMuteDownrank() {
+  const sorter = createChronologicalSorter();
+
+  const items = [
+    {
+      video: { id: "muted", created_at: 400 },
+      metadata: { moderation: { trustedMuted: true } },
+    },
+    {
+      video: { id: "fresh", created_at: 500 },
+      metadata: { moderation: { trustedMuted: false } },
+    },
+    {
+      video: { id: "older", created_at: 300 },
+      metadata: {},
+    },
+  ];
+
+  const sorted = sorter(items);
+  assert.deepEqual(
+    sorted.map((entry) => entry.video.id),
+    ["fresh", "older", "muted"],
+  );
+}
+
 await testDedupeOrdering();
 await testBlacklistFiltering();
 await testWatchHistoryHookIsolation();
 await testBlacklistOrderingWithRuntimeChanges();
+await testTrustedMuteDownrank();
 
 console.log("All feed engine tests passed");
