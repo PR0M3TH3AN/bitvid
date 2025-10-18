@@ -152,3 +152,86 @@ test("trustedReportCount ignores reports from muted or blocked reporters", (t) =
   const reporters = service.getTrustedReporters(eventId, "nudity");
   assert.deepEqual(reporters.map((entry) => entry.pubkey), [trustedReporter]);
 });
+
+test("blocking and unblocking reporters recomputes trusted summaries", async (t) => {
+  withMockedNostrTools(t);
+
+  const eventId = "d".repeat(64);
+  const reporterHex = "a".repeat(64);
+
+  const blocked = new Set();
+  const listeners = new Set();
+  const userBlocksMock = {
+    async ensureLoaded() {},
+    isBlocked(pubkey) {
+      return blocked.has(pubkey);
+    },
+    on(eventName, handler) {
+      if (eventName !== "change" || typeof handler !== "function") {
+        return () => {};
+      }
+      listeners.add(handler);
+      return () => {
+        listeners.delete(handler);
+      };
+    },
+    emit(detail) {
+      for (const handler of Array.from(listeners)) {
+        handler(detail);
+      }
+    },
+  };
+
+  const service = new ModerationService({
+    logger: () => {},
+    userBlocks: userBlocksMock,
+  });
+
+  service.trustedContacts = new Set([reporterHex]);
+
+  const report = createReport({
+    id: "b".repeat(64),
+    reporter: reporterHex,
+    eventId,
+    createdAt: 1_700_000_300,
+  });
+
+  service.ingestReportEvent(report);
+
+  assert.equal(service.trustedReportCount(eventId, "nudity"), 1);
+
+  const teardownCalls = [];
+  const setActiveCalls = [];
+  service.activeEventIds = new Set([eventId]);
+  service.activeSubscriptions.set(eventId, {});
+  service.teardownReportSubscription = (id) => {
+    if (!service.activeSubscriptions.has(id)) {
+      return;
+    }
+    teardownCalls.push(id);
+    service.activeSubscriptions.delete(id);
+  };
+  service.setActiveEventIds = async (ids) => {
+    setActiveCalls.push([...ids]);
+    service.activeEventIds = new Set(ids);
+  };
+
+  blocked.add(reporterHex);
+  userBlocksMock.emit({ action: "block", targetPubkey: reporterHex });
+  await service.awaitUserBlockRefresh();
+
+  const summaryAfterBlock = service.getTrustedReportSummary(eventId);
+  assert.equal(summaryAfterBlock.totalTrusted, 0);
+  assert.equal(summaryAfterBlock.types.nudity?.trusted ?? 0, 0);
+  assert.deepEqual(teardownCalls, [eventId]);
+  assert.deepEqual(setActiveCalls, [[eventId]]);
+
+  blocked.delete(reporterHex);
+  userBlocksMock.emit({ action: "unblock", targetPubkey: reporterHex });
+  await service.awaitUserBlockRefresh();
+
+  const summaryAfterUnblock = service.getTrustedReportSummary(eventId);
+  assert.equal(summaryAfterUnblock.types.nudity.trusted, 1);
+  assert.equal(service.trustedReportCount(eventId, "nudity"), 1);
+  assert.deepEqual(setActiveCalls, [[eventId], [eventId]]);
+});

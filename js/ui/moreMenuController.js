@@ -1467,6 +1467,17 @@ export default class MoreMenuController {
             );
           }
 
+          try {
+            await this.moderationService?.awaitUserBlockRefresh?.();
+          } catch (error) {
+            if (this.isDevMode) {
+              userLogger.warn(
+                "[MoreMenu] Moderation sync failed after block update:",
+                error,
+              );
+            }
+          }
+
           await this.callbacks.loadVideos();
           try {
             await this.subscriptions?.refreshActiveFeed?.({

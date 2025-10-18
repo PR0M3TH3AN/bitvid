@@ -123,9 +123,16 @@ test('block-author updates user blocks, reloads videos, and refreshes feeds', as
     },
   };
 
+  const moderationStub = {
+    awaitUserBlockRefresh: async () => {
+      events.push(['awaitUserBlockRefresh']);
+    },
+  };
+
   const controller = new MoreMenuController({
     userBlocks,
     subscriptions,
+    moderationService: moderationStub,
     callbacks: {
       getCurrentUserPubkey: () => 'actorhex',
       getCurrentVideo: () => ({ pubkey: 'fallbackhex' }),
@@ -155,6 +162,7 @@ test('block-author updates user blocks, reloads videos, and refreshes feeds', as
     ['addBlock', 'targethex', 'actorhex'],
     ['success', "Creator blocked. You won't see their videos anymore."],
     ['refreshBlockedList'],
+    ['awaitUserBlockRefresh'],
     ['loadVideos'],
     ['refreshActiveFeed', { reason: 'user-block-update' }],
   ]);

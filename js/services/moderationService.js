@@ -1,7 +1,7 @@
 import { nostrClient } from "../nostr.js";
 import { publishEventToRelays, assertAnyRelayAccepted } from "../nostrPublish.js";
 import { accessControl } from "../accessControl.js";
-import { userBlocks } from "../userBlocks.js";
+import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
 import logger from "../utils/logger.js";
 
 class SimpleEventEmitter {
@@ -316,7 +316,7 @@ export class ModerationService {
 
     this.viewerPubkey = "";
     this.trustedContacts = new Set();
-    this.userBlocks = userBlockManager;
+    this.userBlocks = null;
     this.accessControl = accessControlService;
 
     this.viewerMuteList = new Set();
@@ -343,6 +343,11 @@ export class ModerationService {
         logger.user.warn("[moderationService] logger threw", logError);
       }
     });
+
+    this.userBlockUnsubscribe = null;
+    this.userBlockRefreshQueue = Promise.resolve();
+
+    this.setUserBlocks(userBlockManager);
   }
 
   setLogger(newLogger) {
@@ -356,8 +361,47 @@ export class ModerationService {
   }
 
   setUserBlocks(manager) {
-    if (manager && manager !== this.userBlocks) {
-      this.userBlocks = manager;
+    if (manager === this.userBlocks) {
+      return;
+    }
+
+    if (typeof this.userBlockUnsubscribe === "function") {
+      try {
+        this.userBlockUnsubscribe();
+      } catch (error) {
+        this.log("[moderationService] failed to teardown user block listener", error);
+      }
+    }
+
+    this.userBlockUnsubscribe = null;
+    this.userBlocks = manager || null;
+
+    if (!this.userBlocks || typeof this.userBlocks.on !== "function") {
+      return;
+    }
+
+    try {
+      const unsubscribe = this.userBlocks.on(
+        USER_BLOCK_EVENTS.CHANGE,
+        (detail) => {
+          this.queueUserBlockRefresh(detail);
+        },
+      );
+
+      if (typeof unsubscribe === "function") {
+        this.userBlockUnsubscribe = () => {
+          try {
+            unsubscribe();
+          } catch (error) {
+            this.log(
+              "[moderationService] failed to remove user block listener",
+              error,
+            );
+          }
+        };
+      }
+    } catch (error) {
+      this.log("[moderationService] failed to subscribe to user block events", error);
     }
   }
 
@@ -373,6 +417,33 @@ export class ModerationService {
 
   emit(eventName, detail) {
     this.emitter.emit(eventName, detail);
+  }
+
+  queueUserBlockRefresh(detail = {}) {
+    const previous = this.userBlockRefreshQueue || Promise.resolve();
+    const action = typeof detail?.action === "string" ? detail.action : "";
+    const targetPubkey = detail?.targetPubkey || detail?.pubkey || "";
+    const normalizedTarget = normalizeHex(targetPubkey);
+
+    const next = previous
+      .catch(() => {})
+      .then(async () => {
+        this.recomputeAllSummaries();
+        if (this.activeEventIds && this.activeEventIds.size) {
+          await this.refreshActiveReportSubscriptions();
+        }
+        this.emit("user-blocks", {
+          action,
+          targetPubkey: normalizedTarget,
+        });
+      });
+
+    this.userBlockRefreshQueue = next.catch((error) => {
+      this.log("[moderationService] failed to refresh after user block update", error);
+      throw error;
+    });
+
+    return this.userBlockRefreshQueue;
   }
 
   clearTrustedMuteTracking() {
@@ -1299,6 +1370,19 @@ export class ModerationService {
     }
   }
 
+  async refreshActiveReportSubscriptions() {
+    if (!this.activeEventIds || !this.activeEventIds.size) {
+      return;
+    }
+
+    const ids = Array.from(this.activeEventIds);
+    for (const id of ids) {
+      this.teardownReportSubscription(id);
+    }
+
+    await this.setActiveEventIds(ids);
+  }
+
   teardownReportSubscription(eventId) {
     const normalized = normalizeEventId(eventId);
     const entry = this.activeSubscriptions.get(normalized);
@@ -1682,6 +1766,18 @@ export class ModerationService {
 
     this.ingestReportEvent(signedEvent);
     return { ok: true, event: signedEvent, results };
+  }
+
+  async awaitUserBlockRefresh() {
+    if (!this.userBlockRefreshQueue) {
+      return;
+    }
+
+    try {
+      await this.userBlockRefreshQueue;
+    } catch {
+      /* already reported during queue */
+    }
   }
 }
 

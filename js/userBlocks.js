@@ -10,6 +10,52 @@ import {
   assertAnyRelayAccepted,
 } from "./nostrPublish.js";
 
+class TinyEventEmitter {
+  constructor() {
+    this.listeners = new Map();
+  }
+
+  on(eventName, handler) {
+    if (typeof eventName !== "string" || typeof handler !== "function") {
+      return () => {};
+    }
+
+    if (!this.listeners.has(eventName)) {
+      this.listeners.set(eventName, new Set());
+    }
+
+    const handlers = this.listeners.get(eventName);
+    handlers.add(handler);
+
+    return () => {
+      handlers.delete(handler);
+      if (!handlers.size) {
+        this.listeners.delete(eventName);
+      }
+    };
+  }
+
+  emit(eventName, detail) {
+    const handlers = this.listeners.get(eventName);
+    if (!handlers || !handlers.size) {
+      return;
+    }
+
+    for (const handler of Array.from(handlers)) {
+      try {
+        handler(detail);
+      } catch (error) {
+        userLogger.warn(
+          `[UserBlockList] listener for "${eventName}" threw an error`,
+          error,
+        );
+      }
+    }
+  }
+}
+
+export const USER_BLOCK_EVENTS = Object.freeze({ CHANGE: "change" });
+
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
@@ -36,12 +82,17 @@ class UserBlockListManager {
     this.blockedPubkeys = new Set();
     this.blockEventId = null;
     this.loaded = false;
+    this.emitter = new TinyEventEmitter();
   }
 
   reset() {
     this.blockedPubkeys.clear();
     this.blockEventId = null;
     this.loaded = false;
+  }
+
+  on(eventName, handler) {
+    return this.emitter.on(eventName, handler);
   }
 
   getBlockedPubkeys() {
@@ -351,6 +402,11 @@ class UserBlockListManager {
 
     try {
       await this.publishBlockList(actorHex);
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "block",
+        targetPubkey: targetHex,
+        actorPubkey: actorHex,
+      });
       return { ok: true };
     } catch (err) {
       this.blockedPubkeys = snapshot;
@@ -380,6 +436,11 @@ class UserBlockListManager {
 
     try {
       await this.publishBlockList(actorHex);
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "unblock",
+        targetPubkey: targetHex,
+        actorPubkey: actorHex,
+      });
       return { ok: true };
     } catch (err) {
       this.blockedPubkeys = snapshot;

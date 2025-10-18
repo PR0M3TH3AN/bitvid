@@ -49,6 +49,7 @@ import { isWatchHistoryDebugEnabled } from "./watchHistoryDebug.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
 import { createVideoSettingsMenuPanel } from "./ui/components/videoMenuRenderers.js";
+import moderationService from "./services/moderationService.js";
 import {
   initViewCounter,
   subscribeToVideoViewCount,
@@ -1893,6 +1894,17 @@ class Application {
 
   async onVideosShouldRefresh({ reason } = {}) {
     try {
+      if (typeof moderationService?.awaitUserBlockRefresh === "function") {
+        try {
+          await moderationService.awaitUserBlockRefresh();
+        } catch (error) {
+          devLogger.warn(
+            "Failed to sync moderation summaries before refreshing videos:",
+            error,
+          );
+        }
+      }
+
       await this.loadVideos(true);
     } catch (error) {
       const context = reason ? ` after ${reason}` : "";
