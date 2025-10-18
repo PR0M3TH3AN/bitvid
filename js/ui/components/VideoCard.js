@@ -1601,10 +1601,8 @@ export class VideoCard {
     } else if (badge.dataset.variant) {
       delete badge.dataset.variant;
     }
-    const peersText =
-      state === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
     const iconPrefix = descriptor.icon ? `${descriptor.icon} ` : "";
-    const computedText = `${iconPrefix}WebTorrent${peersText}`;
+    const computedText = `${iconPrefix}WebTorrent`;
     badge.textContent = text || computedText;
 
     const tooltipValue =
