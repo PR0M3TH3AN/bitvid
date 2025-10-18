@@ -663,7 +663,15 @@ export class VideoCard {
         alt: "Placeholder"
       }
     });
-    avatar.classList.add("author-pic", "cursor-pointer");
+    avatar.classList.add(
+      "author-pic",
+      "cursor-pointer",
+      "block",
+      "h-full",
+      "w-full",
+      "rounded-full",
+      "object-cover"
+    );
     if (this.video.pubkey) {
       avatar.dataset.pubkey = this.video.pubkey;
     }
