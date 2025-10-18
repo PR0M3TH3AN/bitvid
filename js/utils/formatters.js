@@ -21,6 +21,28 @@ export function truncateMiddle(text, maxLength = 72) {
 }
 
 /**
+ * Formats an npub string using the canonical short display format used across
+ * the app (first 8 characters, ellipsis, last 4 characters). When the input is
+ * not an npub or is already short, the original value is returned.
+ */
+export function formatShortNpub(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (!trimmed.startsWith("npub") || trimmed.length <= 12) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, 8)}...${trimmed.slice(-4)}`;
+}
+
+/**
  * Formats a timestamp (in seconds) to a localized string. Falls back to
  * ISO-8601 formatting if locale formatting fails.
  */

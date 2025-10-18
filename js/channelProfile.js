@@ -11,6 +11,7 @@ import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
 import { getApplication } from "./applicationContext.js";
 import { escapeHTML } from "./utils/domUtils.js";
+import { formatShortNpub } from "./utils/formatters.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
 import { VideoCard } from "./ui/components/VideoCard.js";
 import { createChannelProfileMenuPanel } from "./ui/components/videoMenuRenderers.js";
@@ -2870,10 +2871,11 @@ function applyChannelProfileMetadata({
   const channelNpubEl = document.getElementById("channelNpub");
   if (channelNpubEl) {
     if (npub) {
-      channelNpubEl.textContent = npub;
+      channelNpubEl.textContent = formatShortNpub(npub);
     } else if (pubkey) {
       try {
-        channelNpubEl.textContent = window.NostrTools.nip19.npubEncode(pubkey);
+        const encoded = window.NostrTools.nip19.npubEncode(pubkey);
+        channelNpubEl.textContent = formatShortNpub(encoded);
       } catch (error) {
         channelNpubEl.textContent = "";
       }
