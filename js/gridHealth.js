@@ -480,11 +480,8 @@ function setBadge(card, state, details) {
     delete badge.dataset.variant;
   }
 
-  const peersText =
-    normalizedState === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
-
   const iconPrefix = entry.icon ? `${entry.icon} ` : "";
-  badge.textContent = `${iconPrefix}WebTorrent${peersText}`;
+  badge.textContent = `${iconPrefix}WebTorrent`;
   const tooltip =
     normalizedState === "checking" || normalizedState === "unknown"
       ? entry.aria
