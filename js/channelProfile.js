@@ -161,6 +161,12 @@ function preloadBannerImage(url) {
     if ("loading" in img) {
       img.loading = img.loading || "eager";
     }
+    if ("referrerPolicy" in img && !img.referrerPolicy) {
+      img.referrerPolicy = "no-referrer";
+    }
+    if ("crossOrigin" in img && !img.crossOrigin) {
+      img.crossOrigin = "anonymous";
+    }
     img.onload = () => {
       resolve(url);
     };
