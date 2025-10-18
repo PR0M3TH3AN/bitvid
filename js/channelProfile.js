@@ -2870,32 +2870,111 @@ function isValidRelayUrl(url) {
 }
 
 function getCachedChannelVideoEvents(pubkey) {
-  if (
-    !nostrClient?.allEvents ||
-    typeof nostrClient.allEvents.forEach !== "function"
-  ) {
-    return [];
-  }
-
   const normalized =
     typeof pubkey === "string" ? pubkey.trim().toLowerCase() : "";
   if (!normalized) {
     return [];
   }
 
-  const results = [];
-  nostrClient.allEvents.forEach((event) => {
+  const collectMatches = (source, iterator) => {
+    const matches = [];
+    if (!source || typeof iterator !== "function") {
+      return matches;
+    }
+
+    iterator((event) => {
+      const candidate = event || null;
+      if (!candidate) {
+        return;
+      }
+
+      const candidatePubkey =
+        typeof candidate.pubkey === "string"
+          ? candidate.pubkey.trim().toLowerCase()
+          : "";
+
+      if (!candidatePubkey || candidatePubkey !== normalized) {
+        return;
+      }
+
+      matches.push(candidate);
+    });
+
+    return matches;
+  };
+
+  const rawMatches = collectMatches(nostrClient?.rawEvents, (callback) => {
     if (
-      event &&
-      event.kind === 30078 &&
-      typeof event.pubkey === "string" &&
-      event.pubkey.trim().toLowerCase() === normalized
+      nostrClient?.rawEvents &&
+      typeof nostrClient.rawEvents.forEach === "function"
     ) {
-      results.push(event);
+      nostrClient.rawEvents.forEach((event) => {
+        if (event?.kind === 30078) {
+          callback(event);
+        }
+      });
     }
   });
 
-  return results;
+  if (rawMatches.length) {
+    return rawMatches;
+  }
+
+  const processedMatches = collectMatches(
+    nostrClient?.allEvents,
+    (callback) => {
+      if (
+        nostrClient?.allEvents &&
+        typeof nostrClient.allEvents.forEach === "function"
+      ) {
+        nostrClient.allEvents.forEach((video) => {
+          if (video) {
+            callback(video);
+          }
+        });
+      }
+    }
+  );
+
+  return processedMatches;
+}
+
+function normalizeRenderableChannelVideo(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const looksLikeRawEvent =
+    typeof entry.content === "string" ||
+    Array.isArray(entry.tags) ||
+    typeof entry.kind === "number";
+
+  if (looksLikeRawEvent) {
+    const converted = sharedConvertEventToVideo(entry);
+    if (converted && !converted.invalid) {
+      return converted;
+    }
+    return null;
+  }
+
+  const looksLikeConvertedVideo =
+    typeof entry.id === "string" &&
+    typeof entry.title === "string" &&
+    typeof entry.pubkey === "string" &&
+    Number.isFinite(entry.created_at);
+
+  if (looksLikeConvertedVideo) {
+    if (entry.invalid) {
+      return null;
+    }
+
+    return {
+      ...entry,
+      invalid: false,
+    };
+  }
+
+  return null;
 }
 
 function buildRenderableChannelVideos({ events = [], app } = {}) {
@@ -2904,7 +2983,7 @@ function buildRenderableChannelVideos({ events = [], app } = {}) {
   }
 
   const convertedVideos = events
-    .map((evt) => sharedConvertEventToVideo(evt))
+    .map((entry) => normalizeRenderableChannelVideo(entry))
     .filter((vid) => vid && !vid.invalid);
 
   if (!convertedVideos.length) {
