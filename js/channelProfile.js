@@ -130,6 +130,7 @@ let pendingZapRetry = null;
 let zapInFlight = false;
 let zapControlsOpen = false;
 let zapPopover = null;
+let zapPopoverTrigger = null;
 let zapShouldFocusOnOpen = false;
 let channelMenuPopover = null;
 let channelMenuOpen = false;
@@ -224,6 +225,14 @@ function setChannelZapVisibility(visible) {
       ? app.isUserLoggedIn()
       : Boolean(app?.normalizeHexPubkey?.(app?.pubkey));
   const shouldShow = !!visible && isLoggedIn;
+
+  if (
+    shouldShow &&
+    (!zapPopover || zapPopoverTrigger !== zapButton)
+  ) {
+    setupZapButton({ force: true });
+  }
+
   zapButton.toggleAttribute("hidden", !shouldShow);
   zapButton.disabled = !shouldShow;
   zapButton.setAttribute("aria-disabled", (!shouldShow).toString());
@@ -1998,6 +2007,7 @@ export async function initChannelProfileView() {
   }
 
   setupZapButton();
+  setChannelZapVisibility(false);
   syncChannelShareButtonState();
 
   // 4) Load user’s profile (banner, avatar, etc.) and channel videos
@@ -2025,15 +2035,22 @@ export async function initChannelProfileView() {
   await Promise.allSettled(pendingTasks);
 }
 
-function setupZapButton() {
+function setupZapButton({ force = false } = {}) {
   const zapButton = getChannelZapButton();
   if (!zapButton) {
-    return;
+    return false;
+  }
+
+  if (!force && zapPopover && zapPopoverTrigger === zapButton) {
+    if (zapButton.dataset.initialized === "true") {
+      return true;
+    }
   }
 
   if (zapPopover?.destroy) {
     zapPopover.destroy();
     zapPopover = null;
+    zapPopoverTrigger = null;
   }
 
   const documentRef =
@@ -2151,7 +2168,7 @@ function setupZapButton() {
   });
 
   if (!popover) {
-    return;
+    return false;
   }
 
   const originalOpen = popover.open?.bind(popover);
@@ -2202,19 +2219,21 @@ function setupZapButton() {
       originalDestroy(...args);
       if (zapPopover === popover) {
         zapPopover = null;
+        zapPopoverTrigger = null;
       }
       cacheZapPanelElements(null);
     };
   }
 
   zapPopover = popover;
+  zapPopoverTrigger = zapButton;
 
   if (zapButton.dataset.initialized !== "true") {
     zapButton.addEventListener("click", handleZapButtonClick);
     zapButton.dataset.initialized = "true";
   }
 
-  setChannelZapVisibility(false);
+  return true;
 }
 
 /**
