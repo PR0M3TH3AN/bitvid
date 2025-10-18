@@ -23,7 +23,7 @@
   --surface-overlay-banner-gradient: linear-gradient(
     to top,
     var(--surface-overlay-banner-bottom) 0%,
-    var(--surface-overlay-banner-transparent) 30%,
+    var(--surface-overlay-banner-transparent) 60%,
     var(--surface-overlay-banner-transparent) 100%
   );
   --surface-overlay-panel: var(--color-overlay-panel);
