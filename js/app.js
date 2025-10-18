@@ -6307,12 +6307,16 @@ class Application {
       modalVideoEl = modalVideoFromController;
       this.modalVideo = modalVideoEl;
     }
-    if (!modalVideoEl) {
+    const modalVideoConnected = Boolean(
+      modalVideoEl && modalVideoEl.isConnected,
+    );
+    if (!modalVideoEl || !modalVideoConnected) {
       try {
         const { videoElement } = await this.ensureVideoModalReady({
           ensureVideoElement: true,
         });
         modalVideoEl = videoElement;
+        this.modalVideo = modalVideoEl;
       } catch (error) {
         this.log(
           "[playVideoWithFallback] Failed to load video modal before playback:",
