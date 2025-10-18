@@ -130,6 +130,7 @@ let pendingZapRetry = null;
 let zapInFlight = false;
 let zapControlsOpen = false;
 let zapPopover = null;
+let zapPopoverTrigger = null;
 let zapShouldFocusOnOpen = false;
 let channelMenuPopover = null;
 let channelMenuOpen = false;
@@ -224,6 +225,14 @@ function setChannelZapVisibility(visible) {
       ? app.isUserLoggedIn()
       : Boolean(app?.normalizeHexPubkey?.(app?.pubkey));
   const shouldShow = !!visible && isLoggedIn;
+
+  if (
+    shouldShow &&
+    (!zapPopover || zapPopoverTrigger !== zapButton)
+  ) {
+    setupZapButton({ force: true });
+  }
+
   zapButton.toggleAttribute("hidden", !shouldShow);
   zapButton.disabled = !shouldShow;
   zapButton.setAttribute("aria-disabled", (!shouldShow).toString());
@@ -309,7 +318,21 @@ function getChannelMenuElement() {
 }
 
 function getZapControlsContainer() {
-  if (cachedZapControls && cachedZapControls.isConnected) {
+  if (cachedZapControls) {
+    if (cachedZapControls.isConnected) {
+      return cachedZapControls;
+    }
+
+    const doc = typeof document !== "undefined" ? document : null;
+    const HTMLElementCtor =
+      doc?.defaultView?.HTMLElement ||
+      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+    const existing = doc?.getElementById("zapControls") || null;
+    if (existing && (!HTMLElementCtor || existing instanceof HTMLElementCtor)) {
+      cachedZapControls = existing;
+      return cachedZapControls;
+    }
+
     return cachedZapControls;
   }
 
@@ -318,7 +341,7 @@ function getZapControlsContainer() {
   const HTMLElementCtor =
     doc?.defaultView?.HTMLElement ||
     (typeof HTMLElement !== "undefined" ? HTMLElement : null);
-  if (HTMLElementCtor && existing instanceof HTMLElementCtor) {
+  if (existing && (!HTMLElementCtor || existing instanceof HTMLElementCtor)) {
     cachedZapControls = existing;
   } else {
     cachedZapControls = null;
@@ -327,81 +350,198 @@ function getZapControlsContainer() {
 }
 
 function getZapFormElement() {
-  if (cachedZapForm && cachedZapForm.isConnected) {
+  if (cachedZapForm) {
+    if (cachedZapForm.isConnected) {
+      return cachedZapForm;
+    }
+
+    const container = getZapControlsContainer();
+    if (container) {
+      const existing = container.querySelector("#zapForm");
+      if (existing) {
+        cachedZapForm = existing;
+      }
+    }
+
     return cachedZapForm;
   }
+
   const container = getZapControlsContainer();
   cachedZapForm = container?.querySelector("#zapForm") || null;
   return cachedZapForm;
 }
 
 function getZapAmountInput() {
-  if (cachedZapAmountInput && cachedZapAmountInput.isConnected) {
+  if (cachedZapAmountInput) {
+    if (cachedZapAmountInput.isConnected) {
+      return cachedZapAmountInput;
+    }
+
+    const container = getZapControlsContainer();
+    if (container) {
+      const existing = container.querySelector("#zapAmountInput");
+      if (existing) {
+        cachedZapAmountInput = existing;
+      }
+    }
+
     return cachedZapAmountInput;
   }
+
   const container = getZapControlsContainer();
   cachedZapAmountInput = container?.querySelector("#zapAmountInput") || null;
   return cachedZapAmountInput;
 }
 
 function getZapSplitSummaryElement() {
-  if (cachedZapSplitSummary && cachedZapSplitSummary.isConnected) {
+  if (cachedZapSplitSummary) {
+    if (cachedZapSplitSummary.isConnected) {
+      return cachedZapSplitSummary;
+    }
+
+    const container = getZapControlsContainer();
+    if (container) {
+      const existing = container.querySelector("#zapSplitSummary");
+      if (existing) {
+        cachedZapSplitSummary = existing;
+      }
+    }
+
     return cachedZapSplitSummary;
   }
+
   const container = getZapControlsContainer();
   cachedZapSplitSummary = container?.querySelector("#zapSplitSummary") || null;
   return cachedZapSplitSummary;
 }
 
 function getZapStatusElement() {
-  if (cachedZapStatus && cachedZapStatus.isConnected) {
+  if (cachedZapStatus) {
+    if (cachedZapStatus.isConnected) {
+      return cachedZapStatus;
+    }
+
+    const container = getZapControlsContainer();
+    if (container) {
+      const existing = container.querySelector("#zapStatus");
+      if (existing) {
+        cachedZapStatus = existing;
+      }
+    }
+
     return cachedZapStatus;
   }
+
   const container = getZapControlsContainer();
   cachedZapStatus = container?.querySelector("#zapStatus") || null;
   return cachedZapStatus;
 }
 
 function getZapReceiptsList() {
-  if (cachedZapReceipts && cachedZapReceipts.isConnected) {
+  if (cachedZapReceipts) {
+    if (cachedZapReceipts.isConnected) {
+      return cachedZapReceipts;
+    }
+
+    const container = getZapControlsContainer();
+    if (container) {
+      const existing = container.querySelector("#zapReceipts");
+      if (existing) {
+        cachedZapReceipts = existing;
+      }
+    }
+
     return cachedZapReceipts;
   }
+
   const container = getZapControlsContainer();
   cachedZapReceipts = container?.querySelector("#zapReceipts") || null;
   return cachedZapReceipts;
 }
 
 function getZapSendButton() {
-  if (cachedZapSendBtn && cachedZapSendBtn.isConnected) {
+  if (cachedZapSendBtn) {
+    if (cachedZapSendBtn.isConnected) {
+      return cachedZapSendBtn;
+    }
+
+    const container = getZapControlsContainer();
+    if (container) {
+      const existing = container.querySelector("#zapSendBtn");
+      if (existing) {
+        cachedZapSendBtn = existing;
+      }
+    }
+
     return cachedZapSendBtn;
   }
+
   const container = getZapControlsContainer();
   cachedZapSendBtn = container?.querySelector("#zapSendBtn") || null;
   return cachedZapSendBtn;
 }
 
 function getZapWalletPrompt() {
-  if (cachedZapWalletPrompt && cachedZapWalletPrompt.isConnected) {
+  if (cachedZapWalletPrompt) {
+    if (cachedZapWalletPrompt.isConnected) {
+      return cachedZapWalletPrompt;
+    }
+
+    const container = getZapControlsContainer();
+    if (container) {
+      const existing = container.querySelector("#zapWalletPrompt");
+      if (existing) {
+        cachedZapWalletPrompt = existing;
+      }
+    }
+
     return cachedZapWalletPrompt;
   }
+
   const container = getZapControlsContainer();
   cachedZapWalletPrompt = container?.querySelector("#zapWalletPrompt") || null;
   return cachedZapWalletPrompt;
 }
 
 function getZapWalletLink() {
-  if (cachedZapWalletLink && cachedZapWalletLink.isConnected) {
+  if (cachedZapWalletLink) {
+    if (cachedZapWalletLink.isConnected) {
+      return cachedZapWalletLink;
+    }
+
+    const container = getZapControlsContainer();
+    if (container) {
+      const existing = container.querySelector("#zapWalletLink");
+      if (existing) {
+        cachedZapWalletLink = existing;
+      }
+    }
+
     return cachedZapWalletLink;
   }
+
   const container = getZapControlsContainer();
   cachedZapWalletLink = container?.querySelector("#zapWalletLink") || null;
   return cachedZapWalletLink;
 }
 
 function getZapCloseButton() {
-  if (cachedZapCloseBtn && cachedZapCloseBtn.isConnected) {
+  if (cachedZapCloseBtn) {
+    if (cachedZapCloseBtn.isConnected) {
+      return cachedZapCloseBtn;
+    }
+
+    const container = getZapControlsContainer();
+    if (container) {
+      const existing = container.querySelector("#zapCloseBtn");
+      if (existing) {
+        cachedZapCloseBtn = existing;
+      }
+    }
+
     return cachedZapCloseBtn;
   }
+
   const container = getZapControlsContainer();
   cachedZapCloseBtn = container?.querySelector("#zapCloseBtn") || null;
   return cachedZapCloseBtn;
@@ -1241,6 +1381,9 @@ async function executePendingRetry({ walletSettings }) {
 function handleZapButtonClick(event) {
   if (event) {
     event.preventDefault();
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
   }
 
   const zapButton = getChannelZapButton();
@@ -1248,7 +1391,12 @@ function handleZapButtonClick(event) {
     return;
   }
 
-  if (!isZapControlsOpen()) {
+  const popoverIsOpen =
+    typeof zapPopover?.isOpen === "function"
+      ? zapPopover.isOpen()
+      : isZapControlsOpen();
+
+  if (!popoverIsOpen) {
     openZapControls({ focus: true });
     return;
   }
@@ -1859,6 +2007,7 @@ export async function initChannelProfileView() {
   }
 
   setupZapButton();
+  setChannelZapVisibility(false);
   syncChannelShareButtonState();
 
   // 4) Load user’s profile (banner, avatar, etc.) and channel videos
@@ -1886,15 +2035,22 @@ export async function initChannelProfileView() {
   await Promise.allSettled(pendingTasks);
 }
 
-function setupZapButton() {
+function setupZapButton({ force = false } = {}) {
   const zapButton = getChannelZapButton();
   if (!zapButton) {
-    return;
+    return false;
+  }
+
+  if (!force && zapPopover && zapPopoverTrigger === zapButton) {
+    if (zapButton.dataset.initialized === "true") {
+      return true;
+    }
   }
 
   if (zapPopover?.destroy) {
     zapPopover.destroy();
     zapPopover = null;
+    zapPopoverTrigger = null;
   }
 
   const documentRef =
@@ -2012,7 +2168,7 @@ function setupZapButton() {
   });
 
   if (!popover) {
-    return;
+    return false;
   }
 
   const originalOpen = popover.open?.bind(popover);
@@ -2063,19 +2219,21 @@ function setupZapButton() {
       originalDestroy(...args);
       if (zapPopover === popover) {
         zapPopover = null;
+        zapPopoverTrigger = null;
       }
       cacheZapPanelElements(null);
     };
   }
 
   zapPopover = popover;
+  zapPopoverTrigger = zapButton;
 
   if (zapButton.dataset.initialized !== "true") {
     zapButton.addEventListener("click", handleZapButtonClick);
     zapButton.dataset.initialized = "true";
   }
 
-  setChannelZapVisibility(false);
+  return true;
 }
 
 /**
