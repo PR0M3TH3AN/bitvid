@@ -133,7 +133,7 @@ let zapControlsOpen = false;
 let zapPopover = null;
 let zapPopoverTrigger = null;
 let zapShouldFocusOnOpen = false;
-let zapPopoverOpenPromise = null;
+let zapPopoverOpening = false;
 let channelMenuPopover = null;
 let channelMenuOpen = false;
 let currentVideoLoadToken = 0;
@@ -805,6 +805,8 @@ function cacheZapPanelElements(panel) {
     cachedZapWalletLink = null;
     cachedZapCloseBtn = null;
     cachedZapSendBtn = null;
+    zapPopoverOpening = false;
+    zapShouldFocusOnOpen = false;
     return;
   }
 
@@ -935,95 +937,65 @@ function isZapControlsOpen() {
   return zapControlsOpen;
 }
 
-function isZapControlsOpening() {
-  return Boolean(zapPopoverOpenPromise) && !isZapControlsOpen();
-}
-
-async function openZapControls({ focus = false } = {}) {
+function openZapControls({ focus = false } = {}) {
   const zapButton = getChannelZapButton();
   if (!zapButton) {
+    zapShouldFocusOnOpen = false;
     return false;
   }
 
   if (!zapPopover || zapPopoverTrigger !== zapButton) {
     const initialized = setupZapButton({ force: true });
     if (!initialized || !zapPopover || zapPopoverTrigger !== zapButton) {
+      zapShouldFocusOnOpen = false;
       return false;
     }
   }
 
-  if (typeof zapPopover?.preload === "function") {
-    try {
-      zapPopover.preload();
-    } catch (error) {
-      devLogger.warn("[zap] Failed to preload zap popover before opening", error);
-    }
-  }
-
-  if (!zapPopover) {
-    return false;
-  }
-  if (typeof zapPopover.isOpen === "function" && zapPopover.isOpen()) {
+  if (zapPopoverOpening) {
     if (focus) {
-      focusZapAmountField();
+      zapShouldFocusOnOpen = true;
     }
     return true;
   }
 
-  if (zapPopoverOpenPromise) {
-    if (focus) {
-      zapShouldFocusOnOpen = true;
-    }
-    try {
-      return await zapPopoverOpenPromise;
-    } catch (error) {
-      devLogger.warn("[zap] Pending zap popover open failed", error);
-      return false;
-    }
-  }
-
   zapShouldFocusOnOpen = focus;
+  zapPopoverOpening = true;
 
-  const callId = Symbol("zap-open-request");
-  zapPopover.__zapOpenCallId = callId;
-
-  const result = zapPopover.open();
-  if (!result || typeof result.then !== "function") {
-    const didOpen = Boolean(result) && zapPopover?.__zapOpenCallId === callId;
-    if (!didOpen) {
-      zapShouldFocusOnOpen = false;
-    }
-    return didOpen;
+  let result;
+  try {
+    result = zapPopover.open();
+  } catch (error) {
+    zapPopoverOpening = false;
+    zapShouldFocusOnOpen = false;
+    devLogger.warn("[zap] Failed to open zap popover", error);
+    return false;
   }
 
-  const pendingOpen = result
-    .then((value) => {
-      if (!value) {
+  if (result && typeof result.then === "function") {
+    result
+      .catch((error) => {
+        devLogger.warn("[zap] Zap popover open rejected", error);
         return false;
-      }
-      return Boolean(zapPopover) && zapPopover.__zapOpenCallId === callId;
-    })
-    .catch((error) => {
-      devLogger.warn("[zap] Failed to open zap popover", error);
-      return false;
-    })
-    .finally(() => {
-      if (zapPopoverOpenPromise === pendingOpen) {
-        zapPopoverOpenPromise = null;
-      }
-    });
+      })
+      .finally(() => {
+        zapPopoverOpening = false;
+        zapShouldFocusOnOpen = false;
+      });
+    return true;
+  }
 
-  zapPopoverOpenPromise = pendingOpen;
-  return pendingOpen;
+  zapPopoverOpening = false;
+  zapShouldFocusOnOpen = false;
+  return Boolean(result);
 }
 
 function closeZapControls({ focusButton = false } = {}) {
   const zapButton = getChannelZapButton();
   zapShouldFocusOnOpen = false;
-  zapPopoverOpenPromise = null;
+  zapPopoverOpening = false;
 
   if (zapPopover) {
-    zapPopover.__zapOpenCallId = Symbol("zap-open-cancel");
     const result = zapPopover.close({ restoreFocus: focusButton });
     if (!result && focusButton && zapButton && typeof zapButton.focus === "function") {
       try {
@@ -1691,7 +1663,7 @@ async function executePendingRetry({ walletSettings }) {
   resetZapRetryState();
 }
 
-async function handleZapButtonClick(event) {
+function handleZapButtonClick(event) {
   if (event) {
     event.preventDefault();
     if (typeof event.stopPropagation === "function") {
@@ -1704,23 +1676,23 @@ async function handleZapButtonClick(event) {
     return;
   }
 
-  const opening = isZapControlsOpening();
-  const popoverIsOpen = isZapControlsOpen();
+  if (!zapPopover || zapPopoverTrigger !== zapButton) {
+    setupZapButton({ force: true });
+  }
 
-  if (!popoverIsOpen) {
-    if (opening) {
-      zapShouldFocusOnOpen = true;
-      return;
-    }
-    try {
-      await openZapControls({ focus: true });
-    } catch (error) {
-      devLogger.warn("[zap] Failed to handle zap button open request", error);
-    }
+  if (!zapPopover) {
     return;
   }
 
-  if (opening) {
+  if (zapPopoverOpening) {
+    zapShouldFocusOnOpen = true;
+    return;
+  }
+
+  const popoverIsOpen = isZapControlsOpen();
+
+  if (!popoverIsOpen) {
+    openZapControls({ focus: true });
     return;
   }
 
@@ -1745,12 +1717,24 @@ async function handleZapSend(event) {
     return;
   }
 
+  if (!zapPopover || zapPopoverTrigger !== zapButton) {
+    setupZapButton({ force: true });
+  }
+
   if (!isZapControlsOpen()) {
-    try {
-      await openZapControls({ focus: true });
-    } catch (error) {
-      devLogger.warn("[zap] Failed to reopen zap controls before send", error);
+    if (zapPopoverOpening) {
+      zapShouldFocusOnOpen = true;
+      return;
     }
+    openZapControls({ focus: true });
+    return;
+  }
+
+  if (zapPopoverOpening) {
+    return;
+  }
+
+  if (!zapPopover) {
     return;
   }
 
@@ -2378,6 +2362,9 @@ function setupZapButton({ force = false } = {}) {
     zapPopover.destroy();
     zapPopover = null;
     zapPopoverTrigger = null;
+    zapPopoverOpening = false;
+    zapShouldFocusOnOpen = false;
+    delete zapButton.dataset.zapPopoverWarmBound;
   }
 
   const documentRef =
@@ -2495,23 +2482,23 @@ function setupZapButton({ force = false } = {}) {
   });
 
   if (!popover) {
+    zapPopoverOpening = false;
+    zapShouldFocusOnOpen = false;
     return false;
   }
 
   const originalOpen = popover.open?.bind(popover);
   if (originalOpen) {
     popover.open = async (...args) => {
-      const callId =
-        typeof popover.__zapOpenCallId !== "undefined"
-          ? popover.__zapOpenCallId
-          : Symbol("zap-open-call");
-      if (typeof popover.__zapOpenCallId === "undefined") {
-        popover.__zapOpenCallId = callId;
+      let result;
+      try {
+        result = await originalOpen(...args);
+      } catch (error) {
+        zapPopoverOpening = false;
+        zapShouldFocusOnOpen = false;
+        throw error;
       }
-
-      const result = await originalOpen(...args);
-      const isLatestCall = popover.__zapOpenCallId === callId;
-      if (result && isLatestCall) {
+      if (result) {
         zapControlsOpen = true;
         const controls = getZapControlsContainer();
         if (controls) {
@@ -2524,16 +2511,15 @@ function setupZapButton({ force = false } = {}) {
           focusZapAmountField();
         }
       }
-      const didOpen = Boolean(result) && isLatestCall;
       zapShouldFocusOnOpen = false;
-      return didOpen;
+      zapPopoverOpening = false;
+      return result;
     };
   }
 
   const originalClose = popover.close?.bind(popover);
   if (originalClose) {
     popover.close = (options = {}) => {
-      popover.__zapOpenCallId = Symbol("zap-open-cancel");
       const wasOpen = typeof popover.isOpen === "function" && popover.isOpen();
       const result = originalClose(options);
       if (wasOpen && result) {
@@ -2547,6 +2533,7 @@ function setupZapButton({ force = false } = {}) {
         zapButton.setAttribute("aria-expanded", "false");
       }
       zapShouldFocusOnOpen = false;
+      zapPopoverOpening = false;
       return result;
     };
   }
@@ -2558,9 +2545,9 @@ function setupZapButton({ force = false } = {}) {
       if (zapPopover === popover) {
         zapPopover = null;
         zapPopoverTrigger = null;
-        zapPopoverOpenPromise = null;
-        delete popover.__zapOpenCallId;
       }
+      zapPopoverOpening = false;
+      zapShouldFocusOnOpen = false;
       cacheZapPanelElements(null);
     };
   }
@@ -2569,19 +2556,28 @@ function setupZapButton({ force = false } = {}) {
   zapPopoverTrigger = zapButton;
 
   const warmZapPopover = () => {
-    if (!zapPopover || zapPopoverTrigger !== zapButton) {
+    if (!zapPopover || zapPopover !== popover) {
       return;
     }
-    if (typeof zapPopover.preload === "function") {
-      try {
-        zapPopover.preload();
-      } catch (error) {
-        devLogger.warn("[zap] Failed to preload zap popover", error);
-      }
+    if (typeof popover.preload !== "function") {
+      return;
+    }
+    try {
+      popover.preload();
+    } catch (error) {
+      devLogger.warn("[zap] Failed to preload zap controls", error);
     }
   };
 
-  warmZapPopover();
+  if (typeof popover.preload === "function") {
+    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(() => warmZapPopover(), { timeout: 250 });
+    } else {
+      setTimeout(() => {
+        warmZapPopover();
+      }, 0);
+    }
+  }
 
   if (zapButton.dataset.zapPopoverWarmBound !== "true") {
     const handleWarm = () => {
