@@ -19,6 +19,14 @@ import {
   openStaticModal,
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
+import {
+  BLOG_URL,
+  COMMUNITY_URL,
+  NOSTR_URL,
+  GITHUB_URL,
+  BETA_URL,
+  DNS_URL,
+} from "./config.js";
 
 validateInstanceConfig();
 
@@ -27,6 +35,29 @@ initThemeController();
 
 let application = null;
 let applicationReadyPromise = Promise.resolve();
+
+const bindOptionalExternalLink = ({ selector, url, label }) => {
+  const element = document.querySelector(selector);
+  const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+
+  if (!(element instanceof HTMLAnchorElement)) {
+    if (sanitizedUrl) {
+      userLogger.warn(
+        `${label} not found; skipping external link binding.`,
+      );
+    }
+    return;
+  }
+
+  if (!sanitizedUrl) {
+    element.remove();
+    return;
+  }
+
+  element.href = sanitizedUrl;
+  element.target = "_blank";
+  element.rel = "noopener noreferrer";
+};
 
 function startApplication() {
   if (application) {
@@ -208,6 +239,42 @@ async function bootstrapInterface() {
 
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   devLogger.log("Sidebar loaded.");
+
+  bindOptionalExternalLink({
+    selector: "[data-blog-link]",
+    url: BLOG_URL,
+    label: "Sidebar blog link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-nostr-link]",
+    url: NOSTR_URL,
+    label: "Sidebar Nostr link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-community-link]",
+    url: COMMUNITY_URL,
+    label: "Sidebar community link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-github-link]",
+    url: GITHUB_URL,
+    label: "Sidebar GitHub link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-beta-link]",
+    url: BETA_URL,
+    label: "Sidebar Beta link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-dns-link]",
+    url: DNS_URL,
+    label: "Sidebar DNS link",
+  });
 
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");

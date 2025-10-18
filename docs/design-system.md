@@ -57,7 +57,7 @@ Run `npm run lint:tailwind-brackets` after touching markup or prose that embeds 
 sources and fails when Tailwind's bracket syntax introduces hard-coded measurements (`text-[11px]`, `max-w-[18rem]`, etc.).
 
 - Prefer the semantic utilities shipped alongside the tokens (`max-w-popover-safe`, `max-h-modal-shell`, `text-3xs`).
-- When you truly need an arbitrary value, drive it with a design token by referencing the CSS custom property (`w-[var(--blog-layout-fluid-width)]`, `min-h-[var(--form-textarea-min-height)]`).
+- When you truly need an arbitrary value, drive it with a design token by referencing the CSS custom property (`w-[var(--layout-player-max-width)]`, `min-h-[var(--form-textarea-min-height)]`).
 - Update the allowlist sparingly—every entry should correspond to a documented token so future adjustments cascade automatically.
 
 The lint shares the same underlying script as `npm run lint:tokens`, so both commands stay in lockstep with the design-system
@@ -82,20 +82,6 @@ Tokens are sourced from `css/tokens.css` and consumed as CSS custom properties. 
 
 Limit overrides to variables defined in `css/tokens.css` and document any long-lived changes in this file so the design tokens remain the source of truth. Feature-flagged experiments should wrap overrides in a `data-flag-<name>` selector or toggle them via controller logic so the defaults remain stable when the flag is off.
 
-### Blog layout tokens
-
-The blog embed now consumes dedicated typography and spacing tokens alongside Tailwind utilities. `css/tokens.css` exposes the following helpers:
-
-- `--blog-font-size-root`, `--blog-font-size-display`, `--blog-font-size-title`, `--blog-font-size-body`, `--blog-font-size-meta`, and `--blog-font-size-h1-mobile` scale copy across the blog shell, hero headings, and metadata.
-- `--blog-line-height-body` and `--blog-line-height-tight` set the rhythm for long-form text and compact headers.
-- `--blog-layout-fluid-width` and `--blog-layout-max-width` define the responsive container width; pair them with Tailwind utilities (`mx-auto`, `md:w-[var(--blog-layout-fluid-width)]`, `md:max-w-[var(--blog-layout-max-width)]`) when mounting the blog root.
-- `--blog-space-compact`, `--blog-space-snug`, `--blog-space-heading-stack`, `--blog-space-heading-gap`, `--blog-space-inline-lg`, `--blog-space-media-stack-start`, `--blog-space-media-stack-end`, and `--blog-space-stack-xxl` standardise the bespoke gaps used throughout article summaries, media blocks, and footer treatments.
-- `--blog-avatar-size` and `--blog-avatar-size-compact` size topic avatars responsively.
-
-Templates should reference these tokens (directly or via Tailwind arbitrary values) instead of hard-coded measurements so the embed stays in sync with future blog refreshes.
-
-The blog palette now resolves from the base `:root` scope, making color and layout tokens theme-agnostic. Neither the light nor dark theme overrides these variables, so any future blog-specific deltas should be called out explicitly in this guide if they return.
-
 ## Semantic Palette
 
 All interactive surfaces now draw from a shared semantic color map exposed through `css/tokens.css` and Tailwind utility aliases. The palette is grouped into text, surface, overlay, and status slots so controllers can swap state styles without reaching for raw Tailwind hues:
@@ -112,43 +98,9 @@ All interactive surfaces now draw from a shared semantic color map exposed throu
 - Use `text-info`/`hover:text-info-strong` for links that previously relied on `text-blue-400` so anchors adapt in both light and dark modes.
 - When rendering tinted descriptions or placeholders, prefer `text-muted`, `text-muted-strong`, or `text-subtle` over semi-transparent whites. Token overrides keep the same classes usable across the default and light themes.
 
-### Blog carousel markup
-
-The short-notes carousel ships as a semantic wrapper around the `blog-carousel` primitive defined in `css/tailwind.source.css`. The runtime no longer injects inline styles or Splide classes—layout is driven entirely by data attributes that map onto tokenised CSS rules.
-
-**Structure**
-
-```html
-<section class="short-notes blog-carousel" data-carousel data-per-page="3" data-index="0">
-  <div class="blog-carousel__viewport" data-carousel-viewport>
-    <ul class="blog-carousel__track" data-carousel-track>
-      <li class="blog-carousel__slide" data-carousel-slide data-index="0" data-active="true">
-        ...
-      </li>
-      <!-- additional slides -->
-    </ul>
-    <button type="button" data-carousel-prev data-carousel-control="prev">‹</button>
-    <button type="button" data-carousel-next data-carousel-control="next">›</button>
-  </div>
-  <div class="blog-carousel__progress blog-progress" data-carousel-progress>
-    <progress class="progress progress--blog" data-progress-meter aria-label="Carousel progress"></progress>
-  </div>
-</section>
-```
-
-**State contract**
-
-- `data-per-page` controls how many columns render inside the viewport. CSS exposes variants for 1–4 slides per page; the custom property `--blog-carousel-per-page` updates automatically.
-- `data-index` represents the active *page* (zero-indexed). The track translates by `100%` for each page, so the attribute should advance in whole-number increments rather than slide indices.
-- Slides expose `data-index`, `data-active`, `data-inert`, and `data-state`. The carousel controller toggles `data-state="active"`, `"idle"`, and `"leaving"` to drive scale/opacity transitions without touching inline styles.
-- The root `section` advertises `data-state="active" | "idle"` plus `data-transition="auto" | "instant"` when short-circuiting animations (for example, during first render or programmatic jumps).
-- Progress wrappers set `data-state="idle" | "active" | "paused" | "complete"` while the inner `<progress>` leverages the shared `progress` primitive (`data-progress-meter`, `data-variant="blog"`) so theme tokens continue to drive track/fill colours.
-
-Controllers should rely on these data hooks when orchestrating autoplay, pausing on pointer/visibility changes, or syncing the segmented progress indicator. Avoid reintroducing inline `style` mutations—tests enforce the contract via the inline-style guard.
-
 ### Layout & spacing extensions
 
-The core spacing scale gained intermediate stops for tighter micro-layouts and larger hero treatments. `css/tokens.css` now exports `--space-4xs`, `--space-3xs`, `--space-xs-snug`, `--space-md-plus`, `--space-xl-compact`, `--space-xl-plus`, and `--space-2xl-plus`; Tailwind surfaces matching utilities such as `p-4xs`, `p-3xs`, `px-xs-snug`, `py-md-plus`, `gap-xl-compact`, `px-xl-plus`, and `gap-2xl-plus`. Pair them with the new layout primitives—`--menu-min-width` (`min-w-menu`), `--modal-max-width` (`max-w-modal`), `--layout-player-max-width` (`max-w-player`), and `--layout-docs-max-width` (`max-w-docs`)—to anchor consistent breakpoints across popovers, modals, and documentation shells without reintroducing raw `rem`/`px` literals. Blog-specific chrome reuses the same additions: the theme toggle knob now references `--radius-toggle-thumb`, and focus affordances draw from `--outline-thick-width` instead of hard-coded pixel outlines.
+The core spacing scale gained intermediate stops for tighter micro-layouts and larger hero treatments. `css/tokens.css` now exports `--space-4xs`, `--space-3xs`, `--space-xs-snug`, `--space-md-plus`, `--space-xl-compact`, `--space-xl-plus`, and `--space-2xl-plus`; Tailwind surfaces matching utilities such as `p-4xs`, `p-3xs`, `px-xs-snug`, `py-md-plus`, `gap-xl-compact`, `px-xl-plus`, and `gap-2xl-plus`. Pair them with the new layout primitives—`--menu-min-width` (`min-w-menu`), `--modal-max-width` (`max-w-modal`), `--layout-player-max-width` (`max-w-player`), and `--layout-docs-max-width` (`max-w-docs`)—to anchor consistent breakpoints across popovers, modals, and documentation shells without reintroducing raw `rem`/`px` literals.
 
 ### Previewing themes
 

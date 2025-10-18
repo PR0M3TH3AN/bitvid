@@ -126,7 +126,7 @@ hairline borders or browser reset quirks) add an explicit allowlist entry in
 `scripts/check-design-tokens.mjs` so future contributors understand why the
 constant exists.
 
-The script now crawls every markup-emitting module under `js/blog`, `js/ui`,
+The script now crawls every markup-emitting module under `js/ui`,
 `js/channelProfile.js`, and `torrent/ui`, so UI tweaks anywhere in the repo
 benefit from the guard without manual configuration.
 

@@ -45,6 +45,62 @@ export const ADMIN_SUPER_NPUB =
 export const BITVID_WEBSITE_URL = "https://bitvid.network/";
 
 /**
+ * Optional external destination for the blog menu link.
+ *
+ * Sidebar navigation routes visitors to this URL when they select "Blog".
+ * Update the value to point at the long-form publishing platform you
+ * maintain for release notes or community updates. Leave empty (null or an
+ * empty string) to hide the Blog link entirely.
+ */
+export const BLOG_URL =
+  "https://habla.news/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+
+/**
+ * Optional external destination for the community menu link.
+ *
+ * Configure this with a URL to your preferred community hub (e.g., Discord,
+ * Telegram, Flotilla). When unset (null or an empty string) the Community link
+ * is omitted from the sidebar dropup menu.
+ */
+export const COMMUNITY_URL = null;
+
+/**
+ * Optional external destination for the Nostr menu link.
+ *
+ * Point this at the profile or relay hub you want visitors to land on when
+ * they tap "Nostr" in the sidebar dropup. Leave empty (null or an empty
+ * string) to hide the link entirely.
+ */
+export const NOSTR_URL =
+  "https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+
+/**
+ * Optional external destination for the GitHub menu link.
+ *
+ * Set this to the repository you want surfaced to operators and contributors.
+ * Leave empty (null or an empty string) to remove the GitHub entry from the
+ * sidebar dropup menu.
+ */
+export const GITHUB_URL = "https://github.com/PR0M3TH3AN/bitvid";
+
+/**
+ * Optional external destination for the Beta menu link.
+ *
+ * Deployments that maintain a staging or beta environment can direct users to
+ * that surface here. Leave empty (null or an empty string) if there is no
+ * public beta to advertise.
+ */
+export const BETA_URL = "https://beta.bitvid.network/";
+
+/**
+ * Optional external destination for the DNS menu link.
+ *
+ * Operators can expose their canonical DNS landing page here. Leave empty
+ * (null or an empty string) to hide the DNS entry from the sidebar.
+ */
+export const DNS_URL = "https://bitvid.network/";
+
+/**
  * Default image included in automated moderation DMs.
  *
  * bitvid embeds this media asset at the top of notification messages so the

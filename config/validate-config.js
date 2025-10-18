@@ -8,6 +8,12 @@ import {
   PLATFORM_FEE_PERCENT,
   PLATFORM_LUD16_OVERRIDE,
   THEME_ACCENT_OVERRIDES,
+  BLOG_URL,
+  COMMUNITY_URL,
+  NOSTR_URL,
+  GITHUB_URL,
+  BETA_URL,
+  DNS_URL,
 } from "./instance-config.js";
 
 function assertSuperAdminConfigured(value) {
@@ -111,7 +117,42 @@ function resolveConfig(overrides = {}) {
       overrides.PLATFORM_LUD16_OVERRIDE ?? PLATFORM_LUD16_OVERRIDE,
     themeAccentOverrides:
       overrides.THEME_ACCENT_OVERRIDES ?? THEME_ACCENT_OVERRIDES,
+    blogUrl: overrides.BLOG_URL ?? BLOG_URL,
+    communityUrl: overrides.COMMUNITY_URL ?? COMMUNITY_URL,
+    nostrUrl: overrides.NOSTR_URL ?? NOSTR_URL,
+    githubUrl: overrides.GITHUB_URL ?? GITHUB_URL,
+    betaUrl: overrides.BETA_URL ?? BETA_URL,
+    dnsUrl: overrides.DNS_URL ?? DNS_URL,
   };
+}
+
+function assertOptionalHttpUrl(url, settingName) {
+  if (url == null) {
+    return null;
+  }
+
+  if (typeof url !== "string") {
+    throw new Error(`${settingName} must be a string when provided.`);
+  }
+
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.protocol || !/^https?:$/.test(parsed.protocol)) {
+      throw new Error(`${settingName} must use http or https.`);
+    }
+  } catch (error) {
+    throw new Error(
+      `${settingName} must be a valid http(s) URL defined in config/instance-config.js.`,
+      { cause: error },
+    );
+  }
+
+  return trimmed;
 }
 
 export function validateInstanceConfig(overrides) {
@@ -131,4 +172,10 @@ export function validateInstanceConfig(overrides) {
   }
 
   assertThemeAccentOverrides(config.themeAccentOverrides);
+  assertOptionalHttpUrl(config.blogUrl, "BLOG_URL");
+  assertOptionalHttpUrl(config.communityUrl, "COMMUNITY_URL");
+  assertOptionalHttpUrl(config.nostrUrl, "NOSTR_URL");
+  assertOptionalHttpUrl(config.githubUrl, "GITHUB_URL");
+  assertOptionalHttpUrl(config.betaUrl, "BETA_URL");
+  assertOptionalHttpUrl(config.dnsUrl, "DNS_URL");
 }
