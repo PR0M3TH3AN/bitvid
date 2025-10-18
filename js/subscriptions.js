@@ -17,6 +17,7 @@ import { getApplication } from "./applicationContext.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
+import moderationService from "./services/moderationService.js";
 
 const getApp = () => getApplication();
 
@@ -726,6 +727,17 @@ class SubscriptionsManager {
       typeof options?.reason === "string" && options.reason.trim()
         ? options.reason.trim()
         : this.lastRunOptions.reason;
+
+    if (typeof moderationService?.awaitUserBlockRefresh === "function") {
+      try {
+        await moderationService.awaitUserBlockRefresh();
+      } catch (error) {
+        devLogger.warn(
+          "[SubscriptionsManager] Failed to sync moderation before refreshing feed:",
+          error,
+        );
+      }
+    }
 
     return this.showSubscriptionVideos(actorPubkey, containerId, {
       limit,
