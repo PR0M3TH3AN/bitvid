@@ -1423,34 +1423,40 @@ class Application {
 
     const existingRoot = getRoot();
     const existingVideoElement = getVideoElement();
+    const rootConnected = Boolean(existingRoot && existingRoot.isConnected);
+    const hasVideoElement = Boolean(existingVideoElement);
+    const videoConnected = Boolean(
+      existingVideoElement && existingVideoElement.isConnected,
+    );
 
-    if (existingRoot && existingRoot.isConnected) {
-      if (!existingVideoElement && ensureVideoElement) {
-        if (typeof this.videoModal.load === "function") {
-          await this.videoModal.load();
+    const needsRehydrate =
+      !rootConnected || !hasVideoElement || !videoConnected;
+
+    if (!needsRehydrate) {
+      this.modalVideo = existingVideoElement;
+
+      if (
+        existingVideoElement &&
+        this.videoModal &&
+        typeof this.videoModal.setVideoElement === "function"
+      ) {
+        const modalVideo =
+          typeof this.videoModal.getVideoElement === "function"
+            ? this.videoModal.getVideoElement()
+            : null;
+        if (modalVideo !== existingVideoElement) {
+          this.videoModal.setVideoElement(existingVideoElement);
         }
-
-        const rehydratedRoot = getRoot();
-        const rehydratedVideoElement = getVideoElement();
-
-        if (!rehydratedVideoElement) {
-          throw new Error("Video modal video element is not ready.");
-        }
-
-        this.modalVideo = rehydratedVideoElement;
-        return {
-          root: rehydratedRoot || existingRoot,
-          videoElement: rehydratedVideoElement,
-        };
       }
 
-      if (existingVideoElement) {
-        this.modalVideo = existingVideoElement;
-      }
       return {
         root: existingRoot,
         videoElement: existingVideoElement,
       };
+    }
+
+    if (!videoConnected) {
+      this.modalVideo = null;
     }
 
     if (!this.videoModalReadyPromise) {
@@ -1471,18 +1477,31 @@ class Application {
 
     const readyRoot = getRoot();
     const readyVideoElement = getVideoElement();
+    const readyVideoConnected = Boolean(
+      readyVideoElement && readyVideoElement.isConnected,
+    );
 
-    if (ensureVideoElement && !readyVideoElement) {
-      throw new Error("Video modal video element is missing after load().");
+    if (readyVideoConnected) {
+      this.modalVideo = readyVideoElement;
+      if (
+        this.videoModal &&
+        typeof this.videoModal.setVideoElement === "function"
+      ) {
+        this.videoModal.setVideoElement(readyVideoElement);
+      }
+    } else {
+      this.modalVideo = null;
     }
 
-    if (readyVideoElement) {
-      this.modalVideo = readyVideoElement;
+    if (ensureVideoElement && !readyVideoConnected) {
+      throw new Error(
+        "Video modal video element is missing after load().",
+      );
     }
 
     return {
       root: readyRoot,
-      videoElement: readyVideoElement,
+      videoElement: readyVideoConnected ? readyVideoElement : null,
     };
   }
 
@@ -6233,6 +6252,7 @@ class Application {
     }
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const previousSource = this.playSource || null;
     const requestSignature = JSON.stringify({
       url: sanitizedUrl,
       magnet: trimmedMagnet,
@@ -6258,13 +6278,45 @@ class Application {
     await this.waitForCleanup();
     this.cancelPendingViewLogging();
 
+    if (
+      previousSource === "torrent" &&
+      sanitizedUrl &&
+      this.playbackService &&
+      this.playbackService.torrentClient &&
+      typeof this.playbackService.torrentClient.cleanup === "function"
+    ) {
+      try {
+        this.log(
+          "[playVideoWithFallback] Previous playback used WebTorrent; cleaning up before preparing hosted session.",
+        );
+        await this.playbackService.torrentClient.cleanup();
+      } catch (error) {
+        devLogger.warn(
+          "[playVideoWithFallback] Pre-playback torrent cleanup threw:",
+          error,
+        );
+      }
+    }
+
     let modalVideoEl = this.modalVideo;
-    if (!modalVideoEl) {
+    const modalVideoFromController =
+      this.videoModal && typeof this.videoModal.getVideoElement === "function"
+        ? this.videoModal.getVideoElement()
+        : null;
+    if (modalVideoFromController && modalVideoFromController !== modalVideoEl) {
+      modalVideoEl = modalVideoFromController;
+      this.modalVideo = modalVideoEl;
+    }
+    const modalVideoConnected = Boolean(
+      modalVideoEl && modalVideoEl.isConnected,
+    );
+    if (!modalVideoEl || !modalVideoConnected) {
       try {
         const { videoElement } = await this.ensureVideoModalReady({
           ensureVideoElement: true,
         });
         modalVideoEl = videoElement;
+        this.modalVideo = modalVideoEl;
       } catch (error) {
         this.log(
           "[playVideoWithFallback] Failed to load video modal before playback:",
@@ -6302,6 +6354,12 @@ class Application {
       replaceNode: true,
     });
     if (refreshedModal) {
+      if (
+        this.videoModal &&
+        typeof this.videoModal.setVideoElement === "function"
+      ) {
+        this.videoModal.setVideoElement(refreshedModal);
+      }
       this.modalVideo = refreshedModal;
       modalVideoEl = this.modalVideo;
       this.applyModalLoadingPoster();
