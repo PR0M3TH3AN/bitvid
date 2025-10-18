@@ -3745,6 +3745,51 @@ window.addEventListener("bitvid:access-control-updated", () => {
   });
 });
 
+window.addEventListener("bitvid:auth-changed", (event) => {
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  if (hashParams.get("view") !== "channel-profile") {
+    return;
+  }
+
+  if (!currentChannelHex) {
+    return;
+  }
+
+  const activeNpub = hashParams.get("npub");
+  if (currentChannelNpub && activeNpub && activeNpub !== currentChannelNpub) {
+    return;
+  }
+
+  setChannelZapVisibility(Boolean(currentChannelLightningAddress));
+  syncChannelShareButtonState();
+
+  const detail = event?.detail;
+  if (!detail || typeof detail !== "object") {
+    return;
+  }
+
+  if (detail.status === "logout") {
+    zapInFlight = false;
+    zapPopoverOpenPromise = null;
+    zapShouldFocusOnOpen = false;
+    resetZapRetryState();
+    setZapStatus("", "neutral");
+    clearZapReceipts();
+    const amountInput = getZapAmountInput();
+    if (amountInput) {
+      amountInput.value = "";
+    }
+    return;
+  }
+
+  if (detail.status === "login") {
+    zapInFlight = false;
+    resetZapRetryState();
+    setZapStatus("", "neutral");
+    return;
+  }
+});
+
 /**
  * Keep only the newest version of each video root.
  */

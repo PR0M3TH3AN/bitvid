@@ -1338,6 +1338,21 @@ class Application {
     }
   }
 
+  dispatchAuthChange(detail = {}) {
+    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+      return false;
+    }
+
+    try {
+      const payload = { ...(typeof detail === "object" && detail ? detail : {}) };
+      window.dispatchEvent(new CustomEvent("bitvid:auth-changed", { detail: payload }));
+      return true;
+    } catch (error) {
+      devLogger.warn("[Application] Failed to dispatch auth change event:", error);
+      return false;
+    }
+  }
+
   normalizeModalTrigger(candidate) {
     if (!candidate) {
       return null;
@@ -3107,6 +3122,23 @@ class Application {
       identityChanged: Boolean(detail?.identityChanged),
     };
 
+    if (this.zapController) {
+      try {
+        this.zapController.setVisibility(
+          Boolean(this.currentVideo?.lightningAddress),
+        );
+      } catch (error) {
+        devLogger.warn("[Application] Failed to refresh zap visibility after login:", error);
+      }
+    }
+
+    this.dispatchAuthChange({
+      status: "login",
+      loggedIn: true,
+      pubkey: loginContext.pubkey || null,
+      previousPubkey: loginContext.previousPubkey || null,
+    });
+
     const nwcPromise = Promise.resolve()
       .then(() => this.nwcSettingsService.onLogin(loginContext))
       .catch((error) => {
@@ -3197,6 +3229,51 @@ class Application {
     }
 
     this.applyLoggedOutUiState();
+
+    if (this.videoModal?.closeZapDialog) {
+      try {
+        this.videoModal.closeZapDialog({ silent: true, restoreFocus: false });
+      } catch (error) {
+        devLogger.warn("Failed to close zap dialog during logout:", error);
+      }
+    }
+
+    if (this.zapController) {
+      try {
+        this.zapController.resetState();
+        this.zapController.setVisibility(Boolean(this.currentVideo?.lightningAddress));
+      } catch (error) {
+        devLogger.warn("Failed to reset zap controller during logout:", error);
+      }
+    }
+
+    if (typeof this.nostrService?.clearVideoSubscription === "function") {
+      try {
+        this.nostrService.clearVideoSubscription();
+      } catch (error) {
+        devLogger.warn("Failed to clear video subscription during logout:", error);
+      }
+    }
+
+    if (typeof this.nostrService?.resetVideosCache === "function") {
+      try {
+        this.nostrService.resetVideosCache();
+      } catch (error) {
+        devLogger.warn("Failed to reset cached videos during logout:", error);
+      }
+    }
+
+    await this.renderVideoList({
+      videos: [],
+      metadata: { reason: "auth:logout" },
+    });
+
+    this.dispatchAuthChange({
+      status: "logout",
+      loggedIn: false,
+      pubkey: detail?.pubkey || null,
+      previousPubkey: detail?.previousPubkey || null,
+    });
 
     try {
       await this.loadVideos(true);

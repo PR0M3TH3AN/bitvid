@@ -79,6 +79,8 @@ export class VideoModal {
     this.modalZapPending = false;
     this.modalZapRequiresLogin = false;
     this.modalZapPopover = null;
+    this.modalZapOpenPromise = null;
+    this.modalZapPendingToggle = null;
 
     this.modalMorePopover = null;
     this.modalMoreMenuPanel = null;
@@ -238,6 +240,8 @@ export class VideoModal {
       this.modalMorePopover.destroy();
     }
     this.modalZapPopover = null;
+    this.modalZapOpenPromise = null;
+    this.modalZapPendingToggle = null;
     this.modalMorePopover = null;
     this.modalMoreMenuPanel = null;
 
@@ -428,6 +432,11 @@ export class VideoModal {
             ? this.modalZapPopover.isOpen()
             : this.modalZapDialogOpen === true;
 
+        if (this.modalZapOpenPromise) {
+          this.modalZapPendingToggle = "close";
+          return;
+        }
+
         if (popoverIsOpen) {
           if (this.modalZapPending) {
             return;
@@ -437,6 +446,7 @@ export class VideoModal {
           return;
         }
 
+        this.modalZapPendingToggle = null;
         this.openZapDialog();
         this.dispatch("zap:open", { video: this.activeVideo });
       });
@@ -587,6 +597,8 @@ export class VideoModal {
         const wasOpen = popover.isOpen?.() === true;
         const result = originalClose(rest);
         if (wasOpen && result) {
+          this.modalZapPendingToggle = null;
+          this.modalZapOpenPromise = null;
           this.modalZapDialog.dataset.state = "closed";
           this.modalZapDialog.setAttribute("aria-hidden", "true");
           this.modalZapDialog.hidden = true;
@@ -1042,8 +1054,12 @@ export class VideoModal {
   }
 
   async openZapDialog() {
-    if (this.modalZapPopover?.open) {
-      try {
+    if (this.modalZapOpenPromise) {
+      return this.modalZapOpenPromise;
+    }
+
+    const runOpen = async () => {
+      if (this.modalZapPopover?.open) {
         const opened = await this.modalZapPopover.open();
         if (opened) {
           this.modalZapDialogOpen = true;
@@ -1054,27 +1070,43 @@ export class VideoModal {
           }
           this.focusZapAmount();
         }
-        return;
-      } catch (error) {
-        this.log("[VideoModal] Failed to open zap popover", error);
+        return opened;
       }
-    }
 
-    if (!this.modalZapDialog) {
-      return;
-    }
+      if (!this.modalZapDialog) {
+        return false;
+      }
 
-    this.modalZapDialog.hidden = false;
-    this.modalZapDialog.dataset.state = "open";
-    this.modalZapDialog.setAttribute("aria-hidden", "false");
-    this.modalZapDialogOpen = true;
-    if (this.modalZapBtn) {
-      this.modalZapBtn.setAttribute("aria-expanded", "true");
-    }
-    this.focusZapAmount();
+      this.modalZapDialog.hidden = false;
+      this.modalZapDialog.dataset.state = "open";
+      this.modalZapDialog.setAttribute("aria-hidden", "false");
+      this.modalZapDialogOpen = true;
+      if (this.modalZapBtn) {
+        this.modalZapBtn.setAttribute("aria-expanded", "true");
+      }
+      this.focusZapAmount();
+      return true;
+    };
+
+    const promise = runOpen().catch((error) => {
+      this.log("[VideoModal] Failed to open zap popover", error);
+      return false;
+    });
+
+    this.modalZapOpenPromise = promise.finally(() => {
+      const shouldClose = this.modalZapPendingToggle === "close";
+      this.modalZapOpenPromise = null;
+      this.modalZapPendingToggle = null;
+      if (shouldClose && !this.modalZapPending) {
+        this.closeZapDialog();
+      }
+    });
+
+    return this.modalZapOpenPromise;
   }
 
   closeZapDialog({ silent = false, restoreFocus } = {}) {
+    this.modalZapPendingToggle = null;
     if (this.modalZapPopover?.close) {
       const options = { silent };
       if (restoreFocus !== undefined) {

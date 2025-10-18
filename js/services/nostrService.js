@@ -218,6 +218,13 @@ export class NostrService {
     this.emit("videos:cache", { size: map.size });
   }
 
+  resetVideosCache() {
+    const map = new Map();
+    this.videosMap = map;
+    setStoredVideosMap(map);
+    this.emit("videos:cache", { size: 0 });
+  }
+
   shouldIncludeVideo(video, {
     blacklistedEventIds = new Set(),
     isAuthorBlocked = () => false,
