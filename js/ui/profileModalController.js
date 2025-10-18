@@ -797,6 +797,7 @@ export class ProfileModalController {
       modalRoot.querySelector(".bv-modal-backdrop") || null;
 
     this.cacheDomReferences();
+    this.applyModalStackingOverrides();
     this.registerEventListeners();
     this.selectPane(this.getActivePane());
 
@@ -3890,6 +3891,66 @@ export class ProfileModalController {
     document.addEventListener("focusin", this.boundFocusIn);
   }
 
+  ensureModalOrder(modalRoot) {
+    if (!(modalRoot instanceof HTMLElement)) {
+      return;
+    }
+
+    const container =
+      this.modalContainer instanceof HTMLElement ? this.modalContainer : null;
+    const parentElement = modalRoot.parentElement;
+
+    if (container) {
+      if (parentElement !== container) {
+        container.appendChild(modalRoot);
+        return;
+      }
+
+      if (container.lastElementChild !== modalRoot) {
+        container.appendChild(modalRoot);
+      }
+      return;
+    }
+
+    if (parentElement) {
+      if (parentElement.lastElementChild !== modalRoot) {
+        parentElement.appendChild(modalRoot);
+      }
+      return;
+    }
+
+    if (typeof document !== "undefined" && document.body) {
+      document.body.appendChild(modalRoot);
+    }
+  }
+
+  applyModalStackingOverrides() {
+    const modalRoot =
+      this.profileModalRoot instanceof HTMLElement
+        ? this.profileModalRoot
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
+
+    if (modalRoot) {
+      modalRoot.style.setProperty("z-index", "var(--z-modal-top-root)");
+    }
+
+    if (this.profileModalBackdrop instanceof HTMLElement) {
+      this.profileModalBackdrop.style.setProperty(
+        "z-index",
+        "var(--z-modal-top-overlay)",
+      );
+    }
+
+    if (this.profileModalPanel instanceof HTMLElement) {
+      this.profileModalPanel.style.setProperty(
+        "z-index",
+        "var(--z-modal-top-content)",
+      );
+    }
+  }
+
   async show(targetPane = "account") {
     const pane =
       typeof targetPane === "string" && targetPane.trim()
@@ -4016,14 +4077,8 @@ export class ProfileModalController {
       return;
     }
 
-    const parentElement = modalRoot.parentElement;
-    if (parentElement) {
-      if (parentElement.lastElementChild !== modalRoot) {
-        parentElement.appendChild(modalRoot);
-      }
-    } else if (typeof document !== "undefined" && document.body) {
-      document.body.appendChild(modalRoot);
-    }
+    this.ensureModalOrder(modalRoot);
+    this.applyModalStackingOverrides();
 
     modalRoot.classList.remove("hidden");
     modalRoot.setAttribute("aria-hidden", "false");
