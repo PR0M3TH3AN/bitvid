@@ -929,13 +929,14 @@ function focusZapAmountField() {
 }
 
 function isZapControlsOpen() {
-  if (zapPopoverOpenPromise) {
-    return true;
-  }
   if (typeof zapPopover?.isOpen === "function") {
     return zapPopover.isOpen();
   }
   return zapControlsOpen;
+}
+
+function isZapControlsOpening() {
+  return Boolean(zapPopoverOpenPromise) && !isZapControlsOpen();
 }
 
 async function openZapControls({ focus = false } = {}) {
@@ -970,6 +971,9 @@ async function openZapControls({ focus = false } = {}) {
   }
 
   if (zapPopoverOpenPromise) {
+    if (focus) {
+      zapShouldFocusOnOpen = true;
+    }
     try {
       return await zapPopoverOpenPromise;
     } catch (error) {
@@ -1700,17 +1704,23 @@ async function handleZapButtonClick(event) {
     return;
   }
 
-  const popoverIsOpen =
-    typeof zapPopover?.isOpen === "function"
-      ? zapPopover.isOpen()
-      : isZapControlsOpen();
+  const opening = isZapControlsOpening();
+  const popoverIsOpen = isZapControlsOpen();
 
   if (!popoverIsOpen) {
+    if (opening) {
+      zapShouldFocusOnOpen = true;
+      return;
+    }
     try {
       await openZapControls({ focus: true });
     } catch (error) {
       devLogger.warn("[zap] Failed to handle zap button open request", error);
     }
+    return;
+  }
+
+  if (opening) {
     return;
   }
 
