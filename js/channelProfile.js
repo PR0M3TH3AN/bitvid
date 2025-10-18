@@ -113,6 +113,7 @@ function logZapError(stage, details = {}, error) {
 }
 let currentChannelProfileEvent = null;
 let currentChannelProfileSnapshot = null;
+let currentChannelProfileHasExplicitPayload = false;
 
 let cachedZapButton = null;
 let cachedChannelShareButton = null;
@@ -145,6 +146,33 @@ const FALLBACK_CHANNEL_AVATAR = "assets/svg/default-profile.svg";
 const PROFILE_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const channelProfileMetadataCache = new Map();
+
+function hasExplicitChannelProfilePayload(profile) {
+  return (
+    profile &&
+    typeof profile === "object" &&
+    Object.keys(profile).length > 0
+  );
+}
+
+function touchChannelProfileCacheEntry(pubkey) {
+  if (typeof pubkey !== "string" || !pubkey) {
+    return false;
+  }
+
+  const existing = channelProfileMetadataCache.get(pubkey);
+  if (!existing) {
+    return false;
+  }
+
+  channelProfileMetadataCache.set(pubkey, {
+    timestamp: Date.now(),
+    profile: { ...existing.profile },
+    event: existing.event ? { ...existing.event } : null
+  });
+
+  return true;
+}
 
 const SUPPORTED_BANNER_REFERRER_POLICIES = new Set([
   "no-referrer",
@@ -471,7 +499,8 @@ function setChannelZapVisibility(visible) {
     typeof app?.isUserLoggedIn === "function"
       ? app.isUserLoggedIn()
       : Boolean(app?.normalizeHexPubkey?.(app?.pubkey));
-  const shouldShow = !!visible && isLoggedIn;
+  const shouldShow = !!visible;
+  const requiresLogin = shouldShow && !isLoggedIn;
 
   if (
     shouldShow &&
@@ -482,7 +511,10 @@ function setChannelZapVisibility(visible) {
 
   zapButton.toggleAttribute("hidden", !shouldShow);
   zapButton.disabled = !shouldShow;
-  zapButton.setAttribute("aria-disabled", (!shouldShow).toString());
+  zapButton.setAttribute(
+    "aria-disabled",
+    (requiresLogin || !shouldShow).toString()
+  );
   zapButton.setAttribute("aria-hidden", (!shouldShow).toString());
   zapButton.setAttribute("aria-expanded", "false");
   if (shouldShow) {
@@ -494,18 +526,24 @@ function setChannelZapVisibility(visible) {
     clearZapReceipts();
     setZapStatus("", "neutral");
   }
+  if (requiresLogin) {
+    zapButton.dataset.requiresLogin = "true";
+  } else {
+    delete zapButton.dataset.requiresLogin;
+  }
   closeZapControls();
   if (controls) {
     controls.setAttribute("aria-hidden", "true");
     controls.hidden = true;
   }
+  const shouldEnableInputs = shouldShow && !requiresLogin;
   if (amountInput) {
-    amountInput.disabled = !shouldShow;
+    amountInput.disabled = !shouldEnableInputs;
   }
   if (sendButton) {
-    sendButton.disabled = !shouldShow;
-    sendButton.setAttribute("aria-hidden", (!shouldShow).toString());
-    if (shouldShow) {
+    sendButton.disabled = !shouldEnableInputs;
+    sendButton.setAttribute("aria-hidden", (!shouldEnableInputs).toString());
+    if (shouldEnableInputs) {
       sendButton.removeAttribute("tabindex");
       sendButton.removeAttribute("aria-busy");
       delete sendButton.dataset.state;
@@ -527,10 +565,28 @@ function setChannelZapVisibility(visible) {
             typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
           return uri.length > 0;
         })();
-  setZapWalletPromptVisible(shouldShow && !hasWallet);
-  if (shouldShow) {
+  setZapWalletPromptVisible(shouldEnableInputs && !hasWallet);
+  if (shouldEnableInputs) {
     setupZapWalletLink();
   }
+}
+
+function isSessionActorWithoutLogin() {
+  const app = getApp();
+  const isLoggedIn =
+    typeof app?.isUserLoggedIn === "function"
+      ? app.isUserLoggedIn()
+      : Boolean(app?.normalizeHexPubkey?.(app?.pubkey) || app?.pubkey);
+  if (isLoggedIn) {
+    return false;
+  }
+
+  const sessionPubkey =
+    typeof nostrClient?.sessionActor?.pubkey === "string"
+      ? nostrClient.sessionActor.pubkey.trim()
+      : "";
+
+  return sessionPubkey.length > 0;
 }
 
 function getChannelShareButton() {
@@ -1677,6 +1733,13 @@ function handleZapButtonClick(event) {
     return;
   }
 
+  if (isSessionActorWithoutLogin()) {
+    const app = getApp();
+    const message = "Log in with your Nostr profile to send zaps.";
+    app?.showError?.(message);
+    return;
+  }
+
   if (!zapPopover || zapPopoverTrigger !== zapButton) {
     setupZapButton({ force: true });
   }
@@ -2242,6 +2305,7 @@ export async function initChannelProfileView() {
   currentChannelLightningAddress = "";
   currentChannelProfileEvent = null;
   currentChannelProfileSnapshot = null;
+  currentChannelProfileHasExplicitPayload = false;
   setCachedPlatformLightningAddress("");
   resetZapRetryState();
   clearZapReceipts();
@@ -2707,7 +2771,30 @@ function normalizeChannelProfileMetadata(raw = {}) {
 
 function rememberChannelProfile(pubkey, { profile = {}, event = null } = {}) {
   if (typeof pubkey !== "string" || !pubkey) {
-    return;
+    return false;
+  }
+
+  const hasPayload = hasExplicitChannelProfilePayload(profile);
+  if (!hasPayload) {
+    touchChannelProfileCacheEntry(pubkey);
+    return false;
+  }
+
+  const incomingEventTimestamp =
+    typeof event?.created_at === "number" ? event.created_at : 0;
+  const existing = channelProfileMetadataCache.get(pubkey);
+  const existingEventTimestamp =
+    typeof existing?.event?.created_at === "number"
+      ? existing.event.created_at
+      : 0;
+
+  if (
+    existingEventTimestamp &&
+    incomingEventTimestamp &&
+    incomingEventTimestamp < existingEventTimestamp
+  ) {
+    touchChannelProfileCacheEntry(pubkey);
+    return false;
   }
 
   channelProfileMetadataCache.set(pubkey, {
@@ -2715,6 +2802,8 @@ function rememberChannelProfile(pubkey, { profile = {}, event = null } = {}) {
     profile: normalizeChannelProfileMetadata(profile),
     event: event ? { ...event } : null
   });
+
+  return true;
 }
 
 function getCachedChannelProfile(pubkey) {
@@ -3189,9 +3278,7 @@ function applyChannelProfileMetadata({
 
   const normalized = normalizeChannelProfileMetadata(profile);
   const hasExplicitProfilePayload =
-    profile &&
-    typeof profile === "object" &&
-    Object.keys(profile).length > 0;
+    hasExplicitChannelProfilePayload(profile);
   const incomingEventTimestamp =
     typeof event?.created_at === "number" ? event.created_at : 0;
   const existingEventTimestamp =
@@ -3208,12 +3295,17 @@ function applyChannelProfileMetadata({
       return;
     }
 
-    const shouldIgnoreEmptyPayload =
-      !hasExplicitProfilePayload &&
-      (!incomingEventTimestamp ||
-        incomingEventTimestamp <= existingEventTimestamp);
-    if (shouldIgnoreEmptyPayload) {
-      return;
+    if (!hasExplicitProfilePayload) {
+      if (currentChannelProfileHasExplicitPayload) {
+        return;
+      }
+
+      const shouldIgnoreEmptyPayload =
+        !incomingEventTimestamp ||
+        incomingEventTimestamp <= existingEventTimestamp;
+      if (shouldIgnoreEmptyPayload) {
+        return;
+      }
     }
   }
 
@@ -3308,6 +3400,7 @@ function applyChannelProfileMetadata({
   }
 
   currentChannelProfileSnapshot = { ...normalized };
+  currentChannelProfileHasExplicitPayload = hasExplicitProfilePayload;
 
   if (lightningAddress) {
     if (lightningAddress !== previousLightning) {
@@ -3421,18 +3514,27 @@ async function loadUserProfile(pubkey) {
       return;
     }
 
-    rememberChannelProfile(pubkey, result);
+    const cachedUpdated = rememberChannelProfile(pubkey, result);
 
-    if (typeof app?.setProfileCacheEntry === "function") {
+    if (cachedUpdated && typeof app?.setProfileCacheEntry === "function") {
       try {
-        app.setProfileCacheEntry(pubkey, {
-          ...result.profile,
-          lightningAddress:
+        const profileForCache =
+          result && typeof result.profile === "object" && result.profile
+            ? { ...result.profile }
+            : {};
+
+        if (!profileForCache.lightningAddress) {
+          const lightningFallback =
             result.profile?.lightningAddress ||
             result.profile?.lud16 ||
             result.profile?.lud06 ||
-            ""
-        });
+            "";
+          if (lightningFallback) {
+            profileForCache.lightningAddress = lightningFallback;
+          }
+        }
+
+        app.setProfileCacheEntry(pubkey, profileForCache);
       } catch (error) {
         userLogger.warn(
           "Failed to persist channel profile metadata to cache:",

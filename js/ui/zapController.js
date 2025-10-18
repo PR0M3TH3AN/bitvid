@@ -117,6 +117,10 @@ export default class ZapController {
 
   open() {
     this.resetFeedback();
+    if (!this.isUserLoggedIn()) {
+      this.notifyError("Log in with your Nostr profile to send zaps.");
+      return;
+    }
     this.applyDefaultAmount();
     this.preloadLightningMetadata().catch((error) => {
       devLogger.warn("[zap] Preload metadata error:", error);
