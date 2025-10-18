@@ -38,7 +38,6 @@ module.exports = {
           strong: "var(--surface-overlay-strong)",
           darker: "var(--surface-overlay-darker)",
           veil: "var(--surface-veil)",
-          banner: "var(--surface-overlay-banner)",
           panel: "var(--surface-overlay-panel)",
           "panel-soft": "var(--surface-overlay-panel-soft)",
           "panel-tint": "var(--surface-overlay-panel-tint)",
@@ -233,7 +232,6 @@ module.exports = {
         "surface-muted": "var(--surface-muted)",
         "overlay-strong": "var(--surface-overlay-strong)",
         "overlay-muted": "var(--surface-overlay-muted)",
-        "overlay-banner": "var(--surface-overlay-banner)",
         "overlay-panel": "var(--surface-overlay-panel)",
         "overlay-panel-soft": "var(--surface-overlay-panel-soft)",
         "overlay-panel-glass": "var(--surface-overlay-panel-glass)",
@@ -243,6 +241,9 @@ module.exports = {
         "status-danger-surface": "var(--status-danger-surface)",
         "status-private-surface": "var(--status-private-surface)",
         "status-neutral-surface": "var(--status-neutral-surface)"
+      },
+      backgroundImage: {
+        "overlay-banner": "var(--surface-overlay-banner-gradient)"
       },
       borderColor: {
         surface: "var(--border-default)",
