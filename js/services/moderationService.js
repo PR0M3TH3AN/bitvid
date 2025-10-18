@@ -319,6 +319,11 @@ export class ModerationService {
     this.userBlocks = userBlockManager;
     this.accessControl = accessControlService;
 
+    this.viewerMuteList = new Set();
+    this.viewerMuteEventId = "";
+    this.viewerMuteUpdatedAt = 0;
+    this.viewerMutePromise = null;
+
     this.contactSubscription = null;
     this.contactListPromise = null;
 
@@ -391,13 +396,34 @@ export class ModerationService {
 
     this.trustedMuteLists.clear();
     this.trustedMutedAuthors.clear();
+    this.viewerMuteList.clear();
+    this.viewerMuteEventId = "";
+    this.viewerMuteUpdatedAt = 0;
 
     this.emit("trusted-mutes", { total: 0 });
   }
 
+  isTrustedMuteOwner(pubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return false;
+    }
+    if (normalized === this.viewerPubkey) {
+      return true;
+    }
+    return this.trustedContacts.has(normalized);
+  }
+
   reconcileTrustedMuteSubscriptions(previousSet, nextSet) {
-    const previous = previousSet instanceof Set ? previousSet : new Set();
-    const next = nextSet instanceof Set ? nextSet : new Set();
+    const previous = previousSet instanceof Set ? new Set(previousSet) : new Set();
+    const next = nextSet instanceof Set ? new Set(nextSet) : new Set();
+
+    if (this.viewerPubkey) {
+      if (this.trustedMuteSubscriptions.has(this.viewerPubkey)) {
+        previous.add(this.viewerPubkey);
+      }
+      next.add(this.viewerPubkey);
+    }
 
     for (const value of previous) {
       if (!next.has(value)) {
@@ -436,7 +462,7 @@ export class ModerationService {
 
   async subscribeToTrustedMuteList(pubkey) {
     const normalized = normalizeHex(pubkey);
-    if (!normalized || !this.trustedContacts.has(normalized)) {
+    if (!normalized || !this.isTrustedMuteOwner(normalized)) {
       return;
     }
 
@@ -466,7 +492,7 @@ export class ModerationService {
         return;
       }
 
-      if (!this.trustedContacts.has(normalized)) {
+      if (!this.isTrustedMuteOwner(normalized)) {
         return;
       }
 
@@ -501,9 +527,11 @@ export class ModerationService {
         if (latest) {
           this.ingestTrustedMuteEvent(latest);
         }
+      } else {
+        this.replaceTrustedMuteList(normalized, new Set(), { createdAt: 0, eventId: "" });
       }
 
-      if (!this.trustedContacts.has(normalized)) {
+      if (!this.isTrustedMuteOwner(normalized)) {
         return;
       }
 
@@ -590,13 +618,22 @@ export class ModerationService {
       }
     }
 
+    const normalizedEventId = normalizeEventId(eventId);
+    const normalizedCreatedAt = ensureNumber(createdAt);
+
+    if (owner === this.viewerPubkey) {
+      this.viewerMuteList = new Set(sanitizedAuthors);
+      this.viewerMuteEventId = normalizedEventId || "";
+      this.viewerMuteUpdatedAt = normalizedCreatedAt;
+    }
+
     if (!sanitizedAuthors.size) {
       this.trustedMuteLists.delete(owner);
     } else {
       this.trustedMuteLists.set(owner, {
         authors: sanitizedAuthors,
-        updatedAt: ensureNumber(createdAt),
-        eventId: normalizeEventId(eventId),
+        updatedAt: normalizedCreatedAt,
+        eventId: normalizedEventId,
       });
 
       for (const author of sanitizedAuthors) {
@@ -615,7 +652,7 @@ export class ModerationService {
 
   applyTrustedMuteEvent(ownerPubkey, event) {
     const owner = normalizeHex(ownerPubkey);
-    if (!owner || !this.trustedContacts.has(owner)) {
+    if (!owner || !this.isTrustedMuteOwner(owner)) {
       return;
     }
 
@@ -663,11 +700,200 @@ export class ModerationService {
     }
 
     const owner = normalizeHex(event.pubkey);
-    if (!owner || !this.trustedContacts.has(owner)) {
+    if (!owner || !this.isTrustedMuteOwner(owner)) {
       return;
     }
 
     this.applyTrustedMuteEvent(owner, event);
+  }
+
+  getViewerMutedAuthors() {
+    return Array.from(this.viewerMuteList);
+  }
+
+  isAuthorMutedByViewer(pubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      return false;
+    }
+    return this.viewerMuteList.has(normalized);
+  }
+
+  async ensureViewerMuteListLoaded(pubkey = this.viewerPubkey) {
+    const normalized = normalizeHex(pubkey);
+    if (!normalized) {
+      this.viewerMuteList.clear();
+      this.viewerMuteEventId = "";
+      this.viewerMuteUpdatedAt = 0;
+      return;
+    }
+
+    if (this.trustedMuteLists.has(normalized)) {
+      return;
+    }
+
+    if (this.viewerMutePromise) {
+      try {
+        await this.viewerMutePromise;
+      } catch (_) {
+        /* noop */
+      }
+      return;
+    }
+
+    this.viewerMutePromise = this.subscribeToTrustedMuteList(normalized)
+      .catch((error) => {
+        this.log("[moderationService] failed to load viewer mute list", error);
+        throw error;
+      })
+      .finally(() => {
+        this.viewerMutePromise = null;
+      });
+
+    try {
+      await this.viewerMutePromise;
+    } catch (_) {
+      /* noop */
+    }
+  }
+
+  async publishViewerMuteList({ owner, muted }) {
+    const viewer = normalizeHex(owner || this.viewerPubkey);
+    if (!viewer) {
+      const error = new Error("viewer-not-logged-in");
+      error.code = "viewer-not-logged-in";
+      throw error;
+    }
+
+    await this.ensurePool();
+
+    const extension = typeof window !== "undefined" ? window.nostr : null;
+    if (!extension || typeof extension.signEvent !== "function") {
+      const error = new Error("nostr-extension-missing");
+      error.code = "nostr-extension-missing";
+      throw error;
+    }
+
+    if (typeof this.nostrClient?.ensureExtensionPermissions === "function") {
+      const permissionResult = await this.nostrClient.ensureExtensionPermissions([
+        "sign_event",
+        "get_public_key",
+      ]);
+      if (!permissionResult?.ok) {
+        const error = new Error("extension-permission-denied");
+        error.code = "extension-permission-denied";
+        error.details = permissionResult?.error || null;
+        throw error;
+      }
+    }
+
+    const tags = [];
+    if (muted instanceof Set || Array.isArray(muted)) {
+      for (const value of muted) {
+        const normalized = normalizeHex(value);
+        if (!normalized || normalized === viewer) {
+          continue;
+        }
+        tags.push(["p", normalized]);
+      }
+    }
+
+    const event = {
+      kind: 10000,
+      created_at: Math.floor(Date.now() / 1000),
+      tags,
+      content: "",
+      pubkey: viewer,
+    };
+
+    let signedEvent;
+    try {
+      signedEvent = await extension.signEvent(event);
+    } catch (error) {
+      const wrapped = new Error("signature-failed");
+      wrapped.code = "signature-failed";
+      wrapped.details = error;
+      throw wrapped;
+    }
+
+    const relays = resolveRelayList(this.nostrClient, { write: true });
+    if (!relays.length) {
+      const error = new Error("no-relays-configured");
+      error.code = "no-relays-configured";
+      throw error;
+    }
+
+    let results = [];
+    try {
+      results = await publishEventToRelays(this.nostrClient.pool, relays, signedEvent);
+      assertAnyRelayAccepted(results, { context: "mute list" });
+    } catch (error) {
+      const wrapped = new Error("mute-list-publish-failed");
+      wrapped.code = "mute-list-publish-failed";
+      wrapped.details = error;
+      throw wrapped;
+    }
+
+    this.applyTrustedMuteEvent(viewer, signedEvent);
+    return { ok: true, event: signedEvent, results };
+  }
+
+  async addAuthorToViewerMuteList(pubkey) {
+    const viewer = normalizeHex(this.viewerPubkey);
+    if (!viewer) {
+      const error = new Error("viewer-not-logged-in");
+      error.code = "viewer-not-logged-in";
+      throw error;
+    }
+
+    const target = normalizeHex(pubkey);
+    if (!target) {
+      const error = new Error("invalid-target");
+      error.code = "invalid-target";
+      throw error;
+    }
+
+    if (target === viewer) {
+      const error = new Error("self");
+      error.code = "self";
+      throw error;
+    }
+
+    await this.ensureViewerMuteListLoaded(viewer);
+
+    if (this.viewerMuteList.has(target)) {
+      return { ok: true, already: true };
+    }
+
+    const next = new Set(this.viewerMuteList);
+    next.add(target);
+
+    return this.publishViewerMuteList({ owner: viewer, muted: next });
+  }
+
+  async removeAuthorFromViewerMuteList(pubkey) {
+    const viewer = normalizeHex(this.viewerPubkey);
+    if (!viewer) {
+      const error = new Error("viewer-not-logged-in");
+      error.code = "viewer-not-logged-in";
+      throw error;
+    }
+
+    const target = normalizeHex(pubkey);
+    if (!target) {
+      return { ok: true, already: true };
+    }
+
+    await this.ensureViewerMuteListLoaded(viewer);
+
+    if (!this.viewerMuteList.has(target)) {
+      return { ok: true, already: true };
+    }
+
+    const next = new Set(this.viewerMuteList);
+    next.delete(target);
+
+    return this.publishViewerMuteList({ owner: viewer, muted: next });
   }
 
   isAuthorMutedByTrusted(pubkey) {
@@ -910,6 +1136,7 @@ export class ModerationService {
     });
 
     await this.ensureUserBlocksLoaded(normalized);
+    await this.ensureViewerMuteListLoaded(normalized);
     return this.viewerPubkey;
   }
 

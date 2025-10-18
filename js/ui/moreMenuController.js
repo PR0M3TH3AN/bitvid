@@ -79,6 +79,7 @@ export default class MoreMenuController {
     this.boundVideoListBlacklistHandler = null;
     this.popoversByTrigger = new Map();
     this.activePopover = null;
+    this.activePopoverEntry = null;
 
     this.reportModal = null;
     this.reportModalPrepared = false;
@@ -582,6 +583,105 @@ export default class MoreMenuController {
     );
   }
 
+  setButtonVisibility(button, visible) {
+    if (!button) {
+      return;
+    }
+    if (visible) {
+      button.removeAttribute("hidden");
+      button.setAttribute("aria-hidden", "false");
+    } else {
+      button.setAttribute("hidden", "");
+      button.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  syncMuteMenuButtons(panel, entry = {}) {
+    if (!panel || typeof panel.querySelector !== "function") {
+      return;
+    }
+
+    const muteButton = panel.querySelector('button[data-action="mute-author"]');
+    const unmuteButton = panel.querySelector('button[data-action="unmute-author"]');
+    if (!muteButton && !unmuteButton) {
+      return;
+    }
+
+    const contextVideo = entry?.context?.video || null;
+    let authorCandidate = contextVideo?.pubkey || "";
+
+    if (!authorCandidate) {
+      if (muteButton?.dataset?.author) {
+        authorCandidate = muteButton.dataset.author;
+      } else if (unmuteButton?.dataset?.author) {
+        authorCandidate = unmuteButton.dataset.author;
+      }
+    }
+
+    const trimmed = typeof authorCandidate === "string" ? authorCandidate.trim() : "";
+    let normalized = "";
+    if (trimmed) {
+      if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+        normalized = trimmed.toLowerCase();
+      } else if (trimmed.startsWith("npub1")) {
+        normalized = this.callbacks.safeDecodeNpub(trimmed) || "";
+      }
+    }
+
+    if (normalized) {
+      if (muteButton) {
+        muteButton.dataset.author = normalized;
+      }
+      if (unmuteButton) {
+        unmuteButton.dataset.author = normalized;
+      }
+    }
+
+    let isMuted = false;
+    if (normalized) {
+      try {
+        isMuted = this.moderationService.isAuthorMutedByViewer(normalized) === true;
+      } catch (error) {
+        if (this.isDevMode) {
+          userLogger.warn("[MoreMenu] Failed to resolve viewer mute state", error);
+        }
+      }
+    }
+
+    const hasTarget = Boolean(normalized);
+    this.setButtonVisibility(muteButton, hasTarget && !isMuted);
+    this.setButtonVisibility(unmuteButton, hasTarget && isMuted);
+  }
+
+  refreshActiveMuteButtons({ author = "" } = {}) {
+    if (!this.activePopoverEntry || !this.activePopover) {
+      return;
+    }
+    const panel =
+      typeof this.activePopover.getPanel === "function"
+        ? this.activePopover.getPanel()
+        : null;
+    if (!panel) {
+      return;
+    }
+
+    if (author) {
+      const trimmed = author.trim();
+      if (trimmed) {
+        const muteButton = panel.querySelector('button[data-action="mute-author"]');
+        const unmuteButton = panel.querySelector('button[data-action="unmute-author"]');
+        if (muteButton) {
+          muteButton.dataset.author = trimmed;
+        }
+        if (unmuteButton) {
+          unmuteButton.dataset.author = trimmed;
+        }
+      }
+    }
+
+    this.syncMuteMenuButtons(panel, this.activePopoverEntry);
+  }
+
   createPopoverRender(entry) {
     return ({ document: documentRef, close }) => {
       const panel = createVideoMoreMenuPanel({
@@ -598,6 +698,8 @@ export default class MoreMenuController {
       if (!panel) {
         return null;
       }
+
+      this.syncMuteMenuButtons(panel, entry);
 
       const buttons = panel.querySelectorAll("button[data-action]");
       buttons.forEach((button) => {
@@ -656,6 +758,12 @@ export default class MoreMenuController {
         const result = await originalOpen(...args);
         if (result) {
           this.activePopover = popover;
+          this.activePopoverEntry = entry;
+          const panel =
+            typeof popover.getPanel === "function" ? popover.getPanel() : null;
+          if (panel) {
+            this.syncMuteMenuButtons(panel, entry);
+          }
         }
         return result;
       };
@@ -670,6 +778,7 @@ export default class MoreMenuController {
         const result = originalClose({ restoreFocus });
         if (result && this.activePopover === popover) {
           this.activePopover = null;
+          this.activePopoverEntry = null;
         }
         if (result && typeof entry?.context?.onClose === "function") {
           try {
@@ -692,6 +801,7 @@ export default class MoreMenuController {
       popover.destroy = (...args) => {
         if (this.activePopover === popover) {
           this.activePopover = null;
+          this.activePopoverEntry = null;
         }
         originalDestroy(...args);
         if (trigger && this.popoversByTrigger.get(trigger) === entry) {
@@ -942,6 +1052,36 @@ export default class MoreMenuController {
     const context = dataset.context || "";
     const currentVideo = this.callbacks.getCurrentVideo();
 
+    const resolveTargetAuthorHex = () => {
+      const candidates = [
+        dataset.author,
+        dataset.npub,
+        context === "modal" ? currentVideo?.pubkey : "",
+        currentVideo?.pubkey,
+      ];
+
+      for (const candidate of candidates) {
+        if (typeof candidate !== "string") {
+          continue;
+        }
+        const trimmed = candidate.trim();
+        if (!trimmed) {
+          continue;
+        }
+        if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+          return trimmed.toLowerCase();
+        }
+        if (trimmed.startsWith("npub1")) {
+          const decoded = this.callbacks.safeDecodeNpub(trimmed);
+          if (decoded) {
+            return decoded;
+          }
+        }
+      }
+
+      return "";
+    };
+
     switch (normalized) {
       case "open-channel": {
         if (context === "modal") {
@@ -1025,6 +1165,156 @@ export default class MoreMenuController {
         } catch (error) {
           userLogger.error("Failed to copy npub:", error);
           this.callbacks.showError("Failed to copy the npub.");
+        }
+        break;
+      }
+      case "mute-author": {
+        const viewerPubkey = this.callbacks.getCurrentUserPubkey();
+        if (!viewerPubkey) {
+          this.callbacks.showError("Please login to manage your mute list.");
+          break;
+        }
+
+        const targetHex = resolveTargetAuthorHex();
+        if (!targetHex) {
+          this.callbacks.showError("Unable to determine the creator to mute.");
+          break;
+        }
+
+        if (targetHex === viewerPubkey) {
+          this.callbacks.showError("You cannot mute yourself.");
+          break;
+        }
+
+        try {
+          const result = await this.moderationService.addAuthorToViewerMuteList(
+            targetHex,
+          );
+          if (result?.already) {
+            this.callbacks.showSuccess("You already muted this creator.");
+          } else {
+            this.callbacks.showSuccess(
+              "Creator muted. Their videos will be downranked in your feeds.",
+            );
+          }
+          try {
+            await this.callbacks.loadVideos();
+          } catch (loadError) {
+            if (this.isDevMode) {
+              userLogger.warn("[MoreMenu] Failed to reload videos after muting", loadError);
+            }
+          }
+          try {
+            await this.subscriptions?.refreshActiveFeed?.({
+              reason: "viewer-mute-update",
+            });
+          } catch (refreshError) {
+            if (this.isDevMode) {
+              userLogger.warn(
+                "[Subscriptions] Failed to refresh after viewer mute update:",
+                refreshError,
+              );
+            }
+          }
+          this.refreshActiveMuteButtons({ author: targetHex });
+        } catch (error) {
+          switch (error?.code) {
+            case "viewer-not-logged-in":
+              this.callbacks.showError("Please login to manage your mute list.");
+              break;
+            case "invalid-target":
+              this.callbacks.showError("Unable to determine the creator to mute.");
+              break;
+            case "self":
+              this.callbacks.showError("You cannot mute yourself.");
+              break;
+            case "nostr-extension-missing":
+              this.callbacks.showError(
+                "A Nostr extension is required to update your mute list.",
+              );
+              break;
+            case "extension-permission-denied":
+              this.callbacks.showError(
+                "Allow your Nostr extension to sign events before muting creators.",
+              );
+              break;
+            default:
+              this.callbacks.showError(
+                "Failed to update your mute list. Please try again.",
+              );
+              break;
+          }
+        }
+        break;
+      }
+      case "unmute-author": {
+        const viewerPubkey = this.callbacks.getCurrentUserPubkey();
+        if (!viewerPubkey) {
+          this.callbacks.showError("Please login to manage your mute list.");
+          break;
+        }
+
+        const targetHex = resolveTargetAuthorHex();
+        if (!targetHex) {
+          this.callbacks.showError("Unable to determine the creator to unmute.");
+          break;
+        }
+
+        try {
+          const result = await this.moderationService.removeAuthorFromViewerMuteList(
+            targetHex,
+          );
+          if (result?.already) {
+            this.callbacks.showSuccess("This creator is not on your mute list.");
+          } else {
+            this.callbacks.showSuccess(
+              "Creator removed from your mute list.",
+            );
+          }
+          try {
+            await this.callbacks.loadVideos();
+          } catch (loadError) {
+            if (this.isDevMode) {
+              userLogger.warn(
+                "[MoreMenu] Failed to reload videos after unmuting",
+                loadError,
+              );
+            }
+          }
+          try {
+            await this.subscriptions?.refreshActiveFeed?.({
+              reason: "viewer-mute-update",
+            });
+          } catch (refreshError) {
+            if (this.isDevMode) {
+              userLogger.warn(
+                "[Subscriptions] Failed to refresh after viewer mute removal:",
+                refreshError,
+              );
+            }
+          }
+          this.refreshActiveMuteButtons({ author: targetHex });
+        } catch (error) {
+          switch (error?.code) {
+            case "viewer-not-logged-in":
+              this.callbacks.showError("Please login to manage your mute list.");
+              break;
+            case "nostr-extension-missing":
+              this.callbacks.showError(
+                "A Nostr extension is required to update your mute list.",
+              );
+              break;
+            case "extension-permission-denied":
+              this.callbacks.showError(
+                "Allow your Nostr extension to sign events before updating your mute list.",
+              );
+              break;
+            default:
+              this.callbacks.showError(
+                "Failed to update your mute list. Please try again.",
+              );
+              break;
+          }
         }
         break;
       }

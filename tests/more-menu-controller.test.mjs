@@ -159,3 +159,103 @@ test('block-author updates user blocks, reloads videos, and refreshes feeds', as
     ['refreshActiveFeed', { reason: 'user-block-update' }],
   ]);
 });
+
+test('mute-author updates viewer mute list and refreshes feeds', async () => {
+  const events = [];
+  const moderationStub = {
+    addAuthorToViewerMuteList: async (target) => {
+      events.push(['addMute', target]);
+      return { ok: true };
+    },
+    removeAuthorFromViewerMuteList: async () => {
+      throw new Error('unreachable');
+    },
+    isAuthorMutedByViewer: () => false,
+  };
+
+  const subscriptions = {
+    refreshActiveFeed: async (args) => {
+      events.push(['refreshActiveFeed', args]);
+    },
+  };
+
+  const controller = new MoreMenuController({
+    moderationService: moderationStub,
+    subscriptions,
+    callbacks: {
+      getCurrentUserPubkey: () => 'viewerhex',
+      getCurrentVideo: () => ({ pubkey: 'fallbackhex' }),
+      loadVideos: async () => {
+        events.push(['loadVideos']);
+      },
+      showSuccess: (message) => {
+        events.push(['success', message]);
+      },
+      showError: (message) => {
+        events.push(['error', message]);
+      },
+      safeDecodeNpub: () => '',
+    },
+  });
+
+  const targetHex = 'd'.repeat(64);
+
+  await controller.handleMoreMenuAction('mute-author', { author: targetHex });
+
+  assert.deepEqual(events, [
+    ['addMute', targetHex],
+    ['success', 'Creator muted. Their videos will be downranked in your feeds.'],
+    ['loadVideos'],
+    ['refreshActiveFeed', { reason: 'viewer-mute-update' }],
+  ]);
+});
+
+test('unmute-author removes creators from viewer mute list', async () => {
+  const events = [];
+  const moderationStub = {
+    addAuthorToViewerMuteList: async () => {
+      throw new Error('unreachable');
+    },
+    removeAuthorFromViewerMuteList: async (target) => {
+      events.push(['removeMute', target]);
+      return { ok: true };
+    },
+    isAuthorMutedByViewer: () => true,
+  };
+
+  const subscriptions = {
+    refreshActiveFeed: async (args) => {
+      events.push(['refreshActiveFeed', args]);
+    },
+  };
+
+  const controller = new MoreMenuController({
+    moderationService: moderationStub,
+    subscriptions,
+    callbacks: {
+      getCurrentUserPubkey: () => 'viewerhex',
+      getCurrentVideo: () => ({ pubkey: 'fallbackhex' }),
+      loadVideos: async () => {
+        events.push(['loadVideos']);
+      },
+      showSuccess: (message) => {
+        events.push(['success', message]);
+      },
+      showError: (message) => {
+        events.push(['error', message]);
+      },
+      safeDecodeNpub: () => '',
+    },
+  });
+
+  const targetHex = 'e'.repeat(64);
+
+  await controller.handleMoreMenuAction('unmute-author', { author: targetHex });
+
+  assert.deepEqual(events, [
+    ['removeMute', targetHex],
+    ['success', 'Creator removed from your mute list.'],
+    ['loadVideos'],
+    ['refreshActiveFeed', { reason: 'viewer-mute-update' }],
+  ]);
+});

@@ -257,6 +257,18 @@ export function createVideoMoreMenuPanel({
     });
   }
 
+  appendMenuAction(doc, list, {
+    text: "Mute creator",
+    action: "mute-author",
+    dataset: { author: metadata.pubkey, context },
+  });
+
+  appendMenuAction(doc, list, {
+    text: "Unmute creator",
+    action: "unmute-author",
+    dataset: { author: metadata.pubkey, context },
+  });
+
   if (canManageBlacklist) {
     appendMenuAction(doc, list, {
       text: "Blacklist creator",
@@ -304,6 +316,18 @@ export function createChannelProfileMenuPanel({
   appendMenuAction(doc, list, {
     text: "Copy npub",
     action: "copy-npub",
+    dataset: { context: normalizedContext },
+  });
+
+  appendMenuAction(doc, list, {
+    text: "Mute channel",
+    action: "mute-author",
+    dataset: { context: normalizedContext },
+  });
+
+  appendMenuAction(doc, list, {
+    text: "Unmute channel",
+    action: "unmute-author",
     dataset: { context: normalizedContext },
   });
 

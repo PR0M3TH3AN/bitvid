@@ -5,7 +5,7 @@ import {
   DEFAULT_RELAY_URLS,
   convertEventToVideo as sharedConvertEventToVideo
 } from "./nostr.js";
-import { subscriptions } from "./subscriptions.js"; // <-- NEW import
+import { subscriptions } from "./subscriptions.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { accessControl } from "./accessControl.js";
@@ -16,6 +16,7 @@ import { VideoCard } from "./ui/components/VideoCard.js";
 import { createChannelProfileMenuPanel } from "./ui/components/videoMenuRenderers.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { sanitizeProfileMediaUrl } from "./utils/profileMedia.js";
+import moderationService from "./services/moderationService.js";
 import {
   calculateZapShares,
   describeShareType,
@@ -1663,12 +1664,31 @@ async function updateChannelMenuState() {
     userLogger.warn("Failed to refresh moderation lists for channel menu:", error);
   }
 
+  try {
+    await moderationService.ensureViewerMuteListLoaded();
+  } catch (error) {
+    userLogger.warn("Failed to refresh viewer mute list for channel menu:", error);
+  }
+
   const canBlacklist =
     typeof app?.canCurrentUserManageBlacklist === "function"
       ? app.canCurrentUserManageBlacklist()
       : false;
 
   const buttons = menu.querySelectorAll("button[data-action]");
+  const toggleButtonVisibility = (button, shouldShow) => {
+    if (!button) {
+      return;
+    }
+    if (shouldShow) {
+      button.removeAttribute("hidden");
+      button.setAttribute("aria-hidden", "false");
+    } else {
+      button.setAttribute("hidden", "");
+      button.setAttribute("aria-hidden", "true");
+    }
+  };
+
   buttons.forEach((button) => {
     if (!button || button.nodeType !== 1) {
       return;
@@ -1698,6 +1718,27 @@ async function updateChannelMenuState() {
         button.setAttribute("aria-hidden", "true");
         button.setAttribute("hidden", "");
       }
+      return;
+    }
+
+    if (action === "mute-author" || action === "unmute-author") {
+      if (currentChannelHex) {
+        button.dataset.author = currentChannelHex;
+      } else {
+        delete button.dataset.author;
+      }
+
+      let isMuted = false;
+      if (currentChannelHex) {
+        try {
+          isMuted = moderationService.isAuthorMutedByViewer(currentChannelHex) === true;
+        } catch (error) {
+          userLogger.warn("Failed to resolve viewer mute state for channel menu:", error);
+        }
+      }
+
+      const shouldShow = action === "mute-author" ? !isMuted : isMuted;
+      toggleButtonVisibility(button, shouldShow && !!currentChannelHex);
       return;
     }
 
