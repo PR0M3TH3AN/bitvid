@@ -38,7 +38,7 @@ import {
   requestInvoice
 } from "./payments/lnurl.js";
 import { getPlatformLightningAddress } from "./payments/platformAddress.js";
-import { userLogger } from "./utils/logger.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 import {
   ensureWallet,
   sendPayment as sendWalletPayment
@@ -144,13 +144,29 @@ const PROFILE_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const channelProfileMetadataCache = new Map();
 const channelBannerImageCache = new Map();
 
-function preloadBannerImage(url) {
+const DEFAULT_BANNER_REFERRER_POLICY_SEQUENCE = ["no-referrer", null];
+
+function getBannerCacheKey(url, referrerPolicy) {
+  const keyPolicy =
+    typeof referrerPolicy === "string" && referrerPolicy
+      ? referrerPolicy
+      : "default";
+  return `${keyPolicy}::${url}`;
+}
+
+function preloadBannerImage(url, { referrerPolicy = "no-referrer" } = {}) {
   if (!url) {
     return Promise.reject(new Error("Invalid banner URL"));
   }
 
-  if (channelBannerImageCache.has(url)) {
-    return channelBannerImageCache.get(url);
+  const normalizedPolicy =
+    typeof referrerPolicy === "string" && referrerPolicy
+      ? referrerPolicy
+      : null;
+  const cacheKey = getBannerCacheKey(url, normalizedPolicy);
+
+  if (channelBannerImageCache.has(cacheKey)) {
+    return channelBannerImageCache.get(cacheKey);
   }
 
   const promise = new Promise((resolve, reject) => {
@@ -161,8 +177,15 @@ function preloadBannerImage(url) {
     if ("loading" in img) {
       img.loading = img.loading || "eager";
     }
-    if ("referrerPolicy" in img && !img.referrerPolicy) {
-      img.referrerPolicy = "no-referrer";
+    if (normalizedPolicy && "referrerPolicy" in img) {
+      try {
+        img.referrerPolicy = normalizedPolicy;
+      } catch (error) {
+        devLogger.warn(
+          "[channelProfile.banner] Failed to set preload referrer policy",
+          error
+        );
+      }
     }
     img.onload = () => {
       resolve(url);
@@ -176,11 +199,11 @@ function preloadBannerImage(url) {
     img.src = url;
   });
 
-  channelBannerImageCache.set(url, promise);
+  channelBannerImageCache.set(cacheKey, promise);
   return promise;
 }
 
-function setBannerVisual(el, url) {
+function setBannerVisual(el, url, { referrerPolicy } = {}) {
   if (!el) {
     return;
   }
@@ -189,6 +212,34 @@ function setBannerVisual(el, url) {
   const tagName = el.tagName ? el.tagName.toLowerCase() : "";
 
   if (tagName === "img") {
+    if (referrerPolicy !== undefined) {
+      const normalizedPolicy =
+        referrerPolicy === null
+          ? ""
+          : typeof referrerPolicy === "string"
+            ? referrerPolicy
+            : "";
+
+      if ("referrerPolicy" in el) {
+        try {
+          el.referrerPolicy = normalizedPolicy;
+        } catch (error) {
+          devLogger.warn(
+            "[channelProfile.banner] Failed to set banner referrer policy",
+            error
+          );
+        }
+      }
+
+      if (normalizedPolicy) {
+        el.setAttribute("referrerpolicy", normalizedPolicy);
+      } else {
+        el.removeAttribute("referrerpolicy");
+      }
+
+      el.dataset.bannerReferrerPolicy = normalizedPolicy;
+    }
+
     if (el.src !== resolvedUrl) {
       el.src = resolvedUrl;
     }
@@ -214,6 +265,11 @@ function ensureBannerFallbackHandler(bannerEl) {
     return;
   }
 
+  if (!bannerEl.dataset.bannerReferrerPolicy) {
+    const initialPolicy = bannerEl.getAttribute("referrerpolicy") || "";
+    bannerEl.dataset.bannerReferrerPolicy = initialPolicy;
+  }
+
   if (bannerEl.dataset.bannerFallbackAttached === "true") {
     return;
   }
@@ -229,16 +285,71 @@ function ensureBannerFallbackHandler(bannerEl) {
 
     const activeSrc = bannerEl.currentSrc || bannerEl.src || "";
     if (activeSrc) {
-      channelBannerImageCache.delete(activeSrc);
+      channelBannerImageCache.delete(
+        getBannerCacheKey(activeSrc, bannerEl.dataset.bannerReferrerPolicy)
+      );
     }
 
     if (fallbackSrc && bannerEl.src !== fallbackSrc) {
-      bannerEl.src = fallbackSrc;
+      setBannerVisual(bannerEl, fallbackSrc, { referrerPolicy: null });
     }
   };
 
   bannerEl.addEventListener("error", handleError, { passive: true });
   bannerEl.dataset.bannerFallbackAttached = "true";
+}
+
+function applyBannerWithPolicies({
+  bannerEl,
+  url,
+  fallbackSrc,
+  policies = DEFAULT_BANNER_REFERRER_POLICY_SEQUENCE,
+  loadToken
+} = {}) {
+  if (!bannerEl) {
+    return;
+  }
+
+  const attemptPolicyAtIndex = (index) => {
+    if (index >= policies.length) {
+      if (
+        Number.isInteger(loadToken) &&
+        loadToken !== currentProfileLoadToken
+      ) {
+        return;
+      }
+      setBannerVisual(bannerEl, fallbackSrc, { referrerPolicy: null });
+      return;
+    }
+
+    const policy = policies[index];
+
+    preloadBannerImage(url, { referrerPolicy: policy })
+      .then(() => {
+        if (
+          Number.isInteger(loadToken) &&
+          loadToken !== currentProfileLoadToken
+        ) {
+          return;
+        }
+
+        setBannerVisual(bannerEl, url, { referrerPolicy: policy });
+      })
+      .catch(() => {
+        channelBannerImageCache.delete(getBannerCacheKey(url, policy));
+
+        if (
+          Number.isInteger(loadToken) &&
+          loadToken !== currentProfileLoadToken
+        ) {
+          return;
+        }
+
+        attemptPolicyAtIndex(index + 1);
+      });
+  };
+
+  attemptPolicyAtIndex(0);
 }
 
 function getChannelZapButton() {
@@ -2880,22 +2991,14 @@ function applyChannelProfileMetadata({
     ensureBannerFallbackHandler(bannerEl);
 
     if (!normalized.banner) {
-      setBannerVisual(bannerEl, fallbackSrc);
+      setBannerVisual(bannerEl, fallbackSrc, { referrerPolicy: null });
     } else {
-      preloadBannerImage(normalized.banner)
-        .then(() => {
-          if (expectedLoadToken !== currentProfileLoadToken) {
-            return;
-          }
-          setBannerVisual(bannerEl, normalized.banner);
-        })
-        .catch(() => {
-          channelBannerImageCache.delete(normalized.banner);
-          if (expectedLoadToken !== currentProfileLoadToken) {
-            return;
-          }
-          setBannerVisual(bannerEl, fallbackSrc);
-        });
+      applyBannerWithPolicies({
+        bannerEl,
+        url: normalized.banner,
+        fallbackSrc,
+        loadToken: expectedLoadToken
+      });
     }
   }
 
