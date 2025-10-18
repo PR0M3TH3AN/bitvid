@@ -112,6 +112,8 @@ function logZapError(stage, details = {}, error) {
   userLogger.error("[zap] Channel zap failure", summary, error);
 }
 let currentChannelProfileEvent = null;
+let currentChannelProfileSnapshot = null;
+let currentChannelProfileHasExplicitPayload = false;
 
 let cachedZapButton = null;
 let cachedChannelShareButton = null;
@@ -133,6 +135,7 @@ let zapControlsOpen = false;
 let zapPopover = null;
 let zapPopoverTrigger = null;
 let zapShouldFocusOnOpen = false;
+let zapPopoverOpenPromise = null;
 let channelMenuPopover = null;
 let channelMenuOpen = false;
 let currentVideoLoadToken = 0;
@@ -143,6 +146,33 @@ const FALLBACK_CHANNEL_AVATAR = "assets/svg/default-profile.svg";
 const PROFILE_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const channelProfileMetadataCache = new Map();
+
+function hasExplicitChannelProfilePayload(profile) {
+  return (
+    profile &&
+    typeof profile === "object" &&
+    Object.keys(profile).length > 0
+  );
+}
+
+function touchChannelProfileCacheEntry(pubkey) {
+  if (typeof pubkey !== "string" || !pubkey) {
+    return false;
+  }
+
+  const existing = channelProfileMetadataCache.get(pubkey);
+  if (!existing) {
+    return false;
+  }
+
+  channelProfileMetadataCache.set(pubkey, {
+    timestamp: Date.now(),
+    profile: { ...existing.profile },
+    event: existing.event ? { ...existing.event } : null
+  });
+
+  return true;
+}
 
 const SUPPORTED_BANNER_REFERRER_POLICIES = new Set([
   "no-referrer",
@@ -469,7 +499,11 @@ function setChannelZapVisibility(visible) {
     typeof app?.isUserLoggedIn === "function"
       ? app.isUserLoggedIn()
       : Boolean(app?.normalizeHexPubkey?.(app?.pubkey));
-  const shouldShow = !!visible && isLoggedIn;
+  const sessionActorPubkey = getSessionActorPubkey();
+  const hasSessionActor = sessionActorPubkey.length > 0;
+  const sessionOnly = !isLoggedIn && hasSessionActor;
+  const shouldShow = !!visible && (isLoggedIn || sessionOnly);
+  const requiresLogin = shouldShow && !isLoggedIn;
 
   if (
     shouldShow &&
@@ -480,7 +514,10 @@ function setChannelZapVisibility(visible) {
 
   zapButton.toggleAttribute("hidden", !shouldShow);
   zapButton.disabled = !shouldShow;
-  zapButton.setAttribute("aria-disabled", (!shouldShow).toString());
+  zapButton.setAttribute(
+    "aria-disabled",
+    (requiresLogin || !shouldShow).toString()
+  );
   zapButton.setAttribute("aria-hidden", (!shouldShow).toString());
   zapButton.setAttribute("aria-expanded", "false");
   if (shouldShow) {
@@ -492,18 +529,24 @@ function setChannelZapVisibility(visible) {
     clearZapReceipts();
     setZapStatus("", "neutral");
   }
+  if (requiresLogin) {
+    zapButton.dataset.requiresLogin = "true";
+  } else {
+    delete zapButton.dataset.requiresLogin;
+  }
   closeZapControls();
   if (controls) {
     controls.setAttribute("aria-hidden", "true");
     controls.hidden = true;
   }
+  const shouldEnableInputs = shouldShow && !requiresLogin;
   if (amountInput) {
-    amountInput.disabled = !shouldShow;
+    amountInput.disabled = !shouldEnableInputs;
   }
   if (sendButton) {
-    sendButton.disabled = !shouldShow;
-    sendButton.setAttribute("aria-hidden", (!shouldShow).toString());
-    if (shouldShow) {
+    sendButton.disabled = !shouldEnableInputs;
+    sendButton.setAttribute("aria-hidden", (!shouldEnableInputs).toString());
+    if (shouldEnableInputs) {
       sendButton.removeAttribute("tabindex");
       sendButton.removeAttribute("aria-busy");
       delete sendButton.dataset.state;
@@ -525,10 +568,29 @@ function setChannelZapVisibility(visible) {
             typeof settings?.nwcUri === "string" ? settings.nwcUri.trim() : "";
           return uri.length > 0;
         })();
-  setZapWalletPromptVisible(shouldShow && !hasWallet);
-  if (shouldShow) {
+  setZapWalletPromptVisible(shouldEnableInputs && !hasWallet);
+  if (shouldEnableInputs) {
     setupZapWalletLink();
   }
+}
+
+function isSessionActorWithoutLogin() {
+  const app = getApp();
+  const isLoggedIn =
+    typeof app?.isUserLoggedIn === "function"
+      ? app.isUserLoggedIn()
+      : Boolean(app?.normalizeHexPubkey?.(app?.pubkey) || app?.pubkey);
+  if (isLoggedIn) {
+    return false;
+  }
+
+  return getSessionActorPubkey().length > 0;
+}
+
+function getSessionActorPubkey() {
+  return typeof nostrClient?.sessionActor?.pubkey === "string"
+    ? nostrClient.sessionActor.pubkey.trim()
+    : "";
 }
 
 function getChannelShareButton() {
@@ -804,6 +866,8 @@ function cacheZapPanelElements(panel) {
     cachedZapWalletLink = null;
     cachedZapCloseBtn = null;
     cachedZapSendBtn = null;
+    zapPopoverOpenPromise = null;
+    zapShouldFocusOnOpen = false;
     return;
   }
 
@@ -910,7 +974,20 @@ function setupZapWalletLink() {
     event?.preventDefault?.();
     const app = getApp();
     if (typeof app?.openWalletPane === "function") {
-      app.openWalletPane();
+      Promise.resolve()
+        .then(() => app.openWalletPane())
+        .catch((error) => {
+          devLogger.warn(
+            "[zap] Failed to open wallet pane from channel view:",
+            error
+          );
+          app?.showError?.("Wallet settings are not available right now.");
+        });
+    } else {
+      devLogger.warn(
+        "[zap] Wallet pane requested but application did not expose openWalletPane()."
+      );
+      app?.showError?.("Wallet settings are not available right now.");
     }
   });
   link.dataset.initialized = "true";
@@ -936,24 +1013,61 @@ function isZapControlsOpen() {
 
 function openZapControls({ focus = false } = {}) {
   const zapButton = getChannelZapButton();
-  if (!zapButton || !zapPopover) {
+  if (!zapButton) {
+    zapShouldFocusOnOpen = false;
     return false;
   }
-  zapShouldFocusOnOpen = focus;
-  const result = zapPopover.open();
-  if (result && typeof result.then === "function") {
-    result.catch(() => {}).finally(() => {
+
+  if (!zapPopover || zapPopoverTrigger !== zapButton) {
+    const initialized = setupZapButton({ force: true });
+    if (!initialized || !zapPopover || zapPopoverTrigger !== zapButton) {
       zapShouldFocusOnOpen = false;
-    });
+      return false;
+    }
+  }
+
+  if (zapPopoverOpenPromise) {
+    if (focus) {
+      zapShouldFocusOnOpen = true;
+    }
     return true;
   }
+
+  zapShouldFocusOnOpen = focus;
+
+  let result;
+  try {
+    result = zapPopover.open();
+  } catch (error) {
+    zapShouldFocusOnOpen = false;
+    zapPopoverOpenPromise = null;
+    devLogger.warn("[zap] Failed to open zap popover", error);
+    return false;
+  }
+
+  if (result && typeof result.then === "function") {
+    const pending = result
+      .catch((error) => {
+        devLogger.warn("[zap] Zap popover open rejected", error);
+        return false;
+      })
+      .finally(() => {
+        zapPopoverOpenPromise = null;
+        zapShouldFocusOnOpen = false;
+      });
+    zapPopoverOpenPromise = pending;
+    return true;
+  }
+
   zapShouldFocusOnOpen = false;
+  zapPopoverOpenPromise = null;
   return Boolean(result);
 }
 
 function closeZapControls({ focusButton = false } = {}) {
   const zapButton = getChannelZapButton();
   zapShouldFocusOnOpen = false;
+  zapPopoverOpenPromise = null;
 
   if (zapPopover) {
     const result = zapPopover.close({ restoreFocus: focusButton });
@@ -1636,10 +1750,27 @@ function handleZapButtonClick(event) {
     return;
   }
 
-  const popoverIsOpen =
-    typeof zapPopover?.isOpen === "function"
-      ? zapPopover.isOpen()
-      : isZapControlsOpen();
+  if (isSessionActorWithoutLogin()) {
+    const app = getApp();
+    const message = "Log in with your Nostr profile to send zaps.";
+    app?.showError?.(message);
+    return;
+  }
+
+  if (!zapPopover || zapPopoverTrigger !== zapButton) {
+    setupZapButton({ force: true });
+  }
+
+  if (!zapPopover) {
+    return;
+  }
+
+  if (zapPopoverOpenPromise) {
+    zapShouldFocusOnOpen = true;
+    return;
+  }
+
+  const popoverIsOpen = isZapControlsOpen();
 
   if (!popoverIsOpen) {
     openZapControls({ focus: true });
@@ -1667,8 +1798,24 @@ async function handleZapSend(event) {
     return;
   }
 
+  if (!zapPopover || zapPopoverTrigger !== zapButton) {
+    setupZapButton({ force: true });
+  }
+
   if (!isZapControlsOpen()) {
+    if (zapPopoverOpenPromise) {
+      zapShouldFocusOnOpen = true;
+      return;
+    }
     openZapControls({ focus: true });
+    return;
+  }
+
+  if (zapPopoverOpenPromise) {
+    return;
+  }
+
+  if (!zapPopover) {
     return;
   }
 
@@ -2174,6 +2321,8 @@ export async function initChannelProfileView() {
   currentChannelNpub = null;
   currentChannelLightningAddress = "";
   currentChannelProfileEvent = null;
+  currentChannelProfileSnapshot = null;
+  currentChannelProfileHasExplicitPayload = false;
   setCachedPlatformLightningAddress("");
   resetZapRetryState();
   clearZapReceipts();
@@ -2296,6 +2445,9 @@ function setupZapButton({ force = false } = {}) {
     zapPopover.destroy();
     zapPopover = null;
     zapPopoverTrigger = null;
+    zapPopoverOpenPromise = null;
+    zapShouldFocusOnOpen = false;
+    delete zapButton.dataset.zapPopoverWarmBound;
   }
 
   const documentRef =
@@ -2413,13 +2565,22 @@ function setupZapButton({ force = false } = {}) {
   });
 
   if (!popover) {
+    zapPopoverOpenPromise = null;
+    zapShouldFocusOnOpen = false;
     return false;
   }
 
   const originalOpen = popover.open?.bind(popover);
   if (originalOpen) {
     popover.open = async (...args) => {
-      const result = await originalOpen(...args);
+      let result;
+      try {
+        result = await originalOpen(...args);
+      } catch (error) {
+        zapPopoverOpenPromise = null;
+        zapShouldFocusOnOpen = false;
+        throw error;
+      }
       if (result) {
         zapControlsOpen = true;
         const controls = getZapControlsContainer();
@@ -2454,6 +2615,7 @@ function setupZapButton({ force = false } = {}) {
         zapButton.setAttribute("aria-expanded", "false");
       }
       zapShouldFocusOnOpen = false;
+      zapPopoverOpenPromise = null;
       return result;
     };
   }
@@ -2466,12 +2628,57 @@ function setupZapButton({ force = false } = {}) {
         zapPopover = null;
         zapPopoverTrigger = null;
       }
+      zapPopoverOpenPromise = null;
+      zapShouldFocusOnOpen = false;
       cacheZapPanelElements(null);
     };
   }
 
   zapPopover = popover;
   zapPopoverTrigger = zapButton;
+
+  const warmZapPopover = () => {
+    if (!zapPopover || zapPopover !== popover) {
+      return;
+    }
+    if (zapButton.hasAttribute("hidden")) {
+      return;
+    }
+    if (typeof popover.preload !== "function") {
+      return;
+    }
+    try {
+      popover.preload();
+    } catch (error) {
+      devLogger.warn("[zap] Failed to preload zap controls", error);
+    }
+  };
+
+  if (
+    typeof popover.preload === "function" &&
+    !zapButton.hasAttribute("hidden")
+  ) {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.requestIdleCallback === "function"
+    ) {
+      window.requestIdleCallback(() => warmZapPopover(), { timeout: 250 });
+    } else {
+      setTimeout(() => {
+        warmZapPopover();
+      }, 0);
+    }
+  }
+
+  if (zapButton.dataset.zapPopoverWarmBound !== "true") {
+    const handleWarm = () => {
+      warmZapPopover();
+    };
+    zapButton.addEventListener("pointerenter", handleWarm, { once: true });
+    zapButton.addEventListener("pointerdown", handleWarm, { once: true });
+    zapButton.addEventListener("focus", handleWarm, { once: true });
+    zapButton.dataset.zapPopoverWarmBound = "true";
+  }
 
   if (zapButton.dataset.initialized !== "true") {
     zapButton.addEventListener("click", handleZapButtonClick);
@@ -2581,7 +2788,30 @@ function normalizeChannelProfileMetadata(raw = {}) {
 
 function rememberChannelProfile(pubkey, { profile = {}, event = null } = {}) {
   if (typeof pubkey !== "string" || !pubkey) {
-    return;
+    return false;
+  }
+
+  const hasPayload = hasExplicitChannelProfilePayload(profile);
+  if (!hasPayload) {
+    touchChannelProfileCacheEntry(pubkey);
+    return false;
+  }
+
+  const incomingEventTimestamp =
+    typeof event?.created_at === "number" ? event.created_at : 0;
+  const existing = channelProfileMetadataCache.get(pubkey);
+  const existingEventTimestamp =
+    typeof existing?.event?.created_at === "number"
+      ? existing.event.created_at
+      : 0;
+
+  if (
+    existingEventTimestamp &&
+    incomingEventTimestamp &&
+    incomingEventTimestamp < existingEventTimestamp
+  ) {
+    touchChannelProfileCacheEntry(pubkey);
+    return false;
   }
 
   channelProfileMetadataCache.set(pubkey, {
@@ -2589,6 +2819,8 @@ function rememberChannelProfile(pubkey, { profile = {}, event = null } = {}) {
     profile: normalizeChannelProfileMetadata(profile),
     event: event ? { ...event } : null
   });
+
+  return true;
 }
 
 function getCachedChannelProfile(pubkey) {
@@ -3062,6 +3294,38 @@ function applyChannelProfileMetadata({
   }
 
   const normalized = normalizeChannelProfileMetadata(profile);
+  const hasExplicitProfilePayload =
+    hasExplicitChannelProfilePayload(profile);
+  const incomingEventTimestamp =
+    typeof event?.created_at === "number" ? event.created_at : 0;
+  const existingEventTimestamp =
+    typeof currentChannelProfileEvent?.created_at === "number"
+      ? currentChannelProfileEvent.created_at
+      : 0;
+
+  if (currentChannelProfileSnapshot) {
+    const isOlderEvent =
+      incomingEventTimestamp &&
+      existingEventTimestamp &&
+      incomingEventTimestamp < existingEventTimestamp;
+    if (isOlderEvent) {
+      return;
+    }
+
+    if (!hasExplicitProfilePayload) {
+      if (currentChannelProfileHasExplicitPayload) {
+        return;
+      }
+
+      const shouldIgnoreEmptyPayload =
+        !incomingEventTimestamp ||
+        incomingEventTimestamp <= existingEventTimestamp;
+      if (shouldIgnoreEmptyPayload) {
+        return;
+      }
+    }
+  }
+
   const expectedLoadToken =
     loadToken !== null ? loadToken : currentProfileLoadToken;
 
@@ -3151,6 +3415,9 @@ function applyChannelProfileMetadata({
   } else if (loadToken === currentProfileLoadToken && !event) {
     currentChannelProfileEvent = null;
   }
+
+  currentChannelProfileSnapshot = { ...normalized };
+  currentChannelProfileHasExplicitPayload = hasExplicitProfilePayload;
 
   if (lightningAddress) {
     if (lightningAddress !== previousLightning) {
@@ -3264,18 +3531,27 @@ async function loadUserProfile(pubkey) {
       return;
     }
 
-    rememberChannelProfile(pubkey, result);
+    const cachedUpdated = rememberChannelProfile(pubkey, result);
 
-    if (typeof app?.setProfileCacheEntry === "function") {
+    if (cachedUpdated && typeof app?.setProfileCacheEntry === "function") {
       try {
-        app.setProfileCacheEntry(pubkey, {
-          ...result.profile,
-          lightningAddress:
+        const profileForCache =
+          result && typeof result.profile === "object" && result.profile
+            ? { ...result.profile }
+            : {};
+
+        if (!profileForCache.lightningAddress) {
+          const lightningFallback =
             result.profile?.lightningAddress ||
             result.profile?.lud16 ||
             result.profile?.lud06 ||
-            ""
-        });
+            "";
+          if (lightningFallback) {
+            profileForCache.lightningAddress = lightningFallback;
+          }
+        }
+
+        app.setProfileCacheEntry(pubkey, profileForCache);
       } catch (error) {
         userLogger.warn(
           "Failed to persist channel profile metadata to cache:",
@@ -3467,6 +3743,51 @@ window.addEventListener("bitvid:access-control-updated", () => {
       error
     );
   });
+});
+
+window.addEventListener("bitvid:auth-changed", (event) => {
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  if (hashParams.get("view") !== "channel-profile") {
+    return;
+  }
+
+  if (!currentChannelHex) {
+    return;
+  }
+
+  const activeNpub = hashParams.get("npub");
+  if (currentChannelNpub && activeNpub && activeNpub !== currentChannelNpub) {
+    return;
+  }
+
+  setChannelZapVisibility(Boolean(currentChannelLightningAddress));
+  syncChannelShareButtonState();
+
+  const detail = event?.detail;
+  if (!detail || typeof detail !== "object") {
+    return;
+  }
+
+  if (detail.status === "logout") {
+    zapInFlight = false;
+    zapPopoverOpenPromise = null;
+    zapShouldFocusOnOpen = false;
+    resetZapRetryState();
+    setZapStatus("", "neutral");
+    clearZapReceipts();
+    const amountInput = getZapAmountInput();
+    if (amountInput) {
+      amountInput.value = "";
+    }
+    return;
+  }
+
+  if (detail.status === "login") {
+    zapInFlight = false;
+    resetZapRetryState();
+    setZapStatus("", "neutral");
+    return;
+  }
 });
 
 /**

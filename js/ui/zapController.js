@@ -33,6 +33,7 @@ export default class ZapController {
     nwcSettings,
     getActiveNwcSettings,
     isUserLoggedIn,
+    hasSessionActor,
     hasActiveWalletConnection,
     splitAndZap,
     payments = {},
@@ -58,6 +59,8 @@ export default class ZapController {
     }
     this.isUserLoggedIn =
       typeof isUserLoggedIn === "function" ? isUserLoggedIn : () => false;
+    this.hasSessionActor =
+      typeof hasSessionActor === "function" ? hasSessionActor : () => false;
     if (
       this.nwcSettings &&
       typeof this.nwcSettings.hasActiveWalletConnection === "function"
@@ -89,11 +92,20 @@ export default class ZapController {
 
   setVisibility(visible) {
     const lightningVisible = !!visible;
-    const shouldShow = lightningVisible && this.isUserLoggedIn();
+    const loggedIn = this.isUserLoggedIn();
+    const sessionActorAvailable = this.hasSessionActor();
+    const shouldShow =
+      lightningVisible && (loggedIn || sessionActorAvailable);
+    const requiresLogin = shouldShow && !loggedIn;
     const hasWallet = this.hasActiveWalletConnection();
     if (this.videoModal) {
-      this.videoModal.setZapVisibility(shouldShow);
-      this.videoModal.setWalletPromptVisible(shouldShow && !hasWallet);
+      this.videoModal.setZapVisibility({
+        visible: shouldShow,
+        requiresLogin,
+      });
+      this.videoModal.setWalletPromptVisible(
+        shouldShow && !requiresLogin && !hasWallet,
+      );
     }
   }
 
@@ -117,6 +129,10 @@ export default class ZapController {
 
   open() {
     this.resetFeedback();
+    if (!this.isUserLoggedIn()) {
+      this.notifyError("Log in with your Nostr profile to send zaps.");
+      return;
+    }
     this.applyDefaultAmount();
     this.preloadLightningMetadata().catch((error) => {
       devLogger.warn("[zap] Preload metadata error:", error);
