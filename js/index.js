@@ -137,14 +137,9 @@ const fetchPartial = async (url) => {
 async function loadModal(url) {
   try {
     const html = await fetchPartial(url);
-    // Remove analytics loader tags from modal partials to avoid duplicate pageview events.
-    const sanitizedHtml = html.replace(
-      /<script\b[^>]*src=["'][^"']*tracking\.js[^"']*["'][^>]*>\s*<\/script>/gi,
-      ""
-    );
     document
       .getElementById("modalContainer")
-      .insertAdjacentHTML("beforeend", sanitizedHtml);
+      .insertAdjacentHTML("beforeend", html);
     const modalContainer = document.getElementById("modalContainer");
     if (modalContainer) {
       applyDesignSystemAttributes(modalContainer);
