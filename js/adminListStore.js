@@ -65,7 +65,86 @@ function dedupeNpubs(values) {
   );
 }
 
+const globalScope =
+  typeof window !== "undefined"
+    ? window
+    : typeof globalThis !== "undefined"
+    ? globalThis
+    : null;
+
+function readNostrToolsFromScope(scope = globalScope) {
+  if (!scope || typeof scope !== "object") {
+    return null;
+  }
+
+  const candidates = [];
+
+  if (scope.__BITVID_CANONICAL_NOSTR_TOOLS__) {
+    candidates.push(scope.__BITVID_CANONICAL_NOSTR_TOOLS__);
+  }
+
+  if (scope.NostrTools) {
+    candidates.push(scope.NostrTools);
+  }
+
+  const nestedWindow =
+    scope.window && scope.window !== scope && typeof scope.window === "object"
+      ? scope.window
+      : null;
+  if (nestedWindow) {
+    if (nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__) {
+      candidates.push(nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__);
+    }
+    if (nestedWindow.NostrTools) {
+      candidates.push(nestedWindow.NostrTools);
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object") {
+      const nip19 = candidate?.nip19;
+      if (
+        nip19 &&
+        typeof nip19 === "object" &&
+        (typeof nip19.decode === "function" ||
+          typeof nip19.npubEncode === "function")
+      ) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+let cachedNostrTools = null;
+let cachedNip19 = null;
+
+function getNip19Tools() {
+  const toolkit = readNostrToolsFromScope();
+  if (toolkit && toolkit !== cachedNostrTools) {
+    cachedNostrTools = toolkit;
+    cachedNip19 =
+      toolkit?.nip19 && typeof toolkit.nip19 === "object"
+        ? toolkit.nip19
+        : cachedNip19;
+  } else if (!cachedNostrTools && toolkit) {
+    cachedNostrTools = toolkit;
+    cachedNip19 =
+      toolkit?.nip19 && typeof toolkit.nip19 === "object"
+        ? toolkit.nip19
+        : cachedNip19;
+  }
+
+  return cachedNip19 || null;
+}
+
 function canDecodeNpub() {
+  const nip19 = getNip19Tools();
+  if (nip19 && typeof nip19.decode === "function") {
+    return true;
+  }
+
   return !!(
     typeof window !== "undefined" &&
     window?.NostrTools?.nip19 &&
@@ -83,12 +162,19 @@ function isLikelyNpub(value) {
     return false;
   }
 
-  if (!canDecodeNpub()) {
+  if (isHexPubkey(trimmed)) {
     return true;
   }
 
+  const nip19 = getNip19Tools();
+  const decoder = nip19?.decode;
+
+  if (typeof decoder !== "function") {
+    return trimmed.toLowerCase().startsWith("npub");
+  }
+
   try {
-    const decoded = window.NostrTools.nip19.decode(trimmed);
+    const decoded = decoder(trimmed);
     return decoded?.type === "npub";
   } catch (error) {
     return false;
@@ -233,20 +319,49 @@ function decodeNpubToHex(npub) {
     throw createError("invalid npub", "Empty npub provided.");
   }
 
+  const nip19 = getNip19Tools();
+  const decoder = nip19?.decode;
+
   try {
-    const decoded = window?.NostrTools?.nip19?.decode(trimmed);
-    if (decoded?.type !== "npub" || !decoded?.data) {
-      throw new Error("Invalid npub format");
+    if (typeof decoder === "function") {
+      const decoded = decoder(trimmed);
+      if (decoded?.type !== "npub" || !decoded?.data) {
+        throw new Error("Invalid npub format");
+      }
+      return typeof decoded.data === "string"
+        ? decoded.data
+        : decoded.data?.pubkey || "";
     }
-    return typeof decoded.data === "string"
-      ? decoded.data
-      : decoded.data?.pubkey || "";
+
+    const fallback = window?.NostrTools?.nip19?.decode;
+    if (typeof fallback === "function") {
+      const decoded = fallback(trimmed);
+      if (decoded?.type !== "npub" || !decoded?.data) {
+        throw new Error("Invalid npub format");
+      }
+      return typeof decoded.data === "string"
+        ? decoded.data
+        : decoded.data?.pubkey || "";
+    }
   } catch (error) {
     throw createError("invalid npub", "Unable to decode npub.", error);
   }
+
+  throw createError("invalid npub", "Unable to decode npub.");
 }
 
 function encodeHexToNpub(hex) {
+  const nip19 = getNip19Tools();
+  const encoder = nip19?.npubEncode;
+
+  if (typeof encoder === "function") {
+    try {
+      return encoder(hex) || "";
+    } catch (error) {
+      devLogger.warn("Failed to encode hex pubkey to npub:", error);
+    }
+  }
+
   try {
     return window?.NostrTools?.nip19?.npubEncode(hex) || "";
   } catch (error) {
@@ -265,7 +380,7 @@ function normalizeParticipantTagValue(value) {
     return "";
   }
 
-  const nip19 = window?.NostrTools?.nip19;
+  const nip19 = getNip19Tools();
   const lower = trimmed.toLowerCase();
   if (lower.startsWith("npub")) {
     if (nip19?.decode) {
@@ -286,9 +401,7 @@ function normalizeParticipantTagValue(value) {
     if (encoded) {
       return encoded;
     }
-    if (!canDecodeNpub()) {
-      return trimmed;
-    }
+    return trimmed;
   }
 
   if (nip19?.decode) {
