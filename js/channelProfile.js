@@ -164,9 +164,6 @@ function preloadBannerImage(url) {
     if ("referrerPolicy" in img && !img.referrerPolicy) {
       img.referrerPolicy = "no-referrer";
     }
-    if ("crossOrigin" in img && !img.crossOrigin) {
-      img.crossOrigin = "anonymous";
-    }
     img.onload = () => {
       resolve(url);
     };
@@ -205,6 +202,43 @@ function setBannerVisual(el, url) {
   if (el.dataset.bannerSrc !== resolvedUrl) {
     el.dataset.bannerSrc = resolvedUrl;
   }
+}
+
+function ensureBannerFallbackHandler(bannerEl) {
+  if (!bannerEl) {
+    return;
+  }
+
+  const tagName = bannerEl.tagName ? bannerEl.tagName.toLowerCase() : "";
+  if (tagName !== "img") {
+    return;
+  }
+
+  if (bannerEl.dataset.bannerFallbackAttached === "true") {
+    return;
+  }
+
+  const handleError = () => {
+    const fallbackAttr =
+      (typeof bannerEl.dataset?.fallbackSrc === "string"
+        ? bannerEl.dataset.fallbackSrc.trim()
+        : "") ||
+      bannerEl.getAttribute("data-fallback-src") ||
+      "";
+    const fallbackSrc = fallbackAttr || FALLBACK_CHANNEL_BANNER;
+
+    const activeSrc = bannerEl.currentSrc || bannerEl.src || "";
+    if (activeSrc) {
+      channelBannerImageCache.delete(activeSrc);
+    }
+
+    if (fallbackSrc && bannerEl.src !== fallbackSrc) {
+      bannerEl.src = fallbackSrc;
+    }
+  };
+
+  bannerEl.addEventListener("error", handleError, { passive: true });
+  bannerEl.dataset.bannerFallbackAttached = "true";
 }
 
 function getChannelZapButton() {
@@ -2842,6 +2876,8 @@ function applyChannelProfileMetadata({
     if (!bannerEl.getAttribute("data-fallback-src") && fallbackSrc) {
       bannerEl.setAttribute("data-fallback-src", fallbackSrc);
     }
+
+    ensureBannerFallbackHandler(bannerEl);
 
     if (!normalized.banner) {
       setBannerVisual(bannerEl, fallbackSrc);
