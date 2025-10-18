@@ -103,3 +103,66 @@ test("moderation stage enforces admin lists and whitelist bypass", async () => {
   assert(reasons.includes("admin-blacklist"));
   assert(reasons.includes("blur"));
 });
+
+test("moderation stage annotates trusted mute metadata", async () => {
+  const mutedHex = "9".repeat(64);
+  const muterHex = "8".repeat(64);
+
+  const service = {
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return { whitelist: new Set(), whitelistHex: new Set(), blacklist: new Set(), blacklistHex: new Set() };
+    },
+    getAccessControlStatus(identifier) {
+      return { hex: identifier, whitelisted: false, blacklisted: false };
+    },
+    getTrustedReportSummary() {
+      return null;
+    },
+    trustedReportCount() {
+      return 0;
+    },
+    getTrustedReporters() {
+      return [];
+    },
+    isAuthorMutedByTrusted(pubkey) {
+      return pubkey === mutedHex;
+    },
+    getTrustedMutersForAuthor(pubkey) {
+      return pubkey === mutedHex ? [muterHex] : [];
+    },
+  };
+
+  const stage = createModerationStage({ service });
+
+  const items = [
+    { video: { id: "muted", pubkey: mutedHex }, metadata: {} },
+    { video: { id: "normal", pubkey: "7".repeat(64) }, metadata: {} },
+  ];
+
+  const reasons = [];
+  const context = {
+    addWhy(detail) {
+      reasons.push(detail);
+      return detail;
+    },
+    log() {},
+  };
+
+  const result = await stage(items, context);
+
+  assert.equal(result.length, 2);
+
+  const mutedItem = result.find((entry) => entry.video.id === "muted");
+  assert.ok(mutedItem);
+  assert.equal(mutedItem.video.moderation.trustedMuted, true);
+  assert.deepEqual(mutedItem.video.moderation.trustedMuters, [muterHex]);
+  assert.equal(mutedItem.video.moderation.trustedMuteCount, 1);
+  assert.equal(mutedItem.metadata.moderation.trustedMuted, true);
+  assert.equal(mutedItem.metadata.moderation.trustedMuteCount, 1);
+
+  const trustedMuteReason = reasons.find((entry) => entry.reason === "trusted-mute");
+  assert.ok(trustedMuteReason);
+  assert.equal(trustedMuteReason.videoId, "muted");
+});

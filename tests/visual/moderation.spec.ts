@@ -97,4 +97,16 @@ test.describe("moderation fixtures", () => {
       reloadedCard.getByRole("button", { name: "Show anyway" })
     ).toHaveCount(0);
   });
+
+  test("trusted mute fixture annotates mute reason", async ({ page }) => {
+    await page.goto(FIXTURE_URL, { waitUntil: "networkidle" });
+
+    const muteCard = page.locator('[data-test-id="trusted-mute"]');
+    await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute", "true");
+    await expect(muteCard).toHaveAttribute("data-moderation-trusted-mute-count", "1");
+    await expect(muteCard).not.toHaveAttribute("data-moderation-override", "show-anyway");
+
+    const badge = muteCard.locator('[data-moderation-badge="true"]');
+    await expect(badge).toContainText("Muted by a trusted contact");
+  });
 });

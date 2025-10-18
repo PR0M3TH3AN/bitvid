@@ -384,6 +384,9 @@ export function createModerationStage({
       let summary = null;
       let trustedCount = 0;
       let trustedReporters = [];
+      let trustedMuted = false;
+      let trustedMuters = [];
+      let trustedMuteCount = 0;
       if (videoId) {
         try {
           if (typeof resolvedService.getTrustedReportSummary === "function") {
@@ -423,6 +426,48 @@ export function createModerationStage({
         }
       }
 
+      if (authorHex) {
+        try {
+          if (typeof resolvedService.isAuthorMutedByTrusted === "function") {
+            trustedMuted = resolvedService.isAuthorMutedByTrusted(authorHex) === true;
+          }
+          if (trustedMuted && typeof resolvedService.getTrustedMutersForAuthor === "function") {
+            const muters = resolvedService.getTrustedMutersForAuthor(authorHex);
+            if (Array.isArray(muters)) {
+              const seen = new Set();
+              trustedMuters = muters
+                .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
+                .filter((value) => {
+                  if (!value || seen.has(value)) {
+                    return false;
+                  }
+                  seen.add(value);
+                  return true;
+                });
+            }
+          }
+        } catch (error) {
+          context?.log?.(`[${stageName}] Failed to resolve trusted mute info`, error);
+          trustedMuted = false;
+          trustedMuters = [];
+        }
+      }
+
+      if (trustedMuted) {
+        trustedMuteCount = Number.isFinite(video?.moderation?.trustedMuteCount)
+          ? Math.max(0, Math.floor(video.moderation.trustedMuteCount))
+          : trustedMuters.length;
+        if (!trustedMuteCount) {
+          trustedMuteCount = trustedMuters.length;
+        }
+        if (trustedMuteCount <= 0) {
+          trustedMuteCount = Math.max(1, trustedMuters.length || 1);
+        }
+      } else {
+        trustedMuteCount = 0;
+        trustedMuters = [];
+      }
+
       let blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
       let blurThumbnail = trustedCount >= normalizedBlurThreshold;
       const adminWhitelistBypass = isDiscoveryFeed && adminStatus?.whitelisted === true;
@@ -450,6 +495,9 @@ export function createModerationStage({
         : [];
       metadataModeration.adminWhitelist = adminStatus?.whitelisted === true;
       metadataModeration.adminWhitelistBypass = adminWhitelistBypass;
+      metadataModeration.trustedMuted = trustedMuted;
+      metadataModeration.trustedMuters = trustedMuters.slice();
+      metadataModeration.trustedMuteCount = trustedMuteCount;
       item.metadata.moderation = metadataModeration;
 
       if (!video.moderation || typeof video.moderation !== "object") {
@@ -462,6 +510,18 @@ export function createModerationStage({
       video.moderation.reportType = normalizedReportType;
       video.moderation.adminWhitelist = adminStatus?.whitelisted === true;
       video.moderation.adminWhitelistBypass = adminWhitelistBypass;
+      video.moderation.trustedMuted = trustedMuted;
+      if (trustedMuted) {
+        video.moderation.trustedMuters = trustedMuters.slice();
+        video.moderation.trustedMuteCount = trustedMuteCount;
+      } else {
+        if (video.moderation.trustedMuters) {
+          delete video.moderation.trustedMuters;
+        }
+        if (video.moderation.trustedMuteCount) {
+          delete video.moderation.trustedMuteCount;
+        }
+      }
       if (Array.isArray(trustedReporters) && trustedReporters.length) {
         video.moderation.trustedReporters = trustedReporters.slice();
       } else if (video.moderation.trustedReporters) {
@@ -481,6 +541,17 @@ export function createModerationStage({
           videoId: videoId || null,
           reportType: normalizedReportType,
           trustedCount,
+        });
+      }
+
+      if (trustedMuted) {
+        context?.addWhy?.({
+          stage: stageName,
+          type: "moderation",
+          reason: "trusted-mute",
+          videoId: videoId || null,
+          pubkey: authorHex || authorPubkey || null,
+          trustedMuteCount,
         });
       }
 

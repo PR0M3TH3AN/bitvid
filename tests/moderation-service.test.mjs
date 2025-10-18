@@ -100,3 +100,128 @@ test("trusted report summaries respect personal blocks and admin lists", async (
   );
   assert.equal(service.trustedReportCount(eventId, "nudity"), 2);
 });
+
+test("trusted mute aggregation tracks F1 mute lists", () => {
+  const service = new ModerationService({ logger: () => {} });
+
+  const contactA = "a".repeat(64);
+  const contactB = "b".repeat(64);
+  const mutedAuthor = "c".repeat(64);
+
+  service.trustedContacts = new Set([contactA, contactB]);
+
+  service.ingestTrustedMuteEvent({
+    kind: 10000,
+    pubkey: contactA,
+    created_at: 100,
+    id: "1".repeat(64),
+    tags: [["p", mutedAuthor]],
+  });
+
+  assert.equal(service.isAuthorMutedByTrusted(mutedAuthor), true);
+  assert.deepEqual(service.getTrustedMutersForAuthor(mutedAuthor), [contactA]);
+
+  service.ingestTrustedMuteEvent({
+    kind: 10000,
+    pubkey: contactB,
+    created_at: 105,
+    id: "2".repeat(64),
+    tags: [["p", mutedAuthor]],
+  });
+
+  const muters = new Set(service.getTrustedMutersForAuthor(mutedAuthor));
+  assert.equal(muters.size, 2);
+  assert(muters.has(contactA));
+  assert(muters.has(contactB));
+
+  service.applyTrustedMuteEvent(contactA, {
+    kind: 10000,
+    pubkey: contactA,
+    created_at: 200,
+    id: "3".repeat(64),
+    tags: [],
+  });
+
+  const remaining = service.getTrustedMutersForAuthor(mutedAuthor);
+  assert.deepEqual(remaining, [contactB]);
+  assert.equal(service.isAuthorMutedByTrusted(mutedAuthor), true);
+
+  service.applyTrustedMuteEvent(contactB, {
+    kind: 10000,
+    pubkey: contactB,
+    created_at: 210,
+    id: "4".repeat(64),
+    tags: [],
+  });
+
+  assert.equal(service.isAuthorMutedByTrusted(mutedAuthor), false);
+  assert.deepEqual(service.getTrustedMutersForAuthor(mutedAuthor), []);
+});
+
+test("viewer mute list publishes and updates aggregation", async (t) => {
+  const publishCalls = [];
+  const nostrClient = {
+    pool: {
+      list: async () => [],
+      sub: () => ({
+        on: () => {},
+        unsub: () => {},
+      }),
+      publish: (urls, event) => {
+        publishCalls.push({ urls, event });
+        return {
+          on: (eventName, handler) => {
+            if (eventName === "ok") {
+              handler();
+            }
+          },
+        };
+      },
+    },
+    relays: ["wss://relay.example"],
+    ensurePool: async () => {},
+    ensureExtensionPermissions: async () => ({ ok: true }),
+  };
+
+  const service = new ModerationService({
+    logger: () => {},
+    nostrClient,
+  });
+
+  const previousNostr = globalThis.window.nostr;
+  globalThis.window.nostr = {
+    async signEvent(event) {
+      return { ...event, id: "signed-event-id" };
+    },
+  };
+
+  t.after(() => {
+    globalThis.window.nostr = previousNostr;
+  });
+
+  const viewerHex = "f".repeat(64);
+  await service.setViewerPubkey(viewerHex);
+
+  const targetHex = "e".repeat(64);
+
+  await service.addAuthorToViewerMuteList(targetHex);
+
+  assert.equal(service.isAuthorMutedByViewer(targetHex), true);
+  assert.equal(service.isAuthorMutedByTrusted(targetHex), true);
+  assert.deepEqual(service.getTrustedMutersForAuthor(targetHex), [viewerHex]);
+
+  assert.equal(publishCalls.length, 1);
+  const firstEvent = publishCalls[0].event;
+  assert.equal(firstEvent.tags.length, 1);
+  assert.deepEqual(firstEvent.tags[0], ["p", targetHex]);
+
+  await service.removeAuthorFromViewerMuteList(targetHex);
+
+  assert.equal(service.isAuthorMutedByViewer(targetHex), false);
+  assert.equal(service.isAuthorMutedByTrusted(targetHex), false);
+  assert.deepEqual(service.getTrustedMutersForAuthor(targetHex), []);
+
+  assert.equal(publishCalls.length, 2);
+  const secondEvent = publishCalls[1].event;
+  assert.equal(secondEvent.tags.length, 0);
+});
