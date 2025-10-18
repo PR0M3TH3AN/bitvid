@@ -2163,6 +2163,18 @@
     z-index: var(--z-modal-content);
   }
 
+  #modalContainer > #profileModal {
+    z-index: var(--z-modal-top-root);
+  }
+
+  #modalContainer > #profileModal > .bv-modal-backdrop {
+    z-index: var(--z-modal-top-overlay);
+  }
+
+  #modalContainer > #profileModal .bv-modal__panel {
+    z-index: var(--z-modal-top-content);
+  }
+
   #modalContainer > #playerModal {
     z-index: var(--z-modal-player);
   }
