@@ -19,6 +19,7 @@ import {
   openStaticModal,
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
+import { BLOG_URL } from "./config.js";
 
 validateInstanceConfig();
 
@@ -208,6 +209,15 @@ async function bootstrapInterface() {
 
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   devLogger.log("Sidebar loaded.");
+
+  const blogLink = document.querySelector("[data-blog-link]");
+  if (blogLink instanceof HTMLAnchorElement) {
+    blogLink.href = BLOG_URL;
+    blogLink.target = "_blank";
+    blogLink.rel = "noopener noreferrer";
+  } else {
+    userLogger.warn("Sidebar blog link not found; skipping external link binding.");
+  }
 
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");

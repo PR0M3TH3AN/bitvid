@@ -8,6 +8,7 @@ import {
   PLATFORM_FEE_PERCENT,
   PLATFORM_LUD16_OVERRIDE,
   THEME_ACCENT_OVERRIDES,
+  BLOG_URL,
 } from "./instance-config.js";
 
 function assertSuperAdminConfigured(value) {
@@ -111,7 +112,33 @@ function resolveConfig(overrides = {}) {
       overrides.PLATFORM_LUD16_OVERRIDE ?? PLATFORM_LUD16_OVERRIDE,
     themeAccentOverrides:
       overrides.THEME_ACCENT_OVERRIDES ?? THEME_ACCENT_OVERRIDES,
+    blogUrl: overrides.BLOG_URL ?? BLOG_URL,
   };
+}
+
+function assertBlogUrl(url) {
+  if (typeof url !== "string") {
+    throw new Error("BLOG_URL must be a string.");
+  }
+
+  const trimmed = url.trim();
+  if (!trimmed) {
+    throw new Error("BLOG_URL cannot be empty. Provide a fully qualified URL.");
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.protocol || !/^https?:$/.test(parsed.protocol)) {
+      throw new Error("BLOG_URL must use http or https.");
+    }
+  } catch (error) {
+    throw new Error(
+      "BLOG_URL must be a valid http(s) URL defined in config/instance-config.js.",
+      { cause: error },
+    );
+  }
+
+  return trimmed;
 }
 
 export function validateInstanceConfig(overrides) {
@@ -131,4 +158,5 @@ export function validateInstanceConfig(overrides) {
   }
 
   assertThemeAccentOverrides(config.themeAccentOverrides);
+  assertBlogUrl(config.blogUrl);
 }

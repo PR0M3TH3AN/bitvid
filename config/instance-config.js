@@ -45,6 +45,16 @@ export const ADMIN_SUPER_NPUB =
 export const BITVID_WEBSITE_URL = "https://bitvid.network/";
 
 /**
+ * External destination for the blog menu link.
+ *
+ * Sidebar navigation routes visitors to this URL when they select "Blog".
+ * Update the value to point at the long-form publishing platform you
+ * maintain for release notes or community updates.
+ */
+export const BLOG_URL =
+  "https://habla.news/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+
+/**
  * Default image included in automated moderation DMs.
  *
  * bitvid embeds this media asset at the top of notification messages so the
