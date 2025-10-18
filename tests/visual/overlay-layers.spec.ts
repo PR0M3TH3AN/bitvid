@@ -39,48 +39,114 @@ test.describe("overlay layering tokens", () => {
     );
   }
 
-  test("mobile nav overlay uses nav layer", async ({ page }) => {
+  test("mobile sidebar shares desktop rail behavior", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/index.html", { waitUntil: "networkidle" });
 
     await dismissDisclaimerModal(page);
 
-    await page.waitForSelector("#mobileMenuBtn");
-    await page.click("#mobileMenuBtn");
-    await page.waitForFunction(() => {
-      const overlay = document.getElementById("sidebarOverlay");
-      if (!overlay) {
-        return false;
-      }
-      const styles = window.getComputedStyle(overlay);
-      return styles.opacity === "1" && styles.pointerEvents === "auto";
-    });
-    await page.waitForFunction(() =>
-      document.body.classList.contains("sidebar-open")
-    );
+    await expect(page.locator("#mobileMenuBtn")).toHaveCount(0);
 
-    const overlayState = await page.evaluate(() => {
-      const overlay = document.getElementById("sidebarOverlay");
-      if (!overlay) {
-        throw new Error("Missing sidebar overlay");
+    const collapseToggle = page.locator("#sidebarCollapseToggle");
+    await expect(collapseToggle).toBeVisible();
+
+    const initialLayout = await page.evaluate(() => {
+      const sidebar = document.getElementById("sidebar");
+      const app = document.getElementById("app");
+      if (!sidebar || !app) {
+        throw new Error("Missing sidebar layout nodes");
       }
-      const styles = window.getComputedStyle(overlay);
-      const navLayer = window
-        .getComputedStyle(document.documentElement)
-        .getPropertyValue("--z-overlay-nav")
-        .trim();
+
+      const computeMargin = (widthVar) => {
+        const probe = document.createElement("div");
+        probe.style.position = "absolute";
+        probe.style.visibility = "hidden";
+        probe.style.width = `calc(var(${widthVar}) + var(--sidebar-content-gap))`;
+        document.body.appendChild(probe);
+        const width = parseFloat(window.getComputedStyle(probe).width);
+        probe.remove();
+        return width;
+      };
+
+      const marginLeft = parseFloat(window.getComputedStyle(app).marginLeft);
+      const state = sidebar.classList.contains("sidebar-expanded")
+        ? "expanded"
+        : sidebar.classList.contains("sidebar-collapsed")
+          ? "collapsed"
+          : "unknown";
 
       return {
-        opacity: styles.opacity,
-        pointerEvents: styles.pointerEvents,
-        zIndex: styles.zIndex,
-        navLayer,
+        state,
+        marginLeft,
+        collapsedMargin: computeMargin("--sidebar-width-collapsed"),
+        expandedMargin: computeMargin("--sidebar-width-expanded"),
+        overlayExists: Boolean(document.getElementById("sidebarOverlay")),
       };
     });
 
-    expect(overlayState.opacity).toBe("1");
-    expect(overlayState.pointerEvents).toBe("auto");
-    expect(overlayState.zIndex).toBe(overlayState.navLayer);
+    expect(initialLayout.overlayExists).toBe(false);
+    expect(initialLayout.state).toBe("collapsed");
+    expect(Math.abs(initialLayout.marginLeft - initialLayout.collapsedMargin)).toBeLessThan(0.5);
+
+    await collapseToggle.click();
+
+    await page.waitForFunction(() =>
+      document.getElementById("sidebar")?.classList.contains("sidebar-expanded")
+    );
+
+    const expandedLayout = await page.evaluate(() => {
+      const sidebar = document.getElementById("sidebar");
+      const app = document.getElementById("app");
+      if (!sidebar || !app) {
+        throw new Error("Missing sidebar layout nodes");
+      }
+
+      const computeMargin = (widthVar) => {
+        const probe = document.createElement("div");
+        probe.style.position = "absolute";
+        probe.style.visibility = "hidden";
+        probe.style.width = `calc(var(${widthVar}) + var(--sidebar-content-gap))`;
+        document.body.appendChild(probe);
+        const width = parseFloat(window.getComputedStyle(probe).width);
+        probe.remove();
+        return width;
+      };
+
+      const marginLeft = parseFloat(window.getComputedStyle(app).marginLeft);
+      const state = sidebar.classList.contains("sidebar-expanded")
+        ? "expanded"
+        : sidebar.classList.contains("sidebar-collapsed")
+          ? "collapsed"
+          : "unknown";
+
+      return {
+        state,
+        marginLeft,
+        expectedMargin: computeMargin("--sidebar-width-expanded"),
+      };
+    });
+
+    expect(expandedLayout.state).toBe("expanded");
+    expect(Math.abs(expandedLayout.marginLeft - expandedLayout.expectedMargin)).toBeLessThan(0.5);
+
+    const footerButton = page.locator("#footerDropdownButton");
+    await expect(footerButton).toBeVisible();
+    await footerButton.click();
+    await expect(footerButton).toHaveAttribute("aria-expanded", "true");
+
+    const dropupState = await page.evaluate(() => {
+      const footerLinks = document.getElementById("footerLinksContainer");
+      if (!footerLinks) {
+        throw new Error("Missing footer links container");
+      }
+      return {
+        state: footerLinks.getAttribute("data-state"),
+        ariaHidden: footerLinks.getAttribute("aria-hidden"),
+      };
+    });
+
+    expect(dropupState.state).toBe("expanded");
+    expect(dropupState.ariaHidden).toBe("false");
   });
 
   test("toast stack honors overlay toast layer", async ({ page }) => {
