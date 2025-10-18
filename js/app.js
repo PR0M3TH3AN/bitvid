@@ -15,7 +15,6 @@ import { safeDecodeMagnet } from "./magnetUtils.js";
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
 import { URL_FIRST_ENABLED } from "./constants.js";
-import { trackVideoView } from "./analytics.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
@@ -6592,14 +6591,6 @@ class Application {
 
     const sanitizedMagnet = magnetSupported ? usableMagnetCandidate : "";
 
-    trackVideoView({
-      videoId: video.id || eventId,
-      title: video.title || "Untitled",
-      source: "event",
-      hasMagnet: !!sanitizedMagnet,
-      hasUrl: !!trimmedUrl,
-    });
-
     const knownPostedAt = this.getKnownVideoPostedAt(video);
     const normalizedEditedAt = Number.isFinite(video.created_at)
       ? Math.floor(video.created_at)
@@ -6962,17 +6953,6 @@ class Application {
 
     this.zapController?.setVisibility(false);
     this.zapController?.resetState();
-
-    trackVideoView({
-      videoId:
-        typeof title === "string" && title.trim().length > 0
-          ? `direct:${title.trim()}`
-          : "direct-playback",
-      title,
-      source: "direct",
-      hasMagnet: !!sanitizedMagnet,
-      hasUrl: !!sanitizedUrl,
-    });
 
     if (!sanitizedUrl && !sanitizedMagnet) {
       const message = trimmedMagnet && !magnetSupported
