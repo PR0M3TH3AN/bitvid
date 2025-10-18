@@ -62,6 +62,7 @@ import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatTimeAgo as formatTimeAgoUtil,
   truncateMiddle,
+  formatShortNpub,
 } from "./utils/formatters.js";
 import {
   escapeHTML as escapeHtml,
@@ -436,6 +437,7 @@ class Application {
         formatTimeAgo: (timestamp) => this.formatTimeAgo(timestamp),
         escapeHTML: (value) => this.escapeHTML(value),
         truncateMiddle,
+        formatShortNpub: (value) => formatShortNpub(value),
         fallbackThumbnailSrc: FALLBACK_THUMBNAIL_SRC,
         container: document.getElementById("modalContainer") || null,
       });
@@ -456,6 +458,7 @@ class Application {
           safeEncodeNpub: (pubkey) => this.safeEncodeNpub(pubkey),
           safeDecodeNpub: (npub) => this.safeDecodeNpub(npub),
           truncateMiddle: (value, maxLength) => truncateMiddle(value, maxLength),
+          formatShortNpub: (value) => formatShortNpub(value),
           getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
           batchFetchProfiles: (authorSet) => this.batchFetchProfiles(authorSet),
           switchProfile: (pubkey) => this.authService.switchProfile(pubkey),
@@ -4504,18 +4507,14 @@ class Application {
       if (typeof window !== "undefined" && window.NostrTools?.nip19?.npubEncode) {
         const encoded = window.NostrTools.nip19.npubEncode(trimmed);
         if (encoded && typeof encoded === "string") {
-          return `${encoded.slice(0, 8)}…${encoded.slice(-4)}`;
+          return formatShortNpub(encoded);
         }
       }
     } catch (error) {
       userLogger.warn("[Application] Failed to encode reporter npub", error);
     }
 
-    if (trimmed.length > 12) {
-      return `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
-    }
-
-    return trimmed;
+    return formatShortNpub(trimmed);
   }
 
   decorateVideoModeration(video) {
@@ -6656,7 +6655,7 @@ class Application {
         postedAt: this.currentVideo?.rootCreatedAt ?? null,
         editedAt: normalizedEditedAt,
       });
-      const displayNpub = `${creatorNpub.slice(0, 8)}...${creatorNpub.slice(-4)}`;
+      const displayNpub = formatShortNpub(creatorNpub);
       this.videoModal.updateMetadata({
         title: video.title || "Untitled",
         description: video.description || "No description available.",

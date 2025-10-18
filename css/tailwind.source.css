@@ -2223,7 +2223,6 @@
 
   @media (min-width: 640px) {
     .notification-portal {
-      align-items: flex-end;
       padding-inline: var(--space-xl);
     }
   }
