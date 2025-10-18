@@ -223,12 +223,7 @@ async function bootstrapInterface() {
     userLogger.warn("Sidebar collapse toggle not found; skipping density controls.");
   }
 
-  const mobileMenuBtn = document.getElementById("mobileMenuBtn");
-  const sidebarOverlay = document.getElementById("sidebarOverlay");
-
   const SIDEBAR_COLLAPSED_STORAGE_KEY = "sidebarCollapsed";
-  const SIDEBAR_WIDTH_EXPANDED = "16rem";
-  const SIDEBAR_WIDTH_COLLAPSED = "4rem";
   const DEFAULT_SIDEBAR_COLLAPSED = true;
   let isSidebarCollapsed = DEFAULT_SIDEBAR_COLLAPSED;
   let isFooterDropupExpanded = false;
@@ -297,110 +292,20 @@ async function bootstrapInterface() {
     }
   };
 
-  const syncSidebarDensityToViewport = (isDesktopViewport) => {
-    if (!collapseToggle) {
-      applySidebarDensity(false);
-      return;
-    }
+  isSidebarCollapsed = collapseToggle
+    ? readStoredSidebarCollapsed()
+    : DEFAULT_SIDEBAR_COLLAPSED;
 
-    if (isDesktopViewport) {
-      isSidebarCollapsed = readStoredSidebarCollapsed();
-      applySidebarDensity(isSidebarCollapsed);
-      return;
-    }
-
-    applySidebarDensity(false);
-  };
-
-  if (collapseToggle) {
-    isSidebarCollapsed = readStoredSidebarCollapsed();
-  }
-
-  const setSidebarState = (isOpen) => {
-    if (sidebar) {
-      sidebar.classList.toggle("sidebar-open", isOpen);
-    }
-    document.body.classList.toggle("sidebar-open", isOpen);
-    if (mobileMenuBtn) {
-      mobileMenuBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
-    }
-  };
-
-  const closeSidebar = () => setSidebarState(false);
-  const isMobileViewport = () => {
-    if (typeof window.matchMedia === "function") {
-      return window.matchMedia("(max-width: 767px)").matches;
-    }
-    return window.innerWidth < 768;
-  };
-
-  const toggleSidebar = () => {
-    if (!sidebar) return;
-    const isMobile = isMobileViewport();
-    if (!isMobile) return;
-    const shouldOpen = !sidebar.classList.contains("sidebar-open");
-    setSidebarState(shouldOpen);
-  };
-
-  let desktopQuery = null;
-  const isDesktopViewport = () => {
-    if (desktopQuery) {
-      return desktopQuery.matches;
-    }
-    return window.innerWidth >= 768;
-  };
+  applySidebarDensity(isSidebarCollapsed);
 
   if (collapseToggle) {
     collapseToggle.addEventListener("click", (event) => {
-      const desktop = isDesktopViewport();
-      if (!desktop) {
-        event.preventDefault();
-        return;
-      }
-
       event.preventDefault();
       const nextCollapsed = !isSidebarCollapsed;
       isSidebarCollapsed = nextCollapsed;
       applySidebarDensity(nextCollapsed);
       persistSidebarCollapsed(nextCollapsed);
     });
-  }
-
-  if (mobileMenuBtn && sidebar) {
-    mobileMenuBtn.addEventListener("click", toggleSidebar);
-  }
-
-  if (sidebarOverlay) {
-    sidebarOverlay.addEventListener("click", closeSidebar);
-  }
-
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && sidebar && sidebar.classList.contains("sidebar-open")) {
-      closeSidebar();
-    }
-  });
-
-  if (typeof window.matchMedia === "function") {
-    desktopQuery = window.matchMedia("(min-width: 768px)");
-    syncSidebarDensityToViewport(desktopQuery.matches);
-
-    const onDesktopChange = (event) => {
-      if (event.matches) {
-        closeSidebar();
-        syncSidebarDensityToViewport(true);
-        return;
-      }
-
-      syncSidebarDensityToViewport(false);
-    };
-
-    if (typeof desktopQuery.addEventListener === "function") {
-      desktopQuery.addEventListener("change", onDesktopChange);
-    } else if (typeof desktopQuery.addListener === "function") {
-      desktopQuery.addListener(onDesktopChange);
-    }
-  } else {
-    syncSidebarDensityToViewport(window.innerWidth >= 768);
   }
 
   const footerDropdownButton = document.getElementById("footerDropdownButton");
@@ -467,7 +372,7 @@ async function bootstrapInterface() {
   try {
     const sidebarModule = await import("./sidebar.js");
     if (typeof sidebarModule.setupSidebarNavigation === "function") {
-      sidebarModule.setupSidebarNavigation({ closeSidebar });
+      sidebarModule.setupSidebarNavigation();
     }
   } catch (error) {
     userLogger.error("Failed to set up sidebar navigation:", error);

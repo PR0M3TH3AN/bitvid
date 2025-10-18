@@ -124,17 +124,10 @@
       <!-- components/sidebar.html gets injected here -->
     </div>
 
-    <div
-      id="sidebarOverlay"
-      class="md:hidden ds-overlay-backdrop z-overlay-nav"
-      aria-hidden="true"
-    ></div>
-
     <!--
       MAIN CONTENT:
-      Desktop spacing now follows the --sidebar-width custom property so the layout stays in
-      sync with the collapsible rail. On mobile we float the sidebar over the content and dim
-      the background overlay.
+      Layout spacing follows the --sidebar-width custom property on every viewport so the
+      collapsible rail always shifts the application shell instead of floating above it.
     -->
     <!--
       `fade-in` is scrubbed by js/index.js after the first animation so that
@@ -149,27 +142,6 @@
     >
       <!-- Header -->
       <header class="ds-header mb-8 w-full">
-        <!-- Mobile hamburger button (hidden on md+) -->
-        <!-- New button -->
-        <!--
-          Mobile menu button: uses `fade-in` to match the rest of the chrome.
-          The JS animation cleanup removes the helper classes once the entrance
-          finishes to prevent flashes on future sidebar toggles.
-        -->
-        <button
-          id="mobileMenuBtn"
-          class="focus-ring fade-in z-overlay-nav ml-2 mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-transparent hover:bg-transparent md:hidden"
-          type="button"
-          aria-expanded="false"
-          aria-controls="sidebar"
-          aria-label="Toggle navigation menu"
-        >
-          <img
-            src="assets/svg/mobile-sidebar-menu-icon.svg"
-            alt="Mobile Sidebar Menu Icon"
-            class="h-6 w-6"
-          />
-        </button>
         <!-- Logo -->
         <!-- Logo fades in once on initial load. -->
         <a
