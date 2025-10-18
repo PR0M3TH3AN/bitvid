@@ -112,6 +112,7 @@ function logZapError(stage, details = {}, error) {
   userLogger.error("[zap] Channel zap failure", summary, error);
 }
 let currentChannelProfileEvent = null;
+let currentChannelProfileSnapshot = null;
 
 let cachedZapButton = null;
 let cachedChannelShareButton = null;
@@ -133,7 +134,7 @@ let zapControlsOpen = false;
 let zapPopover = null;
 let zapPopoverTrigger = null;
 let zapShouldFocusOnOpen = false;
-let zapPopoverOpening = false;
+let zapPopoverOpenPromise = null;
 let channelMenuPopover = null;
 let channelMenuOpen = false;
 let currentVideoLoadToken = 0;
@@ -805,7 +806,7 @@ function cacheZapPanelElements(panel) {
     cachedZapWalletLink = null;
     cachedZapCloseBtn = null;
     cachedZapSendBtn = null;
-    zapPopoverOpening = false;
+    zapPopoverOpenPromise = null;
     zapShouldFocusOnOpen = false;
     return;
   }
@@ -952,7 +953,7 @@ function openZapControls({ focus = false } = {}) {
     }
   }
 
-  if (zapPopoverOpening) {
+  if (zapPopoverOpenPromise) {
     if (focus) {
       zapShouldFocusOnOpen = true;
     }
@@ -960,40 +961,40 @@ function openZapControls({ focus = false } = {}) {
   }
 
   zapShouldFocusOnOpen = focus;
-  zapPopoverOpening = true;
 
   let result;
   try {
     result = zapPopover.open();
   } catch (error) {
-    zapPopoverOpening = false;
     zapShouldFocusOnOpen = false;
+    zapPopoverOpenPromise = null;
     devLogger.warn("[zap] Failed to open zap popover", error);
     return false;
   }
 
   if (result && typeof result.then === "function") {
-    result
+    const pending = result
       .catch((error) => {
         devLogger.warn("[zap] Zap popover open rejected", error);
         return false;
       })
       .finally(() => {
-        zapPopoverOpening = false;
+        zapPopoverOpenPromise = null;
         zapShouldFocusOnOpen = false;
       });
+    zapPopoverOpenPromise = pending;
     return true;
   }
 
-  zapPopoverOpening = false;
   zapShouldFocusOnOpen = false;
+  zapPopoverOpenPromise = null;
   return Boolean(result);
 }
 
 function closeZapControls({ focusButton = false } = {}) {
   const zapButton = getChannelZapButton();
   zapShouldFocusOnOpen = false;
-  zapPopoverOpening = false;
+  zapPopoverOpenPromise = null;
 
   if (zapPopover) {
     const result = zapPopover.close({ restoreFocus: focusButton });
@@ -1684,7 +1685,7 @@ function handleZapButtonClick(event) {
     return;
   }
 
-  if (zapPopoverOpening) {
+  if (zapPopoverOpenPromise) {
     zapShouldFocusOnOpen = true;
     return;
   }
@@ -1722,7 +1723,7 @@ async function handleZapSend(event) {
   }
 
   if (!isZapControlsOpen()) {
-    if (zapPopoverOpening) {
+    if (zapPopoverOpenPromise) {
       zapShouldFocusOnOpen = true;
       return;
     }
@@ -1730,7 +1731,7 @@ async function handleZapSend(event) {
     return;
   }
 
-  if (zapPopoverOpening) {
+  if (zapPopoverOpenPromise) {
     return;
   }
 
@@ -2240,6 +2241,7 @@ export async function initChannelProfileView() {
   currentChannelNpub = null;
   currentChannelLightningAddress = "";
   currentChannelProfileEvent = null;
+  currentChannelProfileSnapshot = null;
   setCachedPlatformLightningAddress("");
   resetZapRetryState();
   clearZapReceipts();
@@ -2362,7 +2364,7 @@ function setupZapButton({ force = false } = {}) {
     zapPopover.destroy();
     zapPopover = null;
     zapPopoverTrigger = null;
-    zapPopoverOpening = false;
+    zapPopoverOpenPromise = null;
     zapShouldFocusOnOpen = false;
     delete zapButton.dataset.zapPopoverWarmBound;
   }
@@ -2482,7 +2484,7 @@ function setupZapButton({ force = false } = {}) {
   });
 
   if (!popover) {
-    zapPopoverOpening = false;
+    zapPopoverOpenPromise = null;
     zapShouldFocusOnOpen = false;
     return false;
   }
@@ -2494,7 +2496,7 @@ function setupZapButton({ force = false } = {}) {
       try {
         result = await originalOpen(...args);
       } catch (error) {
-        zapPopoverOpening = false;
+        zapPopoverOpenPromise = null;
         zapShouldFocusOnOpen = false;
         throw error;
       }
@@ -2512,7 +2514,6 @@ function setupZapButton({ force = false } = {}) {
         }
       }
       zapShouldFocusOnOpen = false;
-      zapPopoverOpening = false;
       return result;
     };
   }
@@ -2533,7 +2534,7 @@ function setupZapButton({ force = false } = {}) {
         zapButton.setAttribute("aria-expanded", "false");
       }
       zapShouldFocusOnOpen = false;
-      zapPopoverOpening = false;
+      zapPopoverOpenPromise = null;
       return result;
     };
   }
@@ -2546,7 +2547,7 @@ function setupZapButton({ force = false } = {}) {
         zapPopover = null;
         zapPopoverTrigger = null;
       }
-      zapPopoverOpening = false;
+      zapPopoverOpenPromise = null;
       zapShouldFocusOnOpen = false;
       cacheZapPanelElements(null);
     };
@@ -2559,6 +2560,9 @@ function setupZapButton({ force = false } = {}) {
     if (!zapPopover || zapPopover !== popover) {
       return;
     }
+    if (zapButton.hasAttribute("hidden")) {
+      return;
+    }
     if (typeof popover.preload !== "function") {
       return;
     }
@@ -2569,8 +2573,14 @@ function setupZapButton({ force = false } = {}) {
     }
   };
 
-  if (typeof popover.preload === "function") {
-    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+  if (
+    typeof popover.preload === "function" &&
+    !zapButton.hasAttribute("hidden")
+  ) {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.requestIdleCallback === "function"
+    ) {
       window.requestIdleCallback(() => warmZapPopover(), { timeout: 250 });
     } else {
       setTimeout(() => {
@@ -3178,6 +3188,35 @@ function applyChannelProfileMetadata({
   }
 
   const normalized = normalizeChannelProfileMetadata(profile);
+  const hasExplicitProfilePayload =
+    profile &&
+    typeof profile === "object" &&
+    Object.keys(profile).length > 0;
+  const incomingEventTimestamp =
+    typeof event?.created_at === "number" ? event.created_at : 0;
+  const existingEventTimestamp =
+    typeof currentChannelProfileEvent?.created_at === "number"
+      ? currentChannelProfileEvent.created_at
+      : 0;
+
+  if (currentChannelProfileSnapshot) {
+    const isOlderEvent =
+      incomingEventTimestamp &&
+      existingEventTimestamp &&
+      incomingEventTimestamp < existingEventTimestamp;
+    if (isOlderEvent) {
+      return;
+    }
+
+    const shouldIgnoreEmptyPayload =
+      !hasExplicitProfilePayload &&
+      (!incomingEventTimestamp ||
+        incomingEventTimestamp <= existingEventTimestamp);
+    if (shouldIgnoreEmptyPayload) {
+      return;
+    }
+  }
+
   const expectedLoadToken =
     loadToken !== null ? loadToken : currentProfileLoadToken;
 
@@ -3267,6 +3306,8 @@ function applyChannelProfileMetadata({
   } else if (loadToken === currentProfileLoadToken && !event) {
     currentChannelProfileEvent = null;
   }
+
+  currentChannelProfileSnapshot = { ...normalized };
 
   if (lightningAddress) {
     if (lightningAddress !== previousLightning) {
