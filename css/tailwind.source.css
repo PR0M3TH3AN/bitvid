@@ -1810,12 +1810,18 @@
   }
 
   .profile-switcher__add {
+    --profile-switcher-add-hover-bg: color-mix(
+      in srgb,
+      var(--color-accent) 14%,
+      transparent
+    );
+
     @apply card flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-accent hover:border-opacity-60 hover:text-text focus-visible:border-accent focus-visible:border-opacity-60;
   }
 
   .profile-switcher__add:hover,
   .profile-switcher__add:focus-visible {
-    background-color: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    background-color: var(--profile-switcher-add-hover-bg);
   }
 
   .profile-switcher__addAvatar {
@@ -2003,6 +2009,54 @@
     width: var(--icon-size-md);
     height: var(--icon-size-md);
     pointer-events: none;
+  }
+
+  .channel-action-button {
+    --channel-action-bg: color-mix(
+      in srgb,
+      var(--surface-overlay-panel) 78%,
+      transparent
+    );
+    --channel-action-border: color-mix(
+      in srgb,
+      var(--border-overlay) 92%,
+      transparent
+    );
+    --channel-action-bg-hover: color-mix(
+      in srgb,
+      var(--color-accent) 22%,
+      var(--surface-overlay-panel)
+    );
+    --channel-action-ring: color-mix(
+      in srgb,
+      var(--color-accent) 48%,
+      transparent
+    );
+    --channel-action-bg-active: color-mix(
+      in srgb,
+      var(--color-accent-pressed) 28%,
+      var(--surface-overlay-panel)
+    );
+
+    color: var(--color-text);
+    background-color: var(--channel-action-bg);
+    border: 1px solid var(--channel-action-border);
+  }
+
+  .channel-action-button:hover,
+  .channel-action-button:focus-visible {
+    color: var(--color-accent-strong);
+    background-color: var(--channel-action-bg-hover);
+  }
+
+  .channel-action-button:focus,
+  .channel-action-button:focus-visible {
+    box-shadow: 0 0 0 var(--icon-button-ring-width) var(--channel-action-ring);
+  }
+
+  .channel-action-button:active {
+    color: var(--color-accent-pressed);
+    background-color: var(--channel-action-bg-active);
   }
 
   .modal-nav .icon-button {
