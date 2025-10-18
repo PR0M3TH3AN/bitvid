@@ -647,7 +647,11 @@ class Application {
     this.boundVideoModalZapHandler = (event) => {
       this.zapController?.sendZap(event?.detail || {});
     };
-    this.boundVideoModalZapOpenHandler = () => {
+    this.boundVideoModalZapOpenHandler = (event) => {
+      const requiresLogin = Boolean(event?.detail?.requiresLogin);
+      if (requiresLogin) {
+        this.showError("Log in with your Nostr profile to send zaps.");
+      }
       this.zapController?.open();
     };
     this.boundVideoModalZapCloseHandler = () => {

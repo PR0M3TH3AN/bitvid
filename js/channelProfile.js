@@ -47,6 +47,35 @@ import {
 
 const getApp = () => getApplication();
 
+const LOGIN_TO_ZAP_MESSAGE = "Log in with your Nostr profile to send zaps.";
+
+function showLoginRequiredToZapNotification() {
+  const app = getApp();
+  if (app && typeof app.showError === "function") {
+    app.showError(LOGIN_TO_ZAP_MESSAGE);
+    return;
+  }
+
+  const doc = typeof document !== "undefined" ? document : null;
+  const container = doc?.getElementById("errorContainer") || null;
+  const HTMLElementCtor =
+    doc?.defaultView?.HTMLElement ||
+    (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+  if (!HTMLElementCtor || !(container instanceof HTMLElementCtor)) {
+    return;
+  }
+
+  container.textContent = LOGIN_TO_ZAP_MESSAGE;
+  container.classList.remove("hidden");
+
+  if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
+    window.setTimeout(() => {
+      container.textContent = "";
+      container.classList.add("hidden");
+    }, 5000);
+  }
+}
+
 let currentChannelHex = null;
 let currentChannelNpub = null;
 let currentChannelLightningAddress = "";
@@ -1750,10 +1779,10 @@ function handleZapButtonClick(event) {
     return;
   }
 
-  if (isSessionActorWithoutLogin()) {
-    const app = getApp();
-    const message = "Log in with your Nostr profile to send zaps.";
-    app?.showError?.(message);
+  const requiresLogin = zapButton.dataset?.requiresLogin === "true";
+
+  if (requiresLogin || isSessionActorWithoutLogin()) {
+    showLoginRequiredToZapNotification();
     return;
   }
 
