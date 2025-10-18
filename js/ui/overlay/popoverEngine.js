@@ -671,6 +671,10 @@ export function createPopover(trigger, render, options = {}) {
     return panel;
   }
 
+  function preload() {
+    return Boolean(ensurePanel());
+  }
+
   async function updatePosition() {
     if (!anchor || !panel) {
       return;
@@ -918,6 +922,7 @@ export function createPopover(trigger, render, options = {}) {
     update: updatePosition,
     isOpen: () => isOpen,
     getPanel: () => panel,
+    preload,
   };
 
   return api;

@@ -936,7 +936,26 @@ function isZapControlsOpen() {
 
 function openZapControls({ focus = false } = {}) {
   const zapButton = getChannelZapButton();
-  if (!zapButton || !zapPopover) {
+  if (!zapButton) {
+    return false;
+  }
+
+  if (!zapPopover || zapPopoverTrigger !== zapButton) {
+    const initialized = setupZapButton({ force: true });
+    if (!initialized || !zapPopover || zapPopoverTrigger !== zapButton) {
+      return false;
+    }
+  }
+
+  if (typeof zapPopover?.preload === "function") {
+    try {
+      zapPopover.preload();
+    } catch (error) {
+      devLogger.warn("[zap] Failed to preload zap popover before opening", error);
+    }
+  }
+
+  if (!zapPopover) {
     return false;
   }
   zapShouldFocusOnOpen = focus;
@@ -2472,6 +2491,31 @@ function setupZapButton({ force = false } = {}) {
 
   zapPopover = popover;
   zapPopoverTrigger = zapButton;
+
+  const warmZapPopover = () => {
+    if (!zapPopover || zapPopoverTrigger !== zapButton) {
+      return;
+    }
+    if (typeof zapPopover.preload === "function") {
+      try {
+        zapPopover.preload();
+      } catch (error) {
+        devLogger.warn("[zap] Failed to preload zap popover", error);
+      }
+    }
+  };
+
+  warmZapPopover();
+
+  if (zapButton.dataset.zapPopoverWarmBound !== "true") {
+    const handleWarm = () => {
+      warmZapPopover();
+    };
+    zapButton.addEventListener("pointerenter", handleWarm, { once: true });
+    zapButton.addEventListener("pointerdown", handleWarm, { once: true });
+    zapButton.addEventListener("focus", handleWarm, { once: true });
+    zapButton.dataset.zapPopoverWarmBound = "true";
+  }
 
   if (zapButton.dataset.initialized !== "true") {
     zapButton.addEventListener("click", handleZapButtonClick);
