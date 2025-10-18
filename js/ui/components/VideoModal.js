@@ -77,6 +77,7 @@ export class VideoModal {
     this.modalZapWalletLink = null;
     this.modalZapDialogOpen = false;
     this.modalZapPending = false;
+    this.modalZapRequiresLogin = false;
     this.modalZapPopover = null;
 
     this.modalMorePopover = null;
@@ -411,6 +412,14 @@ export class VideoModal {
         event?.stopPropagation?.();
 
         if (this.modalZapBtn?.disabled) {
+          return;
+        }
+
+        if (this.modalZapRequiresLogin) {
+          this.dispatch("zap:open", {
+            video: this.activeVideo,
+            requiresLogin: true,
+          });
           return;
         }
 
@@ -966,13 +975,29 @@ export class VideoModal {
     this.shareBtn.classList.toggle("cursor-not-allowed", !enabled);
   }
 
-  setZapVisibility(visible) {
-    const shouldShow = !!visible;
+  setZapVisibility(visible, options = {}) {
+    let config;
+    if (typeof visible === "object" && visible !== null) {
+      config = { ...visible };
+    } else {
+      config = {
+        visible,
+        ...(options && typeof options === "object" ? options : {}),
+      };
+    }
+
+    const shouldShow = !!config.visible;
+    const requiresLogin = shouldShow && !!config.requiresLogin;
+    this.modalZapRequiresLogin = requiresLogin;
+
     if (this.modalZapBtn) {
       this.modalZapBtn.toggleAttribute("hidden", !shouldShow);
-      const disableButton = !shouldShow || this.modalZapPending;
+      const disableButton =
+        !shouldShow || (this.modalZapPending && !requiresLogin);
       this.modalZapBtn.disabled = disableButton;
-      this.modalZapBtn.setAttribute("aria-disabled", (!shouldShow).toString());
+      const ariaDisabledValue =
+        requiresLogin || !shouldShow ? "true" : "false";
+      this.modalZapBtn.setAttribute("aria-disabled", ariaDisabledValue);
       this.modalZapBtn.setAttribute("aria-hidden", (!shouldShow).toString());
       this.modalZapBtn.setAttribute("aria-expanded", "false");
       if (shouldShow) {
@@ -980,16 +1005,26 @@ export class VideoModal {
       } else {
         this.modalZapBtn.setAttribute("tabindex", "-1");
       }
-      if (this.modalZapPending) {
-        this.modalZapBtn.setAttribute("aria-busy", "true");
-        this.modalZapBtn.classList.add("opacity-50", "pointer-events-none");
-      } else {
+      if (requiresLogin) {
+        this.modalZapBtn.dataset.requiresLogin = "true";
         this.modalZapBtn.removeAttribute("aria-busy");
         this.modalZapBtn.classList.remove("opacity-50", "pointer-events-none");
+      } else {
+        delete this.modalZapBtn.dataset.requiresLogin;
+        if (this.modalZapPending) {
+          this.modalZapBtn.setAttribute("aria-busy", "true");
+          this.modalZapBtn.classList.add("opacity-50", "pointer-events-none");
+        } else {
+          this.modalZapBtn.removeAttribute("aria-busy");
+          this.modalZapBtn.classList.remove(
+            "opacity-50",
+            "pointer-events-none",
+          );
+        }
       }
     }
 
-    if (!shouldShow) {
+    if (!shouldShow || requiresLogin) {
       this.closeZapDialog({ silent: true, restoreFocus: false });
     }
   }
@@ -1292,11 +1327,12 @@ export class VideoModal {
     }
 
     if (this.modalZapBtn) {
-      if (isPending) {
+      const buttonHidden = this.modalZapBtn.hasAttribute("hidden");
+      if (isPending && !this.modalZapRequiresLogin) {
         this.modalZapBtn.disabled = true;
         this.modalZapBtn.setAttribute("aria-busy", "true");
         this.modalZapBtn.classList.add("opacity-50", "pointer-events-none");
-      } else if (!this.modalZapBtn.hasAttribute("hidden")) {
+      } else if (!buttonHidden) {
         this.modalZapBtn.disabled = false;
         this.modalZapBtn.removeAttribute("aria-busy");
         this.modalZapBtn.classList.remove("opacity-50", "pointer-events-none");

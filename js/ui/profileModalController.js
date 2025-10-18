@@ -4016,6 +4016,15 @@ export class ProfileModalController {
       return;
     }
 
+    const parentElement = modalRoot.parentElement;
+    if (parentElement) {
+      if (parentElement.lastElementChild !== modalRoot) {
+        parentElement.appendChild(modalRoot);
+      }
+    } else if (typeof document !== "undefined" && document.body) {
+      document.body.appendChild(modalRoot);
+    }
+
     modalRoot.classList.remove("hidden");
     modalRoot.setAttribute("aria-hidden", "false");
     this.setGlobalModalState("profile", true);

@@ -586,14 +586,18 @@ class Application {
       getCurrentVideo: () => this.currentVideo,
       nwcSettings: this.nwcSettingsService,
       isUserLoggedIn: () => this.isUserLoggedIn(),
+      hasSessionActor: () =>
+        Boolean(
+          typeof nostrClient?.sessionActor?.pubkey === "string" &&
+            nostrClient.sessionActor.pubkey.trim()
+        ),
       splitAndZap: (...args) => this.splitAndZap(...args),
       payments: this.payments,
       callbacks: {
         onSuccess: (message) => this.showSuccess(message),
         onError: (message) => this.showError(message),
       },
-      requestWalletPane: () =>
-        this.profileController?.showWalletPane?.(),
+      requestWalletPane: () => this.openWalletPane(),
     });
     this.boundVideoModalCloseHandler = () => {
       this.hideModal();
@@ -1305,6 +1309,32 @@ class Application {
     } catch (err) {
       devLogger.error("Failed to open creator channel:", err);
       this.showError("Could not open channel.");
+    }
+  }
+
+  openWalletPane() {
+    if (
+      !this.profileController ||
+      typeof this.profileController.showWalletPane !== "function"
+    ) {
+      devLogger.warn(
+        "[Application] Wallet pane requested before profile controller initialized.",
+      );
+      return Promise.resolve(false);
+    }
+
+    try {
+      const result = this.profileController.showWalletPane();
+      if (result && typeof result.then === "function") {
+        return result.catch((error) => {
+          devLogger.error("[Application] Failed to open wallet pane:", error);
+          throw error;
+        });
+      }
+      return Promise.resolve(result);
+    } catch (error) {
+      devLogger.error("[Application] Failed to open wallet pane:", error);
+      return Promise.reject(error);
     }
   }
 

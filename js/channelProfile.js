@@ -499,7 +499,10 @@ function setChannelZapVisibility(visible) {
     typeof app?.isUserLoggedIn === "function"
       ? app.isUserLoggedIn()
       : Boolean(app?.normalizeHexPubkey?.(app?.pubkey));
-  const shouldShow = !!visible;
+  const sessionActorPubkey = getSessionActorPubkey();
+  const hasSessionActor = sessionActorPubkey.length > 0;
+  const sessionOnly = !isLoggedIn && hasSessionActor;
+  const shouldShow = !!visible && (isLoggedIn || sessionOnly);
   const requiresLogin = shouldShow && !isLoggedIn;
 
   if (
@@ -581,12 +584,13 @@ function isSessionActorWithoutLogin() {
     return false;
   }
 
-  const sessionPubkey =
-    typeof nostrClient?.sessionActor?.pubkey === "string"
-      ? nostrClient.sessionActor.pubkey.trim()
-      : "";
+  return getSessionActorPubkey().length > 0;
+}
 
-  return sessionPubkey.length > 0;
+function getSessionActorPubkey() {
+  return typeof nostrClient?.sessionActor?.pubkey === "string"
+    ? nostrClient.sessionActor.pubkey.trim()
+    : "";
 }
 
 function getChannelShareButton() {
@@ -970,7 +974,20 @@ function setupZapWalletLink() {
     event?.preventDefault?.();
     const app = getApp();
     if (typeof app?.openWalletPane === "function") {
-      app.openWalletPane();
+      Promise.resolve()
+        .then(() => app.openWalletPane())
+        .catch((error) => {
+          devLogger.warn(
+            "[zap] Failed to open wallet pane from channel view:",
+            error
+          );
+          app?.showError?.("Wallet settings are not available right now.");
+        });
+    } else {
+      devLogger.warn(
+        "[zap] Wallet pane requested but application did not expose openWalletPane()."
+      );
+      app?.showError?.("Wallet settings are not available right now.");
     }
   });
   link.dataset.initialized = "true";
