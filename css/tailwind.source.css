@@ -2078,6 +2078,10 @@
     height: var(--icon-size-lg);
     min-width: var(--icon-size-lg);
     min-height: var(--icon-size-lg);
+  }
+
+  .modal-nav
+    .icon-button:not(.accent-action-button):not(.channel-action-button) {
     border: none;
   }
 
