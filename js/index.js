@@ -19,7 +19,14 @@ import {
   openStaticModal,
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
-import { BLOG_URL, COMMUNITY_URL } from "./config.js";
+import {
+  BLOG_URL,
+  COMMUNITY_URL,
+  NOSTR_URL,
+  GITHUB_URL,
+  BETA_URL,
+  DNS_URL,
+} from "./config.js";
 
 validateInstanceConfig();
 
@@ -240,9 +247,33 @@ async function bootstrapInterface() {
   });
 
   bindOptionalExternalLink({
+    selector: "[data-nostr-link]",
+    url: NOSTR_URL,
+    label: "Sidebar Nostr link",
+  });
+
+  bindOptionalExternalLink({
     selector: "[data-community-link]",
     url: COMMUNITY_URL,
     label: "Sidebar community link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-github-link]",
+    url: GITHUB_URL,
+    label: "Sidebar GitHub link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-beta-link]",
+    url: BETA_URL,
+    label: "Sidebar Beta link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-dns-link]",
+    url: DNS_URL,
+    label: "Sidebar DNS link",
   });
 
   const sidebar = document.getElementById("sidebar");
