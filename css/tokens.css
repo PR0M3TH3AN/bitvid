@@ -17,7 +17,15 @@
   --surface-overlay-strong: var(--color-overlay-strong);
   --surface-overlay-darker: var(--color-overlay-darker);
   --surface-overlay-black: var(--color-overlay-black);
-  --surface-overlay-banner: var(--color-overlay-banner);
+  --surface-overlay-banner: var(--surface-overlay-banner-bottom);
+  --surface-overlay-banner-bottom: var(--color-overlay-banner-bottom);
+  --surface-overlay-banner-transparent: var(--color-overlay-banner-transparent);
+  --surface-overlay-banner-gradient: linear-gradient(
+    to top,
+    var(--surface-overlay-banner-bottom) 0%,
+    var(--surface-overlay-banner-transparent) 30%,
+    var(--surface-overlay-banner-transparent) 100%
+  );
   --surface-overlay-panel: var(--color-overlay-panel);
   --surface-overlay-panel-soft: var(--color-overlay-panel-soft);
   --surface-overlay-panel-tint: var(--color-overlay-panel-tint);
@@ -500,7 +508,8 @@
   --color-modal-backdrop: rgb(15 23 42 / 0.28);
   --color-modal-surface: rgb(255 255 255 / 0.94);
   --color-overlay-veil: rgb(103 112 133 / 0.45);
-  --color-overlay-banner: rgb(214 219 232 / 0.6);
+  --color-overlay-banner-bottom: rgb(255 255 255 / 0.5);
+  --color-overlay-banner-transparent: rgb(255 255 255 / 0);
   --color-overlay-backdrop: rgb(15 23 42 / 0.2);
 
   --color-sidebar-surface: rgb(255 255 255 / 0.9);
@@ -651,7 +660,8 @@
   --color-modal-backdrop: rgb(5 8 14 / 0.68);
   --color-modal-surface: rgb(14 22 38 / 0.88);
   --color-overlay-veil: rgb(4 6 12 / 0.94);
-  --color-overlay-banner: rgb(24 36 56 / 0.94);
+  --color-overlay-banner-bottom: rgb(0 0 0 / 0.5);
+  --color-overlay-banner-transparent: rgb(0 0 0 / 0);
   --color-overlay-backdrop: rgb(5 8 14 / 0.75);
 
   --color-sidebar-surface: rgb(12 18 30 / 0.94);
