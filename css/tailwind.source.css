@@ -150,6 +150,10 @@
     --tw-ring-color: var(--color-accent);
   }
 
+  .author-pic {
+    @apply block h-full w-full rounded-full object-cover;
+  }
+
   .header-icon-toggle {
     @apply focus-ring inline-flex items-center justify-center rounded-full transition-colors duration-150 ease-out;
     width: var(--icon-size-lg);
