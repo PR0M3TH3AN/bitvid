@@ -2925,19 +2925,19 @@
 
   #app {
     box-sizing: border-box;
-    transition: margin-left 200ms ease;
+    transition: margin-left 200ms ease, width 200ms ease, max-width 200ms ease;
   }
 
   #app[data-sidebar-state="collapsed"] {
-    margin-left: calc(
-      var(--sidebar-width-collapsed) + var(--sidebar-content-gap)
-    );
+    margin-left: var(--sidebar-width-collapsed);
+    width: calc(100vw - var(--sidebar-width-collapsed));
+    max-width: calc(100vw - var(--sidebar-width-collapsed));
   }
 
   #app[data-sidebar-state="expanded"] {
-    margin-left: calc(
-      var(--sidebar-width-expanded) + var(--sidebar-content-gap)
-    );
+    margin-left: var(--sidebar-width-expanded);
+    width: calc(100vw - var(--sidebar-width-expanded));
+    max-width: calc(100vw - var(--sidebar-width-expanded));
   }
 
   body.sidebar-collapsed #sidebar .sidebar-nav-link,
@@ -3036,12 +3036,10 @@
       overflow: visible;
     }
 
-    #app {
-      box-sizing: border-box;
-      transition: margin-left 200ms ease, width 200ms ease, max-width 200ms ease;
-    }
-
     #app[data-sidebar-state="collapsed"] {
+      margin-left: calc(
+        var(--sidebar-width-collapsed) + var(--sidebar-content-gap)
+      );
       width: calc(
         100vw - var(--sidebar-width-collapsed) - var(--sidebar-content-gap)
       );
@@ -3051,6 +3049,9 @@
     }
 
     #app[data-sidebar-state="expanded"] {
+      margin-left: calc(
+        var(--sidebar-width-expanded) + var(--sidebar-content-gap)
+      );
       width: calc(
         100vw - var(--sidebar-width-expanded) - var(--sidebar-content-gap)
       );
