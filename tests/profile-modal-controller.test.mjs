@@ -3,6 +3,7 @@ import { strict as assert } from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import ProfileModalController from '../js/ui/profileModalController.js';
+import { formatShortNpub } from '../js/utils/formatters.js';
 import { resetRuntimeFlags } from '../js/constants.js';
 import { applyDesignSystemAttributes } from '../js/designSystem.js';
 
@@ -289,6 +290,44 @@ for (const _ of [0]) {
       });
     },
   );
+
+  test('Profile modal uses abbreviated npub display', async () => {
+    const sampleProfiles = [
+      {
+        pubkey: defaultActorHex,
+        npub: 'npub1abcdefghijkmnopqrstuvwxyz1234567890example',
+        name: '',
+        picture: '',
+      },
+      {
+        pubkey: 'b'.repeat(64),
+        npub: 'npub1zyxwvutsrqponmlkjihgfedcba1234567890sample',
+        name: '',
+        picture: '',
+      },
+    ];
+
+    const controller = createController({
+      services: {
+        formatShortNpub,
+      },
+    });
+
+    await controller.load();
+
+    controller.state.setSavedProfiles(sampleProfiles);
+    controller.state.setActivePubkey(sampleProfiles[0].pubkey);
+
+    controller.renderSavedProfiles();
+
+    const expectedActive = formatShortNpub(sampleProfiles[0].npub);
+    assert.equal(controller.profileNpub.textContent, expectedActive);
+
+    const switcherNpubEl = controller.switcherList.querySelector('.font-mono');
+    assert.ok(switcherNpubEl, 'switcher should render the secondary profile');
+    const expectedSwitcher = formatShortNpub(sampleProfiles[1].npub);
+    assert.equal(switcherNpubEl.textContent, expectedSwitcher);
+  });
 }
 
 test('load() injects markup and caches expected elements', async () => {

@@ -90,6 +90,13 @@ const SERVICE_CONTRACT = [
     fallback: () => (value) => value,
   },
   {
+    key: "formatShortNpub",
+    type: "function",
+    description:
+      "Formats npub strings for display using the canonical short representation (npubXXXX…XXXX).",
+    fallback: () => (value) => (typeof value === "string" ? value : ""),
+  },
+  {
     key: "getProfileCacheEntry",
     type: "function",
     description:
@@ -617,6 +624,7 @@ export class ProfileModalController {
     this.safeEncodeNpub = this.services.safeEncodeNpub;
     this.safeDecodeNpub = this.services.safeDecodeNpub;
     this.truncateMiddle = this.services.truncateMiddle;
+    this.formatShortNpub = this.services.formatShortNpub;
     this.sendAdminListNotificationService =
       typeof this.services.sendAdminListNotification === "function"
         ? this.services.sendAdminListNotification
@@ -1198,8 +1206,12 @@ export class ProfileModalController {
     const activeMeta = activeEntry ? resolveMeta(activeEntry) : null;
     const hasActiveProfile = Boolean(activeEntry && activeMeta);
     const truncate = this.truncateMiddle || ((value) => value);
+    const formatNpub =
+      typeof this.formatShortNpub === "function"
+        ? (value) => this.formatShortNpub(value)
+        : (value) => (typeof value === "string" ? value : "");
     const activeNameFallback = activeMeta?.npub
-      ? truncate(activeMeta.npub, 32)
+      ? formatNpub(activeMeta.npub) || "Saved profile"
       : "Saved profile";
     const activeDisplayName = hasActiveProfile
       ? activeMeta?.name?.trim() || activeNameFallback
@@ -1225,7 +1237,8 @@ export class ProfileModalController {
 
     if (this.profileNpub) {
       if (hasActiveProfile && activeMeta?.npub) {
-        this.profileNpub.textContent = truncate(activeMeta.npub, 48);
+        const displayNpub = formatNpub(activeMeta.npub);
+        this.profileNpub.textContent = displayNpub || "npub unavailable";
       } else if (hasActiveProfile) {
         this.profileNpub.textContent = "npub unavailable";
       } else {
@@ -1320,7 +1333,7 @@ export class ProfileModalController {
           avatarImg.src = meta.picture || FALLBACK_PROFILE_AVATAR;
           const cardDisplayName =
             meta.name?.trim() ||
-            (meta.npub ? truncate(meta.npub, 32) : "Saved profile");
+            (meta.npub ? formatNpub(meta.npub) || "Saved profile" : "Saved profile");
           avatarImg.alt = `${cardDisplayName} avatar`;
           avatarSpan.appendChild(avatarImg);
 
@@ -1349,9 +1362,12 @@ export class ProfileModalController {
 
           const npubSpan = document.createElement("span");
           npubSpan.className = "break-all font-mono text-xs text-muted";
-          npubSpan.textContent = meta.npub
-            ? truncate(meta.npub, 48)
-            : "npub unavailable";
+          if (meta.npub) {
+            const displayNpub = formatNpub(meta.npub);
+            npubSpan.textContent = displayNpub || "npub unavailable";
+          } else {
+            npubSpan.textContent = "npub unavailable";
+          }
 
           metaSpan.append(topLine, nameSpan, npubSpan);
           button.append(avatarSpan, metaSpan);
@@ -2740,6 +2756,11 @@ export class ProfileModalController {
     const { onRemove, removeLabel = "Remove", confirmMessage, removable = true } =
       options;
 
+    const formatNpub =
+      typeof this.formatShortNpub === "function"
+        ? (value) => this.formatShortNpub(value)
+        : (value) => (typeof value === "string" ? value : "");
+
     listEl.innerHTML = "";
     const values = Array.isArray(entries) ? [...entries] : [];
     values.sort((a, b) => a.localeCompare(b));
@@ -2760,7 +2781,8 @@ export class ProfileModalController {
 
       const label = document.createElement("p");
       label.className = "break-all text-sm font-medium text-primary";
-      label.textContent = npub;
+      const displayNpub = formatNpub(npub) || npub;
+      label.textContent = displayNpub;
       item.appendChild(label);
 
       if (removable && typeof onRemove === "function") {
@@ -2770,7 +2792,7 @@ export class ProfileModalController {
         removeBtn.textContent = removeLabel;
         removeBtn.addEventListener("click", () => {
           if (confirmMessage) {
-            const message = confirmMessage.replace("{npub}", npub);
+            const message = confirmMessage.replace("{npub}", displayNpub);
             if (!window.confirm(message)) {
               return;
             }
@@ -3395,9 +3417,16 @@ export class ProfileModalController {
     const actorDisplay = this.normalizeNpubValue(actorNpub) || fallbackActor;
     const isWhitelist = listType === "whitelist";
 
+    const formatNpub =
+      typeof this.formatShortNpub === "function"
+        ? (value) => this.formatShortNpub(value)
+        : (value) => (typeof value === "string" ? value : "");
+    const displayTarget = formatNpub(normalizedTarget) || normalizedTarget;
+    const displayActor = formatNpub(actorDisplay) || actorDisplay;
+
     const introLine = isWhitelist
-      ? `Great news—your npub ${normalizedTarget} has been added to the bitvid whitelist by ${actorDisplay}.`
-      : `We wanted to let you know that your npub ${normalizedTarget} has been placed on the bitvid blacklist by ${actorDisplay}.`;
+      ? `Great news—your npub ${displayTarget} has been added to the bitvid whitelist by ${displayActor}.`
+      : `We wanted to let you know that your npub ${displayTarget} has been placed on the bitvid blacklist by ${displayActor}.`;
 
     const statusLine = isWhitelist
       ? `You now have full creator access across bitvid (${this.bitvidWebsiteUrl}).`
