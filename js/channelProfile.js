@@ -33,6 +33,7 @@ import {
   validateInvoiceAmount
 } from "./payments/zapSharedState.js";
 import { splitAndZap } from "./payments/zapSplit.js";
+import { LOGIN_TO_ZAP_MESSAGE } from "./payments/zapMessages.js";
 import {
   resolveLightningAddress,
   fetchPayServiceData,
@@ -47,7 +48,7 @@ import {
 
 const getApp = () => getApplication();
 
-const LOGIN_TO_ZAP_MESSAGE = "Log in with your Nostr profile to send zaps.";
+const LOGIN_NOTIFICATION_AUTO_HIDE_MS = 5000;
 
 function syncNotificationPortalVisibility(doc) {
   if (!doc) {
@@ -79,45 +80,131 @@ function syncNotificationPortalVisibility(doc) {
 
 function showLoginRequiredToZapNotification() {
   const app = getApp();
-  if (app && typeof app.showError === "function") {
-    app.showError(LOGIN_TO_ZAP_MESSAGE);
-    return;
+  if (app) {
+    if (typeof app.showStatus === "function") {
+      app.showStatus(LOGIN_TO_ZAP_MESSAGE, {
+        autoHideMs: LOGIN_NOTIFICATION_AUTO_HIDE_MS,
+      });
+      return;
+    }
+
+    if (typeof app.showError === "function") {
+      app.showError(LOGIN_TO_ZAP_MESSAGE);
+      return;
+    }
   }
 
   const doc = typeof document !== "undefined" ? document : null;
-  const container = doc?.getElementById("errorContainer") || null;
-  const HTMLElementCtor =
-    doc?.defaultView?.HTMLElement ||
-    (typeof HTMLElement !== "undefined" ? HTMLElement : null);
-  if (!HTMLElementCtor || !(container instanceof HTMLElementCtor)) {
+  if (!doc) {
     return;
   }
 
-  container.textContent = LOGIN_TO_ZAP_MESSAGE;
-  container.classList.remove("hidden");
+  const HTMLElementCtor =
+    doc.defaultView?.HTMLElement ||
+    (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+
+  if (!HTMLElementCtor) {
+    return;
+  }
+
+  const statusContainer = doc.getElementById("statusContainer");
+
+  if (statusContainer && statusContainer instanceof HTMLElementCtor) {
+    const messageTarget =
+      statusContainer.querySelector("[data-status-message]") || null;
+
+    if (messageTarget && messageTarget instanceof HTMLElementCtor) {
+      messageTarget.textContent = LOGIN_TO_ZAP_MESSAGE;
+    } else {
+      statusContainer.textContent = LOGIN_TO_ZAP_MESSAGE;
+    }
+
+    statusContainer.classList.remove("hidden");
+    syncNotificationPortalVisibility(doc);
+
+    const schedule =
+      doc.defaultView?.setTimeout ||
+      (typeof setTimeout === "function" ? setTimeout : null);
+
+    if (typeof schedule === "function") {
+      const initialTarget =
+        messageTarget && messageTarget instanceof HTMLElementCtor
+          ? messageTarget
+          : statusContainer;
+      const expectedText = initialTarget.textContent;
+      schedule(() => {
+        if (!doc || typeof doc.contains !== "function") {
+          return;
+        }
+
+        if (!doc.contains(statusContainer)) {
+          return;
+        }
+
+        const activeTarget =
+          statusContainer.querySelector("[data-status-message]") || null;
+        const resolvedTarget =
+          activeTarget && activeTarget instanceof HTMLElementCtor
+            ? activeTarget
+            : messageTarget && messageTarget instanceof HTMLElementCtor
+              ? messageTarget
+              : statusContainer;
+
+        if (resolvedTarget.textContent !== expectedText) {
+          return;
+        }
+
+        if (activeTarget && activeTarget instanceof HTMLElementCtor) {
+          activeTarget.textContent = "";
+        } else if (messageTarget && messageTarget instanceof HTMLElementCtor) {
+          messageTarget.textContent = "";
+        } else {
+          statusContainer.textContent = "";
+        }
+
+        statusContainer.classList.add("hidden");
+        syncNotificationPortalVisibility(doc);
+      }, LOGIN_NOTIFICATION_AUTO_HIDE_MS);
+    }
+
+    return;
+  }
+
+  const errorContainer = doc.getElementById("errorContainer");
+
+  if (!errorContainer || !(errorContainer instanceof HTMLElementCtor)) {
+    return;
+  }
+
+  errorContainer.textContent = LOGIN_TO_ZAP_MESSAGE;
+  errorContainer.classList.remove("hidden");
   syncNotificationPortalVisibility(doc);
 
-  const scheduler =
-    doc?.defaultView?.setTimeout ||
+  const schedule =
+    doc.defaultView?.setTimeout ||
     (typeof setTimeout === "function" ? setTimeout : null);
 
-  if (typeof scheduler === "function") {
-    scheduler(() => {
-      if (!doc || typeof doc.contains !== "function") {
-        return;
-      }
-
-      if (!doc.contains(container)) {
-        return;
-      }
-
-      if (container.textContent === LOGIN_TO_ZAP_MESSAGE) {
-        container.textContent = "";
-        container.classList.add("hidden");
-        syncNotificationPortalVisibility(doc);
-      }
-    }, 5000);
+  if (typeof schedule !== "function") {
+    return;
   }
+
+  schedule(() => {
+    if (!doc || typeof doc.contains !== "function") {
+      return;
+    }
+
+    if (!doc.contains(errorContainer)) {
+      return;
+    }
+
+    if (errorContainer.textContent !== LOGIN_TO_ZAP_MESSAGE) {
+      return;
+    }
+
+    errorContainer.textContent = "";
+    errorContainer.classList.add("hidden");
+    syncNotificationPortalVisibility(doc);
+  }, LOGIN_NOTIFICATION_AUTO_HIDE_MS);
 }
 
 let currentChannelHex = null;

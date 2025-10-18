@@ -57,6 +57,7 @@ import {
   ingestLocalViewEvent,
 } from "./viewCounter.js";
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
+import { LOGIN_TO_ZAP_MESSAGE } from "./payments/zapMessages.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatTimeAgo as formatTimeAgoUtil,
@@ -650,7 +651,7 @@ class Application {
     this.boundVideoModalZapOpenHandler = (event) => {
       const requiresLogin = Boolean(event?.detail?.requiresLogin);
       if (requiresLogin) {
-        this.showError("Log in with your Nostr profile to send zaps.");
+        this.showStatus(LOGIN_TO_ZAP_MESSAGE, { autoHideMs: 5000 });
       }
       this.zapController?.open();
     };
@@ -751,6 +752,7 @@ class Application {
     this.statusContainer = document.getElementById("statusContainer") || null;
     this.statusMessage =
       this.statusContainer?.querySelector("[data-status-message]") || null;
+    this.statusAutoHideHandle = null;
 
     // Auth state
     this.pubkey = null;
@@ -7282,9 +7284,24 @@ class Application {
     }, 5000);
   }
 
-  showStatus(msg) {
+  showStatus(msg, options = {}) {
     const container = this.statusContainer;
     const messageTarget = this.statusMessage;
+    const ownerDocument =
+      container?.ownerDocument || (typeof document !== "undefined" ? document : null);
+    const defaultView =
+      ownerDocument?.defaultView || (typeof window !== "undefined" ? window : null);
+    const clearScheduler =
+      defaultView?.clearTimeout ||
+      (typeof clearTimeout === "function" ? clearTimeout : null);
+    const schedule =
+      defaultView?.setTimeout || (typeof setTimeout === "function" ? setTimeout : null);
+
+    if (this.statusAutoHideHandle && typeof clearScheduler === "function") {
+      clearScheduler(this.statusAutoHideHandle);
+      this.statusAutoHideHandle = null;
+    }
+
     const HTMLElementCtor =
       container?.ownerDocument?.defaultView?.HTMLElement ||
       (typeof HTMLElement !== "undefined" ? HTMLElement : null);
@@ -7302,6 +7319,9 @@ class Application {
       return;
     }
 
+    const { autoHideMs } =
+      options && typeof options === "object" ? options : Object.create(null);
+
     if (messageTarget && messageTarget instanceof HTMLElementCtor) {
       messageTarget.textContent = msg;
     } else {
@@ -7309,6 +7329,38 @@ class Application {
     }
     container.classList.remove("hidden");
     this.updateNotificationPortalVisibility();
+
+    if (
+      Number.isFinite(autoHideMs) &&
+      autoHideMs > 0 &&
+      typeof schedule === "function"
+    ) {
+      const expectedText =
+        messageTarget && messageTarget instanceof HTMLElementCtor
+          ? messageTarget.textContent
+          : container.textContent;
+      this.statusAutoHideHandle = schedule(() => {
+        this.statusAutoHideHandle = null;
+        const activeContainer = this.statusContainer;
+        if (activeContainer !== container) {
+          return;
+        }
+        const activeMessageTarget =
+          this.statusMessage && typeof this.statusMessage.textContent === "string"
+            ? this.statusMessage
+            : activeContainer;
+        if (activeMessageTarget.textContent !== expectedText) {
+          return;
+        }
+        if (activeMessageTarget === this.statusMessage) {
+          this.statusMessage.textContent = "";
+        } else {
+          activeContainer.textContent = "";
+        }
+        activeContainer.classList.add("hidden");
+        this.updateNotificationPortalVisibility();
+      }, autoHideMs);
+    }
   }
 
   showSuccess(msg) {
@@ -7360,6 +7412,22 @@ class Application {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
     this.videoModalReadyPromise = null;
+
+    if (this.statusAutoHideHandle) {
+      const ownerDocument =
+        this.statusContainer?.ownerDocument ||
+        (typeof document !== "undefined" ? document : null);
+      const defaultView =
+        ownerDocument?.defaultView ||
+        (typeof window !== "undefined" ? window : null);
+      const clearScheduler =
+        defaultView?.clearTimeout ||
+        (typeof clearTimeout === "function" ? clearTimeout : null);
+      if (typeof clearScheduler === "function") {
+        clearScheduler(this.statusAutoHideHandle);
+      }
+      this.statusAutoHideHandle = null;
+    }
 
     if (this.watchHistoryTelemetry) {
       try {
