@@ -1548,8 +1548,11 @@
   }
 
   .video-modal__action-button {
-    @apply inline-flex h-11 items-center justify-center gap-2 rounded-full border border-border border-opacity-30 bg-panel px-3 text-sm font-semibold text-text transition duration-base ease-out hover:bg-panel-hover;
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-full text-sm font-semibold transition duration-base ease-out;
     min-width: var(--video-modal-action-min-width);
+    padding-inline: var(--space-md);
+    border-width: 1px;
+    border-style: solid;
   }
 
   .video-modal__action-label {
@@ -1810,12 +1813,18 @@
   }
 
   .profile-switcher__add {
+    --profile-switcher-add-hover-bg: color-mix(
+      in srgb,
+      var(--color-accent) 14%,
+      transparent
+    );
+
     @apply card flex cursor-pointer items-center gap-4 border border-dashed border-border border-opacity-40 bg-surface text-left text-muted transition duration-base ease-out hover:border-accent hover:border-opacity-60 hover:text-text focus-visible:border-accent focus-visible:border-opacity-60;
   }
 
   .profile-switcher__add:hover,
   .profile-switcher__add:focus-visible {
-    background-color: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    background-color: var(--profile-switcher-add-hover-bg);
   }
 
   .profile-switcher__addAvatar {
@@ -2005,6 +2014,62 @@
     pointer-events: none;
   }
 
+  .accent-action-button,
+  .channel-action-button {
+    --accent-action-bg: color-mix(
+      in srgb,
+      var(--surface-overlay-panel) 78%,
+      transparent
+    );
+    --accent-action-border: color-mix(
+      in srgb,
+      var(--border-overlay) 92%,
+      transparent
+    );
+    --accent-action-bg-hover: color-mix(
+      in srgb,
+      var(--color-accent) 22%,
+      var(--surface-overlay-panel)
+    );
+    --accent-action-ring: color-mix(
+      in srgb,
+      var(--color-accent) 48%,
+      transparent
+    );
+    --accent-action-bg-active: color-mix(
+      in srgb,
+      var(--color-accent-pressed) 28%,
+      var(--surface-overlay-panel)
+    );
+
+    color: var(--color-text);
+    background-color: var(--accent-action-bg);
+    border-color: var(--accent-action-border);
+    border-style: solid;
+    border-width: 1px;
+  }
+
+  .accent-action-button:hover,
+  .accent-action-button:focus-visible,
+  .channel-action-button:hover,
+  .channel-action-button:focus-visible {
+    color: var(--color-accent-strong);
+    background-color: var(--accent-action-bg-hover);
+  }
+
+  .accent-action-button:focus,
+  .accent-action-button:focus-visible,
+  .channel-action-button:focus,
+  .channel-action-button:focus-visible {
+    box-shadow: 0 0 0 var(--icon-button-ring-width) var(--accent-action-ring);
+  }
+
+  .accent-action-button:active,
+  .channel-action-button:active {
+    color: var(--color-accent-pressed);
+    background-color: var(--accent-action-bg-active);
+  }
+
   .modal-nav .icon-button {
     box-shadow: none;
     padding: 0;
@@ -2013,6 +2078,10 @@
     height: var(--icon-size-lg);
     min-width: var(--icon-size-lg);
     min-height: var(--icon-size-lg);
+  }
+
+  .modal-nav
+    .icon-button:not(.accent-action-button):not(.channel-action-button) {
     border: none;
   }
 

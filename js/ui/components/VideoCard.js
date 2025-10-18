@@ -795,12 +795,8 @@ export class VideoCard {
     if (this.capabilities.canEdit) {
       const button = this.createElement("button", {
         classNames: [
-          "btn-ghost",
-          "h-10",
-          "w-10",
-          "rounded-full",
-          "p-0",
-          "text-muted",
+          "icon-button",
+          "accent-action-button",
           "ml-2",
         ],
         attrs: {
@@ -811,7 +807,7 @@ export class VideoCard {
         },
       });
 
-      const icon = this.createSettingsIcon(["h-5", "w-5"]);
+      const icon = this.createSettingsIcon(["icon-image", "w-5", "h-5"]);
       button.appendChild(icon);
 
       this.settingsButton = button;
@@ -824,12 +820,8 @@ export class VideoCard {
   buildMoreMenu() {
     const button = this.createElement("button", {
       classNames: [
-        "btn-ghost",
-        "h-10",
-        "w-10",
-        "rounded-full",
-        "p-0",
-        "text-muted",
+        "icon-button",
+        "accent-action-button",
         "ml-1",
       ],
       attrs: {
@@ -840,7 +832,7 @@ export class VideoCard {
       },
     });
 
-    const icon = this.createEllipsisIcon(["w-5", "h-5", "object-contain"]);
+    const icon = this.createEllipsisIcon(["icon-image", "w-5", "h-5"]);
     button.appendChild(icon);
 
     this.moreMenuButton = button;
