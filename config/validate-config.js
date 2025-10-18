@@ -9,6 +9,7 @@ import {
   PLATFORM_LUD16_OVERRIDE,
   THEME_ACCENT_OVERRIDES,
   BLOG_URL,
+  COMMUNITY_URL,
 } from "./instance-config.js";
 
 function assertSuperAdminConfigured(value) {
@@ -113,27 +114,32 @@ function resolveConfig(overrides = {}) {
     themeAccentOverrides:
       overrides.THEME_ACCENT_OVERRIDES ?? THEME_ACCENT_OVERRIDES,
     blogUrl: overrides.BLOG_URL ?? BLOG_URL,
+    communityUrl: overrides.COMMUNITY_URL ?? COMMUNITY_URL,
   };
 }
 
-function assertBlogUrl(url) {
+function assertOptionalHttpUrl(url, settingName) {
+  if (url == null) {
+    return null;
+  }
+
   if (typeof url !== "string") {
-    throw new Error("BLOG_URL must be a string.");
+    throw new Error(`${settingName} must be a string when provided.`);
   }
 
   const trimmed = url.trim();
   if (!trimmed) {
-    throw new Error("BLOG_URL cannot be empty. Provide a fully qualified URL.");
+    return null;
   }
 
   try {
     const parsed = new URL(trimmed);
     if (!parsed.protocol || !/^https?:$/.test(parsed.protocol)) {
-      throw new Error("BLOG_URL must use http or https.");
+      throw new Error(`${settingName} must use http or https.`);
     }
   } catch (error) {
     throw new Error(
-      "BLOG_URL must be a valid http(s) URL defined in config/instance-config.js.",
+      `${settingName} must be a valid http(s) URL defined in config/instance-config.js.`,
       { cause: error },
     );
   }
@@ -158,5 +164,6 @@ export function validateInstanceConfig(overrides) {
   }
 
   assertThemeAccentOverrides(config.themeAccentOverrides);
-  assertBlogUrl(config.blogUrl);
+  assertOptionalHttpUrl(config.blogUrl, "BLOG_URL");
+  assertOptionalHttpUrl(config.communityUrl, "COMMUNITY_URL");
 }

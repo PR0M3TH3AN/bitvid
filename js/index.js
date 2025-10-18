@@ -19,7 +19,7 @@ import {
   openStaticModal,
   closeStaticModal,
 } from "./ui/components/staticModalAccessibility.js";
-import { BLOG_URL } from "./config.js";
+import { BLOG_URL, COMMUNITY_URL } from "./config.js";
 
 validateInstanceConfig();
 
@@ -28,6 +28,29 @@ initThemeController();
 
 let application = null;
 let applicationReadyPromise = Promise.resolve();
+
+const bindOptionalExternalLink = ({ selector, url, label }) => {
+  const element = document.querySelector(selector);
+  const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+
+  if (!(element instanceof HTMLAnchorElement)) {
+    if (sanitizedUrl) {
+      userLogger.warn(
+        `${label} not found; skipping external link binding.`,
+      );
+    }
+    return;
+  }
+
+  if (!sanitizedUrl) {
+    element.remove();
+    return;
+  }
+
+  element.href = sanitizedUrl;
+  element.target = "_blank";
+  element.rel = "noopener noreferrer";
+};
 
 function startApplication() {
   if (application) {
@@ -210,14 +233,17 @@ async function bootstrapInterface() {
   await loadSidebar("components/sidebar.html", "sidebarContainer");
   devLogger.log("Sidebar loaded.");
 
-  const blogLink = document.querySelector("[data-blog-link]");
-  if (blogLink instanceof HTMLAnchorElement) {
-    blogLink.href = BLOG_URL;
-    blogLink.target = "_blank";
-    blogLink.rel = "noopener noreferrer";
-  } else {
-    userLogger.warn("Sidebar blog link not found; skipping external link binding.");
-  }
+  bindOptionalExternalLink({
+    selector: "[data-blog-link]",
+    url: BLOG_URL,
+    label: "Sidebar blog link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-community-link]",
+    url: COMMUNITY_URL,
+    label: "Sidebar community link",
+  });
 
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");

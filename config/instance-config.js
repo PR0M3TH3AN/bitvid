@@ -45,14 +45,24 @@ export const ADMIN_SUPER_NPUB =
 export const BITVID_WEBSITE_URL = "https://bitvid.network/";
 
 /**
- * External destination for the blog menu link.
+ * Optional external destination for the blog menu link.
  *
  * Sidebar navigation routes visitors to this URL when they select "Blog".
  * Update the value to point at the long-form publishing platform you
- * maintain for release notes or community updates.
+ * maintain for release notes or community updates. Leave empty (null or an
+ * empty string) to hide the Blog link entirely.
  */
 export const BLOG_URL =
   "https://habla.news/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe";
+
+/**
+ * Optional external destination for the community menu link.
+ *
+ * Configure this with a URL to your preferred community hub (e.g., Discord,
+ * Telegram, Flotilla). When unset (null or an empty string) the Community link
+ * is omitted from the sidebar dropup menu.
+ */
+export const COMMUNITY_URL = null;
 
 /**
  * Default image included in automated moderation DMs.
