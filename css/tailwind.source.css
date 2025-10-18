@@ -2055,6 +2055,11 @@
     transform: translateY(0);
   }
 
+  .notification-portal--active {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
   .notification-banner,
   .torrent-toast {
     --notify-accent: var(--color-accent-strong);

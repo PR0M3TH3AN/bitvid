@@ -49,6 +49,34 @@ const getApp = () => getApplication();
 
 const LOGIN_TO_ZAP_MESSAGE = "Log in with your Nostr profile to send zaps.";
 
+function syncNotificationPortalVisibility(doc) {
+  if (!doc) {
+    return;
+  }
+
+  const HTMLElementCtor =
+    doc.defaultView?.HTMLElement ||
+    (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+
+  if (!HTMLElementCtor) {
+    return;
+  }
+
+  const portal = doc.getElementById("notificationPortal");
+
+  if (!portal || !(portal instanceof HTMLElementCtor)) {
+    return;
+  }
+
+  const banners = portal.querySelectorAll(".notification-banner");
+  const hasVisibleBanner = Array.from(banners).some(
+    (banner) =>
+      banner instanceof HTMLElementCtor && !banner.classList.contains("hidden"),
+  );
+
+  portal.classList.toggle("notification-portal--active", hasVisibleBanner);
+}
+
 function showLoginRequiredToZapNotification() {
   const app = getApp();
   if (app && typeof app.showError === "function") {
@@ -67,11 +95,27 @@ function showLoginRequiredToZapNotification() {
 
   container.textContent = LOGIN_TO_ZAP_MESSAGE;
   container.classList.remove("hidden");
+  syncNotificationPortalVisibility(doc);
 
-  if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
-    window.setTimeout(() => {
-      container.textContent = "";
-      container.classList.add("hidden");
+  const scheduler =
+    doc?.defaultView?.setTimeout ||
+    (typeof setTimeout === "function" ? setTimeout : null);
+
+  if (typeof scheduler === "function") {
+    scheduler(() => {
+      if (!doc || typeof doc.contains !== "function") {
+        return;
+      }
+
+      if (!doc.contains(container)) {
+        return;
+      }
+
+      if (container.textContent === LOGIN_TO_ZAP_MESSAGE) {
+        container.textContent = "";
+        container.classList.add("hidden");
+        syncNotificationPortalVisibility(doc);
+      }
     }, 5000);
   }
 }
