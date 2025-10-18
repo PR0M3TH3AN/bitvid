@@ -508,7 +508,7 @@
   --color-modal-backdrop: rgb(15 23 42 / 0.28);
   --color-modal-surface: rgb(255 255 255 / 0.94);
   --color-overlay-veil: rgb(103 112 133 / 0.45);
-  --color-overlay-banner-bottom: rgb(255 255 255 / 0.5);
+  --color-overlay-banner-bottom: rgb(255 255 255 / 0.6);
   --color-overlay-banner-transparent: rgb(255 255 255 / 0);
   --color-overlay-backdrop: rgb(15 23 42 / 0.2);
 
@@ -660,7 +660,7 @@
   --color-modal-backdrop: rgb(5 8 14 / 0.68);
   --color-modal-surface: rgb(14 22 38 / 0.88);
   --color-overlay-veil: rgb(4 6 12 / 0.94);
-  --color-overlay-banner-bottom: rgb(0 0 0 / 0.5);
+  --color-overlay-banner-bottom: rgb(0 0 0 / 0.6);
   --color-overlay-banner-transparent: rgb(0 0 0 / 0);
   --color-overlay-backdrop: rgb(5 8 14 / 0.75);
 
