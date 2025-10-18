@@ -1423,34 +1423,25 @@ class Application {
 
     const existingRoot = getRoot();
     const existingVideoElement = getVideoElement();
+    const rootConnected = Boolean(existingRoot && existingRoot.isConnected);
+    const hasVideoElement = Boolean(existingVideoElement);
+    const videoConnected = Boolean(
+      existingVideoElement && existingVideoElement.isConnected,
+    );
 
-    if (existingRoot && existingRoot.isConnected) {
-      if (!existingVideoElement && ensureVideoElement) {
-        if (typeof this.videoModal.load === "function") {
-          await this.videoModal.load();
-        }
+    const needsRehydrate =
+      !rootConnected || !hasVideoElement || !videoConnected;
 
-        const rehydratedRoot = getRoot();
-        const rehydratedVideoElement = getVideoElement();
-
-        if (!rehydratedVideoElement) {
-          throw new Error("Video modal video element is not ready.");
-        }
-
-        this.modalVideo = rehydratedVideoElement;
-        return {
-          root: rehydratedRoot || existingRoot,
-          videoElement: rehydratedVideoElement,
-        };
-      }
-
-      if (existingVideoElement) {
-        this.modalVideo = existingVideoElement;
-      }
+    if (!needsRehydrate) {
+      this.modalVideo = existingVideoElement;
       return {
         root: existingRoot,
         videoElement: existingVideoElement,
       };
+    }
+
+    if (!videoConnected) {
+      this.modalVideo = null;
     }
 
     if (!this.videoModalReadyPromise) {
@@ -1471,18 +1462,25 @@ class Application {
 
     const readyRoot = getRoot();
     const readyVideoElement = getVideoElement();
+    const readyVideoConnected = Boolean(
+      readyVideoElement && readyVideoElement.isConnected,
+    );
 
-    if (ensureVideoElement && !readyVideoElement) {
-      throw new Error("Video modal video element is missing after load().");
+    if (readyVideoConnected) {
+      this.modalVideo = readyVideoElement;
+    } else {
+      this.modalVideo = null;
     }
 
-    if (readyVideoElement) {
-      this.modalVideo = readyVideoElement;
+    if (ensureVideoElement && !readyVideoConnected) {
+      throw new Error(
+        "Video modal video element is missing after load().",
+      );
     }
 
     return {
       root: readyRoot,
-      videoElement: readyVideoElement,
+      videoElement: readyVideoConnected ? readyVideoElement : null,
     };
   }
 
@@ -6302,6 +6300,12 @@ class Application {
       replaceNode: true,
     });
     if (refreshedModal) {
+      if (
+        this.videoModal &&
+        typeof this.videoModal.setVideoElement === "function"
+      ) {
+        this.videoModal.setVideoElement(refreshedModal);
+      }
       this.modalVideo = refreshedModal;
       modalVideoEl = this.modalVideo;
       this.applyModalLoadingPoster();

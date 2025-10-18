@@ -114,6 +114,301 @@ async function setupModal({ lazyLoad = false } = {}) {
   return { window, document, modal, playerModal, trigger, cleanup };
 }
 
+function createVideoModalPlaybackStub(document) {
+  const root = document.createElement("div");
+  root.id = "playerModal";
+  const panel = document.createElement("div");
+  panel.className = "bv-modal__panel";
+  root.append(panel);
+  document.body.append(root);
+
+  let currentVideo = document.createElement("video");
+  panel.append(currentVideo);
+
+  const listeners = new Map();
+
+  return {
+    loadCalls: 0,
+    setVideoElementCalls: [],
+    getRoot() {
+      return root;
+    },
+    getVideoElement() {
+      return currentVideo;
+    },
+    setVideoElement(element) {
+      this.setVideoElementCalls.push(element);
+      currentVideo = element;
+    },
+    load() {
+      this.loadCalls += 1;
+      if (!root.isConnected) {
+        document.body.append(root);
+      }
+      if (!currentVideo || !currentVideo.isConnected) {
+        currentVideo = document.createElement("video");
+        panel.replaceChildren(currentVideo);
+      }
+    },
+    open() {},
+    close() {},
+    clearPosterCleanup() {},
+    applyLoadingPoster() {},
+    resetStats() {},
+    setCopyEnabled() {},
+    setShareEnabled() {},
+    updateStatus() {},
+    updateViewCountLabel() {},
+    setViewCountPointer() {},
+    getViewCountElement() {
+      return null;
+    },
+    forceRemovePoster() {
+      return true;
+    },
+    addEventListener(type, handler) {
+      listeners.set(type, handler);
+    },
+    removeEventListener(type) {
+      listeners.delete(type);
+    },
+    dispatchEvent(event) {
+      const handler = listeners.get(event?.type);
+      if (typeof handler === "function") {
+        handler(event);
+      }
+      return true;
+    },
+  };
+}
+
+function createPlaybackService(records) {
+  return {
+    createSession(options) {
+      const record = {
+        options,
+        videoElement: options.videoElement,
+        isConnectedDuringStart: false,
+      };
+      records.push(record);
+
+      return {
+        matchesRequestSignature(signature) {
+          return signature === options.requestSignature;
+        },
+        getPlaybackConfig: () => ({}),
+        getMagnetForPlayback: () => "",
+        getFallbackMagnet: () => "",
+        getMagnetProvided: () => Boolean(options.magnet),
+        on: () => () => {},
+        start: () => {
+          const element = options.videoElement || null;
+          record.videoElement = element;
+          record.isConnectedDuringStart = Boolean(
+            element && element.isConnected,
+          );
+          return Promise.resolve({ source: "url" });
+        },
+      };
+    },
+  };
+}
+
+async function setupPlaybackHarness() {
+  const dom = new JSDOM(
+    "<!DOCTYPE html><html><body><div id=\"app\"></div></body></html>",
+    { url: "https://example.com/", pretendToBeVisual: true },
+  );
+
+  const { window } = dom;
+  const { document } = window;
+
+  globalThis.window = window;
+  globalThis.document = document;
+  globalThis.HTMLElement = window.HTMLElement;
+  globalThis.HTMLVideoElement = window.HTMLVideoElement;
+  globalThis.Element = window.Element;
+  globalThis.CustomEvent = window.CustomEvent;
+  globalThis.Event = window.Event;
+  globalThis.Node = window.Node;
+  globalThis.EventTarget = window.EventTarget;
+  globalThis.navigator = window.navigator;
+  globalThis.location = window.location;
+  globalThis.KeyboardEvent = window.KeyboardEvent;
+  globalThis.MouseEvent = window.MouseEvent;
+  globalThis.self = window;
+
+  window.NostrTools = {
+    nip19: {
+      neventEncode: () => "nevent1example",
+      npubEncode: () => "npub1example",
+      decode: () => ({ type: "nevent", data: { id: "f".repeat(64) } }),
+    },
+  };
+
+  applyDesignSystemAttributes(document);
+
+  const modalStub = createVideoModalPlaybackStub(document);
+  const playbackRecords = [];
+  const playbackService = createPlaybackService(playbackRecords);
+
+  const services = {
+    nostrService: {
+      getVideoSubscription: () => null,
+      getVideosMap: () => new Map(),
+      on: () => () => {},
+    },
+    feedEngine: {
+      run: () => {},
+      registerFeed: () => {},
+      getFeedDefinition: () => null,
+    },
+    playbackService,
+    authService: {
+      on: () => () => {},
+    },
+  };
+
+  const helpers = {
+    mediaLoaderFactory: () => ({ observe() {}, unobserve() {} }),
+  };
+
+  const { Application } = await import("../js/app.js");
+  const app = new Application({
+    services,
+    helpers,
+    ui: { videoModal: () => modalStub },
+  });
+
+  app.showError = () => {};
+  app.showSuccess = () => {};
+  app.showStatus = () => {};
+  app.cleanup = () => Promise.resolve();
+  app.waitForCleanup = () => Promise.resolve();
+  app.cancelPendingViewLogging = () => {};
+  app.clearActiveIntervals = () => {};
+  app.preparePlaybackLogging = () => {};
+  app.teardownModalViewCountSubscription = () => {};
+  app.autoplayModalVideo = () => {};
+  app.probeUrl = () => Promise.resolve({ ok: true });
+
+  const cleanup = () => {
+    try {
+      app.destroy?.();
+    } catch (error) {
+      console.warn("[tests] app.destroy failed", error);
+    }
+    try {
+      resetRuntimeFlags();
+    } catch (error) {
+      console.warn("[tests] failed to reset runtime flags", error);
+    }
+    dom.window.close();
+    delete globalThis.window;
+    delete globalThis.document;
+    delete globalThis.HTMLElement;
+    delete globalThis.HTMLVideoElement;
+    delete globalThis.Element;
+    delete globalThis.CustomEvent;
+    delete globalThis.Event;
+    delete globalThis.Node;
+    delete globalThis.EventTarget;
+    delete globalThis.navigator;
+    delete globalThis.location;
+    delete globalThis.KeyboardEvent;
+    delete globalThis.MouseEvent;
+    delete globalThis.self;
+  };
+
+  return { app, modalStub, playbackRecords, window, cleanup };
+}
+
+test(
+  "video modal rehydrates and plays through a connected element across views",
+  async (t) => {
+    const { app, modalStub, playbackRecords, window, cleanup } =
+      await setupPlaybackHarness();
+    t.after(cleanup);
+
+    const playbackUrl = "https://cdn.example.com/video.mp4";
+    app.currentVideo = {
+      id: "event123",
+      pubkey: "f".repeat(64),
+      tags: [],
+      title: "Test Video",
+      url: playbackUrl,
+      magnet: "",
+    };
+
+    await app.playVideoWithFallback({ url: playbackUrl });
+
+    assert.equal(
+      playbackRecords.length,
+      1,
+      "first playback should create a session",
+    );
+    const firstRecord = playbackRecords[0];
+    assert.ok(firstRecord.videoElement, "first playback needs a video element");
+    assert.equal(
+      firstRecord.isConnectedDuringStart,
+      true,
+      "initial playback should start with a connected element",
+    );
+
+    const initialVideoElement = firstRecord.videoElement;
+    assert.ok(initialVideoElement.isConnected);
+
+    initialVideoElement.remove();
+    assert.equal(
+      initialVideoElement.isConnected,
+      false,
+      "detaching the node should mark it disconnected",
+    );
+
+    window.location.hash = "#view=channel-profile&npub=testnpub";
+
+    await app.playVideoWithFallback({ url: playbackUrl });
+
+    assert.equal(
+      playbackRecords.length,
+      2,
+      "second playback should create a new session",
+    );
+    const secondRecord = playbackRecords[1];
+    assert.ok(
+      secondRecord.videoElement,
+      "rehydrated playback should supply a video element",
+    );
+    assert.notStrictEqual(
+      secondRecord.videoElement,
+      initialVideoElement,
+      "playback should use a refreshed video element",
+    );
+    assert.equal(
+      secondRecord.isConnectedDuringStart,
+      true,
+      "rehydrated playback should start successfully",
+    );
+    assert.ok(
+      secondRecord.videoElement.isConnected,
+      "refreshed video element should be connected",
+    );
+    assert.strictEqual(
+      modalStub.getVideoElement(),
+      secondRecord.videoElement,
+      "modal should expose the refreshed video element",
+    );
+    assert.ok(
+      modalStub.setVideoElementCalls.includes(secondRecord.videoElement),
+      "setVideoElement should receive the refreshed clone",
+    );
+    assert.ok(
+      modalStub.loadCalls >= 1,
+      "modal should reload when the previous element is detached",
+    );
+  },
+);
+
 test("backdrop data-dismiss closes the modal and restores focus", async (t) => {
   const { window, document, modal, playerModal, trigger, cleanup } =
     await setupModal();
