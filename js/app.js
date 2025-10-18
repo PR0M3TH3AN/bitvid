@@ -1434,6 +1434,21 @@ class Application {
 
     if (!needsRehydrate) {
       this.modalVideo = existingVideoElement;
+
+      if (
+        existingVideoElement &&
+        this.videoModal &&
+        typeof this.videoModal.setVideoElement === "function"
+      ) {
+        const modalVideo =
+          typeof this.videoModal.getVideoElement === "function"
+            ? this.videoModal.getVideoElement()
+            : null;
+        if (modalVideo !== existingVideoElement) {
+          this.videoModal.setVideoElement(existingVideoElement);
+        }
+      }
+
       return {
         root: existingRoot,
         videoElement: existingVideoElement,
@@ -1468,6 +1483,12 @@ class Application {
 
     if (readyVideoConnected) {
       this.modalVideo = readyVideoElement;
+      if (
+        this.videoModal &&
+        typeof this.videoModal.setVideoElement === "function"
+      ) {
+        this.videoModal.setVideoElement(readyVideoElement);
+      }
     } else {
       this.modalVideo = null;
     }
@@ -6231,6 +6252,7 @@ class Application {
     }
     const sanitizedUrl = typeof url === "string" ? url.trim() : "";
     const trimmedMagnet = typeof magnet === "string" ? magnet.trim() : "";
+    const previousSource = this.playSource || null;
     const requestSignature = JSON.stringify({
       url: sanitizedUrl,
       magnet: trimmedMagnet,
@@ -6256,7 +6278,35 @@ class Application {
     await this.waitForCleanup();
     this.cancelPendingViewLogging();
 
+    if (
+      previousSource === "torrent" &&
+      sanitizedUrl &&
+      this.playbackService &&
+      this.playbackService.torrentClient &&
+      typeof this.playbackService.torrentClient.cleanup === "function"
+    ) {
+      try {
+        this.log(
+          "[playVideoWithFallback] Previous playback used WebTorrent; cleaning up before preparing hosted session.",
+        );
+        await this.playbackService.torrentClient.cleanup();
+      } catch (error) {
+        devLogger.warn(
+          "[playVideoWithFallback] Pre-playback torrent cleanup threw:",
+          error,
+        );
+      }
+    }
+
     let modalVideoEl = this.modalVideo;
+    const modalVideoFromController =
+      this.videoModal && typeof this.videoModal.getVideoElement === "function"
+        ? this.videoModal.getVideoElement()
+        : null;
+    if (modalVideoFromController && modalVideoFromController !== modalVideoEl) {
+      modalVideoEl = modalVideoFromController;
+      this.modalVideo = modalVideoEl;
+    }
     if (!modalVideoEl) {
       try {
         const { videoElement } = await this.ensureVideoModalReady({

@@ -183,16 +183,28 @@ function createVideoModalPlaybackStub(document) {
 }
 
 function createPlaybackService(records) {
+  const torrentClient = {
+    cleanupCalls: 0,
+    async cleanup() {
+      this.cleanupCalls += 1;
+      return undefined;
+    },
+  };
+
   return {
+    torrentClient,
     createSession(options) {
       const record = {
         options,
         videoElement: options.videoElement,
         isConnectedDuringStart: false,
+        source: null,
       };
       records.push(record);
 
-      return {
+      const listeners = new Map();
+
+      const session = {
         matchesRequestSignature(signature) {
           return signature === options.requestSignature;
         },
@@ -200,16 +212,56 @@ function createPlaybackService(records) {
         getMagnetForPlayback: () => "",
         getFallbackMagnet: () => "",
         getMagnetProvided: () => Boolean(options.magnet),
-        on: () => () => {},
-        start: () => {
+        on(eventName, handler) {
+          if (typeof handler !== "function") {
+            return () => {};
+          }
+          if (!listeners.has(eventName)) {
+            listeners.set(eventName, new Set());
+          }
+          const handlers = listeners.get(eventName);
+          handlers.add(handler);
+          return () => {
+            handlers.delete(handler);
+            if (!handlers.size) {
+              listeners.delete(eventName);
+            }
+          };
+        },
+        emit(eventName, detail) {
+          const handlers = listeners.get(eventName);
+          if (!handlers || !handlers.size) {
+            return;
+          }
+          for (const handler of Array.from(handlers)) {
+            try {
+              handler(detail);
+            } catch (error) {
+              console.warn(
+                `[tests] session listener for "${eventName}" threw`,
+                error,
+              );
+            }
+          }
+        },
+        async start() {
           const element = options.videoElement || null;
           record.videoElement = element;
           record.isConnectedDuringStart = Boolean(
             element && element.isConnected,
           );
-          return Promise.resolve({ source: "url" });
+          const hasUrl = Boolean(options.url && options.url.trim());
+          const hasMagnet = Boolean(options.magnet && options.magnet.trim());
+          record.source = hasUrl ? "url" : hasMagnet ? "torrent" : null;
+          this.emit("video-prepared", { videoElement: element });
+          if (record.source) {
+            this.emit("sourcechange", { source: record.source });
+          }
+          return { source: record.source };
         },
       };
+
+      return session;
     },
   };
 }
@@ -405,6 +457,76 @@ test(
     assert.ok(
       modalStub.loadCalls >= 1,
       "modal should reload when the previous element is detached",
+    );
+  },
+);
+
+test(
+  "torrent-only playback resets the modal video before the next hosted session",
+  async (t) => {
+    const { app, modalStub, playbackRecords, cleanup } =
+      await setupPlaybackHarness();
+    t.after(cleanup);
+
+    const magnet = `magnet:?xt=urn:btih:${"a".repeat(40)}`;
+    await app.playVideoWithFallback({ magnet });
+
+    assert.equal(
+      playbackRecords.length,
+      1,
+      "magnet playback should create the first session",
+    );
+    const torrentRecord = playbackRecords[0];
+    assert.equal(
+      torrentRecord.source,
+      "torrent",
+      "first session should report torrent playback",
+    );
+    const torrentVideo = torrentRecord.videoElement;
+    assert.ok(torrentVideo, "torrent session should supply a video element");
+    assert.equal(
+      Boolean(torrentVideo?.isConnected),
+      true,
+      "torrent playback should start with a connected element",
+    );
+
+    const playbackUrl = "https://cdn.example.com/next-video.mp4";
+    await app.playVideoWithFallback({ url: playbackUrl });
+
+    assert.equal(
+      playbackRecords.length,
+      2,
+      "subsequent hosted playback should create a second session",
+    );
+    const hostedRecord = playbackRecords[1];
+    assert.equal(
+      hostedRecord.source,
+      "url",
+      "second session should report hosted playback",
+    );
+    assert.ok(hostedRecord.videoElement, "hosted playback needs a video element");
+    assert.equal(
+      Boolean(hostedRecord.videoElement?.isConnected),
+      true,
+      "hosted playback should reuse a connected element",
+    );
+    assert.notStrictEqual(
+      hostedRecord.videoElement,
+      torrentVideo,
+      "hosted playback should swap in a refreshed video element",
+    );
+    assert.strictEqual(
+      modalStub.getVideoElement(),
+      hostedRecord.videoElement,
+      "modal should expose the refreshed hosted video element",
+    );
+    assert.ok(
+      modalStub.setVideoElementCalls.includes(hostedRecord.videoElement),
+      "modal controller should receive the refreshed hosted element",
+    );
+    assert.ok(
+      app.playbackService.torrentClient.cleanupCalls >= 1,
+      "torrent cleanup should run before the hosted playback begins",
     );
   },
 );
