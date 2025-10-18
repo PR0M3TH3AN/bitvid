@@ -1241,6 +1241,9 @@ async function executePendingRetry({ walletSettings }) {
 function handleZapButtonClick(event) {
   if (event) {
     event.preventDefault();
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
   }
 
   const zapButton = getChannelZapButton();
@@ -1248,7 +1251,12 @@ function handleZapButtonClick(event) {
     return;
   }
 
-  if (!isZapControlsOpen()) {
+  const popoverIsOpen =
+    typeof zapPopover?.isOpen === "function"
+      ? zapPopover.isOpen()
+      : isZapControlsOpen();
+
+  if (!popoverIsOpen) {
     openZapControls({ focus: true });
     return;
   }

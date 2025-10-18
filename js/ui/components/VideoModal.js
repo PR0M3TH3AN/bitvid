@@ -408,14 +408,22 @@ export class VideoModal {
     if (this.modalZapBtn) {
       this.modalZapBtn.addEventListener("click", (event) => {
         event?.preventDefault?.();
+        event?.stopPropagation?.();
+
         if (this.modalZapBtn?.disabled) {
           return;
         }
 
-        const isExpanded =
-          this.modalZapBtn.getAttribute("aria-expanded") === "true";
+        const popoverIsOpen =
+          typeof this.modalZapPopover?.isOpen === "function"
+            ? this.modalZapPopover.isOpen()
+            : this.modalZapDialogOpen === true;
 
-        if (isExpanded) {
+        if (popoverIsOpen) {
+          if (this.modalZapPending) {
+            return;
+          }
+
           this.closeZapDialog();
           return;
         }
