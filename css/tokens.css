@@ -36,13 +36,24 @@
     transparent
   );
   --surface-overlay-banner-transparent: transparent;
-  --surface-overlay-banner-gradient: linear-gradient(
+  --surface-overlay-banner-gradient-header: linear-gradient(
     to bottom,
     var(--surface-overlay-banner-opaque) 0%,
     var(--surface-overlay-banner-strong) 38%,
     var(--surface-overlay-banner-soft) 70%,
     var(--surface-overlay-banner-faint) 88%,
     var(--surface-overlay-banner-transparent) 100%
+  );
+  --surface-overlay-banner-gradient-channel: linear-gradient(
+    to top,
+    var(--surface-overlay-banner-opaque) 0%,
+    var(--surface-overlay-banner-strong) 38%,
+    var(--surface-overlay-banner-soft) 70%,
+    var(--surface-overlay-banner-faint) 88%,
+    var(--surface-overlay-banner-transparent) 100%
+  );
+  --surface-overlay-banner-gradient: var(
+    --surface-overlay-banner-gradient-header
   );
   --surface-overlay-panel: var(--color-overlay-panel);
   --surface-overlay-panel-soft: var(--color-overlay-panel-soft);

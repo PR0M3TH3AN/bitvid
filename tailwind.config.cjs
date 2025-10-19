@@ -196,7 +196,8 @@ module.exports = {
         "status-neutral-surface": "var(--status-neutral-surface)"
       },
       backgroundImage: {
-        "overlay-banner": "var(--surface-overlay-banner-gradient)"
+        "overlay-header": "var(--surface-overlay-banner-gradient-header)",
+        "overlay-channel": "var(--surface-overlay-banner-gradient-channel)"
       },
       borderColor: {
         surface: "var(--border-default)",
