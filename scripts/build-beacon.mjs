@@ -40,6 +40,7 @@ await build({
   target: ["es2020"],
   minify: true,
   sourcemap: false,
+  external: ["../config/instance-config.js", "../../config/instance-config.js"],
   loader: {
     ".css": "css",
     ".woff": "dataurl",
