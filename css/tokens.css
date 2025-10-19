@@ -146,7 +146,12 @@
   --z-modal-top-content: 160;
   --overlay-backdrop-color: var(--color-overlay-backdrop);
   --overlay-backdrop-blur: 12px;
-  --sidebar-width-expanded: 16rem;
+  --sidebar-width-expanded-base: 16rem;
+  --sidebar-dropup-content-width: 0px;
+  --sidebar-width-expanded: max(
+    var(--sidebar-width-expanded-base),
+    var(--sidebar-dropup-content-width)
+  );
   --sidebar-width-collapsed: 4rem;
   --sidebar-width: var(--sidebar-width-expanded);
   --sidebar-control-size: 2.75rem;
