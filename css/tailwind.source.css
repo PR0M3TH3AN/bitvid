@@ -6,7 +6,13 @@
 
 @layer base {
   html {
-    font-size: 100%;
+    font-size: 80%;
+  }
+
+  @media (min-width: theme('screens.md')) {
+    html {
+      font-size: 100%;
+    }
   }
 
   @media (min-width: theme('screens.lg')) {
