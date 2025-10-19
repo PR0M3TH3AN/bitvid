@@ -86,6 +86,99 @@ function resolveHTMLElementCtor(doc) {
   );
 }
 
+function ensureNotificationPortal({ doc, HTMLElementCtor }) {
+  if (!doc || !HTMLElementCtor) {
+    return null;
+  }
+
+  let portal = doc.getElementById("notificationPortal");
+
+  if (!(portal instanceof HTMLElementCtor)) {
+    portal = doc.createElement("div");
+    portal.id = "notificationPortal";
+    portal.className = "notification-portal";
+    portal.setAttribute("role", "region");
+    portal.setAttribute("aria-live", "polite");
+    portal.setAttribute("aria-label", "System notifications");
+
+    const targetParent = doc.body || doc.documentElement || doc;
+    targetParent.appendChild(portal);
+  }
+
+  return portal instanceof HTMLElementCtor ? portal : null;
+}
+
+function ensureStatusContainer({ doc, portal, HTMLElementCtor }) {
+  if (!doc || !HTMLElementCtor) {
+    return { container: null, messageTarget: null };
+  }
+
+  let statusContainer = doc.getElementById("statusContainer");
+
+  if (!(statusContainer instanceof HTMLElementCtor)) {
+    statusContainer = doc.createElement("div");
+    statusContainer.id = "statusContainer";
+    statusContainer.className =
+      "notification-banner notification-banner--info status-banner hidden";
+    statusContainer.setAttribute("role", "status");
+    statusContainer.setAttribute("aria-live", "polite");
+
+    const spinner = doc.createElement("span");
+    spinner.className = "status-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    statusContainer.appendChild(spinner);
+
+    const message = doc.createElement("span");
+    message.className = "status-message";
+    message.dataset.statusMessage = "";
+    statusContainer.appendChild(message);
+  } else {
+    const existingSpinner = statusContainer.querySelector(".status-spinner");
+    if (!(existingSpinner instanceof HTMLElementCtor)) {
+      const spinner = doc.createElement("span");
+      spinner.className = "status-spinner";
+      spinner.setAttribute("aria-hidden", "true");
+      statusContainer.insertBefore(spinner, statusContainer.firstChild);
+    }
+  }
+
+  let messageTarget = statusContainer.querySelector("[data-status-message]");
+
+  if (!(messageTarget instanceof HTMLElementCtor)) {
+    messageTarget = doc.createElement("span");
+    messageTarget.className = "status-message";
+    messageTarget.dataset.statusMessage = "";
+    statusContainer.appendChild(messageTarget);
+  }
+
+  if (portal instanceof HTMLElementCtor && statusContainer.parentNode !== portal) {
+    portal.appendChild(statusContainer);
+  }
+
+  return { container: statusContainer, messageTarget };
+}
+
+function ensureErrorContainer({ doc, portal, HTMLElementCtor }) {
+  if (!doc || !HTMLElementCtor) {
+    return null;
+  }
+
+  let errorContainer = doc.getElementById("errorContainer");
+
+  if (!(errorContainer instanceof HTMLElementCtor)) {
+    errorContainer = doc.createElement("div");
+    errorContainer.id = "errorContainer";
+    errorContainer.className =
+      "notification-banner notification-banner--critical hidden";
+  }
+
+  if (portal instanceof HTMLElementCtor && errorContainer.parentNode !== portal) {
+    portal.appendChild(errorContainer);
+  }
+
+  return errorContainer instanceof HTMLElementCtor ? errorContainer : null;
+}
+
 export function syncNotificationPortalVisibility(docCandidate) {
   const doc = resolveDocument(docCandidate);
   if (!doc) {
@@ -200,12 +293,15 @@ export function showLoginRequiredToZapNotification({
     return false;
   }
 
-  const statusContainer = doc.getElementById("statusContainer");
+  const portal = ensureNotificationPortal({ doc, HTMLElementCtor });
+
+  const { container: statusContainer, messageTarget } = ensureStatusContainer({
+    doc,
+    portal,
+    HTMLElementCtor,
+  });
 
   if (statusContainer instanceof HTMLElementCtor) {
-    const messageTarget =
-      statusContainer.querySelector("[data-status-message]") || null;
-
     if (messageTarget && messageTarget instanceof HTMLElementCtor) {
       messageTarget.textContent = expectedText;
     } else {
@@ -231,7 +327,11 @@ export function showLoginRequiredToZapNotification({
     return true;
   }
 
-  const errorContainer = doc.getElementById("errorContainer");
+  const errorContainer = ensureErrorContainer({
+    doc,
+    portal,
+    HTMLElementCtor,
+  });
 
   if (errorContainer instanceof HTMLElementCtor) {
     errorContainer.textContent = expectedText;
