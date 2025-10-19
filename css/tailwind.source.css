@@ -1125,7 +1125,10 @@
     border: none;
     background-color: var(--color-surface);
     display: flex;
+    flex-direction: column;
     align-items: stretch;
+    justify-content: flex-start;
+    flex: 1 1 auto;
   }
 
   .video-modal__panel {
@@ -2042,9 +2045,10 @@
     display: none;
     flex-direction: column;
     align-items: stretch;
-    justify-content: stretch;
+    justify-content: flex-start;
     width: 100vw;
     height: 100vh;
+    padding: 0;
     background-color: var(--color-surface);
     color: var(--color-subtle-text);
     overflow-x: hidden;
