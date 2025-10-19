@@ -183,9 +183,16 @@ function createVideoModalStub() {
     setCopyEnabled: noop,
     setShareEnabled: noop,
     setZapVisibility: noop,
+    dialogOpen: false,
+    closeZapDialogCalls: [],
+    closeZapDialog(options = {}) {
+      this.closeZapDialogCalls.push(options);
+      this.dialogOpen = false;
+    },
     resetStats: noop,
     updateViewCountLabel: noop,
     setViewCountPointer: noop,
+    completedStates: [],
     addEventListener(type, handler) {
       listeners.set(type, handler);
     },
@@ -201,6 +208,9 @@ function createVideoModalStub() {
     currentComment: "",
     setZapPending(value) {
       this.setZapPendingCalls.push(Boolean(value));
+    },
+    setZapCompleted(value) {
+      this.completedStates.push(Boolean(value));
     },
     setZapStatus(message, tone) {
       this.statusMessages.push({ message, tone });
@@ -296,6 +306,48 @@ async function createApp({ splitAndZap }) {
 
   return { app, modalStub, creatorAddress, platformAddress };
 }
+
+await (async () => {
+  // Test: logged-out zap request closes modal and queues reopen
+  const { app, modalStub } = await createApp({
+    splitAndZap: async () => ({ receipts: [] }),
+  });
+
+  let loginNotificationCount = 0;
+  app.zapController.notifyLoginRequired = () => {
+    loginNotificationCount += 1;
+  };
+
+  modalStub.dialogOpen = true;
+  modalStub.closeZapDialogCalls = [];
+
+  app.pendingModalZapOpen = false;
+
+  app.boundVideoModalZapOpenHandler({ detail: { requiresLogin: true } });
+
+  assert.equal(
+    loginNotificationCount,
+    1,
+    "should request login notification when zapping logged out",
+  );
+  assert.equal(
+    app.pendingModalZapOpen,
+    true,
+    "zap should remain pending for post-login reopen",
+  );
+  assert.equal(
+    modalStub.closeZapDialogCalls.length,
+    1,
+    "zap dialog should close immediately when login required",
+  );
+  assert.deepEqual(modalStub.closeZapDialogCalls[0], {
+    silent: true,
+    restoreFocus: false,
+  });
+  assert.equal(modalStub.dialogOpen, false, "zap dialog should be closed");
+
+  app.destroy();
+})();
 
 await (async () => {
   // Test: wallet required before zapping

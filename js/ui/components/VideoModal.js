@@ -1054,6 +1054,10 @@ export class VideoModal {
   }
 
   async openZapDialog() {
+    if (this.modalZapRequiresLogin) {
+      return Promise.resolve(false);
+    }
+
     if (this.modalZapOpenPromise) {
       return this.modalZapOpenPromise;
     }

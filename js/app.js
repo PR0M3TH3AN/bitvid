@@ -692,12 +692,21 @@ class Application {
     };
     this.boundVideoModalZapOpenHandler = (event) => {
       const requiresLogin = Boolean(event?.detail?.requiresLogin);
-      if (requiresLogin) {
-        this.pendingModalZapOpen = true;
-      } else {
-        this.pendingModalZapOpen = false;
+      this.pendingModalZapOpen = requiresLogin;
+
+      const openResult = this.zapController?.open({ requiresLogin });
+      if (!openResult) {
+        if (!requiresLogin) {
+          this.pendingModalZapOpen = false;
+        }
+        this.videoModal?.closeZapDialog?.({
+          silent: true,
+          restoreFocus: false,
+        });
+        return;
       }
-      this.zapController?.open({ requiresLogin });
+
+      this.pendingModalZapOpen = false;
     };
     this.boundVideoModalZapCloseHandler = () => {
       this.zapController?.close();
