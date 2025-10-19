@@ -248,18 +248,32 @@
     color: var(--color-text-strong);
   }
 
+  .header-search__region {
+    @apply flex flex-1 justify-center;
+    min-width: 0;
+    padding-inline: clamp(var(--space-md), 4vw, var(--space-3xl));
+  }
+
   .header-search {
-    @apply flex flex-1 items-center gap-3 rounded-full border border-border-subtle bg-surface px-4 py-2 shadow-sm transition-colors duration-base ease-out;
-    margin-inline: clamp(var(--space-md), 4vw, var(--space-2xl));
-    max-width: min(100%, 36rem);
+    @apply flex items-center gap-3 rounded-full border border-border-subtle bg-surface px-4 shadow-sm transition-colors duration-base ease-out;
+    padding-block: calc(var(--space-sm) * 0.9);
+    inline-size: min(100%, 34rem);
   }
 
   .header-search:focus-within {
     @apply border-accent-strong;
   }
 
+  .header-search__icon {
+    @apply h-5 w-5;
+  }
+
   .header-search__filter {
-    @apply focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent text-muted transition-colors duration-base ease-out;
+    @apply focus-ring inline-flex shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent text-muted transition-colors duration-base ease-out;
+    inline-size: calc(var(--icon-size-lg) * 0.9);
+    block-size: calc(var(--icon-size-lg) * 0.9);
+    min-inline-size: calc(var(--icon-size-lg) * 0.9);
+    min-block-size: calc(var(--icon-size-lg) * 0.9);
   }
 
   .header-search__filter:hover,
@@ -277,7 +291,22 @@
   }
 
   .header-search__submit {
-    @apply btn px-4 py-2 text-sm;
+    @apply focus-ring inline-flex items-center justify-center rounded-full border border-transparent transition-colors duration-base ease-out;
+    background-color: var(--color-accent-strong);
+    color: var(--color-white);
+    inline-size: calc(var(--icon-size-lg) * 0.9);
+    block-size: calc(var(--icon-size-lg) * 0.9);
+    min-inline-size: calc(var(--icon-size-lg) * 0.9);
+    min-block-size: calc(var(--icon-size-lg) * 0.9);
+    padding: 0;
+  }
+
+  .header-search__submit:hover {
+    background-color: var(--color-accent);
+  }
+
+  .header-search__submit:focus-visible {
+    background-color: var(--color-accent-pressed);
   }
 
   .bv-logo {

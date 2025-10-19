@@ -182,36 +182,44 @@
           </span>
         </a>
 
-        <form
-          id="headerSearchForm"
-          role="search"
-          class="header-search"
-        >
-          <button
-            type="button"
-            class="header-search__filter"
-            aria-label="Open search filters"
+        <div class="header-search__region">
+          <form
+            id="headerSearchForm"
+            role="search"
+            class="header-search"
           >
-            <span aria-hidden="true" class="inline-flex h-5 w-5 items-center justify-center">
+            <button
+              type="button"
+              class="header-search__filter"
+              aria-label="Open search filters"
+            >
               <img
                 src="assets/svg/filter.svg"
                 alt=""
                 aria-hidden="true"
-                class="h-5 w-5"
+                class="header-search__icon"
               />
-            </span>
-          </button>
-          <label for="headerSearchInput" class="sr-only">Search videos</label>
-          <input
-            id="headerSearchInput"
-            class="header-search__input"
-            type="search"
-            name="query"
-            placeholder="Search videos"
-            autocomplete="off"
-          />
-          <button type="submit" class="header-search__submit">Search</button>
-        </form>
+            </button>
+            <label for="headerSearchInput" class="sr-only">Search videos</label>
+            <input
+              id="headerSearchInput"
+              class="header-search__input"
+              type="search"
+              name="query"
+              placeholder="Search videos"
+              autocomplete="off"
+            />
+            <button type="submit" class="header-search__submit">
+              <span class="sr-only">Submit search</span>
+              <img
+                src="assets/svg/search.svg"
+                alt=""
+                aria-hidden="true"
+                class="header-search__icon"
+              />
+            </button>
+          </form>
+        </div>
 
         <!-- Buttons on the far right -->
 
