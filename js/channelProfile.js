@@ -44,6 +44,11 @@ import {
   ensureWallet,
   sendPayment as sendWalletPayment
 } from "./payments/nwcClient.js";
+import {
+  prepareStaticModal,
+  openStaticModal
+} from "./ui/components/staticModalAccessibility.js";
+import { setModalState as setGlobalModalState } from "./state/appState.js";
 
 const getApp = () => getApplication();
 
@@ -2385,7 +2390,7 @@ export async function initChannelProfileView() {
   });
 
   let subscriptionsTask = null;
-  // 3) If user is logged in, load subscriptions and show sub/unsub button
+  // 3) Load subscription state when logged in, but always render the toggle UI
   if (app?.pubkey) {
     subscriptionsTask = subscriptions
       .loadSubscriptions(app.pubkey)
@@ -2396,8 +2401,7 @@ export async function initChannelProfileView() {
         renderSubscribeButton(hexPub);
       });
   } else {
-    const btn = document.getElementById("subscribeBtnArea");
-    if (btn) btn.classList.add("hidden");
+    renderSubscribeButton(hexPub);
   }
 
   setupZapButton();
@@ -2697,9 +2701,11 @@ function renderSubscribeButton(channelHex) {
   if (!container) return;
 
   const app = getApp();
+  const isLoggedIn = Boolean(app?.pubkey);
 
   container.classList.remove("hidden");
-  const alreadySubscribed = subscriptions.isSubscribed(channelHex);
+  const alreadySubscribed =
+    isLoggedIn && subscriptions.isSubscribed(channelHex);
 
   // Both subscribe/unsubscribe states share the primary styling and icon.
   // If you prefer separate logic for unsub, you can do it here.
@@ -2722,15 +2728,29 @@ function renderSubscribeButton(channelHex) {
   const toggleBtn = document.getElementById("subscribeToggleBtn");
   if (toggleBtn) {
     toggleBtn.addEventListener("click", async () => {
-      if (!app?.pubkey) {
-        userLogger.error("Not logged in => cannot subscribe/unsubscribe.");
+      const currentApp = getApp();
+      if (!currentApp?.pubkey) {
+        const loginModal =
+          prepareStaticModal({ id: "loginModal" }) ||
+          document.getElementById("loginModal");
+
+        if (
+          loginModal &&
+          openStaticModal(loginModal, { triggerElement: toggleBtn })
+        ) {
+          setGlobalModalState("login", true);
+        } else {
+          userLogger.warn(
+            "Unable to open login modal for subscription toggle."
+          );
+        }
         return;
       }
       try {
         if (alreadySubscribed) {
-          await subscriptions.removeChannel(channelHex, app.pubkey);
+          await subscriptions.removeChannel(channelHex, currentApp.pubkey);
         } else {
-          await subscriptions.addChannel(channelHex, app.pubkey);
+          await subscriptions.addChannel(channelHex, currentApp.pubkey);
         }
         // Re-render the button so it toggles state
         renderSubscribeButton(channelHex);
