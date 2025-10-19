@@ -3038,7 +3038,19 @@ class Application {
   }
 
   isUserLoggedIn() {
-    return Boolean(this.normalizeHexPubkey(this.pubkey));
+    const normalizedPubkey = this.normalizeHexPubkey(this.pubkey);
+    if (!normalizedPubkey) {
+      return false;
+    }
+
+    const sessionActorPubkey = this.normalizeHexPubkey(
+      nostrClient?.sessionActor?.pubkey,
+    );
+    if (sessionActorPubkey && sessionActorPubkey === normalizedPubkey) {
+      return false;
+    }
+
+    return true;
   }
 
   async updateActiveNwcSettings(partial = {}) {

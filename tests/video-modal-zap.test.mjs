@@ -182,7 +182,16 @@ function createVideoModalStub() {
   return {
     setCopyEnabled: noop,
     setShareEnabled: noop,
-    setZapVisibility: noop,
+    setWalletPromptVisible: noop,
+    zapVisibilityCalls: [],
+    setZapVisibility(config) {
+      const payload =
+        config && typeof config === "object"
+          ? { ...config }
+          : { visible: Boolean(config) };
+      this.zapVisibilityCalls.push(payload);
+      this.lastZapVisibility = payload;
+    },
     dialogOpen: false,
     closeZapDialogCalls: [],
     closeZapDialog(options = {}) {
@@ -346,6 +355,40 @@ await (async () => {
   });
   assert.equal(modalStub.dialogOpen, false, "zap dialog should be closed");
 
+  app.destroy();
+})();
+
+await (async () => {
+  // Test: session actors should not be treated as logged-in users for zaps
+  const { app, modalStub } = await createApp({
+    splitAndZap: async () => ({ receipts: [] }),
+  });
+
+  const { nostrClient } = await import("../js/nostr.js");
+  const originalSessionActor = nostrClient.sessionActor;
+  const sessionPubkey = "a".repeat(64);
+  nostrClient.sessionActor = { pubkey: sessionPubkey, privateKey: "priv" };
+
+  app.pubkey = sessionPubkey;
+
+  modalStub.zapVisibilityCalls = [];
+  app.zapController.setVisibility(true);
+
+  const lastVisibility =
+    modalStub.zapVisibilityCalls[modalStub.zapVisibilityCalls.length - 1];
+  assert.deepEqual(
+    lastVisibility,
+    { visible: true, requiresLogin: true },
+    "zap controller should require login when only a session actor is present",
+  );
+  assert.equal(
+    app.isUserLoggedIn(),
+    false,
+    "session actor pubkeys should not count as logged-in users",
+  );
+
+  app.pubkey = null;
+  nostrClient.sessionActor = originalSessionActor;
   app.destroy();
 })();
 
