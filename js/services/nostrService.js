@@ -117,6 +117,9 @@ export class NostrService {
     this.videosByAuthorIndex = null;
     this.authorIndexDirty = false;
     this.moderationService = moderationService || null;
+    this.initialLoadPromise = null;
+    this.initialLoadResolved = false;
+    this.initialLoadResolve = null;
     try {
       if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
         this.moderationService.setNostrClient(this.nostrClient);
@@ -140,6 +143,43 @@ export class NostrService {
 
   emit(eventName, detail) {
     this.emitter.emit(eventName, detail);
+  }
+
+  ensureInitialLoadDeferred() {
+    if (!this.initialLoadPromise) {
+      this.initialLoadResolved = false;
+      this.initialLoadPromise = new Promise((resolve) => {
+        this.initialLoadResolve = (value) => {
+          if (this.initialLoadResolved) {
+            return;
+          }
+          this.initialLoadResolved = true;
+          this.initialLoadResolve = null;
+          resolve(value);
+        };
+      });
+    }
+
+    return this.initialLoadPromise;
+  }
+
+  resolveInitialLoad(value) {
+    if (this.initialLoadResolved) {
+      return;
+    }
+
+    if (typeof this.initialLoadResolve === "function") {
+      try {
+        this.initialLoadResolve(value);
+      } finally {
+        this.initialLoadResolve = null;
+        this.initialLoadResolved = true;
+      }
+    }
+  }
+
+  awaitInitialLoad() {
+    return this.ensureInitialLoadDeferred();
   }
 
   getModerationService() {
@@ -396,42 +436,51 @@ export class NostrService {
     isAuthorBlocked,
     onVideos,
   } = {}) {
-    await this.ensureAccessControlReady();
+    this.ensureInitialLoadDeferred();
 
-    if (forceFetch) {
-      this.clearVideoSubscription();
-    }
+    try {
+      await this.ensureAccessControlReady();
 
-    const applyAndNotify = (videos, reason) => {
-      const filtered = this.filterVideos(videos, {
-        blacklistedEventIds,
-        isAuthorBlocked,
-      });
-      this.cacheVideos(filtered);
-      if (typeof onVideos === "function") {
-        try {
-          onVideos(filtered, { reason });
-        } catch (error) {
-          userLogger.warn("[nostrService] onVideos handler threw", error);
-        }
+      if (forceFetch) {
+        this.clearVideoSubscription();
       }
-      this.emit("videos:updated", { videos: filtered, reason });
-      return filtered;
-    };
 
-    const cached = this.nostrClient.getActiveVideos();
-    const initial = applyAndNotify(cached, "cache");
+      const applyAndNotify = (videos, reason) => {
+        const filtered = this.filterVideos(videos, {
+          blacklistedEventIds,
+          isAuthorBlocked,
+        });
+        this.cacheVideos(filtered);
+        if (typeof onVideos === "function") {
+          try {
+            onVideos(filtered, { reason });
+          } catch (error) {
+            userLogger.warn("[nostrService] onVideos handler threw", error);
+          }
+        }
+        this.emit("videos:updated", { videos: filtered, reason });
+        return filtered;
+      };
 
-    if (!getStoredVideoSubscription()) {
-      const subscription = this.nostrClient.subscribeVideos(() => {
-        const updated = this.nostrClient.getActiveVideos();
-        applyAndNotify(updated, "subscription");
-      });
-      this.setVideoSubscription(subscription);
-      this.emit("subscription:started", { subscription });
+      const cached = this.nostrClient.getActiveVideos();
+      const initial = applyAndNotify(cached, "cache");
+
+      this.resolveInitialLoad({ videos: initial, reason: "cache" });
+
+      if (!getStoredVideoSubscription()) {
+        const subscription = this.nostrClient.subscribeVideos(() => {
+          const updated = this.nostrClient.getActiveVideos();
+          applyAndNotify(updated, "subscription");
+        });
+        this.setVideoSubscription(subscription);
+        this.emit("subscription:started", { subscription });
+      }
+
+      return initial;
+    } catch (error) {
+      this.resolveInitialLoad({ videos: [], reason: "error", error });
+      throw error;
     }
-
-    return initial;
   }
 
   async fetchVideos(options = {}) {
