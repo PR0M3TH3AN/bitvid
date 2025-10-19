@@ -1118,7 +1118,7 @@
   #playerModal > .bv-modal__panel {
     max-width: none;
     width: 100%;
-    height: 100%;
+    min-height: 100%;
     padding: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1150,9 +1150,12 @@
 
   #playerModal .watch-container {
     width: 100%;
-    max-width: none;
-    margin-inline: 0;
-    padding-inline: 0;
+    max-width: var(--player-modal-inline-max, var(--layout-player-max-width));
+    margin-inline: auto;
+    padding-inline: var(
+      --player-modal-inline-padding,
+      clamp(var(--space-md-plus), 4vw, var(--space-2xl))
+    );
   }
 
   #playerModal .modal-info-panel {
@@ -1204,7 +1207,7 @@
     }
 
     #playerModal .watch-container {
-      padding-inline: 0;
+      padding-inline: var(--space-sm);
     }
 
     #playerModal .channel-card {
@@ -2051,6 +2054,12 @@
     padding: 0;
     background-color: var(--color-surface);
     color: var(--color-subtle-text);
+    --player-modal-inline-max: var(--layout-player-max-width);
+    --player-modal-inline-padding: clamp(
+      var(--space-md-plus),
+      4vw,
+      var(--space-2xl)
+    );
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -2058,7 +2067,7 @@
   }
 
   #playerModal.flex {
-    display: flex;
+    display: block;
   }
 
   #modalVideo {
