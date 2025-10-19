@@ -10,39 +10,37 @@
   <div class="bv-modal-backdrop" data-dismiss></div>
   <div class="bv-modal__panel" tabindex="-1">
     <div class="player-modal__container video-modal__container">
-      <div class="player-modal__content video-modal__panel flex flex-col gap-6">
-        <div id="modalNav" class="modal-nav modal-nav--visible">
-          <div class="watch-container modal-nav__bar">
-            <div class="modal-actions">
-              <button
-                id="closeModal"
-                type="button"
-                class="icon-button focus-ring accent-action-button"
+      <div id="modalNav" class="modal-nav modal-nav--visible">
+        <div class="watch-container modal-nav__bar">
+          <div class="modal-actions">
+            <button
+              id="closeModal"
+              type="button"
+              class="icon-button focus-ring accent-action-button"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="h-5 w-5"
+                aria-hidden="true"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="h-5 w-5"
-                  aria-hidden="true"
-                >
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
-                <span class="sr-only">Close player</span>
-              </button>
-            </div>
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              <span class="sr-only">Close player</span>
+            </button>
           </div>
         </div>
+      </div>
 
-        <div
-          class="video-modal__layout"
-        >
+      <div class="player-modal__content video-modal__panel flex flex-col gap-6">
+        <div class="video-modal__layout">
           <div class="video-modal__primary flex flex-col gap-6">
             <div class="watch-container">
               <div class="video-modal__video">
