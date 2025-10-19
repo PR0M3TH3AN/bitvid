@@ -52,10 +52,10 @@
   --surface-overlay-banner-gradient-channel: linear-gradient(
     to top,
     var(--surface-overlay-banner-bottom) 0%,
-    var(--surface-overlay-banner-strong) 12%,
-    var(--surface-overlay-banner-soft) 20%,
-    var(--surface-overlay-banner-faint) 26%,
-    var(--surface-overlay-banner-transparent) 30%
+    var(--surface-overlay-banner-strong) 38%,
+    var(--surface-overlay-banner-soft) 70%,
+    var(--surface-overlay-banner-faint) 88%,
+    var(--surface-overlay-banner-transparent) 100%
   );
   --surface-overlay-banner-gradient: var(
     --surface-overlay-banner-gradient-header
