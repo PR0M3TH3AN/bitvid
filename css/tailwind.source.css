@@ -132,6 +132,16 @@
     @apply flex items-center justify-start py-sm;
   }
 
+  .app-shell__header {
+    position: sticky;
+    top: env(safe-area-inset-top, 0);
+    z-index: var(--z-app-header);
+    padding-top: calc(var(--space-sm) + env(safe-area-inset-top, 0));
+    padding-bottom: var(--space-sm);
+    background-color: var(--surface-base);
+    box-shadow: var(--shadow-sm);
+  }
+
   .ds-metric-probe {
     position: absolute;
     top: 0;

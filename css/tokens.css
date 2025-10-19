@@ -100,6 +100,7 @@
   --scrollbar-track: var(--color-white-soft);
   --scrollbar-thumb: var(--color-white-softer);
   --scrollbar-thumb-hover: var(--color-white-softest);
+  --z-app-header: 40;
   --z-overlay-nav: 60;
   --z-overlay-floating: 70;
   --z-overlay-popover: 140;
