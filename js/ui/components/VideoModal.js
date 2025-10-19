@@ -128,9 +128,14 @@ export class VideoModal {
     this.eventTarget.removeEventListener(type, listener, options);
   }
 
-  dispatch(type, detail) {
-    const event = new CustomEvent(type, { detail });
-    this.eventTarget.dispatchEvent(event);
+  dispatch(type, detail, options = {}) {
+    const config =
+      options && typeof options === "object" ? { ...options } : Object.create(null);
+    const event = new CustomEvent(type, {
+      detail,
+      cancelable: Boolean(config.cancelable),
+    });
+    return this.eventTarget.dispatchEvent(event);
   }
 
   getRoot() {
@@ -420,10 +425,14 @@ export class VideoModal {
         }
 
         if (this.modalZapRequiresLogin) {
-          this.dispatch("zap:open", {
-            video: this.activeVideo,
-            requiresLogin: true,
-          });
+          this.dispatch(
+            "zap:open",
+            {
+              video: this.activeVideo,
+              requiresLogin: true,
+            },
+            { cancelable: false },
+          );
           return;
         }
 
@@ -446,9 +455,17 @@ export class VideoModal {
           return;
         }
 
+        const allowed = this.dispatch(
+          "zap:open",
+          { video: this.activeVideo },
+          { cancelable: true },
+        );
+        if (allowed === false) {
+          return;
+        }
+
         this.modalZapPendingToggle = null;
         this.openZapDialog();
-        this.dispatch("zap:open", { video: this.activeVideo });
       });
     }
 
@@ -1054,6 +1071,10 @@ export class VideoModal {
   }
 
   async openZapDialog() {
+    if (this.modalZapRequiresLogin) {
+      return Promise.resolve(false);
+    }
+
     if (this.modalZapOpenPromise) {
       return this.modalZapOpenPromise;
     }
