@@ -1401,6 +1401,23 @@
     @apply rounded-2xl border border-border border-opacity-20 bg-surface px-6 py-5 shadow-sm;
   }
 
+  .video-modal__description-body {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .video-modal__description-body a {
+    color: var(--color-accent-strong);
+    text-decoration: underline;
+    text-decoration-color: currentColor;
+    word-break: break-word;
+  }
+
+  .video-modal__description-body a:hover,
+  .video-modal__description-body a:focus-visible {
+    color: var(--color-accent-pressed);
+  }
+
   .video-modal__progress {
     @apply h-2 w-full overflow-hidden rounded-full bg-border-subtle;
   }
