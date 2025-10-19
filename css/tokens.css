@@ -27,7 +27,7 @@
   );
   --surface-overlay-banner-bottom: color-mix(
     in srgb,
-    var(--surface-overlay-banner-base) 75%,
+    var(--surface-overlay-banner-base) 50%,
     transparent
   );
   --surface-overlay-banner-soft: color-mix(
@@ -52,10 +52,10 @@
   --surface-overlay-banner-gradient-channel: linear-gradient(
     to top,
     var(--surface-overlay-banner-bottom) 0%,
-    var(--surface-overlay-banner-strong) 38%,
-    var(--surface-overlay-banner-soft) 70%,
-    var(--surface-overlay-banner-faint) 88%,
-    var(--surface-overlay-banner-transparent) 100%
+    var(--surface-overlay-banner-strong) 19%,
+    var(--surface-overlay-banner-soft) 35%,
+    var(--surface-overlay-banner-faint) 44%,
+    var(--surface-overlay-banner-transparent) 50%
   );
   --surface-overlay-banner-gradient: var(
     --surface-overlay-banner-gradient-header
