@@ -38,12 +38,12 @@ function isNotificationBannerActive({
   return text === expectedText;
 }
 
-function attemptStatusBanner(app, { autoHideMs, expectedText }) {
+function attemptStatusBanner(app, { autoHideMs, expectedText, showSpinner }) {
   if (!app || typeof app.showStatus !== "function") {
     return false;
   }
 
-  app.showStatus(expectedText, { autoHideMs });
+  app.showStatus(expectedText, { autoHideMs, showSpinner });
 
   return isNotificationBannerActive({
     container: app.statusContainer,
@@ -286,7 +286,7 @@ export function showLoginRequiredToZapNotification({
     getOwnerDocument(app?.statusContainer) ||
     getOwnerDocument(app?.errorContainer);
 
-  if (attemptStatusBanner(app, { autoHideMs, expectedText })) {
+  if (attemptStatusBanner(app, { autoHideMs, expectedText, showSpinner: false })) {
     return true;
   }
 
