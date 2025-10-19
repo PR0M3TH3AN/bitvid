@@ -359,6 +359,56 @@ await (async () => {
 })();
 
 await (async () => {
+  // Test: preventDefault is called when zap opening is rejected post-dispatch
+  const { app, modalStub } = await createApp({
+    splitAndZap: async () => ({ receipts: [] }),
+  });
+
+  let loginNotificationCount = 0;
+  app.zapController.notifyLoginRequired = () => {
+    loginNotificationCount += 1;
+  };
+
+  app.zapController.isUserLoggedIn = () => false;
+
+  modalStub.closeZapDialogCalls = [];
+
+  const preventCalls = [];
+  const event = {
+    detail: { requiresLogin: false },
+    preventDefault: () => {
+      preventCalls.push(true);
+    },
+  };
+
+  app.pendingModalZapOpen = true;
+
+  app.boundVideoModalZapOpenHandler(event);
+
+  assert.equal(
+    loginNotificationCount,
+    1,
+    "should notify login requirement when zap open is rejected",
+  );
+  assert.equal(
+    preventCalls.length,
+    1,
+    "should prevent default zap opening when controller rejects it",
+  );
+  assert.equal(
+    app.pendingModalZapOpen,
+    false,
+    "pending zap reopen flag should clear when rejection wasn't login-gated",
+  );
+  assert.deepEqual(modalStub.closeZapDialogCalls[0], {
+    silent: true,
+    restoreFocus: false,
+  });
+
+  app.destroy();
+})();
+
+await (async () => {
   // Test: session actors should not be treated as logged-in users for zaps
   const { app, modalStub } = await createApp({
     splitAndZap: async () => ({ receipts: [] }),

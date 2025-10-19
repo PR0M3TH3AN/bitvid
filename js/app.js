@@ -696,6 +696,7 @@ class Application {
 
       const openResult = this.zapController?.open({ requiresLogin });
       if (!openResult) {
+        event?.preventDefault?.();
         if (!requiresLogin) {
           this.pendingModalZapOpen = false;
         }
