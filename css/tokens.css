@@ -19,27 +19,29 @@
   --surface-overlay-black: var(--color-overlay-black);
   --surface-overlay-banner-base: var(--color-page);
   --surface-overlay-banner: var(--surface-overlay-banner-base);
-  --surface-overlay-banner-top: color-mix(
+  --surface-overlay-banner-opaque: var(--surface-overlay-banner-base);
+  --surface-overlay-banner-strong: color-mix(
     in srgb,
-    var(--surface-overlay-banner-base) 94%,
+    var(--surface-overlay-banner-base) 82%,
     transparent
   );
-  --surface-overlay-banner-mid: color-mix(
+  --surface-overlay-banner-soft: color-mix(
     in srgb,
-    var(--surface-overlay-banner-base) 60%,
+    var(--surface-overlay-banner-base) 56%,
     transparent
   );
-  --surface-overlay-banner-low: color-mix(
+  --surface-overlay-banner-faint: color-mix(
     in srgb,
-    var(--surface-overlay-banner-base) 24%,
+    var(--surface-overlay-banner-base) 18%,
     transparent
   );
   --surface-overlay-banner-transparent: transparent;
   --surface-overlay-banner-gradient: linear-gradient(
     to bottom,
-    var(--surface-overlay-banner-top) 0%,
-    var(--surface-overlay-banner-mid) 48%,
-    var(--surface-overlay-banner-low) 76%,
+    var(--surface-overlay-banner-opaque) 0%,
+    var(--surface-overlay-banner-strong) 38%,
+    var(--surface-overlay-banner-soft) 70%,
+    var(--surface-overlay-banner-faint) 88%,
     var(--surface-overlay-banner-transparent) 100%
   );
   --surface-overlay-panel: var(--color-overlay-panel);
@@ -139,7 +141,7 @@
   --sidebar-control-size: 2.75rem;
   --sidebar-content-gap: 1rem;
   --space-sidebar-shell-inline: var(--space-lg);
-  --space-sidebar-shell-block-start: var(--space-lg);
+  --space-sidebar-shell-block-start: var(--space-sm);
   --space-sidebar-shell-block-end: 1.75rem;
   --space-sidebar-scroll-gap: 1.75rem;
   --space-sidebar-panel-gap: 1.35rem;
