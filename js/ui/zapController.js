@@ -1,4 +1,5 @@
 import { isDevMode } from "../config.js";
+import { LOGIN_TO_ZAP_MESSAGE } from "../payments/zapMessages.js";
 import {
   calculateZapShares,
   fetchLightningMetadata,
@@ -36,6 +37,7 @@ export default class ZapController {
     hasSessionActor,
     hasActiveWalletConnection,
     splitAndZap,
+    notifyLoginRequired,
     payments = {},
     callbacks = {},
     requestWalletPane,
@@ -74,6 +76,8 @@ export default class ZapController {
     }
     this.splitAndZap =
       typeof splitAndZap === "function" ? splitAndZap : () => Promise.resolve();
+    this.notifyLoginRequired =
+      typeof notifyLoginRequired === "function" ? notifyLoginRequired : null;
     this.payments = payments || {};
     this.callbacks = {
       onSuccess: typeof callbacks.onSuccess === "function" ? callbacks.onSuccess : null,
@@ -127,16 +131,32 @@ export default class ZapController {
     }
   }
 
-  open() {
+  open(options = {}) {
+    const config =
+      options && typeof options === "object" ? options : Object.create(null);
+    const requiresLogin = Boolean(config.requiresLogin);
     this.resetFeedback();
+    if (requiresLogin) {
+      if (this.notifyLoginRequired) {
+        this.notifyLoginRequired();
+      } else {
+        this.notifyError(LOGIN_TO_ZAP_MESSAGE);
+      }
+      return false;
+    }
     if (!this.isUserLoggedIn()) {
-      this.notifyError("Log in with your Nostr profile to send zaps.");
-      return;
+      if (this.notifyLoginRequired) {
+        this.notifyLoginRequired();
+      } else {
+        this.notifyError(LOGIN_TO_ZAP_MESSAGE);
+      }
+      return false;
     }
     this.applyDefaultAmount();
     this.preloadLightningMetadata().catch((error) => {
       devLogger.warn("[zap] Preload metadata error:", error);
     });
+    return true;
   }
 
   close() {

@@ -57,7 +57,7 @@ import {
   ingestLocalViewEvent,
 } from "./viewCounter.js";
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
-import { LOGIN_TO_ZAP_MESSAGE } from "./payments/zapMessages.js";
+import { showLoginRequiredToZapNotification } from "./payments/zapNotifications.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatTimeAgo as formatTimeAgoUtil,
@@ -209,6 +209,7 @@ class Application {
     this.boundVideoModalCreatorHandler = null;
     this.boundVideoModalZapHandler = null;
     this.boundVideoModalZapWalletHandler = null;
+    this.pendingModalZapOpen = false;
     this.videoListViewPlaybackHandler = null;
     this.videoListViewEditHandler = null;
     this.videoListViewRevertHandler = null;
@@ -591,6 +592,8 @@ class Application {
           typeof nostrClient?.sessionActor?.pubkey === "string" &&
             nostrClient.sessionActor.pubkey.trim()
         ),
+      notifyLoginRequired: () =>
+        showLoginRequiredToZapNotification({ app: this }),
       splitAndZap: (...args) => this.splitAndZap(...args),
       payments: this.payments,
       callbacks: {
@@ -651,9 +654,11 @@ class Application {
     this.boundVideoModalZapOpenHandler = (event) => {
       const requiresLogin = Boolean(event?.detail?.requiresLogin);
       if (requiresLogin) {
-        this.showStatus(LOGIN_TO_ZAP_MESSAGE, { autoHideMs: 5000 });
+        this.pendingModalZapOpen = true;
+      } else {
+        this.pendingModalZapOpen = false;
       }
-      this.zapController?.open();
+      this.zapController?.open({ requiresLogin });
     };
     this.boundVideoModalZapCloseHandler = () => {
       this.zapController?.close();
@@ -3158,6 +3163,27 @@ class Application {
       }
     }
 
+    const shouldReopenZap = this.pendingModalZapOpen;
+    this.pendingModalZapOpen = false;
+    if (shouldReopenZap) {
+      const hasLightning = Boolean(this.currentVideo?.lightningAddress);
+      if (hasLightning && this.videoModal?.openZapDialog) {
+        Promise.resolve()
+          .then(() => this.videoModal.openZapDialog())
+          .then((opened) => {
+            if (opened) {
+              this.zapController?.open();
+            }
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to reopen zap dialog after login:",
+              error,
+            );
+          });
+      }
+    }
+
     this.dispatchAuthChange({
       status: "login",
       loggedIn: true,
@@ -3235,6 +3261,7 @@ class Application {
 
   async handleAuthLogout(detail = {}) {
     this.resetViewLoggingState();
+    this.pendingModalZapOpen = false;
 
     await this.nwcSettingsService.onLogout({
       pubkey: detail?.pubkey || this.pubkey,

@@ -33,7 +33,7 @@ import {
   validateInvoiceAmount
 } from "./payments/zapSharedState.js";
 import { splitAndZap } from "./payments/zapSplit.js";
-import { LOGIN_TO_ZAP_MESSAGE } from "./payments/zapMessages.js";
+import { showLoginRequiredToZapNotification } from "./payments/zapNotifications.js";
 import {
   resolveLightningAddress,
   fetchPayServiceData,
@@ -48,168 +48,10 @@ import {
 
 const getApp = () => getApplication();
 
-const LOGIN_NOTIFICATION_AUTO_HIDE_MS = 5000;
-
-function syncNotificationPortalVisibility(doc) {
-  if (!doc) {
-    return;
-  }
-
-  const HTMLElementCtor =
-    doc.defaultView?.HTMLElement ||
-    (typeof HTMLElement !== "undefined" ? HTMLElement : null);
-
-  if (!HTMLElementCtor) {
-    return;
-  }
-
-  const portal = doc.getElementById("notificationPortal");
-
-  if (!portal || !(portal instanceof HTMLElementCtor)) {
-    return;
-  }
-
-  const banners = portal.querySelectorAll(".notification-banner");
-  const hasVisibleBanner = Array.from(banners).some(
-    (banner) =>
-      banner instanceof HTMLElementCtor && !banner.classList.contains("hidden"),
-  );
-
-  portal.classList.toggle("notification-portal--active", hasVisibleBanner);
-}
-
-function showLoginRequiredToZapNotification() {
-  const app = getApp();
-  if (app) {
-    if (typeof app.showStatus === "function") {
-      app.showStatus(LOGIN_TO_ZAP_MESSAGE, {
-        autoHideMs: LOGIN_NOTIFICATION_AUTO_HIDE_MS,
-      });
-      return;
-    }
-
-    if (typeof app.showError === "function") {
-      app.showError(LOGIN_TO_ZAP_MESSAGE);
-      return;
-    }
-  }
-
-  const doc = typeof document !== "undefined" ? document : null;
-  if (!doc) {
-    return;
-  }
-
-  const HTMLElementCtor =
-    doc.defaultView?.HTMLElement ||
-    (typeof HTMLElement !== "undefined" ? HTMLElement : null);
-
-  if (!HTMLElementCtor) {
-    return;
-  }
-
-  const statusContainer = doc.getElementById("statusContainer");
-
-  if (statusContainer && statusContainer instanceof HTMLElementCtor) {
-    const messageTarget =
-      statusContainer.querySelector("[data-status-message]") || null;
-
-    if (messageTarget && messageTarget instanceof HTMLElementCtor) {
-      messageTarget.textContent = LOGIN_TO_ZAP_MESSAGE;
-    } else {
-      statusContainer.textContent = LOGIN_TO_ZAP_MESSAGE;
-    }
-
-    statusContainer.classList.remove("hidden");
-    syncNotificationPortalVisibility(doc);
-
-    const schedule =
-      doc.defaultView?.setTimeout ||
-      (typeof setTimeout === "function" ? setTimeout : null);
-
-    if (typeof schedule === "function") {
-      const initialTarget =
-        messageTarget && messageTarget instanceof HTMLElementCtor
-          ? messageTarget
-          : statusContainer;
-      const expectedText = initialTarget.textContent;
-      schedule(() => {
-        if (!doc || typeof doc.contains !== "function") {
-          return;
-        }
-
-        if (!doc.contains(statusContainer)) {
-          return;
-        }
-
-        const activeTarget =
-          statusContainer.querySelector("[data-status-message]") || null;
-        const resolvedTarget =
-          activeTarget && activeTarget instanceof HTMLElementCtor
-            ? activeTarget
-            : messageTarget && messageTarget instanceof HTMLElementCtor
-              ? messageTarget
-              : statusContainer;
-
-        if (resolvedTarget.textContent !== expectedText) {
-          return;
-        }
-
-        if (activeTarget && activeTarget instanceof HTMLElementCtor) {
-          activeTarget.textContent = "";
-        } else if (messageTarget && messageTarget instanceof HTMLElementCtor) {
-          messageTarget.textContent = "";
-        } else {
-          statusContainer.textContent = "";
-        }
-
-        statusContainer.classList.add("hidden");
-        syncNotificationPortalVisibility(doc);
-      }, LOGIN_NOTIFICATION_AUTO_HIDE_MS);
-    }
-
-    return;
-  }
-
-  const errorContainer = doc.getElementById("errorContainer");
-
-  if (!errorContainer || !(errorContainer instanceof HTMLElementCtor)) {
-    return;
-  }
-
-  errorContainer.textContent = LOGIN_TO_ZAP_MESSAGE;
-  errorContainer.classList.remove("hidden");
-  syncNotificationPortalVisibility(doc);
-
-  const schedule =
-    doc.defaultView?.setTimeout ||
-    (typeof setTimeout === "function" ? setTimeout : null);
-
-  if (typeof schedule !== "function") {
-    return;
-  }
-
-  schedule(() => {
-    if (!doc || typeof doc.contains !== "function") {
-      return;
-    }
-
-    if (!doc.contains(errorContainer)) {
-      return;
-    }
-
-    if (errorContainer.textContent !== LOGIN_TO_ZAP_MESSAGE) {
-      return;
-    }
-
-    errorContainer.textContent = "";
-    errorContainer.classList.add("hidden");
-    syncNotificationPortalVisibility(doc);
-  }, LOGIN_NOTIFICATION_AUTO_HIDE_MS);
-}
-
 let currentChannelHex = null;
 let currentChannelNpub = null;
 let currentChannelLightningAddress = "";
+let channelZapPendingOpen = false;
 
 const summarizeZapTracker = (tracker) =>
   Array.isArray(tracker)
@@ -1913,9 +1755,12 @@ function handleZapButtonClick(event) {
   const requiresLogin = zapButton.dataset?.requiresLogin === "true";
 
   if (requiresLogin || isSessionActorWithoutLogin()) {
+    channelZapPendingOpen = true;
     showLoginRequiredToZapNotification();
     return;
   }
+
+  channelZapPendingOpen = false;
 
   if (!zapPopover || zapPopoverTrigger !== zapButton) {
     setupZapButton({ force: true });
@@ -4023,6 +3868,7 @@ window.addEventListener("bitvid:auth-changed", (event) => {
     resetZapRetryState();
     setZapStatus("", "neutral");
     clearZapReceipts();
+    channelZapPendingOpen = false;
     const amountInput = getZapAmountInput();
     if (amountInput) {
       amountInput.value = "";
@@ -4034,6 +3880,20 @@ window.addEventListener("bitvid:auth-changed", (event) => {
     zapInFlight = false;
     resetZapRetryState();
     setZapStatus("", "neutral");
+    if (channelZapPendingOpen) {
+      channelZapPendingOpen = false;
+      const zapButton = getChannelZapButton();
+      const requiresLogin =
+        zapButton?.dataset?.requiresLogin === "true" ||
+        zapButton?.hasAttribute("hidden");
+      if (zapButton && !requiresLogin) {
+        const opened = openZapControls({ focus: true });
+        if (!opened) {
+          setupZapButton({ force: true });
+          openZapControls({ focus: true });
+        }
+      }
+    }
     return;
   }
 });
