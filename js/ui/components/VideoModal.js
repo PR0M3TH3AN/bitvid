@@ -1478,7 +1478,7 @@ export class VideoModal {
       this.videoTitle.textContent = title || "Untitled";
     }
     if (this.videoDescription && description !== undefined) {
-      this.videoDescription.textContent = description || "";
+      this.renderVideoDescription(description);
     }
     if (timestamps) {
       this.updateTimestamps(timestamps);
@@ -1495,6 +1495,113 @@ export class VideoModal {
     if (creator !== undefined) {
       this.updateCreator(creator);
     }
+  }
+
+  renderVideoDescription(description) {
+    const target = this.videoDescription;
+    if (!target) {
+      return;
+    }
+
+    while (target.firstChild) {
+      target.removeChild(target.firstChild);
+    }
+
+    if (description === null || description === undefined) {
+      return;
+    }
+
+    const normalized =
+      typeof description === "string" ? description : String(description ?? "");
+
+    if (!normalized) {
+      return;
+    }
+
+    const fragment = this.document.createDocumentFragment();
+    const lines = normalized.split(/\r?\n/);
+
+    lines.forEach((line, index) => {
+      if (index > 0) {
+        fragment.appendChild(this.document.createElement("br"));
+      }
+      this.appendDescriptionLine(fragment, line);
+    });
+
+    target.appendChild(fragment);
+  }
+
+  appendDescriptionLine(target, line) {
+    if (!target) {
+      return;
+    }
+
+    const text = typeof line === "string" ? line : String(line ?? "");
+
+    if (!text) {
+      return;
+    }
+
+    const urlPattern = /\bhttps?:\/\/[^\s<>"']+/gi;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = urlPattern.exec(text)) !== null) {
+      const preceding = text.slice(lastIndex, match.index);
+      if (preceding) {
+        target.appendChild(this.document.createTextNode(preceding));
+      }
+
+      const { anchor, trailing } = this.createDescriptionLink(match[0]);
+
+      if (anchor) {
+        target.appendChild(anchor);
+      } else if (match[0]) {
+        target.appendChild(this.document.createTextNode(match[0]));
+      }
+
+      if (trailing) {
+        target.appendChild(this.document.createTextNode(trailing));
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    const remaining = text.slice(lastIndex);
+    if (remaining) {
+      target.appendChild(this.document.createTextNode(remaining));
+    }
+  }
+
+  createDescriptionLink(rawMatch) {
+    const normalized =
+      typeof rawMatch === "string" ? rawMatch : String(rawMatch ?? "");
+
+    if (!normalized) {
+      return { anchor: null, trailing: "" };
+    }
+
+    let href = normalized;
+    let trailing = "";
+    const trailingPattern = /[)\]\}>"',.;!?]+$/;
+
+    while (href && trailingPattern.test(href)) {
+      trailing = href.slice(-1) + trailing;
+      href = href.slice(0, -1);
+    }
+
+    if (!href) {
+      return { anchor: null, trailing: normalized };
+    }
+
+    const anchor = this.document.createElement("a");
+    anchor.classList.add("video-modal__description-link", "focus-ring");
+    anchor.textContent = href;
+    anchor.href = href;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+
+    return { anchor, trailing };
   }
 
   updateTimestamps({ posted, edited } = {}) {
