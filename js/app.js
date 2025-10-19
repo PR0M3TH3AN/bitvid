@@ -7351,6 +7351,29 @@ class Application {
       return;
     }
 
+    const { autoHideMs, showSpinner } =
+      options && typeof options === "object" ? options : Object.create(null);
+
+    const shouldShowSpinner = showSpinner !== false;
+    const existingSpinner = container.querySelector(".status-spinner");
+
+    if (shouldShowSpinner) {
+      if (!(existingSpinner instanceof HTMLElementCtor)) {
+        const spinner = ownerDocument?.createElement?.("span") || null;
+        if (spinner) {
+          spinner.className = "status-spinner";
+          spinner.setAttribute("aria-hidden", "true");
+          if (messageTarget && container.contains(messageTarget)) {
+            container.insertBefore(spinner, messageTarget);
+          } else {
+            container.insertBefore(spinner, container.firstChild);
+          }
+        }
+      }
+    } else if (existingSpinner instanceof HTMLElementCtor) {
+      existingSpinner.remove();
+    }
+
     if (!msg) {
       if (messageTarget && messageTarget instanceof HTMLElementCtor) {
         messageTarget.textContent = "";
@@ -7359,9 +7382,6 @@ class Application {
       this.updateNotificationPortalVisibility();
       return;
     }
-
-    const { autoHideMs } =
-      options && typeof options === "object" ? options : Object.create(null);
 
     if (messageTarget && messageTarget instanceof HTMLElementCtor) {
       messageTarget.textContent = msg;
