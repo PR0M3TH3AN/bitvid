@@ -57,6 +57,7 @@ import {
   ingestLocalViewEvent,
 } from "./viewCounter.js";
 import { splitAndZap as splitAndZapDefault } from "./payments/zapSplit.js";
+import { showLoginRequiredToZapNotification } from "./payments/zapNotifications.js";
 import {
   formatAbsoluteTimestamp as formatAbsoluteTimestampUtil,
   formatTimeAgo as formatTimeAgoUtil,
@@ -208,6 +209,7 @@ class Application {
     this.boundVideoModalCreatorHandler = null;
     this.boundVideoModalZapHandler = null;
     this.boundVideoModalZapWalletHandler = null;
+    this.pendingModalZapOpen = false;
     this.videoListViewPlaybackHandler = null;
     this.videoListViewEditHandler = null;
     this.videoListViewRevertHandler = null;
@@ -337,17 +339,50 @@ class Application {
         logger: devLogger,
       });
     this.authEventUnsubscribes.push(
-      this.authService.on("auth:login", (detail) => this.handleAuthLogin(detail))
+      this.authService.on("auth:login", (detail) => {
+        const maybePromise = this.handleAuthLogin(detail);
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise.catch((error) => {
+            devLogger.error("Failed to process auth login event:", error);
+          });
+        }
+      })
     );
     this.authEventUnsubscribes.push(
-      this.authService.on("auth:logout", (detail) =>
-        this.handleAuthLogout(detail)
-      )
+      this.authService.on("auth:logout", (detail) => {
+        if (detail && typeof detail === "object") {
+          if (detail.__handled === true) {
+            return;
+          }
+          try {
+            detail.__handled = true;
+          } catch (error) {
+            devLogger.warn(
+              "Failed to mark auth logout detail as handled:",
+              error,
+            );
+          }
+        }
+
+        const maybePromise = this.handleAuthLogout(detail);
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise.catch((error) => {
+            devLogger.error("Failed to process auth logout event:", error);
+          });
+        }
+      })
     );
     this.authEventUnsubscribes.push(
-      this.authService.on("profile:updated", (detail) =>
-        this.handleProfileUpdated(detail)
-      )
+      this.authService.on("profile:updated", (detail) => {
+        try {
+          this.handleProfileUpdated(detail);
+        } catch (error) {
+          devLogger.warn(
+            "Failed to process profile update event:",
+            error,
+          );
+        }
+      })
     );
 
     // Optional: a "profile" button or avatar (if used)
@@ -502,7 +537,7 @@ class Application {
 
         const profileModalCallbacks = {
           onClose: () => this.handleProfileModalClosed(),
-          onLogout: async () => this.authService.logout(),
+          onLogout: async () => this.requestLogout(),
           onChannelLink: (element) => this.handleProfileChannelLink(element),
           onAddAccount: (controller) => this.handleAddProfile(controller),
           onRequestSwitchProfile: (payload) =>
@@ -590,6 +625,13 @@ class Application {
           typeof nostrClient?.sessionActor?.pubkey === "string" &&
             nostrClient.sessionActor.pubkey.trim()
         ),
+      notifyLoginRequired: () =>
+        showLoginRequiredToZapNotification({
+          app: this,
+          document:
+            this.statusContainer?.ownerDocument ||
+            (typeof document !== "undefined" ? document : null),
+        }),
       splitAndZap: (...args) => this.splitAndZap(...args),
       payments: this.payments,
       callbacks: {
@@ -647,8 +689,14 @@ class Application {
     this.boundVideoModalZapHandler = (event) => {
       this.zapController?.sendZap(event?.detail || {});
     };
-    this.boundVideoModalZapOpenHandler = () => {
-      this.zapController?.open();
+    this.boundVideoModalZapOpenHandler = (event) => {
+      const requiresLogin = Boolean(event?.detail?.requiresLogin);
+      if (requiresLogin) {
+        this.pendingModalZapOpen = true;
+      } else {
+        this.pendingModalZapOpen = false;
+      }
+      this.zapController?.open({ requiresLogin });
     };
     this.boundVideoModalZapCloseHandler = () => {
       this.zapController?.close();
@@ -740,11 +788,14 @@ class Application {
     this.subscriptionsLink = null;
 
     // Notification containers
+    this.notificationPortal =
+      document.getElementById("notificationPortal") || null;
     this.errorContainer = document.getElementById("errorContainer") || null;
     this.successContainer = document.getElementById("successContainer") || null;
     this.statusContainer = document.getElementById("statusContainer") || null;
     this.statusMessage =
       this.statusContainer?.querySelector("[data-status-message]") || null;
+    this.statusAutoHideHandle = null;
 
     // Auth state
     this.pubkey = null;
@@ -1986,7 +2037,7 @@ class Application {
     if (this.logoutButton) {
       this.logoutButton.addEventListener("click", async () => {
         try {
-          await this.authService.logout();
+          await this.requestLogout();
         } catch (error) {
           devLogger.error("Logout failed:", error);
           this.showError("Failed to logout. Please try again.");
@@ -3150,6 +3201,27 @@ class Application {
       }
     }
 
+    const shouldReopenZap = this.pendingModalZapOpen;
+    this.pendingModalZapOpen = false;
+    if (shouldReopenZap) {
+      const hasLightning = Boolean(this.currentVideo?.lightningAddress);
+      if (hasLightning && this.videoModal?.openZapDialog) {
+        Promise.resolve()
+          .then(() => this.videoModal.openZapDialog())
+          .then((opened) => {
+            if (opened) {
+              this.zapController?.open();
+            }
+          })
+          .catch((error) => {
+            devLogger.warn(
+              "[Application] Failed to reopen zap dialog after login:",
+              error,
+            );
+          });
+      }
+    }
+
     this.dispatchAuthChange({
       status: "login",
       loggedIn: true,
@@ -3225,8 +3297,36 @@ class Application {
     }
   }
 
+  async requestLogout() {
+    const detail = await this.authService.logout();
+
+    if (detail && typeof detail === "object") {
+      if (detail.__handled === true) {
+        return detail;
+      }
+
+      try {
+        detail.__handled = true;
+      } catch (error) {
+        devLogger.warn("Failed to mark logout detail as handled:", error);
+      }
+    }
+
+    await this.handleAuthLogout(detail);
+    return detail ?? null;
+  }
+
   async handleAuthLogout(detail = {}) {
+    if (detail && typeof detail === "object") {
+      try {
+        detail.__handled = true;
+      } catch (error) {
+        devLogger.warn("Failed to mark logout detail as handled:", error);
+      }
+    }
+
     this.resetViewLoggingState();
+    this.pendingModalZapOpen = false;
 
     await this.nwcSettingsService.onLogout({
       pubkey: detail?.pubkey || this.pubkey,
@@ -7211,61 +7311,178 @@ class Application {
     return escapeHtml(unsafe);
   }
 
+  updateNotificationPortalVisibility() {
+    const portal = this.notificationPortal;
+    const HTMLElementCtor =
+      portal?.ownerDocument?.defaultView?.HTMLElement ||
+      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+
+    if (!portal || !HTMLElementCtor || !(portal instanceof HTMLElementCtor)) {
+      return;
+    }
+
+    const containers = [
+      this.errorContainer,
+      this.statusContainer,
+      this.successContainer,
+    ];
+
+    const hasVisibleBanner = containers.some((container) => {
+      if (!container || !(container instanceof HTMLElementCtor)) {
+        return false;
+      }
+      return !container.classList.contains("hidden");
+    });
+
+    portal.classList.toggle("notification-portal--active", hasVisibleBanner);
+  }
+
   showError(msg) {
+    const container = this.errorContainer;
+    const HTMLElementCtor =
+      container?.ownerDocument?.defaultView?.HTMLElement ||
+      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+
+    if (!container || !HTMLElementCtor || !(container instanceof HTMLElementCtor)) {
+      if (msg) {
+        userLogger.error(msg);
+      }
+      return;
+    }
+
     if (!msg) {
       // Remove any content, then hide
-      this.errorContainer.textContent = "";
-      this.errorContainer.classList.add("hidden");
+      container.textContent = "";
+      container.classList.add("hidden");
+      this.updateNotificationPortalVisibility();
       return;
     }
 
     // If there's a message, show it
-    this.errorContainer.textContent = msg;
-    this.errorContainer.classList.remove("hidden");
+    container.textContent = msg;
+    container.classList.remove("hidden");
+    this.updateNotificationPortalVisibility();
 
     userLogger.error(msg);
 
     // Optional auto-hide after 5 seconds
     setTimeout(() => {
-      this.errorContainer.textContent = "";
-      this.errorContainer.classList.add("hidden");
+      if (container !== this.errorContainer) {
+        return;
+      }
+      container.textContent = "";
+      container.classList.add("hidden");
+      this.updateNotificationPortalVisibility();
     }, 5000);
   }
 
-  showStatus(msg) {
-    if (!(this.statusContainer instanceof HTMLElement)) {
+  showStatus(msg, options = {}) {
+    const container = this.statusContainer;
+    const messageTarget = this.statusMessage;
+    const ownerDocument =
+      container?.ownerDocument || (typeof document !== "undefined" ? document : null);
+    const defaultView =
+      ownerDocument?.defaultView || (typeof window !== "undefined" ? window : null);
+    const clearScheduler =
+      defaultView?.clearTimeout ||
+      (typeof clearTimeout === "function" ? clearTimeout : null);
+    const schedule =
+      defaultView?.setTimeout || (typeof setTimeout === "function" ? setTimeout : null);
+
+    if (this.statusAutoHideHandle && typeof clearScheduler === "function") {
+      clearScheduler(this.statusAutoHideHandle);
+      this.statusAutoHideHandle = null;
+    }
+
+    const HTMLElementCtor =
+      container?.ownerDocument?.defaultView?.HTMLElement ||
+      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+
+    if (!container || !HTMLElementCtor || !(container instanceof HTMLElementCtor)) {
       return;
     }
 
     if (!msg) {
-      if (this.statusMessage instanceof HTMLElement) {
-        this.statusMessage.textContent = "";
+      if (messageTarget && messageTarget instanceof HTMLElementCtor) {
+        messageTarget.textContent = "";
       }
-      this.statusContainer.classList.add("hidden");
+      container.classList.add("hidden");
+      this.updateNotificationPortalVisibility();
       return;
     }
 
-    if (this.statusMessage instanceof HTMLElement) {
-      this.statusMessage.textContent = msg;
+    const { autoHideMs } =
+      options && typeof options === "object" ? options : Object.create(null);
+
+    if (messageTarget && messageTarget instanceof HTMLElementCtor) {
+      messageTarget.textContent = msg;
     } else {
-      this.statusContainer.textContent = msg;
+      container.textContent = msg;
     }
-    this.statusContainer.classList.remove("hidden");
+    container.classList.remove("hidden");
+    this.updateNotificationPortalVisibility();
+
+    if (
+      Number.isFinite(autoHideMs) &&
+      autoHideMs > 0 &&
+      typeof schedule === "function"
+    ) {
+      const expectedText =
+        messageTarget && messageTarget instanceof HTMLElementCtor
+          ? messageTarget.textContent
+          : container.textContent;
+      this.statusAutoHideHandle = schedule(() => {
+        this.statusAutoHideHandle = null;
+        const activeContainer = this.statusContainer;
+        if (activeContainer !== container) {
+          return;
+        }
+        const activeMessageTarget =
+          this.statusMessage && typeof this.statusMessage.textContent === "string"
+            ? this.statusMessage
+            : activeContainer;
+        if (activeMessageTarget.textContent !== expectedText) {
+          return;
+        }
+        if (activeMessageTarget === this.statusMessage) {
+          this.statusMessage.textContent = "";
+        } else {
+          activeContainer.textContent = "";
+        }
+        activeContainer.classList.add("hidden");
+        this.updateNotificationPortalVisibility();
+      }, autoHideMs);
+    }
   }
 
   showSuccess(msg) {
-    if (!msg) {
-      this.successContainer.textContent = "";
-      this.successContainer.classList.add("hidden");
+    const container = this.successContainer;
+    const HTMLElementCtor =
+      container?.ownerDocument?.defaultView?.HTMLElement ||
+      (typeof HTMLElement !== "undefined" ? HTMLElement : null);
+
+    if (!container || !HTMLElementCtor || !(container instanceof HTMLElementCtor)) {
       return;
     }
 
-    this.successContainer.textContent = msg;
-    this.successContainer.classList.remove("hidden");
+    if (!msg) {
+      container.textContent = "";
+      container.classList.add("hidden");
+      this.updateNotificationPortalVisibility();
+      return;
+    }
+
+    container.textContent = msg;
+    container.classList.remove("hidden");
+    this.updateNotificationPortalVisibility();
 
     setTimeout(() => {
-      this.successContainer.textContent = "";
-      this.successContainer.classList.add("hidden");
+      if (container !== this.successContainer) {
+        return;
+      }
+      container.textContent = "";
+      container.classList.add("hidden");
+      this.updateNotificationPortalVisibility();
     }, 5000);
   }
 
@@ -7287,6 +7504,22 @@ class Application {
     this.clearActiveIntervals();
     this.teardownModalViewCountSubscription();
     this.videoModalReadyPromise = null;
+
+    if (this.statusAutoHideHandle) {
+      const ownerDocument =
+        this.statusContainer?.ownerDocument ||
+        (typeof document !== "undefined" ? document : null);
+      const defaultView =
+        ownerDocument?.defaultView ||
+        (typeof window !== "undefined" ? window : null);
+      const clearScheduler =
+        defaultView?.clearTimeout ||
+        (typeof clearTimeout === "function" ? clearTimeout : null);
+      if (typeof clearScheduler === "function") {
+        clearScheduler(this.statusAutoHideHandle);
+      }
+      this.statusAutoHideHandle = null;
+    }
 
     if (this.watchHistoryTelemetry) {
       try {

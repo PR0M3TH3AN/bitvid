@@ -33,6 +33,7 @@ import {
   validateInvoiceAmount
 } from "./payments/zapSharedState.js";
 import { splitAndZap } from "./payments/zapSplit.js";
+import { showLoginRequiredToZapNotification } from "./payments/zapNotifications.js";
 import {
   resolveLightningAddress,
   fetchPayServiceData,
@@ -55,6 +56,7 @@ const getApp = () => getApplication();
 let currentChannelHex = null;
 let currentChannelNpub = null;
 let currentChannelLightningAddress = "";
+let channelZapPendingOpen = false;
 
 const summarizeZapTracker = (tracker) =>
   Array.isArray(tracker)
@@ -1755,12 +1757,18 @@ function handleZapButtonClick(event) {
     return;
   }
 
-  if (isSessionActorWithoutLogin()) {
-    const app = getApp();
-    const message = "Log in with your Nostr profile to send zaps.";
-    app?.showError?.(message);
+  const requiresLogin = zapButton.dataset?.requiresLogin === "true";
+
+  if (requiresLogin || isSessionActorWithoutLogin()) {
+    channelZapPendingOpen = true;
+    const doc =
+      zapButton?.ownerDocument ||
+      (typeof document !== "undefined" ? document : null);
+    showLoginRequiredToZapNotification({ document: doc });
     return;
   }
+
+  channelZapPendingOpen = false;
 
   if (!zapPopover || zapPopoverTrigger !== zapButton) {
     setupZapButton({ force: true });
@@ -3883,6 +3891,7 @@ window.addEventListener("bitvid:auth-changed", (event) => {
     resetZapRetryState();
     setZapStatus("", "neutral");
     clearZapReceipts();
+    channelZapPendingOpen = false;
     const amountInput = getZapAmountInput();
     if (amountInput) {
       amountInput.value = "";
@@ -3894,6 +3903,20 @@ window.addEventListener("bitvid:auth-changed", (event) => {
     zapInFlight = false;
     resetZapRetryState();
     setZapStatus("", "neutral");
+    if (channelZapPendingOpen) {
+      channelZapPendingOpen = false;
+      const zapButton = getChannelZapButton();
+      const requiresLogin =
+        zapButton?.dataset?.requiresLogin === "true" ||
+        zapButton?.hasAttribute("hidden");
+      if (zapButton && !requiresLogin) {
+        const opened = openZapControls({ focus: true });
+        if (!opened) {
+          setupZapButton({ force: true });
+          openZapControls({ focus: true });
+        }
+      }
+    }
     return;
   }
 });
