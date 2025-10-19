@@ -112,6 +112,32 @@ npm run build:beacon:bundle # bundle beacon assets without running the guard (ra
 npm run check:css         # CI-friendly guard that fails if tailwind.generated.css is dirty
 ```
 
+#### Admin runbook: regenerate Tailwind styles
+
+Need to refresh `css/tailwind.generated.css` after token or template changes?
+Run these commands from the repo root:
+
+1. Install dependencies (only required after cloning or when packages change):
+
+   ```bash
+   npm install
+   ```
+
+2. Rebuild the Tailwind bundle:
+
+   ```bash
+   npm run build:css
+   ```
+
+3. Optional: confirm the generated file is committed and up to date.
+
+   ```bash
+   npm run check:css
+   ```
+
+4. Commit the updated `css/tailwind.generated.css` alongside any HTML/JS edits
+   that rely on the new utilities so deploys pick up the refreshed styles.
+
 Inline styles are intentionally blocked. `npm run lint:inline-styles` scans HTML
 and scripts for `style=` attributes, `element.style`, or `style.cssText` usage
 and will fail CI until offending markup is moved into the shared CSS/token
