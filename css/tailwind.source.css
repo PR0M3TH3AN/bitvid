@@ -142,7 +142,7 @@
     padding-top: calc(var(--space-sm) + env(safe-area-inset-top, 0));
     padding-bottom: var(--space-sm);
     background-color: transparent;
-    background-image: var(--surface-overlay-banner-gradient);
+    background-image: var(--surface-overlay-banner-gradient-header);
     background-repeat: no-repeat;
     background-size: 100% 100%;
   }

@@ -1,4 +1,4 @@
-import { THEME_ACCENT_OVERRIDES } from "../config/instance-config.js";
+import { THEME_ACCENT_OVERRIDES as CONFIG_THEME_ACCENT_OVERRIDES } from "../config/instance-config.js";
 import { userLogger } from "./utils/logger.js";
 const STORAGE_KEY = "bitvid:theme";
 const FALLBACK_THEME = "dark";
@@ -24,6 +24,7 @@ const boundToggles = new WeakSet();
 const registeredToggles = new Set();
 let currentTheme = null;
 let storageListenerBound = false;
+let accentOverrides = null;
 
 const isBrowser = () =>
   typeof window !== "undefined" && typeof document !== "undefined";
@@ -80,17 +81,56 @@ const getRootElement = () => {
 const normalizeAccentValue = (value) =>
   typeof value === "string" ? value.trim() : "";
 
+const cloneAccentOverrides = (overrides) => {
+  if (!overrides || typeof overrides !== "object") {
+    return null;
+  }
+
+  const sanitized = Object.entries(overrides).reduce((accumulator, [themeKey, themeOverrides]) => {
+    if (!themeOverrides || typeof themeOverrides !== "object") {
+      return accumulator;
+    }
+
+    const nextThemeOverrides = Object.entries(themeOverrides).reduce(
+      (themeAccumulator, [token, value]) => {
+        if (Object.prototype.hasOwnProperty.call(ACCENT_CSS_VARIABLES, token)) {
+          themeAccumulator[token] = value;
+        }
+        return themeAccumulator;
+      },
+      {},
+    );
+
+    if (Object.keys(nextThemeOverrides).length > 0) {
+      accumulator[themeKey] = nextThemeOverrides;
+    }
+
+    return accumulator;
+  }, {});
+  return Object.keys(sanitized).length > 0 ? sanitized : null;
+};
+
+const setAccentOverrides = (overrides) => {
+  accentOverrides = cloneAccentOverrides(overrides);
+};
+
+setAccentOverrides(
+  typeof CONFIG_THEME_ACCENT_OVERRIDES !== "undefined"
+    ? CONFIG_THEME_ACCENT_OVERRIDES
+    : null,
+);
+
 const applyAccentOverrides = (root, theme) => {
   if (!root) {
     return;
   }
 
   const themeOverrides =
-    THEME_ACCENT_OVERRIDES &&
-    typeof THEME_ACCENT_OVERRIDES === "object" &&
-    THEME_ACCENT_OVERRIDES[theme] &&
-    typeof THEME_ACCENT_OVERRIDES[theme] === "object"
-      ? THEME_ACCENT_OVERRIDES[theme]
+    accentOverrides &&
+    typeof accentOverrides === "object" &&
+    accentOverrides[theme] &&
+    typeof accentOverrides[theme] === "object"
+      ? accentOverrides[theme]
       : null;
 
   Object.entries(ACCENT_CSS_VARIABLES).forEach(([token, cssVariable]) => {
@@ -257,6 +297,20 @@ const applyTheme = (theme, { persist = true } = {}) => {
   syncRegisteredToggles(normalized);
   return normalized;
 };
+
+export const setThemeAccentOverrides = (overrides) => {
+  setAccentOverrides(overrides);
+
+  const root = getRootElement();
+  if (!root) {
+    return;
+  }
+
+  const theme = currentTheme || FALLBACK_THEME;
+  applyAccentOverrides(root, theme);
+};
+
+export const getThemeAccentOverrides = () => cloneAccentOverrides(accentOverrides);
 
 export const setTheme = (theme) => {
   if (!isBrowser()) {
