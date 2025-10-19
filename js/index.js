@@ -375,6 +375,108 @@ async function bootstrapInterface() {
   const footerDropdownLabel = document.getElementById("footerDropdownText");
   const footerDropdownIcon = document.getElementById("footerDropdownIcon");
 
+  const debounce = (fn, delay) => {
+    let timeoutId = null;
+    return (...args) => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(() => {
+        timeoutId = null;
+        fn(...args);
+      }, delay);
+    };
+  };
+
+  const resolveCssLengthToPixels = (value, container) => {
+    if (!(container instanceof HTMLElement) || typeof value !== "string") {
+      return 0;
+    }
+
+    const measurementNode = container.ownerDocument.createElement("div");
+    measurementNode.style.position = "absolute";
+    measurementNode.style.visibility = "hidden";
+    measurementNode.style.pointerEvents = "none";
+    measurementNode.style.height = "0";
+    measurementNode.style.width = value;
+    measurementNode.style.overflow = "hidden";
+
+    container.appendChild(measurementNode);
+    const pixels = measurementNode.getBoundingClientRect().width;
+    container.removeChild(measurementNode);
+
+    return Number.isFinite(pixels) ? pixels : 0;
+  };
+
+  const updateSidebarDropupContentWidth = () => {
+    const panelInner = document.querySelector(".sidebar-dropup-panel__inner");
+    const panel = panelInner?.closest(".sidebar-dropup-panel");
+
+    if (!(panelInner instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      document.documentElement.style.setProperty(
+        "--sidebar-dropup-content-width",
+        "0px",
+      );
+      return;
+    }
+
+    const originalStyles = {
+      position: panelInner.style.position,
+      width: panelInner.style.width,
+      maxWidth: panelInner.style.maxWidth,
+      visibility: panelInner.style.visibility,
+      pointerEvents: panelInner.style.pointerEvents,
+      left: panelInner.style.left,
+      right: panelInner.style.right,
+      top: panelInner.style.top,
+      bottom: panelInner.style.bottom,
+    };
+
+    panelInner.style.position = "absolute";
+    panelInner.style.width = "max-content";
+    panelInner.style.maxWidth = "none";
+    panelInner.style.visibility = "hidden";
+    panelInner.style.pointerEvents = "none";
+    panelInner.style.left = "-9999px";
+    panelInner.style.right = "auto";
+    panelInner.style.top = "auto";
+    panelInner.style.bottom = "auto";
+
+    const measuredInnerWidth = Math.ceil(panelInner.scrollWidth);
+
+    panelInner.style.position = originalStyles.position;
+    panelInner.style.width = originalStyles.width;
+    panelInner.style.maxWidth = originalStyles.maxWidth;
+    panelInner.style.visibility = originalStyles.visibility;
+    panelInner.style.pointerEvents = originalStyles.pointerEvents;
+    panelInner.style.left = originalStyles.left;
+    panelInner.style.right = originalStyles.right;
+    panelInner.style.top = originalStyles.top;
+    panelInner.style.bottom = originalStyles.bottom;
+
+    const panelStyles = window.getComputedStyle(panel);
+    const paddingInlineStart = Number.parseFloat(panelStyles.paddingInlineStart) || 0;
+    const paddingInlineEnd = Number.parseFloat(panelStyles.paddingInlineEnd) || 0;
+
+    const scrollReserveValue = window
+      .getComputedStyle(panel)
+      .getPropertyValue("--space-sidebar-dropup-scroll-reserve");
+    const scrollReserve = resolveCssLengthToPixels(scrollReserveValue, panel);
+
+    const totalWidth = Math.max(
+      0,
+      measuredInnerWidth + paddingInlineStart + paddingInlineEnd + scrollReserve,
+    );
+
+    document.documentElement.style.setProperty(
+      "--sidebar-dropup-content-width",
+      `${Math.ceil(totalWidth)}px`,
+    );
+  };
+
+  const debouncedSidebarDropupResize = debounce(updateSidebarDropupContentWidth, 150);
+  window.addEventListener("resize", debouncedSidebarDropupResize);
+
   if (footerDropdownButton && footerLinksContainer) {
     const sidebarFooter = footerDropdownButton.closest(".sidebar-footer");
 
@@ -407,6 +509,7 @@ async function bootstrapInterface() {
         sidebarFooter.dataset.footerState = nextState;
       }
       isFooterDropupExpanded = expanded;
+      updateSidebarDropupContentWidth();
     };
 
     footerDropdownButton.addEventListener("click", (event) => {
@@ -429,6 +532,8 @@ async function bootstrapInterface() {
     if (typeof syncFooterDropupFn === "function") {
       syncFooterDropupFn(initialExpanded);
     }
+  } else {
+    updateSidebarDropupContentWidth();
   }
 
   try {
