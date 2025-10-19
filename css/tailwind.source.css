@@ -138,8 +138,8 @@
     z-index: var(--z-app-header);
     padding-top: calc(var(--space-sm) + env(safe-area-inset-top, 0));
     padding-bottom: var(--space-sm);
+    background-color: var(--surface-overlay-banner);
     background-image: var(--surface-overlay-banner-gradient);
-    background-color: transparent;
     background-repeat: no-repeat;
     background-size: 100% 100%;
     box-shadow: var(--shadow-sm);
@@ -2396,10 +2396,9 @@
     flex-direction: column;
     height: 100%;
     padding: calc(
-        var(--space-sm) +
-          (var(--space-2xl-plus) - var(--sidebar-control-size)) / 2 +
-          env(safe-area-inset-top, 0) -
-          calc(var(--border-width-hairline) / 2)
+        env(safe-area-inset-top, 0) +
+          var(--app-header-centerline-offset) -
+          (var(--sidebar-control-size) / 2)
       )
       var(--space-sidebar-shell-inline)
       var(--space-sidebar-shell-block-end);
