@@ -1158,6 +1158,11 @@
     );
   }
 
+  #playerModal .modal-nav .watch-container {
+    max-width: none;
+    margin-inline: 0;
+  }
+
   #playerModal .modal-info-panel {
     display: flex;
     flex-direction: column;
