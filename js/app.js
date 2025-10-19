@@ -87,6 +87,7 @@ import { resolveVideoPointer } from "./utils/videoPointer.js";
 import { isValidMagnetUri } from "./utils/magnetValidators.js";
 import { dedupeToNewestByRoot } from "./utils/videoDeduper.js";
 import { buildServiceWorkerFallbackStatus } from "./utils/serviceWorkerFallbackMessages.js";
+import { batchFetchProfilesFromRelays } from "./utils/profileBatchFetcher.js";
 import {
   getVideoRootIdentifier,
   applyRootTimestampToVideosMap,
@@ -2279,67 +2280,15 @@ class Application {
   }
 
   async batchFetchProfiles(authorSet) {
-    const pubkeys = Array.from(authorSet);
-    if (!pubkeys.length) return;
-
-    const toFetch = [];
-
-    pubkeys.forEach((pubkey) => {
-      const cacheEntry = this.getProfileCacheEntry(pubkey);
-      if (cacheEntry) {
-        this.updateProfileInDOM(pubkey, cacheEntry.profile);
-      } else {
-        toFetch.push(pubkey);
-      }
+    return batchFetchProfilesFromRelays({
+      authorSet,
+      getProfileCacheEntry: (pubkey) => this.getProfileCacheEntry(pubkey),
+      setProfileCacheEntry: (pubkey, profile) =>
+        this.setProfileCacheEntry(pubkey, profile),
+      updateProfileInDOM: (pubkey, profile) =>
+        this.updateProfileInDOM(pubkey, profile),
+      hex64Regex: HEX64_REGEX,
     });
-
-    if (!toFetch.length) {
-      return;
-    }
-
-    const filter = {
-      kinds: [0],
-      authors: toFetch,
-      limit: toFetch.length,
-    };
-
-    try {
-      // Query each relay
-      const results = await Promise.all(
-        nostrClient.relays.map((relayUrl) =>
-          nostrClient.pool.list([relayUrl], [filter])
-        )
-      );
-      const allProfileEvents = results.flat();
-
-      // Keep only the newest per author
-      const newestEvents = new Map();
-      for (const evt of allProfileEvents) {
-        if (
-          !newestEvents.has(evt.pubkey) ||
-          evt.created_at > newestEvents.get(evt.pubkey).created_at
-        ) {
-          newestEvents.set(evt.pubkey, evt);
-        }
-      }
-
-      // Update the cache & DOM
-      for (const [pubkey, evt] of newestEvents.entries()) {
-        try {
-          const data = JSON.parse(evt.content);
-          const profile = {
-            name: data.name || data.display_name || "Unknown",
-            picture: data.picture || "assets/svg/default-profile.svg",
-          };
-          this.setProfileCacheEntry(pubkey, profile);
-          this.updateProfileInDOM(pubkey, profile);
-        } catch (err) {
-          devLogger.error("Profile parse error:", err);
-        }
-      }
-    } catch (err) {
-      devLogger.error("Batch profile fetch error:", err);
-    }
   }
 
   updateProfileInDOM(pubkey, profile) {
