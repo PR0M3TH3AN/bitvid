@@ -17,22 +17,29 @@
   --surface-overlay-strong: var(--color-overlay-strong);
   --surface-overlay-darker: var(--color-overlay-darker);
   --surface-overlay-black: var(--color-overlay-black);
-  --surface-overlay-banner: var(--surface-base);
-  --surface-overlay-banner-bottom: color-mix(
+  --surface-overlay-banner-base: var(--color-page);
+  --surface-overlay-banner: var(--surface-overlay-banner-base);
+  --surface-overlay-banner-top: color-mix(
     in srgb,
-    var(--surface-overlay-banner) 96%,
+    var(--surface-overlay-banner-base) 94%,
     transparent
   );
   --surface-overlay-banner-mid: color-mix(
     in srgb,
-    var(--surface-overlay-banner) 72%,
+    var(--surface-overlay-banner-base) 60%,
+    transparent
+  );
+  --surface-overlay-banner-low: color-mix(
+    in srgb,
+    var(--surface-overlay-banner-base) 24%,
     transparent
   );
   --surface-overlay-banner-transparent: transparent;
   --surface-overlay-banner-gradient: linear-gradient(
     to bottom,
-    var(--surface-overlay-banner-bottom) 0%,
-    var(--surface-overlay-banner-mid) 55%,
+    var(--surface-overlay-banner-top) 0%,
+    var(--surface-overlay-banner-mid) 48%,
+    var(--surface-overlay-banner-low) 76%,
     var(--surface-overlay-banner-transparent) 100%
   );
   --surface-overlay-panel: var(--color-overlay-panel);

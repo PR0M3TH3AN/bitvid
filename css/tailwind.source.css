@@ -47,6 +47,9 @@
   }
 
   body {
+    --app-header-centerline: calc(
+      env(safe-area-inset-top, 0) + var(--app-header-centerline-offset)
+    );
     font-family: var(--font-family-sans);
     background-color: var(--color-page);
     color: var(--color-text-strong);
@@ -138,8 +141,7 @@
     z-index: var(--z-app-header);
     padding-top: calc(var(--space-sm) + env(safe-area-inset-top, 0));
     padding-bottom: var(--space-sm);
-    background-color: var(--surface-overlay-banner);
-    background-image: var(--surface-overlay-banner-gradient);
+    background: var(--surface-overlay-banner-gradient);
     background-repeat: no-repeat;
     background-size: 100% 100%;
     box-shadow: var(--shadow-sm);
@@ -2395,13 +2397,12 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding: calc(
-        env(safe-area-inset-top, 0) +
-          var(--app-header-centerline-offset) -
-          (var(--sidebar-control-size) / 2)
-      )
-      var(--space-sidebar-shell-inline)
-      var(--space-sidebar-shell-block-end);
+    padding-block-start: max(
+      var(--space-sidebar-shell-block-start),
+      calc(var(--app-header-centerline) - (var(--sidebar-control-size) / 2))
+    );
+    padding-block-end: var(--space-sidebar-shell-block-end);
+    padding-inline: var(--space-sidebar-shell-inline);
     width: 100%;
     border-radius: var(--radius-sidebar-shell);
     border: none;
