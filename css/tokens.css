@@ -17,13 +17,31 @@
   --surface-overlay-strong: var(--color-overlay-strong);
   --surface-overlay-darker: var(--color-overlay-darker);
   --surface-overlay-black: var(--color-overlay-black);
-  --surface-overlay-banner: var(--surface-overlay-banner-bottom);
-  --surface-overlay-banner-bottom: var(--color-overlay-banner-bottom);
-  --surface-overlay-banner-transparent: var(--color-overlay-banner-transparent);
+  --surface-overlay-banner-base: var(--color-page);
+  --surface-overlay-banner: var(--surface-overlay-banner-base);
+  --surface-overlay-banner-opaque: var(--surface-overlay-banner-base);
+  --surface-overlay-banner-strong: color-mix(
+    in srgb,
+    var(--surface-overlay-banner-base) 82%,
+    transparent
+  );
+  --surface-overlay-banner-soft: color-mix(
+    in srgb,
+    var(--surface-overlay-banner-base) 56%,
+    transparent
+  );
+  --surface-overlay-banner-faint: color-mix(
+    in srgb,
+    var(--surface-overlay-banner-base) 18%,
+    transparent
+  );
+  --surface-overlay-banner-transparent: transparent;
   --surface-overlay-banner-gradient: linear-gradient(
-    to top,
-    var(--surface-overlay-banner-bottom) 0%,
-    var(--surface-overlay-banner-transparent) 60%,
+    to bottom,
+    var(--surface-overlay-banner-opaque) 0%,
+    var(--surface-overlay-banner-strong) 38%,
+    var(--surface-overlay-banner-soft) 70%,
+    var(--surface-overlay-banner-faint) 88%,
     var(--surface-overlay-banner-transparent) 100%
   );
   --surface-overlay-panel: var(--color-overlay-panel);
@@ -38,6 +56,7 @@
   --blur-thumbnail-blur: 18px;
   --modal-nav-backdrop-blur: 6px;
 
+  --app-header-centerline-offset: calc(var(--space-sm) + (var(--space-2xl-plus) / 2));
   --border-default: var(--color-border);
   --border-subtle: var(--color-border-subtle);
   --border-strong: var(--color-border-translucent-stronger);
@@ -100,6 +119,7 @@
   --scrollbar-track: var(--color-white-soft);
   --scrollbar-thumb: var(--color-white-softer);
   --scrollbar-thumb-hover: var(--color-white-softest);
+  --z-app-header: 40;
   --z-overlay-nav: 60;
   --z-overlay-floating: 70;
   --z-overlay-popover: 140;
@@ -121,7 +141,7 @@
   --sidebar-control-size: 2.75rem;
   --sidebar-content-gap: 1rem;
   --space-sidebar-shell-inline: var(--space-lg);
-  --space-sidebar-shell-block-start: var(--space-lg);
+  --space-sidebar-shell-block-start: var(--space-sm);
   --space-sidebar-shell-block-end: 1.75rem;
   --space-sidebar-scroll-gap: 1.75rem;
   --space-sidebar-panel-gap: 1.35rem;
