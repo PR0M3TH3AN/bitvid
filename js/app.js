@@ -339,17 +339,50 @@ class Application {
         logger: devLogger,
       });
     this.authEventUnsubscribes.push(
-      this.authService.on("auth:login", (detail) => this.handleAuthLogin(detail))
+      this.authService.on("auth:login", (detail) => {
+        const maybePromise = this.handleAuthLogin(detail);
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise.catch((error) => {
+            devLogger.error("Failed to process auth login event:", error);
+          });
+        }
+      })
     );
     this.authEventUnsubscribes.push(
-      this.authService.on("auth:logout", (detail) =>
-        this.handleAuthLogout(detail)
-      )
+      this.authService.on("auth:logout", (detail) => {
+        if (detail && typeof detail === "object") {
+          if (detail.__handled === true) {
+            return;
+          }
+          try {
+            detail.__handled = true;
+          } catch (error) {
+            devLogger.warn(
+              "Failed to mark auth logout detail as handled:",
+              error,
+            );
+          }
+        }
+
+        const maybePromise = this.handleAuthLogout(detail);
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise.catch((error) => {
+            devLogger.error("Failed to process auth logout event:", error);
+          });
+        }
+      })
     );
     this.authEventUnsubscribes.push(
-      this.authService.on("profile:updated", (detail) =>
-        this.handleProfileUpdated(detail)
-      )
+      this.authService.on("profile:updated", (detail) => {
+        try {
+          this.handleProfileUpdated(detail);
+        } catch (error) {
+          devLogger.warn(
+            "Failed to process profile update event:",
+            error,
+          );
+        }
+      })
     );
 
     // Optional: a "profile" button or avatar (if used)
@@ -504,7 +537,7 @@ class Application {
 
         const profileModalCallbacks = {
           onClose: () => this.handleProfileModalClosed(),
-          onLogout: async () => this.authService.logout(),
+          onLogout: async () => this.requestLogout(),
           onChannelLink: (element) => this.handleProfileChannelLink(element),
           onAddAccount: (controller) => this.handleAddProfile(controller),
           onRequestSwitchProfile: (payload) =>
@@ -2004,7 +2037,7 @@ class Application {
     if (this.logoutButton) {
       this.logoutButton.addEventListener("click", async () => {
         try {
-          await this.authService.logout();
+          await this.requestLogout();
         } catch (error) {
           devLogger.error("Logout failed:", error);
           this.showError("Failed to logout. Please try again.");
@@ -3264,7 +3297,34 @@ class Application {
     }
   }
 
+  async requestLogout() {
+    const detail = await this.authService.logout();
+
+    if (detail && typeof detail === "object") {
+      if (detail.__handled === true) {
+        return detail;
+      }
+
+      try {
+        detail.__handled = true;
+      } catch (error) {
+        devLogger.warn("Failed to mark logout detail as handled:", error);
+      }
+    }
+
+    await this.handleAuthLogout(detail);
+    return detail ?? null;
+  }
+
   async handleAuthLogout(detail = {}) {
+    if (detail && typeof detail === "object") {
+      try {
+        detail.__handled = true;
+      } catch (error) {
+        devLogger.warn("Failed to mark logout detail as handled:", error);
+      }
+    }
+
     this.resetViewLoggingState();
     this.pendingModalZapOpen = false;
 
