@@ -54,15 +54,22 @@ class SubscriptionsManager {
         limit: 1
       };
 
-      const events = [];
+      const relayPromises = [];
       for (const url of nostrClient.relays) {
-        try {
-          const result = await nostrClient.pool.list([url], [filter]);
-          if (result && result.length) {
-            events.push(...result);
-          }
-        } catch (err) {
-          userLogger.error(`[SubscriptionsManager] Relay error at ${url}`, err);
+        const listPromise = nostrClient.pool
+          .list([url], [filter])
+          .catch((err) => {
+            userLogger.error(`[SubscriptionsManager] Relay error at ${url}`, err);
+            throw err;
+          });
+        relayPromises.push(listPromise);
+      }
+
+      const settledResults = await Promise.allSettled(relayPromises);
+      const events = [];
+      for (const outcome of settledResults) {
+        if (outcome.status === "fulfilled" && Array.isArray(outcome.value) && outcome.value.length) {
+          events.push(...outcome.value);
         }
       }
 
