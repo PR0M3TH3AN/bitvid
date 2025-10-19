@@ -1423,6 +1423,52 @@ export class ProfileModalController {
     }
   }
 
+  createCompactProfileSummary({
+    displayName,
+    displayNpub,
+    avatarSrc,
+    size = "sm",
+  } = {}) {
+    const sizeClassMap = {
+      xs: "h-8 w-8",
+      sm: "h-10 w-10",
+      md: "h-12 w-12",
+    };
+    const avatarSize = sizeClassMap[size] || sizeClassMap.sm;
+    const safeName = displayName?.trim() || "Unknown profile";
+    const safeNpub = displayNpub?.trim() || "npub unavailable";
+    const avatarUrl = avatarSrc || FALLBACK_PROFILE_AVATAR;
+
+    const container = document.createElement("div");
+    container.className = "min-w-0 flex flex-1 items-center gap-3";
+
+    const avatarWrapper = document.createElement("span");
+    avatarWrapper.className = `flex ${avatarSize} flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-overlay-strong bg-overlay-panel-soft`;
+
+    const avatarImg = document.createElement("img");
+    avatarImg.className = "h-full w-full object-cover";
+    avatarImg.src = avatarUrl;
+    avatarImg.alt = `${safeName} avatar`;
+    avatarWrapper.appendChild(avatarImg);
+
+    const textStack = document.createElement("div");
+    textStack.className = "min-w-0 flex flex-col";
+
+    const nameEl = document.createElement("p");
+    nameEl.className = "truncate text-sm font-semibold text-primary";
+    nameEl.textContent = safeName;
+
+    const npubEl = document.createElement("p");
+    npubEl.className = "break-all font-mono text-xs text-muted";
+    npubEl.textContent = safeNpub;
+
+    textStack.append(nameEl, npubEl);
+
+    container.append(avatarWrapper, textStack);
+
+    return container;
+  }
+
   selectPane(name = "account") {
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";
     const previous = this.getActivePane();
@@ -1980,19 +2026,41 @@ export class ProfileModalController {
     this.blockListEmpty.classList.add("hidden");
     this.blockList.classList.remove("hidden");
 
+    const formatNpub =
+      typeof this.formatShortNpub === "function"
+        ? (value) => this.formatShortNpub(value)
+        : (value) => (typeof value === "string" ? value : "");
+    const entriesNeedingFetch = new Set();
+
     deduped.forEach(({ hex, label }) => {
       const item = document.createElement("li");
       item.className =
         "card flex items-center justify-between gap-4 p-4";
 
-      const info = document.createElement("div");
-      info.className = "min-w-0 flex-1";
+      let cachedProfile = null;
+      if (hex) {
+        const cacheEntry = this.services.getProfileCacheEntry(hex);
+        cachedProfile = cacheEntry?.profile || null;
+        if (!cacheEntry) {
+          entriesNeedingFetch.add(hex);
+        }
+      }
 
-      const title = document.createElement("p");
-      title.className = "break-all text-sm font-medium text-primary";
-      title.textContent = label;
+      const encodedNpub =
+        hex && typeof this.safeEncodeNpub === "function"
+          ? this.safeEncodeNpub(hex)
+          : label;
+      const displayNpub = formatNpub(encodedNpub) || encodedNpub || label;
+      const displayName =
+        cachedProfile?.name?.trim() || displayNpub || "Blocked profile";
+      const avatarSrc =
+        cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
 
-      info.appendChild(title);
+      const summary = this.createCompactProfileSummary({
+        displayName,
+        displayNpub,
+        avatarSrc,
+      });
 
       const actionBtn = document.createElement("button");
       actionBtn.type = "button";
@@ -2004,7 +2072,7 @@ export class ProfileModalController {
         void this.handleRemoveBlockedCreator(hex);
       });
 
-      item.appendChild(info);
+      item.appendChild(summary);
       item.appendChild(actionBtn);
 
       this.blockList.appendChild(item);
@@ -2012,6 +2080,13 @@ export class ProfileModalController {
 
     if (this.blockListLoadingState === "loading") {
       this.setBlockListLoadingState("idle");
+    }
+
+    if (
+      entriesNeedingFetch.size &&
+      typeof this.services.batchFetchProfiles === "function"
+    ) {
+      this.services.batchFetchProfiles(entriesNeedingFetch);
     }
   }
 
@@ -2762,6 +2837,8 @@ export class ProfileModalController {
         ? (value) => this.formatShortNpub(value)
         : (value) => (typeof value === "string" ? value : "");
 
+    const entriesNeedingFetch = new Set();
+
     listEl.innerHTML = "";
     const values = Array.isArray(entries) ? [...entries] : [];
     values.sort((a, b) => a.localeCompare(b));
@@ -2780,11 +2857,41 @@ export class ProfileModalController {
       item.className =
         "card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between";
 
-      const label = document.createElement("p");
-      label.className = "break-all text-sm font-medium text-primary";
-      const displayNpub = formatNpub(npub) || npub;
-      label.textContent = displayNpub;
-      item.appendChild(label);
+      const normalizedNpub = typeof npub === "string" ? npub.trim() : "";
+      const decodedHex =
+        normalizedNpub && normalizedNpub.startsWith("npub1")
+          ? this.safeDecodeNpub(normalizedNpub)
+          : null;
+      const normalizedHex =
+        decodedHex && /^[0-9a-f]{64}$/i.test(decodedHex)
+          ? decodedHex.toLowerCase()
+          : null;
+
+      let cachedProfile = null;
+      if (normalizedHex) {
+        const cacheEntry = this.services.getProfileCacheEntry(normalizedHex);
+        cachedProfile = cacheEntry?.profile || null;
+        if (!cacheEntry) {
+          entriesNeedingFetch.add(normalizedHex);
+        }
+      }
+
+      const encodedNpub =
+        normalizedHex && typeof this.safeEncodeNpub === "function"
+          ? this.safeEncodeNpub(normalizedHex)
+          : normalizedNpub;
+      const displayNpub = formatNpub(encodedNpub) || encodedNpub || normalizedNpub;
+      const displayName =
+        cachedProfile?.name?.trim() || displayNpub || "Unknown profile";
+      const avatarSrc =
+        cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
+
+      const summary = this.createCompactProfileSummary({
+        displayName,
+        displayNpub,
+        avatarSrc,
+      });
+      item.appendChild(summary);
 
       if (removable && typeof onRemove === "function") {
         const removeBtn = document.createElement("button");
@@ -2807,6 +2914,13 @@ export class ProfileModalController {
 
       listEl.appendChild(item);
     });
+
+    if (
+      entriesNeedingFetch.size &&
+      typeof this.services.batchFetchProfiles === "function"
+    ) {
+      this.services.batchFetchProfiles(entriesNeedingFetch);
+    }
   }
 
   populateAdminLists() {
