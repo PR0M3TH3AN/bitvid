@@ -1193,7 +1193,7 @@
   }
 
   .player-modal__container {
-    @apply video-modal__container;
+    @apply video-modal__container gap-6;
   }
 
   #playerModal > .bv-modal__panel {
