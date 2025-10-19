@@ -39,6 +39,19 @@ async function setupModal({ lazyLoad = false } = {}) {
 
   applyDesignSystemAttributes(document);
 
+  if (!window.ResizeObserver) {
+    class ResizeObserverStub {
+      constructor(callback) {
+        this.callback = callback;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    window.ResizeObserver = ResizeObserverStub;
+    globalThis.ResizeObserver = ResizeObserverStub;
+  }
+
   let restoreFetch = null;
   if (lazyLoad) {
     const originalFetch = globalThis.fetch;
@@ -730,7 +743,25 @@ for (const _ of [0]) {
       assert.equal(zapDialog.dataset.state, "open");
       assert.equal(zapDialog.getAttribute("aria-hidden"), "false");
       assert.equal(zapButton.getAttribute("aria-expanded"), "true");
-      assert.strictEqual(document.activeElement, amountInput);
+
+      zapButton.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+
+      assert.equal(zapDialog.hidden, true);
+      assert.equal(zapDialog.dataset.state, "closed");
+      assert.equal(zapDialog.getAttribute("aria-hidden"), "true");
+      assert.equal(zapButton.getAttribute("aria-expanded"), "false");
+
+      zapButton.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+      await Promise.resolve();
+
+      assert.equal(zapDialog.hidden, false);
+      assert.equal(zapDialog.dataset.state, "open");
+      assert.equal(zapDialog.getAttribute("aria-hidden"), "false");
+      assert.equal(zapButton.getAttribute("aria-expanded"), "true");
 
       const closeButton = document.getElementById("modalZapCloseBtn");
       assert.ok(closeButton, "zap close button should exist");

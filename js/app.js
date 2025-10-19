@@ -692,12 +692,22 @@ class Application {
     };
     this.boundVideoModalZapOpenHandler = (event) => {
       const requiresLogin = Boolean(event?.detail?.requiresLogin);
-      if (requiresLogin) {
-        this.pendingModalZapOpen = true;
-      } else {
-        this.pendingModalZapOpen = false;
+      this.pendingModalZapOpen = requiresLogin;
+
+      const openResult = this.zapController?.open({ requiresLogin });
+      if (!openResult) {
+        event?.preventDefault?.();
+        if (!requiresLogin) {
+          this.pendingModalZapOpen = false;
+        }
+        this.videoModal?.closeZapDialog?.({
+          silent: true,
+          restoreFocus: false,
+        });
+        return;
       }
-      this.zapController?.open({ requiresLogin });
+
+      this.pendingModalZapOpen = false;
     };
     this.boundVideoModalZapCloseHandler = () => {
       this.zapController?.close();
@@ -3029,7 +3039,19 @@ class Application {
   }
 
   isUserLoggedIn() {
-    return Boolean(this.normalizeHexPubkey(this.pubkey));
+    const normalizedPubkey = this.normalizeHexPubkey(this.pubkey);
+    if (!normalizedPubkey) {
+      return false;
+    }
+
+    const sessionActorPubkey = this.normalizeHexPubkey(
+      nostrClient?.sessionActor?.pubkey,
+    );
+    if (sessionActorPubkey && sessionActorPubkey === normalizedPubkey) {
+      return false;
+    }
+
+    return true;
   }
 
   async updateActiveNwcSettings(partial = {}) {

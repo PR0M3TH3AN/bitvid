@@ -119,8 +119,13 @@ export default class AuthService {
 
   hydrateFromStorage() {
     hydrateProfileCacheFromStorage();
-    const { profiles } = hydrateSavedProfilesFromStorage();
-    if (!getActiveProfilePubkey() && Array.isArray(profiles) && profiles.length) {
+    const { profiles, hasExplicitActiveProfile } = hydrateSavedProfilesFromStorage();
+    if (
+      !getActiveProfilePubkey() &&
+      !hasExplicitActiveProfile &&
+      Array.isArray(profiles) &&
+      profiles.length
+    ) {
       const first = profiles[0]?.pubkey || null;
       if (first) {
         setActiveProfilePubkey(first, { persist: true });

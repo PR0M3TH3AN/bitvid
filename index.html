@@ -182,6 +182,41 @@
           </span>
         </a>
 
+        <div class="header-search__region">
+          <form
+            id="headerSearchForm"
+            role="search"
+            class="header-search"
+          >
+            <button
+              type="button"
+              class="header-search__filter"
+              aria-label="Open search filters"
+            >
+              <span
+                aria-hidden="true"
+                class="header-search__icon header-search__icon--filter"
+              ></span>
+            </button>
+            <label for="headerSearchInput" class="sr-only">Search videos</label>
+            <input
+              id="headerSearchInput"
+              class="header-search__input"
+              type="search"
+              name="query"
+              placeholder="Search videos"
+              autocomplete="off"
+            />
+            <button type="submit" class="header-search__submit">
+              <span class="sr-only">Submit search</span>
+              <span
+                aria-hidden="true"
+                class="header-search__icon header-search__icon--submit"
+              ></span>
+            </button>
+          </form>
+        </div>
+
         <!-- Buttons on the far right -->
 
         <!-- Header action buttons share the fade-in treatment for consistency. -->
