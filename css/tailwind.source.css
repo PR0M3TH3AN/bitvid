@@ -1123,7 +1123,7 @@
     border-radius: 0;
     box-shadow: none;
     border: none;
-    background: transparent;
+    background-color: var(--color-surface);
     display: flex;
     align-items: stretch;
   }
