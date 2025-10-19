@@ -34,6 +34,7 @@ function sanitizeProfileString(value) {
 
 let savedProfiles = [];
 let activeProfilePubkey = null;
+let hadExplicitActiveProfile = false;
 const profileCache = new Map();
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
@@ -297,14 +298,23 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
 export function loadSavedProfilesFromStorage() {
   savedProfiles = [];
   activeProfilePubkey = null;
+  hadExplicitActiveProfile = false;
 
   if (typeof localStorage === "undefined") {
-    return { profiles: getSavedProfiles(), activePubkey: activeProfilePubkey };
+    return {
+      profiles: getSavedProfiles(),
+      activePubkey: activeProfilePubkey,
+      hasExplicitActiveProfile: hadExplicitActiveProfile,
+    };
   }
 
   const raw = localStorage.getItem(SAVED_PROFILES_STORAGE_KEY);
   if (!raw) {
-    return { profiles: getSavedProfiles(), activePubkey: activeProfilePubkey };
+    return {
+      profiles: getSavedProfiles(),
+      activePubkey: activeProfilePubkey,
+      hasExplicitActiveProfile: hadExplicitActiveProfile,
+    };
   }
 
   let needsRewrite = false;
@@ -352,17 +362,28 @@ export function loadSavedProfilesFromStorage() {
         savedProfiles.push(entry);
       }
 
-      const activeCandidate =
-        typeof parsed.activePubkey === "string"
-          ? parsed.activePubkey
-          : typeof parsed.activePubKey === "string"
-          ? parsed.activePubKey
-          : null;
-      const normalizedActive = normalizeHexPubkey(activeCandidate);
-      if (normalizedActive && seenPubkeys.has(normalizedActive)) {
-        activeProfilePubkey = normalizedActive;
-      } else if (activeCandidate) {
-        needsRewrite = true;
+      let hasActiveField = false;
+      let activeCandidate;
+      if (Object.prototype.hasOwnProperty.call(parsed, "activePubkey")) {
+        hasActiveField = true;
+        activeCandidate = parsed.activePubkey;
+      } else if (Object.prototype.hasOwnProperty.call(parsed, "activePubKey")) {
+        hasActiveField = true;
+        activeCandidate = parsed.activePubKey;
+      }
+
+      if (hasActiveField) {
+        hadExplicitActiveProfile = true;
+        if (typeof activeCandidate === "string") {
+          const normalizedActive = normalizeHexPubkey(activeCandidate);
+          if (normalizedActive && seenPubkeys.has(normalizedActive)) {
+            activeProfilePubkey = normalizedActive;
+          } else if (activeCandidate) {
+            needsRewrite = true;
+          }
+        } else if (activeCandidate !== null && activeCandidate !== undefined) {
+          needsRewrite = true;
+        }
       }
     } else if (raw) {
       needsRewrite = true;
@@ -372,7 +393,7 @@ export function loadSavedProfilesFromStorage() {
     needsRewrite = true;
   }
 
-  if (!activeProfilePubkey && savedProfiles.length) {
+  if (!activeProfilePubkey && savedProfiles.length && !hadExplicitActiveProfile) {
     activeProfilePubkey = savedProfiles[0].pubkey;
     needsRewrite = true;
   }
@@ -381,7 +402,11 @@ export function loadSavedProfilesFromStorage() {
     persistSavedProfiles();
   }
 
-  return { profiles: getSavedProfiles(), activePubkey: activeProfilePubkey };
+  return {
+    profiles: getSavedProfiles(),
+    activePubkey: activeProfilePubkey,
+    hasExplicitActiveProfile: hadExplicitActiveProfile,
+  };
 }
 
 export function syncSavedProfileFromCache(pubkey, { persist = false } = {}) {
