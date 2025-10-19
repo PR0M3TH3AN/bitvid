@@ -249,7 +249,7 @@
   }
 
   .header-search__region {
-    @apply flex flex-1 justify-center;
+    @apply hidden flex-1 justify-center md:flex;
     min-width: 0;
     padding-inline: clamp(var(--space-md), 4vw, var(--space-3xl));
   }
