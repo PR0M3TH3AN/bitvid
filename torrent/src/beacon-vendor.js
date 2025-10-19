@@ -1,6 +1,11 @@
 import { devLogger, userLogger } from "../js/utils/logger.js";
-import { initThemeController } from "../../js/themeController.js";
+import {
+  initThemeController,
+  setThemeAccentOverrides,
+} from "../../js/themeController.js";
 import { createBeaconApp } from "../app.js";
+
+const CONFIG_MODULE_ID = "../../config/instance-config.js";
 
 function resolveGlobalScope() {
   return (
@@ -22,7 +27,32 @@ function resolveWebTorrent() {
 
 let appInstance = null;
 
-const initializeThemeController = () => {
+const loadThemeAccentOverrides = async () => {
+  try {
+    const configModule = await import(CONFIG_MODULE_ID);
+    if (configModule && typeof configModule.THEME_ACCENT_OVERRIDES !== "undefined") {
+      return configModule.THEME_ACCENT_OVERRIDES;
+    }
+  } catch (error) {
+    devLogger.warn(
+      `[beacon] Failed to load theme accent overrides from ${CONFIG_MODULE_ID}`,
+      error,
+    );
+  }
+
+  return null;
+};
+
+const initializeThemeController = async () => {
+  try {
+    const overrides = await loadThemeAccentOverrides();
+    if (overrides) {
+      setThemeAccentOverrides(overrides);
+    }
+  } catch (error) {
+    devLogger.warn("[beacon] Unable to hydrate theme accent overrides", error);
+  }
+
   try {
     initThemeController();
   } catch (error) {
