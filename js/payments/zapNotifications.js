@@ -5,6 +5,67 @@ import { LOGIN_TO_ZAP_MESSAGE } from "./zapMessages.js";
 
 const LOGIN_NOTIFICATION_AUTO_HIDE_MS = 5000;
 
+function getOwnerDocument(node) {
+  return node?.ownerDocument || null;
+}
+
+function isNotificationBannerActive({
+  container,
+  messageTarget,
+  expectedText,
+}) {
+  const doc = getOwnerDocument(container);
+  const HTMLElementCtor = resolveHTMLElementCtor(doc);
+
+  if (!HTMLElementCtor || !(container instanceof HTMLElementCtor)) {
+    return false;
+  }
+
+  if (container.classList.contains("hidden")) {
+    return false;
+  }
+
+  const resolvedTarget =
+    messageTarget && messageTarget instanceof HTMLElementCtor
+      ? messageTarget
+      : container;
+
+  const text =
+    typeof resolvedTarget?.textContent === "string"
+      ? resolvedTarget.textContent.trim()
+      : "";
+
+  return text === expectedText;
+}
+
+function attemptStatusBanner(app, { autoHideMs, expectedText }) {
+  if (!app || typeof app.showStatus !== "function") {
+    return false;
+  }
+
+  app.showStatus(expectedText, { autoHideMs });
+
+  return isNotificationBannerActive({
+    container: app.statusContainer,
+    messageTarget: app.statusMessage,
+    expectedText,
+  });
+}
+
+function attemptErrorBanner(app, { expectedText }) {
+  if (!app || typeof app.showError !== "function") {
+    return false;
+  }
+
+  app.showError(expectedText);
+
+  return isNotificationBannerActive({
+    container: app.errorContainer,
+    messageTarget: null,
+    expectedText,
+  });
+}
+
 function resolveDocument(candidate) {
   if (candidate && typeof candidate === "object") {
     return candidate;
@@ -113,19 +174,23 @@ export function showLoginRequiredToZapNotification({
   document: docCandidate,
   autoHideMs = LOGIN_NOTIFICATION_AUTO_HIDE_MS,
 } = {}) {
+  const expectedText = LOGIN_TO_ZAP_MESSAGE;
   const app = appCandidate || getApplication();
 
-  if (app && typeof app.showStatus === "function") {
-    app.showStatus(LOGIN_TO_ZAP_MESSAGE, { autoHideMs });
+  const resolvedDocCandidate =
+    docCandidate ||
+    getOwnerDocument(app?.statusContainer) ||
+    getOwnerDocument(app?.errorContainer);
+
+  if (attemptStatusBanner(app, { autoHideMs, expectedText })) {
     return true;
   }
 
-  if (app && typeof app.showError === "function") {
-    app.showError(LOGIN_TO_ZAP_MESSAGE);
+  if (attemptErrorBanner(app, { expectedText })) {
     return true;
   }
 
-  const doc = resolveDocument(docCandidate);
+  const doc = resolveDocument(resolvedDocCandidate);
   if (!doc) {
     return false;
   }
@@ -142,15 +207,15 @@ export function showLoginRequiredToZapNotification({
       statusContainer.querySelector("[data-status-message]") || null;
 
     if (messageTarget && messageTarget instanceof HTMLElementCtor) {
-      messageTarget.textContent = LOGIN_TO_ZAP_MESSAGE;
+      messageTarget.textContent = expectedText;
     } else {
-      statusContainer.textContent = LOGIN_TO_ZAP_MESSAGE;
+      statusContainer.textContent = expectedText;
     }
 
     statusContainer.classList.remove("hidden");
     syncNotificationPortalVisibility(doc);
 
-    const expectedText =
+    const resolvedText =
       messageTarget && messageTarget instanceof HTMLElementCtor
         ? messageTarget.textContent
         : statusContainer.textContent;
@@ -158,7 +223,7 @@ export function showLoginRequiredToZapNotification({
     scheduleAutoHide({
       container: statusContainer,
       messageTarget,
-      expectedText,
+      expectedText: resolvedText,
       doc,
       autoHideMs,
     });
@@ -169,14 +234,14 @@ export function showLoginRequiredToZapNotification({
   const errorContainer = doc.getElementById("errorContainer");
 
   if (errorContainer instanceof HTMLElementCtor) {
-    errorContainer.textContent = LOGIN_TO_ZAP_MESSAGE;
+    errorContainer.textContent = expectedText;
     errorContainer.classList.remove("hidden");
     syncNotificationPortalVisibility(doc);
 
     scheduleAutoHide({
       container: errorContainer,
       messageTarget: null,
-      expectedText: LOGIN_TO_ZAP_MESSAGE,
+      expectedText,
       doc,
       autoHideMs,
     });

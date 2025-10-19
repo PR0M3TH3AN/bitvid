@@ -593,7 +593,12 @@ class Application {
             nostrClient.sessionActor.pubkey.trim()
         ),
       notifyLoginRequired: () =>
-        showLoginRequiredToZapNotification({ app: this }),
+        showLoginRequiredToZapNotification({
+          app: this,
+          document:
+            this.statusContainer?.ownerDocument ||
+            (typeof document !== "undefined" ? document : null),
+        }),
       splitAndZap: (...args) => this.splitAndZap(...args),
       payments: this.payments,
       callbacks: {

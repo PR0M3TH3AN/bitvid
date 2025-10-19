@@ -1756,7 +1756,10 @@ function handleZapButtonClick(event) {
 
   if (requiresLogin || isSessionActorWithoutLogin()) {
     channelZapPendingOpen = true;
-    showLoginRequiredToZapNotification();
+    const doc =
+      zapButton?.ownerDocument ||
+      (typeof document !== "undefined" ? document : null);
+    showLoginRequiredToZapNotification({ document: doc });
     return;
   }
 
