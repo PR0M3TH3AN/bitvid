@@ -248,6 +248,38 @@
     color: var(--color-text-strong);
   }
 
+  .header-search {
+    @apply flex flex-1 items-center gap-3 rounded-full border border-border-subtle bg-surface px-4 py-2 shadow-sm transition-colors duration-base ease-out;
+    margin-inline: clamp(var(--space-md), 4vw, var(--space-2xl));
+    max-width: min(100%, 36rem);
+  }
+
+  .header-search:focus-within {
+    @apply border-accent-strong;
+  }
+
+  .header-search__filter {
+    @apply focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent text-muted transition-colors duration-base ease-out;
+  }
+
+  .header-search__filter:hover,
+  .header-search__filter:focus-visible {
+    @apply text-text;
+  }
+
+  .header-search__input {
+    @apply flex-1 appearance-none bg-transparent text-sm text-text placeholder:text-muted outline-none;
+    min-width: 0;
+  }
+
+  .header-search__input:focus-visible {
+    @apply outline-none ring-0;
+  }
+
+  .header-search__submit {
+    @apply btn px-4 py-2 text-sm;
+  }
+
   .bv-logo {
     --logo-wordmark-color: var(--color-logo-wordmark);
     --logo-accent-color: var(--color-logo-accent);

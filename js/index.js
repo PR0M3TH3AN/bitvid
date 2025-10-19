@@ -276,6 +276,34 @@ async function bootstrapInterface() {
     label: "Sidebar DNS link",
   });
 
+  const headerSearchForm = document.getElementById("headerSearchForm");
+  if (headerSearchForm) {
+    headerSearchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      try {
+        await applicationReadyPromise;
+      } catch (error) {
+        userLogger.info("Search function is coming soon.");
+        return;
+      }
+
+      if (application && typeof application.showStatus === "function") {
+        try {
+          application.showStatus("Search function is coming soon.", {
+            autoHideMs: 3500,
+            showSpinner: false,
+          });
+          return;
+        } catch (error) {
+          // fall through to logger fallback
+        }
+      }
+
+      userLogger.info("Search function is coming soon.");
+    });
+  }
+
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");
   if (sidebar && !sidebar.hasAttribute("data-footer-state")) {
