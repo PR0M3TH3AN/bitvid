@@ -100,11 +100,22 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
           : () => false,
     };
 
+    const authorList = Array.from(authors);
+    const hasTargetedLookup =
+      resolvedService &&
+      typeof resolvedService.getActiveVideosByAuthors === "function";
+
     let videos = [];
     try {
-      videos = await Promise.resolve(
-        resolvedService.getFilteredActiveVideos(options)
-      );
+      if (hasTargetedLookup) {
+        videos = await Promise.resolve(
+          resolvedService.getActiveVideosByAuthors(authorList, options)
+        );
+      } else {
+        videos = await Promise.resolve(
+          resolvedService.getFilteredActiveVideos(options)
+        );
+      }
     } catch (error) {
       context?.log?.(
         "[subscriptions-source] Failed to resolve videos from nostrService",

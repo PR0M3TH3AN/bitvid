@@ -45,9 +45,14 @@ async function testBlockedCreatorsFiltered() {
     { id: "ignored-author", pubkey: "other", created_at: 250 },
   ];
 
+  const calls = [];
   const service = {
-    async getFilteredActiveVideos() {
+    async getActiveVideosByAuthors(authors, options) {
+      calls.push({ authors, options });
       return videos;
+    },
+    async getFilteredActiveVideos() {
+      throw new Error("fallback lookup should not run when authors exist");
     },
   };
 
@@ -79,6 +84,17 @@ async function testBlockedCreatorsFiltered() {
     },
   });
 
+  assert.equal(
+    calls.length,
+    1,
+    "subscription source should request a targeted author lookup"
+  );
+  assert.deepEqual(
+    new Set(calls[0].authors),
+    new Set(["pub1", "blocked"]),
+    "targeted lookup should receive the subscribed authors"
+  );
+
   assert.deepEqual(
     result.videos.map((video) => video.id),
     ["keep"],
@@ -104,9 +120,14 @@ async function testDuplicateRootsFiltered() {
     { id: "other", pubkey: "pub1", created_at: 150, videoRootId: "root-b" },
   ];
 
+  const calls = [];
   const service = {
-    async getFilteredActiveVideos() {
+    async getActiveVideosByAuthors(authors) {
+      calls.push({ authors });
       return videos;
+    },
+    async getFilteredActiveVideos() {
+      throw new Error("should not reach filtered active fallback");
     },
   };
 
@@ -128,6 +149,12 @@ async function testDuplicateRootsFiltered() {
     },
   });
 
+  assert.equal(
+    calls.length,
+    1,
+    "dedupe scenario should use the targeted author lookup"
+  );
+
   assert.deepEqual(
     result.videos.map((video) => video.id),
     ["newer", "other"],
@@ -141,7 +168,39 @@ async function testDuplicateRootsFiltered() {
   assert.equal(dedupeReasons[0].videoId, "older");
 }
 
+async function testNoAuthorsSkipsLookup() {
+  const engine = createFeedEngine();
+  const feedName = "subscriptions-empty";
+
+  const service = {
+    async getActiveVideosByAuthors() {
+      throw new Error("should not request targeted lookup when authors missing");
+    },
+    async getFilteredActiveVideos() {
+      throw new Error("should not fetch active videos when authors missing");
+    },
+  };
+
+  engine.registerFeed(feedName, {
+    source: createSubscriptionAuthorsSource({ service }),
+    stages: [createBlacklistFilterStage({ shouldIncludeVideo: () => true })],
+    sorter: createChronologicalSorter(),
+  });
+
+  const result = await engine.runFeed(feedName, {
+    runtime: {
+      subscriptionAuthors: [],
+      authors: [],
+      blacklistedEventIds: new Set(),
+      isAuthorBlocked: () => false,
+    },
+  });
+
+  assert.deepEqual(result.videos, [], "no authors should yield an empty feed");
+}
+
 await testBlockedCreatorsFiltered();
 await testDuplicateRootsFiltered();
+await testNoAuthorsSkipsLookup();
 
 console.log("subscriptions-feed tests passed");

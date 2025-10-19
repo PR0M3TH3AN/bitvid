@@ -114,6 +114,8 @@ export class NostrService {
       }
     });
     this.videosMap = null;
+    this.videosByAuthorIndex = null;
+    this.authorIndexDirty = false;
     this.moderationService = moderationService || null;
     try {
       if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
@@ -175,6 +177,7 @@ export class NostrService {
     }
 
     this.videosMap = map;
+    this.markAuthorIndexDirty();
     return this.videosMap;
   }
 
@@ -215,14 +218,48 @@ export class NostrService {
       }
     }
     setStoredVideosMap(map);
+    this.markAuthorIndexDirty();
     this.emit("videos:cache", { size: map.size });
   }
 
   resetVideosCache() {
     const map = new Map();
     this.videosMap = map;
+    this.videosByAuthorIndex = new Map();
+    this.authorIndexDirty = false;
     setStoredVideosMap(map);
     this.emit("videos:cache", { size: 0 });
+  }
+
+  markAuthorIndexDirty() {
+    this.authorIndexDirty = true;
+  }
+
+  ensureVideosByAuthorIndex() {
+    const videosMap = this.ensureVideosMap();
+
+    if (this.videosByAuthorIndex instanceof Map && !this.authorIndexDirty) {
+      return this.videosByAuthorIndex;
+    }
+
+    const index = new Map();
+    for (const video of videosMap.values()) {
+      if (!video || typeof video !== "object") {
+        continue;
+      }
+      const author = normalizeHexPubkey(video.pubkey);
+      if (!author) {
+        continue;
+      }
+      if (!index.has(author)) {
+        index.set(author, []);
+      }
+      index.get(author).push(video);
+    }
+
+    this.videosByAuthorIndex = index;
+    this.authorIndexDirty = false;
+    return this.videosByAuthorIndex;
   }
 
   shouldIncludeVideo(video, {
@@ -304,6 +341,53 @@ export class NostrService {
   getFilteredActiveVideos(options = {}) {
     const all = this.nostrClient.getActiveVideos();
     return this.filterVideos(all, options);
+  }
+
+  getActiveVideosByAuthors(authors = [], options = {}) {
+    const candidates = ensureSet(authors);
+    const normalizedAuthors = new Set();
+    for (const candidate of candidates) {
+      const normalized = normalizeHexPubkey(candidate);
+      if (normalized) {
+        normalizedAuthors.add(normalized);
+      }
+    }
+
+    if (!normalizedAuthors.size) {
+      return this.getFilteredActiveVideos(options);
+    }
+
+    const index = this.ensureVideosByAuthorIndex();
+    const collected = [];
+    const seen = new Set();
+
+    for (const author of normalizedAuthors) {
+      const entries = index.get(author);
+      if (!Array.isArray(entries)) {
+        continue;
+      }
+      for (const video of entries) {
+        if (!video || typeof video !== "object") {
+          continue;
+        }
+        const id = typeof video.id === "string" ? video.id : "";
+        if (!id || seen.has(id)) {
+          continue;
+        }
+        seen.add(id);
+        collected.push(video);
+      }
+    }
+
+    const filtered = this.filterVideos(collected, options);
+
+    return filtered.sort((a, b) => {
+      const aCreatedCandidate = Number(a?.created_at);
+      const bCreatedCandidate = Number(b?.created_at);
+      const aCreated = Number.isFinite(aCreatedCandidate) ? aCreatedCandidate : 0;
+      const bCreated = Number.isFinite(bCreatedCandidate) ? bCreatedCandidate : 0;
+      return bCreated - aCreated;
+    });
   }
 
   async loadVideos({
