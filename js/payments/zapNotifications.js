@@ -3,7 +3,7 @@
 import { getApplication } from "../applicationContext.js";
 import { LOGIN_TO_ZAP_MESSAGE } from "./zapMessages.js";
 
-const LOGIN_NOTIFICATION_AUTO_HIDE_MS = 5000;
+const LOGIN_NOTIFICATION_AUTO_HIDE_MS = 3000;
 
 function getOwnerDocument(node) {
   return node?.ownerDocument || null;
@@ -108,7 +108,12 @@ function ensureNotificationPortal({ doc, HTMLElementCtor }) {
   return portal instanceof HTMLElementCtor ? portal : null;
 }
 
-function ensureStatusContainer({ doc, portal, HTMLElementCtor }) {
+function ensureStatusContainer({
+  doc,
+  portal,
+  HTMLElementCtor,
+  includeSpinner = true,
+}) {
   if (!doc || !HTMLElementCtor) {
     return { container: null, messageTarget: null };
   }
@@ -123,10 +128,12 @@ function ensureStatusContainer({ doc, portal, HTMLElementCtor }) {
     statusContainer.setAttribute("role", "status");
     statusContainer.setAttribute("aria-live", "polite");
 
-    const spinner = doc.createElement("span");
-    spinner.className = "status-spinner";
-    spinner.setAttribute("aria-hidden", "true");
-    statusContainer.appendChild(spinner);
+    if (includeSpinner) {
+      const spinner = doc.createElement("span");
+      spinner.className = "status-spinner";
+      spinner.setAttribute("aria-hidden", "true");
+      statusContainer.appendChild(spinner);
+    }
 
     const message = doc.createElement("span");
     message.className = "status-message";
@@ -134,11 +141,15 @@ function ensureStatusContainer({ doc, portal, HTMLElementCtor }) {
     statusContainer.appendChild(message);
   } else {
     const existingSpinner = statusContainer.querySelector(".status-spinner");
-    if (!(existingSpinner instanceof HTMLElementCtor)) {
-      const spinner = doc.createElement("span");
-      spinner.className = "status-spinner";
-      spinner.setAttribute("aria-hidden", "true");
-      statusContainer.insertBefore(spinner, statusContainer.firstChild);
+    if (includeSpinner) {
+      if (!(existingSpinner instanceof HTMLElementCtor)) {
+        const spinner = doc.createElement("span");
+        spinner.className = "status-spinner";
+        spinner.setAttribute("aria-hidden", "true");
+        statusContainer.insertBefore(spinner, statusContainer.firstChild);
+      }
+    } else if (existingSpinner instanceof HTMLElementCtor) {
+      existingSpinner.remove();
     }
   }
 
@@ -299,6 +310,7 @@ export function showLoginRequiredToZapNotification({
     doc,
     portal,
     HTMLElementCtor,
+    includeSpinner: false,
   });
 
   if (statusContainer instanceof HTMLElementCtor) {
