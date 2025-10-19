@@ -62,7 +62,7 @@ export const BLOG_URL =
  * Telegram, Flotilla). When unset (null or an empty string) the Community link
  * is omitted from the sidebar dropup menu.
  */
-export const COMMUNITY_URL = null;
+export const COMMUNITY_URL = "https://groups.nip29.com/?relay=wss://relay.groups.nip29.com&groupId=d92ef5";
 
 /**
  * Optional external destination for the Nostr menu link.
