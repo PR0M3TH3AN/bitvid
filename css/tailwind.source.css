@@ -1524,26 +1524,32 @@
     inline-size: 100%;
     max-block-size: var(--modal-shell-max-height);
     overflow: hidden;
+    --profile-modal-gap: calc(var(--space-lg) - var(--space-xs));
+    --profile-modal-padding-inline: calc(var(--space-lg) - var(--space-xs));
+    --profile-modal-padding-block-start: var(--space-md);
+    --profile-modal-padding-block-end: calc(var(--space-lg) - var(--space-xs));
+    --profile-modal-nav-gap: var(--space-xs);
   }
 
   .profile-modal__body {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--profile-modal-gap);
     inline-size: 100%;
     min-block-size: 0;
     overflow: hidden;
-    padding-block-start: var(--space-md);
-    padding-block-end: var(--space-lg);
-    padding-inline: var(--space-lg);
+    overflow-x: hidden;
+    padding-block-start: var(--profile-modal-padding-block-start);
+    padding-block-end: var(--profile-modal-padding-block-end);
+    padding-inline: var(--profile-modal-padding-inline);
   }
 
   .profile-modal__layout {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--profile-modal-gap);
     inline-size: 100%;
     min-block-size: 0;
   }
@@ -1551,8 +1557,9 @@
   .profile-modal__nav {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-sm);
+    gap: var(--profile-modal-nav-gap);
     align-self: flex-start;
+    overflow-x: hidden;
   }
 
   .profile-modal__panes {
@@ -1562,6 +1569,7 @@
     block-size: 100%;
     min-block-size: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding-inline-end: var(--profile-modal-scrollbar-offset);
     scrollbar-gutter: stable;
   }
@@ -1570,6 +1578,7 @@
     display: flex;
     flex-direction: column;
     min-block-size: auto;
+    overflow-x: hidden;
   }
 
   .profile-pane.hidden {
@@ -1586,15 +1595,15 @@
 
   @media (min-width: theme("screens.lg")) {
     .profile-modal__body {
-      gap: var(--space-xl);
-      padding-inline: var(--space-xl);
+      gap: calc(var(--profile-modal-gap) + var(--space-2xs));
+      padding-inline: calc(var(--profile-modal-padding-inline) + var(--space-xs));
     }
 
     .profile-modal__layout {
       display: grid;
       align-items: flex-start;
       block-size: 100%;
-      gap: var(--space-xl);
+      gap: calc(var(--profile-modal-gap) + var(--space-2xs));
       grid-template-columns:
         minmax(
           var(--profile-modal-nav-min-width),
@@ -1606,6 +1615,7 @@
     .profile-modal__nav {
       flex-direction: column;
       flex-wrap: nowrap;
+      gap: var(--profile-modal-nav-gap);
       justify-self: start;
       inline-size: var(--profile-modal-nav-max-width);
       min-inline-size: var(--profile-modal-nav-min-width);

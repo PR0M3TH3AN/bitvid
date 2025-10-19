@@ -1440,7 +1440,7 @@ export class ProfileModalController {
     const avatarUrl = avatarSrc || FALLBACK_PROFILE_AVATAR;
 
     const container = document.createElement("div");
-    container.className = "min-w-0 flex flex-1 items-center gap-3";
+    container.className = "min-w-0 flex flex-1 items-center gap-2";
 
     const avatarWrapper = document.createElement("span");
     avatarWrapper.className = `flex ${avatarSize} flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-overlay-strong bg-overlay-panel-soft`;
@@ -1455,11 +1455,11 @@ export class ProfileModalController {
     textStack.className = "min-w-0 flex flex-col";
 
     const nameEl = document.createElement("p");
-    nameEl.className = "truncate text-sm font-semibold text-primary";
+    nameEl.className = "truncate text-xs font-semibold text-primary";
     nameEl.textContent = safeName;
 
     const npubEl = document.createElement("p");
-    npubEl.className = "break-all font-mono text-xs text-muted";
+    npubEl.className = "break-all font-mono text-2xs text-muted";
     npubEl.textContent = safeNpub;
 
     textStack.append(nameEl, npubEl);
