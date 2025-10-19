@@ -18,6 +18,7 @@ import { VideoListView } from "./ui/views/VideoListView.js";
 import { ALLOW_NSFW_CONTENT } from "./config.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
+import nostrService from "./services/nostrService.js";
 
 const getApp = () => getApplication();
 
@@ -36,6 +37,12 @@ class SubscriptionsManager {
     this.lastRunOptions = null;
     this.lastResult = null;
     this.lastContainerId = null;
+    this.unsubscribeFromNostrUpdates = null;
+    this.pendingRefreshPromise = null;
+    this.scheduledRefreshDetail = null;
+    this.isRunningFeed = false;
+    this.hasRenderedOnce = false;
+    this.ensureNostrServiceListener();
   }
 
   /**
@@ -302,6 +309,7 @@ class SubscriptionsManager {
       }
       this.lastRunOptions = null;
       this.lastResult = null;
+      this.hasRenderedOnce = Boolean(container);
       return null;
     }
 
@@ -316,6 +324,7 @@ class SubscriptionsManager {
         limit,
         containerId
       };
+      this.hasRenderedOnce = false;
       return null;
     }
 
@@ -328,6 +337,7 @@ class SubscriptionsManager {
         containerId
       };
       this.lastResult = { items: [], metadata: { reason: "no-subscriptions" } };
+      this.hasRenderedOnce = true;
       return this.lastResult;
     }
 
@@ -341,10 +351,24 @@ class SubscriptionsManager {
     };
 
     this.ensureFeedRegistered();
+    this.ensureNostrServiceListener();
+
+    if (typeof nostrService?.awaitInitialLoad === "function") {
+      try {
+        await nostrService.awaitInitialLoad();
+      } catch (error) {
+        devLogger.warn(
+          "[SubscriptionsManager] Failed to await nostrService initial load:",
+          error
+        );
+      }
+    }
+
     const engine = this.getFeedEngine();
     if (!engine || typeof engine.run !== "function") {
       container.innerHTML =
         "<p class='text-muted-strong'>Subscriptions are unavailable right now.</p>";
+      this.hasRenderedOnce = true;
       return null;
     }
 
@@ -362,6 +386,7 @@ class SubscriptionsManager {
     };
 
     try {
+      this.isRunningFeed = true;
       const result = await engine.run("subscriptions", runOptions);
 
       const videos = Array.isArray(result?.items)
@@ -378,6 +403,7 @@ class SubscriptionsManager {
 
       this.lastResult = result;
       this.renderSameGridStyle(result, containerId, { limit, reason });
+      this.hasRenderedOnce = true;
       return result;
     } catch (error) {
       userLogger.error(
@@ -387,8 +413,72 @@ class SubscriptionsManager {
       container.innerHTML =
         "<p class='text-muted-strong'>Unable to load subscriptions right now.</p>";
       this.lastResult = null;
+      this.hasRenderedOnce = Boolean(container);
+      return null;
+    } finally {
+      this.isRunningFeed = false;
+      this.processScheduledRefresh();
+    }
+  }
+
+  ensureNostrServiceListener() {
+    if (this.unsubscribeFromNostrUpdates || typeof nostrService?.on !== "function") {
+      return;
+    }
+
+    this.unsubscribeFromNostrUpdates = nostrService.on(
+      "videos:updated",
+      (detail) => {
+        this.handleNostrVideosUpdated(detail);
+      }
+    );
+  }
+
+  handleNostrVideosUpdated(detail) {
+    if (!detail || !Array.isArray(detail.videos) || !detail.videos.length) {
+      return;
+    }
+
+    this.scheduledRefreshDetail = detail;
+    this.processScheduledRefresh();
+  }
+
+  processScheduledRefresh() {
+    if (!this.lastRunOptions || !this.hasRenderedOnce) {
       return null;
     }
+
+    if (!this.scheduledRefreshDetail) {
+      return null;
+    }
+
+    if (this.isRunningFeed || this.pendingRefreshPromise) {
+      return null;
+    }
+
+    const detail = this.scheduledRefreshDetail;
+    this.scheduledRefreshDetail = null;
+
+    const refreshReason =
+      typeof detail?.reason === "string" && detail.reason
+        ? `nostr:${detail.reason}`
+        : "nostr:update";
+
+    this.pendingRefreshPromise = this.refreshActiveFeed({ reason: refreshReason })
+      .catch((error) => {
+        devLogger.warn(
+          "[SubscriptionsManager] Failed to refresh after nostrService update:",
+          error
+        );
+      })
+      .finally(() => {
+        this.pendingRefreshPromise = null;
+        if (this.scheduledRefreshDetail) {
+          this.processScheduledRefresh();
+        }
+      });
+
+    return this.pendingRefreshPromise;
   }
 
   ensureFeedRegistered() {
