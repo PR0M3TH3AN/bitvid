@@ -97,9 +97,7 @@ export default class ZapController {
   setVisibility(visible) {
     const lightningVisible = !!visible;
     const loggedIn = this.isUserLoggedIn();
-    const sessionActorAvailable = this.hasSessionActor();
-    const shouldShow =
-      lightningVisible && (loggedIn || sessionActorAvailable);
+    const shouldShow = lightningVisible;
     const requiresLogin = shouldShow && !loggedIn;
     const hasWallet = this.hasActiveWalletConnection();
     if (this.videoModal) {

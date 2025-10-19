@@ -506,10 +506,7 @@ function setChannelZapVisibility(visible) {
     typeof app?.isUserLoggedIn === "function"
       ? app.isUserLoggedIn()
       : Boolean(app?.normalizeHexPubkey?.(app?.pubkey));
-  const sessionActorPubkey = getSessionActorPubkey();
-  const hasSessionActor = sessionActorPubkey.length > 0;
-  const sessionOnly = !isLoggedIn && hasSessionActor;
-  const shouldShow = !!visible && (isLoggedIn || sessionOnly);
+  const shouldShow = !!visible;
   const requiresLogin = shouldShow && !isLoggedIn;
 
   if (
