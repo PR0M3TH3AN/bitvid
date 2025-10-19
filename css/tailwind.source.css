@@ -2398,7 +2398,8 @@
     padding: calc(
         var(--space-sm) +
           (var(--space-2xl-plus) - var(--sidebar-control-size)) / 2 +
-          env(safe-area-inset-top, 0)
+          env(safe-area-inset-top, 0) -
+          calc(var(--border-width-hairline) / 2)
       )
       var(--space-sidebar-shell-inline)
       var(--space-sidebar-shell-block-end);
