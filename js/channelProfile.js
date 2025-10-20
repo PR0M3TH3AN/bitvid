@@ -3690,6 +3690,39 @@ async function loadUserProfile(pubkey) {
  * Fetches and displays this user's videos (kind=30078).
  * Filters out older overshadowed notes, blacklisted, etc.
  */
+export function refreshActiveChannelVideoGrid({ reason } = {}) {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  if (hashParams.get("view") !== "channel-profile") {
+    return Promise.resolve();
+  }
+
+  if (!currentChannelHex) {
+    return Promise.resolve();
+  }
+
+  const activeNpub = hashParams.get("npub");
+  if (currentChannelNpub && activeNpub && activeNpub !== currentChannelNpub) {
+    return Promise.resolve();
+  }
+
+  try {
+    const result = loadUserVideos(currentChannelHex);
+    return result instanceof Promise ? result : Promise.resolve(result);
+  } catch (error) {
+    userLogger.warn(
+      reason
+        ? `Failed to trigger channel refresh after ${reason}:`
+        : "Failed to trigger channel refresh:",
+      error,
+    );
+    return Promise.resolve();
+  }
+}
+
 async function loadUserVideos(pubkey) {
   const app = getApp();
   const container = document.getElementById("channelVideoList");
@@ -3835,34 +3868,35 @@ async function loadUserVideos(pubkey) {
   }
 }
 
-window.addEventListener("bitvid:access-control-updated", () => {
-  const hashParams = new URLSearchParams(window.location.hash.slice(1));
-  if (hashParams.get("view") !== "channel-profile") {
-    return;
-  }
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("bitvid:access-control-updated", () => {
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    if (hashParams.get("view") !== "channel-profile") {
+      return;
+    }
 
-  if (!currentChannelHex) {
-    return;
-  }
+    if (!currentChannelHex) {
+      return;
+    }
 
-  const activeNpub = hashParams.get("npub");
-  if (currentChannelNpub && activeNpub && activeNpub !== currentChannelNpub) {
-    return;
-  }
+    const activeNpub = hashParams.get("npub");
+    if (currentChannelNpub && activeNpub && activeNpub !== currentChannelNpub) {
+      return;
+    }
 
-  loadUserVideos(currentChannelHex).catch((error) => {
-    userLogger.error(
-      "Failed to refresh channel videos after admin update:",
-      error
-    );
+    loadUserVideos(currentChannelHex).catch((error) => {
+      userLogger.error(
+        "Failed to refresh channel videos after admin update:",
+        error
+      );
+    });
   });
-});
 
-window.addEventListener("bitvid:auth-changed", (event) => {
-  const hashParams = new URLSearchParams(window.location.hash.slice(1));
-  if (hashParams.get("view") !== "channel-profile") {
-    return;
-  }
+  window.addEventListener("bitvid:auth-changed", (event) => {
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    if (hashParams.get("view") !== "channel-profile") {
+      return;
+    }
 
   if (!currentChannelHex) {
     return;
@@ -3896,27 +3930,28 @@ window.addEventListener("bitvid:auth-changed", (event) => {
     return;
   }
 
-  if (detail.status === "login") {
-    zapInFlight = false;
-    resetZapRetryState();
-    setZapStatus("", "neutral");
-    if (channelZapPendingOpen) {
-      channelZapPendingOpen = false;
-      const zapButton = getChannelZapButton();
-      const requiresLogin =
-        zapButton?.dataset?.requiresLogin === "true" ||
-        zapButton?.hasAttribute("hidden");
-      if (zapButton && !requiresLogin) {
-        const opened = openZapControls({ focus: true });
-        if (!opened) {
-          setupZapButton({ force: true });
-          openZapControls({ focus: true });
+    if (detail.status === "login") {
+      zapInFlight = false;
+      resetZapRetryState();
+      setZapStatus("", "neutral");
+      if (channelZapPendingOpen) {
+        channelZapPendingOpen = false;
+        const zapButton = getChannelZapButton();
+        const requiresLogin =
+          zapButton?.dataset?.requiresLogin === "true" ||
+          zapButton?.hasAttribute("hidden");
+        if (zapButton && !requiresLogin) {
+          const opened = openZapControls({ focus: true });
+          if (!opened) {
+            setupZapButton({ force: true });
+            openZapControls({ focus: true });
+          }
         }
       }
+      return;
     }
-    return;
-  }
-});
+  });
+}
 
 /**
  * Keep only the newest version of each video root.
