@@ -6155,7 +6155,7 @@ export class NostrClient {
         if (accessControl.isBlacklisted(npub)) {
           throw new Error("Your account has been blocked on this platform.");
         } else {
-          throw new Error("Access restricted to whitelisted users only.");
+          throw new Error("Access restricted to admins and moderators users only.");
         }
       }
       this.pubkey = pubkey;
