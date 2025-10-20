@@ -376,7 +376,8 @@ export class VideoCard {
         "font-bold",
         "text-text",
         "line-clamp-2",
-        "hover:text-info-strong",
+        "hover:text-accent",
+        "focus-visible:text-accent",
         "cursor-pointer"
       ],
       textContent: this.video.title
