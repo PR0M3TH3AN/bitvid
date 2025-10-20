@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createModerationStage } from "../js/feedEngine/stages.js";
 
-test("moderation stage enforces admin lists and whitelist bypass", async () => {
+test("moderation stage enforces admin lists without whitelist bypass", async () => {
   const whitelistedHex = "1".repeat(64);
   const blockedHex = "2".repeat(64);
   const blacklistedHex = "3".repeat(64);
@@ -88,11 +88,11 @@ test("moderation stage enforces admin lists and whitelist bypass", async () => {
   );
 
   const whitelistedItem = result[0];
-  assert.equal(whitelistedItem.video.moderation.blockAutoplay, false);
-  assert.equal(whitelistedItem.video.moderation.blurThumbnail, false);
+  assert.equal(whitelistedItem.video.moderation.blockAutoplay, true);
+  assert.equal(whitelistedItem.video.moderation.blurThumbnail, true);
   assert.equal(whitelistedItem.video.moderation.adminWhitelist, true);
-  assert.equal(whitelistedItem.video.moderation.adminWhitelistBypass, true);
-  assert.equal(whitelistedItem.metadata.moderation.adminWhitelistBypass, true);
+  assert.equal(whitelistedItem.video.moderation.adminWhitelistBypass, false);
+  assert.equal(whitelistedItem.metadata.moderation.adminWhitelistBypass, false);
 
   const normalItem = result[1];
   assert.equal(normalItem.video.moderation.blockAutoplay, true);
@@ -309,9 +309,9 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
   assert.ok(mutedItem);
 
   assert.equal(whitelistedItem.metadata.moderation.adminWhitelist, true);
-  assert.equal(whitelistedItem.metadata.moderation.blockAutoplay, false);
-  assert.equal(whitelistedItem.metadata.moderation.blurThumbnail, false);
-  assert.equal(whitelistedItem.video.moderation.adminWhitelistBypass, true);
+  assert.equal(whitelistedItem.metadata.moderation.blockAutoplay, true);
+  assert.equal(whitelistedItem.metadata.moderation.blurThumbnail, true);
+  assert.equal(whitelistedItem.video.moderation.adminWhitelistBypass, false);
 
   assert.equal(mutedItem.metadata.moderation.trustedMuted, true);
   assert.deepEqual(mutedItem.metadata.moderation.trustedMuters, [muterHex]);

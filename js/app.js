@@ -5119,13 +5119,8 @@ class Application {
       : this.deriveModerationTrustedCount(summary, reportType);
 
     const thresholds = this.getActiveModerationThresholds();
-    const adminWhitelistBypass = existingModeration.adminWhitelistBypass === true;
-    const computedBlockAutoplay = adminWhitelistBypass
-      ? false
-      : trustedCount >= thresholds.autoplayBlockThreshold;
-    const computedBlurThumbnail = adminWhitelistBypass
-      ? false
-      : trustedCount >= thresholds.blurThreshold;
+    const computedBlockAutoplay = trustedCount >= thresholds.autoplayBlockThreshold;
+    const computedBlurThumbnail = trustedCount >= thresholds.blurThreshold;
 
     const overrideEntry = getModerationOverride(video.id);
     const overrideActive = overrideEntry?.showAnyway === true;
