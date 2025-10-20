@@ -295,3 +295,112 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
   assert.equal(updatedMuted.video.moderation.blockAutoplay, false);
   assert.equal(updatedMuted.video.moderation.blurThumbnail, false);
 });
+
+test("moderation stage clears cached reporters and muters after service signals", async () => {
+  const reporterHex = "d".repeat(64);
+  const muterHex = "e".repeat(64);
+  const authorHex = "f".repeat(64);
+  const videoId = "9".repeat(64);
+
+  const listeners = new Map();
+
+  const service = {
+    reporters: [{ pubkey: reporterHex, latest: 1_700_000_100 }],
+    muters: [muterHex],
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return { whitelist: new Set(), whitelistHex: new Set(), blacklist: new Set(), blacklistHex: new Set() };
+    },
+    getAccessControlStatus(identifier) {
+      return { hex: identifier, whitelisted: false, blacklisted: false };
+    },
+    getTrustedReportSummary(targetId) {
+      const trusted = this.reporters.length;
+      return {
+        eventId: targetId,
+        totalTrusted: trusted,
+        types: {
+          nudity: {
+            trusted,
+            total: trusted,
+            latest: this.reporters[0]?.latest ?? 0,
+          },
+        },
+        updatedAt: Date.now(),
+      };
+    },
+    trustedReportCount() {
+      return this.reporters.length;
+    },
+    getTrustedReporters() {
+      return this.reporters.slice();
+    },
+    isAuthorMutedByTrusted() {
+      return this.muters.length > 0;
+    },
+    getTrustedMutersForAuthor() {
+      return this.muters.slice();
+    },
+    on(eventName, handler) {
+      if (typeof handler !== "function") {
+        return () => {};
+      }
+      if (!listeners.has(eventName)) {
+        listeners.set(eventName, new Set());
+      }
+      const bucket = listeners.get(eventName);
+      bucket.add(handler);
+      return () => {
+        bucket.delete(handler);
+        if (!bucket.size) {
+          listeners.delete(eventName);
+        }
+      };
+    },
+    emit(eventName, detail) {
+      const bucket = listeners.get(eventName);
+      if (!bucket) {
+        return;
+      }
+      for (const handler of Array.from(bucket)) {
+        handler(detail);
+      }
+    },
+  };
+
+  const stage = createModerationStage({ service, reportType: "nudity" });
+
+  const context = {
+    addWhy() {},
+    log() {},
+  };
+
+  const items = [{ video: { id: videoId, pubkey: authorHex }, metadata: {} }];
+
+  const firstPass = await stage(items, context);
+  const firstVideo = firstPass[0].video;
+
+  assert.equal(firstVideo.moderation.trustedCount, 1);
+  assert.equal(firstVideo.moderation.trustedMuted, true);
+  assert.deepEqual(firstVideo.moderation.trustedMuters, [muterHex]);
+  assert.deepEqual(firstVideo.moderation.trustedReporters, [{ pubkey: reporterHex, latest: 1_700_000_100 }]);
+
+  service.reporters = [];
+  service.muters = [];
+  service.emit("user-blocks", { action: "block", targetPubkey: reporterHex });
+  service.emit("trusted-mutes", { total: 0 });
+
+  const secondPass = await stage(firstPass, context);
+  const updatedVideo = secondPass[0].video;
+  const updatedMetadata = secondPass[0].metadata.moderation;
+
+  assert.equal(updatedVideo.moderation.trustedCount, 0);
+  assert.equal(updatedVideo.moderation.trustedMuted, false);
+  assert.equal("trustedMuters" in updatedVideo.moderation, false);
+  assert.equal("trustedReporters" in updatedVideo.moderation, false);
+  assert.ok(Array.isArray(updatedMetadata.trustedReporters));
+  assert.equal(updatedMetadata.trustedReporters.length, 0);
+  assert.ok(Array.isArray(updatedMetadata.trustedMuters));
+  assert.equal(updatedMetadata.trustedMuters.length, 0);
+});

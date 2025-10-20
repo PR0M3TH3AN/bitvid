@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ModerationService } from "../js/services/moderationService.js";
+import { USER_BLOCK_EVENTS } from "../js/userBlocks.js";
 
 const nip19 = {
   npubEncode(hex) {
@@ -99,6 +100,124 @@ test("trusted report summaries respect personal blocks and admin lists", async (
     [whitelistedHex, trustedHex]
   );
   assert.equal(service.trustedReportCount(eventId, "nudity"), 2);
+});
+
+test("user block updates recompute summaries and emit notifications", async (t) => {
+  const blockedHex = "1".repeat(64);
+  const trustedHex = "2".repeat(64);
+  const randomHex = "3".repeat(64);
+  const eventId = "4".repeat(64);
+
+  class FakeUserBlocks {
+    constructor() {
+      this.blocked = new Set();
+      this.listeners = new Set();
+    }
+
+    async ensureLoaded() {}
+
+    isBlocked(pubkey) {
+      return this.blocked.has(pubkey);
+    }
+
+    on(eventName, handler) {
+      if (eventName !== USER_BLOCK_EVENTS.CHANGE || typeof handler !== "function") {
+        return () => {};
+      }
+      this.listeners.add(handler);
+      return () => {
+        this.listeners.delete(handler);
+      };
+    }
+
+    emitChange(detail) {
+      for (const handler of Array.from(this.listeners)) {
+        handler(detail);
+      }
+    }
+  }
+
+  const userBlocks = new FakeUserBlocks();
+  const service = new ModerationService({ logger: () => {}, userBlocks });
+
+  service.trustedContacts = new Set([blockedHex, trustedHex]);
+
+  const reports = new Map();
+  reports.set(
+    blockedHex,
+    new Map([["nudity", { created_at: 200 }]]),
+  );
+  reports.set(
+    trustedHex,
+    new Map([["nudity", { created_at: 150 }]]),
+  );
+  reports.set(
+    randomHex,
+    new Map([["nudity", { created_at: 100 }]]),
+  );
+
+  service.reportEvents.set(eventId, reports);
+  service.recomputeSummaryForEvent(eventId);
+
+  const initialSummary = service.getTrustedReportSummary(eventId);
+  assert.equal(initialSummary.totalTrusted, 2);
+  assert.equal(initialSummary.types.nudity.total, 3);
+  assert.equal(initialSummary.types.nudity.trusted, 2);
+
+  const initialReporters = service.getTrustedReporters(eventId, "nudity");
+  assert.deepEqual(
+    initialReporters.map((entry) => entry.pubkey),
+    [blockedHex, trustedHex],
+  );
+
+  const blockEvent = new Promise((resolve) => {
+    const unsubscribe = service.on("user-blocks", (detail) => {
+      unsubscribe?.();
+      resolve(detail);
+    });
+  });
+
+  userBlocks.blocked.add(blockedHex);
+  userBlocks.emitChange({ action: "block", targetPubkey: blockedHex });
+
+  const blockDetail = await blockEvent;
+  assert.equal(blockDetail.action, "block");
+  assert.equal(blockDetail.targetPubkey, blockedHex);
+
+  const afterBlockSummary = service.getTrustedReportSummary(eventId);
+  assert.equal(afterBlockSummary.totalTrusted, 1);
+  assert.equal(afterBlockSummary.types.nudity.total, 2);
+  assert.equal(afterBlockSummary.types.nudity.trusted, 1);
+  assert.equal(service.trustedReportCount(eventId, "nudity"), 1);
+
+  const reportersAfterBlock = service.getTrustedReporters(eventId, "nudity");
+  assert.deepEqual(reportersAfterBlock.map((entry) => entry.pubkey), [trustedHex]);
+
+  const unblockEvent = new Promise((resolve) => {
+    const unsubscribe = service.on("user-blocks", (detail) => {
+      unsubscribe?.();
+      resolve(detail);
+    });
+  });
+
+  userBlocks.blocked.delete(blockedHex);
+  userBlocks.emitChange({ action: "unblock", targetPubkey: blockedHex });
+
+  const unblockDetail = await unblockEvent;
+  assert.equal(unblockDetail.action, "unblock");
+  assert.equal(unblockDetail.targetPubkey, blockedHex);
+
+  const afterUnblockSummary = service.getTrustedReportSummary(eventId);
+  assert.equal(afterUnblockSummary.totalTrusted, 2);
+  assert.equal(afterUnblockSummary.types.nudity.total, 3);
+  assert.equal(afterUnblockSummary.types.nudity.trusted, 2);
+  assert.equal(service.trustedReportCount(eventId, "nudity"), 2);
+
+  const reportersAfterUnblock = service.getTrustedReporters(eventId, "nudity");
+  assert.deepEqual(
+    reportersAfterUnblock.map((entry) => entry.pubkey),
+    [blockedHex, trustedHex],
+  );
 });
 
 test("trusted mute aggregation tracks F1 mute lists", () => {
