@@ -47,6 +47,7 @@
     </main>
     <script type="module">
       import { VideoCard } from "/js/ui/components/VideoCard.js";
+      import moderationService from "/js/services/moderationService.js";
 
       const STORAGE_KEY = "bitvid:moderation:fixture-overrides";
       const fixtures = [
@@ -55,6 +56,7 @@
           heading: "Blur threshold (≥3 trusted nudity reports)",
           description:
             "Card should be blurred and autoplay disabled until the viewer overrides it.",
+          thresholds: { blur: 3, autoplay: 2 },
           video: {
             id: "1".repeat(64),
             title: "Fixture: Blurred Preview",
@@ -72,6 +74,10 @@
             { name: "Mira F1", pubkey: "c".repeat(64), latest: 1_700_000_020 },
             { name: "Omar F1", pubkey: "d".repeat(64), latest: 1_700_000_030 },
           ],
+          blockToggle: {
+            label: "Simulate viewer blocking Mira F1",
+            pubkey: "c".repeat(64),
+          },
         },
         {
           key: "autoplay-threshold",
@@ -140,6 +146,89 @@
         },
       ];
 
+      const blockedReportersByVideo = new Map();
+
+      function getBlockedSet(videoId) {
+        if (typeof videoId !== "string" || !videoId) {
+          return null;
+        }
+        return blockedReportersByVideo.get(videoId) || null;
+      }
+
+      function setReporterBlocked(videoId, pubkey, blocked) {
+        if (typeof videoId !== "string" || !videoId || typeof pubkey !== "string" || !pubkey) {
+          return;
+        }
+
+        let entry = blockedReportersByVideo.get(videoId);
+        if (blocked) {
+          if (!entry) {
+            entry = new Set();
+            blockedReportersByVideo.set(videoId, entry);
+          }
+          entry.add(pubkey);
+          return;
+        }
+
+        if (!entry) {
+          return;
+        }
+
+        entry.delete(pubkey);
+        if (!entry.size) {
+          blockedReportersByVideo.delete(videoId);
+        }
+      }
+
+      function isReporterBlocked(videoId, pubkey) {
+        const entry = getBlockedSet(videoId);
+        if (!entry) {
+          return false;
+        }
+        return entry.has(pubkey);
+      }
+
+      function getActiveReporters(fixture, videoId) {
+        const reporters = Array.isArray(fixture?.reporters) ? fixture.reporters : [];
+        if (!reporters.length) {
+          return [];
+        }
+
+        const entry = getBlockedSet(videoId);
+        if (!entry || !entry.size) {
+          return reporters.slice();
+        }
+
+        return reporters.filter((reporter) => {
+          const key = typeof reporter?.pubkey === "string" ? reporter.pubkey : "";
+          if (!key) {
+            return false;
+          }
+          return !entry.has(key);
+        });
+      }
+
+      function normalizeFixtureReporters(reporters) {
+        if (!Array.isArray(reporters)) {
+          return [];
+        }
+
+        return reporters
+          .map((reporter) => {
+            if (!reporter || typeof reporter !== "object") {
+              return null;
+            }
+            const pubkey = typeof reporter.pubkey === "string" ? reporter.pubkey : "";
+            if (!pubkey) {
+              return null;
+            }
+            const latest = Number.isFinite(reporter.latest) ? Math.floor(reporter.latest) : 0;
+            const name = typeof reporter.name === "string" ? reporter.name : "";
+            return { name, pubkey, latest };
+          })
+          .filter(Boolean);
+      }
+
       window.__MODERATION_FIXTURE_STORAGE_KEY__ = STORAGE_KEY;
 
       function loadOverrides() {
@@ -163,26 +252,25 @@
         }
       }
 
-      function buildSummary(fixture) {
+      function buildSummary(fixture, videoId, sanitizedReporters = null) {
         if (!fixture?.moderation?.reportType) {
           return null;
         }
-        const latest = Array.isArray(fixture.reporters)
-          ? fixture.reporters.reduce(
-              (max, reporter) =>
-                Number.isFinite(reporter?.latest)
-                  ? Math.max(max, Math.floor(reporter.latest))
-                  : max,
-              0,
-            )
-          : 0;
+
+        const reporters =
+          Array.isArray(sanitizedReporters) && sanitizedReporters
+            ? sanitizedReporters
+            : normalizeFixtureReporters(getActiveReporters(fixture, videoId));
+
+        const latest = reporters.reduce((max, reporter) => Math.max(max, reporter.latest), 0);
+
         return {
           eventId: fixture.video.id,
-          totalTrusted: fixture.moderation.trustedCount,
+          totalTrusted: reporters.length,
           types: {
             [fixture.moderation.reportType]: {
-              trusted: fixture.moderation.trustedCount,
-              total: fixture.moderation.trustedCount,
+              trusted: reporters.length,
+              total: reporters.length,
               latest,
             },
           },
@@ -192,28 +280,46 @@
 
       function buildModerationState(fixture, overrides, videoId) {
         const overrideEntry = overrides?.[videoId];
+        const activeReporters = getActiveReporters(fixture, videoId);
+        const sanitizedReporters = normalizeFixtureReporters(activeReporters);
+        const thresholds =
+          fixture.thresholds && typeof fixture.thresholds === "object"
+            ? { blur: 3, autoplay: 2, ...fixture.thresholds }
+            : { blur: 3, autoplay: 2 };
+        const autoplayThreshold = Number.isFinite(thresholds.autoplay)
+          ? Math.max(0, Math.floor(thresholds.autoplay))
+          : 2;
+        const blurThreshold = Number.isFinite(thresholds.blur)
+          ? Math.max(0, Math.floor(thresholds.blur))
+          : 3;
+        const initialBlock = fixture.moderation.blockAutoplay === true;
+        const initialBlur = fixture.moderation.blurThumbnail === true;
+        const trustedCount = sanitizedReporters.length;
+
+        const reporterDisplayNames = sanitizedReporters
+          .map((reporter) => reporter.name)
+          .filter((value) => typeof value === "string" && value);
+
+        const reporterPubkeys = sanitizedReporters.map((reporter) => reporter.pubkey);
+
+        const trustedReporterEntries = sanitizedReporters.map((reporter) => ({
+          pubkey: reporter.pubkey,
+          latest: reporter.latest,
+        }));
+
         const base = {
           reportType: fixture.moderation.reportType,
-          trustedCount: fixture.moderation.trustedCount,
-          reporterDisplayNames: Array.isArray(fixture.reporters)
-            ? fixture.reporters.map((reporter) => reporter.name)
-            : [],
-          reporterPubkeys: Array.isArray(fixture.reporters)
-            ? fixture.reporters.map((reporter) => reporter.pubkey)
-            : [],
-          trustedReporters: Array.isArray(fixture.reporters)
-            ? fixture.reporters.map((reporter) => ({
-                pubkey: reporter.pubkey,
-                latest: reporter.latest,
-              }))
-            : [],
+          trustedCount,
+          reporterDisplayNames,
+          reporterPubkeys,
+          trustedReporters: trustedReporterEntries,
           original: {
-            blockAutoplay: fixture.moderation.blockAutoplay === true,
-            blurThumbnail: fixture.moderation.blurThumbnail === true,
+            blockAutoplay: initialBlock,
+            blurThumbnail: initialBlur,
           },
         };
 
-        const summary = buildSummary(fixture);
+        const summary = buildSummary(fixture, videoId, sanitizedReporters);
         if (summary) {
           base.summary = summary;
         }
@@ -247,8 +353,8 @@
           base.blockAutoplay = false;
           base.blurThumbnail = false;
         } else {
-          base.blockAutoplay = fixture.moderation.blockAutoplay === true;
-          base.blurThumbnail = fixture.moderation.blurThumbnail === true;
+          base.blockAutoplay = initialBlock && trustedCount >= autoplayThreshold;
+          base.blurThumbnail = initialBlur && trustedCount >= blurThreshold;
         }
 
         return base;
@@ -304,22 +410,24 @@
           },
         });
 
+        const refreshModeration = () => {
+          card.video.moderation = buildModerationState(fixture, overrides, video.id);
+          if (typeof card.refreshModerationUi === "function") {
+            card.refreshModerationUi();
+          }
+        };
+
         if (fixture.enableOverride) {
           card.onModerationOverride = () => {
             overrides = setOverride(overrides, video.id, { showAnyway: true });
-            card.video.moderation = buildModerationState(
-              fixture,
-              overrides,
-              video.id,
-            );
-            card.refreshModerationUi();
+            refreshModeration();
             return true;
           };
         }
 
         const root = card.getRoot();
         root.dataset.testId = fixture.key;
-        return { card, root };
+        return { card, root, refreshModeration };
       }
 
       function renderFixtures() {
@@ -343,8 +451,51 @@
             section.appendChild(description);
           }
 
-          const { root: cardRoot } = createCard(fixture, overrides);
+          const { root: cardRoot, refreshModeration } = createCard(fixture, overrides);
           section.appendChild(cardRoot);
+
+          if (fixture.blockToggle && fixture.blockToggle.pubkey) {
+            const toggleWrapper = document.createElement("div");
+            toggleWrapper.style.marginTop = "0.75rem";
+            toggleWrapper.style.fontSize = "0.875rem";
+            toggleWrapper.style.color = "#cbd5f5";
+
+            const label = document.createElement("label");
+            label.style.display = "inline-flex";
+            label.style.alignItems = "center";
+            label.style.gap = "0.5rem";
+
+            const input = document.createElement("input");
+            input.type = "checkbox";
+            input.checked = isReporterBlocked(fixture.video.id, fixture.blockToggle.pubkey);
+            input.addEventListener("change", () => {
+              const checked = input.checked;
+              setReporterBlocked(fixture.video.id, fixture.blockToggle.pubkey, checked);
+              const action = checked ? "block" : "unblock";
+              try {
+                const detail = { action, targetPubkey: fixture.blockToggle.pubkey };
+                const maybePromise = moderationService?.queueUserBlockRefresh?.(detail);
+                if (maybePromise && typeof maybePromise.then === "function") {
+                  maybePromise.catch(() => {});
+                }
+              } catch {
+                /* ignore fixture errors */
+              }
+              refreshModeration();
+            });
+
+            const text = document.createElement("span");
+            text.textContent =
+              typeof fixture.blockToggle.label === "string"
+                ? fixture.blockToggle.label
+                : "Viewer blocks reporter";
+
+            label.appendChild(input);
+            label.appendChild(text);
+            toggleWrapper.appendChild(label);
+            section.appendChild(toggleWrapper);
+          }
+
           root.appendChild(section);
         });
       }

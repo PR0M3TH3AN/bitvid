@@ -36,6 +36,20 @@ async function setupModal({ lazyLoad = false } = {}) {
   globalThis.location = window.location;
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;
+  const hadWebSocket = typeof globalThis.WebSocket !== "undefined";
+  if (typeof window.scrollTo !== "function") {
+    window.scrollTo = () => {};
+  }
+  globalThis.scrollTo = window.scrollTo;
+  if (!hadWebSocket) {
+    globalThis.WebSocket = class {
+      constructor() {}
+      close() {}
+      addEventListener() {}
+      removeEventListener() {}
+      send() {}
+    };
+  }
 
   applyDesignSystemAttributes(document);
 
@@ -119,6 +133,10 @@ async function setupModal({ lazyLoad = false } = {}) {
     delete globalThis.location;
     delete globalThis.KeyboardEvent;
     delete globalThis.MouseEvent;
+    delete globalThis.scrollTo;
+    if (!hadWebSocket) {
+      delete globalThis.WebSocket;
+    }
     if (restoreFetch) {
       restoreFetch();
     }
@@ -302,6 +320,20 @@ async function setupPlaybackHarness() {
   globalThis.KeyboardEvent = window.KeyboardEvent;
   globalThis.MouseEvent = window.MouseEvent;
   globalThis.self = window;
+  const hadHarnessWebSocket = typeof globalThis.WebSocket !== "undefined";
+  if (typeof window.scrollTo !== "function") {
+    window.scrollTo = () => {};
+  }
+  globalThis.scrollTo = window.scrollTo;
+  if (!hadHarnessWebSocket) {
+    globalThis.WebSocket = class {
+      constructor() {}
+      close() {}
+      addEventListener() {}
+      removeEventListener() {}
+      send() {}
+    };
+  }
 
   window.NostrTools = {
     nip19: {
@@ -383,6 +415,10 @@ async function setupPlaybackHarness() {
     delete globalThis.KeyboardEvent;
     delete globalThis.MouseEvent;
     delete globalThis.self;
+    delete globalThis.scrollTo;
+    if (!hadHarnessWebSocket) {
+      delete globalThis.WebSocket;
+    }
   };
 
   return { app, modalStub, playbackRecords, window, cleanup };
