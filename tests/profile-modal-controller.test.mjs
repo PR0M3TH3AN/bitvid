@@ -683,7 +683,9 @@ test('admin mutations invoke accessControl stubs and update admin DOM', async ()
   assert.equal(whitelistButton.hasAttribute('aria-busy'), false);
   assert.ok(successMessages.includes('Added to the whitelist.'));
 
-  const removeButton = controller.whitelistList.querySelector('button');
+  const removeButton = controller.whitelistList.querySelector(
+    'button[data-role="remove"]',
+  );
   await controller.handleAdminListMutation('whitelist', 'remove', 'npub1allow', removeButton);
   const removeEvent = accessEvents.find((entry) => entry[0] === 'removeWhitelist');
   assert.deepEqual(removeEvent, [
