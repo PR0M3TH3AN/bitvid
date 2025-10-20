@@ -1196,6 +1196,10 @@
     @apply video-modal__container gap-6;
   }
 
+  #playerModal {
+    --player-modal-vertical-padding: var(--space-lg);
+  }
+
   #playerModal > .bv-modal__panel {
     max-width: none;
     width: 100%;
@@ -1237,6 +1241,14 @@
       --player-modal-inline-padding,
       clamp(var(--space-md-plus), 4vw, var(--space-2xl))
     );
+  }
+
+  #playerModal .video-modal__primary > .watch-container:first-child {
+    padding-block-start: var(--player-modal-vertical-padding);
+  }
+
+  #playerModal .video-modal__secondary > .watch-container:last-child {
+    padding-block-end: var(--player-modal-vertical-padding);
   }
 
   #playerModal .modal-nav .watch-container {
@@ -1365,6 +1377,10 @@
 
   #playerModal .modal-nav__bar {
     @apply flex w-full items-center gap-3 px-2 py-2 sm:px-4;
+    padding-inline: var(
+      --player-modal-inline-padding,
+      clamp(var(--space-md-plus), 4vw, var(--space-2xl))
+    );
   }
 
   #playerModal .modal-nav__context {
