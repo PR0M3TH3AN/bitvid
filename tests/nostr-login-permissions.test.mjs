@@ -201,6 +201,10 @@ test("NIP-07 decrypt reuses cached extension permissions", async () => {
       "stored permissions should include nip04.decrypt",
     );
     assert.ok(
+      storedSet.has("nip44.encrypt"),
+      "stored permissions should include nip44.encrypt",
+    );
+    assert.ok(
       storedSet.has("nip44.decrypt"),
       "stored permissions should include nip44.decrypt",
     );
@@ -212,6 +216,10 @@ test("NIP-07 decrypt reuses cached extension permissions", async () => {
     assert.ok(
       freshClient.extensionPermissionCache.has("nip04.decrypt"),
       "fresh client should hydrate nip04.decrypt from storage",
+    );
+    assert.ok(
+      freshClient.extensionPermissionCache.has("nip44.encrypt"),
+      "fresh client should hydrate nip44.encrypt from storage",
     );
     assert.ok(
       freshClient.extensionPermissionCache.has("nip44.decrypt"),
