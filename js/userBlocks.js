@@ -54,7 +54,10 @@ class TinyEventEmitter {
   }
 }
 
-export const USER_BLOCK_EVENTS = Object.freeze({ CHANGE: "change" });
+export const USER_BLOCK_EVENTS = Object.freeze({
+  CHANGE: "change",
+  STATUS: "status",
+});
 
 const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
@@ -138,7 +141,42 @@ class UserBlockListManager {
     const statusCallback =
       typeof options?.statusCallback === "function" ? options.statusCallback : null;
 
-    statusCallback?.({ status: "loading", relays: Array.from(nostrClient.relays || []) });
+    const emitStatus = (detail) => {
+      if (!detail || typeof detail !== "object") {
+        return;
+      }
+
+      try {
+        statusCallback?.(detail);
+      } catch (callbackError) {
+        userLogger.warn(
+          "[UserBlockList] statusCallback threw while emitting status",
+          callbackError,
+        );
+      }
+
+      try {
+        this.emitter.emit(USER_BLOCK_EVENTS.STATUS, detail);
+      } catch (emitterError) {
+        userLogger.warn(
+          "[UserBlockList] Failed to dispatch status event",
+          emitterError,
+        );
+      }
+    };
+
+    emitStatus({ status: "loading", relays: Array.from(nostrClient.relays || []) });
+
+    const applyBlockedPubkeys = (nextValues, meta = {}) => {
+      const nextSet = new Set(Array.isArray(nextValues) ? nextValues : []);
+      this.blockedPubkeys = nextSet;
+
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "sync",
+        blockedPubkeys: Array.from(this.blockedPubkeys),
+        ...meta,
+      });
+    };
 
     const permissionResult = await requestDefaultExtensionPermissions();
     if (!permissionResult.ok) {
@@ -152,8 +190,8 @@ class UserBlockListManager {
         permissionResult.error instanceof Error
           ? permissionResult.error
           : new Error("Extension permissions required to load block list.");
-      statusCallback?.({ status: "error", error });
-      statusCallback?.({ status: "settled" });
+      emitStatus({ status: "error", error });
+      emitStatus({ status: "settled" });
       return;
     }
 
@@ -163,11 +201,11 @@ class UserBlockListManager {
       );
       this.reset();
       this.loaded = true;
-      statusCallback?.({
+      emitStatus({
         status: "error",
         error: new Error("nip04.decrypt is unavailable"),
       });
-      statusCallback?.({ status: "settled" });
+      emitStatus({ status: "settled" });
       return;
     }
 
@@ -192,8 +230,8 @@ class UserBlockListManager {
         this.blockEventId = null;
         this.blockEventCreatedAt = null;
         this.loaded = true;
-        statusCallback?.({ status: "applied-empty" });
-        statusCallback?.({ status: "settled" });
+        emitStatus({ status: "applied-empty" });
+        emitStatus({ status: "settled" });
         return;
       }
 
@@ -203,6 +241,16 @@ class UserBlockListManager {
       const fetchFromRelay = (relayUrl, timeoutMs, requireEvent) =>
         new Promise((resolve, reject) => {
           let settled = false;
+          const pool = nostrClient?.pool;
+          if (!pool || typeof pool.list !== "function") {
+            const poolError = new Error(
+              "nostrClient.pool.list is unavailable; cannot query block list.",
+            );
+            poolError.code = "pool-unavailable";
+            poolError.relay = relayUrl;
+            reject(poolError);
+            return;
+          }
           const timer = setTimeout(() => {
             if (settled) {
               return;
@@ -218,7 +266,7 @@ class UserBlockListManager {
           }, timeoutMs);
 
           Promise.resolve()
-            .then(() => nostrClient.pool.list([relayUrl], [filter]))
+            .then(() => pool.list([relayUrl], [filter]))
             .then((result) => {
               if (settled) {
                 return;
@@ -259,19 +307,22 @@ class UserBlockListManager {
         fetchFromRelay(relayUrl, BACKGROUND_BLOCKLIST_TIMEOUT_MS, false)
       );
 
-      const applyEvents = async (events, { skipIfEmpty = false } = {}) => {
+      const applyEvents = async (
+        events,
+        { skipIfEmpty = false, source = "fast" } = {},
+      ) => {
         if (!Array.isArray(events) || !events.length) {
           if (skipIfEmpty) {
             return;
           }
           if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
-            statusCallback?.({ status: "stale", reason: "empty-result" });
+            emitStatus({ status: "stale", reason: "empty-result", source });
             return;
           }
-          this.blockedPubkeys.clear();
           this.blockEventId = null;
           this.blockEventCreatedAt = null;
-          statusCallback?.({ status: "applied-empty" });
+          applyBlockedPubkeys([], { source, reason: "empty-result" });
+          emitStatus({ status: "applied-empty", source });
           return;
         }
 
@@ -284,13 +335,13 @@ class UserBlockListManager {
             return;
           }
           if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
-            statusCallback?.({ status: "stale", reason: "empty-result" });
+            emitStatus({ status: "stale", reason: "empty-result", source });
             return;
           }
-          this.blockedPubkeys.clear();
           this.blockEventId = null;
           this.blockEventCreatedAt = null;
-          statusCallback?.({ status: "applied-empty" });
+          applyBlockedPubkeys([], { source, reason: "empty-result" });
+          emitStatus({ status: "applied-empty", source });
           return;
         }
 
@@ -304,7 +355,7 @@ class UserBlockListManager {
         );
 
         if (newestCreatedAt < guardCreatedAt) {
-          statusCallback?.({ status: "stale", event: newest, guardCreatedAt });
+          emitStatus({ status: "stale", event: newest, guardCreatedAt, source });
           return;
         }
 
@@ -314,7 +365,7 @@ class UserBlockListManager {
           newest?.id &&
           newest.id !== this.blockEventId
         ) {
-          statusCallback?.({ status: "stale", event: newest, guardCreatedAt });
+          emitStatus({ status: "stale", event: newest, guardCreatedAt, source });
           return;
         }
 
@@ -322,7 +373,7 @@ class UserBlockListManager {
           this.blockEventCreatedAt = Number.isFinite(newestCreatedAt)
             ? newestCreatedAt
             : this.blockEventCreatedAt;
-          statusCallback?.({ status: "confirmed", event: newest });
+          emitStatus({ status: "confirmed", event: newest, source });
           return;
         }
 
@@ -332,8 +383,8 @@ class UserBlockListManager {
           : null;
 
         if (!newest?.content) {
-          this.blockedPubkeys.clear();
-          statusCallback?.({ status: "applied-empty", event: newest });
+          applyBlockedPubkeys([], { source, reason: "empty-event", event: newest });
+          emitStatus({ status: "applied-empty", event: newest, source });
           return;
         }
 
@@ -342,8 +393,13 @@ class UserBlockListManager {
           decrypted = await window.nostr.nip04.decrypt(normalized, newest.content);
         } catch (err) {
           userLogger.error("[UserBlockList] Failed to decrypt block list:", err);
-          this.blockedPubkeys.clear();
-          statusCallback?.({ status: "error", event: newest, error: err });
+          applyBlockedPubkeys([], {
+            source,
+            reason: "decrypt-error",
+            event: newest,
+            error: err,
+          });
+          emitStatus({ status: "error", event: newest, error: err, source });
           return;
         }
 
@@ -363,16 +419,26 @@ class UserBlockListManager {
               }
               return true;
             });
-          this.blockedPubkeys = new Set(sanitized);
-          statusCallback?.({
+          applyBlockedPubkeys(sanitized, {
+            source,
+            reason: "applied",
+            event: newest,
+          });
+          emitStatus({
             status: "applied",
             event: newest,
             blockedPubkeys: Array.from(this.blockedPubkeys),
+            source,
           });
         } catch (err) {
           userLogger.error("[UserBlockList] Failed to parse block list:", err);
-          this.blockedPubkeys.clear();
-          statusCallback?.({ status: "error", event: newest, error: err });
+          applyBlockedPubkeys([], {
+            source,
+            reason: "parse-error",
+            event: newest,
+            error: err,
+          });
+          emitStatus({ status: "error", event: newest, error: err, source });
         }
       };
 
@@ -407,13 +473,15 @@ class UserBlockListManager {
           }
 
           if (!aggregated.length) {
-            return;
+            return { foundEvents: false };
           }
 
-          await applyEvents(aggregated, { skipIfEmpty: true });
+          await applyEvents(aggregated, { skipIfEmpty: true, source: "background" });
+          return { foundEvents: true };
         })
         .catch((error) => {
           userLogger.error("[UserBlockList] background block list refresh failed:", error);
+          return { foundEvents: false, error };
         });
 
       let fastResult = null;
@@ -436,25 +504,39 @@ class UserBlockListManager {
       }
 
       if (fastResult?.events?.length) {
-        await applyEvents(fastResult.events);
+        await applyEvents(fastResult.events, { source: "fast" });
         background.catch(() => {});
         return;
       }
 
-      this.blockedPubkeys.clear();
-      this.blockEventId = null;
-      this.blockEventCreatedAt = null;
-      statusCallback?.({ status: "applied-empty" });
-      background.catch(() => {});
+      if (backgroundRelays.length || fastPromises.length) {
+        emitStatus({
+          status: "awaiting-background",
+          relays: backgroundRelays.length ? backgroundRelays : fastRelays,
+        });
+      }
+
+      const backgroundOutcome = await background;
+
+      if (backgroundOutcome?.foundEvents) {
+        return;
+      }
+
+      if (backgroundOutcome?.error) {
+        emitStatus({ status: "error", error: backgroundOutcome.error, source: "background" });
+        return;
+      }
+
+      await applyEvents([], { source: "background" });
     } catch (error) {
       userLogger.error("[UserBlockList] loadBlocks failed:", error);
-      this.blockedPubkeys.clear();
+      applyBlockedPubkeys([], { source: "fast", reason: "load-error", error });
       this.blockEventId = null;
       this.blockEventCreatedAt = null;
-      statusCallback?.({ status: "error", error });
+      emitStatus({ status: "error", error });
     } finally {
       this.loaded = true;
-      statusCallback?.({ status: "settled" });
+      emitStatus({ status: "settled" });
     }
   }
 
