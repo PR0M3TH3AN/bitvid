@@ -15,7 +15,7 @@
 - **Encrypted Watch History**: Sync viewing activity privately through the NIP-04 encrypted pipeline with local fallbacks.
 - **Live View Counters**: Subscribe to view events and see totals update in real time on video cards and the video modal.
 - **Lightning Zaps**: Tip creators with Lightning payments via the Zap controls in the video modal.
-- **Private Video Listings**: Hide cards from shared grids so only the owner sees them.
+- **Private Video Listings**: Hide cards from shared grids by flipping the visibility switch in the [Edit Video modal](components/edit-video-modal.html) after publishing.
 - **Nostr Integration**: Use Nostr keys for login and interaction.
 - **WebTorrent Streaming**: Stream videos directly through torrent technology.
 - **Developer-Friendly**: Open source and customizable for your needs.
@@ -38,7 +38,7 @@ Open the **Upload** modal from the header toolbar and choose the flow that match
 - **Custom (hosted URL or magnet)**: Provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, and keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish.
 - **Cloudflare (R2 direct upload)**: Connect your bucket once via the Cloudflare pane, then drop media files for bitvid to upload through the R2 API. The modal tracks progress, lets you tweak metadata, and publishes the resulting R2 URL back into the note automatically.
 
-Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using either mode. Use the **Private** toggle to keep the resulting card visible only to you.
+Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using either mode. After your note publishes, open the card’s **More** menu, choose **Edit**, and use the [visibility switch in the Edit Video modal](components/edit-video-modal.html) to move between public and private.
 
 ### How playback works
 

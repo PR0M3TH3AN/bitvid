@@ -35,7 +35,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 - Keep WebTorrent Desktop running while sharing videos
 - Add eye-catching thumbnails to attract viewers
 - Write clear descriptions to help people find your content
-- Use the "Private" option if you only want to share with specific people
+- After posting, open a card’s **More → Edit** action and use the [visibility toggle in the Edit Video modal](../components/edit-video-modal.html) to keep it private until you’re ready to share
 - Encrypted watch-history sync lives in the [Watch History view](history.html), where you can clear devices or pause tracking whenever you need.
 
 ## Need Help?
