@@ -69,6 +69,14 @@ export default class MoreMenuController {
       onUserBlocksUpdated: callbacks.onUserBlocksUpdated || (() => {}),
     };
 
+    this.callbacks.refreshAllVideoGrids =
+      typeof callbacks.refreshAllVideoGrids === "function"
+        ? (options) => callbacks.refreshAllVideoGrids(options)
+        : (options = {}) =>
+            Promise.resolve(
+              this.callbacks.loadVideos(Boolean(options?.forceMainReload)),
+            ).catch(() => {});
+
     this.moreMenuGlobalHandlerBound = false;
 
     this.videoListView = null;
@@ -1198,20 +1206,14 @@ export default class MoreMenuController {
             );
           }
           try {
-            await this.callbacks.loadVideos();
-          } catch (loadError) {
-            if (this.isDevMode) {
-              userLogger.warn("[MoreMenu] Failed to reload videos after muting", loadError);
-            }
-          }
-          try {
-            await this.subscriptions?.refreshActiveFeed?.({
+            await this.callbacks.refreshAllVideoGrids({
               reason: "viewer-mute-update",
+              forceMainReload: true,
             });
           } catch (refreshError) {
             if (this.isDevMode) {
               userLogger.warn(
-                "[Subscriptions] Failed to refresh after viewer mute update:",
+                "[MoreMenu] Failed to refresh video grids after viewer mute update:",
                 refreshError,
               );
             }
@@ -1272,23 +1274,14 @@ export default class MoreMenuController {
             );
           }
           try {
-            await this.callbacks.loadVideos();
-          } catch (loadError) {
-            if (this.isDevMode) {
-              userLogger.warn(
-                "[MoreMenu] Failed to reload videos after unmuting",
-                loadError,
-              );
-            }
-          }
-          try {
-            await this.subscriptions?.refreshActiveFeed?.({
+            await this.callbacks.refreshAllVideoGrids({
               reason: "viewer-mute-update",
+              forceMainReload: true,
             });
           } catch (refreshError) {
             if (this.isDevMode) {
               userLogger.warn(
-                "[Subscriptions] Failed to refresh after viewer mute removal:",
+                "[MoreMenu] Failed to refresh video grids after viewer mute removal:",
                 refreshError,
               );
             }
@@ -1369,13 +1362,14 @@ export default class MoreMenuController {
           if (result?.ok) {
             this.callbacks.showSuccess("Creator added to the blacklist.");
             try {
-              await this.subscriptions?.refreshActiveFeed?.({
+              await this.callbacks.refreshAllVideoGrids({
                 reason: "admin-blacklist-update",
+                forceMainReload: true,
               });
             } catch (error) {
               if (this.isDevMode) {
                 userLogger.warn(
-                  "[Subscriptions] Failed to refresh after blacklist update:",
+                  "[MoreMenu] Failed to refresh video grids after blacklist update:",
                   error,
                 );
               }
@@ -1478,15 +1472,15 @@ export default class MoreMenuController {
             }
           }
 
-          await this.callbacks.loadVideos();
           try {
-            await this.subscriptions?.refreshActiveFeed?.({
+            await this.callbacks.refreshAllVideoGrids({
               reason: "user-block-update",
+              forceMainReload: true,
             });
           } catch (error) {
             if (this.isDevMode) {
               userLogger.warn(
-                "[Subscriptions] Failed to refresh after user block update:",
+                "[MoreMenu] Failed to refresh video grids after user block update:",
                 error,
               );
             }

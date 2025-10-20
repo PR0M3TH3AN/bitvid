@@ -44,6 +44,7 @@ import WatchHistoryController from "./ui/watchHistoryController.js";
 import WatchHistoryTelemetry from "./services/watchHistoryTelemetry.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import { subscriptions } from "./subscriptions.js";
+import { refreshActiveChannelVideoGrid } from "./channelProfile.js";
 import { isWatchHistoryDebugEnabled } from "./watchHistoryDebug.js";
 import { devLogger, userLogger } from "./utils/logger.js";
 import createPopover from "./ui/overlay/popoverEngine.js";
@@ -827,6 +828,7 @@ class Application {
         handleEnsurePresenceAction: (payload) =>
           this.handleEnsurePresenceAction(payload),
         loadVideos: () => this.loadVideos(),
+        refreshAllVideoGrids: (options) => this.refreshAllVideoGrids(options),
         onUserBlocksUpdated: () => {
           if (this.profileController) {
             try {
@@ -2067,29 +2069,102 @@ class Application {
       }
     }
 
-    this.loadVideos(true).catch((error) => {
-      devLogger.error("Failed to refresh videos after admin update:", error);
+    this.refreshAllVideoGrids({
+      reason: "access-control-update",
+      forceMainReload: true,
+    }).catch((error) => {
+      devLogger.error("Failed to refresh video grids after admin update:", error);
     });
     window.dispatchEvent(new CustomEvent("bitvid:access-control-updated"));
   }
 
-  async onVideosShouldRefresh({ reason } = {}) {
+  async refreshAllVideoGrids({ reason, forceMainReload = false } = {}) {
+    const normalizedReason =
+      typeof reason === "string" && reason.trim() ? reason.trim() : undefined;
+
+    if (typeof moderationService?.awaitUserBlockRefresh === "function") {
+      try {
+        await moderationService.awaitUserBlockRefresh();
+      } catch (error) {
+        const contextMessage = normalizedReason
+          ? ` before ${normalizedReason}`
+          : "";
+        devLogger.warn(
+          `Failed to sync moderation summaries${contextMessage}:`,
+          error,
+        );
+      }
+    }
+
     try {
-      if (typeof moderationService?.awaitUserBlockRefresh === "function") {
-        try {
-          await moderationService.awaitUserBlockRefresh();
-        } catch (error) {
+      await this.loadVideos(forceMainReload);
+    } catch (error) {
+      const contextMessage = normalizedReason
+        ? ` after ${normalizedReason}`
+        : "";
+      devLogger.error(
+        `Failed to refresh recent videos${contextMessage}:`,
+        error,
+      );
+    }
+
+    const refreshTasks = [];
+
+    if (typeof subscriptions?.refreshActiveFeed === "function") {
+      const subscriptionPromise = subscriptions
+        .refreshActiveFeed({ reason: normalizedReason })
+        .catch((error) => {
+          const contextMessage = normalizedReason
+            ? ` after ${normalizedReason}`
+            : "";
           devLogger.warn(
-            "Failed to sync moderation summaries before refreshing videos:",
+            `Failed to refresh subscriptions grid${contextMessage}:`,
             error,
           );
-        }
-      }
+        });
+      refreshTasks.push(subscriptionPromise);
+    }
 
-      await this.loadVideos(true);
+    if (typeof refreshActiveChannelVideoGrid === "function") {
+      try {
+        const maybePromise = refreshActiveChannelVideoGrid({
+          reason: normalizedReason,
+        });
+        if (maybePromise && typeof maybePromise.then === "function") {
+          refreshTasks.push(
+            maybePromise.catch((error) => {
+              const contextMessage = normalizedReason
+                ? ` after ${normalizedReason}`
+                : "";
+              devLogger.warn(
+                `Failed to refresh channel grid${contextMessage}:`,
+                error,
+              );
+            }),
+          );
+        }
+      } catch (error) {
+        const contextMessage = normalizedReason
+          ? ` after ${normalizedReason}`
+          : "";
+        devLogger.warn(
+          `Failed to trigger channel grid refresh${contextMessage}:`,
+          error,
+        );
+      }
+    }
+
+    if (refreshTasks.length) {
+      await Promise.allSettled(refreshTasks);
+    }
+  }
+
+  async onVideosShouldRefresh({ reason } = {}) {
+    try {
+      await this.refreshAllVideoGrids({ reason, forceMainReload: true });
     } catch (error) {
       const context = reason ? ` after ${reason}` : "";
-      devLogger.error(`Failed to refresh videos${context}:`, error);
+      devLogger.error(`Failed to refresh video grids${context}:`, error);
     }
   }
 
