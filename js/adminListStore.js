@@ -16,6 +16,7 @@ import {
   buildAdminListEvent,
   ADMIN_LIST_IDENTIFIERS,
 } from "./nostrEventSchemas.js";
+import { publishEventToRelays } from "./nostrPublish.js";
 
 const LEGACY_STORAGE_KEYS = {
   editors: "bitvid_admin_editors",
@@ -24,8 +25,6 @@ const LEGACY_STORAGE_KEYS = {
   blacklist: "bitvid_admin_blacklist",
   blacklistLegacy: "bitvid_blacklist",
 };
-
-const PUBLISH_TIMEOUT_MS = 7000;
 
 function createError(code, message, cause) {
   const error = new Error(message);
@@ -534,88 +533,6 @@ function buildListEvent(listKey, npubs, actorHex) {
   });
 }
 
-function publishToRelay(url, signedEvent, listKey) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const timeout = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        resolve({ url, success: false, error: new Error("timeout") });
-      }
-    }, PUBLISH_TIMEOUT_MS);
-
-    const finalize = (success, error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      resolve({ url, success, error });
-    };
-
-    try {
-      const pub = nostrClient.pool.publish([url], signedEvent);
-      if (!pub) {
-        finalize(false, new Error("publish returned no result"));
-        return;
-      }
-
-      if (typeof pub.on === "function") {
-        const registerHandler = (eventName, handler) => {
-          try {
-            pub.on(eventName, handler);
-            return true;
-          } catch (error) {
-            devLogger.warn(
-            `[adminListStore] Relay publish rejected ${eventName} listener:`,
-            error
-            );
-            return false;
-          }
-        };
-
-        const handleFailure = (reason) => {
-          const error =
-            reason instanceof Error
-              ? reason
-              : new Error(String(reason || "failed"));
-          finalize(false, error);
-        };
-
-        let handlerRegistered = false;
-        handlerRegistered =
-          registerHandler("ok", () => finalize(true)) || handlerRegistered;
-        handlerRegistered =
-          registerHandler("seen", () => finalize(true)) || handlerRegistered;
-        handlerRegistered =
-          registerHandler("failed", handleFailure) || handlerRegistered;
-
-        if (handlerRegistered) {
-          return;
-        }
-      }
-
-      if (typeof pub.then === "function") {
-        pub.then(() => finalize(true)).catch((error) => finalize(false, error));
-        return;
-      }
-    } catch (error) {
-      finalize(false, error);
-      return;
-    }
-
-    finalize(true);
-  }).then((result) => {
-    if (!result.success && isDevMode) {
-      userLogger.warn(
-        `[adminListStore] Publish failed for ${listKey} on ${result.url}:`,
-        result.error
-      );
-    }
-    return result;
-  });
-}
-
 async function persistNostrState(actorNpub, updates = {}) {
   ensureNostrReady();
   const permissionResult = await requestDefaultExtensionPermissions();
@@ -703,9 +620,22 @@ async function persistNostrState(actorNpub, updates = {}) {
     }
 
     const relays = ensureNostrReady();
-    const publishResults = await Promise.all(
-      relays.map((url) => publishToRelay(url, signedEvent, listKey))
+    const publishResults = await publishEventToRelays(
+      nostrClient.pool,
+      relays,
+      signedEvent,
     );
+
+    if (isDevMode) {
+      publishResults
+        .filter((result) => !result.success)
+        .forEach((result) => {
+          userLogger.warn(
+            `[adminListStore] Publish failed for ${listKey} on ${result.url}:`,
+            result.error,
+          );
+        });
+    }
 
     if (!publishResults.some((result) => result.success)) {
       throw createError(
