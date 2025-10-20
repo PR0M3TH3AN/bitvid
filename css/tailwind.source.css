@@ -1618,6 +1618,14 @@
     white-space: nowrap;
   }
 
+  .profile-modal__remove-button {
+    @apply border-2;
+  }
+
+  .profile-modal__remove-button:focus-visible {
+    --tw-ring-color: var(--color-critical-strong);
+  }
+
   .profile-modal__add-profile {
     --tw-ring-color: var(--color-ring-alert);
     @apply focus-ring relative flex w-full items-center justify-start gap-4 rounded-xl px-5 py-4 text-left text-text transition duration-base ease-in-out;
