@@ -659,6 +659,14 @@ export class NostrService {
 
     if (map.has(eventId)) {
       const existing = map.get(eventId);
+      if (existing && !existing.deleted) {
+        this.nostrClient.applyTombstoneGuard(existing);
+      }
+      if (!existing || existing.deleted) {
+        map.delete(eventId);
+        setStoredVideosMap(map);
+        return null;
+      }
       if (isBlockedNsfw(existing)) {
         map.delete(eventId);
         setStoredVideosMap(map);
@@ -668,6 +676,11 @@ export class NostrService {
     }
 
     const cached = this.nostrClient.allEvents.get(eventId);
+    if (cached) {
+      if (!cached.deleted) {
+        this.nostrClient.applyTombstoneGuard(cached);
+      }
+    }
     if (cached && !cached.deleted) {
       if (isBlockedNsfw(cached)) {
         return null;

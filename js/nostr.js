@@ -3156,6 +3156,9 @@ export class NostrClient {
     // “activeMap” holds only the newest version for each root
     this.activeMap = new Map();
 
+    // Track the newest deletion timestamp for each active key
+    this.tombstones = new Map();
+
     this.rootCreatedAtByRoot = new Map();
 
     this.hasRestoredLocalData = false;
@@ -3174,6 +3177,93 @@ export class NostrClient {
     const storedPermissions = readStoredNip07Permissions();
     this.extensionPermissionCache =
       storedPermissions instanceof Set ? storedPermissions : new Set();
+  }
+
+  recordTombstone(activeKey, createdAt) {
+    const key = typeof activeKey === "string" ? activeKey.trim() : "";
+    if (!key) {
+      return;
+    }
+
+    let timestamp = Number(createdAt);
+    if (!Number.isFinite(timestamp)) {
+      return;
+    }
+    timestamp = Math.max(0, Math.floor(timestamp));
+    if (timestamp <= 0) {
+      return;
+    }
+
+    const previous = this.tombstones.get(key);
+    const previousTimestamp = Number.isFinite(previous)
+      ? Math.max(0, Math.floor(previous))
+      : 0;
+    if (previousTimestamp >= timestamp) {
+      return;
+    }
+
+    this.tombstones.set(key, timestamp);
+
+    const activeVideo = this.activeMap.get(key);
+    if (activeVideo) {
+      const activeCreated = Number.isFinite(activeVideo?.created_at)
+        ? Math.floor(activeVideo.created_at)
+        : 0;
+      if (activeCreated && activeCreated <= timestamp) {
+        activeVideo.deleted = true;
+        this.activeMap.delete(key);
+      }
+    }
+
+    for (const video of this.allEvents.values()) {
+      if (!video || typeof video !== "object") {
+        continue;
+      }
+      if (getActiveKey(video) !== key) {
+        continue;
+      }
+      const createdAtValue = Number.isFinite(video?.created_at)
+        ? Math.floor(video.created_at)
+        : 0;
+      if (createdAtValue && createdAtValue <= timestamp) {
+        video.deleted = true;
+      }
+    }
+  }
+
+  isOlderThanTombstone(video) {
+    if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    const activeKey = getActiveKey(video);
+    if (!activeKey) {
+      return false;
+    }
+
+    const tombstone = this.tombstones.get(activeKey);
+    if (!Number.isFinite(tombstone)) {
+      return false;
+    }
+
+    const normalizedTombstone = Math.max(0, Math.floor(tombstone));
+    const createdAtValue = Number.isFinite(video?.created_at)
+      ? Math.floor(video.created_at)
+      : 0;
+
+    return createdAtValue > 0 && createdAtValue <= normalizedTombstone;
+  }
+
+  applyTombstoneGuard(video) {
+    if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    const isGuarded = this.isOlderThanTombstone(video);
+    if (isGuarded) {
+      video.deleted = true;
+    }
+    return isGuarded;
   }
 
   markExtensionPermissions(methods = []) {
@@ -3659,6 +3749,21 @@ export class NostrClient {
     this.rawEvents.clear();
     this.activeMap.clear();
     this.rootCreatedAtByRoot.clear();
+    this.tombstones.clear();
+
+    if (Array.isArray(payload.tombstones)) {
+      for (const entry of payload.tombstones) {
+        if (!Array.isArray(entry) || entry.length < 2) {
+          continue;
+        }
+        const [key, value] = entry;
+        const normalizedKey = typeof key === "string" ? key.trim() : "";
+        const timestamp = Number.isFinite(value) ? Math.floor(value) : 0;
+        if (normalizedKey && timestamp > 0) {
+          this.tombstones.set(normalizedKey, timestamp);
+        }
+      }
+    }
 
     for (const [id, video] of Object.entries(events)) {
       if (!id || !video || typeof video !== "object") {
@@ -3666,12 +3771,19 @@ export class NostrClient {
       }
 
       this.applyRootCreatedAt(video);
+      const activeKey = getActiveKey(video);
+
+      if (video.deleted) {
+        this.recordTombstone(activeKey, video.created_at);
+      } else {
+        this.applyTombstoneGuard(video);
+      }
+
       this.allEvents.set(id, video);
       if (video.deleted) {
         continue;
       }
 
-      const activeKey = getActiveKey(video);
       const existing = this.activeMap.get(activeKey);
       if (!existing || video.created_at > existing.created_at) {
         this.activeMap.set(activeKey, video);
@@ -7139,7 +7251,7 @@ export class NostrClient {
         videoRootId: baseRoot,
       };
 
-      await this.revertVideo(
+      const signedRevert = await this.revertVideo(
         {
           id: vid.id,
           pubkey: vid.pubkey,
@@ -7161,8 +7273,14 @@ export class NostrClient {
       const activeKey = getActiveKey(cached);
       if (activeKey) {
         this.activeMap.delete(activeKey);
+        const revertCreatedAt = Number.isFinite(signedRevert?.created_at)
+          ? Math.floor(signedRevert.created_at)
+          : Math.floor(Date.now() / 1000);
+        this.recordTombstone(activeKey, revertCreatedAt);
       }
     }
+
+    this.saveLocalData();
 
     return true;
   }
@@ -7179,6 +7297,7 @@ export class NostrClient {
       version: 1,
       savedAt: Date.now(),
       events: {},
+      tombstones: Array.from(this.tombstones.entries()),
     };
 
     for (const [id, vid] of this.allEvents.entries()) {
@@ -7239,18 +7358,34 @@ export class NostrClient {
           this.mergeNip71MetadataIntoVideo(video);
           this.applyRootCreatedAt(video);
 
+          const activeKey = getActiveKey(video);
+          const wasDeletedEvent = video.deleted === true;
+
+          if (wasDeletedEvent) {
+            this.recordTombstone(activeKey, video.created_at);
+          } else {
+            this.applyTombstoneGuard(video);
+          }
+
           // Store in allEvents
           this.allEvents.set(evt.id, video);
 
           // If it's a "deleted" note, remove from activeMap
           if (video.deleted) {
-            const activeKey = getActiveKey(video);
-            this.activeMap.delete(activeKey);
+            if (activeKey) {
+              if (wasDeletedEvent) {
+                this.activeMap.delete(activeKey);
+              } else {
+                const currentActive = this.activeMap.get(activeKey);
+                if (currentActive?.id === video.id) {
+                  this.activeMap.delete(activeKey);
+                }
+              }
+            }
             continue;
           }
 
           // Otherwise, if it's newer than what we have, update activeMap
-          const activeKey = getActiveKey(video);
           const prevActive = this.activeMap.get(activeKey);
           if (!prevActive || video.created_at > prevActive.created_at) {
             this.activeMap.set(activeKey, video);
@@ -7747,6 +7882,12 @@ export class NostrClient {
             } else {
               // Only add if good
               this.applyRootCreatedAt(vid);
+              const activeKey = getActiveKey(vid);
+              if (vid.deleted) {
+                this.recordTombstone(activeKey, vid.created_at);
+              } else {
+                this.applyTombstoneGuard(vid);
+              }
               localAll.set(evt.id, vid);
             }
           }
@@ -7919,6 +8060,12 @@ export class NostrClient {
 
     if (local) {
       this.applyRootCreatedAt(local);
+      const localKey = getActiveKey(local);
+      if (local.deleted) {
+        this.recordTombstone(localKey, local.created_at);
+      } else {
+        this.applyTombstoneGuard(local);
+      }
       if (!includeRaw) {
         return local;
       }
@@ -7939,6 +8086,12 @@ export class NostrClient {
 
     const video = convertEventToVideo(rawEvent);
     this.applyRootCreatedAt(video);
+    const activeKey = getActiveKey(video);
+    if (video.deleted) {
+      this.recordTombstone(activeKey, video.created_at);
+    } else {
+      this.applyTombstoneGuard(video);
+    }
     this.allEvents.set(eventId, video);
 
     if (includeRaw) {
@@ -8925,6 +9078,9 @@ export class NostrClient {
         if (sameRoot || sameD || sameLegacyRoot || candidate.id === video.id) {
           if (!seen.has(candidate.id)) {
             seen.add(candidate.id);
+            if (!candidate.deleted) {
+              this.applyTombstoneGuard(candidate);
+            }
             matches.push(candidate);
           }
         }
@@ -8971,6 +9127,12 @@ export class NostrClient {
           if (!parsed.invalid) {
             this.mergeNip71MetadataIntoVideo(parsed);
             this.applyRootCreatedAt(parsed);
+            const activeKey = getActiveKey(parsed);
+            if (parsed.deleted) {
+              this.recordTombstone(activeKey, parsed.created_at);
+            } else {
+              this.applyTombstoneGuard(parsed);
+            }
             this.allEvents.set(rootEvent.id, parsed);
             localMatches.push(parsed);
           }
@@ -9025,6 +9187,12 @@ export class NostrClient {
             if (!parsed.invalid) {
               this.mergeNip71MetadataIntoVideo(parsed);
               this.applyRootCreatedAt(parsed);
+              const activeKey = getActiveKey(parsed);
+              if (parsed.deleted) {
+                this.recordTombstone(activeKey, parsed.created_at);
+              } else {
+                this.applyTombstoneGuard(parsed);
+              }
               this.allEvents.set(evt.id, parsed);
             }
           } catch (err) {
