@@ -149,18 +149,17 @@
                 classes that may be purged or overridden by other builds.
               -->
               <div id="profileSwitcherTray" class="card space-y-5 p-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="flex flex-wrap items-start gap-4">
                   <div class="space-y-2">
                     <h3 class="text-base font-semibold text-text">Switch profiles</h3>
                     <p class="text-sm text-muted">
                       Save multiple Nostr profiles so you can swap identities without leaving bitvid.
                     </p>
                   </div>
-                  <span class="badge" data-variant="info">Preview</span>
                 </div>
 
                 <div
-                  class="card focus-ring flex items-center gap-4 p-4"
+                  class="card profile-modal__active-profile"
                   aria-label="Current Nostr profile"
                   aria-pressed="true"
                   role="button"
@@ -177,22 +176,22 @@
                       class="h-full w-full object-cover"
                     />
                   </span>
-                  <div class="flex min-w-0 flex-1 flex-col gap-2">
-                    <div class="flex flex-wrap items-center gap-3">
+                  <div class="profile-modal__active-details">
+                    <div class="profile-modal__active-meta">
                       <span class="text-3xs font-semibold uppercase tracking-extra-wide text-info">
                         Active profile
                       </span>
-                      <a
-                        id="profileChannelLink"
-                        href="#"
-                        class="btn-ghost focus-ring hidden text-xs"
-                      >
-                        View channel
-                      </a>
                     </div>
                     <span id="profileModalName" class="truncate text-sm font-semibold text-text">Loading...</span>
                     <span id="profileModalNpub" class="break-all font-mono text-xs text-muted">npub1...</span>
                   </div>
+                  <a
+                    id="profileChannelLink"
+                    href="#"
+                    class="btn-ghost focus-ring profile-modal__channel-link hidden text-xs"
+                  >
+                    View channel
+                  </a>
                 </div>
 
                 <div
@@ -407,6 +406,7 @@
                       id="profileHistoryClear"
                       type="button"
                       class="btn-ghost focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
                     >
                       Clear local cache
                     </button>
@@ -414,6 +414,7 @@
                       id="profileHistoryRepublish"
                       type="button"
                       class="btn focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
                     >
                       Republish now
                     </button>

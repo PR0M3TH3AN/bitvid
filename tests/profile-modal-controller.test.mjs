@@ -3,6 +3,8 @@ import { strict as assert } from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import ProfileModalController from '../js/ui/profileModalController.js';
+import { createWatchHistoryRenderer } from '../js/historyView.js';
+import watchHistoryService from '../js/watchHistoryService.js';
 import { formatShortNpub } from '../js/utils/formatters.js';
 import { resetRuntimeFlags } from '../js/constants.js';
 import { applyDesignSystemAttributes } from '../js/designSystem.js';
@@ -758,4 +760,107 @@ test('history pane lazily initializes the watch history renderer', async () => {
   );
   assert.equal(controller.profileHistoryRenderer, null);
   assert.equal(controller.boundProfileHistoryVisibility, null);
+});
+
+test('history metadata toggle updates stored preference', async (t) => {
+  let storedPreference = true;
+  let clearCalls = 0;
+
+  const originalSetPreference = watchHistoryService.setMetadataPreference;
+  const originalShouldStore = watchHistoryService.shouldStoreMetadata;
+  const originalClearMetadata = watchHistoryService.clearLocalMetadata;
+  const originalSubscribe = watchHistoryService.subscribe;
+  const originalIsEnabled = watchHistoryService.isEnabled;
+  const originalSupportsLocal = watchHistoryService.supportsLocalHistory;
+  const originalIsLocalOnly = watchHistoryService.isLocalOnly;
+
+  watchHistoryService.setMetadataPreference = (value) => {
+    storedPreference = value !== false;
+  };
+  watchHistoryService.shouldStoreMetadata = () => storedPreference;
+  watchHistoryService.clearLocalMetadata = () => {
+    clearCalls += 1;
+  };
+  watchHistoryService.subscribe = () => () => {};
+  watchHistoryService.isEnabled = () => true;
+  watchHistoryService.supportsLocalHistory = () => true;
+  watchHistoryService.isLocalOnly = () => false;
+
+  t.after(() => {
+    watchHistoryService.setMetadataPreference = originalSetPreference;
+    watchHistoryService.shouldStoreMetadata = originalShouldStore;
+    watchHistoryService.clearLocalMetadata = originalClearMetadata;
+    watchHistoryService.subscribe = originalSubscribe;
+    watchHistoryService.isEnabled = originalIsEnabled;
+    watchHistoryService.supportsLocalHistory = originalSupportsLocal;
+    watchHistoryService.isLocalOnly = originalIsLocalOnly;
+  });
+
+  const controller = createController({
+    createWatchHistoryRenderer: (config) =>
+      createWatchHistoryRenderer({
+        ...config,
+        fetchHistory: async () => ({ items: [], metadata: {} }),
+        snapshot: async () => ({}),
+      }),
+    services: {
+      nostrClient: { sessionActor: { pubkey: defaultActorHex } },
+      getCurrentUserNpub: () => defaultActorNpub,
+    },
+  });
+
+  await controller.load();
+  applyDesignSystemAttributes(document);
+
+  controller.refreshAdminPaneState = async () => {};
+  controller.populateProfileRelays = () => {};
+  controller.populateBlockedList = () => {};
+  controller.refreshWalletPaneState = () => {};
+
+  controller.setActivePubkey(defaultActorHex);
+
+  let cleanupRan = false;
+  const cleanup = () => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    cleanupRan = true;
+  };
+
+  try {
+    await controller.show('history');
+    await waitForAnimationFrame(window, 3);
+
+    const toggle = document.getElementById('profileHistoryMetadataToggle');
+    assert.ok(toggle);
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.equal(toggle.getAttribute('data-enabled'), 'true');
+
+    toggle.dispatchEvent(
+      new window.MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await waitForAnimationFrame(window, 2);
+
+    assert.equal(storedPreference, false);
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    assert.equal(toggle.getAttribute('data-enabled'), 'false');
+    assert.equal(clearCalls, 1);
+
+    toggle.dispatchEvent(
+      new window.MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await waitForAnimationFrame(window, 2);
+
+    assert.equal(storedPreference, true);
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.equal(toggle.getAttribute('data-enabled'), 'true');
+  } finally {
+    cleanup();
+  }
+
+  t.after(() => {
+    if (!cleanupRan) {
+      cleanup();
+    }
+  });
 });

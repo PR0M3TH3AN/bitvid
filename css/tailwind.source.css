@@ -479,6 +479,16 @@
     @apply focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-transparent bg-accent-strong px-5 py-2.5 text-base font-semibold text-white shadow-lg transition duration-base ease-in-out;
   }
 
+  .btn[data-size="sm"],
+  .btn-ghost[data-size="sm"] {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn[data-size="sm"],
+  .btn-ghost[data-size="sm"] {
+    @apply gap-1.5;
+  }
+
   .btn:hover {
     @apply bg-accent;
   }
@@ -1556,6 +1566,31 @@
     min-block-size: 0;
     transform: scale(var(--profile-modal-scale));
     transform-origin: top center;
+  }
+
+  .profile-modal__active-profile {
+    @apply focus-ring flex flex-wrap items-center gap-4 p-4;
+  }
+
+  .profile-modal__active-details {
+    display: flex;
+    flex: 1 1 12rem;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    min-inline-size: 0;
+  }
+
+  .profile-modal__active-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .profile-modal__channel-link {
+    margin-inline-start: auto;
+    align-self: center;
+    white-space: nowrap;
   }
 
   .profile-modal__add-profile {
