@@ -40,6 +40,8 @@ Expected:
 * After 2 reports → autoplay blocked.
 * After 3 reports → thumbnail blurred; reason chip shown.
 
+**Exercises:** [`ModerationService.ingestReportEvent()`](../../js/services/moderationService.js) and [`ModerationService.getTrustedReportSummary()`](../../js/services/moderationService.js) wire through [`createModerationStage()`](../../js/feedEngine/stages.js) so [`bitvidApp.decorateVideoModeration()`](../../js/app.js) can hand the summary to [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js).
+
 ### B) Mute list (10000)
 
 ```json
@@ -52,6 +54,8 @@ Expected:
 ```
 
 Expected: author’s items are downranked/hidden for this viewer.
+
+**Exercises:** [`ModerationService.ingestTrustedMuteEvent()`](../../js/services/moderationService.js) updates [`ModerationService.isAuthorMutedByTrusted()`](../../js/services/moderationService.js) / [`getTrustedMutersForAuthor()`](../../js/services/moderationService.js), which [`createModerationStage()`](../../js/feedEngine/stages.js) propagates to the video item before [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js) renders the mute state.
 
 ### C) Admin blacklist (30000)
 
@@ -67,10 +71,14 @@ Expected: author’s items are downranked/hidden for this viewer.
 
 Expected: when viewer subscribes to this list, author is hard-hidden.
 
+**Exercises:** [`accessControl`](../../js/accessControl.js) hydration feeds [`ModerationService.getAdminListSnapshot()`](../../js/services/moderationService.js) / [`getAccessControlStatus()`](../../js/services/moderationService.js), giving [`createModerationStage()`](../../js/feedEngine/stages.js) the whitelist/blacklist flags that [`bitvidApp.decorateVideoModeration()`](../../js/app.js) and [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js) respect.
+
 ### D) COUNT fallback
 
 * Use a relay that doesn’t support COUNT.
 * Verify “—” placeholders; no spinner loops; no crashes.
+
+**Exercises:** Missing COUNT data flows through [`ModerationService.setActiveEventIds()`](../../js/services/moderationService.js) → [`ModerationService.getTrustedReportSummary()`](../../js/services/moderationService.js) defaults, letting [`createModerationStage()`](../../js/feedEngine/stages.js) emit neutral moderation metadata that [`VideoCard.refreshModerationUi()`](../../js/ui/components/VideoCard.js) renders as placeholders.
 
 ## Automated checks (suggested)
 
