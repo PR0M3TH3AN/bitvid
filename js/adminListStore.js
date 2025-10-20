@@ -5,6 +5,8 @@ import {
   ADMIN_LIST_NAMESPACE,
   ADMIN_SUPER_NPUB,
   ADMIN_EDITORS_NPUBS,
+  ADMIN_COMMUNITY_BLACKLIST_SOURCES,
+  ADMIN_COMMUNITY_BLACKLIST_PREFIX,
   isDevMode,
 } from "./config.js";
 import {
@@ -358,6 +360,88 @@ function decodeNpubToHex(npub) {
   throw createError("invalid npub", "Unable to decode npub.");
 }
 
+function parseCommunityBlacklistReferences(event) {
+  if (!event || !Array.isArray(event.tags)) {
+    return [];
+  }
+
+  const references = [];
+  const seen = new Set();
+
+  for (const tag of event.tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+
+    const tagName = typeof tag[0] === "string" ? tag[0] : "";
+    if (tagName !== "a") {
+      continue;
+    }
+
+    const rawValue = typeof tag[1] === "string" ? tag[1].trim() : "";
+    if (!rawValue) {
+      continue;
+    }
+
+    const [kindSegment, authorSegment, ...identifierSegments] = rawValue.split(":");
+    if (!identifierSegments.length) {
+      continue;
+    }
+
+    const kind = Number.parseInt(kindSegment, 10);
+    if (!Number.isFinite(kind) || kind !== 30000) {
+      continue;
+    }
+
+    const dTagValue = identifierSegments.join(":").trim();
+    if (!dTagValue) {
+      continue;
+    }
+
+    if (
+      !dTagValue.startsWith(
+        `${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_PREFIX}`
+      )
+    ) {
+      continue;
+    }
+
+    const authorCandidate = typeof authorSegment === "string" ? authorSegment.trim() : "";
+    if (!authorCandidate) {
+      continue;
+    }
+
+    let authorHex = "";
+    if (isHexPubkey(authorCandidate)) {
+      authorHex = authorCandidate.toLowerCase();
+    } else if (authorCandidate.toLowerCase().startsWith("npub")) {
+      try {
+        authorHex = decodeNpubToHex(authorCandidate);
+      } catch (error) {
+        devLogger.warn(
+          `[adminListStore] Failed to decode community curator npub for ${dTagValue}:`,
+          error,
+        );
+        authorHex = "";
+      }
+    }
+
+    if (!authorHex) {
+      continue;
+    }
+
+    const key = `${authorHex}::${dTagValue}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    references.push({ authorHex, dTag: dTagValue });
+  }
+
+  return references;
+}
+
 function encodeHexToNpub(hex) {
   const nip19 = getNip19Tools();
   const encoder = nip19?.npubEncode;
@@ -442,25 +526,40 @@ function extractNpubsFromEvent(event) {
   return dedupeNpubs(npubs);
 }
 
-async function loadNostrList(identifier) {
+async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
   const relays = ensureNostrReady();
-  const dTagValue = `${ADMIN_LIST_NAMESPACE}:${identifier}`;
-  const filter = {
-    kinds: [30000],
-    "#d": [dTagValue],
-    limit: 50,
-  };
+
+  const normalizedFilter = {};
+  if (Array.isArray(filter?.kinds) && filter.kinds.length) {
+    normalizedFilter.kinds = [...filter.kinds];
+  } else {
+    normalizedFilter.kinds = [30000];
+  }
+
+  if (typeof filter?.limit === "number") {
+    normalizedFilter.limit = filter.limit;
+  } else {
+    normalizedFilter.limit = 50;
+  }
+
+  if (Array.isArray(filter?.["#d"]) && filter["#d"].length) {
+    normalizedFilter["#d"] = [...filter["#d"]];
+  }
+
+  if (Array.isArray(filter?.authors) && filter.authors.length) {
+    normalizedFilter.authors = [...filter.authors];
+  }
 
   let events = [];
   try {
-    const combined = await nostrClient.pool.list(relays, [filter]);
+    const combined = await nostrClient.pool.list(relays, [normalizedFilter]);
     if (Array.isArray(combined)) {
       events = combined;
     }
   } catch (error) {
     devLogger.warn(
-    `[adminListStore] Combined relay fetch failed for ${identifier}:`,
-    error
+      `[adminListStore] Combined relay fetch failed for ${contextLabel}:`,
+      error,
     );
   }
 
@@ -468,12 +567,12 @@ async function loadNostrList(identifier) {
     const perRelay = await Promise.all(
       relays.map(async (url) => {
         try {
-          const result = await nostrClient.pool.list([url], [filter]);
+          const result = await nostrClient.pool.list([url], [normalizedFilter]);
           return Array.isArray(result) ? result : [];
         } catch (error) {
           devLogger.warn(
-          `[adminListStore] Relay fetch failed for ${identifier} on ${url}:`,
-          error
+            `[adminListStore] Relay fetch failed for ${contextLabel} on ${url}:`,
+            error,
           );
           return [];
         }
@@ -483,10 +582,10 @@ async function loadNostrList(identifier) {
   }
 
   if (!events.length) {
-    return [];
+    return null;
   }
 
-  const newest = events.reduce((latest, event) => {
+  return events.reduce((latest, event) => {
     if (!latest) {
       return event;
     }
@@ -495,8 +594,12 @@ async function loadNostrList(identifier) {
     }
     return event.created_at > latest.created_at ? event : latest;
   }, null);
+}
 
-  return extractNpubsFromEvent(newest);
+async function loadNostrList(identifier) {
+  const dTagValue = `${ADMIN_LIST_NAMESPACE}:${identifier}`;
+  const event = await fetchLatestListEvent({ "#d": [dTagValue] }, identifier);
+  return event ? extractNpubsFromEvent(event) : [];
 }
 
 async function loadNostrState() {
@@ -507,6 +610,64 @@ async function loadNostrState() {
   ]);
 
   return sanitizeAdminState({ editors, whitelist, blacklist });
+}
+
+async function loadCommunityBlacklistEntries() {
+  let superAdminHex = "";
+  try {
+    superAdminHex = decodeNpubToHex(ADMIN_SUPER_NPUB);
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to decode super admin npub for community blacklist lookup:",
+      error,
+    );
+    return [];
+  }
+
+  const sourceIdentifier = `${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_SOURCES}`;
+
+  let sourceEvent = null;
+  try {
+    sourceEvent = await fetchLatestListEvent(
+      { "#d": [sourceIdentifier], authors: [superAdminHex] },
+      "community-blacklist-sources",
+    );
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to load community blacklist source list:",
+      error,
+    );
+    return [];
+  }
+
+  if (!sourceEvent) {
+    return [];
+  }
+
+  const references = parseCommunityBlacklistReferences(sourceEvent);
+  if (!references.length) {
+    return [];
+  }
+
+  const results = await Promise.all(
+    references.map(async (reference) => {
+      try {
+        const event = await fetchLatestListEvent(
+          { "#d": [reference.dTag], authors: [reference.authorHex] },
+          reference.dTag,
+        );
+        return event ? extractNpubsFromEvent(event) : [];
+      } catch (error) {
+        devLogger.warn(
+          `[adminListStore] Failed to load community blacklist ${reference.dTag}:`,
+          error,
+        );
+        return [];
+      }
+    })
+  );
+
+  return results.flat();
 }
 
 function buildListEvent(listKey, npubs, actorHex) {
@@ -797,8 +958,36 @@ export async function loadAdminState() {
     );
   }
 
-  const state = await loadNostrState();
-  if (!hasAnyEntries(state)) {
+  const nostrState = await loadNostrState();
+
+  let mergedState = nostrState;
+  try {
+    const communityEntries = await loadCommunityBlacklistEntries();
+    if (Array.isArray(communityEntries) && communityEntries.length) {
+      const baseEditors = Array.isArray(nostrState?.editors)
+        ? nostrState.editors
+        : [];
+      const baseWhitelist = Array.isArray(nostrState?.whitelist)
+        ? nostrState.whitelist
+        : [];
+      const baseBlacklist = Array.isArray(nostrState?.blacklist)
+        ? nostrState.blacklist
+        : [];
+
+      mergedState = sanitizeAdminState({
+        editors: baseEditors,
+        whitelist: baseWhitelist,
+        blacklist: [...baseBlacklist, ...communityEntries],
+      });
+    }
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to merge community blacklist entries:",
+      error,
+    );
+  }
+
+  if (!hasAnyEntries(mergedState)) {
     const legacy = loadLegacyAdminState();
     if (legacy && isDevMode) {
       userLogger.warn(
@@ -808,7 +997,7 @@ export async function loadAdminState() {
     }
   }
 
-  return state;
+  return mergedState;
 }
 
 export async function persistAdminState(actorNpub, updates) {

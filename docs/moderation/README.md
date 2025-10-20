@@ -35,6 +35,16 @@ Thread new moderation behaviors through the same service → stage → app → U
 
 > You can override all defaults in **Settings → Safety & Moderation**.
 
+## Community blacklist federation
+
+Operators can delegate hard-hide decisions to trusted curators without giving them full admin powers. The flow is:
+
+1. The super admin maintains a `kind 30000` list with `d=${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_SOURCES}`. Each `a` tag references a community curator’s blacklist as `30000:<curator hex pubkey>:${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_PREFIX}:<slug>`.
+2. Every curator publishes their own `kind 30000` list using the referenced `d` tag (`${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_PREFIX}:<slug>`) and fills it with `p` tags for accounts they want hidden.
+3. bitvid automatically fetches each referenced list, merges the entries into the global blacklist, and removes any duplicates or guard-protected accounts (super admin, editors, or whitelist members).
+
+To add a community list, append a new `a` tag to the super-admin source list and ask the curator to publish their companion `p` list. To remove a list, delete the `a` tag or ask the curator to clear their `p` entries; the client stops ingesting it on the next refresh.
+
 ### Safety & Moderation controls
 
 The profile modal now exposes the blur and autoplay thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values above. Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load.
