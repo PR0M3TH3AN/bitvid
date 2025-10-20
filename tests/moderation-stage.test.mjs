@@ -166,3 +166,132 @@ test("moderation stage annotates trusted mute metadata", async () => {
   assert.ok(trustedMuteReason);
   assert.equal(trustedMuteReason.videoId, "muted");
 });
+
+test("moderation stage propagates whitelist, muters, and threshold updates", async () => {
+  const whitelistedHex = "a".repeat(64);
+  const mutedHex = "b".repeat(64);
+  const muterHex = "c".repeat(64);
+
+  const state = {
+    whitelistHex: new Set([whitelistedHex]),
+    summaryById: new Map([
+      [
+        "muted-video",
+        {
+          eventId: "muted-video",
+          totalTrusted: 3,
+          types: { nudity: { trusted: 3, total: 3, latest: 1_700_000_000 } },
+          updatedAt: 1_700_000_100,
+        },
+      ],
+    ]),
+    trustedCounts: new Map([
+      ["whitelisted-video", 4],
+      ["muted-video", 3],
+    ]),
+    reportersById: new Map([
+      ["muted-video", [{ pubkey: muterHex, latest: 1_700_000_050 }]],
+    ]),
+    mutedAuthors: new Set([mutedHex]),
+    mutersByAuthor: new Map([[mutedHex, [muterHex]]]),
+  };
+
+  const service = {
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return {
+        whitelist: new Set([`npub${whitelistedHex}`]),
+        whitelistHex: new Set(state.whitelistHex),
+        blacklist: new Set(),
+        blacklistHex: new Set(),
+      };
+    },
+    getAccessControlStatus(identifier) {
+      const normalized = typeof identifier === "string" ? identifier.trim().toLowerCase() : "";
+      return {
+        hex: normalized,
+        whitelisted: state.whitelistHex.has(normalized),
+        blacklisted: false,
+      };
+    },
+    getTrustedReportSummary(videoId) {
+      return state.summaryById.get(videoId) || null;
+    },
+    trustedReportCount(videoId) {
+      return state.trustedCounts.get(videoId) || 0;
+    },
+    getTrustedReporters(videoId) {
+      return state.reportersById.get(videoId) || [];
+    },
+    isAuthorMutedByTrusted(pubkey) {
+      return state.mutedAuthors.has(pubkey);
+    },
+    getTrustedMutersForAuthor(pubkey) {
+      return state.mutersByAuthor.get(pubkey) || [];
+    },
+  };
+
+  const stage = createModerationStage({
+    service,
+    autoplayThreshold: 2,
+    blurThreshold: 3,
+    reportType: "nudity",
+  });
+
+  const items = [
+    { video: { id: "whitelisted-video", pubkey: whitelistedHex }, metadata: {} },
+    { video: { id: "muted-video", pubkey: mutedHex }, metadata: {} },
+  ];
+
+  const reasons = [];
+  const context = {
+    feedName: "discovery",
+    addWhy(detail) {
+      reasons.push(detail);
+      return detail;
+    },
+    log() {},
+  };
+
+  const firstPass = await stage(items, context);
+  const whitelistedItem = firstPass.find((entry) => entry.video.id === "whitelisted-video");
+  const mutedItem = firstPass.find((entry) => entry.video.id === "muted-video");
+
+  assert.ok(whitelistedItem);
+  assert.ok(mutedItem);
+
+  assert.equal(whitelistedItem.metadata.moderation.adminWhitelist, true);
+  assert.equal(whitelistedItem.metadata.moderation.blockAutoplay, false);
+  assert.equal(whitelistedItem.metadata.moderation.blurThumbnail, false);
+  assert.equal(whitelistedItem.video.moderation.adminWhitelistBypass, true);
+
+  assert.equal(mutedItem.metadata.moderation.trustedMuted, true);
+  assert.deepEqual(mutedItem.metadata.moderation.trustedMuters, [muterHex]);
+  assert.equal(mutedItem.metadata.moderation.blockAutoplay, true);
+  assert.equal(mutedItem.metadata.moderation.blurThumbnail, true);
+  assert.equal(mutedItem.video.moderation.trustedMuted, true);
+  assert.deepEqual(mutedItem.video.moderation.trustedMuters, [muterHex]);
+
+  state.summaryById.set("muted-video", {
+    eventId: "muted-video",
+    totalTrusted: 1,
+    types: { nudity: { trusted: 1, total: 1, latest: 1_700_000_500 } },
+    updatedAt: 1_700_000_600,
+  });
+  state.trustedCounts.set("muted-video", 1);
+  state.mutersByAuthor.set(mutedHex, []);
+  state.mutedAuthors.delete(mutedHex);
+
+  const secondPass = await stage(firstPass, context);
+  const updatedMuted = secondPass.find((entry) => entry.video.id === "muted-video");
+
+  assert.ok(updatedMuted);
+  assert.equal(updatedMuted.metadata.moderation.trustedMuted, false);
+  assert.deepEqual(updatedMuted.metadata.moderation.trustedMuters, []);
+  assert.equal(updatedMuted.metadata.moderation.blockAutoplay, false);
+  assert.equal(updatedMuted.metadata.moderation.blurThumbnail, false);
+  assert.equal(updatedMuted.video.moderation.trustedMuted, false);
+  assert.equal(updatedMuted.video.moderation.blockAutoplay, false);
+  assert.equal(updatedMuted.video.moderation.blurThumbnail, false);
+});

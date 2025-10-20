@@ -1,71 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ModerationService } from "../../js/services/moderationService.js";
+import {
+  withMockedNostrTools,
+  createModerationServiceHarness,
+  createReportEvent,
+  applyTrustedContacts,
+} from "../helpers/moderation-test-helpers.mjs";
 
-const nip19 = {
-  npubEncode(hex) {
-    if (typeof hex !== "string" || !hex) {
-      throw new Error("invalid hex");
-    }
-    return `npub${hex}`;
-  },
-  decode(value) {
-    if (typeof value !== "string" || !value.startsWith("npub")) {
-      throw new Error("invalid npub");
-    }
-    return { type: "npub", data: value.slice(4) };
-  },
-};
-
-function withMockedNostrTools(t) {
-  const hadWindow = typeof globalThis.window !== "undefined";
-  const previousWindow = hadWindow ? globalThis.window : undefined;
-  if (!hadWindow) {
-    globalThis.window = {};
-  }
-  const previousGlobalTools = globalThis.NostrTools;
-  const previousWindowTools = globalThis.window?.NostrTools;
-
-  globalThis.NostrTools = { nip19 };
-  if (globalThis.window) {
-    globalThis.window.NostrTools = globalThis.NostrTools;
-  }
-
-  t.after(() => {
-    if (typeof previousGlobalTools === "undefined") {
-      delete globalThis.NostrTools;
-    } else {
-      globalThis.NostrTools = previousGlobalTools;
-    }
-
-    if (globalThis.window) {
-      if (typeof previousWindowTools === "undefined") {
-        delete globalThis.window.NostrTools;
-      } else {
-        globalThis.window.NostrTools = previousWindowTools;
-      }
-    }
-
-    if (!hadWindow) {
-      delete globalThis.window;
-    } else {
-      globalThis.window = previousWindow;
-    }
-  });
-}
-
-function createReport({ id, reporter, eventId, createdAt, type = "nudity" }) {
-  return {
-    kind: 1984,
-    id,
-    pubkey: reporter,
-    created_at: createdAt,
-    tags: [
-      ["e", eventId],
-      ["report", type],
-    ],
-    content: "fixture report",
-  };
+function createReport(options) {
+  return createReportEvent(options);
 }
 
 test("trustedReportCount dedupes multiple reports from the same trusted reporter", (t) => {
@@ -74,17 +17,9 @@ test("trustedReportCount dedupes multiple reports from the same trusted reporter
   const eventId = "f".repeat(64);
   const reporterHex = "a".repeat(64);
 
-  const service = new ModerationService({
-    logger: () => {},
-    userBlocks: {
-      async ensureLoaded() {},
-      isBlocked() {
-        return false;
-      },
-    },
-  });
+  const { service } = createModerationServiceHarness(t);
 
-  service.trustedContacts = new Set([reporterHex]);
+  applyTrustedContacts(service, [reporterHex]);
 
   const firstReport = createReport({
     id: "1".repeat(64),
@@ -116,17 +51,16 @@ test("trustedReportCount ignores reports from muted or blocked reporters", (t) =
   const mutedReporter = "b".repeat(64);
   const trustedReporter = "c".repeat(64);
 
-  const service = new ModerationService({
-    logger: () => {},
-    userBlocks: {
-      async ensureLoaded() {},
-      isBlocked(pubkey) {
-        return pubkey === mutedReporter;
-      },
+  const userBlocks = {
+    async ensureLoaded() {},
+    isBlocked(pubkey) {
+      return pubkey === mutedReporter;
     },
-  });
+  };
 
-  service.trustedContacts = new Set([mutedReporter, trustedReporter]);
+  const { service } = createModerationServiceHarness(t, { userBlocks });
+
+  applyTrustedContacts(service, [mutedReporter, trustedReporter]);
 
   const mutedReport = createReport({
     id: "3".repeat(64),
@@ -182,12 +116,9 @@ test("blocking and unblocking reporters recomputes trusted summaries", async (t)
     },
   };
 
-  const service = new ModerationService({
-    logger: () => {},
-    userBlocks: userBlocksMock,
-  });
+  const { service } = createModerationServiceHarness(t, { userBlocks: userBlocksMock });
 
-  service.trustedContacts = new Set([reporterHex]);
+  applyTrustedContacts(service, [reporterHex]);
 
   const report = createReport({
     id: "b".repeat(64),
@@ -234,4 +165,66 @@ test("blocking and unblocking reporters recomputes trusted summaries", async (t)
   assert.equal(summaryAfterUnblock.types.nudity.trusted, 1);
   assert.equal(service.trustedReportCount(eventId, "nudity"), 1);
   assert.deepEqual(setActiveCalls, [[eventId], [eventId]]);
+});
+
+test("trustedReportCount only counts eligible F1 reporters and admin whitelist", (t) => {
+  withMockedNostrTools(t);
+
+  const eventId = "c".repeat(64);
+  const viewerBlocked = "1".repeat(64);
+  const f1Reporter = "2".repeat(64);
+  const f2Reporter = "3".repeat(64);
+  const adminWhitelisted = "4".repeat(64);
+  const adminBlacklisted = "5".repeat(64);
+
+  const userBlocks = {
+    async ensureLoaded() {},
+    isBlocked(pubkey) {
+      return pubkey === viewerBlocked;
+    },
+  };
+
+  const accessControl = {
+    getWhitelist() {
+      return [`npub${adminWhitelisted}`];
+    },
+    getBlacklist() {
+      return [`npub${adminBlacklisted}`];
+    },
+  };
+
+  const { service } = createModerationServiceHarness(t, { userBlocks, accessControl });
+
+  applyTrustedContacts(service, [f1Reporter, viewerBlocked]);
+
+  const reports = [
+    { id: "r1".repeat(32), reporter: f1Reporter, createdAt: 1_700_000_000 },
+    { id: "r2".repeat(32), reporter: viewerBlocked, createdAt: 1_700_000_050 },
+    { id: "r3".repeat(32), reporter: f2Reporter, createdAt: 1_700_000_100 },
+    { id: "r4".repeat(32), reporter: adminWhitelisted, createdAt: 1_700_000_200 },
+    { id: "r5".repeat(32), reporter: adminBlacklisted, createdAt: 1_700_000_300 },
+  ];
+
+  for (const entry of reports) {
+    service.ingestReportEvent(
+      createReport({
+        id: entry.id.padEnd(64, entry.id[0]),
+        reporter: entry.reporter,
+        eventId,
+        createdAt: entry.createdAt,
+      }),
+    );
+  }
+
+  const summary = service.getTrustedReportSummary(eventId);
+  assert.equal(summary.totalTrusted, 2);
+  assert.equal(summary.types.nudity.total, 3);
+  assert.equal(summary.types.nudity.trusted, 2);
+  assert.equal(service.trustedReportCount(eventId, "nudity"), 2);
+
+  const reporters = service.getTrustedReporters(eventId, "nudity");
+  assert.deepEqual(
+    reporters.map((entry) => entry.pubkey).sort(),
+    [adminWhitelisted, f1Reporter].sort(),
+  );
 });
