@@ -35,7 +35,20 @@ const mockNip19 = {
 
 globalThis.window.NostrTools.nip19 = mockNip19;
 
-const { __adminListStoreTestHooks } = await import("../js/adminListStore.js");
+const capturedWarnings = [];
+const originalConsoleWarn = console.warn;
+console.warn = (...args) => {
+  capturedWarnings.push(args);
+};
+process.on("exit", () => {
+  console.warn = originalConsoleWarn;
+});
+
+const { persistAdminState, __adminListStoreTestHooks } = await import(
+  "../js/adminListStore.js"
+);
+const { nostrClient } = await import("../js/nostr.js");
+const { ADMIN_SUPER_NPUB } = await import("../js/config.js");
 
 const {
   extractNpubsFromEvent,
@@ -89,62 +102,161 @@ assert.equal(
   "should preserve hex when nip19 helpers are unavailable"
 );
 
+mockNip19.decode = (value) => {
+  if (typeof value !== "string") {
+    throw new Error("invalid input");
+  }
+  const trimmed = value.trim();
+  if (trimmed.toLowerCase().startsWith("npub")) {
+    return { type: "npub", data: `${trimmed}-hex` };
+  }
+  throw new Error("unsupported value");
+};
+mockNip19.npubEncode = (hex) => {
+  if (typeof hex !== "string") {
+    throw new Error("invalid hex");
+  }
+  const trimmed = hex.trim();
+  if (!trimmed) {
+    throw new Error("empty hex");
+  }
+  return `npub1${trimmed}`;
+};
+
+globalThis.window.NostrTools.nip19 = mockNip19;
+
+nostrClient.ensureExtensionPermissions = async () => ({ ok: true });
+
 const relays = [
-  "wss://fast.example",
-  "wss://slow.example",
+  "wss://relay1.example.com",
+  "wss://relay2.example.com",
 ];
+nostrClient.relays = [...relays];
 
-for (const listKey of ["whitelist", "blacklist"]) {
-  const start = Date.now();
-  const publishBehavior = publishListWithFirstAcceptance(
-    {},
-    relays,
-    { id: `event-${listKey}` },
-    {
-      listKey,
-      publishRelay: (_pool, url) =>
-        new Promise((resolve) => {
-          const isFast = url === relays[0];
-          const delayMs = isFast ? 5 : 200;
-          setTimeout(() => {
-            resolve({
-              url,
-              success: isFast,
-              error: isFast ? null : new Error("relay rejected"),
-            });
-          }, delayMs);
-        }),
-    },
-  );
+let publishBehaviors = [];
+let publishCallIndex = 0;
 
-  const acceptanceResult = await publishBehavior.firstAcceptance;
-  const elapsed = Date.now() - start;
-
-  assert.equal(
-    acceptanceResult.url,
-    relays[0],
-    `should resolve using the fast relay for ${listKey}`,
-  );
-
-  assert.ok(
-    elapsed < 150,
-    `expected ${listKey} publish to resolve before slow relay timeout (elapsed ${elapsed}ms)`,
-  );
-
-  const settledResults = await publishBehavior.allResults;
-
-  assert.equal(
-    settledResults.length,
-    relays.length,
-    `should collect all publish results for ${listKey}`,
-  );
-
-  const acceptedCount = settledResults.filter((entry) => entry.success).length;
-  assert.equal(
-    acceptedCount,
-    1,
-    `should mark exactly one relay as successful for ${listKey}`,
-  );
+function setPublishBehaviors(behaviors) {
+  publishBehaviors = Array.isArray(behaviors) ? behaviors : [];
+  publishCallIndex = 0;
 }
+
+nostrClient.pool = {
+  publish(urls) {
+    const url = Array.isArray(urls) && urls.length > 0 ? urls[0] : "";
+    const behavior = publishBehaviors[publishCallIndex++];
+    if (!behavior) {
+      throw new Error(`Missing publish behavior for ${url}`);
+    }
+    if (behavior.url && behavior.url !== url) {
+      throw new Error(
+        `Unexpected publish url ${url}; expected ${behavior.url}`,
+      );
+    }
+    return {
+      on(eventName, handler) {
+        if (eventName === "ok" && behavior.success) {
+          handler();
+          return true;
+        }
+        if (eventName === "failed" && !behavior.success) {
+          handler(
+            behavior.error || new Error(`relay failure for ${url}`),
+          );
+          return true;
+        }
+        return false;
+      },
+    };
+  },
+};
+
+if (!globalThis.window.nostr) {
+  globalThis.window.nostr = {};
+}
+
+globalThis.window.nostr.signEvent = async (event) => ({
+  ...event,
+  id: "signed-event",
+});
+
+const additionBehaviors = [
+  { url: relays[0], success: false, error: new Error("relay1 add failure") },
+  { url: relays[1], success: true },
+  { url: relays[0], success: false, error: new Error("relay1 blacklist add failure") },
+  { url: relays[1], success: true },
+];
+setPublishBehaviors(additionBehaviors);
+
+await assert.doesNotReject(
+  () =>
+    persistAdminState(ADMIN_SUPER_NPUB, {
+      whitelist: ["npub1whitelistmember"],
+      blacklist: ["npub1blacklistmember"],
+    }),
+  "should allow adding whitelist/blacklist entries without rejection",
+);
+
+assert.equal(
+  publishCallIndex,
+  additionBehaviors.length,
+  "should attempt to publish additions to every relay",
+);
+
+const removalBehaviors = [
+  { url: relays[0], success: false, error: new Error("relay1 remove failure") },
+  { url: relays[1], success: true },
+  { url: relays[0], success: false, error: new Error("relay1 blacklist remove failure") },
+  { url: relays[1], success: true },
+];
+setPublishBehaviors(removalBehaviors);
+
+await assert.doesNotReject(
+  () =>
+    persistAdminState(ADMIN_SUPER_NPUB, {
+      whitelist: [],
+      blacklist: [],
+    }),
+  "should allow removing whitelist/blacklist entries without rejection",
+);
+
+assert.equal(
+  publishCallIndex,
+  removalBehaviors.length,
+  "should attempt to publish removals to every relay",
+);
+
+const relayFailureWarnings = capturedWarnings.filter((entry) => {
+  const [, message] = entry;
+  return (
+    typeof message === "string" &&
+    message.startsWith("[adminListStore] Publish failed")
+  );
+});
+const failureMessages = relayFailureWarnings.map(([, message]) => message);
+const whitelistFailureCount = failureMessages.filter((message) =>
+  typeof message === "string" &&
+  message.includes("whitelist") &&
+  message.includes(relays[0])
+).length;
+const blacklistFailureCount = failureMessages.filter((message) =>
+  typeof message === "string" &&
+  message.includes("blacklist") &&
+  message.includes(relays[0])
+).length;
+
+assert.equal(
+  relayFailureWarnings.length,
+  4,
+  "should warn once per relay failure across additions and removals",
+);
+assert.ok(
+  whitelistFailureCount >= 2,
+  "should warn when whitelist updates fail on a relay",
+);
+assert.ok(
+  blacklistFailureCount >= 2,
+  "should warn when blacklist updates fail on a relay",
+);
 
 console.log("admin-list-store tests passed");
