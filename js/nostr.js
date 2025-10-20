@@ -3182,7 +3182,23 @@ export class NostrClient {
     this.watchHistoryLastCreatedAt = 0;
     this.countRequestCounter = 0;
     this.countUnsupportedRelays = new Set();
-    const storedPermissions = readStoredNip07Permissions();
+    let storedPermissions = null;
+    const hasLocalStorage =
+      (typeof window !== "undefined" &&
+        window &&
+        typeof window.localStorage !== "undefined") ||
+      (typeof globalThis !== "undefined" &&
+        globalThis &&
+        typeof globalThis.localStorage !== "undefined");
+
+    if (hasLocalStorage) {
+      try {
+        storedPermissions = readStoredNip07Permissions();
+      } catch (error) {
+        storedPermissions = null;
+      }
+    }
+
     this.extensionPermissionCache =
       storedPermissions instanceof Set ? storedPermissions : new Set();
   }
