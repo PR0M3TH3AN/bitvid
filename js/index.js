@@ -577,6 +577,9 @@ async function bootstrapInterface() {
   devLogger.log("Disclaimer loaded.");
   prepareStaticModal({ id: "disclaimerModal" });
 
+  const { default: disclaimerModal } = await import("./disclaimer.js");
+  disclaimerModal.init();
+
   const loginNavBtn = document.getElementById("loginButton");
   if (loginNavBtn) {
     loginNavBtn.addEventListener("click", (event) => {
@@ -628,8 +631,6 @@ async function bootstrapInterface() {
 
   await handleHashChange();
 
-  const { default: disclaimerModal } = await import("./disclaimer.js");
-  disclaimerModal.init();
   disclaimerModal.show();
 }
 
