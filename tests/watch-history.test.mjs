@@ -69,9 +69,54 @@ const originalExtensionPermissionSnapshot = Array.isArray(
   originalExtensionPermissionCache,
 )
   ? Array.from(originalExtensionPermissionCache)
-  : [];
+  : originalExtensionPermissionCache instanceof Set
+    ? Array.from(originalExtensionPermissionCache)
+    : [];
+
+const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
+
+function clearStoredExtensionPermissions() {
+  if (typeof localStorage === "undefined" || !localStorage) {
+    return;
+  }
+  try {
+    localStorage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
+  } catch (error) {
+    // ignore cleanup errors in tests
+  }
+}
+
+function writeStoredExtensionPermissions(methods = []) {
+  if (typeof localStorage === "undefined" || !localStorage) {
+    return;
+  }
+
+  const normalized = Array.from(
+    new Set(
+      Array.from(methods)
+        .filter((method) => typeof method === "string")
+        .map((method) => method.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  try {
+    if (!normalized.length) {
+      localStorage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
+      return;
+    }
+
+    localStorage.setItem(
+      NIP07_PERMISSIONS_STORAGE_KEY,
+      JSON.stringify({ grantedMethods: normalized }),
+    );
+  } catch (error) {
+    // ignore persistence errors in tests
+  }
+}
 
 nostrClient.extensionPermissionCache = new Set();
+clearStoredExtensionPermissions();
 
 nostrClient.watchHistoryCache = new Map();
 nostrClient.watchHistoryStorage = {
@@ -2013,6 +2058,11 @@ if (originalExtensionPermissionCache instanceof Set) {
   }
 }
 nostrClient.extensionPermissionCache = originalExtensionPermissionCache;
+if (originalExtensionPermissionSnapshot.length) {
+  writeStoredExtensionPermissions(originalExtensionPermissionSnapshot);
+} else {
+  clearStoredExtensionPermissions();
+}
 
 if (!originalFlag) {
   setWatchHistoryV2Enabled(false);

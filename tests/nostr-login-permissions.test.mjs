@@ -78,6 +78,7 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
   ) {
     nostrClient.extensionPermissionCache.clear();
   }
+  clearStoredPermissions();
 
   return {
     enableCalls,
@@ -123,6 +124,7 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
       ) {
         nostrClient.extensionPermissionCache.clear();
       }
+      clearStoredPermissions();
     },
   };
 }

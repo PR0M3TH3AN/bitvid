@@ -62,6 +62,7 @@ const EVENTS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const NIP07_LOGIN_TIMEOUT_MS = 60_000; // 60 seconds
 const NIP07_LOGIN_TIMEOUT_ERROR_MESSAGE =
   "Timed out waiting for the NIP-07 extension. Confirm the extension prompt in your browser toolbar and try again.";
+const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
 
 // Give the NIP-07 extension enough time to surface its approval prompt and let
 // users unlock/authorize it. Seven seconds proved too aggressive once vendors
@@ -88,20 +89,38 @@ function normalizePermissionMethod(method) {
   return typeof method === "string" && method.trim() ? method.trim() : "";
 }
 
-function readStoredNip07Permissions() {
-  if (typeof localStorage === "undefined" || !localStorage) {
-    return [];
+function getNip07PermissionStorage() {
+  const scope =
+    typeof globalThis !== "undefined" && globalThis ? globalThis : undefined;
+  const browserWindow =
+    typeof window !== "undefined" && window ? window : undefined;
+
+  if (browserWindow?.localStorage) {
+    return browserWindow.localStorage;
   }
 
-  let rawValue;
+  if (scope?.localStorage) {
+    return scope.localStorage;
+  }
+
+  return null;
+}
+
+function readStoredNip07Permissions() {
+  const storage = getNip07PermissionStorage();
+  if (!storage) {
+    return new Set();
+  }
+
+  let rawValue = null;
   try {
-    rawValue = localStorage.getItem(NIP07_PERMISSIONS_STORAGE_KEY);
+    rawValue = storage.getItem(NIP07_PERMISSIONS_STORAGE_KEY);
   } catch (error) {
-    return [];
+    return new Set();
   }
 
   if (!rawValue) {
-    return [];
+    return new Set();
   }
 
   try {
@@ -113,21 +132,20 @@ function readStoredNip07Permissions() {
         : Array.isArray(parsed?.methods)
           ? parsed.methods
           : [];
-    return storedMethods
-      .map((method) => normalizePermissionMethod(method))
-      .filter(Boolean);
+    return new Set(
+      storedMethods
+        .map((method) => normalizePermissionMethod(method))
+        .filter(Boolean),
+    );
   } catch (error) {
-    try {
-      localStorage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
-    } catch (cleanupError) {
-      // ignore cleanup errors
-    }
-    return [];
+    clearStoredNip07Permissions();
+    return new Set();
   }
 }
 
 function writeStoredNip07Permissions(methods) {
-  if (typeof localStorage === "undefined" || !localStorage) {
+  const storage = getNip07PermissionStorage();
+  if (!storage) {
     return;
   }
 
@@ -141,16 +159,29 @@ function writeStoredNip07Permissions(methods) {
 
   try {
     if (!normalized.length) {
-      localStorage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
+      storage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
       return;
     }
 
-    localStorage.setItem(
+    storage.setItem(
       NIP07_PERMISSIONS_STORAGE_KEY,
       JSON.stringify({ grantedMethods: normalized }),
     );
   } catch (error) {
     // ignore persistence failures
+  }
+}
+
+function clearStoredNip07Permissions() {
+  const storage = getNip07PermissionStorage();
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
+  } catch (error) {
+    // ignore cleanup issues
   }
 }
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
@@ -163,7 +194,6 @@ const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
-const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
 
 export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
   // Core auth + relay metadata
@@ -3141,7 +3171,9 @@ export class NostrClient {
     this.watchHistoryLastCreatedAt = 0;
     this.countRequestCounter = 0;
     this.countUnsupportedRelays = new Set();
-    this.extensionPermissionCache = new Set(readStoredNip07Permissions());
+    const storedPermissions = readStoredNip07Permissions();
+    this.extensionPermissionCache =
+      storedPermissions instanceof Set ? storedPermissions : new Set();
   }
 
   markExtensionPermissions(methods = []) {
@@ -3166,7 +3198,11 @@ export class NostrClient {
     }
 
     if (didChange) {
-      writeStoredNip07Permissions(this.extensionPermissionCache);
+      try {
+        writeStoredNip07Permissions(this.extensionPermissionCache);
+      } catch (error) {
+        // Ignore storage persistence issues in non-browser environments
+      }
     }
   }
 
@@ -6022,6 +6058,13 @@ export class NostrClient {
     this.watchHistoryRefreshPromises.clear();
     this.watchHistoryLastCreatedAt = 0;
     this.watchHistoryStorage = null;
+    if (
+      this.extensionPermissionCache &&
+      typeof this.extensionPermissionCache.clear === "function"
+    ) {
+      this.extensionPermissionCache.clear();
+    }
+    clearStoredNip07Permissions();
     devLogger.log("User logged out.");
   }
 
