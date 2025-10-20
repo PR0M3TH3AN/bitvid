@@ -24,6 +24,16 @@
 export const IS_DEV_MODE = true;
 
 /**
+ * Whether the current deployment should operate in lockdown mode.
+ *
+ * When `true`, bitvid restricts access to operator-approved functionality and
+ * enables defensive UI copy intended for incidents or maintenance windows.
+ * Leave this `false` for normal operation so downstream modules (via
+ * `js/config.js`) continue exposing the full experience.
+ */
+export const IS_LOCKDOWN_MODE = false;
+
+/**
  * The primary administrator for this bitvid instance.
  *
  * bitvid treats this Nostr public key (npub) as the "Super Admin". This user
