@@ -3055,6 +3055,44 @@ export class ProfileModalController {
     }
   }
 
+  normalizeAdminListEntries(entries) {
+    const collected = [];
+    const seen = new Set();
+
+    const append = (value) => {
+      if (typeof value !== "string") {
+        return;
+      }
+      const trimmed = value.trim();
+      if (!trimmed || seen.has(trimmed)) {
+        return;
+      }
+      seen.add(trimmed);
+      collected.push(trimmed);
+    };
+
+    if (Array.isArray(entries)) {
+      entries.forEach(append);
+    } else if (entries && typeof entries?.[Symbol.iterator] === "function") {
+      for (const entry of entries) {
+        append(entry);
+      }
+    } else if (entries && typeof entries === "object") {
+      Object.values(entries).forEach(append);
+    }
+
+    try {
+      collected.sort((a, b) => a.localeCompare(b));
+    } catch (error) {
+      devLogger.warn(
+        "[profileModal] Failed to sort admin list entries, using fallback order.",
+        error,
+      );
+    }
+
+    return collected;
+  }
+
   renderAdminList(listEl, emptyEl, entries, options = {}) {
     if (!(listEl instanceof HTMLElement) || !(emptyEl instanceof HTMLElement)) {
       return;
@@ -3071,17 +3109,31 @@ export class ProfileModalController {
     const entriesNeedingFetch = new Set();
 
     listEl.innerHTML = "";
-    const values = Array.isArray(entries) ? [...entries] : [];
-    values.sort((a, b) => a.localeCompare(b));
+
+    const values = this.normalizeAdminListEntries(entries);
+
+    const toggleHiddenState = (element, shouldHide) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+
+      if (shouldHide) {
+        element.classList.add("hidden");
+        element.setAttribute("hidden", "");
+      } else {
+        element.classList.remove("hidden");
+        element.removeAttribute("hidden");
+      }
+    };
 
     if (!values.length) {
-      emptyEl.classList.remove("hidden");
-      listEl.classList.add("hidden");
+      toggleHiddenState(emptyEl, false);
+      toggleHiddenState(listEl, true);
       return;
     }
 
-    emptyEl.classList.add("hidden");
-    listEl.classList.remove("hidden");
+    toggleHiddenState(emptyEl, true);
+    toggleHiddenState(listEl, false);
 
     values.forEach((npub) => {
       const item = document.createElement("li");
@@ -3162,11 +3214,15 @@ export class ProfileModalController {
     }
 
     const isSuperAdmin = this.services.accessControl.isSuperAdmin(actorNpub);
-    const editors = this.services.accessControl
-      .getEditors()
-      .filter((npub) => npub && npub !== this.adminSuperNpub);
-    const whitelist = this.services.accessControl.getWhitelist();
-    const blacklist = this.services.accessControl.getBlacklist();
+    const editors = this.normalizeAdminListEntries(
+      this.services.accessControl.getEditors(),
+    ).filter((npub) => npub && npub !== this.adminSuperNpub);
+    const whitelist = this.normalizeAdminListEntries(
+      this.services.accessControl.getWhitelist(),
+    );
+    const blacklist = this.normalizeAdminListEntries(
+      this.services.accessControl.getBlacklist(),
+    );
 
     this.renderAdminList(
       this.adminModeratorList,

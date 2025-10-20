@@ -594,9 +594,9 @@ test('admin mutations invoke accessControl stubs and update admin DOM', async ()
     },
     canEditAdminLists: () => true,
     isSuperAdmin: () => true,
-    getEditors: () => ['npub1moderator'],
-    getWhitelist: () => ['npub1allow'],
-    getBlacklist: () => ['npub1block'],
+    getEditors: () => new Set(['npub1moderator']),
+    getWhitelist: () => new Set(['npub1allow']),
+    getBlacklist: () => new Set(['npub1block']),
     addModerator: async (actor, target) => {
       accessEvents.push(['addModerator', actor, target]);
       return { ok: true };
@@ -644,10 +644,13 @@ test('admin mutations invoke accessControl stubs and update admin DOM', async ()
   assert.equal(controller.navButtons.admin.classList.contains('hidden'), false);
   assert.equal(controller.moderatorSection.classList.contains('hidden'), false);
   assert.equal(controller.adminModeratorList.querySelectorAll('li').length, 1);
+  assert.equal(controller.adminModeratorList.hasAttribute('hidden'), false);
   assert.equal(
     controller.whitelistList.querySelectorAll('button').length > 0,
     true,
   );
+  assert.equal(controller.whitelistList.classList.contains('hidden'), false);
+  assert.equal(controller.whitelistList.hasAttribute('hidden'), false);
 
   controller.moderatorInput.value = 'npub1newmoderator';
   await controller.handleAddModerator();
