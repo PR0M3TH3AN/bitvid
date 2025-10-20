@@ -132,6 +132,7 @@ const relays = [
   "wss://relay2.example.com",
 ];
 nostrClient.relays = [...relays];
+nostrClient.writeRelays = [...relays];
 
 let publishBehaviors = [];
 let publishCallIndex = 0;
@@ -155,14 +156,30 @@ nostrClient.pool = {
     }
     return {
       on(eventName, handler) {
+        const schedule = (fn) => {
+          const delay =
+            typeof behavior.delayMs === "number" && behavior.delayMs >= 0
+              ? behavior.delayMs
+              : 0;
+          if (delay > 0) {
+            setTimeout(fn, delay);
+          } else {
+            queueMicrotask(fn);
+          }
+        };
+
         if (eventName === "ok" && behavior.success) {
-          handler();
+          schedule(() => {
+            handler();
+          });
           return true;
         }
         if (eventName === "failed" && !behavior.success) {
-          handler(
-            behavior.error || new Error(`relay failure for ${url}`),
-          );
+          schedule(() => {
+            handler(
+              behavior.error || new Error(`relay failure for ${url}`),
+            );
+          });
           return true;
         }
         return false;
@@ -226,6 +243,59 @@ assert.equal(
   "should attempt to publish removals to every relay",
 );
 
+nostrClient.writeRelays = [relays[1]];
+
+const writerelayBehaviors = [
+  { url: relays[1], success: true },
+];
+setPublishBehaviors(writerelayBehaviors);
+
+await assert.doesNotReject(
+  () =>
+    persistAdminState(ADMIN_SUPER_NPUB, {
+      whitelist: ["npub1writerelaymember"],
+    }),
+  "should publish whitelist updates to configured write relays",
+);
+
+assert.equal(
+  publishCallIndex,
+  writerelayBehaviors.length,
+  "should target only write relays when available",
+);
+
+nostrClient.writeRelays = [];
+
+const slowRelayDelayMs = 75;
+const fastAcceptanceBehaviors = [
+  { url: relays[0], success: true },
+  {
+    url: relays[1],
+    success: false,
+    error: new Error("relay2 slow failure"),
+    delayMs: slowRelayDelayMs,
+  },
+];
+setPublishBehaviors(fastAcceptanceBehaviors);
+
+const startTime = Date.now();
+
+await assert.doesNotReject(
+  () =>
+    persistAdminState(ADMIN_SUPER_NPUB, {
+      whitelist: ["npub1fastacceptance"],
+    }),
+  "should resolve whitelist updates after the first relay acceptance",
+);
+
+const durationMs = Date.now() - startTime;
+assert.ok(
+  durationMs < slowRelayDelayMs,
+  `should not wait for slower relay failures (duration ${durationMs}ms >= ${slowRelayDelayMs}ms)`,
+);
+
+await new Promise((resolve) => setTimeout(resolve, slowRelayDelayMs + 20));
+
 const relayFailureWarnings = capturedWarnings.filter((entry) => {
   const [, message] = entry;
   return (
@@ -247,8 +317,8 @@ const blacklistFailureCount = failureMessages.filter((message) =>
 
 assert.equal(
   relayFailureWarnings.length,
-  4,
-  "should warn once per relay failure across additions and removals",
+  5,
+  "should warn for each relay failure across scenarios",
 );
 assert.ok(
   whitelistFailureCount >= 2,
