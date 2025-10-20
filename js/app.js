@@ -119,6 +119,11 @@ import {
   getModerationOverride,
   setModerationOverride,
   loadModerationOverridesFromStorage,
+  getModerationSettings,
+  getDefaultModerationSettings,
+  setModerationSettings,
+  resetModerationSettings,
+  loadModerationSettingsFromStorage,
   URL_PROBE_TIMEOUT_MS,
   urlHealthConstants,
 } from "./state/cache.js";
@@ -191,6 +196,8 @@ class Application {
         onUpdate: this.boundStreamHealthBadgeHandler,
       });
     };
+    this.defaultModerationSettings = getDefaultModerationSettings();
+    this.moderationSettings = { ...this.defaultModerationSettings };
     this.relayManager = relayManager;
     this.activeIntervals = [];
     this.watchHistoryTelemetry = null;
@@ -538,6 +545,13 @@ class Application {
           accessControl,
           getCurrentUserNpub: () => this.getCurrentUserNpub(),
           nwcSettings: this.nwcSettingsService,
+          moderationSettings: {
+            getDefaultModerationSettings: () => getDefaultModerationSettings(),
+            getActiveModerationSettings: () => getModerationSettings(),
+            updateModerationSettings: (partial = {}) =>
+              setModerationSettings(partial),
+            resetModerationSettings: () => resetModerationSettings(),
+          },
           loadVideos: (forceFetch, context) =>
             this.loadVideos(forceFetch, context),
           onVideosShouldRefresh: (context) =>
@@ -596,6 +610,8 @@ class Application {
             this.handleProfileAdminNotifyError(payload),
           onHistoryReady: (payload) =>
             this.handleProfileHistoryEvent(payload),
+          onModerationSettingsChange: (payload) =>
+            this.handleModerationSettingsChange(payload),
         };
 
         this.profileController = new ProfileModalController({
@@ -1205,6 +1221,10 @@ class Application {
       this.renderSavedProfiles();
 
       loadModerationOverridesFromStorage();
+      loadModerationSettingsFromStorage();
+      this.moderationSettings = this.normalizeModerationSettings(
+        getModerationSettings(),
+      );
 
       const videoModalPromise = this.videoModal.load().then(() => {
         const modalRoot = this.videoModal.getRoot();
@@ -3023,6 +3043,55 @@ class Application {
     return null;
   }
 
+  handleModerationSettingsChange({ settings } = {}) {
+    const normalized = this.normalizeModerationSettings(settings);
+    this.moderationSettings = normalized;
+
+    if (this.videosMap instanceof Map) {
+      for (const video of this.videosMap.values()) {
+        if (video && typeof video === "object") {
+          this.decorateVideoModeration(video);
+        }
+      }
+    }
+
+    if (
+      this.videoListView &&
+      Array.isArray(this.videoListView.videoCardInstances)
+    ) {
+      for (const card of this.videoListView.videoCardInstances) {
+        if (!card || typeof card.refreshModerationUi !== "function") {
+          continue;
+        }
+        if (card.video && typeof card.video === "object") {
+          this.decorateVideoModeration(card.video);
+        }
+        try {
+          card.refreshModerationUi();
+        } catch (error) {
+          devLogger.warn(
+            "[Application] Failed to refresh moderation UI:",
+            error,
+          );
+        }
+      }
+    }
+
+    if (this.videoListView && Array.isArray(this.videoListView.currentVideos)) {
+      for (const video of this.videoListView.currentVideos) {
+        if (video && typeof video === "object") {
+          this.decorateVideoModeration(video);
+        }
+      }
+    }
+
+    if (this.currentVideo && typeof this.currentVideo === "object") {
+      this.decorateVideoModeration(this.currentVideo);
+    }
+
+    return normalized;
+  }
+
   updateActiveProfileUI(pubkey, profile = {}) {
     if (this.profileController) {
       this.profileController.handleProfileUpdated({
@@ -4111,6 +4180,7 @@ class Application {
     }
 
     try {
+      const thresholds = this.getActiveModerationThresholds();
       return this.feedEngine.registerFeed("recent", {
         source: createActiveNostrSource({ service: this.nostrService }),
         stages: [
@@ -4123,6 +4193,8 @@ class Application {
           }),
           createModerationStage({
             getService: () => this.nostrService.getModerationService(),
+            autoplayThreshold: thresholds.autoplayBlockThreshold,
+            blurThreshold: thresholds.blurThreshold,
           }),
         ],
         sorter: createChronologicalSorter(),
@@ -4147,6 +4219,7 @@ class Application {
     }
 
     try {
+      const thresholds = this.getActiveModerationThresholds();
       return this.feedEngine.registerFeed("subscriptions", {
         source: createSubscriptionAuthorsSource({ service: this.nostrService }),
         stages: [
@@ -4159,6 +4232,8 @@ class Application {
           }),
           createModerationStage({
             getService: () => this.nostrService.getModerationService(),
+            autoplayThreshold: thresholds.autoplayBlockThreshold,
+            blurThreshold: thresholds.blurThreshold,
           }),
         ],
         sorter: createChronologicalSorter(),
@@ -4746,6 +4821,33 @@ class Application {
     return formatShortNpub(trimmed);
   }
 
+  normalizeModerationSettings(settings = null) {
+    const defaults = this.defaultModerationSettings || getDefaultModerationSettings();
+    const defaultBlur = Number.isFinite(defaults?.blurThreshold)
+      ? Math.max(0, Math.floor(defaults.blurThreshold))
+      : 3;
+    const defaultAutoplay = Number.isFinite(defaults?.autoplayBlockThreshold)
+      ? Math.max(0, Math.floor(defaults.autoplayBlockThreshold))
+      : 2;
+
+    const blurSource = Number.isFinite(settings?.blurThreshold)
+      ? Math.max(0, Math.floor(settings.blurThreshold))
+      : defaultBlur;
+    const autoplaySource = Number.isFinite(settings?.autoplayBlockThreshold)
+      ? Math.max(0, Math.floor(settings.autoplayBlockThreshold))
+      : defaultAutoplay;
+
+    return {
+      blurThreshold: blurSource,
+      autoplayBlockThreshold: autoplaySource,
+    };
+  }
+
+  getActiveModerationThresholds() {
+    this.moderationSettings = this.normalizeModerationSettings(this.moderationSettings);
+    return { ...this.moderationSettings };
+  }
+
   decorateVideoModeration(video) {
     if (!video || typeof video !== "object") {
       return video;
@@ -4846,22 +4948,25 @@ class Application {
       ? Math.max(0, Math.floor(existingModeration.trustedCount))
       : this.deriveModerationTrustedCount(summary, reportType);
 
+    const thresholds = this.getActiveModerationThresholds();
+    const adminWhitelistBypass = existingModeration.adminWhitelistBypass === true;
+    const computedBlockAutoplay = adminWhitelistBypass
+      ? false
+      : trustedCount >= thresholds.autoplayBlockThreshold;
+    const computedBlurThumbnail = adminWhitelistBypass
+      ? false
+      : trustedCount >= thresholds.blurThreshold;
+
     const overrideEntry = getModerationOverride(video.id);
     const overrideActive = overrideEntry?.showAnyway === true;
     const overrideUpdatedAt = Number.isFinite(overrideEntry?.updatedAt)
       ? Math.floor(overrideEntry.updatedAt)
       : Date.now();
 
-    const originalState =
-      existingModeration.original && typeof existingModeration.original === "object"
-        ? {
-            blockAutoplay: existingModeration.original.blockAutoplay === true,
-            blurThumbnail: existingModeration.original.blurThumbnail === true,
-          }
-        : {
-            blockAutoplay: existingModeration.blockAutoplay === true,
-            blurThumbnail: existingModeration.blurThumbnail === true,
-          };
+    const originalState = {
+      blockAutoplay: computedBlockAutoplay,
+      blurThumbnail: computedBlurThumbnail,
+    };
 
     const decoratedModeration = {
       ...existingModeration,

@@ -22,6 +22,35 @@ const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 
 const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
 const MODERATION_OVERRIDE_STORAGE_VERSION = 1;
+const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
+const MODERATION_SETTINGS_STORAGE_VERSION = 1;
+
+const DEFAULT_MODERATION_SETTINGS = Object.freeze({
+  blurThreshold: 3,
+  autoplayBlockThreshold: 2,
+});
+
+function createDefaultModerationSettings() {
+  return { ...DEFAULT_MODERATION_SETTINGS };
+}
+
+function sanitizeModerationThreshold(value, fallback) {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  const clamped = Math.max(0, Math.floor(numeric));
+  if (!Number.isFinite(clamped)) {
+    return fallback;
+  }
+
+  return clamped;
+}
 
 function sanitizeProfileString(value) {
   if (typeof value !== "string") {
@@ -39,6 +68,7 @@ const profileCache = new Map();
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
 const moderationOverrides = new Map();
+let moderationSettings = createDefaultModerationSettings();
 
 function hasSavedProfilesChanged(previousProfiles, nextProfiles) {
   if (previousProfiles === nextProfiles) {
@@ -677,6 +707,185 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
   }
 
   return entry;
+}
+
+function haveModerationSettingsChanged(previous, next) {
+  if (!previous || !next) {
+    return true;
+  }
+
+  return (
+    previous.blurThreshold !== next.blurThreshold ||
+    previous.autoplayBlockThreshold !== next.autoplayBlockThreshold
+  );
+}
+
+export function getDefaultModerationSettings() {
+  return createDefaultModerationSettings();
+}
+
+export function getModerationSettings() {
+  return { ...moderationSettings };
+}
+
+export function loadModerationSettingsFromStorage() {
+  if (typeof localStorage === "undefined") {
+    moderationSettings = createDefaultModerationSettings();
+    return getModerationSettings();
+  }
+
+  const raw = localStorage.getItem(MODERATION_SETTINGS_STORAGE_KEY);
+  if (!raw) {
+    moderationSettings = createDefaultModerationSettings();
+    return getModerationSettings();
+  }
+
+  try {
+    const payload = JSON.parse(raw);
+    if (!payload || typeof payload !== "object") {
+      moderationSettings = createDefaultModerationSettings();
+      return getModerationSettings();
+    }
+
+    if (payload.version !== MODERATION_SETTINGS_STORAGE_VERSION) {
+      moderationSettings = createDefaultModerationSettings();
+      return getModerationSettings();
+    }
+
+    const defaults = createDefaultModerationSettings();
+    const overrides =
+      payload.overrides && typeof payload.overrides === "object"
+        ? payload.overrides
+        : {};
+
+    moderationSettings = {
+      blurThreshold: sanitizeModerationThreshold(
+        overrides.blurThreshold,
+        defaults.blurThreshold,
+      ),
+      autoplayBlockThreshold: sanitizeModerationThreshold(
+        overrides.autoplayBlockThreshold,
+        defaults.autoplayBlockThreshold,
+      ),
+    };
+  } catch (error) {
+    moderationSettings = createDefaultModerationSettings();
+    userLogger.warn(
+      "[cache.loadModerationSettingsFromStorage] Failed to parse payload:",
+      error,
+    );
+  }
+
+  return getModerationSettings();
+}
+
+function persistModerationSettingsToStorage() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const defaults = createDefaultModerationSettings();
+  const overrides = {};
+
+  if (moderationSettings.blurThreshold !== defaults.blurThreshold) {
+    overrides.blurThreshold = moderationSettings.blurThreshold;
+  }
+
+  if (moderationSettings.autoplayBlockThreshold !== defaults.autoplayBlockThreshold) {
+    overrides.autoplayBlockThreshold = moderationSettings.autoplayBlockThreshold;
+  }
+
+  if (Object.keys(overrides).length === 0) {
+    try {
+      localStorage.removeItem(MODERATION_SETTINGS_STORAGE_KEY);
+    } catch (error) {
+      userLogger.warn(
+        "[cache.persistModerationSettingsToStorage] Failed to clear overrides:",
+        error,
+      );
+    }
+    return;
+  }
+
+  const payload = {
+    version: MODERATION_SETTINGS_STORAGE_VERSION,
+    overrides,
+    savedAt: Date.now(),
+  };
+
+  try {
+    localStorage.setItem(
+      MODERATION_SETTINGS_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  } catch (error) {
+    userLogger.warn(
+      "[cache.persistModerationSettingsToStorage] Failed to persist overrides:",
+      error,
+    );
+  }
+}
+
+export function setModerationSettings(partial = {}, { persist = true } = {}) {
+  const defaults = createDefaultModerationSettings();
+  const next = { ...moderationSettings };
+  let changed = false;
+
+  if (Object.prototype.hasOwnProperty.call(partial, "blurThreshold")) {
+    const value = partial.blurThreshold;
+    const sanitized =
+      value === null
+        ? defaults.blurThreshold
+        : sanitizeModerationThreshold(value, defaults.blurThreshold);
+    if (next.blurThreshold !== sanitized) {
+      next.blurThreshold = sanitized;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(partial, "autoplayBlockThreshold")) {
+    const value = partial.autoplayBlockThreshold;
+    const sanitized =
+      value === null
+        ? defaults.autoplayBlockThreshold
+        : sanitizeModerationThreshold(value, defaults.autoplayBlockThreshold);
+    if (next.autoplayBlockThreshold !== sanitized) {
+      next.autoplayBlockThreshold = sanitized;
+      changed = true;
+    }
+  }
+
+  if (!changed) {
+    if (persist) {
+      persistModerationSettingsToStorage();
+    }
+    return { ...moderationSettings };
+  }
+
+  moderationSettings = next;
+
+  if (persist) {
+    persistModerationSettingsToStorage();
+  }
+
+  return { ...moderationSettings };
+}
+
+export function resetModerationSettings({ persist = true } = {}) {
+  const previous = moderationSettings;
+  moderationSettings = createDefaultModerationSettings();
+
+  const changed = haveModerationSettingsChanged(previous, moderationSettings);
+
+  if (persist) {
+    persistModerationSettingsToStorage();
+  }
+
+  if (!changed) {
+    return { ...moderationSettings };
+  }
+
+  return { ...moderationSettings };
 }
 
 export function getModerationOverridesMap() {
