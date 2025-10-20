@@ -188,6 +188,8 @@
   );
   --sidebar-dropup-max-height: calc(3rem * 6);
   --space-sidebar-nav-padding-block: 0.7rem;
+  --space-sidebar-nav-padding-inline-start: var(--space-sm);
+  --space-sidebar-nav-padding-inline-end: var(--space-md-plus);
   --space-sidebar-subnav-padding-block: 0.55rem;
   --space-sidebar-nav-translate: 0.35rem;
   --grid-card-min-width: 20rem;
@@ -464,6 +466,22 @@
   --color-overlay-banner-transparent: rgb(255 255 255 / 0);
   --color-overlay-backdrop: rgb(15 23 42 / 0.2);
 
+  --scrollbar-track: color-mix(
+    in srgb,
+    var(--color-sidebar-border-strong) 28%,
+    transparent
+  );
+  --scrollbar-thumb: color-mix(
+    in srgb,
+    var(--color-accent) 48%,
+    transparent
+  );
+  --scrollbar-thumb-hover: color-mix(
+    in srgb,
+    var(--color-accent-strong) 56%,
+    transparent
+  );
+
   --color-sidebar-surface: rgb(255 255 255 / 0.9);
   --color-sidebar-surface-alt: rgb(236 240 247 / 0.72);
   --color-sidebar-border: rgb(184 194 212 / 0.28);
@@ -615,6 +633,22 @@
   --color-overlay-banner-bottom: rgb(0 0 0 / 0.6);
   --color-overlay-banner-transparent: rgb(0 0 0 / 0);
   --color-overlay-backdrop: rgb(5 8 14 / 0.75);
+
+  --scrollbar-track: color-mix(
+    in srgb,
+    var(--color-sidebar-surface-alt) 42%,
+    transparent
+  );
+  --scrollbar-thumb: color-mix(
+    in srgb,
+    var(--color-accent) 52%,
+    transparent
+  );
+  --scrollbar-thumb-hover: color-mix(
+    in srgb,
+    var(--color-accent-strong) 62%,
+    transparent
+  );
 
   --color-sidebar-surface: rgb(12 18 30 / 0.94);
   --color-sidebar-surface-alt: rgb(10 18 32 / 0.8);

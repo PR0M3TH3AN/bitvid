@@ -2649,7 +2649,9 @@
     display: flex;
     align-items: center;
     gap: var(--space-sidebar-footer-gap);
-    padding: var(--space-sidebar-nav-padding-block) var(--space-md);
+    padding-block: var(--space-sidebar-nav-padding-block);
+    padding-inline-start: var(--space-sidebar-nav-padding-inline-start);
+    padding-inline-end: var(--space-sidebar-nav-padding-inline-end);
     min-height: var(--sidebar-control-size);
     border-radius: var(--radius-sidebar-nav);
     font-size: var(--font-size-sidebar-nav);
@@ -2762,7 +2764,9 @@
     justify-content: space-between;
     gap: var(--space-sidebar-footer-gap);
     width: 100%;
-    padding: var(--space-sidebar-trigger-padding-block) var(--space-md);
+    padding-block: var(--space-sidebar-trigger-padding-block);
+    padding-inline-start: var(--space-sidebar-nav-padding-inline-start);
+    padding-inline-end: var(--space-sidebar-nav-padding-inline-end);
     min-height: var(--sidebar-control-size);
     border-radius: var(--radius-sidebar-nav);
     border: var(--border-width-hairline) solid transparent;
