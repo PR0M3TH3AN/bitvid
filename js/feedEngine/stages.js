@@ -8,6 +8,8 @@ import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
 import { isPlainObject, toSet } from "./utils.js";
 
+const FEED_HIDE_BYPASS_NAMES = new Set(["home", "recent"]);
+
 function resolveDedupeFunction(customDedupe) {
   if (typeof customDedupe === "function") {
     return customDedupe;
@@ -199,13 +201,30 @@ export function createModerationStage({
   reportType = "nudity",
   service = null,
   getService,
+  trustedMuteHideThreshold = Number.POSITIVE_INFINITY,
+  trustedReportHideThreshold = Number.POSITIVE_INFINITY,
 } = {}) {
+  const sanitizeThreshold = (value, fallback) => {
+    if (Number.isFinite(value)) {
+      return Math.max(0, Math.floor(value));
+    }
+    return fallback;
+  };
+
   const normalizedAutoplayThreshold = Number.isFinite(autoplayThreshold)
     ? Math.max(0, Math.floor(autoplayThreshold))
     : 2;
   const normalizedBlurThreshold = Number.isFinite(blurThreshold)
     ? Math.max(0, Math.floor(blurThreshold))
     : 3;
+  const normalizedMuteHideThreshold = sanitizeThreshold(
+    trustedMuteHideThreshold,
+    Number.POSITIVE_INFINITY,
+  );
+  const normalizedReportHideThreshold = sanitizeThreshold(
+    trustedReportHideThreshold,
+    Number.POSITIVE_INFINITY,
+  );
   const normalizedReportType = typeof reportType === "string" ? reportType.trim().toLowerCase() : "nudity";
 
   return async function moderationStage(items = [], context = {}) {
@@ -318,6 +337,104 @@ export function createModerationStage({
             }
           }
         : () => ({ hex: "", whitelisted: false, blacklisted: false });
+
+    const normalizedFeedName =
+      typeof context?.feedName === "string" ? context.feedName.trim().toLowerCase() : "";
+    const normalizedFeedVariant =
+      typeof context?.runtime?.feedVariant === "string"
+        ? context.runtime.feedVariant.trim().toLowerCase()
+        : "";
+    const runtimeDisableHardHide = context?.runtime?.disableHardHide === true;
+    const feedPolicyBypass =
+      runtimeDisableHardHide ||
+      (normalizedFeedName && FEED_HIDE_BYPASS_NAMES.has(normalizedFeedName)) ||
+      (normalizedFeedVariant && FEED_HIDE_BYPASS_NAMES.has(normalizedFeedVariant));
+
+    const runtimeForOverride = context?.runtime && typeof context.runtime === "object"
+      ? context.runtime
+      : null;
+
+    const overrideChecker = (() => {
+      if (!runtimeForOverride) {
+        return () => false;
+      }
+
+      const overrideMap = runtimeForOverride.moderationOverrides;
+      const overrideIds = runtimeForOverride.moderationOverrideIds;
+      const hasFn =
+        typeof runtimeForOverride.hasModerationOverride === "function"
+          ? runtimeForOverride.hasModerationOverride.bind(runtimeForOverride)
+          : null;
+      const getFn =
+        typeof runtimeForOverride.getModerationOverride === "function"
+          ? runtimeForOverride.getModerationOverride.bind(runtimeForOverride)
+          : null;
+
+      const checkEntry = (entry) => {
+        if (!entry) {
+          return false;
+        }
+        if (entry === true) {
+          return true;
+        }
+        if (typeof entry === "object" && entry.showAnyway === true) {
+          return true;
+        }
+        return false;
+      };
+
+      return (videoId) => {
+        if (typeof videoId !== "string") {
+          return false;
+        }
+        const trimmed = videoId.trim();
+        if (!trimmed) {
+          return false;
+        }
+        const normalizedId = trimmed.toLowerCase();
+
+        if (overrideMap instanceof Map) {
+          const entry = overrideMap.get(normalizedId) ?? overrideMap.get(trimmed);
+          if (checkEntry(entry)) {
+            return true;
+          }
+        } else if (overrideMap && typeof overrideMap === "object") {
+          const entry = overrideMap[normalizedId] ?? overrideMap[trimmed];
+          if (checkEntry(entry)) {
+            return true;
+          }
+        }
+
+        if (overrideIds instanceof Set) {
+          if (overrideIds.has(normalizedId) || overrideIds.has(trimmed)) {
+            return true;
+          }
+        }
+
+        if (hasFn) {
+          try {
+            if (hasFn(normalizedId) || (normalizedId !== trimmed && hasFn(trimmed))) {
+              return true;
+            }
+          } catch (error) {
+            context?.log?.(`[${stageName}] hasModerationOverride threw`, error);
+          }
+        }
+
+        if (getFn) {
+          try {
+            const entry = getFn(normalizedId) ?? (normalizedId !== trimmed ? getFn(trimmed) : null);
+            if (checkEntry(entry)) {
+              return true;
+            }
+          } catch (error) {
+            context?.log?.(`[${stageName}] getModerationOverride threw`, error);
+          }
+        }
+
+        return false;
+      };
+    })();
 
     const results = [];
 
@@ -489,18 +606,6 @@ export function createModerationStage({
       metadataModeration.trustedMuted = trustedMuted;
       metadataModeration.trustedMuters = trustedMuters.slice();
       metadataModeration.trustedMuteCount = trustedMuteCount;
-      item.metadata.moderation = metadataModeration;
-
-      if (IS_DEV_MODE) {
-        logger.dev.debug("[feedEngine/moderation] metadata.moderation updated", {
-          stage: stageName,
-          videoId: videoId || null,
-          blockAutoplay,
-          blurThumbnail,
-          trustedCount,
-          reportType: normalizedReportType,
-        });
-      }
 
       if (!video.moderation || typeof video.moderation !== "object") {
         video.moderation = {};
@@ -535,6 +640,93 @@ export function createModerationStage({
         delete video.moderation.summary;
       }
 
+      const hideCounts = {
+        trustedMuteCount,
+        trustedReportCount: trustedCount,
+      };
+
+      let hideReason = "";
+      let hideTriggered = false;
+
+      if (trustedMuted && trustedMuteCount >= normalizedMuteHideThreshold) {
+        hideReason = "trusted-mute-hide";
+        hideTriggered = true;
+      } else if (trustedCount >= normalizedReportHideThreshold) {
+        hideReason = "trusted-report-hide";
+        hideTriggered = true;
+      }
+
+      const viewerOverrideActive = overrideChecker(videoId);
+
+      let hideBypass = "";
+      if (hideTriggered) {
+        if (adminWhitelist) {
+          hideBypass = "admin-whitelist";
+        } else if (viewerOverrideActive) {
+          hideBypass = "viewer-override";
+        } else if (feedPolicyBypass) {
+          hideBypass = "feed-policy";
+        }
+      }
+
+      const hidden = hideTriggered && !hideBypass;
+
+      if (hideTriggered) {
+        metadataModeration.hidden = hidden;
+        metadataModeration.hideReason = hideReason;
+        metadataModeration.hideCounts = { ...hideCounts };
+        if (hideBypass) {
+          metadataModeration.hideBypass = hideBypass;
+        } else if (metadataModeration.hideBypass) {
+          delete metadataModeration.hideBypass;
+        }
+        video.moderation.hidden = hidden;
+        video.moderation.hideReason = hideReason;
+        video.moderation.hideCounts = { ...hideCounts };
+        if (hideBypass) {
+          video.moderation.hideBypass = hideBypass;
+        } else if (video.moderation.hideBypass) {
+          delete video.moderation.hideBypass;
+        }
+      } else {
+        metadataModeration.hidden = false;
+        if (metadataModeration.hideReason) {
+          delete metadataModeration.hideReason;
+        }
+        if (metadataModeration.hideCounts) {
+          delete metadataModeration.hideCounts;
+        }
+        if (metadataModeration.hideBypass) {
+          delete metadataModeration.hideBypass;
+        }
+        video.moderation.hidden = false;
+        if (video.moderation.hideReason) {
+          delete video.moderation.hideReason;
+        }
+        if (video.moderation.hideCounts) {
+          delete video.moderation.hideCounts;
+        }
+        if (video.moderation.hideBypass) {
+          delete video.moderation.hideBypass;
+        }
+      }
+
+      item.metadata.moderation = metadataModeration;
+
+      if (IS_DEV_MODE) {
+        logger.dev.debug("[feedEngine/moderation] metadata.moderation updated", {
+          stage: stageName,
+          videoId: videoId || null,
+          blockAutoplay,
+          blurThumbnail,
+          trustedCount,
+          reportType: normalizedReportType,
+          hidden,
+          hideReason: hideTriggered ? hideReason : null,
+          hideBypass: hideBypass || null,
+        });
+      }
+
       if (blockAutoplay || blurThumbnail) {
         context?.addWhy?.({
           stage: stageName,
@@ -555,6 +747,35 @@ export function createModerationStage({
           pubkey: authorHex || authorPubkey || null,
           trustedMuteCount,
         });
+      }
+
+      if (hideTriggered) {
+        const hideDetail = {
+          stage: stageName,
+          type: "moderation",
+          reason: hideReason,
+          videoId: videoId || null,
+          trustedMuteCount,
+          trustedReportCount: trustedCount,
+          hidden,
+        };
+        if (hideBypass) {
+          hideDetail.hideBypass = hideBypass;
+        }
+        if (adminWhitelist) {
+          hideDetail.adminWhitelist = true;
+        }
+        if (viewerOverrideActive) {
+          hideDetail.viewerOverride = true;
+        }
+        if (feedPolicyBypass) {
+          hideDetail.feedPolicyBypass = true;
+        }
+        context?.addWhy?.(hideDetail);
+      }
+
+      if (hidden) {
+        continue;
       }
 
       results.push(item);
