@@ -670,6 +670,10 @@ export class ProfileModalController {
     this.profileModalRoot = null;
     this.profileModalPanel = null;
     this.profileModalBackdrop = null;
+    this.profileModalLayout = null;
+    this.profileModalMenu = null;
+    this.profileModalPaneWrapper = null;
+    this.profileModalBackButton = null;
     this.profileAvatar = null;
     this.profileName = null;
     this.profileNpub = null;
@@ -763,6 +767,11 @@ export class ProfileModalController {
     this.focusTrapContainer = null;
     this.profileSwitcherSelectionPubkey = null;
     this.previouslyFocusedElement = null;
+    this.largeLayoutQuery = null;
+    this.largeLayoutQueryListener = null;
+    this.isLargeLayoutActiveFlag = false;
+    this.mobileViewState = "menu";
+    this.lastMobileViewState = "menu";
     this.setActivePane(this.getActivePane());
     this.setWalletPaneBusy(this.isWalletBusy());
     this.adminEmptyMessages = new Map();
@@ -797,9 +806,11 @@ export class ProfileModalController {
       modalRoot.querySelector(".bv-modal-backdrop") || null;
 
     this.cacheDomReferences();
+    this.setupLayoutBreakpointObserver();
     this.applyModalStackingOverrides();
     this.registerEventListeners();
-    this.selectPane(this.getActivePane());
+    const preserveMenu = this.isMobileLayoutActive();
+    this.selectPane(this.getActivePane(), { keepMenuView: preserveMenu });
 
     return true;
   }
@@ -810,8 +821,16 @@ export class ProfileModalController {
       this.profileModalRoot?.querySelector(".bv-modal__panel") || null;
     this.profileModalBackdrop =
       this.profileModalRoot?.querySelector(".bv-modal-backdrop") || null;
+    this.profileModalLayout =
+      this.profileModalRoot?.querySelector("[data-profile-layout]") || null;
+    this.profileModalMenu =
+      this.profileModalRoot?.querySelector("[data-profile-mobile-menu]") || null;
+    this.profileModalPaneWrapper =
+      this.profileModalRoot?.querySelector("[data-profile-mobile-pane]") || null;
     this.profileModal = this.profileModalRoot;
     this.closeButton = document.getElementById("closeProfileModal") || null;
+    this.profileModalBackButton =
+      document.getElementById("profileModalBack") || null;
     this.logoutButton = document.getElementById("profileLogoutBtn") || null;
     this.channelLink = document.getElementById("profileChannelLink") || null;
     this.addAccountButton =
@@ -1003,6 +1022,12 @@ export class ProfileModalController {
     if (this.closeButton instanceof HTMLElement) {
       this.closeButton.addEventListener("click", () => {
         this.hide();
+      });
+    }
+
+    if (this.profileModalBackButton instanceof HTMLElement) {
+      this.profileModalBackButton.addEventListener("click", () => {
+        this.setMobileView("menu", { focusMenu: true });
       });
     }
 
@@ -1469,7 +1494,211 @@ export class ProfileModalController {
     return container;
   }
 
-  selectPane(name = "account") {
+  setupLayoutBreakpointObserver() {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      this.largeLayoutQuery = null;
+      this.largeLayoutQueryListener = null;
+      this.isLargeLayoutActiveFlag = false;
+      return;
+    }
+
+    if (this.largeLayoutQuery && this.largeLayoutQueryListener) {
+      this.teardownLayoutBreakpointObserver();
+    }
+
+    try {
+      const query = window.matchMedia("(min-width: 1024px)");
+      const handler = (event) => {
+        const matches =
+          typeof event?.matches === "boolean" ? event.matches : query.matches;
+        this.handleLayoutBreakpointChange(matches);
+      };
+      this.largeLayoutQuery = query;
+      this.largeLayoutQueryListener = handler;
+
+      if (typeof query.addEventListener === "function") {
+        query.addEventListener("change", handler);
+      } else if (typeof query.addListener === "function") {
+        query.addListener(handler);
+      }
+
+      this.handleLayoutBreakpointChange(query.matches);
+    } catch (error) {
+      this.largeLayoutQuery = null;
+      this.largeLayoutQueryListener = null;
+      devLogger.warn(
+        "[profileModal] Failed to initialize responsive breakpoint observer:",
+        error,
+      );
+      this.handleLayoutBreakpointChange(false);
+    }
+  }
+
+  teardownLayoutBreakpointObserver() {
+    const query = this.largeLayoutQuery;
+    const handler = this.largeLayoutQueryListener;
+    if (query && handler) {
+      if (typeof query.removeEventListener === "function") {
+        query.removeEventListener("change", handler);
+      } else if (typeof query.removeListener === "function") {
+        query.removeListener(handler);
+      }
+    }
+    this.largeLayoutQuery = null;
+    this.largeLayoutQueryListener = null;
+  }
+
+  handleLayoutBreakpointChange(matches) {
+    const isLarge = Boolean(matches);
+    this.isLargeLayoutActiveFlag = isLarge;
+    if (isLarge) {
+      this.setMobileView("pane", { skipFocusTrap: false });
+      return;
+    }
+
+    const targetView = this.lastMobileViewState || this.mobileViewState || "menu";
+    this.setMobileView(targetView, { skipFocusTrap: false });
+  }
+
+  isLargeLayoutActive() {
+    return Boolean(this.isLargeLayoutActiveFlag);
+  }
+
+  isMobileLayoutActive() {
+    return !this.isLargeLayoutActive();
+  }
+
+  focusActiveNavButton() {
+    const active = this.getActivePane();
+    const candidates = [];
+    if (active && this.navButtons[active] instanceof HTMLElement) {
+      candidates.push(this.navButtons[active]);
+    }
+    Object.values(this.navButtons).forEach((button) => {
+      if (
+        button instanceof HTMLElement &&
+        !candidates.includes(button) &&
+        !button.classList.contains("hidden")
+      ) {
+        candidates.push(button);
+      }
+    });
+
+    const target = candidates.find((button) => button instanceof HTMLElement);
+    if (!target) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      try {
+        target.focus();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to focus active navigation button:",
+          error,
+        );
+      }
+    });
+  }
+
+  setMobileView(view = "menu", options = {}) {
+    const normalizedView = view === "pane" ? "pane" : "menu";
+    const settings =
+      options && typeof options === "object" ? options : { skipFocusTrap: false };
+    const skipFocusTrap = Boolean(settings.skipFocusTrap);
+    const focusMenu = Boolean(settings.focusMenu);
+
+    const layoutElement =
+      this.profileModalLayout instanceof HTMLElement
+        ? this.profileModalLayout
+        : null;
+    const paneWrapper =
+      this.profileModalPaneWrapper instanceof HTMLElement
+        ? this.profileModalPaneWrapper
+        : null;
+    const menuWrapper =
+      this.profileModalMenu instanceof HTMLElement
+        ? this.profileModalMenu
+        : null;
+    const panelElement =
+      this.profileModalPanel instanceof HTMLElement
+        ? this.profileModalPanel
+        : null;
+    const rootElement =
+      this.profileModalRoot instanceof HTMLElement ? this.profileModalRoot : null;
+    const backButton =
+      this.profileModalBackButton instanceof HTMLElement
+        ? this.profileModalBackButton
+        : null;
+
+    const isLarge = this.isLargeLayoutActive();
+    this.mobileViewState = normalizedView;
+    if (!isLarge) {
+      this.lastMobileViewState = normalizedView;
+    }
+
+    if (layoutElement) {
+      layoutElement.dataset.mobileView = normalizedView;
+    }
+    if (panelElement) {
+      panelElement.dataset.mobileView = normalizedView;
+    }
+    if (rootElement) {
+      rootElement.dataset.mobileView = normalizedView;
+    }
+
+    const menuHidden = !isLarge && normalizedView === "pane";
+    const paneHidden = !isLarge && normalizedView === "menu";
+
+    if (menuWrapper) {
+      menuWrapper.setAttribute("aria-hidden", menuHidden ? "true" : "false");
+      if (menuHidden) {
+        menuWrapper.classList.add("hidden");
+        menuWrapper.setAttribute("hidden", "");
+      } else {
+        menuWrapper.classList.remove("hidden");
+        menuWrapper.removeAttribute("hidden");
+      }
+    }
+
+    if (paneWrapper) {
+      paneWrapper.setAttribute("aria-hidden", paneHidden ? "true" : "false");
+      if (paneHidden) {
+        paneWrapper.classList.add("hidden");
+        paneWrapper.setAttribute("hidden", "");
+      } else {
+        paneWrapper.classList.remove("hidden");
+        paneWrapper.removeAttribute("hidden");
+      }
+    }
+
+    if (backButton) {
+      if (isLarge || normalizedView === "menu") {
+        backButton.classList.add("hidden");
+        backButton.setAttribute("aria-hidden", "true");
+      } else {
+        backButton.classList.remove("hidden");
+        backButton.setAttribute("aria-hidden", "false");
+      }
+    }
+
+    if (!skipFocusTrap) {
+      this.updateFocusTrap();
+    }
+
+    if (focusMenu && normalizedView === "menu") {
+      this.focusActiveNavButton();
+    }
+
+    return normalizedView;
+  }
+
+  selectPane(name = "account", options = {}) {
+    const { keepMenuView = false } =
+      options && typeof options === "object" ? options : {};
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";
     const previous = this.getActivePane();
     const availableKeys = Object.keys(this.panes).filter((key) => {
@@ -1522,7 +1751,9 @@ export class ProfileModalController {
     });
 
     this.setActivePane(target);
-    this.updateFocusTrap();
+    const isMobile = this.isMobileLayoutActive();
+    const shouldStayInMenu = keepMenuView && isMobile;
+    this.setMobileView(shouldStayInMenu ? "menu" : "pane");
 
     if (target === "history") {
       void this.populateProfileWatchHistory();
@@ -2824,6 +3055,44 @@ export class ProfileModalController {
     }
   }
 
+  normalizeAdminListEntries(entries) {
+    const collected = [];
+    const seen = new Set();
+
+    const append = (value) => {
+      if (typeof value !== "string") {
+        return;
+      }
+      const trimmed = value.trim();
+      if (!trimmed || seen.has(trimmed)) {
+        return;
+      }
+      seen.add(trimmed);
+      collected.push(trimmed);
+    };
+
+    if (Array.isArray(entries)) {
+      entries.forEach(append);
+    } else if (entries && typeof entries?.[Symbol.iterator] === "function") {
+      for (const entry of entries) {
+        append(entry);
+      }
+    } else if (entries && typeof entries === "object") {
+      Object.values(entries).forEach(append);
+    }
+
+    try {
+      collected.sort((a, b) => a.localeCompare(b));
+    } catch (error) {
+      devLogger.warn(
+        "[profileModal] Failed to sort admin list entries, using fallback order.",
+        error,
+      );
+    }
+
+    return collected;
+  }
+
   renderAdminList(listEl, emptyEl, entries, options = {}) {
     if (!(listEl instanceof HTMLElement) || !(emptyEl instanceof HTMLElement)) {
       return;
@@ -2840,17 +3109,31 @@ export class ProfileModalController {
     const entriesNeedingFetch = new Set();
 
     listEl.innerHTML = "";
-    const values = Array.isArray(entries) ? [...entries] : [];
-    values.sort((a, b) => a.localeCompare(b));
+
+    const values = this.normalizeAdminListEntries(entries);
+
+    const toggleHiddenState = (element, shouldHide) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+
+      if (shouldHide) {
+        element.classList.add("hidden");
+        element.setAttribute("hidden", "");
+      } else {
+        element.classList.remove("hidden");
+        element.removeAttribute("hidden");
+      }
+    };
 
     if (!values.length) {
-      emptyEl.classList.remove("hidden");
-      listEl.classList.add("hidden");
+      toggleHiddenState(emptyEl, false);
+      toggleHiddenState(listEl, true);
       return;
     }
 
-    emptyEl.classList.add("hidden");
-    listEl.classList.remove("hidden");
+    toggleHiddenState(emptyEl, true);
+    toggleHiddenState(listEl, false);
 
     values.forEach((npub) => {
       const item = document.createElement("li");
@@ -2931,11 +3214,15 @@ export class ProfileModalController {
     }
 
     const isSuperAdmin = this.services.accessControl.isSuperAdmin(actorNpub);
-    const editors = this.services.accessControl
-      .getEditors()
-      .filter((npub) => npub && npub !== this.adminSuperNpub);
-    const whitelist = this.services.accessControl.getWhitelist();
-    const blacklist = this.services.accessControl.getBlacklist();
+    const editors = this.normalizeAdminListEntries(
+      this.services.accessControl.getEditors(),
+    ).filter((npub) => npub && npub !== this.adminSuperNpub);
+    const whitelist = this.normalizeAdminListEntries(
+      this.services.accessControl.getWhitelist(),
+    );
+    const blacklist = this.normalizeAdminListEntries(
+      this.services.accessControl.getBlacklist(),
+    );
 
     this.renderAdminList(
       this.adminModeratorList,
@@ -4197,7 +4484,8 @@ export class ProfileModalController {
     modalRoot.classList.remove("hidden");
     modalRoot.setAttribute("aria-hidden", "false");
     this.setGlobalModalState("profile", true);
-    this.selectPane(pane);
+    const preserveMenu = this.isMobileLayoutActive();
+    this.selectPane(pane, { keepMenuView: preserveMenu });
 
     const focusTarget =
       this.focusableElements[0] ||
@@ -4225,6 +4513,7 @@ export class ProfileModalController {
       modalElement.classList.add("hidden");
       modalElement.setAttribute("aria-hidden", "true");
       this.setGlobalModalState("profile", false);
+      this.setMobileView("menu", { skipFocusTrap: true });
 
       if (this.boundKeydown && this.focusTrapContainer) {
         this.focusTrapContainer.removeEventListener(

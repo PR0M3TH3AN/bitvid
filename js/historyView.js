@@ -843,6 +843,11 @@ export function createWatchHistoryRenderer(config = {}) {
       "aria-checked",
       enabled ? "true" : "false"
     );
+    elements.metadataToggle.setAttribute(
+      "data-enabled",
+      enabled ? "true" : "false"
+    );
+    elements.metadataToggle.dataset.state = enabled ? "on" : "off";
     elements.metadataToggle.classList.toggle("bg-info", enabled);
     elements.metadataToggle.classList.toggle("border-info", enabled);
     elements.metadataToggle.classList.toggle("bg-panel", !enabled);

@@ -3,6 +3,8 @@ import { strict as assert } from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import ProfileModalController from '../js/ui/profileModalController.js';
+import { createWatchHistoryRenderer } from '../js/historyView.js';
+import watchHistoryService from '../js/watchHistoryService.js';
 import { formatShortNpub } from '../js/utils/formatters.js';
 import { resetRuntimeFlags } from '../js/constants.js';
 import { applyDesignSystemAttributes } from '../js/designSystem.js';
@@ -22,6 +24,65 @@ async function waitForAnimationFrame(window, cycles = 1) {
   for (let i = 0; i < cycles; i += 1) {
     await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
   }
+}
+
+function createMatchMediaList(query, initialMatches = false) {
+  let matches = Boolean(initialMatches);
+  const listeners = new Set();
+
+  const notify = () => {
+    const event = { matches, media: query, type: 'change' };
+    listeners.forEach((listener) => {
+      try {
+        listener(event);
+      } catch {}
+    });
+  };
+
+  return {
+    get matches() {
+      return matches;
+    },
+    set matches(value) {
+      matches = Boolean(value);
+    },
+    media: query,
+    addEventListener(type, listener) {
+      if (type === 'change' && typeof listener === 'function') {
+        listeners.add(listener);
+      }
+    },
+    removeEventListener(type, listener) {
+      if (type === 'change' && typeof listener === 'function') {
+        listeners.delete(listener);
+      }
+    },
+    addListener(listener) {
+      if (typeof listener === 'function') {
+        listeners.add(listener);
+      }
+    },
+    removeListener(listener) {
+      if (typeof listener === 'function') {
+        listeners.delete(listener);
+      }
+    },
+    dispatchEvent(event) {
+      if (!event || event.type !== 'change') {
+        return true;
+      }
+      listeners.forEach((listener) => {
+        try {
+          listener(event);
+        } catch {}
+      });
+      return true;
+    },
+    setMatches(value) {
+      matches = Boolean(value);
+      notify();
+    },
+  };
 }
 
 beforeEach(() => {
@@ -52,6 +113,14 @@ beforeEach(() => {
 
   window.confirm = () => true;
   global.confirm = window.confirm;
+
+  window.__matchMediaMocks = [];
+  window.matchMedia = (query) => {
+    const mql = createMatchMediaList(query, false);
+    window.__matchMediaMocks.push(mql);
+    return mql;
+  };
+  global.matchMedia = window.matchMedia;
 
   container = document.getElementById('modalMount');
 
@@ -87,10 +156,15 @@ afterEach(() => {
   delete global.HTMLElement;
   delete global.document;
   delete global.window;
+  delete global.matchMedia;
 
   if (dom) {
     dom.window.close();
     dom = null;
+  }
+  if (typeof window !== 'undefined') {
+    delete window.matchMedia;
+    delete window.__matchMediaMocks;
   }
   container = null;
 });
@@ -291,6 +365,74 @@ for (const _ of [0]) {
     },
   );
 
+  test('Profile modal toggles mobile menu and pane views', async (t) => {
+    const controller = createController();
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('account');
+      await waitForAnimationFrame(window, 2);
+
+      const layout = document.querySelector('[data-profile-layout]');
+      const menuWrapper = document.querySelector('[data-profile-mobile-menu]');
+      const paneWrapper = document.querySelector('[data-profile-mobile-pane]');
+      const backButton = document.getElementById('profileModalBack');
+
+      assert.ok(layout && menuWrapper && paneWrapper && backButton);
+
+      assert.equal(layout?.dataset.mobileView, 'menu');
+      assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
+      assert.equal(menuWrapper?.classList.contains('hidden'), false);
+      assert.equal(menuWrapper?.hasAttribute('hidden'), false);
+      assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
+      assert.equal(paneWrapper?.classList.contains('hidden'), true);
+      assert.equal(paneWrapper?.hasAttribute('hidden'), true);
+      assert.equal(backButton?.classList.contains('hidden'), true);
+
+      controller.selectPane('relays');
+      await waitForAnimationFrame(window, 1);
+
+      assert.equal(layout?.dataset.mobileView, 'pane');
+      assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'true');
+      assert.equal(menuWrapper?.classList.contains('hidden'), true);
+      assert.equal(menuWrapper?.hasAttribute('hidden'), true);
+      assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'false');
+      assert.equal(paneWrapper?.classList.contains('hidden'), false);
+      assert.equal(paneWrapper?.hasAttribute('hidden'), false);
+      assert.equal(backButton?.classList.contains('hidden'), false);
+
+      backButton?.click();
+      await waitForAnimationFrame(window, 1);
+
+      assert.equal(layout?.dataset.mobileView, 'menu');
+      assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
+      assert.equal(menuWrapper?.classList.contains('hidden'), false);
+      assert.equal(menuWrapper?.hasAttribute('hidden'), false);
+      assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
+      assert.equal(paneWrapper?.classList.contains('hidden'), true);
+      assert.equal(paneWrapper?.hasAttribute('hidden'), true);
+      assert.equal(backButton?.classList.contains('hidden'), true);
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
+  });
+
   test('Profile modal uses abbreviated npub display', async () => {
     const sampleProfiles = [
       {
@@ -454,9 +596,9 @@ test('admin mutations invoke accessControl stubs and update admin DOM', async ()
     },
     canEditAdminLists: () => true,
     isSuperAdmin: () => true,
-    getEditors: () => ['npub1moderator'],
-    getWhitelist: () => ['npub1allow'],
-    getBlacklist: () => ['npub1block'],
+    getEditors: () => new Set(['npub1moderator']),
+    getWhitelist: () => new Set(['npub1allow']),
+    getBlacklist: () => new Set(['npub1block']),
     addModerator: async (actor, target) => {
       accessEvents.push(['addModerator', actor, target]);
       return { ok: true };
@@ -504,10 +646,13 @@ test('admin mutations invoke accessControl stubs and update admin DOM', async ()
   assert.equal(controller.navButtons.admin.classList.contains('hidden'), false);
   assert.equal(controller.moderatorSection.classList.contains('hidden'), false);
   assert.equal(controller.adminModeratorList.querySelectorAll('li').length, 1);
+  assert.equal(controller.adminModeratorList.hasAttribute('hidden'), false);
   assert.equal(
     controller.whitelistList.querySelectorAll('button').length > 0,
     true,
   );
+  assert.equal(controller.whitelistList.classList.contains('hidden'), false);
+  assert.equal(controller.whitelistList.hasAttribute('hidden'), false);
 
   controller.moderatorInput.value = 'npub1newmoderator';
   await controller.handleAddModerator();
@@ -615,4 +760,107 @@ test('history pane lazily initializes the watch history renderer', async () => {
   );
   assert.equal(controller.profileHistoryRenderer, null);
   assert.equal(controller.boundProfileHistoryVisibility, null);
+});
+
+test('history metadata toggle updates stored preference', async (t) => {
+  let storedPreference = true;
+  let clearCalls = 0;
+
+  const originalSetPreference = watchHistoryService.setMetadataPreference;
+  const originalShouldStore = watchHistoryService.shouldStoreMetadata;
+  const originalClearMetadata = watchHistoryService.clearLocalMetadata;
+  const originalSubscribe = watchHistoryService.subscribe;
+  const originalIsEnabled = watchHistoryService.isEnabled;
+  const originalSupportsLocal = watchHistoryService.supportsLocalHistory;
+  const originalIsLocalOnly = watchHistoryService.isLocalOnly;
+
+  watchHistoryService.setMetadataPreference = (value) => {
+    storedPreference = value !== false;
+  };
+  watchHistoryService.shouldStoreMetadata = () => storedPreference;
+  watchHistoryService.clearLocalMetadata = () => {
+    clearCalls += 1;
+  };
+  watchHistoryService.subscribe = () => () => {};
+  watchHistoryService.isEnabled = () => true;
+  watchHistoryService.supportsLocalHistory = () => true;
+  watchHistoryService.isLocalOnly = () => false;
+
+  t.after(() => {
+    watchHistoryService.setMetadataPreference = originalSetPreference;
+    watchHistoryService.shouldStoreMetadata = originalShouldStore;
+    watchHistoryService.clearLocalMetadata = originalClearMetadata;
+    watchHistoryService.subscribe = originalSubscribe;
+    watchHistoryService.isEnabled = originalIsEnabled;
+    watchHistoryService.supportsLocalHistory = originalSupportsLocal;
+    watchHistoryService.isLocalOnly = originalIsLocalOnly;
+  });
+
+  const controller = createController({
+    createWatchHistoryRenderer: (config) =>
+      createWatchHistoryRenderer({
+        ...config,
+        fetchHistory: async () => ({ items: [], metadata: {} }),
+        snapshot: async () => ({}),
+      }),
+    services: {
+      nostrClient: { sessionActor: { pubkey: defaultActorHex } },
+      getCurrentUserNpub: () => defaultActorNpub,
+    },
+  });
+
+  await controller.load();
+  applyDesignSystemAttributes(document);
+
+  controller.refreshAdminPaneState = async () => {};
+  controller.populateProfileRelays = () => {};
+  controller.populateBlockedList = () => {};
+  controller.refreshWalletPaneState = () => {};
+
+  controller.setActivePubkey(defaultActorHex);
+
+  let cleanupRan = false;
+  const cleanup = () => {
+    try {
+      controller.hide({ silent: true });
+    } catch {}
+    cleanupRan = true;
+  };
+
+  try {
+    await controller.show('history');
+    await waitForAnimationFrame(window, 3);
+
+    const toggle = document.getElementById('profileHistoryMetadataToggle');
+    assert.ok(toggle);
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.equal(toggle.getAttribute('data-enabled'), 'true');
+
+    toggle.dispatchEvent(
+      new window.MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await waitForAnimationFrame(window, 2);
+
+    assert.equal(storedPreference, false);
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    assert.equal(toggle.getAttribute('data-enabled'), 'false');
+    assert.equal(clearCalls, 1);
+
+    toggle.dispatchEvent(
+      new window.MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await waitForAnimationFrame(window, 2);
+
+    assert.equal(storedPreference, true);
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.equal(toggle.getAttribute('data-enabled'), 'true');
+  } finally {
+    cleanup();
+  }
+
+  t.after(() => {
+    if (!cleanupRan) {
+      cleanup();
+    }
+  });
 });

@@ -7,13 +7,43 @@
   aria-labelledby="profileModalTitle"
   tabindex="-1"
   data-ds="new"
+  data-mobile-view="menu"
 >
   <div class="bv-modal-backdrop"></div>
 
-  <div class="bv-modal__panel modal-sheet profile-modal" tabindex="-1">
+  <div
+    class="bv-modal__panel modal-sheet profile-modal"
+    tabindex="-1"
+    data-mobile-view="menu"
+  >
+    <div class="profile-modal__content">
       <!-- Modal Header -->
-      <div class="modal-header">
-        <h2 id="profileModalTitle" class="text-lg font-bold text-text">Profile</h2>
+      <div class="modal-header profile-modal__header">
+        <div class="profile-modal__header-title">
+          <button
+            id="profileModalBack"
+            type="button"
+            class="modal-back btn-ghost focus-ring hidden"
+            aria-hidden="true"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            <span class="text-xs font-medium">Menu</span>
+          </button>
+          <h2 id="profileModalTitle" class="text-lg font-bold text-text">Profile</h2>
+        </div>
         <button id="closeProfileModal" class="modal-close">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -34,68 +64,79 @@
 
       <!-- Modal Body -->
       <div class="profile-modal__body">
-        <div class="profile-modal__layout">
+        <div
+          class="profile-modal__layout"
+          data-profile-layout
+          data-mobile-view="menu"
+        >
           <!-- Left navigation column -->
-          <nav class="profile-modal__nav" aria-label="Profile sections">
-            <button
-              id="profileNavAccount"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneAccount"
-              aria-selected="true"
-              data-state="active"
-            >
-              Account
-            </button>
-            <button
-              id="profileNavRelays"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneRelays"
-              aria-selected="false"
-            >
-              Relays
-            </button>
-            <button
-              id="profileNavWallet"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneWallet"
-              aria-selected="false"
-            >
-              Wallet
-            </button>
-            <button
-              id="profileNavBlocked"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneBlocked"
-              aria-selected="false"
-            >
-              Blocked
-            </button>
-            <button
-              id="profileNavHistory"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneHistory"
-              aria-selected="false"
-            >
-              Watch history
-            </button>
-            <button
-              id="profileNavAdmin"
-              type="button"
-              class="btn-ghost focus-ring hidden w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneAdmin"
-              aria-selected="false"
-            >
-              Admin (Moderation)
-            </button>
-          </nav>
+          <div class="profile-modal__menu" data-profile-mobile-menu aria-hidden="false">
+            <nav class="profile-modal__nav" aria-label="Profile sections">
+              <button
+                id="profileNavAccount"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneAccount"
+                aria-selected="true"
+                data-state="active"
+              >
+                Account
+              </button>
+              <button
+                id="profileNavRelays"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneRelays"
+                aria-selected="false"
+              >
+                Relays
+              </button>
+              <button
+                id="profileNavWallet"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneWallet"
+                aria-selected="false"
+              >
+                Wallet
+              </button>
+              <button
+                id="profileNavBlocked"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneBlocked"
+                aria-selected="false"
+              >
+                Blocked
+              </button>
+              <button
+                id="profileNavHistory"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneHistory"
+                aria-selected="false"
+              >
+                Watch history
+              </button>
+              <button
+                id="profileNavAdmin"
+                type="button"
+                class="btn-ghost focus-ring hidden w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneAdmin"
+                aria-selected="false"
+              >
+                Admin (Moderation)
+              </button>
+            </nav>
+          </div>
 
           <!-- Right content panes -->
-          <div class="profile-modal__panes">
+          <div
+            class="profile-modal__pane-wrapper"
+            data-profile-mobile-pane
+            aria-hidden="true"
+          >
+            <div class="profile-modal__panes">
             <section
               id="profilePaneAccount"
               class="profile-pane space-y-6"
@@ -108,18 +149,17 @@
                 classes that may be purged or overridden by other builds.
               -->
               <div id="profileSwitcherTray" class="card space-y-5 p-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="flex flex-wrap items-start gap-4">
                   <div class="space-y-2">
                     <h3 class="text-base font-semibold text-text">Switch profiles</h3>
                     <p class="text-sm text-muted">
                       Save multiple Nostr profiles so you can swap identities without leaving bitvid.
                     </p>
                   </div>
-                  <span class="badge" data-variant="info">Preview</span>
                 </div>
 
                 <div
-                  class="card focus-ring flex items-center gap-4 p-4"
+                  class="card profile-modal__active-profile"
                   aria-label="Current Nostr profile"
                   aria-pressed="true"
                   role="button"
@@ -136,22 +176,22 @@
                       class="h-full w-full object-cover"
                     />
                   </span>
-                  <div class="flex min-w-0 flex-1 flex-col gap-2">
-                    <div class="flex flex-wrap items-center gap-3">
+                  <div class="profile-modal__active-details">
+                    <div class="profile-modal__active-meta">
                       <span class="text-3xs font-semibold uppercase tracking-extra-wide text-info">
                         Active profile
                       </span>
-                      <a
-                        id="profileChannelLink"
-                        href="#"
-                        class="btn-ghost focus-ring hidden text-xs"
-                      >
-                        View channel
-                      </a>
                     </div>
                     <span id="profileModalName" class="truncate text-sm font-semibold text-text">Loading...</span>
                     <span id="profileModalNpub" class="break-all font-mono text-xs text-muted">npub1...</span>
                   </div>
+                  <a
+                    id="profileChannelLink"
+                    href="#"
+                    class="btn-ghost focus-ring profile-modal__channel-link hidden text-xs"
+                  >
+                    View channel
+                  </a>
                 </div>
 
                 <div
@@ -166,13 +206,10 @@
                 <button
                   type="button"
                   id="profileAddAccountBtn"
-                  class="btn focus-ring w-full justify-start gap-4 p-4"
+                  class="profile-modal__add-profile"
                   aria-label="Add a new Nostr profile"
                 >
-                  <span
-                    class="flex h-10 w-10 items-center justify-center rounded-full bg-info/20 text-info"
-                    aria-hidden="true"
-                  >
+                  <span class="profile-modal__add-profile-icon" aria-hidden="true">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 24 24"
@@ -369,6 +406,7 @@
                       id="profileHistoryClear"
                       type="button"
                       class="btn-ghost focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
                     >
                       Clear local cache
                     </button>
@@ -376,6 +414,7 @@
                       id="profileHistoryRepublish"
                       type="button"
                       class="btn focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
                     >
                       Republish now
                     </button>
@@ -606,4 +645,5 @@
         </button>
       </div>
     </div>
+  </div>
 </div>
