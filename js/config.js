@@ -61,6 +61,8 @@ export { PLATFORM_LUD16_OVERRIDE };
 export { DEFAULT_RELAY_URLS_OVERRIDE };
 export const ADMIN_EDITORS_NPUBS = []; // Default moderators (optional)
 export const ADMIN_LIST_NAMESPACE = "bitvid:admin"; // Reserved for Nostr lists
+export const ADMIN_COMMUNITY_BLACKLIST_SOURCES = "community:blacklist:sources";
+export const ADMIN_COMMUNITY_BLACKLIST_PREFIX = "community:blacklist";
 export { ALLOW_NSFW_CONTENT };
 
 const WHITELIST_MODE_KEY = ADMIN_WHITELIST_MODE_STORAGE_KEY;

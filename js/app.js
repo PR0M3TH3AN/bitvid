@@ -566,6 +566,10 @@ class Application {
           authService: this.authService,
           log: (...args) => this.log(...args),
           closeAllMoreMenus: (options) => this.closeAllMoreMenus(options),
+          clipboard:
+            typeof navigator !== "undefined" && navigator?.clipboard
+              ? navigator.clipboard
+              : null,
         };
 
         const profileModalState = {

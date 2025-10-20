@@ -1640,6 +1640,173 @@ export class ProfileModalController {
     return container;
   }
 
+  createViewChannelButton({ targetNpub, displayNpub } = {}) {
+    const normalizedTarget =
+      typeof targetNpub === "string" && targetNpub.trim()
+        ? targetNpub.trim()
+        : "";
+    if (!normalizedTarget) {
+      return null;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-ghost focus-ring text-xs";
+    button.textContent = "View channel";
+    button.dataset.targetNpub = normalizedTarget;
+
+    if (displayNpub && typeof displayNpub === "string") {
+      button.setAttribute(
+        "aria-label",
+        `View channel ${displayNpub.trim() || normalizedTarget}`,
+      );
+      button.title = `View channel ${displayNpub.trim() || normalizedTarget}`;
+    }
+
+    button.addEventListener("click", () => {
+      this.callbacks.onChannelLink(button, this);
+    });
+
+    return button;
+  }
+
+  createCopyNpubButton({ targetNpub, displayNpub } = {}) {
+    const normalizedTarget =
+      typeof targetNpub === "string" && targetNpub.trim()
+        ? targetNpub.trim()
+        : "";
+    if (!normalizedTarget) {
+      return null;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-ghost focus-ring text-xs";
+    button.textContent = "Copy npub";
+
+    if (displayNpub && typeof displayNpub === "string") {
+      button.setAttribute(
+        "aria-label",
+        `Copy ${displayNpub.trim() || normalizedTarget}`,
+      );
+      button.title = `Copy ${displayNpub.trim() || normalizedTarget}`;
+    }
+
+    const handleCopy = async () => {
+      if (button.dataset.state === "loading") {
+        return;
+      }
+
+      button.dataset.state = "loading";
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+
+      try {
+        await this.copyNpubToClipboard(normalizedTarget, { displayNpub });
+      } finally {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        delete button.dataset.state;
+      }
+    };
+
+    button.addEventListener("click", () => {
+      void handleCopy();
+    });
+
+    return button;
+  }
+
+  createRemoveButton({
+    label = "Remove",
+    confirmMessage,
+    confirmValue,
+    onRemove,
+  } = {}) {
+    if (typeof onRemove !== "function") {
+      return null;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-ghost focus-ring text-xs profile-modal__remove-button";
+    button.dataset.variant = "critical";
+    button.dataset.role = "remove";
+    button.textContent = label;
+
+    const handleRemove = async () => {
+      if (confirmMessage) {
+        const replacement =
+          typeof confirmValue === "string" && confirmValue.trim()
+            ? confirmValue.trim()
+            : "this entry";
+        const prompt = confirmMessage.replace("{npub}", replacement);
+        if (!window.confirm(prompt)) {
+          return;
+        }
+      }
+
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+
+      try {
+        await onRemove(button);
+      } catch (error) {
+        userLogger.error("Failed to remove entry:", error);
+      } finally {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    };
+
+    button.addEventListener("click", () => {
+      void handleRemove();
+    });
+
+    return button;
+  }
+
+  async copyNpubToClipboard(npub, { displayNpub } = {}) {
+    const normalized =
+      typeof npub === "string" && npub.trim() ? npub.trim() : "";
+    if (!normalized) {
+      this.showError("Unable to copy npub. Invalid value provided.");
+      return { copied: false, reason: "invalid" };
+    }
+
+    const clipboard = (() => {
+      if (
+        this.services?.clipboard &&
+        typeof this.services.clipboard.writeText === "function"
+      ) {
+        return this.services.clipboard;
+      }
+      if (
+        typeof navigator !== "undefined" &&
+        navigator?.clipboard &&
+        typeof navigator.clipboard.writeText === "function"
+      ) {
+        return navigator.clipboard;
+      }
+      return null;
+    })();
+
+    if (!clipboard) {
+      this.showError("Copy to clipboard is not supported in this browser.");
+      return { copied: false, reason: "unsupported" };
+    }
+
+    try {
+      await clipboard.writeText(normalized);
+      this.showSuccess("npub copied to clipboard!");
+      return { copied: true };
+    } catch (error) {
+      userLogger.error("Failed to copy npub:", error);
+      this.showError("Failed to copy npub. Please try again.");
+      return { copied: false, error };
+    }
+  }
+
   setupLayoutBreakpointObserver() {
     if (
       typeof window === "undefined" ||
@@ -2439,18 +2606,38 @@ export class ProfileModalController {
         avatarSrc,
       });
 
-      const actionBtn = document.createElement("button");
-      actionBtn.type = "button";
-      actionBtn.className = "btn-ghost focus-ring text-xs";
-      actionBtn.dataset.variant = "danger";
-      actionBtn.textContent = "Remove";
-      actionBtn.dataset.blockedHex = hex;
-      actionBtn.addEventListener("click", () => {
-        void this.handleRemoveBlockedCreator(hex);
+      const actions = document.createElement("div");
+      actions.className = "flex flex-wrap items-center justify-end gap-2";
+
+      const viewButton = this.createViewChannelButton({
+        targetNpub: encodedNpub,
+        displayNpub,
       });
+      if (viewButton) {
+        actions.appendChild(viewButton);
+      }
+
+      const copyButton = this.createCopyNpubButton({
+        targetNpub: encodedNpub,
+        displayNpub,
+      });
+      if (copyButton) {
+        actions.appendChild(copyButton);
+      }
+
+      const removeButton = this.createRemoveButton({
+        label: "Remove",
+        onRemove: () => this.handleRemoveBlockedCreator(hex),
+      });
+      if (removeButton) {
+        removeButton.dataset.blockedHex = hex;
+        actions.appendChild(removeButton);
+      }
 
       item.appendChild(summary);
-      item.appendChild(actionBtn);
+      if (actions.childElementCount > 0) {
+        item.appendChild(actions);
+      }
 
       this.blockList.appendChild(item);
     });
@@ -3636,25 +3823,42 @@ export class ProfileModalController {
         displayNpub,
         avatarSrc,
       });
-      item.appendChild(summary);
+
+      const actions = document.createElement("div");
+      actions.className =
+        "flex flex-wrap items-center justify-end gap-2 sm:flex-none";
+
+      const viewButton = this.createViewChannelButton({
+        targetNpub: encodedNpub,
+        displayNpub,
+      });
+      if (viewButton) {
+        actions.appendChild(viewButton);
+      }
+
+      const copyButton = this.createCopyNpubButton({
+        targetNpub: encodedNpub,
+        displayNpub,
+      });
+      if (copyButton) {
+        actions.appendChild(copyButton);
+      }
 
       if (removable && typeof onRemove === "function") {
-        const removeBtn = document.createElement("button");
-        removeBtn.type = "button";
-        removeBtn.className = "btn-ghost focus-ring text-xs";
-        removeBtn.textContent = removeLabel;
-        removeBtn.addEventListener("click", () => {
-          if (confirmMessage) {
-            const message = confirmMessage.replace("{npub}", displayNpub);
-            if (!window.confirm(message)) {
-              return;
-            }
-          }
-          removeBtn.disabled = true;
-          removeBtn.setAttribute("aria-busy", "true");
-          onRemove(npub, removeBtn);
+        const removeBtn = this.createRemoveButton({
+          label: removeLabel,
+          confirmMessage,
+          confirmValue: displayNpub,
+          onRemove: (button) => onRemove(npub, button),
         });
-        item.appendChild(removeBtn);
+        if (removeBtn) {
+          actions.appendChild(removeBtn);
+        }
+      }
+
+      item.appendChild(summary);
+      if (actions.childElementCount > 0) {
+        item.appendChild(actions);
       }
 
       listEl.appendChild(item);
