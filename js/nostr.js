@@ -6821,7 +6821,11 @@ export class NostrClient {
       content: JSON.stringify(contentObject),
     };
 
-    const extensionSigner = window?.nostr?.signEvent;
+    const extension = window?.nostr;
+    const extensionSigner =
+      extension && typeof extension.signEvent === "function"
+        ? extension.signEvent.bind(extension)
+        : null;
     if (typeof extensionSigner !== "function") {
       const error = new Error(
         "A NIP-07 extension with signEvent support is required to revert videos.",
@@ -6906,6 +6910,8 @@ export class NostrClient {
     }
 
     const shouldConfirm = options?.confirm !== false;
+    const targetVideo =
+      options && typeof options.video === "object" ? options.video : null;
     let confirmed = true;
 
     if (shouldConfirm && typeof window?.confirm === "function") {
@@ -6919,43 +6925,119 @@ export class NostrClient {
       return null; // Cancel deletion if user clicks "Cancel"
     }
 
-    // 1) Find all events in our local allEvents that share the same root.
-    const matchingEvents = [];
-    for (const [id, vid] of this.allEvents.entries()) {
-      if (
-        vid.videoRootId === videoRootId &&
-        vid.pubkey === pubkey &&
-        !vid.deleted
-      ) {
-        matchingEvents.push(vid);
+    const normalizedPubkey = typeof pubkey === "string" ? pubkey.toLowerCase() : "";
+    const normalizedRootInput =
+      typeof videoRootId === "string" && videoRootId.trim().length
+        ? videoRootId.trim()
+        : "";
+    const inferredRoot =
+      normalizedRootInput ||
+      (targetVideo && typeof targetVideo.videoRootId === "string"
+        ? targetVideo.videoRootId.trim()
+        : "");
+    const targetDTag = targetVideo ? getDTagValueFromTags(targetVideo.tags) : "";
+
+    if (targetVideo) {
+      try {
+        await this.hydrateVideoHistory(targetVideo);
+      } catch (error) {
+        devLogger.warn(
+          "[nostr] Failed to hydrate video history before delete:",
+          error
+        );
       }
     }
-    if (!matchingEvents.length) {
+
+    const matchingEvents = new Map();
+    for (const candidate of this.allEvents.values()) {
+      if (!candidate || typeof candidate !== "object") {
+        continue;
+      }
+      const candidatePubkey =
+        typeof candidate.pubkey === "string" ? candidate.pubkey.toLowerCase() : "";
+      if (!candidatePubkey || candidatePubkey !== normalizedPubkey) {
+        continue;
+      }
+
+      if (candidate.deleted === true) {
+        continue;
+      }
+
+      const candidateRoot =
+        typeof candidate.videoRootId === "string" ? candidate.videoRootId : "";
+      const candidateDTag = getDTagValueFromTags(candidate.tags);
+      const sameRoot = inferredRoot && candidateRoot === inferredRoot;
+      const sameD = targetDTag && candidateDTag === targetDTag;
+      const legacyMatch =
+        !inferredRoot &&
+        targetVideo &&
+        candidateRoot &&
+        candidateRoot === targetVideo.id;
+      const directMatch = targetVideo && candidate.id === targetVideo.id;
+
+      if (!sameRoot && !sameD && !legacyMatch && !directMatch) {
+        continue;
+      }
+
+      matchingEvents.set(candidate.id, candidate);
+    }
+
+    if (targetVideo && !matchingEvents.has(targetVideo.id)) {
+      matchingEvents.set(targetVideo.id, targetVideo);
+    }
+
+    if (!matchingEvents.size) {
       throw new Error("No existing events found for that root.");
     }
 
-    // 2) For each event, create a "revert" event to mark it as deleted.
-    // This will prompt the user (via the extension) to sign the deletion.
-    for (const vid of matchingEvents) {
+    for (const vid of matchingEvents.values()) {
+      const baseRoot =
+        (typeof vid.videoRootId === "string" && vid.videoRootId) ||
+        inferredRoot ||
+        (targetVideo && typeof targetVideo.videoRootId === "string"
+          ? targetVideo.videoRootId
+          : "") ||
+        (targetVideo ? targetVideo.id : "") ||
+        vid.id;
+
+      const contentPayload = {
+        version: Number.isFinite(vid.version) ? vid.version : 3,
+        deleted: vid.deleted === true,
+        isPrivate: vid.isPrivate === true,
+        isNsfw: vid.isNsfw === true,
+        isForKids: vid.isForKids === true && vid.isNsfw !== true,
+        title: typeof vid.title === "string" ? vid.title : "",
+        url: typeof vid.url === "string" ? vid.url : "",
+        magnet: typeof vid.magnet === "string" ? vid.magnet : "",
+        thumbnail: typeof vid.thumbnail === "string" ? vid.thumbnail : "",
+        description: typeof vid.description === "string" ? vid.description : "",
+        mode: typeof vid.mode === "string" ? vid.mode : "live",
+        videoRootId: baseRoot,
+      };
+
       await this.revertVideo(
         {
           id: vid.id,
           pubkey: vid.pubkey,
-          content: JSON.stringify({
-            version: vid.version,
-            deleted: vid.deleted,
-            isPrivate: vid.isPrivate,
-            title: vid.title,
-            url: vid.url,
-            magnet: vid.magnet,
-            thumbnail: vid.thumbnail,
-            description: vid.description,
-            mode: vid.mode,
-          }),
-          tags: vid.tags,
+          content: JSON.stringify(contentPayload),
+          tags: Array.isArray(vid.tags) ? vid.tags : [],
         },
         pubkey
       );
+
+      const cached = this.allEvents.get(vid.id) || vid;
+      cached.deleted = true;
+      cached.url = "";
+      cached.magnet = "";
+      cached.thumbnail = "";
+      cached.description = "This version was deleted by the creator.";
+      cached.videoRootId = baseRoot;
+      this.allEvents.set(vid.id, cached);
+
+      const activeKey = getActiveKey(cached);
+      if (activeKey) {
+        this.activeMap.delete(activeKey);
+      }
     }
 
     return true;

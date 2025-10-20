@@ -639,12 +639,13 @@ export class NostrService {
     return result;
   }
 
-  async handleFullDeleteVideo({ videoRootId, pubkey, confirm = true } = {}) {
+  async handleFullDeleteVideo({ videoRootId, video, pubkey, confirm = true } = {}) {
     const result = await this.nostrClient.deleteAllVersions(videoRootId, pubkey, {
       confirm,
+      video,
     });
     if (result) {
-      this.emit("videos:deleted", { videoRootId, pubkey });
+      this.emit("videos:deleted", { videoRootId, video, pubkey });
     }
     return result;
   }
