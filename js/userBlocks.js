@@ -63,6 +63,160 @@ const FAST_BLOCKLIST_RELAY_LIMIT = 3;
 const FAST_BLOCKLIST_TIMEOUT_MS = 2500;
 const BACKGROUND_BLOCKLIST_TIMEOUT_MS = 6000;
 
+const BLOCKLIST_STORAGE_PREFIX = "bitvid:user-blocks";
+const BLOCKLIST_SEEDED_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:seeded:v1`;
+const BLOCKLIST_REMOVALS_KEY_PREFIX = `${BLOCKLIST_STORAGE_PREFIX}:removals:v1`;
+
+function decodeNpubToHex(npub) {
+  if (typeof npub !== "string") {
+    return null;
+  }
+
+  const trimmed = npub.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  if (!trimmed.toLowerCase().startsWith("npub1")) {
+    return null;
+  }
+
+  const tools = window?.NostrTools;
+  const decoder = tools?.nip19?.decode;
+  if (typeof decoder !== "function") {
+    return null;
+  }
+
+  try {
+    const decoded = decoder(trimmed);
+    if (decoded?.type === "npub" && typeof decoded.data === "string") {
+      const hex = decoded.data.trim();
+      if (/^[0-9a-f]{64}$/i.test(hex)) {
+        return hex.toLowerCase();
+      }
+    }
+  } catch (error) {
+    return null;
+  }
+
+  return null;
+}
+
+function readSeededFlag(actorHex) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return false;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return false;
+  }
+
+  const key = `${BLOCKLIST_SEEDED_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    const value = localStorage.getItem(key);
+    return value === "1";
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to read seeded baseline state for ${actorHex}:`,
+      error,
+    );
+    return false;
+  }
+}
+
+function writeSeededFlag(actorHex, seeded) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const key = `${BLOCKLIST_SEEDED_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    if (seeded) {
+      localStorage.setItem(key, "1");
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to persist seeded baseline state for ${actorHex}:`,
+      error,
+    );
+  }
+}
+
+function readRemovalSet(actorHex) {
+  const empty = new Set();
+  if (typeof actorHex !== "string" || !actorHex) {
+    return empty;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return empty;
+  }
+
+  const key = `${BLOCKLIST_REMOVALS_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) {
+      return empty;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return empty;
+    }
+
+    const normalized = parsed
+      .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+      .filter((entry) => /^[0-9a-f]{64}$/.test(entry));
+
+    return new Set(normalized);
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to read seed removal state for ${actorHex}:`,
+      error,
+    );
+    return empty;
+  }
+}
+
+function writeRemovalSet(actorHex, removals) {
+  if (typeof actorHex !== "string" || !actorHex) {
+    return;
+  }
+
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const key = `${BLOCKLIST_REMOVALS_KEY_PREFIX}:${actorHex}`;
+
+  try {
+    if (!removals || !removals.size) {
+      localStorage.removeItem(key);
+      return;
+    }
+
+    localStorage.setItem(key, JSON.stringify(Array.from(removals)));
+  } catch (error) {
+    userLogger.warn(
+      `[UserBlockList] Failed to persist seed removal state for ${actorHex}:`,
+      error,
+    );
+  }
+}
+
 function normalizeHex(pubkey) {
   if (typeof pubkey !== "string") {
     return null;
@@ -77,6 +231,11 @@ function normalizeHex(pubkey) {
     return trimmed.toLowerCase();
   }
 
+  const decoded = decodeNpubToHex(trimmed);
+  if (decoded) {
+    return decoded;
+  }
+
   return null;
 }
 
@@ -88,6 +247,7 @@ class UserBlockListManager {
     this.lastPublishedCreatedAt = null;
     this.loaded = false;
     this.emitter = new TinyEventEmitter();
+    this.seedStateCache = new Map();
   }
 
   reset() {
@@ -540,6 +700,127 @@ class UserBlockListManager {
     }
   }
 
+  _getSeedState(actorHex) {
+    const normalized = normalizeHex(actorHex);
+    if (!normalized) {
+      return { seeded: false, removals: new Set() };
+    }
+
+    if (this.seedStateCache.has(normalized)) {
+      return this.seedStateCache.get(normalized);
+    }
+
+    const seeded = readSeededFlag(normalized);
+    const removals = readRemovalSet(normalized);
+    const state = { seeded, removals };
+    this.seedStateCache.set(normalized, state);
+    return state;
+  }
+
+  _setSeeded(actorHex, seeded) {
+    const normalized = normalizeHex(actorHex);
+    if (!normalized) {
+      return;
+    }
+
+    const state = this._getSeedState(normalized);
+    state.seeded = Boolean(seeded);
+    writeSeededFlag(normalized, state.seeded);
+  }
+
+  _addSeedRemoval(actorHex, targetHex) {
+    const normalizedActor = normalizeHex(actorHex);
+    const normalizedTarget = normalizeHex(targetHex);
+    if (!normalizedActor || !normalizedTarget) {
+      return;
+    }
+
+    const state = this._getSeedState(normalizedActor);
+    if (!state.removals.has(normalizedTarget)) {
+      state.removals.add(normalizedTarget);
+      writeRemovalSet(normalizedActor, state.removals);
+    }
+  }
+
+  _clearSeedRemoval(actorHex, targetHex) {
+    const normalizedActor = normalizeHex(actorHex);
+    const normalizedTarget = normalizeHex(targetHex);
+    if (!normalizedActor || !normalizedTarget) {
+      return;
+    }
+
+    const state = this._getSeedState(normalizedActor);
+    if (state.removals.delete(normalizedTarget)) {
+      writeRemovalSet(normalizedActor, state.removals);
+    }
+  }
+
+  async seedWithNpubs(userPubkey, candidateNpubs = []) {
+    const actorHex = normalizeHex(userPubkey);
+    if (!actorHex) {
+      return { ok: false, seeded: false, reason: "invalid-user" };
+    }
+
+    await this.ensureLoaded(actorHex);
+
+    const state = this._getSeedState(actorHex);
+    if (state.seeded) {
+      return { ok: true, seeded: false, reason: "already-seeded" };
+    }
+
+    if (this.blockedPubkeys.size > 0) {
+      return { ok: true, seeded: false, reason: "non-empty" };
+    }
+
+    const removals = state.removals;
+    const additions = new Set();
+
+    const candidates = Array.isArray(candidateNpubs) ? candidateNpubs : [];
+    for (const candidate of candidates) {
+      const candidateHex = normalizeHex(candidate);
+      if (!candidateHex) {
+        continue;
+      }
+      if (candidateHex === actorHex) {
+        continue;
+      }
+      if (removals.has(candidateHex)) {
+        continue;
+      }
+      additions.add(candidateHex);
+    }
+
+    if (!additions.size) {
+      return { ok: true, seeded: false, reason: "no-candidates" };
+    }
+
+    const snapshot = new Set(this.blockedPubkeys);
+    additions.forEach((hex) => this.blockedPubkeys.add(hex));
+
+    try {
+      await this.publishBlockList(actorHex);
+    } catch (error) {
+      this.blockedPubkeys = snapshot;
+      throw error;
+    }
+
+    this._setSeeded(actorHex, true);
+    additions.forEach((hex) => this._clearSeedRemoval(actorHex, hex));
+
+    try {
+      this.emitter.emit(USER_BLOCK_EVENTS.CHANGE, {
+        action: "seed",
+        actorPubkey: actorHex,
+        blockedPubkeys: Array.from(this.blockedPubkeys),
+        addedPubkeys: Array.from(additions),
+      });
+    } catch (error) {
+      userLogger.warn("[UserBlockList] Failed to emit seed change event:", error);
+    }
+
+    return { ok: true, seeded: true, addedPubkeys: Array.from(additions) };
+  }
+
   async addBlock(targetPubkey, userPubkey) {
     const actorHex = normalizeHex(userPubkey);
     if (!actorHex) {
@@ -575,6 +856,7 @@ class UserBlockListManager {
         targetPubkey: targetHex,
         actorPubkey: actorHex,
       });
+      this._clearSeedRemoval(actorHex, targetHex);
       return { ok: true };
     } catch (err) {
       this.blockedPubkeys = snapshot;
@@ -609,6 +891,7 @@ class UserBlockListManager {
         targetPubkey: targetHex,
         actorPubkey: actorHex,
       });
+      this._addSeedRemoval(actorHex, targetHex);
       return { ok: true };
     } catch (err) {
       this.blockedPubkeys = snapshot;

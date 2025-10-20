@@ -269,3 +269,160 @@ await (async () => {
     window.nostr = originalNostr;
   }
 })();
+
+await (async () => {
+  const actor = "1".repeat(64);
+  const seedOneHex = "2".repeat(64);
+  const seedTwoHex = "3".repeat(64);
+  const seedOneNpub = "npub1seedone";
+  const seedTwoNpub = "npub1seedtwo";
+
+  const originalEnsureLoaded = userBlocks.ensureLoaded;
+  const originalPublishBlockList = userBlocks.publishBlockList;
+  const originalBlocked = new Set(userBlocks.blockedPubkeys);
+  const originalBlockEventId = userBlocks.blockEventId;
+  const originalBlockEventCreatedAt = userBlocks.blockEventCreatedAt;
+  const originalLastPublishedCreatedAt = userBlocks.lastPublishedCreatedAt;
+  const originalLoaded = userBlocks.loaded;
+  const originalSeedStateCache = userBlocks.seedStateCache;
+  const originalNostrTools = window.NostrTools;
+
+  const publishCalls = [];
+
+  localStorage.clear();
+
+  const decodeMap = new Map([
+    [seedOneNpub, seedOneHex],
+    [seedTwoNpub, seedTwoHex],
+  ]);
+
+  window.NostrTools = {
+    ...(originalNostrTools || {}),
+    nip19: {
+      ...((originalNostrTools && originalNostrTools.nip19) || {}),
+      decode(value) {
+        if (decodeMap.has(value)) {
+          return { type: "npub", data: decodeMap.get(value) };
+        }
+        throw new Error(`unexpected npub decode: ${value}`);
+      },
+    },
+  };
+
+  userBlocks.ensureLoaded = async () => {
+    userBlocks.loaded = true;
+  };
+
+  userBlocks.publishBlockList = async (pubkey) => {
+    publishCalls.push({
+      pubkey,
+      blocked: Array.from(userBlocks.blockedPubkeys),
+    });
+    userBlocks.blockEventId = `event-${publishCalls.length}`;
+    userBlocks.blockEventCreatedAt = 1_000 + publishCalls.length;
+    userBlocks.lastPublishedCreatedAt = userBlocks.blockEventCreatedAt;
+    return { id: userBlocks.blockEventId, created_at: userBlocks.blockEventCreatedAt };
+  };
+
+  userBlocks.blockedPubkeys = new Set();
+  userBlocks.blockEventId = null;
+  userBlocks.blockEventCreatedAt = null;
+  userBlocks.lastPublishedCreatedAt = null;
+  userBlocks.loaded = false;
+  userBlocks.seedStateCache = new Map();
+
+  try {
+    const seedResult = await userBlocks.seedWithNpubs(actor, [
+      seedOneNpub,
+      seedTwoNpub,
+      seedTwoNpub,
+    ]);
+
+    assert.equal(
+      seedResult.seeded,
+      true,
+      "initial seeding should publish the aggregated blacklist",
+    );
+    assert.equal(
+      publishCalls.length,
+      1,
+      "seeding should publish exactly one block list event",
+    );
+    assert.deepEqual(
+      Array.from(userBlocks.blockedPubkeys).sort(),
+      [seedOneHex, seedTwoHex],
+      "seeding should populate the local block list with decoded hex pubkeys",
+    );
+
+    const secondSeed = await userBlocks.seedWithNpubs(actor, [seedOneNpub, seedTwoNpub]);
+    assert.equal(
+      secondSeed.seeded,
+      false,
+      "subsequent seeding attempts should be a no-op",
+    );
+    assert.equal(
+      publishCalls.length,
+      1,
+      "subsequent seeding attempts should not republish the block list",
+    );
+
+    await userBlocks.removeBlock(seedTwoHex, actor);
+    assert.equal(
+      publishCalls.length,
+      2,
+      "removing a seeded pubkey should republish the block list",
+    );
+    assert.deepEqual(
+      Array.from(userBlocks.blockedPubkeys),
+      [seedOneHex],
+      "removal should persist in the local block list",
+    );
+
+    await userBlocks.removeBlock(seedOneHex, actor);
+    assert.equal(
+      publishCalls.length,
+      3,
+      "removing the final baseline entry should publish again",
+    );
+    assert.equal(
+      userBlocks.blockedPubkeys.size,
+      0,
+      "block list should become empty after removing all seeded entries",
+    );
+
+    const removalState = userBlocks._getSeedState(actor);
+    assert(removalState.removals.has(seedOneHex), "seed removals should be recorded for the actor");
+    assert(removalState.removals.has(seedTwoHex), "seed removals should include every removed pubkey");
+
+    const afterRemovalSeed = await userBlocks.seedWithNpubs(actor, [
+      seedOneNpub,
+      seedTwoNpub,
+    ]);
+    assert.equal(
+      afterRemovalSeed.seeded,
+      false,
+      "seeding should stay disabled after removals",
+    );
+    assert.equal(
+      publishCalls.length,
+      3,
+      "no additional publish calls should occur after removals",
+    );
+    assert.equal(
+      userBlocks.blockedPubkeys.size,
+      0,
+      "removed entries should not be re-applied by seeding",
+    );
+  } finally {
+    userBlocks.ensureLoaded = originalEnsureLoaded;
+    userBlocks.publishBlockList = originalPublishBlockList;
+    userBlocks.blockedPubkeys = originalBlocked;
+    userBlocks.blockEventId = originalBlockEventId;
+    userBlocks.blockEventCreatedAt = originalBlockEventCreatedAt;
+    userBlocks.lastPublishedCreatedAt = originalLastPublishedCreatedAt;
+    userBlocks.loaded = originalLoaded;
+    userBlocks.seedStateCache = originalSeedStateCache;
+    window.NostrTools = originalNostrTools;
+    localStorage.clear();
+  }
+})();

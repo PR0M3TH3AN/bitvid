@@ -3455,6 +3455,41 @@ class Application {
     await nwcPromise;
 
     try {
+      await accessControl.ensureReady();
+    } catch (error) {
+      userLogger.error(
+        "[Application] Failed to refresh admin lists after login:",
+        error,
+      );
+    }
+
+    if (activePubkey) {
+      const aggregatedBlacklist = accessControl.getBlacklist();
+      try {
+        await userBlocks.seedWithNpubs(
+          activePubkey,
+          Array.isArray(aggregatedBlacklist) ? aggregatedBlacklist : [],
+        );
+      } catch (error) {
+        if (
+          error?.code === "extension-permission-denied" ||
+          error?.code === "nip04-missing" ||
+          error?.name === "RelayPublishError"
+        ) {
+          userLogger.error(
+            "[Application] Failed to seed shared block list after login:",
+            error,
+          );
+        } else {
+          devLogger.error(
+            "[Application] Unexpected error while seeding shared block list:",
+            error,
+          );
+        }
+      }
+    }
+
+    try {
       this.reinitializeVideoListView({ reason: "login", postLoginResult });
     } catch (error) {
       devLogger.warn("Failed to reinitialize video list view after login:", error);

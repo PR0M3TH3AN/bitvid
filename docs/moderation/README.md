@@ -45,6 +45,8 @@ Operators can delegate hard-hide decisions to trusted curators without giving th
 
 To add a community list, append a new `a` tag to the super-admin source list and ask the curator to publish their companion `p` list. To remove a list, delete the `a` tag or ask the curator to clear their `p` entries; the client stops ingesting it on the next refresh.
 
+New operators should also note that fresh viewer accounts automatically inherit the merged admin + community blacklist on their first login. The client seeds the user’s personal block list with that baseline once, so moderators can rely on a shared floor while still allowing operators to remove entries locally without having them reappear.
+
 ### Safety & Moderation controls
 
 The profile modal now exposes the blur and autoplay thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values above. Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load.
