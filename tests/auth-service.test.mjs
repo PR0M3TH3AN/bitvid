@@ -172,6 +172,53 @@ await (async () => {
 
   const detail = await service.login(SAMPLE_PUBKEY);
 
+  await detail.postLoginPromise;
+
   assert.equal(detail.postLogin, postLogin);
   assert.deepEqual(detail.postLogin, postLogin);
+})();
+
+await (async () => {
+  resetState();
+
+  const adminCheckCalls = [];
+  const service = new AuthService({
+    accessControl: {
+      isLockdownActive: () => true,
+      isAdminEditor: (npub) => {
+        adminCheckCalls.push(npub);
+        return false;
+      },
+    },
+  });
+
+  let error;
+  try {
+    await service.login(SAMPLE_PUBKEY);
+  } catch (err) {
+    error = err;
+  }
+
+  assert(error instanceof Error);
+  assert.equal(error.code, "site-lockdown");
+  assert.match(error.message, /locked down/i);
+  assert.equal(adminCheckCalls.length, 1);
+  assert.equal(typeof adminCheckCalls[0], "string");
+  assert(adminCheckCalls[0].length > 0);
+})();
+
+await (async () => {
+  resetState();
+
+  const service = new AuthService({
+    accessControl: {
+      isLockdownActive: () => true,
+      isAdminEditor: () => true,
+    },
+  });
+
+  const detail = await service.login(SAMPLE_PUBKEY);
+
+  assert.ok(detail);
+  assert.equal(detail.pubkey, SAMPLE_PUBKEY);
 })();
