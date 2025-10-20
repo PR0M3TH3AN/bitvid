@@ -1,4 +1,4 @@
-Welcome to **bitvid**, a decentralized video-sharing platform built on Nostr. These Community Guidelines outline the types of content allowed and prohibited on the client hosted at this domain. As bitvid is still in early access, enforcement will occur at the client level, meaning violations will result in content being blocked from display rather than removed from relays. These policies will evolve as we implement robust user blocking and reporting features.
+Welcome to **bitvid**, a decentralized video-sharing platform built on Nostr. These Community Guidelines outline the types of content allowed and prohibited on the client hosted at this domain. Enforcement occurs at the **client level** with blur, hide, and downrank rules that mirror the current moderator tooling. Personal blocklists, mute controls, admin blacklists, and NIP-56 reporting are already available so you can tune your own experience.
 
 > ⚠️ **Note:** Don't like the Guidelines? [Fork the code](https://github.com/PR0M3TH3AN/bitvid) and host the client on your own domain.
 
@@ -52,21 +52,44 @@ To maintain a functional and ethical platform, the following types of content ar
 - **Deepfake impersonations** of real people used for deceptive purposes.
 - AI-generated content must be **clearly labeled** to avoid misinformation.
 
-## **4. Enforcement Actions**
+## **4. Enforcement & Visibility Controls**
 
-Until robust reporting and user moderation features are fully implemented, bitvid will enforce these guidelines at the **client level**:
+bitvid enforces these guidelines through client-side visibility rules that match the current `moreMenuController` and `userBlocks` behavior:
 
-- **Content Filtering:** Prohibited content will not be displayed within the client, though it may still exist on relays.
-- **Account Restrictions:** Users violating guidelines may be **blocked from the whitelisted early access list**.
-- **Reporting Mechanism:** Users are encouraged to report violations via NIP-56 reports, which will be reviewed manually.
+- **Blurred previews:** When at least three F1 contacts file trusted NIP-56 `nudity` reports, thumbnails render blurred and autoplay previews are paused. Every blur includes a “show anyway” override.
+- **Downranked authors:** Muting a creator adds them to your NIP-51 mute list (kind `10000`). Videos from muted creators are deprioritized but still visible with clear badges so you can reverse the action.
+- **Personal blocks:** Blocking a creator adds them to your private block list (`userBlocks`). Videos from blocked creators are hidden from feeds, carousels, and modals unless you explicitly unblock them.
+- **Admin hard hides:** Moderator-maintained blacklists (NIP-51 kind `30000`) remove creators from default feeds for everyone using the hosted client. Moderators can still review the content through “show anyway” controls when auditing decisions.
+- **Relay transparency:** Because enforcement is client-side, blocked or blurred videos may still exist on relays and appear in other Nostr clients that do not apply these rules.
 
-## **5. User Moderation Features (In Development)**
+## **5. User Moderation Controls**
 
-We are working on features that will give users more control over their experience, including:
+You can manage moderation directly from the client using the existing menus rendered by `videoMenuRenderers`:
 
-- **Personal blocklists** (prevent content from specific creators from appearing in feeds).
-- **Community-curated moderation lists** (opt-in to trusted content curation groups).
-- **Tag-based filtering** (users can toggle visibility of certain content categories).
+### **5.1 Personal blocklist (`userBlocks`)**
+
+- Open any video card or modal and select the **More** (`···`) button. Choose **Block creator** to hide all future uploads from that pubkey. `moreMenuController` will confirm the action and refresh your feeds.
+- To review or remove blocks, open your profile avatar → **Profile** → **Blocked**. The list is private to your account; use **Unblock** next to a creator to restore their videos.
+
+### **5.2 Mute list management**
+
+- Use the same **More** menu and pick **Mute creator**. Muted creators stay visible but are downranked, aligning with the viewer mute list logic in `moreMenuController`.
+- Return to a muted creator’s video later and select **Unmute creator** from the menu to restore their normal ranking.
+
+### **5.3 Moderator blacklist controls**
+
+- Moderators with admin permissions see **Blacklist creator** inside the **More** menu. This updates the shared admin list managed by `moreMenuController` and immediately removes the creator from default feeds.
+- Only accounts with edit rights can add or remove creators. Attempting to blacklist without sufficient permissions will surface an error toast.
+
+### **5.4 Reporting workflow (NIP-56)**
+
+- Select **Report video** from the **More** menu to launch the reporting modal. Provide a category (e.g., `nudity`, `spam`, `illegal`) and submit; the client signs a NIP-56 report from your connected key.
+- Reports feed the same trusted-report scoring used for blur and hide decisions. Moderators monitor these queues to escalate urgent cases.
+
+### **5.5 Safety & Moderation thresholds**
+
+- Open your profile avatar → **Profile** → **Safety & Moderation** to adjust blur and autoplay thresholds. Leave a field blank to return to the default (blur at ≥3 trusted reports, autoplay block at ≥2).
+- These controls update immediately and sync with the moderation overlays applied by `moreMenuController` and `VideoCard` components.
 
 ## **6. Appeals and Feedback**
 
