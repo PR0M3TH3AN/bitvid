@@ -21,6 +21,14 @@ function clearStoredPermissions() {
   }
 }
 
+test.beforeEach(() => {
+  clearStoredPermissions();
+});
+
+test.afterEach(() => {
+  clearStoredPermissions();
+});
+
 function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
   const previousWindow = typeof global.window === "undefined" ? undefined : global.window;
   const previousGlobalNostr = global.nostr;
@@ -130,7 +138,6 @@ function setupLoginEnvironment({ enableImpl, getPublicKey = HEX_PUBKEY } = {}) {
 }
 
 test("NIP-07 login requests decrypt permissions upfront", async () => {
-  clearStoredPermissions();
   const env = setupLoginEnvironment();
   try {
     const pubkey = await nostrClient.login();
@@ -164,7 +171,6 @@ test("NIP-07 login requests decrypt permissions upfront", async () => {
 });
 
 test("NIP-07 decrypt reuses cached extension permissions", async () => {
-  clearStoredPermissions();
   const env = setupLoginEnvironment();
   try {
     let decryptCalls = 0;
@@ -198,35 +204,34 @@ test("NIP-07 decrypt reuses cached extension permissions", async () => {
         .map((method) => method.trim())
         .filter(Boolean),
     );
-    assert.ok(
-      storedSet.has("nip04.decrypt"),
-      "stored permissions should include nip04.decrypt",
-    );
-    assert.ok(
-      storedSet.has("nip44.encrypt"),
-      "stored permissions should include nip44.encrypt",
-    );
-    assert.ok(
-      storedSet.has("nip44.decrypt"),
-      "stored permissions should include nip44.decrypt",
-    );
-
+    const expectedStoredPermissions = [
+      "nip04.decrypt",
+      "nip04.encrypt",
+      "nip44.encrypt",
+      "nip44.decrypt",
+    ];
+    for (const method of expectedStoredPermissions) {
+      assert.ok(
+        storedSet.has(method),
+        `stored permissions should include ${method}`,
+      );
+    }
     const baselineEnableCalls = env.enableCalls.length;
     const freshClient = new NostrClient();
     freshClient.pubkey = HEX_PUBKEY;
 
-    assert.ok(
-      freshClient.extensionPermissionCache.has("nip04.decrypt"),
-      "fresh client should hydrate nip04.decrypt from storage",
-    );
-    assert.ok(
-      freshClient.extensionPermissionCache.has("nip44.encrypt"),
-      "fresh client should hydrate nip44.encrypt from storage",
-    );
-    assert.ok(
-      freshClient.extensionPermissionCache.has("nip44.decrypt"),
-      "fresh client should hydrate nip44.decrypt from storage",
-    );
+    const expectedCachedPermissions = [
+      "nip04.decrypt",
+      "nip04.encrypt",
+      "nip44.encrypt",
+      "nip44.decrypt",
+    ];
+    for (const method of expectedCachedPermissions) {
+      assert.ok(
+        freshClient.extensionPermissionCache.has(method),
+        `fresh client should hydrate ${method} from storage`,
+      );
+    }
 
     const permissionResult = await freshClient.ensureExtensionPermissions([
       "nip04.decrypt",
@@ -240,6 +245,11 @@ test("NIP-07 decrypt reuses cached extension permissions", async () => {
 
     const plaintext = await window.nostr.nip04.decrypt(HEX_PUBKEY, "ciphertext");
     assert.equal(plaintext, "plaintext:ciphertext");
+    assert.equal(
+      env.enableCalls.length,
+      baselineEnableCalls,
+      "decrypt calls should not trigger additional enable() prompts",
+    );
     assert.equal(decryptCalls, 1);
   } finally {
     env.restore();
