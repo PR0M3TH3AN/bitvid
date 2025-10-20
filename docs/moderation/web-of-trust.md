@@ -16,6 +16,8 @@
 - `blurThumbnail = trustedReportCount(event,'nudity') >= 3`
 - `hideAutoplay = trustedReportCount(event,'nudity') >= 2`
 - `downrankIfMutedByF1 = true`
+- `hideIfTrustedMuteCount(author) >= 1`
+- `hideIfTrustedSpamReports(event) >= 3`
 
 ### Why these numbers?
 - F1-only reports resist Sybil attacks.
@@ -55,6 +57,14 @@ function shouldBlurThumb(eventId: string, ctx: Ctx): boolean {
 
 function shouldHideAutoplay(eventId: string, ctx: Ctx): boolean {
   return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= 2;
+}
+
+function shouldHideForTrustedMute(authorHex: string, ctx: Ctx): boolean {
+  return ctx.trustedMuteCount(authorHex) >= 1;
+}
+
+function shouldHideForTrustedSpam(eventId: string, ctx: Ctx): boolean {
+  return trustedReportCount(eventId, 'spam', ctx.viewerFollows, ctx.reports) >= 3;
 }
 ```
 

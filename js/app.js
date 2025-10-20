@@ -14,7 +14,11 @@ import { accessControl } from "./accessControl.js";
 import { safeDecodeMagnet } from "./magnetUtils.js";
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "./magnet.js";
 import { deriveTorrentPlaybackConfig } from "./playbackUtils.js";
-import { URL_FIRST_ENABLED } from "./constants.js";
+import {
+  URL_FIRST_ENABLED,
+  getTrustedMuteHideThreshold,
+  getTrustedSpamHideThreshold,
+} from "./constants.js";
 import { attachHealthBadges } from "./gridHealth.js";
 import { attachUrlHealthBadges } from "./urlHealthObserver.js";
 import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
@@ -4999,6 +5003,16 @@ class Application {
     const defaultAutoplay = Number.isFinite(defaults?.autoplayBlockThreshold)
       ? Math.max(0, Math.floor(defaults.autoplayBlockThreshold))
       : 2;
+    const defaultTrustedMuteHide = Number.isFinite(
+      defaults?.trustedMuteHideThreshold,
+    )
+      ? Math.max(0, Math.floor(defaults.trustedMuteHideThreshold))
+      : getTrustedMuteHideThreshold();
+    const defaultTrustedSpamHide = Number.isFinite(
+      defaults?.trustedSpamHideThreshold,
+    )
+      ? Math.max(0, Math.floor(defaults.trustedSpamHideThreshold))
+      : getTrustedSpamHideThreshold();
 
     const blurSource = Number.isFinite(settings?.blurThreshold)
       ? Math.max(0, Math.floor(settings.blurThreshold))
@@ -5006,10 +5020,18 @@ class Application {
     const autoplaySource = Number.isFinite(settings?.autoplayBlockThreshold)
       ? Math.max(0, Math.floor(settings.autoplayBlockThreshold))
       : defaultAutoplay;
+    const muteHideSource = Number.isFinite(settings?.trustedMuteHideThreshold)
+      ? Math.max(0, Math.floor(settings.trustedMuteHideThreshold))
+      : defaultTrustedMuteHide;
+    const spamHideSource = Number.isFinite(settings?.trustedSpamHideThreshold)
+      ? Math.max(0, Math.floor(settings.trustedSpamHideThreshold))
+      : defaultTrustedSpamHide;
 
     return {
       blurThreshold: blurSource,
       autoplayBlockThreshold: autoplaySource,
+      trustedMuteHideThreshold: muteHideSource,
+      trustedSpamHideThreshold: spamHideSource,
     };
   }
 

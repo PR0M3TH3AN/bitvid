@@ -30,6 +30,8 @@ Thread new moderation behaviors through the same service → stage → app → U
 ## Defaults (policy)
 - Blur video thumbnails if **≥ 3** F1 friends report `nudity`.
 - Disable autoplay preview if **≥ 2** F1 friends report `nudity`.
+- Hide videos when **≥ 1** trusted contact mutes the author (`TRUSTED_MUTE_HIDE_THRESHOLD`).
+- Hide videos when **≥ 3** trusted contacts file spam reports (`TRUSTED_SPAM_HIDE_THRESHOLD`).
 - Downrank author when any F1 has them in mute list (10000).
 - Opt-in admin lists (30000 with `d=bitvid:admin:*`) can hard-hide content.
 - Trust seeds from `DEFAULT_TRUST_SEED_NPUBS` count as baseline F1 contacts (toggle via `FEATURE_TRUST_SEEDS`).
@@ -50,7 +52,13 @@ New operators should also note that fresh viewer accounts automatically inherit 
 
 ### Safety & Moderation controls
 
-The profile modal now exposes the blur and autoplay thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values above. Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load.
+The profile modal now exposes blur, autoplay, and hide thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values above. Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load.
+
+### Runtime flags
+
+- `TRUSTED_MUTE_HIDE_THRESHOLD` — numeric default for the trusted mute hide control (default `1`).
+- `TRUSTED_SPAM_HIDE_THRESHOLD` — numeric default for the trusted spam hide control (default `3`).
+- `FEATURE_TRUSTED_HIDE_CONTROLS` — boolean toggle to hide/show the new trusted hide controls in the UI (default `true`).
 
 ## Files in this folder
 - `web-of-trust.md` — how we compute trust signals and thresholds

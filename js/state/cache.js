@@ -1,3 +1,9 @@
+import {
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  getTrustedMuteHideThreshold,
+  getTrustedSpamHideThreshold,
+} from "../constants.js";
 import { userLogger } from "../utils/logger.js";
 import { sanitizeProfileMediaUrl } from "../utils/profileMedia.js";
 import {
@@ -25,13 +31,50 @@ const MODERATION_OVERRIDE_STORAGE_VERSION = 1;
 const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
 const MODERATION_SETTINGS_STORAGE_VERSION = 1;
 
-const DEFAULT_MODERATION_SETTINGS = Object.freeze({
-  blurThreshold: 3,
-  autoplayBlockThreshold: 2,
-});
+function computeDefaultModerationSettings() {
+  let runtimeMuteHide = DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
+  let runtimeSpamHide = DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
+
+  try {
+    if (typeof getTrustedMuteHideThreshold === "function") {
+      runtimeMuteHide = getTrustedMuteHideThreshold();
+    }
+  } catch (error) {
+    userLogger.warn(
+      "[cache.computeDefaultModerationSettings] Failed to read runtime mute hide threshold:",
+      error,
+    );
+  }
+
+  try {
+    if (typeof getTrustedSpamHideThreshold === "function") {
+      runtimeSpamHide = getTrustedSpamHideThreshold();
+    }
+  } catch (error) {
+    userLogger.warn(
+      "[cache.computeDefaultModerationSettings] Failed to read runtime spam hide threshold:",
+      error,
+    );
+  }
+
+  return {
+    blurThreshold: 3,
+    autoplayBlockThreshold: 2,
+    trustedMuteHideThreshold: sanitizeModerationThreshold(
+      runtimeMuteHide,
+      DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    ),
+    trustedSpamHideThreshold: sanitizeModerationThreshold(
+      runtimeSpamHide,
+      DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+    ),
+  };
+}
+
+const DEFAULT_MODERATION_SETTINGS = Object.freeze(computeDefaultModerationSettings());
 
 function createDefaultModerationSettings() {
-  return { ...DEFAULT_MODERATION_SETTINGS };
+  return { ...computeDefaultModerationSettings() };
 }
 
 function sanitizeModerationThreshold(value, fallback) {
@@ -716,7 +759,9 @@ function haveModerationSettingsChanged(previous, next) {
 
   return (
     previous.blurThreshold !== next.blurThreshold ||
-    previous.autoplayBlockThreshold !== next.autoplayBlockThreshold
+    previous.autoplayBlockThreshold !== next.autoplayBlockThreshold ||
+    previous.trustedMuteHideThreshold !== next.trustedMuteHideThreshold ||
+    previous.trustedSpamHideThreshold !== next.trustedSpamHideThreshold
   );
 }
 
@@ -767,6 +812,14 @@ export function loadModerationSettingsFromStorage() {
         overrides.autoplayBlockThreshold,
         defaults.autoplayBlockThreshold,
       ),
+      trustedMuteHideThreshold: sanitizeModerationThreshold(
+        overrides.trustedMuteHideThreshold,
+        defaults.trustedMuteHideThreshold,
+      ),
+      trustedSpamHideThreshold: sanitizeModerationThreshold(
+        overrides.trustedSpamHideThreshold,
+        defaults.trustedSpamHideThreshold,
+      ),
     };
   } catch (error) {
     moderationSettings = createDefaultModerationSettings();
@@ -793,6 +846,20 @@ function persistModerationSettingsToStorage() {
 
   if (moderationSettings.autoplayBlockThreshold !== defaults.autoplayBlockThreshold) {
     overrides.autoplayBlockThreshold = moderationSettings.autoplayBlockThreshold;
+  }
+
+  if (
+    moderationSettings.trustedMuteHideThreshold !==
+    defaults.trustedMuteHideThreshold
+  ) {
+    overrides.trustedMuteHideThreshold = moderationSettings.trustedMuteHideThreshold;
+  }
+
+  if (
+    moderationSettings.trustedSpamHideThreshold !==
+    defaults.trustedSpamHideThreshold
+  ) {
+    overrides.trustedSpamHideThreshold = moderationSettings.trustedSpamHideThreshold;
   }
 
   if (Object.keys(overrides).length === 0) {
@@ -851,6 +918,30 @@ export function setModerationSettings(partial = {}, { persist = true } = {}) {
         : sanitizeModerationThreshold(value, defaults.autoplayBlockThreshold);
     if (next.autoplayBlockThreshold !== sanitized) {
       next.autoplayBlockThreshold = sanitized;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(partial, "trustedMuteHideThreshold")) {
+    const value = partial.trustedMuteHideThreshold;
+    const sanitized =
+      value === null
+        ? defaults.trustedMuteHideThreshold
+        : sanitizeModerationThreshold(value, defaults.trustedMuteHideThreshold);
+    if (next.trustedMuteHideThreshold !== sanitized) {
+      next.trustedMuteHideThreshold = sanitized;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(partial, "trustedSpamHideThreshold")) {
+    const value = partial.trustedSpamHideThreshold;
+    const sanitized =
+      value === null
+        ? defaults.trustedSpamHideThreshold
+        : sanitizeModerationThreshold(value, defaults.trustedSpamHideThreshold);
+    if (next.trustedSpamHideThreshold !== sanitized) {
+      next.trustedSpamHideThreshold = sanitized;
       changed = true;
     }
   }

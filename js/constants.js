@@ -11,6 +11,9 @@ const DEFAULT_FLAGS = Object.freeze({
   FEATURE_WATCH_HISTORY_V2: true,
   FEATURE_PUBLISH_NIP71: false,
   FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
+  FEATURE_TRUSTED_HIDE_CONTROLS: true,
+  TRUSTED_MUTE_HIDE_THRESHOLD: 1,
+  TRUSTED_SPAM_HIDE_THRESHOLD: 3,
   WSS_TRACKERS: Object.freeze([
     "wss://tracker.openwebtorrent.com",
     "wss://tracker.fastcast.nz",
@@ -33,6 +36,9 @@ const runtimeFlags = (() => {
     FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
     FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
     FEATURE_TRUST_SEEDS: DEFAULT_FLAGS.FEATURE_TRUST_SEEDS,
+    FEATURE_TRUSTED_HIDE_CONTROLS: DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS,
+    TRUSTED_MUTE_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD,
+    TRUSTED_SPAM_HIDE_THRESHOLD: DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD,
     WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
   };
   if (globalScope) {
@@ -98,6 +104,20 @@ function freezeTrackers(list) {
   return Object.freeze([...list]);
 }
 
+function coerceNonNegativeInteger(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  const sanitized = Math.max(0, Math.floor(numeric));
+  if (!Number.isFinite(sanitized)) {
+    return fallback;
+  }
+
+  return sanitized;
+}
+
 export let URL_FIRST_ENABLED = coerceBoolean(
   runtimeFlags.URL_FIRST_ENABLED,
   DEFAULT_FLAGS.URL_FIRST_ENABLED
@@ -128,9 +148,30 @@ export let FEATURE_TRUST_SEEDS = coerceBoolean(
   DEFAULT_FLAGS.FEATURE_TRUST_SEEDS
 );
 
+export let FEATURE_TRUSTED_HIDE_CONTROLS = coerceBoolean(
+  runtimeFlags.FEATURE_TRUSTED_HIDE_CONTROLS,
+  DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS
+);
+
 export let WSS_TRACKERS = freezeTrackers(
   sanitizeTrackerList(runtimeFlags.WSS_TRACKERS)
 );
+
+export let TRUSTED_MUTE_HIDE_THRESHOLD = coerceNonNegativeInteger(
+  runtimeFlags.TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD
+);
+
+export let TRUSTED_SPAM_HIDE_THRESHOLD = coerceNonNegativeInteger(
+  runtimeFlags.TRUSTED_SPAM_HIDE_THRESHOLD,
+  DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD
+);
+
+export const DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD =
+  DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD;
+
+export const DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD =
+  DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD;
 
 Object.defineProperty(runtimeFlags, "URL_FIRST_ENABLED", {
   configurable: true,
@@ -210,6 +251,20 @@ Object.defineProperty(runtimeFlags, "FEATURE_TRUST_SEEDS", {
   },
 });
 
+Object.defineProperty(runtimeFlags, "FEATURE_TRUSTED_HIDE_CONTROLS", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return FEATURE_TRUSTED_HIDE_CONTROLS;
+  },
+  set(next) {
+    FEATURE_TRUSTED_HIDE_CONTROLS = coerceBoolean(
+      next,
+      DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS
+    );
+  },
+});
+
 Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
   configurable: true,
   enumerable: true,
@@ -221,6 +276,34 @@ Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
   },
 });
 
+Object.defineProperty(runtimeFlags, "TRUSTED_MUTE_HIDE_THRESHOLD", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return TRUSTED_MUTE_HIDE_THRESHOLD;
+  },
+  set(next) {
+    TRUSTED_MUTE_HIDE_THRESHOLD = coerceNonNegativeInteger(
+      next,
+      DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD
+    );
+  },
+});
+
+Object.defineProperty(runtimeFlags, "TRUSTED_SPAM_HIDE_THRESHOLD", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return TRUSTED_SPAM_HIDE_THRESHOLD;
+  },
+  set(next) {
+    TRUSTED_SPAM_HIDE_THRESHOLD = coerceNonNegativeInteger(
+      next,
+      DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD
+    );
+  },
+});
+
 // Ensure the runtime object reflects the sanitized defaults immediately.
 runtimeFlags.URL_FIRST_ENABLED = URL_FIRST_ENABLED;
 runtimeFlags.ACCEPT_LEGACY_V1 = ACCEPT_LEGACY_V1;
@@ -228,7 +311,10 @@ runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO = VIEW_FILTER_INCLUDE_LEGACY_VIDEO
 runtimeFlags.FEATURE_WATCH_HISTORY_V2 = FEATURE_WATCH_HISTORY_V2;
 runtimeFlags.FEATURE_PUBLISH_NIP71 = FEATURE_PUBLISH_NIP71;
 runtimeFlags.FEATURE_TRUST_SEEDS = FEATURE_TRUST_SEEDS;
+runtimeFlags.FEATURE_TRUSTED_HIDE_CONTROLS = FEATURE_TRUSTED_HIDE_CONTROLS;
 runtimeFlags.WSS_TRACKERS = WSS_TRACKERS;
+runtimeFlags.TRUSTED_MUTE_HIDE_THRESHOLD = TRUSTED_MUTE_HIDE_THRESHOLD;
+runtimeFlags.TRUSTED_SPAM_HIDE_THRESHOLD = TRUSTED_SPAM_HIDE_THRESHOLD;
 
 export function setUrlFirstEnabled(next) {
   runtimeFlags.URL_FIRST_ENABLED = next;
@@ -259,6 +345,11 @@ export function setTrustSeedsEnabled(next) {
   return FEATURE_TRUST_SEEDS;
 }
 
+export function setTrustedHideControlsEnabled(next) {
+  runtimeFlags.FEATURE_TRUSTED_HIDE_CONTROLS = next;
+  return FEATURE_TRUSTED_HIDE_CONTROLS;
+}
+
 export function resetRuntimeFlags() {
   setUrlFirstEnabled(DEFAULT_FLAGS.URL_FIRST_ENABLED);
   setAcceptLegacyV1(DEFAULT_FLAGS.ACCEPT_LEGACY_V1);
@@ -267,6 +358,9 @@ export function resetRuntimeFlags() {
   );
   setWatchHistoryV2Enabled(DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2);
   setTrustSeedsEnabled(DEFAULT_FLAGS.FEATURE_TRUST_SEEDS);
+  setTrustedHideControlsEnabled(DEFAULT_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS);
+  setTrustedMuteHideThreshold(DEFAULT_FLAGS.TRUSTED_MUTE_HIDE_THRESHOLD);
+  setTrustedSpamHideThreshold(DEFAULT_FLAGS.TRUSTED_SPAM_HIDE_THRESHOLD);
   setWssTrackers(DEFAULT_FLAGS.WSS_TRACKERS);
 }
 
@@ -275,5 +369,23 @@ export const RUNTIME_FLAGS = runtimeFlags;
 export function setWatchHistoryV2Enabled(next) {
   runtimeFlags.FEATURE_WATCH_HISTORY_V2 = next;
   return FEATURE_WATCH_HISTORY_V2;
+}
+
+export function setTrustedMuteHideThreshold(next) {
+  runtimeFlags.TRUSTED_MUTE_HIDE_THRESHOLD = next;
+  return TRUSTED_MUTE_HIDE_THRESHOLD;
+}
+
+export function setTrustedSpamHideThreshold(next) {
+  runtimeFlags.TRUSTED_SPAM_HIDE_THRESHOLD = next;
+  return TRUSTED_SPAM_HIDE_THRESHOLD;
+}
+
+export function getTrustedMuteHideThreshold() {
+  return TRUSTED_MUTE_HIDE_THRESHOLD;
+}
+
+export function getTrustedSpamHideThreshold() {
+  return TRUSTED_SPAM_HIDE_THRESHOLD;
 }
 

@@ -6,6 +6,11 @@ import {
   MAX_WALLET_DEFAULT_ZAP as CONFIG_MAX_WALLET_DEFAULT_ZAP,
 } from "../config.js";
 import { normalizeDesignSystemContext } from "../designSystem.js";
+import {
+  getTrustedMuteHideThreshold,
+  getTrustedSpamHideThreshold,
+  RUNTIME_FLAGS,
+} from "../constants.js";
 import { devLogger, userLogger } from "../utils/logger.js";
 
 const noop = () => {};
@@ -30,6 +35,8 @@ function createInternalDefaultNwcSettings() {
 const DEFAULT_INTERNAL_MODERATION_SETTINGS = Object.freeze({
   blurThreshold: 3,
   autoplayBlockThreshold: 2,
+  trustedMuteHideThreshold: getTrustedMuteHideThreshold(),
+  trustedSpamHideThreshold: getTrustedSpamHideThreshold(),
 });
 
 function createInternalDefaultModerationSettings() {
@@ -834,9 +841,13 @@ export class ProfileModalController {
     this.moderationSettingsCard = null;
     this.moderationBlurInput = null;
     this.moderationAutoplayInput = null;
+    this.moderationMuteHideInput = null;
+    this.moderationSpamHideInput = null;
     this.moderationSaveButton = null;
     this.moderationResetButton = null;
     this.moderationStatusText = null;
+    this.moderationHideControlsGroup = null;
+    this.moderationHideControlElements = [];
     this.moderatorSection = null;
     this.moderatorEmpty = null;
     this.adminModeratorList = null;
@@ -1019,12 +1030,25 @@ export class ProfileModalController {
       document.getElementById("profileModerationBlurThreshold") || null;
     this.moderationAutoplayInput =
       document.getElementById("profileModerationAutoplayThreshold") || null;
+    this.moderationMuteHideInput =
+      document.getElementById("profileModerationMuteHideThreshold") || null;
+    this.moderationSpamHideInput =
+      document.getElementById("profileModerationSpamHideThreshold") || null;
     this.moderationSaveButton =
       document.getElementById("profileModerationSave") || null;
     this.moderationResetButton =
       document.getElementById("profileModerationReset") || null;
     this.moderationStatusText =
       document.getElementById("profileModerationStatus") || null;
+    this.moderationHideControlsGroup =
+      this.moderationSettingsCard?.querySelector(
+        "[data-role=\"trusted-hide-controls\"]",
+      ) || null;
+    this.moderationHideControlElements = Array.from(
+      this.moderationSettingsCard?.querySelectorAll(
+        "[data-role=\"trusted-hide-control\"]",
+      ) || [],
+    );
 
     this.moderatorSection =
       document.getElementById("adminModeratorsSection") || null;
@@ -1250,6 +1274,18 @@ export class ProfileModalController {
 
     if (this.moderationAutoplayInput instanceof HTMLElement) {
       this.moderationAutoplayInput.addEventListener("input", () => {
+        this.applyModerationSettingsControlState();
+      });
+    }
+
+    if (this.moderationMuteHideInput instanceof HTMLElement) {
+      this.moderationMuteHideInput.addEventListener("input", () => {
+        this.applyModerationSettingsControlState();
+      });
+    }
+
+    if (this.moderationSpamHideInput instanceof HTMLElement) {
+      this.moderationSpamHideInput.addEventListener("input", () => {
         this.applyModerationSettingsControlState();
       });
     }
@@ -3364,6 +3400,24 @@ export class ProfileModalController {
           ),
         ),
       ),
+      trustedMuteHideThreshold: Math.max(
+        0,
+        Math.floor(
+          Number(
+            defaults.trustedMuteHideThreshold ??
+              DEFAULT_INTERNAL_MODERATION_SETTINGS.trustedMuteHideThreshold,
+          ),
+        ),
+      ),
+      trustedSpamHideThreshold: Math.max(
+        0,
+        Math.floor(
+          Number(
+            defaults.trustedSpamHideThreshold ??
+              DEFAULT_INTERNAL_MODERATION_SETTINGS.trustedSpamHideThreshold,
+          ),
+        ),
+      ),
     };
 
     return sanitized;
@@ -3377,10 +3431,18 @@ export class ProfileModalController {
     const autoplay = Number.isFinite(settings?.autoplayBlockThreshold)
       ? Math.max(0, Math.floor(settings.autoplayBlockThreshold))
       : defaults.autoplayBlockThreshold;
+    const muteHide = Number.isFinite(settings?.trustedMuteHideThreshold)
+      ? Math.max(0, Math.floor(settings.trustedMuteHideThreshold))
+      : defaults.trustedMuteHideThreshold;
+    const spamHide = Number.isFinite(settings?.trustedSpamHideThreshold)
+      ? Math.max(0, Math.floor(settings.trustedSpamHideThreshold))
+      : defaults.trustedSpamHideThreshold;
 
     return {
       blurThreshold: blur,
       autoplayBlockThreshold: autoplay,
+      trustedMuteHideThreshold: muteHide,
+      trustedSpamHideThreshold: spamHide,
     };
   }
 
@@ -3411,15 +3473,27 @@ export class ProfileModalController {
       this.moderationAutoplayInput,
       defaults.autoplayBlockThreshold,
     );
+    const muteHide = parse(
+      this.moderationMuteHideInput,
+      defaults.trustedMuteHideThreshold,
+    );
+    const spamHide = parse(
+      this.moderationSpamHideInput,
+      defaults.trustedSpamHideThreshold,
+    );
 
-    const valid = blur.valid && autoplay.valid;
+    const valid = blur.valid && autoplay.valid && muteHide.valid && spamHide.valid;
     const values = {
       blurThreshold: blur.value,
       autoplayBlockThreshold: autoplay.value,
+      trustedMuteHideThreshold: muteHide.value,
+      trustedSpamHideThreshold: spamHide.value,
     };
     const overrides = {
       blurThreshold: blur.override,
       autoplayBlockThreshold: autoplay.override,
+      trustedMuteHideThreshold: muteHide.override,
+      trustedSpamHideThreshold: spamHide.override,
     };
 
     return { defaults, values, overrides, valid };
@@ -3434,7 +3508,11 @@ export class ProfileModalController {
       const isDirty =
         result.valid &&
         (baseline.blurThreshold !== result.values.blurThreshold ||
-          baseline.autoplayBlockThreshold !== result.values.autoplayBlockThreshold);
+          baseline.autoplayBlockThreshold !== result.values.autoplayBlockThreshold ||
+          baseline.trustedMuteHideThreshold !==
+            result.values.trustedMuteHideThreshold ||
+          baseline.trustedSpamHideThreshold !==
+            result.values.trustedSpamHideThreshold);
       button.disabled = !(result.valid && isDirty);
       if (button.disabled) {
         button.setAttribute("aria-disabled", "true");
@@ -3448,6 +3526,51 @@ export class ProfileModalController {
     }
 
     return result;
+  }
+
+  areTrustedHideControlsEnabled() {
+    if (
+      RUNTIME_FLAGS &&
+      typeof RUNTIME_FLAGS === "object" &&
+      RUNTIME_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS === false
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  updateTrustedHideControlsVisibility() {
+    const shouldShow = this.areTrustedHideControlsEnabled();
+    const targets = new Set();
+
+    if (this.moderationHideControlsGroup instanceof HTMLElement) {
+      targets.add(this.moderationHideControlsGroup);
+    }
+
+    if (Array.isArray(this.moderationHideControlElements)) {
+      for (const element of this.moderationHideControlElements) {
+        if (element instanceof HTMLElement) {
+          targets.add(element);
+        }
+      }
+    }
+
+    targets.forEach((element) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+
+      if (shouldShow) {
+        element.classList.remove("hidden");
+        element.removeAttribute("hidden");
+        element.removeAttribute("aria-hidden");
+      } else {
+        element.classList.add("hidden");
+        element.setAttribute("hidden", "");
+        element.setAttribute("aria-hidden", "true");
+      }
+    });
   }
 
   updateModerationSettingsStatus(message = "", variant = "info") {
@@ -3470,6 +3593,7 @@ export class ProfileModalController {
     if (!service) {
       this.moderationSettingsDefaults = createInternalDefaultModerationSettings();
       this.currentModerationSettings = createInternalDefaultModerationSettings();
+      this.updateTrustedHideControlsVisibility();
       this.applyModerationSettingsControlState({ resetStatus: true });
       return;
     }
@@ -3497,6 +3621,20 @@ export class ProfileModalController {
         normalized.autoplayBlockThreshold,
       );
     }
+
+    if (this.moderationMuteHideInput instanceof HTMLInputElement) {
+      this.moderationMuteHideInput.value = String(
+        normalized.trustedMuteHideThreshold,
+      );
+    }
+
+    if (this.moderationSpamHideInput instanceof HTMLInputElement) {
+      this.moderationSpamHideInput.value = String(
+        normalized.trustedSpamHideThreshold,
+      );
+    }
+
+    this.updateTrustedHideControlsVisibility();
 
     this.applyModerationSettingsControlState({ resetStatus: true });
   }
@@ -3538,6 +3676,26 @@ export class ProfileModalController {
       payload.autoplayBlockThreshold = inputState.overrides.autoplayBlockThreshold;
     }
 
+    if (
+      Object.prototype.hasOwnProperty.call(
+        inputState.overrides,
+        "trustedMuteHideThreshold",
+      )
+    ) {
+      payload.trustedMuteHideThreshold =
+        inputState.overrides.trustedMuteHideThreshold;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        inputState.overrides,
+        "trustedSpamHideThreshold",
+      )
+    ) {
+      payload.trustedSpamHideThreshold =
+        inputState.overrides.trustedSpamHideThreshold;
+    }
+
     try {
       const updated =
         typeof service.updateModerationSettings === "function"
@@ -3552,6 +3710,16 @@ export class ProfileModalController {
       if (this.moderationAutoplayInput instanceof HTMLInputElement) {
         this.moderationAutoplayInput.value = String(
           normalized.autoplayBlockThreshold,
+        );
+      }
+      if (this.moderationMuteHideInput instanceof HTMLInputElement) {
+        this.moderationMuteHideInput.value = String(
+          normalized.trustedMuteHideThreshold,
+        );
+      }
+      if (this.moderationSpamHideInput instanceof HTMLInputElement) {
+        this.moderationSpamHideInput.value = String(
+          normalized.trustedSpamHideThreshold,
         );
       }
       this.applyModerationSettingsControlState();
@@ -3609,6 +3777,17 @@ export class ProfileModalController {
           normalized.autoplayBlockThreshold,
         );
       }
+      if (this.moderationMuteHideInput instanceof HTMLInputElement) {
+        this.moderationMuteHideInput.value = String(
+          normalized.trustedMuteHideThreshold,
+        );
+      }
+      if (this.moderationSpamHideInput instanceof HTMLInputElement) {
+        this.moderationSpamHideInput.value = String(
+          normalized.trustedSpamHideThreshold,
+        );
+      }
+      this.updateTrustedHideControlsVisibility();
       this.applyModerationSettingsControlState({ resetStatus: true });
       this.updateModerationSettingsStatus(
         "Moderation defaults restored.",
