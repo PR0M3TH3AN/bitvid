@@ -5,6 +5,8 @@
   - Automated coverage: `tests/moderation/trusted-report-count.test.mjs` (run via `npm run test:unit`).
 - [ ] Blur at ≥3 F1 reports of `nudity`; autoplay blocked at ≥2.
   - Automated coverage: `tests/visual/moderation.spec.ts` blur and autoplay scenarios (run via `npm run test:visual`).
+- [ ] Hide videos once trusted mute/spam thresholds are met.
+  - Manual: adjust thresholds in the profile modal, simulate trusted mutes/reports, and verify cards disappear until "show anyway" is used.
 - [ ] “Show anyway” works and records only local pref.
   - Automated coverage: `tests/visual/moderation.spec.ts` show-anyway persistence scenario (run via `npm run test:visual`).
 - [ ] Mute list (10000) downranks/hides consistently.
