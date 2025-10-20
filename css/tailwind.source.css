@@ -25,7 +25,7 @@
   *::before,
   *::after {
     scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
   *::-webkit-scrollbar {
@@ -2901,7 +2901,7 @@
     flex-direction: column;
     gap: var(--space-sidebar-popover-gap);
     width: 100%;
-    padding-inline-end: 0;
+    padding-inline-end: var(--space-sidebar-dropup-scroll-reserve);
     max-height: var(--sidebar-dropup-max-height);
     overflow-y: auto;
     overflow-x: hidden;
