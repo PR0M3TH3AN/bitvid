@@ -3,6 +3,7 @@
 import { userLogger } from "./utils/logger.js";
 import {
   IS_DEV_MODE,
+  IS_LOCKDOWN_MODE,
   ADMIN_SUPER_NPUB,
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
@@ -37,8 +38,12 @@ import {
 export const isDevMode = Boolean(IS_DEV_MODE);
 export { IS_DEV_MODE };
 
+export const isLockdownMode = Boolean(IS_LOCKDOWN_MODE);
+export { IS_LOCKDOWN_MODE };
+
 if (typeof window !== "undefined") {
   window.__BITVID_DEV_MODE__ = isDevMode;
+  window.__BITVID_LOCKDOWN_MODE__ = isLockdownMode;
 }
 
 // -----------------------------------------------------------------------------
