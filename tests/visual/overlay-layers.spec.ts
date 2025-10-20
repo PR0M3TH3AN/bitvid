@@ -57,11 +57,44 @@ test.describe("overlay layering tokens", () => {
         throw new Error("Missing sidebar layout nodes");
       }
 
+      const ensureProbeStyles = () => {
+        if (document.getElementById("sidebar-width-probe-style")) {
+          return;
+        }
+        const style = document.createElement("style");
+        style.id = "sidebar-width-probe-style";
+        style.textContent = `
+          .sidebar-width-probe {
+            position: absolute;
+            visibility: hidden;
+          }
+
+          .sidebar-width-probe--collapsed {
+            width: calc(var(--sidebar-width-collapsed) + var(--sidebar-content-gap));
+          }
+
+          .sidebar-width-probe--expanded {
+            width: calc(var(--sidebar-width-expanded) + var(--sidebar-content-gap));
+          }
+        `;
+        document.head.appendChild(style);
+      };
+
+      ensureProbeStyles();
+
       const computeMargin = (widthVar) => {
+        const variant =
+          widthVar === "--sidebar-width-collapsed"
+            ? "sidebar-width-probe--collapsed"
+            : widthVar === "--sidebar-width-expanded"
+              ? "sidebar-width-probe--expanded"
+              : null;
+        if (!variant) {
+          throw new Error(`Unsupported sidebar width variable: ${widthVar}`);
+        }
+
         const probe = document.createElement("div");
-        probe.style.position = "absolute";
-        probe.style.visibility = "hidden";
-        probe.style.width = `calc(var(${widthVar}) + var(--sidebar-content-gap))`;
+        probe.classList.add("sidebar-width-probe", variant);
         document.body.appendChild(probe);
         const width = parseFloat(window.getComputedStyle(probe).width);
         probe.remove();
@@ -101,11 +134,44 @@ test.describe("overlay layering tokens", () => {
         throw new Error("Missing sidebar layout nodes");
       }
 
+      const ensureProbeStyles = () => {
+        if (document.getElementById("sidebar-width-probe-style")) {
+          return;
+        }
+        const style = document.createElement("style");
+        style.id = "sidebar-width-probe-style";
+        style.textContent = `
+          .sidebar-width-probe {
+            position: absolute;
+            visibility: hidden;
+          }
+
+          .sidebar-width-probe--collapsed {
+            width: calc(var(--sidebar-width-collapsed) + var(--sidebar-content-gap));
+          }
+
+          .sidebar-width-probe--expanded {
+            width: calc(var(--sidebar-width-expanded) + var(--sidebar-content-gap));
+          }
+        `;
+        document.head.appendChild(style);
+      };
+
+      ensureProbeStyles();
+
       const computeMargin = (widthVar) => {
+        const variant =
+          widthVar === "--sidebar-width-collapsed"
+            ? "sidebar-width-probe--collapsed"
+            : widthVar === "--sidebar-width-expanded"
+              ? "sidebar-width-probe--expanded"
+              : null;
+        if (!variant) {
+          throw new Error(`Unsupported sidebar width variable: ${widthVar}`);
+        }
+
         const probe = document.createElement("div");
-        probe.style.position = "absolute";
-        probe.style.visibility = "hidden";
-        probe.style.width = `calc(var(${widthVar}) + var(--sidebar-content-gap))`;
+        probe.classList.add("sidebar-width-probe", variant);
         document.body.appendChild(probe);
         const width = parseFloat(window.getComputedStyle(probe).width);
         probe.remove();
