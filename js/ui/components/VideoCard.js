@@ -114,6 +114,7 @@ export class VideoCard {
     this.moderationActionButton = null;
     this.moderationBadgeId = "";
     this.badgesContainerEl = null;
+    this.hiddenSummaryEl = null;
     this.boundShowAnywayHandler = (event) => this.handleShowAnywayClick(event);
 
     this.root = null;
@@ -425,6 +426,7 @@ export class VideoCard {
 
     this.applyPlaybackDatasets();
     this.bindEvents();
+    this.refreshModerationUi();
   }
 
   setCardBackdropImage(src) {
@@ -975,6 +977,50 @@ export class VideoCard {
         ? moderation.original
         : {};
 
+    const activeHidden = moderation?.hidden === true;
+    const originalHidden = original.hidden === true;
+    const hideReasonActive =
+      typeof moderation?.hideReason === "string" ? moderation.hideReason.trim() : "";
+    const hideBypassActive =
+      typeof moderation?.hideBypass === "string" ? moderation.hideBypass.trim() : "";
+    const originalHideReason =
+      typeof original.hideReason === "string" ? original.hideReason.trim() : "";
+    const originalHideBypass =
+      typeof original.hideBypass === "string" ? original.hideBypass.trim() : "";
+    const originalHideTriggered = original.hideTriggered === true;
+
+    const normalizeHideCounts = (input) => {
+      if (!input || typeof input !== "object") {
+        return null;
+      }
+      const normalized = {};
+      let hasValue = false;
+      if (Number.isFinite(input.trustedMuteCount)) {
+        normalized.trustedMuteCount = Math.max(0, Math.floor(input.trustedMuteCount));
+        hasValue = true;
+      }
+      if (Number.isFinite(input.trustedReportCount)) {
+        normalized.trustedReportCount = Math.max(0, Math.floor(input.trustedReportCount));
+        hasValue = true;
+      }
+      return hasValue ? normalized : null;
+    };
+
+    const baseHideCounts = {
+      trustedMuteCount,
+      trustedReportCount: trustedCount,
+    };
+
+    const activeHideCounts =
+      normalizeHideCounts(moderation?.hideCounts) ||
+      (activeHidden || hideReasonActive ? { ...baseHideCounts } : null);
+    const originalHideCounts =
+      normalizeHideCounts(original?.hideCounts) ||
+      (originalHideTriggered ? { ...baseHideCounts } : null);
+
+    const effectiveHideReason = hideReasonActive || originalHideReason;
+    const effectiveHideCounts = activeHideCounts || originalHideCounts;
+
     const context = {
       reportType,
       friendlyType: reportType ? reportType.replace(/[_-]+/g, " ").trim() : "",
@@ -988,6 +1034,17 @@ export class VideoCard {
       activeBlur: moderation?.blurThumbnail === true,
       activeBlockAutoplay: moderation?.blockAutoplay === true,
       overrideActive: moderation?.viewerOverride?.showAnyway === true,
+      activeHidden,
+      originalHidden,
+      originalHideTriggered,
+      hideReason: hideReasonActive,
+      hideCounts: activeHideCounts,
+      hideBypass: hideBypassActive,
+      originalHideReason,
+      originalHideCounts,
+      originalHideBypass,
+      effectiveHideReason,
+      effectiveHideCounts,
     };
 
     context.shouldShow =
@@ -995,9 +1052,13 @@ export class VideoCard {
       context.originalBlockAutoplay ||
       context.trustedCount > 0 ||
       context.trustedMuted ||
-      context.overrideActive;
+      context.overrideActive ||
+      context.originalHidden ||
+      context.activeHidden ||
+      context.originalHideTriggered;
 
-    context.allowOverride = context.originalBlur || context.originalBlockAutoplay;
+    context.allowOverride =
+      context.originalBlur || context.originalBlockAutoplay || context.originalHidden;
 
     return context;
   }
@@ -1032,17 +1093,80 @@ export class VideoCard {
     return combined.charAt(0).toUpperCase() + combined.slice(1);
   }
 
+  buildHiddenSummaryLabel(context) {
+    if (!context) {
+      return "";
+    }
+
+    const reason = context.effectiveHideReason;
+    if (!reason) {
+      return "";
+    }
+
+    const countsSource =
+      context.effectiveHideCounts || context.originalHideCounts || context.hideCounts || null;
+    const getCount = (key, fallback) => {
+      if (countsSource && Number.isFinite(countsSource[key])) {
+        return Math.max(0, Number(countsSource[key]));
+      }
+      if (Number.isFinite(context[key])) {
+        return Math.max(0, Number(context[key]));
+      }
+      return Math.max(0, Number(fallback) || 0);
+    };
+
+    if (reason === "trusted-mute-hide") {
+      const count = getCount("trustedMuteCount", context.trustedMuteCount || 0);
+      if (count > 0) {
+        const label = count === 1 ? "trusted mute" : "trusted mutes";
+        return `${count} ${label}`;
+      }
+      return "trusted mute";
+    }
+
+    if (reason === "trusted-report-hide") {
+      const count = getCount("trustedReportCount", context.trustedCount || 0);
+      const type = typeof context.friendlyType === "string" ? context.friendlyType.trim() : "";
+      const normalizedType = type ? type.toLowerCase() : "";
+      if (count > 0) {
+        const label = count === 1 ? "report" : "reports";
+        if (normalizedType) {
+          return `${count} trusted ${normalizedType} ${label}`;
+        }
+        const base = count === 1 ? "trusted report" : "trusted reports";
+        return `${count} ${base}`;
+      }
+      if (normalizedType) {
+        return `trusted ${normalizedType} reports`;
+      }
+      return "trusted reports";
+    }
+
+    return "";
+  }
+
   buildModerationBadgeText(context) {
     if (!context) {
       return "";
     }
 
+    const hiddenLabel = this.buildHiddenSummaryLabel(context);
     const reason = this.buildModerationReasonText(context);
     if (context.overrideActive) {
+      if (hiddenLabel) {
+        return `Showing despite ${hiddenLabel}`;
+      }
       if (reason) {
         return `Showing despite ${reason}`;
       }
       return "Showing despite reports";
+    }
+
+    if (context.activeHidden || (context.originalHidden && !context.overrideActive)) {
+      if (hiddenLabel) {
+        return `Hidden · ${hiddenLabel}`;
+      }
+      return "Hidden";
     }
 
     const parts = [];
@@ -1157,8 +1281,7 @@ export class VideoCard {
       });
   }
 
-  buildModerationBadge() {
-    const context = this.getModerationContext();
+  buildModerationBadge(context = this.getModerationContext()) {
     if (!context.shouldShow) {
       this.moderationBadgeEl = null;
       this.moderationBadgeTextEl = null;
@@ -1177,12 +1300,18 @@ export class VideoCard {
     });
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
     badge.dataset.moderationBadge = "true";
+    const hiddenActive = context.activeHidden && !context.overrideActive;
     const state = context.overrideActive
       ? "override"
-      : context.trustedMuted
-        ? "trusted-mute"
-        : "blocked";
+      : hiddenActive
+        ? "hidden"
+        : context.trustedMuted
+          ? "trusted-mute"
+          : "blocked";
     badge.dataset.moderationState = state;
+    if (hiddenActive && context.effectiveHideReason) {
+      badge.dataset.moderationHideReason = context.effectiveHideReason;
+    }
 
     const badgeId = this.getModerationBadgeId();
     badge.id = badgeId;
@@ -1248,9 +1377,9 @@ export class VideoCard {
     return badge;
   }
 
-  updateModerationBadge() {
-    const context = this.getModerationContext();
+  updateModerationBadge(context = this.getModerationContext()) {
     const badge = this.moderationBadgeEl;
+    const hiddenActive = context.activeHidden && !context.overrideActive;
 
     if (!context.shouldShow) {
       if (badge && badge.parentElement) {
@@ -1265,32 +1394,42 @@ export class VideoCard {
       this.moderationBadgeEl = null;
       this.moderationBadgeTextEl = null;
       this.moderationActionButton = null;
+      if (this.hiddenSummaryEl && this.hiddenSummaryEl.parentElement === this.root) {
+        this.hiddenSummaryEl.remove();
+      }
       this.updateModerationAria();
       return;
     }
 
     if (!badge) {
-      const nextBadge = this.buildModerationBadge();
+      const nextBadge = this.buildModerationBadge(context);
       if (nextBadge) {
-        if (!this.badgesContainerEl) {
-          this.badgesContainerEl = this.createElement("div", {
-            classNames: ["flex", "flex-wrap", "items-center", "gap-sm"],
-          });
-          if (this.contentEl) {
-            if (
-              this.discussionCountEl &&
-              this.discussionCountEl.parentElement === this.contentEl
-            ) {
-              this.contentEl.insertBefore(
-                this.badgesContainerEl,
-                this.discussionCountEl,
-              );
-            } else {
-              this.contentEl.appendChild(this.badgesContainerEl);
+        if (hiddenActive) {
+          const container = this.ensureHiddenSummaryContainer();
+          if (container) {
+            container.appendChild(nextBadge);
+          }
+        } else {
+          if (!this.badgesContainerEl) {
+            this.badgesContainerEl = this.createElement("div", {
+              classNames: ["flex", "flex-wrap", "items-center", "gap-sm"],
+            });
+            if (this.contentEl) {
+              if (
+                this.discussionCountEl &&
+                this.discussionCountEl.parentElement === this.contentEl
+              ) {
+                this.contentEl.insertBefore(
+                  this.badgesContainerEl,
+                  this.discussionCountEl,
+                );
+              } else {
+                this.contentEl.appendChild(this.badgesContainerEl);
+              }
             }
           }
+          this.badgesContainerEl.appendChild(nextBadge);
         }
-        this.badgesContainerEl.appendChild(nextBadge);
       }
       this.updateModerationAria();
       return;
@@ -1299,10 +1438,17 @@ export class VideoCard {
     badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
     const state = context.overrideActive
       ? "override"
-      : context.trustedMuted
-        ? "trusted-mute"
-        : "blocked";
+      : hiddenActive
+        ? "hidden"
+        : context.trustedMuted
+          ? "trusted-mute"
+          : "blocked";
     badge.dataset.moderationState = state;
+    if (hiddenActive && context.effectiveHideReason) {
+      badge.dataset.moderationHideReason = context.effectiveHideReason;
+    } else if (badge.dataset.moderationHideReason) {
+      delete badge.dataset.moderationHideReason;
+    }
 
     const textContent = this.buildModerationBadgeText(context);
     if (this.moderationBadgeTextEl) {
@@ -1347,6 +1493,33 @@ export class VideoCard {
       badge.setAttribute("aria-label", `${textContent}.`);
     }
 
+    if (hiddenActive) {
+      const container = this.ensureHiddenSummaryContainer();
+      if (container && badge.parentElement !== container) {
+        if (badge.parentElement) {
+          badge.parentElement.removeChild(badge);
+        }
+        container.appendChild(badge);
+      }
+    } else if (this.badgesContainerEl) {
+      if (!this.badgesContainerEl.parentElement && this.contentEl) {
+        if (
+          this.discussionCountEl &&
+          this.discussionCountEl.parentElement === this.contentEl
+        ) {
+          this.contentEl.insertBefore(this.badgesContainerEl, this.discussionCountEl);
+        } else {
+          this.contentEl.appendChild(this.badgesContainerEl);
+        }
+      }
+      if (badge.parentElement !== this.badgesContainerEl) {
+        if (badge.parentElement) {
+          badge.parentElement.removeChild(badge);
+        }
+        this.badgesContainerEl.appendChild(badge);
+      }
+    }
+
     if (context.overrideActive || !context.allowOverride) {
       if (this.moderationActionButton) {
         this.moderationActionButton.removeEventListener(
@@ -1363,6 +1536,87 @@ export class VideoCard {
     } else {
       this.moderationActionButton.disabled = false;
       this.moderationActionButton.removeAttribute("aria-busy");
+    }
+  }
+
+  ensureHiddenSummaryContainer() {
+    if (!this.root) {
+      return null;
+    }
+
+    if (!this.hiddenSummaryEl) {
+      this.hiddenSummaryEl = this.createElement("div", {
+        classNames: ["p-md", "bv-stack", "bv-stack--tight"],
+      });
+      this.hiddenSummaryEl.dataset.moderationHiddenContainer = "true";
+      this.hiddenSummaryEl.setAttribute("role", "group");
+      this.hiddenSummaryEl.setAttribute("aria-live", "polite");
+    }
+
+    const container = this.hiddenSummaryEl;
+    container.hidden = false;
+    container.removeAttribute("aria-hidden");
+
+    const referenceNode = this.anchorEl && this.anchorEl.parentElement === this.root ? this.anchorEl : this.root.firstChild;
+    if (referenceNode && referenceNode.parentElement === this.root) {
+      if (container.parentElement !== this.root || container.nextSibling !== referenceNode) {
+        this.root.insertBefore(container, referenceNode);
+      }
+    } else if (container.parentElement !== this.root) {
+      this.root.appendChild(container);
+    }
+
+    const badgeId = this.getModerationBadgeId();
+    if (badgeId) {
+      container.setAttribute("aria-labelledby", badgeId);
+    } else {
+      container.removeAttribute("aria-labelledby");
+    }
+
+    return container;
+  }
+
+  updateHiddenState(context = this.getModerationContext()) {
+    const hiddenActive = context.activeHidden && !context.overrideActive;
+    const container = this.hiddenSummaryEl;
+
+    if (hiddenActive) {
+      if (this.anchorEl) {
+        this.anchorEl.setAttribute("hidden", "");
+        this.anchorEl.setAttribute("aria-hidden", "true");
+      }
+      if (this.contentEl) {
+        this.contentEl.setAttribute("hidden", "");
+        this.contentEl.setAttribute("aria-hidden", "true");
+      }
+
+      const summaryContainer = this.ensureHiddenSummaryContainer();
+      if (summaryContainer) {
+        const description = this.buildModerationBadgeText(context);
+        if (description) {
+          summaryContainer.setAttribute("aria-label", description);
+        } else {
+          summaryContainer.removeAttribute("aria-label");
+        }
+      }
+    } else {
+      if (this.anchorEl) {
+        this.anchorEl.removeAttribute("hidden");
+        this.anchorEl.removeAttribute("aria-hidden");
+      }
+      if (this.contentEl) {
+        this.contentEl.removeAttribute("hidden");
+        this.contentEl.removeAttribute("aria-hidden");
+      }
+      if (container) {
+        container.hidden = true;
+        container.setAttribute("aria-hidden", "true");
+        container.removeAttribute("aria-labelledby");
+        container.removeAttribute("aria-label");
+        if (container.parentElement === this.root) {
+          this.root.removeChild(container);
+        }
+      }
     }
   }
 
@@ -1388,8 +1642,10 @@ export class VideoCard {
   }
 
   refreshModerationUi() {
-    this.applyModerationDatasets();
-    this.updateModerationBadge();
+    const context = this.getModerationContext();
+    this.applyModerationDatasets(context);
+    this.updateModerationBadge(context);
+    this.updateHiddenState(context);
     this.updateModerationAria();
   }
 
@@ -1837,38 +2093,36 @@ export class VideoCard {
     updateVideoCardSourceVisibility(this.root);
   }
 
-  applyModerationDatasets() {
+  applyModerationDatasets(context = this.getModerationContext()) {
     if (!this.root) {
       return;
     }
 
-    const moderationContext = this.getModerationContext();
-
-    if (moderationContext.originalBlockAutoplay && !moderationContext.overrideActive) {
+    if (context.originalBlockAutoplay && !context.overrideActive) {
       this.root.dataset.autoplayPolicy = "blocked";
     } else if (this.root.dataset.autoplayPolicy) {
       delete this.root.dataset.autoplayPolicy;
     }
 
-    if (moderationContext.overrideActive) {
+    if (context.overrideActive) {
       this.root.dataset.moderationOverride = "show-anyway";
     } else if (this.root.dataset.moderationOverride) {
       delete this.root.dataset.moderationOverride;
     }
 
     if (this.thumbnailEl && !this.shouldMaskNsfwForOwner) {
-      if (moderationContext.activeBlur) {
+      if (context.activeBlur) {
         this.thumbnailEl.dataset.thumbnailState = "blurred";
       } else if (this.thumbnailEl.dataset.thumbnailState === "blurred") {
         delete this.thumbnailEl.dataset.thumbnailState;
       }
     }
 
-    const reportCount = Math.max(0, Number(moderationContext.trustedCount) || 0);
+    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
     if (reportCount > 0) {
       this.root.dataset.moderationReportCount = String(reportCount);
-      if (moderationContext.reportType) {
-        this.root.dataset.moderationReportType = moderationContext.reportType;
+      if (context.reportType) {
+        this.root.dataset.moderationReportType = context.reportType;
       } else if (this.root.dataset.moderationReportType) {
         delete this.root.dataset.moderationReportType;
       }
@@ -1881,9 +2135,9 @@ export class VideoCard {
       }
     }
 
-    if (moderationContext.trustedMuted) {
+    if (context.trustedMuted) {
       this.root.dataset.moderationTrustedMute = "true";
-      const muteCount = Math.max(0, Number(moderationContext.trustedMuteCount) || 0);
+      const muteCount = Math.max(0, Number(context.trustedMuteCount) || 0);
       if (muteCount > 0) {
         this.root.dataset.moderationTrustedMuteCount = String(muteCount);
       } else if (this.root.dataset.moderationTrustedMuteCount) {
@@ -1895,6 +2149,49 @@ export class VideoCard {
       }
       if (this.root.dataset.moderationTrustedMuteCount) {
         delete this.root.dataset.moderationTrustedMuteCount;
+      }
+    }
+
+    if (context.activeHidden && !context.overrideActive) {
+      this.root.dataset.moderationHidden = "true";
+      const reason = context.effectiveHideReason || context.hideReason;
+      if (reason) {
+        this.root.dataset.moderationHideReason = reason;
+      } else if (this.root.dataset.moderationHideReason) {
+        delete this.root.dataset.moderationHideReason;
+      }
+
+      const counts = context.hideCounts || context.effectiveHideCounts || null;
+      const muteCount = counts && Number.isFinite(counts.trustedMuteCount)
+        ? Math.max(0, Number(counts.trustedMuteCount))
+        : null;
+      const reportCountHide = counts && Number.isFinite(counts.trustedReportCount)
+        ? Math.max(0, Number(counts.trustedReportCount))
+        : null;
+
+      if (muteCount !== null) {
+        this.root.dataset.moderationHideTrustedMuteCount = String(muteCount);
+      } else if (this.root.dataset.moderationHideTrustedMuteCount) {
+        delete this.root.dataset.moderationHideTrustedMuteCount;
+      }
+
+      if (reportCountHide !== null) {
+        this.root.dataset.moderationHideTrustedReportCount = String(reportCountHide);
+      } else if (this.root.dataset.moderationHideTrustedReportCount) {
+        delete this.root.dataset.moderationHideTrustedReportCount;
+      }
+    } else {
+      if (this.root.dataset.moderationHidden) {
+        delete this.root.dataset.moderationHidden;
+      }
+      if (this.root.dataset.moderationHideReason) {
+        delete this.root.dataset.moderationHideReason;
+      }
+      if (this.root.dataset.moderationHideTrustedMuteCount) {
+        delete this.root.dataset.moderationHideTrustedMuteCount;
+      }
+      if (this.root.dataset.moderationHideTrustedReportCount) {
+        delete this.root.dataset.moderationHideTrustedReportCount;
       }
     }
   }

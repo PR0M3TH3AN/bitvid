@@ -5148,15 +5148,71 @@ class Application {
     const computedBlockAutoplay = trustedCount >= thresholds.autoplayBlockThreshold;
     const computedBlurThumbnail = trustedCount >= thresholds.blurThreshold;
 
+    const muteHideThreshold = Number.isFinite(thresholds.trustedMuteHideThreshold)
+      ? Math.max(0, Math.floor(thresholds.trustedMuteHideThreshold))
+      : Number.POSITIVE_INFINITY;
+    const reportHideThreshold = Number.isFinite(thresholds.trustedSpamHideThreshold)
+      ? Math.max(0, Math.floor(thresholds.trustedSpamHideThreshold))
+      : Number.POSITIVE_INFINITY;
+
+    const existingHideReason =
+      typeof existingModeration.hideReason === "string"
+        ? existingModeration.hideReason.trim()
+        : "";
+    const existingHideBypass =
+      typeof existingModeration.hideBypass === "string"
+        ? existingModeration.hideBypass.trim()
+        : "";
+    const existingHideCounts =
+      existingModeration.hideCounts && typeof existingModeration.hideCounts === "object"
+        ? existingModeration.hideCounts
+        : null;
+
+    let hideReason = "";
+    let hideTriggered = false;
+
+    if (trustedMuted && trustedMuteCount >= muteHideThreshold) {
+      hideReason = "trusted-mute-hide";
+      hideTriggered = true;
+    } else if (trustedCount >= reportHideThreshold) {
+      hideReason = "trusted-report-hide";
+      hideTriggered = true;
+    } else if (existingHideReason && existingHideCounts) {
+      hideReason = existingHideReason;
+      hideTriggered = true;
+    }
+
+    const hideCounts = hideTriggered
+      ? {
+          trustedMuteCount,
+          trustedReportCount: trustedCount,
+        }
+      : null;
+
+    let hideBypass = hideTriggered ? existingHideBypass : "";
+    const computedHidden = hideTriggered && !hideBypass;
+
     const overrideEntry = getModerationOverride(video.id);
     const overrideActive = overrideEntry?.showAnyway === true;
     const overrideUpdatedAt = Number.isFinite(overrideEntry?.updatedAt)
       ? Math.floor(overrideEntry.updatedAt)
       : Date.now();
 
+    const originalHideCounts = hideCounts
+      ? {
+          trustedMuteCount: Math.max(0, Math.floor(hideCounts.trustedMuteCount)),
+          trustedReportCount: Math.max(0, Math.floor(hideCounts.trustedReportCount)),
+        }
+      : null;
+
     const originalState = {
       blockAutoplay: computedBlockAutoplay,
       blurThumbnail: computedBlurThumbnail,
+      hidden: computedHidden,
+      hideReason: hideTriggered ? hideReason : "",
+      hideCounts: originalHideCounts,
+      hideBypass,
+      hideTriggered,
     };
 
     const decoratedModeration = {
@@ -5173,12 +5229,27 @@ class Application {
       original: {
         blockAutoplay: originalState.blockAutoplay,
         blurThumbnail: originalState.blurThumbnail,
+        hidden: originalState.hidden,
+        hideReason: originalState.hideReason,
+        hideCounts: originalState.hideCounts,
+        hideBypass: originalState.hideBypass,
+        hideTriggered: originalState.hideTriggered,
       },
     };
 
     if (overrideActive) {
       decoratedModeration.blockAutoplay = false;
       decoratedModeration.blurThumbnail = false;
+      decoratedModeration.hidden = false;
+      if (decoratedModeration.hideReason) {
+        delete decoratedModeration.hideReason;
+      }
+      if (decoratedModeration.hideCounts) {
+        delete decoratedModeration.hideCounts;
+      }
+      if (decoratedModeration.hideBypass) {
+        delete decoratedModeration.hideBypass;
+      }
       decoratedModeration.viewerOverride = {
         showAnyway: true,
         updatedAt: overrideUpdatedAt,
@@ -5186,6 +5257,22 @@ class Application {
     } else {
       decoratedModeration.blockAutoplay = originalState.blockAutoplay;
       decoratedModeration.blurThumbnail = originalState.blurThumbnail;
+      decoratedModeration.hidden = originalState.hidden;
+      if (originalState.hideReason) {
+        decoratedModeration.hideReason = originalState.hideReason;
+      } else if (decoratedModeration.hideReason) {
+        delete decoratedModeration.hideReason;
+      }
+      if (originalState.hideCounts) {
+        decoratedModeration.hideCounts = { ...originalState.hideCounts };
+      } else if (decoratedModeration.hideCounts) {
+        delete decoratedModeration.hideCounts;
+      }
+      if (originalState.hideBypass) {
+        decoratedModeration.hideBypass = originalState.hideBypass;
+      } else if (decoratedModeration.hideBypass) {
+        delete decoratedModeration.hideBypass;
+      }
       if (decoratedModeration.viewerOverride) {
         delete decoratedModeration.viewerOverride;
       }
@@ -5214,10 +5301,38 @@ class Application {
     const target = storedVideo || video;
 
     if (target) {
+      if (target.moderation && typeof target.moderation === "object") {
+        if (target.moderation.hidden) {
+          delete target.moderation.hidden;
+        }
+        if (target.moderation.hideReason) {
+          delete target.moderation.hideReason;
+        }
+        if (target.moderation.hideCounts) {
+          delete target.moderation.hideCounts;
+        }
+        if (target.moderation.hideBypass) {
+          delete target.moderation.hideBypass;
+        }
+      }
       this.decorateVideoModeration(target);
     }
 
     if (this.currentVideo && this.currentVideo.id === video.id) {
+      if (this.currentVideo.moderation && typeof this.currentVideo.moderation === "object") {
+        if (this.currentVideo.moderation.hidden) {
+          delete this.currentVideo.moderation.hidden;
+        }
+        if (this.currentVideo.moderation.hideReason) {
+          delete this.currentVideo.moderation.hideReason;
+        }
+        if (this.currentVideo.moderation.hideCounts) {
+          delete this.currentVideo.moderation.hideCounts;
+        }
+        if (this.currentVideo.moderation.hideBypass) {
+          delete this.currentVideo.moderation.hideBypass;
+        }
+      }
       this.decorateVideoModeration(this.currentVideo);
     }
 

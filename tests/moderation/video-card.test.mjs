@@ -137,7 +137,14 @@ test("VideoCard renders moderation badges and respects viewer override", async (
   assert.equal(card.thumbnailEl.dataset.thumbnailState, "blurred");
   assert.equal(card.getRoot().dataset.moderationReportCount, "3");
   assert.ok(card.moderationBadgeEl);
-  assert.equal(card.moderationBadgeEl.dataset.moderationState, "blocked");
+  assert.equal(card.moderationBadgeEl.dataset.moderationState, "hidden");
+  assert.equal(card.getRoot().dataset.moderationHidden, "true");
+  assert.equal(card.getRoot().dataset.moderationHideReason, "trusted-report-hide");
+  assert.equal(card.getRoot().dataset.moderationHideTrustedReportCount, "3");
+  assert.ok(card.hiddenSummaryEl);
+  assert.equal(card.hiddenSummaryEl.parentElement, card.getRoot());
+  assert.equal(card.anchorEl.hasAttribute("hidden"), true);
+  assert.equal(card.contentEl.hasAttribute("hidden"), true);
   assert.ok(card.moderationActionButton);
 
   card.onModerationOverride = ({ video: overrideVideo }) => {
@@ -160,5 +167,11 @@ test("VideoCard renders moderation badges and respects viewer override", async (
   assert.equal(card.getRoot().dataset.moderationOverride, "show-anyway");
   assert.equal(card.thumbnailEl.dataset.thumbnailState, undefined);
   assert.equal(card.moderationBadgeEl.dataset.moderationState, "override");
+  assert.equal(card.getRoot().dataset.moderationHidden, undefined);
+  assert.equal(card.getRoot().dataset.moderationHideReason, undefined);
+  assert.equal(card.getRoot().dataset.moderationHideTrustedReportCount, undefined);
+  assert.equal(card.anchorEl.hasAttribute("hidden"), false);
+  assert.equal(card.contentEl.hasAttribute("hidden"), false);
+  assert.ok(!card.hiddenSummaryEl || card.hiddenSummaryEl.parentElement !== card.getRoot());
   assert.ok(card.moderationBadgeEl.textContent.includes("Showing despite"));
 });
