@@ -33,12 +33,16 @@
 
 ### Upload a video
 
-Open the **Upload** modal from the header toolbar and choose the flow that matches your source material:
+Open the **Upload** modal from the header toolbar and start by selecting the NIP-71 event type that matches your post. The chooser sets the correct Nostr kind and schema defaults so the published note follows [`docs/nostr-event-schemas.md`](docs/nostr-event-schemas.md).
 
-- **Custom (hosted URL or magnet)**: Provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, and keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish.
-- **Cloudflare (R2 direct upload)**: Connect your bucket once via the Cloudflare pane, then drop media files for bitvid to upload through the R2 API. The modal tracks progress, lets you tweak metadata, and publishes the resulting R2 URL back into the note automatically.
+Both upload modes expose metadata repeaters for **variants**, **captions/text tracks**, **segments**, **hashtags**, **participants**, and **references**. Use these when you have multiple playback qualities (variants), accessibility tracks (captions), multipart drops (segments), discoverability tags (hashtags), credited collaborators (participants), or cross-posts/threads (references). Skip any repeater you don’t need—the base schema stays valid without them.
 
-Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using either mode. Use the **Private** toggle to keep the resulting card visible only to you.
+Pick the flow that matches your source material:
+
+- **Custom (hosted URL or magnet)**: Provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish, and applies whatever metadata repeaters you configured.
+- **Cloudflare (R2 direct upload)**: Enter your Cloudflare credentials in the guided form, optionally expand the **Advanced settings** accordion to override pathing or access controls, then drop media files for bitvid to upload through the R2 API. The modal tracks progress, applies your metadata selections, auto-fills the primary `imeta` variant once the upload completes, and publishes the resulting R2 URL back into the note automatically.
+
+Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using either mode. Use the **Private** toggle to keep the resulting card visible only to you, and lean on the repeaters whenever you want to surface richer context or alternate assets as outlined in the event schema reference.
 
 ### How playback works
 
