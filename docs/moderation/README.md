@@ -32,6 +32,7 @@ Thread new moderation behaviors through the same service → stage → app → U
 - Disable autoplay preview if **≥ 2** F1 friends report `nudity`.
 - Downrank author when any F1 has them in mute list (10000).
 - Opt-in admin lists (30000 with `d=bitvid:admin:*`) can hard-hide content.
+- Trust seeds from `DEFAULT_TRUST_SEED_NPUBS` count as baseline F1 contacts (toggle via `FEATURE_TRUST_SEEDS`).
 
 > You can override all defaults in **Settings → Safety & Moderation**.
 

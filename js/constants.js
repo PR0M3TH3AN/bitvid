@@ -1,9 +1,16 @@
+export const DEFAULT_TRUST_SEED_NPUBS = Object.freeze([
+  // Rollout: trust seeds count as F1 contacts. Rollback: flip FEATURE_TRUST_SEEDS to false.
+  "npub1424242424242424242424242424242424242424242424242424qamrcaj",
+  "npub1hwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwasxw04hu",
+]);
+
 const DEFAULT_FLAGS = Object.freeze({
   URL_FIRST_ENABLED: true, // try URL before magnet in the player
   ACCEPT_LEGACY_V1: true, // accept v1 magnet-only notes
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO: false,
   FEATURE_WATCH_HISTORY_V2: true,
   FEATURE_PUBLISH_NIP71: false,
+  FEATURE_TRUST_SEEDS: true, // Rollback: disable to drop baseline trust seeds without code changes.
   WSS_TRACKERS: Object.freeze([
     "wss://tracker.openwebtorrent.com",
     "wss://tracker.fastcast.nz",
@@ -25,6 +32,7 @@ const runtimeFlags = (() => {
       DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
     FEATURE_WATCH_HISTORY_V2: DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2,
     FEATURE_PUBLISH_NIP71: DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71,
+    FEATURE_TRUST_SEEDS: DEFAULT_FLAGS.FEATURE_TRUST_SEEDS,
     WSS_TRACKERS: [...DEFAULT_FLAGS.WSS_TRACKERS],
   };
   if (globalScope) {
@@ -115,6 +123,11 @@ export let FEATURE_PUBLISH_NIP71 = coerceBoolean(
   DEFAULT_FLAGS.FEATURE_PUBLISH_NIP71
 );
 
+export let FEATURE_TRUST_SEEDS = coerceBoolean(
+  runtimeFlags.FEATURE_TRUST_SEEDS,
+  DEFAULT_FLAGS.FEATURE_TRUST_SEEDS
+);
+
 export let WSS_TRACKERS = freezeTrackers(
   sanitizeTrackerList(runtimeFlags.WSS_TRACKERS)
 );
@@ -183,6 +196,20 @@ Object.defineProperty(runtimeFlags, "FEATURE_PUBLISH_NIP71", {
   },
 });
 
+Object.defineProperty(runtimeFlags, "FEATURE_TRUST_SEEDS", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    return FEATURE_TRUST_SEEDS;
+  },
+  set(next) {
+    FEATURE_TRUST_SEEDS = coerceBoolean(
+      next,
+      DEFAULT_FLAGS.FEATURE_TRUST_SEEDS
+    );
+  },
+});
+
 Object.defineProperty(runtimeFlags, "WSS_TRACKERS", {
   configurable: true,
   enumerable: true,
@@ -200,6 +227,7 @@ runtimeFlags.ACCEPT_LEGACY_V1 = ACCEPT_LEGACY_V1;
 runtimeFlags.VIEW_FILTER_INCLUDE_LEGACY_VIDEO = VIEW_FILTER_INCLUDE_LEGACY_VIDEO;
 runtimeFlags.FEATURE_WATCH_HISTORY_V2 = FEATURE_WATCH_HISTORY_V2;
 runtimeFlags.FEATURE_PUBLISH_NIP71 = FEATURE_PUBLISH_NIP71;
+runtimeFlags.FEATURE_TRUST_SEEDS = FEATURE_TRUST_SEEDS;
 runtimeFlags.WSS_TRACKERS = WSS_TRACKERS;
 
 export function setUrlFirstEnabled(next) {
@@ -226,6 +254,11 @@ export function setWssTrackers(next) {
   return WSS_TRACKERS;
 }
 
+export function setTrustSeedsEnabled(next) {
+  runtimeFlags.FEATURE_TRUST_SEEDS = next;
+  return FEATURE_TRUST_SEEDS;
+}
+
 export function resetRuntimeFlags() {
   setUrlFirstEnabled(DEFAULT_FLAGS.URL_FIRST_ENABLED);
   setAcceptLegacyV1(DEFAULT_FLAGS.ACCEPT_LEGACY_V1);
@@ -233,6 +266,7 @@ export function resetRuntimeFlags() {
     DEFAULT_FLAGS.VIEW_FILTER_INCLUDE_LEGACY_VIDEO
   );
   setWatchHistoryV2Enabled(DEFAULT_FLAGS.FEATURE_WATCH_HISTORY_V2);
+  setTrustSeedsEnabled(DEFAULT_FLAGS.FEATURE_TRUST_SEEDS);
   setWssTrackers(DEFAULT_FLAGS.WSS_TRACKERS);
 }
 
