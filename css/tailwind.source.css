@@ -25,7 +25,7 @@
   *::before,
   *::after {
     scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
   *::-webkit-scrollbar {
@@ -1216,6 +1216,10 @@
     @apply video-modal__container gap-6;
   }
 
+  #playerModal {
+    --player-modal-vertical-padding: var(--space-lg);
+  }
+
   #playerModal > .bv-modal__panel {
     max-width: none;
     width: 100%;
@@ -1257,6 +1261,14 @@
       --player-modal-inline-padding,
       clamp(var(--space-md-plus), 4vw, var(--space-2xl))
     );
+  }
+
+  #playerModal .video-modal__primary > .watch-container:first-child {
+    padding-block-start: var(--player-modal-vertical-padding);
+  }
+
+  #playerModal .video-modal__secondary > .watch-container:last-child {
+    padding-block-end: var(--player-modal-vertical-padding);
   }
 
   #playerModal .modal-nav .watch-container {
@@ -1385,6 +1397,10 @@
 
   #playerModal .modal-nav__bar {
     @apply flex w-full items-center gap-3 px-2 py-2 sm:px-4;
+    padding-inline: var(
+      --player-modal-inline-padding,
+      clamp(var(--space-md-plus), 4vw, var(--space-2xl))
+    );
   }
 
   #playerModal .modal-nav__context {
@@ -2772,7 +2788,9 @@
     display: flex;
     align-items: center;
     gap: var(--space-sidebar-footer-gap);
-    padding: var(--space-sidebar-nav-padding-block) var(--space-md);
+    padding-block: var(--space-sidebar-nav-padding-block);
+    padding-inline-start: var(--space-sidebar-nav-padding-inline-start);
+    padding-inline-end: var(--space-sidebar-nav-padding-inline-end);
     min-height: var(--sidebar-control-size);
     border-radius: var(--radius-sidebar-nav);
     font-size: var(--font-size-sidebar-nav);
@@ -2885,7 +2903,9 @@
     justify-content: space-between;
     gap: var(--space-sidebar-footer-gap);
     width: 100%;
-    padding: var(--space-sidebar-trigger-padding-block) var(--space-md);
+    padding-block: var(--space-sidebar-trigger-padding-block);
+    padding-inline-start: var(--space-sidebar-nav-padding-inline-start);
+    padding-inline-end: var(--space-sidebar-nav-padding-inline-end);
     min-height: var(--sidebar-control-size);
     border-radius: var(--radius-sidebar-nav);
     border: var(--border-width-hairline) solid transparent;
@@ -3020,7 +3040,7 @@
     flex-direction: column;
     gap: var(--space-sidebar-popover-gap);
     width: 100%;
-    padding-inline-end: 0;
+    padding-inline-end: var(--space-sidebar-dropup-scroll-reserve);
     max-height: var(--sidebar-dropup-max-height);
     overflow-y: auto;
     overflow-x: hidden;
