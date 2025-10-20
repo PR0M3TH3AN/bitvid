@@ -389,7 +389,11 @@ for (const _ of [0]) {
 
       assert.equal(layout?.dataset.mobileView, 'menu');
       assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
+      assert.equal(menuWrapper?.classList.contains('hidden'), false);
+      assert.equal(menuWrapper?.hasAttribute('hidden'), false);
       assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
+      assert.equal(paneWrapper?.classList.contains('hidden'), true);
+      assert.equal(paneWrapper?.hasAttribute('hidden'), true);
       assert.equal(backButton?.classList.contains('hidden'), true);
 
       controller.selectPane('relays');
@@ -397,7 +401,11 @@ for (const _ of [0]) {
 
       assert.equal(layout?.dataset.mobileView, 'pane');
       assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'true');
+      assert.equal(menuWrapper?.classList.contains('hidden'), true);
+      assert.equal(menuWrapper?.hasAttribute('hidden'), true);
       assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'false');
+      assert.equal(paneWrapper?.classList.contains('hidden'), false);
+      assert.equal(paneWrapper?.hasAttribute('hidden'), false);
       assert.equal(backButton?.classList.contains('hidden'), false);
 
       backButton?.click();
@@ -405,7 +413,11 @@ for (const _ of [0]) {
 
       assert.equal(layout?.dataset.mobileView, 'menu');
       assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
+      assert.equal(menuWrapper?.classList.contains('hidden'), false);
+      assert.equal(menuWrapper?.hasAttribute('hidden'), false);
       assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
+      assert.equal(paneWrapper?.classList.contains('hidden'), true);
+      assert.equal(paneWrapper?.hasAttribute('hidden'), true);
       assert.equal(backButton?.classList.contains('hidden'), true);
     } finally {
       cleanup();

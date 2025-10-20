@@ -1655,10 +1655,24 @@ export class ProfileModalController {
 
     if (menuWrapper) {
       menuWrapper.setAttribute("aria-hidden", menuHidden ? "true" : "false");
+      if (menuHidden) {
+        menuWrapper.classList.add("hidden");
+        menuWrapper.setAttribute("hidden", "");
+      } else {
+        menuWrapper.classList.remove("hidden");
+        menuWrapper.removeAttribute("hidden");
+      }
     }
 
     if (paneWrapper) {
       paneWrapper.setAttribute("aria-hidden", paneHidden ? "true" : "false");
+      if (paneHidden) {
+        paneWrapper.classList.add("hidden");
+        paneWrapper.setAttribute("hidden", "");
+      } else {
+        paneWrapper.classList.remove("hidden");
+        paneWrapper.removeAttribute("hidden");
+      }
     }
 
     if (backButton) {
