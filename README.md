@@ -61,7 +61,16 @@ Click a card to open the video modal and use the **Zap** button (lightning bolt 
 Operators can tune thresholds and lists from the Profile modal:
 
 - The **Moderation** tab manages blur and autoplay limits plus the relay-synced mute/ban lists.
-- Each video card’s **More** menu surfaces per-video actions (report, mute author, or “show anyway”) that feed into the moderation service.
+- Each video card’s **More** menu surfaces per-video actions powered by `videoMenuRenderers.js`, including:
+  - **Repost** to boost the note as a kind 6 event.
+  - **Mirror** to republish the hosted URL and magnet as a kind 1063 event.
+  - **Rebroadcast** to push the existing event to additional relays (see cooldown note below).
+  - **Remove from history** to clear the item from your encrypted watch log.
+  - **Mute/Unmute creator** to control local visibility without severing follows.
+  - **Blacklist creator** for operators who maintain shared deny lists.
+  - **Block creator** to drop their events entirely.
+  - **Report** to issue a NIP-56 moderation report.
+- When a rebroadcast hits rate limits, the app surfaces cooldown guidance (e.g., “Rebroadcast is cooling down. Try again in 30s.”) so operators know when to retry without spamming relays.
 
 ---
 
