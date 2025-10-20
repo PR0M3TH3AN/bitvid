@@ -37,8 +37,11 @@ globalThis.window.NostrTools.nip19 = mockNip19;
 
 const { __adminListStoreTestHooks } = await import("../js/adminListStore.js");
 
-const { extractNpubsFromEvent, normalizeParticipantTagValue } =
-  __adminListStoreTestHooks;
+const {
+  extractNpubsFromEvent,
+  normalizeParticipantTagValue,
+  publishListWithFirstAcceptance,
+} = __adminListStoreTestHooks;
 
 const sampleHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const sampleNpub = "npub1existingparticipant";
@@ -85,5 +88,63 @@ assert.equal(
   fallbackHex,
   "should preserve hex when nip19 helpers are unavailable"
 );
+
+const relays = [
+  "wss://fast.example",
+  "wss://slow.example",
+];
+
+for (const listKey of ["whitelist", "blacklist"]) {
+  const start = Date.now();
+  const publishBehavior = publishListWithFirstAcceptance(
+    {},
+    relays,
+    { id: `event-${listKey}` },
+    {
+      listKey,
+      publishRelay: (_pool, url) =>
+        new Promise((resolve) => {
+          const isFast = url === relays[0];
+          const delayMs = isFast ? 5 : 200;
+          setTimeout(() => {
+            resolve({
+              url,
+              success: isFast,
+              error: isFast ? null : new Error("relay rejected"),
+            });
+          }, delayMs);
+        }),
+    },
+  );
+
+  const acceptanceResult = await publishBehavior.firstAcceptance;
+  const elapsed = Date.now() - start;
+
+  assert.equal(
+    acceptanceResult.url,
+    relays[0],
+    `should resolve using the fast relay for ${listKey}`,
+  );
+
+  assert.ok(
+    elapsed < 150,
+    `expected ${listKey} publish to resolve before slow relay timeout (elapsed ${elapsed}ms)`,
+  );
+
+  const settledResults = await publishBehavior.allResults;
+
+  assert.equal(
+    settledResults.length,
+    relays.length,
+    `should collect all publish results for ${listKey}`,
+  );
+
+  const acceptedCount = settledResults.filter((entry) => entry.success).length;
+  assert.equal(
+    acceptedCount,
+    1,
+    `should mark exactly one relay as successful for ${listKey}`,
+  );
+}
 
 console.log("admin-list-store tests passed");
