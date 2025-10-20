@@ -16,7 +16,7 @@ import {
   buildAdminListEvent,
   ADMIN_LIST_IDENTIFIERS,
 } from "./nostrEventSchemas.js";
-import { publishEventToRelays } from "./nostrPublish.js";
+import { publishEventToRelay } from "./nostrPublish.js";
 
 const LEGACY_STORAGE_KEYS = {
   editors: "bitvid_admin_editors",
@@ -304,7 +304,16 @@ function ensureNostrReady() {
     );
   }
 
-  const relays = Array.isArray(nostrClient.relays) ? nostrClient.relays : [];
+  const writeRelays =
+    Array.isArray(nostrClient.writeRelays) && nostrClient.writeRelays.length
+      ? nostrClient.writeRelays
+      : [];
+  const relays = writeRelays.length
+    ? writeRelays
+    : Array.isArray(nostrClient.relays)
+    ? nostrClient.relays
+    : [];
+
   if (!relays.length) {
     throw createError("nostr-unavailable", "No Nostr relays configured.");
   }
@@ -533,6 +542,94 @@ function buildListEvent(listKey, npubs, actorHex) {
   });
 }
 
+function publishListWithFirstAcceptance(pool, relays, event, options = {}) {
+  const publishRelay =
+    typeof options.publishRelay === "function"
+      ? options.publishRelay
+      : publishEventToRelay;
+  const listKey = typeof options.listKey === "string" ? options.listKey : "";
+  const publishOptions =
+    options && typeof options.publishOptions === "object"
+      ? options.publishOptions
+      : undefined;
+
+  const relayPromises = Array.isArray(relays)
+    ? relays.map((url) => publishRelay(pool, url, event, publishOptions))
+    : [];
+  const resultsBuffer = new Array(relayPromises.length);
+
+  let resolved = false;
+  let remaining = relayPromises.length;
+
+  const firstAcceptance = new Promise((resolve, reject) => {
+    if (!relayPromises.length) {
+      reject(
+        createError(
+          "publish-failed",
+          listKey
+            ? `Failed to publish ${listKey} list to any relay.`
+            : "Failed to publish admin list to any relay.",
+        )
+      );
+      return;
+    }
+
+    relayPromises.forEach((promise, index) => {
+      promise
+        .then((result) => {
+          resultsBuffer[index] = result;
+          if (result?.success && !resolved) {
+            resolved = true;
+            resolve(result);
+          }
+        })
+        .catch((error) => {
+          resultsBuffer[index] = {
+            url: Array.isArray(relays) ? relays[index] : "",
+            success: false,
+            error,
+          };
+        })
+        .finally(() => {
+          remaining -= 1;
+          if (!resolved && remaining === 0) {
+            reject(
+              createError(
+                "publish-failed",
+                listKey
+                  ? `Failed to publish ${listKey} list to any relay.`
+                  : "Failed to publish admin list to any relay.",
+              )
+            );
+          }
+        });
+    });
+  });
+
+  const allResults = Promise.allSettled(relayPromises).then((entries) => {
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      const fallbackUrl = Array.isArray(relays) ? relays[index] : "";
+      const result =
+        entry?.status === "fulfilled"
+          ? entry.value
+          : {
+              url: fallbackUrl,
+              success: false,
+              error: entry?.reason || new Error("publish failed"),
+            };
+
+      if (typeof resultsBuffer[index] === "undefined") {
+        resultsBuffer[index] = result;
+      }
+    }
+
+    return resultsBuffer;
+  });
+
+  return { firstAcceptance, allResults, resultsBuffer };
+}
+
 async function persistNostrState(actorNpub, updates = {}) {
   ensureNostrReady();
   const permissionResult = await requestDefaultExtensionPermissions();
@@ -620,29 +717,41 @@ async function persistNostrState(actorNpub, updates = {}) {
     }
 
     const relays = ensureNostrReady();
-    const publishResults = await publishEventToRelays(
+    const { firstAcceptance, allResults } = publishListWithFirstAcceptance(
       nostrClient.pool,
       relays,
       signedEvent,
+      { listKey },
     );
 
-    if (isDevMode) {
-      publishResults
-        .filter((result) => !result.success)
-        .forEach((result) => {
-          userLogger.warn(
-            `[adminListStore] Publish failed for ${listKey} on ${result.url}:`,
-            result.error,
-          );
-        });
+    const logSettledResults = allResults.then((results) => {
+      if (isDevMode) {
+        results
+          .filter((result) => !result?.success)
+          .forEach((result) => {
+            userLogger.warn(
+              `[adminListStore] Publish failed for ${listKey} on ${result.url}:`,
+              result.error,
+            );
+          });
+      }
+
+      return results;
+    });
+
+    try {
+      await firstAcceptance;
+    } catch (error) {
+      await logSettledResults.catch(() => {});
+      throw error;
     }
 
-    if (!publishResults.some((result) => result.success)) {
-      throw createError(
-        "publish-failed",
-        `Failed to publish ${listKey} list to any relay.`
+    logSettledResults.catch((loggingError) => {
+      devLogger.warn(
+        `[adminListStore] Failed to summarize publish results for ${listKey}:`,
+        loggingError,
       );
-    }
+    });
 
     clearLegacyStorageFor(listKey);
   }
@@ -682,4 +791,5 @@ export async function persistAdminState(actorNpub, updates) {
 export const __adminListStoreTestHooks = Object.freeze({
   extractNpubsFromEvent,
   normalizeParticipantTagValue,
+  publishListWithFirstAcceptance,
 });
