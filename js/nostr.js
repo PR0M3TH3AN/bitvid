@@ -196,17 +196,21 @@ const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
 
+export const DEFAULT_NIP07_ENCRYPTION_METHODS = Object.freeze([
+  // Encryption helpers — request both legacy NIP-04 and modern NIP-44 upfront
+  "nip04.encrypt",
+  "nip04.decrypt",
+  "nip44.encrypt",
+  "nip44.decrypt",
+]);
+
 export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
   // Core auth + relay metadata
   "get_public_key",
   "sign_event",
   "read_relays",
   "write_relays",
-  // Encryption helpers — request both legacy NIP-04 and modern NIP-44 upfront
-  "nip04.encrypt",
-  "nip04.decrypt",
-  "nip44.encrypt",
-  "nip44.decrypt",
+  ...DEFAULT_NIP07_ENCRYPTION_METHODS,
 ]);
 
 const viewEventPublishMemory = new Map();
@@ -560,7 +564,10 @@ async function runNip07WithRetry(
   }
 }
 
-export const __testExports = { runNip07WithRetry };
+export const __testExports = {
+  runNip07WithRetry,
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+};
 
 function withRequestTimeout(promise, timeoutMs, onTimeout, message = "Request timed out") {
   const resolvedTimeout = Number(timeoutMs);

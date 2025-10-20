@@ -5,7 +5,16 @@ import test from "node:test";
 import { NostrClient, nostrClient, __testExports } from "../js/nostr.js";
 import { accessControl } from "../js/accessControl.js";
 
-const { runNip07WithRetry } = __testExports ?? {};
+const {
+  runNip07WithRetry,
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+} = __testExports ?? {};
+
+const EXPECTED_ENCRYPTION_PERMISSIONS = Array.isArray(
+  DEFAULT_NIP07_ENCRYPTION_METHODS,
+)
+  ? DEFAULT_NIP07_ENCRYPTION_METHODS
+  : ["nip04.encrypt", "nip04.decrypt", "nip44.encrypt", "nip44.decrypt"];
 
 const HEX_PUBKEY = "f".repeat(64);
 const PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
@@ -143,25 +152,15 @@ test("NIP-07 login requests decrypt permissions upfront", async () => {
     const pubkey = await nostrClient.login();
     assert.equal(pubkey, HEX_PUBKEY);
     assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
-    assert.ok(
-      nostrClient.extensionPermissionCache.has("nip04.decrypt"),
-      "nip04.decrypt permission should be tracked as granted",
-    );
-    assert.ok(
-      nostrClient.extensionPermissionCache.has("nip04.encrypt"),
-      "nip04.encrypt permission should be tracked as granted",
-    );
+    for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
+      assert.ok(
+        nostrClient.extensionPermissionCache.has(method),
+        `${method} permission should be tracked as granted`,
+      );
+    }
     assert.ok(
       nostrClient.extensionPermissionCache.has("sign_event"),
       "sign_event permission should be tracked as granted",
-    );
-    assert.ok(
-      nostrClient.extensionPermissionCache.has("nip44.encrypt"),
-      "nip44.encrypt permission should be tracked as granted",
-    );
-    assert.ok(
-      nostrClient.extensionPermissionCache.has("nip44.decrypt"),
-      "nip44.decrypt permission should be tracked as granted",
     );
   } finally {
     env.restore();
@@ -204,13 +203,7 @@ test("NIP-07 decrypt reuses cached extension permissions", async () => {
         .map((method) => method.trim())
         .filter(Boolean),
     );
-    const expectedStoredPermissions = [
-      "nip04.decrypt",
-      "nip04.encrypt",
-      "nip44.encrypt",
-      "nip44.decrypt",
-    ];
-    for (const method of expectedStoredPermissions) {
+    for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
         storedSet.has(method),
         `stored permissions should include ${method}`,
@@ -220,13 +213,7 @@ test("NIP-07 decrypt reuses cached extension permissions", async () => {
     const freshClient = new NostrClient();
     freshClient.pubkey = HEX_PUBKEY;
 
-    const expectedCachedPermissions = [
-      "nip04.decrypt",
-      "nip04.encrypt",
-      "nip44.encrypt",
-      "nip44.decrypt",
-    ];
-    for (const method of expectedCachedPermissions) {
+    for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
         freshClient.extensionPermissionCache.has(method),
         `fresh client should hydrate ${method} from storage`,
