@@ -319,14 +319,6 @@ export function createModerationStage({
           }
         : () => ({ hex: "", whitelisted: false, blacklisted: false });
 
-    const feedName =
-      typeof context?.feedName === "string" ? context.feedName.trim().toLowerCase() : "";
-    const runtimeVariant =
-      typeof context?.runtime?.feedVariant === "string"
-        ? context.runtime.feedVariant.trim().toLowerCase()
-        : "";
-    const isDiscoveryFeed = feedName === "discovery" || runtimeVariant === "discovery";
-
     const results = [];
 
     for (const item of items) {
@@ -470,13 +462,10 @@ export function createModerationStage({
         trustedMuters = [];
       }
 
-      let blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
-      let blurThumbnail = trustedCount >= normalizedBlurThreshold;
-      const adminWhitelistBypass = isDiscoveryFeed && adminStatus?.whitelisted === true;
-      if (adminWhitelistBypass) {
-        blockAutoplay = false;
-        blurThumbnail = false;
-      }
+      const blockAutoplay = trustedCount >= normalizedAutoplayThreshold;
+      const blurThumbnail = trustedCount >= normalizedBlurThreshold;
+      const adminWhitelist = adminStatus?.whitelisted === true;
+      const adminWhitelistBypass = false;
 
       if (!item.metadata || typeof item.metadata !== "object") {
         item.metadata = {};
@@ -495,7 +484,7 @@ export function createModerationStage({
       metadataModeration.trustedReporters = Array.isArray(trustedReporters)
         ? trustedReporters.slice()
         : [];
-      metadataModeration.adminWhitelist = adminStatus?.whitelisted === true;
+      metadataModeration.adminWhitelist = adminWhitelist;
       metadataModeration.adminWhitelistBypass = adminWhitelistBypass;
       metadataModeration.trustedMuted = trustedMuted;
       metadataModeration.trustedMuters = trustedMuters.slice();
@@ -521,7 +510,7 @@ export function createModerationStage({
       video.moderation.blurThumbnail = blurThumbnail;
       video.moderation.trustedCount = trustedCount;
       video.moderation.reportType = normalizedReportType;
-      video.moderation.adminWhitelist = adminStatus?.whitelisted === true;
+      video.moderation.adminWhitelist = adminWhitelist;
       video.moderation.adminWhitelistBypass = adminWhitelistBypass;
       video.moderation.trustedMuted = trustedMuted;
       if (trustedMuted) {
