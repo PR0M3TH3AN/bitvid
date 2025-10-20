@@ -7126,7 +7126,7 @@ export class NostrClient {
 
       const contentPayload = {
         version: Number.isFinite(vid.version) ? vid.version : 3,
-        deleted: vid.deleted === true,
+        deleted: true,
         isPrivate: vid.isPrivate === true,
         isNsfw: vid.isNsfw === true,
         isForKids: vid.isForKids === true && vid.isNsfw !== true,
