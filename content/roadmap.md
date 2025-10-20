@@ -5,6 +5,7 @@
 - **Universal more/settings menus** – Video cards expose consistent “more” and owner settings menus with channel navigation, sharing, blocking, and reporting actions wired through dedicated renderers.
 - **Watch History view** – A dedicated watch history page ships with privacy messaging, pagination, relay sync, and local cache controls.
 - **Zap controls** – Channel profiles manage zap visibility, login gating, retry flows, and receipt rendering via the Lightning controller on the page.
+- **Source visibility filtering** – Lists now hide cards whose hosted URLs are offline unless their WebTorrent fallback is healthy, reusing the shared guard in `js/utils/cardSourceVisibility.js`.
 
 ## Bug Fixes
 
@@ -44,10 +45,7 @@
 - Introduce a subscription mechanism with notifications.
 - Add zaps to videos, profiles, and comments.
 - Create a VRR (View, Rating, and Retention) Penalty Scoring system. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/07_bitvid_Enhanced_View_Rating_%26_Retention_Penalty_Scoring.md)
-- Implement visibility filtering for videos:
-  - Run lightweight URL-health probes so cards stay visible when the hosted playback link responds.
-  - When a URL is unreachable, fall back to WebTorrent and surface items only if their magnets can stream via peers or web seeds.
-  - Align the filtering logic with the player’s URL-first, WebTorrent-fallback behavior during list rendering.
+- Expand visibility tooling around the shipped source guard to add operator overrides, richer status messaging, and better diagnostics when both URL and magnet sources fail.
 - Dynamic Home Page and Video Tracking Specification. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/08_bitvid_Enhanced_Dynamic_Home_Page_%26_Video_Tracking_Specification.md)
 - Add multi-language support for content and filtration. (v4?)
 - Create a settings menu for local account preferences, including relay, adult content, theme, and language.
