@@ -12,8 +12,32 @@
 
   <div class="bv-modal__panel modal-sheet profile-modal" tabindex="-1">
       <!-- Modal Header -->
-      <div class="modal-header">
-        <h2 id="profileModalTitle" class="text-lg font-bold text-text">Profile</h2>
+      <div class="modal-header profile-modal__header">
+        <div class="profile-modal__header-title">
+          <button
+            id="profileModalBack"
+            type="button"
+            class="modal-back btn-ghost focus-ring hidden"
+            aria-hidden="true"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            <span class="text-xs font-medium">Menu</span>
+          </button>
+          <h2 id="profileModalTitle" class="text-lg font-bold text-text">Profile</h2>
+        </div>
         <button id="closeProfileModal" class="modal-close">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -34,68 +58,79 @@
 
       <!-- Modal Body -->
       <div class="profile-modal__body">
-        <div class="profile-modal__layout">
+        <div
+          class="profile-modal__layout"
+          data-profile-layout
+          data-mobile-view="menu"
+        >
           <!-- Left navigation column -->
-          <nav class="profile-modal__nav" aria-label="Profile sections">
-            <button
-              id="profileNavAccount"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneAccount"
-              aria-selected="true"
-              data-state="active"
-            >
-              Account
-            </button>
-            <button
-              id="profileNavRelays"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneRelays"
-              aria-selected="false"
-            >
-              Relays
-            </button>
-            <button
-              id="profileNavWallet"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneWallet"
-              aria-selected="false"
-            >
-              Wallet
-            </button>
-            <button
-              id="profileNavBlocked"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneBlocked"
-              aria-selected="false"
-            >
-              Blocked
-            </button>
-            <button
-              id="profileNavHistory"
-              type="button"
-              class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneHistory"
-              aria-selected="false"
-            >
-              Watch history
-            </button>
-            <button
-              id="profileNavAdmin"
-              type="button"
-              class="btn-ghost focus-ring hidden w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
-              aria-controls="profilePaneAdmin"
-              aria-selected="false"
-            >
-              Admin (Moderation)
-            </button>
-          </nav>
+          <div class="profile-modal__menu" data-profile-mobile-menu aria-hidden="false">
+            <nav class="profile-modal__nav" aria-label="Profile sections">
+              <button
+                id="profileNavAccount"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneAccount"
+                aria-selected="true"
+                data-state="active"
+              >
+                Account
+              </button>
+              <button
+                id="profileNavRelays"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneRelays"
+                aria-selected="false"
+              >
+                Relays
+              </button>
+              <button
+                id="profileNavWallet"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneWallet"
+                aria-selected="false"
+              >
+                Wallet
+              </button>
+              <button
+                id="profileNavBlocked"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneBlocked"
+                aria-selected="false"
+              >
+                Blocked
+              </button>
+              <button
+                id="profileNavHistory"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneHistory"
+                aria-selected="false"
+              >
+                Watch history
+              </button>
+              <button
+                id="profileNavAdmin"
+                type="button"
+                class="btn-ghost focus-ring hidden w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneAdmin"
+                aria-selected="false"
+              >
+                Admin (Moderation)
+              </button>
+            </nav>
+          </div>
 
           <!-- Right content panes -->
-          <div class="profile-modal__panes">
+          <div
+            class="profile-modal__pane-wrapper"
+            data-profile-mobile-pane
+            aria-hidden="true"
+          >
+            <div class="profile-modal__panes">
             <section
               id="profilePaneAccount"
               class="profile-pane space-y-6"

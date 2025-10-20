@@ -24,6 +24,65 @@ async function waitForAnimationFrame(window, cycles = 1) {
   }
 }
 
+function createMatchMediaList(query, initialMatches = false) {
+  let matches = Boolean(initialMatches);
+  const listeners = new Set();
+
+  const notify = () => {
+    const event = { matches, media: query, type: 'change' };
+    listeners.forEach((listener) => {
+      try {
+        listener(event);
+      } catch {}
+    });
+  };
+
+  return {
+    get matches() {
+      return matches;
+    },
+    set matches(value) {
+      matches = Boolean(value);
+    },
+    media: query,
+    addEventListener(type, listener) {
+      if (type === 'change' && typeof listener === 'function') {
+        listeners.add(listener);
+      }
+    },
+    removeEventListener(type, listener) {
+      if (type === 'change' && typeof listener === 'function') {
+        listeners.delete(listener);
+      }
+    },
+    addListener(listener) {
+      if (typeof listener === 'function') {
+        listeners.add(listener);
+      }
+    },
+    removeListener(listener) {
+      if (typeof listener === 'function') {
+        listeners.delete(listener);
+      }
+    },
+    dispatchEvent(event) {
+      if (!event || event.type !== 'change') {
+        return true;
+      }
+      listeners.forEach((listener) => {
+        try {
+          listener(event);
+        } catch {}
+      });
+      return true;
+    },
+    setMatches(value) {
+      matches = Boolean(value);
+      notify();
+    },
+  };
+}
+
 beforeEach(() => {
   dom = new JSDOM(
     '<!DOCTYPE html><html><body><div id="modalMount"></div></body></html>',
@@ -52,6 +111,14 @@ beforeEach(() => {
 
   window.confirm = () => true;
   global.confirm = window.confirm;
+
+  window.__matchMediaMocks = [];
+  window.matchMedia = (query) => {
+    const mql = createMatchMediaList(query, false);
+    window.__matchMediaMocks.push(mql);
+    return mql;
+  };
+  global.matchMedia = window.matchMedia;
 
   container = document.getElementById('modalMount');
 
@@ -87,10 +154,15 @@ afterEach(() => {
   delete global.HTMLElement;
   delete global.document;
   delete global.window;
+  delete global.matchMedia;
 
   if (dom) {
     dom.window.close();
     dom = null;
+  }
+  if (typeof window !== 'undefined') {
+    delete window.matchMedia;
+    delete window.__matchMediaMocks;
   }
   container = null;
 });
@@ -290,6 +362,62 @@ for (const _ of [0]) {
       });
     },
   );
+
+  test('Profile modal toggles mobile menu and pane views', async (t) => {
+    const controller = createController();
+    await controller.load();
+    applyDesignSystemAttributes(document);
+
+    let cleanupRan = false;
+    const cleanup = () => {
+      try {
+        controller.hide({ silent: true });
+      } catch {}
+      cleanupRan = true;
+    };
+
+    try {
+      await controller.show('account');
+      await waitForAnimationFrame(window, 2);
+
+      const layout = document.querySelector('[data-profile-layout]');
+      const menuWrapper = document.querySelector('[data-profile-mobile-menu]');
+      const paneWrapper = document.querySelector('[data-profile-mobile-pane]');
+      const backButton = document.getElementById('profileModalBack');
+
+      assert.ok(layout && menuWrapper && paneWrapper && backButton);
+
+      assert.equal(layout?.dataset.mobileView, 'menu');
+      assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
+      assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
+      assert.equal(backButton?.classList.contains('hidden'), true);
+
+      controller.selectPane('relays');
+      await waitForAnimationFrame(window, 1);
+
+      assert.equal(layout?.dataset.mobileView, 'pane');
+      assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'true');
+      assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'false');
+      assert.equal(backButton?.classList.contains('hidden'), false);
+
+      backButton?.click();
+      await waitForAnimationFrame(window, 1);
+
+      assert.equal(layout?.dataset.mobileView, 'menu');
+      assert.equal(menuWrapper?.getAttribute('aria-hidden'), 'false');
+      assert.equal(paneWrapper?.getAttribute('aria-hidden'), 'true');
+      assert.equal(backButton?.classList.contains('hidden'), true);
+    } finally {
+      cleanup();
+    }
+
+    t.after(() => {
+      if (!cleanupRan) {
+        cleanup();
+      }
+      resetRuntimeFlags();
+    });
+  });
 
   test('Profile modal uses abbreviated npub display', async () => {
     const sampleProfiles = [
