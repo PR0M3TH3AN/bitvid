@@ -11,6 +11,10 @@
 ## Features
 
 - **Decentralized Sharing**: Video sharing without central servers.
+- **Cloudflare R2 Uploads**: Publish directly from the Upload modal's Cloudflare flow with progress tracking and credential helpers.
+- **Encrypted Watch History**: Sync viewing activity privately through the NIP-04 encrypted pipeline with local fallbacks.
+- **Live View Counters**: Subscribe to view events and see totals update in real time on video cards and the video modal.
+- **Lightning Zaps**: Tip creators with Lightning payments via the Zap controls in the video modal.
 - **Private Video Listings**: Hide cards from shared grids so only the owner sees them.
 - **Nostr Integration**: Use Nostr keys for login and interaction.
 - **WebTorrent Streaming**: Stream videos directly through torrent technology.
@@ -27,17 +31,14 @@
 2. **Login with Nostr**:
    - Use a compatible Nostr browser extension or manually input your public key.
 
-### Post a video
+### Upload a video
 
-The upload modal enforces **Title + (URL or Magnet)**. Hosted URLs are strongly recommended so the player can start instantly, and you may also add a magnet for resilience.
+Open the **Upload** modal from the header toolbar and choose the flow that matches your source material:
 
-- **Title**: Required. Matches the in-app validation copy.
-- **Hosted URL (recommended)**: Supply an HTTPS MP4/WebM/HLS/DASH asset. This is the primary playback path.
-- **Magnet (optional but encouraged)**: Paste the literal `magnet:?xt=urn:btih:...` string. The form decodes it with `safeDecodeMagnet()` to prevent hash corruption. Never wrap magnets in `new URL()`—store them raw or decode then pass directly to the helpers.
-- **Web seeds (`ws=`)**: HTTPS only. Point to a file root (e.g., `https://cdn.example.com/video/`). Mixed-content (`http://`) hints are rejected just like the modal message explains.
-- **Additional sources (`xs=`)**: Recommend adding an HTTPS `.torrent` link so WebTorrent peers can bootstrap faster.
-- **Trackers**: bitvid’s browser client only connects to WSS trackers shipped in `js/constants.js`. Do not add UDP or plaintext HTTP trackers to published magnets.
-- **Private toggle**: Hides the card from shared grids so only you see it and adds a purple accent so the private state stands out.
+- **Custom (hosted URL or magnet)**: Provide a title plus an HTTPS video URL and/or a WebTorrent magnet. The form requires at least one transport, validates `ws=`/`xs=` hints, and keeps magnets raw by decoding them with `safeDecodeMagnet()` before publish.
+- **Cloudflare (R2 direct upload)**: Connect your bucket once via the Cloudflare pane, then drop media files for bitvid to upload through the R2 API. The modal tracks progress, lets you tweak metadata, and publishes the resulting R2 URL back into the note automatically.
+
+Hosted URLs remain the preferred playback path, and you can still add a magnet or supplemental web seeds when using either mode. Use the **Private** toggle to keep the resulting card visible only to you.
 
 ### How playback works
 
@@ -45,6 +46,22 @@ The upload modal enforces **Title + (URL or Magnet)**. Hosted URLs are strongly 
 2. **WebTorrent fallback**: If the URL probe fails or returns an error status, bitvid falls back to WebTorrent using the raw magnet. The helpers append HTTPS `ws=`/`xs=` hints so peers seed quickly.
 3. **Safety checks**: Magnets are decoded with `safeDecodeMagnet()` and normalized via `normalizeAndAugmentMagnet()` before reaching WebTorrent. Trackers remain WSS-only to satisfy browser constraints.
 4. **Operator playbook**: If a deployment causes playback regressions, flip the relevant feature flags back to their default values in `js/constants.js` and redeploy. Capture the rollback steps in AGENTS.md and the PR description so the Main channel stays stable.
+
+### Watch history & view counts
+
+- **Encrypted watch history**: When you opt into watch history, bitvid stores entries locally and syncs them as NIP-04 encrypted events so only your keys can decrypt them. The History view and the Profile modal’s History tab hydrate from relays when available and gracefully fall back to the local cache when offline.
+- **Live view counters**: The `viewCounter` module hydrates totals from relays, subscribes to live updates, and dedupes local plays. Video cards and the video modal update in real time as new view events arrive.
+
+### Support creators with Lightning
+
+Click a card to open the video modal and use the **Zap** button (lightning bolt icon) to send Lightning payments. The Zap dialog walks you through selecting an amount, splitting sats, and pushing the payment through your active wallet connection or Nostr Wallet Connect session.
+
+### Moderation & safety controls
+
+Operators can tune thresholds and lists from the Profile modal:
+
+- The **Moderation** tab manages blur and autoplay limits plus the relay-synced mute/ban lists.
+- Each video card’s **More** menu surfaces per-video actions (report, mute author, or “show anyway”) that feed into the moderation service.
 
 ---
 
