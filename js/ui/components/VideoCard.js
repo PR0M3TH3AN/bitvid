@@ -372,12 +372,11 @@ export class VideoCard {
 
     const title = this.createElement("h3", {
       classNames: [
+        "video-card__title",
         "text-lg",
         "font-bold",
         "text-text",
         "line-clamp-2",
-        "hover:text-accent",
-        "focus-visible:text-accent",
         "cursor-pointer"
       ],
       textContent: this.video.title

@@ -838,6 +838,15 @@
     @apply opacity-60 shadow-none;
   }
 
+  .video-card__title {
+    transition: color var(--motion-duration-base) var(--motion-ease-in-out);
+  }
+
+  .video-card__title:hover,
+  .video-card__title:focus-visible {
+    color: var(--color-accent);
+  }
+
   .form-control {
     @apply focus-ring block w-full rounded-md border border-border-subtle bg-surface-alt px-3 py-2 text-sm text-text shadow-sm transition duration-base ease-in-out placeholder:text-muted;
   }
