@@ -2712,20 +2712,42 @@ class Application {
 
     try {
       await this.nostrService.publishVideoNote(publishPayload, this.pubkey);
-      if (typeof onSuccess === "function") {
-        await onSuccess();
-      }
-      if (suppressModalClose !== true && this.uploadModal) {
-        this.uploadModal.close();
-      }
-      await this.loadVideos();
-      this.showSuccess("Video shared successfully!");
-      return true;
     } catch (err) {
       devLogger.error("Failed to publish video:", err);
       this.showError("Failed to share video. Please try again later.");
       return false;
     }
+
+    if (typeof onSuccess === "function") {
+      await onSuccess();
+    }
+
+    if (suppressModalClose !== true && this.uploadModal) {
+      this.uploadModal.close();
+    }
+
+    let loadVideosError = null;
+
+    try {
+      await this.loadVideos();
+    } catch (error) {
+      loadVideosError = error;
+      devLogger.error(
+        "[Application] Failed to refresh videos after publishing:",
+        error
+      );
+    }
+
+    this.showSuccess("Video shared successfully!");
+
+    if (loadVideosError) {
+      this.showStatus(
+        "Video shared, but the feed may be out of date. Refresh the page to see the latest posts.",
+        { autoHideMs: 8000 }
+      );
+    }
+
+    return true;
   }
 
   /**
