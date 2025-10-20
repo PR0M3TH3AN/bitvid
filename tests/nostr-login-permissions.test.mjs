@@ -152,6 +152,22 @@ test("NIP-07 login requests decrypt permissions upfront", async () => {
     const pubkey = await nostrClient.login();
     assert.equal(pubkey, HEX_PUBKEY);
     assert.ok(env.enableCalls.length >= 1, "extension.enable should be invoked");
+    assert.ok(
+      nostrClient.extensionPermissionCache.has("nip04.encrypt"),
+      "nip04.encrypt permission should be tracked as granted",
+    );
+    assert.ok(
+      nostrClient.extensionPermissionCache.has("nip04.decrypt"),
+      "nip04.decrypt permission should be tracked as granted",
+    );
+    assert.ok(
+      nostrClient.extensionPermissionCache.has("nip44.encrypt"),
+      "nip44.encrypt permission should be tracked as granted",
+    );
+    assert.ok(
+      nostrClient.extensionPermissionCache.has("nip44.decrypt"),
+      "nip44.decrypt permission should be tracked as granted",
+    );
     for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
       assert.ok(
         nostrClient.extensionPermissionCache.has(method),
@@ -172,17 +188,33 @@ test("NIP-07 login requests decrypt permissions upfront", async () => {
 test("NIP-07 decrypt reuses cached extension permissions", async () => {
   const env = setupLoginEnvironment();
   try {
-    let decryptCalls = 0;
+    const decryptCalls = {
+      nip04: 0,
+      nip44: 0,
+    };
     window.nostr.nip04 = {
       decrypt: async (actorKey, ciphertext) => {
-        decryptCalls += 1;
+        decryptCalls.nip04 += 1;
         assert.equal(actorKey, HEX_PUBKEY);
         return `plaintext:${ciphertext}`;
+      },
+    };
+    window.nostr.nip44 = {
+      decrypt: async (actorKey, ciphertext) => {
+        decryptCalls.nip44 += 1;
+        assert.equal(actorKey, HEX_PUBKEY);
+        return `plaintext44:${ciphertext}`;
       },
     };
 
     const pubkey = await nostrClient.login();
     assert.equal(pubkey, HEX_PUBKEY);
+    for (const method of EXPECTED_ENCRYPTION_PERMISSIONS) {
+      assert.ok(
+        nostrClient.extensionPermissionCache.has(method),
+        `nostrClient should track ${method} after login`,
+      );
+    }
 
     const storedRaw = localStorage.getItem(PERMISSIONS_STORAGE_KEY);
     assert.ok(storedRaw, "extension permissions should persist to localStorage");
@@ -220,24 +252,32 @@ test("NIP-07 decrypt reuses cached extension permissions", async () => {
       );
     }
 
-    const permissionResult = await freshClient.ensureExtensionPermissions([
-      "nip04.decrypt",
-    ]);
-    assert.equal(permissionResult.ok, true);
-    assert.equal(
-      env.enableCalls.length,
-      baselineEnableCalls,
-      "cached permissions should prevent extra enable() calls",
-    );
+    for (const method of ["nip04.decrypt", "nip44.decrypt"]) {
+      const permissionResult = await freshClient.ensureExtensionPermissions([
+        method,
+      ]);
+      assert.equal(permissionResult.ok, true);
+      assert.equal(
+        env.enableCalls.length,
+        baselineEnableCalls,
+        `cached permissions should prevent extra enable() calls for ${method}`,
+      );
+    }
 
     const plaintext = await window.nostr.nip04.decrypt(HEX_PUBKEY, "ciphertext");
     assert.equal(plaintext, "plaintext:ciphertext");
+    const plaintext44 = await window.nostr.nip44.decrypt(
+      HEX_PUBKEY,
+      "ciphertext44",
+    );
+    assert.equal(plaintext44, "plaintext44:ciphertext44");
     assert.equal(
       env.enableCalls.length,
       baselineEnableCalls,
       "decrypt calls should not trigger additional enable() prompts",
     );
-    assert.equal(decryptCalls, 1);
+    assert.equal(decryptCalls.nip04, 1);
+    assert.equal(decryptCalls.nip44, 1);
   } finally {
     env.restore();
     nostrClient.logout();
