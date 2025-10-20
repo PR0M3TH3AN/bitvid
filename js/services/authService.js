@@ -79,10 +79,17 @@ const FAST_PROFILE_TIMEOUT_MS = 2500;
 const BACKGROUND_PROFILE_TIMEOUT_MS = 6000;
 
 export default class AuthService {
-  constructor({ nostrClient, userBlocks, relayManager, logger } = {}) {
+  constructor({
+    nostrClient,
+    userBlocks,
+    relayManager,
+    logger,
+    accessControl,
+  } = {}) {
     this.nostrClient = nostrClient || null;
     this.userBlocks = userBlocks || null;
     this.relayManager = relayManager || null;
+    this.accessControl = accessControl || null;
 
     if (typeof logger === "function") {
       this.logger = logger;
@@ -318,6 +325,41 @@ export default class AuthService {
 
     const identityChanged = previousPubkey !== nextPubkey;
 
+    const control = this.accessControl;
+    const candidateNpub = this.safeEncodeNpub(nextPubkey) || null;
+    let lockdownActive = false;
+    if (control && typeof control.isLockdownActive === "function") {
+      try {
+        lockdownActive = control.isLockdownActive();
+      } catch (error) {
+        this.log("[AuthService] accessControl.isLockdownActive threw", error);
+        lockdownActive = Boolean(lockdownActive);
+      }
+    }
+
+    if (lockdownActive) {
+      let isAdminCandidate = false;
+      const adminCheckValue =
+        candidateNpub || (typeof trimmed === "string" && trimmed ? trimmed : null);
+      if (adminCheckValue && typeof control?.isAdminEditor === "function") {
+        try {
+          isAdminCandidate = !!control.isAdminEditor(adminCheckValue);
+        } catch (error) {
+          this.log("[AuthService] accessControl.isAdminEditor threw", error);
+          isAdminCandidate = false;
+        }
+      }
+
+      if (!isAdminCandidate) {
+        const lockdownError = new Error(
+          "This site is temporarily locked down. Only administrators may sign in right now.",
+        );
+        lockdownError.code = "site-lockdown";
+        lockdownError.npub = candidateNpub || adminCheckValue;
+        throw lockdownError;
+      }
+    }
+
     if (normalized) {
       setPubkey(normalized);
       if (this.nostrClient && typeof this.nostrClient === "object") {
@@ -330,7 +372,7 @@ export default class AuthService {
       }
     }
 
-    const npub = this.safeEncodeNpub(nextPubkey);
+    const npub = candidateNpub;
     setCurrentUserNpub(npub);
 
     let savedProfilesMutated = false;

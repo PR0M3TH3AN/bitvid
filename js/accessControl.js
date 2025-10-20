@@ -6,6 +6,7 @@ import {
   getWhitelistMode,
   setWhitelistMode as persistWhitelistMode,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
+  isLockdownMode,
 } from "./config.js";
 import { loadAdminState, persistAdminState } from "./adminListStore.js";
 import { userLogger } from "./utils/logger.js";
@@ -390,6 +391,10 @@ class AccessControl {
       return true;
     }
 
+    if (this.isLockdownActive()) {
+      return false;
+    }
+
     if (this.whitelist.has(normalized)) {
       return true;
     }
@@ -403,6 +408,10 @@ class AccessControl {
     }
 
     return true;
+  }
+
+  isLockdownActive() {
+    return Boolean(isLockdownMode);
   }
 }
 

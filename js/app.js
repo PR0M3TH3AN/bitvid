@@ -350,6 +350,7 @@ class Application {
         userBlocks,
         relayManager,
         logger: devLogger,
+        accessControl,
       });
     this.authEventUnsubscribes.push(
       this.authService.on("auth:login", (detail) => {
@@ -1345,6 +1346,13 @@ class Application {
           await this.authService.login(savedPubKey, { persistActive: false });
         } catch (error) {
           devLogger.error("Auto-login failed:", error);
+          if (error && error.code === "site-lockdown") {
+            const message = this.describeLoginError(
+              error,
+              "Auto-login failed. Please sign in again once lockdown ends.",
+            );
+            this.showStatus(message, { autoHideMs: 12000 });
+          }
         }
       }
 
@@ -1991,15 +1999,35 @@ class Application {
       this.showSuccess("Profile added. Select it when you're ready to switch.");
     } catch (error) {
       devLogger.error("Failed to add profile via NIP-07:", error);
-      const message =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : "Couldn't add that profile. Please try again.";
+      const message = this.describeLoginError(
+        error,
+        "Couldn't add that profile. Please try again.",
+      );
       this.showError(message);
     } finally {
       setLoadingState(false);
     }
   }
+
+  describeLoginError(error, fallbackMessage = "Failed to login. Please try again.") {
+    const code =
+      error && typeof error.code === "string" && error.code.trim()
+        ? error.code.trim()
+        : null;
+    if (code === "site-lockdown") {
+      return "This site is temporarily locked down. Only administrators may sign in right now.";
+    }
+
+    if (error && typeof error.message === "string") {
+      const trimmed = error.message.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+
+    return fallbackMessage;
+  }
+
   canCurrentUserManageBlacklist() {
     const actorNpub = this.getCurrentUserNpub();
     if (!actorNpub) {
@@ -2307,10 +2335,10 @@ class Application {
           }
         } catch (err) {
           devLogger.error("[NIP-07 login error]", err);
-          const message =
-            err && typeof err.message === "string" && err.message.trim()
-              ? err.message.trim()
-              : "Failed to login with NIP-07. Please try again.";
+          const message = this.describeLoginError(
+            err,
+            "Failed to login with NIP-07. Please try again.",
+          );
           this.showError(message);
         } finally {
           setLoadingState(false);
@@ -2873,10 +2901,10 @@ class Application {
       if (this.uploadModal?.cancelCustomSubmitCooldown) {
         this.uploadModal.cancelCustomSubmitCooldown();
       }
-      const message =
-        error && typeof error.message === "string" && error.message.trim()
-          ? error.message.trim()
-          : "Login required to publish videos.";
+      const message = this.describeLoginError(
+        error,
+        "Login required to publish videos.",
+      );
       this.showError(message);
     }
   }
