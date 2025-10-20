@@ -19,20 +19,16 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 
 ### Step 2: Prepare Your Video
 
-1. Download WebTorrent Desktop app from [webtorrent.io/desktop](https://webtorrent.io/desktop/)
-2. Open your video file in WebTorrent Desktop
-3. It will create a special "magnet link" for your video
-4. Keep WebTorrent Desktop running to share your video
+1. Host your video at an HTTPS URL that browsers can stream directly (MP4/WebM/HLS/DASH all work). You can use your own CDN, Cloudflare Stream, an R2 bucket, or any static site host—as long as the link begins with `https://`.
+2. (Optional but recommended) Generate a WebTorrent magnet so viewers can fall back to peer-to-peer delivery. Desktop apps like [WebTorrent Desktop](https://webtorrent.io/desktop/) or command-line tools can create the magnet for you.
+3. Double-check that either the hosted URL or the magnet (or both) is ready before you open the Upload modal.
 
 ### Step 3: Share on bitvid
 
-1. Click "Share a Video" on bitvid
-2. Paste your video's magnet link
-3. Add a title, description, and thumbnail
-
-> ⚠️ **Note:** I recomend using [PostImage](https://postimages.org/) to host your image. You can copy the "Direct link" after uploading the image and use that link as your Thumbnail image.
-
-4. Click "Post" to share!
+1. Click "Share a Video" on bitvid to open the upload modal.
+2. In **Custom** mode, enter your title, paste the hosted HTTPS URL, and (optionally) add the magnet plus any `ws`/`xs` hints. Switch to the experimental **Cloudflare** quick upload mode if you want bitvid to push the file straight to your Cloudflare R2 bucket—have your Account ID, S3 Access Key ID, and Secret Access Key ready (the advanced toggle also accepts an API token, Zone ID, and base domain if you use them).
+3. Review the rest of the form: add a description and thumbnail, decide whether to allow comments, and set the NSFW or "For Kids" toggles to match your content. Explore the metadata section to fill in captions, duration, publish time, hashtags, participants, and other fields so first-time viewers have all the context they need.
+4. Click "Post" to publish once everything looks right.
 
 ## Tips for Success
 
@@ -40,6 +36,7 @@ Ready to jump in? Here's everything you need to know to start watching and shari
 - Add eye-catching thumbnails to attract viewers
 - Write clear descriptions to help people find your content
 - Use the "Private" option if you only want to share with specific people
+- Encrypted watch-history sync lives in the [Watch History view](history.html), where you can clear devices or pause tracking whenever you need.
 
 ## Need Help?
 
