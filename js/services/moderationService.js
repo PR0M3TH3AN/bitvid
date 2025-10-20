@@ -4,6 +4,20 @@ import { accessControl } from "../accessControl.js";
 import { userBlocks, USER_BLOCK_EVENTS } from "../userBlocks.js";
 import logger from "../utils/logger.js";
 
+const AUTOPLAY_TRUST_THRESHOLD = 2;
+const BLUR_TRUST_THRESHOLD = 3;
+
+function normalizeUserLogger(candidate) {
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    typeof candidate.info === "function"
+  ) {
+    return candidate;
+  }
+  return logger.user;
+}
+
 class SimpleEventEmitter {
   constructor(logHandler = null) {
     this.listeners = new Map();
@@ -310,9 +324,11 @@ export class ModerationService {
     logger: log = null,
     userBlocks: userBlockManager = null,
     accessControl: accessControlService = null,
+    userLogger: userChannel = null,
   } = {}) {
     this.nostrClient = client;
     this.log = normalizeLogger(log);
+    this.userLogger = normalizeUserLogger(userChannel);
 
     this.viewerPubkey = "";
     this.trustedContacts = new Set();
@@ -348,6 +364,66 @@ export class ModerationService {
     this.userBlockRefreshQueue = Promise.resolve();
 
     this.setUserBlocks(userBlockManager);
+  }
+
+  setUserLogger(channel) {
+    this.userLogger = normalizeUserLogger(channel);
+  }
+
+  logThresholdTransitions({
+    eventId = "",
+    reportType = "",
+    previousTrusted = 0,
+    nextTrusted = 0,
+  } = {}) {
+    const normalizedEventId = normalizeEventId(eventId);
+    const normalizedType = normalizeReportType(reportType);
+    if (!normalizedEventId || !normalizedType) {
+      return;
+    }
+
+    const previous = Number.isFinite(previousTrusted) ? previousTrusted : 0;
+    const next = Number.isFinite(nextTrusted) ? nextTrusted : 0;
+
+    const transitions = [];
+
+    if (AUTOPLAY_TRUST_THRESHOLD > 0) {
+      const previousMet = previous >= AUTOPLAY_TRUST_THRESHOLD;
+      const nextMet = next >= AUTOPLAY_TRUST_THRESHOLD;
+      if (previousMet !== nextMet) {
+        transitions.push({
+          action: nextMet ? "autoplay-block-enabled" : "autoplay-block-cleared",
+        });
+      }
+    }
+
+    if (BLUR_TRUST_THRESHOLD > 0) {
+      const previousMet = previous >= BLUR_TRUST_THRESHOLD;
+      const nextMet = next >= BLUR_TRUST_THRESHOLD;
+      if (previousMet !== nextMet) {
+        transitions.push({
+          action: nextMet ? "blur-enabled" : "blur-cleared",
+        });
+      }
+    }
+
+    if (!transitions.length) {
+      return;
+    }
+
+    const channel = this.userLogger || logger.user;
+    for (const entry of transitions) {
+      try {
+        channel.info("[moderationService] moderation threshold crossed", {
+          eventId: normalizedEventId,
+          reportType: normalizedType,
+          trustedCount: next,
+          action: entry.action,
+        });
+      } catch (error) {
+        logger.user.warn("[moderationService] failed to log threshold transition", error);
+      }
+    }
   }
 
   setLogger(newLogger) {
@@ -1512,11 +1588,29 @@ export class ModerationService {
 
     const eventReports = this.reportEvents.get(normalized);
     if (!eventReports || !eventReports.size) {
+      const previousSummary = this.reportSummaries.get(normalized);
+      if (previousSummary && previousSummary.types) {
+        for (const [type, detail] of Object.entries(previousSummary.types)) {
+          if (!detail || typeof detail !== "object") {
+            continue;
+          }
+          const previousTrusted = Number.isFinite(detail.trusted) ? detail.trusted : 0;
+          if (previousTrusted > 0) {
+            this.logThresholdTransitions({
+              eventId: normalized,
+              reportType: type,
+              previousTrusted,
+              nextTrusted: 0,
+            });
+          }
+        }
+      }
       this.reportSummaries.delete(normalized);
       this.emit("summary", { eventId: normalized, summary: null });
       return;
     }
 
+    const previousSummary = this.reportSummaries.get(normalized);
     const typeStats = new Map();
     let totalTrusted = 0;
     const adminSnapshot = this.getAdminListSnapshot();
@@ -1563,6 +1657,43 @@ export class ModerationService {
         total: stats.total,
         latest: stats.latest,
       };
+    }
+
+    if (previousSummary && previousSummary.types) {
+      const seen = new Set([
+        ...Object.keys(previousSummary.types || {}),
+        ...Object.keys(types),
+      ]);
+      for (const type of seen) {
+        const previousEntry = previousSummary?.types?.[type];
+        const nextEntry = types?.[type];
+        const previousTrusted = Number.isFinite(previousEntry?.trusted)
+          ? previousEntry.trusted
+          : 0;
+        const nextTrusted = Number.isFinite(nextEntry?.trusted)
+          ? nextEntry.trusted
+          : 0;
+        if (previousTrusted !== nextTrusted) {
+          this.logThresholdTransitions({
+            eventId: normalized,
+            reportType: type,
+            previousTrusted,
+            nextTrusted,
+          });
+        }
+      }
+    } else {
+      for (const [type, stats] of Object.entries(types)) {
+        const nextTrusted = Number.isFinite(stats?.trusted) ? stats.trusted : 0;
+        if (nextTrusted > 0) {
+          this.logThresholdTransitions({
+            eventId: normalized,
+            reportType: type,
+            previousTrusted: 0,
+            nextTrusted,
+          });
+        }
+      }
     }
 
     const summary = {

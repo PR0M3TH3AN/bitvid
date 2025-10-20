@@ -1,6 +1,8 @@
 // js/utils/logger.js
 // Provides frozen logger channels so both modules and inline scripts share
 // consistent dev-vs-user logging semantics without duplicating feature gates.
+// The dev channel now exposes a `debug` helper for high-volume traces that
+// should never reach production consoles.
 
 import { isDevMode } from "../config.js";
 
@@ -23,6 +25,7 @@ function createConsoleAdapter() {
     return {
       log: NOOP,
       info: NOOP,
+      debug: NOOP,
       warn: NOOP,
       error: NOOP,
     };
@@ -33,6 +36,7 @@ function createConsoleAdapter() {
   return {
     log: typeof consoleRef.log === "function" ? consoleRef.log.bind(consoleRef) : fallback,
     info: typeof consoleRef.info === "function" ? consoleRef.info.bind(consoleRef) : fallback,
+    debug: typeof consoleRef.debug === "function" ? consoleRef.debug.bind(consoleRef) : fallback,
     warn: typeof consoleRef.warn === "function" ? consoleRef.warn.bind(consoleRef) : fallback,
     error: typeof consoleRef.error === "function" ? consoleRef.error.bind(consoleRef) : fallback,
   };
@@ -64,6 +68,10 @@ const devLogger = Object.freeze({
   info: (...args) => {
     if (!isDevMode) return;
     consoleAdapter.info(...args);
+  },
+  debug: (...args) => {
+    if (!isDevMode) return;
+    consoleAdapter.debug(...args);
   },
   warn: (...args) => {
     if (!isDevMode) return;
@@ -136,16 +144,17 @@ function isCompatibleLogger(candidate) {
     return false;
   }
 
-  const requiredChannels = ["dev", "user"];
-  const requiredMethods = ["log", "info", "warn", "error"];
+  const channelRequirements = {
+    dev: ["log", "info", "debug", "warn", "error"],
+    user: ["log", "info", "warn", "error"],
+  };
 
-  return requiredChannels.every((channel) => {
+  return Object.entries(channelRequirements).every(([channel, methods]) => {
     const obj = candidate[channel];
-    return (
-      obj &&
-      typeof obj === "object" &&
-      requiredMethods.every((method) => typeof obj[method] === "function")
-    );
+    if (!obj || typeof obj !== "object") {
+      return false;
+    }
+    return methods.every((method) => typeof obj[method] === "function");
   });
 }
 

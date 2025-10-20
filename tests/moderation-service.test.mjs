@@ -22,6 +22,8 @@ if (typeof globalThis.window === "undefined") {
   globalThis.window = {};
 }
 
+const noopUserLogger = { info: () => {} };
+
 test("trusted report summaries respect personal blocks and admin lists", async (t) => {
   const previousTools = globalThis.NostrTools;
   const previousWindowTools = globalThis.window?.NostrTools;
@@ -74,6 +76,7 @@ test("trusted report summaries respect personal blocks and admin lists", async (
     logger: () => {},
     userBlocks: userBlocksMock,
     accessControl: accessControlMock,
+    userLogger: noopUserLogger,
   });
 
   service.trustedContacts = new Set([trustedHex]);
@@ -138,7 +141,7 @@ test("user block updates recompute summaries and emit notifications", async (t) 
   }
 
   const userBlocks = new FakeUserBlocks();
-  const service = new ModerationService({ logger: () => {}, userBlocks });
+  const service = new ModerationService({ logger: () => {}, userBlocks, userLogger: noopUserLogger });
 
   service.trustedContacts = new Set([blockedHex, trustedHex]);
 
@@ -220,8 +223,78 @@ test("user block updates recompute summaries and emit notifications", async (t) 
   );
 });
 
+test("moderation thresholds emit logger hooks only when crossing", async (t) => {
+  const calls = [];
+  const userLoggerMock = {
+    info: (...args) => {
+      calls.push(args);
+    },
+  };
+
+  const service = new ModerationService({ logger: () => {}, userLogger: userLoggerMock });
+
+  const eventId = "9".repeat(64);
+  const reportType = "nudity";
+  const trustedReporters = ["a".repeat(64), "b".repeat(64), "c".repeat(64)];
+
+  service.trustedContacts = new Set(trustedReporters);
+
+  const reports = new Map();
+  service.reportEvents.set(eventId, reports);
+
+  const createReporterEntry = (timestamp) => new Map([[reportType, { created_at: timestamp }]]);
+
+  const expectSingleAction = (expectedAction, expectedCount) => {
+    assert.equal(calls.length, 1);
+    const [message, detail] = calls[0];
+    assert.equal(message, "[moderationService] moderation threshold crossed");
+    assert.equal(detail.action, expectedAction);
+    assert.equal(detail.eventId, eventId);
+    assert.equal(detail.reportType, reportType);
+    assert.equal(detail.trustedCount, expectedCount);
+    calls.length = 0;
+  };
+
+  const expectNoAction = () => {
+    assert.equal(calls.length, 0);
+  };
+
+  reports.set(trustedReporters[0], createReporterEntry(100));
+  service.recomputeSummaryForEvent(eventId);
+  expectNoAction();
+
+  reports.set(trustedReporters[1], createReporterEntry(200));
+  service.recomputeSummaryForEvent(eventId);
+  expectSingleAction("autoplay-block-enabled", 2);
+
+  service.recomputeSummaryForEvent(eventId);
+  expectNoAction();
+
+  reports.set(trustedReporters[2], createReporterEntry(300));
+  service.recomputeSummaryForEvent(eventId);
+  expectSingleAction("blur-enabled", 3);
+
+  service.recomputeSummaryForEvent(eventId);
+  expectNoAction();
+
+  reports.delete(trustedReporters[2]);
+  service.recomputeSummaryForEvent(eventId);
+  expectSingleAction("blur-cleared", 2);
+
+  reports.delete(trustedReporters[1]);
+  service.recomputeSummaryForEvent(eventId);
+  expectSingleAction("autoplay-block-cleared", 1);
+
+  reports.delete(trustedReporters[0]);
+  service.recomputeSummaryForEvent(eventId);
+  expectNoAction();
+
+  service.recomputeSummaryForEvent(eventId);
+  expectNoAction();
+});
+
 test("trusted mute aggregation tracks F1 mute lists", () => {
-  const service = new ModerationService({ logger: () => {} });
+  const service = new ModerationService({ logger: () => {}, userLogger: noopUserLogger });
 
   const contactA = "a".repeat(64);
   const contactB = "b".repeat(64);
@@ -305,6 +378,7 @@ test("viewer mute list publishes and updates aggregation", async (t) => {
   const service = new ModerationService({
     logger: () => {},
     nostrClient,
+    userLogger: noopUserLogger,
   });
 
   const previousNostr = globalThis.window.nostr;
