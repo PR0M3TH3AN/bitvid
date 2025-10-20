@@ -26,7 +26,13 @@ import {
   GITHUB_URL,
   BETA_URL,
   DNS_URL,
+  isLockdownMode,
 } from "./config.js";
+import AuthService from "./services/authService.js";
+import { accessControl } from "./accessControl.js";
+import { nostrClient } from "./nostr.js";
+import { userBlocks } from "./userBlocks.js";
+import { relayManager } from "./relayManager.js";
 
 validateInstanceConfig();
 
@@ -35,6 +41,15 @@ initThemeController();
 
 let application = null;
 let applicationReadyPromise = Promise.resolve();
+
+const LOCKDOWN_MODAL_ID = "lockdownModal";
+const LOCKDOWN_LOGIN_BUTTON_ID = "lockdownLoginButton";
+const LOCKDOWN_STATUS_ID = "lockdownStatusMessage";
+const LOCKDOWN_ERROR_ID = "lockdownErrorMessage";
+
+let lockdownAuthService = null;
+let lockdownAccessControlPromise = null;
+let lockdownResumePromise = null;
 
 const bindOptionalExternalLink = ({ selector, url, label }) => {
   const element = document.querySelector(selector);
@@ -58,6 +73,275 @@ const bindOptionalExternalLink = ({ selector, url, label }) => {
   element.target = "_blank";
   element.rel = "noopener noreferrer";
 };
+
+function ensureLockdownAccessControlReady() {
+  if (lockdownAccessControlPromise) {
+    return lockdownAccessControlPromise;
+  }
+
+  lockdownAccessControlPromise = accessControl
+    .refresh()
+    .then(
+      () => true,
+      (error) => {
+        devLogger.error(
+          "[Lockdown] Failed to refresh admin lists before login attempt:",
+          error,
+        );
+        return false;
+      },
+    );
+
+  return lockdownAccessControlPromise;
+}
+
+function getLockdownAuthService() {
+  if (lockdownAuthService) {
+    return lockdownAuthService;
+  }
+
+  const service = new AuthService({
+    nostrClient,
+    userBlocks,
+    relayManager,
+    logger: devLogger,
+    accessControl,
+  });
+
+  try {
+    service.hydrateFromStorage();
+  } catch (error) {
+    devLogger.warn("[Lockdown] Failed to hydrate auth state from storage:", error);
+  }
+
+  lockdownAuthService = service;
+  return service;
+}
+
+function setLockdownStatusMessage(message) {
+  const statusNode = document.getElementById(LOCKDOWN_STATUS_ID);
+  if (!(statusNode instanceof HTMLElement)) {
+    return;
+  }
+
+  const text = typeof message === "string" ? message.trim() : "";
+  if (text) {
+    statusNode.textContent = text;
+    statusNode.classList.remove("hidden");
+  } else {
+    statusNode.textContent = "";
+    statusNode.classList.add("hidden");
+  }
+}
+
+function setLockdownErrorMessage(message) {
+  const errorNode = document.getElementById(LOCKDOWN_ERROR_ID);
+  if (!(errorNode instanceof HTMLElement)) {
+    return;
+  }
+
+  const text = typeof message === "string" ? message.trim() : "";
+  if (text) {
+    errorNode.textContent = text;
+    errorNode.classList.remove("hidden");
+  } else {
+    errorNode.textContent = "";
+    errorNode.classList.add("hidden");
+  }
+}
+
+function resetLockdownError() {
+  setLockdownErrorMessage("");
+}
+
+function setLockdownLoginBusy(isBusy) {
+  const button = document.getElementById(LOCKDOWN_LOGIN_BUTTON_ID);
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const busy = Boolean(isBusy);
+  button.disabled = busy;
+  if (busy) {
+    button.setAttribute("aria-busy", "true");
+  } else {
+    button.removeAttribute("aria-busy");
+  }
+}
+
+async function tryAutoResumeLockdownSession() {
+  const authService = getLockdownAuthService();
+  if (!authService || typeof authService.getActivePubkey !== "function") {
+    return false;
+  }
+
+  const savedPubkey = authService.getActivePubkey();
+  if (!savedPubkey) {
+    return false;
+  }
+
+  resetLockdownError();
+  setLockdownLoginBusy(true);
+  setLockdownStatusMessage("Restoring your previous session…");
+
+  try {
+    await ensureLockdownAccessControlReady();
+    await authService.login(savedPubkey, { persistActive: false });
+    setLockdownStatusMessage("Administrator session restored. Loading bitvid…");
+    await resumeLockdownStartup();
+    return true;
+  } catch (error) {
+    devLogger.warn("[Lockdown] Stored session failed to resume:", error);
+    if (error && typeof error === "object") {
+      if (error.code === "site-lockdown") {
+        setLockdownErrorMessage(
+          "Stored credentials are no longer permitted during lockdown. Please sign in with an authorized administrator account.",
+        );
+      } else if (typeof error.message === "string" && error.message.trim()) {
+        setLockdownErrorMessage(error.message.trim());
+      }
+    }
+    return false;
+  } finally {
+    if (!lockdownResumePromise) {
+      setLockdownLoginBusy(false);
+      setLockdownStatusMessage("Administrator access is required to proceed.");
+    }
+  }
+}
+
+function resumeLockdownStartup() {
+  if (lockdownResumePromise) {
+    return lockdownResumePromise;
+  }
+
+  const modal = document.getElementById(LOCKDOWN_MODAL_ID);
+  const loginButton = document.getElementById(LOCKDOWN_LOGIN_BUTTON_ID);
+  if (loginButton instanceof HTMLButtonElement) {
+    loginButton.removeEventListener("click", handleLockdownLoginClick);
+  }
+
+  if (modal) {
+    closeStaticModal(modal);
+  }
+
+  lockdownResumePromise = Promise.resolve()
+    .then(() => initializeInterface())
+    .catch((error) => {
+      lockdownResumePromise = null;
+      userLogger.error("Failed to start bitvid after lockdown login:", error);
+      if (modal) {
+        openStaticModal(modal);
+      }
+      setLockdownLoginBusy(false);
+      setLockdownStatusMessage("Administrator access is required to proceed.");
+      setLockdownErrorMessage(
+        "We couldn't start the application. Please try again.",
+      );
+      throw error;
+    });
+
+  return lockdownResumePromise;
+}
+
+async function handleLockdownLoginClick(event) {
+  event.preventDefault();
+
+  resetLockdownError();
+  setLockdownStatusMessage("Requesting authorization from your Nostr extension…");
+  setLockdownLoginBusy(true);
+
+  let shouldReleaseButton = true;
+
+  try {
+    await ensureLockdownAccessControlReady();
+    const authService = getLockdownAuthService();
+    const result = await authService.requestLogin({ allowAccountSelection: true });
+    const pubkey =
+      result && typeof result === "object" && typeof result.pubkey === "string"
+        ? result.pubkey
+        : null;
+
+    if (!pubkey) {
+      setLockdownStatusMessage(
+        "No account was selected. Choose an authorized administrator profile to continue.",
+      );
+      return;
+    }
+
+    setLockdownStatusMessage("Login successful. Loading bitvid…");
+    shouldReleaseButton = false;
+    await resumeLockdownStartup();
+    return;
+  } catch (error) {
+    userLogger.error("Lockdown login failed:", error);
+    let message = "Failed to login. Please try again.";
+    if (error && typeof error === "object") {
+      if (error.code === "site-lockdown") {
+        message =
+          "Only administrators and moderators may sign in during lockdown. Try another account.";
+      } else if (error.code === "extension-permission-denied") {
+        message =
+          "The NIP-07 extension denied the permission request required to finish logging in.";
+      } else if (typeof error.message === "string" && error.message.trim()) {
+        message = error.message.trim();
+      }
+    }
+    setLockdownErrorMessage(message);
+    setLockdownStatusMessage("Administrator access is required to proceed.");
+  } finally {
+    if (shouldReleaseButton) {
+      setLockdownLoginBusy(false);
+    }
+  }
+}
+
+async function prepareLockdownInterface() {
+  ensureLockdownAccessControlReady();
+
+  try {
+    await loadModal("components/lockdown-modal.html");
+  } catch (error) {
+    userLogger.error("Failed to load lockdown modal markup:", error);
+    throw error;
+  }
+
+  const modal =
+    prepareStaticModal({ id: LOCKDOWN_MODAL_ID }) ||
+    document.getElementById(LOCKDOWN_MODAL_ID);
+  if (!(modal instanceof HTMLElement)) {
+    throw new Error("Lockdown modal markup is missing after load.");
+  }
+
+  const loginButton = modal.querySelector("[data-lockdown-login]");
+  if (loginButton instanceof HTMLButtonElement) {
+    loginButton.addEventListener("click", handleLockdownLoginClick);
+  } else {
+    devLogger.warn(
+      "[Lockdown] Login button not found inside lockdown modal. Users cannot sign in.",
+    );
+  }
+
+  openStaticModal(modal);
+  resetLockdownError();
+  setLockdownStatusMessage("Administrator access is required to proceed.");
+  setLockdownLoginBusy(false);
+
+  const autoResumed = await tryAutoResumeLockdownSession();
+  if (autoResumed) {
+    return;
+  }
+
+  if (loginButton instanceof HTMLButtonElement && typeof window !== "undefined") {
+    window.requestAnimationFrame(() => {
+      try {
+        loginButton.focus();
+      } catch (error) {
+        devLogger.warn("[Lockdown] Failed to focus lockdown login button:", error);
+      }
+    });
+  }
+}
 
 function startApplication() {
   if (application) {
@@ -713,6 +997,13 @@ async function initializeInterface() {
 }
 
 function onDomReady() {
+  if (isLockdownMode) {
+    prepareLockdownInterface().catch((error) => {
+      userLogger.error("Failed to initialize lockdown interface:", error);
+    });
+    return;
+  }
+
   initializeInterface().catch((error) => {
     userLogger.error("Unhandled error during bitvid initialization:", error);
   });
