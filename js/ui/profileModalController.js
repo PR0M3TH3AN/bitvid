@@ -27,6 +27,31 @@ function createInternalDefaultNwcSettings() {
   return { ...DEFAULT_INTERNAL_NWC_SETTINGS };
 }
 
+const DEFAULT_INTERNAL_MODERATION_SETTINGS = Object.freeze({
+  blurThreshold: 3,
+  autoplayBlockThreshold: 2,
+});
+
+function createInternalDefaultModerationSettings() {
+  return { ...DEFAULT_INTERNAL_MODERATION_SETTINGS };
+}
+
+function ensureInternalModerationSettings(internalState) {
+  if (!internalState || typeof internalState !== "object") {
+    return createInternalDefaultModerationSettings();
+  }
+
+  if (
+    !internalState.moderationSettings ||
+    typeof internalState.moderationSettings !== "object" ||
+    internalState.moderationSettings === null
+  ) {
+    internalState.moderationSettings = createInternalDefaultModerationSettings();
+  }
+
+  return internalState.moderationSettings;
+}
+
 function ensureInternalWalletSettings(internalState) {
   if (!internalState || typeof internalState !== "object") {
     return createInternalDefaultNwcSettings();
@@ -257,6 +282,79 @@ const SERVICE_CONTRACT = [
 
       service.onIdentityChanged = () => {
         internalState.walletSettings = createInternalDefaultNwcSettings();
+      };
+
+      return service;
+    },
+  },
+  {
+    key: "moderationSettings",
+    type: "object",
+    description:
+      "Service that manages Safety & Moderation threshold overrides for the active profile.",
+    fallback: ({ internalState }) => {
+      const ensure = () => ensureInternalModerationSettings(internalState);
+      const sanitize = (value, fallback) => {
+        if (value === null || value === undefined) {
+          return fallback;
+        }
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+          return fallback;
+        }
+        return Math.max(0, Math.floor(numeric));
+      };
+
+      const service = {};
+
+      service.getDefaultModerationSettings = () =>
+        createInternalDefaultModerationSettings();
+
+      service.getActiveModerationSettings = () => {
+        const current = ensure();
+        const defaults = service.getDefaultModerationSettings();
+        return {
+          blurThreshold: sanitize(current.blurThreshold, defaults.blurThreshold),
+          autoplayBlockThreshold: sanitize(
+            current.autoplayBlockThreshold,
+            defaults.autoplayBlockThreshold,
+          ),
+        };
+      };
+
+      service.updateModerationSettings = (partial = {}) => {
+        const defaults = service.getDefaultModerationSettings();
+        const current = ensure();
+        const next = { ...current };
+
+        if (Object.prototype.hasOwnProperty.call(partial, "blurThreshold")) {
+          const value = partial.blurThreshold;
+          next.blurThreshold =
+            value === null
+              ? defaults.blurThreshold
+              : sanitize(value, defaults.blurThreshold);
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(
+            partial,
+            "autoplayBlockThreshold",
+          )
+        ) {
+          const value = partial.autoplayBlockThreshold;
+          next.autoplayBlockThreshold =
+            value === null
+              ? defaults.autoplayBlockThreshold
+              : sanitize(value, defaults.autoplayBlockThreshold);
+        }
+
+        internalState.moderationSettings = next;
+        return service.getActiveModerationSettings();
+      };
+
+      service.resetModerationSettings = () => {
+        internalState.moderationSettings = createInternalDefaultModerationSettings();
+        return service.getActiveModerationSettings();
       };
 
       return service;
@@ -615,6 +713,7 @@ export class ProfileModalController {
       activePane: "account",
       walletBusy: false,
       walletSettings: createInternalDefaultNwcSettings(),
+      moderationSettings: createInternalDefaultModerationSettings(),
     };
 
     this.services = buildServicesContract(services, this.internalState);
@@ -625,6 +724,8 @@ export class ProfileModalController {
     this.safeDecodeNpub = this.services.safeDecodeNpub;
     this.truncateMiddle = this.services.truncateMiddle;
     this.formatShortNpub = this.services.formatShortNpub;
+    this.moderationSettingsDefaults = createInternalDefaultModerationSettings();
+    this.currentModerationSettings = createInternalDefaultModerationSettings();
     this.sendAdminListNotificationService =
       typeof this.services.sendAdminListNotification === "function"
         ? this.services.sendAdminListNotification
@@ -664,6 +765,8 @@ export class ProfileModalController {
         callbacks.onWalletDisconnectRequest || callbacks.onWalletDisconnect || noop,
       onAdminMutation: callbacks.onAdminMutation || noop,
       onAdminNotifyError: callbacks.onAdminNotifyError || noop,
+      onModerationSettingsChange:
+        callbacks.onModerationSettingsChange || noop,
     };
 
     this.profileModal = null;
@@ -728,6 +831,12 @@ export class ProfileModalController {
     this.walletDisconnectButton = null;
     this.walletStatusText = null;
     this.profileWalletStatusText = null;
+    this.moderationSettingsCard = null;
+    this.moderationBlurInput = null;
+    this.moderationAutoplayInput = null;
+    this.moderationSaveButton = null;
+    this.moderationResetButton = null;
+    this.moderationStatusText = null;
     this.moderatorSection = null;
     this.moderatorEmpty = null;
     this.adminModeratorList = null;
@@ -809,6 +918,7 @@ export class ProfileModalController {
     this.setupLayoutBreakpointObserver();
     this.applyModalStackingOverrides();
     this.registerEventListeners();
+    this.refreshModerationSettingsUi();
     const preserveMenu = this.isMobileLayoutActive();
     this.selectPane(this.getActivePane(), { keepMenuView: preserveMenu });
 
@@ -903,6 +1013,18 @@ export class ProfileModalController {
       this.panes.blocked?.querySelector("[data-role=\"blocked-list-status\"]") ||
       null;
     this.profileWalletStatusText = this.walletStatusText;
+    this.moderationSettingsCard =
+      document.getElementById("profileModerationSettings") || null;
+    this.moderationBlurInput =
+      document.getElementById("profileModerationBlurThreshold") || null;
+    this.moderationAutoplayInput =
+      document.getElementById("profileModerationAutoplayThreshold") || null;
+    this.moderationSaveButton =
+      document.getElementById("profileModerationSave") || null;
+    this.moderationResetButton =
+      document.getElementById("profileModerationReset") || null;
+    this.moderationStatusText =
+      document.getElementById("profileModerationStatus") || null;
 
     this.moderatorSection =
       document.getElementById("adminModeratorsSection") || null;
@@ -1117,6 +1239,30 @@ export class ProfileModalController {
     if (this.walletDisconnectButton instanceof HTMLElement) {
       this.walletDisconnectButton.addEventListener("click", () => {
         void this.handleWalletDisconnect();
+      });
+    }
+
+    if (this.moderationBlurInput instanceof HTMLElement) {
+      this.moderationBlurInput.addEventListener("input", () => {
+        this.applyModerationSettingsControlState();
+      });
+    }
+
+    if (this.moderationAutoplayInput instanceof HTMLElement) {
+      this.moderationAutoplayInput.addEventListener("input", () => {
+        this.applyModerationSettingsControlState();
+      });
+    }
+
+    if (this.moderationSaveButton instanceof HTMLElement) {
+      this.moderationSaveButton.addEventListener("click", () => {
+        void this.handleModerationSettingsSave();
+      });
+    }
+
+    if (this.moderationResetButton instanceof HTMLElement) {
+      this.moderationResetButton.addEventListener("click", () => {
+        void this.handleModerationSettingsReset();
       });
     }
 
@@ -2989,6 +3135,322 @@ export class ProfileModalController {
     return context;
   }
 
+  getModerationSettingsService() {
+    const service = this.services.moderationSettings;
+    if (!service || typeof service !== "object") {
+      return null;
+    }
+    return service;
+  }
+
+  getModerationSettingsDefaults() {
+    const service = this.getModerationSettingsService();
+    let defaults = null;
+
+    if (service && typeof service.getDefaultModerationSettings === "function") {
+      try {
+        defaults = service.getDefaultModerationSettings();
+      } catch (error) {
+        devLogger.info("[profileModal] moderation defaults fallback used", error);
+      }
+    }
+
+    if (!defaults || typeof defaults !== "object") {
+      defaults = createInternalDefaultModerationSettings();
+    }
+
+    const sanitized = {
+      blurThreshold: Math.max(
+        0,
+        Math.floor(
+          Number(
+            defaults.blurThreshold ?? DEFAULT_INTERNAL_MODERATION_SETTINGS.blurThreshold,
+          ),
+        ),
+      ),
+      autoplayBlockThreshold: Math.max(
+        0,
+        Math.floor(
+          Number(
+            defaults.autoplayBlockThreshold ??
+              DEFAULT_INTERNAL_MODERATION_SETTINGS.autoplayBlockThreshold,
+          ),
+        ),
+      ),
+    };
+
+    return sanitized;
+  }
+
+  normalizeModerationSettings(settings = null) {
+    const defaults = this.getModerationSettingsDefaults();
+    const blur = Number.isFinite(settings?.blurThreshold)
+      ? Math.max(0, Math.floor(settings.blurThreshold))
+      : defaults.blurThreshold;
+    const autoplay = Number.isFinite(settings?.autoplayBlockThreshold)
+      ? Math.max(0, Math.floor(settings.autoplayBlockThreshold))
+      : defaults.autoplayBlockThreshold;
+
+    return {
+      blurThreshold: blur,
+      autoplayBlockThreshold: autoplay,
+    };
+  }
+
+  readModerationInputs() {
+    const defaults = this.getModerationSettingsDefaults();
+
+    const parse = (input, fallback) => {
+      if (!(input instanceof HTMLInputElement)) {
+        return { value: fallback, override: null, valid: true };
+      }
+
+      const raw = typeof input.value === "string" ? input.value.trim() : "";
+      if (!raw) {
+        return { value: fallback, override: null, valid: true };
+      }
+
+      const numeric = Number(raw);
+      if (!Number.isFinite(numeric)) {
+        return { value: fallback, override: null, valid: false };
+      }
+
+      const sanitized = Math.max(0, Math.floor(numeric));
+      return { value: sanitized, override: sanitized, valid: true };
+    };
+
+    const blur = parse(this.moderationBlurInput, defaults.blurThreshold);
+    const autoplay = parse(
+      this.moderationAutoplayInput,
+      defaults.autoplayBlockThreshold,
+    );
+
+    const valid = blur.valid && autoplay.valid;
+    const values = {
+      blurThreshold: blur.value,
+      autoplayBlockThreshold: autoplay.value,
+    };
+    const overrides = {
+      blurThreshold: blur.override,
+      autoplayBlockThreshold: autoplay.override,
+    };
+
+    return { defaults, values, overrides, valid };
+  }
+
+  applyModerationSettingsControlState({ resetStatus = false } = {}) {
+    const result = this.readModerationInputs();
+
+    const button = this.moderationSaveButton;
+    if (button instanceof HTMLElement) {
+      const baseline = this.currentModerationSettings || this.normalizeModerationSettings();
+      const isDirty =
+        result.valid &&
+        (baseline.blurThreshold !== result.values.blurThreshold ||
+          baseline.autoplayBlockThreshold !== result.values.autoplayBlockThreshold);
+      button.disabled = !(result.valid && isDirty);
+      if (button.disabled) {
+        button.setAttribute("aria-disabled", "true");
+      } else {
+        button.removeAttribute("aria-disabled");
+      }
+    }
+
+    if (resetStatus) {
+      this.updateModerationSettingsStatus("", "info");
+    }
+
+    return result;
+  }
+
+  updateModerationSettingsStatus(message = "", variant = "info") {
+    if (!(this.moderationStatusText instanceof HTMLElement)) {
+      return;
+    }
+
+    const text = typeof message === "string" ? message : "";
+    this.moderationStatusText.textContent = text;
+
+    if (text) {
+      this.moderationStatusText.dataset.variant = variant || "info";
+    } else if (this.moderationStatusText.dataset.variant) {
+      delete this.moderationStatusText.dataset.variant;
+    }
+  }
+
+  refreshModerationSettingsUi() {
+    const service = this.getModerationSettingsService();
+    if (!service) {
+      this.moderationSettingsDefaults = createInternalDefaultModerationSettings();
+      this.currentModerationSettings = createInternalDefaultModerationSettings();
+      this.applyModerationSettingsControlState({ resetStatus: true });
+      return;
+    }
+
+    let active = null;
+    if (typeof service.getActiveModerationSettings === "function") {
+      try {
+        active = service.getActiveModerationSettings();
+      } catch (error) {
+        devLogger.info("[profileModal] moderation settings fallback used", error);
+      }
+    }
+
+    const defaults = this.getModerationSettingsDefaults();
+    this.moderationSettingsDefaults = defaults;
+    const normalized = this.normalizeModerationSettings(active);
+    this.currentModerationSettings = normalized;
+
+    if (this.moderationBlurInput instanceof HTMLInputElement) {
+      this.moderationBlurInput.value = String(normalized.blurThreshold);
+    }
+
+    if (this.moderationAutoplayInput instanceof HTMLInputElement) {
+      this.moderationAutoplayInput.value = String(
+        normalized.autoplayBlockThreshold,
+      );
+    }
+
+    this.applyModerationSettingsControlState({ resetStatus: true });
+  }
+
+  async handleModerationSettingsSave() {
+    const service = this.getModerationSettingsService();
+    const context = {
+      success: false,
+      reason: null,
+      error: null,
+      settings: null,
+    };
+
+    if (!service) {
+      return context;
+    }
+
+    const inputState = this.applyModerationSettingsControlState();
+    if (!inputState.valid) {
+      const message =
+        "Enter non-negative whole numbers for moderation thresholds.";
+      this.updateModerationSettingsStatus(message, "error");
+      this.showError(message);
+      context.reason = "invalid-input";
+      context.error = message;
+      return context;
+    }
+
+    const payload = {};
+    if (Object.prototype.hasOwnProperty.call(inputState.overrides, "blurThreshold")) {
+      payload.blurThreshold = inputState.overrides.blurThreshold;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        inputState.overrides,
+        "autoplayBlockThreshold",
+      )
+    ) {
+      payload.autoplayBlockThreshold = inputState.overrides.autoplayBlockThreshold;
+    }
+
+    try {
+      const updated =
+        typeof service.updateModerationSettings === "function"
+          ? await service.updateModerationSettings(payload)
+          : inputState.values;
+
+      const normalized = this.normalizeModerationSettings(updated);
+      this.currentModerationSettings = normalized;
+      if (this.moderationBlurInput instanceof HTMLInputElement) {
+        this.moderationBlurInput.value = String(normalized.blurThreshold);
+      }
+      if (this.moderationAutoplayInput instanceof HTMLInputElement) {
+        this.moderationAutoplayInput.value = String(
+          normalized.autoplayBlockThreshold,
+        );
+      }
+      this.applyModerationSettingsControlState();
+      this.updateModerationSettingsStatus("Moderation settings saved.", "success");
+      this.showSuccess("Moderation settings saved.");
+      context.success = true;
+      context.reason = "saved";
+      context.settings = normalized;
+      this.callbacks.onModerationSettingsChange({
+        settings: normalized,
+        controller: this,
+        reason: "saved",
+      });
+    } catch (error) {
+      const fallbackMessage = "Failed to update moderation settings.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      this.updateModerationSettingsStatus(detail, "error");
+      this.showError(detail);
+      context.error = detail;
+      context.reason = error?.code || "service-error";
+    }
+
+    return context;
+  }
+
+  async handleModerationSettingsReset() {
+    const service = this.getModerationSettingsService();
+    const context = {
+      success: false,
+      reason: null,
+      error: null,
+      settings: null,
+    };
+
+    if (!service) {
+      return context;
+    }
+
+    try {
+      const updated =
+        typeof service.resetModerationSettings === "function"
+          ? await service.resetModerationSettings()
+          : createInternalDefaultModerationSettings();
+
+      const normalized = this.normalizeModerationSettings(updated);
+      this.currentModerationSettings = normalized;
+      if (this.moderationBlurInput instanceof HTMLInputElement) {
+        this.moderationBlurInput.value = String(normalized.blurThreshold);
+      }
+      if (this.moderationAutoplayInput instanceof HTMLInputElement) {
+        this.moderationAutoplayInput.value = String(
+          normalized.autoplayBlockThreshold,
+        );
+      }
+      this.applyModerationSettingsControlState({ resetStatus: true });
+      this.updateModerationSettingsStatus(
+        "Moderation defaults restored.",
+        "success",
+      );
+      this.showSuccess("Moderation defaults restored.");
+      context.success = true;
+      context.reason = "reset";
+      context.settings = normalized;
+      this.callbacks.onModerationSettingsChange({
+        settings: normalized,
+        controller: this,
+        reason: "reset",
+      });
+    } catch (error) {
+      const fallbackMessage = "Failed to restore moderation defaults.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      this.updateModerationSettingsStatus(detail, "error");
+      this.showError(detail);
+      context.error = detail;
+      context.reason = error?.code || "service-error";
+    }
+
+    return context;
+  }
+
   storeAdminEmptyMessages() {
     const capture = (element) => {
       if (element instanceof HTMLElement && !element.dataset.defaultMessage) {
@@ -4377,6 +4839,7 @@ export class ProfileModalController {
 
     this.renderSavedProfiles();
     this.refreshWalletPaneState();
+    this.refreshModerationSettingsUi();
     const hasBlockHydrator =
       this.services.userBlocks &&
       typeof this.services.userBlocks.ensureLoaded === "function";

@@ -35,6 +35,10 @@ Thread new moderation behaviors through the same service → stage → app → U
 
 > You can override all defaults in **Settings → Safety & Moderation**.
 
+### Safety & Moderation controls
+
+The profile modal now exposes the blur and autoplay thresholds so operators can dial in stricter or more permissive behavior. Enter a non-negative whole number to override the default or leave the field blank to fall back to the baseline values above. Adjustments are stored locally, applied immediately to the active feed, and rehydrate on every load.
+
 ## Files in this folder
 - `web-of-trust.md` — how we compute trust signals and thresholds
 - `nips.md` — exact NIPs and kinds bitvid uses

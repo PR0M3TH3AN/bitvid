@@ -233,6 +233,75 @@
                   Profiles you add here will stay on this device so you can quickly switch before posting or moderating.
                 </p>
               </div>
+
+              <div id="profileModerationSettings" class="card space-y-5 p-5">
+                <div class="space-y-2">
+                  <h3 class="text-base font-semibold text-text">Safety & Moderation</h3>
+                  <p class="text-sm text-muted">
+                    Choose how many trusted reports it takes to blur thumbnails or block autoplay previews.
+                    Lower numbers are stricter.
+                  </p>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationBlurThreshold"
+                  >
+                    <span class="mb-2 block font-medium">Blur after trusted reports</span>
+                    <input
+                      id="profileModerationBlurThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Thumbnails blur when trusted contacts report nudity at or above this count.
+                    </span>
+                  </label>
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationAutoplayThreshold"
+                  >
+                    <span class="mb-2 block font-medium">Block autoplay after reports</span>
+                    <input
+                      id="profileModerationAutoplayThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Autoplay previews pause once trusted reports meet this threshold.
+                    </span>
+                  </label>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <button
+                    id="profileModerationSave"
+                    type="button"
+                    class="btn focus-ring"
+                    disabled
+                  >
+                    Save moderation settings
+                  </button>
+                  <button
+                    id="profileModerationReset"
+                    type="button"
+                    class="btn-ghost focus-ring"
+                  >
+                    Restore defaults
+                  </button>
+                </div>
+                <p
+                  id="profileModerationStatus"
+                  class="text-sm text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </div>
             </section>
 
             <section

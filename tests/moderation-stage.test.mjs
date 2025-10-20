@@ -167,6 +167,53 @@ test("moderation stage annotates trusted mute metadata", async () => {
   assert.equal(trustedMuteReason.videoId, "muted");
 });
 
+test("moderation stage applies provided thresholds", async () => {
+  const videoId = "custom-threshold";
+  const service = {
+    async refreshViewerFromClient() {},
+    async setActiveEventIds() {},
+    getAdminListSnapshot() {
+      return { whitelist: new Set(), whitelistHex: new Set(), blacklist: new Set(), blacklistHex: new Set() };
+    },
+    getAccessControlStatus(identifier) {
+      return { hex: identifier, whitelisted: false, blacklisted: false };
+    },
+    getTrustedReportSummary() {
+      return null;
+    },
+    trustedReportCount() {
+      return 4;
+    },
+    getTrustedReporters() {
+      return [];
+    },
+  };
+
+  const items = [{ video: { id: videoId, pubkey: "a".repeat(64) }, metadata: {} }];
+
+  const strictStage = createModerationStage({
+    service,
+    autoplayThreshold: 5,
+    blurThreshold: 6,
+  });
+
+  const relaxedStage = createModerationStage({
+    service,
+    autoplayThreshold: 2,
+    blurThreshold: 3,
+  });
+
+  const strictResult = await strictStage(items, {});
+  assert.equal(strictResult.length, 1);
+  assert.equal(strictResult[0].video.moderation.blockAutoplay, false);
+  assert.equal(strictResult[0].video.moderation.blurThumbnail, false);
+
+  const relaxedResult = await relaxedStage(items, {});
+  assert.equal(relaxedResult.length, 1);
+  assert.equal(relaxedResult[0].video.moderation.blockAutoplay, true);
+  assert.equal(relaxedResult[0].video.moderation.blurThumbnail, true);
+});
+
 test("moderation stage propagates whitelist, muters, and threshold updates", async () => {
   const whitelistedHex = "a".repeat(64);
   const mutedHex = "b".repeat(64);
