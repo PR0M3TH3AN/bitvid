@@ -1538,13 +1538,13 @@
     overflow: hidden;
     --profile-modal-scale: 0.9;
     --profile-modal-gap:
-      calc((var(--space-lg) - var(--space-xs)) * var(--profile-modal-scale));
+      calc((var(--space-md) - var(--space-3xs)) * var(--profile-modal-scale));
     --profile-modal-padding-inline:
-      calc((var(--space-lg) - var(--space-xs)) * var(--profile-modal-scale));
+      calc((var(--space-lg) - var(--space-md)) * var(--profile-modal-scale));
     --profile-modal-padding-block-start:
-      calc(var(--space-md) * var(--profile-modal-scale));
+      calc((var(--space-md) - var(--space-2xs)) * var(--profile-modal-scale));
     --profile-modal-padding-block-end:
-      calc((var(--space-lg) - var(--space-xs)) * var(--profile-modal-scale));
+      calc((var(--space-lg) - var(--space-sm)) * var(--profile-modal-scale));
     --profile-modal-nav-gap: calc(var(--space-xs) * var(--profile-modal-scale));
   }
 
@@ -1556,6 +1556,39 @@
     min-block-size: 0;
     transform: scale(var(--profile-modal-scale));
     transform-origin: top center;
+  }
+
+  .profile-modal__add-profile {
+    --tw-ring-color: var(--color-ring-alert);
+    @apply focus-ring relative flex w-full items-center justify-start gap-4 rounded-xl px-5 py-4 text-left text-text transition duration-base ease-in-out;
+    border: var(--outline-thick-width) solid var(--color-ring-alert);
+    background-color: var(--surface-panel-hover);
+  }
+
+  .profile-modal__add-profile:hover {
+    background-color: color-mix(
+      in srgb,
+      var(--surface-panel-hover) 88%,
+      var(--color-ring-alert) 12%
+    );
+  }
+
+  .profile-modal__add-profile:focus-visible {
+    background-color: color-mix(
+      in srgb,
+      var(--surface-panel-hover) 80%,
+      var(--color-ring-alert) 20%
+    );
+  }
+
+  .profile-modal__add-profile-icon {
+    @apply flex h-10 w-10 items-center justify-center rounded-full;
+    background-color: color-mix(
+      in srgb,
+      var(--color-ring-alert) 18%,
+      var(--surface-panel)
+    );
+    color: var(--color-ring-alert);
   }
 
   .profile-modal__body {
