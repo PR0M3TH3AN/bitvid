@@ -315,6 +315,9 @@ async function bootstrapInterface() {
 
   const SIDEBAR_COLLAPSED_STORAGE_KEY = "sidebarCollapsed";
   const DEFAULT_SIDEBAR_COLLAPSED = true;
+  const DESKTOP_VIEWPORT_MIN_WIDTH = 1024;
+  const DESKTOP_VIEWPORT_QUERY = "(min-width: 1024px)";
+  let desktopViewportQuery = null;
   let isSidebarCollapsed = DEFAULT_SIDEBAR_COLLAPSED;
   let isFooterDropupExpanded = false;
   let syncFooterDropupFn = null;
@@ -382,6 +385,51 @@ async function bootstrapInterface() {
     }
   };
 
+  const isDesktopViewportActive = () => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    if (desktopViewportQuery === null && typeof window.matchMedia === "function") {
+      try {
+        desktopViewportQuery = window.matchMedia(DESKTOP_VIEWPORT_QUERY);
+      } catch (error) {
+        desktopViewportQuery = null;
+      }
+    }
+
+    if (desktopViewportQuery) {
+      return desktopViewportQuery.matches === true;
+    }
+
+    if (typeof window.innerWidth === "number") {
+      return window.innerWidth >= DESKTOP_VIEWPORT_MIN_WIDTH;
+    }
+
+    return false;
+  };
+
+  const shouldAutoCollapseSidebarOnAction = () => !isDesktopViewportActive();
+
+  const collapseSidebarForMobile = () => {
+    if (!shouldAutoCollapseSidebarOnAction()) {
+      return;
+    }
+
+    if (!isSidebarCollapsed) {
+      const nextCollapsed = true;
+      isSidebarCollapsed = nextCollapsed;
+      applySidebarDensity(nextCollapsed);
+      persistSidebarCollapsed(nextCollapsed);
+      return;
+    }
+
+    if (isFooterDropupExpanded && typeof syncFooterDropupFn === "function") {
+      syncFooterDropupFn(false);
+    }
+    persistSidebarCollapsed(true);
+  };
+
   isSidebarCollapsed = collapseToggle
     ? readStoredSidebarCollapsed()
     : DEFAULT_SIDEBAR_COLLAPSED;
@@ -395,6 +443,26 @@ async function bootstrapInterface() {
       isSidebarCollapsed = nextCollapsed;
       applySidebarDensity(nextCollapsed);
       persistSidebarCollapsed(nextCollapsed);
+    });
+  }
+
+  if (sidebar) {
+    sidebar.addEventListener("click", (event) => {
+      if (!shouldAutoCollapseSidebarOnAction()) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const navLink = target.closest(".sidebar-nav-link");
+      if (!(navLink instanceof HTMLElement)) {
+        return;
+      }
+
+      collapseSidebarForMobile();
     });
   }
 
