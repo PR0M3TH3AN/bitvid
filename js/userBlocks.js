@@ -81,6 +81,8 @@ class UserBlockListManager {
   constructor() {
     this.blockedPubkeys = new Set();
     this.blockEventId = null;
+    this.blockEventCreatedAt = null;
+    this.lastPublishedCreatedAt = null;
     this.loaded = false;
     this.emitter = new TinyEventEmitter();
   }
@@ -88,6 +90,8 @@ class UserBlockListManager {
   reset() {
     this.blockedPubkeys.clear();
     this.blockEventId = null;
+    this.blockEventCreatedAt = null;
+    this.lastPublishedCreatedAt = null;
     this.loaded = false;
   }
 
@@ -120,13 +124,21 @@ class UserBlockListManager {
     await this.loadBlocks(normalized);
   }
 
-  async loadBlocks(userPubkey) {
+  async loadBlocks(userPubkey, options = {}) {
     const normalized = normalizeHex(userPubkey);
     if (!normalized) {
       this.reset();
       this.loaded = true;
       return;
     }
+
+    const since = Number.isFinite(options?.since)
+      ? Math.max(0, Math.floor(options.since))
+      : null;
+    const statusCallback =
+      typeof options?.statusCallback === "function" ? options.statusCallback : null;
+
+    statusCallback?.({ status: "loading", relays: Array.from(nostrClient.relays || []) });
 
     const permissionResult = await requestDefaultExtensionPermissions();
     if (!permissionResult.ok) {
@@ -136,6 +148,12 @@ class UserBlockListManager {
       );
       this.reset();
       this.loaded = true;
+      const error =
+        permissionResult.error instanceof Error
+          ? permissionResult.error
+          : new Error("Extension permissions required to load block list.");
+      statusCallback?.({ status: "error", error });
+      statusCallback?.({ status: "settled" });
       return;
     }
 
@@ -145,6 +163,11 @@ class UserBlockListManager {
       );
       this.reset();
       this.loaded = true;
+      statusCallback?.({
+        status: "error",
+        error: new Error("nip04.decrypt is unavailable"),
+      });
+      statusCallback?.({ status: "settled" });
       return;
     }
 
@@ -156,6 +179,10 @@ class UserBlockListManager {
         limit: 1,
       };
 
+      if (since !== null) {
+        filter.since = since;
+      }
+
       const relays = Array.isArray(nostrClient.relays)
         ? nostrClient.relays.filter((relay) => typeof relay === "string" && relay)
         : [];
@@ -163,7 +190,10 @@ class UserBlockListManager {
       if (!relays.length) {
         this.blockedPubkeys.clear();
         this.blockEventId = null;
+        this.blockEventCreatedAt = null;
         this.loaded = true;
+        statusCallback?.({ status: "applied-empty" });
+        statusCallback?.({ status: "settled" });
         return;
       }
 
@@ -234,8 +264,14 @@ class UserBlockListManager {
           if (skipIfEmpty) {
             return;
           }
+          if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
+            statusCallback?.({ status: "stale", reason: "empty-result" });
+            return;
+          }
           this.blockedPubkeys.clear();
           this.blockEventId = null;
+          this.blockEventCreatedAt = null;
+          statusCallback?.({ status: "applied-empty" });
           return;
         }
 
@@ -247,20 +283,57 @@ class UserBlockListManager {
           if (skipIfEmpty) {
             return;
           }
+          if (this.lastPublishedCreatedAt !== null || this.blockEventCreatedAt !== null) {
+            statusCallback?.({ status: "stale", reason: "empty-result" });
+            return;
+          }
           this.blockedPubkeys.clear();
           this.blockEventId = null;
+          this.blockEventCreatedAt = null;
+          statusCallback?.({ status: "applied-empty" });
           return;
         }
 
         const newest = sorted[0];
-        if (newest?.id && newest.id === this.blockEventId && this.blockedPubkeys.size) {
+        const newestCreatedAt = Number.isFinite(newest?.created_at)
+          ? newest.created_at
+          : 0;
+        const guardCreatedAt = Math.max(
+          this.blockEventCreatedAt ?? 0,
+          this.lastPublishedCreatedAt ?? 0,
+        );
+
+        if (newestCreatedAt < guardCreatedAt) {
+          statusCallback?.({ status: "stale", event: newest, guardCreatedAt });
+          return;
+        }
+
+        if (
+          newestCreatedAt === guardCreatedAt &&
+          this.blockEventId &&
+          newest?.id &&
+          newest.id !== this.blockEventId
+        ) {
+          statusCallback?.({ status: "stale", event: newest, guardCreatedAt });
+          return;
+        }
+
+        if (newest?.id && newest.id === this.blockEventId) {
+          this.blockEventCreatedAt = Number.isFinite(newestCreatedAt)
+            ? newestCreatedAt
+            : this.blockEventCreatedAt;
+          statusCallback?.({ status: "confirmed", event: newest });
           return;
         }
 
         this.blockEventId = newest?.id || null;
+        this.blockEventCreatedAt = Number.isFinite(newestCreatedAt)
+          ? newestCreatedAt
+          : null;
 
         if (!newest?.content) {
           this.blockedPubkeys.clear();
+          statusCallback?.({ status: "applied-empty", event: newest });
           return;
         }
 
@@ -270,6 +343,7 @@ class UserBlockListManager {
         } catch (err) {
           userLogger.error("[UserBlockList] Failed to decrypt block list:", err);
           this.blockedPubkeys.clear();
+          statusCallback?.({ status: "error", event: newest, error: err });
           return;
         }
 
@@ -290,9 +364,15 @@ class UserBlockListManager {
               return true;
             });
           this.blockedPubkeys = new Set(sanitized);
+          statusCallback?.({
+            status: "applied",
+            event: newest,
+            blockedPubkeys: Array.from(this.blockedPubkeys),
+          });
         } catch (err) {
           userLogger.error("[UserBlockList] Failed to parse block list:", err);
           this.blockedPubkeys.clear();
+          statusCallback?.({ status: "error", event: newest, error: err });
         }
       };
 
@@ -363,12 +443,18 @@ class UserBlockListManager {
 
       this.blockedPubkeys.clear();
       this.blockEventId = null;
+      this.blockEventCreatedAt = null;
+      statusCallback?.({ status: "applied-empty" });
       background.catch(() => {});
     } catch (error) {
       userLogger.error("[UserBlockList] loadBlocks failed:", error);
       this.blockedPubkeys.clear();
+      this.blockEventId = null;
+      this.blockEventCreatedAt = null;
+      statusCallback?.({ status: "error", error });
     } finally {
       this.loaded = true;
+      statusCallback?.({ status: "settled" });
     }
   }
 
@@ -448,7 +534,12 @@ class UserBlockListManager {
     }
   }
 
-  async publishBlockList(userPubkey) {
+  async publishBlockList(userPubkey, options = {}) {
+    const onStatus =
+      options && typeof options.onStatus === "function" ? options.onStatus : null;
+
+    onStatus?.({ status: "publishing" });
+
     const permissionResult = await requestDefaultExtensionPermissions();
     if (!permissionResult.ok) {
       userLogger.warn(
@@ -547,6 +638,26 @@ class UserBlockListManager {
     }
 
     this.blockEventId = signedEvent.id;
+    this.blockEventCreatedAt = Number.isFinite(signedEvent?.created_at)
+      ? signedEvent.created_at
+      : event.created_at;
+    this.lastPublishedCreatedAt = this.blockEventCreatedAt;
+    onStatus?.({ status: "published", event: signedEvent });
+
+    try {
+      await this.loadBlocks(normalized, {
+        since: this.lastPublishedCreatedAt ?? undefined,
+        statusCallback: (detail) => {
+          if (!onStatus) {
+            return;
+          }
+          onStatus({ status: "relay", detail });
+        },
+      });
+    } catch (refreshError) {
+      onStatus?.({ status: "relay-error", error: refreshError });
+    }
+
     return signedEvent;
   }
 }
