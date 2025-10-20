@@ -55,6 +55,11 @@ export class UploadModal {
 
     this.customForm = null;
     this.customFormInputs = {};
+    this.customSubmitButton = null;
+    this.customSubmitButtonDefaultLabel = "";
+    this.customSubmitBlockedUntil = 0;
+    this.customSubmitCooldownTimer = null;
+    this.customSubmitCooldownMs = 60000;
 
     this.cloudflareSettingsForm = null;
     this.cloudflareClearSettingsButton = null;
@@ -234,6 +239,15 @@ export class UploadModal {
       isPrivate: context.querySelector("#uploadIsPrivate") || null
     };
 
+    this.customSubmitButton =
+      this.customForm?.querySelector?.('button[type="submit"]') || null;
+    if (this.customSubmitButton && !this.customSubmitButtonDefaultLabel) {
+      const defaultLabel = this.customSubmitButton.textContent || "";
+      this.customSubmitButtonDefaultLabel =
+        defaultLabel.trim() || defaultLabel || "Publish";
+    }
+    this.updateCustomSubmitButtonState();
+
     this.closeButton = context.querySelector("#closeUploadModal") || null;
 
     this.cloudflareSettingsForm =
@@ -374,6 +388,11 @@ export class UploadModal {
     if (this.customForm) {
       this.customForm.addEventListener("submit", (event) => {
         event.preventDefault();
+        if (this.isCustomSubmitOnCooldown()) {
+          this.updateCustomSubmitButtonState();
+          return;
+        }
+        this.startCustomSubmitCooldown();
         this.handleCustomSubmit();
       });
     }
@@ -440,6 +459,80 @@ export class UploadModal {
 
     this.nip71FormManager.bindSection("custom");
     this.nip71FormManager.bindSection("cloudflare");
+  }
+
+  clearCustomSubmitCooldownTimer() {
+    if (this.customSubmitCooldownTimer) {
+      clearInterval(this.customSubmitCooldownTimer);
+      this.customSubmitCooldownTimer = null;
+    }
+  }
+
+  isCustomSubmitOnCooldown() {
+    if (!this.customSubmitBlockedUntil) {
+      return false;
+    }
+    return Date.now() < this.customSubmitBlockedUntil;
+  }
+
+  updateCustomSubmitButtonState() {
+    const button = this.customSubmitButton;
+    if (!button) {
+      return;
+    }
+
+    if (!this.customSubmitButtonDefaultLabel) {
+      const label = button.textContent || "";
+      this.customSubmitButtonDefaultLabel = label.trim() || label || "Publish";
+    }
+
+    if (this.isCustomSubmitOnCooldown()) {
+      const remainingMs = Math.max(
+        0,
+        this.customSubmitBlockedUntil - Date.now()
+      );
+      const seconds = Math.max(1, Math.ceil(remainingMs / 1000));
+      button.disabled = true;
+      button.setAttribute("aria-disabled", "true");
+      button.dataset.cooldown = "true";
+      button.textContent = `${this.customSubmitButtonDefaultLabel} (${seconds})`;
+      button.title = `Please wait ${seconds} seconds before sharing another video.`;
+      return;
+    }
+
+    button.disabled = false;
+    button.removeAttribute("aria-disabled");
+    delete button.dataset.cooldown;
+    button.textContent =
+      this.customSubmitButtonDefaultLabel || button.textContent || "Publish";
+    button.removeAttribute("title");
+  }
+
+  startCustomSubmitCooldown() {
+    if (!this.customSubmitButton) {
+      return;
+    }
+    const now = Date.now();
+    this.customSubmitBlockedUntil = now + this.customSubmitCooldownMs;
+    this.updateCustomSubmitButtonState();
+    this.clearCustomSubmitCooldownTimer();
+    this.customSubmitCooldownTimer = setInterval(() => {
+      if (!this.isCustomSubmitOnCooldown()) {
+        this.clearCustomSubmitCooldown();
+        return;
+      }
+      this.updateCustomSubmitButtonState();
+    }, 1000);
+  }
+
+  clearCustomSubmitCooldown() {
+    this.clearCustomSubmitCooldownTimer();
+    this.customSubmitBlockedUntil = 0;
+    this.updateCustomSubmitButtonState();
+  }
+
+  cancelCustomSubmitCooldown() {
+    this.clearCustomSubmitCooldown();
   }
 
   setupModalAccessibility() {
@@ -559,6 +652,7 @@ export class UploadModal {
     }
     this.isVisible = true;
     this.modalAccessibility?.activate({ triggerElement });
+    this.updateCustomSubmitButtonState();
   }
 
   close() {
@@ -613,6 +707,8 @@ export class UploadModal {
 
     if (normalized === "cloudflare") {
       this.refreshCloudflareBucketPreview();
+    } else {
+      this.updateCustomSubmitButtonState();
     }
   }
 
@@ -978,6 +1074,8 @@ export class UploadModal {
   }
 
   destroy() {
+    this.clearCustomSubmitCooldown();
+
     if (this.modalAccessibility?.destroy) {
       this.modalAccessibility.destroy();
     }
@@ -1010,6 +1108,9 @@ export class UploadModal {
       });
     }
     this.r2Unsubscribes = [];
+    this.customSubmitButton = null;
+    this.customSubmitButtonDefaultLabel = "";
+    this.customSubmitBlockedUntil = 0;
     this.eventsBound = false;
     this.loadPromise = null;
     this.root = null;

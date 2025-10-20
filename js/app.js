@@ -2777,7 +2777,7 @@ class Application {
     const payload = event?.detail?.payload || {};
 
     try {
-      await this.authService.handleUploadSubmit(payload, {
+      const publishResult = await this.authService.handleUploadSubmit(payload, {
         publish: (data) =>
           this.publishVideoNote(data, {
             onSuccess: () => {
@@ -2787,7 +2787,13 @@ class Application {
             },
           }),
       });
+      if (!publishResult && this.uploadModal?.cancelCustomSubmitCooldown) {
+        this.uploadModal.cancelCustomSubmitCooldown();
+      }
     } catch (error) {
+      if (this.uploadModal?.cancelCustomSubmitCooldown) {
+        this.uploadModal.cancelCustomSubmitCooldown();
+      }
       const message =
         error && typeof error.message === "string" && error.message.trim()
           ? error.message.trim()
