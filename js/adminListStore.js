@@ -558,53 +558,90 @@ function publishListWithFirstAcceptance(pool, relays, event, options = {}) {
     : [];
   const resultsBuffer = new Array(relayPromises.length);
 
-  let resolved = false;
-  let remaining = relayPromises.length;
+  const resolveMessage = listKey
+    ? `Failed to publish ${listKey} list to any relay.`
+    : "Failed to publish admin list to any relay.";
 
-  const firstAcceptance = new Promise((resolve, reject) => {
-    if (!relayPromises.length) {
-      reject(
-        createError(
-          "publish-failed",
-          listKey
-            ? `Failed to publish ${listKey} list to any relay.`
-            : "Failed to publish admin list to any relay.",
-        )
-      );
-      return;
+  const normalizeFailureError = (value) => {
+    if (value instanceof Error) {
+      return value;
     }
 
-    relayPromises.forEach((promise, index) => {
-      promise
-        .then((result) => {
-          resultsBuffer[index] = result;
-          if (result?.success && !resolved) {
-            resolved = true;
-            resolve(result);
-          }
-        })
-        .catch((error) => {
-          resultsBuffer[index] = {
-            url: Array.isArray(relays) ? relays[index] : "",
-            success: false,
-            error,
-          };
-        })
-        .finally(() => {
-          remaining -= 1;
-          if (!resolved && remaining === 0) {
-            reject(
-              createError(
-                "publish-failed",
-                listKey
-                  ? `Failed to publish ${listKey} list to any relay.`
-                  : "Failed to publish admin list to any relay.",
-              )
-            );
-          }
-        });
+    if (value && typeof value === "object") {
+      if (value.error instanceof Error) {
+        return value.error;
+      }
+
+      if (typeof value.error === "string" && value.error.trim()) {
+        return new Error(value.error.trim());
+      }
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      return new Error(value.trim());
+    }
+
+    if (value && typeof value === "object" && typeof value.reason === "string") {
+      const trimmed = value.reason.trim();
+      if (trimmed) {
+        return new Error(trimmed);
+      }
+    }
+
+    return new Error("publish failed");
+  };
+
+  const normalizeResult = (result, fallbackUrl = "") => {
+    if (result && typeof result === "object") {
+      const url = typeof result.url === "string" ? result.url : fallbackUrl;
+      const success = !!result.success;
+      const error = success ? null : normalizeFailureError(result);
+      return { url, success, error };
+    }
+
+    return {
+      url: fallbackUrl,
+      success: false,
+      error: normalizeFailureError(result),
+    };
+  };
+
+  const acceptancePromises = relayPromises.map((promise, index) =>
+    promise
+      .then((result) => {
+        const normalized = normalizeResult(
+          result,
+          Array.isArray(relays) ? relays[index] : "",
+        );
+        resultsBuffer[index] = normalized;
+        if (normalized.success) {
+          return normalized;
+        }
+
+        throw normalized;
+      })
+      .catch((reason) => {
+        const normalized = normalizeResult(
+          reason,
+          Array.isArray(relays) ? relays[index] : "",
+        );
+        if (typeof resultsBuffer[index] === "undefined") {
+          resultsBuffer[index] = normalized;
+        }
+        throw normalized;
+      })
+  );
+
+  const firstAcceptance = (() => {
+    if (!relayPromises.length) {
+      return Promise.reject(createError("publish-failed", resolveMessage));
+    }
+
+    return Promise.any(acceptancePromises).catch((aggregateError) => {
+      const error = createError("publish-failed", resolveMessage, aggregateError);
+      throw error;
     });
-  });
+  })();
 
   const allResults = Promise.allSettled(relayPromises).then((entries) => {
     for (let index = 0; index < entries.length; index += 1) {
@@ -612,12 +649,8 @@ function publishListWithFirstAcceptance(pool, relays, event, options = {}) {
       const fallbackUrl = Array.isArray(relays) ? relays[index] : "";
       const result =
         entry?.status === "fulfilled"
-          ? entry.value
-          : {
-              url: fallbackUrl,
-              success: false,
-              error: entry?.reason || new Error("publish failed"),
-            };
+          ? normalizeResult(entry.value, fallbackUrl)
+          : normalizeResult(entry?.reason, fallbackUrl);
 
       if (typeof resultsBuffer[index] === "undefined") {
         resultsBuffer[index] = result;
