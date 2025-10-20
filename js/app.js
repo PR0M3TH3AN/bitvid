@@ -6157,8 +6157,10 @@ class Application {
       return;
     }
 
+    this.deleteModal.setBusy(true, "Deleting…");
+    this.showStatus("Deleting. Please wait.", { showSpinner: true });
+
     try {
-      this.deleteModal.setBusy(true, "Deleting…");
       await this.nostrService.handleFullDeleteVideo({
         videoRootId: rootId,
         video: targetVideo,
@@ -6168,13 +6170,16 @@ class Application {
 
       await this.loadVideos();
       this.showSuccess("All versions deleted successfully!");
-      this.deleteModal.setBusy(false);
       this.deleteModal.close();
       this.forceRefreshAllProfiles();
     } catch (err) {
       devLogger.error("Failed to delete all versions:", err);
       this.showError("Failed to delete all versions. Please try again.");
-      this.deleteModal.setBusy(false);
+    } finally {
+      if (this.deleteModal) {
+        this.deleteModal.setBusy(false);
+      }
+      this.showStatus("");
     }
   }
 
