@@ -1,6 +1,7 @@
 import "./test-helpers/setup-localstorage.mjs";
 import assert from "node:assert/strict";
 import { NostrClient } from "../js/nostr.js";
+import { NostrService } from "../js/services/nostrService.js";
 
 await (async function testDeleteFlowPublishesDeletionFlag() {
   localStorage.clear();
@@ -29,14 +30,67 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
 
   client.allEvents.set(baseVideo.id, { ...baseVideo });
 
+  const signedEvents = [];
+  window.nostr = {
+    signEvent: async (event) => {
+      signedEvents.push(event);
+      return { ...event, id: `signed-${signedEvents.length}` };
+    },
+  };
+
+  client.ensureExtensionPermissions = async () => ({ ok: true });
+  client.relays = ["wss://relay.ok", "wss://relay.fail"];
+  client.rawEvents.set(baseVideo.id, {
+    id: baseVideo.id,
+    kind: 30078,
+    pubkey,
+    tags: baseVideo.tags,
+  });
+
+  client.pool = {
+    publish([url], event) {
+      const shouldFail = event.kind === 5 && url.includes("fail");
+      return {
+        on(type, handler) {
+          if (type === "ok") {
+            if (!shouldFail) {
+              handler();
+            }
+            return true;
+          }
+          if (type === "failed") {
+            if (shouldFail) {
+              handler(new Error(`reject-${url}`));
+            }
+            return true;
+          }
+          return false;
+        },
+      };
+    },
+  };
+
   const revertCalls = [];
   const revertEvents = [];
   client.revertVideo = async (event) => {
     revertCalls.push(event);
     const created_at = baseVideo.created_at + 500 + revertCalls.length;
-    const revertEvent = { id: `revert-${revertCalls.length}`, created_at };
+    const revertEvent = {
+      id: `revert-${revertCalls.length}`,
+      kind: 30078,
+      pubkey,
+      created_at,
+      tags: baseVideo.tags,
+    };
     revertEvents.push(revertEvent);
-    return revertEvent;
+    return {
+      event: revertEvent,
+      publishResults: client.relays.map((url) => ({ url, success: true })),
+      summary: {
+        accepted: client.relays.map((url) => ({ url, success: true })),
+        failed: [],
+      },
+    };
   };
 
   const result = await client.deleteAllVersions(videoRootId, pubkey, {
@@ -44,8 +98,65 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
     video: baseVideo,
   });
 
-  assert.equal(result, true, "deleteAllVersions should resolve true on success");
+  assert.equal(
+    Array.isArray(result.deletes),
+    true,
+    "deleteAllVersions should return delete summaries",
+  );
   assert.equal(revertCalls.length, 1, "deleteAllVersions should call revertVideo once");
+
+  const deleteSummary = result.deletes[0];
+  assert.equal(
+    deleteSummary.summary.failed.length,
+    1,
+    "deleteAllVersions should surface relay failures for delete events",
+  );
+  assert.equal(
+    deleteSummary.summary.failed[0].url,
+    "wss://relay.fail",
+    "delete summary should identify the failing relay",
+  );
+  assert.equal(
+    deleteSummary.identifiers.events.includes(baseVideo.id),
+    true,
+    "delete summary should include the original event id",
+  );
+  assert.equal(
+    deleteSummary.identifiers.events.includes(revertEvents[0].id),
+    true,
+    "delete summary should include the revert event id",
+  );
+  assert.equal(
+    deleteSummary.identifiers.addresses.includes(
+      `30078:${pubkey}:${videoRootId}`,
+    ),
+    true,
+    "delete summary should include the address pointer for the root",
+  );
+
+  const deleteRequest = signedEvents.find((event) => event.kind === 5);
+  assert(deleteRequest, "deleteAllVersions should sign a kind 5 delete event");
+  const eTags = deleteRequest.tags
+    .filter((tag) => Array.isArray(tag) && tag[0] === "e")
+    .map(([, value]) => value);
+  assert.equal(
+    eTags.includes(baseVideo.id),
+    true,
+    "delete event should include original event id as an e-tag",
+  );
+  assert.equal(
+    eTags.includes(revertEvents[0].id),
+    true,
+    "delete event should include revert event id as an e-tag",
+  );
+  const aTags = deleteRequest.tags
+    .filter((tag) => Array.isArray(tag) && tag[0] === "a")
+    .map(([, value]) => value);
+  assert.equal(
+    aTags.includes(`30078:${pubkey}:${videoRootId}`),
+    true,
+    "delete event should include the address pointer as an a-tag",
+  );
 
   const parsedPayload = JSON.parse(revertCalls[0].content);
   assert.equal(parsedPayload.deleted, true, "revert payload should mark deleted true");
@@ -89,7 +200,7 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
   const deleteEvent = {
     id: "delete-event-1",
     pubkey,
-    created_at: baseVideo.created_at + 100,
+    created_at: revertEvents[0].created_at + 100,
     content: revertCalls[0].content,
     tags: baseVideo.tags,
   };
@@ -117,6 +228,7 @@ await (async function testDeleteFlowPublishesDeletionFlag() {
     deleteEvent.created_at,
     "subscription delete event should update tombstone",
   );
+  delete window.nostr;
 })();
 
 await (async function testTombstonePersistenceAcrossSaveRestore() {
@@ -203,8 +315,8 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
     content: JSON.stringify({
       version: 3,
       deleted: true,
-      title: "",
-      url: "",
+      title: "Deleted",
+      url: "https://example.com/video.mp4",
       magnet: "",
       thumbnail: "",
       description: "",
@@ -266,6 +378,94 @@ await (async function testSubscribeVideosSkipsOlderThanTombstone() {
     client.activeMap.has(activeKey),
     false,
     "older event should not repopulate the active map",
+  );
+})();
+
+await (async function testNostrServiceBubblesDeleteFailures() {
+  const service = new NostrService();
+  const pubkey = "PUBKEY123";
+  const videoRootId = "root-service";
+  const sampleVideo = { id: "evt-service", pubkey, videoRootId };
+
+  const revertFailure = {
+    url: "wss://relay.fail",
+    error: new Error("revert failed"),
+    success: false,
+  };
+  const deleteFailure = {
+    url: "wss://relay.fail",
+    error: new Error("delete failed"),
+    success: false,
+  };
+
+  const summary = {
+    reverts: [
+      {
+        targetId: sampleVideo.id,
+        event: { id: "revert-event" },
+        publishResults: [
+          { url: "wss://relay.ok", success: true },
+          revertFailure,
+        ],
+        summary: {
+          accepted: [{ url: "wss://relay.ok", success: true }],
+          failed: [revertFailure],
+        },
+      },
+    ],
+    deletes: [
+      {
+        event: { id: "delete-event" },
+        identifiers: {
+          events: [sampleVideo.id],
+          addresses: ["30078:pubkey:root-service"],
+        },
+        publishResults: [
+          { url: "wss://relay.ok", success: true },
+          deleteFailure,
+        ],
+        summary: {
+          accepted: [{ url: "wss://relay.ok", success: true }],
+          failed: [deleteFailure],
+        },
+      },
+    ],
+  };
+
+  service.nostrClient = {
+    deleteAllVersions: async () => summary,
+  };
+
+  const emitted = [];
+  service.on("videos:deleted", (detail) => emitted.push(detail));
+
+  const detail = await service.handleFullDeleteVideo({
+    videoRootId,
+    video: sampleVideo,
+    pubkey,
+    confirm: false,
+  });
+
+  assert.equal(emitted.length, 1, "service should emit videos:deleted event");
+  assert.equal(
+    emitted[0].result,
+    summary,
+    "emitted detail should include the delete summary",
+  );
+  assert.equal(
+    detail.deleteFailures.length,
+    1,
+    "service should surface delete relay failures",
+  );
+  assert.equal(
+    detail.revertFailures.length,
+    1,
+    "service should surface revert relay failures",
+  );
+  assert.equal(
+    detail.deleteFailures[0].failed[0].url,
+    "wss://relay.fail",
+    "delete failures should include the failing relay url",
   );
 })();
 

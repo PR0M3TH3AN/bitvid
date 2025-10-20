@@ -644,10 +644,64 @@ export class NostrService {
       confirm,
       video,
     });
-    if (result) {
-      this.emit("videos:deleted", { videoRootId, video, pubkey });
+
+    if (!result) {
+      return result;
     }
-    return result;
+
+    const revertFailures = [];
+    const deleteFailures = [];
+
+    if (Array.isArray(result.reverts)) {
+      for (const entry of result.reverts) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+
+        const failed = Array.isArray(entry?.summary?.failed)
+          ? entry.summary.failed.filter(Boolean)
+          : [];
+        if (failed.length) {
+          revertFailures.push({
+            targetId: entry.targetId || "",
+            eventId: entry.event?.id || "",
+            failed,
+          });
+        }
+      }
+    }
+
+    if (Array.isArray(result.deletes)) {
+      for (const entry of result.deletes) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+
+        const failed = Array.isArray(entry?.summary?.failed)
+          ? entry.summary.failed.filter(Boolean)
+          : [];
+        if (failed.length) {
+          deleteFailures.push({
+            eventId: entry.event?.id || "",
+            identifiers: entry.identifiers || { events: [], addresses: [] },
+            failed,
+          });
+        }
+      }
+    }
+
+    const detail = {
+      videoRootId,
+      video,
+      pubkey,
+      result,
+      revertFailures,
+      deleteFailures,
+    };
+
+    this.emit("videos:deleted", detail);
+
+    return detail;
   }
 
   async getOldEventById(eventId) {

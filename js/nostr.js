@@ -38,6 +38,7 @@ import {
   publishEventToRelay,
   publishEventToRelays,
   assertAnyRelayAccepted,
+  summarizePublishResults,
 } from "./nostrPublish.js";
 import { nostrToolsReady } from "./nostrToolsBootstrap.js";
 import { devLogger, userLogger } from "./utils/logger.js";
@@ -7131,7 +7132,11 @@ export class NostrClient {
       });
     }
 
-    return signedEvent;
+    return {
+      event: signedEvent,
+      publishResults,
+      summary: publishSummary,
+    };
   }
 
   /**
@@ -7226,6 +7231,9 @@ export class NostrClient {
       throw new Error("No existing events found for that root.");
     }
 
+    const revertSummaries = [];
+    const revertEvents = [];
+
     for (const vid of matchingEvents.values()) {
       const baseRoot =
         (typeof vid.videoRootId === "string" && vid.videoRootId) ||
@@ -7251,7 +7259,7 @@ export class NostrClient {
         videoRootId: baseRoot,
       };
 
-      const signedRevert = await this.revertVideo(
+      const revertResult = await this.revertVideo(
         {
           id: vid.id,
           pubkey: vid.pubkey,
@@ -7260,6 +7268,26 @@ export class NostrClient {
         },
         pubkey
       );
+
+      const revertEvent = revertResult?.event || null;
+      const revertSummary =
+        revertResult?.summary ||
+        summarizePublishResults(revertResult?.publishResults || []);
+      const revertPublishResults = Array.isArray(revertResult?.publishResults)
+        ? revertResult.publishResults
+        : [];
+
+      revertSummaries.push({
+        targetId: vid.id || "",
+        event: revertEvent,
+        publishResults: revertPublishResults,
+        summary: revertSummary,
+      });
+
+      if (revertEvent?.id) {
+        revertEvents.push(revertEvent);
+        this.rawEvents.set(revertEvent.id, revertEvent);
+      }
 
       const cached = this.allEvents.get(vid.id) || vid;
       cached.deleted = true;
@@ -7273,16 +7301,159 @@ export class NostrClient {
       const activeKey = getActiveKey(cached);
       if (activeKey) {
         this.activeMap.delete(activeKey);
-        const revertCreatedAt = Number.isFinite(signedRevert?.created_at)
-          ? Math.floor(signedRevert.created_at)
+        const revertCreatedAt = Number.isFinite(revertEvent?.created_at)
+          ? Math.floor(revertEvent.created_at)
           : Math.floor(Date.now() / 1000);
         this.recordTombstone(activeKey, revertCreatedAt);
       }
     }
 
+    const eventIdSet = new Set();
+    const addressPointerSet = new Set();
+
+    const collectIdentifiersFromEvent = (eventLike) => {
+      if (!eventLike || typeof eventLike !== "object") {
+        return;
+      }
+
+      const eventId = typeof eventLike.id === "string" ? eventLike.id : "";
+      if (eventId) {
+        eventIdSet.add(eventId);
+      }
+
+      const pointerSources = [];
+      if (eventLike.kind && Array.isArray(eventLike.tags)) {
+        pointerSources.push(eventLike);
+      }
+      if (eventId) {
+        const raw = this.rawEvents.get(eventId);
+        if (raw && raw !== eventLike) {
+          pointerSources.push(raw);
+        }
+      }
+
+      for (const source of pointerSources) {
+        const pointer = eventToAddressPointer(source);
+        if (pointer) {
+          addressPointerSet.add(pointer);
+        }
+      }
+    };
+
+    matchingEvents.forEach((event) => collectIdentifiersFromEvent(event));
+    revertEvents.forEach((event) => collectIdentifiersFromEvent(event));
+    if (targetVideo) {
+      collectIdentifiersFromEvent(targetVideo);
+    }
+
+    const identifierRecords = [];
+    eventIdSet.forEach((value) => {
+      identifierRecords.push({ type: "e", value });
+    });
+    addressPointerSet.forEach((value) => {
+      identifierRecords.push({ type: "a", value });
+    });
+
+    const deleteSummaries = [];
+    if (identifierRecords.length) {
+      const extension = window?.nostr;
+      const extensionSigner =
+        extension && typeof extension.signEvent === "function"
+          ? extension.signEvent.bind(extension)
+          : null;
+
+      if (typeof extensionSigner !== "function") {
+        const error = new Error(
+          "A NIP-07 extension with signEvent support is required to delete videos.",
+        );
+        error.code = "nostr-extension-missing";
+        throw error;
+      }
+
+      const permissionResult = await this.ensureExtensionPermissions(
+        DEFAULT_NIP07_PERMISSION_METHODS,
+      );
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[nostr] Extension permissions denied while deleting videos.",
+          permissionResult.error,
+        );
+        const error = new Error(
+          "The NIP-07 extension must grant decrypt and sign permissions before deleting a video.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult.error;
+        throw error;
+      }
+
+      const chunkSize = 100;
+      for (let index = 0; index < identifierRecords.length; index += chunkSize) {
+        const chunk = identifierRecords.slice(index, index + chunkSize);
+        const deleteTags = chunk.map((record) => [record.type, record.value]);
+
+        const deleteEvent = {
+          kind: 5,
+          pubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: deleteTags,
+          content: inferredRoot
+            ? `Delete video root ${inferredRoot}`
+            : "Delete published video events",
+        };
+
+        const signedDelete = await extensionSigner(deleteEvent);
+        const publishResults = await publishEventToRelays(
+          this.pool,
+          this.relays,
+          signedDelete,
+        );
+        const publishSummary = summarizePublishResults(publishResults);
+
+        publishSummary.accepted.forEach(({ url }) =>
+          devLogger.log(`Delete event published to ${url}`),
+        );
+
+        if (publishSummary.failed.length) {
+          publishSummary.failed.forEach(({ url, error: relayError }) => {
+            const reason =
+              relayError instanceof Error
+                ? relayError.message
+                : relayError
+                ? String(relayError)
+                : "publish failed";
+            userLogger.warn(
+              `[nostr] Delete event not accepted by ${url}: ${reason}`,
+              relayError,
+            );
+          });
+        }
+
+        if (signedDelete?.id) {
+          this.rawEvents.set(signedDelete.id, signedDelete);
+        }
+
+        deleteSummaries.push({
+          event: signedDelete,
+          publishResults,
+          summary: publishSummary,
+          identifiers: {
+            events: chunk
+              .filter((record) => record.type === "e")
+              .map((record) => record.value),
+            addresses: chunk
+              .filter((record) => record.type === "a")
+              .map((record) => record.value),
+          },
+        });
+      }
+    }
+
     this.saveLocalData();
 
-    return true;
+    return {
+      reverts: revertSummaries,
+      deletes: deleteSummaries,
+    };
   }
 
   /**
