@@ -166,14 +166,16 @@ const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
 const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
 
 export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
+  // Core auth + relay metadata
   "get_public_key",
   "sign_event",
+  "read_relays",
+  "write_relays",
+  // Encryption helpers — request both legacy NIP-04 and modern NIP-44 upfront
   "nip04.encrypt",
   "nip04.decrypt",
   "nip44.encrypt",
   "nip44.decrypt",
-  "read_relays",
-  "write_relays",
 ]);
 
 const viewEventPublishMemory = new Map();
