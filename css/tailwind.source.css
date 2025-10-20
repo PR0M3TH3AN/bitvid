@@ -1532,13 +1532,30 @@
     display: flex;
     flex-direction: column;
     inline-size: 100%;
-    max-block-size: var(--modal-shell-max-height);
+    block-size: 100%;
+    min-block-size: 100%;
+    max-block-size: none;
     overflow: hidden;
-    --profile-modal-gap: calc(var(--space-lg) - var(--space-xs));
-    --profile-modal-padding-inline: calc(var(--space-lg) - var(--space-xs));
-    --profile-modal-padding-block-start: var(--space-md);
-    --profile-modal-padding-block-end: calc(var(--space-lg) - var(--space-xs));
-    --profile-modal-nav-gap: var(--space-xs);
+    --profile-modal-scale: 0.9;
+    --profile-modal-gap:
+      calc((var(--space-lg) - var(--space-xs)) * var(--profile-modal-scale));
+    --profile-modal-padding-inline:
+      calc((var(--space-lg) - var(--space-xs)) * var(--profile-modal-scale));
+    --profile-modal-padding-block-start:
+      calc(var(--space-md) * var(--profile-modal-scale));
+    --profile-modal-padding-block-end:
+      calc((var(--space-lg) - var(--space-xs)) * var(--profile-modal-scale));
+    --profile-modal-nav-gap: calc(var(--space-xs) * var(--profile-modal-scale));
+  }
+
+  .profile-modal__content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    block-size: 100%;
+    min-block-size: 0;
+    transform: scale(var(--profile-modal-scale));
+    transform-origin: top center;
   }
 
   .profile-modal__body {
@@ -1639,6 +1656,10 @@
   }
 
   @media (min-width: theme("screens.lg")) {
+    .profile-modal {
+      max-block-size: var(--modal-shell-max-height);
+    }
+
     .profile-modal__body {
       gap: calc(var(--profile-modal-gap) + var(--space-2xs));
       padding-inline: calc(var(--profile-modal-padding-inline) + var(--space-xs));
