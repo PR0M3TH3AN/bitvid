@@ -10,7 +10,9 @@ bitvid ships a frozen logger at `js/utils/logger.js` with two channels:
 
 - `logger.dev`: Emits only when `IS_DEV_MODE` is truthy. Use this channel for
   verbose traces, performance probes, and feature flag experimentation that
-  should disappear from production consoles.
+  should disappear from production consoles. The `logger.dev.debug` helper is
+  available for especially noisy traces that you want to keep isolated to local
+  development sessions.
 - `logger.user`: Always available and automatically prefixes output with
   `[bitvid]`. Use this channel for operator-facing warnings and errors that help
   diagnose issues in production.
@@ -19,7 +21,7 @@ When adding new messages, classify them by the audience:
 
 | Scenario | Recommended channel | Notes |
 | --- | --- | --- |
-| Debugging a new feature locally | `logger.dev.info`/`logger.dev.log` | Remove or downgrade before launching if they no longer serve a purpose. |
+| Debugging a new feature locally | `logger.dev.debug`/`logger.dev.info` | Remove or downgrade before launching if they no longer serve a purpose. |
 | Non-fatal recoverable issues users should investigate | `logger.user.warn` | Provide actionable context so operators know what failed. |
 | Fatal errors that block playback or payments | `logger.user.error` | Escalate with a clear message and include relevant IDs or URLs. |
 | Metrics or noisy traces that only help during QA | `logger.dev.*` | Wrap expensive logging in conditional checks when possible. |

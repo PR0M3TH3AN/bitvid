@@ -1,8 +1,10 @@
 // js/feedEngine/stages.js
 
 import { getApplication } from "../applicationContext.js";
+import { IS_DEV_MODE } from "../config.js";
 import nostrService from "../services/nostrService.js";
 import moderationService from "../services/moderationService.js";
+import logger from "../utils/logger.js";
 import { dedupeToNewestByRoot } from "../utils/videoDeduper.js";
 import { isPlainObject, toSet } from "./utils.js";
 
@@ -499,6 +501,17 @@ export function createModerationStage({
       metadataModeration.trustedMuters = trustedMuters.slice();
       metadataModeration.trustedMuteCount = trustedMuteCount;
       item.metadata.moderation = metadataModeration;
+
+      if (IS_DEV_MODE) {
+        logger.dev.debug("[feedEngine/moderation] metadata.moderation updated", {
+          stage: stageName,
+          videoId: videoId || null,
+          blockAutoplay,
+          blurThumbnail,
+          trustedCount,
+          reportType: normalizedReportType,
+        });
+      }
 
       if (!video.moderation || typeof video.moderation !== "object") {
         video.moderation = {};
