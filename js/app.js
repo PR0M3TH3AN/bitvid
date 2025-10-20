@@ -72,6 +72,7 @@ import { VideoModal } from "./ui/components/VideoModal.js";
 import { UploadModal } from "./ui/components/UploadModal.js";
 import { EditModal } from "./ui/components/EditModal.js";
 import { RevertModal } from "./ui/components/RevertModal.js";
+import { DeleteModal } from "./ui/components/DeleteModal.js";
 import {
   prepareStaticModal,
   openStaticModal,
@@ -204,6 +205,8 @@ class Application {
     this.boundEditModalSubmitHandler = null;
     this.boundEditModalCancelHandler = null;
     this.boundRevertConfirmHandler = null;
+    this.boundDeleteConfirmHandler = null;
+    this.boundDeleteCancelHandler = null;
     this.boundVideoModalCloseHandler = null;
     this.boundVideoModalCopyHandler = null;
     this.boundVideoModalShareHandler = null;
@@ -215,6 +218,7 @@ class Application {
     this.videoListViewEditHandler = null;
     this.videoListViewRevertHandler = null;
     this.videoListViewDeleteHandler = null;
+    this.deleteModal = null;
     this.moreMenuController = null;
     this.latestFeedMetadata = null;
     this.lastModalTrigger = null;
@@ -483,6 +487,35 @@ class Application {
     this.revertModal.addEventListener(
       "video:revert-confirm",
       this.boundRevertConfirmHandler
+    );
+
+    const deleteModalEvents = new EventTarget();
+    this.deleteModal =
+      (typeof ui.deleteModal === "function"
+        ? ui.deleteModal({ app: this, eventTarget: deleteModalEvents })
+        : ui.deleteModal) ||
+      new DeleteModal({
+        removeTrackingScripts,
+        setGlobalModalState,
+        truncateMiddle,
+        container: document.getElementById("modalContainer") || null,
+        eventTarget: deleteModalEvents,
+      });
+
+    this.boundDeleteConfirmHandler = (event) => {
+      this.handleDeleteModalConfirm(event);
+    };
+    this.deleteModal.addEventListener(
+      "video:delete-confirm",
+      this.boundDeleteConfirmHandler
+    );
+
+    this.boundDeleteCancelHandler = () => {
+      this.showError("");
+    };
+    this.deleteModal.addEventListener(
+      "video:delete-cancel",
+      this.boundDeleteCancelHandler
     );
 
     try {
@@ -5967,12 +6000,58 @@ class Application {
     }
   }
 
+  async handleDeleteModalConfirm(event) {
+    const detail = event?.detail || {};
+    const targetVideo = detail.video || this.deleteModal?.activeVideo || null;
+
+    if (!targetVideo) {
+      return;
+    }
+
+    if (!this.pubkey) {
+      this.showError("Please login to delete videos.");
+      return;
+    }
+
+    if (!this.deleteModal) {
+      this.showError("Delete modal is not available right now.");
+      return;
+    }
+
+    const rootId = targetVideo.videoRootId || targetVideo.id || "";
+    if (!rootId) {
+      this.showError("Unable to determine the video root for deletion.");
+      return;
+    }
+
+    try {
+      this.deleteModal.setBusy(true, "Deleting…");
+      await this.nostrService.handleFullDeleteVideo({
+        videoRootId: rootId,
+        video: targetVideo,
+        pubkey: this.pubkey,
+        confirm: false,
+      });
+
+      await this.loadVideos();
+      this.showSuccess("All versions deleted successfully!");
+      this.deleteModal.setBusy(false);
+      this.deleteModal.close();
+      this.forceRefreshAllProfiles();
+    } catch (err) {
+      devLogger.error("Failed to delete all versions:", err);
+      this.showError("Failed to delete all versions. Please try again.");
+      this.deleteModal.setBusy(false);
+    }
+  }
+
   /**
    * Handle "Delete Video" from gear menu.
    */
   async handleFullDeleteVideo(target) {
     try {
       const normalizedTarget = this.normalizeActionTarget(target);
+      const { triggerElement } = normalizedTarget;
       const all = this.nostrService.getFilteredActiveVideos({
         blacklistedEventIds: this.blacklistedEventIds,
         isAuthorBlocked: (pubkey) => this.isAuthorBlocked(pubkey),
@@ -5992,28 +6071,19 @@ class Application {
         this.showError("You do not own this video.");
         return;
       }
-      // Make sure the user is absolutely sure:
-      if (
-        !confirm(
-          `Delete ALL versions of "${video.title}"? This action is permanent.`
-        )
-      ) {
+      if (!this.deleteModal) {
+        this.showError("Delete modal is not available right now.");
         return;
       }
 
-      // We assume video.videoRootId is not empty, or fallback to video.id if needed
-      const rootId = video.videoRootId || video.id;
+      const loaded = await this.deleteModal.load();
+      if (!loaded) {
+        this.showError("Delete modal is not available right now.");
+        return;
+      }
 
-      await this.nostrService.handleFullDeleteVideo({
-        videoRootId: rootId,
-        pubkey: this.pubkey,
-        confirm: false,
-      });
-
-      // Reload
-      await this.loadVideos();
-      this.showSuccess("All versions deleted successfully!");
-      this.forceRefreshAllProfiles();
+      this.deleteModal.setVideo(video);
+      this.deleteModal.open({ video }, { triggerElement });
     } catch (err) {
       devLogger.error("Failed to delete all versions:", err);
       this.showError("Failed to delete all versions. Please try again.");
@@ -7635,6 +7705,28 @@ class Application {
         this.revertModal.destroy();
       } catch (error) {
         devLogger.warn("[Application] Failed to destroy revert modal:", error);
+      }
+    }
+
+    if (this.deleteModal && this.boundDeleteConfirmHandler) {
+      this.deleteModal.removeEventListener(
+        "video:delete-confirm",
+        this.boundDeleteConfirmHandler
+      );
+      this.boundDeleteConfirmHandler = null;
+    }
+    if (this.deleteModal && this.boundDeleteCancelHandler) {
+      this.deleteModal.removeEventListener(
+        "video:delete-cancel",
+        this.boundDeleteCancelHandler
+      );
+      this.boundDeleteCancelHandler = null;
+    }
+    if (typeof this.deleteModal?.destroy === "function") {
+      try {
+        this.deleteModal.destroy();
+      } catch (error) {
+        devLogger.warn("[Application] Failed to destroy delete modal:", error);
       }
     }
 
