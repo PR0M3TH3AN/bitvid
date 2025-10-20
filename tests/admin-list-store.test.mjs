@@ -50,8 +50,11 @@ const { persistAdminState, __adminListStoreTestHooks } = await import(
 const { nostrClient } = await import("../js/nostr.js");
 const { ADMIN_SUPER_NPUB } = await import("../js/config.js");
 
-const { extractNpubsFromEvent, normalizeParticipantTagValue } =
-  __adminListStoreTestHooks;
+const {
+  extractNpubsFromEvent,
+  normalizeParticipantTagValue,
+  publishListWithFirstAcceptance,
+} = __adminListStoreTestHooks;
 
 const sampleHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const sampleNpub = "npub1existingparticipant";
