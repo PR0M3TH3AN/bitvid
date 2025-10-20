@@ -1,6 +1,7 @@
 const VAR_PATTERN = /^var\(--.*\)$/;
 const CONTAINS_VAR_PATTERN = /var\(--.*\)/;
 const LINEAR_GRADIENT_PATTERN = /^linear-gradient\(/;
+const COLOR_MIX_PATTERN = /^color-mix\([\s\S]+\)$/;
 const NON_TOKEN_LENGTH_PATTERN = /(?!.*var\().*\b\d*\.?\d+(?:px|rem)\b/;
 
 module.exports = {
@@ -11,7 +12,7 @@ module.exports = {
     'color-no-hex': true,
     'declaration-property-value-allowed-list': {
       color: [VAR_PATTERN, 'inherit', 'currentColor'],
-      'background-color': [VAR_PATTERN, 'transparent', 'inherit'],
+      'background-color': [VAR_PATTERN, 'transparent', 'inherit', 'currentColor', COLOR_MIX_PATTERN],
       background: [VAR_PATTERN, CONTAINS_VAR_PATTERN, LINEAR_GRADIENT_PATTERN, 'none', 'transparent'],
       'border-color': [VAR_PATTERN, CONTAINS_VAR_PATTERN, 'transparent', 'inherit', 'currentColor'],
       'outline-color': [VAR_PATTERN, 'transparent', 'inherit', 'currentColor'],
