@@ -1,6 +1,8 @@
 import { devLogger } from "./utils/logger.js";
 import {
   ADMIN_LIST_NAMESPACE,
+  ADMIN_COMMUNITY_BLACKLIST_SOURCES,
+  ADMIN_COMMUNITY_BLACKLIST_PREFIX,
   isDevMode,
   WATCH_HISTORY_KIND,
   WATCH_HISTORY_LIST_IDENTIFIER,
@@ -30,7 +32,11 @@ export const ADMIN_LIST_IDENTIFIERS = Object.freeze({
   editors: "editors",
   whitelist: "whitelist",
   blacklist: "blacklist",
+  communityBlacklistSources: ADMIN_COMMUNITY_BLACKLIST_SOURCES,
 });
+
+export { ADMIN_COMMUNITY_BLACKLIST_SOURCES };
+export { ADMIN_COMMUNITY_BLACKLIST_PREFIX };
 
 const DEFAULT_APPEND_TAGS = [];
 

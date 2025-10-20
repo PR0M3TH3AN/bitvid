@@ -44,11 +44,23 @@ process.on("exit", () => {
   console.warn = originalConsoleWarn;
 });
 
-const { persistAdminState, __adminListStoreTestHooks } = await import(
+const {
+  loadAdminState,
+  persistAdminState,
+  __adminListStoreTestHooks,
+} = await import(
   "../js/adminListStore.js"
 );
 const { nostrClient } = await import("../js/nostr.js");
-const { ADMIN_SUPER_NPUB } = await import("../js/config.js");
+const {
+  ADMIN_SUPER_NPUB,
+  ADMIN_LIST_NAMESPACE,
+  ADMIN_COMMUNITY_BLACKLIST_PREFIX,
+  ADMIN_COMMUNITY_BLACKLIST_SOURCES,
+} = await import("../js/config.js");
+const { ADMIN_LIST_IDENTIFIERS } = await import(
+  "../js/nostrEventSchemas.js"
+);
 
 const {
   extractNpubsFromEvent,
@@ -137,9 +149,59 @@ nostrClient.writeRelays = [...relays];
 let publishBehaviors = [];
 let publishCallIndex = 0;
 
+const superHex = mockNip19.decode(ADMIN_SUPER_NPUB).data;
+const editorNpub = "npub1editormember";
+const whitelistNpub = "npub1whitelistmember";
+const directBlacklistNpub = "npub1directblacklist";
+const communityMemberNpub = "npub1communityblacklist";
+const communitySecondMemberNpub = "npub1communitytwo";
+const communityCuratorOneNpub = "npub1communitycurator";
+const communityCuratorTwoNpub = "npub1communitycurator2";
+const communityCuratorOneHex = mockNip19.decode(communityCuratorOneNpub).data;
+const communityCuratorTwoHex = mockNip19.decode(communityCuratorTwoNpub).data;
+const communityCuratorOneAuthorHex = mockNip19.decode(
+  communityCuratorOneHex
+).data;
+const communityCuratorTwoAuthorHex = mockNip19.decode(
+  communityCuratorTwoHex
+).data;
+const editorsDTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_LIST_IDENTIFIERS.editors}`;
+const whitelistDTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_LIST_IDENTIFIERS.whitelist}`;
+const blacklistDTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_LIST_IDENTIFIERS.blacklist}`;
+const communitySourceDTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_SOURCES}`;
+const communityListOneDTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_PREFIX}:crew-alpha`;
+const communityListTwoDTag = `${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_PREFIX}:crew-beta`;
+
 function setPublishBehaviors(behaviors) {
   publishBehaviors = Array.isArray(behaviors) ? behaviors : [];
   publishCallIndex = 0;
+}
+
+const listEventRegistry = new Map();
+let listFailureMode = null;
+
+function resetListRegistry() {
+  listEventRegistry.clear();
+  listFailureMode = null;
+}
+
+function registerListEvent({ dTag, authorHex = null, event }) {
+  const key = `${authorHex || "*"}::${dTag}`;
+  listEventRegistry.set(key, event);
+}
+
+function createListEvent({ dTag, tags, pubkey, createdAt }) {
+  return {
+    kind: 30000,
+    pubkey: pubkey || "",
+    created_at: typeof createdAt === "number" ? createdAt : Math.floor(Date.now() / 1000),
+    id: `${dTag}:${pubkey || "anon"}:${createdAt || 0}`,
+    tags: Array.isArray(tags) ? tags : [],
+  };
+}
+
+function setListFailureMode(mode) {
+  listFailureMode = typeof mode === "string" ? mode : null;
 }
 
 nostrClient.pool = {
@@ -186,6 +248,27 @@ nostrClient.pool = {
       },
     };
   },
+  async list(relayUrls, filters) {
+    const filter = Array.isArray(filters) && filters.length ? filters[0] : {};
+    const dValues = Array.isArray(filter?.["#d"]) ? filter["#d"] : [];
+    const authors = Array.isArray(filter?.authors) ? filter.authors : [];
+    const dTag = dValues.length ? dValues[0] : "";
+    const authorKey = authors.length ? authors[0] : "*";
+
+    if (listFailureMode === "throw-authors" && authors.length) {
+      throw new Error("list failure for authors");
+    }
+
+    const key = `${authorKey}::${dTag}`;
+    const fallbackKey = `*::${dTag}`;
+    const event = listEventRegistry.get(key) || listEventRegistry.get(fallbackKey);
+
+    if (!event) {
+      return [];
+    }
+
+    return [event];
+  },
 };
 
 if (!globalThis.window.nostr) {
@@ -196,6 +279,153 @@ globalThis.window.nostr.signEvent = async (event) => ({
   ...event,
   id: "signed-event",
 });
+
+resetListRegistry();
+
+registerListEvent({
+  dTag: editorsDTag,
+  event: createListEvent({
+    dTag: editorsDTag,
+    pubkey: superHex,
+    createdAt: 1,
+    tags: [["p", editorNpub]],
+  }),
+});
+registerListEvent({
+  dTag: whitelistDTag,
+  event: createListEvent({
+    dTag: whitelistDTag,
+    pubkey: superHex,
+    createdAt: 2,
+    tags: [["p", whitelistNpub]],
+  }),
+});
+registerListEvent({
+  dTag: blacklistDTag,
+  event: createListEvent({
+    dTag: blacklistDTag,
+    pubkey: superHex,
+    createdAt: 3,
+    tags: [["p", directBlacklistNpub]],
+  }),
+});
+registerListEvent({
+  dTag: communitySourceDTag,
+  authorHex: superHex,
+  event: createListEvent({
+    dTag: communitySourceDTag,
+    pubkey: superHex,
+    createdAt: 4,
+    tags: [
+      ["a", `30000:${communityCuratorOneHex}:${communityListOneDTag}`],
+      ["a", `30000:${communityCuratorOneHex}:${communityListOneDTag}`],
+      ["a", `10000:${communityCuratorOneHex}:${communityListOneDTag}`],
+      ["a", `30000:${communityCuratorTwoHex}:${communityListTwoDTag}`],
+      ["p", editorNpub],
+    ],
+  }),
+});
+registerListEvent({
+  dTag: communityListOneDTag,
+  authorHex: communityCuratorOneAuthorHex,
+  event: createListEvent({
+    dTag: communityListOneDTag,
+    pubkey: communityCuratorOneHex,
+    createdAt: 5,
+    tags: [
+      ["p", communityMemberNpub],
+      ["p", directBlacklistNpub],
+      ["p", ADMIN_SUPER_NPUB],
+      ["p", whitelistNpub],
+      ["p", editorNpub],
+    ],
+  }),
+});
+registerListEvent({
+  dTag: communityListTwoDTag,
+  authorHex: communityCuratorTwoAuthorHex,
+  event: createListEvent({
+    dTag: communityListTwoDTag,
+    pubkey: communityCuratorTwoHex,
+    createdAt: 6,
+    tags: [
+      ["p", communitySecondMemberNpub],
+      ["p", communitySecondMemberNpub],
+    ],
+  }),
+});
+
+const adminState = await loadAdminState();
+
+assert.deepEqual(
+  adminState.editors,
+  [editorNpub],
+  "should hydrate editors from the primary admin list",
+);
+assert.deepEqual(
+  adminState.whitelist,
+  [whitelistNpub],
+  "should hydrate whitelist entries from the primary admin list",
+);
+assert.deepEqual(
+  adminState.blacklist,
+  [directBlacklistNpub, communityMemberNpub, communitySecondMemberNpub],
+  "should merge community blacklists with base entries while deduping and respecting guards",
+);
+assert.ok(
+  !adminState.blacklist.includes(ADMIN_SUPER_NPUB),
+  "should exclude super admin from merged blacklist",
+);
+assert.ok(
+  !adminState.blacklist.includes(whitelistNpub),
+  "should exclude whitelist members from merged blacklist",
+);
+assert.ok(
+  !adminState.blacklist.includes(editorNpub),
+  "should exclude editor members from merged blacklist",
+);
+
+resetListRegistry();
+setListFailureMode("throw-authors");
+
+registerListEvent({
+  dTag: editorsDTag,
+  event: createListEvent({
+    dTag: editorsDTag,
+    pubkey: superHex,
+    createdAt: 11,
+    tags: [["p", editorNpub]],
+  }),
+});
+registerListEvent({
+  dTag: whitelistDTag,
+  event: createListEvent({
+    dTag: whitelistDTag,
+    pubkey: superHex,
+    createdAt: 12,
+    tags: [["p", whitelistNpub]],
+  }),
+});
+registerListEvent({
+  dTag: blacklistDTag,
+  event: createListEvent({
+    dTag: blacklistDTag,
+    pubkey: superHex,
+    createdAt: 13,
+    tags: [["p", directBlacklistNpub]],
+  }),
+});
+
+const fallbackState = await loadAdminState();
+
+assert.deepEqual(
+  fallbackState.blacklist,
+  [directBlacklistNpub],
+  "should fall back to base blacklist when community list loading fails",
+);
+
+resetListRegistry();
+setListFailureMode(null);
 
 const additionBehaviors = [
   { url: relays[0], success: false, error: new Error("relay1 add failure") },
