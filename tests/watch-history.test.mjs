@@ -968,7 +968,18 @@ async function testEnsureExtensionPermissionCaching() {
   const actor = "permission-actor";
   const extension = installExtensionCrypto({ actor });
   const previousCache = nostrClient.extensionPermissionCache;
+  let previousStoredPermissions = null;
+  if (typeof localStorage !== "undefined" && localStorage) {
+    try {
+      previousStoredPermissions = localStorage.getItem(
+        NIP07_PERMISSIONS_STORAGE_KEY,
+      );
+    } catch (error) {
+      previousStoredPermissions = null;
+    }
+  }
   nostrClient.extensionPermissionCache = new Set();
+  clearStoredExtensionPermissions();
 
   try {
     const first = await nostrClient.ensureExtensionPermissions([
@@ -998,6 +1009,20 @@ async function testEnsureExtensionPermissionCaching() {
   } finally {
     extension.restore();
     nostrClient.extensionPermissionCache = previousCache;
+    if (typeof localStorage !== "undefined" && localStorage) {
+      try {
+        if (previousStoredPermissions && previousStoredPermissions.length) {
+          localStorage.setItem(
+            NIP07_PERMISSIONS_STORAGE_KEY,
+            previousStoredPermissions,
+          );
+        } else {
+          clearStoredExtensionPermissions();
+        }
+      } catch (error) {
+        // ignore restore errors in tests
+      }
+    }
   }
 }
 
