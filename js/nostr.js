@@ -6821,7 +6821,11 @@ export class NostrClient {
       content: JSON.stringify(contentObject),
     };
 
-    const extensionSigner = window?.nostr?.signEvent;
+    const extension = window?.nostr;
+    const extensionSigner =
+      extension && typeof extension.signEvent === "function"
+        ? extension.signEvent.bind(extension)
+        : null;
     if (typeof extensionSigner !== "function") {
       const error = new Error(
         "A NIP-07 extension with signEvent support is required to revert videos.",
