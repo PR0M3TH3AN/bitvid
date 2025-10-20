@@ -741,10 +741,12 @@ test("applies token-based sizing and arrow positioning", async () => {
   const panel = documentRef.getElementById("panel-with-arrow");
   const arrow = panel.querySelector(".arrow");
 
-  assert.equal(panel.style.maxWidth, "320px");
-  assert.equal(panel.style.maxHeight, "240px");
+  const panelStyles = getComputedStyle(panel);
+  assert.equal(panelStyles.maxWidth, "320px");
+  assert.equal(panelStyles.maxHeight, "240px");
   assert.equal(arrow.dataset.popoverArrowSide, "bottom");
-  assert.notEqual(arrow.style.top, "");
+  const arrowStyles = getComputedStyle(arrow);
+  assert.notEqual(arrowStyles.top, "");
 
   popover.destroy();
 });
