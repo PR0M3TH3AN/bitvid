@@ -83,6 +83,76 @@ function getEnableVariantTimeoutMs() {
 
   return DEFAULT_ENABLE_VARIANT_TIMEOUT_MS;
 }
+
+function normalizePermissionMethod(method) {
+  return typeof method === "string" && method.trim() ? method.trim() : "";
+}
+
+function readStoredNip07Permissions() {
+  if (typeof localStorage === "undefined" || !localStorage) {
+    return [];
+  }
+
+  let rawValue;
+  try {
+    rawValue = localStorage.getItem(NIP07_PERMISSIONS_STORAGE_KEY);
+  } catch (error) {
+    return [];
+  }
+
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    const storedMethods = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.grantedMethods)
+        ? parsed.grantedMethods
+        : Array.isArray(parsed?.methods)
+          ? parsed.methods
+          : [];
+    return storedMethods
+      .map((method) => normalizePermissionMethod(method))
+      .filter(Boolean);
+  } catch (error) {
+    try {
+      localStorage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
+    } catch (cleanupError) {
+      // ignore cleanup errors
+    }
+    return [];
+  }
+}
+
+function writeStoredNip07Permissions(methods) {
+  if (typeof localStorage === "undefined" || !localStorage) {
+    return;
+  }
+
+  const normalized = Array.from(
+    new Set(
+      Array.from(methods || [])
+        .map((method) => normalizePermissionMethod(method))
+        .filter(Boolean),
+    ),
+  );
+
+  try {
+    if (!normalized.length) {
+      localStorage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
+      return;
+    }
+
+    localStorage.setItem(
+      NIP07_PERMISSIONS_STORAGE_KEY,
+      JSON.stringify({ grantedMethods: normalized }),
+    );
+  } catch (error) {
+    // ignore persistence failures
+  }
+}
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
@@ -93,12 +163,15 @@ const WATCH_HISTORY_REPUBLISH_BASE_DELAY_MS = 2000;
 const WATCH_HISTORY_REPUBLISH_MAX_DELAY_MS = 5 * 60 * 1000;
 const WATCH_HISTORY_REPUBLISH_MAX_ATTEMPTS = 8;
 const WATCH_HISTORY_REPUBLISH_JITTER = 0.25;
+const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
 
 export const DEFAULT_NIP07_PERMISSION_METHODS = Object.freeze([
   "get_public_key",
   "sign_event",
   "nip04.encrypt",
   "nip04.decrypt",
+  "nip44.encrypt",
+  "nip44.decrypt",
   "read_relays",
   "write_relays",
 ]);
@@ -3066,7 +3139,7 @@ export class NostrClient {
     this.watchHistoryLastCreatedAt = 0;
     this.countRequestCounter = 0;
     this.countUnsupportedRelays = new Set();
-    this.extensionPermissionCache = new Set();
+    this.extensionPermissionCache = new Set(readStoredNip07Permissions());
   }
 
   markExtensionPermissions(methods = []) {
@@ -3078,14 +3151,20 @@ export class NostrClient {
       return;
     }
 
+    let didChange = false;
     for (const method of methods) {
-      if (typeof method !== "string") {
+      const normalized = normalizePermissionMethod(method);
+      if (!normalized) {
         continue;
       }
-      const normalized = method.trim();
-      if (normalized) {
-        this.extensionPermissionCache.add(normalized);
+      if (!this.extensionPermissionCache.has(normalized)) {
+        didChange = true;
       }
+      this.extensionPermissionCache.add(normalized);
+    }
+
+    if (didChange) {
+      writeStoredNip07Permissions(this.extensionPermissionCache);
     }
   }
 
