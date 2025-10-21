@@ -255,9 +255,61 @@ async function testLimitApplied() {
   );
 }
 
+async function testAuthorNormalization() {
+  const engine = createFeedEngine();
+  const feedName = "subscriptions-author-normalization";
+
+  const videos = [
+    { id: "video-mixed", pubkey: "pubkey-lower", created_at: 123 },
+  ];
+
+  const calls = [];
+  const service = {
+    async getActiveVideosByAuthors(authors, options) {
+      calls.push({ authors, options });
+      return videos;
+    },
+    async getFilteredActiveVideos() {
+      throw new Error("case normalization run should not fall back to filtered lookup");
+    },
+  };
+
+  engine.registerFeed(feedName, {
+    source: createSubscriptionAuthorsSource({ service }),
+    stages: [
+      createBlacklistFilterStage({ shouldIncludeVideo: () => true }),
+      createDedupeByRootStage(),
+    ],
+    sorter: createChronologicalSorter(),
+  });
+
+  const result = await engine.runFeed(feedName, {
+    runtime: {
+      subscriptionAuthors: [" PUBKEY-LOWER "],
+      authors: ["PUBKEY-LOWER"],
+      blacklistedEventIds: new Set(),
+      isAuthorBlocked: () => false,
+    },
+  });
+
+  assert.equal(calls.length, 1, "case normalization run should call targeted lookup once");
+  assert.deepEqual(
+    calls[0].authors,
+    ["pubkey-lower"],
+    "authors passed to the service should be lowercased",
+  );
+
+  assert.deepEqual(
+    result.videos.map((video) => video.id),
+    ["video-mixed"],
+    "videos should be retained when the service pubkey casing differs",
+  );
+}
+
 await testBlockedCreatorsFiltered();
 await testDuplicateRootsFiltered();
 await testNoAuthorsSkipsLookup();
 await testLimitApplied();
+await testAuthorNormalization();
 
 console.log("subscriptions-feed tests passed");

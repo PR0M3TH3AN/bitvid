@@ -16,7 +16,7 @@ function normalizeAuthor(value) {
     return "";
   }
   const trimmed = value.trim();
-  return trimmed;
+  return trimmed ? trimmed.toLowerCase() : "";
 }
 
 function normalizeActorCandidate(...values) {

@@ -20,6 +20,14 @@ import { devLogger, userLogger } from "./utils/logger.js";
 import moderationService from "./services/moderationService.js";
 import nostrService from "./services/nostrService.js";
 
+function normalizeHexPubkey(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed.toLowerCase() : "";
+}
+
 const getApp = () => getApplication();
 
 /**
@@ -122,7 +130,10 @@ class SubscriptionsManager {
       const subArray = Array.isArray(parsed.subPubkeys)
         ? parsed.subPubkeys
         : [];
-      this.subscribedPubkeys = new Set(subArray);
+      const normalized = subArray
+        .map((value) => normalizeHexPubkey(value))
+        .filter((value) => Boolean(value));
+      this.subscribedPubkeys = new Set(normalized);
 
       this.loaded = true;
     } catch (err) {
@@ -131,7 +142,11 @@ class SubscriptionsManager {
   }
 
   isSubscribed(channelHex) {
-    return this.subscribedPubkeys.has(channelHex);
+    const normalized = normalizeHexPubkey(channelHex);
+    if (!normalized) {
+      return false;
+    }
+    return this.subscribedPubkeys.has(normalized);
   }
 
   getSubscribedAuthors() {
@@ -139,14 +154,19 @@ class SubscriptionsManager {
   }
 
   async addChannel(channelHex, userPubkey) {
+    const normalizedChannel = normalizeHexPubkey(channelHex);
     if (!userPubkey) {
       throw new Error("No user pubkey => cannot addChannel.");
     }
-    if (this.subscribedPubkeys.has(channelHex)) {
+    if (!normalizedChannel) {
+      devLogger.warn("Attempted to subscribe to invalid pubkey", channelHex);
+      return;
+    }
+    if (this.subscribedPubkeys.has(normalizedChannel)) {
       devLogger.log("Already subscribed to", channelHex);
       return;
     }
-    this.subscribedPubkeys.add(channelHex);
+    this.subscribedPubkeys.add(normalizedChannel);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
@@ -157,14 +177,19 @@ class SubscriptionsManager {
   }
 
   async removeChannel(channelHex, userPubkey) {
+    const normalizedChannel = normalizeHexPubkey(channelHex);
     if (!userPubkey) {
       throw new Error("No user pubkey => cannot removeChannel.");
     }
-    if (!this.subscribedPubkeys.has(channelHex)) {
+    if (!normalizedChannel) {
+      devLogger.warn("Attempted to remove invalid pubkey from subscriptions", channelHex);
+      return;
+    }
+    if (!this.subscribedPubkeys.has(normalizedChannel)) {
       devLogger.log("Channel not found in subscription list:", channelHex);
       return;
     }
-    this.subscribedPubkeys.delete(channelHex);
+    this.subscribedPubkeys.delete(normalizedChannel);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
       userLogger.warn(
@@ -515,7 +540,9 @@ class SubscriptionsManager {
 
   buildFeedRuntime({ app, authors = [], limit = null } = {}) {
     const normalizedAuthors = Array.isArray(authors)
-      ? authors.filter((author) => typeof author === "string" && author)
+      ? authors
+          .map((author) => normalizeHexPubkey(author))
+          .filter((author) => Boolean(author))
       : [];
 
     const blacklist =
