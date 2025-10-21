@@ -55,8 +55,8 @@ test("moderation stage enforces admin lists without whitelist bypass", async () 
   const stage = createModerationStage({
     service,
     reportType: "nudity",
-    autoplayThreshold: 2,
-    blurThreshold: 3,
+    autoplayThreshold: 1,
+    blurThreshold: 1,
   });
 
   const items = [
@@ -199,8 +199,8 @@ test("moderation stage applies provided thresholds", async () => {
 
   const relaxedStage = createModerationStage({
     service,
-    autoplayThreshold: 2,
-    blurThreshold: 3,
+    autoplayThreshold: 1,
+    blurThreshold: 1,
   });
 
   const strictResult = await strictStage(items, {});
@@ -281,8 +281,8 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
 
   const stage = createModerationStage({
     service,
-    autoplayThreshold: 2,
-    blurThreshold: 3,
+    autoplayThreshold: 1,
+    blurThreshold: 1,
     reportType: "nudity",
   });
 
@@ -322,11 +322,11 @@ test("moderation stage propagates whitelist, muters, and threshold updates", asy
 
   state.summaryById.set("muted-video", {
     eventId: "muted-video",
-    totalTrusted: 1,
-    types: { nudity: { trusted: 1, total: 1, latest: 1_700_000_500 } },
+    totalTrusted: 0,
+    types: { nudity: { trusted: 0, total: 0, latest: 1_700_000_500 } },
     updatedAt: 1_700_000_600,
   });
-  state.trustedCounts.set("muted-video", 1);
+  state.trustedCounts.set("muted-video", 0);
   state.mutersByAuthor.set(mutedHex, []);
   state.mutedAuthors.delete(mutedHex);
 

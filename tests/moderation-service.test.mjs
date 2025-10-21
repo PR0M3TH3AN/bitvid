@@ -244,14 +244,16 @@ test("moderation thresholds emit logger hooks only when crossing", async (t) => 
 
   const createReporterEntry = (timestamp) => new Map([[reportType, { created_at: timestamp }]]);
 
-  const expectSingleAction = (expectedAction, expectedCount) => {
-    assert.equal(calls.length, 1);
-    const [message, detail] = calls[0];
-    assert.equal(message, "[moderationService] moderation threshold crossed");
-    assert.equal(detail.action, expectedAction);
-    assert.equal(detail.eventId, eventId);
-    assert.equal(detail.reportType, reportType);
-    assert.equal(detail.trustedCount, expectedCount);
+  const expectActions = (...expected) => {
+    assert.equal(calls.length, expected.length);
+    expected.forEach((entry, index) => {
+      const [message, detail] = calls[index];
+      assert.equal(message, "[moderationService] moderation threshold crossed");
+      assert.equal(detail.action, entry.action);
+      assert.equal(detail.eventId, eventId);
+      assert.equal(detail.reportType, reportType);
+      assert.equal(detail.trustedCount, entry.count);
+    });
     calls.length = 0;
   };
 
@@ -261,33 +263,39 @@ test("moderation thresholds emit logger hooks only when crossing", async (t) => 
 
   reports.set(trustedReporters[0], createReporterEntry(100));
   service.recomputeSummaryForEvent(eventId);
+  expectActions(
+    { action: "autoplay-block-enabled", count: 1 },
+    { action: "blur-enabled", count: 1 },
+  );
+
+  service.recomputeSummaryForEvent(eventId);
   expectNoAction();
 
   reports.set(trustedReporters[1], createReporterEntry(200));
-  service.recomputeSummaryForEvent(eventId);
-  expectSingleAction("autoplay-block-enabled", 2);
-
   service.recomputeSummaryForEvent(eventId);
   expectNoAction();
 
   reports.set(trustedReporters[2], createReporterEntry(300));
   service.recomputeSummaryForEvent(eventId);
-  expectSingleAction("blur-enabled", 3);
+  expectNoAction();
 
   service.recomputeSummaryForEvent(eventId);
   expectNoAction();
 
   reports.delete(trustedReporters[2]);
   service.recomputeSummaryForEvent(eventId);
-  expectSingleAction("blur-cleared", 2);
+  expectNoAction();
 
   reports.delete(trustedReporters[1]);
   service.recomputeSummaryForEvent(eventId);
-  expectSingleAction("autoplay-block-cleared", 1);
+  expectNoAction();
 
   reports.delete(trustedReporters[0]);
   service.recomputeSummaryForEvent(eventId);
-  expectNoAction();
+  expectActions(
+    { action: "autoplay-block-cleared", count: 0 },
+    { action: "blur-cleared", count: 0 },
+  );
 
   service.recomputeSummaryForEvent(eventId);
   expectNoAction();
