@@ -132,6 +132,13 @@ export default class LoginModalController {
 
     const ui = provider.ui && typeof provider.ui === "object" ? provider.ui : {};
 
+    const wrapper = document.createElement("div");
+    wrapper.dataset.providerId = providerId;
+    wrapper.className =
+      typeof ui.wrapperClass === "string" && ui.wrapperClass.trim()
+        ? ui.wrapperClass.trim()
+        : "space-y-1";
+
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.providerId = providerId;
@@ -162,12 +169,56 @@ export default class LoginModalController {
       }
     }
 
+    const description =
+      typeof ui.description === "string" && ui.description.trim()
+        ? ui.description.trim()
+        : "";
+    const descriptionClass =
+      typeof ui.descriptionClass === "string" && ui.descriptionClass.trim()
+        ? ui.descriptionClass.trim()
+        : "text-xs text-gray-400";
+
+    let descriptionElement = null;
+    if (description) {
+      descriptionElement = document.createElement("p");
+      descriptionElement.className = descriptionClass;
+      descriptionElement.textContent = description;
+      wrapper.appendChild(descriptionElement);
+    }
+
+    const disabledDescription =
+      typeof ui.disabledDescription === "string" &&
+      ui.disabledDescription.trim()
+        ? ui.disabledDescription.trim()
+        : "";
+    const disabledDescriptionClass =
+      typeof ui.disabledDescriptionClass === "string" &&
+      ui.disabledDescriptionClass.trim()
+        ? ui.disabledDescriptionClass.trim()
+        : "text-xs text-amber-400";
+
+    let disabledDescriptionElement = null;
+    if (disabledDescription) {
+      disabledDescriptionElement = document.createElement("p");
+      disabledDescriptionElement.className = disabledDescriptionClass;
+      disabledDescriptionElement.textContent = disabledDescription;
+      if (!isDisabled) {
+        disabledDescriptionElement.classList.add("hidden");
+      }
+      wrapper.appendChild(disabledDescriptionElement);
+    }
+
+    wrapper.insertBefore(button, wrapper.firstChild);
+
     const state = {
       provider,
       button,
       defaultLabel: defaultLabel,
       disabledLabel,
       isDisabled,
+      wrapper,
+      descriptionElement,
+      disabledDescriptionElement,
       loadingLabel:
         typeof ui.loadingLabel === "string" && ui.loadingLabel.trim()
           ? ui.loadingLabel.trim()
@@ -189,7 +240,7 @@ export default class LoginModalController {
     }
 
     this.providerStates.set(providerId, state);
-    return button;
+    return wrapper;
   }
 
   teardownProviderState(state) {
@@ -259,6 +310,14 @@ export default class LoginModalController {
       button.disabled = false;
       button.removeAttribute("aria-disabled");
       button.textContent = state.defaultLabel;
+    }
+
+    if (state.disabledDescriptionElement) {
+      if (state.isDisabled) {
+        state.disabledDescriptionElement.classList.remove("hidden");
+      } else {
+        state.disabledDescriptionElement.classList.add("hidden");
+      }
     }
   }
 

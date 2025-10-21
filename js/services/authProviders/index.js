@@ -1,6 +1,7 @@
 import nip07Provider from "./nip07.js";
+import nsecProvider from "./nsec.js";
 
-const providers = [nip07Provider].filter(
+const providers = [nip07Provider, nsecProvider].filter(
   (provider) => provider && typeof provider.id === "string",
 );
 
