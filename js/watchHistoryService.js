@@ -843,6 +843,42 @@ function collectQueueItems(actorKey) {
   return items.slice(0, WATCH_HISTORY_MAX_ITEMS);
 }
 
+function getCachedSnapshotItems(actorKey) {
+  if (!actorKey) {
+    return [];
+  }
+
+  const fingerprintEntry = state.fingerprintCache.get(actorKey);
+  if (Array.isArray(fingerprintEntry?.items) && fingerprintEntry.items.length) {
+    return Array.from(fingerprintEntry.items);
+  }
+
+  const clientCache =
+    nostrClient &&
+    nostrClient.watchHistoryCache instanceof Map &&
+    nostrClient.watchHistoryCache.get(actorKey);
+  if (Array.isArray(clientCache?.items) && clientCache.items.length) {
+    return Array.from(clientCache.items);
+  }
+
+  if (typeof nostrClient?.getWatchHistoryStorage === "function") {
+    try {
+      const storage = nostrClient.getWatchHistoryStorage();
+      const storedItems = storage?.actors?.[actorKey]?.items;
+      if (Array.isArray(storedItems) && storedItems.length) {
+        return Array.from(storedItems);
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[watchHistoryService] Failed to read cached watch history items:",
+        error,
+      );
+    }
+  }
+
+  return [];
+}
+
 function notifyQueueChange(actorKey) {
   emit("queue-changed", {
     actor: actorKey,
@@ -1215,10 +1251,17 @@ async function snapshot(items, options = {}) {
 
   const queue = ensureQueue(actorKey);
 
+  if (!items) {
+    const cachedItems = getCachedSnapshotItems(actorKey);
+    if (cachedItems.length) {
+      payloadItems = [...payloadItems, ...cachedItems];
+    }
+  }
+
   devLogger.info(
     "[watchHistoryService] Initiating watch list snapshot publish.",
     {
-    actor: actorKey,
+      actor: actorKey,
     reason,
     itemCount: payloadItems.length,
     queued: queue?.items?.size ?? 0,
@@ -1303,16 +1346,15 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
     return cacheEntry.promise;
   }
 
-  const promise = Promise.resolve()
-    .then(async () => {
-      const permissionResult = await ensureWatchHistoryExtensionPermissions(
-        actorKey,
-      );
-      if (!permissionResult.ok) {
-        throw permissionResult.error;
-      }
-      return nostrClient.resolveWatchHistory(actorKey, { forceRefresh: true });
-    })
+  const promise = (async () => {
+    const permissionResult = await ensureWatchHistoryExtensionPermissions(
+      actorKey,
+    );
+    if (!permissionResult.ok) {
+      throw permissionResult.error;
+    }
+    return nostrClient.resolveWatchHistory(actorKey, { forceRefresh: true });
+  })()
     .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
     .then(() => {
       const latest = state.fingerprintCache.get(actorKey);
