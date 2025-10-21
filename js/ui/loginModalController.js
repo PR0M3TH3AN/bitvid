@@ -1,4 +1,5 @@
 import { devLogger, userLogger } from "../utils/logger.js";
+import { renderQrCode } from "../utils/qrcode.js";
 
 const noop = () => {};
 const SLOW_PROVIDER_DELAY_MS = 8_000;
@@ -261,6 +262,7 @@ export default class LoginModalController {
     this.boundClickHandler = (event) => this.handleContainerClick(event);
     this.activeNsecForm = null;
     this.activeNip46Form = null;
+    this.pendingNip46Cleanup = null;
     this.remoteSignerUnsubscribe = null;
     this.lastRemoteSignerStatus = null;
     this.nextRequestLoginOptions = null;
@@ -751,15 +753,26 @@ export default class LoginModalController {
       return null;
     }
 
-    const connectInput = form.querySelector("[data-nip46-connect-uri]");
+    const handshakePanel = form.querySelector("[data-nip46-handshake-panel]");
+    const qrContainer = form.querySelector("[data-nip46-qr]");
+    const handshakeInput = form.querySelector("[data-nip46-handshake-uri]");
+    const copyButton = form.querySelector("[data-nip46-copy-uri]");
+    const secretNode = form.querySelector("[data-nip46-secret]");
+    const statusNode = form.querySelector("[data-nip46-status]");
+    const authContainer = form.querySelector("[data-nip46-auth]");
+    const authMessageNode = form.querySelector("[data-nip46-auth-message]");
+    const authOpenButton = form.querySelector("[data-nip46-auth-open]");
+    const manualToggle = form.querySelector("[data-nip46-toggle-manual]");
+    const manualFields = form.querySelector("[data-nip46-manual-fields]");
+    const manualInput = form.querySelector("[data-nip46-legacy-uri]");
     const rememberCheckbox = form.querySelector("[data-nip46-remember]");
     const reuseButton = form.querySelector("[data-nip46-reuse]");
     const cancelButton = form.querySelector("[data-nip46-cancel]");
+    const submitButton = form.querySelector("[data-nip46-submit]");
     const errorNode = form.querySelector("[data-nip46-error]");
 
     const storedMetadata = this.getStoredNip46Metadata();
     const hasStoredSession = storedMetadata?.hasSession === true;
-
     if (reuseButton instanceof HTMLButtonElement) {
       reuseButton.classList.toggle("hidden", !hasStoredSession);
     }
@@ -781,6 +794,25 @@ export default class LoginModalController {
     this.modalBody.appendChild(form);
     this.activeNip46Form = form;
 
+    if (handshakeInput instanceof HTMLTextAreaElement) {
+      handshakeInput.readOnly = true;
+      handshakeInput.value = "";
+      handshakeInput.placeholder = "Waiting for connect link…";
+    }
+    if (copyButton instanceof HTMLButtonElement) {
+      copyButton.disabled = true;
+    }
+
+    const statusClassMap = {
+      info: ["border-info/40", "bg-info/10", "text-info"],
+      success: ["border-success/40", "bg-success/10", "text-success"],
+      warning: ["border-warning/50", "bg-warning/10", "text-warning"],
+      danger: ["border-danger/60", "bg-danger/10", "text-danger"],
+    };
+    const statusClassValues = new Set(
+      Object.values(statusClassMap).flat(),
+    );
+
     const setError = (message) => {
       if (!(errorNode instanceof HTMLElement)) {
         return;
@@ -795,14 +827,190 @@ export default class LoginModalController {
       }
     };
 
-    setError("");
-    if (connectInput instanceof HTMLTextAreaElement) {
-      connectInput.focus();
-    }
+    const setStatus = (message, variant = "info") => {
+      if (!(statusNode instanceof HTMLElement)) {
+        return;
+      }
+      const normalized = typeof message === "string" ? message.trim() : "";
+      if (!normalized) {
+        statusNode.textContent = "";
+        statusNode.classList.add("hidden");
+        for (const cls of statusClassValues) {
+          statusNode.classList.remove(cls);
+        }
+        return;
+      }
+      statusNode.textContent = normalized;
+      statusNode.classList.remove("hidden");
+      for (const cls of statusClassValues) {
+        statusNode.classList.remove(cls);
+      }
+      const classes = statusClassMap[variant] || statusClassMap.info;
+      statusNode.classList.add(...classes);
+    };
+
+    const resetStatus = () => setStatus("", "info");
+
+    let qrInstance = null;
+    let manualMode = false;
+    let pendingAuthUrl = "";
+
+    const setAuthChallenge = (url) => {
+      pendingAuthUrl = typeof url === "string" ? url.trim() : "";
+      if (!(authContainer instanceof HTMLElement)) {
+        return;
+      }
+      if (!pendingAuthUrl) {
+        authContainer.classList.add("hidden");
+        if (authMessageNode instanceof HTMLElement) {
+          authMessageNode.textContent = "";
+        }
+        return;
+      }
+      authContainer.classList.remove("hidden");
+      if (authMessageNode instanceof HTMLElement) {
+        authMessageNode.textContent =
+          "The signer requested additional authentication.";
+      }
+    };
+
+    const clearAuthChallenge = () => {
+      setAuthChallenge("");
+    };
+
+    const setPendingState = (pending) => {
+      const disabled = pending === true;
+      if (submitButton instanceof HTMLButtonElement) {
+        submitButton.disabled = disabled;
+      }
+      if (rememberCheckbox instanceof HTMLInputElement) {
+        rememberCheckbox.disabled = disabled;
+      }
+      if (manualToggle instanceof HTMLButtonElement) {
+        manualToggle.disabled = disabled;
+      }
+      if (manualInput instanceof HTMLTextAreaElement) {
+        manualInput.disabled = disabled;
+      }
+      if (reuseButton instanceof HTMLButtonElement) {
+        reuseButton.disabled = disabled;
+      }
+      if (cancelButton instanceof HTMLButtonElement) {
+        cancelButton.disabled = disabled;
+      }
+      if (copyButton instanceof HTMLButtonElement) {
+        const hasUri =
+          handshakeInput instanceof HTMLTextAreaElement &&
+          !!handshakeInput.value;
+        copyButton.disabled = disabled || !hasUri;
+      }
+    };
+
+    const updateHandshakeDisplay = (detail) => {
+      const uri =
+        detail && typeof detail === "object"
+          ? detail.uri || detail.connectionString || ""
+          : "";
+      if (handshakeInput instanceof HTMLTextAreaElement) {
+        handshakeInput.value = uri;
+      }
+      if (copyButton instanceof HTMLButtonElement) {
+        copyButton.disabled = !uri;
+      }
+      if (secretNode instanceof HTMLElement) {
+        const secretValue =
+          detail && typeof detail.secret === "string" ? detail.secret.trim() : "";
+        if (secretValue) {
+          secretNode.textContent = `Secret: ${secretValue}`;
+          secretNode.classList.remove("hidden");
+        } else {
+          secretNode.textContent = "";
+          secretNode.classList.add("hidden");
+        }
+      }
+      if (qrContainer instanceof HTMLElement) {
+        qrContainer.innerHTML = "";
+        if (uri) {
+          qrInstance = renderQrCode(qrContainer, uri, { width: 224, height: 224 });
+        } else {
+          qrInstance = null;
+        }
+      }
+      resetStatus();
+      clearAuthChallenge();
+      setError("");
+    };
+
+    const handleStatus = (status) => {
+      if (!status || typeof status !== "object") {
+        resetStatus();
+        return;
+      }
+      const message =
+        typeof status.message === "string" ? status.message.trim() : "";
+      if (!message) {
+        resetStatus();
+        return;
+      }
+      let variant =
+        typeof status.variant === "string" && status.variant.trim()
+          ? status.variant.trim().toLowerCase()
+          : "";
+      if (!variant) {
+        if (status.phase === "auth") {
+          variant = "warning";
+        } else if (
+          status.phase === "connected" ||
+          status.state === "ready" ||
+          status.state === "acknowledged"
+        ) {
+          variant = "success";
+        } else {
+          variant = "info";
+        }
+      }
+      setStatus(message, variant);
+    };
+
+    const handleAuthUrl = (url) => {
+      const normalized = typeof url === "string" ? url.trim() : "";
+      if (!normalized) {
+        clearAuthChallenge();
+        return;
+      }
+      setAuthChallenge(normalized);
+    };
+
+    const applyManualMode = (enabled) => {
+      manualMode = enabled === true;
+      if (manualFields instanceof HTMLElement) {
+        manualFields.classList.toggle("hidden", !manualMode);
+      }
+      if (handshakePanel instanceof HTMLElement) {
+        handshakePanel.classList.toggle("hidden", manualMode);
+      }
+      if (manualToggle instanceof HTMLButtonElement) {
+        manualToggle.textContent = manualMode
+          ? "Back to QR pairing"
+          : "Paste a signer-provided bunker link instead";
+      }
+      if (manualMode && manualInput instanceof HTMLTextAreaElement) {
+        manualInput.focus();
+      }
+      if (!manualMode && manualInput instanceof HTMLTextAreaElement) {
+        manualInput.value = "";
+      }
+      resetStatus();
+      clearAuthChallenge();
+      setError("");
+    };
 
     let submitHandler = null;
     let cancelHandler = null;
     let reuseHandler = null;
+    let copyHandler = null;
+    let manualToggleHandler = null;
+    let authOpenHandler = null;
 
     const cleanup = () => {
       if (submitHandler) {
@@ -813,6 +1021,15 @@ export default class LoginModalController {
       }
       if (reuseHandler && reuseButton instanceof HTMLButtonElement) {
         reuseButton.removeEventListener("click", reuseHandler);
+      }
+      if (copyHandler && copyButton instanceof HTMLButtonElement) {
+        copyButton.removeEventListener("click", copyHandler);
+      }
+      if (manualToggleHandler && manualToggle instanceof HTMLButtonElement) {
+        manualToggle.removeEventListener("click", manualToggleHandler);
+      }
+      if (authOpenHandler && authOpenButton instanceof HTMLButtonElement) {
+        authOpenButton.removeEventListener("click", authOpenHandler);
       }
 
       if (form.parentElement) {
@@ -827,38 +1044,97 @@ export default class LoginModalController {
         }
       }
       this.activeNip46Form = null;
+      this.pendingNip46Cleanup = null;
+      qrInstance = null;
+      clearAuthChallenge();
+      resetStatus();
+      setError("");
     };
+
+    resetStatus();
+    clearAuthChallenge();
+    applyManualMode(false);
+    setError("");
 
     return new Promise((resolve) => {
       let settled = false;
-      const finish = (detail) => {
+
+      const finish = (detail, { keepMounted = false } = {}) => {
         if (settled) {
           return;
         }
         settled = true;
-        cleanup();
+
+        if (keepMounted) {
+          this.pendingNip46Cleanup = () => {
+            cleanup();
+          };
+        } else {
+          cleanup();
+        }
+
         resolve(detail);
       };
 
       submitHandler = (event) => {
         event.preventDefault();
         setError("");
-
-        if (!(connectInput instanceof HTMLTextAreaElement)) {
-          setError("Enter the remote signer connection link to continue.");
-          return;
-        }
-
-        const raw = connectInput.value.trim();
-        if (!raw) {
-          setError("Paste the nostrconnect:// or bunker:// link from your signer.");
-          connectInput.focus();
-          return;
-        }
+        resetStatus();
+        clearAuthChallenge();
 
         const remember =
-          rememberCheckbox instanceof HTMLInputElement ? rememberCheckbox.checked : true;
-        finish({ connectionString: raw, remember: remember !== false });
+          rememberCheckbox instanceof HTMLInputElement
+            ? rememberCheckbox.checked
+            : true;
+
+        if (manualMode) {
+          if (!(manualInput instanceof HTMLTextAreaElement)) {
+            setError("Manual input is unavailable.");
+            return;
+          }
+          const raw = manualInput.value.trim();
+          if (!raw) {
+            setError("Paste the bunker:// link from your signer.");
+            manualInput.focus();
+            return;
+          }
+          setPendingState(true);
+          finish(
+            {
+              mode: "manual",
+              connectionString: raw,
+              remember: remember !== false,
+              onStatus: handleStatus,
+              onAuthUrl: handleAuthUrl,
+            },
+            { keepMounted: false },
+          );
+          return;
+        }
+
+        const metadata = {};
+        if (this.document && typeof this.document.title === "string") {
+          const title = this.document.title.trim();
+          if (title) {
+            metadata.name = title;
+          }
+        }
+        if (this.window?.location?.origin) {
+          metadata.url = this.window.location.origin;
+        }
+
+        setPendingState(true);
+        finish(
+          {
+            mode: "handshake",
+            remember: remember !== false,
+            metadata,
+            onHandshakePrepared: updateHandshakeDisplay,
+            onStatus: handleStatus,
+            onAuthUrl: handleAuthUrl,
+          },
+          { keepMounted: true },
+        );
       };
 
       form.addEventListener("submit", submitHandler);
@@ -866,7 +1142,7 @@ export default class LoginModalController {
       if (cancelButton instanceof HTMLButtonElement) {
         cancelHandler = (event) => {
           event.preventDefault();
-          finish(null);
+          finish(null, { keepMounted: false });
         };
         cancelButton.addEventListener("click", cancelHandler);
       }
@@ -874,9 +1150,81 @@ export default class LoginModalController {
       if (reuseButton instanceof HTMLButtonElement) {
         reuseHandler = (event) => {
           event.preventDefault();
-          finish({ reuseStored: true });
+          finish({ reuseStored: true }, { keepMounted: false });
         };
         reuseButton.addEventListener("click", reuseHandler);
+      }
+
+      if (copyButton instanceof HTMLButtonElement) {
+        copyHandler = async (event) => {
+          event.preventDefault();
+          if (!(handshakeInput instanceof HTMLTextAreaElement)) {
+            return;
+          }
+          const value = handshakeInput.value.trim();
+          if (!value) {
+            return;
+          }
+          let copied = false;
+          if (
+            typeof navigator !== "undefined" &&
+            navigator?.clipboard?.writeText
+          ) {
+            try {
+              await navigator.clipboard.writeText(value);
+              copied = true;
+            } catch (error) {
+              copied = false;
+            }
+          }
+          if (!copied && handshakeInput.select) {
+            try {
+              handshakeInput.select();
+              if (this.document?.execCommand) {
+                copied = this.document.execCommand("copy");
+              }
+            } catch (error) {
+              copied = false;
+            } finally {
+              handshakeInput.setSelectionRange(
+                handshakeInput.value.length,
+                handshakeInput.value.length,
+              );
+            }
+          }
+          if (copied) {
+            setStatus("Connect URI copied to clipboard.", "success");
+          } else {
+            setStatus(
+              "Copy failed. Copy the link manually if needed.",
+              "warning",
+            );
+          }
+        };
+        copyButton.addEventListener("click", copyHandler);
+      }
+
+      if (manualToggle instanceof HTMLButtonElement) {
+        manualToggleHandler = (event) => {
+          event.preventDefault();
+          applyManualMode(!manualMode);
+        };
+        manualToggle.addEventListener("click", manualToggleHandler);
+      }
+
+      if (authOpenButton instanceof HTMLButtonElement) {
+        authOpenHandler = (event) => {
+          event.preventDefault();
+          if (!pendingAuthUrl) {
+            return;
+          }
+          if (this.window && typeof this.window.open === "function") {
+            this.window.open(pendingAuthUrl, "_blank", "noopener,noreferrer");
+          } else if (this.document && this.document.location) {
+            this.document.location.href = pendingAuthUrl;
+          }
+        };
+        authOpenButton.addEventListener("click", authOpenHandler);
       }
     });
   }
@@ -1383,6 +1731,16 @@ export default class LoginModalController {
       });
     } finally {
       this.setLoadingState(providerId, false);
+      if (this.pendingNip46Cleanup) {
+        try {
+          this.pendingNip46Cleanup();
+        } catch (cleanupError) {
+          devLogger.warn(
+            "[LoginModalController] Failed to dispose remote signer form:",
+            cleanupError,
+          );
+        }
+      }
     }
   }
 

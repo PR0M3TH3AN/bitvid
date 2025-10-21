@@ -4,26 +4,37 @@ bitvid can delegate event signing to a remote NIP-46 compatible signer. This
 flow lets operators keep long-lived keys on hardened devices while approving
 publish/edit/delete actions from a separate browser session.
 
-## Connection strings
+## Connection workflow
 
-bitvid currently expects `bunker://` style URIs. They should embed the remote
-signer pubkey in the host segment and may include the following query
-parameters:
+### Client-initiated handshake (preferred)
 
-- `relay=` – one or more WSS relay URLs the signer watches for RPC requests.
-  Repeat the parameter to advertise multiple relays.
-- `secret=` – optional shared secret that must echo back during the `connect`
-  handshake.
-- `perms=` – optional permission string. When present bitvid forwards it during
-  the initial `connect` RPC.
-- `name`, `url`, `image` – optional metadata shown in the login modal so users
-  can distinguish between saved signers.
+When an operator chooses the remote signer option, bitvid now generates a fresh
+`nostrconnect://` URI and displays it alongside a QR code. The URI encodes:
 
-URIs without `relay=` parameters fall back to bitvid’s default relay bundle
-(`wss://relay.damus.io`, `wss://nos.lol`, `wss://relay.snort.social`,
-`wss://relay.primal.net`, `wss://relay.nostr.band`). Make sure your signer also
-publishes to at least one of these relays so both the browser and signer see the
-same NIP-46 frames.
+- A short-lived client key pair dedicated to the session.
+- The default WSS relay bundle (`wss://relay.damus.io`, `wss://nos.lol`,
+  `wss://relay.snort.social`, `wss://relay.primal.net`,
+  `wss://relay.nostr.band`).
+- A random `secret` value that must be echoed back by the signer to prevent
+  spoofed acknowledgements.
+- Optional metadata (`name`, `url`, `image`) so the signer can display the
+  client branding during pairing.
+- Optional `perms` requested by the client.
+
+Remote signers should scan the QR code or otherwise receive the
+`nostrconnect://` link, subscribe to the advertised relays, and respond with a
+`connect` acknowledgement signed by the remote signer key. The response must
+include the `secret` value that was present in the URI. bitvid listens for this
+acknowledgement before attempting the RPC `connect` call so operators see a
+clear “waiting for signer” status in the modal.
+
+### Fallback bunker links
+
+Some signers still distribute `bunker://` URIs that point to the remote signer
+pubkey. The modal keeps a “paste bunker link” toggle so operators can supply the
+URI manually when QR pairing isn’t available. These URIs can advertise the same
+`relay=`, `secret=`, `perms=`, `name`, `url`, and `image` parameters described
+above. If no relays are specified the default bundle listed earlier is used.
 
 ## Relay requirements
 

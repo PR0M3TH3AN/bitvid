@@ -1,3 +1,5 @@
+import { devLogger } from "../../utils/logger.js";
+
 const PROVIDER_ID = "nip46";
 const PROVIDER_LABEL = "remote signer (nip-46)";
 const PROVIDER_DESCRIPTION =
@@ -49,6 +51,15 @@ function normalizeOptions(options) {
       connectionString: "",
       remember: true,
       reuseStored: false,
+      mode: "handshake",
+      onHandshakePrepared: null,
+      onStatus: null,
+      onAuthUrl: null,
+      metadata: {},
+      secret: "",
+      permissions: "",
+      relays: [],
+      handshakeTimeoutMs: undefined,
     };
   }
 
@@ -57,6 +68,22 @@ function normalizeOptions(options) {
       typeof options.connectionString === "string" ? options.connectionString.trim() : "",
     remember: options.remember !== false,
     reuseStored: options.reuseStored === true,
+    mode: options.mode === "manual" ? "manual" : "handshake",
+    onHandshakePrepared:
+      typeof options.onHandshakePrepared === "function" ? options.onHandshakePrepared : null,
+    onStatus: typeof options.onStatus === "function" ? options.onStatus : null,
+    onAuthUrl: typeof options.onAuthUrl === "function" ? options.onAuthUrl : null,
+    metadata: options.metadata && typeof options.metadata === "object" ? options.metadata : {},
+    secret:
+      typeof options.secret === "string" && options.secret.trim() ? options.secret.trim() : "",
+    permissions:
+      typeof options.permissions === "string" && options.permissions.trim()
+        ? options.permissions.trim()
+        : "",
+    relays: Array.isArray(options.relays) ? options.relays : [],
+    handshakeTimeoutMs: Number.isFinite(options.handshakeTimeoutMs)
+      ? Number(options.handshakeTimeoutMs)
+      : undefined,
   };
 }
 
@@ -95,7 +122,7 @@ export default {
       }
 
       result = await nostrClient.useStoredRemoteSigner();
-    } else {
+    } else if (normalized.mode === "manual") {
       const uri = normalized.connectionString;
       if (!uri) {
         const error = new Error("A connection string is required to continue.");
@@ -106,7 +133,54 @@ export default {
       result = await nostrClient.connectRemoteSigner({
         connectionString: uri,
         remember: normalized.remember,
+        onAuthUrl: normalized.onAuthUrl,
+        onStatus: normalized.onStatus,
       });
+    } else {
+      if (normalized.onStatus) {
+        try {
+          normalized.onStatus({
+            phase: "handshake",
+            state: "preparing",
+            message: "Generating remote signer connect link…",
+          });
+        } catch (callbackError) {
+          devLogger.warn("[nip46] Handshake status callback threw:", callbackError);
+        }
+      }
+
+      const handshake = await nostrClient.prepareRemoteSignerHandshake({
+        metadata: normalized.metadata,
+        relays: normalized.relays,
+        secret: normalized.secret,
+        permissions: normalized.permissions,
+      });
+
+      if (normalized.onHandshakePrepared) {
+        try {
+          normalized.onHandshakePrepared(handshake);
+        } catch (callbackError) {
+          devLogger.warn("[nip46] Handshake prepared callback threw:", callbackError);
+        }
+      }
+
+      result = await nostrClient.connectRemoteSigner({
+        connectionString: handshake.connectionString,
+        remember: normalized.remember,
+        clientPrivateKey: handshake.clientPrivateKey,
+        clientPublicKey: handshake.clientPublicKey,
+        relays: handshake.relays,
+        secret: handshake.secret,
+        permissions: handshake.permissions,
+        metadata: handshake.metadata,
+        onAuthUrl: normalized.onAuthUrl,
+        onStatus: normalized.onStatus,
+        handshakeTimeoutMs: normalized.handshakeTimeoutMs,
+      });
+
+      if (result && typeof result === "object") {
+        result.handshake = handshake;
+      }
     }
 
     const pubkey = normalizePubkey(result);

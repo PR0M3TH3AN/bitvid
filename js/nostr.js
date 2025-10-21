@@ -193,6 +193,8 @@ const NIP46_PUBLISH_TIMEOUT_MS = 8_000;
 const NIP46_RESPONSE_TIMEOUT_MS = 15_000;
 const NIP46_SIGN_EVENT_TIMEOUT_MS = 20_000;
 const NIP46_MAX_RETRIES = 1;
+const NIP46_HANDSHAKE_TIMEOUT_MS = 60_000;
+const NIP46_AUTH_CHALLENGE_MAX_ATTEMPTS = 5;
 
 function getNip46Storage() {
   if (typeof localStorage !== "undefined" && localStorage) {
@@ -3412,6 +3414,61 @@ function parseNip46ConnectionString(uri) {
   };
 }
 
+function generateNip46Secret(length = 16) {
+  const size = Number.isFinite(length) && length > 0 ? Math.min(64, Math.max(8, Math.floor(length))) : 16;
+  try {
+    if (typeof crypto !== "undefined" && crypto?.getRandomValues) {
+      const bytes = new Uint8Array(size);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+  } catch (error) {
+    // fall through to Math.random fallback
+  }
+
+  let secret = "";
+  for (let i = 0; i < size; i += 1) {
+    secret += Math.floor(Math.random() * 16).toString(16);
+  }
+  return secret;
+}
+
+function sanitizeNip46Metadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return {};
+  }
+
+  const normalized = {};
+  for (const key of ["name", "url", "image"]) {
+    if (typeof metadata[key] === "string" && metadata[key].trim()) {
+      normalized[key] = metadata[key].trim();
+    }
+  }
+  return normalized;
+}
+
+async function decryptNip46PayloadWithKeys(privateKey, remotePubkey, ciphertext) {
+  const tools = (await ensureNostrTools()) || getCachedNostrTools();
+  if (!tools) {
+    throw new Error("NostrTools helpers are unavailable for NIP-46 payload decryption.");
+  }
+
+  let decrypt = null;
+  if (tools?.nip44?.v2?.decrypt) {
+    decrypt = (priv, pub, payload) => tools.nip44.v2.decrypt(priv, pub, payload);
+  } else if (tools?.nip44?.decrypt) {
+    decrypt = (priv, pub, payload) => tools.nip44.decrypt(priv, pub, payload);
+  } else if (tools?.nip04?.decrypt) {
+    decrypt = (priv, pub, payload) => tools.nip04.decrypt(priv, pub, payload);
+  }
+
+  if (!decrypt) {
+    throw new Error("Remote signer encryption helpers are unavailable.");
+  }
+
+  return decrypt(privateKey, remotePubkey, ciphertext);
+}
+
 class Nip46RpcClient {
   constructor({
     nostrClient,
@@ -4616,6 +4673,46 @@ export class NostrClient {
     return { privateKey, publicKey: publicKey.toLowerCase() };
   }
 
+  async prepareRemoteSignerHandshake({ metadata, relays, secret, permissions } = {}) {
+    const keyPair = await this.createNip46KeyPair();
+    const sanitizedMetadata = sanitizeNip46Metadata(metadata);
+    const requestedPermissions =
+      typeof permissions === "string" && permissions.trim() ? permissions.trim() : "";
+
+    const resolvedRelays = resolveNip46Relays(relays, this.relays);
+    const handshakeSecret =
+      typeof secret === "string" && secret.trim() ? secret.trim() : generateNip46Secret();
+
+    const params = [];
+    for (const relay of resolvedRelays) {
+      params.push(`relay=${encodeURIComponent(relay)}`);
+    }
+    if (handshakeSecret) {
+      params.push(`secret=${encodeURIComponent(handshakeSecret)}`);
+    }
+    if (requestedPermissions) {
+      params.push(`perms=${encodeURIComponent(requestedPermissions)}`);
+    }
+    for (const [key, value] of Object.entries(sanitizedMetadata)) {
+      params.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    }
+
+    const query = params.length ? `?${params.join("&")}` : "";
+    const uri = `nostrconnect://${keyPair.publicKey}${query}`;
+
+    return {
+      type: "client",
+      connectionString: uri,
+      uri,
+      clientPrivateKey: keyPair.privateKey,
+      clientPublicKey: keyPair.publicKey,
+      relays: resolvedRelays,
+      secret: handshakeSecret,
+      permissions: requestedPermissions,
+      metadata: sanitizedMetadata,
+    };
+  }
+
   installNip46Client(client, { userPubkey } = {}) {
     if (this.nip46Client && this.nip46Client !== client) {
       try {
@@ -4638,54 +4735,398 @@ export class NostrClient {
     return signer;
   }
 
-  async connectRemoteSigner({ connectionString, remember = true } = {}) {
+  async waitForRemoteSignerHandshake({
+    clientPrivateKey,
+    clientPublicKey,
+    relays,
+    secret,
+    onAuthUrl,
+    onStatus,
+    timeoutMs,
+  } = {}) {
+    const normalizedClientPublicKey = normalizeNostrPubkey(clientPublicKey);
+    if (!normalizedClientPublicKey) {
+      throw new Error("A client public key is required to await the remote signer handshake.");
+    }
+
+    if (!clientPrivateKey || typeof clientPrivateKey !== "string" || !HEX64_REGEX.test(clientPrivateKey)) {
+      throw new Error("A client private key is required to await the remote signer handshake.");
+    }
+
+    const resolvedRelays = resolveNip46Relays(relays, this.relays);
+    if (!resolvedRelays.length) {
+      throw new Error("No relays available to complete the remote signer handshake.");
+    }
+
+    const pool = await this.ensurePool();
+    const filters = [
+      {
+        kinds: [NIP46_RPC_KIND],
+        "#p": [normalizedClientPublicKey],
+      },
+    ];
+
+    const waitTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : NIP46_HANDSHAKE_TIMEOUT_MS;
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        try {
+          subscription?.unsub?.();
+        } catch (error) {
+          // ignore subscription cleanup failures
+        }
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      };
+
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        const error = new Error("Timed out waiting for the remote signer to acknowledge the connection.");
+        error.code = "nip46-handshake-timeout";
+        reject(error);
+      }, waitTimeout);
+
+      let subscription;
+      try {
+        subscription = pool.sub(resolvedRelays, filters);
+      } catch (error) {
+        cleanup();
+        reject(error);
+        return;
+      }
+
+      subscription.on("event", (event) => {
+        if (settled) {
+          return;
+        }
+
+        if (!event || event.kind !== NIP46_RPC_KIND) {
+          return;
+        }
+
+        const remotePubkey = normalizeNostrPubkey(event.pubkey);
+        if (!remotePubkey) {
+          return;
+        }
+
+        Promise.resolve()
+          .then(() => decryptNip46PayloadWithKeys(clientPrivateKey, remotePubkey, event.content))
+          .then((payload) => {
+            let parsed;
+            try {
+              parsed = JSON.parse(payload);
+            } catch (error) {
+              devLogger.warn("[nostr] Failed to parse remote signer handshake payload:", error);
+              return;
+            }
+
+            const resultValue = typeof parsed?.result === "string" ? parsed.result.trim() : "";
+            const errorValue = typeof parsed?.error === "string" ? parsed.error.trim() : "";
+
+            if (resultValue === "auth_url" && errorValue) {
+              if (typeof onAuthUrl === "function") {
+                try {
+                  onAuthUrl(errorValue, {
+                    phase: "handshake",
+                    remotePubkey,
+                    requestId: typeof parsed?.id === "string" ? parsed.id : "",
+                  });
+                } catch (callbackError) {
+                  devLogger.warn("[nostr] Handshake auth_url callback threw:", callbackError);
+                }
+              }
+              return;
+            }
+
+            if (secret) {
+              if (!resultValue || resultValue !== secret) {
+                return;
+              }
+            }
+
+            if (!secret && resultValue) {
+              const normalized = resultValue.toLowerCase();
+              if (!["ack", "ok", "success"].includes(normalized)) {
+                return;
+              }
+            }
+
+            cleanup();
+
+            if (typeof onStatus === "function") {
+              try {
+                onStatus({
+                  phase: "handshake",
+                  state: "acknowledged",
+                  message: "Remote signer acknowledged the connect request.",
+                  remotePubkey,
+                });
+              } catch (callbackError) {
+                devLogger.warn("[nostr] Handshake status callback threw:", callbackError);
+              }
+            }
+
+            resolve({
+              remotePubkey,
+              response: parsed,
+            });
+          })
+          .catch((error) => {
+            devLogger.warn("[nostr] Failed to decrypt remote signer handshake payload:", error);
+          });
+      });
+
+      subscription.on("eose", () => {
+        // no-op: handshake responses are push-based
+      });
+    });
+  }
+
+  async connectRemoteSigner({
+    connectionString,
+    remember = true,
+    clientPrivateKey: providedClientPrivateKey = "",
+    clientPublicKey: providedClientPublicKey = "",
+    relays: providedRelays = [],
+    secret: providedSecret = "",
+    permissions: providedPermissions = "",
+    metadata: providedMetadata = {},
+    onAuthUrl,
+    onStatus,
+    handshakeTimeoutMs,
+  } = {}) {
     const parsed = parseNip46ConnectionString(connectionString);
-    if (!parsed || parsed.type !== "remote" || !parsed.remotePubkey) {
+    if (!parsed) {
       const error = new Error(
-        "Unsupported NIP-46 URI. Paste the bunker:// link provided by your signer.",
+        "Unsupported NIP-46 URI. Provide a nostrconnect:// handshake or bunker:// pointer.",
       );
       error.code = "invalid-connection-string";
       throw error;
     }
 
-    const keyPair = await this.createNip46KeyPair();
-    const relays = resolveNip46Relays(parsed.relays, this.relays);
+    const baseMetadata = sanitizeNip46Metadata(parsed.metadata);
+    const overrideMetadata = sanitizeNip46Metadata(providedMetadata);
+    const metadata = { ...baseMetadata, ...overrideMetadata };
 
-    this.emitRemoteSignerChange({
-      state: "connecting",
-      remotePubkey: parsed.remotePubkey,
-      relays,
-      metadata: parsed.metadata,
-    });
+    const handleStatus = (status) => {
+      if (typeof onStatus !== "function") {
+        return;
+      }
+      try {
+        onStatus(status);
+      } catch (error) {
+        devLogger.warn("[nostr] Remote signer status callback threw:", error);
+      }
+    };
+
+    const handleAuthChallenge = async (url, context = {}) => {
+      if (typeof onAuthUrl !== "function" || !url) {
+        return;
+      }
+      try {
+        const result = onAuthUrl(url, context);
+        if (result && typeof result.then === "function") {
+          await result.catch((error) => {
+            devLogger.warn("[nostr] Auth challenge callback promise rejected:", error);
+          });
+        }
+      } catch (error) {
+        devLogger.warn("[nostr] Remote signer auth callback threw:", error);
+      }
+    };
+
+    const mergedRelaysSource = parsed.relays.length ? parsed.relays : providedRelays;
+    const relays = resolveNip46Relays(mergedRelaysSource, this.relays);
+
+    let secret = typeof providedSecret === "string" && providedSecret.trim() ? providedSecret.trim() : parsed.secret;
+    let permissions =
+      typeof providedPermissions === "string" && providedPermissions.trim()
+        ? providedPermissions.trim()
+        : parsed.permissions;
+
+    let clientPrivateKey = "";
+    let clientPublicKey = "";
+    let remotePubkey = normalizeNostrPubkey(parsed.remotePubkey);
+
+    if (parsed.type === "client") {
+      clientPrivateKey =
+        typeof providedClientPrivateKey === "string" && providedClientPrivateKey.trim()
+          ? providedClientPrivateKey.trim().toLowerCase()
+          : "";
+
+      if (!clientPrivateKey || !HEX64_REGEX.test(clientPrivateKey)) {
+        const error = new Error(
+          "Remote signer handshake requires the generated client private key.",
+        );
+        error.code = "missing-client-private-key";
+        throw error;
+      }
+
+      clientPublicKey = normalizeNostrPubkey(providedClientPublicKey) || parsed.clientPubkey;
+      if (!clientPublicKey) {
+        const tools = (await ensureNostrTools()) || getCachedNostrTools();
+        if (!tools || typeof tools.getPublicKey !== "function") {
+          throw new Error("Public key derivation is unavailable for the remote signer handshake.");
+        }
+        clientPublicKey = normalizeNostrPubkey(tools.getPublicKey(clientPrivateKey));
+      }
+
+      if (!clientPublicKey || !HEX64_REGEX.test(clientPublicKey)) {
+        const error = new Error("Invalid client public key for the remote signer handshake.");
+        error.code = "invalid-client-public-key";
+        throw error;
+      }
+
+      if (parsed.clientPubkey && normalizeNostrPubkey(parsed.clientPubkey) !== clientPublicKey) {
+        const error = new Error("Handshake public key mismatch detected.");
+        error.code = "client-public-key-mismatch";
+        throw error;
+      }
+
+      if (!secret) {
+        secret = generateNip46Secret();
+      }
+
+      handleStatus({
+        phase: "handshake",
+        state: "waiting",
+        message: "Waiting for the signer to acknowledge the connection…",
+        relays,
+      });
+
+      this.emitRemoteSignerChange({
+        state: "connecting",
+        relays,
+        metadata,
+        message: "Waiting for the signer to acknowledge the connection.",
+      });
+
+      let handshakeResult;
+      try {
+        handshakeResult = await this.waitForRemoteSignerHandshake({
+          clientPrivateKey,
+          clientPublicKey,
+          relays,
+          secret,
+          onAuthUrl: (url, context) => handleAuthChallenge(url, context),
+          onStatus: handleStatus,
+          timeoutMs: handshakeTimeoutMs,
+        });
+      } catch (error) {
+        this.emitRemoteSignerChange({
+          state: "error",
+          relays,
+          metadata,
+          message: error?.message || "Remote signer handshake failed.",
+          error,
+        });
+        throw error;
+      }
+
+      remotePubkey = normalizeNostrPubkey(handshakeResult?.remotePubkey);
+      if (!remotePubkey) {
+        const error = new Error("Remote signer did not return a valid public key.");
+        error.code = "missing-remote-pubkey";
+        throw error;
+      }
+    } else {
+      const keyPair = await this.createNip46KeyPair(
+        providedClientPrivateKey,
+        providedClientPublicKey,
+      );
+      clientPrivateKey = keyPair.privateKey;
+      clientPublicKey = keyPair.publicKey;
+
+      this.emitRemoteSignerChange({
+        state: "connecting",
+        remotePubkey,
+        relays,
+        metadata,
+      });
+    }
+
+    if (!remotePubkey) {
+      remotePubkey = normalizeNostrPubkey(parsed.remotePubkey);
+    }
+
+    if (!remotePubkey) {
+      const error = new Error("Remote signer pubkey is required to establish the session.");
+      error.code = "missing-remote-pubkey";
+      throw error;
+    }
 
     const client = new Nip46RpcClient({
       nostrClient: this,
-      clientPrivateKey: keyPair.privateKey,
-      clientPublicKey: keyPair.publicKey,
-      remotePubkey: parsed.remotePubkey,
+      clientPrivateKey,
+      clientPublicKey,
+      remotePubkey,
       relays,
-      secret: parsed.secret,
-      permissions: parsed.permissions,
-      metadata: parsed.metadata,
+      secret,
+      permissions,
+      metadata,
     });
 
     try {
       await client.ensureSubscription();
-      await client.connect({ permissions: parsed.permissions });
+
+      handleStatus({
+        phase: "connect",
+        state: "request",
+        message: "Requesting approval from the remote signer…",
+        remotePubkey,
+      });
+
+      let attempts = 0;
+      // Attempt the connect RPC, handling auth challenges when provided.
+      for (;;) {
+        try {
+          await client.connect({ permissions });
+          break;
+        } catch (error) {
+          if (error?.code === "auth-challenge" && error.authUrl) {
+            attempts += 1;
+            handleStatus({
+              phase: "auth",
+              state: "waiting",
+              message: "Complete the authentication challenge in your signer…",
+              remotePubkey,
+              attempt: attempts,
+            });
+            await handleAuthChallenge(error.authUrl, {
+              phase: "connect",
+              remotePubkey,
+              attempt: attempts,
+            });
+
+            if (attempts >= NIP46_AUTH_CHALLENGE_MAX_ATTEMPTS) {
+              throw error;
+            }
+            continue;
+          }
+          throw error;
+        }
+      }
+
       const userPubkey = await client.getUserPubkey();
-      client.metadata = parsed.metadata;
+      client.metadata = metadata;
       const signer = this.installNip46Client(client, { userPubkey });
 
       if (remember) {
         writeStoredNip46Session({
           version: 1,
-          clientPrivateKey: keyPair.privateKey,
-          clientPublicKey: keyPair.publicKey,
-          remotePubkey: parsed.remotePubkey,
+          clientPrivateKey,
+          clientPublicKey,
+          remotePubkey,
           relays,
-          secret: parsed.secret,
-          permissions: parsed.permissions,
-          metadata: parsed.metadata,
+          secret,
+          permissions,
+          metadata,
           userPubkey,
           lastConnectedAt: Date.now(),
         });
@@ -4695,10 +5136,18 @@ export class NostrClient {
 
       this.emitRemoteSignerChange({
         state: "connected",
-        remotePubkey: parsed.remotePubkey,
+        remotePubkey,
         userPubkey,
         relays,
-        metadata: parsed.metadata,
+        metadata,
+      });
+
+      handleStatus({
+        phase: "connected",
+        state: "ready",
+        message: "Remote signer connected successfully.",
+        remotePubkey,
+        userPubkey,
       });
 
       return { pubkey: userPubkey, signer };
@@ -4710,9 +5159,9 @@ export class NostrClient {
       }
       this.emitRemoteSignerChange({
         state: "error",
-        remotePubkey: parsed.remotePubkey,
+        remotePubkey,
         relays,
-        metadata: parsed.metadata,
+        metadata,
         message: error?.message || "Remote signer connection failed.",
         error,
       });
