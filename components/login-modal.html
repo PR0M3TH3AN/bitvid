@@ -72,14 +72,109 @@
           </span>
         </button>
       </template>
-      <button
-        id="loginNSEC"
-        class="btn-ghost w-full"
-        disabled
-        type="button"
-      >
-        Login with NSEC (Coming Soon)
-      </button>
+      <template data-login-nsec-dialog>
+        <form
+          data-nsec-form
+          class="space-y-4 rounded-xl border border-border bg-overlay-panel-soft px-5 py-4"
+        >
+          <div class="space-y-2">
+            <h3 class="text-lg font-semibold text-text">Direct key login</h3>
+            <p class="text-sm text-text-muted" data-nsec-warning>
+              "Unsafe by default" — imported keys stay decrypted only for this session
+              unless you protect them with a passphrase.
+            </p>
+          </div>
+          <div
+            data-nsec-error
+            class="hidden rounded-lg border border-danger/60 bg-danger/10 px-4 py-2 text-sm text-danger"
+            role="alert"
+          ></div>
+          <fieldset data-nsec-unlock-section class="space-y-3 hidden">
+            <legend class="text-sm font-semibold text-text">Unlock saved key</legend>
+            <label class="inline-flex items-center gap-2 text-sm text-text">
+              <input
+                type="radio"
+                name="nsec-mode"
+                value="unlock"
+                class="radio"
+                data-nsec-mode="unlock"
+              />
+              <span>Use the encrypted key stored on this device</span>
+            </label>
+            <div class="space-y-2 pl-6" data-nsec-unlock-fields>
+              <label class="block text-sm font-medium text-text" for="nsecUnlockPassphrase">
+                Passphrase
+              </label>
+              <input
+                id="nsecUnlockPassphrase"
+                type="password"
+                class="input"
+                autocomplete="current-password"
+                data-nsec-unlock-passphrase
+                required
+              />
+            </div>
+          </fieldset>
+          <fieldset data-nsec-import-section class="space-y-3">
+            <legend class="text-sm font-semibold text-text">Import a new secret</legend>
+            <label class="inline-flex items-center gap-2 text-sm text-text">
+              <input
+                type="radio"
+                name="nsec-mode"
+                value="import"
+                class="radio"
+                data-nsec-mode="import"
+                checked
+              />
+              <span>Paste an nsec, hex key, or mnemonic seed</span>
+            </label>
+            <div class="space-y-3 pl-6" data-nsec-import-fields>
+              <label class="block text-sm font-medium text-text" for="nsecSecretInput">
+                Secret
+              </label>
+              <textarea
+                id="nsecSecretInput"
+                class="input"
+                rows="3"
+                spellcheck="false"
+                autocomplete="off"
+                data-nsec-secret
+                required
+              ></textarea>
+              <label class="inline-flex items-center gap-2 text-sm text-text">
+                <input type="checkbox" class="checkbox" data-nsec-remember />
+                <span>Remember this key on this device</span>
+              </label>
+              <div class="space-y-2" data-nsec-passphrase-fields hidden>
+                <label class="block text-sm font-medium text-text" for="nsecPassphraseInput">
+                  Passphrase
+                </label>
+                <input
+                  id="nsecPassphraseInput"
+                  type="password"
+                  class="input"
+                  autocomplete="new-password"
+                  data-nsec-passphrase
+                />
+                <label class="block text-sm font-medium text-text" for="nsecPassphraseConfirm">
+                  Confirm passphrase
+                </label>
+                <input
+                  id="nsecPassphraseConfirm"
+                  type="password"
+                  class="input"
+                  autocomplete="new-password"
+                  data-nsec-passphrase-confirm
+                />
+              </div>
+            </div>
+          </fieldset>
+          <div class="flex justify-end gap-2">
+            <button type="button" class="btn-ghost" data-nsec-cancel>Cancel</button>
+            <button type="submit" class="btn" data-nsec-submit>Continue</button>
+          </div>
+        </form>
+      </template>
     </div>
   </div>
 </div>

@@ -188,6 +188,13 @@ function clearStoredNip07Permissions() {
   }
 }
 const SESSION_ACTOR_STORAGE_KEY = "bitvid:sessionActor:v1";
+const SESSION_ACTOR_ENCRYPTION_VERSION = 1;
+const SESSION_ACTOR_KDF_ITERATIONS = 250_000;
+const SESSION_ACTOR_KDF_HASH = "SHA-256";
+const SESSION_ACTOR_ENCRYPTION_ALGORITHM = "AES-GCM";
+const SESSION_ACTOR_SALT_BYTES = 16;
+const SESSION_ACTOR_IV_BYTES = 12;
+const HEX64_REGEX = /^[0-9a-f]{64}$/i;
 const VIEW_EVENT_GUARD_PREFIX = "bitvid:viewed";
 const REBROADCAST_GUARD_PREFIX = "bitvid:rebroadcast:v1";
 
@@ -2717,6 +2724,314 @@ function bytesToHex(bytes) {
     .join("");
 }
 
+function arrayBufferToBase64(buffer) {
+  if (!buffer) {
+    return "";
+  }
+
+  let view;
+  if (buffer instanceof ArrayBuffer) {
+    view = new Uint8Array(buffer);
+  } else if (ArrayBuffer.isView(buffer)) {
+    view = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  } else {
+    return "";
+  }
+
+  if (typeof globalThis?.btoa === "function") {
+    let binary = "";
+    for (let index = 0; index < view.length; index += 1) {
+      binary += String.fromCharCode(view[index]);
+    }
+    return globalThis.btoa(binary);
+  }
+
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(view).toString("base64");
+  }
+
+  return "";
+}
+
+function base64ToUint8Array(base64) {
+  if (typeof base64 !== "string" || !base64.trim()) {
+    return null;
+  }
+
+  let binary;
+  try {
+    if (typeof globalThis?.atob === "function") {
+      binary = globalThis.atob(base64);
+    } else if (typeof Buffer !== "undefined") {
+      binary = Buffer.from(base64, "base64").toString("binary");
+    } else {
+      return null;
+    }
+  } catch (error) {
+    return null;
+  }
+
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function generateRandomBytes(length) {
+  const size = Number.isFinite(length) ? Math.max(0, Math.floor(length)) : 0;
+  if (size <= 0) {
+    return new Uint8Array(0);
+  }
+
+  if (globalThis?.crypto?.getRandomValues) {
+    const array = new Uint8Array(size);
+    globalThis.crypto.getRandomValues(array);
+    return array;
+  }
+
+  throw new Error("secure-random-unavailable");
+}
+
+function isSubtleCryptoAvailable() {
+  return !!(
+    globalThis?.crypto?.subtle &&
+    typeof globalThis.crypto.subtle.importKey === "function"
+  );
+}
+
+async function deriveSessionEncryptionKey(passphrase, saltBytes, iterations, hash) {
+  if (!isSubtleCryptoAvailable()) {
+    throw new Error("webcrypto-unavailable");
+  }
+
+  if (!(saltBytes instanceof Uint8Array)) {
+    throw new Error("invalid-salt");
+  }
+
+  const encoder = typeof TextEncoder === "function" ? new TextEncoder() : null;
+  if (!encoder) {
+    throw new Error("text-encoder-unavailable");
+  }
+
+  const passphraseBytes = encoder.encode(passphrase);
+
+  const baseKey = await globalThis.crypto.subtle.importKey(
+    "raw",
+    passphraseBytes,
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"],
+  );
+
+  const normalizedIterations = Number.isFinite(iterations)
+    ? Math.max(1, Math.floor(iterations))
+    : SESSION_ACTOR_KDF_ITERATIONS;
+  const normalizedHash = typeof hash === "string" && hash.trim()
+    ? hash.trim()
+    : SESSION_ACTOR_KDF_HASH;
+
+  return globalThis.crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: saltBytes,
+      iterations: normalizedIterations,
+      hash: normalizedHash,
+    },
+    baseKey,
+    { name: SESSION_ACTOR_ENCRYPTION_ALGORITHM, length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+async function encryptSessionPrivateKey(privateKey, passphrase) {
+  if (typeof privateKey !== "string" || !privateKey.trim()) {
+    throw new Error("invalid-private-key");
+  }
+
+  if (typeof passphrase !== "string" || !passphrase.trim()) {
+    throw new Error("passphrase-required");
+  }
+
+  if (!isSubtleCryptoAvailable()) {
+    throw new Error("webcrypto-unavailable");
+  }
+
+  const encoder = typeof TextEncoder === "function" ? new TextEncoder() : null;
+  if (!encoder) {
+    throw new Error("text-encoder-unavailable");
+  }
+
+  const payload = encoder.encode(privateKey);
+  const salt = generateRandomBytes(SESSION_ACTOR_SALT_BYTES);
+  const iv = generateRandomBytes(SESSION_ACTOR_IV_BYTES);
+  const key = await deriveSessionEncryptionKey(
+    passphrase,
+    salt,
+    SESSION_ACTOR_KDF_ITERATIONS,
+    SESSION_ACTOR_KDF_HASH,
+  );
+
+  const ciphertext = await globalThis.crypto.subtle.encrypt(
+    { name: SESSION_ACTOR_ENCRYPTION_ALGORITHM, iv },
+    key,
+    payload,
+  );
+
+  return {
+    ciphertext: arrayBufferToBase64(ciphertext),
+    salt: arrayBufferToBase64(salt),
+    iv: arrayBufferToBase64(iv),
+    iterations: SESSION_ACTOR_KDF_ITERATIONS,
+    hash: SESSION_ACTOR_KDF_HASH,
+    algorithm: SESSION_ACTOR_ENCRYPTION_ALGORITHM,
+    version: SESSION_ACTOR_ENCRYPTION_VERSION,
+  };
+}
+
+function normalizeStoredEncryptionMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const salt = typeof metadata.salt === "string" ? metadata.salt.trim() : "";
+  const iv = typeof metadata.iv === "string" ? metadata.iv.trim() : "";
+  if (!salt || !iv) {
+    return null;
+  }
+
+  const iterations = Number.isFinite(metadata.iterations)
+    ? Math.max(1, Math.floor(metadata.iterations))
+    : SESSION_ACTOR_KDF_ITERATIONS;
+  const version = Number.isFinite(metadata.version)
+    ? Math.max(1, Math.floor(metadata.version))
+    : SESSION_ACTOR_ENCRYPTION_VERSION;
+  const algorithm =
+    typeof metadata.algorithm === "string" && metadata.algorithm.trim()
+      ? metadata.algorithm.trim()
+      : SESSION_ACTOR_ENCRYPTION_ALGORITHM;
+  const hash =
+    typeof metadata.hash === "string" && metadata.hash.trim()
+      ? metadata.hash.trim()
+      : SESSION_ACTOR_KDF_HASH;
+
+  return { version, algorithm, salt, iv, iterations, hash };
+}
+
+async function decryptSessionPrivateKey(payload, passphrase) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("encrypted-session-invalid");
+  }
+
+  if (typeof passphrase !== "string" || !passphrase.trim()) {
+    throw new Error("passphrase-required");
+  }
+
+  if (!isSubtleCryptoAvailable()) {
+    throw new Error("webcrypto-unavailable");
+  }
+
+  const ciphertext =
+    typeof payload.privateKeyEncrypted === "string"
+      ? payload.privateKeyEncrypted.trim()
+      : "";
+  const encryption = normalizeStoredEncryptionMetadata(payload.encryption);
+
+  if (!ciphertext || !encryption) {
+    throw new Error("encrypted-session-invalid");
+  }
+
+  const cipherBytes = base64ToUint8Array(ciphertext);
+  const saltBytes = base64ToUint8Array(encryption.salt);
+  const ivBytes = base64ToUint8Array(encryption.iv);
+  if (!cipherBytes || !saltBytes || !ivBytes) {
+    throw new Error("encrypted-session-invalid");
+  }
+
+  const key = await deriveSessionEncryptionKey(
+    passphrase,
+    saltBytes,
+    encryption.iterations,
+    encryption.hash,
+  );
+
+  let decrypted;
+  try {
+    decrypted = await globalThis.crypto.subtle.decrypt(
+      { name: encryption.algorithm || SESSION_ACTOR_ENCRYPTION_ALGORITHM, iv: ivBytes },
+      key,
+      cipherBytes,
+    );
+  } catch (error) {
+    const failure = new Error("Failed to decrypt the stored private key.");
+    failure.code = "decrypt-failed";
+    failure.cause = error;
+    throw failure;
+  }
+
+  const decoder = typeof TextDecoder === "function" ? new TextDecoder() : null;
+  if (!decoder) {
+    throw new Error("text-decoder-unavailable");
+  }
+
+  return decoder.decode(decrypted);
+}
+
+function readStoredSessionActorEntry() {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  let raw = null;
+  try {
+    raw = localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to read session actor from storage:", error);
+    return null;
+  }
+
+  if (!raw || typeof raw !== "string") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    const pubkey =
+      typeof parsed?.pubkey === "string" ? parsed.pubkey.trim() : "";
+    const privateKey =
+      typeof parsed?.privateKey === "string" ? parsed.privateKey.trim() : "";
+    const privateKeyEncrypted =
+      typeof parsed?.privateKeyEncrypted === "string"
+        ? parsed.privateKeyEncrypted.trim()
+        : "";
+    const encryption = normalizeStoredEncryptionMetadata(parsed?.encryption);
+    const createdAt = Number.isFinite(parsed?.createdAt)
+      ? parsed.createdAt
+      : Date.now();
+
+    return {
+      pubkey,
+      privateKey,
+      privateKeyEncrypted,
+      encryption,
+      createdAt,
+    };
+  } catch (error) {
+    devLogger.warn("[nostr] Failed to parse stored session actor:", error);
+    try {
+      localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
+    } catch (cleanupError) {
+      devLogger.warn(
+        "[nostr] Failed to clear corrupt session actor entry:",
+        cleanupError,
+      );
+    }
+  }
+
+  return null;
+}
+
 async function computeWatchHistoryFingerprintForItems(items) {
   const serialized = serializeWatchHistoryItems(items);
   const encoder = typeof TextEncoder === "function" ? new TextEncoder() : null;
@@ -3289,6 +3604,7 @@ export class NostrClient {
     this.hasRestoredLocalData = false;
 
     this.sessionActor = null;
+    this.lockedSessionActor = null;
     this.nip71Cache = new Map();
     this.watchHistoryCache = new Map();
     this.watchHistoryStorage = null;
@@ -3595,52 +3911,77 @@ export class NostrClient {
   }
 
   restoreSessionActorFromStorage() {
-    if (typeof localStorage === "undefined") {
+    const entry = readStoredSessionActorEntry();
+    if (!entry) {
+      this.lockedSessionActor = null;
       return null;
     }
 
-    let raw = null;
-    try {
-      raw = localStorage.getItem(SESSION_ACTOR_STORAGE_KEY);
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to read session actor from storage:", error);
-      return null;
-    }
-
-    if (!raw || typeof raw !== "string") {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(raw);
-      const pubkey =
-        typeof parsed?.pubkey === "string" ? parsed.pubkey.trim() : "";
-      const privateKey =
-        typeof parsed?.privateKey === "string"
-          ? parsed.privateKey.trim()
-          : "";
-
-      if (!pubkey || !privateKey) {
-        return null;
-      }
-
+    const { pubkey, privateKey, privateKeyEncrypted, encryption, createdAt } = entry;
+    if (privateKey && HEX64_REGEX.test(privateKey)) {
       return {
         pubkey,
-        privateKey,
-        createdAt: Number.isFinite(parsed?.createdAt)
-          ? parsed.createdAt
-          : Date.now(),
+        privateKey: privateKey.toLowerCase(),
+        createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
       };
-    } catch (error) {
-      devLogger.warn("[nostr] Failed to parse stored session actor:", error);
-      try {
-        localStorage.removeItem(SESSION_ACTOR_STORAGE_KEY);
-      } catch (cleanupError) {
-        devLogger.warn(
-          "[nostr] Failed to clear corrupt session actor entry:",
-          cleanupError
-        );
-      }
+    }
+
+    if (privateKeyEncrypted && encryption) {
+      this.lockedSessionActor = {
+        pubkey,
+        privateKeyEncrypted,
+        encryption,
+        createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+      };
+    } else {
+      this.lockedSessionActor = null;
+    }
+
+    return null;
+  }
+
+  getStoredSessionActorMetadata() {
+    const entry = readStoredSessionActorEntry();
+    if (!entry) {
+      this.lockedSessionActor = null;
+      return null;
+    }
+
+    const { pubkey, privateKeyEncrypted, encryption, createdAt, privateKey } = entry;
+    const normalizedCreatedAt = Number.isFinite(createdAt)
+      ? createdAt
+      : Date.now();
+
+    if (privateKeyEncrypted && encryption) {
+      this.lockedSessionActor = {
+        pubkey,
+        privateKeyEncrypted,
+        encryption,
+        createdAt: normalizedCreatedAt,
+      };
+      return {
+        pubkey,
+        hasEncryptedKey: true,
+        createdAt: normalizedCreatedAt,
+      };
+    }
+
+    this.lockedSessionActor = null;
+
+    if (privateKey) {
+      return {
+        pubkey,
+        hasEncryptedKey: false,
+        createdAt: normalizedCreatedAt,
+      };
+    }
+
+    if (pubkey) {
+      return {
+        pubkey,
+        hasEncryptedKey: false,
+        createdAt: normalizedCreatedAt,
+      };
     }
 
     return null;
@@ -3655,19 +3996,41 @@ export class NostrClient {
       !actor ||
       typeof actor.pubkey !== "string" ||
       !actor.pubkey ||
-      typeof actor.privateKey !== "string" ||
-      !actor.privateKey
+      ((typeof actor.privateKey !== "string" || !actor.privateKey) &&
+        (typeof actor.privateKeyEncrypted !== "string" ||
+          !actor.privateKeyEncrypted))
     ) {
       return;
     }
 
+    const createdAt = Number.isFinite(actor.createdAt)
+      ? actor.createdAt
+      : Date.now();
+
     const payload = {
       pubkey: actor.pubkey,
-      privateKey: actor.privateKey,
-      createdAt: Number.isFinite(actor.createdAt)
-        ? actor.createdAt
-        : Date.now(),
+      createdAt,
     };
+
+    if (typeof actor.privateKey === "string" && actor.privateKey) {
+      payload.privateKey = actor.privateKey;
+    } else if (
+      typeof actor.privateKeyEncrypted === "string" &&
+      actor.privateKeyEncrypted &&
+      actor.encryption &&
+      typeof actor.encryption === "object"
+    ) {
+      const normalizedEncryption = normalizeStoredEncryptionMetadata(
+        actor.encryption,
+      );
+      if (!normalizedEncryption) {
+        return;
+      }
+      payload.privateKeyEncrypted = actor.privateKeyEncrypted;
+      payload.encryption = normalizedEncryption;
+    } else {
+      return;
+    }
 
     try {
       localStorage.setItem(
@@ -3750,6 +4113,272 @@ export class NostrClient {
       privateKey: normalizedPrivateKey,
       createdAt: Date.now(),
     };
+  }
+
+  async derivePrivateKeyFromSecret(secret) {
+    const trimmed = typeof secret === "string" ? secret.trim() : "";
+    if (!trimmed) {
+      throw new Error("A private key is required.");
+    }
+
+    const tools = (await ensureNostrTools()) || getCachedNostrTools();
+    if (!tools) {
+      throw new Error("Key derivation helpers are unavailable.");
+    }
+
+    let privateKey = "";
+    const normalizedInput = trimmed.toLowerCase();
+
+    if (HEX64_REGEX.test(trimmed)) {
+      privateKey = trimmed.toLowerCase();
+    } else if (normalizedInput.startsWith("nsec1") || normalizedInput.startsWith("sec1")) {
+      const decoder = tools?.nip19?.decode;
+      if (typeof decoder !== "function") {
+        throw new Error("nsec decoding is unavailable.");
+      }
+      let decoded;
+      try {
+        decoded = decoder(trimmed);
+      } catch (error) {
+        const failure = new Error("Invalid nsec secret.");
+        failure.cause = error;
+        throw failure;
+      }
+      if (!decoded || (decoded.type !== "nsec" && decoded.type !== "sec")) {
+        throw new Error("Unsupported nsec secret.");
+      }
+      if (typeof decoded.data === "string") {
+        privateKey = decoded.data;
+      } else if (decoded.data instanceof Uint8Array) {
+        privateKey = bytesToHex(decoded.data);
+      } else if (Array.isArray(decoded.data)) {
+        privateKey = bytesToHex(Uint8Array.from(decoded.data));
+      }
+      if (!HEX64_REGEX.test(privateKey)) {
+        throw new Error("Decoded private key is invalid.");
+      }
+      privateKey = privateKey.toLowerCase();
+    } else if (trimmed.split(/\s+/).length >= 12) {
+      const nip06 = tools?.nip06;
+      if (!nip06 || typeof nip06.privateKeyFromSeedWords !== "function") {
+        throw new Error("Seed word support is unavailable.");
+      }
+      try {
+        privateKey = nip06.privateKeyFromSeedWords(trimmed);
+      } catch (error) {
+        const failure = new Error("Failed to derive a key from the provided seed words.");
+        failure.cause = error;
+        throw failure;
+      }
+      if (!HEX64_REGEX.test(privateKey)) {
+        throw new Error("Derived private key is invalid.");
+      }
+      privateKey = privateKey.toLowerCase();
+    } else {
+      throw new Error(
+        "Unsupported secret format. Provide a hex key, nsec, or mnemonic seed.",
+      );
+    }
+
+    const getPublicKey =
+      typeof tools.getPublicKey === "function" ? tools.getPublicKey : null;
+    if (!getPublicKey) {
+      throw new Error("Public key derivation is unavailable.");
+    }
+
+    let pubkey = "";
+    try {
+      pubkey = getPublicKey(privateKey);
+    } catch (error) {
+      const failure = new Error("Failed to derive the public key.");
+      failure.cause = error;
+      throw failure;
+    }
+
+    if (typeof pubkey !== "string" || !pubkey.trim()) {
+      throw new Error("Derived public key is invalid.");
+    }
+
+    return { privateKey, pubkey: pubkey.trim() };
+  }
+
+  async registerPrivateKeySigner({
+    privateKey,
+    pubkey,
+    persist = false,
+    passphrase,
+  } = {}) {
+    const normalizedPrivateKey =
+      typeof privateKey === "string" && HEX64_REGEX.test(privateKey)
+        ? privateKey.toLowerCase()
+        : "";
+
+    if (!normalizedPrivateKey) {
+      const error = new Error("A valid private key is required.");
+      error.code = "invalid-private-key";
+      throw error;
+    }
+
+    let normalizedPubkey =
+      typeof pubkey === "string" && pubkey.trim() ? pubkey.trim() : "";
+    if (!normalizedPubkey) {
+      const tools = (await ensureNostrTools()) || getCachedNostrTools();
+      const getPublicKey =
+        tools && typeof tools.getPublicKey === "function"
+          ? tools.getPublicKey
+          : null;
+      if (!getPublicKey) {
+        throw new Error("Public key derivation is unavailable.");
+      }
+      try {
+        normalizedPubkey = getPublicKey(normalizedPrivateKey);
+      } catch (error) {
+        const failure = new Error("Failed to derive the public key.");
+        failure.cause = error;
+        throw failure;
+      }
+    }
+
+    if (!normalizedPubkey) {
+      throw new Error("Unable to resolve the public key for this private key.");
+    }
+
+    this.sessionActor = {
+      pubkey: normalizedPubkey,
+      privateKey: normalizedPrivateKey,
+      createdAt: Date.now(),
+      source: "nsec",
+      persisted: persist === true,
+    };
+
+    setActiveSigner({
+      type: "nsec",
+      pubkey: normalizedPubkey,
+      signEvent: (event) => signEventWithPrivateKey(event, normalizedPrivateKey),
+    });
+
+    if (persist) {
+      if (typeof passphrase !== "string" || !passphrase.trim()) {
+        const error = new Error("A passphrase is required to remember this key.");
+        error.code = "passphrase-required";
+        throw error;
+      }
+
+      const encrypted = await encryptSessionPrivateKey(
+        normalizedPrivateKey,
+        passphrase,
+      );
+
+      const payload = {
+        pubkey: normalizedPubkey,
+        privateKeyEncrypted: encrypted.ciphertext,
+        encryption: {
+          version: encrypted.version,
+          algorithm: encrypted.algorithm,
+          iterations: encrypted.iterations,
+          hash: encrypted.hash,
+          salt: encrypted.salt,
+          iv: encrypted.iv,
+        },
+        createdAt: this.sessionActor.createdAt,
+      };
+
+      this.lockedSessionActor = { ...payload };
+      this.persistSessionActor(payload);
+    } else {
+      this.lockedSessionActor = null;
+      this.clearStoredSessionActor();
+    }
+
+    return { pubkey: normalizedPubkey };
+  }
+
+  async unlockStoredSessionActor(passphrase) {
+    if (typeof passphrase !== "string" || !passphrase.trim()) {
+      const error = new Error("A passphrase is required to unlock the saved key.");
+      error.code = "passphrase-required";
+      throw error;
+    }
+
+    if (
+      !this.lockedSessionActor ||
+      !this.lockedSessionActor.privateKeyEncrypted ||
+      !this.lockedSessionActor.encryption
+    ) {
+      const entry = readStoredSessionActorEntry();
+      if (entry && entry.privateKeyEncrypted && entry.encryption) {
+        this.lockedSessionActor = {
+          pubkey: entry.pubkey,
+          privateKeyEncrypted: entry.privateKeyEncrypted,
+          encryption: entry.encryption,
+          createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now(),
+        };
+      }
+    }
+
+    const locked = this.lockedSessionActor;
+    if (!locked || !locked.privateKeyEncrypted || !locked.encryption) {
+      const error = new Error("No encrypted key is stored on this device.");
+      error.code = "no-stored-key";
+      throw error;
+    }
+
+    const decrypted = await decryptSessionPrivateKey(locked, passphrase);
+    if (!HEX64_REGEX.test(decrypted)) {
+      const error = new Error("The stored key could not be decrypted with this passphrase.");
+      error.code = "decrypt-failed";
+      throw error;
+    }
+
+    const normalizedPrivateKey = decrypted.toLowerCase();
+    let normalizedPubkey =
+      typeof locked.pubkey === "string" && locked.pubkey.trim()
+        ? locked.pubkey.trim()
+        : "";
+
+    if (!normalizedPubkey) {
+      const tools = (await ensureNostrTools()) || getCachedNostrTools();
+      const getPublicKey =
+        tools && typeof tools.getPublicKey === "function"
+          ? tools.getPublicKey
+          : null;
+      if (!getPublicKey) {
+        throw new Error("Public key derivation is unavailable.");
+      }
+      try {
+        normalizedPubkey = getPublicKey(normalizedPrivateKey);
+      } catch (error) {
+        const failure = new Error("Failed to derive the public key.");
+        failure.cause = error;
+        throw failure;
+      }
+    }
+
+    this.sessionActor = {
+      pubkey: normalizedPubkey,
+      privateKey: normalizedPrivateKey,
+      createdAt: Number.isFinite(locked.createdAt) ? locked.createdAt : Date.now(),
+      source: "nsec",
+      persisted: true,
+    };
+
+    setActiveSigner({
+      type: "nsec",
+      pubkey: normalizedPubkey,
+      signEvent: (event) => signEventWithPrivateKey(event, normalizedPrivateKey),
+    });
+
+    const storedPayload = {
+      pubkey: normalizedPubkey,
+      privateKeyEncrypted: locked.privateKeyEncrypted,
+      encryption: locked.encryption,
+      createdAt: Number.isFinite(locked.createdAt) ? locked.createdAt : Date.now(),
+    };
+
+    this.lockedSessionActor = { ...storedPayload };
+    this.persistSessionActor(storedPayload);
+
+    return { pubkey: normalizedPubkey };
   }
 
   async ensureSessionActor(forceRenew = false) {
@@ -6326,6 +6955,19 @@ export class NostrClient {
   logout() {
     this.pubkey = null;
     clearActiveSigner();
+    const previousSessionActor = this.sessionActor;
+    this.sessionActor = null;
+
+    const shouldClearStoredSession =
+      previousSessionActor &&
+      previousSessionActor.source === "nsec" &&
+      previousSessionActor.persisted !== true;
+
+    if (shouldClearStoredSession) {
+      this.lockedSessionActor = null;
+      this.clearStoredSessionActor();
+    }
+
     for (const timer of this.watchHistoryRepublishTimers.values()) {
       if (timer && typeof timer.timer === "number") {
         clearTimeout(timer.timer);

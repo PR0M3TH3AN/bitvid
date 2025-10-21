@@ -188,9 +188,13 @@ class SubscriptionsManager {
         }
       };
 
-      addRelayCandidates(nostrClient.readRelays);
       addRelayCandidates(nostrClient.relays);
-      addRelayCandidates(DEFAULT_RELAY_URLS);
+      if (!relaySet.size) {
+        addRelayCandidates(nostrClient.readRelays);
+      }
+      if (!relaySet.size) {
+        addRelayCandidates(DEFAULT_RELAY_URLS);
+      }
 
       const relayUrls = Array.from(relaySet);
       if (!relayUrls.length) {
