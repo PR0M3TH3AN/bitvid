@@ -1,6 +1,7 @@
 import { isDevMode } from "./config.js";
 import {
   DEFAULT_RELAY_URLS,
+  getActiveSigner,
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostr.js";
@@ -606,26 +607,29 @@ class RelayPreferencesManager {
       throw error;
     }
 
-    const permissionResult = await requestDefaultExtensionPermissions();
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[RelayPreferencesManager] Extension permissions denied while publishing relay preferences.",
-        permissionResult.error,
-      );
+    const signer = getActiveSigner();
+    if (!signer || typeof signer.signEvent !== "function") {
       const error = new Error(
-        "The NIP-07 extension must allow signing before publishing relay preferences.",
-      );
-      error.code = "extension-permission-denied";
-      error.cause = permissionResult.error;
-      throw error;
-    }
-
-    if (!window?.nostr?.signEvent) {
-      const error = new Error(
-        "A NIP-07 extension is required to publish relay preferences."
+        "An active signer with signEvent support is required to publish relay preferences."
       );
       error.code = "nostr-extension-missing";
       throw error;
+    }
+
+    if (signer.type === "extension") {
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[RelayPreferencesManager] Signer permissions denied while publishing relay preferences.",
+          permissionResult.error,
+        );
+        const error = new Error(
+          "The active signer must allow signing before publishing relay preferences.",
+        );
+        error.code = "extension-permission-denied";
+        error.cause = permissionResult.error;
+        throw error;
+      }
     }
 
     if (!nostrClient?.pool) {
@@ -649,7 +653,7 @@ class RelayPreferencesManager {
       relays: entries,
     });
 
-    const signedEvent = await window.nostr.signEvent(event);
+    const signedEvent = await signer.signEvent(event);
     const targets = this.getPublishTargets(options?.relayUrls);
 
     if (!targets.length) {

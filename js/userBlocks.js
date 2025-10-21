@@ -1,5 +1,6 @@
 // js/userBlocks.js
 import {
+  getActiveSigner,
   nostrClient,
   requestDefaultExtensionPermissions,
 } from "./nostr.js";
@@ -548,9 +549,19 @@ class UserBlockListManager {
           return;
         }
 
+        const activeSigner = getActiveSigner();
+        const decryptWithActiveSigner =
+          activeSigner && typeof activeSigner.nip04Decrypt === "function";
+
         let decrypted = "";
         try {
-          decrypted = await window.nostr.nip04.decrypt(normalized, newest.content);
+          if (decryptWithActiveSigner) {
+            decrypted = await activeSigner.nip04Decrypt(normalized, newest.content);
+          } else if (window?.nostr?.nip04?.decrypt) {
+            decrypted = await window.nostr.nip04.decrypt(normalized, newest.content);
+          } else {
+            throw new Error("nip04-unavailable");
+          }
         } catch (err) {
           userLogger.error("[UserBlockList] Failed to decrypt block list:", err);
           applyBlockedPubkeys([], {
@@ -905,21 +916,32 @@ class UserBlockListManager {
 
     onStatus?.({ status: "publishing" });
 
-    const permissionResult = await requestDefaultExtensionPermissions();
-    if (!permissionResult.ok) {
-      userLogger.warn(
-        "[UserBlockList] Extension permissions denied while updating the block list.",
-        permissionResult.error,
-      );
+    const signer = getActiveSigner();
+    if (!signer) {
       const err = new Error(
-        "The NIP-07 extension must allow encryption and signing before updating the block list.",
+        "An active signer is required to update the block list."
       );
-      err.code = "extension-permission-denied";
-      err.cause = permissionResult.error;
+      err.code = "signer-missing";
       throw err;
     }
 
-    if (!window?.nostr?.nip04?.encrypt) {
+    if (signer.type === "extension") {
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[UserBlockList] Signer permissions denied while updating the block list.",
+          permissionResult.error,
+        );
+        const err = new Error(
+          "The active signer must allow encryption and signing before updating the block list.",
+        );
+        err.code = "extension-permission-denied";
+        err.cause = permissionResult.error;
+        throw err;
+      }
+    }
+
+    if (typeof signer.nip04Encrypt !== "function") {
       const err = new Error(
         "NIP-04 encryption is required to update the block list."
       );
@@ -927,9 +949,9 @@ class UserBlockListManager {
       throw err;
     }
 
-    if (typeof window.nostr.signEvent !== "function") {
-      const err = new Error("Nostr extension missing signEvent support.");
-      err.code = "nip04-missing";
+    if (typeof signer.signEvent !== "function") {
+      const err = new Error("Active signer missing signEvent support.");
+      err.code = "sign-event-missing";
       throw err;
     }
 
@@ -947,7 +969,7 @@ class UserBlockListManager {
 
     let cipherText = "";
     try {
-      cipherText = await window.nostr.nip04.encrypt(normalized, plaintext);
+      cipherText = await signer.nip04Encrypt(normalized, plaintext);
     } catch (error) {
       const err = new Error("Failed to encrypt block list.");
       err.code = "nip04-missing";
@@ -960,7 +982,7 @@ class UserBlockListManager {
       content: cipherText,
     });
 
-    const signedEvent = await window.nostr.signEvent(event);
+    const signedEvent = await signer.signEvent(event);
 
     const publishResults = await publishEventToRelays(
       nostrClient.pool,
