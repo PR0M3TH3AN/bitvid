@@ -3,6 +3,8 @@ import { initChannelProfileView } from "./channelProfile.js";
 import { subscriptions } from "./subscriptions.js";
 import { getApplication } from "./applicationContext.js";
 import { ASSET_VERSION } from "../config/asset-version.js";
+import { applyDesignSystemAttributes } from "./designSystem.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 
 const TRACKING_SCRIPT_PATTERN = /(?:^|\/)tracking\.js(?:$|\?)/;
 
@@ -37,6 +39,7 @@ export async function loadView(viewUrl) {
     const container = document.getElementById("viewContainer");
 
     container.innerHTML = doc.body.innerHTML;
+    applyDesignSystemAttributes(container);
 
     // Copy and execute any inline scripts
     const scriptTags = doc.querySelectorAll("script");
@@ -53,9 +56,21 @@ export async function loadView(viewUrl) {
       container.appendChild(newScript);
     });
   } catch (err) {
-    console.error("View loading error:", err);
-    document.getElementById("viewContainer").innerHTML =
-      "<p class='text-center text-red-500'>Failed to load content.</p>";
+    userLogger.error("View loading error:", err);
+    const fallbackMarkup = `
+      <div class="bv-stack">
+        <article class="card p-md" data-state="critical">
+          <p class="text-sm text-critical-strong text-center">
+            Failed to load content.
+          </p>
+        </article>
+      </div>
+    `;
+    const fallbackContainer = document.getElementById("viewContainer");
+    if (fallbackContainer) {
+      fallbackContainer.innerHTML = fallbackMarkup;
+      applyDesignSystemAttributes(fallbackContainer);
+    }
   }
 }
 
@@ -78,7 +93,7 @@ export const viewInitRegistry = {
     }
   },
   explore: () => {
-    console.log("Explore view loaded.");
+    devLogger.log("Explore view loaded.");
   },
   history: async () => {
     try {
@@ -87,7 +102,7 @@ export const viewInitRegistry = {
         await module.initHistoryView();
       }
     } catch (error) {
-      console.error("Failed to initialize history view:", error);
+      userLogger.error("Failed to initialize history view:", error);
     }
   },
 
@@ -97,14 +112,14 @@ export const viewInitRegistry = {
    *   which loads subs if needed and renders the video grid in #subscriptionsVideoList
    */
   subscriptions: async () => {
-    console.log("Subscriptions view loaded.");
+    devLogger.log("Subscriptions view loaded.");
 
     const app = getApplication();
     if (!app?.pubkey) {
       const container = document.getElementById("subscriptionsVideoList");
       if (container) {
         container.innerHTML =
-          "<p class='text-gray-500'>Please log in to see your subscriptions.</p>";
+          "<p class='text-muted'>Please log in to see your subscriptions.</p>";
       }
       return;
     }

@@ -5,13 +5,20 @@ import {
   ADMIN_LIST_NAMESPACE,
   ADMIN_SUPER_NPUB,
   ADMIN_EDITORS_NPUBS,
+  ADMIN_COMMUNITY_BLACKLIST_SOURCES,
+  ADMIN_COMMUNITY_BLACKLIST_PREFIX,
   isDevMode,
 } from "./config.js";
-import { nostrClient } from "./nostr.js";
+import {
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostr.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 import {
   buildAdminListEvent,
   ADMIN_LIST_IDENTIFIERS,
 } from "./nostrEventSchemas.js";
+import { publishEventToRelay } from "./nostrPublish.js";
 
 const LEGACY_STORAGE_KEYS = {
   editors: "bitvid_admin_editors",
@@ -21,7 +28,8 @@ const LEGACY_STORAGE_KEYS = {
   blacklistLegacy: "bitvid_blacklist",
 };
 
-const PUBLISH_TIMEOUT_MS = 7000;
+const ADMIN_STATE_CACHE_VERSION = 1;
+const ADMIN_STATE_CACHE_KEY = `bitvid_admin_state_v${ADMIN_STATE_CACHE_VERSION}`;
 
 function createError(code, message, cause) {
   const error = new Error(message);
@@ -61,7 +69,86 @@ function dedupeNpubs(values) {
   );
 }
 
+const globalScope =
+  typeof window !== "undefined"
+    ? window
+    : typeof globalThis !== "undefined"
+    ? globalThis
+    : null;
+
+function readNostrToolsFromScope(scope = globalScope) {
+  if (!scope || typeof scope !== "object") {
+    return null;
+  }
+
+  const candidates = [];
+
+  if (scope.__BITVID_CANONICAL_NOSTR_TOOLS__) {
+    candidates.push(scope.__BITVID_CANONICAL_NOSTR_TOOLS__);
+  }
+
+  if (scope.NostrTools) {
+    candidates.push(scope.NostrTools);
+  }
+
+  const nestedWindow =
+    scope.window && scope.window !== scope && typeof scope.window === "object"
+      ? scope.window
+      : null;
+  if (nestedWindow) {
+    if (nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__) {
+      candidates.push(nestedWindow.__BITVID_CANONICAL_NOSTR_TOOLS__);
+    }
+    if (nestedWindow.NostrTools) {
+      candidates.push(nestedWindow.NostrTools);
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object") {
+      const nip19 = candidate?.nip19;
+      if (
+        nip19 &&
+        typeof nip19 === "object" &&
+        (typeof nip19.decode === "function" ||
+          typeof nip19.npubEncode === "function")
+      ) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+let cachedNostrTools = null;
+let cachedNip19 = null;
+
+function getNip19Tools() {
+  const toolkit = readNostrToolsFromScope();
+  if (toolkit && toolkit !== cachedNostrTools) {
+    cachedNostrTools = toolkit;
+    cachedNip19 =
+      toolkit?.nip19 && typeof toolkit.nip19 === "object"
+        ? toolkit.nip19
+        : cachedNip19;
+  } else if (!cachedNostrTools && toolkit) {
+    cachedNostrTools = toolkit;
+    cachedNip19 =
+      toolkit?.nip19 && typeof toolkit.nip19 === "object"
+        ? toolkit.nip19
+        : cachedNip19;
+  }
+
+  return cachedNip19 || null;
+}
+
 function canDecodeNpub() {
+  const nip19 = getNip19Tools();
+  if (nip19 && typeof nip19.decode === "function") {
+    return true;
+  }
+
   return !!(
     typeof window !== "undefined" &&
     window?.NostrTools?.nip19 &&
@@ -79,12 +166,19 @@ function isLikelyNpub(value) {
     return false;
   }
 
-  if (!canDecodeNpub()) {
+  if (isHexPubkey(trimmed)) {
     return true;
   }
 
+  const nip19 = getNip19Tools();
+  const decoder = nip19?.decode;
+
+  if (typeof decoder !== "function") {
+    return trimmed.toLowerCase().startsWith("npub");
+  }
+
   try {
-    const decoded = window.NostrTools.nip19.decode(trimmed);
+    const decoded = decoder(trimmed);
     return decoded?.type === "npub";
   } catch (error) {
     return false;
@@ -150,9 +244,10 @@ function readJsonListFromStorage(key) {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : null;
   } catch (error) {
-    if (isDevMode) {
-      console.warn(`[adminListStore] Failed to parse legacy list for ${key}:`, error);
-    }
+    devLogger.warn(
+      `[adminListStore] Failed to parse legacy list for ${key}:`,
+      error,
+    );
     return null;
   }
 }
@@ -170,6 +265,54 @@ function loadLegacyAdminState() {
 
   const sanitized = sanitizeAdminState({ editors, whitelist, blacklist });
   return hasAnyEntries(sanitized) ? sanitized : null;
+}
+
+export function readCachedAdminState() {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  let raw = null;
+  try {
+    raw = localStorage.getItem(ADMIN_STATE_CACHE_KEY);
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to read admin state cache:",
+      error,
+    );
+    return null;
+  }
+
+  if (raw === null) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return sanitizeAdminState(parsed || {});
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to parse admin state cache:",
+      error,
+    );
+    return null;
+  }
+}
+
+export function writeCachedAdminState(state) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    const sanitized = sanitizeAdminState(state || {});
+    localStorage.setItem(ADMIN_STATE_CACHE_KEY, JSON.stringify(sanitized));
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to write admin state cache:",
+      error,
+    );
+  }
 }
 
 function clearLegacyStorageFor(listKey) {
@@ -198,9 +341,10 @@ function clearLegacyStorageFor(listKey) {
     try {
       localStorage.removeItem(key);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(`[adminListStore] Failed to clear legacy storage for ${key}:`, error);
-      }
+      devLogger.warn(
+        `[adminListStore] Failed to clear legacy storage for ${key}:`,
+        error,
+      );
     }
   }
 }
@@ -213,7 +357,16 @@ function ensureNostrReady() {
     );
   }
 
-  const relays = Array.isArray(nostrClient.relays) ? nostrClient.relays : [];
+  const writeRelays =
+    Array.isArray(nostrClient.writeRelays) && nostrClient.writeRelays.length
+      ? nostrClient.writeRelays
+      : [];
+  const relays = writeRelays.length
+    ? writeRelays
+    : Array.isArray(nostrClient.relays)
+    ? nostrClient.relays
+    : [];
+
   if (!relays.length) {
     throw createError("nostr-unavailable", "No Nostr relays configured.");
   }
@@ -227,26 +380,135 @@ function decodeNpubToHex(npub) {
     throw createError("invalid npub", "Empty npub provided.");
   }
 
+  const nip19 = getNip19Tools();
+  const decoder = nip19?.decode;
+
   try {
-    const decoded = window?.NostrTools?.nip19?.decode(trimmed);
-    if (decoded?.type !== "npub" || !decoded?.data) {
-      throw new Error("Invalid npub format");
+    if (typeof decoder === "function") {
+      const decoded = decoder(trimmed);
+      if (decoded?.type !== "npub" || !decoded?.data) {
+        throw new Error("Invalid npub format");
+      }
+      return typeof decoded.data === "string"
+        ? decoded.data
+        : decoded.data?.pubkey || "";
     }
-    return typeof decoded.data === "string"
-      ? decoded.data
-      : decoded.data?.pubkey || "";
+
+    const fallback = window?.NostrTools?.nip19?.decode;
+    if (typeof fallback === "function") {
+      const decoded = fallback(trimmed);
+      if (decoded?.type !== "npub" || !decoded?.data) {
+        throw new Error("Invalid npub format");
+      }
+      return typeof decoded.data === "string"
+        ? decoded.data
+        : decoded.data?.pubkey || "";
+    }
   } catch (error) {
     throw createError("invalid npub", "Unable to decode npub.", error);
   }
+
+  throw createError("invalid npub", "Unable to decode npub.");
+}
+
+function parseCommunityBlacklistReferences(event) {
+  if (!event || !Array.isArray(event.tags)) {
+    return [];
+  }
+
+  const references = [];
+  const seen = new Set();
+
+  for (const tag of event.tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+
+    const tagName = typeof tag[0] === "string" ? tag[0] : "";
+    if (tagName !== "a") {
+      continue;
+    }
+
+    const rawValue = typeof tag[1] === "string" ? tag[1].trim() : "";
+    if (!rawValue) {
+      continue;
+    }
+
+    const [kindSegment, authorSegment, ...identifierSegments] = rawValue.split(":");
+    if (!identifierSegments.length) {
+      continue;
+    }
+
+    const kind = Number.parseInt(kindSegment, 10);
+    if (!Number.isFinite(kind) || kind !== 30000) {
+      continue;
+    }
+
+    const dTagValue = identifierSegments.join(":").trim();
+    if (!dTagValue) {
+      continue;
+    }
+
+    if (
+      !dTagValue.startsWith(
+        `${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_PREFIX}`
+      )
+    ) {
+      continue;
+    }
+
+    const authorCandidate = typeof authorSegment === "string" ? authorSegment.trim() : "";
+    if (!authorCandidate) {
+      continue;
+    }
+
+    let authorHex = "";
+    if (isHexPubkey(authorCandidate)) {
+      authorHex = authorCandidate.toLowerCase();
+    } else if (authorCandidate.toLowerCase().startsWith("npub")) {
+      try {
+        authorHex = decodeNpubToHex(authorCandidate);
+      } catch (error) {
+        devLogger.warn(
+          `[adminListStore] Failed to decode community curator npub for ${dTagValue}:`,
+          error,
+        );
+        authorHex = "";
+      }
+    }
+
+    if (!authorHex) {
+      continue;
+    }
+
+    const key = `${authorHex}::${dTagValue}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    references.push({ authorHex, dTag: dTagValue });
+  }
+
+  return references;
 }
 
 function encodeHexToNpub(hex) {
+  const nip19 = getNip19Tools();
+  const encoder = nip19?.npubEncode;
+
+  if (typeof encoder === "function") {
+    try {
+      return encoder(hex) || "";
+    } catch (error) {
+      devLogger.warn("Failed to encode hex pubkey to npub:", error);
+    }
+  }
+
   try {
     return window?.NostrTools?.nip19?.npubEncode(hex) || "";
   } catch (error) {
-    if (isDevMode) {
-      console.warn("Failed to encode hex pubkey to npub:", error);
-    }
+    devLogger.warn("Failed to encode hex pubkey to npub:", error);
     return "";
   }
 }
@@ -261,7 +523,7 @@ function normalizeParticipantTagValue(value) {
     return "";
   }
 
-  const nip19 = window?.NostrTools?.nip19;
+  const nip19 = getNip19Tools();
   const lower = trimmed.toLowerCase();
   if (lower.startsWith("npub")) {
     if (nip19?.decode) {
@@ -282,9 +544,7 @@ function normalizeParticipantTagValue(value) {
     if (encoded) {
       return encoded;
     }
-    if (!canDecodeNpub()) {
-      return trimmed;
-    }
+    return trimmed;
   }
 
   if (nip19?.decode) {
@@ -317,43 +577,54 @@ function extractNpubsFromEvent(event) {
   return dedupeNpubs(npubs);
 }
 
-async function loadNostrList(identifier) {
+async function fetchLatestListEvent(filter, contextLabel = "admin-list") {
   const relays = ensureNostrReady();
-  const dTagValue = `${ADMIN_LIST_NAMESPACE}:${identifier}`;
-  const filter = {
-    kinds: [30000],
-    "#d": [dTagValue],
-    limit: 50,
-  };
+
+  const normalizedFilter = {};
+  if (Array.isArray(filter?.kinds) && filter.kinds.length) {
+    normalizedFilter.kinds = [...filter.kinds];
+  } else {
+    normalizedFilter.kinds = [30000];
+  }
+
+  if (typeof filter?.limit === "number") {
+    normalizedFilter.limit = filter.limit;
+  } else {
+    normalizedFilter.limit = 50;
+  }
+
+  if (Array.isArray(filter?.["#d"]) && filter["#d"].length) {
+    normalizedFilter["#d"] = [...filter["#d"]];
+  }
+
+  if (Array.isArray(filter?.authors) && filter.authors.length) {
+    normalizedFilter.authors = [...filter.authors];
+  }
 
   let events = [];
   try {
-    const combined = await nostrClient.pool.list(relays, [filter]);
+    const combined = await nostrClient.pool.list(relays, [normalizedFilter]);
     if (Array.isArray(combined)) {
       events = combined;
     }
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        `[adminListStore] Combined relay fetch failed for ${identifier}:`,
-        error
-      );
-    }
+    devLogger.warn(
+      `[adminListStore] Combined relay fetch failed for ${contextLabel}:`,
+      error,
+    );
   }
 
   if (!events.length) {
     const perRelay = await Promise.all(
       relays.map(async (url) => {
         try {
-          const result = await nostrClient.pool.list([url], [filter]);
+          const result = await nostrClient.pool.list([url], [normalizedFilter]);
           return Array.isArray(result) ? result : [];
         } catch (error) {
-          if (isDevMode) {
-            console.warn(
-              `[adminListStore] Relay fetch failed for ${identifier} on ${url}:`,
-              error
-            );
-          }
+          devLogger.warn(
+            `[adminListStore] Relay fetch failed for ${contextLabel} on ${url}:`,
+            error,
+          );
           return [];
         }
       })
@@ -362,10 +633,10 @@ async function loadNostrList(identifier) {
   }
 
   if (!events.length) {
-    return [];
+    return null;
   }
 
-  const newest = events.reduce((latest, event) => {
+  return events.reduce((latest, event) => {
     if (!latest) {
       return event;
     }
@@ -374,8 +645,12 @@ async function loadNostrList(identifier) {
     }
     return event.created_at > latest.created_at ? event : latest;
   }, null);
+}
 
-  return extractNpubsFromEvent(newest);
+async function loadNostrList(identifier) {
+  const dTagValue = `${ADMIN_LIST_NAMESPACE}:${identifier}`;
+  const event = await fetchLatestListEvent({ "#d": [dTagValue] }, identifier);
+  return event ? extractNpubsFromEvent(event) : [];
 }
 
 async function loadNostrState() {
@@ -388,18 +663,74 @@ async function loadNostrState() {
   return sanitizeAdminState({ editors, whitelist, blacklist });
 }
 
+async function loadCommunityBlacklistEntries() {
+  let superAdminHex = "";
+  try {
+    superAdminHex = decodeNpubToHex(ADMIN_SUPER_NPUB);
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to decode super admin npub for community blacklist lookup:",
+      error,
+    );
+    return [];
+  }
+
+  const sourceIdentifier = `${ADMIN_LIST_NAMESPACE}:${ADMIN_COMMUNITY_BLACKLIST_SOURCES}`;
+
+  let sourceEvent = null;
+  try {
+    sourceEvent = await fetchLatestListEvent(
+      { "#d": [sourceIdentifier], authors: [superAdminHex] },
+      "community-blacklist-sources",
+    );
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to load community blacklist source list:",
+      error,
+    );
+    return [];
+  }
+
+  if (!sourceEvent) {
+    return [];
+  }
+
+  const references = parseCommunityBlacklistReferences(sourceEvent);
+  if (!references.length) {
+    return [];
+  }
+
+  const results = await Promise.all(
+    references.map(async (reference) => {
+      try {
+        const event = await fetchLatestListEvent(
+          { "#d": [reference.dTag], authors: [reference.authorHex] },
+          reference.dTag,
+        );
+        return event ? extractNpubsFromEvent(event) : [];
+      } catch (error) {
+        devLogger.warn(
+          `[adminListStore] Failed to load community blacklist ${reference.dTag}:`,
+          error,
+        );
+        return [];
+      }
+    })
+  );
+
+  return results.flat();
+}
+
 function buildListEvent(listKey, npubs, actorHex) {
   const hexPubkeys = Array.from(
     new Set(npubs.map((npub) => {
       try {
         return decodeNpubToHex(npub);
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            `[adminListStore] Failed to decode npub while publishing ${listKey}:`,
-            error
-          );
-        }
+        devLogger.warn(
+        `[adminListStore] Failed to decode npub while publishing ${listKey}:`,
+        error
+        );
         return "";
       }
     }).filter((hex) => !!hex))
@@ -412,9 +743,7 @@ function buildListEvent(listKey, npubs, actorHex) {
         hexPubkeys.push(superHex);
       }
     } catch (error) {
-      if (isDevMode) {
-        console.warn("Failed to ensure super admin presence:", error);
-      }
+      devLogger.warn("Failed to ensure super admin presence:", error);
     }
   }
 
@@ -425,92 +754,137 @@ function buildListEvent(listKey, npubs, actorHex) {
   });
 }
 
-function publishToRelay(url, signedEvent, listKey) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const timeout = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        resolve({ url, success: false, error: new Error("timeout") });
-      }
-    }, PUBLISH_TIMEOUT_MS);
+function publishListWithFirstAcceptance(pool, relays, event, options = {}) {
+  const publishRelay =
+    typeof options.publishRelay === "function"
+      ? options.publishRelay
+      : publishEventToRelay;
+  const listKey = typeof options.listKey === "string" ? options.listKey : "";
+  const publishOptions =
+    options && typeof options.publishOptions === "object"
+      ? options.publishOptions
+      : undefined;
 
-    const finalize = (success, error) => {
-      if (settled) {
-        return;
+  const relayPromises = Array.isArray(relays)
+    ? relays.map((url) => publishRelay(pool, url, event, publishOptions))
+    : [];
+  const resultsBuffer = new Array(relayPromises.length);
+
+  const resolveMessage = listKey
+    ? `Failed to publish ${listKey} list to any relay.`
+    : "Failed to publish admin list to any relay.";
+
+  const normalizeFailureError = (value) => {
+    if (value instanceof Error) {
+      return value;
+    }
+
+    if (value && typeof value === "object") {
+      if (value.error instanceof Error) {
+        return value.error;
       }
-      settled = true;
-      clearTimeout(timeout);
-      resolve({ url, success, error });
+
+      if (typeof value.error === "string" && value.error.trim()) {
+        return new Error(value.error.trim());
+      }
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      return new Error(value.trim());
+    }
+
+    if (value && typeof value === "object" && typeof value.reason === "string") {
+      const trimmed = value.reason.trim();
+      if (trimmed) {
+        return new Error(trimmed);
+      }
+    }
+
+    return new Error("publish failed");
+  };
+
+  const normalizeResult = (result, fallbackUrl = "") => {
+    if (result && typeof result === "object") {
+      const url = typeof result.url === "string" ? result.url : fallbackUrl;
+      const success = !!result.success;
+      const error = success ? null : normalizeFailureError(result);
+      return { url, success, error };
+    }
+
+    return {
+      url: fallbackUrl,
+      success: false,
+      error: normalizeFailureError(result),
     };
+  };
 
-    try {
-      const pub = nostrClient.pool.publish([url], signedEvent);
-      if (!pub) {
-        finalize(false, new Error("publish returned no result"));
-        return;
-      }
-
-      if (typeof pub.on === "function") {
-        const registerHandler = (eventName, handler) => {
-          try {
-            pub.on(eventName, handler);
-            return true;
-          } catch (error) {
-            if (isDevMode) {
-              console.warn(
-                `[adminListStore] Relay publish rejected ${eventName} listener:`,
-                error
-              );
-            }
-            return false;
-          }
-        };
-
-        const handleFailure = (reason) => {
-          const error =
-            reason instanceof Error
-              ? reason
-              : new Error(String(reason || "failed"));
-          finalize(false, error);
-        };
-
-        let handlerRegistered = false;
-        handlerRegistered =
-          registerHandler("ok", () => finalize(true)) || handlerRegistered;
-        handlerRegistered =
-          registerHandler("seen", () => finalize(true)) || handlerRegistered;
-        handlerRegistered =
-          registerHandler("failed", handleFailure) || handlerRegistered;
-
-        if (handlerRegistered) {
-          return;
+  const acceptancePromises = relayPromises.map((promise, index) =>
+    promise
+      .then((result) => {
+        const normalized = normalizeResult(
+          result,
+          Array.isArray(relays) ? relays[index] : "",
+        );
+        resultsBuffer[index] = normalized;
+        if (normalized.success) {
+          return normalized;
         }
-      }
 
-      if (typeof pub.then === "function") {
-        pub.then(() => finalize(true)).catch((error) => finalize(false, error));
-        return;
-      }
-    } catch (error) {
-      finalize(false, error);
-      return;
+        throw normalized;
+      })
+      .catch((reason) => {
+        const normalized = normalizeResult(
+          reason,
+          Array.isArray(relays) ? relays[index] : "",
+        );
+        if (typeof resultsBuffer[index] === "undefined") {
+          resultsBuffer[index] = normalized;
+        }
+        throw normalized;
+      })
+  );
+
+  const firstAcceptance = (() => {
+    if (!relayPromises.length) {
+      return Promise.reject(createError("publish-failed", resolveMessage));
     }
 
-    finalize(true);
-  }).then((result) => {
-    if (!result.success && isDevMode) {
-      console.warn(
-        `[adminListStore] Publish failed for ${listKey} on ${result.url}:`,
-        result.error
-      );
+    return Promise.any(acceptancePromises).catch((aggregateError) => {
+      const error = createError("publish-failed", resolveMessage, aggregateError);
+      throw error;
+    });
+  })();
+
+  const allResults = Promise.allSettled(relayPromises).then((entries) => {
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      const fallbackUrl = Array.isArray(relays) ? relays[index] : "";
+      const result =
+        entry?.status === "fulfilled"
+          ? normalizeResult(entry.value, fallbackUrl)
+          : normalizeResult(entry?.reason, fallbackUrl);
+
+      if (typeof resultsBuffer[index] === "undefined") {
+        resultsBuffer[index] = result;
+      }
     }
-    return result;
+
+    return resultsBuffer;
   });
+
+  return { firstAcceptance, allResults, resultsBuffer };
 }
 
 async function persistNostrState(actorNpub, updates = {}) {
   ensureNostrReady();
+  const permissionResult = await requestDefaultExtensionPermissions();
+  if (!permissionResult.ok) {
+    throw createError(
+      "extension-permission-denied",
+      "The NIP-07 extension must allow signing before updating admin lists.",
+      permissionResult.error,
+    );
+  }
   const extension = window?.nostr;
   if (!extension || typeof extension.signEvent !== "function") {
     throw createError(
@@ -588,16 +962,41 @@ async function persistNostrState(actorNpub, updates = {}) {
     }
 
     const relays = ensureNostrReady();
-    const publishResults = await Promise.all(
-      relays.map((url) => publishToRelay(url, signedEvent, listKey))
+    const { firstAcceptance, allResults } = publishListWithFirstAcceptance(
+      nostrClient.pool,
+      relays,
+      signedEvent,
+      { listKey },
     );
 
-    if (!publishResults.some((result) => result.success)) {
-      throw createError(
-        "publish-failed",
-        `Failed to publish ${listKey} list to any relay.`
-      );
+    const logSettledResults = allResults.then((results) => {
+      if (isDevMode) {
+        results
+          .filter((result) => !result?.success)
+          .forEach((result) => {
+            userLogger.warn(
+              `[adminListStore] Publish failed for ${listKey} on ${result.url}:`,
+              result.error,
+            );
+          });
+      }
+
+      return results;
+    });
+
+    try {
+      await firstAcceptance;
+    } catch (error) {
+      await logSettledResults.catch(() => {});
+      throw error;
     }
+
+    logSettledResults.catch((loggingError) => {
+      devLogger.warn(
+        `[adminListStore] Failed to summarize publish results for ${listKey}:`,
+        loggingError,
+      );
+    });
 
     clearLegacyStorageFor(listKey);
   }
@@ -605,28 +1004,87 @@ async function persistNostrState(actorNpub, updates = {}) {
 
 export async function loadAdminState() {
   if (ADMIN_LIST_MODE !== "nostr" && isDevMode) {
-    console.warn(
+    userLogger.warn(
       `[adminListStore] ADMIN_LIST_MODE "${ADMIN_LIST_MODE}" is deprecated. Defaulting to remote Nostr lists.`
     );
   }
 
-  const state = await loadNostrState();
-  if (!hasAnyEntries(state)) {
+  let mergedState = null;
+  let cachedState = null;
+
+  try {
+    const nostrState = await loadNostrState();
+
+    mergedState = nostrState;
+    try {
+      const communityEntries = await loadCommunityBlacklistEntries();
+      if (Array.isArray(communityEntries) && communityEntries.length) {
+        const baseEditors = Array.isArray(nostrState?.editors)
+          ? nostrState.editors
+          : [];
+        const baseWhitelist = Array.isArray(nostrState?.whitelist)
+          ? nostrState.whitelist
+          : [];
+        const baseBlacklist = Array.isArray(nostrState?.blacklist)
+          ? nostrState.blacklist
+          : [];
+
+        mergedState = sanitizeAdminState({
+          editors: baseEditors,
+          whitelist: baseWhitelist,
+          blacklist: [...baseBlacklist, ...communityEntries],
+        });
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[adminListStore] Failed to merge community blacklist entries:",
+        error,
+      );
+    }
+  } catch (error) {
+    devLogger.warn(
+      "[adminListStore] Failed to load admin lists from relays:",
+      error,
+    );
+
+    cachedState = readCachedAdminState();
+    if (cachedState) {
+      return cachedState;
+    }
+
+    throw error;
+  }
+
+  if (!cachedState) {
+    cachedState = readCachedAdminState();
+  }
+
+  if (mergedState) {
+    if (hasAnyEntries(mergedState)) {
+      writeCachedAdminState(mergedState);
+    } else if (cachedState && hasAnyEntries(cachedState)) {
+      return cachedState;
+    } else {
+      writeCachedAdminState(mergedState);
+    }
+  }
+
+  if (!hasAnyEntries(mergedState)) {
     const legacy = loadLegacyAdminState();
     if (legacy && isDevMode) {
-      console.warn(
+      userLogger.warn(
         "[adminListStore] Ignoring legacy admin lists because remote mode is enforced. Publish them to Nostr to retain access.",
         legacy
       );
     }
   }
 
-  return state;
+  return mergedState || sanitizeAdminState();
 }
 
 export async function persistAdminState(actorNpub, updates) {
   if (ADMIN_LIST_MODE !== "nostr" && isDevMode) {
-    console.warn(
+    userLogger.warn(
       `[adminListStore] ADMIN_LIST_MODE "${ADMIN_LIST_MODE}" is deprecated. Remote lists are enforced.`
     );
   }
@@ -637,4 +1095,5 @@ export async function persistAdminState(actorNpub, updates) {
 export const __adminListStoreTestHooks = Object.freeze({
   extractNpubsFromEvent,
   normalizeParticipantTagValue,
+  publishListWithFirstAcceptance,
 });

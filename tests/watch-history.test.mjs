@@ -69,9 +69,54 @@ const originalExtensionPermissionSnapshot = Array.isArray(
   originalExtensionPermissionCache,
 )
   ? Array.from(originalExtensionPermissionCache)
-  : [];
+  : originalExtensionPermissionCache instanceof Set
+    ? Array.from(originalExtensionPermissionCache)
+    : [];
+
+const NIP07_PERMISSIONS_STORAGE_KEY = "bitvid:nip07:permissions";
+
+function clearStoredExtensionPermissions() {
+  if (typeof localStorage === "undefined" || !localStorage) {
+    return;
+  }
+  try {
+    localStorage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
+  } catch (error) {
+    // ignore cleanup errors in tests
+  }
+}
+
+function writeStoredExtensionPermissions(methods = []) {
+  if (typeof localStorage === "undefined" || !localStorage) {
+    return;
+  }
+
+  const normalized = Array.from(
+    new Set(
+      Array.from(methods)
+        .filter((method) => typeof method === "string")
+        .map((method) => method.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  try {
+    if (!normalized.length) {
+      localStorage.removeItem(NIP07_PERMISSIONS_STORAGE_KEY);
+      return;
+    }
+
+    localStorage.setItem(
+      NIP07_PERMISSIONS_STORAGE_KEY,
+      JSON.stringify({ grantedMethods: normalized }),
+    );
+  } catch (error) {
+    // ignore persistence errors in tests
+  }
+}
 
 nostrClient.extensionPermissionCache = new Set();
+clearStoredExtensionPermissions();
 
 nostrClient.watchHistoryCache = new Map();
 nostrClient.watchHistoryStorage = {
@@ -923,7 +968,18 @@ async function testEnsureExtensionPermissionCaching() {
   const actor = "permission-actor";
   const extension = installExtensionCrypto({ actor });
   const previousCache = nostrClient.extensionPermissionCache;
+  let previousStoredPermissions = null;
+  if (typeof localStorage !== "undefined" && localStorage) {
+    try {
+      previousStoredPermissions = localStorage.getItem(
+        NIP07_PERMISSIONS_STORAGE_KEY,
+      );
+    } catch (error) {
+      previousStoredPermissions = null;
+    }
+  }
   nostrClient.extensionPermissionCache = new Set();
+  clearStoredExtensionPermissions();
 
   try {
     const first = await nostrClient.ensureExtensionPermissions([
@@ -953,6 +1009,20 @@ async function testEnsureExtensionPermissionCaching() {
   } finally {
     extension.restore();
     nostrClient.extensionPermissionCache = previousCache;
+    if (typeof localStorage !== "undefined" && localStorage) {
+      try {
+        if (previousStoredPermissions && previousStoredPermissions.length) {
+          localStorage.setItem(
+            NIP07_PERMISSIONS_STORAGE_KEY,
+            previousStoredPermissions,
+          );
+        } else {
+          clearStoredExtensionPermissions();
+        }
+      } catch (error) {
+        // ignore restore errors in tests
+      }
+    }
   }
 }
 
@@ -1212,7 +1282,7 @@ async function testWatchHistoryPartialRelayRetry() {
     nostrClient.sessionActor = originalSession;
     nostrClient.pubkey = originalPub;
     poolHarness.setResolver(() => ({ ok: true }));
-    watchHistoryService.resetProgress(actor);
+    watchHistoryService.resetProgress();
     restoreCrypto.restore();
   }
 }
@@ -1460,6 +1530,107 @@ async function testWatchHistoryServiceIntegration() {
     nostrClient.watchHistoryCacheTtlMs = originalWatchHistoryCacheTtl;
     nostrClient.watchHistoryCache.clear();
     nostrClient.watchHistoryFingerprints = new Map();
+  }
+}
+
+async function testWatchHistorySnapshotMergesQueuedWithCachedItems() {
+  console.log("Running watch history snapshot merge test...");
+
+  const actor = "npub-snapshot-merge";
+  const originalPublishSnapshot = nostrClient.publishWatchHistorySnapshot;
+  const originalRecordView = nostrClient.recordVideoView;
+  const originalEnsure = nostrClient.ensureSessionActor;
+  const originalSession = nostrClient.sessionActor;
+  const originalPub = nostrClient.pubkey;
+  const originalFingerprint = nostrClient.getWatchHistoryFingerprint;
+
+  try {
+    nostrClient.pubkey = actor;
+    nostrClient.sessionActor = { pubkey: actor, privateKey: "merge-priv" };
+    nostrClient.ensureSessionActor = async () => actor;
+    nostrClient.recordVideoView = async (_pointer, options = {}) => ({
+      ok: true,
+      event: {
+        id: `view-${options.created_at || Date.now()}`,
+        pubkey: actor,
+        created_at: options.created_at || Math.floor(Date.now() / 1000),
+      },
+    });
+
+    const publishedPayloads = [];
+    nostrClient.publishWatchHistorySnapshot = async (items, options = {}) => {
+      const clonedItems = Array.isArray(items)
+        ? items.map((entry) => ({ ...entry }))
+        : [];
+      publishedPayloads.push({
+        items: clonedItems,
+        options: { ...options },
+      });
+      return {
+        ok: true,
+        snapshotId: `snapshot-${publishedPayloads.length}`,
+        items: clonedItems,
+        publishResults: {},
+      };
+    };
+
+    nostrClient.getWatchHistoryFingerprint = async (_actor, items = []) =>
+      `fingerprint-${Array.isArray(items) ? items.length : 0}-${Date.now()}`;
+
+    watchHistoryService.resetProgress(actor);
+
+    const seedItems = [
+      { type: "e", value: "seed-one", watchedAt: 1_700_000_000 },
+      { type: "e", value: "seed-two", watchedAt: 1_700_000_100 },
+    ];
+
+    await watchHistoryService.snapshot(seedItems, {
+      actor,
+      reason: "seed-history",
+    });
+
+    assert.equal(
+      publishedPayloads.length,
+      1,
+      "initial snapshot should publish seed items",
+    );
+
+    await watchHistoryService.publishView(
+      { type: "e", value: "fresh-entry" },
+      1_700_000_200,
+      { actor },
+    );
+
+    const mergeResult = await watchHistoryService.snapshot(null, {
+      actor,
+      reason: "merge-queued-items",
+    });
+    assert.ok(mergeResult.ok, "merge snapshot should succeed");
+
+    assert.equal(
+      publishedPayloads.length,
+      2,
+      "merge snapshot should trigger a second publish",
+    );
+
+    const mergedCall = publishedPayloads[1];
+    const mergedKeys = mergedCall.items.map(
+      (entry) => `${entry?.type}:${entry?.value}`,
+    );
+    mergedKeys.sort();
+    assert.deepEqual(
+      mergedKeys,
+      ["e:fresh-entry", "e:seed-one", "e:seed-two"],
+      "merged snapshot should include seed and queued pointers",
+    );
+  } finally {
+    nostrClient.publishWatchHistorySnapshot = originalPublishSnapshot;
+    nostrClient.recordVideoView = originalRecordView;
+    nostrClient.ensureSessionActor = originalEnsure;
+    nostrClient.sessionActor = originalSession;
+    nostrClient.pubkey = originalPub;
+    nostrClient.getWatchHistoryFingerprint = originalFingerprint;
+    watchHistoryService.resetProgress();
   }
 }
 
@@ -1977,6 +2148,7 @@ await testPublishSnapshotFailureRetry();
 await testWatchHistoryPartialRelayRetry();
 await testResolveWatchHistoryBatchingWindow();
 await testWatchHistoryServiceIntegration();
+await testWatchHistorySnapshotMergesQueuedWithCachedItems();
 await testHistoryCardsUseDecryptedPlaybackMetadata();
 await testWatchHistoryStaleCacheRefresh();
 await testWatchHistoryLocalFallbackWhenDisabled();
@@ -2013,6 +2185,11 @@ if (originalExtensionPermissionCache instanceof Set) {
   }
 }
 nostrClient.extensionPermissionCache = originalExtensionPermissionCache;
+if (originalExtensionPermissionSnapshot.length) {
+  writeStoredExtensionPermissions(originalExtensionPermissionSnapshot);
+} else {
+  clearStoredExtensionPermissions();
+}
 
 if (!originalFlag) {
   setWatchHistoryV2Enabled(false);

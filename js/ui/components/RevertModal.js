@@ -1,4 +1,5 @@
 import { Nip71FormManager } from "./nip71FormManager.js";
+import { createModalAccessibility } from "./modalAccessibility.js";
 
 // NOTE: Any metadata field added to the Upload or Edit modals must also be
 // rendered inside the Revert modal to keep the experiences aligned.
@@ -39,6 +40,8 @@ export class RevertModal {
     this.closeButton = null;
     this.cancelButton = null;
     this.confirmButton = null;
+    this.modalPanel = null;
+    this.modalAccessibility = null;
 
     this.activeVideo = null;
     this.revisions = [];
@@ -110,6 +113,7 @@ export class RevertModal {
     }
 
     this.cacheElements(modal);
+    this.setupModalAccessibility();
     this.bindEvents();
     this.reset();
 
@@ -119,6 +123,7 @@ export class RevertModal {
   cacheElements(modal) {
     this.modal = modal;
     this.overlay = modal.querySelector("#revertVideoModalOverlay") || null;
+    this.modalPanel = modal.querySelector(".bv-modal__panel") || modal;
     this.list = modal.querySelector("#revertVersionsList") || null;
     this.details = modal.querySelector("#revertVersionDetails") || null;
     this.placeholder = modal.querySelector("#revertVersionPlaceholder") || null;
@@ -208,19 +213,35 @@ export class RevertModal {
       this.confirmButton.classList.remove("cursor-wait");
     }
 
-    const toggleDisabledStyles = (button) => {
+    const enableButton = (button) => {
       if (!button) {
         return;
       }
       button.disabled = false;
-      button.classList.remove("opacity-60", "cursor-not-allowed");
     };
 
-    toggleDisabledStyles(this.cancelButton);
-    toggleDisabledStyles(this.closeButton);
+    enableButton(this.cancelButton);
+    enableButton(this.closeButton);
   }
 
-  open(context = {}) {
+  setupModalAccessibility() {
+    if (!this.modal) {
+      return;
+    }
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+
+    this.modalAccessibility = createModalAccessibility({
+      root: this.modal,
+      panel: this.modalPanel || this.modal,
+      backdrop: this.overlay || this.modal,
+      onRequestClose: () => this.handleCancelInteraction(),
+    });
+  }
+
+  open(context = {}, { triggerElement } = {}) {
     if (!this.modal) {
       throw new Error("Revert modal has not been loaded.");
     }
@@ -230,6 +251,7 @@ export class RevertModal {
     if (typeof this.setGlobalModalState === "function") {
       this.setGlobalModalState("revertVideo", true);
     }
+    this.modalAccessibility?.activate({ triggerElement });
     this.dispatch("video:revert-open", {
       context: this.context,
       video: this.activeVideo,
@@ -247,6 +269,7 @@ export class RevertModal {
     };
 
     this.modal.classList.add("hidden");
+    this.modalAccessibility?.deactivate();
     if (typeof this.setGlobalModalState === "function") {
       this.setGlobalModalState("revertVideo", false);
     }
@@ -362,7 +385,7 @@ export class RevertModal {
 
     if (!this.revisions.length) {
       this.list.innerHTML =
-        '<p class="text-xs text-gray-500">No revisions found.</p>';
+        '<p class="text-xs text-subtle">No revisions found.</p>';
       return;
     }
 
@@ -394,36 +417,36 @@ export class RevertModal {
         "focus:outline-none",
         "focus:ring-2",
         "focus:ring-offset-2",
-        "focus:ring-offset-gray-900",
+        "focus:ring-offset-surface",
       ];
 
       if (isSelected) {
         classes.push(
-          "border-blue-500",
-          "bg-blue-500/20",
-          "text-blue-100",
-          "focus:ring-blue-500"
+          "border-status-info-border",
+          "bg-status-info-surface",
+          "text-status-info-on",
+          "focus:ring-status-info"
         );
       } else if (isCurrent) {
         classes.push(
-          "border-green-500/60",
-          "bg-green-500/10",
-          "text-green-100",
-          "focus:ring-green-500/80"
+          "border-status-success-border",
+          "bg-status-success-surface",
+          "text-status-success-on",
+          "focus:ring-status-success"
         );
       } else if (isDeleted) {
         classes.push(
-          "border-red-800/70",
-          "bg-red-900/30",
-          "text-red-200/90",
-          "hover:bg-red-900/40"
+          "border-status-danger-border",
+          "bg-status-danger-surface",
+          "text-status-danger-on",
+          "hover:border-status-danger-border"
         );
       } else {
         classes.push(
-          "border-gray-800",
-          "bg-gray-800/60",
-          "hover:bg-gray-700/70",
-          "text-gray-200"
+          "border-overlay",
+          "bg-overlay-panel-soft",
+          "hover:bg-overlay-panel",
+          "text-primary"
         );
       }
 
@@ -455,8 +478,8 @@ export class RevertModal {
       }
       const meta = metaParts.join(" • ");
       const metaClass = entry.deleted
-        ? "text-red-200/80"
-        : "text-gray-400";
+        ? "text-status-danger-on"
+        : "text-muted";
 
       const escape = (value) =>
         this.escapeHTML ? this.escapeHTML(String(value ?? "")) : String(value ?? "");
@@ -465,10 +488,10 @@ export class RevertModal {
         <div class="flex items-start justify-between gap-3">
           <div class="space-y-1">
             <p class="font-semibold">${escape(entry.title || "Untitled")}</p>
-            <p class="text-xs text-gray-300">${escape(relative)} • ${escape(absolute)}</p>
+            <p class="text-xs text-subtle">${escape(relative)} • ${escape(absolute)}</p>
             ${meta ? `<p class="text-xs ${metaClass}">${escape(meta)}</p>` : ""}
           </div>
-          <div class="text-xs uppercase tracking-wide text-gray-400">
+          <div class="text-xs uppercase tracking-wide text-muted">
             ${escape(versionLabel)}
           </div>
         </div>
@@ -565,33 +588,81 @@ export class RevertModal {
         : displayMagnet;
       const label = escape(labelRaw);
       const caption = isPrivate
-        ? '<span class="block text-xs text-purple-200/90 mt-1">Magnet stays visible only to you — private notes keep the raw string local.</span>'
+        ? '<span class="block mt-1 text-xs text-status-private-on">Magnet stays visible only to you — private notes keep the raw string local.</span>'
         : "";
       magnetHtml = `<div class="break-all">${label}${caption}</div>`;
     }
 
     const chips = [];
+    const nsfwFlag = version.isNsfw === true;
+    const forKidsFlag = version.isForKids === true;
+    const conflictingAudienceFlags = nsfwFlag && forKidsFlag;
     if (version.deleted) {
       chips.push(
-        '<span class="inline-flex items-center rounded-full border border-red-700/70 bg-red-900/40 px-2 py-0.5 text-xs text-red-200/90">Marked deleted</span>'
+        '<span class="pill" data-size="compact" data-variant="critical">Marked deleted</span>'
       );
     }
     if (isPrivate) {
       chips.push(
-        '<span class="inline-flex items-center rounded-full border border-purple-600/60 bg-purple-900/40 px-2 py-0.5 text-xs text-purple-200/90">Private</span>'
+        '<span class="pill" data-size="compact" data-variant="private">Private</span>'
       );
+    }
+    if (conflictingAudienceFlags) {
+      chips.push(
+        '<span class="pill" data-size="compact" data-variant="warning">NSFW + For kids conflict</span>'
+      );
+    } else {
+      if (nsfwFlag) {
+        chips.push(
+          '<span class="pill" data-size="compact" data-variant="critical">Marked NSFW</span>'
+        );
+      }
+      if (forKidsFlag) {
+        chips.push(
+          '<span class="pill" data-size="compact" data-variant="success">For kids</span>'
+        );
+      }
     }
     if (version.version !== undefined) {
       chips.push(
-        `<span class="inline-flex items-center rounded-full border border-gray-700 bg-gray-800/80 px-2 py-0.5 text-xs text-gray-200">Schema v${escape(
+        `<span class="pill" data-size="compact" data-variant="neutral">Schema v${escape(
           String(version.version)
         )}</span>`
       );
     }
 
+    const renderFlagStatus = (value, {
+      yesLabel = "Yes",
+      noLabel = "No",
+      unspecifiedLabel = "Not specified",
+    } = {}) => {
+      if (value === true) {
+        return `<span class="text-primary">${escape(yesLabel)}</span>`;
+      }
+      if (value === false) {
+        return `<span class="text-primary">${escape(noLabel)}</span>`;
+      }
+      return this.renderPlaceholder(unspecifiedLabel);
+    };
+
+    const nsfwStatusHtml = renderFlagStatus(version.isNsfw, {
+      yesLabel: "Yes — marked NSFW",
+      noLabel: "No — not flagged as NSFW",
+      unspecifiedLabel: "Not specified",
+    });
+    const kidsStatusHtml = renderFlagStatus(version.isForKids, {
+      yesLabel: "Yes — marked for kids",
+      noLabel: "No — not marked for kids",
+      unspecifiedLabel: "Not specified",
+    });
+
+    const audienceConflictNotice = conflictingAudienceFlags
+      ? '<p class="text-xs text-status-warning-on">Conflicting flags detected — this revision is marked both NSFW and for kids. Review before reverting.</p>'
+      : "";
+
     const descriptionHtml = description
-      ? `<p class="whitespace-pre-wrap text-gray-200">${escape(description)}</p>`
-      : '<p class="text-gray-500">No description provided.</p>';
+      ? `<p class="whitespace-pre-wrap text-primary">${escape(description)}</p>`
+      : '<p class="text-subtle">No description provided.</p>';
 
     const rootId =
       typeof version.videoRootId === "string" ? version.videoRootId : "";
@@ -627,17 +698,17 @@ export class RevertModal {
           : "";
         const parts = [];
         if (absoluteLabel) {
-          parts.push(`<span class="text-gray-200">${escape(absoluteLabel)}</span>`);
+          parts.push(`<span class="text-primary">${escape(absoluteLabel)}</span>`);
         }
         if (relativeLabel) {
-          parts.push(`<span class="text-gray-400">(${escape(relativeLabel)})</span>`);
+          parts.push(`<span class="text-muted">(${escape(relativeLabel)})</span>`);
         }
         if (parts.length) {
           return parts.join(" ");
         }
       }
       if (raw) {
-        return `<span class="text-gray-200">${escape(raw)}</span>`;
+        return `<span class="text-primary">${escape(raw)}</span>`;
       }
       return this.renderPlaceholder();
     };
@@ -646,12 +717,12 @@ export class RevertModal {
       if (Number.isFinite(seconds)) {
         const display = this.formatDurationSeconds(seconds);
         const suffix = seconds === 1 ? "second" : "seconds";
-        return `<span class="text-gray-200">${escape(display)}</span> <span class="text-gray-500">(${escape(
+        return `<span class="text-primary">${escape(display)}</span> <span class="text-subtle">(${escape(
           `${seconds} ${suffix}`
         )})</span>`;
       }
       if (raw) {
-        return `<span class="text-gray-200">${escape(raw)}</span>`;
+        return `<span class="text-primary">${escape(raw)}</span>`;
       }
       return this.renderPlaceholder();
     };
@@ -669,21 +740,21 @@ export class RevertModal {
           suffix = "video";
         }
       }
-      const badge = `<code class="rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">kind ${escape(
+      const badge = `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">kind ${escape(
         label
       )}</code>`;
       kindHtml = suffix
-        ? `${badge} <span class="text-gray-400">(${escape(suffix)})</span>`
+        ? `${badge} <span class="text-muted">(${escape(suffix)})</span>`
         : badge;
     }
 
     const summaryHtml = nip71Metadata.summary
-      ? `<p class="whitespace-pre-wrap text-gray-200">${escape(
+      ? `<p class="whitespace-pre-wrap text-primary">${escape(
           nip71Metadata.summary
         )}</p>`
       : this.renderPlaceholder("Not provided");
     const contentWarningHtml = nip71Metadata.contentWarning
-      ? `<span class="inline-flex items-center rounded-full border border-amber-700/70 bg-amber-900/40 px-2 py-0.5 text-xs text-amber-200/90">${escape(
+      ? `<span class="pill" data-size="compact" data-variant="warning">${escape(
           nip71Metadata.contentWarning
         )}</span>`
       : this.renderPlaceholder("Not provided");
@@ -696,14 +767,14 @@ export class RevertModal {
       nip71Metadata.durationRaw
     );
     const altHtml = nip71Metadata.alt
-      ? `<p class="whitespace-pre-wrap text-gray-200">${escape(nip71Metadata.alt)}</p>`
+      ? `<p class="whitespace-pre-wrap text-primary">${escape(nip71Metadata.alt)}</p>`
       : this.renderPlaceholder("Not provided");
 
     const definition = (label, valueHtml, { span = 1 } = {}) => {
       const colSpan = span > 1 ? "sm:col-span-2" : "";
       return `
         <div class="${colSpan}">
-          <dt class="font-semibold text-gray-200">${escape(label)}</dt>
+          <dt class="font-semibold text-primary">${escape(label)}</dt>
           <dd class="mt-1">${valueHtml}</dd>
         </div>
       `;
@@ -718,10 +789,15 @@ export class RevertModal {
       definition("Alt text", altHtml, { span: 2 }),
     ].join("");
 
+    const audienceRows = [
+      definition("NSFW flag", nsfwStatusHtml),
+      definition("For kids flag", kidsStatusHtml),
+    ].join("");
+
     this.details.innerHTML = `
       <div class="space-y-6">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <div class="overflow-hidden rounded-md border border-gray-800 bg-black/40 w-full max-w-sm">
+          <div class="overflow-hidden rounded-md border border-overlay bg-overlay-strong w-full max-w-sm">
             <img
               src="${thumbnailSrc}"
               alt="${escape(thumbnailAlt)}"
@@ -731,23 +807,23 @@ export class RevertModal {
           </div>
           <div class="flex-1 space-y-3">
             <div class="space-y-1">
-              <h3 class="text-lg font-semibold text-white">${escape(
+              <h3 class="text-lg font-semibold text-primary">${escape(
                 version.title || "Untitled"
               )}</h3>
-              <p class="text-xs text-gray-400">${timestampHtml}</p>
+              <p class="text-xs text-muted">${timestampHtml}</p>
             </div>
             ${
               chips.length
                 ? `<div class="flex flex-wrap gap-2">${chips.join("")}</div>`
                 : ""
             }
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
               <div>
-                <dt class="font-semibold text-gray-200">Hosted URL</dt>
+                <dt class="font-semibold text-primary">Hosted URL</dt>
                 <dd class="mt-1">${urlHtml}</dd>
               </div>
               <div>
-                <dt class="font-semibold text-gray-200">Magnet</dt>
+                <dt class="font-semibold text-primary">Magnet</dt>
                 <dd class="mt-1">${magnetHtml}</dd>
               </div>
             </dl>
@@ -755,57 +831,65 @@ export class RevertModal {
         </div>
 
         <section class="space-y-2">
-          <h4 class="text-sm font-semibold text-gray-200">Description</h4>
+          <h4 class="text-sm font-semibold text-primary">Description</h4>
           ${descriptionHtml}
         </section>
 
         <section class="space-y-2">
-          <h4 class="text-sm font-semibold text-gray-200">NIP-71 event metadata</h4>
-          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+          <h4 class="text-sm font-semibold text-primary">Audience flags</h4>
+          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
+            ${audienceRows}
+          </dl>
+          ${audienceConflictNotice}
+        </section>
+
+        <section class="space-y-2">
+          <h4 class="text-sm font-semibold text-primary">NIP-71 event metadata</h4>
+          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
             ${eventMetadataRows}
           </dl>
         </section>
 
         <section class="space-y-2">
-          <h4 class="text-sm font-semibold text-gray-200">Note pointers</h4>
-          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+          <h4 class="text-sm font-semibold text-primary">Note pointers</h4>
+          <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
             <div>
-              <dt class="font-semibold text-gray-200">Mode</dt>
+              <dt class="font-semibold text-primary">Mode</dt>
               <dd class="mt-1">${escape(version.mode || "live")}</dd>
             </div>
             <div>
-              <dt class="font-semibold text-gray-200">d tag</dt>
+              <dt class="font-semibold text-primary">d tag</dt>
               <dd class="mt-1">
                 ${
                   dTagValue
-                    ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5">${escape(
+                    ? `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
                         dTagValue
                       )}</code>`
-                    : '<span class="text-gray-500">Not provided</span>'
+                    : '<span class="text-subtle">Not provided</span>'
                 }
               </dd>
             </div>
             <div>
-              <dt class="font-semibold text-gray-200">videoRootId</dt>
+              <dt class="font-semibold text-primary">videoRootId</dt>
               <dd class="mt-1">
                 ${
                   rootDisplay
-                    ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${escape(
+                    ? `<code class="break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary" title="${escape(
                         rootId
                       )}">${rootDisplay}</code>`
-                    : '<span class="text-gray-500">Not provided</span>'
+                    : '<span class="text-subtle">Not provided</span>'
                 }
               </dd>
             </div>
             <div>
-              <dt class="font-semibold text-gray-200">Event ID</dt>
+              <dt class="font-semibold text-primary">Event ID</dt>
               <dd class="mt-1">
                 ${
                   eventDisplay
-                    ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5" title="${escape(
+                    ? `<code class="break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary" title="${escape(
                         version.id || ""
                       )}">${eventDisplay}</code>`
-                    : '<span class="text-gray-500">Unknown</span>'
+                    : '<span class="text-subtle">Unknown</span>'
                 }
               </dd>
             </div>
@@ -813,30 +897,30 @@ export class RevertModal {
         </section>
 
         <section class="space-y-4">
-          <h4 class="text-sm font-semibold text-gray-200">NIP-71 media metadata</h4>
+          <h4 class="text-sm font-semibold text-primary">NIP-71 media metadata</h4>
           <div class="space-y-4">
             <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Media variants (imeta)</h5>
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Media variants (imeta)</h5>
               ${this.renderImetaVariants(nip71Metadata.imeta)}
             </div>
             <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Caption tracks</h5>
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Caption tracks</h5>
               ${this.renderTextTracks(nip71Metadata.textTracks)}
             </div>
             <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Chapters</h5>
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Chapters</h5>
               ${this.renderSegments(nip71Metadata.segments)}
             </div>
             <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Hashtags</h5>
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Hashtags</h5>
               ${this.renderHashtags(nip71Metadata.hashtags)}
             </div>
             <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Participants</h5>
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">Participants</h5>
               ${this.renderParticipants(nip71Metadata.participants)}
             </div>
             <div class="space-y-2">
-              <h5 class="text-xs font-semibold uppercase tracking-wide text-gray-400">References</h5>
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-muted">References</h5>
               ${this.renderReferences(nip71Metadata.references)}
             </div>
           </div>
@@ -940,17 +1024,15 @@ export class RevertModal {
       this.confirmButton.classList.toggle("cursor-wait", this.busy);
     }
 
-    const toggleDisabledStyles = (button) => {
+    const toggleInteractionDisabled = (button) => {
       if (!button) {
         return;
       }
       button.disabled = this.busy;
-      button.classList.toggle("opacity-60", this.busy);
-      button.classList.toggle("cursor-not-allowed", this.busy);
     };
 
-    toggleDisabledStyles(this.cancelButton);
-    toggleDisabledStyles(this.closeButton);
+    toggleInteractionDisabled(this.cancelButton);
+    toggleInteractionDisabled(this.closeButton);
 
     if (!this.busy) {
       this.updateConfirmationState();
@@ -1001,6 +1083,39 @@ export class RevertModal {
     this.close();
   }
 
+  destroy() {
+    if (this.bound) {
+      if (this.list) {
+        this.list.removeEventListener("click", this.boundHandlers.listClick);
+      }
+      if (this.confirmButton) {
+        this.confirmButton.removeEventListener(
+          "click",
+          this.boundHandlers.confirm
+        );
+      }
+      if (this.cancelButton) {
+        this.cancelButton.removeEventListener(
+          "click",
+          this.boundHandlers.cancel
+        );
+      }
+      if (this.overlay) {
+        this.overlay.removeEventListener("click", this.boundHandlers.overlay);
+      }
+      if (this.closeButton) {
+        this.closeButton.removeEventListener("click", this.boundHandlers.close);
+      }
+      this.bound = false;
+    }
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+    this.modalAccessibility = null;
+    this.modalPanel = null;
+  }
+
   getEscapeFn() {
     return (value) =>
       this.escapeHTML ? this.escapeHTML(String(value ?? "")) : String(value ?? "");
@@ -1008,12 +1123,12 @@ export class RevertModal {
 
   renderPlaceholder(text = "Not provided") {
     const escape = this.getEscapeFn();
-    return `<span class="text-gray-500">${escape(text)}</span>`;
+    return `<span class="text-subtle">${escape(text)}</span>`;
   }
 
   renderListEmpty(text) {
     const escape = this.getEscapeFn();
-    return `<p class="text-xs text-gray-500">${escape(text)}</p>`;
+    return `<p class="text-xs text-subtle">${escape(text)}</p>`;
   }
 
   buildLinkMarkup(value, { breakAll = true } = {}) {
@@ -1035,10 +1150,10 @@ export class RevertModal {
     const breakClass = breakAll ? " break-all" : " break-words";
 
     if (/^https?:/i.test(raw)) {
-      return `<a href="${safeValue}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300${breakClass}">${safeDisplay}</a>`;
+      return `<a href="${safeValue}" target="_blank" rel="noopener noreferrer" class="text-info hover:text-info-strong${breakClass}">${safeDisplay}</a>`;
     }
 
-    return `<code class="rounded bg-gray-800/70 px-1.5 py-0.5 text-[0.75rem] text-gray-200${breakClass}">${safeDisplay}</code>`;
+    return `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-[0.75rem] text-primary${breakClass}">${safeDisplay}</code>`;
   }
 
   formatDurationSeconds(seconds) {
@@ -1250,19 +1365,19 @@ export class RevertModal {
         const badges = [];
         if (variant.autoGenerated) {
           badges.push(
-            '<span class="inline-flex items-center rounded-full border border-amber-600/70 bg-amber-900/30 px-2 py-0.5 text-[0.65rem] uppercase tracking-wide text-amber-200/90">Auto-generated</span>'
+            '<span class="badge" data-variant="warning">Auto-generated</span>'
           );
         }
 
         const variantNumber = `Variant ${index + 1}`;
 
         const mimeHtml = variant.m
-          ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">${escape(
+          ? `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
               variant.m
             )}</code>`
           : this.renderPlaceholder();
         const dimHtml = variant.dim
-          ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">${escape(
+          ? `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
               variant.dim
             )}</code>`
           : this.renderPlaceholder();
@@ -1270,14 +1385,14 @@ export class RevertModal {
           ? this.buildLinkMarkup(variant.url)
           : this.renderPlaceholder("No URL");
         const hashHtml = variant.x
-          ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">${escape(
+          ? `<code class="break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
               variant.x
             )}</code>`
           : this.renderPlaceholder("Not provided");
 
         const renderNestedList = (label, values, emptyLabel) => {
           if (!Array.isArray(values) || values.length === 0) {
-            return `<div><p class="text-[0.7rem] uppercase tracking-wide text-gray-500">${escape(
+            return `<div><p class="text-2xs uppercase tracking-wide text-subtle">${escape(
               label
             )}</p>${this.renderListEmpty(emptyLabel)}</div>`;
           }
@@ -1288,17 +1403,17 @@ export class RevertModal {
             .map((markup) => `<li>${markup}</li>`);
 
           if (!items.length) {
-            return `<div><p class="text-[0.7rem] uppercase tracking-wide text-gray-500">${escape(
+            return `<div><p class="text-2xs uppercase tracking-wide text-subtle">${escape(
               label
             )}</p>${this.renderListEmpty(emptyLabel)}</div>`;
           }
 
           return `
             <div>
-              <p class="text-[0.7rem] uppercase tracking-wide text-gray-500">${escape(
+              <p class="text-2xs uppercase tracking-wide text-subtle">${escape(
                 label
               )}</p>
-              <ul class="mt-1 space-y-1 text-xs text-gray-200">${items.join("")}</ul>
+              <ul class="mt-1 space-y-1 text-xs text-primary">${items.join("")}</ul>
             </div>
           `;
         };
@@ -1310,30 +1425,30 @@ export class RevertModal {
         ].join("");
 
         return `
-          <li class="rounded-md border border-gray-800/70 bg-black/30 p-3 space-y-3">
-            <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
-              <span class="font-semibold text-gray-200">${escape(variantNumber)}</span>
+          <li class="rounded-md border border-overlay bg-overlay-muted p-3 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+              <span class="font-semibold text-primary">${escape(variantNumber)}</span>
               ${badges.length ? `<div class="flex flex-wrap gap-2">${badges.join("")}</div>` : ""}
             </div>
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
               <div>
-                <dt class="font-semibold text-gray-200">MIME type</dt>
+                <dt class="font-semibold text-primary">MIME type</dt>
                 <dd class="mt-1">${mimeHtml}</dd>
               </div>
               <div>
-                <dt class="font-semibold text-gray-200">Dimensions</dt>
+                <dt class="font-semibold text-primary">Dimensions</dt>
                 <dd class="mt-1">${dimHtml}</dd>
               </div>
               <div class="sm:col-span-2">
-                <dt class="font-semibold text-gray-200">URL</dt>
+                <dt class="font-semibold text-primary">URL</dt>
                 <dd class="mt-1">${urlHtml}</dd>
               </div>
               <div class="sm:col-span-2">
-                <dt class="font-semibold text-gray-200">Content hash</dt>
+                <dt class="font-semibold text-primary">Content hash</dt>
                 <dd class="mt-1">${hashHtml}</dd>
               </div>
             </dl>
-            <div class="grid gap-3 sm:grid-cols-3 text-xs text-gray-300">
+            <div class="grid gap-3 sm:grid-cols-3 text-xs text-subtle">
               ${nestedSections}
             </div>
           </li>
@@ -1356,33 +1471,33 @@ export class RevertModal {
           ? this.buildLinkMarkup(track.url)
           : this.renderPlaceholder("No URL");
         const typeHtml = track.type
-          ? `<code class="rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100">${escape(
+          ? `<code class="rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary">${escape(
               track.type
             )}</code>`
           : this.renderPlaceholder();
         const languageHtml = track.language
-          ? `<span class="inline-flex items-center rounded-full border border-gray-700 bg-gray-800/70 px-2 py-0.5 text-[0.7rem] uppercase tracking-wide text-gray-200">${escape(
+          ? `<span class="pill" data-size="compact" data-variant="neutral">${escape(
               track.language
             )}</span>`
           : this.renderPlaceholder();
 
         return `
-          <li class="rounded-md border border-gray-800/70 bg-black/30 p-3 space-y-3">
-            <div class="flex items-center justify-between text-xs text-gray-400">
-              <span class="font-semibold text-gray-200">${escape(headerLabel)}</span>
+          <li class="rounded-md border border-overlay bg-overlay-muted p-3 space-y-3">
+            <div class="flex items-center justify-between text-xs text-muted">
+              <span class="font-semibold text-primary">${escape(headerLabel)}</span>
               ${track.language ? languageHtml : ""}
             </div>
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
               <div class="sm:col-span-2">
-                <dt class="font-semibold text-gray-200">URL</dt>
+                <dt class="font-semibold text-primary">URL</dt>
                 <dd class="mt-1">${urlHtml}</dd>
               </div>
               <div>
-                <dt class="font-semibold text-gray-200">Type</dt>
+                <dt class="font-semibold text-primary">Type</dt>
                 <dd class="mt-1">${typeHtml}</dd>
               </div>
               <div>
-                <dt class="font-semibold text-gray-200">Language</dt>
+                <dt class="font-semibold text-primary">Language</dt>
                 <dd class="mt-1">${track.language ? languageHtml : this.renderPlaceholder()}</dd>
               </div>
             </dl>
@@ -1403,12 +1518,12 @@ export class RevertModal {
       if (Number.isFinite(seconds)) {
         const display = this.formatDurationSeconds(seconds);
         const suffix = seconds === 1 ? "second" : "seconds";
-        return `<span class="text-gray-200">${escape(display)}</span> <span class="text-gray-500">(${escape(
+        return `<span class="text-primary">${escape(display)}</span> <span class="text-subtle">(${escape(
           `${seconds} ${suffix}`
         )})</span>`;
       }
       if (raw) {
-        return `<span class="text-gray-200">${escape(raw)}</span>`;
+        return `<span class="text-primary">${escape(raw)}</span>`;
       }
       return this.renderPlaceholder();
     };
@@ -1419,30 +1534,30 @@ export class RevertModal {
         const startHtml = formatTime(segment.startSeconds, segment.startRaw);
         const endHtml = formatTime(segment.endSeconds, segment.endRaw);
         const titleHtml = segment.title
-          ? `<p class="whitespace-pre-wrap text-gray-200">${escape(segment.title)}</p>`
+          ? `<p class="whitespace-pre-wrap text-primary">${escape(segment.title)}</p>`
           : this.renderPlaceholder("No title");
         const thumbnailHtml = segment.thumbnail
           ? this.buildLinkMarkup(segment.thumbnail)
           : this.renderPlaceholder("No thumbnail");
 
         return `
-          <li class="rounded-md border border-gray-800/70 bg-black/30 p-3 space-y-3">
-            <div class="text-xs font-semibold text-gray-200">${escape(headerLabel)}</div>
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+          <li class="rounded-md border border-overlay bg-overlay-muted p-3 space-y-3">
+            <div class="text-xs font-semibold text-primary">${escape(headerLabel)}</div>
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
               <div>
-                <dt class="font-semibold text-gray-200">Start</dt>
+                <dt class="font-semibold text-primary">Start</dt>
                 <dd class="mt-1">${startHtml}</dd>
               </div>
               <div>
-                <dt class="font-semibold text-gray-200">End</dt>
+                <dt class="font-semibold text-primary">End</dt>
                 <dd class="mt-1">${endHtml}</dd>
               </div>
               <div class="sm:col-span-2">
-                <dt class="font-semibold text-gray-200">Title</dt>
+                <dt class="font-semibold text-primary">Title</dt>
                 <dd class="mt-1">${titleHtml}</dd>
               </div>
               <div class="sm:col-span-2">
-                <dt class="font-semibold text-gray-200">Thumbnail</dt>
+                <dt class="font-semibold text-primary">Thumbnail</dt>
                 <dd class="mt-1">${thumbnailHtml}</dd>
               </div>
             </dl>
@@ -1461,7 +1576,7 @@ export class RevertModal {
 
     const chips = hashtags.map((tag) => {
       const label = tag.startsWith("#") ? tag : `#${tag}`;
-      return `<span class="inline-flex items-center rounded-full border border-gray-700 bg-gray-800/70 px-2 py-0.5 text-xs text-gray-200">${escape(
+      return `<span class="pill" data-size="compact" data-variant="neutral">${escape(
         label
       )}</span>`;
     });
@@ -1485,7 +1600,7 @@ export class RevertModal {
             : participant.pubkey
           : "";
         const pubkeyHtml = participant.pubkey
-          ? `<code class="break-all rounded bg-gray-800/80 px-1.5 py-0.5 text-gray-100" title="${escape(
+          ? `<code class="break-all rounded bg-overlay-panel-soft px-1.5 py-0.5 text-primary" title="${escape(
               participant.pubkey
             )}">${escape(displayPubkey)}</code>`
           : this.renderPlaceholder("No pubkey");
@@ -1494,15 +1609,15 @@ export class RevertModal {
           : this.renderPlaceholder("No relay specified");
 
         return `
-          <li class="rounded-md border border-gray-800/70 bg-black/30 p-3 space-y-2">
-            <div class="text-xs font-semibold text-gray-200">${escape(label)}</div>
-            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-gray-300">
+          <li class="rounded-md border border-overlay bg-overlay-muted p-3 space-y-2">
+            <div class="text-xs font-semibold text-primary">${escape(label)}</div>
+            <dl class="grid gap-3 sm:grid-cols-2 text-xs text-subtle">
               <div class="sm:col-span-2">
-                <dt class="font-semibold text-gray-200">Pubkey</dt>
+                <dt class="font-semibold text-primary">Pubkey</dt>
                 <dd class="mt-1">${pubkeyHtml}</dd>
               </div>
               <div class="sm:col-span-2">
-                <dt class="font-semibold text-gray-200">Relay</dt>
+                <dt class="font-semibold text-primary">Relay</dt>
                 <dd class="mt-1">${relayHtml}</dd>
               </div>
             </dl>
@@ -1526,7 +1641,7 @@ export class RevertModal {
       return this.renderListEmpty("No external references.");
     }
 
-    return `<ul class="space-y-1 text-xs text-gray-200">${items.join("")}</ul>`;
+    return `<ul class="space-y-1 text-xs text-primary">${items.join("")}</ul>`;
   }
 
   extractDTagValue(tags) {

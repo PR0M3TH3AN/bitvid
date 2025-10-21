@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -7,12 +7,12 @@
 
     <meta
       name="description"
-      content="Bitvid is a decentralized video hub that prioritizes URL-first playback with WebTorrent fallback so your audience can stream reliably."
+      content="bitvid is a decentralized video hub that prioritizes URL-first playback with WebTorrent fallback so your audience can stream reliably."
     />
     <meta name="robots" content="index,follow" />
 
     <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content="BitVid - Decentralized Video Sharing" />
+    <meta property="og:title" content="bitvid - Decentralized Video Sharing" />
     <meta
       property="og:description"
       content="Share videos and follow creators freely, in a truly decentralized way."
@@ -42,7 +42,68 @@
       href="assets/png/favicon-16x16.png"
     />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#0f172a" />
+    <!--
+      Use theme tokens so browsers pick up palette updates without hard-coded
+      hex values scattered across templates.
+    -->
+    <meta name="theme-color" content="var(--color-page)" />
+    <script>
+      (() => {
+        try {
+          const STORAGE_KEY = "bitvid:theme";
+          const root = document.documentElement;
+          const themeMeta = document.querySelector('meta[name="theme-color"]');
+          const fallbackColors = {
+            dark: "#0f172a",
+            light: "#f8fafc",
+          };
+          const prefersDark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const storedTheme = window.localStorage.getItem(STORAGE_KEY);
+          let resolvedTheme = storedTheme || (prefersDark ? "dark" : "light");
+
+          if (resolvedTheme === "default") {
+            resolvedTheme = "dark";
+          }
+
+          if (resolvedTheme) {
+            root.dataset.theme = resolvedTheme;
+          }
+
+          const updateThemeColor = () => {
+            if (!themeMeta) {
+              return;
+            }
+
+            const computedThemeColor =
+              (window.getComputedStyle &&
+                getComputedStyle(root).getPropertyValue("--color-page").trim()) ||
+              "";
+            const metaColor =
+              computedThemeColor ||
+              fallbackColors[resolvedTheme] ||
+              fallbackColors[prefersDark ? "dark" : "light"];
+
+            if (metaColor) {
+              themeMeta.content = metaColor;
+            }
+          };
+
+          updateThemeColor();
+
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", updateThemeColor, {
+              once: true,
+            });
+          } else if ("requestAnimationFrame" in window) {
+            window.requestAnimationFrame(updateThemeColor);
+          }
+        } catch (error) {
+          /* no-op */
+        }
+      })();
+    </script>
 
     <!-- Styles -->
     <!--
@@ -50,12 +111,9 @@
       so browsers pick up the latest sidebar markup and styling without
       hard-refreshing around CDN caches.
     -->
-    <script src="js/tracking.js?v=2024.10.29" defer></script>
-    <link href="css/tailwind.generated.css?v=2024.10.29" rel="stylesheet" />
-    <link href="css/style.css?v=2024.10.29" rel="stylesheet" />
-    <link href="css/markdown.css?v=2024.10.29" rel="stylesheet" />
+    <link href="css/tailwind.generated.css?v=2024.11.09" rel="stylesheet" />
   </head>
-  <body class="sidebar-collapsed">
+  <body class="sidebar-collapsed" data-ds="new">
     <!--
       SIDEBAR CONTAINER:
       The <aside id="sidebar"> inside handles visibility.
@@ -65,13 +123,10 @@
       <!-- components/sidebar.html gets injected here -->
     </div>
 
-    <div id="sidebarOverlay" class="md:hidden" aria-hidden="true"></div>
-
     <!--
       MAIN CONTENT:
-      Desktop spacing now follows the --sidebar-width custom property so the layout stays in
-      sync with the collapsible rail. On mobile we float the sidebar over the content and dim
-      the background overlay.
+      Layout spacing follows the --sidebar-width custom property on every viewport so the
+      collapsible rail always shifts the application shell instead of floating above it.
     -->
     <!--
       `fade-in` is scrubbed by js/index.js after the first animation so that
@@ -81,32 +136,11 @@
 
     <div
       id="app"
-      class="px-4 py-8 min-h-screen flex flex-col fade-in"
+      class="fade-in flex min-h-screen flex-col px-4 pb-8"
       data-sidebar-state="collapsed"
     >
       <!-- Header -->
-      <header class="mb-8 flex items-center w-full">
-        <!-- Mobile hamburger button (hidden on md+) -->
-        <!-- New button -->
-        <!--
-          Mobile menu button: uses `fade-in` to match the rest of the chrome.
-          The JS animation cleanup removes the helper classes once the entrance
-          finishes to prevent flashes on future sidebar toggles.
-        -->
-        <button
-          id="mobileMenuBtn"
-          class="md:hidden ml-2 mr-4 flex items-center justify-center w-10 h-10 rounded-full bg-transparent hover:bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f172a] z-[60] fade-in"
-          type="button"
-          aria-expanded="false"
-          aria-controls="sidebar"
-          aria-label="Toggle navigation menu"
-        >
-          <img
-            src="assets/svg/mobile-sidebar-menu-icon.svg"
-            alt="Mobile Sidebar Menu Icon"
-            class="w-6 h-6"
-          />
-        </button>
+      <header class="app-shell__header ds-header mb-8 w-full">
         <!-- Logo -->
         <!-- Logo fades in once on initial load. -->
         <a
@@ -114,60 +148,167 @@
           aria-label="Return to the bitvid home page"
           class="fade-in fade-in-delay-100"
         >
-          <img
-            src="assets/svg/bitvid-logo-light-mode.svg"
-            alt="BitVid Logo"
-            class="h-16"
-          />
+          <span
+            class="ds-header__logo inline-flex items-center text-text-strong bv-logo"
+            role="img"
+            aria-label="bitvid logo"
+          >
+            <svg
+              class="h-full w-auto"
+              viewBox="0 0 318.32 108.98"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <g class="bv-logo__accent">
+                <rect x="7.1" y="7.8" width="5.84" height="5.48" />
+                <rect x="7.1" y="18.78" width="24.02" height="5.48" />
+                <rect x="7.1" y="29.77" width="42.85" height="5.48" />
+                <rect x="7.1" y="40.76" width="61.68" height="5.48" />
+                <rect x="7.1" y="51.75" width="80.88" height="5.48" />
+                <rect x="7.1" y="62.74" width="61.68" height="5.48" />
+                <rect x="7.1" y="73.73" width="42.85" height="5.48" />
+                <rect x="7.1" y="84.72" width="24.02" height="5.48" />
+                <rect x="7.1" y="95.71" width="5.84" height="5.48" />
+              </g>
+              <g class="bv-logo__wordmark">
+                <path d="M121.28 25.08v44.54c0 5.67 2.79 8.54 8.22 8.54h11.57c5.51 0 8.3-2.87 8.3-8.54v-13.09c0-5.67-2.79-8.46-8.3-8.46h-16.6v-5.83h17.72c8.7 0 13.01 4.47 13.01 13.33v15.01c0 8.86-4.31 13.33-13.01 13.33h-13.73c-8.7 0-13.01-4.47-13.01-13.33V25.08h5.83Z" />
+                <path d="M168.53 25.08v6.26h-5.83v-6.26h5.83Zm0 17.56v41.27h-5.83v-41.27h5.83Z" />
+                <path d="M191.36 25.08v17.16h9.02v5.19h-9.02v36.48h-5.83v-36.48h-9.82v-5.19h9.82V25.08h5.83Z" />
+                <path d="M212.88 42.24l16.84 35.68 16.6-35.68h6.07l-19.56 41.67h-6.31l-20.04-41.67h6.39Z" />
+                <path d="M264.05 25.08v6.26h-5.83v-6.26h5.83Zm0 17.16v41.67h-5.83v-41.67h5.83Z" />
+                <path d="M311.21 25.08v45.5c0 8.86-4.31 13.33-13.01 13.33h-13.73c-8.7 0-13.01-4.47-13.01-13.33v-15.01c0-8.86 4.31-13.33 13.01-13.33h17.72v5.83h-16.6c-5.51 0-8.3 2.79-8.3 8.46v13.09c0 5.67 2.79 8.54 8.3 8.54h11.49c5.51 0 8.3-2.87 8.3-8.54V25.08h5.83Z" />
+              </g>
+            </svg>
+          </span>
         </a>
+
+        <div class="header-search__region">
+          <form
+            id="headerSearchForm"
+            role="search"
+            class="header-search"
+          >
+            <button
+              type="button"
+              class="header-search__filter"
+              aria-label="Open search filters"
+            >
+              <span
+                aria-hidden="true"
+                class="header-search__icon header-search__icon--filter"
+              ></span>
+            </button>
+            <label for="headerSearchInput" class="sr-only">Search videos</label>
+            <input
+              id="headerSearchInput"
+              class="header-search__input"
+              type="search"
+              name="query"
+              placeholder="Search videos"
+              autocomplete="off"
+            />
+            <button type="submit" class="header-search__submit">
+              <span class="sr-only">Submit search</span>
+              <span
+                aria-hidden="true"
+                class="header-search__icon header-search__icon--submit"
+              ></span>
+            </button>
+          </form>
+        </div>
 
         <!-- Buttons on the far right -->
 
         <!-- Header action buttons share the fade-in treatment for consistency. -->
 
-        <div class="ml-auto flex items-center space-x-4 fade-in fade-in-delay-200">
-          <!-- Login Button -->
-          <button
-            id="loginButton"
-            style="background-color: #1e293b"
-            class="inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-sm font-bold leading-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
-          >
-            <img
-              src="assets/svg/default-profile.svg"
-              alt="Profile Icon"
-              class="w-9 h-9"
-            />
-          </button>
+        <div class="ml-auto flex items-center">
+          <div class="fade-in fade-in-delay-200 flex items-center space-x-4">
+            <button
+              id="themeToggle"
+              class="header-icon-toggle"
+              type="button"
+              aria-pressed="false"
+            >
+              <span class="sr-only">Toggle theme</span>
+              <span
+                aria-hidden="true"
+                class="header-icon-toggle__icon-wrapper"
+                data-theme-toggle-icon
+                data-theme-icon-state="dark"
+              >
+                <svg
+                  class="header-icon-toggle__icon header-icon-toggle__icon--dark"
+                  viewBox="0 0 24 24"
+                  role="presentation"
+                >
+                  <path
+                    d="M10.719 2.082c-2.572 2.028-4.719 5.212-4.719 9.918 0 4.569 1.938 7.798 4.548 9.895-4.829-.705-8.548-4.874-8.548-9.895 0-5.08 3.808-9.288 8.719-9.918zm1.281-2.082c-6.617 0-12 5.383-12 12s5.383 12 12 12c1.894 0 3.87-.333 5.37-1.179-3.453-.613-9.37-3.367-9.37-10.821 0-7.555 6.422-10.317 9.37-10.821-1.74-.682-3.476-1.179-5.37-1.179zm0 10.999c1.437.438 2.562 1.564 2.999 3.001.44-1.437 1.565-2.562 3.001-3-1.436-.439-2.561-1.563-3.001-3-.437 1.436-1.562 2.561-2.999 2.999zm8.001.001c.958.293 1.707 1.042 2 2.001.291-.959 1.042-1.709 1.999-2.001-.957-.292-1.707-1.042-2-2-.293.958-1.042 1.708-1.999 2zm-1-9c-.437 1.437-1.563 2.562-2.998 3.001 1.438.44 2.561 1.564 3.001 3.002.437-1.438 1.563-2.563 2.996-3.002-1.433-.437-2.559-1.564-2.999-3.001z"
+                    fill="currentColor"
+                  />
+                </svg>
+                <svg
+                  class="header-icon-toggle__icon header-icon-toggle__icon--light"
+                  viewBox="0 0 24 24"
+                  role="presentation"
+                >
+                  <path
+                    d="M4.069 13h-4.069v-2h4.069c-.041.328-.069.661-.069 1s.028.672.069 1zm3.034-7.312l-2.881-2.881-1.414 1.414 2.881 2.881c.411-.529.885-1.003 1.414-1.414zm11.209 1.414l2.881-2.881-1.414-1.414-2.881 2.881c.528.411 1.002.886 1.414 1.414zm-6.312-3.102c.339 0 .672.028 1 .069v-4.069h-2v4.069c.328-.041.661-.069 1-.069zm0 16c-.339 0-.672-.028-1-.069v4.069h2v-4.069c-.328.041-.661.069-1 .069zm7.931-9c.041.328.069.661.069 1s-.028.672-.069 1h4.069v-2h-4.069zm-3.033 7.312l2.88 2.88 1.415-1.414-2.88-2.88c-.412.528-.886 1.002-1.415 1.414zm-11.21-1.415l-2.88 2.88 1.414 1.414 2.88-2.88c-.528-.411-1.003-.885-1.414-1.414zm2.312-4.897c0 2.206 1.794 4 4 4s4-1.794 4-4-1.794-4-4-4-4 1.794-4 4zm10 0c0 3.314-2.686 6-6 6s-6-2.686-6-6 2.686-6 6-6 6 2.686 6 6z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+            </button>
+            <!-- Login Button -->
+            <button
+              id="loginButton"
+              class="btn focus-ring h-12 w-12 rounded-full p-0"
+              aria-label="Open login modal"
+            >
+              <svg
+                class="h-9 w-9"
+                viewBox="0 0 24 24"
+                role="presentation"
+                focusable="false"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0Zm0 22c-3.123 0-5.914-1.441-7.749-3.69.259-.588.783-.995 1.867-1.246 2.244-.518 4.459-.981 3.393-2.945C6.356 8.299 8.612 5 12 5s4.366 3.177 1.489 9.119c-1.035 1.952 1.1 2.416 3.393 2.945 1.082.25 1.61.655 1.871 1.241C17.917 20.558 15.125 22 12 22Z"
+                  fill="var(--color-bg)"
+                  fill-rule="nonzero"
+                />
+              </svg>
+            </button>
 
-          <!-- Upload Button (hidden by default) -->
-          <button
-            id="uploadButton"
-            style="background-color: #fe0032"
-            class="hidden inline-flex items-center justify-center w-12 h-12 rounded-full text-white text-xl font-bold leading-none hover:bg-[#e6002c] focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
-          >
-            +
-          </button>
+            <!-- Upload Button (hidden by default) -->
+            <button
+              id="uploadButton"
+              class="btn focus-ring hidden h-12 w-12 rounded-full p-0 text-xl font-bold leading-none"
+            >
+              +
+            </button>
 
-          <!-- Profile Button (hidden by default) -->
-          <button
-            id="profileButton"
-            class="hidden inline-flex items-center justify-center w-12 h-12 rounded-full bg-black text-white text-sm leading-none hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
-          >
-            <div class="w-10 h-10 rounded-full overflow-hidden">
-              <img
-                id="profileAvatar"
-                src="assets/svg/default-profile.svg"
-                alt="Profile"
-                class="w-full h-full object-cover"
-              />
-            </div>
-          </button>
+            <!-- Profile Button (hidden by default) -->
+            <button
+              id="profileButton"
+              class="btn-ghost focus-ring hidden h-12 w-12 rounded-full p-0"
+            >
+              <div class="h-10 w-10 overflow-hidden rounded-full">
+                <img
+                  id="profileAvatar"
+                  src="assets/svg/default-profile.svg"
+                  alt="Profile"
+                  class="h-full w-full object-cover"
+                />
+              </div>
+            </button>
+          </div>
         </div>
       </header>
 
       <!-- Notification Portal -->
       <div
         id="notificationPortal"
+        class="notification-portal"
         role="region"
         aria-live="polite"
         aria-label="System notifications"
@@ -175,13 +316,14 @@
         <!-- Error Container -->
         <div
           id="errorContainer"
-          class="hidden bg-red-100 text-red-900 p-4 rounded-md mb-4"
+          class="notification-banner notification-banner--critical hidden"
+          data-state="critical"
         ></div>
 
         <!-- Status Container -->
         <div
           id="statusContainer"
-          class="hidden status-banner"
+          class="notification-banner notification-banner--info status-banner hidden"
           role="status"
           aria-live="polite"
         >
@@ -192,12 +334,12 @@
         <!-- Success Container -->
         <div
           id="successContainer"
-          class="hidden bg-green-100 text-green-900 p-4 rounded-md mb-4"
+          class="notification-banner notification-banner--success hidden"
         ></div>
       </div>
 
       <!-- Dynamic views (like most-recent-videos.html, etc.) -->
-      <main id="viewContainer" class="flex-grow mb-8"></main>
+      <main id="viewContainer" class="mb-8 flex-grow"></main>
 
       <!-- Modal Container (external modals) -->
       <div id="modalContainer"></div>
@@ -206,8 +348,8 @@
 
       <!-- Tagline fade matches the cards. -->
 
-      <div class="text-center mb-8 fade-in fade-in-delay-300">
-        <h2 class="text-2xl font-bold text-gray-500 tracking-wide">
+      <div class="fade-in fade-in-delay-300 mb-8 text-center">
+        <h2 class="text-2xl font-bold tracking-wide text-muted-strong">
           seed. zap. subscribe.
         </h2>
       </div>
@@ -215,17 +357,18 @@
 
     <!-- Additional Scripts -->
     <!-- Bootstraps nostr-tools before other modules rely on nostrToolsReady -->
-      <script type="module" src="js/nostrToolsBootstrap.js?v=2024.10.29"></script>
-      <script type="module" src="js/config.js?v=2024.10.29"></script>
-      <script type="module" src="js/lists.js?v=2024.10.29"></script>
-      <script type="module" src="js/accessControl.js?v=2024.10.29"></script>
-      <script type="module" src="js/webtorrent.js?v=2024.10.29"></script>
-      <script type="module" src="js/nostr.js?v=2024.10.29"></script>
-    <script type="module" src="js/viewManager.js?v=2024.10.29"></script>
-    <script type="module" src="js/bootstrap.js?v=2024.10.29"></script>
-    <script type="module" src="js/disclaimer.js?v=2024.10.29"></script>
-    <script type="module" src="js/index.js?v=2024.10.29"></script>
+    <script type="module" src="js/nostrToolsBootstrap.js?v=2024.11.09"></script>
+    <script type="module" src="js/config.js?v=2024.11.09"></script>
+    <script type="module" src="js/lists.js?v=2024.11.09"></script>
+    <script type="module" src="js/accessControl.js?v=2024.11.09"></script>
+    <script type="module" src="js/webtorrent.js?v=2024.11.09"></script>
+    <script type="module" src="js/nostr.js?v=2024.11.09"></script>
+    <script type="module" src="js/viewManager.js?v=2024.11.09"></script>
+    <script type="module" src="js/bootstrap.js?v=2024.11.09"></script>
+    <script type="module" src="js/disclaimer.js?v=2024.11.09"></script>
+    <script type="module" src="js/index.js?v=2024.11.09"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <div id="uiOverlay" data-overlay-root aria-hidden="true"></div>
   </body>
 </html>

@@ -1,6 +1,6 @@
-# Bitvid — AI Agent Guide
+# bitvid — AI Agent Guide
 
-This guide tells AI agents how to keep Bitvid aligned with the current product direction. Follow it whenever you touch code, content, or documentation inside this repository.
+This guide tells AI agents how to keep bitvid aligned with the current product direction. Follow it whenever you touch code, content, or documentation inside this repository.
 
 ---
 
@@ -10,13 +10,31 @@ This guide tells AI agents how to keep Bitvid aligned with the current product d
 * **Unstable** is our experimentation lane. Gate risky behavior behind feature flags defined in `js/constants.js` and document the toggle/rollback plan in PR descriptions.
 * **Emergency response:** If a change regresses URL-first playback or breaks magnet parsing, revert immediately, call this out in the PR, and annotate the AGENTS.md changelog with remediation tips. **Note:** These regressions usually surface in dev logs and tests around playback/magnet helpers—reference them when triaging so future agents don’t repeat the mistake.
 
+### Browser logging policy
+
+* Route every browser log through `js/utils/logger.js`. Do **not** call `console.*` directly.
+* Use `logger.dev.*` for diagnostics that should disappear in production (flagged by `IS_DEV_MODE`/`isDevMode`). Use `logger.user.*` for operator-facing warnings and errors that must reach production consoles.
+* Before promoting a build, flip `IS_DEV_MODE` in `config/instance-config.js` to match the target environment so `window.__BITVID_DEV_MODE__` and the logger channels behave correctly.
+* Review and follow [`docs/logging.md`](docs/logging.md) whenever you add new logging or touch inline scripts.
+
 ## 2. Mission: URL‑First Playback with WebTorrent Fallback
 
 * **Goal:** Always deliver smooth playback while keeping hosting costs low.
 * **Primary transport:** A hosted video URL (MP4/WebM/HLS/DASH) that the `<video>` element can stream directly.
 * **Fallback transport:** A WebTorrent magnet that includes browser‑safe trackers plus optional HTTP hints.
 * **Runtime behavior:** Call `bitvidApp.playVideoWithFallback({ url, magnet })` in `js/app.js`. This function orchestrates URL probing and magnet fallback, delegating low-level stream handling to `js/services/playbackService.js`. `js/playbackUtils.js` now provides magnet/session helper utilities rather than the playback entry point itself.
-* **Content contract:** Bitvid posts (Nostr kind `30078`) must include a `title` and at least one of `url` or `magnet`. Prefer to publish both along with optional `thumbnail`, `description`, and `mode` fields. When mirroring to NIP‑94 (`kind 1063`), copy the hosted URL and (optionally) the magnet so other clients can discover the same asset.
+* **Content contract:** bitvid posts (Nostr kind `30078`) must include a `title` and at least one of `url` or `magnet`. Prefer to publish both along with optional `thumbnail`, `description`, and `mode` fields. When mirroring to NIP‑94 (`kind 1063`), copy the hosted URL and (optionally) the magnet so other clients can discover the same asset.
+
+## Styling & Theming Rules (token-first)
+
+* **Single source of truth:** All colors, spacing, radii, and typography decisions must flow through our design tokens; never reach for ad-hoc HEX/RGB values when a token exists.
+* **Theme scopes:** Tokens live at three levels—`core` (global primitives), `theme` (light/dark surface/background mappings), and `component` (contextual overrides). Additions must document their scope and consumers.
+* **Semantic tokens:** Maintain this canonical list: `bg`, `bg-muted`, `bg-raised`, `text`, `text-muted`, `border`, `border-strong`, `accent`, `accent-hover`, `accent-active`, `accent-muted`, `accent-contrast`, `danger`, `warning`, `success`, `info`, `overlay`, `overlay-strong`.
+* **Palette guidance:** Map semantic tokens to palette primitives defined in the CSS build pipeline; when a new primitive is needed, extend the palette once and remap consumers rather than hard-coding colors downstream.
+* **Icon contrast rule:** Icons and glyph-only buttons must meet a minimum 3:1 contrast ratio against their background; prefer `accent-contrast` or `text` tokens when in doubt.
+* **Accessibility expectations:** Default themes must satisfy WCAG 2.1 AA contrast ratios for text and controls, and preserve focus outlines sourced from the token set.
+* **Prohibitions:** Do not commit inline styles, `<font>` tags, or CSS variables whose values are literal colors; always reference the appropriate token variables.
+* **Theme toggling:** Implement new themes through token swaps only (e.g., toggling the `data-theme` attribute) and keep component logic agnostic to specific palette values. Document toggles alongside the [README CSS build pipeline](README.md#css-build-pipeline).
 
 ---
 
@@ -70,9 +88,9 @@ Document the run in PR descriptions so QA can cross-reference results.
 
 ---
 
-## 6. Moderation Quickstart (Bitvid)
+## 6. Moderation Quickstart (bitvid)
 
-The moderation and admin list tooling remain active in Bitvid and must follow Nostr moderation policies and QA steps. Review `docs/moderation/README.md` and these key expectations:
+The moderation and admin list tooling remain active in bitvid and must follow Nostr moderation policies and QA steps. Review `docs/moderation/README.md` and these key expectations:
 
 1. **Report thresholds:** Parse NIP-56 reports and compute `trustedReportCount` using **only F1 followers**.
 2. **Default behaviors:** Blur thumbnails at ≥3 F1 `nudity` reports and block autoplay at ≥2.

@@ -1,4 +1,12 @@
 import {
+  DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+  DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+  getTrustedMuteHideThreshold,
+  getTrustedSpamHideThreshold,
+} from "../constants.js";
+import { userLogger } from "../utils/logger.js";
+import { sanitizeProfileMediaUrl } from "../utils/profileMedia.js";
+import {
   readUrlHealthFromStorage,
   removeUrlHealthFromStorage,
   writeUrlHealthToStorage,
@@ -9,7 +17,7 @@ const PROFILE_CACHE_VERSION = 1;
 const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 const SAVED_PROFILES_STORAGE_KEY = "bitvid:savedProfiles:v1";
-const SAVED_PROFILES_STORAGE_VERSION = 2;
+const SAVED_PROFILES_STORAGE_VERSION = 1;
 
 const URL_HEALTH_TTL_MS = 45 * 60 * 1000; // 45 minutes
 const URL_HEALTH_TIMEOUT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
@@ -17,6 +25,75 @@ export const URL_PROBE_TIMEOUT_MS = 8 * 1000; // 8 seconds
 const URL_PROBE_TIMEOUT_RETRY_MS = 15 * 1000; // 15 seconds
 
 const HEX64_REGEX = /^[0-9a-f]{64}$/i;
+
+const MODERATION_OVERRIDE_STORAGE_KEY = "bitvid:moderationOverrides:v1";
+const MODERATION_OVERRIDE_STORAGE_VERSION = 1;
+const MODERATION_SETTINGS_STORAGE_KEY = "bitvid:moderationSettings:v1";
+const MODERATION_SETTINGS_STORAGE_VERSION = 1;
+
+function computeDefaultModerationSettings() {
+  let runtimeMuteHide = DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD;
+  let runtimeSpamHide = DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD;
+
+  try {
+    if (typeof getTrustedMuteHideThreshold === "function") {
+      runtimeMuteHide = getTrustedMuteHideThreshold();
+    }
+  } catch (error) {
+    userLogger.warn(
+      "[cache.computeDefaultModerationSettings] Failed to read runtime mute hide threshold:",
+      error,
+    );
+  }
+
+  try {
+    if (typeof getTrustedSpamHideThreshold === "function") {
+      runtimeSpamHide = getTrustedSpamHideThreshold();
+    }
+  } catch (error) {
+    userLogger.warn(
+      "[cache.computeDefaultModerationSettings] Failed to read runtime spam hide threshold:",
+      error,
+    );
+  }
+
+  return {
+    blurThreshold: 3,
+    autoplayBlockThreshold: 2,
+    trustedMuteHideThreshold: sanitizeModerationThreshold(
+      runtimeMuteHide,
+      DEFAULT_TRUSTED_MUTE_HIDE_THRESHOLD,
+    ),
+    trustedSpamHideThreshold: sanitizeModerationThreshold(
+      runtimeSpamHide,
+      DEFAULT_TRUSTED_SPAM_HIDE_THRESHOLD,
+    ),
+  };
+}
+
+const DEFAULT_MODERATION_SETTINGS = Object.freeze(computeDefaultModerationSettings());
+
+function createDefaultModerationSettings() {
+  return { ...computeDefaultModerationSettings() };
+}
+
+function sanitizeModerationThreshold(value, fallback) {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  const clamped = Math.max(0, Math.floor(numeric));
+  if (!Number.isFinite(clamped)) {
+    return fallback;
+  }
+
+  return clamped;
+}
 
 function sanitizeProfileString(value) {
   if (typeof value !== "string") {
@@ -29,9 +106,12 @@ function sanitizeProfileString(value) {
 
 let savedProfiles = [];
 let activeProfilePubkey = null;
+let hadExplicitActiveProfile = false;
 const profileCache = new Map();
 const urlHealthCache = new Map();
 const urlHealthInFlight = new Map();
+const moderationOverrides = new Map();
+let moderationSettings = createDefaultModerationSettings();
 
 function hasSavedProfilesChanged(previousProfiles, nextProfiles) {
   if (previousProfiles === nextProfiles) {
@@ -111,6 +191,19 @@ function normalizeHexPubkey(pubkey) {
   return null;
 }
 
+function normalizeEventId(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+
+  return HEX64_REGEX.test(trimmed) ? trimmed : null;
+}
+
 export function getSavedProfiles() {
   return savedProfiles;
 }
@@ -187,7 +280,7 @@ export function readSavedProfilesPayloadFromStorage() {
     }
     return parsed;
   } catch (error) {
-    console.warn(
+    userLogger.warn(
       "[cache.readSavedProfilesPayloadFromStorage] Failed to parse payload:",
       error
     );
@@ -210,12 +303,12 @@ function writeSavedProfilesPayloadToStorage(payload) {
         error.code === 22 ||
         error.code === 1014);
     if (isQuotaError) {
-      console.warn(
+      userLogger.warn(
         "[cache.writeSavedProfilesPayloadToStorage] Storage quota exceeded; keeping in-memory copy only.",
         error
       );
     } else {
-      console.warn(
+      userLogger.warn(
         "[cache.writeSavedProfilesPayloadToStorage] Failed to persist saved profiles:",
         error
       );
@@ -232,7 +325,7 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
     try {
       localStorage.removeItem(SAVED_PROFILES_STORAGE_KEY);
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         "[cache.persistSavedProfiles] Failed to remove empty payload:",
         error
       );
@@ -261,19 +354,14 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
 
   const payload = {
     version: SAVED_PROFILES_STORAGE_VERSION,
-    entries: savedProfiles.map((entry) => {
-      const sanitizedAuthType =
-        typeof entry.authType === "string" ? sanitizeProfileString(entry.authType) : "";
-
-      return {
-        pubkey: entry.pubkey,
-        npub:
-          typeof entry.npub === "string" && entry.npub.trim() ? entry.npub.trim() : null,
-        name: typeof entry.name === "string" ? entry.name : "",
-        picture: typeof entry.picture === "string" ? entry.picture : "",
-        authType: sanitizedAuthType || null,
-      };
-    }),
+    entries: savedProfiles.map((entry) => ({
+      pubkey: entry.pubkey,
+      npub:
+        typeof entry.npub === "string" && entry.npub.trim() ? entry.npub.trim() : null,
+      name: typeof entry.name === "string" ? entry.name : "",
+      picture: typeof entry.picture === "string" ? entry.picture : "",
+      authType: entry.authType === "nsec" ? "nsec" : "nip07",
+    })),
     activePubkey: activePubkeyToPersist,
   };
 
@@ -283,32 +371,29 @@ export function persistSavedProfiles({ persistActive = true } = {}) {
 export function loadSavedProfilesFromStorage() {
   savedProfiles = [];
   activeProfilePubkey = null;
+  hadExplicitActiveProfile = false;
 
   if (typeof localStorage === "undefined") {
-    return { profiles: getSavedProfiles(), activePubkey: activeProfilePubkey };
+    return {
+      profiles: getSavedProfiles(),
+      activePubkey: activeProfilePubkey,
+      hasExplicitActiveProfile: hadExplicitActiveProfile,
+    };
   }
 
   const raw = localStorage.getItem(SAVED_PROFILES_STORAGE_KEY);
   if (!raw) {
-    return { profiles: getSavedProfiles(), activePubkey: activeProfilePubkey };
+    return {
+      profiles: getSavedProfiles(),
+      activePubkey: activeProfilePubkey,
+      hasExplicitActiveProfile: hadExplicitActiveProfile,
+    };
   }
 
   let needsRewrite = false;
   try {
     const parsed = JSON.parse(raw);
-    const parsedVersion =
-      parsed && typeof parsed === "object" && typeof parsed.version === "number"
-        ? parsed.version
-        : 1;
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      parsedVersion <= SAVED_PROFILES_STORAGE_VERSION &&
-      parsed.entries
-    ) {
-      if (parsedVersion !== SAVED_PROFILES_STORAGE_VERSION) {
-        needsRewrite = true;
-      }
+    if (parsed && typeof parsed === "object" && parsed.version === SAVED_PROFILES_STORAGE_VERSION) {
       const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
       const seenPubkeys = new Set();
       for (const candidate of entries) {
@@ -323,13 +408,7 @@ export function loadSavedProfilesFromStorage() {
         }
 
         seenPubkeys.add(normalizedPubkey);
-        const storedAuthTypeRaw =
-          typeof candidate.authType === "string" ? sanitizeProfileString(candidate.authType) : "";
-        const isLegacyEntry = !("authType" in candidate) || parsedVersion < 2;
-        const storedAuthType = storedAuthTypeRaw || (isLegacyEntry ? "nip07" : null);
-        if (isLegacyEntry && storedAuthType !== candidate.authType) {
-          needsRewrite = true;
-        }
+        const storedAuthType = candidate.authType === "nsec" ? "nsec" : "nip07";
         const npub =
           typeof candidate.npub === "string" && candidate.npub.trim()
             ? candidate.npub.trim()
@@ -353,34 +432,41 @@ export function loadSavedProfilesFromStorage() {
           needsRewrite = true;
         }
 
-        if (storedAuthTypeRaw && storedAuthTypeRaw !== candidate.authType) {
-          needsRewrite = true;
-        }
-
         savedProfiles.push(entry);
       }
 
-      const activeCandidate =
-        typeof parsed.activePubkey === "string"
-          ? parsed.activePubkey
-          : typeof parsed.activePubKey === "string"
-          ? parsed.activePubKey
-          : null;
-      const normalizedActive = normalizeHexPubkey(activeCandidate);
-      if (normalizedActive && seenPubkeys.has(normalizedActive)) {
-        activeProfilePubkey = normalizedActive;
-      } else if (activeCandidate) {
-        needsRewrite = true;
+      let hasActiveField = false;
+      let activeCandidate;
+      if (Object.prototype.hasOwnProperty.call(parsed, "activePubkey")) {
+        hasActiveField = true;
+        activeCandidate = parsed.activePubkey;
+      } else if (Object.prototype.hasOwnProperty.call(parsed, "activePubKey")) {
+        hasActiveField = true;
+        activeCandidate = parsed.activePubKey;
+      }
+
+      if (hasActiveField) {
+        hadExplicitActiveProfile = true;
+        if (typeof activeCandidate === "string") {
+          const normalizedActive = normalizeHexPubkey(activeCandidate);
+          if (normalizedActive && seenPubkeys.has(normalizedActive)) {
+            activeProfilePubkey = normalizedActive;
+          } else if (activeCandidate) {
+            needsRewrite = true;
+          }
+        } else if (activeCandidate !== null && activeCandidate !== undefined) {
+          needsRewrite = true;
+        }
       }
     } else if (raw) {
       needsRewrite = true;
     }
   } catch (error) {
-    console.warn("[cache.loadSavedProfilesFromStorage] Failed to parse payload:", error);
+    userLogger.warn("[cache.loadSavedProfilesFromStorage] Failed to parse payload:", error);
     needsRewrite = true;
   }
 
-  if (!activeProfilePubkey && savedProfiles.length) {
+  if (!activeProfilePubkey && savedProfiles.length && !hadExplicitActiveProfile) {
     activeProfilePubkey = savedProfiles[0].pubkey;
     needsRewrite = true;
   }
@@ -389,7 +475,11 @@ export function loadSavedProfilesFromStorage() {
     persistSavedProfiles();
   }
 
-  return { profiles: getSavedProfiles(), activePubkey: activeProfilePubkey };
+  return {
+    profiles: getSavedProfiles(),
+    activePubkey: activeProfilePubkey,
+    hasExplicitActiveProfile: hadExplicitActiveProfile,
+  };
 }
 
 export function syncSavedProfileFromCache(pubkey, { persist = false } = {}) {
@@ -520,7 +610,7 @@ export function loadProfileCacheFromStorage() {
       });
     }
   } catch (error) {
-    console.warn("[cache.loadProfileCacheFromStorage] Failed to parse payload:", error);
+    userLogger.warn("[cache.loadProfileCacheFromStorage] Failed to parse payload:", error);
   }
 }
 
@@ -559,7 +649,7 @@ export function persistProfileCacheToStorage() {
     try {
       localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY);
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         "[cache.persistProfileCacheToStorage] Failed to clear storage:",
         error
       );
@@ -570,7 +660,7 @@ export function persistProfileCacheToStorage() {
   try {
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
-    console.warn("[cache.persistProfileCacheToStorage] Failed to persist cache:", error);
+    userLogger.warn("[cache.persistProfileCacheToStorage] Failed to persist cache:", error);
   }
 }
 
@@ -603,7 +693,9 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
 
   const normalized = {
     name: profile.name || profile.display_name || "Unknown",
-    picture: profile.picture || "assets/svg/default-profile.svg",
+    picture:
+      sanitizeProfileMediaUrl(profile.picture || profile.image) ||
+      "assets/svg/default-profile.svg",
   };
 
   const about = sanitizeProfileString(profile.about || profile.aboutMe);
@@ -616,7 +708,14 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
     normalized.website = website;
   }
 
-  const banner = sanitizeProfileString(profile.banner || profile.header);
+  const banner = sanitizeProfileMediaUrl(
+    profile.banner ||
+      profile.header ||
+      profile.background ||
+      profile.cover ||
+      profile.cover_image ||
+      profile.coverImage
+  );
   if (banner) {
     normalized.banner = banner;
   }
@@ -651,6 +750,405 @@ export function setProfileCacheEntry(pubkey, profile, { persist = true } = {}) {
   }
 
   return entry;
+}
+
+function haveModerationSettingsChanged(previous, next) {
+  if (!previous || !next) {
+    return true;
+  }
+
+  return (
+    previous.blurThreshold !== next.blurThreshold ||
+    previous.autoplayBlockThreshold !== next.autoplayBlockThreshold ||
+    previous.trustedMuteHideThreshold !== next.trustedMuteHideThreshold ||
+    previous.trustedSpamHideThreshold !== next.trustedSpamHideThreshold
+  );
+}
+
+export function getDefaultModerationSettings() {
+  return createDefaultModerationSettings();
+}
+
+export function getModerationSettings() {
+  return { ...moderationSettings };
+}
+
+export function loadModerationSettingsFromStorage() {
+  if (typeof localStorage === "undefined") {
+    moderationSettings = createDefaultModerationSettings();
+    return getModerationSettings();
+  }
+
+  const raw = localStorage.getItem(MODERATION_SETTINGS_STORAGE_KEY);
+  if (!raw) {
+    moderationSettings = createDefaultModerationSettings();
+    return getModerationSettings();
+  }
+
+  try {
+    const payload = JSON.parse(raw);
+    if (!payload || typeof payload !== "object") {
+      moderationSettings = createDefaultModerationSettings();
+      return getModerationSettings();
+    }
+
+    if (payload.version !== MODERATION_SETTINGS_STORAGE_VERSION) {
+      moderationSettings = createDefaultModerationSettings();
+      return getModerationSettings();
+    }
+
+    const defaults = createDefaultModerationSettings();
+    const overrides =
+      payload.overrides && typeof payload.overrides === "object"
+        ? payload.overrides
+        : {};
+
+    moderationSettings = {
+      blurThreshold: sanitizeModerationThreshold(
+        overrides.blurThreshold,
+        defaults.blurThreshold,
+      ),
+      autoplayBlockThreshold: sanitizeModerationThreshold(
+        overrides.autoplayBlockThreshold,
+        defaults.autoplayBlockThreshold,
+      ),
+      trustedMuteHideThreshold: sanitizeModerationThreshold(
+        overrides.trustedMuteHideThreshold,
+        defaults.trustedMuteHideThreshold,
+      ),
+      trustedSpamHideThreshold: sanitizeModerationThreshold(
+        overrides.trustedSpamHideThreshold,
+        defaults.trustedSpamHideThreshold,
+      ),
+    };
+  } catch (error) {
+    moderationSettings = createDefaultModerationSettings();
+    userLogger.warn(
+      "[cache.loadModerationSettingsFromStorage] Failed to parse payload:",
+      error,
+    );
+  }
+
+  return getModerationSettings();
+}
+
+function persistModerationSettingsToStorage() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const defaults = createDefaultModerationSettings();
+  const overrides = {};
+
+  if (moderationSettings.blurThreshold !== defaults.blurThreshold) {
+    overrides.blurThreshold = moderationSettings.blurThreshold;
+  }
+
+  if (moderationSettings.autoplayBlockThreshold !== defaults.autoplayBlockThreshold) {
+    overrides.autoplayBlockThreshold = moderationSettings.autoplayBlockThreshold;
+  }
+
+  if (
+    moderationSettings.trustedMuteHideThreshold !==
+    defaults.trustedMuteHideThreshold
+  ) {
+    overrides.trustedMuteHideThreshold = moderationSettings.trustedMuteHideThreshold;
+  }
+
+  if (
+    moderationSettings.trustedSpamHideThreshold !==
+    defaults.trustedSpamHideThreshold
+  ) {
+    overrides.trustedSpamHideThreshold = moderationSettings.trustedSpamHideThreshold;
+  }
+
+  if (Object.keys(overrides).length === 0) {
+    try {
+      localStorage.removeItem(MODERATION_SETTINGS_STORAGE_KEY);
+    } catch (error) {
+      userLogger.warn(
+        "[cache.persistModerationSettingsToStorage] Failed to clear overrides:",
+        error,
+      );
+    }
+    return;
+  }
+
+  const payload = {
+    version: MODERATION_SETTINGS_STORAGE_VERSION,
+    overrides,
+    savedAt: Date.now(),
+  };
+
+  try {
+    localStorage.setItem(
+      MODERATION_SETTINGS_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  } catch (error) {
+    userLogger.warn(
+      "[cache.persistModerationSettingsToStorage] Failed to persist overrides:",
+      error,
+    );
+  }
+}
+
+export function setModerationSettings(partial = {}, { persist = true } = {}) {
+  const defaults = createDefaultModerationSettings();
+  const next = { ...moderationSettings };
+  let changed = false;
+
+  if (Object.prototype.hasOwnProperty.call(partial, "blurThreshold")) {
+    const value = partial.blurThreshold;
+    const sanitized =
+      value === null
+        ? defaults.blurThreshold
+        : sanitizeModerationThreshold(value, defaults.blurThreshold);
+    if (next.blurThreshold !== sanitized) {
+      next.blurThreshold = sanitized;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(partial, "autoplayBlockThreshold")) {
+    const value = partial.autoplayBlockThreshold;
+    const sanitized =
+      value === null
+        ? defaults.autoplayBlockThreshold
+        : sanitizeModerationThreshold(value, defaults.autoplayBlockThreshold);
+    if (next.autoplayBlockThreshold !== sanitized) {
+      next.autoplayBlockThreshold = sanitized;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(partial, "trustedMuteHideThreshold")) {
+    const value = partial.trustedMuteHideThreshold;
+    const sanitized =
+      value === null
+        ? defaults.trustedMuteHideThreshold
+        : sanitizeModerationThreshold(value, defaults.trustedMuteHideThreshold);
+    if (next.trustedMuteHideThreshold !== sanitized) {
+      next.trustedMuteHideThreshold = sanitized;
+      changed = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(partial, "trustedSpamHideThreshold")) {
+    const value = partial.trustedSpamHideThreshold;
+    const sanitized =
+      value === null
+        ? defaults.trustedSpamHideThreshold
+        : sanitizeModerationThreshold(value, defaults.trustedSpamHideThreshold);
+    if (next.trustedSpamHideThreshold !== sanitized) {
+      next.trustedSpamHideThreshold = sanitized;
+      changed = true;
+    }
+  }
+
+  if (!changed) {
+    if (persist) {
+      persistModerationSettingsToStorage();
+    }
+    return { ...moderationSettings };
+  }
+
+  moderationSettings = next;
+
+  if (persist) {
+    persistModerationSettingsToStorage();
+  }
+
+  return { ...moderationSettings };
+}
+
+export function resetModerationSettings({ persist = true } = {}) {
+  const previous = moderationSettings;
+  moderationSettings = createDefaultModerationSettings();
+
+  const changed = haveModerationSettingsChanged(previous, moderationSettings);
+
+  if (persist) {
+    persistModerationSettingsToStorage();
+  }
+
+  if (!changed) {
+    return { ...moderationSettings };
+  }
+
+  return { ...moderationSettings };
+}
+
+export function getModerationOverridesMap() {
+  return moderationOverrides;
+}
+
+export function getModerationOverride(eventId) {
+  const normalized = normalizeEventId(eventId);
+  if (!normalized) {
+    return null;
+  }
+
+  const entry = moderationOverrides.get(normalized);
+  if (!entry) {
+    return null;
+  }
+
+  return { ...entry };
+}
+
+export function loadModerationOverridesFromStorage() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const raw = localStorage.getItem(MODERATION_OVERRIDE_STORAGE_KEY);
+  if (!raw) {
+    return;
+  }
+
+  try {
+    const payload = JSON.parse(raw);
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+
+    if (payload.version !== MODERATION_OVERRIDE_STORAGE_VERSION) {
+      return;
+    }
+
+    const entries = payload.entries && typeof payload.entries === "object"
+      ? payload.entries
+      : {};
+
+    moderationOverrides.clear();
+
+    for (const [eventId, entry] of Object.entries(entries)) {
+      const normalized = normalizeEventId(eventId);
+      if (!normalized) {
+        continue;
+      }
+      if (!entry || entry.showAnyway !== true) {
+        continue;
+      }
+      const updatedAt = Number.isFinite(entry.updatedAt)
+        ? Math.floor(entry.updatedAt)
+        : Date.now();
+      moderationOverrides.set(normalized, {
+        showAnyway: true,
+        updatedAt,
+      });
+    }
+  } catch (error) {
+    moderationOverrides.clear();
+    userLogger.warn(
+      "[cache.loadModerationOverridesFromStorage] Failed to parse payload:",
+      error,
+    );
+  }
+}
+
+export function persistModerationOverridesToStorage() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  const entries = {};
+  for (const [eventId, entry] of moderationOverrides.entries()) {
+    if (!entry || entry.showAnyway !== true) {
+      continue;
+    }
+    const updatedAt = Number.isFinite(entry.updatedAt)
+      ? Math.floor(entry.updatedAt)
+      : Date.now();
+    entries[eventId] = {
+      showAnyway: true,
+      updatedAt,
+    };
+  }
+
+  if (Object.keys(entries).length === 0) {
+    try {
+      localStorage.removeItem(MODERATION_OVERRIDE_STORAGE_KEY);
+    } catch (error) {
+      userLogger.warn(
+        "[cache.persistModerationOverridesToStorage] Failed to clear overrides:",
+        error,
+      );
+    }
+    return;
+  }
+
+  const payload = {
+    version: MODERATION_OVERRIDE_STORAGE_VERSION,
+    savedAt: Date.now(),
+    entries,
+  };
+
+  try {
+    localStorage.setItem(
+      MODERATION_OVERRIDE_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  } catch (error) {
+    userLogger.warn(
+      "[cache.persistModerationOverridesToStorage] Failed to persist overrides:",
+      error,
+    );
+  }
+}
+
+export function setModerationOverride(
+  eventId,
+  override = {},
+  { persist = true } = {},
+) {
+  const normalized = normalizeEventId(eventId);
+  if (!normalized) {
+    return null;
+  }
+
+  const showAnyway = override?.showAnyway === true;
+  if (!showAnyway) {
+    const removed = moderationOverrides.delete(normalized);
+    if (removed && persist) {
+      persistModerationOverridesToStorage();
+    }
+    return null;
+  }
+
+  const updatedAt = Number.isFinite(override?.updatedAt)
+    ? Math.floor(override.updatedAt)
+    : Date.now();
+
+  const existing = moderationOverrides.get(normalized);
+  const nextEntry = { showAnyway: true, updatedAt };
+  const changed =
+    !existing ||
+    existing.showAnyway !== nextEntry.showAnyway ||
+    existing.updatedAt !== nextEntry.updatedAt;
+
+  moderationOverrides.set(normalized, nextEntry);
+
+  if (persist && changed) {
+    persistModerationOverridesToStorage();
+  }
+
+  return { ...nextEntry };
+}
+
+export function clearModerationOverride(eventId, { persist = true } = {}) {
+  const normalized = normalizeEventId(eventId);
+  if (!normalized) {
+    return false;
+  }
+
+  const removed = moderationOverrides.delete(normalized);
+  if (removed && persist) {
+    persistModerationOverridesToStorage();
+  }
+
+  return removed;
 }
 
 function buildUrlProbeKey(url, options = {}) {
@@ -711,7 +1209,7 @@ export function storeUrlHealth(eventId, url, result, ttlMs = URL_HEALTH_TTL_MS) 
   const now = Date.now();
   const entry = {
     status: result?.status || "checking",
-    message: result?.message || "Checking hosted URL…",
+    message: result?.message || "⏳ CDN",
     url: url || result?.url || "",
     expiresAt: now + ttl,
     lastCheckedAt: now,

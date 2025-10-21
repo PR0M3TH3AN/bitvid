@@ -1,31 +1,31 @@
+## Shipped
+
+- **Private video filtering** – VideoListView now hides private uploads from shared feeds while still rendering them for their owners, keeping private sharing contained to the uploader’s views.
+- **Edit & Upload modals** – Editing and publishing flows now rely on first-class modal forms with shared NIP-71 field management instead of browser pop-ups.
+- **Universal more/settings menus** – Video cards expose consistent “more” and owner settings menus with channel navigation, sharing, blocking, and reporting actions wired through dedicated renderers.
+- **Watch History view** – A dedicated watch history page ships with privacy messaging, pagination, relay sync, and local cache controls.
+- **Zap controls** – Channel profiles manage zap visibility, login gating, retry flows, and receipt rendering via the Lightning controller on the page.
+- **Source visibility filtering** – Lists now hide cards whose hosted URLs are offline unless their WebTorrent fallback is healthy, reusing the shared guard in `js/utils/cardSourceVisibility.js`.
+
 ## Bug Fixes
 
 > ⚠️ **Note:** If you find a new bug thats not listed here. Please submit a [Bug Report](https://bitvid.network/?modal=bug).
 
 - Speed up loading in subscriptions. Save to local cache?
 - Fix "Dev Mode" publishing "Live Mode" notes—add a flag for dev mode posts.
-- Fix issue with video post set to private.
-- Disable "private video" until I can make it work better.
-- Make "private video" work better by hiding cards from shared grids while keeping an owner-only view.
 - Fix slow back button issues on Firefox.
 - Add Amber login support for mobile.
-- Add settings (three dots) button for all videos, not the same as gear menu. Only show delete and edit gear for logged-in users videos.
-- Add support for "Playlist" lists and other custom lists (named whatever) and also "Watch Later" list and "Watch History".
+- Add support for "Playlist" lists and other custom lists (named whatever) and also a "Watch Later" list.
 - Add an "add to playlist" button to the edit button.
 - Add "add to watch later" option to edit button.
-- Add block button to settings button.
-- Add report button to settings button.
 - Fix autoplay broken on iPhone chrome.
 - Fix playback broken on Safari on iPhone.
 - Update note spec v3 transition to include new fields that have been added like "has previous" or "videoRootID" or enentID if null.
 - Change "explore" view to "kids" view and add flag to all notes to see if they are for kids.
 - Add "seed" lists.
-- Make "edit" video a form modal rather than a browser pop-up.
-- Add "upload thumbnail" as option to add/edit video form. (use https://apidocs.imgur.com/)
 - Fix issue where page refreshes when pulling up a video in the video modal.
 - Fix sidebar media query settings on medium-sized screens. (tablet/laptops)
 - Fix various "text wrap" issues causing scroll left and right on profile and modal pages.
-- Add zaps to profile and video modal pages.
 - Add comments to video modal pages.
 
 ## Feature Additions
@@ -45,10 +45,7 @@
 - Introduce a subscription mechanism with notifications.
 - Add zaps to videos, profiles, and comments.
 - Create a VRR (View, Rating, and Retention) Penalty Scoring system. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/07_bitvid_Enhanced_View_Rating_%26_Retention_Penalty_Scoring.md)
-- Implement visibility filtering for videos:
-  - Run lightweight URL-health probes so cards stay visible when the hosted playback link responds.
-  - When a URL is unreachable, fall back to WebTorrent and surface items only if their magnets can stream via peers or web seeds.
-  - Align the filtering logic with the player’s URL-first, WebTorrent-fallback behavior during list rendering.
+- Expand visibility tooling around the shipped source guard to add operator overrides, richer status messaging, and better diagnostics when both URL and magnet sources fail.
 - Dynamic Home Page and Video Tracking Specification. [Click for more details](https://github.com/PR0M3TH3AN/bitvid/blob/main/content/roadmap/08_bitvid_Enhanced_Dynamic_Home_Page_%26_Video_Tracking_Specification.md)
 - Add multi-language support for content and filtration. (v4?)
 - Create a settings menu for local account preferences, including relay, adult content, theme, and language.

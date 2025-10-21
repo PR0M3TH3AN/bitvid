@@ -1,3 +1,4 @@
+import { userLogger } from "./utils/logger.js";
 const DB_NAME = "bitvidSettings";
 const DB_VERSION = 1;
 const STORE_NAME = "kv";
@@ -183,20 +184,20 @@ function emitToast(message, { variant = "error", error } = {}) {
         })
       );
     } catch (eventError) {
-      console.warn("[nwcSettings] Failed to dispatch toast event", eventError);
+      userLogger.warn("[nwcSettings] Failed to dispatch toast event", eventError);
     }
   }
 }
 
 function notifyFailure(message, error) {
   const text = message || "NWC settings storage error.";
-  console.warn(`[nwcSettings] ${text}`, error);
+  userLogger.warn(`[nwcSettings] ${text}`, error);
   emitToast(text, { variant: "error", error });
 }
 
 function notifyWarning(message, error) {
   const text = message || "NWC settings storage warning.";
-  console.warn(`[nwcSettings] ${text}`, error);
+  userLogger.warn(`[nwcSettings] ${text}`, error);
   emitToast(text, { variant: "warning", error });
 }
 

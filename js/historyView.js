@@ -5,13 +5,14 @@ import {
   pointerKey,
   normalizePointerInput,
   nostrClient,
-  updateWatchHistoryList,
+  updateWatchHistoryList
 } from "./nostr.js";
 import {
   WATCH_HISTORY_BATCH_RESOLVE,
-  WATCH_HISTORY_BATCH_PAGE_SIZE,
+  WATCH_HISTORY_BATCH_PAGE_SIZE
 } from "./config.js";
 import { getApplication } from "./applicationContext.js";
+import { userLogger } from "./utils/logger.js";
 
 export const WATCH_HISTORY_EMPTY_COPY =
   "Your watch history is empty. Watch some videos to populate this list.";
@@ -34,8 +35,7 @@ const WATCH_HISTORY_BATCH_SIZE = (() => {
 const FALLBACK_THUMBNAIL = "assets/svg/default-thumbnail.svg";
 const FALLBACK_AVATAR = "assets/svg/default-profile.svg";
 const isDevEnv =
-  typeof process !== "undefined" &&
-  process?.env?.NODE_ENV !== "production";
+  typeof process !== "undefined" && process?.env?.NODE_ENV !== "production";
 
 function escapeSelector(value) {
   if (typeof value !== "string") {
@@ -54,7 +54,7 @@ function resolveElement(selector) {
   try {
     return document.querySelector(selector);
   } catch (error) {
-    console.warn("[historyView] Failed to query selector:", selector, error);
+    userLogger.warn("[historyView] Failed to query selector:", selector, error);
     return null;
   }
 }
@@ -95,12 +95,13 @@ function buildWatchHistoryFeedRuntime({ actor, cursor = 0 } = {}) {
   const runtime = {
     blacklistedEventIds: blacklist,
     isAuthorBlocked: (pubkey) =>
-      (typeof app?.isAuthorBlocked === "function" && app.isAuthorBlocked(pubkey)) ||
+      (typeof app?.isAuthorBlocked === "function" &&
+        app.isAuthorBlocked(pubkey)) ||
       false,
     watchHistory: {
       actor: normalizedActor,
-      cursor: Number.isFinite(cursor) ? cursor : 0,
-    },
+      cursor: Number.isFinite(cursor) ? cursor : 0
+    }
   };
 
   if (normalizedActor) {
@@ -115,7 +116,7 @@ function safeLocaleDate(date) {
     return date.toLocaleDateString(undefined, {
       weekday: "long",
       month: "long",
-      day: "numeric",
+      day: "numeric"
     });
   } catch (error) {
     return date.toDateString();
@@ -160,7 +161,7 @@ function formatRelativeTime(timestampSeconds) {
     { label: "week", seconds: 604800 },
     { label: "day", seconds: 86400 },
     { label: "hour", seconds: 3600 },
-    { label: "minute", seconds: 60 },
+    { label: "minute", seconds: 60 }
   ];
   for (const unit of units) {
     const count = Math.floor(delta / unit.seconds);
@@ -208,15 +209,15 @@ function normalizeHistoryItems(rawItems) {
     const watchedAtRaw = Number.isFinite(candidate?.watchedAt)
       ? candidate.watchedAt
       : Number.isFinite(candidate?.timestamp)
-      ? candidate.timestamp
-      : null;
+        ? candidate.timestamp
+        : null;
     const watchedAt =
       watchedAtRaw !== null ? Math.max(0, Math.floor(watchedAtRaw)) : 0;
     normalized.push({
       pointer,
       pointerKey: key,
       watchedAt,
-      raw: candidate,
+      raw: candidate
     });
   }
   normalized.sort((a, b) => {
@@ -232,7 +233,7 @@ async function defaultRemoveHandler({
   actor,
   items,
   snapshot,
-  reason = "remove-item",
+  reason = "remove-item"
 } = {}) {
   const sanitized = Array.isArray(items)
     ? items
@@ -259,12 +260,12 @@ async function defaultRemoveHandler({
       await updateWatchHistoryList(sanitized, {
         actorPubkey: actor,
         replace: true,
-        source: reason,
+        source: reason
       });
     }
   } catch (error) {
     if (isDevEnv) {
-      console.warn("[historyView] Failed to update watch history list:", error);
+      userLogger.warn("[historyView] Failed to update watch history list:", error);
     }
     throw error;
   }
@@ -307,7 +308,7 @@ function writePreference(key, value) {
     storage.setItem(key, value);
   } catch (error) {
     if (isDevEnv) {
-      console.warn("[historyView] Failed to persist preference:", error);
+      userLogger.warn("[historyView] Failed to persist preference:", error);
     }
   }
 }
@@ -338,15 +339,11 @@ function getPointerVideoId(video, pointer) {
   return "";
 }
 
-export function buildHistoryCard({
-  item,
-  video,
-  profile,
-  metadataPreference,
-}) {
+export function buildHistoryCard({ item, video, profile, metadataPreference }) {
   const article = document.createElement("article");
   article.className = "watch-history-card";
   article.dataset.pointerKey = item.pointerKey;
+  article.dataset.historyCard = "true";
   if (video?.isPrivate) {
     article.classList.add("watch-history-card--private");
   }
@@ -363,8 +360,8 @@ export function buildHistoryCard({
       typeof video.magnet === "string"
         ? video.magnet.trim()
         : typeof video.infoHash === "string"
-        ? video.infoHash.trim()
-        : "";
+          ? video.infoHash.trim()
+          : "";
     return { url, magnet: magnetRaw };
   })();
 
@@ -390,7 +387,7 @@ export function buildHistoryCard({
   const thumbnailImg = document.createElement("img");
   thumbnailImg.alt = video?.title || "Video thumbnail";
   const thumbnailSrc =
-    (video && typeof video.thumbnail === "string" && video.thumbnail.trim())
+    video && typeof video.thumbnail === "string" && video.thumbnail.trim()
       ? video.thumbnail.trim()
       : FALLBACK_THUMBNAIL;
   thumbnailImg.src = thumbnailSrc;
@@ -420,7 +417,9 @@ export function buildHistoryCard({
 
   const created = document.createElement("p");
   created.className = "watch-history-card__created";
-  const createdAt = Number.isFinite(video?.created_at) ? video.created_at : null;
+  const createdAt = Number.isFinite(video?.created_at)
+    ? video.created_at
+    : null;
   created.textContent = createdAt
     ? `Published ${formatRelativeTime(createdAt)}`
     : "Published date unavailable";
@@ -454,7 +453,7 @@ export function buildHistoryCard({
   }
   const avatarImg = document.createElement("img");
   const avatarSrc =
-    (profile && typeof profile.picture === "string" && profile.picture.trim())
+    profile && typeof profile.picture === "string" && profile.picture.trim()
       ? profile.picture.trim()
       : FALLBACK_AVATAR;
   avatarImg.src = avatarSrc;
@@ -516,6 +515,7 @@ export function buildHistoryCard({
   removeButton.type = "button";
   removeButton.className =
     "watch-history-card__action watch-history-card__action--danger";
+  removeButton.dataset.variant = "danger";
   removeButton.dataset.historyAction = "remove";
   removeButton.dataset.pointerKey = item.pointerKey;
   removeButton.textContent = "Remove from history";
@@ -536,7 +536,7 @@ export function buildHistoryCard({
   }
   removeButton.setAttribute(
     "aria-label",
-    "Remove this encrypted history entry (sync may take a moment).",
+    "Remove this encrypted history entry (sync may take a moment)."
   );
   removeButton.title =
     "Removes this entry from encrypted history. Relay sync may take a moment.";
@@ -549,7 +549,7 @@ export function buildHistoryCard({
 
   if (metadataPreference === "relay-opt-in") {
     const hint = document.createElement("p");
-    hint.className = "text-xs text-blue-200";
+    hint.className = "text-xs text-info";
     hint.textContent = "Metadata is shared with relays for this entry.";
     meta.appendChild(hint);
   }
@@ -568,12 +568,12 @@ export function createWatchHistoryRenderer(config = {}) {
       if (engine && typeof engine.run === "function") {
         const runtime = buildWatchHistoryFeedRuntime({
           actor: actorInput,
-          cursor,
+          cursor
         });
         return engine.run("watch-history", { runtime });
       }
       const items = await watchHistoryService.loadLatest(actorInput, {
-        allowStale: true,
+        allowStale: true
       });
       const normalized = normalizeHistoryItems(items);
       return { items: normalized, metadata: { engine: "service-fallback" } };
@@ -587,8 +587,8 @@ export function createWatchHistoryRenderer(config = {}) {
     emptySelector = "#watchHistoryEmpty",
     sentinelSelector = "#watchHistorySentinel",
     loadMoreSelector = "#watchHistoryLoadMore",
-    clearButtonSelector = "[data-history-action=\"clear-cache\"]",
-    republishButtonSelector = "[data-history-action=\"republish\"]",
+    clearButtonSelector = '[data-history-action="clear-cache"]',
+    republishButtonSelector = '[data-history-action="republish"]',
     privacyBannerSelector = "#watchHistoryPrivacyBanner",
     privacyMessageSelector = "#watchHistoryPrivacyMessage",
     privacyToggleSelector = "#watchHistoryPrivacyToggle",
@@ -613,7 +613,7 @@ export function createWatchHistoryRenderer(config = {}) {
         return controller.handleWatchHistoryRemoval(payload);
       }
       return defaultRemoveHandler(payload);
-    },
+    }
   } = config;
 
   const syncEnabled =
@@ -653,7 +653,7 @@ export function createWatchHistoryRenderer(config = {}) {
     syncEnabled,
     localSupported,
     localOnly,
-    featureEnabled: syncEnabled || localSupported,
+    featureEnabled: syncEnabled || localSupported
   };
 
   let rendererRef = null;
@@ -685,7 +685,7 @@ export function createWatchHistoryRenderer(config = {}) {
     metadataToggle: null,
     metadataThumb: null,
     metadataLabel: null,
-    metadataDescription: null,
+    metadataDescription: null
   };
 
   let boundGridClickHandler = null;
@@ -723,7 +723,7 @@ export function createWatchHistoryRenderer(config = {}) {
       metadataToggle: resolveElement(metadataToggleSelector),
       metadataThumb: resolveElement(metadataThumbSelector),
       metadataLabel: resolveElement(metadataLabelSelector),
-      metadataDescription: resolveElement(metadataDescriptionSelector),
+      metadataDescription: resolveElement(metadataDescriptionSelector)
     };
   }
 
@@ -733,9 +733,9 @@ export function createWatchHistoryRenderer(config = {}) {
         unsubscribe();
       } catch (error) {
         if (isDevEnv) {
-          console.warn(
+          userLogger.warn(
             "[historyView] Failed to unsubscribe from watch history event:",
-            error,
+            error
           );
         }
       }
@@ -762,11 +762,12 @@ export function createWatchHistoryRenderer(config = {}) {
     if (!text) {
       return;
     }
-    const variantClass = {
-      info: "border-blue-500/40 bg-blue-500/10 text-blue-100",
-      warning: "border-amber-500/40 bg-amber-500/10 text-amber-100",
-      error: "border-red-500/40 bg-red-500/10 text-red-100",
-    }[variant] || "border-gray-600 bg-gray-800/70 text-gray-100";
+    const variantClass =
+      {
+        info: "border-info/40 bg-info/10 text-info",
+        warning: "border-warning-strong bg-warning-surface text-warning-strong",
+        error: "border-critical/40 bg-critical/10 text-critical"
+      }[variant] || "border-border bg-panel/70 text-text";
 
     if (elements.toastRegion.childElementCount >= 3) {
       const firstChild = elements.toastRegion.firstElementChild;
@@ -838,11 +839,19 @@ export function createWatchHistoryRenderer(config = {}) {
       return;
     }
     const enabled = state.metadataStorageEnabled;
-    elements.metadataToggle.setAttribute("aria-checked", enabled ? "true" : "false");
-    elements.metadataToggle.classList.toggle("bg-blue-600", enabled);
-    elements.metadataToggle.classList.toggle("border-blue-500", enabled);
-    elements.metadataToggle.classList.toggle("bg-gray-700", !enabled);
-    elements.metadataToggle.classList.toggle("border-gray-600", !enabled);
+    elements.metadataToggle.setAttribute(
+      "aria-checked",
+      enabled ? "true" : "false"
+    );
+    elements.metadataToggle.setAttribute(
+      "data-enabled",
+      enabled ? "true" : "false"
+    );
+    elements.metadataToggle.dataset.state = enabled ? "on" : "off";
+    elements.metadataToggle.classList.toggle("bg-info", enabled);
+    elements.metadataToggle.classList.toggle("border-info", enabled);
+    elements.metadataToggle.classList.toggle("bg-panel", !enabled);
+    elements.metadataToggle.classList.toggle("border-border", !enabled);
     if (elements.metadataThumb instanceof HTMLElement) {
       elements.metadataThumb.classList.toggle("translate-x-5", enabled);
       elements.metadataThumb.classList.toggle("translate-x-1", !enabled);
@@ -860,7 +869,8 @@ export function createWatchHistoryRenderer(config = {}) {
         ? nostrClient.sessionActor.pubkey
         : "";
     const activeActor = typeof state.actor === "string" ? state.actor : "";
-    const fallbackActive = !nip07Pubkey && sessionPubkey && sessionPubkey === activeActor;
+    const fallbackActive =
+      !nip07Pubkey && sessionPubkey && sessionPubkey === activeActor;
     state.sessionFallbackActive = Boolean(fallbackActive);
     setHidden(elements.sessionWarning, !fallbackActive);
   }
@@ -892,11 +902,7 @@ export function createWatchHistoryRenderer(config = {}) {
         if (!payload) {
           return;
         }
-        if (
-          payload.actor &&
-          state.actor &&
-          payload.actor !== state.actor
-        ) {
+        if (payload.actor && state.actor && payload.actor !== state.actor) {
           return;
         }
         let message = "Republish retry scheduled.";
@@ -940,11 +946,7 @@ export function createWatchHistoryRenderer(config = {}) {
         if (!payload) {
           return;
         }
-        if (
-          payload.actor &&
-          state.actor &&
-          payload.actor !== state.actor
-        ) {
+        if (payload.actor && state.actor && payload.actor !== state.actor) {
           return;
         }
         fingerprintRefreshQueued = true;
@@ -1047,7 +1049,7 @@ export function createWatchHistoryRenderer(config = {}) {
       {
         root: elements.scrollContainer || null,
         rootMargin: "0px 0px 320px 0px",
-        threshold: 0.1,
+        threshold: 0.1
       }
     );
   }
@@ -1137,7 +1139,10 @@ export function createWatchHistoryRenderer(config = {}) {
           return result.trim();
         }
       } catch (error) {
-        console.warn("[historyView] Failed to resolve actor via getActor:", error);
+        userLogger.warn(
+          "[historyView] Failed to resolve actor via getActor:",
+          error
+        );
       }
     }
     if (watchHistoryService?.publishView) {
@@ -1158,20 +1163,30 @@ export function createWatchHistoryRenderer(config = {}) {
 
       const pointerKeyValue = item.pointerKey || null;
       const baseMetadata =
-        item && typeof item === "object" && item.metadata && typeof item.metadata === "object"
+        item &&
+        typeof item === "object" &&
+        item.metadata &&
+        typeof item.metadata === "object"
           ? { ...item.metadata }
           : {};
 
-      let cached = pointerKeyValue ? state.metadataCache.get(pointerKeyValue) : null;
-      if (!cached && pointerKeyValue && typeof watchHistoryService.getLocalMetadata === "function") {
+      let cached = pointerKeyValue
+        ? state.metadataCache.get(pointerKeyValue)
+        : null;
+      if (
+        !cached &&
+        pointerKeyValue &&
+        typeof watchHistoryService.getLocalMetadata === "function"
+      ) {
         try {
-          cached = watchHistoryService.getLocalMetadata(pointerKeyValue) || null;
+          cached =
+            watchHistoryService.getLocalMetadata(pointerKeyValue) || null;
         } catch (error) {
           if (isDevEnv) {
-            console.warn(
+            userLogger.warn(
               "[historyView] Failed to read stored metadata for pointer:",
               pointerKeyValue,
-              error,
+              error
             );
           }
         }
@@ -1188,38 +1203,40 @@ export function createWatchHistoryRenderer(config = {}) {
       const metadata = {
         ...baseMetadata,
         video: video || null,
-        profile: profile || null,
+        profile: profile || null
       };
 
       if (pointerKeyValue) {
         state.metadataCache.set(pointerKeyValue, {
           video: metadata.video,
-          profile: metadata.profile,
+          profile: metadata.profile
         });
         if (state.metadataStorageEnabled) {
           try {
             watchHistoryService.setLocalMetadata?.(pointerKeyValue, {
               video: metadata.video,
-              profile: metadata.profile,
+              profile: metadata.profile
             });
           } catch (error) {
             if (isDevEnv) {
-              console.warn(
+              userLogger.warn(
                 "[historyView] Failed to persist metadata for pointer:",
                 pointerKeyValue,
-                error,
+                error
               );
             }
           }
-        } else if (typeof watchHistoryService.removeLocalMetadata === "function") {
+        } else if (
+          typeof watchHistoryService.removeLocalMetadata === "function"
+        ) {
           try {
             watchHistoryService.removeLocalMetadata(pointerKeyValue);
           } catch (error) {
             if (isDevEnv) {
-              console.warn(
+              userLogger.warn(
                 "[historyView] Failed to remove cached metadata for pointer:",
                 pointerKeyValue,
-                error,
+                error
               );
             }
           }
@@ -1257,7 +1274,7 @@ export function createWatchHistoryRenderer(config = {}) {
     } catch (error) {
       state.isRendering = false;
       if (isDevEnv) {
-        console.warn("[historyView] Failed to hydrate batch:", error);
+        userLogger.warn("[historyView] Failed to hydrate batch:", error);
       }
       return;
     }
@@ -1277,7 +1294,8 @@ export function createWatchHistoryRenderer(config = {}) {
         section.dataset.historyDay = dayKey;
         section.className = "space-y-4";
         const header = document.createElement("h3");
-        header.className = "text-sm font-semibold uppercase tracking-wide text-gray-300";
+        header.className =
+          "text-sm font-semibold uppercase tracking-wide text-text";
         header.textContent = label;
         const list = document.createElement("div");
         list.dataset.historyDayList = "true";
@@ -1306,7 +1324,7 @@ export function createWatchHistoryRenderer(config = {}) {
         item: entry,
         video: entry.metadata?.video || null,
         profile: entry.metadata?.profile || null,
-        metadataPreference: state.metadataPreference,
+        metadataPreference: state.metadataPreference
       });
       container.list.appendChild(card);
     });
@@ -1329,14 +1347,17 @@ export function createWatchHistoryRenderer(config = {}) {
       elements.grid.removeEventListener("click", boundGridClickHandler);
     }
     boundGridClickHandler = async (event) => {
-      const trigger = event.target instanceof HTMLElement
-        ? event.target.closest("[data-history-action]")
-        : null;
+      const trigger =
+        event.target instanceof HTMLElement
+          ? event.target.closest("[data-history-action]")
+          : null;
       if (!(trigger instanceof HTMLElement)) {
         return;
       }
       const action = trigger.dataset.historyAction || "";
-      const pointerKeyAttr = trigger.dataset.pointerKey || (trigger.closest("[data-pointer-key]")?.dataset.pointerKey ?? "");
+      const pointerKeyAttr =
+        trigger.dataset.pointerKey ||
+        (trigger.closest("[data-pointer-key]")?.dataset.pointerKey ?? "");
       if (!action) {
         return;
       }
@@ -1364,7 +1385,7 @@ export function createWatchHistoryRenderer(config = {}) {
           if (app?.playVideoWithFallback) {
             app.playVideoWithFallback({
               url,
-              magnet: magnetAttr,
+              magnet: magnetAttr
             });
           }
           break;
@@ -1426,9 +1447,9 @@ export function createWatchHistoryRenderer(config = {}) {
             watchHistoryService.clearLocalMetadata?.();
           } catch (error) {
             if (isDevEnv) {
-              console.warn(
+              userLogger.warn(
                 "[historyView] Failed to clear stored metadata while resetting progress:",
-                error,
+                error
               );
             }
           }
@@ -1449,7 +1470,10 @@ export function createWatchHistoryRenderer(config = {}) {
 
     if (elements.republishButton) {
       if (boundRepublishHandler) {
-        elements.republishButton.removeEventListener("click", boundRepublishHandler);
+        elements.republishButton.removeEventListener(
+          "click",
+          boundRepublishHandler
+        );
       }
       boundRepublishHandler = async (event) => {
         event.preventDefault();
@@ -1457,7 +1481,7 @@ export function createWatchHistoryRenderer(config = {}) {
         try {
           const payload = state.items.map((entry) => ({
             ...entry.pointer,
-            watchedAt: entry.watchedAt,
+            watchedAt: entry.watchedAt
           }));
           await snapshot(payload, { actor, reason: "manual-republish" });
           const app = getAppInstance();
@@ -1466,7 +1490,7 @@ export function createWatchHistoryRenderer(config = {}) {
           const app = getAppInstance();
           app?.showError?.("Failed to publish watch history. Try again later.");
           if (isDevEnv) {
-            console.warn("[historyView] Republish failed:", error);
+            userLogger.warn("[historyView] Republish failed:", error);
           }
         }
       };
@@ -1497,7 +1521,10 @@ export function createWatchHistoryRenderer(config = {}) {
         updatePrivacyBanner();
         renderer.render();
       };
-      elements.privacyToggle.addEventListener("click", boundPrivacyToggleHandler);
+      elements.privacyToggle.addEventListener(
+        "click",
+        boundPrivacyToggleHandler
+      );
     }
 
     if (elements.privacyDismiss) {
@@ -1513,7 +1540,10 @@ export function createWatchHistoryRenderer(config = {}) {
         writePreference(WATCH_HISTORY_PRIVACY_DISMISSED_KEY, "true");
         updatePrivacyBanner();
       };
-      elements.privacyDismiss.addEventListener("click", boundPrivacyDismissHandler);
+      elements.privacyDismiss.addEventListener(
+        "click",
+        boundPrivacyDismissHandler
+      );
     }
   }
 
@@ -1536,7 +1566,10 @@ export function createWatchHistoryRenderer(config = {}) {
         }
       } catch (error) {
         if (isDevEnv) {
-          console.warn("[historyView] Failed to set metadata preference:", error);
+          userLogger.warn(
+            "[historyView] Failed to set metadata preference:",
+            error
+          );
         }
       }
       state.metadataStorageEnabled =
@@ -1549,9 +1582,9 @@ export function createWatchHistoryRenderer(config = {}) {
           watchHistoryService.clearLocalMetadata?.();
         } catch (error) {
           if (isDevEnv) {
-            console.warn(
+            userLogger.warn(
               "[historyView] Failed to clear stored metadata after disabling preference:",
-              error,
+              error
             );
           }
         }
@@ -1559,7 +1592,10 @@ export function createWatchHistoryRenderer(config = {}) {
         void renderer.render();
       }
     };
-    elements.metadataToggle.addEventListener("click", boundMetadataToggleHandler);
+    elements.metadataToggle.addEventListener(
+      "click",
+      boundMetadataToggleHandler
+    );
   }
 
   async function loadHistory({ force = false, actorOverride } = {}) {
@@ -1622,11 +1658,14 @@ export function createWatchHistoryRenderer(config = {}) {
       const watchedAtRaw = Number.isFinite(entry?.watchedAt)
         ? entry.watchedAt
         : Number.isFinite(entry?.metadata?.watchedAt)
-        ? entry.metadata.watchedAt
-        : 0;
+          ? entry.metadata.watchedAt
+          : 0;
       const watchedAt = Math.max(0, Math.floor(Number(watchedAtRaw) || 0));
       const baseMetadata =
-        entry && typeof entry === "object" && entry.metadata && typeof entry.metadata === "object"
+        entry &&
+        typeof entry === "object" &&
+        entry.metadata &&
+        typeof entry.metadata === "object"
           ? { ...entry.metadata }
           : {};
       const video = entry?.video || baseMetadata.video || null;
@@ -1638,18 +1677,18 @@ export function createWatchHistoryRenderer(config = {}) {
           ? baseMetadata.watchedAt
           : watchedAt || null,
         video: video || null,
-        profile: profile || null,
+        profile: profile || null
       };
       state.metadataCache.set(pointerKeyValue, {
         video: metadata.video,
-        profile: metadata.profile,
+        profile: metadata.profile
       });
       normalized.push({
         pointer,
         pointerKey: pointerKeyValue,
         watchedAt,
         video: metadata.video,
-        metadata,
+        metadata
       });
     }
 
@@ -1715,10 +1754,8 @@ export function createWatchHistoryRenderer(config = {}) {
       );
       state.metadataPreference =
         storedPreference === "relay-opt-in" ? "relay-opt-in" : "encrypted-only";
-      state.privacyDismissed = readPreference(
-        WATCH_HISTORY_PRIVACY_DISMISSED_KEY,
-        "false"
-      ) === "true";
+      state.privacyDismissed =
+        readPreference(WATCH_HISTORY_PRIVACY_DISMISSED_KEY, "false") === "true";
       updatePrivacyBanner();
       state.initialized = true;
       if (!state.featureEnabled) {
@@ -1769,7 +1806,7 @@ export function createWatchHistoryRenderer(config = {}) {
       const { actor, force = true } = options;
       const changed = await loadHistory({
         force,
-        actorOverride: actor,
+        actorOverride: actor
       });
       if (!changed && state.items.length) {
         updateLoadMoreVisibility();
@@ -1812,7 +1849,10 @@ export function createWatchHistoryRenderer(config = {}) {
         boundClearHandler = null;
       }
       if (elements.republishButton && boundRepublishHandler) {
-        elements.republishButton.removeEventListener("click", boundRepublishHandler);
+        elements.republishButton.removeEventListener(
+          "click",
+          boundRepublishHandler
+        );
         boundRepublishHandler = null;
       }
       if (elements.privacyToggle && boundPrivacyToggleHandler) {
@@ -1875,10 +1915,10 @@ export function createWatchHistoryRenderer(config = {}) {
         watchHistoryService.removeLocalMetadata?.(pointerKeyValue);
       } catch (error) {
         if (isDevEnv) {
-          console.warn(
+          userLogger.warn(
             "[historyView] Failed to drop cached metadata for pointer:",
             pointerKeyValue,
-            error,
+            error
           );
         }
       }
@@ -1902,7 +1942,7 @@ export function createWatchHistoryRenderer(config = {}) {
           removed,
           pointerKey: pointerKeyValue,
           snapshot,
-          reason: "remove-item",
+          reason: "remove-item"
         });
         const app = getAppInstance();
         if (!result?.handledToasts) {
@@ -1914,7 +1954,7 @@ export function createWatchHistoryRenderer(config = {}) {
           app?.showError?.("Failed to remove from history. Reloading list.");
         }
         if (isDevEnv) {
-          console.warn("[historyView] Removal failed:", error);
+          userLogger.warn("[historyView] Removal failed:", error);
         }
       } finally {
         if (parentDay instanceof HTMLElement) {
@@ -1925,9 +1965,9 @@ export function createWatchHistoryRenderer(config = {}) {
             await this.refresh({ force: true });
           } catch (error) {
             if (isDevEnv) {
-              console.warn(
+              userLogger.warn(
                 "[historyView] Failed to refresh watch history after removal:",
-                error,
+                error
               );
             }
           }
@@ -1940,9 +1980,9 @@ export function createWatchHistoryRenderer(config = {}) {
     getState() {
       return {
         ...state,
-        items: state.items.slice(),
+        items: state.items.slice()
       };
-    },
+    }
   };
 
   rendererRef = renderer;

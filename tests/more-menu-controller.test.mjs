@@ -47,15 +47,9 @@ test('blacklist-author requires moderator access and refreshes subscriptions', a
   };
 
   let refreshedWith = null;
-  const subscriptions = {
-    refreshActiveFeed: async (args) => {
-      refreshedWith = args;
-    },
-  };
 
   const controller = new MoreMenuController({
     accessControl,
-    subscriptions,
     callbacks: {
       getCurrentUserNpub: () => 'npub1actor',
       getCurrentVideo: () => ({ pubkey: 'authorhex' }),
@@ -67,6 +61,9 @@ test('blacklist-author requires moderator access and refreshes subscriptions', a
         calls.push(['success', message]);
       },
       canCurrentUserManageBlacklist: () => true,
+      refreshAllVideoGrids: async (args) => {
+        refreshedWith = args;
+      },
     },
   });
 
@@ -80,7 +77,10 @@ test('blacklist-author requires moderator access and refreshes subscriptions', a
     ['add', 'npub1actor', 'npub:authorhex'],
     ['success', 'Creator added to the blacklist.'],
   ]);
-  assert.deepEqual(refreshedWith, { reason: 'admin-blacklist-update' });
+  assert.deepEqual(refreshedWith, {
+    reason: 'admin-blacklist-update',
+    forceMainReload: true,
+  });
 });
 
 test('blacklist-author shows error when no moderator session is available', async () => {
@@ -117,15 +117,15 @@ test('block-author updates user blocks, reloads videos, and refreshes feeds', as
     },
   };
 
-  const subscriptions = {
-    refreshActiveFeed: async (args) => {
-      events.push(['refreshActiveFeed', args]);
+  const moderationStub = {
+    awaitUserBlockRefresh: async () => {
+      events.push(['awaitUserBlockRefresh']);
     },
   };
 
   const controller = new MoreMenuController({
     userBlocks,
-    subscriptions,
+    moderationService: moderationStub,
     callbacks: {
       getCurrentUserPubkey: () => 'actorhex',
       getCurrentVideo: () => ({ pubkey: 'fallbackhex' }),
@@ -136,11 +136,11 @@ test('block-author updates user blocks, reloads videos, and refreshes feeds', as
       showSuccess: (message) => {
         events.push(['success', message]);
       },
-      loadVideos: async () => {
-        events.push(['loadVideos']);
-      },
       onUserBlocksUpdated: () => {
         events.push(['refreshBlockedList']);
+      },
+      refreshAllVideoGrids: async (args) => {
+        events.push(['refreshAllVideoGrids', args]);
       },
     },
   });
@@ -155,7 +155,100 @@ test('block-author updates user blocks, reloads videos, and refreshes feeds', as
     ['addBlock', 'targethex', 'actorhex'],
     ['success', "Creator blocked. You won't see their videos anymore."],
     ['refreshBlockedList'],
-    ['loadVideos'],
-    ['refreshActiveFeed', { reason: 'user-block-update' }],
+    ['awaitUserBlockRefresh'],
+    [
+      'refreshAllVideoGrids',
+      { reason: 'user-block-update', forceMainReload: true },
+    ],
+  ]);
+});
+
+test('mute-author updates viewer mute list and refreshes feeds', async () => {
+  const events = [];
+  const moderationStub = {
+    addAuthorToViewerMuteList: async (target) => {
+      events.push(['addMute', target]);
+      return { ok: true };
+    },
+    removeAuthorFromViewerMuteList: async () => {
+      throw new Error('unreachable');
+    },
+    isAuthorMutedByViewer: () => false,
+  };
+
+  const controller = new MoreMenuController({
+    moderationService: moderationStub,
+    callbacks: {
+      getCurrentUserPubkey: () => 'viewerhex',
+      getCurrentVideo: () => ({ pubkey: 'fallbackhex' }),
+      showSuccess: (message) => {
+        events.push(['success', message]);
+      },
+      showError: (message) => {
+        events.push(['error', message]);
+      },
+      safeDecodeNpub: () => '',
+      refreshAllVideoGrids: async (args) => {
+        events.push(['refreshAllVideoGrids', args]);
+      },
+    },
+  });
+
+  const targetHex = 'd'.repeat(64);
+
+  await controller.handleMoreMenuAction('mute-author', { author: targetHex });
+
+  assert.deepEqual(events, [
+    ['addMute', targetHex],
+    ['success', 'Creator muted. Their videos will be downranked in your feeds.'],
+    [
+      'refreshAllVideoGrids',
+      { reason: 'viewer-mute-update', forceMainReload: true },
+    ],
+  ]);
+});
+
+test('unmute-author removes creators from viewer mute list', async () => {
+  const events = [];
+  const moderationStub = {
+    addAuthorToViewerMuteList: async () => {
+      throw new Error('unreachable');
+    },
+    removeAuthorFromViewerMuteList: async (target) => {
+      events.push(['removeMute', target]);
+      return { ok: true };
+    },
+    isAuthorMutedByViewer: () => true,
+  };
+
+  const controller = new MoreMenuController({
+    moderationService: moderationStub,
+    callbacks: {
+      getCurrentUserPubkey: () => 'viewerhex',
+      getCurrentVideo: () => ({ pubkey: 'fallbackhex' }),
+      showSuccess: (message) => {
+        events.push(['success', message]);
+      },
+      showError: (message) => {
+        events.push(['error', message]);
+      },
+      safeDecodeNpub: () => '',
+      refreshAllVideoGrids: async (args) => {
+        events.push(['refreshAllVideoGrids', args]);
+      },
+    },
+  });
+
+  const targetHex = 'e'.repeat(64);
+
+  await controller.handleMoreMenuAction('unmute-author', { author: targetHex });
+
+  assert.deepEqual(events, [
+    ['removeMute', targetHex],
+    ['success', 'Creator removed from your mute list.'],
+    [
+      'refreshAllVideoGrids',
+      { reason: 'viewer-mute-update', forceMainReload: true },
+    ],
   ]);
 });

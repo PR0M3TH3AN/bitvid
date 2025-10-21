@@ -1,127 +1,138 @@
 <!-- Disclaimer Modal (wide, matching other modals) -->
 <div
   id="disclaimerModal"
-  class="fixed inset-0 z-50 hidden"
-  style="background: transparent"
+  class="bv-modal hidden items-start justify-center"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="disclaimerModalTitle"
+  aria-describedby="disclaimerModalDescription"
+  data-ds="new"
 >
-  <!-- Dark/blur overlay -->
-  <div
-    class="absolute inset-0 z-10"
-    style="
-      background-color: rgba(0, 0, 0, 0.9);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    "
-  ></div>
+  <div class="bv-modal-backdrop" data-dismiss></div>
 
   <!-- Outer container with wide layout, just like content-appeals-form -->
-  <div
-    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
-  >
-    <!-- The .modal-content, same classes: bg-gray-900, w-full max-w-[90%], etc. -->
-    <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative flex flex-col"
-    >
-      <!-- Sticky top bar, if you want a top heading or 'X' button up here -->
-      <div
-        class="modal-header sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
-      >
-      </div>
-
-      <!-- Main Content -->
-      <div class="modal-body flex-1 overflow-y-auto">
-        <!-- Scrollable disclaimers area -->
-        <div class="space-y-6 text-gray-300">
-          <!-- Example: Insert your disclaimers here -->
-
-          <div class="flex justify-center mb-8">
-            <img
-              src="assets/svg/bitvid-logo-dark-mode.svg"
-              alt="BitVid Logo"
-              class="h-16"
-            />
-          </div>
-          <h2 class="text-2xl font-bold text-white mb-0">Welcome to bitvid</h2>
-          <!-- Warning Alert -->
-          <div
-            class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 mb-6 flex items-start"
+  <div class="bv-modal__panel modal-sheet max-h-modal-shell flex flex-col overflow-hidden" tabindex="-1">
+    <!-- Main Content -->
+    <div class="modal-body flex-1 overflow-y-auto">
+      <div class="mx-auto max-w-3xl space-y-8 text-base text-text">
+        <div class="flex justify-center pt-1">
+          <span
+            class="inline-flex h-2xl items-center text-text bv-logo"
+            role="img"
+            aria-label="bitvid logo"
           >
             <svg
-              class="h-5 w-5 text-yellow-500 mt-0.5 mr-3 flex-shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
+              class="h-full w-auto"
+              viewBox="0 0 318.32 108.98"
+              aria-hidden="true"
+              focusable="false"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
+              <g class="bv-logo__accent">
+                <rect x="7.1" y="7.8" width="5.84" height="5.48" />
+                <rect x="7.1" y="18.78" width="24.02" height="5.48" />
+                <rect x="7.1" y="29.77" width="42.85" height="5.48" />
+                <rect x="7.1" y="40.76" width="61.68" height="5.48" />
+                <rect x="7.1" y="51.75" width="80.88" height="5.48" />
+                <rect x="7.1" y="62.74" width="61.68" height="5.48" />
+                <rect x="7.1" y="73.73" width="42.85" height="5.48" />
+                <rect x="7.1" y="84.72" width="24.02" height="5.48" />
+                <rect x="7.1" y="95.71" width="5.84" height="5.48" />
+              </g>
+              <g class="bv-logo__wordmark">
+                <path d="M121.28 25.08v44.54c0 5.67 2.79 8.54 8.22 8.54h11.57c5.51 0 8.3-2.87 8.3-8.54v-13.09c0-5.67-2.79-8.46-8.3-8.46h-16.6v-5.83h17.72c8.7 0 13.01 4.47 13.01 13.33v15.01c0 8.86-4.31 13.33-13.01 13.33h-13.73c-8.7 0-13.01-4.47-13.01-13.33V25.08h5.83Z" />
+                <path d="M168.53 25.08v6.26h-5.83v-6.26h5.83Zm0 17.56v41.27h-5.83v-41.27h5.83Z" />
+                <path d="M191.36 25.08v17.16h9.02v5.19h-9.02v36.48h-5.83v-36.48h-9.82v-5.19h9.82V25.08h5.83Z" />
+                <path d="M212.88 42.24l16.84 35.68 16.6-35.68h6.07l-19.56 41.67h-6.31l-20.04-41.67h6.39Z" />
+                <path d="M264.05 25.08v6.26h-5.83v-6.26h5.83Zm0 17.16v41.67h-5.83v-41.67h5.83Z" />
+                <path d="M311.21 25.08v45.5c0 8.86-4.31 13.33-13.01 13.33h-13.73c-8.7 0-13.01-4.47-13.01-13.33v-15.01c0-8.86 4.31-13.33 13.01-13.33h17.72v5.83h-16.6c-5.51 0-8.3 2.79-8.3 8.46v13.09c0 5.67 2.79 8.54 8.3 8.54h11.49c5.51 0 8.3-2.87 8.3-8.54V25.08h5.83Z" />
+              </g>
             </svg>
-            <p class="text-yellow-200">
-              This platform is currently in development and only supports Chrome
-              and Firefox-based browsers. Other browsers are not supported at
-              this time. You may encounter bugs or missing features. Give it a
-              sec. Videos might take 10 to 60 seconds to load initially.
-            </p>
-          </div>
-          <p>
+          </span>
+        </div>
+        <header class="space-y-4 text-center">
+          <h2
+            id="disclaimerModalTitle"
+            class="text-4xl font-semibold tracking-tight text-text"
+          >
+            Welcome to bitvid
+          </h2>
+          <p class="mx-auto max-w-2xl text-base leading-relaxed text-text-frosted">
             bitvid is a decentralized video platform where content is shared
             directly between users. We want you to understand a few important
-            points before you continue:
+            points before you continue.
           </p>
+        </header>
+        <div class="modal-alert" role="status">
+          <svg
+            class="modal-alert__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          <p class="text-sm">
+            This platform is currently in development and only supports Chrome
+            and Firefox-based browsers. Other browsers are not supported at
+            this time. You may encounter bugs or missing features. Give it a
+            sec—videos might take 10 to 60 seconds to load initially.
+          </p>
+        </div>
 
-          <div class="space-y-4">
-            <div class="bg-gray-800 rounded-lg p-4">
-              <h3 class="text-white font-semibold mb-2">Early Access Status</h3>
-              <p class="text-gray-400">
-                Currently, video posting is invite-only as we carefully scale
-                our platform. While anyone can watch videos, content creation is
-                limited to approved creators. This helps us maintain quality
-                content during our early stages.
-              </p>
-            </div>
-            <div class="bg-gray-800 rounded-lg p-4">
-              <h3 class="text-white font-semibold mb-2">
-                Content Responsibility & Moderation
-              </h3>
-              <p class="text-gray-400">
-                While we don't host videos directly, we maintain community
-                standards through access control. Users who violate our
-                guidelines may be blocked from accessing the platform. All
-                content must follow local laws and platform guidelines.
-              </p>
-            </div>
-            <div class="bg-gray-800 rounded-lg p-4">
-              <h3 class="text-white font-semibold mb-2">Platform Status</h3>
-              <p class="text-gray-400">
-                bitvid is a work in progress. Features may change or break, and
-                security improvements are ongoing. Your feedback and patience
-                help us build a better platform.
-              </p>
-            </div>
-            <div class="bg-gray-800 rounded-lg p-4">
-              <h3 class="text-white font-semibold mb-2">Get Involved</h3>
-              <p class="text-gray-400">
-                Are you a developer? We'd love your help! Visit our GitHub
-                repository to contribute to building the future of decentralized
-                video sharing.
-              </p>
-            </div>
-          </div>
+        <div id="disclaimerModalDescription" class="space-y-4">
+          <article class="modal-tile space-y-2">
+            <h3>Early Access Status</h3>
+            <p>
+              Currently, video posting is invite-only as we carefully scale
+              our platform. While anyone can watch videos, content creation is
+              limited to approved creators. This helps us maintain quality
+              content during our early stages.
+            </p>
+          </article>
+          <article class="modal-tile space-y-2">
+            <h3>Content Responsibility &amp; Moderation</h3>
+            <p>
+              While we don't host videos directly, we maintain community
+              standards through access control. Users who violate our
+              guidelines may be blocked from accessing the platform. All
+              content must follow local laws and platform guidelines.
+            </p>
+          </article>
+          <article class="modal-tile space-y-2">
+            <h3>Platform Status</h3>
+            <p>
+              bitvid is a work in progress. Features may change or break, and
+              security improvements are ongoing. Your feedback and patience
+              help us build a better platform.
+            </p>
+          </article>
+          <article class="modal-tile space-y-2">
+            <h3>Get Involved</h3>
+            <p>
+              Are you a developer? We'd love your help! Visit our GitHub
+              repository to contribute to building the future of decentralized
+              video sharing.
+            </p>
+          </article>
         </div>
       </div>
+    </div>
 
-      <!-- Button at bottom -->
-      <div class="modal-footer">
-        <button
-          id="acceptDisclaimer"
-          class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black transition-colors duration-200"
-        >
-          I Understand
-        </button>
-      </div>
+    <!-- Button at bottom -->
+    <div class="modal-footer pt-6 pb-16 md:pb-12">
+      <button
+        id="acceptDisclaimer"
+        class="modal-primary"
+        type="button"
+      >
+        I Understand
+      </button>
     </div>
   </div>
 </div>

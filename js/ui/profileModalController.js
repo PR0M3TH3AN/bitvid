@@ -5,7 +5,13 @@ import {
   BITVID_WEBSITE_URL as CONFIG_BITVID_WEBSITE_URL,
   MAX_WALLET_DEFAULT_ZAP as CONFIG_MAX_WALLET_DEFAULT_ZAP,
 } from "../config.js";
-import { getAuthProvider } from "../services/authProviders/index.js";
+import { normalizeDesignSystemContext } from "../designSystem.js";
+import {
+  getTrustedMuteHideThreshold,
+  getTrustedSpamHideThreshold,
+  RUNTIME_FLAGS,
+} from "../constants.js";
+import { devLogger, userLogger } from "../utils/logger.js";
 
 const noop = () => {};
 
@@ -16,32 +22,6 @@ const DEFAULT_BITVID_WEBSITE_URL = "https://bitvid.network/";
 const NWC_URI_SCHEME = "nostr+walletconnect://";
 const DEFAULT_MAX_WALLET_DEFAULT_ZAP = 100000000;
 
-function resolveAuthTypeLabel(authType) {
-  if (typeof authType !== "string") {
-    return "Saved profile";
-  }
-
-  const trimmed = authType.trim();
-  if (!trimmed) {
-    return "Saved profile";
-  }
-
-  const provider = getAuthProvider(trimmed);
-  if (provider && typeof provider.label === "string" && provider.label) {
-    return provider.label;
-  }
-
-  if (trimmed === "nsec") {
-    return "Direct key";
-  }
-
-  if (trimmed === "nip07") {
-    return "Saved profile";
-  }
-
-  return `Connected via ${trimmed}`;
-}
-
 const DEFAULT_INTERNAL_NWC_SETTINGS = Object.freeze({
   nwcUri: "",
   defaultZap: null,
@@ -50,6 +30,33 @@ const DEFAULT_INTERNAL_NWC_SETTINGS = Object.freeze({
 
 function createInternalDefaultNwcSettings() {
   return { ...DEFAULT_INTERNAL_NWC_SETTINGS };
+}
+
+const DEFAULT_INTERNAL_MODERATION_SETTINGS = Object.freeze({
+  blurThreshold: 3,
+  autoplayBlockThreshold: 2,
+  trustedMuteHideThreshold: getTrustedMuteHideThreshold(),
+  trustedSpamHideThreshold: getTrustedSpamHideThreshold(),
+});
+
+function createInternalDefaultModerationSettings() {
+  return { ...DEFAULT_INTERNAL_MODERATION_SETTINGS };
+}
+
+function ensureInternalModerationSettings(internalState) {
+  if (!internalState || typeof internalState !== "object") {
+    return createInternalDefaultModerationSettings();
+  }
+
+  if (
+    !internalState.moderationSettings ||
+    typeof internalState.moderationSettings !== "object" ||
+    internalState.moderationSettings === null
+  ) {
+    internalState.moderationSettings = createInternalDefaultModerationSettings();
+  }
+
+  return internalState.moderationSettings;
 }
 
 function ensureInternalWalletSettings(internalState) {
@@ -113,6 +120,13 @@ const SERVICE_CONTRACT = [
     description:
       "Utility used for shortening long identifiers in the modal without losing context.",
     fallback: () => (value) => value,
+  },
+  {
+    key: "formatShortNpub",
+    type: "function",
+    description:
+      "Formats npub strings for display using the canonical short representation (npubXXXX…XXXX).",
+    fallback: () => (value) => (typeof value === "string" ? value : ""),
   },
   {
     key: "getProfileCacheEntry",
@@ -275,6 +289,79 @@ const SERVICE_CONTRACT = [
 
       service.onIdentityChanged = () => {
         internalState.walletSettings = createInternalDefaultNwcSettings();
+      };
+
+      return service;
+    },
+  },
+  {
+    key: "moderationSettings",
+    type: "object",
+    description:
+      "Service that manages Safety & Moderation threshold overrides for the active profile.",
+    fallback: ({ internalState }) => {
+      const ensure = () => ensureInternalModerationSettings(internalState);
+      const sanitize = (value, fallback) => {
+        if (value === null || value === undefined) {
+          return fallback;
+        }
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+          return fallback;
+        }
+        return Math.max(0, Math.floor(numeric));
+      };
+
+      const service = {};
+
+      service.getDefaultModerationSettings = () =>
+        createInternalDefaultModerationSettings();
+
+      service.getActiveModerationSettings = () => {
+        const current = ensure();
+        const defaults = service.getDefaultModerationSettings();
+        return {
+          blurThreshold: sanitize(current.blurThreshold, defaults.blurThreshold),
+          autoplayBlockThreshold: sanitize(
+            current.autoplayBlockThreshold,
+            defaults.autoplayBlockThreshold,
+          ),
+        };
+      };
+
+      service.updateModerationSettings = (partial = {}) => {
+        const defaults = service.getDefaultModerationSettings();
+        const current = ensure();
+        const next = { ...current };
+
+        if (Object.prototype.hasOwnProperty.call(partial, "blurThreshold")) {
+          const value = partial.blurThreshold;
+          next.blurThreshold =
+            value === null
+              ? defaults.blurThreshold
+              : sanitize(value, defaults.blurThreshold);
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(
+            partial,
+            "autoplayBlockThreshold",
+          )
+        ) {
+          const value = partial.autoplayBlockThreshold;
+          next.autoplayBlockThreshold =
+            value === null
+              ? defaults.autoplayBlockThreshold
+              : sanitize(value, defaults.autoplayBlockThreshold);
+        }
+
+        internalState.moderationSettings = next;
+        return service.getActiveModerationSettings();
+      };
+
+      service.resetModerationSettings = () => {
+        internalState.moderationSettings = createInternalDefaultModerationSettings();
+        return service.getActiveModerationSettings();
       };
 
       return service;
@@ -555,6 +642,7 @@ export class ProfileModalController {
       services = {},
       state = {},
       constants: providedConstants = {},
+      designSystem = null,
     } = options;
 
     this.modalContainer = modalContainer;
@@ -564,6 +652,7 @@ export class ProfileModalController {
     this.showError = showError;
     this.showSuccess = showSuccess;
     this.showStatus = showStatus;
+    this.designSystem = normalizeDesignSystemContext(designSystem);
 
     const resolvedMaxWalletDefaultZap =
       typeof providedConstants.MAX_WALLET_DEFAULT_ZAP === "number" &&
@@ -604,7 +693,7 @@ export class ProfileModalController {
       return fromConfig || DEFAULT_ADMIN_DM_IMAGE_URL;
     })();
 
-    const resolvedBitvidWebsiteUrl = (() => {
+    const resolvedbitvidWebsiteUrl = (() => {
       const fromOptions =
         typeof providedConstants.BITVID_WEBSITE_URL === "string"
           ? providedConstants.BITVID_WEBSITE_URL.trim()
@@ -622,7 +711,7 @@ export class ProfileModalController {
     this.maxWalletDefaultZap = resolvedMaxWalletDefaultZap;
     this.adminSuperNpub = resolvedAdminSuperNpub;
     this.adminDmImageUrl = resolvedAdminDmImageUrl;
-    this.bitvidWebsiteUrl = resolvedBitvidWebsiteUrl;
+    this.bitvidWebsiteUrl = resolvedbitvidWebsiteUrl;
 
     this.internalState = {
       savedProfiles: [],
@@ -631,6 +720,7 @@ export class ProfileModalController {
       activePane: "account",
       walletBusy: false,
       walletSettings: createInternalDefaultNwcSettings(),
+      moderationSettings: createInternalDefaultModerationSettings(),
     };
 
     this.services = buildServicesContract(services, this.internalState);
@@ -640,6 +730,9 @@ export class ProfileModalController {
     this.safeEncodeNpub = this.services.safeEncodeNpub;
     this.safeDecodeNpub = this.services.safeDecodeNpub;
     this.truncateMiddle = this.services.truncateMiddle;
+    this.formatShortNpub = this.services.formatShortNpub;
+    this.moderationSettingsDefaults = createInternalDefaultModerationSettings();
+    this.currentModerationSettings = createInternalDefaultModerationSettings();
     this.sendAdminListNotificationService =
       typeof this.services.sendAdminListNotification === "function"
         ? this.services.sendAdminListNotification
@@ -679,9 +772,18 @@ export class ProfileModalController {
         callbacks.onWalletDisconnectRequest || callbacks.onWalletDisconnect || noop,
       onAdminMutation: callbacks.onAdminMutation || noop,
       onAdminNotifyError: callbacks.onAdminNotifyError || noop,
+      onModerationSettingsChange:
+        callbacks.onModerationSettingsChange || noop,
     };
 
     this.profileModal = null;
+    this.profileModalRoot = null;
+    this.profileModalPanel = null;
+    this.profileModalBackdrop = null;
+    this.profileModalLayout = null;
+    this.profileModalMenu = null;
+    this.profileModalPaneWrapper = null;
+    this.profileModalBackButton = null;
     this.profileAvatar = null;
     this.profileName = null;
     this.profileNpub = null;
@@ -721,6 +823,8 @@ export class ProfileModalController {
     this.profileRestoreRelaysBtn = null;
     this.blockList = null;
     this.blockListEmpty = null;
+    this.blockListStatus = null;
+    this.blockListLoadingState = "idle";
     this.blockInput = null;
     this.addBlockedButton = null;
     this.profileBlockedList = null;
@@ -734,6 +838,16 @@ export class ProfileModalController {
     this.walletDisconnectButton = null;
     this.walletStatusText = null;
     this.profileWalletStatusText = null;
+    this.moderationSettingsCard = null;
+    this.moderationBlurInput = null;
+    this.moderationAutoplayInput = null;
+    this.moderationMuteHideInput = null;
+    this.moderationSpamHideInput = null;
+    this.moderationSaveButton = null;
+    this.moderationResetButton = null;
+    this.moderationStatusText = null;
+    this.moderationHideControlsGroup = null;
+    this.moderationHideControlElements = [];
     this.moderatorSection = null;
     this.moderatorEmpty = null;
     this.adminModeratorList = null;
@@ -770,8 +884,14 @@ export class ProfileModalController {
     this.boundKeydown = null;
     this.boundFocusIn = null;
     this.focusableElements = [];
+    this.focusTrapContainer = null;
     this.profileSwitcherSelectionPubkey = null;
     this.previouslyFocusedElement = null;
+    this.largeLayoutQuery = null;
+    this.largeLayoutQueryListener = null;
+    this.isLargeLayoutActiveFlag = false;
+    this.mobileViewState = "menu";
+    this.lastMobileViewState = "menu";
     this.setActivePane(this.getActivePane());
     this.setWalletPaneBusy(this.isWalletBusy());
     this.adminEmptyMessages = new Map();
@@ -798,19 +918,40 @@ export class ProfileModalController {
     }
 
     this.modalContainer.appendChild(template.content);
+    this.profileModalRoot = modalRoot;
     this.profileModal = modalRoot;
+    this.profileModalPanel =
+      modalRoot.querySelector(".bv-modal__panel") || modalRoot;
+    this.profileModalBackdrop =
+      modalRoot.querySelector(".bv-modal-backdrop") || null;
 
     this.cacheDomReferences();
+    this.setupLayoutBreakpointObserver();
+    this.applyModalStackingOverrides();
     this.registerEventListeners();
-    this.updateFocusTrap();
-    this.callbacks.onPaneShown(this.getActivePane(), { controller: this });
+    this.refreshModerationSettingsUi();
+    const preserveMenu = this.isMobileLayoutActive();
+    this.selectPane(this.getActivePane(), { keepMenuView: preserveMenu });
 
     return true;
   }
 
   cacheDomReferences() {
-    this.profileModal = document.getElementById("profileModal") || null;
+    this.profileModalRoot = document.getElementById("profileModal") || null;
+    this.profileModalPanel =
+      this.profileModalRoot?.querySelector(".bv-modal__panel") || null;
+    this.profileModalBackdrop =
+      this.profileModalRoot?.querySelector(".bv-modal-backdrop") || null;
+    this.profileModalLayout =
+      this.profileModalRoot?.querySelector("[data-profile-layout]") || null;
+    this.profileModalMenu =
+      this.profileModalRoot?.querySelector("[data-profile-mobile-menu]") || null;
+    this.profileModalPaneWrapper =
+      this.profileModalRoot?.querySelector("[data-profile-mobile-pane]") || null;
+    this.profileModal = this.profileModalRoot;
     this.closeButton = document.getElementById("closeProfileModal") || null;
+    this.profileModalBackButton =
+      document.getElementById("profileModalBack") || null;
     this.logoutButton = document.getElementById("profileLogoutBtn") || null;
     this.channelLink = document.getElementById("profileChannelLink") || null;
     this.addAccountButton =
@@ -879,7 +1020,35 @@ export class ProfileModalController {
     this.profileBlockedEmpty = this.blockListEmpty;
     this.profileBlockedInput = this.blockInput;
     this.profileAddBlockedBtn = this.addBlockedButton;
+    this.blockListStatus =
+      this.panes.blocked?.querySelector("[data-role=\"blocked-list-status\"]") ||
+      null;
     this.profileWalletStatusText = this.walletStatusText;
+    this.moderationSettingsCard =
+      document.getElementById("profileModerationSettings") || null;
+    this.moderationBlurInput =
+      document.getElementById("profileModerationBlurThreshold") || null;
+    this.moderationAutoplayInput =
+      document.getElementById("profileModerationAutoplayThreshold") || null;
+    this.moderationMuteHideInput =
+      document.getElementById("profileModerationMuteHideThreshold") || null;
+    this.moderationSpamHideInput =
+      document.getElementById("profileModerationSpamHideThreshold") || null;
+    this.moderationSaveButton =
+      document.getElementById("profileModerationSave") || null;
+    this.moderationResetButton =
+      document.getElementById("profileModerationReset") || null;
+    this.moderationStatusText =
+      document.getElementById("profileModerationStatus") || null;
+    this.moderationHideControlsGroup =
+      this.moderationSettingsCard?.querySelector(
+        "[data-role=\"trusted-hide-controls\"]",
+      ) || null;
+    this.moderationHideControlElements = Array.from(
+      this.moderationSettingsCard?.querySelectorAll(
+        "[data-role=\"trusted-hide-control\"]",
+      ) || [],
+    );
 
     this.moderatorSection =
       document.getElementById("adminModeratorsSection") || null;
@@ -950,7 +1119,7 @@ export class ProfileModalController {
     try {
       this.profileHistoryRenderer = this.createWatchHistoryRenderer(config);
     } catch (error) {
-      console.error(
+      userLogger.error(
         "[profileModal] Failed to create watch history renderer:",
         error,
       );
@@ -999,6 +1168,12 @@ export class ProfileModalController {
     if (this.closeButton instanceof HTMLElement) {
       this.closeButton.addEventListener("click", () => {
         this.hide();
+      });
+    }
+
+    if (this.profileModalBackButton instanceof HTMLElement) {
+      this.profileModalBackButton.addEventListener("click", () => {
+        this.setMobileView("menu", { focusMenu: true });
       });
     }
 
@@ -1088,6 +1263,42 @@ export class ProfileModalController {
     if (this.walletDisconnectButton instanceof HTMLElement) {
       this.walletDisconnectButton.addEventListener("click", () => {
         void this.handleWalletDisconnect();
+      });
+    }
+
+    if (this.moderationBlurInput instanceof HTMLElement) {
+      this.moderationBlurInput.addEventListener("input", () => {
+        this.applyModerationSettingsControlState();
+      });
+    }
+
+    if (this.moderationAutoplayInput instanceof HTMLElement) {
+      this.moderationAutoplayInput.addEventListener("input", () => {
+        this.applyModerationSettingsControlState();
+      });
+    }
+
+    if (this.moderationMuteHideInput instanceof HTMLElement) {
+      this.moderationMuteHideInput.addEventListener("input", () => {
+        this.applyModerationSettingsControlState();
+      });
+    }
+
+    if (this.moderationSpamHideInput instanceof HTMLElement) {
+      this.moderationSpamHideInput.addEventListener("input", () => {
+        this.applyModerationSettingsControlState();
+      });
+    }
+
+    if (this.moderationSaveButton instanceof HTMLElement) {
+      this.moderationSaveButton.addEventListener("click", () => {
+        void this.handleModerationSettingsSave();
+      });
+    }
+
+    if (this.moderationResetButton instanceof HTMLElement) {
+      this.moderationResetButton.addEventListener("click", () => {
+        void this.handleModerationSettingsReset();
       });
     }
 
@@ -1203,8 +1414,12 @@ export class ProfileModalController {
     const activeMeta = activeEntry ? resolveMeta(activeEntry) : null;
     const hasActiveProfile = Boolean(activeEntry && activeMeta);
     const truncate = this.truncateMiddle || ((value) => value);
+    const formatNpub =
+      typeof this.formatShortNpub === "function"
+        ? (value) => this.formatShortNpub(value)
+        : (value) => (typeof value === "string" ? value : "");
     const activeNameFallback = activeMeta?.npub
-      ? truncate(activeMeta.npub, 32)
+      ? formatNpub(activeMeta.npub) || "Saved profile"
       : "Saved profile";
     const activeDisplayName = hasActiveProfile
       ? activeMeta?.name?.trim() || activeNameFallback
@@ -1230,7 +1445,8 @@ export class ProfileModalController {
 
     if (this.profileNpub) {
       if (hasActiveProfile && activeMeta?.npub) {
-        this.profileNpub.textContent = truncate(activeMeta.npub, 48);
+        const displayNpub = formatNpub(activeMeta.npub);
+        this.profileNpub.textContent = displayNpub || "npub unavailable";
       } else if (hasActiveProfile) {
         this.profileNpub.textContent = "npub unavailable";
       } else {
@@ -1285,7 +1501,7 @@ export class ProfileModalController {
       if (!entriesToRender.length) {
         listEl.setAttribute("data-profile-switcher-empty", "true");
         const helper = document.createElement("p");
-        helper.className = "profile-switcher__empty text-sm text-gray-400";
+        helper.className = "text-sm text-muted";
         helper.textContent = "No other profiles saved yet.";
         helper.setAttribute("role", "note");
         listEl.appendChild(helper);
@@ -1296,7 +1512,8 @@ export class ProfileModalController {
           const meta = resolveMeta(entry);
           const button = document.createElement("button");
           button.type = "button";
-          button.classList.add("profile-card");
+          button.className =
+            "card focus-ring flex w-full items-center gap-4 p-4 text-left transition";
           button.dataset.pubkey = entry.pubkey;
           if (meta.npub) {
             button.dataset.npub = meta.npub;
@@ -1309,48 +1526,56 @@ export class ProfileModalController {
           const isSelected =
             normalizedSelection && normalizedPubkey === normalizedSelection;
           if (isSelected) {
-            button.classList.add("profile-card--active");
+            button.dataset.state = "active";
             button.setAttribute("aria-pressed", "true");
           } else {
+            delete button.dataset.state;
             button.setAttribute("aria-pressed", "false");
           }
 
           const avatarSpan = document.createElement("span");
-          avatarSpan.className = "profile-card__avatar";
+          avatarSpan.className =
+            "flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-overlay-strong bg-overlay-panel-soft";
           const avatarImg = document.createElement("img");
+          avatarImg.className = "h-full w-full object-cover";
           avatarImg.src = meta.picture || FALLBACK_PROFILE_AVATAR;
           const cardDisplayName =
             meta.name?.trim() ||
-            (meta.npub ? truncate(meta.npub, 32) : "Saved profile");
+            (meta.npub ? formatNpub(meta.npub) || "Saved profile" : "Saved profile");
           avatarImg.alt = `${cardDisplayName} avatar`;
           avatarSpan.appendChild(avatarImg);
 
-          const metaSpan = document.createElement("span");
-          metaSpan.className = "profile-card__meta";
+          const metaSpan = document.createElement("div");
+          metaSpan.className = "flex min-w-0 flex-1 flex-col gap-2";
 
-          const topLine = document.createElement("span");
-          topLine.className = "profile-card__topline";
+          const topLine = document.createElement("div");
+          topLine.className = "flex flex-wrap items-center gap-3";
 
           const label = document.createElement("span");
-          label.className = "profile-card__label";
-          label.textContent = resolveAuthTypeLabel(entry.authType);
+          label.className =
+            "text-3xs font-semibold uppercase tracking-extra-wide text-status-info";
+          label.textContent =
+            entry.authType === "nsec" ? "Direct key" : "Saved profile";
 
           const action = document.createElement("span");
-          action.className = "profile-card__action";
+          action.className = "text-xs font-medium text-muted";
           action.setAttribute("aria-hidden", "true");
           action.textContent = isSelected ? "Selected" : "Switch";
 
           topLine.append(label, action);
 
           const nameSpan = document.createElement("span");
-          nameSpan.className = "profile-card__name";
+          nameSpan.className = "truncate text-sm font-semibold text-primary";
           nameSpan.textContent = cardDisplayName;
 
           const npubSpan = document.createElement("span");
-          npubSpan.className = "profile-card__npub";
-          npubSpan.textContent = meta.npub
-            ? truncate(meta.npub, 48)
-            : "npub unavailable";
+          npubSpan.className = "break-all font-mono text-xs text-muted";
+          if (meta.npub) {
+            const displayNpub = formatNpub(meta.npub);
+            npubSpan.textContent = displayNpub || "npub unavailable";
+          } else {
+            npubSpan.textContent = "npub unavailable";
+          }
 
           metaSpan.append(topLine, nameSpan, npubSpan);
           button.append(avatarSpan, metaSpan);
@@ -1376,7 +1601,7 @@ export class ProfileModalController {
           try {
             await this.switchProfile(entry.pubkey, { entry });
           } catch (error) {
-            console.error("Failed to switch profile:", error);
+            userLogger.error("Failed to switch profile:", error);
           } finally {
             button.dataset.loading = "false";
             button.setAttribute("aria-busy", "false");
@@ -1405,7 +1630,424 @@ export class ProfileModalController {
     }
   }
 
-  selectPane(name = "account") {
+  createCompactProfileSummary({
+    displayName,
+    displayNpub,
+    avatarSrc,
+    size = "sm",
+  } = {}) {
+    const sizeClassMap = {
+      xs: "h-8 w-8",
+      sm: "h-10 w-10",
+      md: "h-12 w-12",
+    };
+    const avatarSize = sizeClassMap[size] || sizeClassMap.sm;
+    const safeName = displayName?.trim() || "Unknown profile";
+    const safeNpub = displayNpub?.trim() || "npub unavailable";
+    const avatarUrl = avatarSrc || FALLBACK_PROFILE_AVATAR;
+
+    const container = document.createElement("div");
+    container.className = "min-w-0 flex flex-1 items-center gap-2";
+
+    const avatarWrapper = document.createElement("span");
+    avatarWrapper.className = `flex ${avatarSize} flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-overlay-strong bg-overlay-panel-soft`;
+
+    const avatarImg = document.createElement("img");
+    avatarImg.className = "h-full w-full object-cover";
+    avatarImg.src = avatarUrl;
+    avatarImg.alt = `${safeName} avatar`;
+    avatarWrapper.appendChild(avatarImg);
+
+    const textStack = document.createElement("div");
+    textStack.className = "min-w-0 flex flex-col";
+
+    const nameEl = document.createElement("p");
+    nameEl.className = "truncate text-xs font-semibold text-primary";
+    nameEl.textContent = safeName;
+
+    const npubEl = document.createElement("p");
+    npubEl.className = "break-all font-mono text-2xs text-muted";
+    npubEl.textContent = safeNpub;
+
+    textStack.append(nameEl, npubEl);
+
+    container.append(avatarWrapper, textStack);
+
+    return container;
+  }
+
+  createViewChannelButton({ targetNpub, displayNpub } = {}) {
+    const normalizedTarget =
+      typeof targetNpub === "string" && targetNpub.trim()
+        ? targetNpub.trim()
+        : "";
+    if (!normalizedTarget) {
+      return null;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-ghost focus-ring text-xs";
+    button.textContent = "View channel";
+    button.dataset.targetNpub = normalizedTarget;
+
+    if (displayNpub && typeof displayNpub === "string") {
+      button.setAttribute(
+        "aria-label",
+        `View channel ${displayNpub.trim() || normalizedTarget}`,
+      );
+      button.title = `View channel ${displayNpub.trim() || normalizedTarget}`;
+    }
+
+    button.addEventListener("click", () => {
+      this.callbacks.onChannelLink(button, this);
+    });
+
+    return button;
+  }
+
+  createCopyNpubButton({ targetNpub, displayNpub } = {}) {
+    const normalizedTarget =
+      typeof targetNpub === "string" && targetNpub.trim()
+        ? targetNpub.trim()
+        : "";
+    if (!normalizedTarget) {
+      return null;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-ghost focus-ring text-xs";
+    button.textContent = "Copy npub";
+
+    if (displayNpub && typeof displayNpub === "string") {
+      button.setAttribute(
+        "aria-label",
+        `Copy ${displayNpub.trim() || normalizedTarget}`,
+      );
+      button.title = `Copy ${displayNpub.trim() || normalizedTarget}`;
+    }
+
+    const handleCopy = async () => {
+      if (button.dataset.state === "loading") {
+        return;
+      }
+
+      button.dataset.state = "loading";
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+
+      try {
+        await this.copyNpubToClipboard(normalizedTarget, { displayNpub });
+      } finally {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        delete button.dataset.state;
+      }
+    };
+
+    button.addEventListener("click", () => {
+      void handleCopy();
+    });
+
+    return button;
+  }
+
+  createRemoveButton({
+    label = "Remove",
+    confirmMessage,
+    confirmValue,
+    onRemove,
+  } = {}) {
+    if (typeof onRemove !== "function") {
+      return null;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-ghost focus-ring text-xs profile-modal__remove-button";
+    button.dataset.variant = "critical";
+    button.dataset.role = "remove";
+    button.textContent = label;
+
+    const handleRemove = async () => {
+      if (confirmMessage) {
+        const replacement =
+          typeof confirmValue === "string" && confirmValue.trim()
+            ? confirmValue.trim()
+            : "this entry";
+        const prompt = confirmMessage.replace("{npub}", replacement);
+        if (!window.confirm(prompt)) {
+          return;
+        }
+      }
+
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+
+      try {
+        await onRemove(button);
+      } catch (error) {
+        userLogger.error("Failed to remove entry:", error);
+      } finally {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    };
+
+    button.addEventListener("click", () => {
+      void handleRemove();
+    });
+
+    return button;
+  }
+
+  async copyNpubToClipboard(npub, { displayNpub } = {}) {
+    const normalized =
+      typeof npub === "string" && npub.trim() ? npub.trim() : "";
+    if (!normalized) {
+      this.showError("Unable to copy npub. Invalid value provided.");
+      return { copied: false, reason: "invalid" };
+    }
+
+    const clipboard = (() => {
+      if (
+        this.services?.clipboard &&
+        typeof this.services.clipboard.writeText === "function"
+      ) {
+        return this.services.clipboard;
+      }
+      if (
+        typeof navigator !== "undefined" &&
+        navigator?.clipboard &&
+        typeof navigator.clipboard.writeText === "function"
+      ) {
+        return navigator.clipboard;
+      }
+      return null;
+    })();
+
+    if (!clipboard) {
+      this.showError("Copy to clipboard is not supported in this browser.");
+      return { copied: false, reason: "unsupported" };
+    }
+
+    try {
+      await clipboard.writeText(normalized);
+      this.showSuccess("npub copied to clipboard!");
+      return { copied: true };
+    } catch (error) {
+      userLogger.error("Failed to copy npub:", error);
+      this.showError("Failed to copy npub. Please try again.");
+      return { copied: false, error };
+    }
+  }
+
+  setupLayoutBreakpointObserver() {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      this.largeLayoutQuery = null;
+      this.largeLayoutQueryListener = null;
+      this.isLargeLayoutActiveFlag = false;
+      return;
+    }
+
+    if (this.largeLayoutQuery && this.largeLayoutQueryListener) {
+      this.teardownLayoutBreakpointObserver();
+    }
+
+    try {
+      const query = window.matchMedia("(min-width: 1024px)");
+      const handler = (event) => {
+        const matches =
+          typeof event?.matches === "boolean" ? event.matches : query.matches;
+        this.handleLayoutBreakpointChange(matches);
+      };
+      this.largeLayoutQuery = query;
+      this.largeLayoutQueryListener = handler;
+
+      if (typeof query.addEventListener === "function") {
+        query.addEventListener("change", handler);
+      } else if (typeof query.addListener === "function") {
+        query.addListener(handler);
+      }
+
+      this.handleLayoutBreakpointChange(query.matches);
+    } catch (error) {
+      this.largeLayoutQuery = null;
+      this.largeLayoutQueryListener = null;
+      devLogger.warn(
+        "[profileModal] Failed to initialize responsive breakpoint observer:",
+        error,
+      );
+      this.handleLayoutBreakpointChange(false);
+    }
+  }
+
+  teardownLayoutBreakpointObserver() {
+    const query = this.largeLayoutQuery;
+    const handler = this.largeLayoutQueryListener;
+    if (query && handler) {
+      if (typeof query.removeEventListener === "function") {
+        query.removeEventListener("change", handler);
+      } else if (typeof query.removeListener === "function") {
+        query.removeListener(handler);
+      }
+    }
+    this.largeLayoutQuery = null;
+    this.largeLayoutQueryListener = null;
+  }
+
+  handleLayoutBreakpointChange(matches) {
+    const isLarge = Boolean(matches);
+    this.isLargeLayoutActiveFlag = isLarge;
+    if (isLarge) {
+      this.setMobileView("pane", { skipFocusTrap: false });
+      return;
+    }
+
+    const targetView = this.lastMobileViewState || this.mobileViewState || "menu";
+    this.setMobileView(targetView, { skipFocusTrap: false });
+  }
+
+  isLargeLayoutActive() {
+    return Boolean(this.isLargeLayoutActiveFlag);
+  }
+
+  isMobileLayoutActive() {
+    return !this.isLargeLayoutActive();
+  }
+
+  focusActiveNavButton() {
+    const active = this.getActivePane();
+    const candidates = [];
+    if (active && this.navButtons[active] instanceof HTMLElement) {
+      candidates.push(this.navButtons[active]);
+    }
+    Object.values(this.navButtons).forEach((button) => {
+      if (
+        button instanceof HTMLElement &&
+        !candidates.includes(button) &&
+        !button.classList.contains("hidden")
+      ) {
+        candidates.push(button);
+      }
+    });
+
+    const target = candidates.find((button) => button instanceof HTMLElement);
+    if (!target) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      try {
+        target.focus();
+      } catch (error) {
+        devLogger.warn(
+          "[profileModal] Failed to focus active navigation button:",
+          error,
+        );
+      }
+    });
+  }
+
+  setMobileView(view = "menu", options = {}) {
+    const normalizedView = view === "pane" ? "pane" : "menu";
+    const settings =
+      options && typeof options === "object" ? options : { skipFocusTrap: false };
+    const skipFocusTrap = Boolean(settings.skipFocusTrap);
+    const focusMenu = Boolean(settings.focusMenu);
+
+    const layoutElement =
+      this.profileModalLayout instanceof HTMLElement
+        ? this.profileModalLayout
+        : null;
+    const paneWrapper =
+      this.profileModalPaneWrapper instanceof HTMLElement
+        ? this.profileModalPaneWrapper
+        : null;
+    const menuWrapper =
+      this.profileModalMenu instanceof HTMLElement
+        ? this.profileModalMenu
+        : null;
+    const panelElement =
+      this.profileModalPanel instanceof HTMLElement
+        ? this.profileModalPanel
+        : null;
+    const rootElement =
+      this.profileModalRoot instanceof HTMLElement ? this.profileModalRoot : null;
+    const backButton =
+      this.profileModalBackButton instanceof HTMLElement
+        ? this.profileModalBackButton
+        : null;
+
+    const isLarge = this.isLargeLayoutActive();
+    this.mobileViewState = normalizedView;
+    if (!isLarge) {
+      this.lastMobileViewState = normalizedView;
+    }
+
+    if (layoutElement) {
+      layoutElement.dataset.mobileView = normalizedView;
+    }
+    if (panelElement) {
+      panelElement.dataset.mobileView = normalizedView;
+    }
+    if (rootElement) {
+      rootElement.dataset.mobileView = normalizedView;
+    }
+
+    const menuHidden = !isLarge && normalizedView === "pane";
+    const paneHidden = !isLarge && normalizedView === "menu";
+
+    if (menuWrapper) {
+      menuWrapper.setAttribute("aria-hidden", menuHidden ? "true" : "false");
+      if (menuHidden) {
+        menuWrapper.classList.add("hidden");
+        menuWrapper.setAttribute("hidden", "");
+      } else {
+        menuWrapper.classList.remove("hidden");
+        menuWrapper.removeAttribute("hidden");
+      }
+    }
+
+    if (paneWrapper) {
+      paneWrapper.setAttribute("aria-hidden", paneHidden ? "true" : "false");
+      if (paneHidden) {
+        paneWrapper.classList.add("hidden");
+        paneWrapper.setAttribute("hidden", "");
+      } else {
+        paneWrapper.classList.remove("hidden");
+        paneWrapper.removeAttribute("hidden");
+      }
+    }
+
+    if (backButton) {
+      if (isLarge || normalizedView === "menu") {
+        backButton.classList.add("hidden");
+        backButton.setAttribute("aria-hidden", "true");
+      } else {
+        backButton.classList.remove("hidden");
+        backButton.setAttribute("aria-hidden", "false");
+      }
+    }
+
+    if (!skipFocusTrap) {
+      this.updateFocusTrap();
+    }
+
+    if (focusMenu && normalizedView === "menu") {
+      this.focusActiveNavButton();
+    }
+
+    return normalizedView;
+  }
+
+  selectPane(name = "account", options = {}) {
+    const { keepMenuView = false } =
+      options && typeof options === "object" ? options : {};
     const normalized = typeof name === "string" ? name.toLowerCase() : "account";
     const previous = this.getActivePane();
     const availableKeys = Object.keys(this.panes).filter((key) => {
@@ -1431,7 +2073,7 @@ export class ProfileModalController {
       try {
         this.profileHistoryRenderer?.pause();
       } catch (error) {
-        console.warn("[profileModal] Failed to pause history renderer:", error);
+        userLogger.warn("[profileModal] Failed to pause history renderer:", error);
       }
     }
 
@@ -1450,13 +2092,17 @@ export class ProfileModalController {
       }
       const isActive = key === target;
       button.setAttribute("aria-selected", isActive ? "true" : "false");
-      button.classList.toggle("bg-gray-800", isActive);
-      button.classList.toggle("text-white", isActive);
-      button.classList.toggle("text-gray-400", !isActive);
+      if (isActive) {
+        button.dataset.state = "active";
+      } else {
+        delete button.dataset.state;
+      }
     });
 
     this.setActivePane(target);
-    this.updateFocusTrap();
+    const isMobile = this.isMobileLayoutActive();
+    const shouldStayInMenu = keepMenuView && isMobile;
+    this.setMobileView(shouldStayInMenu ? "menu" : "pane");
 
     if (target === "history") {
       void this.populateProfileWatchHistory();
@@ -1509,7 +2155,7 @@ export class ProfileModalController {
     if (!relays.length) {
       const emptyState = document.createElement("li");
       emptyState.className =
-        "rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400";
+        "card border border-dashed border-surface-strong p-4 text-center text-sm text-muted";
       emptyState.textContent = "No relays configured.";
       this.relayList.appendChild(emptyState);
       return;
@@ -1518,17 +2164,17 @@ export class ProfileModalController {
     relays.forEach((entry) => {
       const item = document.createElement("li");
       item.className =
-        "flex items-start justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+        "card flex items-start justify-between gap-4 p-4";
 
       const info = document.createElement("div");
       info.className = "flex-1 min-w-0";
 
       const urlEl = document.createElement("p");
-      urlEl.className = "text-sm font-medium text-gray-100 break-all";
+      urlEl.className = "text-sm font-medium text-primary break-all";
       urlEl.textContent = entry.url;
 
       const statusEl = document.createElement("p");
-      statusEl.className = "mt-1 text-xs text-gray-400";
+      statusEl.className = "mt-1 text-xs text-muted";
       let modeLabel = "Read & write";
       if (entry.mode === "read") {
         modeLabel = "Read only";
@@ -1545,8 +2191,7 @@ export class ProfileModalController {
 
       const editBtn = document.createElement("button");
       editBtn.type = "button";
-      editBtn.className =
-        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      editBtn.className = "btn-ghost focus-ring text-xs";
       editBtn.textContent = "Change mode";
       editBtn.title = "Cycle between read-only, write-only, or read/write modes.";
       editBtn.addEventListener("click", () => {
@@ -1555,8 +2200,8 @@ export class ProfileModalController {
 
       const removeBtn = document.createElement("button");
       removeBtn.type = "button";
-      removeBtn.className =
-        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
+      removeBtn.className = "btn-ghost focus-ring text-xs";
+      removeBtn.dataset.variant = "danger";
       removeBtn.textContent = "Remove";
       removeBtn.addEventListener("click", () => {
         void this.handleRemoveRelay(entry.url);
@@ -1771,8 +2416,105 @@ export class ProfileModalController {
     );
   }
 
+  ensureBlockListStatusElement() {
+    if (this.blockListStatus instanceof HTMLElement) {
+      return this.blockListStatus;
+    }
+
+    const anchor =
+      this.blockList instanceof HTMLElement
+        ? this.blockList
+        : this.blockListEmpty instanceof HTMLElement
+        ? this.blockListEmpty
+        : null;
+
+    if (!anchor || !(anchor.parentElement instanceof HTMLElement)) {
+      return null;
+    }
+
+    const existing = anchor.parentElement.querySelector(
+      '[data-role="blocked-list-status"]',
+    );
+    if (existing instanceof HTMLElement) {
+      this.blockListStatus = existing;
+      return existing;
+    }
+
+    const status = document.createElement("div");
+    status.dataset.role = "blocked-list-status";
+    status.className = "mt-4 flex items-center gap-3 text-sm text-muted hidden";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+
+    if (this.blockList instanceof HTMLElement) {
+      anchor.parentElement.insertBefore(status, this.blockList);
+    } else {
+      anchor.parentElement.appendChild(status);
+    }
+
+    this.blockListStatus = status;
+    return status;
+  }
+
+  setBlockListLoadingState(state = "idle", options = {}) {
+    const statusEl = this.ensureBlockListStatusElement();
+    if (!statusEl) {
+      this.blockListLoadingState = state;
+      return;
+    }
+
+    const message =
+      typeof options.message === "string" && options.message.trim()
+        ? options.message.trim()
+        : "";
+
+    statusEl.innerHTML = "";
+    statusEl.classList.remove("text-status-warning");
+    statusEl.classList.add("text-muted");
+    statusEl.classList.add("hidden");
+
+    this.blockListLoadingState = state;
+
+    if (state === "loading") {
+      if (this.blockListEmpty instanceof HTMLElement) {
+        this.blockListEmpty.classList.add("hidden");
+      }
+
+      const spinner = document.createElement("span");
+      spinner.className = "status-spinner status-spinner--inline";
+      spinner.setAttribute("aria-hidden", "true");
+
+      const text = document.createElement("span");
+      text.textContent = message || "Loading blocked creators…";
+
+      statusEl.appendChild(spinner);
+      statusEl.appendChild(text);
+      statusEl.classList.remove("hidden");
+      return;
+    }
+
+    if (state === "error") {
+      statusEl.classList.remove("text-muted");
+      statusEl.classList.add("text-status-warning");
+
+      if (this.blockListEmpty instanceof HTMLElement) {
+        this.blockListEmpty.classList.add("hidden");
+      }
+
+      const text = document.createElement("span");
+      text.textContent =
+        message || "Blocked creators may be out of date. Try again later.";
+
+      statusEl.appendChild(text);
+      statusEl.classList.remove("hidden");
+    }
+  }
+
   populateBlockedList(blocked = null) {
     if (!this.blockList || !this.blockListEmpty) {
+      if (this.blockListLoadingState === "loading") {
+        this.setBlockListLoadingState("idle");
+      }
       return;
     }
 
@@ -1855,41 +2597,97 @@ export class ProfileModalController {
     if (!deduped.length) {
       this.blockListEmpty.classList.remove("hidden");
       this.blockList.classList.add("hidden");
+      if (this.blockListLoadingState === "loading") {
+        this.setBlockListLoadingState("idle");
+      }
       return;
     }
 
     this.blockListEmpty.classList.add("hidden");
     this.blockList.classList.remove("hidden");
 
+    const formatNpub =
+      typeof this.formatShortNpub === "function"
+        ? (value) => this.formatShortNpub(value)
+        : (value) => (typeof value === "string" ? value : "");
+    const entriesNeedingFetch = new Set();
+
     deduped.forEach(({ hex, label }) => {
       const item = document.createElement("li");
       item.className =
-        "flex items-center justify-between gap-4 rounded-lg bg-gray-800 px-4 py-3";
+        "card flex items-center justify-between gap-4 p-4";
 
-      const info = document.createElement("div");
-      info.className = "min-w-0";
+      let cachedProfile = null;
+      if (hex) {
+        const cacheEntry = this.services.getProfileCacheEntry(hex);
+        cachedProfile = cacheEntry?.profile || null;
+        if (!cacheEntry) {
+          entriesNeedingFetch.add(hex);
+        }
+      }
 
-      const title = document.createElement("p");
-      title.className = "text-sm font-medium text-gray-100 break-all";
-      title.textContent = label;
+      const encodedNpub =
+        hex && typeof this.safeEncodeNpub === "function"
+          ? this.safeEncodeNpub(hex)
+          : label;
+      const displayNpub = formatNpub(encodedNpub) || encodedNpub || label;
+      const displayName =
+        cachedProfile?.name?.trim() || displayNpub || "Blocked profile";
+      const avatarSrc =
+        cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
 
-      info.appendChild(title);
-
-      const actionBtn = document.createElement("button");
-      actionBtn.type = "button";
-      actionBtn.className =
-        "px-3 py-1 rounded-md bg-gray-700 text-xs font-medium text-gray-100 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
-      actionBtn.textContent = "Remove";
-      actionBtn.dataset.blockedHex = hex;
-      actionBtn.addEventListener("click", () => {
-        void this.handleRemoveBlockedCreator(hex);
+      const summary = this.createCompactProfileSummary({
+        displayName,
+        displayNpub,
+        avatarSrc,
       });
 
-      item.appendChild(info);
-      item.appendChild(actionBtn);
+      const actions = document.createElement("div");
+      actions.className = "flex flex-wrap items-center justify-end gap-2";
+
+      const viewButton = this.createViewChannelButton({
+        targetNpub: encodedNpub,
+        displayNpub,
+      });
+      if (viewButton) {
+        actions.appendChild(viewButton);
+      }
+
+      const copyButton = this.createCopyNpubButton({
+        targetNpub: encodedNpub,
+        displayNpub,
+      });
+      if (copyButton) {
+        actions.appendChild(copyButton);
+      }
+
+      const removeButton = this.createRemoveButton({
+        label: "Remove",
+        onRemove: () => this.handleRemoveBlockedCreator(hex),
+      });
+      if (removeButton) {
+        removeButton.dataset.blockedHex = hex;
+        actions.appendChild(removeButton);
+      }
+
+      item.appendChild(summary);
+      if (actions.childElementCount > 0) {
+        item.appendChild(actions);
+      }
 
       this.blockList.appendChild(item);
     });
+
+    if (this.blockListLoadingState === "loading") {
+      this.setBlockListLoadingState("idle");
+    }
+
+    if (
+      entriesNeedingFetch.size &&
+      typeof this.services.batchFetchProfiles === "function"
+    ) {
+      this.services.batchFetchProfiles(entriesNeedingFetch);
+    }
   }
 
   async handleAddBlockedCreator() {
@@ -1993,7 +2791,7 @@ export class ProfileModalController {
       }
       this.populateBlockedList();
     } catch (error) {
-      console.error("Failed to add creator to personal block list:", error);
+      userLogger.error("Failed to add creator to personal block list:", error);
       context.error = error;
       context.reason = error?.code || "service-error";
       const message =
@@ -2029,7 +2827,7 @@ export class ProfileModalController {
     }
 
     if (!targetHex) {
-      console.warn("No valid pubkey to remove from block list:", candidate);
+      userLogger.warn("No valid pubkey to remove from block list:", candidate);
       return;
     }
 
@@ -2058,7 +2856,7 @@ export class ProfileModalController {
 
       this.populateBlockedList();
     } catch (error) {
-      console.error(
+      userLogger.error(
         "Failed to remove creator from personal block list:",
         error,
       );
@@ -2114,7 +2912,7 @@ export class ProfileModalController {
         renderer.resume();
       }
     } catch (error) {
-      console.error(
+      userLogger.error(
         "[profileModal] Failed to populate watch history pane:",
         error,
       );
@@ -2170,13 +2968,19 @@ export class ProfileModalController {
 
     const element = this.walletStatusText;
     const variants = {
-      success: "text-green-400",
-      error: "text-red-400",
-      info: "text-gray-400",
+      success: "text-status-success",
+      error: "text-status-danger",
+      info: "text-status-info",
+      neutral: "text-status-neutral",
     };
 
-    element.classList.remove("text-gray-400", "text-green-400", "text-red-400");
-    const variantClass = variants[variant] || variants.info;
+    element.classList.remove(
+      "text-status-info",
+      "text-status-success",
+      "text-status-danger",
+      "text-status-neutral",
+    );
+    const variantClass = variants[variant] || variants.neutral;
     element.classList.add(variantClass);
     element.textContent = message || "";
   }
@@ -2554,6 +3358,465 @@ export class ProfileModalController {
     return context;
   }
 
+  getModerationSettingsService() {
+    const service = this.services.moderationSettings;
+    if (!service || typeof service !== "object") {
+      return null;
+    }
+    return service;
+  }
+
+  getModerationSettingsDefaults() {
+    const service = this.getModerationSettingsService();
+    let defaults = null;
+
+    if (service && typeof service.getDefaultModerationSettings === "function") {
+      try {
+        defaults = service.getDefaultModerationSettings();
+      } catch (error) {
+        devLogger.info("[profileModal] moderation defaults fallback used", error);
+      }
+    }
+
+    if (!defaults || typeof defaults !== "object") {
+      defaults = createInternalDefaultModerationSettings();
+    }
+
+    const sanitized = {
+      blurThreshold: Math.max(
+        0,
+        Math.floor(
+          Number(
+            defaults.blurThreshold ?? DEFAULT_INTERNAL_MODERATION_SETTINGS.blurThreshold,
+          ),
+        ),
+      ),
+      autoplayBlockThreshold: Math.max(
+        0,
+        Math.floor(
+          Number(
+            defaults.autoplayBlockThreshold ??
+              DEFAULT_INTERNAL_MODERATION_SETTINGS.autoplayBlockThreshold,
+          ),
+        ),
+      ),
+      trustedMuteHideThreshold: Math.max(
+        0,
+        Math.floor(
+          Number(
+            defaults.trustedMuteHideThreshold ??
+              DEFAULT_INTERNAL_MODERATION_SETTINGS.trustedMuteHideThreshold,
+          ),
+        ),
+      ),
+      trustedSpamHideThreshold: Math.max(
+        0,
+        Math.floor(
+          Number(
+            defaults.trustedSpamHideThreshold ??
+              DEFAULT_INTERNAL_MODERATION_SETTINGS.trustedSpamHideThreshold,
+          ),
+        ),
+      ),
+    };
+
+    return sanitized;
+  }
+
+  normalizeModerationSettings(settings = null) {
+    const defaults = this.getModerationSettingsDefaults();
+    const blur = Number.isFinite(settings?.blurThreshold)
+      ? Math.max(0, Math.floor(settings.blurThreshold))
+      : defaults.blurThreshold;
+    const autoplay = Number.isFinite(settings?.autoplayBlockThreshold)
+      ? Math.max(0, Math.floor(settings.autoplayBlockThreshold))
+      : defaults.autoplayBlockThreshold;
+    const muteHide = Number.isFinite(settings?.trustedMuteHideThreshold)
+      ? Math.max(0, Math.floor(settings.trustedMuteHideThreshold))
+      : defaults.trustedMuteHideThreshold;
+    const spamHide = Number.isFinite(settings?.trustedSpamHideThreshold)
+      ? Math.max(0, Math.floor(settings.trustedSpamHideThreshold))
+      : defaults.trustedSpamHideThreshold;
+
+    return {
+      blurThreshold: blur,
+      autoplayBlockThreshold: autoplay,
+      trustedMuteHideThreshold: muteHide,
+      trustedSpamHideThreshold: spamHide,
+    };
+  }
+
+  readModerationInputs() {
+    const defaults = this.getModerationSettingsDefaults();
+
+    const parse = (input, fallback) => {
+      if (!(input instanceof HTMLInputElement)) {
+        return { value: fallback, override: null, valid: true };
+      }
+
+      const raw = typeof input.value === "string" ? input.value.trim() : "";
+      if (!raw) {
+        return { value: fallback, override: null, valid: true };
+      }
+
+      const numeric = Number(raw);
+      if (!Number.isFinite(numeric)) {
+        return { value: fallback, override: null, valid: false };
+      }
+
+      const sanitized = Math.max(0, Math.floor(numeric));
+      return { value: sanitized, override: sanitized, valid: true };
+    };
+
+    const blur = parse(this.moderationBlurInput, defaults.blurThreshold);
+    const autoplay = parse(
+      this.moderationAutoplayInput,
+      defaults.autoplayBlockThreshold,
+    );
+    const muteHide = parse(
+      this.moderationMuteHideInput,
+      defaults.trustedMuteHideThreshold,
+    );
+    const spamHide = parse(
+      this.moderationSpamHideInput,
+      defaults.trustedSpamHideThreshold,
+    );
+
+    const valid = blur.valid && autoplay.valid && muteHide.valid && spamHide.valid;
+    const values = {
+      blurThreshold: blur.value,
+      autoplayBlockThreshold: autoplay.value,
+      trustedMuteHideThreshold: muteHide.value,
+      trustedSpamHideThreshold: spamHide.value,
+    };
+    const overrides = {
+      blurThreshold: blur.override,
+      autoplayBlockThreshold: autoplay.override,
+      trustedMuteHideThreshold: muteHide.override,
+      trustedSpamHideThreshold: spamHide.override,
+    };
+
+    return { defaults, values, overrides, valid };
+  }
+
+  applyModerationSettingsControlState({ resetStatus = false } = {}) {
+    const result = this.readModerationInputs();
+
+    const button = this.moderationSaveButton;
+    if (button instanceof HTMLElement) {
+      const baseline = this.currentModerationSettings || this.normalizeModerationSettings();
+      const isDirty =
+        result.valid &&
+        (baseline.blurThreshold !== result.values.blurThreshold ||
+          baseline.autoplayBlockThreshold !== result.values.autoplayBlockThreshold ||
+          baseline.trustedMuteHideThreshold !==
+            result.values.trustedMuteHideThreshold ||
+          baseline.trustedSpamHideThreshold !==
+            result.values.trustedSpamHideThreshold);
+      button.disabled = !(result.valid && isDirty);
+      if (button.disabled) {
+        button.setAttribute("aria-disabled", "true");
+      } else {
+        button.removeAttribute("aria-disabled");
+      }
+    }
+
+    if (resetStatus) {
+      this.updateModerationSettingsStatus("", "info");
+    }
+
+    return result;
+  }
+
+  areTrustedHideControlsEnabled() {
+    if (
+      RUNTIME_FLAGS &&
+      typeof RUNTIME_FLAGS === "object" &&
+      RUNTIME_FLAGS.FEATURE_TRUSTED_HIDE_CONTROLS === false
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  updateTrustedHideControlsVisibility() {
+    const shouldShow = this.areTrustedHideControlsEnabled();
+    const targets = new Set();
+
+    if (this.moderationHideControlsGroup instanceof HTMLElement) {
+      targets.add(this.moderationHideControlsGroup);
+    }
+
+    if (Array.isArray(this.moderationHideControlElements)) {
+      for (const element of this.moderationHideControlElements) {
+        if (element instanceof HTMLElement) {
+          targets.add(element);
+        }
+      }
+    }
+
+    targets.forEach((element) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+
+      if (shouldShow) {
+        element.classList.remove("hidden");
+        element.removeAttribute("hidden");
+        element.removeAttribute("aria-hidden");
+      } else {
+        element.classList.add("hidden");
+        element.setAttribute("hidden", "");
+        element.setAttribute("aria-hidden", "true");
+      }
+    });
+  }
+
+  updateModerationSettingsStatus(message = "", variant = "info") {
+    if (!(this.moderationStatusText instanceof HTMLElement)) {
+      return;
+    }
+
+    const text = typeof message === "string" ? message : "";
+    this.moderationStatusText.textContent = text;
+
+    if (text) {
+      this.moderationStatusText.dataset.variant = variant || "info";
+    } else if (this.moderationStatusText.dataset.variant) {
+      delete this.moderationStatusText.dataset.variant;
+    }
+  }
+
+  refreshModerationSettingsUi() {
+    const service = this.getModerationSettingsService();
+    if (!service) {
+      this.moderationSettingsDefaults = createInternalDefaultModerationSettings();
+      this.currentModerationSettings = createInternalDefaultModerationSettings();
+      this.updateTrustedHideControlsVisibility();
+      this.applyModerationSettingsControlState({ resetStatus: true });
+      return;
+    }
+
+    let active = null;
+    if (typeof service.getActiveModerationSettings === "function") {
+      try {
+        active = service.getActiveModerationSettings();
+      } catch (error) {
+        devLogger.info("[profileModal] moderation settings fallback used", error);
+      }
+    }
+
+    const defaults = this.getModerationSettingsDefaults();
+    this.moderationSettingsDefaults = defaults;
+    const normalized = this.normalizeModerationSettings(active);
+    this.currentModerationSettings = normalized;
+
+    if (this.moderationBlurInput instanceof HTMLInputElement) {
+      this.moderationBlurInput.value = String(normalized.blurThreshold);
+    }
+
+    if (this.moderationAutoplayInput instanceof HTMLInputElement) {
+      this.moderationAutoplayInput.value = String(
+        normalized.autoplayBlockThreshold,
+      );
+    }
+
+    if (this.moderationMuteHideInput instanceof HTMLInputElement) {
+      this.moderationMuteHideInput.value = String(
+        normalized.trustedMuteHideThreshold,
+      );
+    }
+
+    if (this.moderationSpamHideInput instanceof HTMLInputElement) {
+      this.moderationSpamHideInput.value = String(
+        normalized.trustedSpamHideThreshold,
+      );
+    }
+
+    this.updateTrustedHideControlsVisibility();
+
+    this.applyModerationSettingsControlState({ resetStatus: true });
+  }
+
+  async handleModerationSettingsSave() {
+    const service = this.getModerationSettingsService();
+    const context = {
+      success: false,
+      reason: null,
+      error: null,
+      settings: null,
+    };
+
+    if (!service) {
+      return context;
+    }
+
+    const inputState = this.applyModerationSettingsControlState();
+    if (!inputState.valid) {
+      const message =
+        "Enter non-negative whole numbers for moderation thresholds.";
+      this.updateModerationSettingsStatus(message, "error");
+      this.showError(message);
+      context.reason = "invalid-input";
+      context.error = message;
+      return context;
+    }
+
+    const payload = {};
+    if (Object.prototype.hasOwnProperty.call(inputState.overrides, "blurThreshold")) {
+      payload.blurThreshold = inputState.overrides.blurThreshold;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        inputState.overrides,
+        "autoplayBlockThreshold",
+      )
+    ) {
+      payload.autoplayBlockThreshold = inputState.overrides.autoplayBlockThreshold;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        inputState.overrides,
+        "trustedMuteHideThreshold",
+      )
+    ) {
+      payload.trustedMuteHideThreshold =
+        inputState.overrides.trustedMuteHideThreshold;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        inputState.overrides,
+        "trustedSpamHideThreshold",
+      )
+    ) {
+      payload.trustedSpamHideThreshold =
+        inputState.overrides.trustedSpamHideThreshold;
+    }
+
+    try {
+      const updated =
+        typeof service.updateModerationSettings === "function"
+          ? await service.updateModerationSettings(payload)
+          : inputState.values;
+
+      const normalized = this.normalizeModerationSettings(updated);
+      this.currentModerationSettings = normalized;
+      if (this.moderationBlurInput instanceof HTMLInputElement) {
+        this.moderationBlurInput.value = String(normalized.blurThreshold);
+      }
+      if (this.moderationAutoplayInput instanceof HTMLInputElement) {
+        this.moderationAutoplayInput.value = String(
+          normalized.autoplayBlockThreshold,
+        );
+      }
+      if (this.moderationMuteHideInput instanceof HTMLInputElement) {
+        this.moderationMuteHideInput.value = String(
+          normalized.trustedMuteHideThreshold,
+        );
+      }
+      if (this.moderationSpamHideInput instanceof HTMLInputElement) {
+        this.moderationSpamHideInput.value = String(
+          normalized.trustedSpamHideThreshold,
+        );
+      }
+      this.applyModerationSettingsControlState();
+      this.updateModerationSettingsStatus("Moderation settings saved.", "success");
+      this.showSuccess("Moderation settings saved.");
+      context.success = true;
+      context.reason = "saved";
+      context.settings = normalized;
+      this.callbacks.onModerationSettingsChange({
+        settings: normalized,
+        controller: this,
+        reason: "saved",
+      });
+    } catch (error) {
+      const fallbackMessage = "Failed to update moderation settings.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      this.updateModerationSettingsStatus(detail, "error");
+      this.showError(detail);
+      context.error = detail;
+      context.reason = error?.code || "service-error";
+    }
+
+    return context;
+  }
+
+  async handleModerationSettingsReset() {
+    const service = this.getModerationSettingsService();
+    const context = {
+      success: false,
+      reason: null,
+      error: null,
+      settings: null,
+    };
+
+    if (!service) {
+      return context;
+    }
+
+    try {
+      const updated =
+        typeof service.resetModerationSettings === "function"
+          ? await service.resetModerationSettings()
+          : createInternalDefaultModerationSettings();
+
+      const normalized = this.normalizeModerationSettings(updated);
+      this.currentModerationSettings = normalized;
+      if (this.moderationBlurInput instanceof HTMLInputElement) {
+        this.moderationBlurInput.value = String(normalized.blurThreshold);
+      }
+      if (this.moderationAutoplayInput instanceof HTMLInputElement) {
+        this.moderationAutoplayInput.value = String(
+          normalized.autoplayBlockThreshold,
+        );
+      }
+      if (this.moderationMuteHideInput instanceof HTMLInputElement) {
+        this.moderationMuteHideInput.value = String(
+          normalized.trustedMuteHideThreshold,
+        );
+      }
+      if (this.moderationSpamHideInput instanceof HTMLInputElement) {
+        this.moderationSpamHideInput.value = String(
+          normalized.trustedSpamHideThreshold,
+        );
+      }
+      this.updateTrustedHideControlsVisibility();
+      this.applyModerationSettingsControlState({ resetStatus: true });
+      this.updateModerationSettingsStatus(
+        "Moderation defaults restored.",
+        "success",
+      );
+      this.showSuccess("Moderation defaults restored.");
+      context.success = true;
+      context.reason = "reset";
+      context.settings = normalized;
+      this.callbacks.onModerationSettingsChange({
+        settings: normalized,
+        controller: this,
+        reason: "reset",
+      });
+    } catch (error) {
+      const fallbackMessage = "Failed to restore moderation defaults.";
+      const detail =
+        error && typeof error.message === "string" && error.message.trim()
+          ? error.message.trim()
+          : fallbackMessage;
+      this.updateModerationSettingsStatus(detail, "error");
+      this.showError(detail);
+      context.error = detail;
+      context.reason = error?.code || "service-error";
+    }
+
+    return context;
+  }
+
   storeAdminEmptyMessages() {
     const capture = (element) => {
       if (element instanceof HTMLElement && !element.dataset.defaultMessage) {
@@ -2620,6 +3883,44 @@ export class ProfileModalController {
     }
   }
 
+  normalizeAdminListEntries(entries) {
+    const collected = [];
+    const seen = new Set();
+
+    const append = (value) => {
+      if (typeof value !== "string") {
+        return;
+      }
+      const trimmed = value.trim();
+      if (!trimmed || seen.has(trimmed)) {
+        return;
+      }
+      seen.add(trimmed);
+      collected.push(trimmed);
+    };
+
+    if (Array.isArray(entries)) {
+      entries.forEach(append);
+    } else if (entries && typeof entries?.[Symbol.iterator] === "function") {
+      for (const entry of entries) {
+        append(entry);
+      }
+    } else if (entries && typeof entries === "object") {
+      Object.values(entries).forEach(append);
+    }
+
+    try {
+      collected.sort((a, b) => a.localeCompare(b));
+    } catch (error) {
+      devLogger.warn(
+        "[profileModal] Failed to sort admin list entries, using fallback order.",
+        error,
+      );
+    }
+
+    return collected;
+  }
+
   renderAdminList(listEl, emptyEl, entries, options = {}) {
     if (!(listEl instanceof HTMLElement) || !(emptyEl instanceof HTMLElement)) {
       return;
@@ -2628,51 +3929,126 @@ export class ProfileModalController {
     const { onRemove, removeLabel = "Remove", confirmMessage, removable = true } =
       options;
 
+    const formatNpub =
+      typeof this.formatShortNpub === "function"
+        ? (value) => this.formatShortNpub(value)
+        : (value) => (typeof value === "string" ? value : "");
+
+    const entriesNeedingFetch = new Set();
+
     listEl.innerHTML = "";
-    const values = Array.isArray(entries) ? [...entries] : [];
-    values.sort((a, b) => a.localeCompare(b));
+
+    const values = this.normalizeAdminListEntries(entries);
+
+    const toggleHiddenState = (element, shouldHide) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+
+      if (shouldHide) {
+        element.classList.add("hidden");
+        element.setAttribute("hidden", "");
+      } else {
+        element.classList.remove("hidden");
+        element.removeAttribute("hidden");
+      }
+    };
 
     if (!values.length) {
-      emptyEl.classList.remove("hidden");
-      listEl.classList.add("hidden");
+      toggleHiddenState(emptyEl, false);
+      toggleHiddenState(listEl, true);
       return;
     }
 
-    emptyEl.classList.add("hidden");
-    listEl.classList.remove("hidden");
+    toggleHiddenState(emptyEl, true);
+    toggleHiddenState(listEl, false);
 
     values.forEach((npub) => {
       const item = document.createElement("li");
       item.className =
-        "flex flex-col gap-2 rounded-lg bg-gray-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between";
+        "card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between";
 
-      const label = document.createElement("p");
-      label.className = "text-sm font-medium text-gray-100 break-all";
-      label.textContent = npub;
-      item.appendChild(label);
+      const normalizedNpub = typeof npub === "string" ? npub.trim() : "";
+      const decodedHex =
+        normalizedNpub && normalizedNpub.startsWith("npub1")
+          ? this.safeDecodeNpub(normalizedNpub)
+          : null;
+      const normalizedHex =
+        decodedHex && /^[0-9a-f]{64}$/i.test(decodedHex)
+          ? decodedHex.toLowerCase()
+          : null;
+
+      let cachedProfile = null;
+      if (normalizedHex) {
+        const cacheEntry = this.services.getProfileCacheEntry(normalizedHex);
+        cachedProfile = cacheEntry?.profile || null;
+        if (!cacheEntry) {
+          entriesNeedingFetch.add(normalizedHex);
+        }
+      }
+
+      const encodedNpub =
+        normalizedHex && typeof this.safeEncodeNpub === "function"
+          ? this.safeEncodeNpub(normalizedHex)
+          : normalizedNpub;
+      const displayNpub = formatNpub(encodedNpub) || encodedNpub || normalizedNpub;
+      const displayName =
+        cachedProfile?.name?.trim() || displayNpub || "Unknown profile";
+      const avatarSrc =
+        cachedProfile?.picture || FALLBACK_PROFILE_AVATAR;
+
+      const summary = this.createCompactProfileSummary({
+        displayName,
+        displayNpub,
+        avatarSrc,
+      });
+
+      const actions = document.createElement("div");
+      actions.className =
+        "flex flex-wrap items-center justify-end gap-2 sm:flex-none";
+
+      const viewButton = this.createViewChannelButton({
+        targetNpub: encodedNpub,
+        displayNpub,
+      });
+      if (viewButton) {
+        actions.appendChild(viewButton);
+      }
+
+      const copyButton = this.createCopyNpubButton({
+        targetNpub: encodedNpub,
+        displayNpub,
+      });
+      if (copyButton) {
+        actions.appendChild(copyButton);
+      }
 
       if (removable && typeof onRemove === "function") {
-        const removeBtn = document.createElement("button");
-        removeBtn.type = "button";
-        removeBtn.className =
-          "self-start rounded-md bg-gray-700 px-3 py-1 text-xs font-medium text-gray-100 transition hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900";
-        removeBtn.textContent = removeLabel;
-        removeBtn.addEventListener("click", () => {
-          if (confirmMessage) {
-            const message = confirmMessage.replace("{npub}", npub);
-            if (!window.confirm(message)) {
-              return;
-            }
-          }
-          removeBtn.disabled = true;
-          removeBtn.setAttribute("aria-busy", "true");
-          onRemove(npub, removeBtn);
+        const removeBtn = this.createRemoveButton({
+          label: removeLabel,
+          confirmMessage,
+          confirmValue: displayNpub,
+          onRemove: (button) => onRemove(npub, button),
         });
-        item.appendChild(removeBtn);
+        if (removeBtn) {
+          actions.appendChild(removeBtn);
+        }
+      }
+
+      item.appendChild(summary);
+      if (actions.childElementCount > 0) {
+        item.appendChild(actions);
       }
 
       listEl.appendChild(item);
     });
+
+    if (
+      entriesNeedingFetch.size &&
+      typeof this.services.batchFetchProfiles === "function"
+    ) {
+      this.services.batchFetchProfiles(entriesNeedingFetch);
+    }
   }
 
   populateAdminLists() {
@@ -2683,11 +4059,15 @@ export class ProfileModalController {
     }
 
     const isSuperAdmin = this.services.accessControl.isSuperAdmin(actorNpub);
-    const editors = this.services.accessControl
-      .getEditors()
-      .filter((npub) => npub && npub !== this.adminSuperNpub);
-    const whitelist = this.services.accessControl.getWhitelist();
-    const blacklist = this.services.accessControl.getBlacklist();
+    const editors = this.normalizeAdminListEntries(
+      this.services.accessControl.getEditors(),
+    ).filter((npub) => npub && npub !== this.adminSuperNpub);
+    const whitelist = this.normalizeAdminListEntries(
+      this.services.accessControl.getWhitelist(),
+    );
+    const blacklist = this.normalizeAdminListEntries(
+      this.services.accessControl.getBlacklist(),
+    );
 
     this.renderAdminList(
       this.adminModeratorList,
@@ -2761,17 +4141,23 @@ export class ProfileModalController {
     }
 
     if (adminPane instanceof HTMLElement) {
-      adminPane.classList.toggle("hidden", !canEdit);
-      adminPane.setAttribute("aria-hidden", (!canEdit).toString());
+      if (!canEdit) {
+        adminPane.classList.add("hidden");
+        adminPane.setAttribute("aria-hidden", "true");
+      } else {
+        const isActive = this.getActivePane() === "admin";
+        adminPane.classList.toggle("hidden", !isActive);
+        adminPane.setAttribute("aria-hidden", (!isActive).toString());
+      }
     }
 
     if (loadError) {
       if (loadError?.code === "nostr-unavailable") {
-        console.info("Moderation lists are still syncing with relays.");
+        devLogger.info("Moderation lists are still syncing with relays.");
         return;
       }
 
-      console.error("Failed to load admin lists:", loadError);
+      userLogger.error("Failed to load admin lists:", loadError);
       this.showStatus(null);
       this.showError("Unable to load moderation lists. Please try again.");
       this.clearAdminLists();
@@ -2785,7 +4171,7 @@ export class ProfileModalController {
       this.setAdminLoading(false);
       if (
         adminNav instanceof HTMLElement &&
-        adminNav.classList.contains("bg-gray-800")
+        adminNav.dataset.state === "active"
       ) {
         this.selectPane("account");
       }
@@ -2829,7 +4215,7 @@ export class ProfileModalController {
       return null;
     }
     if (!this.services.accessControl.canEditAdminLists(actorNpub)) {
-      this.showError("You do not have permission to manage BitVid moderation lists.");
+      this.showError("You do not have permission to manage bitvid moderation lists.");
       return null;
     }
     if (requireSuperAdmin && !this.services.accessControl.isSuperAdmin(actorNpub)) {
@@ -2864,7 +4250,7 @@ export class ProfileModalController {
       }
     } catch (error) {
       preloadError = error;
-      console.error("Failed to load admin lists before adding moderator:", error);
+      userLogger.error("Failed to load admin lists before adding moderator:", error);
     }
 
     if (preloadError) {
@@ -2968,7 +4354,7 @@ export class ProfileModalController {
       }
     } catch (error) {
       preloadError = error;
-      console.error("Failed to load admin lists before removing moderator:", error);
+      userLogger.error("Failed to load admin lists before removing moderator:", error);
     }
 
     if (preloadError) {
@@ -3075,7 +4461,7 @@ export class ProfileModalController {
       }
     } catch (error) {
       preloadError = error;
-      console.error("Failed to load admin lists before updating entries:", error);
+      userLogger.error("Failed to load admin lists before updating entries:", error);
     }
 
     if (preloadError) {
@@ -3160,7 +4546,7 @@ export class ProfileModalController {
             this.showError(errorMessage);
           }
           if (isDevMode && notifyResult?.error) {
-            console.warn(
+            userLogger.warn(
               "[admin] Failed to send list notification DM:",
               notifyResult,
             );
@@ -3176,13 +4562,11 @@ export class ProfileModalController {
         }
       } catch (error) {
         context.notificationError = error;
-        console.error("Failed to send list notification DM:", error);
-        if (isDevMode) {
-          console.warn(
-            "List update succeeded, but DM notification threw an unexpected error.",
-            error,
-          );
-        }
+        userLogger.error("Failed to send list notification DM:", error);
+        devLogger.warn(
+          "List update succeeded, but DM notification threw an unexpected error.",
+          error,
+        );
         this.notifyAdminError({
           listType,
           action,
@@ -3276,17 +4660,24 @@ export class ProfileModalController {
       return { ok: false, error: "missing-actor-pubkey" };
     }
 
-    const fallbackActor = this.safeEncodeNpub(activeHex) || "a BitVid moderator";
+    const fallbackActor = this.safeEncodeNpub(activeHex) || "a bitvid moderator";
     const actorDisplay = this.normalizeNpubValue(actorNpub) || fallbackActor;
     const isWhitelist = listType === "whitelist";
 
+    const formatNpub =
+      typeof this.formatShortNpub === "function"
+        ? (value) => this.formatShortNpub(value)
+        : (value) => (typeof value === "string" ? value : "");
+    const displayTarget = formatNpub(normalizedTarget) || normalizedTarget;
+    const displayActor = formatNpub(actorDisplay) || actorDisplay;
+
     const introLine = isWhitelist
-      ? `Great news—your npub ${normalizedTarget} has been added to the BitVid whitelist by ${actorDisplay}.`
-      : `We wanted to let you know that your npub ${normalizedTarget} has been placed on the BitVid blacklist by ${actorDisplay}.`;
+      ? `Great news—your npub ${displayTarget} has been added to the bitvid whitelist by ${displayActor}.`
+      : `We wanted to let you know that your npub ${displayTarget} has been placed on the bitvid blacklist by ${displayActor}.`;
 
     const statusLine = isWhitelist
-      ? `You now have full creator access across BitVid (${this.bitvidWebsiteUrl}).`
-      : `This hides your channel and prevents uploads across BitVid (${this.bitvidWebsiteUrl}) for now.`;
+      ? `You now have full creator access across bitvid (${this.bitvidWebsiteUrl}).`
+      : `This hides your channel and prevents uploads across bitvid (${this.bitvidWebsiteUrl}) for now.`;
 
     const followUpLine = isWhitelist
       ? "Please take a moment to review our community guidelines (https://bitvid.network/#view=community-guidelines), and reply to this DM if you have any questions."
@@ -3301,10 +4692,10 @@ export class ProfileModalController {
       "",
       followUpLine,
       "",
-      "— The BitVid Team",
+      "— the bitvid team",
     ].join("\n");
 
-    const message = `![BitVid status update](${this.adminDmImageUrl})\n\n${messageBody}`;
+    const message = `![bitvid status update](${this.adminDmImageUrl})\n\n${messageBody}`;
 
     return this.services.nostrClient.sendDirectMessage(
       normalizedTarget,
@@ -3466,7 +4857,7 @@ export class ProfileModalController {
             targetHex,
           });
         } catch (refreshError) {
-          console.warn(
+          userLogger.warn(
             "[ProfileModalController] Failed to refresh videos after blocklist mutation:",
             refreshError,
           );
@@ -3618,16 +5009,21 @@ export class ProfileModalController {
   }
 
   updateFocusTrap() {
-    if (!(this.profileModal instanceof HTMLElement)) {
+    const container =
+      this.profileModalPanel instanceof HTMLElement
+        ? this.profileModalPanel
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
+
+    if (!container) {
       this.focusableElements = [];
       return;
     }
 
     const selector =
       'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-    const nodes = Array.from(
-      this.profileModal.querySelectorAll(selector),
-    );
+    const nodes = Array.from(container.querySelectorAll(selector));
     this.focusableElements = nodes.filter((node) => {
       if (!(node instanceof HTMLElement)) {
         return false;
@@ -3645,11 +5041,19 @@ export class ProfileModalController {
       return true;
     });
 
-    this.bindFocusTrap();
+    this.bindFocusTrap(container);
   }
 
-  bindFocusTrap() {
-    if (!(this.profileModal instanceof HTMLElement)) {
+  bindFocusTrap(container) {
+    const targetContainer =
+      container ||
+      (this.profileModalPanel instanceof HTMLElement
+        ? this.profileModalPanel
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null);
+
+    if (!targetContainer) {
       return;
     }
 
@@ -3667,8 +5071,10 @@ export class ProfileModalController {
 
         if (!this.focusableElements.length) {
           event.preventDefault();
-          if (typeof this.profileModal.focus === "function") {
-            this.profileModal.focus();
+          const fallback =
+            this.profileModalPanel || this.profileModal || targetContainer;
+          if (typeof fallback?.focus === "function") {
+            fallback.focus();
           }
           return;
         }
@@ -3678,7 +5084,7 @@ export class ProfileModalController {
         const active = document.activeElement;
 
         if (event.shiftKey) {
-          if (active === first || !this.profileModal.contains(active)) {
+          if (active === first || !targetContainer.contains(active)) {
             event.preventDefault();
             if (typeof last?.focus === "function") {
               last.focus();
@@ -3698,23 +5104,97 @@ export class ProfileModalController {
 
     if (!this.boundFocusIn) {
       this.boundFocusIn = (event) => {
+        const modalRoot = this.profileModalRoot || this.profileModal;
         if (
-          !this.profileModal ||
-          this.profileModal.classList.contains("hidden") ||
-          this.profileModal.contains(event.target)
+          !modalRoot ||
+          modalRoot.classList.contains("hidden") ||
+          modalRoot.contains(event.target)
         ) {
           return;
         }
 
-        const target = this.focusableElements[0] || this.profileModal;
-        if (typeof target?.focus === "function") {
-          target.focus();
+        const fallback =
+          this.focusableElements[0] ||
+          this.profileModalPanel ||
+          this.profileModal;
+        if (typeof fallback?.focus === "function") {
+          fallback.focus();
         }
       };
     }
 
-    this.profileModal.addEventListener("keydown", this.boundKeydown);
+    if (
+      this.focusTrapContainer &&
+      this.focusTrapContainer !== targetContainer &&
+      this.boundKeydown
+    ) {
+      this.focusTrapContainer.removeEventListener("keydown", this.boundKeydown);
+    }
+
+    targetContainer.addEventListener("keydown", this.boundKeydown);
+    this.focusTrapContainer = targetContainer;
+
     document.addEventListener("focusin", this.boundFocusIn);
+  }
+
+  ensureModalOrder(modalRoot) {
+    if (!(modalRoot instanceof HTMLElement)) {
+      return;
+    }
+
+    const container =
+      this.modalContainer instanceof HTMLElement ? this.modalContainer : null;
+    const parentElement = modalRoot.parentElement;
+
+    if (container) {
+      if (parentElement !== container) {
+        container.appendChild(modalRoot);
+        return;
+      }
+
+      if (container.lastElementChild !== modalRoot) {
+        container.appendChild(modalRoot);
+      }
+      return;
+    }
+
+    if (parentElement) {
+      if (parentElement.lastElementChild !== modalRoot) {
+        parentElement.appendChild(modalRoot);
+      }
+      return;
+    }
+
+    if (typeof document !== "undefined" && document.body) {
+      document.body.appendChild(modalRoot);
+    }
+  }
+
+  applyModalStackingOverrides() {
+    const modalRoot =
+      this.profileModalRoot instanceof HTMLElement
+        ? this.profileModalRoot
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
+
+    if (modalRoot) {
+      modalRoot.style.setProperty("z-index", "var(--z-modal-top-root)");
+    }
+
+    if (this.profileModalBackdrop instanceof HTMLElement) {
+      this.profileModalBackdrop.style.setProperty(
+        "z-index",
+        "var(--z-modal-top-overlay)",
+      );
+    }
+
+    if (this.profileModalPanel instanceof HTMLElement) {
+      this.profileModalPanel.style.setProperty(
+        "z-index",
+        "var(--z-modal-top-content)",
+      );
+    }
   }
 
   async show(targetPane = "account") {
@@ -3727,48 +5207,104 @@ export class ProfileModalController {
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
-    if (
-      activeElement &&
-      this.profileModal instanceof HTMLElement &&
-      this.profileModal.contains(activeElement)
-    ) {
+    const modalRoot =
+      this.profileModalRoot instanceof HTMLElement
+        ? this.profileModalRoot
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
+
+    if (activeElement && modalRoot && modalRoot.contains(activeElement)) {
       this.previouslyFocusedElement = null;
     } else {
       this.previouslyFocusedElement = activeElement;
     }
 
     this.renderSavedProfiles();
+    this.refreshWalletPaneState();
+    this.refreshModerationSettingsUi();
+    const hasBlockHydrator =
+      this.services.userBlocks &&
+      typeof this.services.userBlocks.ensureLoaded === "function";
 
-    try {
-      await this.refreshAdminPaneState();
-    } catch (error) {
-      console.error(
-        "Failed to refresh admin pane while opening profile modal:",
-        error,
+    if (hasBlockHydrator) {
+      this.setBlockListLoadingState("loading");
+    } else {
+      this.populateBlockedList();
+    }
+
+    this.open(pane);
+
+    const backgroundTasks = [];
+
+    backgroundTasks.push(
+      Promise.resolve()
+        .then(() => this.refreshAdminPaneState())
+        .catch((error) => {
+          userLogger.error(
+            "Failed to refresh admin pane while opening profile modal:",
+            error,
+          );
+        }),
+    );
+
+    backgroundTasks.push(
+      Promise.resolve().then(() => {
+        try {
+          this.populateProfileRelays();
+        } catch (error) {
+          userLogger.warn(
+            "Failed to populate relay list while opening profile modal:",
+            error,
+          );
+        }
+      }),
+    );
+
+    if (hasBlockHydrator) {
+      const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
+      backgroundTasks.push(
+        Promise.resolve()
+          .then(() => this.services.userBlocks.ensureLoaded(activeHex))
+          .then(() => {
+            try {
+              this.populateBlockedList();
+            } catch (error) {
+              userLogger.warn(
+                "Failed to render blocked creators after hydration:",
+                error,
+              );
+              this.setBlockListLoadingState("error", {
+                message:
+                  "Blocked creators may be out of date. Try again later.",
+              });
+            }
+          })
+          .catch((error) => {
+            userLogger.warn(
+              "Failed to refresh user block list while opening profile modal:",
+              error,
+            );
+            this.setBlockListLoadingState("error", {
+              message:
+                "Blocked creators may be out of date. Try again later.",
+            });
+            try {
+              this.populateBlockedList();
+            } catch (populateError) {
+              userLogger.warn(
+                "Failed to render blocked creators after hydration failure:",
+                populateError,
+              );
+            }
+          }),
       );
     }
 
-    this.refreshWalletPaneState();
-    this.populateProfileRelays();
-
-    if (
-      this.services.userBlocks &&
-      typeof this.services.userBlocks.ensureLoaded === "function"
-    ) {
-      try {
-        const activeHex = this.normalizeHexPubkey(this.getActivePubkey());
-        await this.services.userBlocks.ensureLoaded(activeHex);
-      } catch (error) {
-        console.warn(
-          "Failed to refresh user block list while opening profile modal:",
-          error,
-        );
-      }
+    if (backgroundTasks.length) {
+      void Promise.allSettled(backgroundTasks);
     }
 
-    this.populateBlockedList();
-
-    this.open(pane);
     return true;
   }
 
@@ -3777,16 +5313,30 @@ export class ProfileModalController {
   }
 
   open(pane = "account") {
-    if (!(this.profileModal instanceof HTMLElement)) {
+    const modalRoot =
+      this.profileModalRoot instanceof HTMLElement
+        ? this.profileModalRoot
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
+
+    if (!modalRoot) {
       return;
     }
 
-    this.profileModal.classList.remove("hidden");
-    this.profileModal.setAttribute("aria-hidden", "false");
-    this.setGlobalModalState("profile", true);
-    this.selectPane(pane);
+    this.ensureModalOrder(modalRoot);
+    this.applyModalStackingOverrides();
 
-    const focusTarget = this.focusableElements[0] || this.profileModal;
+    modalRoot.classList.remove("hidden");
+    modalRoot.setAttribute("aria-hidden", "false");
+    this.setGlobalModalState("profile", true);
+    const preserveMenu = this.isMobileLayoutActive();
+    this.selectPane(pane, { keepMenuView: preserveMenu });
+
+    const focusTarget =
+      this.focusableElements[0] ||
+      this.profileModalPanel ||
+      modalRoot;
     window.requestAnimationFrame(() => {
       if (typeof focusTarget?.focus === "function") {
         focusTarget.focus();
@@ -3799,21 +5349,31 @@ export class ProfileModalController {
       options && typeof options === "object" ? options : {};
 
     const modalElement =
-      this.profileModal instanceof HTMLElement ? this.profileModal : null;
+      this.profileModalRoot instanceof HTMLElement
+        ? this.profileModalRoot
+        : this.profileModal instanceof HTMLElement
+        ? this.profileModal
+        : null;
 
     if (modalElement) {
       modalElement.classList.add("hidden");
       modalElement.setAttribute("aria-hidden", "true");
       this.setGlobalModalState("profile", false);
+      this.setMobileView("menu", { skipFocusTrap: true });
 
-      if (this.boundKeydown) {
-        modalElement.removeEventListener("keydown", this.boundKeydown);
+      if (this.boundKeydown && this.focusTrapContainer) {
+        this.focusTrapContainer.removeEventListener(
+          "keydown",
+          this.boundKeydown,
+        );
       }
     }
 
     if (this.boundFocusIn) {
       document.removeEventListener("focusin", this.boundFocusIn);
     }
+
+    this.focusTrapContainer = null;
 
     if (
       this.boundProfileHistoryVisibility &&
@@ -3833,7 +5393,7 @@ export class ProfileModalController {
           this.profileHistoryRenderer.destroy();
         }
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to reset watch history renderer on close:",
           error,
         );
@@ -3860,7 +5420,7 @@ export class ProfileModalController {
           try {
             previous.focus();
           } catch (error) {
-            console.warn(
+            userLogger.warn(
               "[profileModal] Failed to restore focus after closing modal:",
               error,
             );
@@ -3873,7 +5433,7 @@ export class ProfileModalController {
       try {
         this.callbacks.onClose(this);
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] onClose callback threw while hiding modal:",
           error,
         );
@@ -3897,7 +5457,7 @@ export class ProfileModalController {
           persistActive: false,
         });
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to sync saved profiles during login:",
           error,
         );
@@ -3917,7 +5477,7 @@ export class ProfileModalController {
     try {
       await this.refreshAdminPaneState();
     } catch (error) {
-      console.warn("Failed to refresh admin pane after login:", error);
+      userLogger.warn("Failed to refresh admin pane after login:", error);
     }
 
     this.populateBlockedList();
@@ -3931,7 +5491,7 @@ export class ProfileModalController {
         this.refreshWalletPaneState();
       })
       .catch((error) => {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to hydrate deferred login data:",
           error,
         );
@@ -3951,7 +5511,7 @@ export class ProfileModalController {
           persistActive: false,
         });
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to sync saved profiles during logout:",
           error,
         );
@@ -3970,7 +5530,7 @@ export class ProfileModalController {
     try {
       await this.refreshAdminPaneState();
     } catch (error) {
-      console.warn("Failed to refresh admin pane after logout:", error);
+      userLogger.warn("Failed to refresh admin pane after logout:", error);
     }
 
     this.populateBlockedList();
@@ -3988,7 +5548,7 @@ export class ProfileModalController {
           persistActive: false,
         });
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[profileModal] Failed to sync saved profiles after profile update:",
           error,
         );
@@ -4013,7 +5573,7 @@ export class ProfileModalController {
     try {
       result = this.services.removeSavedProfile(pubkey) || { removed: false };
     } catch (error) {
-      console.error("Failed to remove saved profile:", error);
+      userLogger.error("Failed to remove saved profile:", error);
       result = { removed: false, error };
     }
 
@@ -4046,7 +5606,7 @@ export class ProfileModalController {
     try {
       return await hydrate(normalized);
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         `[ProfileModalController] Failed to hydrate wallet settings for ${normalized}:`,
         error,
       );
@@ -4102,7 +5662,7 @@ export class ProfileModalController {
       try {
         return this.services.persistSavedProfiles(...args);
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[ProfileModalController] Persist saved profiles service threw:",
           error,
         );

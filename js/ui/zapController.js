@@ -1,4 +1,5 @@
 import { isDevMode } from "../config.js";
+import { LOGIN_TO_ZAP_MESSAGE } from "../payments/zapMessages.js";
 import {
   calculateZapShares,
   fetchLightningMetadata,
@@ -18,6 +19,7 @@ import {
   requestInvoice,
 } from "../payments/lnurl.js";
 import { getPlatformLightningAddress } from "../payments/platformAddress.js";
+import { devLogger, userLogger } from "../utils/logger.js";
 import {
   ensureWallet as ensureWalletDefault,
   sendPayment as sendPaymentDefault,
@@ -32,8 +34,10 @@ export default class ZapController {
     nwcSettings,
     getActiveNwcSettings,
     isUserLoggedIn,
+    hasSessionActor,
     hasActiveWalletConnection,
     splitAndZap,
+    notifyLoginRequired,
     payments = {},
     callbacks = {},
     requestWalletPane,
@@ -57,6 +61,8 @@ export default class ZapController {
     }
     this.isUserLoggedIn =
       typeof isUserLoggedIn === "function" ? isUserLoggedIn : () => false;
+    this.hasSessionActor =
+      typeof hasSessionActor === "function" ? hasSessionActor : () => false;
     if (
       this.nwcSettings &&
       typeof this.nwcSettings.hasActiveWalletConnection === "function"
@@ -70,6 +76,8 @@ export default class ZapController {
     }
     this.splitAndZap =
       typeof splitAndZap === "function" ? splitAndZap : () => Promise.resolve();
+    this.notifyLoginRequired =
+      typeof notifyLoginRequired === "function" ? notifyLoginRequired : null;
     this.payments = payments || {};
     this.callbacks = {
       onSuccess: typeof callbacks.onSuccess === "function" ? callbacks.onSuccess : null,
@@ -88,11 +96,18 @@ export default class ZapController {
 
   setVisibility(visible) {
     const lightningVisible = !!visible;
-    const shouldShow = lightningVisible && this.isUserLoggedIn();
+    const loggedIn = this.isUserLoggedIn();
+    const shouldShow = lightningVisible;
+    const requiresLogin = shouldShow && !loggedIn;
     const hasWallet = this.hasActiveWalletConnection();
     if (this.videoModal) {
-      this.videoModal.setZapVisibility(shouldShow);
-      this.videoModal.setWalletPromptVisible(shouldShow && !hasWallet);
+      this.videoModal.setZapVisibility({
+        visible: shouldShow,
+        requiresLogin,
+      });
+      this.videoModal.setWalletPromptVisible(
+        shouldShow && !requiresLogin && !hasWallet,
+      );
     }
   }
 
@@ -114,14 +129,32 @@ export default class ZapController {
     }
   }
 
-  open() {
+  open(options = {}) {
+    const config =
+      options && typeof options === "object" ? options : Object.create(null);
+    const requiresLogin = Boolean(config.requiresLogin);
     this.resetFeedback();
+    if (requiresLogin) {
+      if (this.notifyLoginRequired) {
+        this.notifyLoginRequired();
+      } else {
+        this.notifyError(LOGIN_TO_ZAP_MESSAGE);
+      }
+      return false;
+    }
+    if (!this.isUserLoggedIn()) {
+      if (this.notifyLoginRequired) {
+        this.notifyLoginRequired();
+      } else {
+        this.notifyError(LOGIN_TO_ZAP_MESSAGE);
+      }
+      return false;
+    }
     this.applyDefaultAmount();
     this.preloadLightningMetadata().catch((error) => {
-      if (isDevMode) {
-        console.warn("[zap] Preload metadata error:", error);
-      }
+      devLogger.warn("[zap] Preload metadata error:", error);
     });
+    return true;
   }
 
   close() {
@@ -238,7 +271,7 @@ export default class ZapController {
       Promise.resolve()
         .then(() => this.requestWalletPane())
         .catch((error) => {
-          console.error("Failed to open wallet pane:", error);
+          userLogger.error("Failed to open wallet pane:", error);
         });
     }
   }
@@ -312,9 +345,7 @@ export default class ZapController {
       try {
         await fetchLightningMetadata(lightningAddress);
       } catch (error) {
-        if (isDevMode) {
-          console.warn("[zap] Failed to preload creator metadata:", error);
-        }
+        devLogger.warn("[zap] Failed to preload creator metadata:", error);
       }
     }
 
@@ -333,18 +364,14 @@ export default class ZapController {
           });
           setCachedPlatformLightningAddress(platformAddress || "");
         } catch (error) {
-          if (isDevMode) {
-            console.warn("[zap] Failed to load platform Lightning address:", error);
-          }
+          devLogger.warn("[zap] Failed to load platform Lightning address:", error);
         }
       }
       if (platformAddress) {
         try {
           await fetchLightningMetadata(platformAddress);
         } catch (error) {
-          if (isDevMode) {
-            console.warn("[zap] Failed to preload platform metadata:", error);
-          }
+          devLogger.warn("[zap] Failed to preload platform metadata:", error);
         }
       }
     }
@@ -428,7 +455,7 @@ export default class ZapController {
             ? details.retryAttempt
             : undefined,
       };
-      console.error("[zap] Modal zap failure", summary, error);
+      userLogger.error("[zap] Modal zap failure", summary, error);
     };
 
     const lightningAddress = this.getCurrentVideo()?.lightningAddress || "";
@@ -675,17 +702,17 @@ export default class ZapController {
         overrideFee,
       });
     } catch (error) {
-      console.error(
+      userLogger.error(
         "[zap] Modal lightning context failed",
         {
-          amount,
-          overrideFee,
-          commentLength: typeof comment === "string" ? comment.length : undefined,
-          wallet: {
-            hasUri: Boolean(settings?.nwcUri),
-            type:
-              settings?.type || settings?.name || settings?.client || undefined,
-          },
+        amount,
+        overrideFee,
+        commentLength: typeof comment === "string" ? comment.length : undefined,
+        wallet: {
+        hasUri: Boolean(settings?.nwcUri),
+        type:
+        settings?.type || settings?.name || settings?.client || undefined,
+        },
         },
         error
       );
@@ -720,7 +747,7 @@ export default class ZapController {
       if (Array.isArray(shareTracker) && shareTracker.length) {
         error.__zapShareTracker = shareTracker;
       }
-      console.error(
+      userLogger.error(
         "[zap] splitAndZap failed",
         {
           amount,
@@ -818,7 +845,7 @@ export default class ZapController {
         const tracker = Array.isArray(error?.__zapShareTracker)
           ? error.__zapShareTracker
           : [];
-        console.error(
+        userLogger.error(
           "[zap] Modal zap retry failed",
           {
             shareType: share?.type || "unknown",
@@ -908,7 +935,7 @@ export default class ZapController {
     const tracker = Array.isArray(error?.__zapShareTracker)
       ? error.__zapShareTracker
       : [];
-    console.error(
+    userLogger.error(
       "[zap] Modal zap attempt failed",
       {
         amount,

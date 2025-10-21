@@ -1,6 +1,6 @@
 # Watch history logging (v2 pipeline)
 
-BitVid's watch history sync is orchestrated by the
+bitvid's watch history sync is orchestrated by the
 [`WatchHistoryService`](../js/watchHistoryService.js). The service collects
 per-video pointer data during playback, batches it in session storage, and emits
 encrypted snapshots to relays only when a publish is triggered. Relay payloads
@@ -17,7 +17,7 @@ Snapshots publish two event types to the shared `WATCH_HISTORY_KIND` stream:
    `['head','1']` and may append `"a"` tags that reference previous chunk
    addresses, allowing readers to reconstruct the full set even when relays
    deduplicate aggressively.【F:js/nostrEventSchemas.js†L175-L189】【F:js/nostr.js†L2329-L2369】
-2. **Pointer event** — After chunks are accepted, BitVid emits a compact index
+2. **Pointer event** — After chunks are accepted, bitvid emits a compact index
    event containing the canonical list identifier (`['d', WATCH_HISTORY_LIST_IDENTIFIER]`),
    the `snapshot` label, the total chunk count, and an `a` tag for each chunk
    address.【F:js/nostrEventSchemas.js†L157-L170】【F:js/nostr.js†L2425-L2441】

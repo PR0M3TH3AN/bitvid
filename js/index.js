@@ -8,11 +8,340 @@ import { setApplication, setApplicationReady } from "./applicationContext.js";
 import nostrService from "./services/nostrService.js";
 import r2Service from "./services/r2Service.js";
 import { loadView, viewInitRegistry } from "./viewManager.js";
+import { applyDesignSystemAttributes } from "./designSystem.js";
+import {
+  initThemeController,
+  refreshThemeControls,
+} from "./themeController.js";
+import { devLogger, userLogger } from "./utils/logger.js";
+import {
+  prepareStaticModal,
+  openStaticModal,
+  closeStaticModal,
+} from "./ui/components/staticModalAccessibility.js";
+import {
+  BLOG_URL,
+  COMMUNITY_URL,
+  NOSTR_URL,
+  GITHUB_URL,
+  BETA_URL,
+  DNS_URL,
+  isLockdownMode,
+} from "./config.js";
+import AuthService from "./services/authService.js";
+import { accessControl } from "./accessControl.js";
+import { nostrClient } from "./nostr.js";
+import { userBlocks } from "./userBlocks.js";
+import { relayManager } from "./relayManager.js";
 
 validateInstanceConfig();
 
+applyDesignSystemAttributes();
+initThemeController();
+
 let application = null;
 let applicationReadyPromise = Promise.resolve();
+
+const LOCKDOWN_MODAL_ID = "lockdownModal";
+const LOCKDOWN_LOGIN_BUTTON_ID = "lockdownLoginButton";
+const LOCKDOWN_STATUS_ID = "lockdownStatusMessage";
+const LOCKDOWN_ERROR_ID = "lockdownErrorMessage";
+
+let lockdownAuthService = null;
+let lockdownAccessControlPromise = null;
+let lockdownResumePromise = null;
+
+const bindOptionalExternalLink = ({ selector, url, label }) => {
+  const element = document.querySelector(selector);
+  const sanitizedUrl = typeof url === "string" ? url.trim() : "";
+
+  if (!(element instanceof HTMLAnchorElement)) {
+    if (sanitizedUrl) {
+      userLogger.warn(
+        `${label} not found; skipping external link binding.`,
+      );
+    }
+    return;
+  }
+
+  if (!sanitizedUrl) {
+    element.remove();
+    return;
+  }
+
+  element.href = sanitizedUrl;
+  element.target = "_blank";
+  element.rel = "noopener noreferrer";
+};
+
+function ensureLockdownAccessControlReady() {
+  if (lockdownAccessControlPromise) {
+    return lockdownAccessControlPromise;
+  }
+
+  lockdownAccessControlPromise = accessControl
+    .refresh()
+    .then(
+      () => true,
+      (error) => {
+        devLogger.error(
+          "[Lockdown] Failed to refresh admin lists before login attempt:",
+          error,
+        );
+        return false;
+      },
+    );
+
+  return lockdownAccessControlPromise;
+}
+
+function getLockdownAuthService() {
+  if (lockdownAuthService) {
+    return lockdownAuthService;
+  }
+
+  const service = new AuthService({
+    nostrClient,
+    userBlocks,
+    relayManager,
+    logger: devLogger,
+    accessControl,
+  });
+
+  try {
+    service.hydrateFromStorage();
+  } catch (error) {
+    devLogger.warn("[Lockdown] Failed to hydrate auth state from storage:", error);
+  }
+
+  lockdownAuthService = service;
+  return service;
+}
+
+function setLockdownStatusMessage(message) {
+  const statusNode = document.getElementById(LOCKDOWN_STATUS_ID);
+  if (!(statusNode instanceof HTMLElement)) {
+    return;
+  }
+
+  const text = typeof message === "string" ? message.trim() : "";
+  if (text) {
+    statusNode.textContent = text;
+    statusNode.classList.remove("hidden");
+  } else {
+    statusNode.textContent = "";
+    statusNode.classList.add("hidden");
+  }
+}
+
+function setLockdownErrorMessage(message) {
+  const errorNode = document.getElementById(LOCKDOWN_ERROR_ID);
+  if (!(errorNode instanceof HTMLElement)) {
+    return;
+  }
+
+  const text = typeof message === "string" ? message.trim() : "";
+  if (text) {
+    errorNode.textContent = text;
+    errorNode.classList.remove("hidden");
+  } else {
+    errorNode.textContent = "";
+    errorNode.classList.add("hidden");
+  }
+}
+
+function resetLockdownError() {
+  setLockdownErrorMessage("");
+}
+
+function setLockdownLoginBusy(isBusy) {
+  const button = document.getElementById(LOCKDOWN_LOGIN_BUTTON_ID);
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const busy = Boolean(isBusy);
+  button.disabled = busy;
+  if (busy) {
+    button.setAttribute("aria-busy", "true");
+  } else {
+    button.removeAttribute("aria-busy");
+  }
+}
+
+async function tryAutoResumeLockdownSession() {
+  const authService = getLockdownAuthService();
+  if (!authService || typeof authService.getActivePubkey !== "function") {
+    return false;
+  }
+
+  const savedPubkey = authService.getActivePubkey();
+  if (!savedPubkey) {
+    return false;
+  }
+
+  resetLockdownError();
+  setLockdownLoginBusy(true);
+  setLockdownStatusMessage("Restoring your previous session…");
+
+  try {
+    await ensureLockdownAccessControlReady();
+    await authService.login(savedPubkey, { persistActive: false });
+    setLockdownStatusMessage("Administrator session restored. Loading bitvid…");
+    await resumeLockdownStartup();
+    return true;
+  } catch (error) {
+    devLogger.warn("[Lockdown] Stored session failed to resume:", error);
+    if (error && typeof error === "object") {
+      if (error.code === "site-lockdown") {
+        setLockdownErrorMessage(
+          "Stored credentials are no longer permitted during lockdown. Please sign in with an authorized administrator account.",
+        );
+      } else if (typeof error.message === "string" && error.message.trim()) {
+        setLockdownErrorMessage(error.message.trim());
+      }
+    }
+    return false;
+  } finally {
+    if (!lockdownResumePromise) {
+      setLockdownLoginBusy(false);
+      setLockdownStatusMessage("Administrator access is required to proceed.");
+    }
+  }
+}
+
+function resumeLockdownStartup() {
+  if (lockdownResumePromise) {
+    return lockdownResumePromise;
+  }
+
+  const modal = document.getElementById(LOCKDOWN_MODAL_ID);
+  const loginButton = document.getElementById(LOCKDOWN_LOGIN_BUTTON_ID);
+  if (loginButton instanceof HTMLButtonElement) {
+    loginButton.removeEventListener("click", handleLockdownLoginClick);
+  }
+
+  if (modal) {
+    closeStaticModal(modal);
+  }
+
+  lockdownResumePromise = Promise.resolve()
+    .then(() => initializeInterface())
+    .catch((error) => {
+      lockdownResumePromise = null;
+      userLogger.error("Failed to start bitvid after lockdown login:", error);
+      if (modal) {
+        openStaticModal(modal);
+      }
+      setLockdownLoginBusy(false);
+      setLockdownStatusMessage("Administrator access is required to proceed.");
+      setLockdownErrorMessage(
+        "We couldn't start the application. Please try again.",
+      );
+      throw error;
+    });
+
+  return lockdownResumePromise;
+}
+
+async function handleLockdownLoginClick(event) {
+  event.preventDefault();
+
+  resetLockdownError();
+  setLockdownStatusMessage("Requesting authorization from your Nostr extension…");
+  setLockdownLoginBusy(true);
+
+  let shouldReleaseButton = true;
+
+  try {
+    await ensureLockdownAccessControlReady();
+    const authService = getLockdownAuthService();
+    const result = await authService.requestLogin({ allowAccountSelection: true });
+    const pubkey =
+      result && typeof result === "object" && typeof result.pubkey === "string"
+        ? result.pubkey
+        : null;
+
+    if (!pubkey) {
+      setLockdownStatusMessage(
+        "No account was selected. Choose an authorized administrator profile to continue.",
+      );
+      return;
+    }
+
+    setLockdownStatusMessage("Login successful. Loading bitvid…");
+    shouldReleaseButton = false;
+    await resumeLockdownStartup();
+    return;
+  } catch (error) {
+    userLogger.error("Lockdown login failed:", error);
+    let message = "Failed to login. Please try again.";
+    if (error && typeof error === "object") {
+      if (error.code === "site-lockdown") {
+        message =
+          "Only administrators and moderators may sign in during lockdown. Try another account.";
+      } else if (error.code === "extension-permission-denied") {
+        message =
+          "The NIP-07 extension denied the permission request required to finish logging in.";
+      } else if (typeof error.message === "string" && error.message.trim()) {
+        message = error.message.trim();
+      }
+    }
+    setLockdownErrorMessage(message);
+    setLockdownStatusMessage("Administrator access is required to proceed.");
+  } finally {
+    if (shouldReleaseButton) {
+      setLockdownLoginBusy(false);
+    }
+  }
+}
+
+async function prepareLockdownInterface() {
+  ensureLockdownAccessControlReady();
+
+  try {
+    await loadModal("components/lockdown-modal.html");
+  } catch (error) {
+    userLogger.error("Failed to load lockdown modal markup:", error);
+    throw error;
+  }
+
+  const modal =
+    prepareStaticModal({ id: LOCKDOWN_MODAL_ID }) ||
+    document.getElementById(LOCKDOWN_MODAL_ID);
+  if (!(modal instanceof HTMLElement)) {
+    throw new Error("Lockdown modal markup is missing after load.");
+  }
+
+  const loginButton = modal.querySelector("[data-lockdown-login]");
+  if (loginButton instanceof HTMLButtonElement) {
+    loginButton.addEventListener("click", handleLockdownLoginClick);
+  } else {
+    devLogger.warn(
+      "[Lockdown] Login button not found inside lockdown modal. Users cannot sign in.",
+    );
+  }
+
+  openStaticModal(modal);
+  resetLockdownError();
+  setLockdownStatusMessage("Administrator access is required to proceed.");
+  setLockdownLoginBusy(false);
+
+  const autoResumed = await tryAutoResumeLockdownSession();
+  if (autoResumed) {
+    return;
+  }
+
+  if (loginButton instanceof HTMLButtonElement && typeof window !== "undefined") {
+    window.requestAnimationFrame(() => {
+      try {
+        loginButton.focus();
+      } catch (error) {
+        devLogger.warn("[Lockdown] Failed to focus lockdown login button:", error);
+      }
+    });
+  }
+}
 
 function startApplication() {
   if (application) {
@@ -40,7 +369,7 @@ function startApplication() {
   setApplicationReady(startupPromise);
 
   startupPromise.catch((error) => {
-    console.error("Application failed to initialize:", error);
+    userLogger.error("Application failed to initialize:", error);
   });
 
   return startupPromise;
@@ -123,17 +452,17 @@ const fetchPartial = async (url) => {
 async function loadModal(url) {
   try {
     const html = await fetchPartial(url);
-    // Remove analytics loader tags from modal partials to avoid duplicate pageview events.
-    const sanitizedHtml = html.replace(
-      /<script\b[^>]*src=["'][^"']*tracking\.js[^"']*["'][^>]*>\s*<\/script>/gi,
-      ""
-    );
     document
       .getElementById("modalContainer")
-      .insertAdjacentHTML("beforeend", sanitizedHtml);
-    console.log(url, "loaded");
+      .insertAdjacentHTML("beforeend", html);
+    const modalContainer = document.getElementById("modalContainer");
+    if (modalContainer) {
+      applyDesignSystemAttributes(modalContainer);
+      refreshThemeControls(modalContainer);
+    }
+    devLogger.log(url, "loaded");
   } catch (err) {
-    console.error(err);
+    userLogger.error(err);
   }
 }
 
@@ -141,10 +470,15 @@ async function loadModal(url) {
 async function loadSidebar(url, containerId) {
   try {
     const html = await fetchPartial(url);
-    document.getElementById(containerId).innerHTML = html;
-    console.log(url, "loaded into", containerId);
+    const container = document.getElementById(containerId);
+    if (container) {
+      container.innerHTML = html;
+      applyDesignSystemAttributes(container);
+      refreshThemeControls(container);
+    }
+    devLogger.log(url, "loaded into", containerId);
   } catch (err) {
-    console.error(err);
+    userLogger.error(err);
   }
 }
 
@@ -152,10 +486,15 @@ async function loadSidebar(url, containerId) {
 async function loadDisclaimer(url, containerId) {
   try {
     const html = await fetchPartial(url);
-    document.getElementById(containerId).insertAdjacentHTML("beforeend", html);
-    console.log(url, "disclaimer loaded into", containerId);
+    const container = document.getElementById(containerId);
+    if (container) {
+      container.insertAdjacentHTML("beforeend", html);
+      applyDesignSystemAttributes(container);
+      refreshThemeControls(container);
+    }
+    devLogger.log(url, "disclaimer loaded into", containerId);
   } catch (err) {
-    console.error(err);
+    userLogger.error(err);
   }
 }
 
@@ -169,10 +508,85 @@ async function bootstrapInterface() {
     loadModal("components/bug-fix-form.html"),
   ]);
 
-  console.log("Modals loaded.");
+  devLogger.log("Modals loaded.");
+
+  [
+    "loginModal",
+    "nostrFormModal",
+    "contentAppealsModal",
+    "generalFeedbackModal",
+    "featureRequestModal",
+    "bugFixModal",
+  ].forEach((id) => {
+    prepareStaticModal({ id });
+  });
 
   await loadSidebar("components/sidebar.html", "sidebarContainer");
-  console.log("Sidebar loaded.");
+  devLogger.log("Sidebar loaded.");
+
+  bindOptionalExternalLink({
+    selector: "[data-blog-link]",
+    url: BLOG_URL,
+    label: "Sidebar blog link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-nostr-link]",
+    url: NOSTR_URL,
+    label: "Sidebar Nostr link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-community-link]",
+    url: COMMUNITY_URL,
+    label: "Sidebar community link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-github-link]",
+    url: GITHUB_URL,
+    label: "Sidebar GitHub link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-beta-link]",
+    url: BETA_URL,
+    label: "Sidebar Beta link",
+  });
+
+  bindOptionalExternalLink({
+    selector: "[data-dns-link]",
+    url: DNS_URL,
+    label: "Sidebar DNS link",
+  });
+
+  const headerSearchForm = document.getElementById("headerSearchForm");
+  if (headerSearchForm) {
+    headerSearchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      try {
+        await applicationReadyPromise;
+      } catch (error) {
+        userLogger.info("Search function is coming soon.");
+        return;
+      }
+
+      if (application && typeof application.showStatus === "function") {
+        try {
+          application.showStatus("Search function is coming soon.", {
+            autoHideMs: 3500,
+            showSpinner: false,
+          });
+          return;
+        } catch (error) {
+          // fall through to logger fallback
+        }
+      }
+
+      userLogger.info("Search function is coming soon.");
+    });
+  }
 
   const sidebar = document.getElementById("sidebar");
   const collapseToggle = document.getElementById("sidebarCollapseToggle");
@@ -180,16 +594,14 @@ async function bootstrapInterface() {
     sidebar.setAttribute("data-footer-state", "collapsed");
   }
   if (!collapseToggle) {
-    console.warn("Sidebar collapse toggle not found; skipping density controls.");
+    userLogger.warn("Sidebar collapse toggle not found; skipping density controls.");
   }
 
-  const mobileMenuBtn = document.getElementById("mobileMenuBtn");
-  const sidebarOverlay = document.getElementById("sidebarOverlay");
-
   const SIDEBAR_COLLAPSED_STORAGE_KEY = "sidebarCollapsed";
-  const SIDEBAR_WIDTH_EXPANDED = "16rem";
-  const SIDEBAR_WIDTH_COLLAPSED = "4rem";
   const DEFAULT_SIDEBAR_COLLAPSED = true;
+  const DESKTOP_VIEWPORT_MIN_WIDTH = 1024;
+  const DESKTOP_VIEWPORT_QUERY = "(min-width: 1024px)";
+  let desktopViewportQuery = null;
   let isSidebarCollapsed = DEFAULT_SIDEBAR_COLLAPSED;
   let isFooterDropupExpanded = false;
   let syncFooterDropupFn = null;
@@ -202,7 +614,7 @@ async function bootstrapInterface() {
       }
       return storedValue === "true";
     } catch (error) {
-      console.warn("Unable to read sidebar collapse state from storage:", error);
+      userLogger.warn("Unable to read sidebar collapse state from storage:", error);
       return DEFAULT_SIDEBAR_COLLAPSED;
     }
   };
@@ -214,41 +626,31 @@ async function bootstrapInterface() {
         collapsed ? "true" : "false",
       );
     } catch (error) {
-      console.warn("Unable to persist sidebar collapse state:", error);
+      userLogger.warn("Unable to persist sidebar collapse state:", error);
     }
   };
 
   const applySidebarDensity = (collapsed) => {
-    const widthTargets = [document.documentElement, document.body].filter(
-      (element) => element instanceof HTMLElement,
+    const state = collapsed ? "collapsed" : "expanded";
+    const toggleTargets = new Set(
+      [document.documentElement, document.body, sidebar].filter(
+        (element) => element instanceof HTMLElement
+      ),
     );
-    if (sidebar instanceof HTMLElement) {
-      widthTargets.push(sidebar);
-    }
+
     const appShell = document.getElementById("app");
     if (appShell instanceof HTMLElement) {
-      widthTargets.push(appShell);
-    }
-    const state = collapsed ? "collapsed" : "expanded";
-    const nextWidth = collapsed
-      ? SIDEBAR_WIDTH_COLLAPSED
-      : SIDEBAR_WIDTH_EXPANDED;
-
-    widthTargets.forEach((element) => {
-      element.style.setProperty("--sidebar-width", nextWidth);
-    });
-
-    if (appShell instanceof HTMLElement) {
+      toggleTargets.add(appShell);
       appShell.dataset.sidebarState = state;
+      appShell.classList.toggle("sidebar-collapsed", collapsed);
+      appShell.classList.toggle("sidebar-expanded", !collapsed);
     }
 
-    [sidebar, document.body]
-      .filter((element) => element instanceof HTMLElement)
-      .forEach((element) => {
-        element.classList.toggle("sidebar-collapsed", collapsed);
-        element.classList.toggle("sidebar-expanded", !collapsed);
-        element.setAttribute("data-state", state);
-      });
+    toggleTargets.forEach((element) => {
+      element.classList.toggle("sidebar-collapsed", collapsed);
+      element.classList.toggle("sidebar-expanded", !collapsed);
+      element.setAttribute("data-state", state);
+    });
 
     if (collapseToggle) {
       const actionLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
@@ -267,67 +669,59 @@ async function bootstrapInterface() {
     }
   };
 
-  const syncSidebarDensityToViewport = (isDesktopViewport) => {
-    if (!collapseToggle) {
-      applySidebarDensity(false);
+  const isDesktopViewportActive = () => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    if (desktopViewportQuery === null && typeof window.matchMedia === "function") {
+      try {
+        desktopViewportQuery = window.matchMedia(DESKTOP_VIEWPORT_QUERY);
+      } catch (error) {
+        desktopViewportQuery = null;
+      }
+    }
+
+    if (desktopViewportQuery) {
+      return desktopViewportQuery.matches === true;
+    }
+
+    if (typeof window.innerWidth === "number") {
+      return window.innerWidth >= DESKTOP_VIEWPORT_MIN_WIDTH;
+    }
+
+    return false;
+  };
+
+  const shouldAutoCollapseSidebarOnAction = () => !isDesktopViewportActive();
+
+  const collapseSidebarForMobile = () => {
+    if (!shouldAutoCollapseSidebarOnAction()) {
       return;
     }
 
-    if (isDesktopViewport) {
-      isSidebarCollapsed = readStoredSidebarCollapsed();
-      applySidebarDensity(isSidebarCollapsed);
+    if (!isSidebarCollapsed) {
+      const nextCollapsed = true;
+      isSidebarCollapsed = nextCollapsed;
+      applySidebarDensity(nextCollapsed);
+      persistSidebarCollapsed(nextCollapsed);
       return;
     }
 
-    applySidebarDensity(false);
-  };
-
-  if (collapseToggle) {
-    isSidebarCollapsed = readStoredSidebarCollapsed();
-  }
-
-  const setSidebarState = (isOpen) => {
-    if (sidebar) {
-      sidebar.classList.toggle("sidebar-open", isOpen);
+    if (isFooterDropupExpanded && typeof syncFooterDropupFn === "function") {
+      syncFooterDropupFn(false);
     }
-    document.body.classList.toggle("sidebar-open", isOpen);
-    if (mobileMenuBtn) {
-      mobileMenuBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
-    }
+    persistSidebarCollapsed(true);
   };
 
-  const closeSidebar = () => setSidebarState(false);
-  const isMobileViewport = () => {
-    if (typeof window.matchMedia === "function") {
-      return window.matchMedia("(max-width: 767px)").matches;
-    }
-    return window.innerWidth < 768;
-  };
+  isSidebarCollapsed = collapseToggle
+    ? readStoredSidebarCollapsed()
+    : DEFAULT_SIDEBAR_COLLAPSED;
 
-  const toggleSidebar = () => {
-    if (!sidebar) return;
-    const isMobile = isMobileViewport();
-    if (!isMobile) return;
-    const shouldOpen = !sidebar.classList.contains("sidebar-open");
-    setSidebarState(shouldOpen);
-  };
-
-  let desktopQuery = null;
-  const isDesktopViewport = () => {
-    if (desktopQuery) {
-      return desktopQuery.matches;
-    }
-    return window.innerWidth >= 768;
-  };
+  applySidebarDensity(isSidebarCollapsed);
 
   if (collapseToggle) {
     collapseToggle.addEventListener("click", (event) => {
-      const desktop = isDesktopViewport();
-      if (!desktop) {
-        event.preventDefault();
-        return;
-      }
-
       event.preventDefault();
       const nextCollapsed = !isSidebarCollapsed;
       isSidebarCollapsed = nextCollapsed;
@@ -336,47 +730,132 @@ async function bootstrapInterface() {
     });
   }
 
-  if (mobileMenuBtn && sidebar) {
-    mobileMenuBtn.addEventListener("click", toggleSidebar);
-  }
-
-  if (sidebarOverlay) {
-    sidebarOverlay.addEventListener("click", closeSidebar);
-  }
-
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && sidebar && sidebar.classList.contains("sidebar-open")) {
-      closeSidebar();
-    }
-  });
-
-  if (typeof window.matchMedia === "function") {
-    desktopQuery = window.matchMedia("(min-width: 768px)");
-    syncSidebarDensityToViewport(desktopQuery.matches);
-
-    const onDesktopChange = (event) => {
-      if (event.matches) {
-        closeSidebar();
-        syncSidebarDensityToViewport(true);
+  if (sidebar) {
+    sidebar.addEventListener("click", (event) => {
+      if (!shouldAutoCollapseSidebarOnAction()) {
         return;
       }
 
-      syncSidebarDensityToViewport(false);
-    };
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
 
-    if (typeof desktopQuery.addEventListener === "function") {
-      desktopQuery.addEventListener("change", onDesktopChange);
-    } else if (typeof desktopQuery.addListener === "function") {
-      desktopQuery.addListener(onDesktopChange);
-    }
-  } else {
-    syncSidebarDensityToViewport(window.innerWidth >= 768);
+      const navLink = target.closest(".sidebar-nav-link");
+      if (!(navLink instanceof HTMLElement)) {
+        return;
+      }
+
+      collapseSidebarForMobile();
+    });
   }
 
   const footerDropdownButton = document.getElementById("footerDropdownButton");
   const footerLinksContainer = document.getElementById("footerLinksContainer");
   const footerDropdownLabel = document.getElementById("footerDropdownText");
   const footerDropdownIcon = document.getElementById("footerDropdownIcon");
+
+  const debounce = (fn, delay) => {
+    let timeoutId = null;
+    return (...args) => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(() => {
+        timeoutId = null;
+        fn(...args);
+      }, delay);
+    };
+  };
+
+  const resolveCssLengthToPixels = (value, container) => {
+    if (!(container instanceof HTMLElement) || typeof value !== "string") {
+      return 0;
+    }
+
+    const measurementNode = container.ownerDocument.createElement("div");
+    measurementNode.style.position = "absolute";
+    measurementNode.style.visibility = "hidden";
+    measurementNode.style.pointerEvents = "none";
+    measurementNode.style.height = "0";
+    measurementNode.style.width = value;
+    measurementNode.style.overflow = "hidden";
+
+    container.appendChild(measurementNode);
+    const pixels = measurementNode.getBoundingClientRect().width;
+    container.removeChild(measurementNode);
+
+    return Number.isFinite(pixels) ? pixels : 0;
+  };
+
+  const updateSidebarDropupContentWidth = () => {
+    const panelInner = document.querySelector(".sidebar-dropup-panel__inner");
+    const panel = panelInner?.closest(".sidebar-dropup-panel");
+
+    if (!(panelInner instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      document.documentElement.style.setProperty(
+        "--sidebar-dropup-content-width",
+        "0px",
+      );
+      return;
+    }
+
+    const originalStyles = {
+      position: panelInner.style.position,
+      width: panelInner.style.width,
+      maxWidth: panelInner.style.maxWidth,
+      visibility: panelInner.style.visibility,
+      pointerEvents: panelInner.style.pointerEvents,
+      left: panelInner.style.left,
+      right: panelInner.style.right,
+      top: panelInner.style.top,
+      bottom: panelInner.style.bottom,
+    };
+
+    panelInner.style.position = "absolute";
+    panelInner.style.width = "max-content";
+    panelInner.style.maxWidth = "none";
+    panelInner.style.visibility = "hidden";
+    panelInner.style.pointerEvents = "none";
+    panelInner.style.left = "-9999px";
+    panelInner.style.right = "auto";
+    panelInner.style.top = "auto";
+    panelInner.style.bottom = "auto";
+
+    const measuredInnerWidth = Math.ceil(panelInner.scrollWidth);
+
+    panelInner.style.position = originalStyles.position;
+    panelInner.style.width = originalStyles.width;
+    panelInner.style.maxWidth = originalStyles.maxWidth;
+    panelInner.style.visibility = originalStyles.visibility;
+    panelInner.style.pointerEvents = originalStyles.pointerEvents;
+    panelInner.style.left = originalStyles.left;
+    panelInner.style.right = originalStyles.right;
+    panelInner.style.top = originalStyles.top;
+    panelInner.style.bottom = originalStyles.bottom;
+
+    const panelStyles = window.getComputedStyle(panel);
+    const paddingInlineStart = Number.parseFloat(panelStyles.paddingInlineStart) || 0;
+    const paddingInlineEnd = Number.parseFloat(panelStyles.paddingInlineEnd) || 0;
+
+    const scrollReserveValue = window
+      .getComputedStyle(panel)
+      .getPropertyValue("--space-sidebar-dropup-scroll-reserve");
+    const scrollReserve = resolveCssLengthToPixels(scrollReserveValue, panel);
+
+    const totalWidth = Math.max(
+      0,
+      measuredInnerWidth + paddingInlineStart + paddingInlineEnd + scrollReserve,
+    );
+
+    document.documentElement.style.setProperty(
+      "--sidebar-dropup-content-width",
+      `${Math.ceil(totalWidth)}px`,
+    );
+  };
+
+  const debouncedSidebarDropupResize = debounce(updateSidebarDropupContentWidth, 150);
+  window.addEventListener("resize", debouncedSidebarDropupResize);
 
   if (footerDropdownButton && footerLinksContainer) {
     const sidebarFooter = footerDropdownButton.closest(".sidebar-footer");
@@ -410,6 +889,7 @@ async function bootstrapInterface() {
         sidebarFooter.dataset.footerState = nextState;
       }
       isFooterDropupExpanded = expanded;
+      updateSidebarDropupContentWidth();
     };
 
     footerDropdownButton.addEventListener("click", (event) => {
@@ -432,26 +912,34 @@ async function bootstrapInterface() {
     if (typeof syncFooterDropupFn === "function") {
       syncFooterDropupFn(initialExpanded);
     }
+  } else {
+    updateSidebarDropupContentWidth();
   }
 
   try {
     const sidebarModule = await import("./sidebar.js");
     if (typeof sidebarModule.setupSidebarNavigation === "function") {
-      sidebarModule.setupSidebarNavigation({ closeSidebar });
+      sidebarModule.setupSidebarNavigation();
     }
   } catch (error) {
-    console.error("Failed to set up sidebar navigation:", error);
+    userLogger.error("Failed to set up sidebar navigation:", error);
   }
 
   await loadDisclaimer("components/disclaimer.html", "modalContainer");
-  console.log("Disclaimer loaded.");
+  devLogger.log("Disclaimer loaded.");
+  prepareStaticModal({ id: "disclaimerModal" });
+
+  const { default: disclaimerModal } = await import("./disclaimer.js");
+  disclaimerModal.init();
 
   const loginNavBtn = document.getElementById("loginButton");
   if (loginNavBtn) {
-    loginNavBtn.addEventListener("click", () => {
-      const loginModal = document.getElementById("loginModal");
+    loginNavBtn.addEventListener("click", (event) => {
+      const loginModal =
+        prepareStaticModal({ id: "loginModal" }) ||
+        document.getElementById("loginModal");
       if (loginModal) {
-        loginModal.classList.remove("hidden");
+        openStaticModal(loginModal, { triggerElement: event.currentTarget });
       }
     });
   }
@@ -459,23 +947,19 @@ async function bootstrapInterface() {
   const closeLoginBtn = document.getElementById("closeLoginModal");
   if (closeLoginBtn) {
     closeLoginBtn.addEventListener("click", () => {
-      const loginModal = document.getElementById("loginModal");
-      if (loginModal) {
-        loginModal.classList.add("hidden");
-      }
+      closeStaticModal("loginModal");
     });
   }
 
   const openAppFormBtn = document.getElementById("openApplicationModal");
   if (openAppFormBtn) {
-    openAppFormBtn.addEventListener("click", () => {
-      const loginModal = document.getElementById("loginModal");
-      if (loginModal) {
-        loginModal.classList.add("hidden");
-      }
-      const appModal = document.getElementById("nostrFormModal");
+    openAppFormBtn.addEventListener("click", (event) => {
+      closeStaticModal("loginModal");
+      const appModal =
+        prepareStaticModal({ id: "nostrFormModal" }) ||
+        document.getElementById("nostrFormModal");
       if (appModal) {
-        appModal.classList.remove("hidden");
+        openStaticModal(appModal, { triggerElement: event.currentTarget });
       }
     });
   }
@@ -483,14 +967,11 @@ async function bootstrapInterface() {
   const closeNostrFormBtn = document.getElementById("closeNostrFormModal");
   if (closeNostrFormBtn) {
     closeNostrFormBtn.addEventListener("click", () => {
-      const appModal = document.getElementById("nostrFormModal");
-      if (appModal) {
-        appModal.classList.add("hidden");
-      }
+      closeStaticModal("nostrFormModal");
       if (!localStorage.getItem("hasSeenDisclaimer")) {
         const disclaimerModal = document.getElementById("disclaimerModal");
         if (disclaimerModal) {
-          disclaimerModal.classList.remove("hidden");
+          openStaticModal(disclaimerModal);
         }
       }
     });
@@ -502,8 +983,6 @@ async function bootstrapInterface() {
 
   await handleHashChange();
 
-  const { default: disclaimerModal } = await import("./disclaimer.js");
-  disclaimerModal.init();
   disclaimerModal.show();
 }
 
@@ -513,13 +992,20 @@ async function initializeInterface() {
   try {
     await bootstrapInterface();
   } catch (error) {
-    console.error("Failed to bootstrap Bitvid interface:", error);
+    userLogger.error("Failed to bootstrap bitvid interface:", error);
   }
 }
 
 function onDomReady() {
+  if (isLockdownMode) {
+    prepareLockdownInterface().catch((error) => {
+      userLogger.error("Failed to initialize lockdown interface:", error);
+    });
+    return;
+  }
+
   initializeInterface().catch((error) => {
-    console.error("Unhandled error during Bitvid initialization:", error);
+    userLogger.error("Unhandled error during bitvid initialization:", error);
   });
 }
 
@@ -572,93 +1058,91 @@ function handleQueryParams() {
   const modalParam = urlParams.get("modal");
 
   if (modalParam === "appeals") {
-    const appealsModal = document.getElementById("contentAppealsModal");
+    const appealsModal =
+      prepareStaticModal({ id: "contentAppealsModal" }) ||
+      document.getElementById("contentAppealsModal");
     if (appealsModal) {
-      appealsModal.classList.remove("hidden");
+      openStaticModal(appealsModal);
     }
     const closeAppealsBtn = document.getElementById("closeContentAppealsModal");
     if (closeAppealsBtn) {
       closeAppealsBtn.addEventListener("click", () => {
-        const appealsModal = document.getElementById("contentAppealsModal");
-        if (appealsModal) {
-          appealsModal.classList.add("hidden");
-        }
+        closeStaticModal("contentAppealsModal");
         if (!localStorage.getItem("hasSeenDisclaimer")) {
           const disclaimerModal = document.getElementById("disclaimerModal");
           if (disclaimerModal) {
-            disclaimerModal.classList.remove("hidden");
+            openStaticModal(disclaimerModal);
           }
         }
       });
     }
   } else if (modalParam === "application") {
-    const appModal = document.getElementById("nostrFormModal");
+    const appModal =
+      prepareStaticModal({ id: "nostrFormModal" }) ||
+      document.getElementById("nostrFormModal");
     if (appModal) {
-      appModal.classList.remove("hidden");
+      openStaticModal(appModal);
     }
   } else {
     const hasSeenDisclaimer = localStorage.getItem("hasSeenDisclaimer");
     if (!hasSeenDisclaimer) {
       const disclaimerModal = document.getElementById("disclaimerModal");
       if (disclaimerModal) {
-        disclaimerModal.classList.remove("hidden");
+        openStaticModal(disclaimerModal);
       }
     }
   }
 
   if (modalParam === "feedback") {
-    const feedbackModal = document.getElementById("generalFeedbackModal");
+    const feedbackModal =
+      prepareStaticModal({ id: "generalFeedbackModal" }) ||
+      document.getElementById("generalFeedbackModal");
     if (feedbackModal) {
-      feedbackModal.classList.remove("hidden");
+      openStaticModal(feedbackModal);
     }
   } else if (modalParam === "feature") {
-    const featureModal = document.getElementById("featureRequestModal");
+    const featureModal =
+      prepareStaticModal({ id: "featureRequestModal" }) ||
+      document.getElementById("featureRequestModal");
     if (featureModal) {
-      featureModal.classList.remove("hidden");
+      openStaticModal(featureModal);
     }
   } else if (modalParam === "bug") {
-    const bugModal = document.getElementById("bugFixModal");
+    const bugModal =
+      prepareStaticModal({ id: "bugFixModal" }) ||
+      document.getElementById("bugFixModal");
     if (bugModal) {
-      bugModal.classList.remove("hidden");
+      openStaticModal(bugModal);
     }
   }
 
   const closeFeedbackBtn = document.getElementById("closeGeneralFeedbackModal");
   if (closeFeedbackBtn) {
     closeFeedbackBtn.addEventListener("click", () => {
-      const feedbackModal = document.getElementById("generalFeedbackModal");
-      if (feedbackModal) {
-        feedbackModal.classList.add("hidden");
-      }
+      closeStaticModal("generalFeedbackModal");
     });
   }
   const closeFeatureBtn = document.getElementById("closeFeatureRequestModal");
   if (closeFeatureBtn) {
     closeFeatureBtn.addEventListener("click", () => {
-      const featureModal = document.getElementById("featureRequestModal");
-      if (featureModal) {
-        featureModal.classList.add("hidden");
-      }
+      closeStaticModal("featureRequestModal");
     });
   }
   const closeBugBtn = document.getElementById("closeBugFixModal");
   if (closeBugBtn) {
     closeBugBtn.addEventListener("click", () => {
-      const bugModal = document.getElementById("bugFixModal");
-      if (bugModal) {
-        bugModal.classList.add("hidden");
-      }
+      closeStaticModal("bugFixModal");
     });
   }
 }
 
 async function handleHashChange() {
-  console.log("handleHashChange called, current hash =", window.location.hash);
+  devLogger.log("handleHashChange called, current hash =", window.location.hash);
 
   try {
     await applicationReadyPromise;
   } catch (error) {
-    console.warn(
+    userLogger.warn(
       "Proceeding with hash handling despite application initialization failure:",
       error
     );
@@ -692,6 +1176,6 @@ async function handleHashChange() {
       await initFn();
     }
   } catch (error) {
-    console.error("Failed to handle hash change:", error);
+    userLogger.error("Failed to handle hash change:", error);
   }
 }

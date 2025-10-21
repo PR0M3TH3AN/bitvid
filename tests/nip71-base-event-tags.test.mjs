@@ -6,7 +6,7 @@ import { buildNip71MetadataTags, NostrClient } from "../js/nostr.js";
 
 test("30078 events carry nip71 metadata tags and hydrate fallback metadata", () => {
   const metadataInput = {
-    hashtags: ["  nostr  ", "BitVid  "],
+    hashtags: ["  nostr  ", "bitvid  "],
     participants: [
       { pubkey: "a".repeat(64), relay: " wss://relay.example " },
     ],
@@ -33,16 +33,22 @@ test("30078 events carry nip71 metadata tags and hydrate fallback metadata", () 
       videoRootId: "root-123",
       deleted: false,
       isPrivate: false,
+      isNsfw: false,
+      isForKids: true,
       enableComments: true,
     },
     additionalTags,
   });
 
+  const parsedContent = JSON.parse(event.content);
+  assert.equal(parsedContent.isNsfw, false);
+  assert.equal(parsedContent.isForKids, true);
+
   const hashtagValues = event.tags
     .filter((tag) => tag[0] === "t")
     .map((tag) => tag[1])
     .filter((value) => value && value.toLowerCase() !== "video");
-  assert.deepEqual(hashtagValues, ["nostr", "BitVid"]);
+  assert.deepEqual(hashtagValues, ["nostr", "bitvid"]);
 
   const participantTag = event.tags.find((tag) => tag[0] === "p");
   assert.deepEqual(participantTag, [
@@ -58,7 +64,6 @@ test("30078 events carry nip71 metadata tags and hydrate fallback metadata", () 
   assert.deepEqual(referenceTag, ["r", "https://example.com/info"]);
 
   const client = new NostrClient();
-  const parsedContent = JSON.parse(event.content);
   const video = {
     id: "event-123",
     videoRootId: parsedContent.videoRootId,
@@ -71,7 +76,7 @@ test("30078 events carry nip71 metadata tags and hydrate fallback metadata", () 
   client.mergeNip71MetadataIntoVideo(video);
 
   assert.ok(video.nip71, "fallback merge should populate nip71 metadata");
-  assert.deepEqual(video.nip71.hashtags, ["nostr", "BitVid"]);
+  assert.deepEqual(video.nip71.hashtags, ["nostr", "bitvid"]);
   assert.deepEqual(video.nip71.participants, [
     { pubkey: "a".repeat(64), relay: "wss://relay.example" },
   ]);

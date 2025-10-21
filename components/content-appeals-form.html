@@ -1,64 +1,54 @@
-<!-- components/content-appeals-form.html 
+<!-- components/content-appeals-form.html
      https://bitvid.network?modal=appeals => open contentAppealsModal
 -->
 <div
   id="contentAppealsModal"
-  class="fixed inset-0 z-50 hidden"
-  style="background: transparent"
+  class="bv-modal hidden items-start justify-center"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="contentAppealsModalTitle"
+  aria-describedby="contentAppealsModalDescription"
+  data-ds="new"
 >
-  <!-- Dark/blur overlay -->
-  <div
-    class="absolute inset-0 z-10"
-    style="
-      background-color: rgba(0, 0, 0, 0.9);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    "
-  ></div>
+  <div class="bv-modal-backdrop" data-dismiss></div>
 
-  <div
-    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
-  >
-    <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
-    >
-      <!-- Header bar (sticky) with improved title styling -->
-      <div
-        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between border-b border-gray-700"
+  <div class="bv-modal__panel modal-sheet max-h-modal-shell overflow-y-auto" tabindex="-1">
+    <!-- Header bar (sticky) with improved title styling -->
+    <div class="modal-header">
+      <h2
+        id="contentAppealsModalTitle"
+        class="pb-2 text-3xl font-extrabold tracking-wide text-text"
       >
-        <h2 class="text-3xl font-extrabold text-white tracking-wide pb-2">
-          Content Appeals Form
-        </h2>
-        <button
-          id="closeContentAppealsModal"
-          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
+        Content Appeals Form
+      </h2>
+      <button
+        id="closeContentAppealsModal"
+        class="modal-close"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-6 h-6 text-gray-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      </button>
+    </div>
 
-      <div class="p-6">
-        <div class="w-full" style="height: 80vh">
-          <iframe
-            src="./components/iframe_forms/iframe-content-appeals-form.html"
-            class="w-full h-full"
-            frameborder="0"
-            style="border: none; box-shadow: 0 0 2px rgba(0, 0, 0, 0.2)"
-          ></iframe>
-        </div>
+    <div id="contentAppealsModalDescription" class="modal-body">
+      <div class="modal-embed-frame">
+        <iframe
+          src="./components/iframe_forms/iframe-content-appeals-form.html"
+          class="h-full w-full rounded-lg border border-border/30 shadow-sm"
+          frameborder="0"
+        ></iframe>
       </div>
     </div>
   </div>

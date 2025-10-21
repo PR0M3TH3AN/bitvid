@@ -1,44 +1,53 @@
 <!-- components/profile-modal.html -->
 <div
   id="profileModal"
-  class="fixed inset-0 z-50 hidden"
+  class="bv-modal hidden items-start"
   role="dialog"
   aria-modal="true"
   aria-labelledby="profileModalTitle"
   tabindex="-1"
-  style="background: transparent"
+  data-ds="new"
+  data-mobile-view="menu"
 >
-  <!-- Overlay Layer with dark background and blur -->
-  <div
-    class="absolute inset-0 z-10"
-    style="
-      background-color: rgba(0, 0, 0, 0.9);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    "
-  ></div>
+  <div class="bv-modal-backdrop"></div>
 
-  <!-- Outer container with the same sizing approach as your other modals -->
   <div
-    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
+    class="bv-modal__panel modal-sheet profile-modal"
+    tabindex="-1"
+    data-mobile-view="menu"
   >
-    <!-- Inner content: wide layout, matching your video modal -->
-    <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative flex flex-col"
-      style="max-height: 90vh"
-    >
+    <div class="profile-modal__content">
       <!-- Modal Header -->
-      <div
-        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
-      >
-        <h2 id="profileModalTitle" class="text-xl font-bold text-white">Profile</h2>
-        <button
-          id="closeProfileModal"
-          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
-        >
+      <div class="modal-header profile-modal__header">
+        <div class="profile-modal__header-title">
+          <button
+            id="profileModalBack"
+            type="button"
+            class="modal-back btn-ghost focus-ring hidden"
+            aria-hidden="true"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            <span class="text-xs font-medium">Menu</span>
+          </button>
+          <h2 id="profileModalTitle" class="text-lg font-bold text-text">Profile</h2>
+        </div>
+        <button id="closeProfileModal" class="modal-close">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="w-6 h-6 text-gray-300"
+            class="h-6 w-6"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -54,71 +63,80 @@
       </div>
 
       <!-- Modal Body -->
-      <div class="p-6 flex-1 overflow-hidden">
-        <div class="flex flex-col lg:flex-row gap-6 h-full">
+      <div class="profile-modal__body">
+        <div
+          class="profile-modal__layout"
+          data-profile-layout
+          data-mobile-view="menu"
+        >
           <!-- Left navigation column -->
-          <nav
-            class="flex lg:flex-col gap-2 flex-shrink-0"
-            aria-label="Profile sections"
-          >
-            <button
-              id="profileNavAccount"
-              type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-white bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-              aria-controls="profilePaneAccount"
-              aria-selected="true"
-            >
-              Account
-            </button>
-            <button
-              id="profileNavRelays"
-              type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-              aria-controls="profilePaneRelays"
-              aria-selected="false"
-            >
-              Relays
-            </button>
-            <button
-              id="profileNavWallet"
-              type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-              aria-controls="profilePaneWallet"
-              aria-selected="false"
-            >
-              Wallet
-            </button>
-            <button
-              id="profileNavBlocked"
-              type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-              aria-controls="profilePaneBlocked"
-              aria-selected="false"
-            >
-              Blocked
-            </button>
-            <button
-              id="profileNavHistory"
-              type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-              aria-controls="profilePaneHistory"
-              aria-selected="false"
-            >
-              Watch history
-            </button>
-            <button
-              id="profileNavAdmin"
-              type="button"
-              class="profile-nav-button px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 hidden"
-              aria-controls="profilePaneAdmin"
-              aria-selected="false"
-            >
-              Admin (Moderation)
-            </button>
-          </nav>
+          <div class="profile-modal__menu" data-profile-mobile-menu aria-hidden="false">
+            <nav class="profile-modal__nav" aria-label="Profile sections">
+              <button
+                id="profileNavAccount"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneAccount"
+                aria-selected="true"
+                data-state="active"
+              >
+                Account
+              </button>
+              <button
+                id="profileNavRelays"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneRelays"
+                aria-selected="false"
+              >
+                Relays
+              </button>
+              <button
+                id="profileNavWallet"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneWallet"
+                aria-selected="false"
+              >
+                Wallet
+              </button>
+              <button
+                id="profileNavBlocked"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneBlocked"
+                aria-selected="false"
+              >
+                Blocked
+              </button>
+              <button
+                id="profileNavHistory"
+                type="button"
+                class="btn-ghost focus-ring w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneHistory"
+                aria-selected="false"
+              >
+                Watch history
+              </button>
+              <button
+                id="profileNavAdmin"
+                type="button"
+                class="btn-ghost focus-ring hidden w-full justify-start gap-2 px-3 py-2 text-xs font-medium"
+                aria-controls="profilePaneAdmin"
+                aria-selected="false"
+              >
+                Admin (Moderation)
+              </button>
+            </nav>
+          </div>
 
           <!-- Right content panes -->
-          <div class="flex-1 min-h-[320px] overflow-y-auto pr-1">
+          <div
+            class="profile-modal__pane-wrapper"
+            data-profile-mobile-pane
+            aria-hidden="true"
+          >
+            <div class="profile-modal__panes">
             <section
               id="profilePaneAccount"
               class="profile-pane space-y-6"
@@ -126,65 +144,72 @@
               aria-labelledby="profileNavAccount"
             >
               <!--
-                The account pane now relies on bespoke CSS (see css/style.css under
-                "Profile modal account pane") so we are not dependent on utility
+                The account pane now relies on bespoke CSS (see css/tailwind.source.css under
+                the "profile modal" section) so we are not dependent on utility
                 classes that may be purged or overridden by other builds.
               -->
-              <div class="profile-switcher" id="profileSwitcherTray">
-                <div class="profile-switcher__header">
-                  <div class="profile-switcher__intro">
-                    <h3 class="profile-switcher__title">Switch profiles</h3>
-                    <p class="profile-switcher__subtitle">
-                      Save multiple Nostr profiles so you can swap identities without leaving BitVid.
+              <div id="profileSwitcherTray" class="card space-y-5 p-5">
+                <div class="flex flex-wrap items-start gap-4">
+                  <div class="space-y-2">
+                    <h3 class="text-base font-semibold text-text">Switch profiles</h3>
+                    <p class="text-sm text-muted">
+                      Save multiple Nostr profiles so you can swap identities without leaving bitvid.
                     </p>
                   </div>
-                  <span class="profile-switcher__badge">Preview</span>
                 </div>
 
                 <div
-                  class="profile-card profile-card--active"
+                  class="card profile-modal__active-profile"
                   aria-label="Current Nostr profile"
                   aria-pressed="true"
                   role="button"
                   tabindex="0"
+                  data-state="active"
                 >
-                  <span class="profile-card__avatar">
+                  <span
+                    class="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-info/50 bg-surface"
+                  >
                     <img
                       id="profileModalAvatar"
                       src="assets/svg/default-profile.svg"
                       alt="Active profile avatar"
+                      class="h-full w-full object-cover"
                     />
                   </span>
-                  <span class="profile-card__meta">
-                    <span class="profile-card__topline">
-                      <span class="profile-card__label">Active profile</span>
-                      <a
-                        id="profileChannelLink"
-                        href="#"
-                        class="profile-card__action hidden"
-                      >
-                        View channel
-                      </a>
-                    </span>
-                    <span id="profileModalName" class="profile-card__name">Loading...</span>
-                    <span id="profileModalNpub" class="profile-card__npub">npub1...</span>
-                  </span>
+                  <div class="profile-modal__active-details">
+                    <div class="profile-modal__active-meta">
+                      <span class="text-3xs font-semibold uppercase tracking-extra-wide text-info">
+                        Active profile
+                      </span>
+                    </div>
+                    <span id="profileModalName" class="truncate text-sm font-semibold text-text">Loading...</span>
+                    <span id="profileModalNpub" class="break-all font-mono text-xs text-muted">npub1...</span>
+                  </div>
+                  <a
+                    id="profileChannelLink"
+                    href="#"
+                    class="btn-ghost focus-ring profile-modal__channel-link hidden text-xs"
+                  >
+                    View channel
+                  </a>
                 </div>
 
                 <div
                   id="profileSwitcherList"
-                  class="profile-switcher__list"
+                  class="grid-stack"
                   aria-live="polite"
                   aria-label="Additional Nostr profiles"
+                  role="list"
+                  data-orientation="vertical"
                 ></div>
 
                 <button
                   type="button"
                   id="profileAddAccountBtn"
-                  class="profile-switcher__add"
+                  class="profile-modal__add-profile"
                   aria-label="Add a new Nostr profile"
                 >
-                  <span class="profile-switcher__addAvatar">
+                  <span class="profile-modal__add-profile-icon" aria-hidden="true">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 24 24"
@@ -193,21 +218,130 @@
                       stroke-width="2"
                       stroke-linecap="round"
                       stroke-linejoin="round"
-                      aria-hidden="true"
                     >
                       <line x1="12" y1="5" x2="12" y2="19" />
                       <line x1="5" y1="12" x2="19" y2="12" />
                     </svg>
                   </span>
-                  <span class="profile-switcher__addCopy">
-                    <span class="profile-switcher__addTitle">Add profile</span>
-                    <span class="profile-switcher__addHint">Link another npub</span>
+                  <span class="flex flex-col text-left">
+                    <span data-profile-add-title class="text-sm font-semibold text-text">Add profile</span>
+                    <span data-profile-add-hint class="text-xs text-muted-strong">Link another npub</span>
                   </span>
                 </button>
 
-                <p class="profile-switcher__helper">
+                <p class="text-sm text-muted">
                   Profiles you add here will stay on this device so you can quickly switch before posting or moderating.
                 </p>
+              </div>
+
+              <div id="profileModerationSettings" class="card space-y-5 p-5">
+                <div class="space-y-2">
+                  <h3 class="text-base font-semibold text-text">Safety & Moderation</h3>
+                  <p class="text-sm text-muted">
+                    Choose how many trusted reports or mutes it takes to blur thumbnails, block autoplay previews, or hide videos entirely.
+                    Lower numbers are stricter.
+                  </p>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationBlurThreshold"
+                  >
+                    <span class="mb-2 block font-medium">Blur after trusted reports</span>
+                    <input
+                      id="profileModerationBlurThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Thumbnails blur when trusted contacts report nudity at or above this count.
+                    </span>
+                  </label>
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationAutoplayThreshold"
+                  >
+                    <span class="mb-2 block font-medium">Block autoplay after reports</span>
+                    <input
+                      id="profileModerationAutoplayThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Autoplay previews pause once trusted reports meet this threshold.
+                    </span>
+                  </label>
+                </div>
+                <div
+                  class="grid gap-4 sm:grid-cols-2"
+                  data-role="trusted-hide-controls"
+                >
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationMuteHideThreshold"
+                    data-role="trusted-hide-control"
+                  >
+                    <span class="mb-2 block font-medium">Hide after trusted mutes</span>
+                    <input
+                      id="profileModerationMuteHideThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Hide videos when this many trusted contacts add the author to their mute list.
+                    </span>
+                  </label>
+                  <label
+                    class="block text-sm text-muted-strong"
+                    for="profileModerationSpamHideThreshold"
+                    data-role="trusted-hide-control"
+                  >
+                    <span class="mb-2 block font-medium">Hide after trusted spam reports</span>
+                    <input
+                      id="profileModerationSpamHideThreshold"
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      step="1"
+                      class="input"
+                    />
+                    <span class="mt-1 block text-xs text-muted">
+                      Hide videos entirely once trusted contacts report spam at or above this count.
+                    </span>
+                  </label>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <button
+                    id="profileModerationSave"
+                    type="button"
+                    class="btn focus-ring"
+                    disabled
+                  >
+                    Save moderation settings
+                  </button>
+                  <button
+                    id="profileModerationReset"
+                    type="button"
+                    class="btn-ghost focus-ring"
+                  >
+                    Restore defaults
+                  </button>
+                </div>
+                <p
+                  id="profileModerationStatus"
+                  class="text-sm text-muted"
+                  role="status"
+                  aria-live="polite"
+                ></p>
               </div>
             </section>
 
@@ -218,38 +352,38 @@
               aria-labelledby="profileNavRelays"
             >
               <div class="space-y-4">
-                <p class="text-sm text-gray-400">
-                  Configure the relays Bitvid will use to discover and publish your videos.
+                <p class="text-sm text-muted">
+                  Configure the relays bitvid will use to discover and publish your videos.
                 </p>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <label class="flex-1 text-sm text-gray-300" for="relayInput">
+                  <label class="flex-1 text-sm text-muted-strong" for="relayInput">
                     <span class="mb-2 block font-medium">Add a relay</span>
                     <input
                       id="relayInput"
                       type="url"
                       placeholder="wss://relay.example.com"
-                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      class="input"
                     />
                   </label>
                   <div class="flex gap-2">
                     <button
                       id="addRelayBtn"
                       type="button"
-                      class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="btn focus-ring"
                     >
                       Add relay
                     </button>
                     <button
                       id="restoreRelaysBtn"
                       type="button"
-                      class="px-4 py-2 rounded-md bg-gray-800 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="btn-ghost focus-ring"
                     >
                       Restore defaults
                     </button>
                   </div>
                 </div>
               </div>
-              <ul id="relayList" class="space-y-3"></ul>
+              <ul id="relayList" class="grid-stack" data-orientation="vertical"></ul>
             </section>
 
             <section
@@ -259,20 +393,20 @@
               aria-labelledby="profileNavWallet"
             >
               <div class="space-y-4">
-                <p class="text-sm text-gray-400">
-                  Connect a Nostr Wallet Connect (NWC) compatible wallet to zap creators directly from BitVid.
+                <p class="text-sm text-muted">
+                  Connect a Nostr Wallet Connect (NWC) compatible wallet to zap creators directly from bitvid.
                 </p>
                 <div class="space-y-4">
-                  <label class="block text-sm text-gray-300" for="profileWalletUri">
+                  <label class="block text-sm text-muted-strong" for="profileWalletUri">
                     <span class="mb-2 block font-medium">Wallet Connect URI</span>
                     <input
                       id="profileWalletUri"
                       type="url"
                       placeholder="nostr+walletconnect://<public-key>?relay=wss://relay.example.com"
-                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      class="input"
                     />
                   </label>
-                  <label class="block text-sm text-gray-300" for="profileWalletDefaultZap">
+                  <label class="block text-sm text-muted-strong" for="profileWalletDefaultZap">
                     <span class="mb-2 block font-medium">Default zap amount (sats)</span>
                     <input
                       id="profileWalletDefaultZap"
@@ -281,7 +415,7 @@
                       min="0"
                       step="1"
                       placeholder="500"
-                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      class="input"
                     />
                   </label>
                 </div>
@@ -289,28 +423,29 @@
                   <button
                     id="profileWalletSave"
                     type="button"
-                    class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
                   >
                     Save wallet
                   </button>
                   <button
                     id="profileWalletTest"
                     type="button"
-                    class="inline-flex items-center justify-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn-ghost focus-ring"
                   >
                     Test connection
                   </button>
                   <button
                     id="profileWalletDisconnect"
                     type="button"
-                    class="inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
+                    data-variant="danger"
                   >
                     Disconnect wallet
                   </button>
                 </div>
                 <p
                   id="profileWalletStatus"
-                  class="text-sm text-gray-400"
+                  class="text-sm text-muted"
                   role="status"
                   aria-live="polite"
                 ></p>
@@ -323,37 +458,37 @@
               role="tabpanel"
               aria-labelledby="profileNavBlocked"
             >
-              <p class="text-sm text-gray-400">
-                Creators you block are hidden from your BitVid experience. This
+              <p class="text-sm text-muted">
+                Creators you block are hidden from your bitvid experience. This
                 list is private to your account.
               </p>
               <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <label class="flex-1 text-sm text-gray-300" for="blockedInput">
+                <label class="flex-1 text-sm text-muted-strong" for="blockedInput">
                   <span class="mb-2 block font-medium">Creator npub</span>
                   <input
                     id="blockedInput"
                     type="text"
                     inputmode="text"
                     autocomplete="off"
-                    class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="input"
                     placeholder="npub1..."
                   />
                 </label>
                 <button
                   id="addBlockedBtn"
                   type="button"
-                  class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  class="btn focus-ring"
                 >
                   Block creator
                 </button>
               </div>
               <div
                 id="blockedEmpty"
-                class="rounded-lg border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"
+                class="card border border-dashed border-border/60 p-6 text-center text-sm text-muted"
               >
                 You haven’t blocked any creators yet.
               </div>
-              <ul id="blockedList" class="space-y-3"></ul>
+              <ul id="blockedList" class="grid-stack" data-orientation="vertical"></ul>
             </section>
             <section
               id="profilePaneHistory"
@@ -361,12 +496,12 @@
               role="tabpanel"
               aria-labelledby="profileNavHistory"
             >
-              <p class="text-sm text-gray-400">
+              <p class="text-sm text-muted">
                 Your recently watched videos appear here so you can jump back into favorites.
               </p>
               <div
                 id="profileHistoryFeatureBanner"
-                class="hidden rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+                class="card hidden border border-status-warning-border bg-status-warning-surface px-4 py-3 text-sm text-status-warning-on"
                 role="status"
                 aria-live="polite"
               ></div>
@@ -380,14 +515,16 @@
                     <button
                       id="profileHistoryClear"
                       type="button"
-                      class="inline-flex items-center gap-2 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="btn-ghost focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
                     >
                       Clear local cache
                     </button>
                     <button
                       id="profileHistoryRepublish"
                       type="button"
-                      class="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="btn focus-ring inline-flex items-center gap-2"
+                      data-size="sm"
                     >
                       Republish now
                     </button>
@@ -396,21 +533,21 @@
                     <div class="flex flex-col">
                       <span
                         id="profileHistoryMetadataLabel"
-                        class="text-sm font-medium text-gray-200"
+                        class="text-sm font-medium text-text"
                       >
                         Store titles/thumbnails locally
                       </span>
                       <span
                         id="profileHistoryMetadataDescription"
-                        class="text-xs text-gray-400"
+                        class="text-xs text-muted"
                       >
-                        When disabled, BitVid skips saving rich metadata to this device.
+                        When disabled, bitvid skips saving rich metadata to this device.
                       </span>
                     </div>
                     <button
                       id="profileHistoryMetadataToggle"
                       type="button"
-                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center rounded-full border border-gray-600 bg-gray-700 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                      class="focus-ring relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center rounded-full border border-border bg-panel transition"
                       role="switch"
                       aria-checked="true"
                       aria-labelledby="profileHistoryMetadataLabel"
@@ -433,7 +570,8 @@
                 ></div>
                 <div
                   id="profileHistorySessionWarning"
-                  class="hidden inline-flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-100"
+                  class="hidden pill"
+                  data-variant="warning"
                   role="status"
                   aria-live="polite"
                 >
@@ -460,20 +598,22 @@
                 </div>
                 <div
                   id="profileHistoryError"
-                  class="hidden rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100"
+                  class="card hidden border border-critical/40 bg-critical/10 px-4 py-3 text-sm text-critical"
                   role="alert"
                   aria-live="assertive"
                 ></div>
                 <div
                   id="profileHistoryEmpty"
-                  class="hidden rounded-lg border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400"
+                  class="card hidden border border-dashed border-border/60 p-6 text-center text-sm text-muted"
                 >
                   You haven’t watched any videos yet.
                 </div>
-                <div id="profileHistoryScroll" class="relative max-h-[420px] overflow-y-auto pr-1">
+                <div id="profileHistoryScroll" class="relative max-h-profile-history overflow-y-auto pr-1">
                   <div
                     id="profileHistoryGrid"
-                    class="watch-history-grid watch-history-grid--modal hidden"
+                    class="grid-stack hidden"
+                    data-variant="cards"
+                    data-orientation="vertical"
                     role="list"
                   ></div>
                   <div id="profileHistorySentinel" class="h-1 w-full"></div>
@@ -487,121 +627,121 @@
               aria-labelledby="profileNavAdmin"
             >
               <div class="space-y-2">
-                <h3 class="text-lg font-semibold text-white">Platform moderation</h3>
-                <p class="text-sm text-gray-400">
-                  Manage BitVid’s moderator roles and creator allow/block lists. Changes apply instantly across the app.
+                <h3 class="text-base font-semibold text-text">Platform moderation</h3>
+                <p class="text-sm text-muted">
+                  Manage bitvid’s moderator roles and creator allow/block lists. Changes apply instantly across the app.
                 </p>
               </div>
 
               <div id="adminModeratorsSection" class="space-y-4 hidden" aria-hidden="true">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h4 class="text-base font-semibold text-white">Moderators</h4>
-                  <p class="text-xs uppercase tracking-wide text-gray-400">
+                  <h4 class="text-base font-semibold text-text">Moderators</h4>
+                  <p class="text-xs uppercase tracking-wide text-muted">
                     Super Admin only
                   </p>
                 </div>
-                <p class="text-sm text-gray-400">
+                <p class="text-sm text-muted">
                   Moderators can edit the whitelist and blacklist but cannot manage other moderators or whitelist mode.
                 </p>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <label class="flex-1 text-sm text-gray-300" for="adminModeratorInput">
+                  <label class="flex-1 text-sm text-muted-strong" for="adminModeratorInput">
                     <span class="mb-2 block font-medium">Moderator npub</span>
                     <input
                       id="adminModeratorInput"
                       type="text"
                       inputmode="text"
                       autocomplete="off"
-                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      class="input"
                       placeholder="npub1..."
                     />
                   </label>
                   <button
                     id="adminAddModeratorBtn"
                     type="button"
-                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
                   >
                     Add moderator
                   </button>
                 </div>
                 <div
                   id="adminModeratorsEmpty"
-                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
                 >
                   No moderators configured yet.
                 </div>
-                <ul id="adminModeratorList" class="space-y-3"></ul>
+                <ul id="adminModeratorList" class="grid-stack" data-orientation="vertical"></ul>
               </div>
 
               <div id="adminWhitelistSection" class="space-y-4">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h4 class="text-base font-semibold text-white">Whitelist</h4>
+                  <h4 class="text-base font-semibold text-text">Whitelist</h4>
                 </div>
-                <p class="text-sm text-gray-400">
+                <p class="text-sm text-muted">
                   Creators listed here remain visible when whitelist mode is enabled. Adding someone removes them from the blacklist.
                 </p>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <label class="flex-1 text-sm text-gray-300" for="adminWhitelistInput">
+                  <label class="flex-1 text-sm text-muted-strong" for="adminWhitelistInput">
                     <span class="mb-2 block font-medium">Creator npub</span>
                     <input
                       id="adminWhitelistInput"
                       type="text"
                       inputmode="text"
                       autocomplete="off"
-                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      class="input"
                       placeholder="npub1..."
                     />
                   </label>
                   <button
                     id="adminAddWhitelistBtn"
                     type="button"
-                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
                   >
                     Add to whitelist
                   </button>
                 </div>
                 <div
                   id="adminWhitelistEmpty"
-                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
                 >
                   No whitelisted creators yet.
                 </div>
-                <ul id="adminWhitelistList" class="space-y-3"></ul>
+                <ul id="adminWhitelistList" class="grid-stack" data-orientation="vertical"></ul>
               </div>
 
               <div id="adminBlacklistSection" class="space-y-4">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h4 class="text-base font-semibold text-white">Blacklist</h4>
+                  <h4 class="text-base font-semibold text-text">Blacklist</h4>
                 </div>
-                <p class="text-sm text-gray-400">
-                  Creators on the blacklist are hidden from BitVid everywhere. Adding someone removes them from the whitelist.
+                <p class="text-sm text-muted">
+                  Creators on the blacklist are hidden from bitvid everywhere. Adding someone removes them from the whitelist.
                 </p>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <label class="flex-1 text-sm text-gray-300" for="adminBlacklistInput">
+                  <label class="flex-1 text-sm text-muted-strong" for="adminBlacklistInput">
                     <span class="mb-2 block font-medium">Creator npub</span>
                     <input
                       id="adminBlacklistInput"
                       type="text"
                       inputmode="text"
                       autocomplete="off"
-                      class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      class="input"
                       placeholder="npub1..."
                     />
                   </label>
                   <button
                     id="adminAddBlacklistBtn"
                     type="button"
-                    class="px-4 py-2 rounded-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+                    class="btn focus-ring"
                   >
                     Add to blacklist
                   </button>
                 </div>
                 <div
                   id="adminBlacklistEmpty"
-                  class="rounded-lg border border-dashed border-gray-700 p-4 text-center text-sm text-gray-400"
+                  class="card border border-dashed border-border/60 p-4 text-center text-sm text-muted"
                 >
                   No blacklisted creators yet.
                 </div>
-                <ul id="adminBlacklistList" class="space-y-3"></ul>
+                <ul id="adminBlacklistList" class="grid-stack" data-orientation="vertical"></ul>
               </div>
             </section>
           </div>
@@ -609,11 +749,8 @@
       </div>
 
       <!-- Modal Footer -->
-      <div class="p-4 border-t border-gray-700 flex items-center justify-end">
-        <button
-          id="profileLogoutBtn"
-          class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-        >
+      <div class="flex items-center justify-end gap-3 border-t border-border/60 p-4">
+        <button id="profileLogoutBtn" class="btn focus-ring" data-variant="danger">
           Logout
         </button>
       </div>

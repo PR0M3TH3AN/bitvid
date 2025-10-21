@@ -1,4 +1,4 @@
-# Web-of-Trust Policy (Bitvid)
+# Web-of-Trust Policy (bitvid)
 
 ## Graph terms
 - **F1 (friends)**: pubkeys you follow.
@@ -16,6 +16,8 @@
 - `blurThumbnail = trustedReportCount(event,'nudity') >= 3`
 - `hideAutoplay = trustedReportCount(event,'nudity') >= 2`
 - `downrankIfMutedByF1 = true`
+- `hideIfTrustedMuteCount(author) >= 1`
+- `hideIfTrustedSpamReports(event) >= 3`
 
 ### Why these numbers?
 - F1-only reports resist Sybil attacks.
@@ -27,6 +29,12 @@
   - `['d','bitvid:admin:whitelist']` → always show in Discovery.
   - `['d','bitvid:admin:editors']` → trusted channel editors.
 - Users can subscribe/unsubscribe any time.
+
+### Decision precedence
+
+1. **Personal blocks win first.** If a viewer blocks an author or reporter, we ignore their content and reports regardless of admin lists.
+2. **Admin blacklist applies next.** Entries on `bitvid:admin:blacklist` are hard-hidden and their reports suppressed before looking at thresholds.
+3. **F1 thresholds run last.** Blur/autoplay gating only evaluates trusted-report counts after personal blocks and admin blacklists. Admin whitelists may bypass Discovery gating, but never override a viewer block.
 
 ## Pseudocode
 
@@ -49,6 +57,14 @@ function shouldBlurThumb(eventId: string, ctx: Ctx): boolean {
 
 function shouldHideAutoplay(eventId: string, ctx: Ctx): boolean {
   return trustedReportCount(eventId, 'nudity', ctx.viewerFollows, ctx.reports) >= 2;
+}
+
+function shouldHideForTrustedMute(authorHex: string, ctx: Ctx): boolean {
+  return ctx.trustedMuteCount(authorHex) >= 1;
+}
+
+function shouldHideForTrustedSpam(eventId: string, ctx: Ctx): boolean {
+  return trustedReportCount(eventId, 'spam', ctx.viewerFollows, ctx.reports) >= 3;
 }
 ```
 

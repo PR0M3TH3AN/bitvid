@@ -11,7 +11,12 @@ class DummyElement {
       toggle: noop,
       contains: () => false,
     };
-    this.style = {};
+    Object.defineProperty(this, "style", {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: {},
+    });
     this.dataset = {};
     this.children = [];
   }
@@ -177,10 +182,26 @@ function createVideoModalStub() {
   return {
     setCopyEnabled: noop,
     setShareEnabled: noop,
-    setZapVisibility: noop,
+    setWalletPromptVisible: noop,
+    zapVisibilityCalls: [],
+    setZapVisibility(config) {
+      const payload =
+        config && typeof config === "object"
+          ? { ...config }
+          : { visible: Boolean(config) };
+      this.zapVisibilityCalls.push(payload);
+      this.lastZapVisibility = payload;
+    },
+    dialogOpen: false,
+    closeZapDialogCalls: [],
+    closeZapDialog(options = {}) {
+      this.closeZapDialogCalls.push(options);
+      this.dialogOpen = false;
+    },
     resetStats: noop,
     updateViewCountLabel: noop,
     setViewCountPointer: noop,
+    completedStates: [],
     addEventListener(type, handler) {
       listeners.set(type, handler);
     },
@@ -196,6 +217,9 @@ function createVideoModalStub() {
     currentComment: "",
     setZapPending(value) {
       this.setZapPendingCalls.push(Boolean(value));
+    },
+    setZapCompleted(value) {
+      this.completedStates.push(Boolean(value));
     },
     setZapStatus(message, tone) {
       this.statusMessages.push({ message, tone });
@@ -291,6 +315,132 @@ async function createApp({ splitAndZap }) {
 
   return { app, modalStub, creatorAddress, platformAddress };
 }
+
+await (async () => {
+  // Test: logged-out zap request closes modal and queues reopen
+  const { app, modalStub } = await createApp({
+    splitAndZap: async () => ({ receipts: [] }),
+  });
+
+  let loginNotificationCount = 0;
+  app.zapController.notifyLoginRequired = () => {
+    loginNotificationCount += 1;
+  };
+
+  modalStub.dialogOpen = true;
+  modalStub.closeZapDialogCalls = [];
+
+  app.pendingModalZapOpen = false;
+
+  app.boundVideoModalZapOpenHandler({ detail: { requiresLogin: true } });
+
+  assert.equal(
+    loginNotificationCount,
+    1,
+    "should request login notification when zapping logged out",
+  );
+  assert.equal(
+    app.pendingModalZapOpen,
+    true,
+    "zap should remain pending for post-login reopen",
+  );
+  assert.equal(
+    modalStub.closeZapDialogCalls.length,
+    1,
+    "zap dialog should close immediately when login required",
+  );
+  assert.deepEqual(modalStub.closeZapDialogCalls[0], {
+    silent: true,
+    restoreFocus: false,
+  });
+  assert.equal(modalStub.dialogOpen, false, "zap dialog should be closed");
+
+  app.destroy();
+})();
+
+await (async () => {
+  // Test: preventDefault is called when zap opening is rejected post-dispatch
+  const { app, modalStub } = await createApp({
+    splitAndZap: async () => ({ receipts: [] }),
+  });
+
+  let loginNotificationCount = 0;
+  app.zapController.notifyLoginRequired = () => {
+    loginNotificationCount += 1;
+  };
+
+  app.zapController.isUserLoggedIn = () => false;
+
+  modalStub.closeZapDialogCalls = [];
+
+  const preventCalls = [];
+  const event = {
+    detail: { requiresLogin: false },
+    preventDefault: () => {
+      preventCalls.push(true);
+    },
+  };
+
+  app.pendingModalZapOpen = true;
+
+  app.boundVideoModalZapOpenHandler(event);
+
+  assert.equal(
+    loginNotificationCount,
+    1,
+    "should notify login requirement when zap open is rejected",
+  );
+  assert.equal(
+    preventCalls.length,
+    1,
+    "should prevent default zap opening when controller rejects it",
+  );
+  assert.equal(
+    app.pendingModalZapOpen,
+    false,
+    "pending zap reopen flag should clear when rejection wasn't login-gated",
+  );
+  assert.deepEqual(modalStub.closeZapDialogCalls[0], {
+    silent: true,
+    restoreFocus: false,
+  });
+
+  app.destroy();
+})();
+
+await (async () => {
+  // Test: session actors should not be treated as logged-in users for zaps
+  const { app, modalStub } = await createApp({
+    splitAndZap: async () => ({ receipts: [] }),
+  });
+
+  const { nostrClient } = await import("../js/nostr.js");
+  const originalSessionActor = nostrClient.sessionActor;
+  const sessionPubkey = "a".repeat(64);
+  nostrClient.sessionActor = { pubkey: sessionPubkey, privateKey: "priv" };
+
+  app.pubkey = sessionPubkey;
+
+  modalStub.zapVisibilityCalls = [];
+  app.zapController.setVisibility(true);
+
+  const lastVisibility =
+    modalStub.zapVisibilityCalls[modalStub.zapVisibilityCalls.length - 1];
+  assert.deepEqual(
+    lastVisibility,
+    { visible: true, requiresLogin: true },
+    "zap controller should require login when only a session actor is present",
+  );
+  assert.equal(
+    app.isUserLoggedIn(),
+    false,
+    "session actor pubkeys should not count as logged-in users",
+  );
+
+  app.pubkey = null;
+  nostrClient.sessionActor = originalSessionActor;
+  app.destroy();
+})();
 
 await (async () => {
   // Test: wallet required before zapping

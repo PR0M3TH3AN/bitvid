@@ -10,6 +10,17 @@ export function createChronologicalSorter({ direction = "desc" } = {}) {
 
     const copy = [...items];
     copy.sort((a, b) => {
+      const aMuted =
+        a?.metadata?.moderation?.trustedMuted === true ||
+        a?.video?.moderation?.trustedMuted === true;
+      const bMuted =
+        b?.metadata?.moderation?.trustedMuted === true ||
+        b?.video?.moderation?.trustedMuted === true;
+
+      if (aMuted !== bMuted) {
+        return aMuted ? 1 : -1;
+      }
+
       const aTs = Number(a?.video?.created_at);
       const bTs = Number(b?.video?.created_at);
       const normalizedATs = Number.isFinite(aTs) ? aTs : Number.NEGATIVE_INFINITY;

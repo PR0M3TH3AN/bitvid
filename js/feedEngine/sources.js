@@ -16,7 +16,7 @@ function normalizeAuthor(value) {
     return "";
   }
   const trimmed = value.trim();
-  return trimmed;
+  return trimmed ? trimmed.toLowerCase() : "";
 }
 
 function normalizeActorCandidate(...values) {
@@ -92,19 +92,37 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
       return [];
     }
 
+    const limitCandidate = Number(context?.runtime?.limit);
+    const limit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
+
     const options = {
       blacklistedEventIds: toSet(context?.runtime?.blacklistedEventIds),
       isAuthorBlocked:
         typeof context?.runtime?.isAuthorBlocked === "function"
           ? context.runtime.isAuthorBlocked
           : () => false,
+      limit,
     };
+
+    const authorList = Array.from(authors);
+    const hasTargetedLookup =
+      resolvedService &&
+      typeof resolvedService.getActiveVideosByAuthors === "function";
 
     let videos = [];
     try {
-      videos = await Promise.resolve(
-        resolvedService.getFilteredActiveVideos(options)
-      );
+      if (hasTargetedLookup) {
+        videos = await Promise.resolve(
+          resolvedService.getActiveVideosByAuthors(authorList, options)
+        );
+      } else {
+        videos = await Promise.resolve(
+          resolvedService.getFilteredActiveVideos(options)
+        );
+      }
     } catch (error) {
       context?.log?.(
         "[subscriptions-source] Failed to resolve videos from nostrService",
@@ -118,7 +136,15 @@ export function createSubscriptionAuthorsSource({ service } = {}) {
       return author && authors.has(author);
     });
 
-    return filtered.map((video) => ({
+    const sorted = filtered
+      .slice()
+      .sort(
+        (a, b) => (Number(b?.created_at) || 0) - (Number(a?.created_at) || 0)
+      );
+
+    const limited = limit ? sorted.slice(0, limit) : sorted;
+
+    return limited.map((video) => ({
       video,
       metadata: {
         source: "nostr:subscriptions",

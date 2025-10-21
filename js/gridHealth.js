@@ -1,6 +1,8 @@
 import { createCardObserver } from "./dom/cardObserver.js";
 import { infoHashFromMagnet } from "./magnets.js";
+import { updateVideoCardSourceVisibility } from "./utils/cardSourceVisibility.js";
 import { TorrentClient, torrentClient } from "./webtorrent.js";
+import { userLogger } from "./utils/logger.js";
 
 const badgeUpdateListeners = new Set();
 
@@ -16,7 +18,7 @@ function notifyBadgeUpdate(payload) {
     try {
       listener(payload);
     } catch (err) {
-      console.warn("[gridHealth] badge listener failed", err);
+      userLogger.warn("[gridHealth] badge listener failed", err);
     }
   });
 }
@@ -428,66 +430,58 @@ function setBadge(card, state, details) {
     delete card.dataset.streamHealthReason;
   }
 
+  updateVideoCardSourceVisibility(card);
+
   const badge = card.querySelector(".torrent-health-badge");
   if (!badge) {
     return;
   }
 
-  const hadMargin = badge.classList.contains("mt-3");
+  const hadCompactMargin =
+    badge.classList.contains("mt-sm") || badge.classList.contains("mt-3");
 
-  const baseClasses = [
-    "torrent-health-badge",
-    "text-xs",
-    "font-semibold",
-    "px-2",
-    "py-1",
-    "rounded",
-    "inline-flex",
-    "items-center",
-    "gap-1",
-    "transition-colors",
-    "duration-200",
-  ];
-  if (hadMargin) {
-    baseClasses.unshift("mt-3");
+  const classes = ["badge", "torrent-health-badge"];
+  if (hadCompactMargin) {
+    classes.push("mt-sm");
   }
-  badge.className = baseClasses.join(" ");
+  badge.className = classes.join(" ");
 
   const map = {
     healthy: {
       icon: "🟢",
       aria: "WebTorrent peers available",
-      classes: ["bg-green-900", "text-green-200"],
+      variant: "success",
       role: "status",
     },
     unhealthy: {
       icon: "🔴",
       aria: "WebTorrent peers unavailable",
-      classes: ["bg-red-900", "text-red-200"],
+      variant: "critical",
       role: "alert",
     },
     checking: {
       icon: "⏳",
       aria: "Checking WebTorrent peers",
-      classes: ["bg-gray-800", "text-gray-300"],
+      variant: "neutral",
       role: "status",
     },
     unknown: {
       icon: "⚪",
       aria: "WebTorrent status unknown",
-      classes: ["bg-gray-800", "text-gray-300"],
+      variant: "neutral",
       role: "status",
     },
   };
 
   const entry = map[normalizedState] || map.unknown;
-  entry.classes.forEach((cls) => badge.classList.add(cls));
-
-  const peersText =
-    normalizedState === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
+  if (entry.variant) {
+    badge.dataset.variant = entry.variant;
+  } else if (badge.dataset.variant) {
+    delete badge.dataset.variant;
+  }
 
   const iconPrefix = entry.icon ? `${entry.icon} ` : "";
-  badge.textContent = `${iconPrefix}WebTorrent${peersText}`;
+  badge.textContent = `${iconPrefix}WebTorrent`;
   const tooltip =
     normalizedState === "checking" || normalizedState === "unknown"
       ? entry.aria
@@ -585,7 +579,7 @@ function handleCardVisible({ card, pendingByCard, priority = 0 }) {
       setBadge(card, "unhealthy", result);
     })
     .catch((err) => {
-      console.warn("[gridHealth] probe failed", err);
+      userLogger.warn("[gridHealth] probe failed", err);
       pendingByCard.delete(card);
       if (!card.isConnected) {
         return;

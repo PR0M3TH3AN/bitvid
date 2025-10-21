@@ -21,6 +21,7 @@ import {
   ensureBucketCors,
 } from "../storage/r2-s3.js";
 import { truncateMiddle } from "../utils/formatters.js";
+import { userLogger } from "../utils/logger.js";
 
 const STATUS_VARIANTS = new Set(["info", "success", "error", "warning"]);
 
@@ -69,7 +70,7 @@ class R2Service {
       try {
         handler(detail);
       } catch (err) {
-        console.error("[r2Service] Listener error for", event, err);
+        userLogger.error("[r2Service] Listener error for", event, err);
       }
     }
   }
@@ -225,7 +226,7 @@ class R2Service {
       this.populateCloudflareSettingsInputs(settings);
       return settings;
     } catch (err) {
-      console.error("Failed to load Cloudflare settings:", err);
+      userLogger.error("Failed to load Cloudflare settings:", err);
       this.setSettings(createDefaultSettings());
       this.populateCloudflareSettingsInputs(this.getSettings());
       this.setCloudflareSettingsStatus(
@@ -285,7 +286,7 @@ class R2Service {
       }
       return true;
     } catch (err) {
-      console.error("Failed to save Cloudflare settings:", err);
+      userLogger.error("Failed to save Cloudflare settings:", err);
       if (!quiet) {
         this.setCloudflareSettingsStatus(
           "Failed to save settings. Check console for details.",
@@ -310,7 +311,7 @@ class R2Service {
       this.setCloudflareSettingsStatus("Settings cleared.", "success");
       return true;
     } catch (err) {
-      console.error("Failed to clear Cloudflare settings:", err);
+      userLogger.error("Failed to clear Cloudflare settings:", err);
       this.setCloudflareSettingsStatus("Failed to clear settings.", "error");
       return false;
     }
@@ -338,7 +339,7 @@ class R2Service {
     try {
       return deriveShortSubdomain(npub);
     } catch (err) {
-      console.warn("Failed to derive short subdomain, falling back:", err);
+      userLogger.warn("Failed to derive short subdomain, falling back:", err);
     }
 
     const base = String(npub || "user")
@@ -382,7 +383,7 @@ class R2Service {
             origins: corsOrigins,
           });
         } catch (err) {
-          console.warn("Failed to refresh bucket configuration:", err);
+          userLogger.warn("Failed to refresh bucket configuration:", err);
         }
       } else if (accessKeyId && secretAccessKey && corsOrigins.length > 0) {
         try {
@@ -397,7 +398,7 @@ class R2Service {
             origins: corsOrigins,
           });
         } catch (err) {
-          console.warn("Failed to refresh bucket CORS via access keys:", err);
+          userLogger.warn("Failed to refresh bucket CORS via access keys:", err);
         }
       }
       return {
@@ -444,7 +445,7 @@ class R2Service {
             origins: corsOrigins,
           });
         } catch (corsErr) {
-          console.warn(
+          userLogger.warn(
             "Failed to ensure R2 CORS rules via access keys. Configure the bucket's CORS policy manually if uploads continue to fail.",
             corsErr
           );
@@ -485,7 +486,7 @@ class R2Service {
         origins: corsOrigins,
       });
     } catch (err) {
-      console.warn("Failed to apply R2 CORS rules:", err);
+      userLogger.warn("Failed to apply R2 CORS rules:", err);
     }
 
     let publicBaseUrl = entry?.publicBaseUrl || "";
@@ -517,7 +518,7 @@ class R2Service {
               enabled: false,
             });
           } catch (disableErr) {
-            console.warn("Failed to disable managed domain:", disableErr);
+            userLogger.warn("Failed to disable managed domain:", disableErr);
           }
         } else {
           usedManagedFallback = true;
@@ -535,10 +536,10 @@ class R2Service {
               enabled: false,
             });
           } catch (disableErr) {
-            console.warn("Failed to disable managed domain:", disableErr);
+            userLogger.warn("Failed to disable managed domain:", disableErr);
           }
         } else {
-          console.warn("Failed to attach custom domain, falling back:", err);
+          userLogger.warn("Failed to attach custom domain, falling back:", err);
           usedManagedFallback = true;
           customDomainStatus = "error";
         }
@@ -673,6 +674,11 @@ class R2Service {
     const ws = String(metadata.ws || "").trim();
     const xs = String(metadata.xs || "").trim();
     const enableComments = metadata.enableComments !== false;
+    const isNsfw = metadata.isNsfw === true;
+    const isForKids = metadata.isForKids === true && !isNsfw;
+
+    metadata.isNsfw = isNsfw;
+    metadata.isForKids = isForKids;
 
     const accountId = (this.cloudflareSettings?.accountId || "").trim();
     const accessKeyId = (this.cloudflareSettings?.accessKeyId || "").trim();
@@ -694,7 +700,7 @@ class R2Service {
     try {
       bucketResult = await this.ensureBucketConfigForNpub(npub);
     } catch (err) {
-      console.error("Failed to prepare R2 bucket:", err);
+      userLogger.error("Failed to prepare R2 bucket:", err);
       this.setCloudflareUploadStatus(
         err?.message ? `Bucket setup failed: ${err.message}` : "Bucket setup failed.",
         "error"
@@ -755,7 +761,7 @@ class R2Service {
       let publishOutcome = true;
 
       if (typeof publishVideoNote !== "function") {
-        console.warn(
+        userLogger.warn(
           "publishVideoNote handler missing; skipping publish step."
         );
         publishOutcome = false;
@@ -769,6 +775,8 @@ class R2Service {
           ws,
           xs,
           enableComments,
+          isNsfw,
+          isForKids,
         };
 
         const mergedNip71 = this.buildNip71MetadataForUpload(metadata?.nip71, {
@@ -798,7 +806,7 @@ class R2Service {
 
       return publishOutcome;
     } catch (err) {
-      console.error("Cloudflare upload failed:", err);
+      userLogger.error("Cloudflare upload failed:", err);
       this.setCloudflareUploadStatus(
         err?.message ? `Upload failed: ${err.message}` : "Upload failed.",
         "error"

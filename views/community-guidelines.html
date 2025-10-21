@@ -1,53 +1,78 @@
 <!-- views/community-guidelines.html -->
-<section class="mb-8">
-  <!-- 
-    This card has a white background and shadow, similar to your other partials.
-    We also add text-gray-900 to override the global body text color.
-  -->
-  <div class="bg-white p-6 rounded-lg shadow-md text-gray-900">
-    <h2 class="text-2xl font-bold mb-4 text-gray-700">Community Guidelines</h2>
-
-    <!-- 
-      The .markdown-body class can use your markdown.css 
-      so headings, paragraphs, etc. are styled nicely.
-    -->
-    <div id="markdown-container" class="markdown-body">
-      <p class="text-gray-500">Loading content...</p>
+<section class="bv-stack" data-ds="new" aria-labelledby="communityGuidelinesHeading">
+  <article class="card p-lg">
+    <div class="bv-stack bv-stack--tight">
+      <h2
+        id="communityGuidelinesHeading"
+        class="text-2xl font-semibold text-text-strong"
+      >
+        Community Guidelines
+      </h2>
+      <div id="markdown-container" class="markdown-prose">
+        <p class="text-muted-strong">Loading content...</p>
+      </div>
     </div>
-  </div>
+  </article>
 </section>
 
 <script>
-  (async () => {
-    try {
-      // Fetch the markdown file (change path if needed)
-      const response = await fetch("content/community-guidelines.md");
-      if (!response.ok) {
-        throw new Error("Failed to load community-guidelines.md");
-      }
-      const markdownText = await response.text();
+  (() => {
+    // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
+    const noopLogger = {
+      log: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    };
+    const dev = window.bitvidLogger?.dev || noopLogger;
+    const user = window.bitvidLogger?.user || noopLogger;
 
-      // Convert to HTML with Marked (make sure Marked is loaded globally in index.html)
-      const html = marked.parse(markdownText);
+    const loadMarkdown = async () => {
+      try {
+        // Fetch the markdown file (change path if needed)
+        const response = await fetch("content/community-guidelines.md");
+        if (!response.ok) {
+          throw new Error("Failed to load community-guidelines.md");
+        }
+        const markdownText = await response.text();
 
-      // Insert into the container
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = html;
-      }
+        // Convert to HTML with Marked (make sure Marked is loaded globally in index.html)
+        const html = marked.parse(markdownText);
 
-      // Optionally highlight code blocks if highlight.js is available globally
-      document.querySelectorAll("pre code").forEach((block) => {
-        hljs.highlightBlock(block);
-      });
-    } catch (err) {
-      console.error("Error loading community guidelines:", err);
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = `
-          <p class="text-red-500">Error loading content. Please try again later.</p>
-        `;
+        // Insert into the container
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = html;
+
+          const highlighter = window.hljs;
+          const highlight =
+            highlighter && typeof highlighter.highlightElement === "function"
+              ? (block) => highlighter.highlightElement(block)
+              : highlighter && typeof highlighter.highlightBlock === "function"
+                ? (block) => highlighter.highlightBlock(block)
+                : null;
+
+          if (highlight) {
+            container.querySelectorAll("pre code").forEach((block) => {
+              try {
+                highlight(block);
+              } catch (highlightError) {
+                dev.warn("Failed to highlight code block.", highlightError);
+              }
+            });
+          }
+        }
+      } catch (err) {
+        user.error("Error loading community guidelines:", err);
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = `
+            <p class="text-critical-strong">Error loading content. Please try again later.</p>
+          `;
+        }
       }
-    }
+    };
+
+    loadMarkdown();
   })();
 </script>

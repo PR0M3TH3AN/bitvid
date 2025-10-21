@@ -1,0 +1,71 @@
+<!-- components/delete-video-modal.html -->
+<div
+  id="deleteVideoModal"
+  class="bv-modal hidden items-start justify-center md:items-center"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="deleteModalTitle"
+  aria-describedby="deleteModalDescription"
+  data-ds="new"
+>
+  <div
+    id="deleteVideoModalOverlay"
+    class="bv-modal-backdrop"
+    data-dismiss
+  ></div>
+
+  <div class="modal-sheet max-h-modal-shell w-full max-w-lg overflow-y-auto" tabindex="-1">
+    <div class="modal-header">
+      <div class="flex flex-col">
+        <h2 id="deleteModalTitle" class="text-xl font-bold text-text">Delete video</h2>
+        <p id="deleteModalSubtitle" class="text-xs text-muted">
+          This action removes the note from every feed.
+        </p>
+      </div>
+      <button
+        id="closeDeleteVideoModal"
+        class="modal-close"
+        type="button"
+        aria-label="Close delete modal"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="modal-body space-y-6">
+      <div class="rounded-md border border-critical/40 bg-critical/10 p-4 text-sm text-critical">
+        <p class="font-semibold">Deleting publishes tombstones for every revision.</p>
+        <p class="mt-2 text-xs">
+          Relays and clients will treat the note as deleted. This cannot be undone.
+        </p>
+      </div>
+
+      <div class="space-y-4 text-sm text-text">
+        <p id="deleteModalDescription">
+          Are you sure you want to delete this video? Viewers will no longer see it in any grid.
+        </p>
+        <dl id="deleteModalMetadata" class="grid gap-3 text-xs text-muted sm:grid-cols-2"></dl>
+      </div>
+    </div>
+
+    <div class="modal-footer flex flex-col gap-3 sm:flex-row sm:justify-end">
+      <button type="button" id="cancelDeleteVideo" class="btn-ghost w-full sm:w-auto">Cancel</button>
+      <button
+        type="button"
+        id="confirmDeleteVideo"
+        class="btn w-full sm:w-auto"
+        data-variant="critical"
+      >
+        Delete all versions
+      </button>
+    </div>
+  </div>
+</div>

@@ -3,6 +3,9 @@ import {
   convertEventToVideo,
 } from "../nostr.js";
 import { accessControl } from "../accessControl.js";
+import { ALLOW_NSFW_CONTENT } from "../config.js";
+import { userLogger } from "../utils/logger.js";
+import moderationService from "./moderationService.js";
 import {
   getVideosMap as getStoredVideosMap,
   setVideosMap as setStoredVideosMap,
@@ -52,7 +55,7 @@ class SimpleEventEmitter {
           try {
             this.logger(`nostrService listener for "${eventName}" threw`, error);
           } catch (logError) {
-            console.warn("[nostrService] listener logger threw", logError);
+            userLogger.warn("[nostrService] listener logger threw", logError);
           }
         }
       }
@@ -107,17 +110,30 @@ export class NostrService {
       try {
         this.logger(message, error);
       } catch (logError) {
-        console.warn("[nostrService] logger threw", logError);
+        userLogger.warn("[nostrService] logger threw", logError);
       }
     });
     this.videosMap = null;
+    this.videosByAuthorIndex = null;
+    this.authorIndexDirty = false;
+    this.moderationService = moderationService || null;
+    this.initialLoadPromise = null;
+    this.initialLoadResolved = false;
+    this.initialLoadResolve = null;
+    try {
+      if (this.moderationService && typeof this.moderationService.setNostrClient === "function") {
+        this.moderationService.setNostrClient(this.nostrClient);
+      }
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to attach moderation service", error);
+    }
   }
 
   log(...args) {
     try {
       this.logger(...args);
     } catch (error) {
-      console.warn("[nostrService] logger threw", error);
+      userLogger.warn("[nostrService] logger threw", error);
     }
   }
 
@@ -127,6 +143,66 @@ export class NostrService {
 
   emit(eventName, detail) {
     this.emitter.emit(eventName, detail);
+  }
+
+  ensureInitialLoadDeferred() {
+    if (!this.initialLoadPromise) {
+      this.initialLoadResolved = false;
+      this.initialLoadPromise = new Promise((resolve) => {
+        this.initialLoadResolve = (value) => {
+          if (this.initialLoadResolved) {
+            return;
+          }
+          this.initialLoadResolved = true;
+          this.initialLoadResolve = null;
+          resolve(value);
+        };
+      });
+    }
+
+    return this.initialLoadPromise;
+  }
+
+  resolveInitialLoad(value) {
+    if (this.initialLoadResolved) {
+      return;
+    }
+
+    if (typeof this.initialLoadResolve === "function") {
+      try {
+        this.initialLoadResolve(value);
+      } finally {
+        this.initialLoadResolve = null;
+        this.initialLoadResolved = true;
+      }
+    }
+  }
+
+  awaitInitialLoad() {
+    return this.ensureInitialLoadDeferred();
+  }
+
+  getModerationService() {
+    if (!this.moderationService) {
+      return null;
+    }
+
+    try {
+      if (
+        typeof this.moderationService.setNostrClient === "function" &&
+        this.moderationService.nostrClient !== this.nostrClient
+      ) {
+        this.moderationService.setNostrClient(this.nostrClient);
+      }
+
+      if (typeof this.moderationService.refreshViewerFromClient === "function") {
+        this.moderationService.refreshViewerFromClient();
+      }
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to synchronize moderation service", error);
+    }
+
+    return this.moderationService;
   }
 
   ensureVideosMap() {
@@ -141,6 +217,7 @@ export class NostrService {
     }
 
     this.videosMap = map;
+    this.markAuthorIndexDirty();
     return this.videosMap;
   }
 
@@ -163,7 +240,7 @@ export class NostrService {
       try {
         current.unsub();
       } catch (error) {
-        console.warn("[nostrService] Failed to unsubscribe from video feed:", error);
+        userLogger.warn("[nostrService] Failed to unsubscribe from video feed:", error);
       }
     }
     this.setVideoSubscription(null);
@@ -181,7 +258,66 @@ export class NostrService {
       }
     }
     setStoredVideosMap(map);
+    this.markAuthorIndexDirty();
     this.emit("videos:cache", { size: map.size });
+  }
+
+  resetVideosCache() {
+    const map = new Map();
+    this.videosMap = map;
+    this.videosByAuthorIndex = new Map();
+    this.authorIndexDirty = false;
+    setStoredVideosMap(map);
+    this.emit("videos:cache", { size: 0 });
+  }
+
+  markAuthorIndexDirty() {
+    this.authorIndexDirty = true;
+  }
+
+  ensureVideosByAuthorIndex() {
+    const videosMap = this.ensureVideosMap();
+
+    if (this.videosByAuthorIndex instanceof Map && !this.authorIndexDirty) {
+      return this.videosByAuthorIndex;
+    }
+
+    const index = new Map();
+    for (const video of videosMap.values()) {
+      if (!video || typeof video !== "object") {
+        continue;
+      }
+      const author = normalizeHexPubkey(video.pubkey);
+      if (!author) {
+        continue;
+      }
+      if (!index.has(author)) {
+        index.set(author, []);
+      }
+      index.get(author).push(video);
+    }
+
+    for (const [author, videos] of index.entries()) {
+      if (!Array.isArray(videos) || videos.length <= 1) {
+        continue;
+      }
+      videos.sort((a, b) => {
+        const aCreatedCandidate = Number(a?.created_at);
+        const bCreatedCandidate = Number(b?.created_at);
+        const aCreated = Number.isFinite(aCreatedCandidate)
+          ? aCreatedCandidate
+          : 0;
+        const bCreated = Number.isFinite(bCreatedCandidate)
+          ? bCreatedCandidate
+          : 0;
+        return bCreated - aCreated;
+      });
+      index.set(author, videos);
+    }
+
+    this.videosByAuthorIndex = index;
+    this.authorIndexDirty = false;
+    return this.videosByAuthorIndex;
   }
 
   shouldIncludeVideo(video, {
@@ -189,6 +325,12 @@ export class NostrService {
     isAuthorBlocked = () => false,
   } = {}) {
     if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    const viewerIsAuthor = this.isViewerVideoAuthor(video);
+
+    if (ALLOW_NSFW_CONTENT !== true && video.isNsfw === true && !viewerIsAuthor) {
       return false;
     }
 
@@ -202,23 +344,12 @@ export class NostrService {
           return false;
         }
       } catch (error) {
-        console.warn("[nostrService] isAuthorBlocked handler threw", error);
+        userLogger.warn("[nostrService] isAuthorBlocked handler threw", error);
       }
     }
 
-    if (video.isPrivate === true) {
-      const normalizedVideoPubkey = normalizeHexPubkey(video.pubkey);
-      const normalizedViewerPubkey = normalizeHexPubkey(
-        this.nostrClient?.pubkey
-      );
-
-      if (
-        !normalizedViewerPubkey ||
-        !normalizedVideoPubkey ||
-        normalizedVideoPubkey !== normalizedViewerPubkey
-      ) {
-        return false;
-      }
+    if (video.isPrivate === true && !viewerIsAuthor) {
+      return false;
     }
 
     if (this.accessControl && typeof this.accessControl.canAccess === "function") {
@@ -227,7 +358,7 @@ export class NostrService {
           return false;
         }
       } catch (error) {
-        console.warn("[nostrService] access control check failed", error);
+        userLogger.warn("[nostrService] access control check failed", error);
         return false;
       }
     }
@@ -258,7 +389,7 @@ export class NostrService {
     try {
       await this.accessControl.ensureReady();
     } catch (error) {
-      console.warn(
+      userLogger.warn(
         "[nostrService] Failed to ensure access control lists are ready:",
         error
       );
@@ -270,48 +401,122 @@ export class NostrService {
     return this.filterVideos(all, options);
   }
 
+  getActiveVideosByAuthors(authors = [], options = {}) {
+    const candidates = ensureSet(authors);
+    const normalizedAuthors = new Set();
+    for (const candidate of candidates) {
+      const normalized = normalizeHexPubkey(candidate);
+      if (normalized) {
+        normalizedAuthors.add(normalized);
+      }
+    }
+
+    if (!normalizedAuthors.size) {
+      return this.getFilteredActiveVideos(options);
+    }
+
+    const index = this.ensureVideosByAuthorIndex();
+    const collected = [];
+    const seen = new Set();
+    const limitCandidate = Number(options?.limit);
+    const limit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
+    const perAuthorLimit = limit
+      ? Math.max(limit * 2, limit + 5)
+      : null;
+
+    for (const author of normalizedAuthors) {
+      const entries = index.get(author);
+      if (!Array.isArray(entries) || entries.length === 0) {
+        continue;
+      }
+      const sliceCount = perAuthorLimit
+        ? Math.min(perAuthorLimit, entries.length)
+        : entries.length;
+      for (let idx = 0; idx < sliceCount; idx += 1) {
+        const video = entries[idx];
+        if (!video || typeof video !== "object") {
+          continue;
+        }
+        const id = typeof video.id === "string" ? video.id : "";
+        if (!id || seen.has(id)) {
+          continue;
+        }
+        seen.add(id);
+        collected.push(video);
+      }
+    }
+
+    const filtered = this.filterVideos(collected, options);
+
+    const sorted = filtered.sort((a, b) => {
+      const aCreatedCandidate = Number(a?.created_at);
+      const bCreatedCandidate = Number(b?.created_at);
+      const aCreated = Number.isFinite(aCreatedCandidate) ? aCreatedCandidate : 0;
+      const bCreated = Number.isFinite(bCreatedCandidate) ? bCreatedCandidate : 0;
+      return bCreated - aCreated;
+    });
+
+    if (limit) {
+      return sorted.slice(0, limit);
+    }
+
+    return sorted;
+  }
+
   async loadVideos({
     forceFetch = false,
     blacklistedEventIds,
     isAuthorBlocked,
     onVideos,
   } = {}) {
-    await this.ensureAccessControlReady();
+    this.ensureInitialLoadDeferred();
 
-    if (forceFetch) {
-      this.clearVideoSubscription();
-    }
+    try {
+      await this.ensureAccessControlReady();
 
-    const applyAndNotify = (videos, reason) => {
-      const filtered = this.filterVideos(videos, {
-        blacklistedEventIds,
-        isAuthorBlocked,
-      });
-      this.cacheVideos(filtered);
-      if (typeof onVideos === "function") {
-        try {
-          onVideos(filtered, { reason });
-        } catch (error) {
-          console.warn("[nostrService] onVideos handler threw", error);
-        }
+      if (forceFetch) {
+        this.clearVideoSubscription();
       }
-      this.emit("videos:updated", { videos: filtered, reason });
-      return filtered;
-    };
 
-    const cached = this.nostrClient.getActiveVideos();
-    const initial = applyAndNotify(cached, "cache");
+      const applyAndNotify = (videos, reason) => {
+        const filtered = this.filterVideos(videos, {
+          blacklistedEventIds,
+          isAuthorBlocked,
+        });
+        this.cacheVideos(filtered);
+        if (typeof onVideos === "function") {
+          try {
+            onVideos(filtered, { reason });
+          } catch (error) {
+            userLogger.warn("[nostrService] onVideos handler threw", error);
+          }
+        }
+        this.emit("videos:updated", { videos: filtered, reason });
+        return filtered;
+      };
 
-    if (!getStoredVideoSubscription()) {
-      const subscription = this.nostrClient.subscribeVideos(() => {
-        const updated = this.nostrClient.getActiveVideos();
-        applyAndNotify(updated, "subscription");
-      });
-      this.setVideoSubscription(subscription);
-      this.emit("subscription:started", { subscription });
+      const cached = this.nostrClient.getActiveVideos();
+      const initial = applyAndNotify(cached, "cache");
+
+      this.resolveInitialLoad({ videos: initial, reason: "cache" });
+
+      if (!getStoredVideoSubscription()) {
+        const subscription = this.nostrClient.subscribeVideos(() => {
+          const updated = this.nostrClient.getActiveVideos();
+          applyAndNotify(updated, "subscription");
+        });
+        this.setVideoSubscription(subscription);
+        this.emit("subscription:started", { subscription });
+      }
+
+      return initial;
+    } catch (error) {
+      this.resolveInitialLoad({ videos: [], reason: "error", error });
+      throw error;
     }
-
-    return initial;
   }
 
   async fetchVideos(options = {}) {
@@ -322,7 +527,7 @@ export class NostrService {
       this.emit("videos:fetched", { videos: filtered });
       return filtered;
     } catch (error) {
-      console.error("[nostrService] Failed to fetch videos:", error);
+      userLogger.error("[nostrService] Failed to fetch videos:", error);
       return [];
     }
   }
@@ -366,11 +571,11 @@ export class NostrService {
           collected.set(video.id, video);
           this.nostrClient.allEvents.set(video.id, video);
         } catch (error) {
-          console.warn("[nostrService] Failed to convert older event", error);
+          userLogger.warn("[nostrService] Failed to convert older event", error);
         }
       }
     } catch (error) {
-      console.error("[nostrService] Failed to load older videos:", error);
+      userLogger.error("[nostrService] Failed to load older videos:", error);
       return [];
     }
 
@@ -470,24 +675,106 @@ export class NostrService {
     return result;
   }
 
-  async handleFullDeleteVideo({ videoRootId, pubkey, confirm = true } = {}) {
+  async handleFullDeleteVideo({ videoRootId, video, pubkey, confirm = true } = {}) {
     const result = await this.nostrClient.deleteAllVersions(videoRootId, pubkey, {
       confirm,
+      video,
     });
-    if (result) {
-      this.emit("videos:deleted", { videoRootId, pubkey });
+
+    if (!result) {
+      return result;
     }
-    return result;
+
+    const revertFailures = [];
+    const deleteFailures = [];
+
+    if (Array.isArray(result.reverts)) {
+      for (const entry of result.reverts) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+
+        const failed = Array.isArray(entry?.summary?.failed)
+          ? entry.summary.failed.filter(Boolean)
+          : [];
+        if (failed.length) {
+          revertFailures.push({
+            targetId: entry.targetId || "",
+            eventId: entry.event?.id || "",
+            failed,
+          });
+        }
+      }
+    }
+
+    if (Array.isArray(result.deletes)) {
+      for (const entry of result.deletes) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+
+        const failed = Array.isArray(entry?.summary?.failed)
+          ? entry.summary.failed.filter(Boolean)
+          : [];
+        if (failed.length) {
+          deleteFailures.push({
+            eventId: entry.event?.id || "",
+            identifiers: entry.identifiers || { events: [], addresses: [] },
+            failed,
+          });
+        }
+      }
+    }
+
+    const detail = {
+      videoRootId,
+      video,
+      pubkey,
+      result,
+      revertFailures,
+      deleteFailures,
+    };
+
+    this.emit("videos:deleted", detail);
+
+    return detail;
   }
 
   async getOldEventById(eventId) {
     const map = this.ensureVideosMap();
+    const isBlockedNsfw = (video) =>
+      ALLOW_NSFW_CONTENT !== true &&
+      video?.isNsfw === true &&
+      !this.isViewerVideoAuthor(video);
+
     if (map.has(eventId)) {
-      return map.get(eventId);
+      const existing = map.get(eventId);
+      if (existing && !existing.deleted) {
+        this.nostrClient.applyTombstoneGuard(existing);
+      }
+      if (!existing || existing.deleted) {
+        map.delete(eventId);
+        setStoredVideosMap(map);
+        return null;
+      }
+      if (isBlockedNsfw(existing)) {
+        map.delete(eventId);
+        setStoredVideosMap(map);
+        return null;
+      }
+      return existing;
     }
 
     const cached = this.nostrClient.allEvents.get(eventId);
+    if (cached) {
+      if (!cached.deleted) {
+        this.nostrClient.applyTombstoneGuard(cached);
+      }
+    }
     if (cached && !cached.deleted) {
+      if (isBlockedNsfw(cached)) {
+        return null;
+      }
       map.set(eventId, cached);
       setStoredVideosMap(map);
       return cached;
@@ -495,12 +782,34 @@ export class NostrService {
 
     const fetched = await this.nostrClient.getEventById(eventId);
     if (fetched && !fetched.deleted) {
+      if (isBlockedNsfw(fetched)) {
+        return null;
+      }
       map.set(eventId, fetched);
       setStoredVideosMap(map);
       return fetched;
     }
 
     return null;
+  }
+
+  isViewerVideoAuthor(video) {
+    try {
+      this.getModerationService();
+    } catch (error) {
+      userLogger.warn("[nostrService] Failed to refresh moderation context", error);
+    }
+    if (!video || typeof video !== "object") {
+      return false;
+    }
+
+    const viewerPubkey = normalizeHexPubkey(this.nostrClient?.pubkey);
+    if (!viewerPubkey) {
+      return false;
+    }
+
+    const videoPubkey = normalizeHexPubkey(video.pubkey);
+    return !!videoPubkey && videoPubkey === viewerPubkey;
   }
 }
 

@@ -7,6 +7,7 @@
   id="sidebar"
   class="fade-in fade-in-delay-100 sidebar-collapsed"
   data-state="collapsed"
+  data-ds="new"
 >
   <div class="sidebar__inner">
     <div class="sidebar-scroll">
@@ -167,7 +168,13 @@
               />
               <span class="sidebar-text">Roadmap</span>
             </a>
-            <a href="#view=blog" class="sidebar-nav-link sidebar-nav-link--sub" title="Blog">
+            <a
+              href="#"
+              data-blog-link
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Blog"
+              rel="noopener noreferrer"
+            >
               <img
                 src="assets/svg/blog-icon.svg"
                 alt=""
@@ -177,11 +184,11 @@
               <span class="sidebar-text">Blog</span>
             </a>
             <a
-              href="https://primal.net/p/npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="#"
+              data-nostr-link
               class="sidebar-nav-link sidebar-nav-link--sub"
               title="Nostr"
+              rel="noopener noreferrer"
             >
               <img
                 src="assets/svg/nostr-icon.svg"
@@ -192,11 +199,34 @@
               <span class="sidebar-text">Nostr</span>
             </a>
             <a
-              href="https://github.com/PR0M3TH3AN/bitvid"
-              target="_blank"
+              href="#"
+              data-community-link
+              class="sidebar-nav-link sidebar-nav-link--sub"
+              title="Community"
               rel="noopener noreferrer"
+            >
+              <svg
+                class="sidebar-icon"
+                width="24"
+                height="24"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="currentColor"
+                fill-rule="evenodd"
+                clip-rule="evenodd"
+                aria-hidden="true"
+              >
+                <path
+                  d="M24 20h-3v4l-5.333-4h-7.667v-4h2v2h6.333l2.667 2v-2h3v-8.001h-2v-2h4v12.001zm-6-6h-9.667l-5.333 4v-4h-3v-14.001h18v14.001zm-13-8c.552 0 1 .448 1 1s-.448 1-1 1-1-.448-1-1 .448-1 1-1zm4 0c.552 0 1 .448 1 1s-.448 1-1 1-1-.448-1-1 .448-1 1-1zm4 0c.552 0 1 .448 1 1s-.448 1-1 1-1-.448-1-1 .448-1 1-1z"
+                />
+              </svg>
+              <span class="sidebar-text">Community</span>
+            </a>
+            <a
+              href="#"
+              data-github-link
               class="sidebar-nav-link sidebar-nav-link--sub"
               title="GitHub"
+              rel="noopener noreferrer"
             >
               <img
                 src="assets/svg/github-icon.svg"
@@ -222,11 +252,11 @@
               <span class="sidebar-text">βeacon</span>
             </a>
             <a
-              href="https://beta.bitvid.network/"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="#"
+              data-beta-link
               class="sidebar-nav-link sidebar-nav-link--sub"
               title="Beta"
+              rel="noopener noreferrer"
             >
               <img
                 src="assets/svg/beta-icon.svg"
@@ -255,11 +285,11 @@
               <span class="sidebar-text">IPNS</span>
             </a>
             <a
-              href="https://bitvid.network/"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="#"
+              data-dns-link
               class="sidebar-nav-link sidebar-nav-link--sub"
               title="DNS"
+              rel="noopener noreferrer"
             >
               <img
                 src="assets/svg/dns-icon.svg"

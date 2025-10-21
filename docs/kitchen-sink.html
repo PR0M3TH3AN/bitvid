@@ -3,175 +3,763 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bitvid Tailwind Kitchen Sink</title>
+    <title>bitvid Design System Kitchen Sink</title>
     <link rel="stylesheet" href="../css/tailwind.generated.css" />
   </head>
-  <body class="bg-page font-sans text-text-strong">
-    <div class="min-h-screen bg-page-alt">
-      <header class="bg-surface text-text shadow-modal">
+  <body class="bg-page font-sans text-text-strong" data-ds="new">
+    <div class="min-h-screen bg-page-alt" data-ds="new">
+      <header class="ds-header bg-surface text-text shadow-modal">
         <div
-          class="mx-auto flex max-w-6xl items-center justify-between px-md py-sm"
+          class="mx-auto flex max-w-6xl items-center justify-between gap-sm px-md py-sm"
         >
-          <h1 class="text-2xl font-semibold">Bitvid UI Kitchen Sink</h1>
-          <button
-            class="rounded-lg bg-primary px-sm py-2 text-white shadow-md transition duration-fast ease-out hover:bg-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            Primary Action
-          </button>
+          <h1 class="text-2xl font-semibold">bitvid UI Kitchen Sink</h1>
+          <div class="flex items-center gap-sm">
+            <label class="sr-only" for="themeSwitcher">Theme</label>
+            <select id="themeSwitcher" class="select h-10" aria-label="Select theme">
+              <option value="default">Default (Dark)</option>
+              <option value="light">Light</option>
+              <option value="contrast">High Contrast (Preview)</option>
+            </select>
+            <button class="btn">Primary Action</button>
+          </div>
         </div>
       </header>
 
-      <main class="mx-auto flex max-w-6xl flex-col gap-lg px-md py-lg">
+      <main class="mx-auto max-w-6xl space-y-xl px-md py-xl">
         <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">Buttons</h2>
-          <div class="flex flex-wrap gap-sm">
-            <button
-              class="rounded-md bg-primary px-sm py-2 text-white shadow-md transition duration-fast ease-out hover:bg-secondary"
-            >
-              Primary
-            </button>
-            <button
-              class="rounded-md bg-info px-sm py-2 text-surface shadow-sm transition duration-fast ease-out hover:bg-info-strong"
-            >
-              Informational
-            </button>
-            <button
-              class="rounded-md bg-critical px-sm py-2 text-white shadow-sm transition duration-fast ease-out hover:bg-critical-strong"
-            >
-              Destructive
-            </button>
-            <button
-              class="rounded-md border border-border-subtle px-sm py-2 text-text-muted shadow-none transition duration-fast ease-out hover:bg-panel-hover hover:text-text"
-            >
-              Ghost
-            </button>
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">Buttons</h2>
+            <p class="text-sm text-muted">
+              Each block shows the default, simulated hover, focus, and disabled
+              states.
+            </p>
           </div>
-        </section>
-
-        <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">Cards</h2>
-          <div class="grid gap-md md:grid-cols-3">
-            <article class="rounded-lg bg-card p-md text-text shadow-lg">
-              <h3 class="text-lg font-semibold">Default Card</h3>
-              <p class="mt-xs text-text-muted">
-                Uses
-                <code class="font-mono text-sm text-info">bg-card</code> and
-                tokenized shadows.
-              </p>
-              <button
-                class="mt-sm rounded-md bg-info px-sm py-2 text-surface shadow-sm transition duration-base ease-in-out hover:bg-info-strong"
-              >
-                Watch Now
-              </button>
-            </article>
-            <article
-              class="rounded-lg bg-card-private p-md text-text shadow-lg"
-            >
-              <h3 class="text-lg font-semibold">Private Card</h3>
-              <p class="mt-xs text-text-muted">
-                Emphasizes restricted content with
-                <code class="font-mono text-sm text-info">bg-card-private</code
-                >.
-              </p>
-            </article>
-            <article
-              class="rounded-lg bg-card-critical p-md text-text shadow-lg"
-            >
-              <h3 class="text-lg font-semibold">Critical Card</h3>
-              <p class="mt-xs text-text-muted">
-                Use for outage or abuse states.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">Form Inputs</h2>
-          <form class="grid gap-md md:grid-cols-2">
-            <label class="flex flex-col gap-xs">
-              <span class="text-sm font-medium text-text-muted"
-                >Display Name</span
-              >
-              <input
-                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong shadow-sm focus:border-info focus:ring-2 focus:ring-info-strong"
-                type="text"
-                placeholder="Satoshi Stack"
-              />
-            </label>
-            <label class="flex flex-col gap-xs">
-              <span class="text-sm font-medium text-text-muted">Video URL</span>
-              <input
-                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong shadow-sm focus:border-info focus:ring-2 focus:ring-info-strong"
-                type="url"
-                placeholder="https://example.com/video.mp4"
-              />
-            </label>
-            <label class="flex flex-col gap-xs md:col-span-2">
-              <span class="text-sm font-medium text-text-muted"
-                >Description</span
-              >
-              <textarea
-                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong shadow-sm focus:border-info focus:ring-2 focus:ring-info-strong"
-                rows="3"
-                placeholder="Describe what viewers should expect..."
-              ></textarea>
-            </label>
-          </form>
-        </section>
-
-        <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">Modal Preview</h2>
-          <div
-            class="relative overflow-hidden rounded-xl bg-overlay p-lg text-text shadow-modal"
-          >
+          <div class="grid gap-lg lg:grid-cols-2">
             <div class="space-y-sm">
-              <h3 class="text-lg font-semibold">Upload Video</h3>
-              <p class="text-text-muted">
-                Motion tokens control the fade via
-                <code class="font-mono text-sm text-info">duration-base</code>
-                and
-                <code class="font-mono text-sm text-info">ease-out</code>
-                utilities.
-              </p>
+              <h3 class="text-lg font-semibold">Primary (.btn)</h3>
+              <div class="grid gap-sm sm:grid-cols-2 xl:grid-cols-4">
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Default</p>
+                  <button class="btn">Default</button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Hover (simulated)</p>
+                  <button class="btn bg-info-strong shadow-lg">Hover</button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Focus (simulated)</p>
+                  <button
+                    class="btn bg-info-pressed ring-2 ring-info ring-opacity-70 ring-offset-2 ring-offset-surface"
+                  >
+                    Focus
+                  </button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Disabled</p>
+                  <button class="btn" disabled>Disabled</button>
+                </div>
+              </div>
             </div>
-            <div class="mt-md flex flex-col gap-sm">
-              <input
-                class="rounded-md border border-border-subtle bg-white px-sm py-xs text-text-strong focus:border-info focus:ring-2 focus:ring-info"
-                type="text"
-                placeholder="Magnet URI"
-              />
-              <div class="flex justify-end gap-sm">
-                <button
-                  class="rounded-md border border-border px-sm py-2 text-text-muted transition duration-fast ease-out hover:text-text"
-                >
-                  Cancel
-                </button>
-                <button
-                  class="rounded-md bg-primary px-sm py-2 text-white shadow-md transition duration-fast ease-out hover:bg-secondary"
-                >
-                  Publish
-                </button>
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Ghost (.btn-ghost)</h3>
+              <div class="grid gap-sm sm:grid-cols-2 xl:grid-cols-4">
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Default</p>
+                  <button class="btn-ghost">Default</button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Hover (simulated)</p>
+                  <button class="btn-ghost bg-panel-hover text-text">
+                    Hover
+                  </button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Focus (simulated)</p>
+                  <button
+                    class="btn-ghost bg-panel-hover ring-2 ring-info ring-opacity-70 ring-offset-2 ring-offset-surface"
+                  >
+                    Focus
+                  </button>
+                </div>
+                <div class="space-y-xs">
+                  <p class="text-xs uppercase text-muted">Disabled</p>
+                  <button class="btn-ghost" disabled>Disabled</button>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
         <section class="space-y-md">
-          <h2 class="text-xl font-semibold text-text-strong">
-            Typography Scale
-          </h2>
           <div class="space-y-xs">
-            <p class="text-2xl font-semibold">Display / 2xl</p>
-            <p class="text-xl font-semibold">Headline / xl</p>
-            <p class="text-lg font-medium">Title / lg</p>
-            <p class="text-base">Body / base</p>
-            <p class="text-sm text-text-muted">Caption / sm</p>
-            <p class="text-xs uppercase tracking-wide text-text-muted">
-              Meta / xs
+            <h2 class="text-xl font-semibold text-text-strong">Badges</h2>
+            <p class="text-sm text-muted">
+              Use `data-variant` for semantic colorways.
             </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-sm">
+            <span class="badge">Default</span>
+            <span class="badge" data-variant="info">Info</span>
+            <span class="badge" data-variant="critical">Critical</span>
+            <span class="badge" data-variant="neutral">Neutral</span>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">Cards</h2>
+            <p class="text-sm text-muted">
+              Cards inherit focus-ring behaviour and support semantic states.
+            </p>
+          </div>
+          <div class="grid-stack" data-variant="cards">
+            <article class="card p-md">
+              <h3 class="text-lg font-semibold">Default Card</h3>
+              <p class="mt-xs text-muted">
+                Combine with layout utilities like `p-md` or `gap-sm` for
+                content spacing.
+              </p>
+              <button class="btn mt-sm">Watch</button>
+            </article>
+            <article
+              class="card -translate-y-1 bg-card p-md shadow-lg transition-none"
+            >
+              <h3 class="text-lg font-semibold">Hover (simulated)</h3>
+              <p class="mt-xs text-muted">Applies the hover shadow and lift.</p>
+            </article>
+            <article
+              class="card bg-card p-md ring-2 ring-info ring-opacity-70 ring-offset-2 ring-offset-surface"
+            >
+              <h3 class="text-lg font-semibold">Focus (simulated)</h3>
+              <p class="mt-xs text-muted">Rings appear on `focus-visible`.</p>
+            </article>
+            <article class="card p-md" data-state="disabled">
+              <h3 class="text-lg font-semibold">Disabled</h3>
+              <p class="mt-xs text-muted">
+                Opacity drops and the shadow is removed.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">
+              Layout Helpers
+            </h2>
+            <p class="text-sm text-muted">
+              `.bv-stack` and `.bv-grid-video` consolidate our common feed and
+              profile layouts.
+            </p>
+          </div>
+          <div class="grid gap-lg lg:grid-cols-2">
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Stack (.bv-stack)</h3>
+              <div class="bv-stack">
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Default spacing</h4>
+                  <p class="text-sm text-muted">
+                    Use `.bv-stack` for page-level groupings such as the watch
+                    history header and banners.
+                  </p>
+                </article>
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Nested card</h4>
+                  <p class="text-sm text-muted">
+                    The helper keeps consistent gaps without repeating
+                    `space-y-*` utilities.
+                  </p>
+                </article>
+              </div>
+              <div class="bv-stack bv-stack--tight">
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Tight stack</h4>
+                  <p class="text-sm text-muted">
+                    Apply `.bv-stack--tight` when stacking compact forms or
+                    metadata blocks in profile views.
+                  </p>
+                </article>
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Form footer</h4>
+                  <p class="text-sm text-muted">
+                    The modifier inherits flex behaviour from `.bv-stack` while
+                    reducing the gap to `var(--space-md)`.
+                  </p>
+                </article>
+              </div>
+            </div>
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Video Grid (.bv-grid-video)</h3>
+              <div class="bv-grid-video">
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Feed Tile</h4>
+                  <p class="text-sm text-muted">
+                    Auto-fills with a 20rem minimum column size on desktop.
+                  </p>
+                </article>
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Subscription Tile</h4>
+                  <p class="text-sm text-muted">
+                    The grid collapses to a single column below 40rem.
+                  </p>
+                </article>
+                <article class="card p-md">
+                  <h4 class="text-base font-semibold">Channel Tile</h4>
+                  <p class="text-sm text-muted">
+                    Reuse the same helper instead of duplicating inline grid
+                    declarations.
+                  </p>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">Form Inputs</h2>
+            <p class="text-sm text-muted">
+              `.input` works for both `&lt;input&gt;` and `&lt;textarea&gt;`
+              elements.
+            </p>
+          </div>
+          <div class="grid gap-md md:grid-cols-2">
+            <div class="space-y-xs">
+              <label
+                class="text-sm font-medium text-muted"
+                for="demo-input-default"
+                >Default</label
+              >
+              <input
+                id="demo-input-default"
+                class="input"
+                type="text"
+                placeholder="Display name"
+              />
+            </div>
+            <div class="space-y-xs">
+              <label
+                class="text-sm font-medium text-muted"
+                for="demo-input-hover"
+                >Hover (simulated)</label
+              >
+              <input
+                id="demo-input-hover"
+                class="input border-border"
+                type="text"
+                value="Hovering"
+              />
+            </div>
+            <div class="space-y-xs">
+              <label
+                class="text-sm font-medium text-muted"
+                for="demo-input-focus"
+                >Focus (simulated)</label
+              >
+              <input
+                id="demo-input-focus"
+                class="input border-info-strong ring-2 ring-info ring-opacity-70 ring-offset-2 ring-offset-surface"
+                type="text"
+                value="In focus"
+              />
+            </div>
+            <div class="space-y-xs">
+              <label
+                class="text-sm font-medium text-muted"
+                for="demo-input-disabled"
+                >Disabled</label
+              >
+              <input
+                id="demo-input-disabled"
+                class="input"
+                type="text"
+                value="Read only"
+                disabled
+              />
+            </div>
+            <div class="space-y-xs md:col-span-2">
+              <label class="text-sm font-medium text-muted" for="demo-textarea"
+                >Textarea</label
+              >
+              <textarea
+                id="demo-textarea"
+                class="input"
+                rows="3"
+                placeholder="Describe the video..."
+              ></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">
+              Focus Ring Helper
+            </h2>
+            <p class="text-sm text-muted">
+              Add `.focus-ring` to custom interactives when you opt out of
+              `.btn` or other primitives.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-sm">
+            <a
+              href="#"
+              class="focus-ring inline-flex items-center gap-xs rounded-md border border-border bg-panel px-sm py-xs text-text no-underline"
+            >
+              Focusable Link
+            </a>
+            <button
+              class="focus-ring inline-flex items-center gap-xs rounded-md border border-border px-sm py-xs"
+            >
+              Plain Button
+            </button>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">
+              Modal Surface
+            </h2>
+            <p class="text-sm text-muted">
+              `.bv-modal` anchors the overlay, `.bv-modal-backdrop` dims the
+              page, and `.bv-modal__panel` styles content.
+            </p>
+          </div>
+          <div
+            class="relative isolate overflow-hidden rounded-xl bg-surface-alt p-lg text-text shadow-inner"
+          >
+            <div class="relative h-full w-full">
+              <div class="bv-modal absolute inset-0">
+                <div class="bv-modal-backdrop"></div>
+                <div class="bv-modal__panel space-y-6">
+                  <header class="space-y-2">
+                    <h3 class="text-2xl font-semibold tracking-tight text-text">
+                      Upload Video
+                    </h3>
+                    <p class="text-sm text-text">
+                      Use `.input`, `.btn-ghost`, and `.modal-primary`
+                      primitives for consistent modal actions.
+                    </p>
+                  </header>
+                  <input class="input" type="text" placeholder="Magnet URI" />
+                  <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
+                    <button class="btn-ghost w-full sm:w-auto">Cancel</button>
+                    <button class="modal-primary sm:w-auto">
+                      Publish
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">
+              Profile &amp; Edit Modal Shells
+            </h2>
+            <p class="text-sm text-muted">
+              Both shells share the `.bv-modal` overlay, `.bv-modal__panel`
+              surface, and tokenized primitives (`.card`, `.btn`, `.btn-ghost`,
+              `.badge`, `.grid-stack`, `.focus-ring`). The templates below match
+              the production markup so controller behaviour and documentation
+              stay aligned.
+            </p>
+          </div>
+          <div class="grid gap-lg lg:grid-cols-2">
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Profile Modal</h3>
+              <p class="text-sm text-muted">
+                Static scaffold that mirrors `components/profile-modal.html`.
+                Tab buttons keep their `aria-controls`/`data-state` attributes
+                so designers can map the layout to controller behaviour.
+              </p>
+              <div
+                class="relative isolate overflow-hidden rounded-xl bg-surface-alt p-lg text-text shadow-inner"
+              >
+                <div class="relative h-full w-full">
+                  <div
+                    id="profileModal"
+                    class="bv-modal absolute inset-0 items-start"
+                  >
+                    <div class="bv-modal-backdrop"></div>
+                    <div
+                      class="bv-modal__panel flex max-h-modal-embed flex-col gap-lg"
+                      role="dialog"
+                      aria-labelledby="profileModalTitle"
+                    >
+                      <header
+                        class="card flex items-center justify-between gap-sm p-md"
+                      >
+                        <div>
+                          <p class="text-xs uppercase tracking-wide text-muted">
+                            Modal header
+                          </p>
+                          <h4
+                            id="profileModalTitle"
+                            class="text-lg font-semibold"
+                          >
+                            Active profile
+                          </h4>
+                        </div>
+                        <button
+                          class="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full"
+                          type="button"
+                          aria-label="Close profile modal"
+                        >
+                          &times;
+                        </button>
+                      </header>
+                      <div class="flex flex-1 flex-col gap-lg lg:flex-row">
+                        <nav
+                          class="grid gap-xs sm:grid-cols-3 lg:flex lg:w-56 lg:flex-col"
+                          aria-label="Profile sections"
+                        >
+                          <button
+                            class="btn-ghost focus-ring justify-start"
+                            type="button"
+                            data-state="active"
+                            aria-controls="profilePaneAccount"
+                          >
+                            Account
+                          </button>
+                          <button
+                            class="btn-ghost focus-ring justify-start"
+                            type="button"
+                            aria-controls="profilePaneRelays"
+                          >
+                            Relays
+                          </button>
+                          <button
+                            class="btn-ghost focus-ring justify-start"
+                            type="button"
+                            aria-controls="profilePaneBlocked"
+                          >
+                            Blocked users
+                          </button>
+                        </nav>
+                        <div
+                          class="grid-stack flex-1 gap-md"
+                          data-variant="cards"
+                        >
+                          <article
+                            id="profilePaneAccount"
+                            class="card space-y-sm p-md"
+                            data-profile-pane
+                          >
+                            <div
+                              class="flex items-start justify-between gap-sm"
+                            >
+                              <div>
+                                <p
+                                  class="text-xs uppercase tracking-wide text-muted"
+                                >
+                                  Current identity
+                                </p>
+                                <h5 class="text-base font-semibold">
+                                  npub1example...
+                                </h5>
+                              </div>
+                              <span class="badge" data-variant="info"
+                                >Active</span
+                              >
+                            </div>
+                            <p class="text-sm text-muted">
+                              `.grid-stack` arranges saved identities with
+                              responsive gutters. Cards inherit `.focus-ring`
+                              styles when they become actionable.
+                            </p>
+                            <footer class="flex flex-wrap gap-sm">
+                              <button class="btn">Switch</button>
+                              <button class="btn-ghost">Manage keys</button>
+                            </footer>
+                          </article>
+                          <article
+                            class="card space-y-sm p-md"
+                            data-profile-pane
+                          >
+                            <h5 class="text-base font-semibold">
+                              Relay presets
+                            </h5>
+                            <p class="text-sm text-muted">
+                              Use badges to indicate status (e.g.
+                              <span class="badge" data-variant="neutral"
+                                >New</span
+                              >) while keeping content spacing consistent with
+                              the production modal.
+                            </p>
+                            <ul class="space-y-xs text-sm text-muted">
+                              <li data-relay-row>relay.example.com</li>
+                              <li data-relay-row>wss://nostr.tools</li>
+                              <li data-relay-row>wss://bitvid.relays</li>
+                            </ul>
+                          </article>
+                        </div>
+                      </div>
+                      <footer
+                        class="card flex flex-wrap items-center justify-between gap-sm p-md"
+                      >
+                        <p class="text-xs text-muted">
+                          Footer keeps shared spacing tokens while exposing
+                          legacy hooks like `data-profile-action` for scripts if
+                          needed.
+                        </p>
+                        <div class="flex gap-sm">
+                          <button
+                            class="btn-ghost"
+                            data-profile-action="cancel"
+                          >
+                            Cancel
+                          </button>
+                          <button class="btn" data-profile-action="save">
+                            Save changes
+                          </button>
+                        </div>
+                      </footer>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Edit Video Modal</h3>
+              <p class="text-sm text-muted">
+                Layout reflects `components/edit-video-modal.html` with the
+                `.bv-modal__panel` shell controlling spacing and typography. Use
+                the modal primitives directly when composing new flows.
+              </p>
+              <div
+                class="relative isolate overflow-hidden rounded-xl bg-surface-alt p-lg text-text shadow-inner"
+              >
+                <div class="relative h-full w-full">
+                  <div
+                    id="editVideoModal"
+                    class="bv-modal absolute inset-0 items-start"
+                    role="dialog"
+                    aria-labelledby="editVideoModalTitle"
+                  >
+                    <div class="bv-modal-backdrop"></div>
+                    <div
+                      class="bv-modal__panel flex max-h-modal-embed flex-col gap-lg"
+                      data-modal="edit"
+                    >
+                      <header
+                        class="card flex items-center justify-between gap-sm p-md"
+                      >
+                        <div class="space-y-xs">
+                          <p class="text-xs uppercase tracking-wide text-muted">
+                            Edit metadata
+                          </p>
+                          <h4
+                            id="editVideoModalTitle"
+                            class="text-lg font-semibold"
+                          >
+                            Update video note
+                          </h4>
+                        </div>
+                        <button
+                          class="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full"
+                          type="button"
+                          aria-label="Close edit modal"
+                        >
+                          &times;
+                        </button>
+                      </header>
+                      <div class="space-y-lg px-md">
+                        <p class="text-sm text-muted">
+                          Form rows reuse `.card` groupings and `.btn-ghost`
+                          action chips. Locked fields can keep
+                          `data-edit-target` attributes to stay compatible with
+                          controller toggles.
+                        </p>
+                        <div class="card space-y-md p-md">
+                          <div class="space-y-xs">
+                            <label
+                              class="text-sm font-medium text-text"
+                              for="editTitleDemo"
+                            >
+                              Title
+                            </label>
+                            <div class="flex flex-wrap gap-sm sm:flex-nowrap">
+                              <input
+                                id="editTitleDemo"
+                                class="input flex-1"
+                                type="text"
+                                placeholder="Bitvid Weekly Update"
+                              />
+                              <button
+                                class="btn-ghost focus-ring"
+                                type="button"
+                                data-edit-target="title"
+                              >
+                                Edit field
+                              </button>
+                            </div>
+                          </div>
+                          <div
+                            class="grid gap-md md:grid-cols-2"
+                            data-nip71-grid
+                          >
+                            <div class="space-y-xs">
+                              <label
+                                class="text-sm font-medium text-text"
+                                for="editKindDemo"
+                              >
+                                NIP-71 kind
+                              </label>
+                              <div
+                                class="card space-y-xs p-sm"
+                                data-nip71-fieldset
+                              >
+                                <label class="flex items-center gap-xs text-sm">
+                                  <input
+                                    class="focus-ring"
+                                    type="radio"
+                                    name="editKindDemo"
+                                    checked
+                                  />
+                                  Kind 21 — Full video
+                                </label>
+                                <label class="flex items-center gap-xs text-sm">
+                                  <input
+                                    class="focus-ring"
+                                    type="radio"
+                                    name="editKindDemo"
+                                  />
+                                  Kind 22 — Short
+                                </label>
+                              </div>
+                            </div>
+                            <div class="space-y-xs">
+                              <label
+                                class="text-sm font-medium text-text"
+                                for="editPublishDemo"
+                              >
+                                Published at
+                              </label>
+                              <input
+                                id="editPublishDemo"
+                                class="input"
+                                type="datetime-local"
+                                value="2024-05-01T15:00"
+                              />
+                              <p class="text-xs text-muted">
+                                Shared input tokens handle spacing; legacy
+                                scripts can read the timestamp via
+                                `data-nip71-input` if needed.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <footer
+                        class="card flex flex-wrap items-center justify-between gap-sm p-md"
+                      >
+                        <p class="text-xs text-muted">
+                          Footer actions mix `.btn` variants while referencing
+                          `data-submit-state` for controller hand-offs.
+                        </p>
+                        <div class="flex gap-sm">
+                          <button class="btn-ghost" data-submit-state="idle">
+                            Cancel
+                          </button>
+                          <button class="btn" data-submit-state="pending">
+                            Save draft
+                          </button>
+                        </div>
+                      </footer>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-md">
+          <div class="space-y-xs">
+            <h2 class="text-xl font-semibold text-text-strong">Grid Stack</h2>
+            <p class="text-sm text-muted">
+              Use `data-variant="cards"` for responsive columns or
+              `data-orientation="vertical"` for flex stacks.
+            </p>
+          </div>
+          <div class="grid gap-lg lg:grid-cols-2">
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Card Grid</h3>
+              <div class="grid-stack" data-variant="cards">
+                <div class="card p-md">
+                  <p class="text-sm text-muted">Card A</p>
+                </div>
+                <div class="card p-md">
+                  <p class="text-sm text-muted">Card B</p>
+                </div>
+                <div class="card p-md">
+                  <p class="text-sm text-muted">Card C</p>
+                </div>
+              </div>
+            </div>
+            <div class="space-y-sm">
+              <h3 class="text-lg font-semibold">Vertical Stack</h3>
+              <div class="grid-stack" data-orientation="vertical">
+                <div class="card p-sm">
+                  <p class="text-sm text-muted">Row 1</p>
+                </div>
+                <div class="card p-sm">
+                  <p class="text-sm text-muted">Row 2</p>
+                </div>
+                <div class="card p-sm" data-state="disabled">
+                  <p class="text-sm text-muted">Row 3 (disabled)</p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </main>
     </div>
+    <script>
+      (() => {
+        const storageKey = "bitvid-docs-theme";
+        const root = document.documentElement;
+        const switcher = document.getElementById("themeSwitcher");
+
+        const applyTheme = (value) => {
+          if (!value || value === "default") {
+            delete root.dataset.theme;
+          } else {
+            root.dataset.theme = value;
+          }
+        };
+
+        let savedTheme;
+        try {
+          savedTheme = window.localStorage.getItem(storageKey) || undefined;
+        } catch (error) {
+          savedTheme = undefined;
+        }
+
+        applyTheme(savedTheme);
+
+        if (switcher) {
+          switcher.value = savedTheme ?? "default";
+          switcher.addEventListener("change", (event) => {
+            const { value } = event.target;
+            applyTheme(value);
+            try {
+              if (!value || value === "default") {
+                window.localStorage.removeItem(storageKey);
+              } else {
+                window.localStorage.setItem(storageKey, value);
+              }
+            } catch (error) {
+              /* Ignore storage failures (private mode, etc.) */
+            }
+          });
+        }
+      })();
+    </script>
+    <div id="uiOverlay" data-overlay-root aria-hidden="true"></div>
   </body>
 </html>

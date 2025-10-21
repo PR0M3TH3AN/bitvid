@@ -1,5 +1,8 @@
+import { devLogger } from "./utils/logger.js";
 import {
   ADMIN_LIST_NAMESPACE,
+  ADMIN_COMMUNITY_BLACKLIST_SOURCES,
+  ADMIN_COMMUNITY_BLACKLIST_PREFIX,
   isDevMode,
   WATCH_HISTORY_KIND,
   WATCH_HISTORY_LIST_IDENTIFIER,
@@ -29,7 +32,11 @@ export const ADMIN_LIST_IDENTIFIERS = Object.freeze({
   editors: "editors",
   whitelist: "whitelist",
   blacklist: "blacklist",
+  communityBlacklistSources: ADMIN_COMMUNITY_BLACKLIST_SOURCES,
 });
+
+export { ADMIN_COMMUNITY_BLACKLIST_SOURCES };
+export { ADMIN_COMMUNITY_BLACKLIST_PREFIX };
 
 const DEFAULT_APPEND_TAGS = [];
 
@@ -46,12 +53,10 @@ function ensureValidUtf8Content(value) {
       const stringified = JSON.stringify(value);
       normalized = typeof stringified === "string" ? stringified : "";
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[nostrEventSchemas] Failed to serialize view event content:",
-          error
-        );
-      }
+      devLogger.warn(
+        "[nostrEventSchemas] Failed to serialize view event content:",
+        error
+      );
       normalized = "";
     }
   } else {
@@ -66,12 +71,10 @@ function ensureValidUtf8Content(value) {
     try {
       cachedUtf8Encoder.encode(normalized);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[nostrEventSchemas] Dropping invalid UTF-8 characters from event content",
-          error
-        );
-      }
+      devLogger.warn(
+        "[nostrEventSchemas] Dropping invalid UTF-8 characters from event content",
+        error
+      );
       const sanitized = Array.from(normalized)
         .filter((char) => {
           const code = char.charCodeAt(0);
@@ -82,12 +85,10 @@ function ensureValidUtf8Content(value) {
         cachedUtf8Encoder.encode(sanitized);
         normalized = sanitized;
       } catch (encodeError) {
-        if (isDevMode) {
-          console.warn(
-            "[nostrEventSchemas] Failed to normalize view event content; defaulting to empty string",
-            encodeError
-          );
-        }
+        devLogger.warn(
+                    "[nostrEventSchemas] Failed to normalize view event content; defaulting to empty string",
+                    encodeError
+                  );
         normalized = "";
       }
     }
@@ -118,6 +119,8 @@ const BASE_SCHEMAS = {
         { key: "videoRootId", type: "string", required: true },
         { key: "deleted", type: "boolean", required: false },
         { key: "isPrivate", type: "boolean", required: false },
+        { key: "isNsfw", type: "boolean", required: false },
+        { key: "isForKids", type: "boolean", required: false },
         { key: "enableComments", type: "boolean", required: false },
         { key: "ws", type: "string", required: false },
         { key: "xs", type: "string", required: false },
@@ -332,7 +335,7 @@ function resolveOverride(type) {
   }
 
   if (typeof window !== "undefined") {
-    const runtimeOverrides = window.BitVidNostrEventOverrides;
+    const runtimeOverrides = window.bitvidNostrEventOverrides;
     if (runtimeOverrides && runtimeOverrides[type]) {
       return runtimeOverrides[type];
     }
@@ -348,7 +351,7 @@ export function setNostrEventSchemaOverrides(overrides = {}) {
   }
 
   if (typeof window !== "undefined") {
-    window.BitVidNostrEventOverrides = schemaOverrides;
+    window.bitvidNostrEventOverrides = schemaOverrides;
   }
 }
 
@@ -833,9 +836,9 @@ function resolveAdminNoteType(listKey) {
 export function buildAdminListEvent(listKey, { pubkey, created_at, hexPubkeys = [] }) {
   const schema = getNostrEventSchema(resolveAdminNoteType(listKey));
   if (!schema) {
-    if (isDevMode) {
-      console.warn(`[nostrEventSchemas] Unknown admin list key: ${listKey}`);
-    }
+    devLogger.warn(
+      `[nostrEventSchemas] Unknown admin list key: ${listKey}`,
+    );
     return {
       kind: 30000,
       pubkey,
@@ -866,7 +869,7 @@ export function buildAdminListEvent(listKey, { pubkey, created_at, hexPubkeys = 
 }
 
 if (typeof window !== "undefined") {
-  window.BitVidNostrEvents = {
+  window.bitvidNostrEvents = {
     NOTE_TYPES,
     getSchema: getNostrEventSchema,
     getAllSchemas: getAllNostrEventSchemas,

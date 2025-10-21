@@ -6,6 +6,8 @@ import {
   getPubkey,
   getCurrentUserNpub,
 } from "../state/appState.js";
+import { userLogger } from "../utils/logger.js";
+import { requestDefaultExtensionPermissions } from "../nostr.js";
 import {
   getSavedProfiles,
   getActiveProfilePubkey,
@@ -19,7 +21,6 @@ import {
   getProfileCacheEntry as getCachedProfileEntry,
   setProfileCacheEntry as setCachedProfileEntry,
 } from "../state/cache.js";
-import { getAuthProvider } from "./authProviders/index.js";
 
 class SimpleEventEmitter {
   constructor(logger = null) {
@@ -78,10 +79,17 @@ const FAST_PROFILE_TIMEOUT_MS = 2500;
 const BACKGROUND_PROFILE_TIMEOUT_MS = 6000;
 
 export default class AuthService {
-  constructor({ nostrClient, userBlocks, relayManager, logger } = {}) {
+  constructor({
+    nostrClient,
+    userBlocks,
+    relayManager,
+    logger,
+    accessControl,
+  } = {}) {
     this.nostrClient = nostrClient || null;
     this.userBlocks = userBlocks || null;
     this.relayManager = relayManager || null;
+    this.accessControl = accessControl || null;
 
     if (typeof logger === "function") {
       this.logger = logger;
@@ -95,7 +103,7 @@ export default class AuthService {
       try {
         this.logger(message, error);
       } catch (logError) {
-        console.warn("[AuthService] logger threw", logError);
+        userLogger.warn("[AuthService] logger threw", logError);
       }
     });
   }
@@ -104,7 +112,7 @@ export default class AuthService {
     try {
       this.logger(...args);
     } catch (error) {
-      console.warn("[AuthService] logger threw", error);
+      userLogger.warn("[AuthService] logger threw", error);
     }
   }
 
@@ -118,8 +126,13 @@ export default class AuthService {
 
   hydrateFromStorage() {
     hydrateProfileCacheFromStorage();
-    const { profiles } = hydrateSavedProfilesFromStorage();
-    if (!getActiveProfilePubkey() && Array.isArray(profiles) && profiles.length) {
+    const { profiles, hasExplicitActiveProfile } = hydrateSavedProfilesFromStorage();
+    if (
+      !getActiveProfilePubkey() &&
+      !hasExplicitActiveProfile &&
+      Array.isArray(profiles) &&
+      profiles.length
+    ) {
       const first = profiles[0]?.pubkey || null;
       if (first) {
         setActiveProfilePubkey(first, { persist: true });
@@ -164,42 +177,12 @@ export default class AuthService {
     return Array.isArray(saved) ? saved.map((entry) => ({ ...entry })) : [];
   }
 
-  emitProfileList(reason = "update", extraDetail = null) {
-    const savedProfiles = this.cloneSavedProfiles();
-    const activeProfilePubkey = getActiveProfilePubkey();
-    const detail = {
+  emitProfileList(reason = "update") {
+    this.emit("profile:updated", {
       reason,
-      savedProfiles,
-      activeProfilePubkey,
-    };
-
-    if (extraDetail && typeof extraDetail === "object") {
-      Object.assign(detail, extraDetail);
-    }
-
-    if (!("activeProfileAuthType" in detail)) {
-      const normalizedActive = this.normalizeHexPubkey(activeProfilePubkey);
-      if (normalizedActive) {
-        const activeEntry = savedProfiles.find((entry) => {
-          const normalizedEntry = this.normalizeHexPubkey(entry?.pubkey);
-          return normalizedEntry && normalizedEntry === normalizedActive;
-        });
-
-        if (
-          activeEntry &&
-          typeof activeEntry.authType === "string" &&
-          activeEntry.authType.trim()
-        ) {
-          detail.activeProfileAuthType = activeEntry.authType;
-        } else {
-          detail.activeProfileAuthType = null;
-        }
-      } else {
-        detail.activeProfileAuthType = null;
-      }
-    }
-
-    this.emit("profile:updated", detail);
+      savedProfiles: this.cloneSavedProfiles(),
+      activeProfilePubkey: getActiveProfilePubkey(),
+    });
   }
 
   safeEncodeNpub(pubkey) {
@@ -270,72 +253,41 @@ export default class AuthService {
   }
 
   async requestLogin(options = {}) {
-    const normalizedOptions =
-      options && typeof options === "object" ? { ...options } : {};
-    const {
-      providerId: rawProviderId,
-      autoApply,
-      persistActive: persistActiveOption,
-      ...providerOptions
-    } = normalizedOptions;
-
-    const providerId =
-      typeof rawProviderId === "string" && rawProviderId.trim()
-        ? rawProviderId.trim()
-        : "nip07";
-
-    const provider = getAuthProvider(providerId);
-    if (!provider || typeof provider.login !== "function") {
-      throw new Error(`Unknown auth provider: ${providerId}`);
+    if (!this.nostrClient || typeof this.nostrClient.login !== "function") {
+      throw new Error("Nostr login is not available.");
     }
 
-    const providerResult = await provider.login({
-      nostrClient: this.nostrClient,
-      options: providerOptions,
-    });
-
-    let pubkey = "";
-    let signer = null;
-    if (typeof providerResult === "string") {
-      pubkey = providerResult;
-    } else if (providerResult && typeof providerResult === "object") {
-      if (typeof providerResult.pubkey === "string") {
-        pubkey = providerResult.pubkey;
-      } else if (typeof providerResult.publicKey === "string") {
-        pubkey = providerResult.publicKey;
-      }
-
-      if (providerResult.signer !== undefined) {
-        signer = providerResult.signer;
-      }
+    const result = await this.nostrClient.login(options);
+    const permissionResult = await requestDefaultExtensionPermissions();
+    if (!permissionResult.ok) {
+      const error = new Error(
+        "The NIP-07 extension denied the permission request required to finish logging in.",
+      );
+      error.code = "extension-permission-denied";
+      error.cause = permissionResult.error;
+      throw error;
     }
+    const pubkey =
+      typeof result === "string"
+        ? result
+        : result && typeof result === "object"
+        ? result.pubkey || result.publicKey || ""
+        : "";
 
     const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
-
-    const authType =
-      providerResult &&
-      typeof providerResult === "object" &&
-      typeof providerResult.authType === "string" &&
-      providerResult.authType.trim()
-        ? providerResult.authType.trim()
-        : provider.id;
-
     if (!trimmed) {
-      return { pubkey: null, authType, signer, providerId };
+      return { pubkey: null };
     }
 
-    if (autoApply === false) {
-      return { pubkey: trimmed, authType, signer, providerId };
+    if (options?.autoApply === false) {
+      return { pubkey: trimmed };
     }
 
     const detail = await this.login(trimmed, {
-      persistActive: persistActiveOption !== false,
-      authType,
-      signer,
-      providerId,
+      persistActive: options?.persistActive !== false,
     });
 
-    return { pubkey: trimmed, detail, authType, signer, providerId };
+    return { pubkey: trimmed, detail };
   }
 
   async handleUploadSubmit(payload, { publish } = {}) {
@@ -363,8 +315,6 @@ export default class AuthService {
     const persistActive =
       normalizedOptions.persistActive === false ? false : true;
 
-    const existingProfiles = getSavedProfiles();
-
     const previousPubkey = this.normalizeHexPubkey(getPubkey()) || getPubkey();
     const normalized = this.normalizeHexPubkey(pubkey);
     const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
@@ -373,43 +323,42 @@ export default class AuthService {
       throw new Error("A valid pubkey is required for login.");
     }
 
-    const normalizedAuthType = (() => {
-      if (
-        typeof normalizedOptions.authType === "string" &&
-        normalizedOptions.authType.trim()
-      ) {
-        return normalizedOptions.authType.trim();
-      }
+    const identityChanged = previousPubkey !== nextPubkey;
 
-      if (Array.isArray(existingProfiles)) {
-        const normalizedNext = normalized || this.normalizeHexPubkey(trimmed);
-        if (normalizedNext) {
-          const existingEntry = existingProfiles.find((entry) => {
-            const normalizedEntry = this.normalizeHexPubkey(entry?.pubkey);
-            return normalizedEntry && normalizedEntry === normalizedNext;
-          });
-          if (
-            existingEntry &&
-            typeof existingEntry.authType === "string" &&
-            existingEntry.authType.trim()
-          ) {
-            return existingEntry.authType.trim();
-          }
+    const control = this.accessControl;
+    const candidateNpub = this.safeEncodeNpub(nextPubkey) || null;
+    let lockdownActive = false;
+    if (control && typeof control.isLockdownActive === "function") {
+      try {
+        lockdownActive = control.isLockdownActive();
+      } catch (error) {
+        this.log("[AuthService] accessControl.isLockdownActive threw", error);
+        lockdownActive = Boolean(lockdownActive);
+      }
+    }
+
+    if (lockdownActive) {
+      let isAdminCandidate = false;
+      const adminCheckValue =
+        candidateNpub || (typeof trimmed === "string" && trimmed ? trimmed : null);
+      if (adminCheckValue && typeof control?.isAdminEditor === "function") {
+        try {
+          isAdminCandidate = !!control.isAdminEditor(adminCheckValue);
+        } catch (error) {
+          this.log("[AuthService] accessControl.isAdminEditor threw", error);
+          isAdminCandidate = false;
         }
       }
 
-      return "nip07";
-    })();
-
-    const normalizedSigner =
-      normalizedOptions.signer !== undefined ? normalizedOptions.signer : null;
-    const providerId =
-      typeof normalizedOptions.providerId === "string" &&
-      normalizedOptions.providerId.trim()
-        ? normalizedOptions.providerId.trim()
-        : null;
-
-    const identityChanged = previousPubkey !== nextPubkey;
+      if (!isAdminCandidate) {
+        const lockdownError = new Error(
+          "This site is temporarily locked down. Only administrators may sign in right now.",
+        );
+        lockdownError.code = "site-lockdown";
+        lockdownError.npub = candidateNpub || adminCheckValue;
+        throw lockdownError;
+      }
+    }
 
     if (normalized) {
       setPubkey(normalized);
@@ -423,7 +372,7 @@ export default class AuthService {
       }
     }
 
-    const npub = this.safeEncodeNpub(nextPubkey);
+    const npub = candidateNpub;
     setCurrentUserNpub(npub);
 
     let savedProfilesMutated = false;
@@ -442,7 +391,7 @@ export default class AuthService {
         npub: npub || (cachedProfile.npub ?? null),
         name: cachedProfile.name || draft[existingIndex]?.name || "",
         picture: cachedProfile.picture || draft[existingIndex]?.picture || "",
-        authType: normalizedAuthType,
+        authType: "nip07",
       };
 
       if (existingIndex >= 0) {
@@ -474,11 +423,9 @@ export default class AuthService {
       persistSavedProfiles({ persistActive: true });
     }
 
-    this.emitProfileList("login", {
-      authType: normalizedAuthType,
-      signer: normalizedSigner,
-      providerId,
-    });
+    if (savedProfilesMutated) {
+      this.emitProfileList("login");
+    }
 
     const activeLoginPubkey = getPubkey();
     const normalizedLoginPubkey =
@@ -491,9 +438,6 @@ export default class AuthService {
       identityChanged,
       savedProfiles: this.cloneSavedProfiles(),
       activeProfilePubkey: getActiveProfilePubkey(),
-      authType: normalizedAuthType,
-      signer: normalizedSigner,
-      providerId,
       postLogin: {
         pubkey: normalizedLoginPubkey,
         blocksLoaded: false,

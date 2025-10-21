@@ -6,8 +6,14 @@ import {
   getWhitelistMode,
   setWhitelistMode as persistWhitelistMode,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
+  isLockdownMode,
 } from "./config.js";
-import { loadAdminState, persistAdminState } from "./adminListStore.js";
+import {
+  loadAdminState,
+  persistAdminState,
+  readCachedAdminState,
+} from "./adminListStore.js";
+import { userLogger } from "./utils/logger.js";
 
 function normalizeNpub(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -52,6 +58,60 @@ class AccessControl {
     this.lastError = null;
     this._isRefreshing = false;
     this._refreshPromise = Promise.resolve();
+    this._hydratedFromCache = false;
+
+    this._hydrateFromCache();
+  }
+
+  _hydrateFromCache() {
+    this._hydratedFromCache = false;
+    const cachedState = readCachedAdminState();
+    if (cachedState) {
+      this._applyState(cachedState, { markLoaded: false });
+      this._hydratedFromCache = true;
+    }
+  }
+
+  _applyState(state, options = {}) {
+    const markLoaded = options.markLoaded !== false;
+    const editors = Array.isArray(state?.editors) ? state.editors : [];
+    const whitelist = Array.isArray(state?.whitelist) ? state.whitelist : [];
+    const blacklist = Array.isArray(state?.blacklist) ? state.blacklist : [];
+
+    this.editors = new Set(
+      dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
+    );
+    const normalizedWhitelist = dedupeNpubs(whitelist);
+    this.whitelist = new Set(normalizedWhitelist);
+
+    const blacklistDedupe = dedupeNpubs(blacklist);
+    const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
+    const adminGuardSet = new Set([
+      normalizeNpub(ADMIN_SUPER_NPUB),
+      ...Array.from(this.editors),
+    ]);
+    const sanitizedBlacklist = blacklistDedupe.filter((npub) => {
+      const normalized = normalizeNpub(npub);
+      if (!normalized) {
+        return false;
+      }
+      if (whitelistSet.has(normalized)) {
+        return false;
+      }
+      if (adminGuardSet.has(normalized)) {
+        return false;
+      }
+      return true;
+    });
+    this.blacklist = new Set(sanitizedBlacklist);
+
+    this.whitelistEnabled = getWhitelistMode();
+    this.lastError = null;
+
+    if (markLoaded) {
+      this.hasLoaded = true;
+      this._hydratedFromCache = false;
+    }
   }
 
   _performRefresh() {
@@ -64,47 +124,10 @@ class AccessControl {
     const operation = (async () => {
       try {
         const state = await loadAdminState();
-        const editors = Array.isArray(state?.editors) ? state.editors : [];
-        const whitelist = Array.isArray(state?.whitelist)
-          ? state.whitelist
-          : [];
-        const blacklist = Array.isArray(state?.blacklist)
-          ? state.blacklist
-          : [];
-
-        this.editors = new Set(
-          dedupeNpubs([...ADMIN_EDITORS_NPUBS, ...editors])
-        );
-        const normalizedWhitelist = dedupeNpubs(whitelist);
-        this.whitelist = new Set(normalizedWhitelist);
-
-        const blacklistDedupe = dedupeNpubs(blacklist);
-        const whitelistSet = new Set(normalizedWhitelist.map(normalizeNpub));
-        const adminGuardSet = new Set([
-          normalizeNpub(ADMIN_SUPER_NPUB),
-          ...Array.from(this.editors),
-        ]);
-        const sanitizedBlacklist = blacklistDedupe.filter((npub) => {
-          const normalized = normalizeNpub(npub);
-          if (!normalized) {
-            return false;
-          }
-          if (whitelistSet.has(normalized)) {
-            return false;
-          }
-          if (adminGuardSet.has(normalized)) {
-            return false;
-          }
-          return true;
-        });
-        this.blacklist = new Set(sanitizedBlacklist);
-
-        this.whitelistEnabled = getWhitelistMode();
-        this.hasLoaded = true;
-        this.lastError = null;
+        this._applyState(state);
       } catch (error) {
         this.lastError = error;
-        if (!this.hasLoaded) {
+        if (!this.hasLoaded && !this._hydratedFromCache) {
           this.editors.clear();
           this.whitelist.clear();
           this.blacklist.clear();
@@ -126,7 +149,7 @@ class AccessControl {
 
     const operation = this._performRefresh();
     const tracked = operation.catch((error) => {
-      console.error("Failed to refresh admin lists:", error);
+      userLogger.error("Failed to refresh admin lists:", error);
       throw error;
     });
     this._refreshPromise = tracked;
@@ -389,6 +412,10 @@ class AccessControl {
       return true;
     }
 
+    if (this.isLockdownActive()) {
+      return false;
+    }
+
     if (this.whitelist.has(normalized)) {
       return true;
     }
@@ -403,10 +430,15 @@ class AccessControl {
 
     return true;
   }
+
+  isLockdownActive() {
+    return Boolean(isLockdownMode);
+  }
 }
 
 export const accessControl = new AccessControl();
 export {
+  AccessControl,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
   normalizeNpub,
   isValidNpub,

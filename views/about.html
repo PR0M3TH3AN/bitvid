@@ -1,52 +1,74 @@
 <!-- views/about.html -->
-<section class="mb-8">
-  <!-- 
-    This container uses a white background and dark text, 
-    overriding your global “body { color: … }” rule
-  -->
-  <div class="bg-white p-6 rounded-lg shadow-md text-gray-900">
-    <h2 class="text-2xl font-bold mb-4 text-gray-700">About BitVid</h2>
-
-    <!-- 
-      The .markdown-body class ensures the Markdown styling 
-      from your markdown.css can be applied here.
-    -->
-    <div id="markdown-container" class="markdown-body">
-      <p class="text-gray-500">Loading content...</p>
+<section class="bv-stack" data-ds="new" aria-labelledby="aboutHeading">
+  <article class="card p-lg">
+    <div class="bv-stack bv-stack--tight">
+      <h2 id="aboutHeading" class="text-2xl font-semibold text-text-strong">
+        About bitvid
+      </h2>
+      <div id="markdown-container" class="markdown-prose">
+        <p class="text-muted-strong">Loading content...</p>
+      </div>
     </div>
-  </div>
+  </article>
 </section>
 
 <script>
-  (async () => {
-    try {
-      const response = await fetch("content/about.md");
-      if (!response.ok) {
-        throw new Error("Failed to load about.md");
-      }
-      const markdownText = await response.text();
+  (() => {
+    // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
+    const noopLogger = {
+      log: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    };
+    const dev = window.bitvidLogger?.dev || noopLogger;
+    const user = window.bitvidLogger?.user || noopLogger;
 
-      // Convert the markdown to HTML (requires "marked" loaded globally)
-      const html = marked.parse(markdownText);
+    const loadMarkdown = async () => {
+      try {
+        const response = await fetch("content/about.md");
+        if (!response.ok) {
+          throw new Error("Failed to load about.md");
+        }
+        const markdownText = await response.text();
 
-      // Insert the HTML into the container
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = html;
-      }
+        // Convert the markdown to HTML (requires "marked" loaded globally)
+        const html = marked.parse(markdownText);
 
-      // (Optional) Highlight code blocks if "hljs" is available globally
-      document.querySelectorAll("pre code").forEach((block) => {
-        hljs.highlightBlock(block);
-      });
-    } catch (err) {
-      console.error("Error loading About content:", err);
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = `
-          <p class="text-red-500">Error loading content. Please try again later.</p>
-        `;
+        // Insert the HTML into the container
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = html;
+
+          const highlighter = window.hljs;
+          const highlight =
+            highlighter && typeof highlighter.highlightElement === "function"
+              ? (block) => highlighter.highlightElement(block)
+              : highlighter && typeof highlighter.highlightBlock === "function"
+                ? (block) => highlighter.highlightBlock(block)
+                : null;
+
+          if (highlight) {
+            container.querySelectorAll("pre code").forEach((block) => {
+              try {
+                highlight(block);
+              } catch (highlightError) {
+                dev.warn("Failed to highlight code block.", highlightError);
+              }
+            });
+          }
+        }
+      } catch (err) {
+        user.error("Error loading About content:", err);
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = `
+            <p class="text-critical-strong">Error loading content. Please try again later.</p>
+          `;
+        }
       }
-    }
+    };
+
+    loadMarkdown();
   })();
 </script>

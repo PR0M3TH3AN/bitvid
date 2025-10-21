@@ -1,21 +1,47 @@
 {
   "name": "bitvid",
   "private": true,
+  "type": "module",
   "version": "1.0.0",
   "scripts": {
     "build:css": "npx tailwindcss -c tailwind.config.cjs -i css/tailwind.source.css -o css/tailwind.generated.css --minify",
-    "format": "prettier --cache --write css/style.css css/tailwind.source.css css/tokens.css \"docs/**/*.html\" tailwind.config.cjs README.md",
+    "build:beacon:bundle": "node scripts/build-beacon.mjs",
+    "build:beacon": "npm run build:beacon:bundle && npm run lint:inline-styles",
+    "ci:beacon": "npm run build:beacon",
+    "format": "prettier --cache --write css/tailwind.source.css css/tokens.css \"docs/**/*.html\" tailwind.config.cjs README.md",
+    "lint": "npm run lint:css && npm run lint:hex && npm run lint:inline-styles && npm run lint:tokens && npm run lint:tailwind-brackets && npm run lint:tailwind-colors",
     "lint:css": "stylelint css/tailwind.source.css css/tokens.css",
-    "check:css": "npm run build:css && git diff --exit-code -- css/tailwind.generated.css"
+    "lint:hex": "node scripts/check-hex.js",
+    "lint:inline-styles": "node scripts/check-inline-styles.mjs",
+    "lint:tokens": "node scripts/check-design-tokens.mjs --check=tokens",
+    "lint:tailwind-brackets": "node scripts/check-design-tokens.mjs --check=brackets",
+    "lint:tailwind-colors": "node scripts/check-tailwind-colors.mjs",
+    "check:css": "npm run build:css && git diff --exit-code -- css/tailwind.generated.css",
+    "test:visual": "npm run build:css && npx playwright test",
+    "test:visual:update": "npm run build:css && cross-env UPDATE_VISUAL_BASELINES=1 npx playwright test",
+    "test:unit": "node scripts/run-unit-tests.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@tailwindcss/typography": "^0.5.15",
     "autoprefixer": "^10.4.19",
+    "cross-env": "^7.0.3",
+    "esbuild": "^0.25.10",
     "jsdom": "^24.0.0",
+    "nostr-tools": "^2.10.4",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0",
     "postcss": "^8.4.41",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.5",
     "stylelint": "^16.8.0",
     "stylelint-config-standard": "^36.0.1",
     "tailwindcss": "^3.4.13"
+  },
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "@floating-ui/dom": "^1.7.4",
+    "path": "^0.12.7",
+    "webtorrent": "^1.9.7"
   }
 }

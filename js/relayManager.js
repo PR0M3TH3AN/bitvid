@@ -1,6 +1,11 @@
 import { isDevMode } from "./config.js";
-import { DEFAULT_RELAY_URLS, nostrClient } from "./nostr.js";
+import {
+  DEFAULT_RELAY_URLS,
+  nostrClient,
+  requestDefaultExtensionPermissions,
+} from "./nostr.js";
 import { buildRelayListEvent } from "./nostrEventSchemas.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 import {
   publishEventToRelays,
   assertAnyRelayAccepted,
@@ -217,6 +222,12 @@ class RelayPreferencesManager {
       });
     } else if (nostrClient) {
       nostrClient.relays = this.getAllRelayUrls();
+      const writeUrls = this.getWriteRelayUrls();
+      if (Array.isArray(writeUrls) && writeUrls.length) {
+        nostrClient.writeRelays = [...writeUrls];
+      } else {
+        nostrClient.writeRelays = this.getAllRelayUrls();
+      }
     }
   }
 
@@ -537,17 +548,13 @@ class RelayPreferencesManager {
           } else {
             const reason = outcome.reason;
             if (reason?.code === "timeout") {
-              if (isDevMode) {
-                console.warn(
-                  `[relayManager] Relay ${reason.relay} timed out while loading relay list (${reason.timeoutMs}ms)`
-                );
-              }
-            } else if (isDevMode) {
-              console.warn(
-                `[relayManager] Relay ${reason?.relay || "unknown"} failed while loading relay list:`,
-                reason
+              devLogger.warn(
+              `[relayManager] Relay ${reason.relay} timed out while loading relay list (${reason.timeoutMs}ms)`
               );
-            }
+            } else devLogger.warn(
+ `[relayManager] Relay ${reason?.relay || "unknown"} failed while loading relay list:`,
+ reason
+ );
           }
         });
 
@@ -558,9 +565,7 @@ class RelayPreferencesManager {
         applyEvents(aggregated, { skipIfEmpty: true });
       })
       .catch((error) => {
-        if (isDevMode) {
-          console.warn("[relayManager] Background relay refresh failed", error);
-        }
+        devLogger.warn("[relayManager] Background relay refresh failed", error);
       });
 
     let fastResult = null;
@@ -571,14 +576,12 @@ class RelayPreferencesManager {
         if (error instanceof AggregateError) {
           error.errors?.forEach((err) => {
             if (err?.code === "timeout" && isDevMode) {
-              console.warn(
+              userLogger.warn(
                 `[relayManager] Relay ${err.relay} timed out while loading relay list (${err.timeoutMs}ms)`
               );
             }
           });
-        } else if (isDevMode) {
-          console.warn("[relayManager] Fast relay fetch failed", error);
-        }
+        } else devLogger.warn("[relayManager] Fast relay fetch failed", error);
       }
     }
 
@@ -603,19 +606,24 @@ class RelayPreferencesManager {
       throw error;
     }
 
-    const activeSigner = nostrClient.getActiveSignerForPubkey(normalizedPubkey);
-    const signerSign =
-      activeSigner && typeof activeSigner.signEvent === "function"
-        ? activeSigner.signEvent
-        : null;
-    const extensionSign =
-      typeof window?.nostr?.signEvent === "function"
-        ? window.nostr.signEvent.bind(window.nostr)
-        : null;
-    const signFn = signerSign || extensionSign;
+    const permissionResult = await requestDefaultExtensionPermissions();
+    if (!permissionResult.ok) {
+      userLogger.warn(
+        "[RelayPreferencesManager] Extension permissions denied while publishing relay preferences.",
+        permissionResult.error,
+      );
+      const error = new Error(
+        "The NIP-07 extension must allow signing before publishing relay preferences.",
+      );
+      error.code = "extension-permission-denied";
+      error.cause = permissionResult.error;
+      throw error;
+    }
 
-    if (!signFn) {
-      const error = new Error("A NIP-07 extension is required to publish relay preferences.");
+    if (!window?.nostr?.signEvent) {
+      const error = new Error(
+        "A NIP-07 extension is required to publish relay preferences."
+      );
       error.code = "nostr-extension-missing";
       throw error;
     }
@@ -641,7 +649,7 @@ class RelayPreferencesManager {
       relays: entries,
     });
 
-    const signedEvent = await signFn(event);
+    const signedEvent = await window.nostr.signEvent(event);
     const targets = this.getPublishTargets(options?.relayUrls);
 
     if (!targets.length) {
@@ -666,7 +674,7 @@ class RelayPreferencesManager {
       if (publishError?.relayFailures?.length) {
         publishError.relayFailures.forEach(
           ({ url, error: relayError, reason }) => {
-            console.error(
+            userLogger.error(
               `[RelayPreferencesManager] Relay ${url} rejected relay list: ${reason}`,
               relayError || reason
             );
@@ -684,7 +692,7 @@ class RelayPreferencesManager {
             : relayError
             ? String(relayError)
             : "publish failed";
-        console.warn(
+        userLogger.warn(
           `[RelayPreferencesManager] Relay ${url} did not acknowledge relay list: ${reason}`,
           relayError
         );

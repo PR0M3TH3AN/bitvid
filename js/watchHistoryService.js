@@ -5,6 +5,7 @@ import {
   normalizePointerInput,
   pointerKey,
   normalizeActorKey,
+  requestDefaultExtensionPermissions,
 } from "./nostr.js";
 import {
   WATCH_HISTORY_CACHE_TTL_MS,
@@ -16,6 +17,7 @@ import {
 } from "./constants.js";
 import { isDevMode } from "./config.js";
 import { getApplication } from "./applicationContext.js";
+import { devLogger, userLogger } from "./utils/logger.js";
 
 const SESSION_STORAGE_KEY = "bitvid:watch-history:session:v1";
 const SESSION_STORAGE_VERSION = 1;
@@ -43,12 +45,10 @@ function resolveFlagEnabled() {
       return getWatchHistoryV2Enabled() === true;
     }
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        "[watchHistoryService] Failed to read FEATURE_WATCH_HISTORY_V2 flag:",
-        error,
-      );
-    }
+    devLogger.warn(
+      "[watchHistoryService] Failed to read FEATURE_WATCH_HISTORY_V2 flag:",
+      error,
+    );
   }
   return FEATURE_WATCH_HISTORY_V2 === true;
 }
@@ -72,12 +72,10 @@ function getLoggedInActorKey() {
             return normalizeActorKey(normalized);
           }
         } catch (error) {
-          if (isDevMode) {
-            console.warn(
-              "[watchHistoryService] Failed to normalize app login pubkey:",
-              error
-            );
-          }
+          devLogger.warn(
+            "[watchHistoryService] Failed to normalize app login pubkey:",
+            error
+          );
         }
       }
 
@@ -99,6 +97,56 @@ function getSessionActorKey() {
     return "";
   }
   return normalizeActorKey(nostrClient?.sessionActor?.pubkey);
+}
+
+function shouldUseExtensionForHistory(actorKey) {
+  const normalizedActor = normalizeActorKey(actorKey);
+  if (!normalizedActor) {
+    return false;
+  }
+
+  const loggedActor = normalizeActorKey(nostrClient?.pubkey);
+  if (!loggedActor || loggedActor !== normalizedActor) {
+    return false;
+  }
+
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const extension = window.nostr;
+  if (!extension || !extension.nip04) {
+    return false;
+  }
+
+  return typeof extension.nip04.decrypt === "function";
+}
+
+async function ensureWatchHistoryExtensionPermissions(actorKey) {
+  if (!shouldUseExtensionForHistory(actorKey)) {
+    return { ok: true };
+  }
+
+  const permissionResult = await requestDefaultExtensionPermissions();
+  if (permissionResult.ok) {
+    return { ok: true };
+  }
+
+  const message =
+    "Approve your NIP-07 extension to decrypt encrypted watch history.";
+  const error = new Error(message);
+  error.code = "watch-history-extension-permission-denied";
+  error.cause = permissionResult.error;
+
+  userLogger.warn(
+    "[watchHistoryService] Extension denied decrypt permission required for watch history.",
+    {
+      actor: normalizeActorKey(actorKey) || null,
+      error: permissionResult.error,
+    },
+  );
+
+  return { ok: false, error };
 }
 
 function resolveEffectiveActorKey(actorInput) {
@@ -168,9 +216,7 @@ function getSessionStorage() {
       return window.sessionStorage;
     }
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[watchHistoryService] sessionStorage unavailable:", error);
-    }
+    devLogger.warn("[watchHistoryService] sessionStorage unavailable:", error);
   }
   return null;
 }
@@ -181,9 +227,7 @@ function getLocalStorage() {
       return window.localStorage;
     }
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[watchHistoryService] localStorage unavailable:", error);
-    }
+    devLogger.warn("[watchHistoryService] localStorage unavailable:", error);
   }
   return null;
 }
@@ -205,12 +249,10 @@ function ensureMetadataPreference() {
       state.metadata.preference = stored === "true";
     }
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        "[watchHistoryService] Failed to read metadata preference:",
-        error,
-      );
-    }
+    devLogger.warn(
+      "[watchHistoryService] Failed to read metadata preference:",
+      error,
+    );
     state.metadata.preference = true;
   }
   return state.metadata.preference;
@@ -228,12 +270,10 @@ function persistMetadataPreference(value) {
       storage.setItem(METADATA_PREFERENCE_KEY, "false");
     }
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        "[watchHistoryService] Failed to persist metadata preference:",
-        error,
-      );
-    }
+    devLogger.warn(
+      "[watchHistoryService] Failed to persist metadata preference:",
+      error,
+    );
   }
 }
 
@@ -315,12 +355,10 @@ function restoreMetadataCache() {
   try {
     raw = storage.getItem(METADATA_STORAGE_KEY);
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        "[watchHistoryService] Failed to read metadata cache:",
-        error,
-      );
-    }
+    devLogger.warn(
+      "[watchHistoryService] Failed to read metadata cache:",
+      error,
+    );
     return;
   }
 
@@ -332,21 +370,17 @@ function restoreMetadataCache() {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        "[watchHistoryService] Failed to parse metadata cache:",
-        error,
-      );
-    }
+    devLogger.warn(
+      "[watchHistoryService] Failed to parse metadata cache:",
+      error,
+    );
     try {
       storage.removeItem(METADATA_STORAGE_KEY);
     } catch (cleanupError) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryService] Failed to clear corrupt metadata cache:",
-          cleanupError,
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear corrupt metadata cache:",
+        cleanupError,
+      );
     }
     return;
   }
@@ -355,12 +389,10 @@ function restoreMetadataCache() {
     try {
       storage.removeItem(METADATA_STORAGE_KEY);
     } catch (cleanupError) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryService] Failed to clear outdated metadata cache:",
-          cleanupError,
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear outdated metadata cache:",
+        cleanupError,
+      );
     }
     return;
   }
@@ -428,12 +460,10 @@ function persistMetadataCache() {
     try {
       storage.removeItem(METADATA_STORAGE_KEY);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryService] Failed to clear metadata cache:",
-          error,
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear metadata cache:",
+        error,
+      );
     }
     return;
   }
@@ -449,12 +479,10 @@ function persistMetadataCache() {
   try {
     storage.setItem(METADATA_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
-    if (isDevMode) {
-      console.warn(
-        "[watchHistoryService] Failed to persist metadata cache:",
-        error,
-      );
-    }
+    devLogger.warn(
+      "[watchHistoryService] Failed to persist metadata cache:",
+      error,
+    );
   }
 }
 
@@ -550,12 +578,10 @@ function emit(eventName, payload) {
       try {
         callback(payload);
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            `[watchHistoryService] Listener for ${eventName} failed:`,
-            error
-          );
-        }
+        devLogger.warn(
+        `[watchHistoryService] Listener for ${eventName} failed:`,
+        error
+        );
       }
     }
   }
@@ -566,12 +592,10 @@ function emit(eventName, payload) {
       try {
         callback({ event: eventName, payload });
       } catch (error) {
-        if (isDevMode) {
-          console.warn(
-            `[watchHistoryService] Wildcard listener error for ${eventName}:`,
-            error
-          );
-        }
+        devLogger.warn(
+        `[watchHistoryService] Wildcard listener error for ${eventName}:`,
+        error
+        );
       }
     }
   }
@@ -582,12 +606,10 @@ function emit(eventName, payload) {
       const evt = new CustomEvent("bitvid:watchHistory", { detail });
       window.dispatchEvent(evt);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          `[watchHistoryService] Failed to dispatch window event for ${eventName}:`,
-          error
-        );
-      }
+      devLogger.warn(
+      `[watchHistoryService] Failed to dispatch window event for ${eventName}:`,
+      error
+      );
     }
   }
 }
@@ -639,9 +661,7 @@ function restoreQueueState() {
   try {
     raw = storage.getItem(SESSION_STORAGE_KEY);
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[watchHistoryService] Failed to read session cache:", error);
-    }
+    devLogger.warn("[watchHistoryService] Failed to read session cache:", error);
     return;
   }
 
@@ -653,18 +673,14 @@ function restoreQueueState() {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[watchHistoryService] Failed to parse session cache:", error);
-    }
+    devLogger.warn("[watchHistoryService] Failed to parse session cache:", error);
     try {
       storage.removeItem(SESSION_STORAGE_KEY);
     } catch (cleanupError) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryService] Failed to clear corrupt session cache:",
-          cleanupError
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear corrupt session cache:",
+        cleanupError
+      );
     }
     return;
   }
@@ -673,12 +689,10 @@ function restoreQueueState() {
     try {
       storage.removeItem(SESSION_STORAGE_KEY);
     } catch (cleanupError) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryService] Failed to clear outdated session cache:",
-          cleanupError
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear outdated session cache:",
+        cleanupError
+      );
     }
     return;
   }
@@ -770,12 +784,10 @@ function persistQueueState() {
     try {
       storage.removeItem(SESSION_STORAGE_KEY);
     } catch (error) {
-      if (isDevMode) {
-        console.warn(
-          "[watchHistoryService] Failed to clear empty session cache:",
-          error
-        );
-      }
+      devLogger.warn(
+        "[watchHistoryService] Failed to clear empty session cache:",
+        error
+      );
     }
     return;
   }
@@ -783,9 +795,7 @@ function persistQueueState() {
   try {
     storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
-    if (isDevMode) {
-      console.warn("[watchHistoryService] Failed to persist session cache:", error);
-    }
+    devLogger.warn("[watchHistoryService] Failed to persist session cache:", error);
   }
 }
 
@@ -831,6 +841,42 @@ function collectQueueItems(actorKey) {
     return keyA.localeCompare(keyB);
   });
   return items.slice(0, WATCH_HISTORY_MAX_ITEMS);
+}
+
+function getCachedSnapshotItems(actorKey) {
+  if (!actorKey) {
+    return [];
+  }
+
+  const fingerprintEntry = state.fingerprintCache.get(actorKey);
+  if (Array.isArray(fingerprintEntry?.items) && fingerprintEntry.items.length) {
+    return Array.from(fingerprintEntry.items);
+  }
+
+  const clientCache =
+    nostrClient &&
+    nostrClient.watchHistoryCache instanceof Map &&
+    nostrClient.watchHistoryCache.get(actorKey);
+  if (Array.isArray(clientCache?.items) && clientCache.items.length) {
+    return Array.from(clientCache.items);
+  }
+
+  if (typeof nostrClient?.getWatchHistoryStorage === "function") {
+    try {
+      const storage = nostrClient.getWatchHistoryStorage();
+      const storedItems = storage?.actors?.[actorKey]?.items;
+      if (Array.isArray(storedItems) && storedItems.length) {
+        return Array.from(storedItems);
+      }
+    } catch (error) {
+      devLogger.warn(
+        "[watchHistoryService] Failed to read cached watch history items:",
+        error,
+      );
+    }
+  }
+
+  return [];
 }
 
 function notifyQueueChange(actorKey) {
@@ -978,18 +1024,18 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   const viewResult = await nostrClient.recordVideoView(pointerInput, recordOptions);
 
-  console.info(
+  devLogger.info(
     "[watchHistoryService] Video view recorded. Preparing watch list update.",
     {
-      pointer: pointerInput,
-      createdAt,
-      hasMetadata: !!metadata,
+    pointer: pointerInput,
+    createdAt,
+    hasMetadata: !!metadata,
     }
   );
 
   const pointer = normalizePointerInput(pointerInput);
   if (!pointer) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Skipping watch list update because pointer normalization failed.",
       { pointerInput }
     );
@@ -1004,7 +1050,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     "";
   const actorKey = normalizeActorKey(actorCandidate);
   if (!actorKey) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Unable to resolve actor for watch list update.",
       { actorCandidate }
     );
@@ -1013,7 +1059,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   const queue = ensureQueue(actorKey);
   if (!queue) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Failed to resolve queue for actor.",
       { actorKey }
     );
@@ -1024,7 +1070,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   const normalizedPointer = normalizePointerInput(pointer);
   if (!normalizedPointer) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Pointer normalization failed during queue preparation.",
       { pointerInput }
     );
@@ -1064,14 +1110,14 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   }
 
   const key = pointerKey(normalizedPointer);
-  console.info(
+  devLogger.info(
     "[watchHistoryService] Watch list process triggered by video view.",
     {
-      actor: actorKey,
-      pointerKey: key,
-      watchedAt: normalizedPointer.watchedAt,
-      sessionEvent: normalizedPointer.session === true,
-      remoteSyncEnabled: remoteEnabled,
+    actor: actorKey,
+    pointerKey: key,
+    watchedAt: normalizedPointer.watchedAt,
+    sessionEvent: normalizedPointer.session === true,
+    remoteSyncEnabled: remoteEnabled,
     }
   );
 
@@ -1084,7 +1130,7 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   }
 
   if (!key) {
-    console.warn(
+    userLogger.warn(
       "[watchHistoryService] Pointer key generation failed. Skipping queue update.",
       { pointer: normalizedPointer }
     );
@@ -1114,12 +1160,12 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
     queue.throttle.set(key, now);
     persistQueueState();
     notifyQueueChange(actorKey);
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Updated existing watch list entry.",
       {
-        actor: actorKey,
-        pointerKey: key,
-        watchedAt: existing.pointer.watchedAt,
+      actor: actorKey,
+      pointerKey: key,
+      watchedAt: existing.pointer.watchedAt,
       }
     );
     return viewResult;
@@ -1127,11 +1173,9 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
 
   if (throttled) {
     queue.throttle.set(key, now);
-    if (isDevMode) {
-      console.info(
-        `[watchHistoryService] Throttled pointer ${key} for actor ${actorKey}.`
-      );
-    }
+    devLogger.info(
+    `[watchHistoryService] Throttled pointer ${key} for actor ${actorKey}.`
+    );
     return viewResult;
   }
 
@@ -1144,17 +1188,17 @@ async function publishView(pointerInput, createdAt, metadata = {}) {
   persistQueueState();
   notifyQueueChange(actorKey);
 
-  console.info(
+  devLogger.info(
     "[watchHistoryService] Added pointer to pending watch list snapshot queue.",
     {
-      actor: actorKey,
-      pointerKey: key,
-      queueSize: queue.items.size,
+    actor: actorKey,
+    pointerKey: key,
+    queueSize: queue.items.size,
     }
   );
 
   if (!remoteEnabled) {
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Watch history sync unavailable for this actor; retaining pointer in local session queue only.",
       {
         actor: actorKey,
@@ -1175,12 +1219,12 @@ async function snapshot(items, options = {}) {
   }
 
   if (!isFeatureEnabled(actorKey)) {
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Snapshot skipped because watch history sync is unavailable for this actor.",
       {
-        actor: actorKey,
-        requestedItems: Array.isArray(items) ? items.length : 0,
-        reason,
+      actor: actorKey,
+      requestedItems: Array.isArray(items) ? items.length : 0,
+      reason,
       }
     );
     return { ok: true, skipped: true, reason: "feature-disabled" };
@@ -1207,13 +1251,20 @@ async function snapshot(items, options = {}) {
 
   const queue = ensureQueue(actorKey);
 
-  console.info(
+  if (!items) {
+    const cachedItems = getCachedSnapshotItems(actorKey);
+    if (cachedItems.length) {
+      payloadItems = [...payloadItems, ...cachedItems];
+    }
+  }
+
+  devLogger.info(
     "[watchHistoryService] Initiating watch list snapshot publish.",
     {
       actor: actorKey,
-      reason,
-      itemCount: payloadItems.length,
-      queued: queue?.items?.size ?? 0,
+    reason,
+    itemCount: payloadItems.length,
+    queued: queue?.items?.size ?? 0,
     }
   );
 
@@ -1227,14 +1278,14 @@ async function snapshot(items, options = {}) {
       }
     );
 
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Watch list snapshot publish completed.",
       {
-        actor: actorKey,
-        reason,
-        success: !!publishResult?.ok,
-        snapshotId: publishResult?.snapshotId || null,
-        retryable: !!publishResult?.retryable,
+      actor: actorKey,
+      reason,
+      success: !!publishResult?.ok,
+      snapshotId: publishResult?.snapshotId || null,
+      retryable: !!publishResult?.retryable,
       }
     );
 
@@ -1264,20 +1315,18 @@ async function snapshot(items, options = {}) {
 
     await updateFingerprintCache(actorKey, publishResult.items || payloadItems);
     emit("snapshot-complete", { actor: actorKey, reason, result: publishResult });
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Watch list snapshot processed and fingerprint cache updated.",
       {
-        actor: actorKey,
-        reason,
-        fingerprintUpdated: true,
+      actor: actorKey,
+      reason,
+      fingerprintUpdated: true,
       }
     );
     return publishResult;
   })()
     .catch((error) => {
-      if (isDevMode) {
-        console.warn("[watchHistoryService] Snapshot failed:", error);
-      }
+      devLogger.warn("[watchHistoryService] Snapshot failed:", error);
       throw error;
     })
     .finally(() => {
@@ -1297,17 +1346,22 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
     return cacheEntry.promise;
   }
 
-  const promise = nostrClient
-    .resolveWatchHistory(actorKey, { forceRefresh: true })
+  const promise = (async () => {
+    const permissionResult = await ensureWatchHistoryExtensionPermissions(
+      actorKey,
+    );
+    if (!permissionResult.ok) {
+      throw permissionResult.error;
+    }
+    return nostrClient.resolveWatchHistory(actorKey, { forceRefresh: true });
+  })()
     .then((resolvedItems) => updateFingerprintCache(actorKey, resolvedItems))
     .then(() => {
       const latest = state.fingerprintCache.get(actorKey);
       return latest?.items || [];
     })
     .catch((error) => {
-      if (isDevMode) {
-        console.warn("[watchHistoryService] Failed to load watch history:", error);
-      }
+      devLogger.warn("[watchHistoryService] Failed to load watch history:", error);
       throw error;
     })
     .finally(() => {
@@ -1317,9 +1371,9 @@ function scheduleWatchHistoryRefresh(actorKey, cacheEntry = {}) {
       }
     });
 
-  console.info("[watchHistoryService] Triggered nostr watch list refresh.", {
+  devLogger.info("[watchHistoryService] Triggered nostr watch list refresh.", {
     actor: actorKey,
-  });
+    });
 
   const baseEntry = cacheEntry && typeof cacheEntry === "object" ? cacheEntry : {};
   state.fingerprintCache.set(actorKey, {
@@ -1348,11 +1402,11 @@ async function loadLatest(actorInput, options = {}) {
       restoreQueueState();
     }
     const items = collectQueueItems(actorKey);
-    console.info(
+    devLogger.info(
       "[watchHistoryService] loadLatest returning local-only watch history queue.",
       {
-        actor: actorKey,
-        itemCount: items.length,
+      actor: actorKey,
+      itemCount: items.length,
       }
     );
     return items;
@@ -1360,12 +1414,12 @@ async function loadLatest(actorInput, options = {}) {
 
   const now = Date.now();
   const cacheEntry = state.fingerprintCache.get(actorKey);
-  console.info(
+  devLogger.info(
     "[watchHistoryService] loadLatest invoked.",
     {
-      actor: actorKey,
-      cacheHasItems: Array.isArray(cacheEntry?.items),
-      cacheExpiresAt: cacheEntry?.expiresAt || null,
+    actor: actorKey,
+    cacheHasItems: Array.isArray(cacheEntry?.items),
+    cacheExpiresAt: cacheEntry?.expiresAt || null,
     }
   );
   const hasCachedItems = Array.isArray(cacheEntry?.items);
@@ -1375,29 +1429,29 @@ async function loadLatest(actorInput, options = {}) {
     cacheEntry.expiresAt > now;
 
   if (cacheIsFresh) {
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Returning cached watch list items.",
       {
-        actor: actorKey,
-        itemCount: cacheEntry.items.length,
+      actor: actorKey,
+      itemCount: cacheEntry.items.length,
       }
     );
     return cacheEntry.items;
   }
 
   if (cacheEntry?.promise) {
-    console.info(
+    devLogger.info(
       "[watchHistoryService] Awaiting in-flight watch list refresh.",
       {
-        actor: actorKey,
+      actor: actorKey,
       }
     );
     if (allowStale && hasCachedItems) {
-      console.info(
+      devLogger.info(
         "[watchHistoryService] Returning stale watch list items while refresh completes.",
         {
-          actor: actorKey,
-          itemCount: cacheEntry.items.length,
+        actor: actorKey,
+        itemCount: cacheEntry.items.length,
         }
       );
       return cacheEntry.items;
@@ -1412,11 +1466,11 @@ async function loadLatest(actorInput, options = {}) {
   const refreshPromise = scheduleWatchHistoryRefresh(actorKey, cacheEntry);
   refreshPromise.catch(() => {});
 
-  console.info(
+  devLogger.info(
     "[watchHistoryService] Returning stale watch list items while refresh is pending.",
     {
-      actor: actorKey,
-      itemCount: cacheEntry?.items?.length || 0,
+    actor: actorKey,
+    itemCount: cacheEntry?.items?.length || 0,
     }
   );
 

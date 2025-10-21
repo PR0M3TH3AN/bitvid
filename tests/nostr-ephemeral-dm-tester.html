@@ -1,61 +1,9 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <title>Nostr Ephemeral DM Tester (Using finalizeEvent)</title>
-    <script src="../js/tracking.js" defer></script>
-    <style>
-      /* Basic styling for the demo page */
-      body {
-        background: #222;
-        color: #eee;
-        font-family: sans-serif;
-        margin: 20px;
-        max-width: 600px;
-      }
-      label {
-        display: block;
-        margin-top: 1em;
-        font-weight: bold;
-      }
-      input,
-      textarea {
-        width: 100%;
-        margin-bottom: 0.75em;
-        background: #333;
-        color: #fff;
-        border: 1px solid #888;
-        padding: 0.5em;
-        box-sizing: border-box;
-      }
-      button {
-        padding: 0.5em 1em;
-        background: #3399cc;
-        color: #fff;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      #status {
-        margin-top: 1em;
-        padding: 0.5em;
-        background: #111;
-        white-space: pre-wrap;
-        min-height: 80px;
-      }
-      .status-line {
-        margin: 0.25em 0;
-      }
-      .error {
-        color: #ff6666;
-      }
-      .success {
-        color: #66ff66;
-      }
-      .warn {
-        color: #ffff66;
-      }
-    </style>
+    <link rel="stylesheet" href="../css/tailwind.generated.css" />
 
     <!--
       Nostr Ephemeral DM Tester (Using finalizeEvent)
@@ -87,34 +35,60 @@
     <!-- Load nostr‑tools v2.10.4 -->
     <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js"></script>
   </head>
-  <body>
-    <h1>Nostr Ephemeral DM Tester (Using finalizeEvent)</h1>
-    <p>
-      Generates a random ephemeral key, encrypts your message (NIP‑04),
-      finalizes the event (computes event.id and signs it), then publishes it.
-      It also subscribes to each relay using the Relay API.
-    </p>
+  <body class="bg-surface font-sans text-text" data-ds="new">
+    <main
+      class="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-6"
+      data-ds="new"
+    >
+      <header class="space-y-2">
+        <h1 class="text-3xl font-semibold text-text">
+          Nostr Ephemeral DM Tester (Using finalizeEvent)
+        </h1>
+        <p class="text-base leading-relaxed text-text">
+          Generates a random ephemeral key, encrypts your message (NIP‑04),
+          finalizes the event (computes event.id and signs it), then publishes
+          it. It also subscribes to each relay using the Relay API.
+        </p>
+      </header>
 
-    <form id="dm-form">
-      <label for="npubInput">Target npub:</label>
-      <input
-        type="text"
-        id="npubInput"
-        placeholder="npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
-        required
-      />
+      <form id="dm-form" class="space-y-4 rounded-xl bg-panel p-6 shadow-lg">
+        <div class="space-y-2">
+          <label for="npubInput" class="block text-sm font-semibold text-text"
+            >Target npub:</label
+          >
+          <input
+            type="text"
+            id="npubInput"
+            class="form-control"
+            placeholder="npub13yarr7j6vjqjjkahd63dmr27curypehx45ucue286ac7sft27y0srnpmpe"
+            required
+          />
+        </div>
 
-      <label for="msgInput">Message:</label>
-      <textarea
-        id="msgInput"
-        rows="3"
-        placeholder="Hello from ephemeral DM!"
-      ></textarea>
+        <div class="space-y-2">
+          <label for="msgInput" class="block text-sm font-semibold text-text"
+            >Message:</label
+          >
+          <textarea
+            id="msgInput"
+            rows="3"
+            class="textarea"
+            placeholder="Hello from ephemeral DM!"
+          ></textarea>
+        </div>
 
-      <button type="submit">Send DM</button>
-    </form>
+        <div class="flex justify-end">
+          <button type="submit" class="btn">Send DM</button>
+        </div>
+      </form>
 
-    <div id="status"></div>
+      <div
+        id="status"
+        role="status"
+        aria-live="polite"
+        class="status-log min-h-status-log space-y-2 rounded-xl bg-card p-4 text-text shadow-md"
+      ></div>
+    </main>
 
     <script>
       document.addEventListener("DOMContentLoaded", () => {
@@ -148,14 +122,14 @@
           nip19,
           SimplePool,
           utils,
-          Relay, // Relay API for subscriptions.
+          Relay // Relay API for subscriptions.
         } = window.NostrTools;
 
         // Define relay URLs.
         const RELAYS = [
           "wss://relay.snort.social",
           "wss://relay.damus.io",
-          "wss://relay.primal.net",
+          "wss://relay.primal.net"
         ];
 
         // Create a SimplePool instance for publishing events.
@@ -210,7 +184,7 @@
                 kind: 4,
                 created_at: now,
                 tags: [["p", targetPubHex]],
-                content: ciphertext,
+                content: ciphertext
               };
               log(
                 `[DEBUG] Event template before finalizing: ${JSON.stringify(
@@ -246,7 +220,7 @@
                   },
                   onEose() {
                     relay.close();
-                  },
+                  }
                 });
               }
 

@@ -7,6 +7,13 @@ import {
   ADMIN_SUPER_NPUB,
   PLATFORM_FEE_PERCENT,
   PLATFORM_LUD16_OVERRIDE,
+  THEME_ACCENT_OVERRIDES,
+  BLOG_URL,
+  COMMUNITY_URL,
+  NOSTR_URL,
+  GITHUB_URL,
+  BETA_URL,
+  DNS_URL,
 } from "./instance-config.js";
 
 function assertSuperAdminConfigured(value) {
@@ -56,6 +63,50 @@ function getPlatformLud16Override(value) {
   return value.trim();
 }
 
+const ACCENT_HEX_PATTERN = /^#(?:[0-9a-fA-F]{6})$/;
+
+function assertThemeAccentOverrides(overrides) {
+  const source =
+    overrides && typeof overrides === "object"
+      ? overrides
+      : THEME_ACCENT_OVERRIDES;
+
+  const allowedThemes = new Set(["light", "dark"]);
+  const allowedTokens = ["accent", "accentStrong", "accentPressed"];
+
+  Object.entries(source).forEach(([theme, themeOverrides]) => {
+    if (!allowedThemes.has(theme) || themeOverrides == null) {
+      return;
+    }
+
+    if (typeof themeOverrides !== "object") {
+      throw new Error(
+        `THEME_ACCENT_OVERRIDES.${theme} must be an object with accent overrides.`
+      );
+    }
+
+    allowedTokens.forEach((token) => {
+      const rawValue = themeOverrides[token];
+      if (rawValue == null || rawValue === "") {
+        return;
+      }
+
+      if (typeof rawValue !== "string") {
+        throw new Error(
+          `THEME_ACCENT_OVERRIDES.${theme}.${token} must be a hex string (e.g., '#2563eb').`
+        );
+      }
+
+      const trimmed = rawValue.trim();
+      if (!ACCENT_HEX_PATTERN.test(trimmed)) {
+        throw new Error(
+          `THEME_ACCENT_OVERRIDES.${theme}.${token} must be a #RRGGBB hex color.`
+        );
+      }
+    });
+  });
+}
+
 function resolveConfig(overrides = {}) {
   return {
     adminSuperNpub:
@@ -64,7 +115,44 @@ function resolveConfig(overrides = {}) {
       overrides.PLATFORM_FEE_PERCENT ?? PLATFORM_FEE_PERCENT,
     platformLud16Override:
       overrides.PLATFORM_LUD16_OVERRIDE ?? PLATFORM_LUD16_OVERRIDE,
+    themeAccentOverrides:
+      overrides.THEME_ACCENT_OVERRIDES ?? THEME_ACCENT_OVERRIDES,
+    blogUrl: overrides.BLOG_URL ?? BLOG_URL,
+    communityUrl: overrides.COMMUNITY_URL ?? COMMUNITY_URL,
+    nostrUrl: overrides.NOSTR_URL ?? NOSTR_URL,
+    githubUrl: overrides.GITHUB_URL ?? GITHUB_URL,
+    betaUrl: overrides.BETA_URL ?? BETA_URL,
+    dnsUrl: overrides.DNS_URL ?? DNS_URL,
   };
+}
+
+function assertOptionalHttpUrl(url, settingName) {
+  if (url == null) {
+    return null;
+  }
+
+  if (typeof url !== "string") {
+    throw new Error(`${settingName} must be a string when provided.`);
+  }
+
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.protocol || !/^https?:$/.test(parsed.protocol)) {
+      throw new Error(`${settingName} must use http or https.`);
+    }
+  } catch (error) {
+    throw new Error(
+      `${settingName} must be a valid http(s) URL defined in config/instance-config.js.`,
+      { cause: error },
+    );
+  }
+
+  return trimmed;
 }
 
 export function validateInstanceConfig(overrides) {
@@ -79,7 +167,15 @@ export function validateInstanceConfig(overrides) {
 
   if (platformFeePercent > 0 && !trimmedOverride) {
     throw new Error(
-      "PLATFORM_FEE_PERCENT is positive but PLATFORM_LUD16_OVERRIDE is empty. Set PLATFORM_LUD16_OVERRIDE to the Lightning address that should receive the platform's split, or publish a lud16 value on the Super Admin profile so BitVid can route platform fees."
+      "PLATFORM_FEE_PERCENT is positive but PLATFORM_LUD16_OVERRIDE is empty. Set PLATFORM_LUD16_OVERRIDE to the Lightning address that should receive the platform's split, or publish a lud16 value on the Super Admin profile so bitvid can route platform fees."
     );
   }
+
+  assertThemeAccentOverrides(config.themeAccentOverrides);
+  assertOptionalHttpUrl(config.blogUrl, "BLOG_URL");
+  assertOptionalHttpUrl(config.communityUrl, "COMMUNITY_URL");
+  assertOptionalHttpUrl(config.nostrUrl, "NOSTR_URL");
+  assertOptionalHttpUrl(config.githubUrl, "GITHUB_URL");
+  assertOptionalHttpUrl(config.betaUrl, "BETA_URL");
+  assertOptionalHttpUrl(config.dnsUrl, "DNS_URL");
 }

@@ -1,6 +1,8 @@
 // NOTE: Keep the Upload, Edit, and Revert modals in lockstep when updating NIP-71 form features.
 
+import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
+import { userLogger } from "../../utils/logger.js";
 
 export class UploadModal {
   constructor({
@@ -14,20 +16,29 @@ export class UploadModal {
     getCurrentPubkey,
     safeEncodeNpub,
     eventTarget,
-    container,
+    container
   } = {}) {
     this.authService = authService || null;
     this.r2Service = r2Service || null;
-    this.publishVideoNote = typeof publishVideoNote === "function" ? publishVideoNote : null;
+    this.publishVideoNote =
+      typeof publishVideoNote === "function" ? publishVideoNote : null;
     this.removeTrackingScripts =
-      typeof removeTrackingScripts === "function" ? removeTrackingScripts : () => {};
+      typeof removeTrackingScripts === "function"
+        ? removeTrackingScripts
+        : () => {};
     this.setGlobalModalState =
-      typeof setGlobalModalState === "function" ? setGlobalModalState : () => {};
+      typeof setGlobalModalState === "function"
+        ? setGlobalModalState
+        : () => {};
     this.showError = typeof showError === "function" ? showError : () => {};
-    this.showSuccess = typeof showSuccess === "function" ? showSuccess : () => {};
-    this.getCurrentPubkey = typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
-    this.safeEncodeNpub = typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
-    this.eventTarget = eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
+    this.showSuccess =
+      typeof showSuccess === "function" ? showSuccess : () => {};
+    this.getCurrentPubkey =
+      typeof getCurrentPubkey === "function" ? getCurrentPubkey : null;
+    this.safeEncodeNpub =
+      typeof safeEncodeNpub === "function" ? safeEncodeNpub : () => "";
+    this.eventTarget =
+      eventTarget instanceof EventTarget ? eventTarget : new EventTarget();
     this.container = container || null;
 
     this.root = null;
@@ -44,6 +55,11 @@ export class UploadModal {
 
     this.customForm = null;
     this.customFormInputs = {};
+    this.customSubmitButton = null;
+    this.customSubmitButtonDefaultLabel = "";
+    this.customSubmitBlockedUntil = 0;
+    this.customSubmitCooldownTimer = null;
+    this.customSubmitCooldownMs = 60000;
 
     this.cloudflareSettingsForm = null;
     this.cloudflareClearSettingsButton = null;
@@ -53,8 +69,8 @@ export class UploadModal {
     this.cloudflareFileInput = null;
     this.cloudflareUploadButton = null;
     this.cloudflareUploadStatus = null;
-    this.cloudflareProgressBar = null;
-    this.cloudflareProgressFill = null;
+    this.cloudflareProgress = null;
+    this.cloudflareProgressStatus = null;
     this.cloudflareTitleInput = null;
     this.cloudflareDescriptionInput = null;
     this.cloudflareThumbnailInput = null;
@@ -62,6 +78,8 @@ export class UploadModal {
     this.cloudflareWsInput = null;
     this.cloudflareXsInput = null;
     this.cloudflareEnableCommentsInput = null;
+    this.cloudflareIsNsfwInput = null;
+    this.cloudflareIsForKidsInput = null;
     this.cloudflareAdvancedToggle = null;
     this.cloudflareAdvancedToggleLabel = null;
     this.cloudflareAdvancedToggleIcon = null;
@@ -74,6 +92,12 @@ export class UploadModal {
     this.r2BaseDomainInput = null;
 
     this.nip71FormManager = new Nip71FormManager();
+    this.cleanupHandlers = [];
+    this.modalAccessibility = null;
+    this.modalBackdrop = null;
+    this.modalPanel = null;
+    this.loadPromise = null;
+    this.eventsBound = false;
   }
 
   addEventListener(type, listener, options) {
@@ -106,56 +130,99 @@ export class UploadModal {
       return this.root;
     }
 
-    const targetContainer =
-      container || this.container || document.getElementById("modalContainer");
-    if (!targetContainer) {
-      throw new Error("Modal container element not found!");
+    if (this.loadPromise) {
+      return this.loadPromise;
     }
 
-    const response = await fetch("components/upload-modal.html");
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const html = await response.text();
+    this.loadPromise = (async () => {
+      const targetContainer =
+        container || this.container || document.getElementById("modalContainer");
+      if (!targetContainer) {
+        throw new Error("Modal container element not found!");
+      }
 
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = html;
-    this.removeTrackingScripts(wrapper);
-    targetContainer.appendChild(wrapper);
+      const existingModals = targetContainer.querySelectorAll("#uploadModal");
+      let modal = existingModals[0] || null;
+      if (existingModals.length > 1) {
+        existingModals.forEach((node, index) => {
+          if (index > 0) {
+            node.remove();
+          }
+        });
+      }
 
-    this.container = targetContainer;
-    this.root = wrapper.querySelector("#uploadModal");
-    if (!this.root) {
-      throw new Error("Upload modal markup missing after load.");
-    }
+      if (!modal) {
+        const response = await fetch("components/upload-modal.html");
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const html = await response.text();
 
-    this.cacheElements(wrapper);
-    this.bindEvents();
-    this.registerR2Subscriptions();
+        const doc = targetContainer.ownerDocument || document;
+        const wrapper = doc.createElement("div");
+        wrapper.innerHTML = html;
+        this.removeTrackingScripts(wrapper);
 
-    this.renderCloudflareAdvancedVisibility(
-      this.r2Service?.getCloudflareAdvancedVisibility?.()
-    );
+        const fragment = doc.createDocumentFragment();
+        while (wrapper.firstChild) {
+          fragment.appendChild(wrapper.firstChild);
+        }
+        targetContainer.appendChild(fragment);
+
+        modal = targetContainer.querySelector("#uploadModal");
+      }
+
+      if (!modal) {
+        throw new Error("Upload modal markup missing after load.");
+      }
+
+      this.container = targetContainer;
+      this.root = modal;
+
+      this.cacheElements(modal);
+      this.setupModalAccessibility();
+      if (!this.eventsBound) {
+        this.bindEvents();
+        this.eventsBound = true;
+      }
+      this.registerR2Subscriptions();
+
+      this.renderCloudflareAdvancedVisibility(
+        this.r2Service?.getCloudflareAdvancedVisibility?.()
+      );
+
+      try {
+        await this.loadR2Settings();
+      } catch (error) {
+        // Errors already surfaced via the service listeners.
+      }
+
+      await this.refreshCloudflareBucketPreview();
+      this.setMode(this.activeMode);
+      this.updateCloudflareProgress(Number.NaN);
+
+      return this.root;
+    })();
 
     try {
-      await this.loadR2Settings();
-    } catch (error) {
-      // Errors already surfaced via the service listeners.
+      return await this.loadPromise;
+    } finally {
+      this.loadPromise = null;
     }
-
-    await this.refreshCloudflareBucketPreview();
-    this.setMode(this.activeMode);
-    this.updateCloudflareProgress(Number.NaN);
-
-    return this.root;
   }
 
   cacheElements(context) {
+    const scope = this.root || context;
+    this.modalBackdrop = scope?.querySelector?.(".bv-modal-backdrop") || null;
+    this.modalPanel =
+      scope?.querySelector?.(".bv-modal__panel") || scope || null;
+
     this.uploadModeButtons = Array.from(
       context.querySelectorAll(".upload-mode-toggle[data-upload-mode]")
     );
     this.customSection = context.querySelector("#customUploadSection") || null;
-    this.cloudflareSection = context.querySelector("#cloudflareUploadSection") || null;
+    this.cloudflareSection =
+      context.querySelector("#cloudflareUploadSection") || null;
 
     this.customForm = context.querySelector("#uploadForm") || null;
     this.customFormInputs = {
@@ -167,35 +234,57 @@ export class UploadModal {
       thumbnail: context.querySelector("#uploadThumbnail") || null,
       description: context.querySelector("#uploadDescription") || null,
       enableComments: context.querySelector("#uploadEnableComments") || null,
-      isPrivate: context.querySelector("#uploadIsPrivate") || null,
+      isNsfw: context.querySelector("#uploadIsNsfw") || null,
+      isForKids: context.querySelector("#uploadIsForKids") || null,
+      isPrivate: context.querySelector("#uploadIsPrivate") || null
     };
+
+    this.customSubmitButton =
+      this.customForm?.querySelector?.('button[type="submit"]') || null;
+    if (this.customSubmitButton && !this.customSubmitButtonDefaultLabel) {
+      const defaultLabel = this.customSubmitButton.textContent || "";
+      this.customSubmitButtonDefaultLabel =
+        defaultLabel.trim() || defaultLabel || "Publish";
+    }
+    this.updateCustomSubmitButtonState();
 
     this.closeButton = context.querySelector("#closeUploadModal") || null;
 
-    this.cloudflareSettingsForm = context.querySelector("#cloudflareSettingsForm") || null;
+    this.cloudflareSettingsForm =
+      context.querySelector("#cloudflareSettingsForm") || null;
     this.cloudflareClearSettingsButton =
       context.querySelector("#cloudflareClearSettings") || null;
     this.cloudflareSettingsStatus =
       context.querySelector("#cloudflareSettingsStatus") || null;
     this.cloudflareBucketPreview =
       context.querySelector("#cloudflareBucketPreview") || null;
-    this.cloudflareUploadForm = context.querySelector("#cloudflareUploadForm") || null;
+    this.cloudflareUploadForm =
+      context.querySelector("#cloudflareUploadForm") || null;
     this.cloudflareFileInput = context.querySelector("#cloudflareFile") || null;
-    this.cloudflareUploadButton = context.querySelector("#cloudflareUploadButton") || null;
+    this.cloudflareUploadButton =
+      context.querySelector("#cloudflareUploadButton") || null;
     this.cloudflareUploadStatus =
       context.querySelector("#cloudflareUploadStatus") || null;
-    this.cloudflareProgressBar = context.querySelector("#cloudflareProgressBar") || null;
-    this.cloudflareProgressFill = context.querySelector("#cloudflareProgressFill") || null;
-    this.cloudflareTitleInput = context.querySelector("#cloudflareTitle") || null;
+    this.cloudflareProgress =
+      context.querySelector("#cloudflareProgress") || null;
+    this.cloudflareProgressStatus =
+      context.querySelector("#cloudflareProgressStatus") || null;
+    this.cloudflareTitleInput =
+      context.querySelector("#cloudflareTitle") || null;
     this.cloudflareDescriptionInput =
       context.querySelector("#cloudflareDescription") || null;
     this.cloudflareThumbnailInput =
       context.querySelector("#cloudflareThumbnail") || null;
-    this.cloudflareMagnetInput = context.querySelector("#cloudflareMagnet") || null;
+    this.cloudflareMagnetInput =
+      context.querySelector("#cloudflareMagnet") || null;
     this.cloudflareWsInput = context.querySelector("#cloudflareWs") || null;
     this.cloudflareXsInput = context.querySelector("#cloudflareXs") || null;
     this.cloudflareEnableCommentsInput =
       context.querySelector("#cloudflareEnableComments") || null;
+    this.cloudflareIsNsfwInput =
+      context.querySelector("#cloudflareIsNsfw") || null;
+    this.cloudflareIsForKidsInput =
+      context.querySelector("#cloudflareIsForKids") || null;
     this.cloudflareAdvancedToggle =
       context.querySelector("#cloudflareAdvancedToggle") || null;
     this.cloudflareAdvancedToggleLabel =
@@ -206,13 +295,67 @@ export class UploadModal {
       context.querySelector("#cloudflareAdvancedFields") || null;
     this.r2AccountIdInput = context.querySelector("#r2AccountId") || null;
     this.r2AccessKeyIdInput = context.querySelector("#r2AccessKeyId") || null;
-    this.r2SecretAccessKeyInput = context.querySelector("#r2SecretAccessKey") || null;
+    this.r2SecretAccessKeyInput =
+      context.querySelector("#r2SecretAccessKey") || null;
     this.r2ApiTokenInput = context.querySelector("#r2ApiToken") || null;
     this.r2ZoneIdInput = context.querySelector("#r2ZoneId") || null;
     this.r2BaseDomainInput = context.querySelector("#r2BaseDomain") || null;
 
     this.nip71FormManager.registerSection("custom", this.customSection);
     this.nip71FormManager.registerSection("cloudflare", this.cloudflareSection);
+  }
+
+  readCheckboxValue(input, defaultValue = false) {
+    if (!input) {
+      return Boolean(defaultValue);
+    }
+    return input.checked === true;
+  }
+
+  resetCheckbox(input, defaultValue = false) {
+    if (!input) {
+      return;
+    }
+    let fallback = Boolean(defaultValue);
+    if (input.dataset && typeof input.dataset.defaultChecked === "string") {
+      fallback = input.dataset.defaultChecked === "true";
+    } else if (typeof input.defaultChecked === "boolean") {
+      fallback = input.defaultChecked;
+    }
+    input.checked = fallback;
+  }
+
+  sanitizeAudienceFlags(flags = {}) {
+    const isNsfw = flags?.isNsfw === true;
+    const isForKids = flags?.isForKids === true && !isNsfw;
+    return { isNsfw, isForKids };
+  }
+
+  setupMutuallyExclusiveCheckboxes(firstInput, secondInput) {
+    if (!firstInput || !secondInput) {
+      return;
+    }
+
+    const enforceExclusion = (primary, secondary) => {
+      if (primary.checked) {
+        secondary.checked = false;
+      }
+    };
+
+    const handleFirstChange = () => enforceExclusion(firstInput, secondInput);
+    const handleSecondChange = () => enforceExclusion(secondInput, firstInput);
+
+    if (firstInput.checked && secondInput.checked) {
+      secondInput.checked = false;
+    }
+
+    firstInput.addEventListener("change", handleFirstChange);
+    secondInput.addEventListener("change", handleSecondChange);
+
+    this.cleanupHandlers.push(() => {
+      firstInput.removeEventListener("change", handleFirstChange);
+      secondInput.removeEventListener("change", handleSecondChange);
+    });
   }
 
   buildAutoGeneratedImetaVariant(file) {
@@ -231,7 +374,7 @@ export class UploadModal {
       image: [],
       fallback: [],
       service: [],
-      autoGenerated: true,
+      autoGenerated: true
     };
   }
 
@@ -245,6 +388,11 @@ export class UploadModal {
     if (this.customForm) {
       this.customForm.addEventListener("submit", (event) => {
         event.preventDefault();
+        if (this.isCustomSubmitOnCooldown()) {
+          this.updateCustomSubmitButtonState();
+          return;
+        }
+        this.startCustomSubmitCooldown();
         this.handleCustomSubmit();
       });
     }
@@ -281,18 +429,134 @@ export class UploadModal {
 
     if (this.cloudflareAdvancedToggle) {
       this.cloudflareAdvancedToggle.addEventListener("click", () => {
-        if (this.r2Service?.setCloudflareAdvancedVisibility &&
-            this.r2Service?.getCloudflareAdvancedVisibility) {
+        if (
+          this.r2Service?.setCloudflareAdvancedVisibility &&
+          this.r2Service?.getCloudflareAdvancedVisibility
+        ) {
           const nextState = !this.r2Service.getCloudflareAdvancedVisibility();
           this.r2Service.setCloudflareAdvancedVisibility(nextState);
         } else {
-          this.renderCloudflareAdvancedVisibility(!this.cloudflareAdvancedVisible);
+          this.renderCloudflareAdvancedVisibility(
+            !this.cloudflareAdvancedVisible
+          );
         }
       });
     }
 
+    if (this.customFormInputs?.isNsfw && this.customFormInputs?.isForKids) {
+      this.setupMutuallyExclusiveCheckboxes(
+        this.customFormInputs.isNsfw,
+        this.customFormInputs.isForKids
+      );
+    }
+
+    if (this.cloudflareIsNsfwInput && this.cloudflareIsForKidsInput) {
+      this.setupMutuallyExclusiveCheckboxes(
+        this.cloudflareIsNsfwInput,
+        this.cloudflareIsForKidsInput
+      );
+    }
+
     this.nip71FormManager.bindSection("custom");
     this.nip71FormManager.bindSection("cloudflare");
+  }
+
+  clearCustomSubmitCooldownTimer() {
+    if (this.customSubmitCooldownTimer) {
+      clearInterval(this.customSubmitCooldownTimer);
+      this.customSubmitCooldownTimer = null;
+    }
+  }
+
+  isCustomSubmitOnCooldown() {
+    if (!this.customSubmitBlockedUntil) {
+      return false;
+    }
+    return Date.now() < this.customSubmitBlockedUntil;
+  }
+
+  updateCustomSubmitButtonState() {
+    const button = this.customSubmitButton;
+    if (!button) {
+      return;
+    }
+
+    if (!this.customSubmitButtonDefaultLabel) {
+      const label = button.textContent || "";
+      this.customSubmitButtonDefaultLabel = label.trim() || label || "Publish";
+    }
+
+    if (this.isCustomSubmitOnCooldown()) {
+      const remainingMs = Math.max(
+        0,
+        this.customSubmitBlockedUntil - Date.now()
+      );
+      const seconds = Math.max(1, Math.ceil(remainingMs / 1000));
+      button.disabled = true;
+      button.setAttribute("aria-disabled", "true");
+      button.dataset.cooldown = "true";
+      button.textContent = `${this.customSubmitButtonDefaultLabel} (${seconds})`;
+      button.title = `Please wait ${seconds} seconds before sharing another video.`;
+      return;
+    }
+
+    button.disabled = false;
+    button.removeAttribute("aria-disabled");
+    delete button.dataset.cooldown;
+    button.textContent =
+      this.customSubmitButtonDefaultLabel || button.textContent || "Publish";
+    button.removeAttribute("title");
+  }
+
+  startCustomSubmitCooldown() {
+    if (!this.customSubmitButton) {
+      return;
+    }
+    const now = Date.now();
+    this.customSubmitBlockedUntil = now + this.customSubmitCooldownMs;
+    this.updateCustomSubmitButtonState();
+    this.clearCustomSubmitCooldownTimer();
+    this.customSubmitCooldownTimer = setInterval(() => {
+      if (!this.isCustomSubmitOnCooldown()) {
+        this.clearCustomSubmitCooldown();
+        return;
+      }
+      this.updateCustomSubmitButtonState();
+    }, 1000);
+  }
+
+  clearCustomSubmitCooldown() {
+    this.clearCustomSubmitCooldownTimer();
+    this.customSubmitBlockedUntil = 0;
+    this.updateCustomSubmitButtonState();
+  }
+
+  cancelCustomSubmitCooldown() {
+    this.clearCustomSubmitCooldown();
+  }
+
+  setupModalAccessibility() {
+    if (!this.root) {
+      return;
+    }
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+
+    this.modalAccessibility = createModalAccessibility({
+      root: this.root,
+      backdrop: this.modalBackdrop || this.root,
+      panel: this.modalPanel || this.root,
+      onRequestClose: () => this.close()
+    });
+
+    this.cleanupHandlers.push(() => {
+      if (this.modalAccessibility?.destroy) {
+        this.modalAccessibility.destroy();
+      }
+      this.modalAccessibility = null;
+    });
   }
 
   registerR2Subscriptions() {
@@ -307,7 +571,7 @@ export class UploadModal {
             unsubscribe();
           }
         } catch (error) {
-          console.warn("[UploadModal] Failed to remove R2 listener", error);
+          userLogger.warn("[UploadModal] Failed to remove R2 listener", error);
         }
       });
     }
@@ -327,13 +591,21 @@ export class UploadModal {
 
     register(
       this.r2Service.on("settingsStatus", ({ message, variant } = {}) => {
-        this.applyCloudflareStatus(this.cloudflareSettingsStatus, message, variant);
+        this.applyCloudflareStatus(
+          this.cloudflareSettingsStatus,
+          message,
+          variant
+        );
       })
     );
 
     register(
       this.r2Service.on("uploadStatus", ({ message, variant } = {}) => {
-        this.applyCloudflareStatus(this.cloudflareUploadStatus, message, variant);
+        this.applyCloudflareStatus(
+          this.cloudflareUploadStatus,
+          message,
+          variant
+        );
       })
     );
 
@@ -368,24 +640,26 @@ export class UploadModal {
     );
   }
 
-  open() {
+  open({ triggerElement } = {}) {
     if (!this.root) {
       return;
     }
-    if (!this.root.classList.contains("hidden")) {
-      this.isVisible = true;
-      return;
+    const wasHidden = this.root.classList.contains("hidden");
+    if (wasHidden) {
+      this.root.classList.remove("hidden");
+      this.setGlobalModalState("upload", true);
+      this.emit("upload:open", { mode: this.activeMode });
     }
-    this.root.classList.remove("hidden");
     this.isVisible = true;
-    this.setGlobalModalState("upload", true);
-    this.emit("upload:open", { mode: this.activeMode });
+    this.modalAccessibility?.activate({ triggerElement });
+    this.updateCustomSubmitButtonState();
   }
 
   close() {
     if (!this.root) {
       return;
     }
+    this.modalAccessibility?.deactivate();
     if (this.root.classList.contains("hidden")) {
       this.isVisible = false;
       return;
@@ -422,20 +696,27 @@ export class UploadModal {
           return;
         }
         const isActive = button.dataset.uploadMode === normalized;
-        button.classList.toggle("bg-blue-500", isActive);
-        button.classList.toggle("text-white", isActive);
-        button.classList.toggle("shadow", isActive);
-        button.classList.toggle("text-gray-300", !isActive);
+        if (isActive) {
+          button.dataset.state = "active";
+        } else {
+          delete button.dataset.state;
+        }
         button.setAttribute("aria-pressed", isActive ? "true" : "false");
       });
     }
 
     if (normalized === "cloudflare") {
       this.refreshCloudflareBucketPreview();
+    } else {
+      this.updateCustomSubmitButtonState();
     }
   }
 
   handleCustomSubmit() {
+    const audienceFlags = this.sanitizeAudienceFlags({
+      isNsfw: this.readCheckboxValue(this.customFormInputs.isNsfw, false),
+      isForKids: this.readCheckboxValue(this.customFormInputs.isForKids, false)
+    });
     const payload = {
       title: this.customFormInputs.title?.value?.trim() || "",
       url: this.customFormInputs.url?.value?.trim() || "",
@@ -444,13 +725,18 @@ export class UploadModal {
       xs: this.customFormInputs.xs?.value?.trim() || "",
       thumbnail: this.customFormInputs.thumbnail?.value?.trim() || "",
       description: this.customFormInputs.description?.value?.trim() || "",
-      enableComments: this.customFormInputs.enableComments
-        ? !!this.customFormInputs.enableComments.checked
-        : true,
+      enableComments: this.readCheckboxValue(
+        this.customFormInputs.enableComments,
+        true
+      ),
+      ...audienceFlags
     };
 
     if (this.customFormInputs.isPrivate) {
-      payload.isPrivate = !!this.customFormInputs.isPrivate.checked;
+      payload.isPrivate = this.readCheckboxValue(
+        this.customFormInputs.isPrivate,
+        false
+      );
     }
 
     const nip71Metadata = this.nip71FormManager.collectSection("custom");
@@ -468,7 +754,7 @@ export class UploadModal {
       secretAccessKey: this.r2SecretAccessKeyInput?.value?.trim() || "",
       apiToken: this.r2ApiTokenInput?.value?.trim() || "",
       zoneId: this.r2ZoneIdInput?.value?.trim() || "",
-      baseDomain: this.r2BaseDomainInput?.value || "",
+      baseDomain: this.r2BaseDomainInput?.value || ""
     };
   }
 
@@ -479,24 +765,24 @@ export class UploadModal {
 
     element.textContent = message || "";
     element.classList.remove(
-      "text-green-400",
-      "text-red-400",
-      "text-yellow-400",
-      "text-gray-400"
+      "text-info-strong",
+      "text-critical",
+      "text-warning-strong",
+      "text-muted"
     );
 
     if (!message) {
-      element.classList.add("text-gray-400");
+      element.classList.add("text-muted");
       return;
     }
 
-    let className = "text-gray-400";
+    let className = "text-muted";
     if (variant === "success") {
-      className = "text-green-400";
+      className = "text-info-strong";
     } else if (variant === "error") {
-      className = "text-red-400";
+      className = "text-critical";
     } else if (variant === "warning") {
-      className = "text-yellow-400";
+      className = "text-warning-strong";
     }
     element.classList.add(className);
   }
@@ -527,7 +813,10 @@ export class UploadModal {
     }
 
     if (this.cloudflareAdvancedToggleIcon) {
-      this.cloudflareAdvancedToggleIcon.classList.toggle("rotate-90", isVisible);
+      this.cloudflareAdvancedToggleIcon.classList.toggle(
+        "rotate-90",
+        isVisible
+      );
     }
   }
 
@@ -599,39 +888,62 @@ export class UploadModal {
   }
 
   updateCloudflareProgress(fraction) {
-    if (!this.cloudflareProgressBar || !this.cloudflareProgressFill) {
+    if (!this.cloudflareProgress) {
       this.emit("upload:r2-progress", { fraction: null });
       return;
     }
 
     if (!Number.isFinite(fraction) || fraction < 0) {
-      this.cloudflareProgressBar.classList.add("hidden");
-      this.cloudflareProgressBar.setAttribute("aria-hidden", "true");
-      this.cloudflareProgressFill.style.width = "0%";
-      this.cloudflareProgressFill.setAttribute("aria-valuenow", "0");
+      this.cloudflareProgress.value = 0;
+      delete this.cloudflareProgress.dataset.progress;
+      this.cloudflareProgress.dataset.state = "idle";
+      this.cloudflareProgress.hidden = true;
+      this.cloudflareProgress.setAttribute(
+        "aria-valuetext",
+        "Upload progress unavailable",
+      );
+      this.cloudflareProgress.setAttribute("aria-hidden", "true");
+      if (this.cloudflareProgressStatus) {
+        this.cloudflareProgressStatus.textContent = "";
+      }
       this.emit("upload:r2-progress", { fraction: null });
       return;
     }
 
     const clamped = Math.max(0, Math.min(1, fraction));
     const percent = Math.round(clamped * 100);
+    const state = percent >= 100 ? "complete" : "active";
+    const valueText = `Upload ${percent}% complete`;
 
-    this.cloudflareProgressBar.classList.remove("hidden");
-    this.cloudflareProgressBar.setAttribute("aria-hidden", "false");
-    this.cloudflareProgressFill.style.width = `${percent}%`;
-    this.cloudflareProgressFill.setAttribute("aria-valuenow", `${percent}`);
+    this.cloudflareProgress.max = 100;
+    this.cloudflareProgress.value = percent;
+    this.cloudflareProgress.dataset.progress = String(percent);
+    this.cloudflareProgress.dataset.state = state;
+    this.cloudflareProgress.hidden = false;
+    this.cloudflareProgress.setAttribute("aria-hidden", "false");
+    this.cloudflareProgress.setAttribute("aria-valuetext", valueText);
+
+    if (this.cloudflareProgressStatus) {
+      this.cloudflareProgressStatus.textContent = valueText;
+    }
+
     this.emit("upload:r2-progress", { fraction: clamped });
   }
 
   resetCloudflareUploadForm() {
     if (this.cloudflareTitleInput) this.cloudflareTitleInput.value = "";
-    if (this.cloudflareDescriptionInput) this.cloudflareDescriptionInput.value = "";
+    if (this.cloudflareDescriptionInput)
+      this.cloudflareDescriptionInput.value = "";
     if (this.cloudflareThumbnailInput) this.cloudflareThumbnailInput.value = "";
     if (this.cloudflareMagnetInput) this.cloudflareMagnetInput.value = "";
     if (this.cloudflareWsInput) this.cloudflareWsInput.value = "";
     if (this.cloudflareXsInput) this.cloudflareXsInput.value = "";
     if (this.cloudflareEnableCommentsInput)
-      this.cloudflareEnableCommentsInput.checked = true;
+      this.resetCheckbox(this.cloudflareEnableCommentsInput, true);
+    if (this.cloudflareIsNsfwInput)
+      this.resetCheckbox(this.cloudflareIsNsfwInput, false);
+    if (this.cloudflareIsForKidsInput)
+      this.resetCheckbox(this.cloudflareIsForKidsInput, false);
     if (this.cloudflareFileInput) this.cloudflareFileInput.value = "";
     this.nip71FormManager.resetSection("cloudflare");
     this.updateCloudflareProgress(Number.NaN);
@@ -643,13 +955,18 @@ export class UploadModal {
     if (this.customFormInputs.magnet) this.customFormInputs.magnet.value = "";
     if (this.customFormInputs.ws) this.customFormInputs.ws.value = "";
     if (this.customFormInputs.xs) this.customFormInputs.xs.value = "";
-    if (this.customFormInputs.thumbnail) this.customFormInputs.thumbnail.value = "";
+    if (this.customFormInputs.thumbnail)
+      this.customFormInputs.thumbnail.value = "";
     if (this.customFormInputs.description)
       this.customFormInputs.description.value = "";
     if (this.customFormInputs.enableComments)
-      this.customFormInputs.enableComments.checked = true;
+      this.resetCheckbox(this.customFormInputs.enableComments, true);
+    if (this.customFormInputs.isNsfw)
+      this.resetCheckbox(this.customFormInputs.isNsfw, false);
+    if (this.customFormInputs.isForKids)
+      this.resetCheckbox(this.customFormInputs.isForKids, false);
     if (this.customFormInputs.isPrivate)
-      this.customFormInputs.isPrivate.checked = false;
+      this.resetCheckbox(this.customFormInputs.isPrivate, false);
     this.nip71FormManager.resetSection("custom");
   }
 
@@ -673,7 +990,7 @@ export class UploadModal {
         await this.refreshCloudflareBucketPreview();
       }
     } catch (error) {
-      console.error("[UploadModal] Failed to save Cloudflare settings", error);
+      userLogger.error("[UploadModal] Failed to save Cloudflare settings", error);
     }
   }
 
@@ -687,7 +1004,7 @@ export class UploadModal {
         await this.refreshCloudflareBucketPreview();
       }
     } catch (error) {
-      console.error("[UploadModal] Failed to clear Cloudflare settings", error);
+      userLogger.error("[UploadModal] Failed to clear Cloudflare settings", error);
     }
   }
 
@@ -706,6 +1023,10 @@ export class UploadModal {
 
     const npub = this.safeEncodeNpub(pubkey) || "";
     const file = this.cloudflareFileInput?.files?.[0] || null;
+    const audienceFlags = this.sanitizeAudienceFlags({
+      isNsfw: this.readCheckboxValue(this.cloudflareIsNsfwInput, false),
+      isForKids: this.readCheckboxValue(this.cloudflareIsForKidsInput, false)
+    });
     const metadata = {
       title: this.cloudflareTitleInput?.value?.trim() || "",
       description: this.cloudflareDescriptionInput?.value?.trim() || "",
@@ -713,9 +1034,11 @@ export class UploadModal {
       magnet: this.cloudflareMagnetInput?.value?.trim() || "",
       ws: this.cloudflareWsInput?.value?.trim() || "",
       xs: this.cloudflareXsInput?.value?.trim() || "",
-      enableComments: this.cloudflareEnableCommentsInput
-        ? !!this.cloudflareEnableCommentsInput.checked
-        : true,
+      enableComments: this.readCheckboxValue(
+        this.cloudflareEnableCommentsInput,
+        true
+      ),
+      ...audienceFlags
     };
 
     const nip71Metadata = this.nip71FormManager.collectSection("cloudflare");
@@ -729,7 +1052,7 @@ export class UploadModal {
       }
       metadata.nip71 = {
         ...nip71Metadata,
-        imeta: imetaList,
+        imeta: imetaList
       };
     }
 
@@ -740,15 +1063,39 @@ export class UploadModal {
         metadata,
         settingsInput: this.collectCloudflareSettingsFormValues(),
         publishVideoNote: (payload, options) =>
-          this.publishVideoNote ? this.publishVideoNote(payload, options) : null,
-        onReset: () => this.resetCloudflareUploadForm(),
+          this.publishVideoNote
+            ? this.publishVideoNote(payload, options)
+            : null,
+        onReset: () => this.resetCloudflareUploadForm()
       });
     } catch (error) {
-      console.error("[UploadModal] Cloudflare upload failed", error);
+      userLogger.error("[UploadModal] Cloudflare upload failed", error);
     }
   }
 
   destroy() {
+    this.clearCustomSubmitCooldown();
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+    this.modalAccessibility = null;
+    this.modalBackdrop = null;
+    this.modalPanel = null;
+
+    if (Array.isArray(this.cleanupHandlers)) {
+      this.cleanupHandlers.forEach((cleanup) => {
+        try {
+          if (typeof cleanup === "function") {
+            cleanup();
+          }
+        } catch (error) {
+          userLogger.warn("[UploadModal] Failed to remove handler", error);
+        }
+      });
+      this.cleanupHandlers = [];
+    }
+
     if (Array.isArray(this.r2Unsubscribes)) {
       this.r2Unsubscribes.forEach((unsubscribe) => {
         try {
@@ -756,10 +1103,17 @@ export class UploadModal {
             unsubscribe();
           }
         } catch (error) {
-          console.warn("[UploadModal] Failed to cleanup R2 listener", error);
+          userLogger.warn("[UploadModal] Failed to cleanup R2 listener", error);
         }
       });
     }
     this.r2Unsubscribes = [];
+    this.customSubmitButton = null;
+    this.customSubmitButtonDefaultLabel = "";
+    this.customSubmitBlockedUntil = 0;
+    this.eventsBound = false;
+    this.loadPromise = null;
+    this.root = null;
+    this.container = null;
   }
 }

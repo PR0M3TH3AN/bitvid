@@ -1,3 +1,9 @@
+import { normalizeDesignSystemContext } from "../../designSystem.js";
+import { updateVideoCardSourceVisibility } from "../../utils/cardSourceVisibility.js";
+import { userLogger } from "../../utils/logger.js";
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
 export class VideoCard {
   constructor({
     document: doc,
@@ -7,8 +13,8 @@ export class VideoCard {
     timeAgo = "",
     postedAt = null,
     pointerInfo = null,
-    highlightClass = "",
-    animationClass = "",
+    cardState = "",
+    motionState = "",
     capabilities = {},
     formatters = {},
     helpers = {},
@@ -16,6 +22,8 @@ export class VideoCard {
     state = {},
     ensureGlobalMoreMenuHandlers,
     onRequestCloseAllMenus,
+    nsfwContext = null,
+    designSystem = null,
   } = {}) {
     if (!doc) {
       throw new Error("VideoCard requires a document reference.");
@@ -29,39 +37,42 @@ export class VideoCard {
     this.video = video;
     this.index = index;
     this.shareUrl = shareUrl;
-    this.highlightClass =
-      typeof highlightClass === "string" ? highlightClass : "";
-    this.animationClass = animationClass || "";
+    this.cardState =
+      typeof cardState === "string" ? cardState.trim() : "";
+    this.motionState =
+      typeof motionState === "string" ? motionState.trim() : "";
     this.pointerInfo = pointerInfo;
     this.capabilities = {
       canEdit: false,
       canDelete: false,
       canRevert: false,
       canManageBlacklist: false,
-      ...capabilities,
+      ...capabilities
     };
     this.formatters = {
       formatTimeAgo: formatters.formatTimeAgo,
-      formatNumber: formatters.formatNumber,
+      formatNumber: formatters.formatNumber
     };
     this.helpers = {
       escapeHtml: helpers.escapeHtml,
       isMagnetSupported: helpers.isMagnetSupported,
-      toLocaleString: helpers.toLocaleString,
+      toLocaleString: helpers.toLocaleString
     };
     this.assets = {
       fallbackThumbnailSrc: assets.fallbackThumbnailSrc || "",
-      unsupportedBtihMessage: assets.unsupportedBtihMessage || "",
+      unsupportedBtihMessage: assets.unsupportedBtihMessage || ""
     };
     this.state = {
       loadedThumbnails:
         state.loadedThumbnails instanceof Map ? state.loadedThumbnails : null,
       urlHealthByVideoId:
-        state.urlHealthByVideoId instanceof Map ? state.urlHealthByVideoId : null,
+        state.urlHealthByVideoId instanceof Map
+          ? state.urlHealthByVideoId
+          : null,
       streamHealthByVideoId:
         state.streamHealthByVideoId instanceof Map
           ? state.streamHealthByVideoId
-          : null,
+          : null
     };
     this.ensureGlobalMoreMenuHandlers =
       typeof ensureGlobalMoreMenuHandlers === "function"
@@ -72,6 +83,18 @@ export class VideoCard {
         ? onRequestCloseAllMenus
         : null;
 
+    this.designSystem = normalizeDesignSystemContext(designSystem);
+
+    this.nsfwContext = {
+      isNsfw: Boolean(nsfwContext?.isNsfw),
+      allowNsfw: nsfwContext?.allowNsfw !== false,
+      viewerIsOwner: nsfwContext?.viewerIsOwner === true
+    };
+    this.shouldMaskNsfwForOwner =
+      this.nsfwContext.isNsfw &&
+      !this.nsfwContext.allowNsfw &&
+      this.nsfwContext.viewerIsOwner;
+
     this.callbacks = {
       onPlay: null,
       onEdit: null,
@@ -79,19 +102,27 @@ export class VideoCard {
       onDelete: null,
       onMoreAction: null,
       onAuthorNavigate: null,
+      onRequestMoreMenu: null,
+      onCloseMoreMenu: null,
+      onRequestSettingsMenu: null,
+      onCloseSettingsMenu: null,
+      onModerationOverride: null,
     };
+
+    this.moderationBadgeEl = null;
+    this.moderationBadgeTextEl = null;
+    this.moderationActionButton = null;
+    this.moderationBadgeId = "";
+    this.badgesContainerEl = null;
+    this.hiddenSummaryEl = null;
+    this.boundShowAnywayHandler = (event) => this.handleShowAnywayClick(event);
 
     this.root = null;
     this.anchorEl = null;
     this.titleEl = null;
     this.thumbnailEl = null;
     this.settingsButton = null;
-    this.settingsDropdown = null;
-    this.editButton = null;
-    this.revertButton = null;
-    this.deleteButton = null;
     this.moreMenuButton = null;
-    this.moreMenu = null;
     this.urlHealthBadgeEl = null;
     this.torrentHealthBadgeEl = null;
     this.viewCountEl = null;
@@ -100,8 +131,7 @@ export class VideoCard {
     this.authorNameEl = null;
     this.timestampEl = null;
 
-    this.playbackUrl =
-      typeof video.url === "string" ? video.url.trim() : "";
+    this.playbackUrl = typeof video.url === "string" ? video.url.trim() : "";
     const magnet =
       (typeof video.magnet === "string" ? video.magnet.trim() : "") ||
       (typeof video.infoHash === "string" ? video.infoHash.trim() : "");
@@ -118,7 +148,11 @@ export class VideoCard {
       : null;
     this.postedAt = normalizedPostedAt;
 
-    if (this.postedAt !== null && this.video && typeof this.video === "object") {
+    if (
+      this.postedAt !== null &&
+      this.video &&
+      typeof this.video === "object"
+    ) {
       this.video.rootCreatedAt = this.postedAt;
     }
 
@@ -153,12 +187,34 @@ export class VideoCard {
     this.callbacks.onDelete = typeof fn === "function" ? fn : null;
   }
 
+  set onModerationOverride(fn) {
+    this.callbacks.onModerationOverride = typeof fn === "function" ? fn : null;
+  }
+
   set onMoreAction(fn) {
     this.callbacks.onMoreAction = typeof fn === "function" ? fn : null;
   }
 
   set onAuthorNavigate(fn) {
     this.callbacks.onAuthorNavigate = typeof fn === "function" ? fn : null;
+  }
+
+  set onRequestMoreMenu(fn) {
+    this.callbacks.onRequestMoreMenu = typeof fn === "function" ? fn : null;
+  }
+
+  set onCloseMoreMenu(fn) {
+    this.callbacks.onCloseMoreMenu = typeof fn === "function" ? fn : null;
+  }
+
+  set onRequestSettingsMenu(fn) {
+    this.callbacks.onRequestSettingsMenu =
+      typeof fn === "function" ? fn : null;
+  }
+
+  set onCloseSettingsMenu(fn) {
+    this.callbacks.onCloseSettingsMenu =
+      typeof fn === "function" ? fn : null;
   }
 
   getRoot() {
@@ -181,18 +237,87 @@ export class VideoCard {
     return this.discussionCountEl;
   }
 
-  closeMoreMenu() {
-    if (this.moreMenu) {
-      this.moreMenu.classList.add("hidden");
+  closeMoreMenu(options = {}) {
+    const restoreFocus = options?.restoreFocus !== false;
+    const trigger = this.moreMenuButton;
+    const wasExpanded =
+      typeof trigger?.getAttribute === "function" &&
+      trigger.getAttribute("aria-expanded") === "true";
+
+    const detail = {
+      trigger,
+      video: this.video,
+      card: this,
+      restoreFocus,
+    };
+
+    let handled = false;
+    if (this.callbacks.onCloseMoreMenu) {
+      try {
+        handled = this.callbacks.onCloseMoreMenu(detail) === true;
+      } catch (error) {
+        if (this.window?.userLogger?.warn) {
+          this.window.userLogger.warn(
+            "[VideoCard] onCloseMoreMenu callback failed",
+            error,
+          );
+        }
+      }
     }
-    if (this.moreMenuButton) {
-      this.moreMenuButton.setAttribute("aria-expanded", "false");
+
+    if (
+      !handled &&
+      restoreFocus &&
+      wasExpanded &&
+      typeof trigger?.focus === "function"
+    ) {
+      try {
+        trigger.focus();
+      } catch (error) {
+        /* noop */
+      }
     }
   }
 
-  closeSettingsMenu() {
-    if (this.settingsDropdown) {
-      this.settingsDropdown.classList.add("hidden");
+  closeSettingsMenu(options = {}) {
+    const restoreFocus = options?.restoreFocus !== false;
+    const trigger = this.settingsButton;
+    const wasExpanded =
+      typeof trigger?.getAttribute === "function" &&
+      trigger.getAttribute("aria-expanded") === "true";
+
+    const detail = {
+      trigger,
+      video: this.video,
+      card: this,
+      restoreFocus,
+    };
+
+    let handled = false;
+    if (this.callbacks.onCloseSettingsMenu) {
+      try {
+        handled = this.callbacks.onCloseSettingsMenu(detail) === true;
+      } catch (error) {
+        if (this.window?.userLogger?.warn) {
+          this.window.userLogger.warn(
+            "[VideoCard] onCloseSettingsMenu callback failed",
+            error,
+          );
+        }
+      }
+    }
+
+    if (
+      !handled &&
+      restoreFocus &&
+      wasExpanded &&
+      typeof trigger?.focus === "function"
+    ) {
+      try {
+        trigger.focus();
+      } catch (error) {
+        /* noop */
+      }
     }
   }
 
@@ -200,29 +325,23 @@ export class VideoCard {
     const doc = this.document;
 
     const root = this.createElement("div", {
-      classNames: [
-        "video-card",
-        "bg-gray-900",
-        "rounded-lg",
-        "shadow-lg",
-        "hover:shadow-2xl",
-        "transition-all",
-        "duration-300",
-      ],
+      classNames: ["card"]
     });
-
-    this.applyClassListFromString(root, this.highlightClass);
-    this.applyClassListFromString(root, this.animationClass);
 
     this.root = root;
 
+    this.root.dataset.component = "video-card";
+    this.syncCardState();
+    this.syncMotionState();
     if (this.video?.id) {
       root.dataset.videoId = this.video.id;
     }
 
+    this.applyNsfwContext();
     this.applyPointerDataset();
     this.applyOwnerDataset();
     this.applySourceDatasets();
+    this.applyModerationDatasets();
 
     const anchor = this.createElement("a", {
       classNames: [
@@ -231,41 +350,43 @@ export class VideoCard {
         "relative",
         "group",
         "rounded-t-lg",
-        "overflow-hidden",
+        "overflow-hidden"
       ],
       attrs: {
-        href: this.shareUrl,
-      },
+        href: this.shareUrl
+      }
     });
     anchor.dataset.videoId = this.video.id;
     this.anchorEl = anchor;
 
     const ratio = this.createElement("div", {
-      classNames: ["ratio-16-9"],
+      classNames: ["ratio-16-9"]
     });
     const thumbnail = this.buildThumbnail();
     ratio.appendChild(thumbnail);
     anchor.appendChild(ratio);
 
-    const content = this.createElement("div", { classNames: ["p-4"] });
+    const content = this.createElement("div", {
+      classNames: ["p-md", "bv-stack", "bv-stack--tight"]
+    });
+    this.contentEl = content;
 
     const title = this.createElement("h3", {
       classNames: [
+        "video-card__title",
         "text-lg",
         "font-bold",
-        "text-white",
+        "text-text",
         "line-clamp-2",
-        "hover:text-blue-400",
-        "cursor-pointer",
-        "mb-3",
+        "cursor-pointer"
       ],
-      textContent: this.video.title,
+      textContent: this.video.title
     });
     title.dataset.videoId = this.video.id;
     this.titleEl = title;
 
     const header = this.createElement("div", {
-      classNames: ["flex", "items-center", "justify-between"],
+      classNames: ["flex", "items-center", "justify-between"]
     });
 
     const authorSection = this.buildAuthorSection();
@@ -291,10 +412,10 @@ export class VideoCard {
 
     if (this.showUnsupportedTorrentBadge) {
       const warning = this.createElement("p", {
-        classNames: ["mt-3", "text-xs", "text-amber-300"],
+        classNames: ["mt-3", "text-xs", "text-status-warning-on"],
         attrs: { title: this.assets.unsupportedBtihMessage || "" },
         textContent:
-          "WebTorrent fallback unavailable (magnet missing btih info hash)",
+          "WebTorrent fallback unavailable (magnet missing btih info hash)"
       });
       warning.dataset.torrentStatus = "unsupported";
       content.appendChild(warning);
@@ -305,6 +426,71 @@ export class VideoCard {
 
     this.applyPlaybackDatasets();
     this.bindEvents();
+    this.refreshModerationUi();
+  }
+
+  setCardBackdropImage(src) {
+    if (!this.root || !this.root.style) {
+      return;
+    }
+
+    const style = this.root.style;
+
+    const normalizeSource = (raw) => {
+      if (typeof raw !== "string") {
+        return "";
+      }
+
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return "";
+      }
+
+      if (/^javascript:/i.test(trimmed) || /^vbscript:/i.test(trimmed)) {
+        return "";
+      }
+
+      if (/^(?:https?:|data:|blob:)/i.test(trimmed)) {
+        return trimmed;
+      }
+
+      if (
+        trimmed.startsWith("/") ||
+        trimmed.startsWith("./") ||
+        trimmed.startsWith("../") ||
+        trimmed.startsWith("assets/")
+      ) {
+        return trimmed;
+      }
+
+      try {
+        const base =
+          typeof this.document?.baseURI === "string" && this.document.baseURI
+            ? this.document.baseURI
+            : this.window?.location?.href || "";
+        if (!base) {
+          return "";
+        }
+
+        const resolved = new URL(trimmed, base);
+        if (/^(?:https?:|data:|blob:)/i.test(resolved.protocol)) {
+          return resolved.href;
+        }
+      } catch {
+        return "";
+      }
+
+      return "";
+    };
+
+    const sanitized = normalizeSource(src);
+
+    if (sanitized) {
+      const escaped = sanitized.replace(/(["\\])/g, "\\$1");
+      style.setProperty("--video-card-thumb-url", `url("${escaped}")`);
+    } else {
+      style.removeProperty("--video-card-thumb-url");
+    }
   }
 
   buildThumbnail() {
@@ -325,12 +511,18 @@ export class VideoCard {
       if (fallbackSrc) {
         img.src = fallbackSrc;
         img.dataset.fallbackSrc = fallbackSrc;
+        this.setCardBackdropImage(fallbackSrc);
       }
       img.dataset.lazy = thumbnailUrl;
     } else {
       img.src = thumbnailUrl || fallbackSrc;
       if (fallbackSrc) {
         img.dataset.fallbackSrc = fallbackSrc;
+      }
+      if (!thumbnailUrl && fallbackSrc) {
+        this.setCardBackdropImage(fallbackSrc);
+      } else if (thumbnailUrl) {
+        this.setCardBackdropImage(thumbnailUrl);
       }
     }
 
@@ -339,6 +531,12 @@ export class VideoCard {
     img.alt = this.video.title || "";
 
     this.thumbnailEl = img;
+
+    const shouldBlurForModeration = this.video?.moderation?.blurThumbnail === true;
+
+    if (this.shouldMaskNsfwForOwner || shouldBlurForModeration) {
+      img.dataset.thumbnailState = "blurred";
+    }
 
     const markThumbnailAsLoaded = () => {
       if (!thumbnailUrl) {
@@ -370,14 +568,12 @@ export class VideoCard {
         return;
       }
 
-      if (img.dataset.thumbnailFailed || !thumbnailUrl) {
-        return;
-      }
-
       const fallbackAttr =
         (typeof img.dataset.fallbackSrc === "string"
           ? img.dataset.fallbackSrc.trim()
-          : "") || fallbackSrc || "";
+          : "") ||
+        fallbackSrc ||
+        "";
 
       const currentSrc = img.currentSrc || img.src || "";
       const isFallback =
@@ -386,10 +582,20 @@ export class VideoCard {
         (currentSrc === fallbackAttr || currentSrc.endsWith(fallbackAttr));
 
       if (isFallback) {
+        this.setCardBackdropImage(fallbackAttr || currentSrc);
+      } else {
+        this.setCardBackdropImage(currentSrc);
+      }
+
+      if (img.dataset.thumbnailFailed || !thumbnailUrl) {
         return;
       }
 
       if ((img.naturalWidth === 0 && img.naturalHeight === 0) || !currentSrc) {
+        return;
+      }
+
+      if (isFallback) {
         return;
       }
 
@@ -409,6 +615,19 @@ export class VideoCard {
         delete img.dataset.thumbnailLoaded;
       }
 
+      const fallbackAttr =
+        (typeof img.dataset.fallbackSrc === "string"
+          ? img.dataset.fallbackSrc.trim()
+          : "") ||
+        fallbackSrc ||
+        "";
+
+      if (fallbackAttr) {
+        this.setCardBackdropImage(fallbackAttr);
+      } else {
+        this.setCardBackdropImage("");
+      }
+
       img.removeEventListener("load", handleLoad);
     };
 
@@ -424,7 +643,7 @@ export class VideoCard {
 
   buildAuthorSection() {
     const wrapper = this.createElement("div", {
-      classNames: ["flex", "items-center", "space-x-3"],
+      classNames: ["flex", "items-center", "space-x-3"]
     });
 
     const avatarWrapper = this.createElement("div", {
@@ -432,59 +651,71 @@ export class VideoCard {
         "w-8",
         "h-8",
         "rounded-full",
-        "bg-gray-700",
+        "bg-panel",
         "overflow-hidden",
         "flex",
         "items-center",
-        "justify-center",
-      ],
+        "justify-center"
+      ]
     });
 
     const avatar = this.createElement("img", {
       attrs: {
         src: "assets/svg/default-profile.svg",
-        alt: "Placeholder",
-      },
+        alt: "Placeholder"
+      }
     });
-    avatar.classList.add("author-pic");
+    avatar.classList.add(
+      "author-pic",
+      "cursor-pointer",
+      "block",
+      "h-full",
+      "w-full",
+      "rounded-full",
+      "object-cover"
+    );
     if (this.video.pubkey) {
       avatar.dataset.pubkey = this.video.pubkey;
     }
-    avatar.style.cursor = "pointer";
 
     avatarWrapper.appendChild(avatar);
 
     const authorMeta = this.createElement("div", { classNames: ["min-w-0"] });
 
     const authorName = this.createElement("p", {
-      classNames: ["text-sm", "text-gray-400", "author-name"],
-      textContent: "Loading name...",
+      classNames: ["text-sm", "text-muted", "author-name", "cursor-pointer"],
+      textContent: "Loading name..."
     });
     if (this.video.pubkey) {
       authorName.dataset.pubkey = this.video.pubkey;
     }
-    authorName.style.cursor = "pointer";
 
     const metadata = this.createElement("div", {
-      classNames: ["flex", "items-center", "text-xs", "text-gray-500", "mt-1"],
+      classNames: [
+        "flex",
+        "items-center",
+        "text-xs",
+        "text-muted-strong",
+        "mt-1"
+      ]
     });
 
     const timeEl = this.createElement("span", {
-      textContent: this.timeAgo,
+      textContent: this.timeAgo
     });
     metadata.appendChild(timeEl);
     this.timestampEl = timeEl;
 
     if (this.pointerInfo && this.pointerInfo.key) {
       const dot = this.createElement("span", {
-        classNames: ["mx-1", "text-gray-600"],
-        textContent: "•",
+        classNames: ["mx-1", "text-muted-strong"],
+        textContent: "•"
       });
       dot.setAttribute("aria-hidden", "true");
 
       const view = this.createElement("span", {
         classNames: ["view-count-text"],
-        textContent: "– views",
+        textContent: "– views"
       });
       view.dataset.viewCount = "";
       view.dataset.viewPointer = this.pointerInfo.key;
@@ -507,10 +738,63 @@ export class VideoCard {
     return wrapper;
   }
 
+  createEllipsisIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const addCircle = (cx) => {
+      const circle = this.document.createElementNS(SVG_NAMESPACE, "circle");
+      circle.setAttribute("cx", String(cx));
+      circle.setAttribute("cy", "12");
+      circle.setAttribute("r", "2");
+      circle.setAttribute("fill", "currentColor");
+      svg.appendChild(circle);
+    };
+
+    addCircle(5);
+    addCircle(12);
+    addCircle(19);
+
+    return svg;
+  }
+
+  createSettingsIcon(classNames = []) {
+    const svg = this.document.createElementNS(SVG_NAMESPACE, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    classNames.forEach((className) => {
+      if (className) {
+        svg.classList.add(className);
+      }
+    });
+
+    const path = this.document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute(
+      "d",
+      "M24,13.616L24,10.384C22.349,9.797 21.306,9.632 20.781,8.365L20.781,8.364C20.254,7.093 20.881,6.23 21.628,4.657L19.343,2.372C17.782,3.114 16.91,3.747 15.636,3.219L15.635,3.219C14.366,2.693 14.2,1.643 13.616,0L10.384,0C9.802,1.635 9.635,2.692 8.365,3.219L8.364,3.219C7.093,3.747 6.232,3.121 4.657,2.372L2.372,4.657C3.117,6.225 3.747,7.091 3.219,8.364C2.692,9.635 1.635,9.802 0,10.384L0,13.616C1.632,14.196 2.692,14.365 3.219,15.635C3.749,16.917 3.105,17.801 2.372,19.342L4.657,21.628C6.219,20.885 7.091,20.253 8.364,20.781L8.365,20.781C9.635,21.307 9.801,22.36 10.384,24L13.616,24C14.198,22.364 14.366,21.31 15.643,20.778L15.644,20.778C16.906,20.254 17.764,20.879 19.342,21.629L21.627,19.343C20.883,17.78 20.252,16.91 20.779,15.637C21.306,14.366 22.367,14.197 24,13.616ZM12,16C9.791,16 8,14.209 8,12C8,9.791 9.791,8 12,8C14.209,8 16,9.791 16,12C16,14.209 14.209,16 12,16Z"
+    );
+    path.setAttribute("fill", "currentColor");
+    path.setAttribute("fill-rule", "evenodd");
+    path.setAttribute("clip-rule", "evenodd");
+
+    svg.appendChild(path);
+
+    return svg;
+  }
+
   buildControls() {
-    const doc = this.document;
     const container = this.createElement("div", {
-      classNames: ["flex", "items-center"],
+      classNames: ["flex", "items-center"]
     });
 
     const moreMenu = this.buildMoreMenu();
@@ -519,151 +803,36 @@ export class VideoCard {
     }
 
     if (this.capabilities.canEdit) {
-      const wrapper = this.createElement("div", {
-        classNames: ["relative", "inline-block", "ml-3", "overflow-visible"],
-      });
       const button = this.createElement("button", {
         classNames: [
-          "inline-flex",
-          "items-center",
-          "p-2",
-          "rounded-full",
-          "text-gray-400",
-          "hover:text-gray-200",
-          "hover:bg-gray-800",
-          "focus:outline-none",
-          "focus:ring-2",
-          "focus:ring-blue-500",
+          "icon-button",
+          "accent-action-button",
+          "ml-2",
         ],
         attrs: {
           type: "button",
+          "aria-haspopup": "true",
+          "aria-expanded": "false",
+          "aria-label": "Video settings",
         },
       });
-      button.dataset.settingsDropdown = String(this.index);
 
-      const icon = doc.createElement("img");
-      icon.src = "assets/svg/video-settings-gear.svg";
-      icon.alt = "Settings";
-      icon.classList.add("w-5", "h-5");
+      const icon = this.createSettingsIcon(["icon-image", "w-5", "h-5"]);
       button.appendChild(icon);
 
-      const dropdown = this.createElement("div", {
-        classNames: [
-          "hidden",
-          "absolute",
-          "right-0",
-          "bottom-full",
-          "mb-2",
-          "w-32",
-          "rounded-md",
-          "shadow-lg",
-          "bg-gray-800",
-          "ring-1",
-          "ring-black",
-          "ring-opacity-5",
-          "z-50",
-        ],
-      });
-      dropdown.id = `settingsDropdown-${this.index}`;
-
-      const list = this.createElement("div", {
-        classNames: ["py-1"],
-      });
-
-      const editButton = this.createElement("button", {
-        classNames: [
-          "block",
-          "w-full",
-          "text-left",
-          "px-4",
-          "py-2",
-          "text-sm",
-          "text-gray-100",
-          "hover:bg-gray-700",
-        ],
-        textContent: "Edit",
-      });
-      editButton.dataset.editIndex = String(this.index);
-      editButton.dataset.editEventId = this.video.id;
-      list.appendChild(editButton);
-      this.editButton = editButton;
-
-      if (this.capabilities.canRevert) {
-        const revertButton = this.createElement("button", {
-          classNames: [
-            "block",
-            "w-full",
-            "text-left",
-            "px-4",
-            "py-2",
-            "text-sm",
-            "text-red-400",
-            "hover:bg-red-700",
-            "hover:text-white",
-          ],
-          textContent: "Revert",
-        });
-        revertButton.dataset.revertIndex = String(this.index);
-        revertButton.dataset.revertEventId = this.video.id;
-        list.appendChild(revertButton);
-        this.revertButton = revertButton;
-      }
-
-      if (this.capabilities.canDelete) {
-        const deleteButton = this.createElement("button", {
-          classNames: [
-            "block",
-            "w-full",
-            "text-left",
-            "px-4",
-            "py-2",
-            "text-sm",
-            "text-red-400",
-            "hover:bg-red-700",
-            "hover:text-white",
-          ],
-          textContent: "Delete All",
-        });
-        deleteButton.dataset.deleteAllIndex = String(this.index);
-        deleteButton.dataset.deleteAllEventId = this.video.id;
-        list.appendChild(deleteButton);
-        this.deleteButton = deleteButton;
-      }
-
-      dropdown.appendChild(list);
-      wrapper.appendChild(button);
-      wrapper.appendChild(dropdown);
-
-      container.appendChild(wrapper);
-
       this.settingsButton = button;
-      this.settingsDropdown = dropdown;
+      container.appendChild(button);
     }
 
     return container;
   }
 
   buildMoreMenu() {
-    const wrapper = this.createElement("div", {
-      classNames: ["relative", "inline-block", "ml-1", "overflow-visible"],
-    });
-    wrapper.dataset.moreMenuWrapper = "true";
-
     const button = this.createElement("button", {
       classNames: [
-        "inline-flex",
-        "items-center",
-        "justify-center",
-        "w-10",
-        "h-10",
-        "p-2",
-        "rounded-full",
-        "text-gray-400",
-        "hover:text-gray-200",
-        "hover:bg-gray-800",
-        "focus:outline-none",
-        "focus:ring-2",
-        "focus:ring-blue-500",
+        "icon-button",
+        "accent-action-button",
+        "ml-1",
       ],
       attrs: {
         type: "button",
@@ -672,234 +841,21 @@ export class VideoCard {
         "aria-label": "More options",
       },
     });
-    button.dataset.moreDropdown = String(this.index);
-    button.dataset.moreMenuToggleBound = "true";
 
-    const icon = this.document.createElement("img");
-    icon.src = "assets/svg/ellipsis.svg";
-    icon.alt = "More";
-    icon.classList.add("w-5", "h-5", "object-contain");
+    const icon = this.createEllipsisIcon(["icon-image", "w-5", "h-5"]);
     button.appendChild(icon);
 
-    const dropdown = this.createElement("div", {
-      classNames: [
-        "hidden",
-        "absolute",
-        "right-0",
-        "bottom-full",
-        "mb-2",
-        "w-40",
-        "rounded-md",
-        "shadow-lg",
-        "bg-gray-800",
-        "ring-1",
-        "ring-black",
-        "ring-opacity-5",
-        "z-50",
-      ],
-    });
-    dropdown.id = `moreDropdown-${this.index}`;
-    dropdown.dataset.moreMenu = "true";
-    dropdown.setAttribute("role", "menu");
-
-    const list = this.createElement("div", {
-      classNames: ["py-1"],
-    });
-
-    const addActionButton = (text, action, extraDataset = {}, classes = []) => {
-      const btn = this.createElement("button", {
-        classNames: [
-          "block",
-          "w-full",
-          "text-left",
-          "px-4",
-          "py-2",
-          "text-sm",
-          ...classes,
-        ],
-        textContent: text,
-      });
-      btn.dataset.action = action;
-      Object.entries(extraDataset || {}).forEach(([key, value]) => {
-        if (value === undefined || value === null) {
-          return;
-        }
-        btn.dataset[key] = String(value);
-      });
-      list.appendChild(btn);
-      return btn;
-    };
-
-    addActionButton("Open channel", "open-channel", {
-      author: this.video.pubkey || "",
-    }, ["text-gray-100", "hover:bg-gray-700"]);
-
-    addActionButton("Copy link", "copy-link", {
-      eventId: this.video.id || "",
-    }, ["text-gray-100", "hover:bg-gray-700"]);
-
-    const pointer = Array.isArray(this.pointerInfo?.pointer)
-      ? this.pointerInfo.pointer
-      : null;
-    const pointerType = pointer && pointer.length >= 2 ? pointer[0] : "";
-    const pointerValue = pointer && pointer.length >= 2 ? pointer[1] : "";
-    const pointerRelay = pointer && pointer.length >= 3 ? pointer[2] || "" : "";
-    const numericKind =
-      Number.isFinite(this.video.kind) && this.video.kind > 0
-        ? Math.floor(this.video.kind)
-        : null;
-
-    const baseBoostDataset = {
-      eventId: this.video.id || "",
-      author: this.video.pubkey || "",
-    };
-
-    if (pointerType && pointerValue) {
-      baseBoostDataset.pointerType = pointerType;
-      baseBoostDataset.pointerValue = pointerValue;
-    }
-    if (pointerRelay) {
-      baseBoostDataset.pointerRelay = pointerRelay;
-    }
-    if (Number.isFinite(numericKind)) {
-      baseBoostDataset.kind = String(numericKind);
-    }
-
-    const boostLabel = this.createElement("div", {
-      classNames: [
-        "px-4",
-        "pt-2",
-        "pb-1",
-        "text-xs",
-        "font-semibold",
-        "uppercase",
-        "tracking-wide",
-        "text-gray-400",
-      ],
-      textContent: "Boost on Nostr…",
-    });
-    list.appendChild(boostLabel);
-
-    addActionButton(
-      "Repost (kind 6)",
-      "repost-event",
-      baseBoostDataset,
-      ["text-gray-100", "hover:bg-gray-700"],
-    );
-
-    if (this.playbackUrl && this.video.isPrivate !== true) {
-      const mirrorDataset = {
-        ...baseBoostDataset,
-        url: this.playbackUrl,
-        magnet: this.playbackMagnet || "",
-        thumbnail: typeof this.video.thumbnail === "string" ? this.video.thumbnail : "",
-        description:
-          typeof this.video.description === "string" ? this.video.description : "",
-        title: typeof this.video.title === "string" ? this.video.title : "",
-        isPrivate: this.video.isPrivate === true ? "true" : "false",
-      };
-
-      addActionButton(
-        "Mirror (kind 1063)",
-        "mirror-video",
-        mirrorDataset,
-        ["text-gray-100", "hover:bg-gray-700"],
-      );
-    }
-
-    const ensureDataset = {
-      ...baseBoostDataset,
-      pubkey: this.video.pubkey || "",
-    };
-
-    addActionButton(
-      "Rebroadcast",
-      "ensure-presence",
-      ensureDataset,
-      ["text-gray-100", "hover:bg-gray-700"],
-    );
-
-    list.appendChild(
-      this.createElement("div", {
-        classNames: ["my-1", "border-t", "border-gray-700", "opacity-70"],
-      })
-    );
-
-    if (this.pointerInfo && this.pointerInfo.key && this.pointerInfo.pointer) {
-      const [historyPointerType, historyPointerValue, historyPointerRelay] =
-        this.pointerInfo.pointer;
-      if (historyPointerType && historyPointerValue) {
-        const removeButton = addActionButton(
-          "Remove from history",
-          "remove-history",
-          {
-            pointerKey: this.pointerInfo.key,
-            pointerType: historyPointerType,
-            pointerValue: historyPointerValue,
-            pointerRelay: historyPointerRelay || "",
-            reason: "remove-item",
-          },
-          ["text-gray-100", "hover:bg-gray-700"]
-        );
-        removeButton.setAttribute(
-          "title",
-          "Remove this entry from your encrypted history. Relay sync may take a moment."
-        );
-        removeButton.setAttribute(
-          "aria-label",
-          "Remove from history (updates encrypted history and may take a moment to sync to relays)"
-        );
-      }
-    }
-
-    if (this.capabilities.canManageBlacklist) {
-      addActionButton(
-        "Blacklist creator",
-        "blacklist-author",
-        { author: this.video.pubkey || "" },
-        ["text-red-400", "hover:bg-red-700", "hover:text-white"]
-      );
-    }
-
-    addActionButton(
-      "Block creator",
-      "block-author",
-      { author: this.video.pubkey || "" },
-      ["text-red-400", "hover:bg-red-700", "hover:text-white"]
-    );
-
-    addActionButton(
-      "Report",
-      "report",
-      { eventId: this.video.id || "" },
-      ["text-gray-100", "hover:bg-gray-700"]
-    );
-
-    dropdown.appendChild(list);
-    wrapper.appendChild(button);
-    wrapper.appendChild(dropdown);
-
     this.moreMenuButton = button;
-    this.moreMenu = dropdown;
 
-    return wrapper;
+    return button;
   }
 
   buildBadgesContainer() {
     const pieces = [];
 
     if (this.playbackUrl) {
-      const badge = this.createElement("div", {
-        classNames: [
-          "url-health-badge",
-          "text-xs",
-          "font-semibold",
-          "px-2",
-          "py-1",
-          "rounded",
-          "transition-colors",
-          "duration-200",
-        ],
+      const badge = this.createElement("span", {
+        classNames: ["badge", "url-health-badge"]
       });
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
@@ -909,23 +865,22 @@ export class VideoCard {
     }
 
     if (this.magnetSupported && this.magnetProvided) {
-      const badge = this.createElement("div", {
-        classNames: [
-          "torrent-health-badge",
-          "text-xs",
-          "font-semibold",
-          "px-2",
-          "py-1",
-          "rounded",
-          "transition-colors",
-          "duration-200",
-        ],
+      const badge = this.createElement("span", {
+        classNames: ["badge", "torrent-health-badge"]
       });
       badge.setAttribute("aria-live", "polite");
       badge.setAttribute("role", "status");
-      this.applyStreamBadgeVisualState(badge, this.getCachedStreamHealthEntry());
+      this.applyStreamBadgeVisualState(
+        badge,
+        this.getCachedStreamHealthEntry()
+      );
       this.torrentHealthBadgeEl = badge;
       pieces.push(badge);
+    }
+
+    const moderationBadge = this.buildModerationBadge();
+    if (moderationBadge) {
+      pieces.push(moderationBadge);
     }
 
     if (!pieces.length) {
@@ -933,10 +888,765 @@ export class VideoCard {
     }
 
     const container = this.createElement("div", {
-      classNames: ["mt-3", "flex", "flex-wrap", "items-center", "gap-2"],
+      classNames: ["flex", "flex-wrap", "items-center", "gap-sm"]
     });
     pieces.forEach((el) => container.appendChild(el));
+    this.badgesContainerEl = container;
+    this.updateModerationAria();
     return container;
+  }
+
+  getModerationBadgeId() {
+    if (this.moderationBadgeId) {
+      return this.moderationBadgeId;
+    }
+
+    const baseId =
+      typeof this.video?.id === "string" && this.video.id
+        ? this.video.id
+        : `index-${this.index}`;
+    const sanitized = baseId.replace(/[^a-zA-Z0-9_-]/g, "");
+    const id = `video-card-${sanitized}-moderation`;
+    this.moderationBadgeId = id;
+    return id;
+  }
+
+  getModerationContext() {
+    const moderation =
+      this.video?.moderation && typeof this.video.moderation === "object"
+        ? this.video.moderation
+        : null;
+
+    const summary =
+      moderation?.summary && typeof moderation.summary === "object"
+        ? moderation.summary
+        : null;
+
+    let reportType = "";
+    if (typeof moderation?.reportType === "string" && moderation.reportType.trim()) {
+      reportType = moderation.reportType.trim().toLowerCase();
+    }
+
+    if (!reportType && summary && summary.types && typeof summary.types === "object") {
+      for (const [type, stats] of Object.entries(summary.types)) {
+        if (stats && Number.isFinite(stats.trusted) && Math.floor(stats.trusted) > 0) {
+          reportType = String(type).toLowerCase();
+          break;
+        }
+      }
+    }
+
+    let trustedCount = Number.isFinite(moderation?.trustedCount)
+      ? Math.max(0, Math.floor(moderation.trustedCount))
+      : 0;
+
+    if (!trustedCount && summary && summary.types && typeof summary.types === "object") {
+      for (const stats of Object.values(summary.types)) {
+        if (stats && Number.isFinite(stats.trusted)) {
+          trustedCount = Math.max(trustedCount, Math.floor(stats.trusted));
+        }
+      }
+    }
+
+    const reporterDisplayNames = Array.isArray(moderation?.reporterDisplayNames)
+      ? moderation.reporterDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    const trustedMuted = moderation?.trustedMuted === true;
+    let trustedMuteCount = Number.isFinite(moderation?.trustedMuteCount)
+      ? Math.max(0, Math.floor(moderation.trustedMuteCount))
+      : 0;
+
+    if (!trustedMuteCount && Array.isArray(moderation?.trustedMuters)) {
+      const muters = moderation.trustedMuters
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean);
+      trustedMuteCount = muters.length;
+    }
+
+    const trustedMuteDisplayNames = Array.isArray(moderation?.trustedMuterDisplayNames)
+      ? moderation.trustedMuterDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    const original =
+      moderation?.original && typeof moderation.original === "object"
+        ? moderation.original
+        : {};
+
+    const activeHidden = moderation?.hidden === true;
+    const originalHidden = original.hidden === true;
+    const hideReasonActive =
+      typeof moderation?.hideReason === "string" ? moderation.hideReason.trim() : "";
+    const hideBypassActive =
+      typeof moderation?.hideBypass === "string" ? moderation.hideBypass.trim() : "";
+    const originalHideReason =
+      typeof original.hideReason === "string" ? original.hideReason.trim() : "";
+    const originalHideBypass =
+      typeof original.hideBypass === "string" ? original.hideBypass.trim() : "";
+    const originalHideTriggered = original.hideTriggered === true;
+
+    const normalizeHideCounts = (input) => {
+      if (!input || typeof input !== "object") {
+        return null;
+      }
+      const normalized = {};
+      let hasValue = false;
+      if (Number.isFinite(input.trustedMuteCount)) {
+        normalized.trustedMuteCount = Math.max(0, Math.floor(input.trustedMuteCount));
+        hasValue = true;
+      }
+      if (Number.isFinite(input.trustedReportCount)) {
+        normalized.trustedReportCount = Math.max(0, Math.floor(input.trustedReportCount));
+        hasValue = true;
+      }
+      return hasValue ? normalized : null;
+    };
+
+    const baseHideCounts = {
+      trustedMuteCount,
+      trustedReportCount: trustedCount,
+    };
+
+    const activeHideCounts =
+      normalizeHideCounts(moderation?.hideCounts) ||
+      (activeHidden || hideReasonActive ? { ...baseHideCounts } : null);
+    const originalHideCounts =
+      normalizeHideCounts(original?.hideCounts) ||
+      (originalHideTriggered ? { ...baseHideCounts } : null);
+
+    const effectiveHideReason = hideReasonActive || originalHideReason;
+    const effectiveHideCounts = activeHideCounts || originalHideCounts;
+
+    const context = {
+      reportType,
+      friendlyType: reportType ? reportType.replace(/[_-]+/g, " ").trim() : "",
+      trustedCount,
+      reporterDisplayNames,
+      trustedMuted,
+      trustedMuteCount,
+      trustedMuteDisplayNames,
+      originalBlur: original.blurThumbnail === true,
+      originalBlockAutoplay: original.blockAutoplay === true,
+      activeBlur: moderation?.blurThumbnail === true,
+      activeBlockAutoplay: moderation?.blockAutoplay === true,
+      overrideActive: moderation?.viewerOverride?.showAnyway === true,
+      activeHidden,
+      originalHidden,
+      originalHideTriggered,
+      hideReason: hideReasonActive,
+      hideCounts: activeHideCounts,
+      hideBypass: hideBypassActive,
+      originalHideReason,
+      originalHideCounts,
+      originalHideBypass,
+      effectiveHideReason,
+      effectiveHideCounts,
+    };
+
+    context.shouldShow =
+      context.originalBlur ||
+      context.originalBlockAutoplay ||
+      context.trustedCount > 0 ||
+      context.trustedMuted ||
+      context.overrideActive ||
+      context.originalHidden ||
+      context.activeHidden ||
+      context.originalHideTriggered;
+
+    context.allowOverride =
+      context.originalBlur || context.originalBlockAutoplay || context.originalHidden;
+
+    return context;
+  }
+
+  buildModerationReasonText(context) {
+    if (!context) {
+      return "";
+    }
+
+    const reasons = [];
+
+    if (context.trustedMuted) {
+      const muteCount = Math.max(1, Number(context.trustedMuteCount) || 0);
+      const muteLabel = muteCount === 1 ? "trusted contact" : "trusted contacts";
+      reasons.push(`muted by ${muteCount === 1 ? "a" : muteCount} ${muteLabel}`);
+    }
+
+    const typeLabel = context.friendlyType || "this video";
+    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
+    if (reportCount > 0) {
+      const friendLabel = reportCount === 1 ? "friend" : "friends";
+      reasons.push(`${reportCount} ${friendLabel} reported ${typeLabel}`);
+    } else if (!context.trustedMuted) {
+      reasons.push(context.friendlyType ? `reports of ${typeLabel}` : "reports");
+    }
+
+    if (!reasons.length) {
+      return "";
+    }
+
+    const combined = reasons.join(" · ");
+    return combined.charAt(0).toUpperCase() + combined.slice(1);
+  }
+
+  buildHiddenSummaryLabel(context) {
+    if (!context) {
+      return "";
+    }
+
+    const reason = context.effectiveHideReason;
+    if (!reason) {
+      return "";
+    }
+
+    const countsSource =
+      context.effectiveHideCounts || context.originalHideCounts || context.hideCounts || null;
+    const getCount = (key, fallback) => {
+      if (countsSource && Number.isFinite(countsSource[key])) {
+        return Math.max(0, Number(countsSource[key]));
+      }
+      if (Number.isFinite(context[key])) {
+        return Math.max(0, Number(context[key]));
+      }
+      return Math.max(0, Number(fallback) || 0);
+    };
+
+    if (reason === "trusted-mute-hide") {
+      const count = getCount("trustedMuteCount", context.trustedMuteCount || 0);
+      if (count > 0) {
+        const label = count === 1 ? "trusted mute" : "trusted mutes";
+        return `${count} ${label}`;
+      }
+      return "trusted mute";
+    }
+
+    if (reason === "trusted-report-hide") {
+      const count = getCount("trustedReportCount", context.trustedCount || 0);
+      const type = typeof context.friendlyType === "string" ? context.friendlyType.trim() : "";
+      const normalizedType = type ? type.toLowerCase() : "";
+      if (count > 0) {
+        const label = count === 1 ? "report" : "reports";
+        if (normalizedType) {
+          return `${count} trusted ${normalizedType} ${label}`;
+        }
+        const base = count === 1 ? "trusted report" : "trusted reports";
+        return `${count} ${base}`;
+      }
+      if (normalizedType) {
+        return `trusted ${normalizedType} reports`;
+      }
+      return "trusted reports";
+    }
+
+    return "";
+  }
+
+  buildModerationBadgeText(context) {
+    if (!context) {
+      return "";
+    }
+
+    const hiddenLabel = this.buildHiddenSummaryLabel(context);
+    const reason = this.buildModerationReasonText(context);
+    if (context.overrideActive) {
+      if (hiddenLabel) {
+        return `Showing despite ${hiddenLabel}`;
+      }
+      if (reason) {
+        return `Showing despite ${reason}`;
+      }
+      return "Showing despite reports";
+    }
+
+    if (context.activeHidden || (context.originalHidden && !context.overrideActive)) {
+      if (hiddenLabel) {
+        return `Hidden · ${hiddenLabel}`;
+      }
+      return "Hidden";
+    }
+
+    const parts = [];
+    if (context.originalBlur) {
+      parts.push("Blurred");
+    }
+    if (context.originalBlockAutoplay) {
+      parts.push("Autoplay blocked");
+    }
+    if (context.trustedMuted && !context.originalBlur && !context.originalBlockAutoplay) {
+      parts.push(reason || "Muted by trusted contacts");
+    } else if (reason) {
+      parts.push(reason);
+    }
+
+    return parts.join(" · ");
+  }
+
+  createModerationOverrideButton() {
+    const button = this.createElement("button", {
+      classNames: [
+        "inline-flex",
+        "items-center",
+        "rounded-full",
+        "border",
+        "border-status-warning-border",
+        "px-3",
+        "py-1",
+        "text-2xs",
+        "font-semibold",
+        "uppercase",
+        "tracking-extra-wide",
+        "text-status-warning-on",
+        "bg-transparent",
+        "hover:bg-status-warning-surface",
+        "transition",
+        "duration-150",
+        "focus-visible:outline",
+        "focus-visible:outline-2",
+        "focus-visible:outline-offset-2",
+        "focus-visible:outline-status-warning-border",
+      ],
+      attrs: {
+        type: "button",
+        "data-moderation-action": "override",
+        "aria-pressed": "false",
+        "aria-describedby": this.getModerationBadgeId(),
+      },
+      textContent: "Show anyway",
+    });
+    button.addEventListener("click", this.boundShowAnywayHandler);
+    return button;
+  }
+
+  handleShowAnywayClick(event) {
+    if (event) {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      if (typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+    }
+
+    const button = this.moderationActionButton;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+
+    if (!this.callbacks.onModerationOverride) {
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    let result;
+    try {
+      result = this.callbacks.onModerationOverride({
+        event,
+        video: this.video,
+        card: this,
+      });
+    } catch (error) {
+      userLogger.warn("[VideoCard] onModerationOverride callback threw", error);
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      return;
+    }
+
+    Promise.resolve(result)
+      .then((handled) => {
+        if (handled === false) {
+          if (button) {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+          }
+          return;
+        }
+        this.refreshModerationUi();
+      })
+      .catch((error) => {
+        userLogger.warn("[VideoCard] Moderation override failed", error);
+        if (button) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      });
+  }
+
+  buildModerationBadge(context = this.getModerationContext()) {
+    if (!context.shouldShow) {
+      this.moderationBadgeEl = null;
+      this.moderationBadgeTextEl = null;
+      if (this.moderationActionButton) {
+        this.moderationActionButton.removeEventListener(
+          "click",
+          this.boundShowAnywayHandler,
+        );
+      }
+      this.moderationActionButton = null;
+      return null;
+    }
+
+    const badge = this.createElement("div", {
+      classNames: ["badge", "flex", "flex-wrap", "items-center", "gap-sm"],
+    });
+    badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
+    badge.dataset.moderationBadge = "true";
+    const hiddenActive = context.activeHidden && !context.overrideActive;
+    const state = context.overrideActive
+      ? "override"
+      : hiddenActive
+        ? "hidden"
+        : context.trustedMuted
+          ? "trusted-mute"
+          : "blocked";
+    badge.dataset.moderationState = state;
+    if (hiddenActive && context.effectiveHideReason) {
+      badge.dataset.moderationHideReason = context.effectiveHideReason;
+    }
+
+    const badgeId = this.getModerationBadgeId();
+    badge.id = badgeId;
+    badge.setAttribute("role", "status");
+    badge.setAttribute("aria-live", "polite");
+    badge.setAttribute("aria-atomic", "true");
+
+    const text = this.createElement("span", {
+      classNames: ["whitespace-nowrap"],
+      textContent: this.buildModerationBadgeText(context),
+    });
+    badge.appendChild(text);
+
+    const muteNames = Array.isArray(context.trustedMuteDisplayNames)
+      ? context.trustedMuteDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+    const reporterNames = Array.isArray(context.reporterDisplayNames)
+      ? context.reporterDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    const allNames = [...muteNames, ...reporterNames];
+    const uniqueNames = [];
+    const seenNameKeys = new Set();
+    for (const name of allNames) {
+      if (typeof name !== "string" || !name.trim()) {
+        continue;
+      }
+      const key = name.trim().toLowerCase();
+      if (seenNameKeys.has(key)) {
+        continue;
+      }
+      seenNameKeys.add(key);
+      uniqueNames.push(name.trim());
+    }
+
+    if (uniqueNames.length) {
+      const joined = uniqueNames.join(", ");
+      const hasMutedNames = muteNames.length > 0;
+      const hasReporterNames = reporterNames.length > 0;
+      const prefix = hasMutedNames && hasReporterNames ? "Muted/Reported by" : hasMutedNames ? "Muted by" : "Reported by";
+      badge.title = `${prefix} ${joined}`;
+      badge.setAttribute("aria-label", `${text.textContent}. ${prefix} ${joined}.`);
+    } else {
+      badge.removeAttribute("title");
+      badge.setAttribute("aria-label", `${text.textContent}.`);
+    }
+
+    this.moderationBadgeEl = badge;
+    this.moderationBadgeTextEl = text;
+
+    if (!context.overrideActive && context.allowOverride) {
+      const button = this.createModerationOverrideButton();
+      badge.appendChild(button);
+      this.moderationActionButton = button;
+    } else {
+      this.moderationActionButton = null;
+    }
+
+    return badge;
+  }
+
+  updateModerationBadge(context = this.getModerationContext()) {
+    const badge = this.moderationBadgeEl;
+    const hiddenActive = context.activeHidden && !context.overrideActive;
+
+    if (!context.shouldShow) {
+      if (badge && badge.parentElement) {
+        badge.parentElement.removeChild(badge);
+      }
+      if (this.moderationActionButton) {
+        this.moderationActionButton.removeEventListener(
+          "click",
+          this.boundShowAnywayHandler,
+        );
+      }
+      this.moderationBadgeEl = null;
+      this.moderationBadgeTextEl = null;
+      this.moderationActionButton = null;
+      if (this.hiddenSummaryEl && this.hiddenSummaryEl.parentElement === this.root) {
+        this.hiddenSummaryEl.remove();
+      }
+      this.updateModerationAria();
+      return;
+    }
+
+    if (!badge) {
+      const nextBadge = this.buildModerationBadge(context);
+      if (nextBadge) {
+        if (hiddenActive) {
+          const container = this.ensureHiddenSummaryContainer();
+          if (container) {
+            container.appendChild(nextBadge);
+          }
+        } else {
+          if (!this.badgesContainerEl) {
+            this.badgesContainerEl = this.createElement("div", {
+              classNames: ["flex", "flex-wrap", "items-center", "gap-sm"],
+            });
+            if (this.contentEl) {
+              if (
+                this.discussionCountEl &&
+                this.discussionCountEl.parentElement === this.contentEl
+              ) {
+                this.contentEl.insertBefore(
+                  this.badgesContainerEl,
+                  this.discussionCountEl,
+                );
+              } else {
+                this.contentEl.appendChild(this.badgesContainerEl);
+              }
+            }
+          }
+          this.badgesContainerEl.appendChild(nextBadge);
+        }
+      }
+      this.updateModerationAria();
+      return;
+    }
+
+    badge.dataset.variant = context.overrideActive ? "neutral" : "warning";
+    const state = context.overrideActive
+      ? "override"
+      : hiddenActive
+        ? "hidden"
+        : context.trustedMuted
+          ? "trusted-mute"
+          : "blocked";
+    badge.dataset.moderationState = state;
+    if (hiddenActive && context.effectiveHideReason) {
+      badge.dataset.moderationHideReason = context.effectiveHideReason;
+    } else if (badge.dataset.moderationHideReason) {
+      delete badge.dataset.moderationHideReason;
+    }
+
+    const textContent = this.buildModerationBadgeText(context);
+    if (this.moderationBadgeTextEl) {
+      this.moderationBadgeTextEl.textContent = textContent;
+    }
+
+    const muteNames = Array.isArray(context.trustedMuteDisplayNames)
+      ? context.trustedMuteDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+    const reporterNames = Array.isArray(context.reporterDisplayNames)
+      ? context.reporterDisplayNames
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    const allNames = [...muteNames, ...reporterNames];
+    const uniqueNames = [];
+    const seenNameKeys = new Set();
+    for (const name of allNames) {
+      if (typeof name !== "string" || !name.trim()) {
+        continue;
+      }
+      const key = name.trim().toLowerCase();
+      if (seenNameKeys.has(key)) {
+        continue;
+      }
+      seenNameKeys.add(key);
+      uniqueNames.push(name.trim());
+    }
+
+    if (uniqueNames.length) {
+      const joined = uniqueNames.join(", ");
+      const hasMutedNames = muteNames.length > 0;
+      const hasReporterNames = reporterNames.length > 0;
+      const prefix = hasMutedNames && hasReporterNames ? "Muted/Reported by" : hasMutedNames ? "Muted by" : "Reported by";
+      badge.title = `${prefix} ${joined}`;
+      badge.setAttribute("aria-label", `${textContent}. ${prefix} ${joined}.`);
+    } else {
+      badge.removeAttribute("title");
+      badge.setAttribute("aria-label", `${textContent}.`);
+    }
+
+    if (hiddenActive) {
+      const container = this.ensureHiddenSummaryContainer();
+      if (container && badge.parentElement !== container) {
+        if (badge.parentElement) {
+          badge.parentElement.removeChild(badge);
+        }
+        container.appendChild(badge);
+      }
+    } else if (this.badgesContainerEl) {
+      if (!this.badgesContainerEl.parentElement && this.contentEl) {
+        if (
+          this.discussionCountEl &&
+          this.discussionCountEl.parentElement === this.contentEl
+        ) {
+          this.contentEl.insertBefore(this.badgesContainerEl, this.discussionCountEl);
+        } else {
+          this.contentEl.appendChild(this.badgesContainerEl);
+        }
+      }
+      if (badge.parentElement !== this.badgesContainerEl) {
+        if (badge.parentElement) {
+          badge.parentElement.removeChild(badge);
+        }
+        this.badgesContainerEl.appendChild(badge);
+      }
+    }
+
+    if (context.overrideActive || !context.allowOverride) {
+      if (this.moderationActionButton) {
+        this.moderationActionButton.removeEventListener(
+          "click",
+          this.boundShowAnywayHandler,
+        );
+        this.moderationActionButton.remove();
+      }
+      this.moderationActionButton = null;
+    } else if (!this.moderationActionButton) {
+      const button = this.createModerationOverrideButton();
+      badge.appendChild(button);
+      this.moderationActionButton = button;
+    } else {
+      this.moderationActionButton.disabled = false;
+      this.moderationActionButton.removeAttribute("aria-busy");
+    }
+  }
+
+  ensureHiddenSummaryContainer() {
+    if (!this.root) {
+      return null;
+    }
+
+    if (!this.hiddenSummaryEl) {
+      this.hiddenSummaryEl = this.createElement("div", {
+        classNames: ["p-md", "bv-stack", "bv-stack--tight"],
+      });
+      this.hiddenSummaryEl.dataset.moderationHiddenContainer = "true";
+      this.hiddenSummaryEl.setAttribute("role", "group");
+      this.hiddenSummaryEl.setAttribute("aria-live", "polite");
+    }
+
+    const container = this.hiddenSummaryEl;
+    container.hidden = false;
+    container.removeAttribute("aria-hidden");
+
+    const referenceNode = this.anchorEl && this.anchorEl.parentElement === this.root ? this.anchorEl : this.root.firstChild;
+    if (referenceNode && referenceNode.parentElement === this.root) {
+      if (container.parentElement !== this.root || container.nextSibling !== referenceNode) {
+        this.root.insertBefore(container, referenceNode);
+      }
+    } else if (container.parentElement !== this.root) {
+      this.root.appendChild(container);
+    }
+
+    const badgeId = this.getModerationBadgeId();
+    if (badgeId) {
+      container.setAttribute("aria-labelledby", badgeId);
+    } else {
+      container.removeAttribute("aria-labelledby");
+    }
+
+    return container;
+  }
+
+  updateHiddenState(context = this.getModerationContext()) {
+    const hiddenActive = context.activeHidden && !context.overrideActive;
+    const container = this.hiddenSummaryEl;
+
+    if (hiddenActive) {
+      if (this.anchorEl) {
+        this.anchorEl.setAttribute("hidden", "");
+        this.anchorEl.setAttribute("aria-hidden", "true");
+      }
+      if (this.contentEl) {
+        this.contentEl.setAttribute("hidden", "");
+        this.contentEl.setAttribute("aria-hidden", "true");
+      }
+
+      const summaryContainer = this.ensureHiddenSummaryContainer();
+      if (summaryContainer) {
+        const description = this.buildModerationBadgeText(context);
+        if (description) {
+          summaryContainer.setAttribute("aria-label", description);
+        } else {
+          summaryContainer.removeAttribute("aria-label");
+        }
+      }
+    } else {
+      if (this.anchorEl) {
+        this.anchorEl.removeAttribute("hidden");
+        this.anchorEl.removeAttribute("aria-hidden");
+      }
+      if (this.contentEl) {
+        this.contentEl.removeAttribute("hidden");
+        this.contentEl.removeAttribute("aria-hidden");
+      }
+      if (container) {
+        container.hidden = true;
+        container.setAttribute("aria-hidden", "true");
+        container.removeAttribute("aria-labelledby");
+        container.removeAttribute("aria-label");
+        if (container.parentElement === this.root) {
+          this.root.removeChild(container);
+        }
+      }
+    }
+  }
+
+  updateModerationAria() {
+    const badgeId = this.moderationBadgeEl ? this.getModerationBadgeId() : "";
+    const elements = [this.anchorEl, this.titleEl].filter(Boolean);
+    elements.forEach((el) => {
+      if (!el || typeof el.getAttribute !== "function") {
+        return;
+      }
+      const attr = el.getAttribute("aria-describedby") || "";
+      const tokens = attr.split(/\s+/).filter(Boolean);
+      const filtered = tokens.filter((token) => token !== this.moderationBadgeId);
+      if (badgeId) {
+        filtered.push(badgeId);
+      }
+      if (filtered.length) {
+        el.setAttribute("aria-describedby", Array.from(new Set(filtered)).join(" "));
+      } else {
+        el.removeAttribute("aria-describedby");
+      }
+    });
+  }
+
+  refreshModerationUi() {
+    const context = this.getModerationContext();
+    this.applyModerationDatasets(context);
+    this.updateModerationBadge(context);
+    this.updateHiddenState(context);
+    this.updateModerationAria();
   }
 
   getCachedUrlHealthEntry() {
@@ -1054,41 +1764,35 @@ export class VideoCard {
     }
 
     const status =
-      typeof entry?.status === "string" && entry.status ? entry.status : "checking";
+      typeof entry?.status === "string" && entry.status
+        ? entry.status
+        : "checking";
+    const fallbackMessages = {
+      healthy: "✅ CDN",
+      offline: "❌ CDN",
+      unknown: "⚠️ CDN",
+      timeout: "⚠️ CDN timed out",
+      checking: "⏳ CDN"
+    };
     const message =
       typeof entry?.message === "string" && entry.message
         ? entry.message
-        : "Checking hosted URL…";
+        : fallbackMessages[status] || fallbackMessages.checking;
 
-    const hadMargin = badge.classList.contains("mt-3");
-    const baseClasses = [
-      "url-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "transition-colors",
-      "duration-200",
-    ];
-    if (hadMargin) {
-      baseClasses.unshift("mt-3");
-    }
-    badge.className = baseClasses.join(" ");
+    badge.className = ["badge", "url-health-badge"].join(" ");
 
-    const common = ["inline-flex", "items-center", "gap-1"];
-    const addClasses = (classes) => {
-      classes.forEach((cls) => badge.classList.add(cls));
+    const variantMap = {
+      healthy: "success",
+      offline: "critical",
+      unknown: "neutral",
+      timeout: "neutral",
+      checking: "neutral"
     };
-
-    if (status === "healthy") {
-      addClasses([...common, "bg-green-900", "text-green-200"]);
-    } else if (status === "offline") {
-      addClasses([...common, "bg-red-900", "text-red-200"]);
-    } else if (status === "unknown" || status === "timeout") {
-      addClasses([...common, "bg-amber-900", "text-amber-200"]);
-    } else {
-      addClasses([...common, "bg-gray-800", "text-gray-300"]);
+    const variant = variantMap[status];
+    if (variant) {
+      badge.dataset.variant = variant;
+    } else if (badge.dataset.variant) {
+      delete badge.dataset.variant;
     }
 
     badge.dataset.urlHealthState = status;
@@ -1103,74 +1807,66 @@ export class VideoCard {
     }
 
     const state =
-      typeof entry?.state === "string" && entry.state ? entry.state : "checking";
+      typeof entry?.state === "string" && entry.state
+        ? entry.state
+        : "checking";
     const peersValue = Number.isFinite(entry?.peers)
       ? Math.max(0, Number(entry.peers))
       : null;
-    const reason = typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
-    const text = typeof entry?.text === "string" && entry.text ? entry.text : null;
+    const reason =
+      typeof entry?.reason === "string" && entry.reason ? entry.reason : null;
+    const text =
+      typeof entry?.text === "string" && entry.text ? entry.text : null;
     const tooltip =
-      typeof entry?.tooltip === "string" && entry.tooltip ? entry.tooltip : null;
-    const role = entry?.role === "alert" || entry?.role === "status" ? entry.role : null;
+      typeof entry?.tooltip === "string" && entry.tooltip
+        ? entry.tooltip
+        : null;
+    const role =
+      entry?.role === "alert" || entry?.role === "status" ? entry.role : null;
     const ariaLive =
       entry?.ariaLive === "assertive" || entry?.ariaLive === "polite"
         ? entry.ariaLive
         : role === "alert"
-        ? "assertive"
-        : "polite";
+          ? "assertive"
+          : "polite";
 
-    const hadMargin = badge.classList.contains("mt-3");
-    const baseClasses = [
-      "torrent-health-badge",
-      "text-xs",
-      "font-semibold",
-      "px-2",
-      "py-1",
-      "rounded",
-      "transition-colors",
-      "duration-200",
-    ];
-    if (hadMargin) {
-      baseClasses.unshift("mt-3");
-    }
-    badge.className = baseClasses.join(" ");
-
-    const common = ["inline-flex", "items-center", "gap-1"];
-    const addClasses = (classes) => {
-      classes.forEach((cls) => badge.classList.add(cls));
-    };
-
-    if (state === "healthy") {
-      addClasses([...common, "bg-green-900", "text-green-200"]);
-    } else if (state === "unhealthy") {
-      addClasses([...common, "bg-red-900", "text-red-200"]);
-    } else {
-      addClasses([...common, "bg-gray-800", "text-gray-300"]);
-    }
+    badge.className = ["badge", "torrent-health-badge"].join(" ");
 
     const map = {
       healthy: {
         icon: "🟢",
         aria: "WebTorrent peers available",
+        variant: "success",
+        role: "status"
       },
       unhealthy: {
         icon: "🔴",
         aria: "WebTorrent peers unavailable",
+        variant: "critical",
+        role: "alert"
       },
       checking: {
         icon: "⏳",
         aria: "Checking WebTorrent peers",
+        variant: "neutral",
+        role: "status"
       },
       unknown: {
         icon: "⚪",
         aria: "WebTorrent status unknown",
-      },
+        variant: "neutral",
+        role: "status"
+      }
     };
 
     const descriptor = map[state] || map.unknown;
-    const peersText = state === "healthy" && peersValue > 0 ? ` (${peersValue})` : "";
+    if (descriptor.variant) {
+      badge.dataset.variant = descriptor.variant;
+    } else if (badge.dataset.variant) {
+      delete badge.dataset.variant;
+    }
     const iconPrefix = descriptor.icon ? `${descriptor.icon} ` : "";
-    const computedText = `${iconPrefix}WebTorrent${peersText}`;
+    const computedText = `${iconPrefix}WebTorrent`;
     badge.textContent = text || computedText;
 
     const tooltipValue =
@@ -1179,14 +1875,19 @@ export class VideoCard {
         ? descriptor.aria
         : this.buildTorrentTooltip({
             peers: peersValue,
-            checkedAt: Number.isFinite(entry?.checkedAt) ? entry.checkedAt : null,
-            reason,
+            checkedAt: Number.isFinite(entry?.checkedAt)
+              ? entry.checkedAt
+              : null,
+            reason
           }));
 
     badge.setAttribute("aria-label", tooltipValue);
     badge.setAttribute("title", tooltipValue);
     badge.setAttribute("aria-live", ariaLive);
-    badge.setAttribute("role", role || (state === "unhealthy" ? "alert" : "status"));
+    badge.setAttribute(
+      "role",
+      role || (state === "unhealthy" ? "alert" : "status")
+    );
 
     badge.dataset.streamHealthState = state;
     if (reason) {
@@ -1234,19 +1935,19 @@ export class VideoCard {
       : safeCount.toLocaleString();
 
     const container = this.createElement("div", {
-      classNames: ["flex", "items-center", "text-xs", "text-gray-500", "mt-3"],
+      classNames: ["flex", "items-center", "text-xs", "text-muted-strong"]
     });
     container.dataset.discussionCount = this.video.id;
     container.dataset.countState = "ready";
 
     const valueEl = this.createElement("span", {
-      textContent: displayValue,
+      textContent: displayValue
     });
     valueEl.dataset.discussionCountValue = "";
 
     const labelEl = this.createElement("span", {
       classNames: ["ml-1"],
-      textContent: "notes",
+      textContent: "notes"
     });
 
     container.appendChild(valueEl);
@@ -1255,6 +1956,38 @@ export class VideoCard {
     this.discussionCountEl = container;
 
     return container;
+  }
+
+  applyNsfwContext() {
+    if (!this.root) {
+      return;
+    }
+
+    if (!this.nsfwContext?.isNsfw) {
+      if (this.root.dataset.nsfwVisibility) {
+        delete this.root.dataset.nsfwVisibility;
+      }
+      if (this.root.dataset.alert) {
+        delete this.root.dataset.alert;
+      }
+      this.syncCardState();
+      return;
+    }
+
+    if (this.shouldMaskNsfwForOwner) {
+      this.root.dataset.nsfwVisibility = "owner-only";
+      this.root.dataset.alert = "nsfw-owner";
+      this.root.dataset.state = "critical";
+      return;
+    }
+
+    this.root.dataset.nsfwVisibility = this.nsfwContext.allowNsfw
+      ? "allowed"
+      : "hidden";
+    if (this.root.dataset.alert) {
+      delete this.root.dataset.alert;
+    }
+    this.syncCardState();
   }
 
   applyPointerDataset() {
@@ -1285,7 +2018,9 @@ export class VideoCard {
     if (!this.root) {
       return;
     }
-    this.root.dataset.ownerIsViewer = this.capabilities.canEdit ? "true" : "false";
+    this.root.dataset.ownerIsViewer = this.capabilities.canEdit
+      ? "true"
+      : "false";
     if (this.video.pubkey) {
       this.root.dataset.ownerPubkey = this.video.pubkey;
     }
@@ -1316,7 +2051,8 @@ export class VideoCard {
     const cachedStreamHealth = this.getCachedStreamHealthEntry();
     if (this.magnetProvided && this.magnetSupported) {
       const state =
-        typeof cachedStreamHealth?.state === "string" && cachedStreamHealth.state
+        typeof cachedStreamHealth?.state === "string" &&
+        cachedStreamHealth.state
           ? cachedStreamHealth.state
           : "checking";
       this.root.dataset.streamHealthState = state;
@@ -1352,6 +2088,111 @@ export class VideoCard {
       this.root.dataset.torrentSupported = "false";
     } else if (this.magnetProvided && this.magnetSupported) {
       this.root.dataset.torrentSupported = "true";
+    }
+
+    updateVideoCardSourceVisibility(this.root);
+  }
+
+  applyModerationDatasets(context = this.getModerationContext()) {
+    if (!this.root) {
+      return;
+    }
+
+    if (context.originalBlockAutoplay && !context.overrideActive) {
+      this.root.dataset.autoplayPolicy = "blocked";
+    } else if (this.root.dataset.autoplayPolicy) {
+      delete this.root.dataset.autoplayPolicy;
+    }
+
+    if (context.overrideActive) {
+      this.root.dataset.moderationOverride = "show-anyway";
+    } else if (this.root.dataset.moderationOverride) {
+      delete this.root.dataset.moderationOverride;
+    }
+
+    if (this.thumbnailEl && !this.shouldMaskNsfwForOwner) {
+      if (context.activeBlur) {
+        this.thumbnailEl.dataset.thumbnailState = "blurred";
+      } else if (this.thumbnailEl.dataset.thumbnailState === "blurred") {
+        delete this.thumbnailEl.dataset.thumbnailState;
+      }
+    }
+
+    const reportCount = Math.max(0, Number(context.trustedCount) || 0);
+    if (reportCount > 0) {
+      this.root.dataset.moderationReportCount = String(reportCount);
+      if (context.reportType) {
+        this.root.dataset.moderationReportType = context.reportType;
+      } else if (this.root.dataset.moderationReportType) {
+        delete this.root.dataset.moderationReportType;
+      }
+    } else {
+      if (this.root.dataset.moderationReportType) {
+        delete this.root.dataset.moderationReportType;
+      }
+      if (this.root.dataset.moderationReportCount) {
+        delete this.root.dataset.moderationReportCount;
+      }
+    }
+
+    if (context.trustedMuted) {
+      this.root.dataset.moderationTrustedMute = "true";
+      const muteCount = Math.max(0, Number(context.trustedMuteCount) || 0);
+      if (muteCount > 0) {
+        this.root.dataset.moderationTrustedMuteCount = String(muteCount);
+      } else if (this.root.dataset.moderationTrustedMuteCount) {
+        delete this.root.dataset.moderationTrustedMuteCount;
+      }
+    } else {
+      if (this.root.dataset.moderationTrustedMute) {
+        delete this.root.dataset.moderationTrustedMute;
+      }
+      if (this.root.dataset.moderationTrustedMuteCount) {
+        delete this.root.dataset.moderationTrustedMuteCount;
+      }
+    }
+
+    if (context.activeHidden && !context.overrideActive) {
+      this.root.dataset.moderationHidden = "true";
+      const reason = context.effectiveHideReason || context.hideReason;
+      if (reason) {
+        this.root.dataset.moderationHideReason = reason;
+      } else if (this.root.dataset.moderationHideReason) {
+        delete this.root.dataset.moderationHideReason;
+      }
+
+      const counts = context.hideCounts || context.effectiveHideCounts || null;
+      const muteCount = counts && Number.isFinite(counts.trustedMuteCount)
+        ? Math.max(0, Number(counts.trustedMuteCount))
+        : null;
+      const reportCountHide = counts && Number.isFinite(counts.trustedReportCount)
+        ? Math.max(0, Number(counts.trustedReportCount))
+        : null;
+
+      if (muteCount !== null) {
+        this.root.dataset.moderationHideTrustedMuteCount = String(muteCount);
+      } else if (this.root.dataset.moderationHideTrustedMuteCount) {
+        delete this.root.dataset.moderationHideTrustedMuteCount;
+      }
+
+      if (reportCountHide !== null) {
+        this.root.dataset.moderationHideTrustedReportCount = String(reportCountHide);
+      } else if (this.root.dataset.moderationHideTrustedReportCount) {
+        delete this.root.dataset.moderationHideTrustedReportCount;
+      }
+    } else {
+      if (this.root.dataset.moderationHidden) {
+        delete this.root.dataset.moderationHidden;
+      }
+      if (this.root.dataset.moderationHideReason) {
+        delete this.root.dataset.moderationHideReason;
+      }
+      if (this.root.dataset.moderationHideTrustedMuteCount) {
+        delete this.root.dataset.moderationHideTrustedMuteCount;
+      }
+      if (this.root.dataset.moderationHideTrustedReportCount) {
+        delete this.root.dataset.moderationHideTrustedReportCount;
+      }
     }
   }
 
@@ -1390,8 +2231,8 @@ export class VideoCard {
         const formatted = this.formatters.formatTimeAgo(normalized);
         return typeof formatted === "string" ? formatted : "";
       } catch (error) {
-        if (this.window?.console?.warn) {
-          this.window.console.warn(
+        if (this.window?.userLogger?.warn) {
+          this.window.userLogger.warn(
             "[VideoCard] formatTimeAgo formatter threw",
             error
           );
@@ -1437,7 +2278,8 @@ export class VideoCard {
         }
 
         const isMouseEvent =
-          typeof MouseEventCtor !== "undefined" && event instanceof MouseEventCtor;
+          typeof MouseEventCtor !== "undefined" &&
+          event instanceof MouseEventCtor;
         if (isMouseEvent) {
           const isPrimaryClick =
             typeof event.button !== "number" || event.button === 0;
@@ -1459,99 +2301,107 @@ export class VideoCard {
       });
     });
 
-    if (this.settingsButton && this.settingsDropdown) {
+    if (this.settingsButton) {
       this.settingsButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const willOpen = this.settingsDropdown.classList.contains("hidden");
+
+        const trigger = this.settingsButton;
+        const isExpanded =
+          typeof trigger?.getAttribute === "function" &&
+          trigger.getAttribute("aria-expanded") === "true";
+
         if (this.onRequestCloseAllMenus) {
-          this.onRequestCloseAllMenus(this);
-        } else {
-          this.closeSettingsMenu();
+          const options = { restoreFocus: false };
+          if (isExpanded) {
+            options.skipCard = this;
+            options.skipTrigger = trigger;
+          }
+          this.onRequestCloseAllMenus(options);
+        } else if (!isExpanded) {
+          this.closeMoreMenu({ restoreFocus: false });
+          this.closeSettingsMenu({ restoreFocus: false });
         }
-        if (willOpen) {
-          this.settingsDropdown.classList.remove("hidden");
-        }
-      });
-    }
 
-    if (this.editButton) {
-      this.editButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.closeSettingsMenu();
-        if (this.callbacks.onEdit) {
-          this.callbacks.onEdit({
+        if (isExpanded) {
+          this.closeMoreMenu({ restoreFocus: false });
+          this.closeSettingsMenu({ restoreFocus: false });
+          return;
+        }
+
+        this.closeMoreMenu({ restoreFocus: false });
+
+        if (this.callbacks.onRequestSettingsMenu) {
+          const detail = {
             event,
+            trigger,
             video: this.video,
-            index: this.index,
             card: this,
-          });
+            index: this.index,
+            capabilities: { ...this.capabilities },
+            designSystem: this.designSystem,
+          };
+          this.callbacks.onRequestSettingsMenu(detail);
         }
       });
     }
 
-    if (this.revertButton) {
-      this.revertButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.closeSettingsMenu();
-        if (this.callbacks.onRevert) {
-          this.callbacks.onRevert({
-            event,
-            video: this.video,
-            index: this.index,
-            card: this,
-          });
-        }
-      });
-    }
-
-    if (this.deleteButton) {
-      this.deleteButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        this.closeSettingsMenu();
-        if (this.callbacks.onDelete) {
-          this.callbacks.onDelete({
-            event,
-            video: this.video,
-            index: this.index,
-            card: this,
-          });
-        }
-      });
-    }
-
-    if (this.moreMenuButton && this.moreMenu) {
+    if (this.moreMenuButton) {
       this.moreMenuButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const willOpen = this.moreMenu.classList.contains("hidden");
-        if (this.onRequestCloseAllMenus) {
-          this.onRequestCloseAllMenus(this);
-        }
-        if (willOpen) {
-          this.moreMenu.classList.remove("hidden");
-          this.moreMenuButton.setAttribute("aria-expanded", "true");
-        }
-      });
 
-      const actionButtons = this.moreMenu.querySelectorAll(
-        "button[data-action]"
-      );
-      actionButtons.forEach((button) => {
-        button.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (this.callbacks.onMoreAction) {
-            const dataset = { ...button.dataset };
-            this.callbacks.onMoreAction({
-              event,
-              video: this.video,
-              card: this,
-              dataset,
-            });
+        const trigger = this.moreMenuButton;
+        const isExpanded =
+          typeof trigger?.getAttribute === "function" &&
+          trigger.getAttribute("aria-expanded") === "true";
+
+        if (this.onRequestCloseAllMenus) {
+          const options = { restoreFocus: false };
+          if (isExpanded) {
+            options.skipCard = this;
+            options.skipTrigger = trigger;
           }
-          this.closeMoreMenu();
-        });
+          this.onRequestCloseAllMenus(options);
+        }
+
+        if (isExpanded) {
+          this.closeSettingsMenu({ restoreFocus: false });
+          this.closeMoreMenu({ restoreFocus: false });
+          return;
+        }
+
+        this.closeSettingsMenu({ restoreFocus: false });
+
+        if (this.callbacks.onRequestMoreMenu) {
+          const actionForwarder = this.callbacks.onMoreAction
+            ? ({ action, dataset, event: actionEvent }) => {
+                const payload = {
+                  ...dataset,
+                  action: action || dataset?.action || "",
+                };
+                this.callbacks.onMoreAction({
+                  event: actionEvent,
+                  video: this.video,
+                  card: this,
+                  dataset: payload,
+                });
+              }
+            : null;
+
+          this.callbacks.onRequestMoreMenu({
+            event,
+            trigger,
+            video: this.video,
+            card: this,
+            pointerInfo: this.pointerInfo,
+            playbackUrl: this.playbackUrl,
+            playbackMagnet: this.playbackMagnet,
+            capabilities: { ...this.capabilities },
+            designSystem: this.designSystem,
+            onAction: actionForwarder,
+          });
+        }
       });
     }
 
@@ -1565,22 +2415,76 @@ export class VideoCard {
             event,
             video: this.video,
             card: this,
-            pubkey: this.video.pubkey || "",
+            pubkey: this.video.pubkey || ""
           });
         }
       });
     });
   }
 
-  applyClassListFromString(el, classString) {
-    if (!el || !classString) {
+  syncCardState() {
+    if (!this.root) {
       return;
     }
-    classString
-      .split(/\s+/)
-      .map((cls) => cls.trim())
-      .filter(Boolean)
-      .forEach((cls) => el.classList.add(cls));
+    if (this.cardState) {
+      this.root.dataset.state = this.cardState;
+      return;
+    }
+    if (this.root.dataset.state && !this.shouldMaskNsfwForOwner) {
+      delete this.root.dataset.state;
+    }
+  }
+
+  syncMotionState() {
+    if (!this.root) {
+      return;
+    }
+    if (this.motionState) {
+      this.root.dataset.motion = this.motionState;
+      return;
+    }
+    if (this.root.dataset.motion) {
+      delete this.root.dataset.motion;
+    }
+  }
+
+  handleSettingsMenuAction(action, { event = null } = {}) {
+    const normalized = typeof action === "string" ? action.trim() : "";
+    if (!normalized) {
+      return false;
+    }
+
+    if (normalized === "edit" && this.callbacks.onEdit) {
+      this.callbacks.onEdit({
+        event,
+        video: this.video,
+        index: this.index,
+        card: this,
+      });
+      return true;
+    }
+
+    if (normalized === "revert" && this.callbacks.onRevert) {
+      this.callbacks.onRevert({
+        event,
+        video: this.video,
+        index: this.index,
+        card: this,
+      });
+      return true;
+    }
+
+    if (normalized === "delete" && this.callbacks.onDelete) {
+      this.callbacks.onDelete({
+        event,
+        video: this.video,
+        index: this.index,
+        card: this,
+      });
+      return true;
+    }
+
+    return false;
   }
 
   createElement(tagName, { classNames = [], attrs = {}, textContent } = {}) {

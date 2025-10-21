@@ -2,18 +2,110 @@
 import {
   nostrClient,
   convertEventToVideo as sharedConvertEventToVideo,
+  requestDefaultExtensionPermissions,
+  DEFAULT_RELAY_URLS,
 } from "./nostr.js";
 import {
   buildSubscriptionListEvent,
-  SUBSCRIPTION_LIST_IDENTIFIER,
+  SUBSCRIPTION_LIST_IDENTIFIER
 } from "./nostrEventSchemas.js";
 import { getSidebarLoadingMarkup } from "./sidebarLoading.js";
 import {
   publishEventToRelays,
-  assertAnyRelayAccepted,
+  assertAnyRelayAccepted
 } from "./nostrPublish.js";
 import { getApplication } from "./applicationContext.js";
 import { VideoListView } from "./ui/views/VideoListView.js";
+import { ALLOW_NSFW_CONTENT } from "./config.js";
+import { devLogger, userLogger } from "./utils/logger.js";
+import moderationService from "./services/moderationService.js";
+import nostrService from "./services/nostrService.js";
+
+function normalizeHexPubkey(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed.toLowerCase() : "";
+}
+
+function extractEncryptionHints(event) {
+  if (!event || typeof event !== "object") {
+    return [];
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  const hints = [];
+
+  const pushUnique = (scheme) => {
+    if (!scheme || hints.includes(scheme)) {
+      return;
+    }
+    hints.push(scheme);
+  };
+
+  for (const tag of tags) {
+    if (!Array.isArray(tag) || tag.length < 2) {
+      continue;
+    }
+    const label = typeof tag[0] === "string" ? tag[0].trim().toLowerCase() : "";
+    if (label !== "encrypted" && label !== "encryption") {
+      continue;
+    }
+    const rawValue = typeof tag[1] === "string" ? tag[1] : "";
+    if (!rawValue) {
+      continue;
+    }
+    const parts = rawValue
+      .split(/[\s,]+/)
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean);
+    for (const part of parts) {
+      if (part.startsWith("nip44")) {
+        if (/^nip44(?:[_-]?v2|v2)/.test(part)) {
+          pushUnique("nip44_v2");
+        } else {
+          pushUnique("nip44");
+        }
+      } else if (part === "nip04" || part === "nip-04") {
+        pushUnique("nip04");
+      }
+    }
+  }
+
+  return hints;
+}
+
+function determineDecryptionOrder(event, availableSchemes) {
+  const available = Array.isArray(availableSchemes) ? availableSchemes : [];
+  const availableSet = new Set(available);
+  const prioritized = [];
+
+  const hints = extractEncryptionHints(event);
+  const aliasMap = {
+    nip04: ["nip04"],
+    nip44: ["nip44", "nip44_v2"],
+    nip44_v2: ["nip44_v2", "nip44"],
+  };
+
+  for (const hint of hints) {
+    const candidates = Array.isArray(aliasMap[hint]) ? aliasMap[hint] : [hint];
+    for (const candidate of candidates) {
+      if (availableSet.has(candidate) && !prioritized.includes(candidate)) {
+        prioritized.push(candidate);
+        break;
+      }
+    }
+  }
+
+  for (const fallback of ["nip04", "nip44", "nip44_v2"]) {
+    if (availableSet.has(fallback) && !prioritized.includes(fallback)) {
+      prioritized.push(fallback);
+    }
+  }
+
+  return prioritized.length ? prioritized : available;
+}
 
 const getApp = () => getApplication();
 
@@ -32,6 +124,12 @@ class SubscriptionsManager {
     this.lastRunOptions = null;
     this.lastResult = null;
     this.lastContainerId = null;
+    this.unsubscribeFromNostrUpdates = null;
+    this.pendingRefreshPromise = null;
+    this.scheduledRefreshDetail = null;
+    this.isRunningFeed = false;
+    this.hasRenderedOnce = false;
+    this.ensureNostrServiceListener();
   }
 
   /**
@@ -39,47 +137,79 @@ class SubscriptionsManager {
    */
   async loadSubscriptions(userPubkey) {
     if (!userPubkey) {
-      console.warn("[SubscriptionsManager] No pubkey => cannot load subs.");
+      userLogger.warn("[SubscriptionsManager] No pubkey => cannot load subs.");
       return;
     }
-    const activeSigner = nostrClient.getActiveSignerForPubkey(userPubkey);
-    const signerDecrypt =
-      activeSigner && typeof activeSigner.decrypt === "function"
-        ? activeSigner.decrypt
-        : null;
-    const extensionDecrypt =
-      window?.nostr?.nip04?.decrypt
-        ? window.nostr.nip04.decrypt.bind(window.nostr.nip04)
-        : null;
-    const decryptFn = signerDecrypt || extensionDecrypt;
-
-    if (!decryptFn) {
-      console.warn(
-        "[SubscriptionsManager] Decryption unavailable; treating subscription list as empty."
-      );
-      this.subscribedPubkeys.clear();
-      this.subsEventId = null;
-      this.loaded = true;
-      return;
-    }
-
     try {
+      const normalizedUserPubkey = normalizeHexPubkey(userPubkey) || userPubkey;
+      const sessionActorPubkey = normalizeHexPubkey(
+        nostrClient?.sessionActor?.pubkey,
+      );
+
+      const authorSet = new Set();
+      if (normalizedUserPubkey) {
+        authorSet.add(normalizedUserPubkey);
+      }
+      if (sessionActorPubkey) {
+        authorSet.add(sessionActorPubkey);
+      }
+
+      const authors = Array.from(authorSet);
+      if (!authors.length && userPubkey) {
+        authors.push(userPubkey);
+      }
+
       const filter = {
         kinds: [30002],
-        authors: [userPubkey],
+        authors,
         "#d": [SUBSCRIPTION_LIST_IDENTIFIER],
-        limit: 1,
+        limit: 1
       };
 
-      const events = [];
-      for (const url of nostrClient.relays) {
-        try {
-          const result = await nostrClient.pool.list([url], [filter]);
-          if (result && result.length) {
-            events.push(...result);
+      const relaySet = new Set();
+      const addRelayCandidates = (candidates) => {
+        if (!candidates) {
+          return;
+        }
+        const iterable = Array.isArray(candidates)
+          ? candidates
+          : candidates instanceof Set
+          ? Array.from(candidates)
+          : [];
+        for (const candidate of iterable) {
+          if (typeof candidate !== "string") {
+            continue;
           }
-        } catch (err) {
-          console.error(`[SubscriptionsManager] Relay error at ${url}`, err);
+          const trimmed = candidate.trim();
+          if (trimmed) {
+            relaySet.add(trimmed);
+          }
+        }
+      };
+
+      addRelayCandidates(nostrClient.readRelays);
+      addRelayCandidates(nostrClient.relays);
+      addRelayCandidates(DEFAULT_RELAY_URLS);
+
+      const relayUrls = Array.from(relaySet);
+      if (!relayUrls.length) {
+        devLogger.warn(
+          "[SubscriptionsManager] No relay URLs available while loading subscriptions.",
+        );
+      }
+
+      const relayPromises = relayUrls.map((url) =>
+        nostrClient.pool.list([url], [filter]).catch((err) => {
+          userLogger.error(`[SubscriptionsManager] Relay error at ${url}`, err);
+          return [];
+        }),
+      );
+
+      const settledResults = await Promise.allSettled(relayPromises);
+      const events = [];
+      for (const outcome of settledResults) {
+        if (outcome.status === "fulfilled" && Array.isArray(outcome.value) && outcome.value.length) {
+          events.push(...outcome.value);
         }
       }
 
@@ -95,74 +225,182 @@ class SubscriptionsManager {
       const newest = events[0];
       this.subsEventId = newest.id;
 
-      let decryptedStr = "";
-      try {
-        decryptedStr = await decryptFn(userPubkey, newest.content);
-      } catch (errDecrypt) {
-        console.error("[SubscriptionsManager] Decryption failed:", errDecrypt);
+      const permissionResult = await requestDefaultExtensionPermissions();
+      if (!permissionResult.ok) {
+        userLogger.warn(
+          "[SubscriptionsManager] Extension permissions denied while loading subscriptions; treating list as empty.",
+          permissionResult.error,
+        );
         this.subscribedPubkeys.clear();
         this.subsEventId = null;
         this.loaded = true;
         return;
       }
 
+      const decryptResult = await this.decryptSubscriptionEvent(newest, userPubkey);
+      if (!decryptResult.ok) {
+        userLogger.error(
+          "[SubscriptionsManager] Failed to decrypt subscription list:",
+          decryptResult.error,
+        );
+        this.subscribedPubkeys.clear();
+        this.subsEventId = null;
+        this.loaded = true;
+        return;
+      }
+
+      const decryptedStr = decryptResult.plaintext;
+
       const parsed = JSON.parse(decryptedStr);
       const subArray = Array.isArray(parsed.subPubkeys)
         ? parsed.subPubkeys
         : [];
-      this.subscribedPubkeys = new Set(subArray);
+      const normalized = subArray
+        .map((value) => normalizeHexPubkey(value))
+        .filter((value) => Boolean(value));
+      this.subscribedPubkeys = new Set(normalized);
 
       this.loaded = true;
     } catch (err) {
-      console.error("[SubscriptionsManager] Failed to load subs:", err);
+      userLogger.error("[SubscriptionsManager] Failed to load subs:", err);
     }
   }
 
   isSubscribed(channelHex) {
-    return this.subscribedPubkeys.has(channelHex);
+    const normalized = normalizeHexPubkey(channelHex);
+    if (!normalized) {
+      return false;
+    }
+    return this.subscribedPubkeys.has(normalized);
   }
 
   getSubscribedAuthors() {
     return Array.from(this.subscribedPubkeys);
   }
 
+  async decryptSubscriptionEvent(event, userPubkey) {
+    const ciphertext = typeof event?.content === "string" ? event.content : "";
+    if (!ciphertext) {
+      const error = new Error("Subscription event is missing ciphertext content.");
+      error.code = "subscriptions-empty-ciphertext";
+      return { ok: false, error };
+    }
+
+    const nostrApi =
+      typeof window !== "undefined" && window && window.nostr ? window.nostr : null;
+    if (!nostrApi) {
+      const error = new Error("Nostr extension is unavailable for decrypting subscriptions.");
+      error.code = "nostr-extension-missing";
+      return { ok: false, error };
+    }
+
+    const decryptors = new Map();
+    const registerDecryptor = (scheme, handler) => {
+      if (!scheme || typeof handler !== "function" || decryptors.has(scheme)) {
+        return;
+      }
+      decryptors.set(scheme, handler);
+    };
+
+    if (nostrApi.nip04 && typeof nostrApi.nip04.decrypt === "function") {
+      registerDecryptor("nip04", (payload) => nostrApi.nip04.decrypt(userPubkey, payload));
+    }
+
+    const nip44 = nostrApi.nip44 && typeof nostrApi.nip44 === "object" ? nostrApi.nip44 : null;
+    if (nip44) {
+      if (typeof nip44.decrypt === "function") {
+        registerDecryptor("nip44", (payload) => nip44.decrypt(userPubkey, payload));
+      }
+
+      const nip44v2 = nip44.v2 && typeof nip44.v2 === "object" ? nip44.v2 : null;
+      if (nip44v2 && typeof nip44v2.decrypt === "function") {
+        registerDecryptor("nip44_v2", (payload) => nip44v2.decrypt(userPubkey, payload));
+        if (!decryptors.has("nip44")) {
+          registerDecryptor("nip44", (payload) => nip44v2.decrypt(userPubkey, payload));
+        }
+      }
+    }
+
+    if (!decryptors.size) {
+      const error = new Error("No compatible decryption helpers are available.");
+      error.code = "subscriptions-no-decryptors";
+      return { ok: false, error };
+    }
+
+    const availableSchemes = Array.from(decryptors.keys());
+    const order = determineDecryptionOrder(event, availableSchemes);
+    const attemptErrors = [];
+
+    for (const scheme of order) {
+      const decryptFn = decryptors.get(scheme);
+      if (!decryptFn) {
+        continue;
+      }
+      try {
+        const plaintext = await decryptFn(ciphertext);
+        if (typeof plaintext !== "string") {
+          const error = new Error("Decryption returned a non-string payload.");
+          error.code = "subscriptions-invalid-plaintext";
+          attemptErrors.push({ scheme, error });
+          continue;
+        }
+        return { ok: true, plaintext, scheme };
+      } catch (error) {
+        attemptErrors.push({ scheme, error });
+      }
+    }
+
+    const error = new Error("Failed to decrypt subscription list with available schemes.");
+    error.code = "subscriptions-decrypt-failed";
+    if (attemptErrors.length) {
+      error.cause = attemptErrors;
+    }
+    return { ok: false, error, errors: attemptErrors };
+  }
+
   async addChannel(channelHex, userPubkey) {
+    const normalizedChannel = normalizeHexPubkey(channelHex);
     if (!userPubkey) {
       throw new Error("No user pubkey => cannot addChannel.");
     }
-    if (this.subscribedPubkeys.has(channelHex)) {
-      console.log("Already subscribed to", channelHex);
+    if (!normalizedChannel) {
+      devLogger.warn("Attempted to subscribe to invalid pubkey", channelHex);
       return;
     }
-    this.subscribedPubkeys.add(channelHex);
+    if (this.subscribedPubkeys.has(normalizedChannel)) {
+      devLogger.log("Already subscribed to", channelHex);
+      return;
+    }
+    this.subscribedPubkeys.add(normalizedChannel);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
-      if (typeof console !== "undefined") {
-        console.warn(
-          "[SubscriptionsManager] Failed to refresh after adding subscription:",
-          error
-        );
-      }
+      userLogger.warn(
+        "[SubscriptionsManager] Failed to refresh after adding subscription:",
+        error
+      );
     });
   }
 
   async removeChannel(channelHex, userPubkey) {
+    const normalizedChannel = normalizeHexPubkey(channelHex);
     if (!userPubkey) {
       throw new Error("No user pubkey => cannot removeChannel.");
     }
-    if (!this.subscribedPubkeys.has(channelHex)) {
-      console.log("Channel not found in subscription list:", channelHex);
+    if (!normalizedChannel) {
+      devLogger.warn("Attempted to remove invalid pubkey from subscriptions", channelHex);
       return;
     }
-    this.subscribedPubkeys.delete(channelHex);
+    if (!this.subscribedPubkeys.has(normalizedChannel)) {
+      devLogger.log("Channel not found in subscription list:", channelHex);
+      return;
+    }
+    this.subscribedPubkeys.delete(normalizedChannel);
     await this.publishSubscriptionList(userPubkey);
     this.refreshActiveFeed({ reason: "subscription-update" }).catch((error) => {
-      if (typeof console !== "undefined") {
-        console.warn(
-          "[SubscriptionsManager] Failed to refresh after removing subscription:",
-          error
-        );
-      }
+      userLogger.warn(
+        "[SubscriptionsManager] Failed to refresh after removing subscription:",
+        error
+      );
     });
   }
 
@@ -175,33 +413,18 @@ class SubscriptionsManager {
       throw new Error("No pubkey => cannot publish subscription list.");
     }
 
-    const activeSigner = nostrClient.getActiveSignerForPubkey(userPubkey);
-    const signerEncrypt =
-      activeSigner && typeof activeSigner.encrypt === "function"
-        ? activeSigner.encrypt
-        : null;
-    const extensionEncrypt =
-      window?.nostr?.nip04?.encrypt
-        ? window.nostr.nip04.encrypt.bind(window.nostr.nip04)
-        : null;
-    const encryptFn = signerEncrypt || extensionEncrypt;
-
-    if (!encryptFn) {
-      throw new Error("NIP-04 encryption is required to update subscriptions.");
-    }
-
-    const signerSign =
-      activeSigner && typeof activeSigner.signEvent === "function"
-        ? activeSigner.signEvent
-        : null;
-    const extensionSign =
-      typeof window?.nostr?.signEvent === "function"
-        ? window.nostr.signEvent.bind(window.nostr)
-        : null;
-    const signFn = signerSign || extensionSign;
-
-    if (!signFn) {
-      throw new Error("Nostr signing support is required to update subscriptions.");
+    const permissionResult = await requestDefaultExtensionPermissions();
+    if (!permissionResult.ok) {
+      userLogger.warn(
+        "[SubscriptionsManager] Extension permissions denied while updating subscriptions.",
+        permissionResult.error,
+      );
+      const error = new Error(
+        "The NIP-07 extension must allow encryption and signing before updating subscriptions.",
+      );
+      error.code = "extension-permission-denied";
+      error.cause = permissionResult.error;
+      throw error;
     }
 
     const plainObj = { subPubkeys: Array.from(this.subscribedPubkeys) };
@@ -217,42 +440,57 @@ class SubscriptionsManager {
      */
     let cipherText = "";
     try {
-      cipherText = await encryptFn(userPubkey, plainStr);
+      cipherText = await window.nostr.nip04.encrypt(userPubkey, plainStr);
     } catch (err) {
-      console.error("Encryption failed:", err);
+      userLogger.error("Encryption failed:", err);
       throw err;
     }
 
     const evt = buildSubscriptionListEvent({
       pubkey: userPubkey,
       created_at: Math.floor(Date.now() / 1000),
-      content: cipherText,
+      content: cipherText
     });
 
     let signedEvent;
     try {
-      signedEvent = await signFn(evt);
+      signedEvent = await window.nostr.signEvent(evt);
     } catch (signErr) {
-      console.error("Failed to sign subscription list:", signErr);
+      userLogger.error("Failed to sign subscription list:", signErr);
       throw signErr;
     }
 
+    const sanitizeRelayList = (candidate) =>
+      Array.isArray(candidate)
+        ? candidate
+            .map((url) => (typeof url === "string" ? url.trim() : ""))
+            .filter(Boolean)
+        : [];
+
+    const writeRelays = sanitizeRelayList(nostrClient.writeRelays);
+    const fallbackRelays = writeRelays.length
+      ? writeRelays
+      : sanitizeRelayList(nostrClient.relays);
+    const targetRelays = fallbackRelays.length
+      ? fallbackRelays
+      : Array.from(DEFAULT_RELAY_URLS);
+
     const publishResults = await publishEventToRelays(
       nostrClient.pool,
-      nostrClient.relays,
+      targetRelays,
       signedEvent
     );
 
     let publishSummary;
     try {
       publishSummary = assertAnyRelayAccepted(publishResults, {
-        context: "subscription list",
+        context: "subscription list"
       });
     } catch (publishError) {
       if (publishError?.relayFailures?.length) {
         publishError.relayFailures.forEach(
           ({ url, error: relayError, reason }) => {
-            console.error(
+            userLogger.error(
               `[SubscriptionsManager] Subscription list rejected by ${url}: ${reason}`,
               relayError || reason
             );
@@ -268,9 +506,9 @@ class SubscriptionsManager {
           relayError instanceof Error
             ? relayError.message
             : relayError
-            ? String(relayError)
-            : "publish failed";
-        console.warn(
+              ? String(relayError)
+              : "publish failed";
+        userLogger.warn(
           `[SubscriptionsManager] Subscription list not accepted by ${url}: ${reason}`,
           relayError
         );
@@ -279,7 +517,7 @@ class SubscriptionsManager {
 
     this.subsEventId = signedEvent.id;
     const acceptedUrls = publishSummary.accepted.map(({ url }) => url);
-    console.log(
+    devLogger.log(
       "Subscription list published, event id:",
       signedEvent.id,
       "accepted relays:",
@@ -297,9 +535,10 @@ class SubscriptionsManager {
     options = {}
   ) {
     const limitCandidate = Number(options?.limit);
-    const limit = Number.isFinite(limitCandidate) && limitCandidate > 0
-      ? Math.floor(limitCandidate)
-      : null;
+    const limit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
     const reason =
       typeof options?.reason === "string" && options.reason.trim()
         ? options.reason.trim()
@@ -311,15 +550,23 @@ class SubscriptionsManager {
     if (!userPubkey) {
       if (container) {
         container.innerHTML =
-          "<p class='text-gray-500'>Please log in first.</p>";
+          "<p class='text-muted-strong'>Please log in first.</p>";
       }
       this.lastRunOptions = null;
       this.lastResult = null;
+      this.hasRenderedOnce = Boolean(container);
       return null;
     }
 
     if (!this.loaded) {
-      await this.loadSubscriptions(userPubkey);
+      try {
+        await this.loadSubscriptions(userPubkey);
+      } catch (error) {
+        userLogger.error(
+          "[SubscriptionsManager] Failed to load subscriptions while rendering feed:",
+          error,
+        );
+      }
     }
 
     const channelHexes = this.getSubscribedAuthors();
@@ -327,20 +574,22 @@ class SubscriptionsManager {
       this.lastRunOptions = {
         actorPubkey: userPubkey,
         limit,
-        containerId,
+        containerId
       };
+      this.hasRenderedOnce = false;
       return null;
     }
 
     if (!channelHexes.length) {
       container.innerHTML =
-        "<p class='text-gray-500'>No subscriptions found.</p>";
+        "<p class='text-muted-strong'>No subscriptions found.</p>";
       this.lastRunOptions = {
         actorPubkey: userPubkey,
         limit,
-        containerId,
+        containerId
       };
       this.lastResult = { items: [], metadata: { reason: "no-subscriptions" } };
+      this.hasRenderedOnce = true;
       return this.lastResult;
     }
 
@@ -350,36 +599,71 @@ class SubscriptionsManager {
       actorPubkey: userPubkey,
       limit,
       containerId,
-      reason,
+      reason
     };
 
     this.ensureFeedRegistered();
+    this.ensureNostrServiceListener();
+
+    if (typeof nostrService?.awaitInitialLoad === "function") {
+      try {
+        await nostrService.awaitInitialLoad();
+      } catch (error) {
+        devLogger.warn(
+          "[SubscriptionsManager] Failed to await nostrService initial load:",
+          error
+        );
+      }
+    }
+
     const engine = this.getFeedEngine();
     if (!engine || typeof engine.run !== "function") {
       container.innerHTML =
-        "<p class='text-gray-500'>Subscriptions are unavailable right now.</p>";
+        "<p class='text-muted-strong'>Subscriptions are unavailable right now.</p>";
+      this.hasRenderedOnce = true;
       return null;
     }
 
     const app = getApp();
-    const runtime = this.buildFeedRuntime({ app, authors: channelHexes });
+    const runtime = this.buildFeedRuntime({
+      app,
+      authors: channelHexes,
+      limit,
+    });
     const runOptions = {
       actorPubkey: userPubkey,
       limit,
       runtime,
       hooks: {
         subscriptions: {
-          resolveAuthors: () => this.getSubscribedAuthors(),
-        },
-      },
+          resolveAuthors: () => this.getSubscribedAuthors()
+        }
+      }
     };
 
     try {
+      this.isRunningFeed = true;
       const result = await engine.run("subscriptions", runOptions);
 
       const videos = Array.isArray(result?.items)
         ? result.items.map((item) => item?.video).filter(Boolean)
         : [];
+
+      const metadata = result && typeof result.metadata === "object"
+        ? { ...result.metadata }
+        : {};
+
+      if (!metadata.feed) {
+        metadata.feed = "subscriptions";
+      }
+      if (limit) {
+        metadata.limit = limit;
+      }
+      if (reason) {
+        metadata.reason = reason;
+      }
+
+      const enrichedResult = { ...result, metadata };
 
       if (app?.videosMap instanceof Map) {
         videos.forEach((video) => {
@@ -389,19 +673,98 @@ class SubscriptionsManager {
         });
       }
 
-      this.lastResult = result;
-      this.renderSameGridStyle(result, containerId, { limit, reason });
-      return result;
+      this.lastResult = enrichedResult;
+      this.renderSameGridStyle(enrichedResult, containerId, {
+        limit,
+        reason,
+        emptyMessage:
+          "No playable subscription videos found yet. We'll keep watching for new posts.",
+      });
+      this.hasRenderedOnce = true;
+      return enrichedResult;
     } catch (error) {
-      console.error(
+      userLogger.error(
         "[SubscriptionsManager] Failed to run subscriptions feed:",
         error
       );
-      container.innerHTML =
-        "<p class='text-gray-500'>Unable to load subscriptions right now.</p>";
-      this.lastResult = null;
+      if (container && this.lastResult) {
+        const fallbackReason = reason
+          ? `${reason}:cached`
+          : "cached-result";
+        this.renderSameGridStyle(this.lastResult, containerId, {
+          limit,
+          reason: fallbackReason,
+        });
+      } else if (container) {
+        container.innerHTML =
+          "<p class='text-muted-strong'>Unable to load subscriptions right now.</p>";
+      }
+      this.hasRenderedOnce = Boolean(container);
+      return this.lastResult;
+    } finally {
+      this.isRunningFeed = false;
+      this.processScheduledRefresh();
+    }
+  }
+
+  ensureNostrServiceListener() {
+    if (this.unsubscribeFromNostrUpdates || typeof nostrService?.on !== "function") {
+      return;
+    }
+
+    this.unsubscribeFromNostrUpdates = nostrService.on(
+      "videos:updated",
+      (detail) => {
+        this.handleNostrVideosUpdated(detail);
+      }
+    );
+  }
+
+  handleNostrVideosUpdated(detail) {
+    if (!detail || !Array.isArray(detail.videos) || !detail.videos.length) {
+      return;
+    }
+
+    this.scheduledRefreshDetail = detail;
+    this.processScheduledRefresh();
+  }
+
+  processScheduledRefresh() {
+    if (!this.lastRunOptions || !this.hasRenderedOnce) {
       return null;
     }
+
+    if (!this.scheduledRefreshDetail) {
+      return null;
+    }
+
+    if (this.isRunningFeed || this.pendingRefreshPromise) {
+      return null;
+    }
+
+    const detail = this.scheduledRefreshDetail;
+    this.scheduledRefreshDetail = null;
+
+    const refreshReason =
+      typeof detail?.reason === "string" && detail.reason
+        ? `nostr:${detail.reason}`
+        : "nostr:update";
+
+    this.pendingRefreshPromise = this.refreshActiveFeed({ reason: refreshReason })
+      .catch((error) => {
+        devLogger.warn(
+          "[SubscriptionsManager] Failed to refresh after nostrService update:",
+          error
+        );
+      })
+      .finally(() => {
+        this.pendingRefreshPromise = null;
+        if (this.scheduledRefreshDetail) {
+          this.processScheduledRefresh();
+        }
+      });
+
+    return this.pendingRefreshPromise;
   }
 
   ensureFeedRegistered() {
@@ -410,7 +773,7 @@ class SubscriptionsManager {
       try {
         app.registerSubscriptionsFeed();
       } catch (error) {
-        console.warn(
+        userLogger.warn(
           "[SubscriptionsManager] Failed to register subscriptions feed:",
           error
         );
@@ -423,9 +786,11 @@ class SubscriptionsManager {
     return app?.feedEngine || null;
   }
 
-  buildFeedRuntime({ app, authors = [] } = {}) {
+  buildFeedRuntime({ app, authors = [], limit = null } = {}) {
     const normalizedAuthors = Array.isArray(authors)
-      ? authors.filter((author) => typeof author === "string" && author)
+      ? authors
+          .map((author) => normalizeHexPubkey(author))
+          .filter((author) => Boolean(author))
       : [];
 
     const blacklist =
@@ -438,11 +803,18 @@ class SubscriptionsManager {
         ? (pubkey) => app.isAuthorBlocked(pubkey)
         : () => false;
 
+    const limitCandidate = Number(limit);
+    const normalizedLimit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
+
     return {
       subscriptionAuthors: normalizedAuthors,
       authors: normalizedAuthors,
       blacklistedEventIds: blacklist,
       isAuthorBlocked,
+      limit: normalizedLimit
     };
   }
 
@@ -463,10 +835,15 @@ class SubscriptionsManager {
         ? { ...result.metadata }
         : {};
 
+    if (!metadata.feed) {
+      metadata.feed = "subscriptions";
+    }
+
     const limitCandidate = Number(options?.limit);
-    const limit = Number.isFinite(limitCandidate) && limitCandidate > 0
-      ? Math.floor(limitCandidate)
-      : null;
+    const limit =
+      Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : null;
 
     const limitedItems = limit ? items.slice(0, limit) : items;
     const videos = limitedItems
@@ -474,17 +851,22 @@ class SubscriptionsManager {
       .filter((video) => video && typeof video === "object");
 
     if (!videos.length) {
-      container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
-          No videos available yet.
-        </p>`;
+      const reasonDetail =
+        typeof metadata.reason === "string" && metadata.reason
+          ? metadata.reason
+          : "empty";
+      this.renderEmptyState(container, {
+        message: options?.emptyMessage,
+        reason: reasonDetail,
+        metadata,
+      });
       return;
     }
 
     const listView = this.getListView(container, app);
     if (!listView) {
       container.innerHTML = `
-        <p class="flex justify-center items-center h-full w-full text-center text-gray-500">
+        <p class="flex justify-center items-center h-full w-full text-center text-muted-strong">
           Unable to render subscriptions feed.
         </p>`;
       return;
@@ -498,7 +880,7 @@ class SubscriptionsManager {
 
     const enrichedMetadata = {
       ...metadata,
-      feed: "subscriptions",
+      feed: "subscriptions"
     };
     if (limit) {
       enrichedMetadata.limit = limit;
@@ -509,6 +891,39 @@ class SubscriptionsManager {
 
     listView.state.feedMetadata = enrichedMetadata;
     listView.render(videos, enrichedMetadata);
+  }
+
+  renderEmptyState(container, { message, reason, metadata } = {}) {
+    if (!container) {
+      return;
+    }
+
+    const copy =
+      typeof message === "string" && message.trim()
+        ? message.trim()
+        : "No playable subscription videos found yet. We'll keep watching for new posts.";
+
+    container.innerHTML = getSidebarLoadingMarkup(copy, { showSpinner: false });
+
+    if (this.subscriptionListView && this.subscriptionListView.state) {
+      const currentMetadata =
+        this.subscriptionListView.state.feedMetadata &&
+        typeof this.subscriptionListView.state.feedMetadata === "object"
+          ? { ...this.subscriptionListView.state.feedMetadata }
+          : {};
+
+      if (metadata && typeof metadata === "object") {
+        Object.assign(currentMetadata, metadata);
+      }
+
+      if (reason && typeof reason === "string") {
+        currentMetadata.reason = reason;
+      } else if (!currentMetadata.reason) {
+        currentMetadata.reason = "empty";
+      }
+
+      this.subscriptionListView.state.feedMetadata = currentMetadata;
+    }
   }
 
   getListView(container, app) {
@@ -525,7 +940,7 @@ class SubscriptionsManager {
 
     const badgeHelpers = baseView?.badgeHelpers || {
       attachHealthBadges: () => {},
-      attachUrlHealthBadges: () => {},
+      attachUrlHealthBadges: () => {}
     };
 
     const formatTimeAgo = (timestamp) => {
@@ -548,36 +963,36 @@ class SubscriptionsManager {
     const assets = baseView?.assets || {
       fallbackThumbnailSrc: "assets/jpg/video-thumbnail-fallback.jpg",
       unsupportedBtihMessage:
-        "This magnet link is missing a compatible BitTorrent v1 info hash.",
+        "This magnet link is missing a compatible BitTorrent v1 info hash."
     };
 
     const loadedThumbnails =
       app?.loadedThumbnails instanceof Map
         ? app.loadedThumbnails
         : baseView?.state?.loadedThumbnails instanceof Map
-        ? baseView.state.loadedThumbnails
-        : new Map();
+          ? baseView.state.loadedThumbnails
+          : new Map();
 
     const videosMap =
       app?.videosMap instanceof Map
         ? app.videosMap
         : baseView?.state?.videosMap instanceof Map
-        ? baseView.state.videosMap
-        : new Map();
+          ? baseView.state.videosMap
+          : new Map();
 
     const urlHealthCache =
       app?.urlHealthSnapshots instanceof Map
         ? app.urlHealthSnapshots
         : baseView?.state?.urlHealthByVideoId instanceof Map
-        ? baseView.state.urlHealthByVideoId
-        : new Map();
+          ? baseView.state.urlHealthByVideoId
+          : new Map();
 
     const streamHealthCache =
       app?.streamHealthSnapshots instanceof Map
         ? app.streamHealthSnapshots
         : baseView?.state?.streamHealthByVideoId instanceof Map
-        ? baseView.state.streamHealthByVideoId
-        : new Map();
+          ? baseView.state.streamHealthByVideoId
+          : new Map();
 
     const listViewConfig = {
       document: doc,
@@ -586,21 +1001,21 @@ class SubscriptionsManager {
       badgeHelpers,
       formatters: {
         formatTimeAgo,
-        formatViewCountLabel,
+        formatViewCountLabel
       },
       helpers: {
         escapeHtml: (value) => app?.escapeHTML?.(value) ?? value,
         isMagnetSupported: (magnet) =>
           app?.isMagnetUriSupported?.(magnet) ?? false,
         toLocaleString: (value) =>
-          typeof value === "number" ? value.toLocaleString() : value,
+          typeof value === "number" ? value.toLocaleString() : value
       },
       assets,
       state: {
         loadedThumbnails,
         videosMap,
         urlHealthByVideoId: urlHealthCache,
-        streamHealthByVideoId: streamHealthCache,
+        streamHealthByVideoId: streamHealthCache
       },
       utils: {
         dedupeVideos: (videos) => (Array.isArray(videos) ? [...videos] : []),
@@ -620,23 +1035,22 @@ class SubscriptionsManager {
           app?.canCurrentUserManageBlacklist?.() ?? false,
         canEditVideo: (video) => video?.pubkey === app?.pubkey,
         canDeleteVideo: (video) => video?.pubkey === app?.pubkey,
-        batchFetchProfiles: (authorSet) =>
-          app?.batchFetchProfiles?.(authorSet),
+        batchFetchProfiles: (authorSet) => app?.batchFetchProfiles?.(authorSet),
         bindThumbnailFallbacks: (target) =>
           app?.bindThumbnailFallbacks?.(target),
-        handleUrlHealthBadge: (payload) =>
-          app?.handleUrlHealthBadge?.(payload),
+        handleUrlHealthBadge: (payload) => app?.handleUrlHealthBadge?.(payload),
         refreshDiscussionCounts: (videosList, { container: root } = {}) =>
           app?.refreshVideoDiscussionCounts?.(videosList, {
-            videoListRoot: root || container || null,
+            videoListRoot: root || container || null
           }),
         ensureGlobalMoreMenuHandlers: () =>
           app?.ensureGlobalMoreMenuHandlers?.(),
-        closeAllMenus: () => app?.closeAllMoreMenus?.(),
+        closeAllMenus: (options) => app?.closeAllMoreMenus?.(options)
       },
       renderers: {
-        getLoadingMarkup: (message) => getSidebarLoadingMarkup(message),
+        getLoadingMarkup: (message) => getSidebarLoadingMarkup(message)
       },
+      allowNsfw: ALLOW_NSFW_CONTENT === true
     };
 
     const listView = new VideoListView(listViewConfig);
@@ -649,22 +1063,20 @@ class SubscriptionsManager {
         Promise.resolve(
           app?.playVideoByEventId?.(detail.videoId, {
             url: detail.url,
-            magnet: detail.magnet,
+            magnet: detail.magnet
           })
-        ).catch(
-          (error) => {
-            console.error(
-              "[SubscriptionsManager] Failed to play by event id:",
-              error
-            );
-          }
-        );
+        ).catch((error) => {
+          userLogger.error(
+            "[SubscriptionsManager] Failed to play by event id:",
+            error
+          );
+        });
         return;
       }
       Promise.resolve(
         app?.playVideoWithFallback?.({ url: detail.url, magnet: detail.magnet })
       ).catch((error) => {
-        console.error(
+        userLogger.error(
           "[SubscriptionsManager] Failed to start playback:",
           error
         );
@@ -677,7 +1089,7 @@ class SubscriptionsManager {
       }
       app?.handleEditVideo?.({
         eventId: video.id,
-        index: Number.isFinite(index) ? index : null,
+        index: Number.isFinite(index) ? index : null
       });
     });
 
@@ -687,7 +1099,7 @@ class SubscriptionsManager {
       }
       app?.handleRevertVideo?.({
         eventId: video.id,
-        index: Number.isFinite(index) ? index : null,
+        index: Number.isFinite(index) ? index : null
       });
     });
 
@@ -697,7 +1109,7 @@ class SubscriptionsManager {
       }
       app?.handleFullDeleteVideo?.({
         eventId: video.id,
-        index: Number.isFinite(index) ? index : null,
+        index: Number.isFinite(index) ? index : null
       });
     });
 
@@ -705,7 +1117,7 @@ class SubscriptionsManager {
       const detail = {
         ...(dataset || {}),
         author: dataset?.author || video?.pubkey || "",
-        context: dataset?.context || "subscriptions",
+        context: dataset?.context || "subscriptions"
       };
       app?.handleMoreMenuAction?.("blacklist-author", detail);
     });
@@ -715,11 +1127,8 @@ class SubscriptionsManager {
       const dataset = {
         ...(detail.dataset || {}),
         eventId:
-          detail.eventId ||
-          detail.dataset?.eventId ||
-          detail.video?.id ||
-          "",
-        context: detail.dataset?.context || "subscriptions",
+          detail.eventId || detail.dataset?.eventId || detail.video?.id || "",
+        context: detail.dataset?.context || "subscriptions"
       };
       app?.handleMoreMenuAction?.(detail.action || "copy-link", dataset);
     });
@@ -729,7 +1138,7 @@ class SubscriptionsManager {
       const dataset = {
         ...(detail.dataset || {}),
         eventId: detail.dataset?.eventId || detail.video?.id || "",
-        context: detail.dataset?.context || "subscriptions",
+        context: detail.dataset?.context || "subscriptions"
       };
       app?.handleMoreMenuAction?.(detail.action, dataset);
     });
@@ -753,16 +1162,26 @@ class SubscriptionsManager {
         ? options.reason.trim()
         : this.lastRunOptions.reason;
 
+    if (typeof moderationService?.awaitUserBlockRefresh === "function") {
+      try {
+        await moderationService.awaitUserBlockRefresh();
+      } catch (error) {
+        devLogger.warn(
+          "[SubscriptionsManager] Failed to sync moderation before refreshing feed:",
+          error,
+        );
+      }
+    }
+
     return this.showSubscriptionVideos(actorPubkey, containerId, {
       limit,
-      reason,
+      reason
     });
   }
 
   convertEventToVideo(evt) {
     return sharedConvertEventToVideo(evt);
   }
-
 }
 
 export const subscriptions = new SubscriptionsManager();

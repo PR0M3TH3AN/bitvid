@@ -3,133 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <title>bitvid Feature Request Form</title>
+    <script type="module" src="./theme-sync.js"></script>
     <!-- Link to your main stylesheet -->
-    <link rel="stylesheet" href="../../css/style.css?v=2024.10.29" />
-    <style>
-      /* Override for form page to match modal field styling */
-
-      /* Remove width constraints from body so our container can be full width */
-      body {
-        background-color: transparent;
-        color: #fff;
-        font-family: system-ui, -apple-system, sans-serif;
-        margin: 20px;
-      }
-
-      /* Full-width container */
-      .container {
-        width: 100%;
-        max-width: 100%;
-        margin: 0;
-        padding: 0;
-      }
-
-      /* Card-like container for the form */
-      .form-container {
-        background-color: #111827;
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: var(--shadow-md);
-      }
-
-      h1,
-      h2 {
-        color: #fff;
-      }
-
-      /* Labels */
-      label {
-        display: block;
-        margin-top: 1em;
-        font-weight: bold;
-        color: #e5e7eb;
-      }
-
-      /* Input, textarea, and select styling */
-      input,
-      textarea,
-      select {
-        width: 100%;
-        margin-bottom: 0.75em;
-        background-color: #1f2937;
-        color: #f3f4f6;
-        border: 1px solid #374151;
-        padding: 0.5em;
-        border-radius: 0.375rem;
-        box-sizing: border-box;
-      }
-
-      input:focus,
-      textarea:focus,
-      select:focus {
-        border-color: #3b82f6;
-        outline: none;
-        box-shadow: 0 0 0 1px #3b82f6;
-      }
-
-      /* Checkbox group styling */
-      .checkbox-group label {
-        display: inline-block;
-        margin-right: 1rem;
-        font-weight: normal;
-      }
-
-      /* Button styling */
-      button {
-        padding: 0.5em 1em;
-        background: #3b82f6;
-        color: #fff;
-        border: none;
-        border-radius: 0.375rem;
-        cursor: pointer;
-      }
-
-      /* Status log area */
-      #status {
-        margin-top: 1em;
-        padding: 0.5em;
-        background: #111827;
-        white-space: pre-wrap;
-        min-height: 80px;
-        border-radius: 0.25rem;
-      }
-      .status-line {
-        margin: 0.25em 0;
-      }
-      .error {
-        color: #f87171;
-      }
-      .success {
-        color: #3b82f6;
-      }
-      .warn {
-        color: #facc15;
-      }
-
-      /* Custom Scrollbar styling */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: rgba(255, 255, 255, 0.1);
-      }
-      ::-webkit-scrollbar-thumb {
-        background-color: rgba(255, 255, 255, 0.3);
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background-color: rgba(255, 255, 255, 0.4);
-      }
-      * {
-        scrollbar-width: thin;
-        scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
-      }
-    </style>
+    <link rel="stylesheet" href="../../css/tailwind.generated.css" />
     <!-- Load nostr‑tools v2.10.4 -->
     <script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/lib/nostr.bundle.min.js"></script>
   </head>
-  <body>
+  <body class="iframe-form" data-ds="new">
     <div class="container">
       <div class="form-container">
         <p>
@@ -142,6 +22,7 @@
           <h2>1. User Information</h2>
           <label for="userNpub">Nostr Public Key (npub) (optional):</label>
           <input
+            class="form-control"
             type="text"
             id="userNpub"
             placeholder="Enter your npub (optional)"
@@ -149,15 +30,26 @@
           <p>Are you a (check all that apply):</p>
           <div class="checkbox-group">
             <label
-              ><input type="checkbox" name="userRole" value="Viewer" />
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="userRole"
+                value="Viewer"
+              />
               Viewer</label
             >
             <label
-              ><input type="checkbox" name="userRole" value="Content Creator" />
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="userRole"
+                value="Content Creator"
+              />
               Content Creator</label
             >
             <label
               ><input
+                class="checkbox"
                 type="checkbox"
                 name="userRole"
                 value="Developer/Contributor"
@@ -170,6 +62,7 @@
           <h2>2. Feature Request Details</h2>
           <label for="featureName">Feature Name:</label>
           <input
+            class="form-control"
             type="text"
             id="featureName"
             placeholder="Short, descriptive title"
@@ -177,18 +70,21 @@
           />
           <label for="featureDescription">Describe the feature:</label>
           <textarea
+            class="textarea"
             id="featureDescription"
             rows="3"
             placeholder="Explain in detail what the feature does and how it works"
           ></textarea>
           <label for="featureImportance">Why is this feature important?</label>
           <textarea
+            class="textarea"
             id="featureImportance"
             rows="2"
             placeholder="Describe how this will improve the platform and benefit users"
           ></textarea>
           <label for="beneficiary">Who would benefit from this feature?</label>
           <input
+            class="form-control"
             type="text"
             id="beneficiary"
             placeholder="e.g., Content Creators, Viewers, Both"
@@ -200,12 +96,14 @@
             >Are there existing platforms that have this feature?</label
           >
           <textarea
+            class="textarea"
             id="existingPlatforms"
             rows="2"
             placeholder="Provide examples if applicable"
           ></textarea>
           <label for="mockups">Do you have any mockups or examples?</label>
           <textarea
+            class="textarea"
             id="mockups"
             rows="2"
             placeholder="Links, screenshots, or diagrams"
@@ -214,7 +112,7 @@
             >Would you be willing to help test this feature if
             implemented?</label
           >
-          <select id="willingToTest">
+          <select class="select" id="willingToTest">
             <option value="">Select an option</option>
             <option value="Yes">Yes</option>
             <option value="No">No</option>
@@ -225,15 +123,31 @@
           <p>How urgent is this feature?</p>
           <div class="checkbox-group">
             <label
-              ><input type="checkbox" name="featurePriority" value="High" />
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="featurePriority"
+                value="High"
+              />
               High (Essential for platform success)</label
             >
             <label
-              ><input type="checkbox" name="featurePriority" value="Medium" />
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="featurePriority"
+                value="Medium"
+              />
               Medium (Would improve experience significantly)</label
             >
             <label
-              ><input type="checkbox" name="featurePriority" value="Low" /> Low
+              ><input
+                class="checkbox"
+                type="checkbox"
+                name="featurePriority"
+                value="Low"
+              />
+              Low
               (Nice to have, but not urgent)</label
             >
           </div>
@@ -241,17 +155,28 @@
             >Does this feature require technical expertise to implement?</label
           >
           <textarea
+            class="textarea"
             id="techChallenges"
             rows="2"
             placeholder="Describe any dependencies or challenges"
           ></textarea>
 
-          <button type="submit">Submit Feature Request</button>
+          <button class="btn" type="submit">Submit Feature Request</button>
         </form>
         <div id="status"></div>
       </div>
     </div>
     <script>
+      // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
+      const noopLogger = {
+        log: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      };
+      const dev = window.bitvidLogger?.dev || noopLogger;
+      const user = window.bitvidLogger?.user || noopLogger;
+
       document.addEventListener("DOMContentLoaded", () => {
         // Logging function
         function log(msg, type = "info") {
@@ -262,7 +187,18 @@
           if (type === "warn") div.classList.add("warn");
           div.textContent = msg;
           document.getElementById("status").appendChild(div);
-          console.log(`[${type.toUpperCase()}] ${msg}`);
+          const formatted = `[${type.toUpperCase()}] ${msg}`;
+          if (type === "error") {
+            user.error(formatted);
+          } else if (type === "warn") {
+            user.warn(formatted);
+          } else if (type === "success") {
+            user.log(formatted);
+          } else if (type === "info") {
+            dev.info(formatted);
+          } else {
+            dev.log(formatted);
+          }
         }
         function clear() {
           document.getElementById("status").innerHTML = "";
@@ -465,10 +401,11 @@ For further discussions, reach out through bitvid’s Nostr support channels.
               );
             } catch (err) {
               log("Error: " + err.message, "error");
-              console.error(err);
+              user.error(err);
             }
           });
       });
     </script>
+    <div id="uiOverlay" data-overlay-root aria-hidden="true"></div>
   </body>
 </html>

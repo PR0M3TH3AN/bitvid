@@ -1,15 +1,25 @@
 // js/config.js
 
+import { userLogger } from "./utils/logger.js";
 import {
+  IS_DEV_MODE,
+  IS_LOCKDOWN_MODE,
   ADMIN_SUPER_NPUB,
   ADMIN_DM_IMAGE_URL,
   BITVID_WEBSITE_URL,
+  BLOG_URL,
+  COMMUNITY_URL,
+  NOSTR_URL,
+  GITHUB_URL,
+  BETA_URL,
+  DNS_URL,
   MAX_WALLET_DEFAULT_ZAP,
   PLATFORM_FEE_PERCENT,
   PLATFORM_LUD16_OVERRIDE,
   DEFAULT_RELAY_URLS_OVERRIDE,
   ADMIN_WHITELIST_MODE_STORAGE_KEY,
   DEFAULT_WHITELIST_MODE_ENABLED,
+  ALLOW_NSFW_CONTENT,
   WATCH_HISTORY_KIND,
   WATCH_HISTORY_LIST_IDENTIFIER,
   WATCH_HISTORY_LEGACY_LIST_IDENTIFIERS,
@@ -25,7 +35,16 @@ import {
   ENSURE_PRESENCE_REBROADCAST_COOLDOWN_SECONDS,
 } from "../config/instance-config.js";
 
-export const isDevMode = true; // Set to false for production
+export const isDevMode = Boolean(IS_DEV_MODE);
+export { IS_DEV_MODE };
+
+export const isLockdownMode = Boolean(IS_LOCKDOWN_MODE);
+export { IS_LOCKDOWN_MODE };
+
+if (typeof window !== "undefined") {
+  window.__BITVID_DEV_MODE__ = isDevMode;
+  window.__BITVID_LOCKDOWN_MODE__ = isLockdownMode;
+}
 
 // -----------------------------------------------------------------------------
 // Admin governance — production defaults rely on remote Nostr lists
@@ -35,12 +54,21 @@ export const ADMIN_LIST_MODE = "nostr";
 export { ADMIN_SUPER_NPUB };
 export { ADMIN_DM_IMAGE_URL };
 export { BITVID_WEBSITE_URL };
+export { BLOG_URL };
+export { COMMUNITY_URL };
+export { NOSTR_URL };
+export { GITHUB_URL };
+export { BETA_URL };
+export { DNS_URL };
 export { MAX_WALLET_DEFAULT_ZAP };
 export { PLATFORM_FEE_PERCENT };
 export { PLATFORM_LUD16_OVERRIDE };
 export { DEFAULT_RELAY_URLS_OVERRIDE };
 export const ADMIN_EDITORS_NPUBS = []; // Default moderators (optional)
 export const ADMIN_LIST_NAMESPACE = "bitvid:admin"; // Reserved for Nostr lists
+export const ADMIN_COMMUNITY_BLACKLIST_SOURCES = "community:blacklist:sources";
+export const ADMIN_COMMUNITY_BLACKLIST_PREFIX = "community:blacklist";
+export { ALLOW_NSFW_CONTENT };
 
 const WHITELIST_MODE_KEY = ADMIN_WHITELIST_MODE_STORAGE_KEY;
 const DEFAULT_WHITELIST_ENABLED = DEFAULT_WHITELIST_MODE_ENABLED;
@@ -53,7 +81,7 @@ export function getWhitelistMode() {
     }
     return raw === "true";
   } catch (error) {
-    console.warn("Failed to read whitelist mode from storage:", error);
+    userLogger.warn("Failed to read whitelist mode from storage:", error);
     return DEFAULT_WHITELIST_ENABLED;
   }
 }
@@ -62,7 +90,7 @@ export function setWhitelistMode(enabled) {
   try {
     localStorage.setItem(WHITELIST_MODE_KEY, enabled ? "true" : "false");
   } catch (error) {
-    console.warn("Failed to persist whitelist mode to storage:", error);
+    userLogger.warn("Failed to persist whitelist mode to storage:", error);
   }
 }
 

@@ -1,67 +1,71 @@
 <div
   id="loginModal"
-  class="fixed inset-0 z-50 hidden"
-  style="background: transparent"
+  class="bv-modal hidden items-start justify-center"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="loginModalTitle"
+  aria-describedby="loginModalDescription"
+  data-ds="new"
 >
-  <!-- Dark overlay with blur (unchanged) -->
-  <div
-    class="absolute inset-0 z-10"
-    style="
-      background-color: rgba(0, 0, 0, 0.9);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    "
-  ></div>
+  <div class="bv-modal-backdrop" data-dismiss></div>
 
-  <!-- Outer container matching video modal's flex layout & wide sizing -->
-  <div
-    class="modal-container relative h-full w-full flex items-start justify-center overflow-y-auto z-20"
-  >
-    <div
-      class="modal-content bg-gray-900 w-full max-w-[90%] lg:max-w-6xl my-0 rounded-lg overflow-hidden relative"
-    >
-      <!-- Header with the special exit button (unchanged) -->
-      <div
-        class="sticky top-0 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
+  <div class="modal-sheet max-h-modal-shell overflow-hidden" tabindex="-1">
+    <!-- Header with the special exit button (unchanged) -->
+    <div class="modal-header">
+      <h2 id="loginModalTitle" class="text-xl font-bold text-text">
+        Login Options
+      </h2>
+      <button
+        id="closeLoginModal"
+        class="modal-close"
       >
-        <h2 class="text-xl font-bold text-white">Login Options</h2>
-        <button
-          id="closeLoginModal"
-          class="flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 transition-all duration-200 backdrop-blur focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-blue-500"
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-6 h-6 text-gray-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      </button>
+    </div>
 
-      <!-- Body with buttons (unchanged) -->
-      <div class="p-6 space-y-4">
-        <!-- Application Form button -->
-        <button
-          id="openApplicationModal"
-          class="w-full bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-        >
-          Application Form
-        </button>
+    <!-- Body with buttons (unchanged) -->
+    <div id="loginModalDescription" class="modal-body space-y-4 overflow-y-auto">
+      <!-- Application Form button -->
+      <button
+        id="openApplicationModal"
+        class="btn w-full"
+        type="button"
+      >
+        Application Form
+      </button>
 
-        <!-- Simple horizontal rule -->
-        <div class="my-2 border-t border-gray-700"></div>
+      <!-- Simple horizontal rule -->
+      <div class="my-2 border-t border-border/60"></div>
 
-        <!-- Login options injected by controller -->
-        <div data-login-options class="space-y-3"></div>
-      </div>
+      <!-- Existing login buttons -->
+      <button
+        id="loginNIP07"
+        class="btn w-full"
+        type="button"
+      >
+        Login with Extension (NIP-07)
+      </button>
+      <button
+        id="loginNSEC"
+        class="btn-ghost w-full"
+        disabled
+        type="button"
+      >
+        Login with NSEC (Coming Soon)
+      </button>
     </div>
   </div>
 </div>

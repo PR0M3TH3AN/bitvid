@@ -1,47 +1,75 @@
 <!-- views/roadmap.html -->
-<section class="mb-8">
-  <!-- White card, dark text to override global site color -->
-  <div class="bg-white p-6 rounded-lg shadow-md text-gray-900">
-    <h2 class="text-2xl font-bold mb-4 text-gray-700">Roadmap</h2>
-
-    <!-- .markdown-body uses your markdown.css rules for headings, etc. -->
-    <div id="markdown-container" class="markdown-body">
-      <p class="text-gray-500">Loading content...</p>
+<section class="bv-stack" data-ds="new" aria-labelledby="roadmapHeading">
+  <article class="card p-lg">
+    <div class="bv-stack bv-stack--tight">
+      <h2 id="roadmapHeading" class="text-2xl font-semibold text-text-strong">
+        Roadmap
+      </h2>
+      <div id="markdown-container" class="markdown-prose">
+        <p class="text-muted-strong">Loading content...</p>
+      </div>
     </div>
-  </div>
+  </article>
 </section>
 
 <script>
-  (async () => {
-    try {
-      // Fetch your roadmap markdown
-      const response = await fetch("content/roadmap.md");
-      if (!response.ok) {
-        throw new Error("Failed to load roadmap.md");
-      }
-      const markdownText = await response.text();
+  (() => {
+    // Provide no-op fallback loggers so embeds stay functional if bitvidLogger is unavailable.
+    const noopLogger = {
+      log: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    };
+    const dev = window.bitvidLogger?.dev || noopLogger;
+    const user = window.bitvidLogger?.user || noopLogger;
 
-      // Convert markdown to HTML (marked must be globally available)
-      const html = marked.parse(markdownText);
+    const loadMarkdown = async () => {
+      try {
+        // Fetch your roadmap markdown
+        const response = await fetch("content/roadmap.md");
+        if (!response.ok) {
+          throw new Error("Failed to load roadmap.md");
+        }
+        const markdownText = await response.text();
 
-      // Insert into the container
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = html;
-      }
+        // Convert markdown to HTML (marked must be globally available)
+        const html = marked.parse(markdownText);
 
-      // Optional: highlight code blocks if highlight.js is globally available
-      document.querySelectorAll("pre code").forEach((block) => {
-        hljs.highlightBlock(block);
-      });
-    } catch (err) {
-      console.error("Error loading roadmap:", err);
-      const container = document.getElementById("markdown-container");
-      if (container) {
-        container.innerHTML = `
-          <p class="text-red-500">Error loading content. Please try again later.</p>
-        `;
+        // Insert into the container
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = html;
+
+          const highlighter = window.hljs;
+          const highlight =
+            highlighter && typeof highlighter.highlightElement === "function"
+              ? (block) => highlighter.highlightElement(block)
+              : highlighter && typeof highlighter.highlightBlock === "function"
+                ? (block) => highlighter.highlightBlock(block)
+                : null;
+
+          if (highlight) {
+            container.querySelectorAll("pre code").forEach((block) => {
+              try {
+                highlight(block);
+              } catch (highlightError) {
+                dev.warn("Failed to highlight code block.", highlightError);
+              }
+            });
+          }
+        }
+      } catch (err) {
+        user.error("Error loading roadmap:", err);
+        const container = document.getElementById("markdown-container");
+        if (container) {
+          container.innerHTML = `
+            <p class="text-critical-strong">Error loading content. Please try again later.</p>
+          `;
+        }
       }
-    }
+    };
+
+    loadMarkdown();
   })();
 </script>

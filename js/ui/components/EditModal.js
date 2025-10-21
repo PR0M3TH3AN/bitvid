@@ -1,4 +1,5 @@
 import { extractMagnetHints, normalizeAndAugmentMagnet } from "../../magnet.js";
+import { createModalAccessibility } from "./modalAccessibility.js";
 import { Nip71FormManager } from "./nip71FormManager.js";
 
 export class EditModal {
@@ -43,6 +44,7 @@ export class EditModal {
 
     this.root = null;
     this.overlay = null;
+    this.panel = null;
     this.form = null;
     this.closeButton = null;
     this.cancelButton = null;
@@ -53,6 +55,7 @@ export class EditModal {
       container: null,
       buttons: [],
     };
+    this.modalAccessibility = null;
 
     this.activeVideo = null;
     this.isVisible = false;
@@ -123,6 +126,7 @@ export class EditModal {
       this.root = modal;
 
       this.cacheElements(modal);
+      this.setupModalAccessibility();
       if (!this.eventsBound) {
         this.bindEvents();
         this.eventsBound = true;
@@ -140,7 +144,11 @@ export class EditModal {
   }
 
   cacheElements(context) {
-    this.overlay = context.querySelector("#editVideoModalOverlay") || null;
+    this.overlay =
+      context.querySelector("#editVideoModalOverlay") ||
+      context.querySelector(".bv-modal-backdrop") ||
+      null;
+    this.panel = context.querySelector(".bv-modal__panel") || null;
     this.form = context.querySelector("#editVideoForm") || null;
     this.closeButton = context.querySelector("#closeEditVideoModal") || null;
     this.cancelButton = context.querySelector("#cancelEditVideo") || null;
@@ -160,6 +168,8 @@ export class EditModal {
       description: context.querySelector("#editVideoDescription") || null,
       isPrivate: context.querySelector("#editVideoIsPrivate") || null,
       enableComments: context.querySelector("#editEnableComments") || null,
+      isNsfw: context.querySelector("#editVideoIsNsfw") || null,
+      isForKids: context.querySelector("#editVideoIsForKids") || null,
     };
 
     this.visibility = {
@@ -177,6 +187,23 @@ export class EditModal {
 
     const nip71Context = this.form || context;
     this.nip71FormManager.registerSection(this.nip71SectionKey, nip71Context);
+  }
+
+  setupModalAccessibility() {
+    if (!this.root) {
+      return;
+    }
+
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+
+    this.modalAccessibility = createModalAccessibility({
+      root: this.root,
+      panel: this.panel || this.root,
+      backdrop: this.overlay || this.root,
+      onRequestClose: () => this.close({ emitCancel: true }),
+    });
   }
 
   bindEvents() {
@@ -247,7 +274,42 @@ export class EditModal {
       });
     }
 
+    if (this.fields.isNsfw && this.fields.isForKids) {
+      this.setupMutuallyExclusiveCheckboxes(
+        this.fields.isNsfw,
+        this.fields.isForKids
+      );
+    }
+
     this.nip71FormManager.bindSection(this.nip71SectionKey);
+  }
+
+  setupMutuallyExclusiveCheckboxes(firstInput, secondInput) {
+    if (!firstInput || !secondInput) {
+      return;
+    }
+
+    const enforceExclusion = (primary, secondary) => {
+      if (primary.checked) {
+        secondary.checked = false;
+      }
+    };
+
+    const handleFirstChange = () => enforceExclusion(firstInput, secondInput);
+    const handleSecondChange = () => enforceExclusion(secondInput, firstInput);
+
+    if (firstInput.checked && secondInput.checked) {
+      secondInput.checked = false;
+    }
+
+    firstInput.addEventListener("change", handleFirstChange);
+    secondInput.addEventListener("change", handleSecondChange);
+  }
+
+  sanitizeAudienceFlags(flags = {}) {
+    const isNsfw = flags?.isNsfw === true;
+    const isForKids = flags?.isForKids === true && !isNsfw;
+    return { isNsfw, isForKids };
   }
 
   reset() {
@@ -277,12 +339,13 @@ export class EditModal {
         input.disabled = false;
         input.removeAttribute("disabled");
         delete input.dataset.isEditing;
+        delete input.dataset.state;
       } else {
         input.value = "";
         input.readOnly = false;
         input.removeAttribute("readonly");
-        input.classList.remove("locked-input");
         delete input.dataset.isEditing;
+        delete input.dataset.state;
       }
       delete input.dataset.originalValue;
     });
@@ -304,7 +367,7 @@ export class EditModal {
     this.setSubmitState({ pending: false });
   }
 
-  async open(video) {
+  async open(video, { triggerElement } = {}) {
     await this.load();
 
     if (!video) {
@@ -320,6 +383,14 @@ export class EditModal {
     const enableCommentsValue =
       typeof video.enableComments === "boolean" ? video.enableComments : true;
     const isPrivateValue = video.isPrivate === true;
+    const rawIsNsfw = typeof video.isNsfw === "boolean" ? video.isNsfw : false;
+    const rawIsForKids =
+      typeof video.isForKids === "boolean" ? video.isForKids : false;
+    const { isNsfw: isNsfwValue, isForKids: isForKidsValue } =
+      this.sanitizeAudienceFlags({
+        isNsfw: rawIsNsfw,
+        isForKids: rawIsForKids,
+      });
 
     const editContext = {
       ...video,
@@ -327,6 +398,8 @@ export class EditModal {
       xs: effectiveXs,
       enableComments: enableCommentsValue,
       isPrivate: isPrivateValue,
+      isNsfw: isNsfwValue,
+      isForKids: isForKidsValue,
     };
 
     this.applyVideoToForm(editContext);
@@ -340,9 +413,23 @@ export class EditModal {
     this.activeVideo = editContext;
 
     if (this.root) {
-      this.root.classList.remove("hidden");
+      const wasHidden = this.root.classList.contains("hidden");
+      if (wasHidden) {
+        this.root.classList.remove("hidden");
+        this.root.setAttribute("aria-hidden", "false");
+        this.setGlobalModalState("editVideo", true);
+        const focusTarget =
+          this.form?.querySelector("[data-initial-focus]") ||
+          this.panel ||
+          this.root;
+        window.requestAnimationFrame(() => {
+          if (typeof focusTarget?.focus === "function") {
+            focusTarget.focus();
+          }
+        });
+      }
       this.isVisible = true;
-      this.setGlobalModalState("editVideo", true);
+      this.modalAccessibility?.activate({ triggerElement });
     }
 
     return true;
@@ -352,6 +439,13 @@ export class EditModal {
     if (!editContext) {
       return;
     }
+
+    const sanitizedFlags = this.sanitizeAudienceFlags({
+      isNsfw: editContext.isNsfw,
+      isForKids: editContext.isForKids,
+    });
+    editContext.isNsfw = sanitizedFlags.isNsfw;
+    editContext.isForKids = sanitizedFlags.isForKids;
 
     const fieldMap = {
       title: editContext.title || "",
@@ -363,6 +457,8 @@ export class EditModal {
       description: editContext.description || "",
       isPrivate: editContext.isPrivate,
       enableComments: editContext.enableComments,
+      isNsfw: editContext.isNsfw,
+      isForKids: editContext.isForKids,
     };
 
     Object.entries(fieldMap).forEach(([key, rawValue]) => {
@@ -421,11 +517,11 @@ export class EditModal {
       if (hasValue) {
         input.readOnly = true;
         input.setAttribute("readonly", "readonly");
-        input.classList.add("locked-input");
+        input.dataset.state = "locked";
       } else {
         input.readOnly = false;
         input.removeAttribute("readonly");
-        input.classList.remove("locked-input");
+        delete input.dataset.state;
       }
 
       if (button) {
@@ -464,6 +560,10 @@ export class EditModal {
         return "editVideoIsPrivate";
       case "enableComments":
         return "editEnableComments";
+      case "isNsfw":
+        return "editVideoIsNsfw";
+      case "isForKids":
+        return "editVideoIsForKids";
       default:
         return null;
     }
@@ -472,8 +572,10 @@ export class EditModal {
   close({ emitCancel = false } = {}) {
     if (this.root) {
       this.root.classList.add("hidden");
+      this.root.setAttribute("aria-hidden", "true");
     }
     this.isVisible = false;
+    this.modalAccessibility?.deactivate();
     this.setGlobalModalState("editVideo", false);
     const cancelledVideo = this.activeVideo;
     this.reset();
@@ -512,11 +614,12 @@ export class EditModal {
         input.disabled = false;
         input.removeAttribute("disabled");
         input.dataset.isEditing = "true";
+        delete input.dataset.state;
       } else {
         input.disabled = false;
         input.readOnly = false;
         input.removeAttribute("readonly");
-        input.classList.remove("locked-input");
+        delete input.dataset.state;
         input.dataset.isEditing = "true";
       }
       button.dataset.mode = "editing";
@@ -558,14 +661,14 @@ export class EditModal {
     if (originalValue) {
       input.readOnly = true;
       input.setAttribute("readonly", "readonly");
-      input.classList.add("locked-input");
+      input.dataset.state = "locked";
       input.dataset.isEditing = "false";
       button.dataset.mode = "locked";
       button.textContent = "Edit field";
     } else {
       input.readOnly = false;
       input.removeAttribute("readonly");
-      input.classList.remove("locked-input");
+      delete input.dataset.state;
       input.dataset.isEditing = "true";
       button.classList.add("hidden");
       button.dataset.mode = "locked";
@@ -720,6 +823,8 @@ export class EditModal {
     const descriptionInput = this.fields.description;
     const commentsInput = this.fields.enableComments;
     const privateInput = this.fields.isPrivate;
+    const nsfwInput = this.fields.isNsfw;
+    const forKidsInput = this.fields.isForKids;
 
     const newTitle = fieldValue("title");
     const newUrl = fieldValue("url");
@@ -762,6 +867,8 @@ export class EditModal {
     const originalEnableComments =
       typeof original.enableComments === "boolean" ? original.enableComments : true;
     const originalIsPrivate = original.isPrivate === true;
+    const originalIsNsfw = original.isNsfw === true;
+    const originalIsForKids = original.isForKids === true;
 
     const currentNip71 = this.cloneNip71Metadata(
       this.nip71FormManager.collectSection(this.nip71SectionKey)
@@ -794,6 +901,30 @@ export class EditModal {
         finalIsPrivate = this.sanitizers.checkbox(privateInput.checked);
       }
     }
+
+    let finalIsNsfw = originalIsNsfw;
+    if (nsfwInput) {
+      if (nsfwInput.disabled) {
+        finalIsNsfw = nsfwInput.dataset.originalValue === "true";
+      } else {
+        finalIsNsfw = this.sanitizers.checkbox(nsfwInput.checked);
+      }
+    }
+
+    let finalIsForKids = originalIsForKids;
+    if (forKidsInput) {
+      if (forKidsInput.disabled) {
+        finalIsForKids = forKidsInput.dataset.originalValue === "true";
+      } else {
+        finalIsForKids = this.sanitizers.checkbox(forKidsInput.checked);
+      }
+    }
+
+    ({ isNsfw: finalIsNsfw, isForKids: finalIsForKids } =
+      this.sanitizeAudienceFlags({
+        isNsfw: finalIsNsfw,
+        isForKids: finalIsForKids,
+      }));
 
     if (!finalTitle || (!finalUrl && !finalMagnet && !hasImetaSource)) {
       this.showError(
@@ -837,6 +968,8 @@ export class EditModal {
       magnetEdited: magnetWasEdited,
       enableComments: finalEnableComments,
       isPrivate: finalIsPrivate,
+      isNsfw: finalIsNsfw,
+      isForKids: finalIsForKids,
     };
 
     const currentNip71Json = JSON.stringify(currentNip71);
@@ -881,5 +1014,12 @@ export class EditModal {
       this.submitButton.disabled = false;
       this.submitButton.removeAttribute("disabled");
     }
+  }
+
+  destroy() {
+    if (this.modalAccessibility?.destroy) {
+      this.modalAccessibility.destroy();
+    }
+    this.modalAccessibility = null;
   }
 }
