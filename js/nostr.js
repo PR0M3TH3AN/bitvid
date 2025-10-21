@@ -21,6 +21,10 @@ import {
   VIEW_FILTER_INCLUDE_LEGACY_VIDEO,
 } from "./constants.js";
 import { accessControl } from "./accessControl.js";
+import {
+  registerNostrClient,
+  requestDefaultExtensionPermissions as requestRegisteredPermissions,
+} from "./nostrClientRegistry.js";
 // 🔧 merged conflicting changes from codex/update-video-publishing-and-parsing-logic vs unstable
 import { deriveTitleFromEvent, magnetFromText } from "./videoEventUtils.js";
 import { extractMagnetHints } from "./magnet.js";
@@ -12011,8 +12015,13 @@ function isNip04EncryptedWatchHistoryEvent(pointerEvent, ciphertext) {
 
 export const nostrClient = new NostrClient();
 
+registerNostrClient(nostrClient, {
+  requestPermissions: () =>
+    nostrClient.ensureExtensionPermissions(DEFAULT_NIP07_PERMISSION_METHODS),
+});
+
 export function requestDefaultExtensionPermissions() {
-  return nostrClient.ensureExtensionPermissions(
+  return requestRegisteredPermissions(
     DEFAULT_NIP07_PERMISSION_METHODS,
   );
 }
